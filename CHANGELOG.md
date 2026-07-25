@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.5.12] - 2026-07-24
+
+Stage steering is now delivered deterministically instead of depending on the conductor choosing to read paths. The engine bakes the active-space rules and the stage's persona/knowledge roster into each `run-stage` directive as content (`rules_content`, `inline_context_content`), and the reviewer agents' checklists are absorbed into their agent bodies at build time - closing the observed non-deterministic skip where a stage ran with none of its org/phase memory applied (0/4 rule files read across three consecutive live stages). **Upgrade:** re-copy your `dist/<harness>/` shell into the project so the updated engine, skills, agents, and settings are installed.
+
+* `run-stage` (and the reserved `dispatch-subagent`) directives gain four optional fields: `rules_content` (each substantive active-space rule file as `{path, text}`, re-read every stage so mid-workflow learnings reach the very next stage), `rules_content_omitted`, `inline_context_content` (persona + knowledge files delivered once per agent per workflow, derived from state like the conductor persona), and `inline_context_omitted`. Paths rosters (`rules_in_context`, `inline_context_paths`) are unchanged - existing consumers keep working.
+* Comment-only placeholder rule files (the shipped `team.md`/`project.md` templates) are dropped from `rules_content` per the documented emptiness rule; a single affirmed practice line makes the file substantive and delivered.
+* The emitted directive respects a total size budget (default 28KB; `AIDLC_DIRECTIVE_MAX_BYTES` overrides). Files that do not fit are named in the `*_omitted` lists for the conductor to read by path - never silently dropped. The shipped Claude Code `settings.json` raises `BASH_MAX_OUTPUT_LENGTH` to 150000 and sets `AIDLC_DIRECTIVE_MAX_BYTES=120000` so full steering fits the tool-output line.
+* The two reviewer agents (`aidlc-product-lead-agent`, `aidlc-architecture-reviewer-agent`) now carry their `knowledge/<agent>/reviewing.md` checklist inside their agent `.md`/`.toml` bodies, absorbed at build time on every harness - reviewers no longer depend on a discretionary runtime read (Kiro IDE, which ignores agent-v1 `resources`, previously had no delivery path at all). The redundant per-agent knowledge globs were removed from the Kiro reviewer JSONs.
+* Stage protocol, orchestrator skill, and reference docs updated: conductors apply delivered content and read by path only what the directive names as omitted; dispatched-agent briefs now paste `rules_content` verbatim instead of passing rule paths.
+
 ## [2.5.11] - 2026-07-24
 
 Intent Capture now keeps generated intent and stakeholder claims grounded in the user's description, confirmed answers, workflow-selected scope, or explicitly registered memory. Unsupported content is omitted, elicited, or surfaced as a human-owned assumption instead of being presented as fact. **Upgrade:** re-copy your `dist/<harness>/` shell into the project so the updated stage, Product Lead reviewer contract, and `claim-sources` sensor are installed.
