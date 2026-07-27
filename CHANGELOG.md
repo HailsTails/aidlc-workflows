@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.5.12] - 2026-07-27
+
+Reverse Engineering no longer silently discards a prior intent's code knowledge on rerun. The codekb store (`aidlc/spaces/<space>/codekb/<repo>/`) is space-level and shared across intents, but real scans are often intent-conditioned; previously a second intent's narrower scan overwrote the store's 9 artifacts last-writer-wins with no warning. The stage now records what each scan actually covered, checks the store before rescanning, and puts reuse-vs-rescan in the human's hands with evidence. **Upgrade:** re-copy your `dist/<harness>/` shell into the project. Existing stores predate scope tracking and report `UNKNOWN_SCOPE` until their first post-upgrade scan writes the scope block.
+
+* `reverse-engineering-timestamp.md` now ends with a structured `## Scope of Analysis` block (fenced yaml: `kind` full/partial, intent, analyzed paths/components, shallow paths, and a content fingerprint over the analyzed paths).
+* New read-only direct utility verb `aidlc-utility codekb-scope-diff` (not an `/aidlc` command): status mode reports `NO_STORE`/`CURRENT`/`STALE`/`UNVERIFIED`/`UNKNOWN_SCOPE` by recomputing the fingerprint; `--compare <timestamp.md>` reports `COVERS` or `NARROWER` with the exact paths and components an overwrite would discard; `--mint --paths <a,b,...>` prints the fingerprint the scope block records. `--json` supported on all modes.
+* Reverse Engineering Step 1 rerun guard: when a store exists, the stage presents a structured question before scanning - reuse the verified-current store (skips the scan), full rescan, or focused scan - instead of unconditionally rescanning and overwriting.
+* Reverse Engineering completion gate: when the delivered scan is narrower than the store it replaced, the completion summary carries a warning quoting the discard list, and the Approve option says the store was replaced by a narrower scan.
+* The fingerprint is a `git write-tree` over a temporary index restricted to the analyzed paths (working-tree content, gitignore-aware); outside a git work tree it reports `unknown` and verdicts degrade to `UNVERIFIED`, never a false `CURRENT`/`STALE`.
+
 ## [2.5.11] - 2026-07-24
 
 Intent Capture now keeps generated intent and stakeholder claims grounded in the user's description, confirmed answers, workflow-selected scope, or explicitly registered memory. Unsupported content is omitted, elicited, or surfaced as a human-owned assumption instead of being presented as fact. **Upgrade:** re-copy your `dist/<harness>/` shell into the project so the updated stage, Product Lead reviewer contract, and `claim-sources` sensor are installed.
