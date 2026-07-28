@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.5.20] - 2026-07-30
+
+Closes a silent-failure trap in the plugin mechanism: a plugin that shipped a sensor manifest under any name other than `aidlc-<id>.md` (or nested it in a subdirectory) composed successfully but was never discovered by graph compile or sensor dispatch, giving the author no signal at all. The compose hook now validates a plugin's `sensors/` manifests against the discovery contract and records a degraded drop naming the file and the required shape when a manifest could never fire; `/aidlc --doctor` surfaces that drop. **Upgrade:** re-copy your `dist/<harness>/` shell so the updated plugin compose hook is installed; if you author a plugin sensor, name its manifest `sensors/aidlc-<id>.md` at the top of `sensors/`.
+
+* Plugin `sensors/` manifests are now checked at compose time: a manifest whose basename lacks the `aidlc-` prefix, or that sits in a subdirectory the flat sensor scan never reads, is not copied and is recorded as a degraded compose drop (surfaced by `/aidlc --doctor`) naming the file and the required `aidlc-<id>.md` shape.
+* An undiscoverable sensor manifest an older compose hook already landed is reported the same way on the next compose, so an upgrade never leaves a dead sensor silently on disk.
+
 ## [2.5.17] - 2026-07-29
 
 Hardens the Kiro CLI and Kiro IDE shell permission lists. Kiro matches each `execute_bash` pattern as a full string, not as a prefix, so the shipped patterns were both too narrow (a bare `date -u` and `bun run .kiro/tools/<tool>.ts` needed an approval the framework never asked for, stalling a workflow when no approver was available) and too broad (a trailing wildcard let `bun .kiro/tools/../../anything.ts` run unprompted). The pre-approved set is now the framework's own project-relative tool calls and nothing else, and the deny list catches the recursive-`rm` and `git push` variants full-string matching used to miss. **Upgrade:** re-copy your `dist/kiro/` or `dist/kiro-ide/` shell into the project so the corrected agent configs are installed. If you start Kiro from a directory other than the project root, start it from the root instead: out-of-root invocation forms are no longer pre-approved.
