@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.5.19] - 2026-07-30
+
+Sensor output parsing now tolerates leading stdout noise. When a sensor runs against a sibling repository, that repo's package manager (pnpm and similar) can print a run banner or lockfile warning before the wrapped tool's JSON; previously the dispatcher and the linter sensor did a bare parse of that stdout, so any preamble made the parse throw and the sensor's real verdict was silently discarded as an advisory PASS. Both parse sites now slice stdout to the first structural JSON character before parsing, and still degrade gracefully when even the sliced output is not JSON. **Upgrade:** re-copy your `dist/<harness>/` shell into the project so the updated `aidlc-sensor` dispatcher and `linter` sensor are installed. No configuration or command changes.
+
+* The sensor dispatcher (`aidlc-sensor fire`) and the `linter` sensor now strip package-manager banners and lockfile warnings that precede a wrapped tool's JSON, so a real FAILED or clean PASS verdict is no longer masked as `script-error: bad-output` when firing against a sibling repo.
+
 ## [2.5.17] - 2026-07-29
 
 Hardens the Kiro CLI and Kiro IDE shell permission lists. Kiro matches each `execute_bash` pattern as a full string, not as a prefix, so the shipped patterns were both too narrow (a bare `date -u` and `bun run .kiro/tools/<tool>.ts` needed an approval the framework never asked for, stalling a workflow when no approver was available) and too broad (a trailing wildcard let `bun .kiro/tools/../../anything.ts` run unprompted). The pre-approved set is now the framework's own project-relative tool calls and nothing else, and the deny list catches the recursive-`rm` and `git push` variants full-string matching used to miss. **Upgrade:** re-copy your `dist/kiro/` or `dist/kiro-ide/` shell into the project so the corrected agent configs are installed. If you start Kiro from a directory other than the project root, start it from the root instead: out-of-root invocation forms are no longer pre-approved.
