@@ -4,7 +4,17 @@
 
 The fork removes upstream's `.github/workflows/ai-pr-review.yml` by operator
 choice. CI does not launch review agents, assume a Bedrock review role, or publish
-agent-generated reviews. Deterministic build, test and security checks remain.
+agent-generated reviews.
+
+The fork also removes upstream's other workflow files and owns its small
+`.github/workflows/rin-ci.yml` separately. Pull requests run one source-check job:
+frozen dependency installation, authored source/test type checking, lint and the
+Rin constitution audit. Its limit is ten minutes; a new push cancels the older
+run. There are no scheduled previews, push-triggered jobs, release pipelines,
+documentation deployments, security-scanner jobs or test matrices. Full builds,
+generated-adapter checks, determinism checks, tests and security scans remain
+local verification responsibilities. A green CI result covers only source checks.
+This budget choice is intended for the current two-maintainer fork.
 This is a local repository policy, not an upstream bug fix or upstream candidate.
 Reconsider only if the fork's maintainers explicitly choose agentic CI.
 
