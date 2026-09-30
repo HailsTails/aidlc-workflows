@@ -1,0 +1,34 @@
+{
+  "projectName": "aidlc-workspace",
+  "defaultScope": "workshop",
+  "rulesetRoot": "aidlc/spaces/default/memory",
+  "stageGraph": ".claude/tools/data/stage-graph.json",
+  "packageManager": {
+    "primary": "bun",
+    "runnerAllowlist": [
+      "uv run",
+      "pnpm",
+      "npm",
+      "npx",
+      "bun run",
+      "bun x",
+      "bun test",
+      "bun install",
+      "bash .specify",
+      "python -m json.tool"
+    ]
+  },
+  "constitution": {
+    "include": ["plugins/rin/**"],
+    "exclude": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/.git/**",
+      "**/test-fixtures/**",
+      "**/*.d.ts"
+    ],
+    "scriptGlobs": ["plugins/rin/**"]
+  }
+}

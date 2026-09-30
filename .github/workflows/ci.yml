@@ -56,6 +56,9 @@ jobs:
       - name: Run contract checks
         run: bun run check
 
+      - name: Audit reusable Rin plugin
+        run: bun run audit:rin
+
       - name: Run reusable Rin plugin tests
         run: bun run test:rin
 
