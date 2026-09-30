@@ -1,5 +1,13 @@
 # Rin fork differences from upstream
 
+## Repository automation
+
+The fork removes upstream's `.github/workflows/ai-pr-review.yml` by operator
+choice. CI does not launch review agents, assume a Bedrock review role, or publish
+agent-generated reviews. Deterministic build, test and security checks remain.
+This is a local repository policy, not an upstream bug fix or upstream candidate.
+Reconsider only if the fork's maintainers explicitly choose agentic CI.
+
 Comparison baseline: upstream AIDLC **2.9.0**, commit
 `22f5d1b15a064c9ae80046e5b1761d5877e2f69f`. This extraction ports the
 already maintained 2.9.0 differences. It does not replay the upgrade from an
