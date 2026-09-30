@@ -20,7 +20,6 @@
 // matcher set, AND MEMORY_EMPTY is not in the event-class regex. The
 // compile's own audit emits cannot re-trigger the compile.
 
-import { spawnSync } from "node:child_process";
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -30,6 +29,7 @@ import {
   errorMessage,
   hookChildEnv,
   hookDebug,
+  hookPayloadCwd,
   hooksHealthDir,
   isClaudeCodeHookInput,
   isoTimestamp,
@@ -38,7 +38,7 @@ import {
   readSessionIntentUuid,
   recordHookDrop,
   resolveWorkflowSelection,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   runtimeGraphPath,
   validSessionId,
   harnessDir,
@@ -99,7 +99,10 @@ function bindCreatedIntentToInvokingSession(
 }
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 hookDebug(projectDir, "rebuild-stage-graph", "invoked");
 
 // 1. TTY guard — exit cleanly when invoked outside a piped stdin context
@@ -126,7 +129,7 @@ bindCreatedIntentToInvokingSession(projectDir, parsed);
 //    legacy tool-file commands and the new `aidlc ...` grammar.
 //    aidlc-runtime.ts / aidlc runtime is rejected explicitly (recursion guard
 //    at the command level - a positive-only allowlist would let composites like
-//    `bun aidlc-runtime.ts compile && bun aidlc-state.ts approve` through and
+//    `{{INVOKE}} engine runtime compile && {{INVOKE}} engine state approve` through and
 //    loop). aidlc-log.ts emits only chatty in-stage events
 //    (DECISION_RECORDED / QUESTION_ANSWERED / ERROR_LOGGED), none
 //    transition-class. aidlc-worktree.ts emits only WORKTREE_* events.
@@ -264,3 +267,4 @@ return 0;
 if (import.meta.main) {
   process.exit(await run(await Bun.stdin.text()));
 }
+import { spawnSync } from "node:child_process";

@@ -41,10 +41,11 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { REPO_ROOT } from "../harness/fixtures.ts";
+import { AIDLC_SRC, REPO_ROOT } from "../harness/fixtures.ts";
+import { _resetHarnessDataForTests } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 import { augmentDispatchRules } from "../../dist/claude/.claude/hooks/aidlc-deliver-stage-rules.ts";
 
@@ -189,7 +190,27 @@ function orgMdProjections(): Array<{ label: string; path: string }> {
 }
 
 const tempDirs: string[] = [];
+const inheritedRuntimeRoot = process.env.AIDLC_RUNTIME_HARNESS_ROOT;
+
+function explicitDispatchProject(prefix: string): string {
+  const projectDir = mkdtempSync(join(tmpdir(), prefix));
+  tempDirs.push(projectDir);
+  const harnessRoot = join(projectDir, ".claude");
+  cpSync(AIDLC_SRC, harnessRoot, { recursive: true });
+  const harnessMetadata = join(harnessRoot, "tools", "data", "harness.json");
+  writeFileSync(
+    harnessMetadata,
+    readFileSync(harnessMetadata, "utf-8").replace('"baseRuleDelivery": "ambient"', '"baseRuleDelivery": "explicit"'),
+  );
+  process.env.AIDLC_RUNTIME_HARNESS_ROOT = harnessRoot;
+  _resetHarnessDataForTests();
+  return projectDir;
+}
+
 afterEach(() => {
+  if (inheritedRuntimeRoot === undefined) delete process.env.AIDLC_RUNTIME_HARNESS_ROOT;
+  else process.env.AIDLC_RUNTIME_HARNESS_ROOT = inheritedRuntimeRoot;
+  _resetHarnessDataForTests();
   for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
@@ -295,8 +316,7 @@ describe("t266 conversation-language rule layer", () => {
 
   // === (c) DELEGATED EXECUTION =============================================
   test("c: a delegated dispatch is rewritten to carry all four rules", () => {
-    const proj = mkdtempSync(join(tmpdir(), "aidlc-t266-"));
-    tempDirs.push(proj);
+    const proj = explicitDispatchProject("aidlc-t266-");
     const creation = spawnSync(
       BUN,
       [UTILITY, "intent-create", "--scope", "poc", "--arguments", "x", "--project-dir", proj],
@@ -855,8 +875,7 @@ describe("t266 conversation-language rule layer", () => {
     // between them, in one prompt, with the section order the tie-break needs.
     // Whether the model then writes English is model-directed and out of reach
     // of a deterministic test.
-    const proj = mkdtempSync(join(tmpdir(), "aidlc-t266-switch-"));
-    tempDirs.push(proj);
+    const proj = explicitDispatchProject("aidlc-t266-switch-");
     const creation = spawnSync(
       BUN,
       [UTILITY, "intent-create", "--scope", "poc", "--arguments", "x", "--project-dir", proj],
@@ -966,8 +985,7 @@ describe("t266 conversation-language rule layer", () => {
   // team before project, and that the delegate receives the stated precedence
   // that overrides that order.
   test("e3: a team-level language rule never outranks the project-level one it precedes", () => {
-    const proj = mkdtempSync(join(tmpdir(), "aidlc-t266-split-"));
-    tempDirs.push(proj);
+    const proj = explicitDispatchProject("aidlc-t266-split-");
     const creation = spawnSync(
       BUN,
       [UTILITY, "intent-create", "--scope", "poc", "--arguments", "x", "--project-dir", proj],

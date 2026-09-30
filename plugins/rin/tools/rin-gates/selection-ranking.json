@@ -1,0 +1,4 @@
+{
+  "ratifiedMilestones": ["M1", "M2", "M3", "M4", "M5"],
+  "neglectThresholdDays": 30
+}

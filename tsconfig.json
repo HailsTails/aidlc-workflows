@@ -9,15 +9,17 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
+    "allowJs": true,
     "types": ["bun-types"]
   },
   "include": [
     "core/**/*.ts",
     "harness/**/*.ts",
     "scripts/**/*.ts",
-    "plugins/*/tools/**/*.ts"
+    "plugins/*/**/*.ts"
   ],
   "exclude": [
-    "harness/*/hooks/*-adapter.ts"
+    "harness/*/hooks/*-adapter.ts",
+    "plugins/*/tools/test-fixtures/**"
   ]
 }

@@ -7,16 +7,19 @@
 // fabricate an approval with no human having acted this turn.
 //
 // Presence remains the gate signal, while the prompt payload is also inspected
-// for an exact protected Plan Approval choice. appendAuditEntry resolves the
-// active intent from the on-disk cursor. No workflow state on disk means nothing
-// to gate, so the hook exits without writing (same self-gate as
+// for an exact protected Plan Approval choice. The payload is additionally read
+// for `cwd`, the invoking checkout, so the hook binds to the tree the event came
+// from rather than the one the session started in. appendAuditEntry resolves the
+// active intent from the on-disk cursor once the project dir is known. No
+// workflow state on disk means nothing to gate, so the hook exits without
+// writing (same self-gate as
 // aidlc-session-start.ts) - otherwise every prompt in a project that carries the
 // harness shell but never ran the framework would scaffold and grow audit
 // shards. The gate fails open on an empty ledger, so skipping the mint there is
 // safe. The mint is fail-open (try/catch, exit 0): a mint failure must never
 // block the human's turn.
 //
-// The same seam also touches the .aidlc-human-turn marker (markHumanTurn). The
+// The same seam also touches the .aidlc-engine/human-turn marker (markHumanTurn). The
 // ledger event serves the human-presence GATE; the marker serves the Stop hook's
 // conversational carve-out, which needs a cheap "when was the last human prompt,
 // relative to the last engine advance?" comparison that works on harnesses
@@ -51,13 +54,18 @@
 // suppressed too should say so — it is a one-line follow-on, not a silent choice.
 import { existsSync } from "node:fs";
 import {
+  consumeSharedDirectiveAsk,
+  hookPayloadCwd,
   humanTurnMintAllowed,
   markHumanTurn,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   stateFilePath,
 } from "../tools/aidlc-lib.ts";
 import { appendAuditEntry } from "../tools/aidlc-audit.ts";
-import { recordPlanApprovalHumanResponse } from "../tools/aidlc-testing-posture.ts";
+import {
+  recordPlanApprovalHumanResponse,
+  recordPlanApprovalOverrideRequest,
+} from "../tools/aidlc-testing-posture.ts";
 
 function extractResponseText(value: unknown): string {
   if (typeof value === "string") {
@@ -100,13 +108,23 @@ function extractResponseText(value: unknown): string {
 
 export async function run(input: string): Promise<number> {
 try {
-  const projectDir = resolveProjectDirFromHook(import.meta.url);
+  const projectDir = resolveProjectDirFromPayload({
+    importMetaUrl: import.meta.url,
+    cwd: hookPayloadCwd(input),
+  });
   if (existsSync(stateFilePath(projectDir))) {
     if (humanTurnMintAllowed()) {
       let sessionId = "";
       let humanResponseText = "";
+      // The break-glass phrase counts only when the human TYPED it: the prompt
+      // text of a UserPromptSubmit payload that names no tool. A picked option
+      // (AskUserQuestion PostToolUse, Codex request_user_input, any adapter's
+      // picker payload) arrives under tool_response and never opens it.
+      let typedPrompt = "";
       try {
         const parsed = JSON.parse(input) as {
+          hook_event_name?: unknown;
+          tool_name?: unknown;
           session_id?: unknown;
           prompt?: unknown;
           user_prompt?: unknown;
@@ -128,14 +146,36 @@ try {
             break;
           }
         }
+        if (
+          parsed.hook_event_name === "UserPromptSubmit" &&
+          typeof parsed.tool_name !== "string"
+        ) {
+          typedPrompt =
+            [parsed.prompt, parsed.user_prompt, parsed.message].find(
+              (value): value is string =>
+                typeof value === "string" && value.trim().length > 0,
+            ) ?? "";
+        }
       } catch { /* presence still records without identity on legacy payloads */ }
-      appendAuditEntry("HUMAN_TURN", sessionId ? { Session: sessionId } : {}, projectDir);
-      if (sessionId && humanResponseText) {
-        recordPlanApprovalHumanResponse(
-          projectDir,
-          sessionId,
-          humanResponseText,
-        );
+      try {
+        appendAuditEntry("HUMAN_TURN", sessionId ? { Session: sessionId } : {}, projectDir);
+        if (sessionId && humanResponseText) {
+          recordPlanApprovalHumanResponse(
+            projectDir,
+            sessionId,
+            humanResponseText,
+          );
+        }
+        if (sessionId && typedPrompt) {
+          recordPlanApprovalOverrideRequest(projectDir, sessionId, typedPrompt);
+        }
+      } catch {
+        // Authority bookkeeping remains fail-open for the human's turn.
+      }
+      try {
+        consumeSharedDirectiveAsk(projectDir, humanResponseText);
+      } catch {
+        // Non-authority marker consumption is independently best-effort.
       }
     }
     markHumanTurn(projectDir);

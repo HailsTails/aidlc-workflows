@@ -69,6 +69,7 @@ import {
   claimCopilotCommand,
   type CopilotCommandClaim,
   type CopilotDirectiveMetadata,
+  invokingCheckoutFromCwd,
   recordCopilotHumanSequence,
   resolveWorkflowSelection,
   settleCopilotCommand,
@@ -79,6 +80,22 @@ import {
 
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 const ATTEMPT_FLAG = "--aidlc-attempt-id";
+
+// target → hook body, written beside this adapter by emit.ts. Read lazily so a
+// tree shipped without the map still serves core's own targets: a plugin wiring
+// problem must never break the core hooks.
+function pluginHookTargets(): Record<string, string> {
+  const mapPath = join(HOOKS_DIR, "plugin-hook-targets.json");
+  if (!existsSync(mapPath)) return {};
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(mapPath, "utf-8"));
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 interface CopilotHookInput {
   hook_event_name?: string;
@@ -122,7 +139,20 @@ export async function run(
     }
   }
 
-  const projectDirRaw = process.env.AIDLC_PROJECT_DIR ?? copilot.cwd ?? process.cwd();
+  // Ordering matches core's `resolveProjectDirFromPayload`: the per-event cwd
+  // binds to the INVOKING checkout, which is what a worktree session needs — an
+  // env var pinned at session start names the tree the session began in, so a
+  // hook resolving a record dir from it writes into the primary's record rather
+  // than the one being worked on.
+  //
+  // It wins only when cwd resolves to a real checkout. AIDLC_PROJECT_DIR is a
+  // deliberate operator override for pointing AIDLC at a project dir that is
+  // NOT the cwd, such as multi-repo work where the workspace sits outside the
+  // repo being edited. A non-checkout cwd must not outrank it.
+  const projectDirRaw =
+    invokingCheckoutFromCwd(copilot.cwd) ??
+    process.env.AIDLC_PROJECT_DIR ??
+    process.cwd();
   const projectDir = isAbsolute(projectDirRaw)
     ? projectDirRaw
     : resolve(process.cwd(), projectDirRaw);
@@ -238,10 +268,54 @@ export async function run(
 
   // --- Core-hook subprocess plumbing -----------------------------------------
 
+  // A hook may deny through EITHER protocol: exit code 2 with the reason on
+  // stderr, or exit 0 carrying {"hookSpecificOutput":{"permissionDecision":
+  // "deny","permissionDecisionReason":…}} on stdout. Claude Code honours both
+  // natively; this face reaches its hooks through the runners below, so the
+  // JSON form is normalised to the exit-2 form there — once — rather than at
+  // each call site that tests `code === 2`. Reading only the exit code silently
+  // discards the JSON denials (inline-exec, gh-write and destructive-git all
+  // use that form), which reads as an installed rail that permits what it
+  // forbids. Note this adapter already EMITS that dialect to its own host; the
+  // gap was never emitting it, only reading it back from a spawned hook.
+  function structuredDenialReason(stdout: string): string | null {
+    const trimmed = stdout.trim();
+    if (trimmed.length === 0 || !trimmed.startsWith("{")) return null;
+    try {
+      const parsed = JSON.parse(trimmed) as {
+        hookSpecificOutput?: {
+          permissionDecision?: unknown;
+          permissionDecisionReason?: unknown;
+        };
+      };
+      if (parsed.hookSpecificOutput?.permissionDecision !== "deny") return null;
+      const reason = parsed.hookSpecificOutput?.permissionDecisionReason;
+      return typeof reason === "string" && reason.trim().length > 0
+        ? reason
+        : "Blocked by an AIDLC guard hook.";
+    } catch {
+      return null;
+    }
+  }
+
+  function normalisedResult<
+    T extends { stdout: string; stderr?: string; code: number },
+  >(result: T): T {
+    if (result.code === 2) return result;
+    const reason = structuredDenialReason(result.stdout);
+    if (reason === null) return result;
+    const existing = result.stderr?.trim() ?? "";
+    return {
+      ...result,
+      ...(existing.length > 0 ? {} : { stderr: reason }),
+      code: 2,
+    };
+  }
+
   function runCore(hookFile: string, stdin: string): { stdout: string; code: number } {
     const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
     const command = executable
-      ? [executable, "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
+      ? [executable, "engine", "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
       : [process.execPath, join(HOOKS_DIR, hookFile)];
     const r = Bun.spawnSync(command, {
       stdin: Buffer.from(stdin, "utf-8"),
@@ -250,7 +324,10 @@ export async function run(
       cwd: projectDir,
       env: projectEnv,
     });
-    return { stdout: r.stdout?.toString() ?? "", code: r.exitCode ?? 0 };
+    return normalisedResult({
+      stdout: r.stdout?.toString() ?? "",
+      code: r.exitCode ?? 0,
+    });
   }
 
   // Variant capturing stderr — the guard hooks' block channel (exit 2 + the
@@ -262,7 +339,7 @@ export async function run(
   ): { stdout: string; stderr: string; code: number } {
     const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
     const command = executable
-      ? [executable, "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
+      ? [executable, "engine", "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
       : [process.execPath, join(HOOKS_DIR, hookFile)];
     const r = Bun.spawnSync(command, {
       stdin: Buffer.from(stdin, "utf-8"),
@@ -271,11 +348,11 @@ export async function run(
       cwd: projectDir,
       env: projectEnv,
     });
-    return {
+    return normalisedResult({
       stdout: r.stdout?.toString() ?? "",
       stderr: r.stderr?.toString() ?? "",
       code: r.exitCode ?? 0,
-    };
+    });
   }
 
   // The one deny dialect both surfaces honor (difference #4). stdout JSON,
@@ -471,6 +548,9 @@ export async function run(
       if (!compiled) return { status: "unrelated" };
       args = words.slice(cursor);
     }
+    // The reshaped dispatcher routes the loop under `engine orchestrate`;
+    // classification works on the bare verb either way.
+    if (args[0] === "engine" && args[1] === "orchestrate") args = args.slice(2);
     if (args[0] === "--resume") args = ["next", "--resume", ...args.slice(1)];
     const normalized: string[] = [];
     let attemptId = safeAttemptId(copilot.tool_use_id);
@@ -1330,8 +1410,27 @@ export async function run(
       return r.code;
     }
 
-    default:
+    default: {
+      // A plugin-contributed target (emit.ts unions plugin rows into aidlc.json
+      // and writes the target→hookFile map beside this adapter). The plugin's
+      // hook body reads the SAME ClaudeCodeHookInput shape core hooks do, so it
+      // reuses this adapter's normalisation verbatim rather than each plugin
+      // re-implementing it. apply_patch is already canonicalised to Edit above,
+      // so no fan-out is needed here.
+      const hookFile = pluginHookTargets()[target];
+      // Genuinely unknown target: inert. A stale entry left after a plugin is
+      // disabled must not block every matching event.
+      if (!hookFile) return 0;
+      const contributed = runCoreWithStderr(hookFile, canonicalInput);
+      // Copilot signals a block as a deny envelope on stdout with exit 0, not
+      // as a non-zero exit — the same contract the core arms above use.
+      if (contributed.code === 2) {
+        process.stdout.write(denyJson(contributed.stderr));
+        return 0;
+      }
+      if (contributed.stdout) process.stdout.write(contributed.stdout);
       return 0;
+    }
   }
 
   // Inject the correlated agent identity into a verbatim payload when the

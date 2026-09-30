@@ -2,7 +2,7 @@
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
 //
 //   bun scripts/package.ts            regenerate dist/{claude,kiro,kiro-ide,codex}
-//   bun scripts/package.ts --check     total drift guard (exit 1 on any drift)
+//   bun scripts/package.ts --check     determinism guard (exit 1 on mismatch)
 //   bun scripts/package.ts <name>      regenerate just one harness
 //   bun scripts/package.ts <name> --check
 //
@@ -30,18 +30,20 @@
 // `$CLAUDE_PROJECT_DIR on Claude Code` note) never carried the token, so they
 // pass through untouched.
 //
-// --check is the freshness-diff idiom (aidlc-graph.ts compile --check): build
-// each tree into a temp dir, diff byte-for-byte against the committed dist/,
-// exit 1 with the offending paths on any drift. dist/ stays committed; this
-// guard fails CI when someone hand-edits a dist or forgets to regenerate.
+// --check builds the complete copy-channel, native-release, and plugin
+// projections twice in independent temp roots, then compares them byte for
+// byte. It never reads dist/ or dist-release/, so it works from a fresh clone
+// and fails CI only when the generator is nondeterministic.
 
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -58,6 +60,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import type { BunPlugin } from "bun";
 import type { HarnessManifest } from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
@@ -65,6 +68,13 @@ import {
   injectDelegatedKnowledgePreflight,
   reviewerAgentSet,
 } from "./agent-knowledge.ts";
+import {
+  pluginHookRows,
+  renderPluginHookContributions,
+  pluginTokens,
+  substitutePluginTokens,
+} from "./plugin-contributions.ts";
+import { isModelHarness } from "../core/tools/aidlc-model-policy.ts";
 import { renderOnboarding } from "./onboarding.ts";
 import {
   buildPluginProjection as emitPluginProjection,
@@ -73,11 +83,32 @@ import {
 } from "../core/tools/aidlc-plugin-emit.ts";
 import {
   type Harness,
-  kiroModelDefaults,
-  projectTier,
   readEnvCap,
   readMemoryCap,
+  TIERS,
+  type Tier,
 } from "../core/tools/aidlc-tiers.ts";
+import {
+  agentTiersFromAuthoredDirectory,
+  modelAgentName,
+  resolveModelPolicy,
+  serializeAgentTiers,
+  writeCodexAgentSurface,
+  writeKiroAgentSurface,
+  writeKiroCliSurface,
+  writeMarkdownAgentSurface,
+} from "../core/tools/aidlc-model-policy.ts";
+import {
+  scanNamespaceInvocations,
+  TRUSTED_COMMAND_PREFIX,
+  TRUSTED_ROUTE_NAMESPACE,
+  trustedCommand,
+} from "../core/tools/aidlc-command.ts";
+import { ROUTES } from "../core/tools/aidlc.ts";
+import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
+import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
+import { sha256Bytes } from "../core/tools/aidlc-distribution.ts";
+import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CORE_ROOT = join(REPO_ROOT, "core");
@@ -87,12 +118,11 @@ const HARNESS_ROOT = join(REPO_ROOT, "harness");
 // AIDLC_TIER_CAP env var (per-invocation) beats the persistent space-memory
 // `tier_cap:` frontmatter key (core/memory org.md -> team.md -> project.md,
 // last writer wins). The env var applies to WRITE runs only - a one-shot
-// build knob. Under --check it is IGNORED: the drift guard must compare
-// what the committed dist was legitimately built from, and a stray
-// AIDLC_TIER_CAP in a CI or test runner's environment must not fail (or
-// mask) drift. The memory cap travels with the repo, so it applies in both
-// modes and keeps write and check consistent for a project that commits a
-// capped dist. The diagnostic below names the active cap and mode.
+// build knob. Under --check it is IGNORED: the determinism guard measures the
+// repository-defined projection, and a stray AIDLC_TIER_CAP in a CI or test
+// runner's environment must not alter either build. The memory cap travels
+// with the repo, so it applies in both modes and keeps write and check
+// consistent. The diagnostic below names the active cap and mode.
 // The `codex trust` subcommand performs NO projection (it prints trust
 // entries for the installer), so it skips cap resolution entirely - a
 // malformed cap must not break an installer command that never uses it.
@@ -114,18 +144,46 @@ if (TIER_CAP) {
       "(the env cap is a one-shot write knob; persistent caps live in core/memory)",
   );
 }
+
+// The version stamped into every projected aidlc-version.ts copy and projection
+// stamp. Unset means the source version. A release build sets AIDLC_BUILD_VERSION
+// to a next-patch preview id derived from the current source version; the source
+// tree is never edited. Honoured in --check mode too, so the two-build
+// determinism guard measures the same stamped projection the release will ship.
+const BUILD_VERSION = releaseBuildVersion();
+if (BUILD_VERSION !== AIDLC_VERSION) {
+  console.error(`[version] stamping projections with ${BUILD_VERSION_ENV}=${BUILD_VERSION}`);
+}
+const VERSION_ASSIGNMENT = /^export const AIDLC_VERSION = "[^"]+";$/m;
+
+function stampVersionModule(content: string): string {
+  if (BUILD_VERSION === AIDLC_VERSION) return content;
+  const matches = content.match(new RegExp(VERSION_ASSIGNMENT.source, "gm")) ?? [];
+  if (matches.length !== 1) {
+    throw new Error(
+      `aidlc-version.ts must declare exactly one AIDLC_VERSION assignment, found ${matches.length}`,
+    );
+  }
+  return content.replace(VERSION_ASSIGNMENT, `export const AIDLC_VERSION = "${BUILD_VERSION}";`);
+}
+
 // The shared onboarding-doc skeleton, rendered per harness (scripts/onboarding.ts).
 const ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding.md");
 const HARNESS_TOKEN = /\{\{HARNESS_DIR\}\}/g;
+const INVOKE_TOKEN = /\{\{INVOKE\}\}/g;
+const TOOL_PREFIX_TOKEN = /\{\{TOOL_PREFIX\}\}/g;
+const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
+// Matched by PREFIX (mirroring aidlc-init.ts's marker scan): the begin marker
+// embeds the harness-projected invocation, so its tail varies per channel.
 const GENERATED_SKILL_REGIONS = [
   {
     verb: "stage-table",
-    begin: "<!-- BEGIN: compiled stage graph via `bun aidlc-utility.ts stage-table` - do NOT hand-edit -->",
+    begin: "<!-- BEGIN: compiled stage graph via ",
     end: "<!-- END: compiled stage graph -->",
   },
   {
     verb: "scope-table",
-    begin: "<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` - do NOT hand-edit -->",
+    begin: "<!-- BEGIN: compiled scope grid via ",
     end: "<!-- END: compiled scope grid -->",
   },
 ] as const;
@@ -143,12 +201,27 @@ function discoverHarnessNames(): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Transform: the ONE class. Token substitution on .md prose; .json + .ts copied
-// verbatim (compiled JSON is regenerated per-tree by graph compile, never
-// token-bearing in core; .ts uses the runtime harnessDir() seam).
+// Transform: the ONE class. Token substitution on authored prose and the
+// TypeScript invocation seam; compiled JSON is regenerated per tree.
 // ---------------------------------------------------------------------------
-function substituteToken(s: string, harnessDir: string): string {
-  return s.replace(HARNESS_TOKEN, harnessDir);
+function substituteInvocationTokens(
+  s: string,
+  harnessDir: string,
+  invoke = `bun ${harnessDir}/tools/aidlc.ts`,
+): string {
+  const toolPrefix = invoke === "aidlc" ? `${TRUSTED_COMMAND_PREFIX} ` : `bun ${harnessDir}/tools/`;
+  return s
+    .replace(INVOKE_TOKEN, invoke)
+    .replace(TOOL_PREFIX_TOKEN, toolPrefix)
+    .replace(TRUSTED_NAMESPACE_TOKEN, TRUSTED_ROUTE_NAMESPACE);
+}
+
+function substituteToken(
+  s: string,
+  harnessDir: string,
+  invoke = `bun ${harnessDir}/tools/aidlc.ts`,
+): string {
+  return substituteInvocationTokens(s.replace(HARNESS_TOKEN, harnessDir), harnessDir, invoke);
 }
 
 // Rewrite in-prose `<harnessDir>/rules/` → `<harnessDir>/<rulesRename>/` for a
@@ -215,27 +288,27 @@ function projectTierFrontmatter(
       `${srcPath}: kiro projection requires exactly one disallowedTools: Task line.`,
     );
   }
-  const proj = projectTier(tier, harness, TIER_CAP); // throws on unknown tier
-  const lines: string[] = [];
-  if (proj.model !== null) lines.push(`model: ${proj.model}`);
-  if ("effort" in proj && proj.effort !== null) lines.push(`effort: ${proj.effort}`);
-  // opencode's reasoning-effort key is `variant:` (its native agent
-  // frontmatter name), projected from the same tier table.
-  if ("variant" in proj && proj.variant !== null) lines.push(`variant: ${proj.variant}`);
-  // Rebuild the frontmatter line-wise: replace the tier line with the
-  // projected keys, or drop it entirely when every key is omitted. Line-wise
-  // filtering (not a regex splice) removes the tier line cleanly wherever it
-  // sits - first, last, or mid-frontmatter.
-  const newFm = fm
-    .split(/\r?\n/)
-    .flatMap((line) => {
-      if (harness === "kiro" && /^disallowedTools:/.test(line)) return [];
-      return /^tier:/.test(line) ? lines : [line];
-    })
-    .join("\n");
-  // Function replacement: a literal `$&`/`$'` in frontmatter must not be
-  // interpreted as a replacement pattern.
-  return s.replace(m[0], () => `---\n${newFm}\n---\n`);
+  if (harness === "kiro") {
+    // Kiro's native agent surface rejects unknown frontmatter keys: project the
+    // authored disallowedTools line out before the model-policy rewrite.
+    const newFm = fm
+      .split(/\r?\n/)
+      .filter((line) => !/^disallowedTools:/.test(line))
+      .join("\n");
+    // Function replacement: a literal `$&`/`$'` in frontmatter must not be
+    // interpreted as a replacement pattern.
+    s = s.replace(m[0], () => `---\n${newFm}\n---\n`);
+  }
+  const effective = resolveModelPolicy(
+    null,
+    modelAgentName(srcPath),
+    tier as Tier,
+    harness,
+    TIER_CAP,
+  );
+  return writeMarkdownAgentSurface(s, effective, {
+    effortKey: harness === "opencode" ? "variant" : "effort",
+  });
 }
 
 // Project the `"model"` field of an authored Kiro agent .json from the tier
@@ -256,31 +329,30 @@ function projectKiroAgentJson(srcPath: string, content: Buffer): Buffer {
   const coreMd = join(CORE_ROOT, "agents", name.replace(/\.json$/, ".md"));
   if (!existsSync(coreMd)) return content;
   const tier = agentTierFromMd(readFileSync(coreMd, "utf-8"), coreMd);
-  const proj = projectTier(tier, "kiro", TIER_CAP);
-  const parsed = JSON.parse(content.toString("utf-8")) as Record<string, unknown>;
-  if (proj.model === null) delete parsed.model;
-  else parsed.model = proj.model;
-  // Canonical re-serialization (2-space indent, trailing newline). Key order
-  // is preserved, but authored inline arrays re-expand one-per-line and
-  // authored unicode escapes re-emit as raw UTF-8 - the dist form is the
-  // stringify form, byte-stable under --check, not the authored bytes.
-  return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
+  const effective = resolveModelPolicy(
+    null,
+    modelAgentName(name),
+    tier as Tier,
+    "kiro",
+    TIER_CAP,
+  );
+  return Buffer.from(
+    writeKiroAgentSurface(content.toString("utf-8"), effective),
+    "utf-8",
+  );
 }
 
 // Merge the tier-derived chat.modelDefaults entries into an authored Kiro
 // settings/cli.json: one entry per distinct pinned Kiro model, carrying the
 // highest sharing tier's effort (the collapse rule - kiroModelDefaults()).
 // Authored entries (the orchestrator's opus-4.8 -> xhigh) are preserved and
-// win on collision, so a hand-tuned override in harness/kiro*/settings/
-// cli.json survives regeneration. CLI-only: the Kiro IDE ignores cli.json.
+// join the same higher-effort collapse on collision. CLI-only: the Kiro IDE
+// ignores cli.json.
 function projectKiroCliJson(content: Buffer): Buffer {
-  const parsed = JSON.parse(content.toString("utf-8")) as Record<string, unknown>;
-  const defaults = (parsed["chat.modelDefaults"] ?? {}) as Record<string, unknown>;
-  for (const [model, effort] of Object.entries(kiroModelDefaults(TIER_CAP))) {
-    if (!(model in defaults)) defaults[model] = { output_config: { effort } };
-  }
-  parsed["chat.modelDefaults"] = defaults;
-  return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
+  return Buffer.from(
+    writeKiroCliSurface(content.toString("utf-8"), [], TIER_CAP),
+    "utf-8",
+  );
 }
 
 function transform(
@@ -289,6 +361,7 @@ function transform(
   harnessDir: string,
   rulesRename: string | null,
   harness?: Harness,
+  invoke = `bun ${harnessDir}/tools/aidlc.ts`,
 ): Buffer {
   if (srcPath.endsWith(".md")) {
     // Reviewer knowledge absorption runs FIRST (on the raw core text) so the
@@ -299,7 +372,7 @@ function transform(
       s = absorbReviewerKnowledge(s, agentName, CORE_ROOT);
       s = injectDelegatedKnowledgePreflight(s, agentName, harnessDir);
     }
-    s = substituteToken(s, harnessDir);
+    s = substituteToken(s, harnessDir, invoke);
     s = applyRulesRename(s, harnessDir, rulesRename);
     if (harness) s = projectTierFrontmatter(s, srcPath, harness);
     // Cursor, opencode, and Copilot persona bodies are mutable active-space
@@ -315,6 +388,21 @@ function transform(
       s = s.replaceAll("aidlc/spaces/<active-space>/memory/", "aidlc/spaces/default/memory/");
     }
     return Buffer.from(s, "utf-8");
+  }
+  if (srcPath.endsWith(".ts")) {
+    const source = basename(srcPath) === "aidlc-version.ts"
+      ? stampVersionModule(content.toString("utf-8"))
+      : content.toString("utf-8");
+    return Buffer.from(
+      substituteInvocationTokens(source, harnessDir, invoke),
+      "utf-8",
+    );
+  }
+  if (/\.(?:hook|json|toml)$/.test(srcPath)) {
+    return Buffer.from(
+      substituteToken(content.toString("utf-8"), harnessDir, invoke),
+      "utf-8",
+    );
   }
   return content;
 }
@@ -370,46 +458,48 @@ function* walk(dir: string): Generator<string> {
   }
 }
 
-// Byte-diff a freshly built tree against its committed counterpart, returning
-// MISSING / DIFFERS / ORPHAN problem strings prefixed by `relPrefix`. The single
-// built-vs-committed walk shared by checkHarness and checkPlugins so both drift
-// guards stay in lockstep (round-2: the two had drifted into separate copies).
-// `generatedFiles` lets a builder pass its explicit inventory; otherwise this
-// helper inventories `built` itself.
+// Byte-diff two independently built trees. The caller supplies a stable
+// projection prefix so diagnostics never expose temp-directory names.
 function diffTrees(
-  built: string,
-  committed: string,
+  first: string,
+  second: string,
   relPrefix: string,
-  generatedFiles?: readonly string[],
 ): string[] {
   const problems: string[] = [];
-  const builtFiles = new Set<string>();
-  const files = generatedFiles ?? (existsSync(built) ? [...walk(built)] : []);
+  const firstFiles = new Set<string>();
+  const files = existsSync(first) ? [...walk(first)] : [];
   for (const f of files) {
-    const rel = relative(built, f);
-    builtFiles.add(rel);
-    const c = join(committed, rel);
-    if (!existsSync(c)) problems.push(`MISSING in dist: ${relPrefix}/${rel}`);
-    else if (!readFileSync(f).equals(readFileSync(c))) problems.push(`DIFFERS: ${relPrefix}/${rel}`);
+    const rel = relative(first, f);
+    firstFiles.add(rel);
+    const counterpart = join(second, rel);
+    if (!existsSync(counterpart)) {
+      problems.push(`MISSING in second build: ${relPrefix}/${rel}`);
+    } else if (!readFileSync(f).equals(readFileSync(counterpart))) {
+      problems.push(`DIFFERS between builds: ${relPrefix}/${rel}`);
+    }
   }
-  if (existsSync(committed)) {
-    for (const f of walk(committed)) {
-      const rel = relative(committed, f);
-      if (builtFiles.has(rel)) continue;
-      problems.push(`ORPHAN in dist: ${relPrefix}/${rel}`);
+  if (existsSync(second)) {
+    for (const f of walk(second)) {
+      const rel = relative(second, f);
+      if (firstFiles.has(rel)) continue;
+      problems.push(`ONLY in second build: ${relPrefix}/${rel}`);
     }
   }
   return problems;
 }
 
-// The two compiled-data files graph compile bootstraps its number/name seed
-// from. They are regenerated into every tree, never authored in core/.
+// The two compiled-data files regenerated into every tree. The rename backstop
+// below scans both after compile.
 const COMPILED_DATA = ["tools/data/stage-graph.json", "tools/data/scope-grid.json"];
 
 // The packager-emitted harness descriptor (vision T1 open-set seam): the
 // runtime reads tools/data/harness.json to learn this harness's rules-subdir
 // without a hardcoded map. Derived from the manifest, written into every tree.
 const HARNESS_DATA = "tools/data/harness.json";
+const AGENT_TIERS_DATA = "tools/data/agent-tiers.json";
+const SETTINGS_SCHEMA_DATA = "tools/data/aidlc-settings.schema.json";
+const STAMP_DATA = "tools/data/aidlc-stamp.json";
+const PROJECTION_DATA = "tools/data/aidlc-projection.json";
 
 // The relocated method ("memory") — the single hand-editable source of truth
 // for the layered practices (org/team/project + phases/). It is HARNESS-NEUTRAL
@@ -463,28 +553,35 @@ const PLUGIN_AUTHORING_CONTEXT_DST = join(
 // always-present "default" space so a fresh copy resolves with zero ceremony.
 // NOTE: it is GITIGNORED in the user's workspace (a per-user session cursor,
 // vision 5.1 - teammates legitimately point at different spaces at once), yet
-// dist must SHIP it as part of the shell. The two reconcile: the dist
+// dist must SHIP it as part of the shell. The two reconcile: the projected
 // .gitignore ignores aidlc/active-space for the END USER; a clone's first
 // SessionStart or active-intent write atomically recreates the missing pointer
-// and keeps it untracked. OUR repo commits the shipped pointer once (git add -f
-// on the seed commit) - after which the gitignore is moot for that path here,
-// exactly like a shipped default .env.
+// and keeps it untracked. The local dist root itself is ignored.
 const ACTIVE_SPACE_REL = join("aidlc", "active-space");
 const ACTIVE_SPACE_VALUE = "default\n";
 
 // Write tools/data/harness.json from manifest data. The runtime reads the
 // rules-subdir and any host-native generated-runner frontmatter from this
-// open-set descriptor. Pretty-printed + trailing newline keeps committed
-// output diff-friendly and stable under --check.
+// open-set descriptor. Pretty-printed + trailing newline keeps output
+// diff-friendly and stable under --check.
 function writeHarnessData(treeRoot: string, m: HarnessManifest): void {
   // A FRESH object, deliberately: the runtime READER tolerates unknown keys, but
-  // this writer alone decides what ships. Anything hand-added to the committed
-  // harness.json therefore fails `--check` and is erased on the next build -- so
-  // a new configuration field has to be added HERE to exist at all.
+  // this writer alone decides what ships. Anything hand-added to a local
+  // harness.json is erased on the next build, so a new configuration field has
+  // to be added HERE to exist at all.
   const data: Record<string, unknown> = {
+    schemaVersion: 1,
+    distribution: m.name,
+    productName: m.productName,
+    configNextStep: m.configNextStep,
     name: m.name,
     harnessDir: m.harnessDir,
     rulesSubdir: m.rulesRename ?? "rules",
+    // Always emitted, never defaulted at the writer: the engine must be able to
+    // tell "this harness declares ambient delivery" from "this harness's
+    // manifest predates the field", and only an explicit value does that. The
+    // READER fails closed to "explicit" for an older harness.json.
+    baseRuleDelivery: m.baseRuleDelivery,
     ...(m.runnerFrontmatterAdditions?.length
       ? { runnerFrontmatterAdditions: m.runnerFrontmatterAdditions }
       : {}),
@@ -495,6 +592,81 @@ function writeHarnessData(treeRoot: string, m: HarnessManifest): void {
   const dst = join(treeRoot, HARNESS_DATA);
   mkdirSync(dirname(dst), { recursive: true });
   writeFileSync(dst, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function writeAgentTiersData(treeRoot: string): void {
+  const dst = join(treeRoot, AGENT_TIERS_DATA);
+  mkdirSync(dirname(dst), { recursive: true });
+  writeFileSync(
+    dst,
+    serializeAgentTiers(agentTiersFromAuthoredDirectory(join(CORE_ROOT, "agents"))),
+  );
+}
+
+function writeSettingsSchemaData(treeRoot: string): void {
+  const dst = join(treeRoot, SETTINGS_SCHEMA_DATA);
+  mkdirSync(dirname(dst), { recursive: true });
+  writeFileSync(dst, `${JSON.stringify(AIDLC_SETTINGS_SCHEMA, null, 2)}\n`);
+}
+
+function writeProjectionData(outRoot: string, treeRoot: string, m: HarnessManifest): void {
+  const rootIntegrationPaths = new Set(m.rootIntegrations.map((item) => item.path));
+  if (rootIntegrationPaths.size !== m.rootIntegrations.length) {
+    throw new Error(`[${m.name}] duplicate root integration path`);
+  }
+  for (const integration of m.rootIntegrations) {
+    if (!existsSync(join(outRoot, integration.path))) {
+      throw new Error(`[${m.name}] root integration is not projected: ${integration.path}`);
+    }
+  }
+  const managedDirectories = readdirSync(outRoot)
+    .filter((entry) => statSync(join(outRoot, entry)).isDirectory())
+    .filter((entry) => !rootIntegrationPaths.has(entry))
+    .sort();
+  const allowedTopLevel = new Set([
+    ...managedDirectories,
+    ...m.rootIntegrations.map((item) => item.path.split("/")[0]),
+  ]);
+  const unclassified = readdirSync(outRoot)
+    .filter((entry) => !allowedTopLevel.has(entry))
+    .sort();
+  if (unclassified.length > 0) {
+    throw new Error(`[${m.name}] unclassified projection entries: ${unclassified.join(", ")}`);
+  }
+  const rootIntegrations = m.rootIntegrations.map((integration) => {
+    if (integration.policy !== "managed-block") return integration;
+    const currentHash = sha256Bytes(readFileSync(join(outRoot, integration.path)));
+    return {
+      ...integration,
+      legacySignatures: {
+        ...integration.legacySignatures,
+        wholeFileHashes: [
+          ...new Set([
+            ...(integration.legacySignatures?.wholeFileHashes ?? []),
+            currentHash,
+          ]),
+        ],
+      },
+    };
+  });
+  const projection = {
+    schemaVersion: 1,
+    distribution: m.name,
+    productName: m.productName,
+    configNextStep: m.configNextStep,
+    harnessDir: m.harnessDir,
+    managedDirectories,
+    rootIntegrations,
+  };
+  const stamp = {
+    schemaVersion: 1,
+    frameworkVersion: BUILD_VERSION,
+    distribution: m.name,
+    harnessDir: m.harnessDir,
+  };
+  mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
+  writeFileSync(join(treeRoot, PROJECTION_DATA), `${JSON.stringify(projection, null, 2)}\n`);
+  writeFileSync(join(treeRoot, STAMP_DATA), `${JSON.stringify(stamp, null, 2)}\n`);
 }
 
 // Emit the method ("memory") tree at the WORKSPACE ROOT of the dist tree
@@ -508,6 +680,7 @@ function emitMemory(
   harnessDir: string,
   rulesRename: string | null,
   harness: Harness,
+  invoke: string,
 ): void {
   const srcDir = join(CORE_ROOT, MEMORY_SRC);
   if (!existsSync(srcDir)) return;
@@ -515,7 +688,7 @@ function emitMemory(
     const rel = relative(srcDir, file);
     const outPath = join(outRoot, MEMORY_DST, rel);
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, transform(file, readFileSync(file), harnessDir, rulesRename, harness));
+    writeFileSync(outPath, transform(file, readFileSync(file), harnessDir, rulesRename, harness, invoke));
   }
 }
 
@@ -531,6 +704,7 @@ function emitMemorySeed(
   harnessDir: string,
   rulesRename: string | null,
   harness: Harness,
+  invoke: string,
 ): void {
   const srcDir = join(CORE_ROOT, MEMORY_SRC);
   if (!existsSync(srcDir)) return;
@@ -538,7 +712,7 @@ function emitMemorySeed(
     const rel = relative(srcDir, file);
     const outPath = join(treeRoot, MEMORY_SEED_DST, rel);
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, transform(file, readFileSync(file), harnessDir, rulesRename, harness));
+    writeFileSync(outPath, transform(file, readFileSync(file), harnessDir, rulesRename, harness, invoke));
   }
 }
 
@@ -577,44 +751,24 @@ function emitPluginAuthoringData(treeRoot: string): void {
 // tree, as part of the workspace shell (SEED). Lives at the dist root beside
 // the harness dir (dist/<name>/aidlc/active-space), OUTSIDE <harnessDir>, like
 // the memory tree and projectRoot harness files. Harness-neutral: same pointer
-// value for every harness (the resolver follows it identically). The dist
-// .gitignore ignores this path for the END USER's workspace; OUR repo commits
-// the shipped pointer via git add -f on the seed commit (see the
-// ACTIVE_SPACE_REL note).
+// value for every harness (the resolver follows it identically). The projected
+// .gitignore ignores this path for the END USER's workspace.
 function emitActiveSpace(outRoot: string): void {
   const outPath = join(outRoot, ACTIVE_SPACE_REL);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, ACTIVE_SPACE_VALUE);
 }
 
-// Copy the committed compiled-data JSON into the assembled tree so
-// compileStageGraph() can harvest the number/name seed before it re-derives
-// (and rewrites harness-correct paths into) the file. The number/name mapping
-// is harness-INDEPENDENT (slug → number/name), so any harness's committed JSON
-// is a valid seed; compile re-derives every other field and emits
-// harness-correct paths. `seedFrom` is the committed <harnessDir> tree; if it
-// lacks the JSON (a harness's first-ever build), fall back to the committed
-// claude tree's JSON as the canonical seed-of-record.
-function seedCompiledData(treeRoot: string, seedFrom: string): void {
-  const claudeSeedRoot = join(REPO_ROOT, "dist", "claude", ".claude");
-  for (const rel of COMPILED_DATA) {
-    let src = join(seedFrom, rel);
-    if (!existsSync(src)) src = join(claudeSeedRoot, rel); // first build: seed from claude
-    if (!existsSync(src)) continue;
-    const dst = join(treeRoot, rel);
-    mkdirSync(dirname(dst), { recursive: true });
-    cpSync(src, dst);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Build one harness tree into `outRoot` (the dist/<name> dir). Returns the full
 // generated-file inventory rooted there, including project-root files beside
 // <harnessDir> (onboarding/config, workspace memory, emitted skills, and so on).
-// `seedFrom` is the committed <harnessDir> tree the compiled-data seed is read
-// from (the same tree under --check; a pre-sweep stash under write).
 // ---------------------------------------------------------------------------
-function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): string[] {
+function buildTree(
+  m: HarnessManifest,
+  outRoot: string,
+  invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
+): string[] {
   const harnessDir = m.harnessDir;
   const treeRoot = join(outRoot, harnessDir);
   // Every harness projects onto ONE of the five flavors the tier module
@@ -635,9 +789,18 @@ function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): strin
     const finalDst = m.rulesRename && dst === "rules" ? m.rulesRename : dst;
     for (const file of walk(srcDir)) {
       const rel = relative(srcDir, file);
+      if (/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(rel)) continue;
+      if (rel.split(sep).includes("test-fixtures")) continue;
       const outPath = join(treeRoot, finalDst, rel);
       mkdirSync(dirname(outPath), { recursive: true });
-      let out = transform(file, readFileSync(file), harnessDir, m.rulesRename, harnessKind);
+      let out = transform(
+        file,
+        readFileSync(file),
+        harnessDir,
+        m.rulesRename,
+        harnessKind,
+        invoke,
+      );
       // Manifest keys are POSIX; normalize the platform separator so the
       // lookup works on Windows too.
       const harnessRel = join(finalDst, rel).split(sep).join("/");
@@ -671,7 +834,14 @@ function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): strin
     if (!existsSync(srcPath)) continue;
     const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
     mkdirSync(dirname(outPath), { recursive: true });
-    let out = transform(srcPath, readFileSync(srcPath), harnessDir, m.rulesRename, harnessKind);
+    let out = transform(
+      srcPath,
+      readFileSync(srcPath),
+      harnessDir,
+      m.rulesRename,
+      harnessKind,
+      invoke,
+    );
     if (harnessKind === "kiro") {
       if (src.startsWith("agents/") && src.endsWith(".json")) {
         out = projectKiroAgentJson(srcPath, out);
@@ -692,7 +862,17 @@ function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): strin
     const rendered = renderOnboarding(readFileSync(ONBOARDING_SKELETON, "utf-8"), fills);
     const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, transform(dst, Buffer.from(rendered, "utf-8"), harnessDir, m.rulesRename, harnessKind));
+    writeFileSync(
+      outPath,
+      transform(
+        dst,
+        Buffer.from(rendered, "utf-8"),
+        harnessDir,
+        m.rulesRename,
+        harnessKind,
+        invoke,
+      ),
+    );
   }
 
   // 2c. Emit the relocated method ("memory") tree at the workspace root
@@ -700,7 +880,7 @@ function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): strin
   //     the compile step's loadRules resolves rules_in_context from this tree
   //     (AIDLC_RULES_DIR points there below), so it has to exist first.
   const memoryDir = join(outRoot, MEMORY_DST);
-  emitMemory(outRoot, harnessDir, m.rulesRename, harnessKind);
+  emitMemory(outRoot, harnessDir, m.rulesRename, harnessKind, invoke);
 
   // 2d. Emit the active-space cursor (aidlc/active-space -> "default") — part of
   //     the shipped shell so a fresh copy resolves the default space with no
@@ -712,7 +892,7 @@ function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): strin
   //     install (no sibling aidlc/ shell) can self-heal — the first /aidlc copies
   //     it out via ensureWorkspaceDirs. Inside <harnessDir>, so the generated
   //     root inventory byte-diffs it under --check.
-  emitMemorySeed(treeRoot, harnessDir, m.rulesRename, harnessKind);
+  emitMemorySeed(treeRoot, harnessDir, m.rulesRename, harnessKind, invoke);
 
   // 2f. Bundle plugin authoring data beside the standalone validator/builder:
   //     hook source bytes plus the manifest-derived target table.
@@ -720,13 +900,8 @@ function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): strin
 
   // 3. Compile the stage graph into the assembled tree (writes harness-correct
   //    stage-graph.json + scope-grid.json). compileStageGraph() bootstraps each
-  //    stage's number + name from the EXISTING stage-graph.json (the
-  //    "computed-not-authored" seed contract — stage-definition.md), so seed the
-  //    assembled tree with the committed dist JSON before compiling. Compile is
-  //    idempotent on that seed: it re-derives every other field from the YAML
-  //    and rewrites harness-correct paths, reproducing the committed JSON
-  //    byte-for-byte. The seed is the only authored datum in the compiled file.
-  seedCompiledData(treeRoot, seedFrom);
+  //    stage's number from the authored dependency graph and any display-name
+  //    override from stage frontmatter. No generated tree is a build input.
   // Point loadRules at the emitted method tree via AIDLC_RULES_DIR so
   // rules_in_context is populated at compile time. The method now lives at the
   // workspace-root aidlc/spaces/default/memory/ (NOT inside <harnessDir>), so
@@ -747,6 +922,8 @@ function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): strin
   //     the compile step just created, hence walked + byte-diffed by --check
   //     like any other generated file.
   writeHarnessData(treeRoot, m);
+  writeAgentTiersData(treeRoot);
+  writeSettingsSchemaData(treeRoot);
 
   // 4. Generate runners by composing aidlc-runner-gen's CLIs against the
   //    assembled tree (write + scopes). AIDLC_HARNESS_DIR steers harnessDir()
@@ -766,18 +943,391 @@ function buildTree(m: HarnessManifest, outRoot: string, seedFrom: string): strin
       repoRoot: REPO_ROOT,
       coreRoot: CORE_ROOT,
       harnessRoot: harnessSrcRoot,
+      harnessName: m.name,
       distRoot: outRoot,
       harnessDir,
-      substituteToken: (s: string) => substituteToken(s, harnessDir),
+      trustedRouteNamespace: TRUSTED_ROUTE_NAMESPACE,
+      substituteToken: (s: string) => substituteToken(s, harnessDir, invoke),
       tierCap: TIER_CAP,
     });
   }
+  writeProjectionData(outRoot, treeRoot, m);
 
   // 6. Generated table regions are build products, not authored prose. Refresh
   //    them only after emit(), because Codex and Copilot place the orchestrator
   //    skill outside <harnessDir>/skills/.
   refreshGeneratedSkillRegions(outRoot, treeRoot, harnessDir, m);
   return [...walk(outRoot)];
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function rewriteKiroNativeAllowlists(outRoot: string, m: HarnessManifest): void {
+  if (m.tierFlavor !== "kiro") return;
+  const agentsDir = join(outRoot, m.harnessDir, "agents");
+  for (const file of walk(agentsDir)) {
+    if (file.endsWith(".md")) {
+      // Kiro IDE persona surfaces carry a YAML shell allowlist; the native
+      // channel replaces the bun tool glob with the aidlc command prefix.
+      const value = readFileSync(file, "utf-8");
+      const rewritten = value.replaceAll(
+        `- "bun ${m.harnessDir}/tools/aidlc-*"`,
+        `- "${trustedCommand("*")}"`,
+      );
+      if (rewritten !== value) writeFileSync(file, rewritten);
+      continue;
+    }
+    if (!file.endsWith(".json")) continue;
+    const value = JSON.parse(readFileSync(file, "utf-8")) as {
+      toolsSettings?: {
+        execute_bash?: {
+          allowedCommands?: unknown;
+        };
+      };
+    };
+    const allowed = value.toolsSettings?.execute_bash?.allowedCommands;
+    if (!Array.isArray(allowed)) continue;
+    const rewritten = allowed.map((command) =>
+      typeof command === "string" &&
+        command.startsWith("bun ") &&
+        command.includes(`${m.harnessDir.replace(".", "\\.")}/tools/`)
+        ? trustedCommand(".*")
+        : command
+    );
+    value.toolsSettings!.execute_bash!.allowedCommands = [...new Set(rewritten)];
+    writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+  }
+}
+
+function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): void {
+  if (m.tierFlavor !== "claude") return;
+  const settingsPath = join(outRoot, m.harnessDir, "settings.json");
+  const value = JSON.parse(readFileSync(settingsPath, "utf-8")) as {
+    permissions?: { allow?: unknown };
+  };
+  const allow = value.permissions?.allow;
+  if (!Array.isArray(allow)) throw new Error("[claude] settings.json has no permissions.allow list");
+  value.permissions!.allow = [
+    ...allow.filter((entry) =>
+      entry !== "Bash" &&
+      !(typeof entry === "string" && entry.startsWith("Bash(bun "))
+    ),
+    `Bash(${trustedCommand("*")})`,
+  ];
+  writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function rewriteCursorNativePermissions(outRoot: string, m: HarnessManifest): void {
+  if (m.tierFlavor !== "cursor") return;
+  const cliPath = join(outRoot, m.harnessDir, "cli.json");
+  const value = JSON.parse(readFileSync(cliPath, "utf-8")) as {
+    permissions?: { allow?: unknown };
+  };
+  const allow = value.permissions?.allow;
+  if (!Array.isArray(allow)) throw new Error("[cursor] cli.json has no permissions.allow list");
+  value.permissions!.allow = [
+    ...allow.filter((entry) => entry !== "Shell(bun)"),
+    `Shell(${trustedCommand("*")})`,
+  ];
+  writeFileSync(cliPath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function rewriteNativeOnboarding(value: string): string {
+  return value
+    .replace(
+      /^- \*\*bun\*\*:.*$/gm,
+      "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available.",
+    )
+    .replace(
+      /^- \*\*Hook permissions\*\*:.*$/gm,
+      "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.",
+    )
+    .replace(
+      /^- \*\*Permissions\*\*:.*$/gm,
+      `- **Permissions**: the \`aidlc\` agent pre-approves only the native \`${TRUSTED_COMMAND_PREFIX}\` command prefix and its listed read-only tools; everything else prompts.`,
+    )
+    .replace(
+      /TypeScript, run via bun/g,
+      "TypeScript sources invoked through the self-contained `aidlc` runtime",
+    )
+    .replace(
+      /pre-approves ONLY `bun \.kiro\/tools\/\*` shell commands/g,
+      `pre-approves only \`${TRUSTED_COMMAND_PREFIX}\` shell commands`,
+    )
+    .replace(
+      /pre-allows the deterministic core's exact command prefixes — `bun \.codex\/tools\/`, `bun \.codex\/hooks\/`, and/g,
+      `pre-allows the deterministic core's \`${TRUSTED_COMMAND_PREFIX}\` command prefix and`,
+    )
+    .replace(
+      /^\*\*CWD drift warning\*\*: If a stage runs `cd` in Bash.*$/gm,
+      "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.",
+    );
+}
+
+function projectNativeRootIntegrations(outRoot: string, m: HarnessManifest): void {
+  const additions = m.nativeRootIntegrations ?? [];
+  if (additions.length === 0) return;
+  const descriptorPath = join(outRoot, m.harnessDir, PROJECTION_DATA);
+  const descriptor = JSON.parse(readFileSync(descriptorPath, "utf-8")) as {
+    rootIntegrations: Array<Record<string, unknown>>;
+  };
+  const paths = new Set(descriptor.rootIntegrations.map((item) => String(item.path)));
+  for (const addition of additions) {
+    const { src, content, ...integration } = addition;
+    if (paths.has(integration.path)) {
+      throw new Error(`[${m.name}] duplicate release root integration path: ${integration.path}`);
+    }
+    const destination = join(outRoot, integration.path);
+    mkdirSync(dirname(destination), { recursive: true });
+    if (content !== undefined) {
+      writeFileSync(destination, content);
+    } else {
+      const source = join(HARNESS_ROOT, m.name, src);
+      if (!existsSync(source) || !lstatSync(source).isFile()) {
+        throw new Error(`[${m.name}] release root integration source is missing: ${src}`);
+      }
+      cpSync(source, destination);
+    }
+    descriptor.rootIntegrations.push(integration);
+    paths.add(integration.path);
+  }
+  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
+}
+
+function projectedNamespaceInvocationViolations(
+  file: string,
+  value: string,
+): string[] {
+  return scanNamespaceInvocations(file, value, ROUTES)
+    .filter((invocation) => invocation.source === "aidlc" && !invocation.resolves)
+    .map((invocation) =>
+      `${file}:${invocation.line}: unresolvable projected namespace invocation "${invocation.command}"`
+    );
+}
+
+function rewriteNativeInvocations(
+  outRoot: string,
+  m: HarnessManifest,
+  copyRoot: string,
+): void {
+  projectNativeRootIntegrations(outRoot, m);
+  const harnessDir = escapeRegExp(m.harnessDir);
+  const delegateNames = [
+    "audit",
+    "bolt",
+    "graph",
+    "init",
+    "jump",
+    "learnings",
+    "lifecycle",
+    "log",
+    "orchestrate",
+    "runner-gen",
+    "runtime",
+    "sensor",
+    "sensor-claim-sources",
+    "sensor-linter",
+    "sensor-required-sections",
+    "sensor-type-check",
+    "sensor-upstream-coverage",
+    "state",
+    "swarm",
+    "utility",
+    "validate",
+    "worktree",
+    "workspace-sync",
+  ].join("|");
+  // The authored subprocess adapters, each backed by an `aidlc engine adapter
+  // <harness>` dispatcher route. Only these project onto that route; any other
+  // hook file keeps the generic one-argument `engine hook <name>` rewrite.
+  const adapterHookNames: Record<string, true> = {
+    "kiro-adapter": true,
+    "codex-adapter": true,
+    "cursor-adapter": true,
+    "copilot-adapter": true,
+  };
+  const projectPrefix = String.raw`(?:"?(?:\$\{?CLAUDE_PROJECT_DIR\}?/)?`;
+  const suffix = `"?)`;
+  const toolPattern = new RegExp(
+    String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc(?:-([a-z0-9-]+))?\.ts${suffix}`,
+    "gi",
+  );
+  const hookPattern = new RegExp(
+    String.raw`\bbun\s+${projectPrefix}${harnessDir}/hooks/aidlc-([a-z0-9-]+)\.ts${suffix}`,
+    "gi",
+  );
+  const bareToolPattern = new RegExp(
+    String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`,
+    "gi",
+  );
+  const bareToolCheck = new RegExp(bareToolPattern.source, "i");
+  for (const file of walk(outRoot)) {
+    if (!/\.(?:md|json|toml|hook|ts)$/.test(file)) continue;
+    let value = readFileSync(file, "utf-8");
+    // Claude's source hook/statusline dispatcher is rooted at the project, so
+    // it still loads after an application command changes cwd. JSON escapes
+    // its shell quotes; strip the complete invocation for native releases.
+    const escapedJsonDispatcher = new RegExp(
+      String.raw`\bbun\s+\\"\$CLAUDE_PROJECT_DIR/${harnessDir}/tools/aidlc\.ts\\"`,
+      "gi",
+    );
+    value = value.replace(escapedJsonDispatcher, "aidlc");
+    const escapedJsonHook = new RegExp(
+      String.raw`\bbun\s+\\"\$CLAUDE_PROJECT_DIR/${harnessDir}/hooks/aidlc-([a-z0-9-]+)\.ts\\"`,
+      "gi",
+    );
+    value = value.replace(escapedJsonHook, (_match, hook: string) => {
+      if (adapterHookNames[hook]) return trustedCommand(`adapter ${m.name}`);
+      return hook === "statusline"
+        ? trustedCommand("statusline")
+        : trustedCommand(`hook ${hook}`);
+    });
+    // Direct utility verbs whose dispatcher route lives under the `workspace`
+    // noun: rewrite verb-aware BEFORE the generic tool rewrite would emit the
+    // retired `engine utility` alias.
+    const workspaceUtilityPattern = new RegExp(
+      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+(codekb-path|codekb-scope-diff|codekb-snapshot|codekb-publish|project-description|document-input)\b`,
+      "gi",
+    );
+    value = value.replace(
+      workspaceUtilityPattern,
+      (_match, verb: string) =>
+        `${trustedCommand("workspace")} ${verb === "codekb-path" ? "codekb" : verb}`,
+    );
+    // Settings share one utility transaction; project its first setting onto
+    // the dispatcher's config noun and preserve all trailing flags/selectors.
+    const configUtilityPattern = new RegExp(
+      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+config-change\s+--(depth|test-strategy|review|change-control|sensors|learnings|summary-confirmation)\b`,
+      "gi",
+    );
+    value = value.replace(
+      configUtilityPattern,
+      (_match, key: string) => trustedCommand(`config set ${key}`),
+    );
+    value = value.replace(toolPattern, (_match, delegate: string | undefined) =>
+      delegate ? trustedCommand(delegate) : TRUSTED_COMMAND_PREFIX
+    );
+    value = value.replace(
+      bareToolPattern,
+      (_match, delegate: string) => trustedCommand(delegate),
+    );
+    value = value.replace(hookPattern, (_match, hook: string) => {
+      if (adapterHookNames[hook]) return trustedCommand(`adapter ${m.name}`);
+      if (hook === "statusline") return trustedCommand("statusline");
+      return trustedCommand(`hook ${hook}`);
+    });
+    value = value.replaceAll(
+      `"bun \\\\${m.harnessDir}/tools/.*"`,
+      `"${trustedCommand(".*")}"`,
+    );
+    value = value.replaceAll(
+      `"bun \\\\$\\\\{?KIRO_PROJECT_DIR\\\\}?/${m.harnessDir}/tools/.*"`,
+      `"${trustedCommand(".*")}"`,
+    );
+    value = substituteInvocationTokens(value, m.harnessDir, "aidlc");
+    value = rewriteNativeOnboarding(value);
+    writeFileSync(file, value);
+  }
+  rewriteKiroNativeAllowlists(outRoot, m);
+  rewriteClaudeNativePermissions(outRoot, m);
+  rewriteCursorNativePermissions(outRoot, m);
+  if (m.tierFlavor === "codex") {
+    const { emitDefaultRules, emitTrustSeed } = require(
+      join(HARNESS_ROOT, m.name, "emit.ts"),
+    ) as {
+      emitDefaultRules: (
+        harnessDir: string,
+        invoke: string,
+        trustedNamespace: string,
+      ) => string;
+      emitTrustSeed: (
+        harnessDir: string,
+        repoRoot: string,
+        harnessName: string,
+        invoke: string,
+        trustedNamespace: string,
+      ) => string;
+    };
+    writeFileSync(
+      join(outRoot, m.harnessDir, "rules", "default.rules"),
+      emitDefaultRules(m.harnessDir, "aidlc", TRUSTED_ROUTE_NAMESPACE),
+    );
+    writeFileSync(
+      join(outRoot, m.harnessDir, "trust-seed.toml"),
+      emitTrustSeed(
+        m.harnessDir,
+        REPO_ROOT,
+        m.name,
+        "aidlc",
+        TRUSTED_ROUTE_NAMESPACE,
+      ),
+    );
+  }
+  const descriptorPath = join(outRoot, m.harnessDir, PROJECTION_DATA);
+  const descriptor = JSON.parse(readFileSync(descriptorPath, "utf-8")) as {
+    managedDirectories: string[];
+    legacyManagedFileHashes?: Record<string, string[]>;
+  };
+  const legacyManagedFileHashes: Record<string, string[]> = {};
+  for (const directory of descriptor.managedDirectories) {
+    const releaseDirectory = join(outRoot, directory);
+    if (!existsSync(releaseDirectory)) continue;
+    for (const file of walk(releaseDirectory)) {
+      const rel = relative(outRoot, file).split(sep).join("/");
+      const copy = join(copyRoot, rel);
+      if (!existsSync(copy) || !lstatSync(copy).isFile()) continue;
+      const releaseHash = sha256Bytes(readFileSync(file));
+      const copyHash = sha256Bytes(readFileSync(copy));
+      if (releaseHash !== copyHash) legacyManagedFileHashes[rel] = [copyHash];
+    }
+  }
+  const descriptorRel = `${m.harnessDir}/${PROJECTION_DATA}`.split(sep).join("/");
+  const copyDescriptor = join(copyRoot, descriptorRel);
+  if (existsSync(copyDescriptor)) {
+    legacyManagedFileHashes[descriptorRel] = [
+      sha256Bytes(readFileSync(copyDescriptor)),
+    ];
+  }
+  if (Object.keys(legacyManagedFileHashes).length > 0) {
+    descriptor.legacyManagedFileHashes = legacyManagedFileHashes;
+  } else {
+    delete descriptor.legacyManagedFileHashes;
+  }
+  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
+
+  const leftovers: string[] = [];
+  for (const file of walk(outRoot)) {
+    if (!/\.(?:md|json|toml|hook|ts)$/.test(file)) continue;
+    const value = readFileSync(file, "utf-8");
+    for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}"]) {
+      if (value.includes(token)) {
+        leftovers.push(`${relative(outRoot, file)}: unexpanded ${token}`);
+      }
+    }
+    if (new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: bun invocation survived native projection`);
+    }
+    if (bareToolCheck.test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: bare bun invocation survived native projection`);
+    }
+    if (/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: retired engine alias survived native projection`);
+    }
+    leftovers.push(
+      ...projectedNamespaceInvocationViolations(relative(outRoot, file), value),
+    );
+    if (
+      relative(outRoot, file).split(sep).join("/").includes("/agents/") &&
+      /"allowedCommands"\s*:\s*\[[\s\S]*?"bun [^"]*tools\//.test(value)
+    ) {
+      leftovers.push(`${relative(outRoot, file)}: bun allowlist survived native projection`);
+    }
+  }
+  if (leftovers.length > 0) {
+    throw new Error(`[${m.name}] native invocation projection failed:\n${leftovers.join("\n")}`);
+  }
 }
 
 // Run an in-tree tool (bun <treeRoot>/<rel> ...) with the harness env seams set
@@ -925,36 +1475,102 @@ function writeHarness(name: string): void {
     // subdirectories, so removed/renamed project-root outputs cannot linger.
     // Siblings at dist/ (plugins, specifications, and unrelated assets) remain
     // outside this harness-owned boundary.
-    if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
-    buildTree(m, distDir, seedStash);
-    console.log(`[${name}] regenerated dist/${name}/${m.harnessDir}`);
+    //
+    // RIN DIVERGENCE (drift register: atomic-dist-rebuild). Build into a staging
+    // sibling and RENAME into place, rather than removing the live root and
+    // repopulating it. The destructive form leaves the payload existing but
+    // incomplete for the whole build — measured at 45 distinct partial states,
+    // climbing 1 -> 266 — and a concurrent reader cannot tell a partial tree
+    // from a complete one. rin's orphan sweep accounts for tracked files by
+    // PATH PRESENCE in this payload, so a partial tree makes real files read as
+    // unsourced and fails the pre-push gate on trees that are not broken.
+    //
+    // The staging root is a SIBLING of dist/<name>, never tmpdir(): rename is
+    // only atomic within a filesystem, and tmpdir() is routinely a different
+    // one.
+    //
+    // The swap PREFERS rename-live-aside-then-rename-in, which makes the
+    // replacement genuinely atomic: the live tree goes from complete-old to
+    // complete-new with no observable state in between, and the old tree is
+    // torn down afterwards under a name nothing reads.
+    //
+    // That form is attempted, not assumed, because its availability is
+    // PLATFORM-DEPENDENT:
+    //
+    //   - POSIX (INFERRED from rename(2), not measured here — this machine is
+    //     Windows). rename() over a directory with open handles succeeds; the
+    //     old inode simply lingers until the last handle closes. So the atomic
+    //     path is expected to hold on every face on Linux/macOS — which is
+    //     where the autonomous lanes and CI actually run.
+    //   - Windows (MEASURED here). Renaming a directory throws EPERM whenever
+    //     any process holds a handle anywhere inside it. Measured across the
+    //     seven faces: six swap atomically, and `claude` always falls back —
+    //     because dist/claude is the installed engine the running session is
+    //     itself executing from, so a handle is always held.
+    //
+    // The fallback is rm-then-rename, and it leaves a real but much smaller
+    // window: the payload is ABSENT rather than PARTIAL. That distinction is
+    // the whole point — absent is a state every consumer already models and
+    // refuses on, while a partial tree is a WRONG ANSWER that reads as a
+    // complete tree missing files.
+    //
+    // Measured on one instrument, same face, fix stashed and restored:
+    // 35 partial observations before, 0-6 (typically 1) after. The residual is
+    // the .superseded teardown racing the sampler, not the build, and on the
+    // reasoning above it is a desktop-development artefact rather than
+    // something the deploy target sees. Chasing it to zero (background unlink,
+    // or a generation-suffixed dir behind a symlink swap) is deliberately NOT
+    // done here and is captured as a follow-up, to be taken up only if the
+    // desktop residual proves to matter.
+    const stagingDir = `${distDir}.staging`;
+    rmSync(stagingDir, { recursive: true, force: true });
+    // NOT positional. Pre-2.9.0 buildTree's third parameter was rin's
+    // `seedFrom`; 2.9.0 repurposed that position for `invoke`, so passing
+    // seedStash here substituted a Windows temp path into every projected
+    // .json and broke the parse with an invalid \U escape. The seed is
+    // restored explicitly after the tree is built instead.
+    buildTree(m, stagingDir);
+    for (const rel of COMPILED_DATA) {
+      const seeded = join(seedStash, rel);
+      if (!existsSync(seeded)) continue;
+      const dst = join(stagingDir, m.harnessDir, rel);
+      if (existsSync(dst)) continue;
+      mkdirSync(dirname(dst), { recursive: true });
+      cpSync(seeded, dst);
+    }
+    const supersededDir = `${distDir}.superseded`;
+    rmSync(supersededDir, { recursive: true, force: true });
+    const swappedAtomically = ((): boolean => {
+      if (!existsSync(distDir)) return false;
+      try {
+        renameSync(distDir, supersededDir);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    if (!swappedAtomically) rmSync(distDir, { recursive: true, force: true });
+    renameSync(stagingDir, distDir);
+    if (swappedAtomically) {
+      rmSync(supersededDir, { recursive: true, force: true });
+    }
+    console.log(
+      `[${name}] regenerated dist/${name}/${m.harnessDir}` +
+        ` (swap: ${swappedAtomically ? "atomic-rename" : "rm-then-rename"})`,
+    );
   } finally {
     rmSync(seedStash, { recursive: true, force: true });
   }
 }
 
-// ---------------------------------------------------------------------------
-// check mode: build into a temp dir, diff byte-for-byte vs committed dist/<name>.
-// ---------------------------------------------------------------------------
-function checkHarness(name: string): string[] {
+function writeReleaseHarness(name: string): void {
   const m = loadManifest(name);
-  const committedDistRoot = join(REPO_ROOT, "dist", name);
-  const committedTreeRoot = join(committedDistRoot, m.harnessDir);
-  const tmp = mkdtempSync(join(tmpdir(), `aidlc-pkg-${name}-`));
-  let problems: string[] = [];
-  try {
-    // Seed compile from the committed tree (untouched under --check).
-    const generatedFiles = buildTree(m, tmp, committedTreeRoot);
-    // The whole harness distribution is generated, not just <harnessDir>.
-    // Diffing its root makes every generated file part of the same
-    // bidirectional contract: missing/modified root onboarding and config are
-    // caught, and outputs removed or renamed in a manifest become ORPHANs.
-    problems = diffTrees(tmp, committedDistRoot, name, generatedFiles);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
-  console.log(`[${name}] --check: ${problems.length === 0 ? "OK" : `${problems.length} problem(s)`}`);
-  return problems;
+  const releaseDir = join(REPO_ROOT, "dist-release", name);
+  const copyRoot = join(REPO_ROOT, "dist", name);
+  if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
+  buildTree(m, releaseDir, "aidlc");
+  rewriteNativeInvocations(releaseDir, m, copyRoot);
+  console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1005,9 +1621,30 @@ if (argv[0] === "codex" && argv[1] === "trust") {
   }
   const resolvedProject = project ?? failTrustArgs("--project is required");
   const { trustEntries } = require(join(HARNESS_ROOT, "codex", "emit.ts")) as {
-    trustEntries: (project: string, hooksJson?: string) => string;
+    trustEntries: (
+      project: string,
+      hooksJson: string | undefined,
+      harnessDir: string,
+      repoRoot: string,
+      harnessName: string,
+      invoke: string,
+      trustedNamespace: string,
+    ) => string;
   };
-  console.log(trustEntries(resolvedProject, hooksJson ?? undefined));
+  // REPO_ROOT so plugin-contributed rows are discovered: they occupy real group
+  // indices in the emitted hooks.json, and an entry set that omits them leaves
+  // those rows untrusted — registered, spawned by nothing, enforcing nothing.
+  console.log(
+    trustEntries(
+      resolvedProject,
+      hooksJson ?? undefined,
+      ".codex",
+      REPO_ROOT,
+      "codex",
+      "aidlc",
+      TRUSTED_ROUTE_NAMESPACE,
+    ),
+  );
   process.exit(0);
 }
 
@@ -1078,19 +1715,51 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
   return pluginTargets()[harnessName] ?? null;
 }
 
-function buildRepositoryPluginProjection(
+async function bundlePluginRuntimeDependencies(input: {
+  readonly pluginRoot: string;
+  readonly outDir: string;
+  readonly files: readonly string[];
+}): Promise<void> {
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeFiles = input.files.filter((file) => /\.[cm]?[jt]s$/.test(file) && existsSync(join(input.pluginRoot, file)));
+  await runtimeFiles.reduce(async (previous, file) => {
+    await previous;
+    const sourceFile = join(input.pluginRoot, file);
+    const imports = transpiler.scanImports(readFileSync(sourceFile));
+    const hasPackageImports = imports.some(({ path }) =>
+      !path.startsWith(".") && !path.startsWith("node:") && path !== "bun" && !isAbsolute(path));
+    if (!hasPackageImports) return;
+    const authoredRelativeImports = imports.filter(({ path }) => path.startsWith("."))
+      .map(({ path }) => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const preserveAuthoredImports: BunPlugin = {
+      name: "preserve-authored-plugin-imports",
+      setup(builder) {
+        builder.onResolve({ filter: new RegExp(`^(?:${authoredRelativeImports.join("|")})$`) }, ({ path, importer }) =>
+          importer === sourceFile ? { path, external: true } : undefined);
+      },
+    };
+    const result = await Bun.build({ entrypoints: [sourceFile], target: "bun", format: "esm", minify: { whitespace: true, syntax: true, identifiers: false }, plugins: authoredRelativeImports.length > 0 ? [preserveAuthoredImports] : [] });
+    const output = result.outputs[0];
+    if (!result.success || result.outputs.length !== 1 || output === undefined) {
+      throw new Error(`plugin runtime dependency build failed: ${file}: ${result.logs.join("\n")}`);
+    }
+    writeFileSync(join(input.outDir, file), await output.text());
+  }, Promise.resolve());
+}
+
+async function buildRepositoryPluginProjection(
   pluginName: string,
   harnessName: string,
   outDir: string,
   outputBoundary = REPO_ROOT,
-): void {
+): Promise<void> {
   const target = pluginTargetFor(harnessName);
   if (!target) {
     throw new Error(
       `no plugin target for harness "${harnessName}" (missing manifest)`,
     );
   }
-  emitPluginProjection({
+  const projection = emitPluginProjection({
     pluginRoot: join(PLUGINS_ROOT, pluginName),
     target,
     outDir,
@@ -1098,6 +1767,165 @@ function buildRepositoryPluginProjection(
     templateHooksDir: PLUGIN_HOOKS_TEMPLATE_SRC,
     reviewerAgents: reviewerAgentSet(CORE_ROOT),
   });
+  projectPluginDocuments({ projection, outDir, pluginName, harnessName });
+  await bundlePluginRuntimeDependencies({ pluginRoot: join(PLUGINS_ROOT, pluginName), outDir, files: projection.files });
+  if (!isModelHarness(harnessName)) throw new Error(`unsupported plugin hook harness: ${harnessName}`);
+  const hookContributions = renderPluginHookContributions({
+    pluginName, harness: harnessName, harnessDir: target.harnessLeaf,
+    invocation: `bun ${target.harnessLeaf}/tools/aidlc.ts`, trustedNamespace: TRUSTED_ROUTE_NAMESPACE,
+    rows: pluginHookRows(REPO_ROOT, harnessName).filter((row) => row.pluginName === pluginName),
+  });
+  if (hookContributions.registrations.length === 0) return;
+  const registrationPath = join(outDir, "contributions", "hook-registrations.json");
+  mkdirSync(dirname(registrationPath), { recursive: true });
+  writeFileSync(registrationPath, JSON.stringify(hookContributions, null, 2) + "\n");
+}
+
+function pluginAgentFrontmatter(
+  content: string,
+  sourcePath: string,
+): { fields: Record<string, string>; body: string } {
+  const raw = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) {
+    throw new Error(`${sourcePath}: plugin agent has no closed frontmatter block.`);
+  }
+  const fields: Record<string, string> = {};
+  let current: string | null = null;
+  for (const line of match[1].split(/\r?\n/)) {
+    const entry = line.match(/^([A-Za-z_]+):\s*(.*)$/);
+    if (entry) {
+      current = entry[1];
+      fields[current] = entry[2].replace(/^>\s*$/, "");
+    } else if (current && /^\s+\S/.test(line) && !line.trim().startsWith("-")) {
+      fields[current] = `${fields[current]} ${line.trim()}`.trim();
+    }
+  }
+  return { fields, body: raw.slice(match[0].length) };
+}
+
+function isTier(value: string): value is Tier {
+  return TIERS.some((tier) => tier === value);
+}
+
+function projectCodexPluginAgent(
+  content: string,
+  sourcePath: string,
+  tier: Tier | null,
+): string {
+  const { fields, body } = pluginAgentFrontmatter(content, sourcePath);
+  const name = fields.name?.trim();
+  if (!name) throw new Error(`${sourcePath}: plugin agent has no name: line.`);
+  const description = (fields.description ?? "").replace(/\s+/g, " ").trim();
+  const instructions = body.trim();
+  const unresolved = `${description}\n${instructions}`.match(/\{\{[A-Z_]+\}\}/);
+  if (unresolved) {
+    throw new Error(`${sourcePath}: unresolved Codex agent token ${unresolved[0]}.`);
+  }
+  const effective = tier === null
+    ? null
+    : resolveModelPolicy(null, modelAgentName(sourcePath), tier, "codex", TIER_CAP);
+  const surface = `name = ${JSON.stringify(name)}\n` +
+    `description = ${JSON.stringify(description)}\n` +
+    `developer_instructions = ${JSON.stringify(instructions)}\n`;
+  return writeCodexAgentSurface(surface, effective ?? {});
+}
+
+// The engine PLACES; the packager PROJECTS. `aidlc-plugin-emit.ts` declares
+// itself free of any framework-checkout or harness-manifest dependency because
+// it is also the shipped offline builder's engine, so it cannot run the
+// authoring steps — which read CORE_ROOT, the harness manifest, and the memory
+// tier cap. Left there, plugin content reaches an install still carrying
+// `{{HARNESS_DIR}}`: core declares exactly ONE transform class
+// (scripts/plugin-contributions.ts) and plugin content never received it, so a
+// plugin authored to the documented convention ships literal tokens and
+// unrunnable commands.
+//
+// This runs the SAME `transform` core content gets, over the already-placed
+// tree, plus the plugin-token layer. Doing it here rather than inside the engine
+// keeps the engine's stated contract intact.
+//
+// KNOWN LIMIT, deliberately not papered over: this fixes the PACKAGER path only.
+// A plugin built through the offline `aidlc-plugin-build` CLI still receives no
+// projection, because the authoring steps genuinely need a checkout — the tier
+// projection alone reads a table (core/tools/aidlc-tiers.ts), a cap layered over
+// core/memory, and throws per-harness validation. Making that offline-capable
+// requires separating core's projection concerns first; it is not a matter of
+// passing more configuration. Recorded in the drift register rather than faked.
+function projectPluginDocuments(args: {
+  readonly projection: { readonly files: readonly string[] };
+  readonly outDir: string;
+  readonly pluginName: string;
+  readonly harnessName: string;
+}): void {
+  const manifest = loadManifest(args.harnessName);
+  const declaredTokens = pluginTokens(REPO_ROOT, args.pluginName, args.harnessName);
+  for (const relativePath of args.projection.files) {
+    if (!relativePath.endsWith(".md")) continue;
+    const absolutePath = join(args.outDir, relativePath);
+    const source = readFileSync(absolutePath);
+    const codexAgent = args.harnessName === "codex" &&
+      /(?:^|\/)agents\/[^/]+-agent\.md$/.test(relativePath);
+    const tierValue = codexAgent
+      ? agentTierFromMdOrNull(source.toString("utf-8"), absolutePath)
+      : null;
+    if (tierValue !== null && !isTier(tierValue)) {
+      throw new Error(`${absolutePath}: invalid agent tier ${JSON.stringify(tierValue)}.`);
+    }
+    const projected = transform(
+      absolutePath,
+      projectPluginAgentTier(
+        absolutePath,
+        source,
+        manifest.tierFlavor,
+      ),
+      manifest.harnessDir,
+      manifest.rulesRename,
+    );
+    const content = substitutePluginTokens(projected.toString("utf-8"), declaredTokens);
+    writeFileSync(absolutePath, content);
+    if (codexAgent) {
+      writeFileSync(
+        absolutePath.replace(/\.md$/, ".toml"),
+        projectCodexPluginAgent(content, absolutePath, tierValue),
+      );
+    }
+  }
+}
+
+// Tolerant tier reader for PLUGIN agents: returns null when the frontmatter
+// declares none. A PLUGIN agent may legitimately hand-pin `model:` directly
+// instead of opting into the tier vocabulary (the test-pro fixture does), so a
+// plugin's tier-less agent is shipped verbatim rather than failing the build -
+// the tier projection is opt-in for plugins, mandatory for core (agentTierFromMd
+// keeps the loud contract there). A malformed frontmatter block is still a hard
+// error in both readers.
+function agentTierFromMdOrNull(s: string, srcPath: string): string | null {
+  // Strip a UTF-8 BOM before anchoring - macOS/Windows editors occasionally
+  // save .md with one, and the ^--- anchor would otherwise miss (same
+  // tolerance as the rule-frontmatter parser).
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  const m = s.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!m) throw new Error(`${srcPath}: agent .md has no YAML frontmatter block.`);
+  const tierMatch = m[1].match(/^tier:\s*(\S+)\s*$/m);
+  return tierMatch ? tierMatch[1] : null;
+}
+
+// Project a plugin file's tier IFF it is a tier-declaring agent .md; every other
+// file (stages, sensors, knowledge, hand-pinned agents) is returned byte-for-byte
+// so this stays a superset of the old verbatim copy. Guarding on the tolerant
+// tier reader keeps token-substitution and rules-rename OUT of the plugin path -
+// only the tier line is rewritten, nothing else in the file moves.
+function projectPluginAgentTier(
+  srcPath: string,
+  content: Buffer,
+  harness: Harness,
+): Buffer {
+  const posixPath = srcPath.split(sep).join("/");
+  if (!posixPath.includes("/agents/") || !posixPath.endsWith("-agent.md")) return content;
+  const text = content.toString("utf-8");
+  if (agentTierFromMdOrNull(text, srcPath) === null) return content;
+  return Buffer.from(projectTierFrontmatter(text, srcPath, harness), "utf-8");
 }
 
 // Which harnesses get a projection = every built harness with a manifest (each
@@ -1106,76 +1934,100 @@ function pluginHarnessesFor(harnesses: string[]): string[] {
   return harnesses.filter((h) => pluginTargetFor(h) !== null);
 }
 
-function emitPlugins(harnesses: string[]): void {
+async function emitPlugins(
+  harnesses: string[],
+  distRoot = join(REPO_ROOT, "dist"),
+  log = true,
+): Promise<void> {
   for (const pluginName of discoverPluginNames()) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
-      buildRepositoryPluginProjection(
+      await buildRepositoryPluginProjection(
         pluginName,
         harnessName,
-        join(REPO_ROOT, "dist", "plugins", pluginName, harnessName),
+        join(distRoot, "plugins", pluginName, harnessName),
+        distRoot,
       );
-      console.log(`[plugin:${pluginName}] emitted dist/plugins/${pluginName}/${harnessName}/`);
+      if (log) {
+        console.log(`[plugin:${pluginName}] emitted dist/plugins/${pluginName}/${harnessName}/`);
+      }
     }
   }
 }
 
-// --check for plugins: build each projection into a temp dir and byte-compare
-// against the committed dist/plugins/ tree — the same drift guard writeHarness
-// gets, closing the gap where a hand-edited plugin dist passed CI silently.
-// `full` = this is a whole-repo check (every harness), so the top-level orphan
-// sweep is meaningful; a NAMED single-harness check (`package.ts codex --check`)
-// passes false, since the other harnesses' committed projections are not orphans
-// then — they're simply out of this run's scope.
-function checkPlugins(harnesses: string[], full: boolean): string[] {
-  const problems: string[] = [];
-  const tmp = mkdtempSync(join(tmpdir(), "aidlc-pkg-plugins-"));
-  const plugins = discoverPluginNames();
-  try {
-    for (const pluginName of plugins) {
-      for (const harnessName of pluginHarnessesFor(harnesses)) {
-        const committed = join(REPO_ROOT, "dist", "plugins", pluginName, harnessName);
-        const built = join(tmp, pluginName, harnessName);
-        buildRepositoryPluginProjection(
-          pluginName,
-          harnessName,
-          built,
-          tmp,
-        );
-        problems.push(...diffTrees(built, committed, `plugins/${pluginName}/${harnessName}`));
-      }
+function removeUnexpectedGeneratedEntries(
+  root: string,
+  expected: ReadonlySet<string>,
+): void {
+  if (!existsSync(root)) return;
+  for (const name of readdirSync(root)) {
+    if (!expected.has(name)) {
+      rmSync(join(root, name), { recursive: true, force: true });
     }
-    // Top-level orphan sweep (whole-repo check only): a plugin dir deleted from
-    // plugins/ (or a stray harness subdir the build no longer emits) leaves an
-    // unguarded committed dist/plugins/<name>/ tree the per-plugin loop never
-    // visits. Flag any committed plugin/harness dir with no live source.
-    if (full) {
-      const distPlugins = join(REPO_ROOT, "dist", "plugins");
-      const liveHarnesses = new Set(pluginHarnessesFor(harnesses));
-      if (existsSync(distPlugins)) {
-        for (const name of readdirSync(distPlugins)) {
-          if (!plugins.includes(name)) {
-            problems.push(`ORPHAN in dist: plugins/${name}/ (no plugins/${name}/ source — delete the committed tree)`);
-            continue;
-          }
-          for (const h of readdirSync(join(distPlugins, name))) {
-            if (!liveHarnesses.has(h)) {
-              problems.push(`ORPHAN in dist: plugins/${name}/${h}/ (no such harness — delete the committed tree)`);
-            }
-          }
-        }
-      }
-    }
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
   }
-  return problems;
+}
+
+function cleanWriteOutputs(harnesses: string[], fullBuild: boolean): void {
+  const distRoot = join(REPO_ROOT, "dist");
+  const releaseRoot = join(REPO_ROOT, "dist-release");
+  if (fullBuild) {
+    removeUnexpectedGeneratedEntries(
+      distRoot,
+      new Set([...harnesses, "plugins"]),
+    );
+    removeUnexpectedGeneratedEntries(releaseRoot, new Set(harnesses));
+    rmSync(join(distRoot, "plugins"), { recursive: true, force: true });
+    return;
+  }
+
+  for (const pluginName of discoverPluginNames()) {
+    for (const harnessName of pluginHarnessesFor(harnesses)) {
+      rmSync(
+        join(distRoot, "plugins", pluginName, harnessName),
+        { recursive: true, force: true },
+      );
+    }
+  }
+}
+
+async function buildCheckPass(root: string, harnesses: string[]): Promise<void> {
+  const distRoot = join(root, "dist");
+  const releaseRoot = join(root, "dist-release");
+  for (const name of harnesses) {
+    const manifest = loadManifest(name);
+    const copyRoot = join(distRoot, name);
+    const nativeRoot = join(releaseRoot, name);
+    buildTree(manifest, copyRoot);
+    buildTree(manifest, nativeRoot, "aidlc");
+    rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
+  }
+  await emitPlugins(harnesses, distRoot, false);
+}
+
+async function checkPackageDeterminism(harnesses: string[]): Promise<string[]> {
+  const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
+  const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
+  try {
+    await buildCheckPass(first, harnesses);
+    await buildCheckPass(second, harnesses);
+    return [
+      ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
+      ...diffTrees(
+        join(first, "dist-release"),
+        join(second, "dist-release"),
+        "dist-release",
+      ),
+    ];
+  } finally {
+    rmSync(first, { recursive: true, force: true });
+    rmSync(second, { recursive: true, force: true });
+  }
 }
 
 // `package.ts plugin build <plugin> <harness> <outDir>` — render ONE plugin
 // projection into an arbitrary dir. The target-dir seam that lets t188 (and any
-// caller) exercise the real emitter WITHOUT touching the committed dist/plugins/
+// caller) exercise the real emitter WITHOUT touching the local dist/plugins/
 // trees — writeHarness/emitPlugins rmSync + rewrite dist, which a parallel test
-// tier must never do (it masks drift and races sibling tests). Pure builder call.
+// tier must never do (it races sibling tests). Pure builder call.
 if (argv[0] === "plugin" && argv[1] === "build") {
   const [pluginName, harnessName, outDir, ...extra] = argv.slice(2);
   if (
@@ -1207,7 +2059,7 @@ if (argv[0] === "plugin" && argv[1] === "build") {
   const outArg = outDir.replace(/[/\\]+$/, "") || outDir;
   const resolvedOut = isAbsolute(outArg) ? outArg : join(process.cwd(), outArg);
   try {
-    buildRepositoryPluginProjection(
+    await buildRepositoryPluginProjection(
       pluginName,
       harnessName,
       resolvedOut,
@@ -1234,19 +2086,22 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
 }
 
 if (check) {
-  let problems: string[] = [];
-  for (const n of targets) problems = problems.concat(checkHarness(n));
-  // drift-guard dist/plugins/ too; the top-level orphan sweep runs only on a
-  // whole-repo check (no named target), never a single-harness one.
-  problems = problems.concat(checkPlugins(targets, !named));
+  const problems = await checkPackageDeterminism(targets);
   if (problems.length > 0) {
     console.error(`\npackage --check FAILED (${problems.length} problem(s)):`);
     for (const p of problems.slice(0, 40)) console.error("  " + p);
     process.exit(1);
   }
-  console.log("package --check: all harness trees in sync with core/ + harness/.");
+  console.log(
+    `package --check: deterministic across two independent build(s) ` +
+      `for ${targets.join(", ")}.`,
+  );
 } else {
-  for (const n of targets) writeHarness(n);
+  cleanWriteOutputs(targets, named === undefined);
+  for (const n of targets) {
+    writeHarness(n);
+    writeReleaseHarness(n);
+  }
   // Emit plugin projections (the hybrid: per-harness host plugins from plugins/<name>/)
-  emitPlugins(targets);
+  await emitPlugins(targets);
 }

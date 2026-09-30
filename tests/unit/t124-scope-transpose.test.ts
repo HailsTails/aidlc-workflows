@@ -255,8 +255,7 @@ describe("aidlc-graph compile / --check (Bun spawnSync env seam)", () => {
   test("compile --check on a clean tree (graph + grid) exits 0 [.sh test 9]", () => {
     const graphPath = mkTempPath("graph");
     const gridPath = mkTempPath("grid");
-    copyFileSync(GRAPH_JSON, graphPath);
-    copyFileSync(GRID_JSON, gridPath);
+    expect(runGraph(["compile"], graphPath, gridPath).status).toBe(0);
     const r = runGraph(["compile", "--check"], graphPath, gridPath);
     expect(r.status).toBe(0);
   }, 30000);
@@ -264,8 +263,7 @@ describe("aidlc-graph compile / --check (Bun spawnSync env seam)", () => {
   test("compile --check exits 1 on a stale scope-grid.json (drift guard) [.sh test 10]", () => {
     const graphPath = mkTempPath("graph");
     const gridPath = mkTempPath("grid");
-    copyFileSync(GRAPH_JSON, graphPath);
-    copyFileSync(GRID_JSON, gridPath);
+    expect(runGraph(["compile"], graphPath, gridPath).status).toBe(0);
     // Flip exactly one cell so the on-disk grid no longer matches the transpose
     // — the same single-cell mutation the .sh applied via bun -e.
     const j = JSON.parse(readFileSync(gridPath, "utf-8")) as Record<
@@ -290,7 +288,8 @@ describe("aidlc-graph compile / --check (Bun spawnSync env seam)", () => {
   test("compile --check exits 1 when scope-grid.json is missing [.sh test 11]", () => {
     const graphPath = mkTempPath("graph");
     const gridPath = mkTempPath("grid");
-    copyFileSync(GRAPH_JSON, graphPath);
+    expect(runGraph(["compile"], graphPath, gridPath).status).toBe(0);
+    rmSync(gridPath);
     // gridPath never created -> missing grid is treated like a stale one
     // (aidlc-graph.ts:1226-1237 reads "" on ENOENT, then byte-compares).
     expect(existsSync(gridPath)).toBe(false);
@@ -314,8 +313,7 @@ describe("compile preserves composed scope-grid entries", () => {
   test("a composed entry survives recompile and --check stays clean with it present", () => {
     const graphPath = mkTempPath("graph");
     const gridPath = mkTempPath("grid");
-    copyFileSync(GRAPH_JSON, graphPath);
-    copyFileSync(GRID_JSON, gridPath);
+    expect(runGraph(["compile"], graphPath, gridPath).status).toBe(0);
 
     // Append a composed entry the way the composer writes it.
     const grid = JSON.parse(readFileSync(gridPath, "utf-8")) as Record<

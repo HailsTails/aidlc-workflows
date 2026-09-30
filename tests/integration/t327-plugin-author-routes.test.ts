@@ -81,7 +81,11 @@ describe("t327 top-level plugin authoring routes", () => {
     expect(JSON.parse(result.stdout).valid).toBe(true);
     expect(files(outDir)).toEqual(files(EXPECTED));
     for (const file of files(EXPECTED)) {
-      expect(readFileSync(join(outDir, file))).toEqual(
+      const placed = readFileSync(join(outDir, file));
+      const projected = file.endsWith(".md")
+        ? Buffer.from(placed.toString("utf-8").replaceAll("{{HARNESS_DIR}}", ".claude"))
+        : placed;
+      expect(projected).toEqual(
         readFileSync(join(EXPECTED, file)),
       );
     }

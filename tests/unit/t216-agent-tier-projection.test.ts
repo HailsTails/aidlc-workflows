@@ -1,38 +1,9 @@
 // covers: file:agents/aidlc-architect-agent.md, file:agents/aidlc-architecture-reviewer-agent.md, file:agents/aidlc-aws-platform-agent.md, file:agents/aidlc-compliance-agent.md, file:agents/aidlc-composer-agent.md, file:agents/aidlc-delivery-agent.md, file:agents/aidlc-design-agent.md, file:agents/aidlc-developer-agent.md, file:agents/aidlc-devsecops-agent.md, file:agents/aidlc-operations-agent.md, file:agents/aidlc-pipeline-deploy-agent.md, file:agents/aidlc-product-agent.md, file:agents/aidlc-product-lead-agent.md, file:agents/aidlc-quality-agent.md (t216 projected model+effort contract)
 //
-// t216 - shipped Claude agent model + effort frontmatter PROJECTION contract.
-//
-// Mechanism: none. Pure structural check over shipped bytes on disk. The test
-// resolves the same dist/claude/.claude tree used by the harness fixtures and
-// reads each agent Markdown file in-process.
-//
-// Subject under test: the YAML frontmatter in every shipped Claude agent
-// persona under dist/claude/.claude/agents/aidlc-<agent>-agent.md. The
-// AUTHORED contract is `tier:` on core/agents (pinned by t04); the packager
-// PROJECTS it into the `model:`/`effort:` keys Claude Code actually reads.
-// This test pins the projected values per agent, per the tier table in
-// core/tools/aidlc-tiers.ts:
-//
-//   judgment  -> model: inherit, NO effort: line (the session's model AND
-//                effort win - an omitted effort key inherits the session
-//                effort, and a pinned one would override it in both
-//                directions, so ABSENCE is the contract)
-//   balanced  -> model: sonnet,  effort: medium (the reviewer tier; pinned
-//                in 2.5.40 after live A/B showed medium reviews at ~half the
-//                xhigh wall-clock with no finding-quality loss)
-//   templated -> model: sonnet,  effort: medium (the pattern-following tier;
-//                currently the same cost-saving projection as balanced)
-//
-// Why this exists: t04 pins the authored tier split for the 11 domain-expert
-// agents. This companion pins the complete 14-agent roster's PROJECTED
-// frontmatter, including the composer and the two review-only agents, and
-// asserts the key-shape invariants that make the value pins meaningful
-// (exactly-once model:, absent effort: where absence is the contract, and
-// the modelOverride: regression pin - that spelling is inert on Claude Code).
-
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { TIER_PROJECTIONS, type TierProjection } from "../../core/tools/aidlc-tiers.ts";
 import { AIDLC_SRC } from "../harness/fixtures.ts";
 
 const AGENTS_DIR = join(AIDLC_SRC, "agents");
@@ -59,21 +30,21 @@ type Agent = (typeof AGENTS)[number];
 // The PROJECTED per-agent contract, hard-coded independently of the source
 // (both the agent files and the projection table), so the test pins the
 // policy rather than echoing either. effort: null = the line must be ABSENT.
-const EXPECTED: Record<Agent, { model: "inherit" | "sonnet"; effort: "medium" | null }> = {
-  architect: { model: "inherit", effort: null },
+const EXPECTED: Record<Agent, TierProjection["claude"]> = {
+  architect: { model: "opus", effort: null },
   "architecture-reviewer": { model: "sonnet", effort: "medium" },
-  "aws-platform": { model: "inherit", effort: null },
-  compliance: { model: "inherit", effort: null },
-  composer: { model: "inherit", effort: null },
+  "aws-platform": { model: "opus", effort: null },
+  compliance: { model: "opus", effort: null },
+  composer: { model: "opus", effort: null },
   delivery: { model: "sonnet", effort: "medium" },
-  design: { model: "inherit", effort: null },
-  developer: { model: "inherit", effort: null },
-  devsecops: { model: "inherit", effort: null },
+  design: { model: "opus", effort: null },
+  developer: { model: "opus", effort: null },
+  devsecops: { model: "opus", effort: null },
   operations: { model: "sonnet", effort: "medium" },
   "pipeline-deploy": { model: "sonnet", effort: "medium" },
-  product: { model: "inherit", effort: null },
+  product: { model: "opus", effort: null },
   "product-lead": { model: "sonnet", effort: "medium" },
-  quality: { model: "inherit", effort: null },
+  quality: { model: "opus", effort: null },
 };
 
 const agentFile = (agent: Agent): string =>
@@ -91,6 +62,11 @@ function keyValues(fm: string, key: string): string[] {
 }
 
 describe("t216 complete Claude agent tier-projection contract", () => {
+  test("maintained Claude tier projections preserve the fork policy", () => {
+    expect(TIER_PROJECTIONS.judgment.claude).toEqual({ model: "opus", effort: null });
+    expect(TIER_PROJECTIONS.balanced.claude).toEqual({ model: "sonnet", effort: "medium" });
+    expect(TIER_PROJECTIONS.templated.claude).toEqual({ model: "sonnet", effort: "medium" });
+  });
   test("shipped Claude roster is exactly the expected 14 agent files", () => {
     const shipped = readdirSync(AGENTS_DIR)
       .filter((name) => name.endsWith("-agent.md"))
@@ -113,7 +89,7 @@ describe("t216 complete Claude agent tier-projection contract", () => {
     }
   });
 
-  test("effort: matches the per-agent projection policy", () => {
+  test("effort is pinned for balanced and templated agents and absent for judgment", () => {
     for (const agent of AGENTS) {
       const values = keyValues(frontmatter(agent), "effort");
       const want = EXPECTED[agent].effort;

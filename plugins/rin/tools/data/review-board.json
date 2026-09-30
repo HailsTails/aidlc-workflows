@@ -1,0 +1,39 @@
+{
+  "id": "decorrelated-review",
+  "description": "rin's parallel constitution sweep expressed as config: a catalogue of producing lenses plus one synthesis lens. The conductor dispatches the gate's producing lenses as read-only sub-agents (decorrelated: reviewer != author, each blind to the others), collates their PASS/VIOLATION findings, then runs the intent-defense meta-referee LAST over the collated PASS claims. The verdict is the synthesis, never a single generalist reviewer. Every gate listed in roster_dispatch_gates dispatches exactly its roster from review-rosters.json, which is also the floor the scribe enforces. The catalogue is the set of lenses a roster may draw from.",
+  "reviewer_agent_marker": "decorrelated-review",
+  "model_source": "Each lens runs on the model its projected agent definition declares. Dispatch without a model override so the agent tier remains the source of its harness-specific model projection.",
+  "producing_lenses": [
+    { "lens": "completeness", "agent": "aidlc-architecture-reviewer-agent" },
+    {
+      "lens": "clean-architecture",
+      "agent": "rin-clean-architecture-reviewer-agent"
+    },
+    { "lens": "ddd-modelling", "agent": "rin-ddd-modelling-reviewer-agent" },
+    { "lens": "type-soundness", "agent": "rin-type-soundness-reviewer-agent" },
+    { "lens": "errors-as-data", "agent": "rin-errors-as-data-reviewer-agent" },
+    { "lens": "di-discipline", "agent": "rin-di-discipline-reviewer-agent" },
+    { "lens": "function-first", "agent": "rin-function-first-reviewer-agent" },
+    { "lens": "decomposition", "agent": "rin-decomposition-reviewer-agent" },
+    { "lens": "naming", "agent": "rin-naming-reviewer-agent" },
+    {
+      "lens": "test-discipline",
+      "agent": "rin-test-discipline-reviewer-agent"
+    },
+    { "lens": "zod-boundary", "agent": "rin-zod-boundary-reviewer-agent" }
+  ],
+  "roster_dispatch_gates": [
+    "rin-gate-2-plan-review",
+    "rin-gate-3-interface-lock",
+    "rin-gate-4-implement"
+  ],
+  "synthesis_lens": {
+    "lens": "defended-on-intent",
+    "agent": "rin-intent-defense-reviewer-agent",
+    "runs": "last",
+    "input": "the collated PASS claims from every producing lens",
+    "role": "re-test each PASS against the intent of the cited rule, not its letter; the decorrelation guarantee no script can catch"
+  },
+  "floor_not_ceiling": "The producing lenses a gate dispatches, plus the intent-defense synthesis, are the floor. For unusual surface area (an auth spec, a schema migration), dispatch extra ad-hoc read-only lens sub-agents alongside the board and fold their findings into the synthesis.",
+  "verdict_contract": "READY only when every dispatched producing lens is READY (or its VIOLATIONs resolved at a principled bar) AND every PASS survives the intent-defense re-test. Any surviving VIOLATION or letter-vs-intent gap is NOT-READY with cited findings routed back to the builder for up to reviewer_max_iterations. A finding still unresolved at the iteration limit is written into the stage's review diagnosis (review-diagnosis.md in the stage's record directory), one entry per finding naming its class: one of the reserved classes (a constitution or rules-layer amendment, a recut of ratified scope, weakening a standing guard, a values call the rules do not cover, or money and external identity), or problem; a finding in a reserved class parks the record, naming the class, and any other finding is a problem the lane fixes before it convenes again. Once the iterations are spent, the lane convenes again only through the gate's rejection-and-revision path (stage-protocol-reviewer.md), which restarts the review budget; each restart is recorded in the review diagnosis, and nothing yet caps how many there are."
+}

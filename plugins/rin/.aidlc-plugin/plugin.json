@@ -1,0 +1,684 @@
+{
+  "name": "rin",
+  "version": "0.1.0",
+  "description": "Rin's gated delivery pipeline, driven one Slice at a time against a consumer-selected backlog, with decorrelated multi-lens review at the locking and review gates.",
+  "author": {
+    "name": "HailsTails"
+  },
+  "dependencies": ["core"],
+  "aidlc": {
+    "tokens": {
+      "{{OPERATOR}}": "the operator",
+      "{{AUTHOR_IDENTITY}}": "the authoring identity",
+      "{{REVIEWER_IDENTITY}}": "the reviewing identity",
+      "{{DEPLOY_TARGET}}": "the deployment target",
+      "{{BACKLOG_STORE}}": "the backlog store",
+      "{{MERGE_COMMAND}}": "(unconfigured: set projectIdentity.mergeCommand to a command that refuses a merge whose latest review verdict is not APPROVED)",
+      "{{REVIEW_COMMAND}}": "(unconfigured: set projectIdentity.reviewCommand to a command that posts a review verdict under an identity distinct from the authoring identity)",
+      "{{PR_COMMAND}}": "(unconfigured: set projectIdentity.prCommand to a command that opens or updates the pull request for the current branch under the authoring identity)",
+      "{{DEPLOY_COMMAND}}": "(unconfigured: set projectIdentity.deployCommand to a command that deploys the target, total and idempotent)",
+      "{{WORKTREE_TOOL}}": "creating an agent worktree with git worktree add",
+      "harness": {
+        "claude": {
+          "{{WORKTREE_TOOL}}": "the EnterWorktree tool"
+        },
+        "codex": {
+          "{{WORKTREE_TOOL}}": "creating an agent worktree with git worktree add"
+        },
+        "opencode": {
+          "{{WORKTREE_TOOL}}": "an operator move (session guide) or creating an agent worktree with git worktree add"
+        }
+      }
+    },
+    "hooks": {
+      "claude": [
+        {
+          "event": "SessionStart",
+          "target": "rin-core-bare-session-start",
+          "hookFile": "rin-core-bare-session-start.ts",
+          "capabilityId": "rin-core-bare-session-start"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-guard-navigation",
+          "hookFile": "guard-navigation.mjs",
+          "capabilityId": "guard-navigation"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-block-inline-exec",
+          "hookFile": "block-inline-exec.ts",
+          "capabilityId": "block-inline-exec"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-guard-unbounded-scan",
+          "hookFile": "guard-unbounded-scan.mjs",
+          "capabilityId": "guard-unbounded-scan"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+          "target": "rin-guard-vault-write",
+          "hookFile": "guard-vault-write.ts",
+          "capabilityId": "guard-vault-write"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-guard-shell-syntax",
+          "hookFile": "guard-shell-syntax.mjs",
+          "capabilityId": "guard-shell-syntax"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-guard-primary-commit",
+          "hookFile": "guard-primary-commit.mjs",
+          "capabilityId": "guard-primary-commit"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-guard-github-writes",
+          "hookFile": "guard-github-writes.mjs",
+          "capabilityId": "guard-github-writes"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-guard-destructive-git",
+          "hookFile": "guard-destructive-git.mjs",
+          "capabilityId": "guard-destructive-git"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-constitution-gate",
+          "hookFile": "rin-constitution-gate.ts",
+          "capabilityId": "rin-constitution-gate"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-gates-autonomy-gate",
+          "hookFile": "rin-gates-autonomy-gate.ts",
+          "capabilityId": "rin-gates-autonomy-gate"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "Bash",
+          "target": "rin-core-bare-sensor",
+          "hookFile": "rin-core-bare-sensor.ts",
+          "capabilityId": "rin-core-bare-sensor"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "Bash",
+          "target": "rin-gates-runtime-compile",
+          "hookFile": "rin-gates-runtime-compile.ts",
+          "capabilityId": "rin-gates-runtime-compile"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Write|Edit|MultiEdit|Bash",
+          "target": "rin-gates-audit-guard",
+          "hookFile": "rin-gates-audit-guard.ts",
+          "capabilityId": "rin-gates-audit-guard"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Write|Edit|MultiEdit|Bash",
+          "target": "rin-gates-verdict-guard",
+          "hookFile": "rin-gates-verdict-guard.ts",
+          "capabilityId": "rin-gates-verdict-guard"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-gates-review-scribe",
+          "hookFile": "rin-gates-review-scribe.ts",
+          "capabilityId": "rin-gates-review-scribe"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "SubagentHandback",
+          "target": "rin-gates-review-scribe-on-handback",
+          "hookFile": "rin-gates-review-scribe.ts",
+          "capabilityId": "rin-gates-review-scribe"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-operator-steer-on-seat-return",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-operator-steer",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        },
+        {
+          "event": "SessionStart",
+          "matcher": "startup|resume|clear|compact",
+          "target": "rin-prune-worktree-husks",
+          "hookFile": "prune-worktree-husks.mjs",
+          "capabilityId": "prune-worktree-husks"
+        },
+        {
+          "event": "SessionStart",
+          "matcher": "startup|resume|clear|compact",
+          "target": "rin-provision-worktree",
+          "hookFile": "provision-worktree.mjs",
+          "capabilityId": "provision-worktree"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "EnterWorktree",
+          "target": "rin-provision-worktree-on-enter",
+          "hookFile": "provision-worktree.mjs",
+          "capabilityId": "provision-worktree"
+        },
+        {
+          "event": "SessionStart",
+          "matcher": "startup|resume|clear|compact",
+          "target": "rin-stamp-preview-target",
+          "hookFile": "stamp-preview-target.mjs",
+          "capabilityId": "stamp-preview-target"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "EnterWorktree",
+          "target": "rin-stamp-preview-target-on-enter",
+          "hookFile": "stamp-preview-target.mjs",
+          "capabilityId": "stamp-preview-target"
+        }
+      ],
+      "codex": [
+        {
+          "event": "SessionStart",
+          "target": "rin-core-bare-session-start",
+          "hookFile": "rin-core-bare-session-start.ts",
+          "capabilityId": "rin-core-bare-session-start"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-navigation",
+          "hookFile": "guard-navigation.mjs",
+          "capabilityId": "guard-navigation"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-block-inline-exec",
+          "hookFile": "block-inline-exec.ts",
+          "capabilityId": "block-inline-exec"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-unbounded-scan",
+          "hookFile": "guard-unbounded-scan.mjs",
+          "capabilityId": "guard-unbounded-scan"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "apply_patch",
+          "target": "rin-guard-vault-write",
+          "hookFile": "guard-vault-write.ts",
+          "capabilityId": "guard-vault-write"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-shell-syntax",
+          "hookFile": "guard-shell-syntax.mjs",
+          "capabilityId": "guard-shell-syntax"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-primary-commit",
+          "hookFile": "guard-primary-commit.mjs",
+          "capabilityId": "guard-primary-commit"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-github-writes",
+          "hookFile": "guard-github-writes.mjs",
+          "capabilityId": "guard-github-writes"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-destructive-git",
+          "hookFile": "guard-destructive-git.mjs",
+          "capabilityId": "guard-destructive-git"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-constitution-gate",
+          "hookFile": "rin-constitution-gate.ts",
+          "capabilityId": "rin-constitution-gate"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-gates-autonomy-gate",
+          "hookFile": "rin-gates-autonomy-gate.ts",
+          "capabilityId": "rin-gates-autonomy-gate"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "Bash",
+          "target": "rin-core-bare-sensor",
+          "hookFile": "rin-core-bare-sensor.ts",
+          "capabilityId": "rin-core-bare-sensor"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "Bash",
+          "target": "rin-gates-runtime-compile",
+          "hookFile": "rin-gates-runtime-compile.ts",
+          "capabilityId": "rin-gates-runtime-compile"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Write|Edit|MultiEdit|Bash",
+          "target": "rin-gates-audit-guard",
+          "hookFile": "rin-gates-audit-guard.ts",
+          "capabilityId": "rin-gates-audit-guard"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Write|Edit|MultiEdit|Bash",
+          "target": "rin-gates-verdict-guard",
+          "hookFile": "rin-gates-verdict-guard.ts",
+          "capabilityId": "rin-gates-verdict-guard"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-gates-review-scribe",
+          "hookFile": "rin-gates-review-scribe.ts",
+          "capabilityId": "rin-gates-review-scribe"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-operator-steer-on-seat-return",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-operator-steer",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        }
+      ],
+      "cursor": [
+        {
+          "event": "SessionStart",
+          "target": "rin-core-bare-session-start",
+          "hookFile": "rin-core-bare-session-start.ts",
+          "capabilityId": "rin-core-bare-session-start"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-navigation",
+          "hookFile": "guard-navigation.mjs",
+          "capabilityId": "guard-navigation"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-block-inline-exec",
+          "hookFile": "block-inline-exec.ts",
+          "capabilityId": "block-inline-exec"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-shell-syntax",
+          "hookFile": "guard-shell-syntax.mjs",
+          "capabilityId": "guard-shell-syntax"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-destructive-git",
+          "hookFile": "guard-destructive-git.mjs",
+          "capabilityId": "guard-destructive-git"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-github-writes",
+          "hookFile": "guard-github-writes.mjs",
+          "capabilityId": "guard-github-writes"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-primary-commit",
+          "hookFile": "guard-primary-commit.mjs",
+          "capabilityId": "guard-primary-commit"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-unbounded-scan",
+          "hookFile": "guard-unbounded-scan.mjs",
+          "capabilityId": "guard-unbounded-scan"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-vault-write",
+          "hookFile": "guard-vault-write.ts",
+          "capabilityId": "guard-vault-write"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-constitution-gate",
+          "hookFile": "rin-constitution-gate.ts",
+          "capabilityId": "rin-constitution-gate"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-gates-autonomy-gate",
+          "hookFile": "rin-gates-autonomy-gate.ts",
+          "capabilityId": "rin-gates-autonomy-gate"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-core-bare-sensor",
+          "hookFile": "rin-core-bare-sensor.ts",
+          "capabilityId": "rin-core-bare-sensor"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-gates-runtime-compile",
+          "hookFile": "rin-gates-runtime-compile.ts",
+          "capabilityId": "rin-gates-runtime-compile"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-gates-audit-guard",
+          "hookFile": "rin-gates-audit-guard.ts",
+          "capabilityId": "rin-gates-audit-guard"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-gates-verdict-guard",
+          "hookFile": "rin-gates-verdict-guard.ts",
+          "capabilityId": "rin-gates-verdict-guard"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-gates-review-scribe",
+          "hookFile": "rin-gates-review-scribe.ts",
+          "capabilityId": "rin-gates-review-scribe"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-operator-steer-on-seat-return",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-operator-steer",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        }
+      ],
+      "copilot": [
+        {
+          "event": "SessionStart",
+          "target": "rin-core-bare-session-start",
+          "hookFile": "rin-core-bare-session-start.ts",
+          "capabilityId": "rin-core-bare-session-start"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-navigation",
+          "hookFile": "guard-navigation.mjs",
+          "capabilityId": "guard-navigation"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-block-inline-exec",
+          "hookFile": "block-inline-exec.ts",
+          "capabilityId": "block-inline-exec"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-shell-syntax",
+          "hookFile": "guard-shell-syntax.mjs",
+          "capabilityId": "guard-shell-syntax"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-destructive-git",
+          "hookFile": "guard-destructive-git.mjs",
+          "capabilityId": "guard-destructive-git"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-github-writes",
+          "hookFile": "guard-github-writes.mjs",
+          "capabilityId": "guard-github-writes"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-primary-commit",
+          "hookFile": "guard-primary-commit.mjs",
+          "capabilityId": "guard-primary-commit"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-unbounded-scan",
+          "hookFile": "guard-unbounded-scan.mjs",
+          "capabilityId": "guard-unbounded-scan"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-guard-vault-write",
+          "hookFile": "guard-vault-write.ts",
+          "capabilityId": "guard-vault-write"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-constitution-gate",
+          "hookFile": "rin-constitution-gate.ts",
+          "capabilityId": "rin-constitution-gate"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-gates-autonomy-gate",
+          "hookFile": "rin-gates-autonomy-gate.ts",
+          "capabilityId": "rin-gates-autonomy-gate"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-core-bare-sensor",
+          "hookFile": "rin-core-bare-sensor.ts",
+          "capabilityId": "rin-core-bare-sensor"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-gates-runtime-compile",
+          "hookFile": "rin-gates-runtime-compile.ts",
+          "capabilityId": "rin-gates-runtime-compile"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-gates-audit-guard",
+          "hookFile": "rin-gates-audit-guard.ts",
+          "capabilityId": "rin-gates-audit-guard"
+        },
+        {
+          "event": "PreToolUse",
+          "target": "rin-gates-verdict-guard",
+          "hookFile": "rin-gates-verdict-guard.ts",
+          "capabilityId": "rin-gates-verdict-guard"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-gates-review-scribe",
+          "hookFile": "rin-gates-review-scribe.ts",
+          "capabilityId": "rin-gates-review-scribe"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-operator-steer-on-seat-return",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-operator-steer",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        }
+      ],
+      "opencode": [
+        {
+          "event": "SessionStart",
+          "target": "aidlc-plugin-compose",
+          "hookFile": "plugins/rin/hooks/compose.ts"
+        },
+        {
+          "event": "SessionStart",
+          "target": "rin-core-bare-session-start",
+          "hookFile": "rin-core-bare-session-start.ts",
+          "capabilityId": "rin-core-bare-session-start"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-navigation",
+          "hookFile": "guard-navigation.mjs",
+          "capabilityId": "guard-navigation"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-block-inline-exec",
+          "hookFile": "block-inline-exec.ts",
+          "capabilityId": "block-inline-exec"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-unbounded-scan",
+          "hookFile": "guard-unbounded-scan.mjs",
+          "capabilityId": "guard-unbounded-scan"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+          "target": "rin-guard-vault-write",
+          "hookFile": "guard-vault-write.ts",
+          "capabilityId": "guard-vault-write"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-shell-syntax",
+          "hookFile": "guard-shell-syntax.mjs",
+          "capabilityId": "guard-shell-syntax"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-primary-commit",
+          "hookFile": "guard-primary-commit.mjs",
+          "capabilityId": "guard-primary-commit"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-github-writes",
+          "hookFile": "guard-github-writes.mjs",
+          "capabilityId": "guard-github-writes"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash",
+          "target": "rin-guard-destructive-git",
+          "hookFile": "guard-destructive-git.mjs",
+          "capabilityId": "guard-destructive-git"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-constitution-gate",
+          "hookFile": "rin-constitution-gate.ts",
+          "capabilityId": "rin-constitution-gate"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Bash|PowerShell",
+          "target": "rin-gates-autonomy-gate",
+          "hookFile": "rin-gates-autonomy-gate.ts",
+          "capabilityId": "rin-gates-autonomy-gate"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "Bash",
+          "target": "rin-core-bare-sensor",
+          "hookFile": "rin-core-bare-sensor.ts",
+          "capabilityId": "rin-core-bare-sensor"
+        },
+        {
+          "event": "PostToolUse",
+          "matcher": "Bash",
+          "target": "rin-gates-runtime-compile",
+          "hookFile": "rin-gates-runtime-compile.ts",
+          "capabilityId": "rin-gates-runtime-compile"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Write|Edit|MultiEdit|Bash",
+          "target": "rin-gates-audit-guard",
+          "hookFile": "rin-gates-audit-guard.ts",
+          "capabilityId": "rin-gates-audit-guard"
+        },
+        {
+          "event": "PreToolUse",
+          "matcher": "Write|Edit|MultiEdit|Bash",
+          "target": "rin-gates-verdict-guard",
+          "hookFile": "rin-gates-verdict-guard.ts",
+          "capabilityId": "rin-gates-verdict-guard"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-gates-review-scribe",
+          "hookFile": "rin-gates-review-scribe.ts",
+          "capabilityId": "rin-gates-review-scribe"
+        },
+        {
+          "event": "SubagentStop",
+          "target": "rin-operator-steer-on-seat-return",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        },
+        {
+          "event": "PostToolUse",
+          "target": "rin-operator-steer",
+          "hookFile": "rin-operator-steer.ts",
+          "capabilityId": "rin-operator-steer"
+        }
+      ]
+    },
+    "contributes": {
+      "stages": "stages/",
+      "overlays": "contributions/",
+      "agents": "agents/",
+      "scopes": "scopes/",
+      "knowledge": "knowledge/",
+      "sensors": "sensors/",
+      "tools": "tools/"
+    }
+  }
+}

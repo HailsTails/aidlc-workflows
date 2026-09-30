@@ -31,7 +31,6 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -54,6 +53,7 @@ import {
   setActiveSpaceCursor,
   writeSessionBinding,
   writeActiveDirectiveMarker,
+  stateDigest,
 } from "../../core/tools/aidlc-lib.ts";
 import {
   DEFAULT_RECORD_DIR,
@@ -115,6 +115,7 @@ function seedShell(dir: string): void {
 // cwd to the scratch dir, exactly what a real install sees.
 function scratchProject(withState: boolean): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "t149-")));
+  mkdirSync(join(dir, ".git"));
   cpSync(CODEX_TREE, join(dir, ".codex"), { recursive: true });
   seedShell(dir);
   if (withState) {
@@ -175,7 +176,7 @@ function seedUnapprovedCodeGeneration(dir: string, unit: string): void {
     kind: "run-stage",
     stage: "code-generation",
     unit,
-    state_sha256: createHash("sha256").update(state).digest("hex"),
+    state_sha256: stateDigest(state),
   });
   mkdirSync(join(seededRecordDir(dir), "construction", unit, "code-generation"), {
     recursive: true,
@@ -444,10 +445,12 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       const output = JSON.parse(r.stdout) as {
         hookSpecificOutput?: {
           hookEventName?: string;
+          permissionDecision?: string;
           updatedInput?: { command?: string };
         };
       };
       expect(output.hookSpecificOutput?.hookEventName).toBe("PreToolUse");
+      expect(output.hookSpecificOutput?.permissionDecision).toBe("allow");
       expect(output.hookSpecificOutput?.updatedInput?.command).toBe(
         "export AIDLC_SESSION_OVERRIDE='codex-command-session' " +
           "AIDLC_SESSION_OVERRIDE_SOURCE='payload'; " +
@@ -480,8 +483,8 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       const out = JSON.parse(r.stdout) as { decision?: string; reason?: string };
       expect(out.decision).toBe("block");
       expect(out.reason ?? "").not.toBe("");
-      // The continuation reason names the codex tools path (harnessDir seam).
-      expect(out.reason).toContain(".codex/tools/aidlc-orchestrate.ts");
+      // Copy-channel continuation guidance uses the harness-local Bun tool.
+      expect(out.reason).toContain("bun .codex/tools/aidlc-orchestrate.ts next");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -542,9 +545,13 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       expect(r.code, r.stderr).toBe(0);
       const out = JSON.parse(r.stdout) as {
         hookSpecificOutput?: {
+          hookEventName?: string;
+          permissionDecision?: string;
           updatedInput?: { message?: string };
         };
       };
+      expect(out.hookSpecificOutput?.hookEventName).toBe("PreToolUse");
+      expect(out.hookSpecificOutput?.permissionDecision).toBe("allow");
       const message = out.hookSpecificOutput?.updatedInput?.message ?? "";
       expect(message).toContain("first-class");
       expect(message).toContain("Given/When/Then");
@@ -701,17 +708,38 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
     }
   });
 
-  test("6: update_plan in_progress step with [slug] suffix syncs the state file", () => {
+  test("6: update_plan advances the state to its in_progress stage", () => {
     const dir = scratchProject(true);
     try {
       const r = runAdapter(
         dir,
         "sync-workflow-state",
-        withCwd(FIXTURES.postToolUse_updatePlan_slug, dir),
+        withCwd({
+          ...FIXTURES.postToolUse_updatePlan_slug,
+          tool_input: {
+            plan: [{ step: "Running User Stories [user-stories]", status: "in_progress" }],
+          },
+        }, dir),
       );
       expect(r.code).toBe(0);
       const after = readFileSync(seededStateFile(dir), "utf-8");
-      expect(/\*\*Current Stage\*\*:\s*intent-capture/.test(after)).toBe(true);
+      expect(after).toContain("**Current Stage**: user-stories");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("update_plan refuses to move the current stage backward", () => {
+    const dir = scratchProject(true);
+    try {
+      const before = readFileSync(seededStateFile(dir), "utf-8");
+      const result = runAdapter(
+        dir,
+        "sync-workflow-state",
+        withCwd(FIXTURES.postToolUse_updatePlan_slug, dir),
+      );
+      expect(result.code).toBe(0);
+      expect(readFileSync(seededStateFile(dir), "utf-8")).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -795,7 +823,7 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
               session_id: "prior-session-0000",
               tool_input: {
                 command:
-                  "bun .codex/tools/aidlc-utility.ts intent-create --scope poc",
+                  "bun .codex/tools/aidlc.ts engine intent create --scope poc",
               },
               tool_response: firstCreate.stdout,
             },

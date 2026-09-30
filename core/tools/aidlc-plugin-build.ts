@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Offline builder for one authored AIDLC plugin and one target harness.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   dirname,
   isAbsolute,
@@ -188,6 +188,13 @@ export function main(argv: string[]): number {
   }
 
   try {
+    const manifest: unknown = JSON.parse(readFileSync(join(pluginRoot, ".aidlc-plugin", "plugin.json"), "utf-8"));
+    const aidlc = manifest !== null && typeof manifest === "object" && "aidlc" in manifest ? manifest.aidlc : null;
+    const hooks = aidlc !== null && typeof aidlc === "object" && "hooks" in aidlc ? aidlc.hooks : undefined;
+    if (hooks !== undefined && (hooks === null || typeof hooks !== "object" || Array.isArray(hooks) ||
+      Object.values(hooks).some((rows) => !Array.isArray(rows) || rows.length > 0))) {
+      throw new Error("Native hook declarations require the repository packager; use bun scripts/package.ts plugin build <plugin> <harness> <outDir>.");
+    }
     buildPluginProjection({
       pluginRoot,
       target,

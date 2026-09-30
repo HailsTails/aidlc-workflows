@@ -29,6 +29,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
+import {
+  writeMarkdownAgentSurface,
+} from "../../core/tools/aidlc-model-policy.ts";
 import { injectDelegatedKnowledgePreflight } from "../../scripts/agent-knowledge.ts";
 
 // ---------------------------------------------------------------------------
@@ -87,17 +90,12 @@ function emitAgentMd(raw: string, srcPath: string): string {
       `${srcPath}: copilot emission cannot project disallowedTools: ${disallowedMatch[1]}.`,
     );
   }
-  const newFm = fm
-    .split(/\r?\n/)
-    .flatMap((line) => {
-      if (/^tier:/.test(line)) return [];
-      if (/^disallowedTools:/.test(line)) {
-        return [`tools: [${COPILOT_WORKER_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`];
-      }
-      return [line];
-    })
-    .join("\n");
-  return raw.replace(m[0], () => `---\n${newFm}\n---\n`);
+  return writeMarkdownAgentSurface(raw, {}, {
+    removeKeys: ["disallowedTools"],
+    afterProjectionLines: disallowedMatch
+      ? [`tools: [${COPILOT_WORKER_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`]
+      : [],
+  });
 }
 
 export default function emit(ctx: EmitContext): void {
@@ -157,6 +155,17 @@ export default function emit(ctx: EmitContext): void {
   emissions.push({
     path: join(SHELL, "hooks", "aidlc.json"),
     content: () => emitHooksJson(harnessDir),
+  });
+
+  // The adapter resolves a plugin-contributed target to its hook body through
+  // this map, the same way the codex face does — without it a contributed row
+  // registers and then dispatches to nothing. It sits beside the ADAPTER in the
+  // harness dir, not in SHELL: the adapter reads it relative to its own
+  // location, and on this face those two directories differ.
+  emissions.push({
+    path: join(distRoot, harnessDir, "hooks", "plugin-hook-targets.json"),
+    content: () =>
+      `${JSON.stringify({}, null, 2)}\n`,
   });
 
   // Persona custom agents from core/agents/*.md (body token → .aidlc).
@@ -229,7 +238,7 @@ export default function emit(ctx: EmitContext): void {
 
   // Clean-sweep the shell so a removed persona/runner cannot linger. In
   // --check mode the packager supplies an isolated distRoot, then compares
-  // the complete generated tree with the committed distribution.
+  // the complete generated tree with the independently generated counterpart.
   rmSync(SHELL, { recursive: true, force: true });
   for (const { path, content } of emissions) {
     mkdirSync(dirname(path), { recursive: true });

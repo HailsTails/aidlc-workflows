@@ -19,7 +19,7 @@
 //        count + the top-level `statusLine` key (1 when present)
 //   C. docs/reference/06-hooks-and-tools.md           — the count-words in the
 //        Wave-3-milestone-13 hook-scope sentence:
-//        "This implementation uses ten hook scripts ... All ten are
+//        "This implementation uses twelve TypeScript hook sources ... All twelve are
 //         **project-wide** ... the other nine via the `hooks` block ..."
 //        (located at line 9 at migration time; matched by phrase, not by line).
 //
@@ -35,13 +35,13 @@
 //   .sh test 2  assert_eq SETTINGS_STATUSLINE_COUNT 1         -> "ground truth B: settings.json registers exactly 1 statusLine hook"
 //   .sh test 3  assert_eq SETTINGS_TOTAL DISK_COUNT           -> "ground truth cross-check: settings total == disk files"
 //   .sh test 4  doc three count-words parse cleanly           -> "doc: the three count-words parse cleanly (sentence not reworded)"
-//   .sh test 5  assert_eq DOC_ALL_PW DOC_TOTAL                -> "doc internal: 'All N project-wide' matches 'uses N hook scripts'"
-//   .sh test 6  assert_eq DOC_TOTAL DISK_COUNT                -> "doc forward: 'uses N hook scripts' == ground-truth total"
+//   .sh test 5  assert_eq DOC_ALL_PW DOC_TOTAL                -> "doc internal: 'All N project-wide' matches the hook-source total"
+//   .sh test 6  assert_eq DOC_TOTAL DISK_COUNT                -> "doc forward: documented hook-source total == ground truth"
 //   .sh test 7  assert_eq DOC_BLOCK SETTINGS_BLOCK_COUNT      -> "doc subcount: 'other N via the hooks block' == settings hooks-block count"
 //   .sh test 8  assert_eq (DOC_BLOCK+1) DOC_TOTAL             -> "doc reverse: hooks-block (N) + statusLine (1) == total (whole split)"
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AIDLC_SRC, REPO_ROOT } from "../harness/fixtures.ts";
 
@@ -78,7 +78,12 @@ function settingsCounts(): SettingsCounts {
   for (const ev of Object.keys(s.hooks ?? {})) {
     for (const g of s.hooks![ev]) {
       for (const h of g.hooks ?? []) {
-        if (h.command) commands.add(h.command);
+        if (h.command?.includes(" engine hook ")) commands.add(h.command);
+        else if (h.command) {
+          const pluginRoute = /^(?:node|bun) "\$CLAUDE_PROJECT_DIR\/\.claude\/hooks\/([a-z0-9-]+\.(?:ts|mjs))"$/.exec(h.command);
+          expect(pluginRoute, h.command).not.toBeNull();
+          expect(existsSync(join(REPO_ROOT, "dist", "plugins", "rin", "claude", "hooks", pluginRoute?.[1] ?? "missing-hook")), h.command).toBe(true);
+        }
       }
     }
   }
@@ -106,11 +111,11 @@ function docWord(re: RegExp): string | undefined {
 
 // The three pinned count-words. Same patterns the .sh grepped (the subject noun
 // "This implementation" / "AI-DLC" is deliberately NOT pinned — only the count).
-//   "uses <word> hook scripts"            -> total
+//   "uses <word> TypeScript hook sources" -> total
 //   "All <word> are **project-wide**"     -> total restatement
 //   "the other <word> via the `hooks` block" -> hooks-block subcount
-const DOC_TOTAL_WORD = docWord(/uses ([a-z]+) hook scripts/);
-const DOC_ALL_PW_WORD = docWord(/All ([a-z]+) are \*\*project-wide\*\*/);
+const DOC_TOTAL_WORD = docWord(/uses ([a-z]+) TypeScript hook sources/);
+const DOC_ALL_PW_WORD = docWord(/All ([a-z]+) are\s+\*\*project-wide\*\*/);
 const DOC_BLOCK_WORD = docWord(/the other ([a-z]+) via the `hooks` block/);
 
 const DOC_TOTAL = word2int(DOC_TOTAL_WORD);
@@ -148,12 +153,12 @@ describe("t132 hook-scope doc-count drift guard (migrated from t132-hooks-doc-co
   });
 
   // --- Doc internal consistency ---
-  test("5: doc internal — 'All N project-wide' matches 'uses N hook scripts' [.sh test 5]", () => {
+  test("5: doc internal — 'All N project-wide' matches the hook-source total [.sh test 5]", () => {
     expect(DOC_ALL_PW).toBe(DOC_TOTAL);
   });
 
   // --- Doc forward: doc total cannot over/under-state ground truth ---
-  test("6: doc forward — 'uses N hook scripts' == ground-truth total [.sh test 6]", () => {
+  test("6: doc forward — documented hook-source total == ground-truth total [.sh test 6]", () => {
     // The .sh asserts against DISK_COUNT; SETTINGS_TOTAL was already proven
     // equal to DISK_COUNT in test 3, so this pins the doc to both at once.
     const disk = diskHookCount();

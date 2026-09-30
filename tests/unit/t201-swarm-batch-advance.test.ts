@@ -42,7 +42,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   AIDLC_SRC,
@@ -264,12 +264,23 @@ function runNext(
   return r.directive as Directive;
 }
 
-function runRawDirective(proj: string, args: string[]): Directive {
+function explicitOrchestrator(proj: string): string {
+  const engineRoot = join(proj, ".claude");
+  cpSync(AIDLC_SRC, engineRoot, { recursive: true });
+  const harnessPath = join(engineRoot, "tools", "data", "harness.json");
+  writeFileSync(harnessPath, readFileSync(harnessPath, "utf-8").replace(
+    '"baseRuleDelivery": "ambient"',
+    '"baseRuleDelivery": "explicit"',
+  ));
+  return join(engineRoot, "tools", "aidlc-orchestrate.ts");
+}
+
+function runRawDirective(proj: string, args: string[], orchestrator = ORCH): Directive {
   const env = { ...process.env };
   delete env.AWS_AIDLC_DEFAULT_SCOPE;
   const r = spawnSync(
     BUN,
-    [ORCH, ...args, "--project-dir", proj],
+    [orchestrator, ...args, "--project-dir", proj],
     { encoding: "utf-8", env },
   );
   if ((r.status ?? -1) !== 0) {
@@ -359,7 +370,7 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
     expect(d.unit).toBe("api"); // the last unit in topological order
     expect(d.gate).toBe(true);
     expect(d.swarm_settled).toBe(true);
-    expect(d.protocol_modules).toEqual(["construction", "swarm"]);
+    expect(d.protocol_modules).toEqual(["construction", "swarm", "learnings"]);
     expect(d.reviewer).toBeUndefined();
     expect(d.review_artifact).toBeUndefined();
     expect(d.review_class).toBeUndefined();
@@ -368,10 +379,11 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
 
   test("3b: settled shape survives the load-steering continue round trip", () => {
     const proj = seedProject();
+    const orchestrator = explicitOrchestrator(proj);
     seedBoltDagBatches(proj, [["auth"], ["api"]]);
     seedConverged(proj, ["auth", "api"]);
 
-    let directive = runRawDirective(proj, ["next"]);
+    let directive = runRawDirective(proj, ["next"], orchestrator);
     expect(directive.kind).toBe("load-steering");
     let continueCalls = 0;
     while (directive.kind === "load-steering") {
@@ -379,7 +391,7 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
       directive = runRawDirective(proj, [
         "continue",
         directive.continue_token ?? "",
-      ]);
+      ], orchestrator);
       continueCalls++;
     }
 
@@ -389,7 +401,7 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
     expect(directive.review_artifact).toBeUndefined();
     expect(directive.review_class).toBeUndefined();
     expect(directive.reviewer_max_iterations).toBeUndefined();
-    expect(directive.protocol_modules).toEqual(["construction", "swarm"]);
+    expect(directive.protocol_modules).toEqual(["construction", "swarm", "learnings"]);
     expect(directive.swarm_settled).toBe(true);
   }, 30000);
 

@@ -79,7 +79,15 @@ findings as usual.
 ## Turn Budget
 
 - You have a HARD cap of 60 turns (the `maxTurns: 60` frontmatter above - keep the two numbers in sync). When you hit it you are STOPPED mid-task - in the worst case WITHOUT warning and WITHOUT a final-message turn: your caller receives no output, and an unwritten review is simply lost. Plan for that worst case every time: write the review BEFORE the cap, never on your last turn.
-- Budget accordingly. A workable split: ~25 turns reading the artifacts and passed contracts, ~5 running validation tools, ~15 verifying your highest-priority concerns, and the FINAL ~10 RESERVED for writing the `## Review` section and your return summary.
+- Budget accordingly. A workable split: ~25 turns reading the artifacts and passed contracts, ~5 running validation tools, ~15 verifying your highest-priority concerns, and the FINAL ~10 RESERVED for writing the review file and your return summary.
 - A verdict backed by fewer verified findings ALWAYS beats no verdict. If you're running low, stop investigating, record unverified concerns as questions in the findings list, and write the review NOW.
-- Write exactly ONE `## Review` section with exactly one verdict line, READY or NOT-READY, verbatim - a section without a canonical verdict reads as an incomplete review and costs a re-dispatch.
-- Never end your run with the stage's `review_artifact` missing its `## Review` section for this iteration.
+- Write exactly ONE review, to the review file the dispatch named, with exactly one verdict line, READY or NOT-READY, verbatim - a review without a canonical verdict reads as an incomplete review and costs a re-dispatch. Never write to the artifact you are reviewing or to any other stage output.
+- Never end your run with the review file for this iteration unwritten.
+
+## Tree binding — prove which tree you read
+
+You carry `Read, Grep, Glob`: no Bash, no `gh`. You cannot fetch, check out, or verify where you are — you review whatever tree you were launched in. When that tree is not the review surface, your findings are confidently, precisely wrong and read exactly like sound ones (observed 2026-08-02 and 2026-08-03, including a five-way READY from lenses that never saw a diff).
+
+Your prompt carries the reviewed head sha. **A READY MUST echo that sha** — the review-scribe discards a READY that does not carry it, because an approval that cannot name its tree is the exact shape of that incident. A NOT-READY is captured either way: a refusal is never dropped for a missing echo.
+
+If your prompt supplied NO head sha, you were dispatched without a pinned tree. Return exactly `CANNOT-REVIEW` naming the missing input; do not review the tree you happen to be in.

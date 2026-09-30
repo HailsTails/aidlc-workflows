@@ -1,7 +1,7 @@
 // Stage frontmatter schema — machine-checkable realisation of the spec in
 // dist/claude/.claude/aidlc-common/protocols/stage-definition.md. Consumed by
 // parseStageFrontmatter (lib.ts), aidlc-graph compile, and the doctor
-// schema-lint check (aidlc-utility.ts handleDoctor). Hand-rolled,
+// schema-lint check (aidlc-utility.ts collectDoctorReport). Hand-rolled,
 // zero-dep — matches parseAgentFrontmatter precedent in lib.ts. Pure
 // validator: no I/O, no YAML parsing, no mutation — callers pass an
 // already-parsed object.
@@ -78,7 +78,10 @@ export interface StageFrontmatter {
   // (stage-protocol-reviewer.md §12a). Optional; absent when the stage has no review step.
   reviewer?: string;
   // review_artifact — required with reviewer. Names the required Markdown
-  // produces[] artifact that owns the appended `## Review` section.
+  // produces[] artifact the review is about: the artifact the review record is
+  // keyed to, named at the gate, and used in `--reject-finding <artifact>#R-NN`.
+  // The reviewer never writes to it; a legacy `## Review` section inside it is
+  // read for migration only.
   review_artifact?: string;
   // reviewer_max_iterations — review-cycle cap before escalating to the human.
   // Defaults to 2 when reviewer is present.
@@ -91,6 +94,14 @@ export interface StageFrontmatter {
   // `required` means every run must create the questions file and record the
   // human's consolidated-summary choice; `if-present` is for conditional Q&A.
   summary_confirmation?: "required" | "if-present";
+  // approval_mode — how this stage's approval gate is cleared. "human" (the
+  // default when absent) requires a typed human turn since the gate opened, read
+  // by the human-presence guard in aidlc-state.ts. "autonomous" clears the gate
+  // without that turn — for a stage whose approval is gated by a mechanism other
+  // than live human presence (e.g. an emitted, work-bound review verdict on a
+  // scheduled run). Names the presence axis on the stage itself so any scope can
+  // declare it, rather than deriving it from a workflow-wide autonomy flag.
+  approval_mode?: "human" | "autonomous";
   // when — structured activation predicate (plugin mechanism, Layer 4). A
   // single-key map; the one predicate is `producer-in-plan: <artifact-slug>`.
   // Accepted for shape here; the compile-time grid evaluation is separate.
@@ -135,6 +146,8 @@ export const VALID_MODES = ["inline", "subagent", "pipeline", "mob", "agent-team
 // reviewer_max_iterations-requires-reviewer coupling).
 export const ENSEMBLE_MODES = ["pipeline", "mob"] as const;
 
+export const VALID_APPROVAL_MODES = ["human", "autonomous"] as const;
+
 export const VALID_CONDITIONAL_ON = ["brownfield", "greenfield"] as const;
 
 // The conductor itself, named as a lead_agent on the bootstrap initialization
@@ -176,7 +189,7 @@ const REQUIRED_FIELDS = [
   "outputs",
 ] as const;
 
-const OPTIONAL_FIELDS = ["number", "name", "plugin", "for_each", "workspace_requires", "optional_produces", "produces_kinds", "sensors", "scopes", "reviewer", "review_artifact", "reviewer_max_iterations", "review_class", "summary_confirmation", "when", "required_sections"] as const;
+const OPTIONAL_FIELDS = ["number", "name", "plugin", "for_each", "workspace_requires", "optional_produces", "produces_kinds", "sensors", "scopes", "reviewer", "review_artifact", "reviewer_max_iterations", "approval_mode", "review_class", "summary_confirmation", "when", "required_sections"] as const;
 
 const KNOWN_FIELDS = new Set<string>([...REQUIRED_FIELDS, ...OPTIONAL_FIELDS]);
 
@@ -251,9 +264,10 @@ export function validateStageFrontmatter(
   checkString(o, "slug", errors);
   checkSlugPattern(o, "slug", SLUG_RE, "kebab-case", errors);
 
-  // number / name / plugin — optional plugin-mechanism display + ownership
-  // metadata. Absent is valid (core stages omit them); shape-checked when
-  // present. number must be `<int>.<int>`; name + plugin any non-empty string.
+  // number / name / plugin — optional display + ownership metadata. Absent is
+  // valid; core stages use name only when title-casing the slug would lose an
+  // established label. number must be `<int>.<int>`; name + plugin any
+  // non-empty string.
   checkString(o, "number", errors);
   checkSlugPattern(o, "number", NUMBER_RE, "<phase-prefix>.<index>", errors);
   checkString(o, "name", errors);
@@ -391,6 +405,12 @@ export function validateStageFrontmatter(
       errors.push("review_class requires a reviewer");
     }
   }
+
+  // approval_mode — optional closed union (human | autonomous). Absent -> human
+  // (the default the human-presence guard applies). Mirrors `mode`'s validation:
+  // a type error is reported by checkString, an out-of-union token by checkEnum.
+  checkString(o, "approval_mode", errors);
+  checkEnum(o, "approval_mode", VALID_APPROVAL_MODES, errors);
 
   // required_sections — optional list of non-empty section names (plugin
   // contribution §6). Shape only; the required-sections sensor enforces content.

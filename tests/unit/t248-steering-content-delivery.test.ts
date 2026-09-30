@@ -1,4 +1,5 @@
-// covers: subcommand:aidlc-orchestrate:next, subcommand:aidlc-orchestrate:continue, hook:aidlc-deliver-stage-rules
+// covers: subcommand:aidlc-orchestrate:next, subcommand:aidlc-orchestrate:continue,
+// function:activeDirectiveStorageDir, hook:aidlc-deliver-stage-rules
 //
 // Deterministic stage-rule delivery. Rules cross the engine boundary through
 // bounded load-steering directives before run-stage; optional persona/knowledge
@@ -14,6 +15,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -39,6 +41,7 @@ import {
   seededRecordDir,
   seededStateFile,
   setupIntegrationProject,
+  type IntegrationProjectOptions,
 } from "../harness/fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 import { resolveCapturedToolInput } from "../harness/sdk-drive.ts";
@@ -78,15 +81,27 @@ type HookRewrite = {
 
 const projects: string[] = [];
 
-function project(): string {
-  const proj = setupIntegrationProject();
+function project(input: {
+  delivery?: "explicit" | "ambient";
+  options?: IntegrationProjectOptions;
+} = {}): string {
+  const proj = setupIntegrationProject(input.options);
   projects.push(proj);
+  const metadata = join(proj, ".claude", "tools", "data", "harness.json");
+  writeFileSync(
+    metadata,
+    readFileSync(metadata, "utf8").replace(
+      '"baseRuleDelivery": "ambient"',
+      '"baseRuleDelivery": "' + (input.delivery ?? "explicit") + '"',
+    ),
+  );
   return proj;
 }
 
+// Removing every staged project can exceed bun's 5s hook default under load.
 afterAll(() => {
   for (const proj of projects) cleanupTestProject(proj);
-});
+}, 120_000);
 
 function invoke(
   proj: string,
@@ -166,7 +181,7 @@ function runDispatchHook(
         cwd: proj,
       }),
       encoding: "utf-8",
-      env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
+      env: { ...process.env, AIDLC_PROJECT_DIR: proj, CLAUDE_PROJECT_DIR: proj },
     },
   );
   return {
@@ -190,6 +205,20 @@ function reviewerExecutionSurface(
 }
 
 describe("t248 deterministic steering delivery", () => {
+  test("ambient delivery retains governing rule references without transporting duplicate text", () => {
+    const proj = project({ delivery: "ambient" });
+    const result = drive(proj);
+    expect(result.loads).toEqual([]);
+    expect(result.contents).toEqual([]);
+    expect(result.final.kind).toBe("run-stage");
+    expect(result.final.rules_in_context).toEqual([
+      "aidlc/spaces/default/memory/org.md",
+      "aidlc/spaces/default/memory/team.md",
+      "aidlc/spaces/default/memory/project.md",
+      "aidlc/spaces/default/memory/phases/ideation.md",
+    ]);
+  });
+
   test("delivers substantive rules before run-stage and keeps knowledge path-loaded", () => {
     const proj = project();
     const result = drive(proj);
@@ -198,6 +227,8 @@ describe("t248 deterministic steering delivery", () => {
     expect(result.final.kind).toBe("run-stage");
     expect(result.final.rules_in_context).toEqual([
       "aidlc/spaces/default/memory/org.md",
+      "aidlc/spaces/default/memory/team.md",
+      "aidlc/spaces/default/memory/project.md",
       "aidlc/spaces/default/memory/phases/ideation.md",
     ]);
     expect(result.final).not.toHaveProperty("rules_content");
@@ -369,7 +400,7 @@ describe("t248 deterministic steering delivery", () => {
           "spaces",
           "default",
           "intents",
-          ".aidlc-steering-token-key",
+          ".aidlc-engine/steering-token-key",
         ),
       ),
     ).toBe(false);
@@ -393,11 +424,58 @@ describe("t248 deterministic steering delivery", () => {
     expect(otherKey).not.toBe(encodedKey);
   });
 
-  test("probe steering continues normally for team and solo without publishing the marker", () => {
-    const team = setupIntegrationProject({
-      withState: "state-brownfield-feature.md",
+  test("a continuation issued before the engine-directory migration remains valid", () => {
+    const proj = project({
+      options: { withState: "state-brownfield-feature.md" },
     });
-    projects.push(team);
+    const orgPath = join(
+      proj,
+      "aidlc",
+      "spaces",
+      "default",
+      "memory",
+      "org.md",
+    );
+    appendFileSync(
+      orgPath,
+      Array.from(
+        { length: 180 },
+        (_, i) => `\n## Upgrade ${i}\n\n${"x".repeat(320)}\n`,
+      ).join(""),
+    );
+
+    const issued = invoke(proj, "next", []).directive;
+    expect(issued.kind).toBe("load-steering");
+    const record = seededRecordDir(proj);
+    renameSync(
+      join(record, ".aidlc-engine", "active-directive.json"),
+      join(record, ".aidlc-active-directive.json"),
+    );
+    renameSync(
+      join(record, ".aidlc-engine", "steering-token-key"),
+      join(record, ".aidlc-steering-token-key"),
+    );
+
+    const continued = invoke(
+      proj,
+      "continue",
+      [issued.continue_token ?? ""],
+    ).directive;
+    expect(continued.kind).not.toBe("error");
+    expect(existsSync(join(record, ".aidlc-active-directive.json"))).toBe(true);
+    expect(
+      existsSync(join(record, ".aidlc-engine", "active-directive.json")),
+    ).toBe(false);
+    expect(existsSync(join(record, ".aidlc-steering-token-key"))).toBe(true);
+    expect(
+      existsSync(join(record, ".aidlc-engine", "steering-token-key")),
+    ).toBe(false);
+  });
+
+  test("engine observers are read-only for team and solo, and route checks bypass transport", () => {
+    const team = project({
+      options: { withState: "state-brownfield-feature.md" },
+    });
     const teamStatePath = seededStateFile(team);
     writeFileSync(
       teamStatePath,
@@ -430,12 +508,12 @@ describe("t248 deterministic steering delivery", () => {
     expect(teamProbe.kind).toBe("load-steering");
     expect(
       existsSync(
-        join(seededRecordDir(team), ".aidlc-steering-token-key"),
+        join(seededRecordDir(team), ".aidlc-engine/steering-token-key"),
       ),
     ).toBe(false);
     expect(
       existsSync(
-        join(seededRecordDir(team), ".aidlc-active-directive.json"),
+        join(seededRecordDir(team), ".aidlc-engine/active-directive.json"),
       ),
     ).toBe(false);
     const continued = invoke(
@@ -466,10 +544,13 @@ describe("t248 deterministic steering delivery", () => {
       kind: "error",
     });
 
-    const solo = setupIntegrationProject({
-      withState: "state-brownfield-feature.md",
+    // The SOLO probe is the case the deadlock was reported on. It used to mint the
+    // machine-local steering key and publish the marker, and that publication is
+    // what deleted the human's in-flight Plan Approval. A query must leave both
+    // absent, whatever the Unit Ownership.
+    const solo = project({
+      options: { withState: "state-brownfield-feature.md" },
     });
-    projects.push(solo);
     const soloProbe = invoke(
       solo,
       "next",
@@ -479,26 +560,41 @@ describe("t248 deterministic steering delivery", () => {
     expect(soloProbe.kind).toBe("load-steering");
     expect(
       existsSync(
-        join(seededRecordDir(solo), ".aidlc-steering-token-key"),
+        join(seededRecordDir(solo), ".aidlc-engine/steering-token-key"),
       ),
-    ).toBe(true);
-    // A solo probe keys its token normally, but it must NOT publish the durable
-    // marker either: publication bumps code_generation_authority_revision and
-    // resets the plan-approval runtime, which deadlocked Plan Approval (#995).
+    ).toBe(false);
     expect(
       existsSync(
-        join(seededRecordDir(solo), ".aidlc-active-directive.json"),
+        join(seededRecordDir(solo), ".aidlc-engine/active-directive.json"),
       ),
     ).toBe(false);
     expect(
       invoke(solo, "continue", [soloProbe.continue_token ?? ""]).directive
         .kind,
     ).not.toBe("error");
+
+    // A route check asks only which Unit would be routed, so it skips transport
+    // entirely: no load-steering, no token, no key, no marker.
+    const routed = project({
+      options: { withState: "state-brownfield-feature.md" },
+    });
+    const routeCheck = invoke(
+      routed,
+      "next",
+      [],
+      { ...process.env, AIDLC_ROUTE_CHECK: "1" },
+    ).directive;
+    expect(routeCheck.kind).toBe("run-stage");
+    expect(
+      existsSync(join(seededRecordDir(routed), ".aidlc-engine/steering-token-key")),
+    ).toBe(false);
+    expect(
+      existsSync(join(seededRecordDir(routed), ".aidlc-engine/active-directive.json")),
+    ).toBe(false);
   });
 
   test("sessionless continuation consumes the same token exactly once", () => {
-    const proj = setupIntegrationProject({ withState: "state-brownfield-feature.md" });
-    projects.push(proj);
+    const proj = project({ options: { withState: "state-brownfield-feature.md" } });
     const orgPath = join(proj, "aidlc", "spaces", "default", "memory", "org.md");
     writeFileSync(
       orgPath,
@@ -514,15 +610,14 @@ describe("t248 deterministic steering delivery", () => {
     expect(twice.kind).toBe("error");
     expect(twice.message).toContain("no longer current");
     const marker = JSON.parse(
-      readFileSync(join(seededRecordDir(proj), ".aidlc-active-directive.json"), "utf-8"),
+      readFileSync(join(seededRecordDir(proj), ".aidlc-engine/active-directive.json"), "utf-8"),
     ) as { cursor_harness?: string; owner_session?: string };
     expect(marker.cursor_harness).toBe("claude");
     expect(marker.owner_session).toStartWith("sessionless:");
   });
 
   test("stage validity advisory survives every steering continuation", () => {
-    const proj = setupIntegrationProject({ withState: "state-operation.md" });
-    projects.push(proj);
+    const proj = project({ options: { withState: "state-operation.md" } });
     const state = readFileSync(seededStateFile(proj), "utf-8");
     const graphRaw = JSON.parse(
       readFileSync(
@@ -645,10 +740,9 @@ describe("t248 deterministic steering delivery", () => {
   });
 
   test("a changed workflow state invalidates an in-flight continuation", () => {
-    const proj = setupIntegrationProject({
-      withState: "state-mid-ideation.md",
+    const proj = project({
+      options: { withState: "state-mid-ideation.md" },
     });
-    projects.push(proj);
     const first = invoke(proj, "next", []).directive;
     appendFileSync(
       seededStateFile(proj),
@@ -1199,10 +1293,9 @@ describe("t248 deterministic steering delivery", () => {
     // prose must bind the ACTIVE stage's bundle (phase rule = ideation for
     // feasibility), not the mentioned stage's (inception for user-stories).
     // Only a stage-FILE path outranks the state file's Current Stage.
-    const proj = setupIntegrationProject({
-      withState: "state-mid-ideation.md", // Current Stage: feasibility
+    const proj = project({
+      options: { withState: "state-mid-ideation.md" },
     });
-    projects.push(proj);
     const result = runDispatchHook(proj, "Task", {
       subagent_type: "aidlc-architect-agent",
       prompt:
@@ -1222,10 +1315,9 @@ describe("t248 deterministic steering delivery", () => {
   });
 
   test("dispatch stage resolution: an unknown explicit path falls back to Current Stage", () => {
-    const proj = setupIntegrationProject({
-      withState: "state-mid-ideation.md", // Current Stage: feasibility
+    const proj = project({
+      options: { withState: "state-mid-ideation.md" },
     });
-    projects.push(proj);
     const result = runDispatchHook(proj, "Task", {
       subagent_type: "aidlc-architect-agent",
       prompt:
