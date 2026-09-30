@@ -277,6 +277,7 @@ export function writeReleaseFixture(options: ReleaseFixtureOptions): ReleaseFixt
         const pluginRoot = join(pluginsRoot, plugin);
         if (!statSync(pluginRoot).isDirectory()) continue;
         for (const harness of readdirSync(pluginRoot).sort()) {
+          if (!distributions.includes(harness)) continue;
           const harnessRoot = join(pluginRoot, harness);
           if (!statSync(harnessRoot).isDirectory()) continue;
           const entries = archiveEntries(harnessRoot).map((entry) => ({

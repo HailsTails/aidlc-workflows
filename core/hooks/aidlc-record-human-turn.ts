@@ -7,9 +7,12 @@
 // fabricate an approval with no human having acted this turn.
 //
 // Presence remains the gate signal, while the prompt payload is also inspected
-// for an exact protected Plan Approval choice. appendAuditEntry resolves the
-// active intent from the on-disk cursor. No workflow state on disk means nothing
-// to gate, so the hook exits without writing (same self-gate as
+// for an exact protected Plan Approval choice. The payload is additionally read
+// for `cwd`, the invoking checkout, so the hook binds to the tree the event came
+// from rather than the one the session started in. appendAuditEntry resolves the
+// active intent from the on-disk cursor once the project dir is known. No
+// workflow state on disk means nothing to gate, so the hook exits without
+// writing (same self-gate as
 // aidlc-session-start.ts) - otherwise every prompt in a project that carries the
 // harness shell but never ran the framework would scaffold and grow audit
 // shards. The gate fails open on an empty ledger, so skipping the mint there is
@@ -52,9 +55,10 @@
 import { existsSync } from "node:fs";
 import {
   consumeSharedDirectiveAsk,
+  hookPayloadCwd,
   humanTurnMintAllowed,
   markHumanTurn,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   stateFilePath,
 } from "../tools/aidlc-lib.ts";
 import { appendAuditEntry } from "../tools/aidlc-audit.ts";
@@ -104,7 +108,10 @@ function extractResponseText(value: unknown): string {
 
 export async function run(input: string): Promise<number> {
 try {
-  const projectDir = resolveProjectDirFromHook(import.meta.url);
+  const projectDir = resolveProjectDirFromPayload({
+    importMetaUrl: import.meta.url,
+    cwd: hookPayloadCwd(input),
+  });
   if (existsSync(stateFilePath(projectDir))) {
     if (humanTurnMintAllowed()) {
       let sessionId = "";

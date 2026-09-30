@@ -27,6 +27,9 @@ const manifest: HarnessManifest = {
   harnessDir: ".kiro",
   orchestratorSkillPath: ".kiro/skills/aidlc/SKILL.md",
   tierFlavor: "kiro",
+  // rules → steering, and Kiro auto-loads steering: the rules ARE the
+  // always-on layer.
+  baseRuleDelivery: "ambient",
   rootIntegrations: [
     {
       path: ".gitignore",

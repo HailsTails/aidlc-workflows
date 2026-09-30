@@ -59,6 +59,7 @@ afterEach(() => {
 function freshProject(): string {
   const root = mkdtempSync(join(tmpdir(), "t241-opencode-"));
   scratch.push(root);
+  mkdirSync(join(root, ".git"));
   mkdirSync(join(root, ".aidlc", "hooks"), { recursive: true });
   mkdirSync(join(root, ".aidlc", "tools"), { recursive: true });
   return root;
@@ -67,6 +68,7 @@ function freshProject(): string {
 function freshInstalledProject(): string {
   const root = createTestProject();
   scratch.push(root);
+  mkdirSync(join(root, ".git"));
   cpSync(
     join(REPO_ROOT, "dist", "opencode", ".aidlc"),
     join(root, ".aidlc"),
@@ -186,9 +188,9 @@ describe("t241 OpenCode adapter command boundary and transition filter", () => {
     const root = freshProject();
     const { client } = fakeClient();
     const adapter = await createTestAdapter(client, root);
-    const before = adapter["tool.execute.before"];
+    const beforeToolExecution = adapter["tool.execute.before"];
     const invoke = (callID: string, command: string) =>
-      before(
+      beforeToolExecution(
         { tool: "bash", sessionID: "main", callID },
         { args: { command } },
       );
@@ -325,21 +327,21 @@ describe("t241 OpenCode adapter reviewer scope", () => {
       { parts: [{ type: "text", text: "review" }] },
     );
 
-    const before = adapter["tool.execute.before"];
+    const beforeToolExecution = adapter["tool.execute.before"];
     await expect(
-      before(
+      beforeToolExecution(
         { tool: "read", sessionID: "reviewer", callID: "sibling" },
         { args: { filePath: sibling } },
       ),
     ).rejects.toThrow(/This review cannot open/i);
     await expect(
-      before(
+      beforeToolExecution(
         { tool: "read", sessionID: "reviewer", callID: "current" },
         { args: { filePath: current } },
       ),
     ).resolves.toBeUndefined();
     await expect(
-      before(
+      beforeToolExecution(
         { tool: "list", sessionID: "reviewer", callID: "sibling-list" },
         { args: { path: dirname(sibling) } },
       ),
@@ -362,9 +364,9 @@ describe("t241 OpenCode adapter state-transition guard", () => {
       aidlcEntrypoints: TEST_ENTRYPOINTS,
       aidlcCommand: TEST_AIDLC_COMMAND,
     });
-    const before = adapter["tool.execute.before"];
+    const beforeToolExecution = adapter["tool.execute.before"];
     const invoke = (callID: string, command: string) =>
-      before(
+      beforeToolExecution(
         { tool: "bash", sessionID: "main", callID },
         { args: { command } },
       );
@@ -400,17 +402,17 @@ describe("t241 OpenCode adapter state-transition guard", () => {
       { sessionID: "worker", agent: "aidlc-design-agent" },
       { parts: [{ type: "text", text: "contribute" }] },
     );
-    const before = adapter["tool.execute.before"];
+    const beforeToolExecution = adapter["tool.execute.before"];
     const command = "bun .aidlc/tools/aidlc-orchestrate.ts next --resume";
 
     await expect(
-      before(
+      beforeToolExecution(
         { tool: "bash", sessionID: "worker", callID: "worker-route" },
         { args: { command } },
       ),
     ).rejects.toThrow(/only the main workflow session can change stage status or routing/i);
     await expect(
-      before(
+      beforeToolExecution(
         { tool: "bash", sessionID: "main", callID: "main-route" },
         { args: { command } },
       ),
@@ -421,6 +423,14 @@ describe("t241 OpenCode adapter state-transition guard", () => {
 describe("t241 OpenCode adapter dispatch rules", () => {
   test("task input is rewritten with exact active-stage rules", async () => {
     const root = freshInstalledProject();
+    const harnessDataPath = join(root, ".aidlc", "tools", "data", "harness.json");
+    writeFileSync(
+      harnessDataPath,
+      readFileSync(harnessDataPath, "utf-8").replace(
+        '"baseRuleDelivery": "ambient"',
+        '"baseRuleDelivery": "explicit"',
+      ),
+    );
     seedAidlcMemory(root);
     seedStateFile(root, "state-mid-inception.md");
     const { client } = fakeClient();
@@ -462,22 +472,22 @@ describe("t241 OpenCode native plan-approval payloads", () => {
     seedUnapprovedCodeGeneration(root);
     const { client } = fakeClient();
     const adapter = await createAdapter({ client, directory: root });
-    const before = adapter["tool.execute.before"];
+    const beforeToolExecution = adapter["tool.execute.before"];
 
     await expect(
-      before(
+      beforeToolExecution(
         { tool: "write", sessionID: "main", callID: "write" },
         { args: { filePath: join(root, "src", "blocked.ts") } },
       ),
     ).rejects.toThrow(/plan|approval/i);
     await expect(
-      before(
+      beforeToolExecution(
         { tool: "bash", sessionID: "main", callID: "bash" },
         { args: { command: "sort input.txt -o src/blocked.txt" } },
       ),
     ).rejects.toThrow(/plan|approval/i);
     await expect(
-      before(
+      beforeToolExecution(
         { tool: "task", sessionID: "main", callID: "task" },
         {
           args: {
@@ -729,7 +739,7 @@ writeFileSync(${JSON.stringify(stopInput)}, await Bun.stdin.text(), "utf-8");
     appendInteractionEvent(root, "STAGE_STARTED", "requirements-analysis");
     appendInteractionEvent(root, "DECISION_RECORDED", "requirements-analysis");
     const { client, prompts } = fakeClient();
-    const adapter = await createAdapter({ client, directory: root });
+    const adapter = await createTestAdapter(client, root);
 
     await adapter["chat.message"](
       { sessionID: "main" },

@@ -1,0 +1,61 @@
+{
+  "$comment": "Per-gate reviewer roster for the rin-gates decorrelated-review verdict path. Single source of truth read by BOTH the SubagentStop review-scribe (rin-gates-review-scribe.ts, which withholds the aggregate review-verdict.json until its gate's roster is covered and every roster lens is READY) AND the autonomy backstop (rin-gates-autonomy-gate.ts, which re-verifies the scribe-emitted verdict names every roster lens before allowing an autonomous approve). Keyed by the gate slug exactly as the engine's Current Stage carries it (rin-gate-*) — there is one gate vocabulary and no normalisation. Values are agent_type strings (== each agent's frontmatter name:), the harness-set identity the scribe keys coverage on. Every rin gate has an entry here. A gate whose stage names rin-decorrelated-review-agent as its reviewer is listed in the constitution board's roster_dispatch_gates (tools/data/review-board.json), except Gate 5, which dispatches its own board file; its roster is its required lenses and ends with the intent-defense synthesis lens so a producing-only pass cannot mint READY. An optional lens a gate's comment names is dispatched at the conductor's judgement, beyond the floor. A gate whose stage names a single reviewer has that reviewer as its whole roster. So for every gate the reviewers dispatched and the floor enforced are the same set. defaultRoster is a fail-safe for a gate with no entry; no rin gate relies on it.",
+
+  "defaultRoster": [
+    "aidlc-architecture-reviewer-agent",
+    "rin-clean-architecture-reviewer-agent",
+    "rin-ddd-modelling-reviewer-agent",
+    "rin-decomposition-reviewer-agent"
+  ],
+
+  "byGate": {
+    "$rin-gate-0-1-comment": "Gates 0 and 1 reconcile ground truth and frame requirements; there is no code or model for a constitution lens to judge. Each stage names one reviewer and its roster is that reviewer.",
+    "rin-gate-0-reconcile": ["aidlc-architecture-reviewer-agent"],
+
+    "rin-gate-1-framing": ["aidlc-architecture-reviewer-agent"],
+
+    "$rin-gate-2-comment": "Gate 2 is Solution Options. Its engine slug still reads plan-review, and this key must match the slug the engine's Current Stage carries.",
+    "rin-gate-2-plan-review": [
+      "aidlc-architecture-reviewer-agent",
+      "rin-ddd-modelling-reviewer-agent",
+      "rin-clean-architecture-reviewer-agent",
+      "rin-intent-defense-reviewer-agent"
+    ],
+
+    "$rin-gate-3-comment": "Completeness, ddd-modelling and clean-architecture judge the design; rin-contract-constitution-reviewer-agent judges the contracts against the type-soundness, errors-as-data and zod-boundary rules at contract grain. Naming, function-first and di-discipline judge code bodies and run at Gate 4 only.",
+    "rin-gate-3-interface-lock": [
+      "aidlc-architecture-reviewer-agent",
+      "rin-ddd-modelling-reviewer-agent",
+      "rin-clean-architecture-reviewer-agent",
+      "rin-contract-constitution-reviewer-agent",
+      "rin-intent-defense-reviewer-agent"
+    ],
+
+    "$rin-gate-4-comment": "Gate 4 reviews the generated code for the Slice. Its roster is the lenses whose rules are enforced wholly or partly by judgement (each CD's aidlc-enforced-by names manual or a lens). Type-soundness, naming and function-first are optional here: every rule they own is blocked deterministically by a per-CD sensor, the constitution gate or biome, and Gate 5's pr-evades hunts the new shapes that slip those checks. The conductor dispatches an optional lens when the diff reaches code the constitution audit does not scan, and its verdict then gates the aggregate like any roster lens.",
+    "rin-gate-4-implement": [
+      "aidlc-architecture-reviewer-agent",
+      "rin-clean-architecture-reviewer-agent",
+      "rin-ddd-modelling-reviewer-agent",
+      "rin-errors-as-data-reviewer-agent",
+      "rin-zod-boundary-reviewer-agent",
+      "rin-di-discipline-reviewer-agent",
+      "rin-decomposition-reviewer-agent",
+      "rin-test-discipline-reviewer-agent",
+      "rin-intent-defense-reviewer-agent"
+    ],
+
+    "$rin-gate-5-comment": "Gate 5 (review-cycle) runs the pr-review board (knowledge/rin-gates/rin-pr-review-board.json), a DISJOINT set from the constitution board. Its roster is that board's six producing hunts + the intent-defense synthesis lens.",
+    "rin-gate-5-review-cycle": [
+      "rin-pr-checkers-reviewer-agent",
+      "rin-pr-evades-reviewer-agent",
+      "rin-pr-claims-reviewer-agent",
+      "rin-pr-scope-reviewer-agent",
+      "rin-pr-tests-dead-reviewer-agent",
+      "rin-pr-disposition-reviewer-agent",
+      "rin-intent-defense-reviewer-agent"
+    ],
+
+    "$rin-gate-6-comment": "Gate 6 follows the deploy playbook and closes the books, so its stage names one reviewer, not the board, and its roster is that one reviewer.",
+    "rin-gate-6-operate": ["aidlc-architecture-reviewer-agent"]
+  }
+}

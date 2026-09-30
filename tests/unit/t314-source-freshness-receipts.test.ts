@@ -2556,18 +2556,12 @@ describe("t314 multi-unit source attribution", () => {
     expect(clean.out).not.toContain("project source changed after");
     expect(clean.rc).toBe(0);
 
-    // Now edit inside the recorded repo after the last review: must refuse.
-    // Reopening without a human rejection keeps the prior per-unit receipts.
-    // With accurate per-unit claims, a re-review only counts as the one
-    // bounded stale-receipt recovery when the unit's claimed scope really
-    // changed, so stale alpha's scope first, spend the recovery rebinding it,
-    // then let a further edit invalidate the recovery receipt.
     guarded(proj, ["checkbox", "code-generation=in-progress"]);
-    writeFileSync(join(repoA, "alpha.ts"), "export const alpha = 99;\n", "utf-8");
-    recordReview(proj, "code-generation", REVIEWER, "alpha", "READY", [
-      { repo: "repo-a", path: "alpha.ts" },
+    writeFileSync(join(repoA, "beta.ts"), "export const beta = 99;\n", "utf-8");
+    recordReview(proj, "code-generation", REVIEWER, "beta", "READY", [
+      { repo: "repo-a", path: "beta.ts" },
     ]);
-    writeFileSync(join(repoA, "alpha.ts"), "export const alpha = 999;\n", "utf-8");
+    writeFileSync(join(repoA, "beta.ts"), "export const beta = 999;\n", "utf-8");
     const dirty = guarded(proj, ["approve", "code-generation", "--user-input", "ship it"]);
     expect(dirty.rc).not.toBe(0);
     expect(dirty.out).toContain(

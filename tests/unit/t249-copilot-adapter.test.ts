@@ -153,6 +153,7 @@ function overlayAuthoredCopilotSources(dir: string): void {
 
 function scratchProject(withState: boolean): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "t249-")));
+  mkdirSync(join(dir, ".git"));
   scratchProjects.add(dir);
   cpSync(COPILOT_TREE, join(dir, ".aidlc"), { recursive: true });
   overlayAuthoredCopilotSources(dir);
@@ -170,8 +171,17 @@ function scratchProject(withState: boolean): string {
   return dir;
 }
 
+function useExplicitRuleDelivery(dir: string): void {
+  const path = join(dir, ".aidlc", "tools", "data", "harness.json");
+  writeFileSync(path, readFileSync(path, "utf-8").replace(
+    '"baseRuleDelivery": "ambient"',
+    '"baseRuleDelivery": "explicit"',
+  ));
+}
+
 function orchestrationProject(): string {
   const dir = scratchProject(true);
+  useExplicitRuleDelivery(dir);
   cpSync(join(REPO_ROOT, "dist", "copilot", "aidlc"), join(dir, "aidlc"), { recursive: true });
   return dir;
 }
@@ -388,6 +398,16 @@ function driveToRunStage(dir: string, session: string) {
 }
 
 describe("t249 Copilot hook adapter (live-captured payload fixtures)", () => {
+  test("default ambient delivery retains governing rules without a text continuation", () => {
+    const dir = scratchProject(true);
+    cpSync(join(REPO_ROOT, "dist", "copilot", "aidlc"), join(dir, "aidlc"), { recursive: true });
+    const result = runLifecycle(dir, "ambient-main", "direct", ["next", "--resume"], "ambient-attempt");
+    expect(result.directive.kind).toBe("run-stage");
+    expect(result.directive.rules_in_context).toContain("aidlc/spaces/default/memory/org.md");
+    expect(result.directive.rules_in_context).toContain("aidlc/spaces/default/memory/team.md");
+    expect(result.directive.rules_in_context).toContain("aidlc/spaces/default/memory/project.md");
+    expect(result.directive.rules_content).toBeUndefined();
+  });
   test("0a: sharded unit execution has compiled dispatcher coverage", () => {
     expect(!COMPILED_COVERAGE_REQUIRED || COMPILED_BINARY !== null).toBe(true);
   });
@@ -592,6 +612,7 @@ describe("t249 Copilot hook adapter (live-captured payload fixtures)", () => {
 
   test("5a: custom-agent dispatch carries the exact active-stage rules once", () => {
     const dir = scratchProject(true);
+    useExplicitRuleDelivery(dir);
     cpSync(join(REPO_ROOT, "dist", "copilot", "aidlc"), join(dir, "aidlc"), {
       recursive: true,
     });

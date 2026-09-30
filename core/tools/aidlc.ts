@@ -2155,6 +2155,17 @@ async function withProjectDir(
   }
 }
 
+function normalizeExplicitProjectInput(input: { input: string; projectDir: string | undefined }): string {
+  if (!input.projectDir) return input.input;
+  try {
+    const payload: unknown = JSON.parse(input.input);
+    if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return input.input;
+    return JSON.stringify({ ...payload, cwd: input.projectDir });
+  } catch {
+    return input.input;
+  }
+}
+
 async function runHook(action: Extract<Action, { type: "hook" }>): Promise<number> {
   if (!existsSync(action.path)) {
     text(2, `aidlc engine hook ${action.name}: not available in this install\n`);
@@ -2165,7 +2176,7 @@ async function runHook(action: Extract<Action, { type: "hook" }>): Promise<numbe
     text(2, `aidlc engine hook ${action.name}: hook does not export run(input)\n`);
     return 1;
   }
-  return await mod.run(await readStdin());
+  return await mod.run(normalizeExplicitProjectInput({ input: await readStdin(), projectDir: action.projectDir }));
 }
 
 async function runStatusline(action: Extract<Action, { type: "statusline" }>): Promise<number> {
@@ -2235,7 +2246,7 @@ async function runAdapter(action: Extract<Action, { type: "adapter" }>): Promise
         input = await readStdinWithTimeout(ceiling);
       }
     }
-    return await mod.run(action.target, input, action.extraArgs);
+    return await mod.run(action.target, normalizeExplicitProjectInput({ input, projectDir: action.projectDir }), action.extraArgs);
   } finally {
     if (previousHarness === undefined) delete process.env.AIDLC_HARNESS_DIR;
     else process.env.AIDLC_HARNESS_DIR = previousHarness;

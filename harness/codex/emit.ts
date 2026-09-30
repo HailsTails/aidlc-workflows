@@ -32,6 +32,7 @@ import {
   resolveModelPolicy,
   writeCodexAgentSurface,
 } from "../../core/tools/aidlc-model-policy.ts";
+import { codexHookTrustIdentity } from "../../core/tools/aidlc-plugin-hook-registrations.ts";
 
 // ---------------------------------------------------------------------------
 // Hook wiring (kiro-normative shape: register ONLY events with a real core-hook
@@ -94,23 +95,7 @@ function emitHooksJson(
 function emitConfigToml(): string {
   return `# dist/codex shipped config — copy into the project's .codex/config.toml
 # (trusted projects) or merge into ~/.codex/config.toml.
-#
-# Model: these session defaults are what judgment-tier agent roles inherit
-# (their TOMLs omit model/model_reasoning_effort by design - see the tier
-# projection); balanced roles pin gpt-5.6-terra/medium, while templated roles inherit.
-# D-9: Amazon Bedrock is the shipped default provider (web_search is
-# unavailable there; the market-research stage degrades gracefully). For
-# OpenAI-auth setups, comment out model_provider and the [model_providers]
-# block.
-model = "openai.gpt-5.5"
-model_provider = "amazon-bedrock"
-model_context_window = 1000000
 model_reasoning_effort = "high"
-
-[model_providers.amazon-bedrock.aws]
-# Set to your AWS profile/region with Bedrock model access.
-profile = "default"
-region = "us-east-1"
 
 # The AIDLC method (the markdown rule layers: org/team/project + phases/) now
 # lives at the workspace root under aidlc/spaces/<space>/memory/ — the single
@@ -189,23 +174,13 @@ prefix_rule(pattern = ["git", "add"], decision = "allow")
 // S9a trust-hash recipe. Identity = {event_name: <snake>, hooks: [{async:false,
 // command, timeout:600, type:"command"}]} → canonical JSON (sorted keys,
 // compact) → sha256.
-function trustHash(eventSnake: string, command: string): string {
-  const identity = {
-    event_name: eventSnake,
-    hooks: [{ async: false, command, timeout: 600, type: "command" }],
-  };
-  const sortKeys = (o: unknown): unknown => {
-    if (Array.isArray(o)) return o.map(sortKeys);
-    if (o !== null && typeof o === "object") {
-      return Object.fromEntries(
-        Object.keys(o as Record<string, unknown>)
-          .sort()
-          .map((k) => [k, sortKeys((o as Record<string, unknown>)[k])]),
-      );
-    }
-    return o;
-  };
-  const blob = JSON.stringify(sortKeys(identity));
+// Exported so a test can bind a trust key to the command of the group that
+// actually sits at that position in the shipped hooks.json. Without that pairing
+// the trust surface is only checkable as a SET, and a reorder that preserves
+// per-event membership rebinds every hash to the wrong row while every
+// set-shaped assertion still agrees.
+export function trustHash(eventSnake: string, command: string): string {
+  const blob = codexHookTrustIdentity({ eventSnake, command });
   return "sha256:" + createHash("sha256").update(blob, "utf-8").digest("hex");
 }
 
@@ -226,8 +201,9 @@ const SNAKE: Record<string, string> = {
 // installer-substituted entries.
 export function trustEntries(
   projectDir: string,
-  hooksJsonPath?: string,
+  hooksJsonPath: string | undefined,
   harnessDir = ".codex",
+  _repoRoot: string,
   harnessName = "codex",
   invoke = "aidlc",
   trustedNamespace?: string,
@@ -259,6 +235,7 @@ export function trustEntries(
 
 export function emitTrustSeed(
   harnessDir: string,
+  repoRoot: string,
   harnessName = "codex",
   invoke = "aidlc",
   trustedNamespace?: string,
@@ -282,6 +259,7 @@ export function emitTrustSeed(
       "<PROJECT_DIR>",
       undefined,
       harnessDir,
+      repoRoot,
       harnessName,
       invoke,
       trustedNamespace,
@@ -461,7 +439,20 @@ export default function emit(ctx: EmitContext): void {
   emissions.push({
     path: join(CODEX_ROOT, "hooks.json"),
     content: () =>
-      emitHooksJson(substituteToken, harnessName, trustedRouteNamespace),
+      emitHooksJson(
+        substituteToken,
+        harnessName,
+        trustedRouteNamespace,
+      ),
+  });
+  // The adapter resolves an unrecognised target through this map instead of
+  // importing the packager: dist is what ships, so the wiring must travel as
+  // data beside the adapter. Absent plugins emit an empty object, which keeps
+  // the adapter's read unconditional.
+  emissions.push({
+    path: join(CODEX_ROOT, "hooks", "plugin-hook-targets.json"),
+    content: () =>
+      JSON.stringify({}, null, 2) + "\n",
   });
   emissions.push({ path: join(CODEX_ROOT, "config.toml"), content: emitConfigToml });
   emissions.push({
@@ -472,7 +463,13 @@ export default function emit(ctx: EmitContext): void {
   emissions.push({
     path: join(CODEX_ROOT, "trust-seed.toml"),
     content: () =>
-      emitTrustSeed(harnessDir, harnessName, invoke, trustedRouteNamespace),
+      emitTrustSeed(
+        harnessDir,
+        ctx.repoRoot,
+        harnessName,
+        invoke,
+        trustedRouteNamespace,
+      ),
   });
   emissions.push({ path: join(distRoot, "AGENTS.md"), content: emitAgentsMd });
 

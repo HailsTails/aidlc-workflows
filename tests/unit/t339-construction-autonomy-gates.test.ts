@@ -131,7 +131,7 @@ describe("t339 on-demand autonomy preserves protected stage approvals", () => {
       "report", "--stage", "nfr-requirements", "--result", "approved",
     ]);
     expect(JSON.parse(reportRefused.stdout).kind).toBe("error");
-    expect(reportRefused.output).toContain("did not match an offered choice");
+    expect(reportRefused.output).toContain("did not match one of the offered choices");
     const refused = run("state", [
       "approve", "nfr-requirements", "--user-input", "Approve",
     ]);

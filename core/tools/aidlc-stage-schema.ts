@@ -94,6 +94,14 @@ export interface StageFrontmatter {
   // `required` means every run must create the questions file and record the
   // human's consolidated-summary choice; `if-present` is for conditional Q&A.
   summary_confirmation?: "required" | "if-present";
+  // approval_mode — how this stage's approval gate is cleared. "human" (the
+  // default when absent) requires a typed human turn since the gate opened, read
+  // by the human-presence guard in aidlc-state.ts. "autonomous" clears the gate
+  // without that turn — for a stage whose approval is gated by a mechanism other
+  // than live human presence (e.g. an emitted, work-bound review verdict on a
+  // scheduled run). Names the presence axis on the stage itself so any scope can
+  // declare it, rather than deriving it from a workflow-wide autonomy flag.
+  approval_mode?: "human" | "autonomous";
   // when — structured activation predicate (plugin mechanism, Layer 4). A
   // single-key map; the one predicate is `producer-in-plan: <artifact-slug>`.
   // Accepted for shape here; the compile-time grid evaluation is separate.
@@ -138,6 +146,8 @@ export const VALID_MODES = ["inline", "subagent", "pipeline", "mob", "agent-team
 // reviewer_max_iterations-requires-reviewer coupling).
 export const ENSEMBLE_MODES = ["pipeline", "mob"] as const;
 
+export const VALID_APPROVAL_MODES = ["human", "autonomous"] as const;
+
 export const VALID_CONDITIONAL_ON = ["brownfield", "greenfield"] as const;
 
 // The conductor itself, named as a lead_agent on the bootstrap initialization
@@ -179,7 +189,7 @@ const REQUIRED_FIELDS = [
   "outputs",
 ] as const;
 
-const OPTIONAL_FIELDS = ["number", "name", "plugin", "for_each", "workspace_requires", "optional_produces", "produces_kinds", "sensors", "scopes", "reviewer", "review_artifact", "reviewer_max_iterations", "review_class", "summary_confirmation", "when", "required_sections"] as const;
+const OPTIONAL_FIELDS = ["number", "name", "plugin", "for_each", "workspace_requires", "optional_produces", "produces_kinds", "sensors", "scopes", "reviewer", "review_artifact", "reviewer_max_iterations", "approval_mode", "review_class", "summary_confirmation", "when", "required_sections"] as const;
 
 const KNOWN_FIELDS = new Set<string>([...REQUIRED_FIELDS, ...OPTIONAL_FIELDS]);
 
@@ -395,6 +405,12 @@ export function validateStageFrontmatter(
       errors.push("review_class requires a reviewer");
     }
   }
+
+  // approval_mode — optional closed union (human | autonomous). Absent -> human
+  // (the default the human-presence guard applies). Mirrors `mode`'s validation:
+  // a type error is reported by checkString, an out-of-union token by checkEnum.
+  checkString(o, "approval_mode", errors);
+  checkEnum(o, "approval_mode", VALID_APPROVAL_MODES, errors);
 
   // required_sections — optional list of non-empty section names (plugin
   // contribution §6). Shape only; the required-sections sensor enforces content.

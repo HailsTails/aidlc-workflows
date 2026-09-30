@@ -30,6 +30,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseBuildVersion, VERSION_ID_PATTERN } from "../core/tools/aidlc-channel.ts";
 import { targetTriple } from "../core/tools/aidlc-install-paths.ts";
+import { sessionsDir } from "../core/tools/aidlc-lib.ts";
 
 // The version every built artifact must report: the source version, or the
 // preview id a release build stamps through AIDLC_BUILD_VERSION.
@@ -313,6 +314,7 @@ function pathlessEnv(projectDir?: string): NodeJS.ProcessEnv {
 
 function installedProject(prefix: string): string {
   const project = mkdtempSync(join(tmpdir(), prefix));
+  mkdirSync(join(project, ".git"));
   cpSync(join(REPO_ROOT, "dist-release", "claude"), project, { recursive: true });
   return project;
 }
@@ -580,6 +582,7 @@ function compiledKiroNewWorkRoutingGate(artifact: string): GateResult {
       ),
       { force: true },
     );
+    rmSync(sessionsDir(project), { recursive: true, force: true });
     const routed = run(
       artifact,
       [
@@ -1335,6 +1338,7 @@ function planApprovalAdapterGate(
   harness: "codex" | "kiro",
 ): GateResult {
   const project = mkdtempSync(join(tmpdir(), `aidlc-binary-plan-${harness}-`));
+  mkdirSync(join(project, ".git"));
   try {
     cpSync(
       join(REPO_ROOT, "dist", harness, harness === "codex" ? ".codex" : ".kiro"),
@@ -1425,6 +1429,7 @@ function statuslineGate(artifact: string): GateResult {
 
 function codexAdapterGate(artifact: string): GateResult {
   const project = mkdtempSync(join(tmpdir(), "aidlc-binary-codex-"));
+  mkdirSync(join(project, ".git"));
   try {
     cpSync(join(REPO_ROOT, "dist-release", "codex", ".codex"), join(project, ".codex"), {
       recursive: true,
@@ -1514,6 +1519,7 @@ function cursorAdapterGate(artifact: string): GateResult {
 
 function copilotAdapterGate(artifact: string): GateResult {
   const project = mkdtempSync(join(tmpdir(), "aidlc-binary-copilot-"));
+  mkdirSync(join(project, ".git"));
   try {
     cpSync(join(REPO_ROOT, "dist-release", "copilot", ".aidlc"), join(project, ".aidlc"), {
       recursive: true,
@@ -1563,6 +1569,7 @@ function copilotAdapterGate(artifact: string): GateResult {
 // both for the core hook to run.
 function copilotLegacyProjectGate(artifact: string): GateResult {
   const project = mkdtempSync(join(tmpdir(), "aidlc-binary-copilot-280-"));
+  mkdirSync(join(project, ".git"));
   try {
     cpSync(join(REPO_ROOT, "dist-release", "copilot", ".aidlc"), join(project, ".aidlc"), {
       recursive: true,

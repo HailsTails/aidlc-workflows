@@ -45,6 +45,9 @@ const manifest: HarnessManifest = {
   harnessDir: ".aidlc",
   orchestratorSkillPath: ".github/skills/aidlc/SKILL.md",
   tierFlavor: "copilot",
+  // Copilot auto-reads the project-root AGENTS.md on both surfaces, and that
+  // file @-imports the active-space memory layers.
+  baseRuleDelivery: "ambient",
   rootIntegrations: [
     {
       path: ".gitignore",

@@ -184,10 +184,11 @@ describe("t242 plugin manifest and hash contract", () => {
     writeFileSync(path, readFileSync(path, "utf-8").replaceAll("\n", "\r\n"));
     expect(pluginSourceHash(root)).toBe(first);
     writeFileSync(join(root, "hooks", "compose.ts"), "changed host wrapper\n");
-    expect(pluginSourceHash(root)).toBe(first);
+    const changedHookHash = pluginSourceHash(root);
+    expect(changedHookHash).not.toBe(first);
     const renamed = join(root, "stages", "construction", "renamed.md");
     renameSync(path, renamed);
-    expect(pluginSourceHash(root)).not.toBe(first);
+    expect(pluginSourceHash(root)).not.toBe(changedHookHash);
     expect(readFileSync(renamed, "utf-8")).toContain("{{HARNESS_DIR}}");
   });
 });

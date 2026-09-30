@@ -1,5 +1,6 @@
 ---
 slug: nfr-design
+number: 3.3
 name: NFR Design
 phase: construction
 execution: CONDITIONAL

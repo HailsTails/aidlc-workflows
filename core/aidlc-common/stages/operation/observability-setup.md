@@ -1,5 +1,7 @@
 ---
 slug: observability-setup
+number: 4.4
+name: Observability Setup
 phase: operation
 execution: CONDITIONAL
 condition: Execute when monitoring, dashboards, alarms, or tracing need configuration

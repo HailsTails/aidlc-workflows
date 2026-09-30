@@ -1,5 +1,7 @@
 ---
 slug: performance-validation
+number: 4.6
+name: Performance Validation
 phase: operation
 execution: CONDITIONAL
 condition: Execute when NFR performance targets need validation under load

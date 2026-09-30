@@ -131,6 +131,26 @@ export type HarnessManifest = {
    * never infers it from the harness name.
    */
   tierFlavor: "claude" | "codex" | "kiro" | "opencode" | "copilot" | "cursor";
+  /**
+   * How this harness delivers the BASE method layers (the space `memory/`
+   * files: org / team / project / phases) into a session.
+   *
+   * - "ambient": the harness loads them itself on every turn through its own
+   *   native include — Claude's `@`-import stub, Kiro resources/steering,
+   *   Codex `AIDLC_RULES_DIR`, opencode's `instructions` glob, Copilot's
+   *   `AGENTS.md` imports. The engine must NOT re-transport their text: a
+   *   session already holding them reads a second copy as repetition, and
+   *   that is what trains a lane to skim the whole stage-start block.
+   * - "explicit": the harness has no such include, so the engine is the ONLY
+   *   channel — the base layers are transported as content or the stage runs
+   *   without its method.
+   *
+   * DECLARED, never inferred. Guessing this from prose or from the harness
+   * name is how a non-ambient harness silently loses its rules, so a manifest
+   * that omits it fails closed to "explicit" (transport everything, the
+   * pre-existing behaviour) rather than to the optimisation.
+   */
+  baseRuleDelivery: "ambient" | "explicit";
   /** core/<src> → <harnessDir>/<dst> projections. */
   coreDirs: DirMap[];
   /** harness/<name>/<src> → <harnessDir>/<dst> authored-file copies. */

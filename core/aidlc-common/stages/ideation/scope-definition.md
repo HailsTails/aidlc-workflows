@@ -1,5 +1,7 @@
 ---
 slug: scope-definition
+number: 1.4
+name: Scope Definition
 phase: ideation
 execution: ALWAYS
 condition: Always executes — defines the scope boundary and prioritized backlog

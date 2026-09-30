@@ -271,7 +271,8 @@ describe("t117 explicit resume routing", () => {
     const r = runOrchestrateNext(ORCH, p, ["--resume"]);
     expect(r.directive?.kind).toBe("run-stage");
     expect(r.directive?.stage).toBe("code-generation");
-    expect(r.steering.length).toBeGreaterThan(0);
+    expect(r.steering).toEqual([]);
+    expect(r.directive?.rules_in_context).toContain("aidlc/spaces/default/memory/phases/construction.md");
   });
 
   // --- Test 6: resume over a mid-phase fixture → current stage ---
@@ -280,7 +281,8 @@ describe("t117 explicit resume routing", () => {
     const r = runOrchestrateNext(ORCH, p, ["--resume"]);
     expect(r.directive?.kind).toBe("run-stage");
     expect(r.directive?.stage).toBe("feasibility");
-    expect(r.steering.length).toBeGreaterThan(0);
+    expect(r.steering).toEqual([]);
+    expect(r.directive?.rules_in_context).toContain("aidlc/spaces/default/memory/phases/ideation.md");
   });
 });
 

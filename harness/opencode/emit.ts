@@ -166,6 +166,16 @@ export default function emit(ctx: EmitContext): void {
         ),
       ),
   });
+  // Plugin-contributed hook rows, read at runtime by the adapter. Beside the
+  // hook BODIES (which arrive through the normal contribution path) rather than
+  // beside the plugin file, because that is the directory the adapter already
+  // resolves relative to the project. An empty array when no plugin contributes,
+  // so the adapter's read stays unconditional.
+  emissions.push({
+    path: join(distRoot, ".aidlc", "hooks", "plugin-hook-rows.json"),
+    content: () =>
+      JSON.stringify([], null, 2) + "\n",
+  });
 
   // Clean-sweep the shell so a removed persona/command cannot linger. In
   // --check mode the packager supplies an isolated distRoot, then compares the

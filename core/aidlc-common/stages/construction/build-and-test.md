@@ -1,5 +1,6 @@
 ---
 slug: build-and-test
+number: 3.6
 name: Build and Test
 phase: construction
 execution: ALWAYS

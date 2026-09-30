@@ -115,6 +115,7 @@ function seedShell(dir: string): void {
 // cwd to the scratch dir, exactly what a real install sees.
 function scratchProject(withState: boolean): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "t149-")));
+  mkdirSync(join(dir, ".git"));
   cpSync(CODEX_TREE, join(dir, ".codex"), { recursive: true });
   seedShell(dir);
   if (withState) {
@@ -707,17 +708,38 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
     }
   });
 
-  test("6: update_plan in_progress step with [slug] suffix syncs the state file", () => {
+  test("6: update_plan advances the state to its in_progress stage", () => {
     const dir = scratchProject(true);
     try {
       const r = runAdapter(
         dir,
         "sync-workflow-state",
-        withCwd(FIXTURES.postToolUse_updatePlan_slug, dir),
+        withCwd({
+          ...FIXTURES.postToolUse_updatePlan_slug,
+          tool_input: {
+            plan: [{ step: "Running User Stories [user-stories]", status: "in_progress" }],
+          },
+        }, dir),
       );
       expect(r.code).toBe(0);
       const after = readFileSync(seededStateFile(dir), "utf-8");
-      expect(/\*\*Current Stage\*\*:\s*intent-capture/.test(after)).toBe(true);
+      expect(after).toContain("**Current Stage**: user-stories");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("update_plan refuses to move the current stage backward", () => {
+    const dir = scratchProject(true);
+    try {
+      const before = readFileSync(seededStateFile(dir), "utf-8");
+      const result = runAdapter(
+        dir,
+        "sync-workflow-state",
+        withCwd(FIXTURES.postToolUse_updatePlan_slug, dir),
+      );
+      expect(result.code).toBe(0);
+      expect(readFileSync(seededStateFile(dir), "utf-8")).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

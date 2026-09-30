@@ -1,0 +1,73 @@
+{
+  "$comment": "Ownership map for every stage transition the pipeline performs. Every transition names exactly ONE owning lane and the capabilities that lane's identity needs; rin-gates-status.ts enforces totality (an unowned transition fails the run) and stamps the owner onto each record's next action. Consumed by rin-gates-status.ts, cited by the gate stage files, validated by rin-gates-derivation-selftest.spec.ts. Capabilities are stated as ROLES, never as a command, host, or person: this file is projected verbatim (token substitution reaches .md prose only), so a literal name here would ship to every adopter as an instruction they cannot follow. Each project binds the roles to its own commands and identities through projectIdentity in harness.config.json.",
+
+  "transitions": {
+    "spec-drafted": {
+      "gate": "rin-gate-0-reconcile",
+      "owningLane": "intake",
+      "actor": "autonomous gate lane, committing under the authoring identity",
+      "requiredCapabilities": ["record-dir write + commit"]
+    },
+    "answered": {
+      "gate": "rin-gate-1-framing",
+      "owningLane": "spec",
+      "actor": "autonomous gate lane; the operator answers a framed question only when the frame forks on the goal",
+      "requiredCapabilities": ["record-dir write + commit"]
+    },
+    "planned": {
+      "gate": "rin-gate-2-plan-review",
+      "owningLane": "spec",
+      "actor": "autonomous gate lane",
+      "requiredCapabilities": ["record-dir write + commit"]
+    },
+    "approved": {
+      "gate": "rin-gate-3-interface-lock",
+      "owningLane": "spec",
+      "actor": "autonomous gate lane; the lock is the approval artefact",
+      "requiredCapabilities": ["record-dir write + commit"]
+    },
+    "implemented": {
+      "gate": "rin-gate-4-implement",
+      "owningLane": "implement",
+      "actor": "gate-4 team in a worktree, committing under the authoring identity",
+      "requiredCapabilities": [
+        "worktree + branch push under the authoring identity",
+        "open a pull request for the pushed branch"
+      ]
+    },
+    "merged": {
+      "gate": "rin-gate-5-review-cycle",
+      "owningLane": "review",
+      "actor": "gate-5 review lane, AFTER convergence (an APPROVE verdict from the reviewing identity, CI green, and no standing objection from the operator)",
+      "requiredCapabilities": [
+        "post a review verdict under an identity distinct from the authoring identity",
+        "merge under the authoring identity, through a path that refuses a merge whose latest review verdict is not APPROVED"
+      ],
+      "note": "MANAGED AUTONOMOUS: the lane merges itself when the five conditions hold (APPROVE on the current head, CI green, mergeable CLEAN, no human comment or commit newer than the verdict, no open hold from the operator) and reads the merge back before recording the transition. The operator's veto is standing — a comment newer than the verdict returns the pull request to review scope. 'Not my lane' on a converged pull request is an ownership violation, never an outcome."
+    }
+  },
+
+  "doneChecks": {
+    "operated": {
+      "gate": "rin-gate-6-operate",
+      "owningLane": "operate",
+      "actor": "scheduled operate lane; deploys to the deployment target, verifies the live path, closes the books; STOPS flagged when the target is unreachable, a deploy landmine is flagged on the intent, or the live verification cannot force the real path this run",
+      "requiredCapabilities": [
+        "reach the deployment target and run its deploy path",
+        "write the bookkeeping close to the project's notes surface (inline + flagged when that surface is unavailable)"
+      ]
+    }
+  },
+
+  "outOfBandCapabilities": {
+    "$comment": "Actions the pipeline needs that NO agent lane can perform. A lane that hits one records the gap against the named owner instead of rediscovering it. Owners are roles; bind them to people in your own project records.",
+    "workflows-push": {
+      "owner": "operator",
+      "reason": "where the forge withholds CI-workflow write permission from the authoring identity, a change under the CI workflow directory needs a human push or a permission grant"
+    },
+    "defer-ack": {
+      "owner": "operator",
+      "reason": "the disposition contract forbids the author lane self-granting a defer; only the operator's acknowledgement closes a defer row"
+    }
+  }
+}

@@ -1,5 +1,7 @@
 ---
 slug: deployment-pipeline
+number: 4.1
+name: Deployment Pipeline
 phase: operation
 execution: CONDITIONAL
 condition: Execute when CD pipeline needs creation or significant modification

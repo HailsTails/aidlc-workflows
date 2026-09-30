@@ -1,0 +1,165 @@
+# Building the Rin fork
+
+This fork starts from upstream AI-DLC 2.9.0 and includes the reusable Rin plugin.
+The upstream release installer in the main guide installs upstream binaries.
+It does not distribute this fork. The supported fork path currently builds
+from source using the existing repository packager.
+
+## Build
+
+Use Bun and the development dependencies from this repository's lockfile:
+
+```bash
+bun install --frozen-lockfile
+bun scripts/package.ts
+bun scripts/package.ts --check
+```
+
+The packager creates core distributions in `dist/<harness>/` and plugin
+projections in `dist/plugins/rin/<harness>/`. Source tests and fixtures remain
+in the repository and are excluded from installed runtime payloads.
+
+Rin declares native hooks for Claude, Codex, Copilot, Cursor and OpenCode.
+Kiro's two projections declare no Rin hooks. Build a single plugin projection
+with the same packager:
+
+```bash
+bun scripts/package.ts plugin build rin claude /absolute/output/rin-claude
+```
+
+The standalone generic `plugin build` CLI refuses plugins declaring native
+hooks. Use the repository command above for Rin; copying hook files without
+their registrations does not produce a usable installation.
+
+## Dependencies at runtime
+
+Consumers run the installed TypeScript-named tools with Bun. They do not need
+this repository's `node_modules` or a separate dependency installation.
+The existing packager bundles Zod, jsonc-parser and the TypeScript compiler API
+used by six audit tools. Relative imports keep the existing installed paths;
+Node built-in modules remain runtime imports. Bundling the compiler adds
+substantial payload size, which is a recorded candidate for later work rather
+than another loader or dependency install in this migration.
+
+## Consumer ownership
+
+Core configuration and plugin composition use their existing installation
+paths. Consumers own service configuration, credentials, project identity,
+operational knowledge, model choices and permissions. The public plugin does
+not carry Rin's private operating lanes.
+
+Ordinary composition retains the upstream no-clobber behavior. Explicit plugin
+sync can replace unchanged owned files and remove unchanged owned files absent
+from the next projection, including renamed stages. Unknown files are preserved;
+modified owned files refuse the transaction. Legacy files without recorded
+ownership hashes need a genuine baseline sync before deletion can be authorized.
+
+## Fresh consumer installation
+
+The following source-build route uses Claude as the concrete example. Replace
+`/absolute/fork` with this fork checkout and `/absolute/consumer` with the
+consumer project. Run these commands in a normal operator shell with Bun
+available. The consumer does not need the fork's development dependencies.
+
+First install the built core distribution:
+
+```bash
+bun /absolute/fork/core/tools/aidlc-init.ts config \
+  --from /absolute/fork/dist/claude \
+  --project-dir /absolute/consumer
+```
+
+Bind the existing composer and sync commands to this consumer and its built
+plugin projection. All three plugin-root aliases point to the same projection,
+so an inherited host binding cannot introduce a different plugin root:
+
+```bash
+export AIDLC_PROJECT_DIR=/absolute/consumer
+export CLAUDE_PROJECT_DIR=/absolute/consumer
+export AIDLC_HARNESS_DIR=.claude
+export AIDLC_HARNESS_NAME=claude
+export AIDLC_PLUGIN_ROOT=/absolute/fork/dist/plugins/rin/claude
+export PLUGIN_ROOT=/absolute/fork/dist/plugins/rin/claude
+export CLAUDE_PLUGIN_ROOT=/absolute/fork/dist/plugins/rin/claude
+
+bun /absolute/fork/dist/plugins/rin/claude/hooks/aidlc-plugin-compose.ts
+bun /absolute/fork/core/tools/aidlc-init.ts config project \
+  --plugins aidlc,rin --yes --project-dir /absolute/consumer
+bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
+  --project-dir /absolute/consumer
+bun /absolute/consumer/.claude/tools/aidlc-plugin.ts list \
+  --project-dir /absolute/consumer --verbose
+```
+
+Initial composition registers the plugin as available before explicit project
+selection. `config project` selects the installed names and does not imply MCP
+consent. Sync establishes the existing file-ownership records; ordinary
+no-clobber composition alone is not proof that old installed bodies can be
+deleted. Confirm each command succeeds before continuing and inspect any
+reported composition drops or ownership conflicts.
+
+For another harness, substitute all three values in this table: the core
+distribution, plugin projection and installed engine directory. Keep the
+explicit harness name because Copilot and OpenCode share `.aidlc`.
+
+| Harness name | Core distribution | Plugin projection | Installed engine directory |
+|---|---|---|---|
+| `claude` | `dist/claude` | `dist/plugins/rin/claude` | `.claude` |
+| `codex` | `dist/codex` | `dist/plugins/rin/codex` | `.codex` |
+| `copilot` | `dist/copilot` | `dist/plugins/rin/copilot` | `.aidlc` |
+| `cursor` | `dist/cursor` | `dist/plugins/rin/cursor` | `.cursor` |
+| `opencode` | `dist/opencode` | `dist/plugins/rin/opencode` | `.aidlc` |
+| `kiro` | `dist/kiro` | `dist/plugins/rin/kiro` | `.kiro` |
+| `kiro-ide` | `dist/kiro-ide` | `dist/plugins/rin/kiro-ide` | `.kiro` |
+
+Codex consumers use a Git repository for native project-hook discovery. The
+existing composition and sync routes finalize the project trust seed against
+the resulting hook indices; they do not write the user's Codex configuration.
+
+## Updating an existing consumer
+
+Build the new fork source with the commands above. Rebind the same environment
+variables to the intended consumer and current built projection. Inspect the
+core refresh plan, then apply it and explicitly synchronize owned plugin files:
+
+```bash
+bun /absolute/fork/core/tools/aidlc-init.ts config \
+  --from /absolute/fork/dist/claude \
+  --project-dir /absolute/consumer --dry-run --verbose
+bun /absolute/fork/core/tools/aidlc-init.ts config \
+  --from /absolute/fork/dist/claude \
+  --project-dir /absolute/consumer
+bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
+  --project-dir /absolute/consumer
+bun /absolute/consumer/.claude/tools/aidlc-plugin.ts list \
+  --project-dir /absolute/consumer --verbose
+```
+
+Core refresh preserves proven selected-plugin registrations and their ownership
+sidecars. Repeated refresh retains that proof. The explicit sync step opts into
+replacement and deletion of unchanged recorded plugin files, including the old
+stage file after a stage rename. Unrecorded legacy files remain preserved;
+sync cannot manufacture their historical ownership. Modified or ambiguously
+missing owned native registrations refuse even when the plugin projection
+itself has not changed. Resolve the reported conflict before retrying; neither
+core refresh nor sync treats unrelated consumer edits as permission to overwrite.
+
+To deselect Rin, record core-only selection with the same environment bindings,
+then synchronize:
+
+```bash
+bun /absolute/fork/core/tools/aidlc-init.ts config project \
+  --plugins aidlc --yes --project-dir /absolute/consumer
+bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
+  --project-dir /absolute/consumer
+```
+
+This removes recorded unchanged Rin registrations and owned bodies. Unknown
+files are preserved. A retained compose bootstrap respects the deselection and
+does not reinstall those bodies or registrations.
+
+## Delivery status
+
+These instructions describe the maintained source-build route and its isolated
+installation tests. Fork release publication and migration of the actual
+consumer checkouts remain pending; this page does not claim either is complete.

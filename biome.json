@@ -17,6 +17,7 @@
     "includes": [
       "**",
       "!tests/fixtures/v05-mr9-sensor-fire/failing-linter/**",
+      "!plugins/*/tools/test-fixtures/**",
       "!dist/**"
     ]
   },

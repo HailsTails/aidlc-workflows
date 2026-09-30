@@ -53,6 +53,14 @@ function installHarness(proj: string, harness: Harness): string {
   cpSync(join(REPO_ROOT, "dist", harness.name, harness.dir), destination, {
     recursive: true,
   });
+  const metadata = join(destination, "tools", "data", "harness.json");
+  writeFileSync(
+    metadata,
+    readFileSync(metadata, "utf8").replace(
+      '"baseRuleDelivery": "ambient"',
+      '"baseRuleDelivery": "explicit"',
+    ),
+  );
   cpSync(
     join(REPO_ROOT, "core", "tools", "aidlc-lib.ts"),
     join(destination, "tools", "aidlc-lib.ts"),

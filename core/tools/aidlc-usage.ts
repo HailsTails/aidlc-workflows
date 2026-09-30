@@ -25,8 +25,8 @@
 // across concurrent sub-agent files, so `(sourceFile, uuid)` is the only unique
 // key) are documented in docs/reference/06-hooks-and-tools.md.
 
-import { dlopen, ptr } from "bun:ffi";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import {
   closeSync,
   existsSync,
@@ -1018,22 +1018,54 @@ const USAGE_LOCK_INTENT = "__usage-ledger__";
 const USAGE_LOCK_SPACE = "__runtime__";
 // The directory lock's stale-reaper restore gap can admit two holders on Win32.
 // A kernel mutex closes that gap and transfers ownership after an abandoned owner.
-const WIN32_USAGE_MUTEX =
-  process.platform === "win32"
-    ? dlopen("kernel32.dll", {
-        CreateMutexW: { args: ["ptr", "i32", "ptr"], returns: "ptr" },
-        WaitForSingleObject: { args: ["ptr", "u32"], returns: "u32" },
-        ReleaseMutex: { args: ["ptr"], returns: "i32" },
-        CloseHandle: { args: ["ptr"], returns: "i32" },
-      })
-    : null;
+// RIN DIVERGENCE, same class as drift-register entry 18 one file over. 2.9.0
+// introduced this mutex with a STATIC `import { dlopen, ptr } from "bun:ffi"`
+// and resolved the library at MODULE SCOPE. Both are unloadable under Node: the
+// import resolves at load time whatever the platform, and this initialiser runs
+// on import even off win32. `aidlc-lib.ts` already carries the lazy shim and
+// states the reason; 2.9.0 reintroduced the eager form here, which took four
+// vendor-drift suites down with "Cannot find package 'bun:ffi'" before any test
+// body ran. Resolution is deferred to first use, so behaviour under Bun on
+// win32 is unchanged and every other platform never loads the FFI at all.
+type BunFfi = Pick<typeof import("bun:ffi"), "dlopen" | "ptr">;
+
+const loadBunFfi = (): BunFfi | null => {
+  try {
+    return createRequire(import.meta.url)("bun:ffi") as BunFfi;
+  } catch {
+    return null;
+  }
+};
+
+const openWindowsUsageMutex = (ffi: BunFfi) =>
+  ffi.dlopen("kernel32.dll", {
+    CreateMutexW: { args: ["ptr", "i32", "ptr"], returns: "ptr" },
+    WaitForSingleObject: { args: ["ptr", "u32"], returns: "u32" },
+    ReleaseMutex: { args: ["ptr"], returns: "i32" },
+    CloseHandle: { args: ["ptr"], returns: "i32" },
+  });
+
+type WindowsUsageMutex = ReturnType<typeof openWindowsUsageMutex>;
+let win32UsageMutex: WindowsUsageMutex | null | undefined;
+
+const windowsUsageMutex = (): WindowsUsageMutex | null => {
+  if (win32UsageMutex !== undefined) return win32UsageMutex;
+  const ffi = process.platform === "win32" ? loadBunFfi() : null;
+  win32UsageMutex = ffi === null ? null : openWindowsUsageMutex(ffi);
+  return win32UsageMutex;
+};
 
 const WAIT_OBJECT_0 = 0;
 const WAIT_ABANDONED = 0x80;
 const USAGE_MUTEX_WAIT_MS = 5000;
 
 function withUsageLedgerLock(projectDir: string, fn: () => Ledger): Ledger {
-  if (WIN32_USAGE_MUTEX !== null) {
+  const mutex = windowsUsageMutex();
+  if (mutex !== null) {
+    const ffi = loadBunFfi();
+    if (ffi === null) {
+      throw new Error("The Windows usage-ledger mutex needs bun:ffi");
+    }
     const identity = auditLockIdentity(
       projectDir,
       USAGE_LOCK_INTENT,
@@ -1041,16 +1073,16 @@ function withUsageLedgerLock(projectDir: string, fn: () => Ledger): Ledger {
     );
     const hash = createHash("sha256").update(identity).digest("hex").slice(0, 32);
     const name = Buffer.from(`Global\\aidlc-usage-${hash}\0`, "utf16le");
-    const handle = WIN32_USAGE_MUTEX.symbols.CreateMutexW(null, 0, ptr(name));
+    const handle = mutex.symbols.CreateMutexW(null, 0, ffi.ptr(name));
     if (handle === null) {
       throw new Error("Failed to create the Windows usage-ledger mutex");
     }
-    const waitResult = WIN32_USAGE_MUTEX.symbols.WaitForSingleObject(
+    const waitResult = mutex.symbols.WaitForSingleObject(
       handle,
       USAGE_MUTEX_WAIT_MS,
     );
     if (waitResult !== WAIT_OBJECT_0 && waitResult !== WAIT_ABANDONED) {
-      WIN32_USAGE_MUTEX.symbols.CloseHandle(handle);
+      mutex.symbols.CloseHandle(handle);
       throw new Error(
         `Failed to acquire the Windows usage-ledger mutex: ${waitResult}`,
       );
@@ -1058,8 +1090,8 @@ function withUsageLedgerLock(projectDir: string, fn: () => Ledger): Ledger {
     try {
       return fn();
     } finally {
-      WIN32_USAGE_MUTEX.symbols.ReleaseMutex(handle);
-      WIN32_USAGE_MUTEX.symbols.CloseHandle(handle);
+      mutex.symbols.ReleaseMutex(handle);
+      mutex.symbols.CloseHandle(handle);
     }
   }
   return withAuditLock(

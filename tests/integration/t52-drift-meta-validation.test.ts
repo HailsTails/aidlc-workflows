@@ -162,6 +162,32 @@ describe("t52 — meta-test on t48 drift detection (migrated from t52-drift-meta
     expect(notOkLines(cleanResult.out)).toEqual([]);
   });
 
+  test("forward check rejects a terminal factory disconnected from the audit writer", () => {
+    const sandbox = makeSandbox();
+    const file = distFile(sandbox, join("tools", "aidlc-sensor.ts"));
+    const before = readFileSync(file, "utf-8");
+    const after = before.replace("\t\trow.event,", '\t\t"SENSOR_TRIGGERED",');
+    expect(after).not.toBe(before);
+    writeFileSync(file, after);
+    const result = runT48(sandbox);
+    expect(result.status).not.toBe(0);
+    expect(notOkLines(result.out)).toEqual(expect.arrayContaining([expect.stringContaining("forward:")]));
+    expect(result.out).toContain("SENSOR_PASSED");
+  }, 120000);
+
+  test("forward and reverse checks reject a renamed event in the connected terminal factory", () => {
+    const sandbox = makeSandbox();
+    const file = distFile(sandbox, join("tools", "aidlc-sensor-verdict.ts"));
+    const before = readFileSync(file, "utf-8");
+    const after = before.replaceAll('event: "SENSOR_PASSED"', 'event: "SENSOR_PASSED_RENAMED"');
+    expect(after).not.toBe(before);
+    writeFileSync(file, after);
+    const result = runT48(sandbox);
+    expect(result.status).not.toBe(0);
+    expect(notOkLines(result.out)).toEqual(expect.arrayContaining([expect.stringContaining("forward:"), expect.stringContaining("reverse:")]));
+    expect(result.out).toContain("SENSOR_PASSED_RENAMED");
+  }, 120000);
+
   test("forward check catches a renamed emission [.sh test 1]", () => {
     const sb = makeSandbox();
     // Rename the GATE_APPROVED emission at its call site. The forward check then

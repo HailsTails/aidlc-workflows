@@ -253,13 +253,14 @@ async function waitForPresent(paths: readonly string[]): Promise<void> {
 
 function fixture(
   version = AIDLC_VERSION,
-  options: Pick<ReleaseFixtureOptions, "binary"> = {},
+  options: Pick<ReleaseFixtureOptions, "binary" | "distributions"> = {},
 ): string {
   const root = temp("aidlc-t241-release-");
   writeReleaseFixture({
     root,
     repoRoot: REPO_ROOT,
     version,
+    distributions: ["claude"],
     ...options,
   });
   return root;
@@ -872,7 +873,7 @@ describe("t244 management lifecycle", () => {
   }, 60_000);
 
   test("all harness runtimes install together and config selects one project harness", () => {
-    const release = fixture(AIDLC_VERSION, { binary: "executable" });
+    const release = fixture(AIDLC_VERSION, { binary: "executable", distributions: RELEASE_HARNESSES });
     const manifest = JSON.parse(
       readFileSync(join(release, "version.json"), "utf-8"),
     ) as {
@@ -934,7 +935,7 @@ describe("t244 management lifecycle", () => {
   }, 60_000);
 
   test("a missing declared runtime makes the retained version incomplete", () => {
-    const release = fixture(AIDLC_VERSION, { binary: "executable" });
+    const release = fixture(AIDLC_VERSION, { binary: "executable", distributions: RELEASE_HARNESSES });
     const machine = temp("aidlc-t244-missing-runtime-");
     const project = temp("aidlc-t244-missing-runtime-project-");
     mkdirSync(join(project, ".git"));

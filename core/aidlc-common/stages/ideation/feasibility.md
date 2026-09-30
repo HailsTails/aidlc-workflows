@@ -1,5 +1,6 @@
 ---
 slug: feasibility
+number: 1.3
 name: Feasibility & Constraints
 phase: ideation
 execution: CONDITIONAL

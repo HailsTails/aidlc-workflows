@@ -181,7 +181,7 @@ describe("t114 happy path: in-flight current stage -> run-stage", () => {
       kind: string;
       stage_validity?: unknown;
     };
-    expect(directive.kind).toBe("load-steering");
+    expect(directive.kind).toBe("run-stage");
     expect(directive.stage_validity).toBeUndefined();
   });
 });

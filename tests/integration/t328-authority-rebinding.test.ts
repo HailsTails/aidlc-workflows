@@ -487,7 +487,9 @@ describe("t328 (1) the reported sequence: approve a plan and have it stick", () 
 
   test("a repeat ask mid-delivery restarts at part one, never hands back a middle part", async () => {
     const p = await project("feature", (dir) => {
-      // Inflate the rule bundle until steering has to be delivered in parts.
+      const harnessFile = join(dir, ".claude", "tools", "data", "harness.json");
+      const harness = JSON.parse(readFileSync(harnessFile, "utf-8"));
+      writeFileSync(harnessFile, `${JSON.stringify({ ...harness, baseRuleDelivery: "explicit" }, null, 2)}\n`);
       appendFileSync(
         join(dir, "aidlc", "spaces", "default", "memory", "project.md"),
         `\n\n## Bulk\n\n${"- filler rule line to inflate the bundle\n".repeat(6000)}`,

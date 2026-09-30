@@ -14,6 +14,7 @@ import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -44,6 +45,7 @@ import {
   seedBoltDag,
   seededRecordDir,
   seededStateFile,
+  withEnvAndFreshCaches,
 } from "../harness/fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 
@@ -579,6 +581,15 @@ function writeDependencyArtifact(
 describe("t278 engine-emitted wave contract", () => {
   test("mixed-kind entries are independently resolved and keep parent versus unit memory distinct", () => {
     const proj = project("infrastructure-design");
+    writeFileSync(join(proj, "aidlc", "spaces", "default", "memory", "team.md"), "# Team\nReview each infrastructure boundary.\n");
+    writeFileSync(join(proj, "aidlc", "spaces", "default", "memory", "project.md"), "# Project\nPreserve each unit's deployment contract.\n");
+    const harnessRoot = join(proj, ".claude");
+    cpSync(AIDLC_SRC, harnessRoot, { recursive: true });
+    const harnessMetadata = join(harnessRoot, "tools", "data", "harness.json");
+    writeFileSync(
+      harnessMetadata,
+      readFileSync(harnessMetadata, "utf-8").replace('"baseRuleDelivery": "ambient"', '"baseRuleDelivery": "explicit"'),
+    );
     const knowledgeDir = join(
       proj,
       "aidlc",
@@ -598,7 +609,10 @@ describe("t278 engine-emitted wave contract", () => {
       { name: "contract", kind: "spec" },
     ]);
 
-    const result = next(proj);
+    const result = withEnvAndFreshCaches(
+      { AIDLC_RUNTIME_HARNESS_ROOT: harnessRoot },
+      () => next(proj),
+    );
     const directive = result.directive;
     expect(directive.kind).toBe("run-stage");
     expect(directive.stage).toBe("infrastructure-design");

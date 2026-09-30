@@ -1,5 +1,7 @@
 ---
 slug: refined-mockups
+number: 2.5
+name: Refined Mockups
 phase: inception
 execution: CONDITIONAL
 condition: Execute when user-facing UI exists and rough mockups were produced in Ideation; for APIs, refine interaction diagrams

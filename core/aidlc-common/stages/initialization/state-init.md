@@ -1,5 +1,6 @@
 ---
 slug: state-init
+number: 0.3
 name: State Initialization
 phase: initialization
 execution: ALWAYS

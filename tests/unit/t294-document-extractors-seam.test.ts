@@ -120,6 +120,7 @@ const HARNESSES = readdirSync(join(REPO, "harness"), { withFileTypes: true })
 // literals -- `name` arrived from upstream and had to be added in exactly this
 // many places.
 const BASE_KEYS = [
+  "baseRuleDelivery",
   "configNextStep",
   "distribution",
   "harnessDir",

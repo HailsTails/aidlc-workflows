@@ -29,6 +29,7 @@ import {
   errorMessage,
   hookChildEnv,
   hookDebug,
+  hookPayloadCwd,
   hooksHealthDir,
   isClaudeCodeHookInput,
   isoTimestamp,
@@ -37,7 +38,7 @@ import {
   readSessionIntentUuid,
   recordHookDrop,
   resolveWorkflowSelection,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   runtimeGraphPath,
   validSessionId,
   harnessDir,
@@ -98,7 +99,10 @@ function bindCreatedIntentToInvokingSession(
 }
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 hookDebug(projectDir, "rebuild-stage-graph", "invoked");
 
 // 1. TTY guard — exit cleanly when invoked outside a piped stdin context

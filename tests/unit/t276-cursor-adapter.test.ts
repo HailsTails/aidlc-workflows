@@ -95,6 +95,7 @@ function setCurrentStage(project: string, stage: string): void {
 /** A workspace-shell project with the shipped .cursor engine installed. */
 function installedProject(): string {
   const root = createTestProject();
+  mkdirSync(join(root, ".git"));
   scratch.push(root);
   cpSync(CURSOR_DIST, join(root, ".cursor"), { recursive: true });
   return root;
@@ -188,6 +189,8 @@ function runAdapter(
     GIT_PAGER: undefined,
     GIT_CONFIG_GLOBAL: join(projectDir, ".absent-global-gitconfig"),
     GIT_CONFIG_SYSTEM: join(projectDir, ".absent-system-gitconfig"),
+    AIDLC_SESSION_OVERRIDE: undefined,
+    AIDLC_SESSION_OVERRIDE_SOURCE: undefined,
     AIDLC_PROJECT_DIR: projectDir,
     AIDLC_HARNESS_DIR: ".cursor",
     ...options.env,

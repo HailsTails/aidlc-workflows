@@ -1,5 +1,7 @@
 ---
 slug: practices-discovery
+number: 2.2
+name: Practices Discovery
 phase: inception
 execution: CONDITIONAL
 condition: Always rerun for freshness. Brownfield discovers from evidence + reverse-engineering artifacts. Greenfield prompts user via structured questions using org.md defaults.

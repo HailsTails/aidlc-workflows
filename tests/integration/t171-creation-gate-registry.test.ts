@@ -27,7 +27,7 @@ import {
   HARNESS_MATRIX,
   harnessByName,
 } from "../harness/harness-matrix.ts";
-import { readIntentRegistry } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import { readIntentRegistry, sessionsDir } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 
 const BUN = process.execPath;
 // Every case here spawns several dist tools in sequence; under a parallel tier
@@ -102,6 +102,7 @@ describe("t171 creation gate consults the intent registry (Blocker B1)", () => {
       expect(records.length).toBe(2);
       // Drop the per-user cursor → records on disk, nothing flagged active.
       rmSync(cursorPath(proj), { force: true });
+      rmSync(sessionsDir(proj), { recursive: true, force: true });
       expect(existsSync(cursorPath(proj))).toBe(false);
       return records;
     };
@@ -111,7 +112,7 @@ describe("t171 creation gate consults the intent registry (Blocker B1)", () => {
       const r = next(["--scope", "poc"]);
       const d = JSON.parse(r.stdout.trim());
       // NOT a creation print: the gate must not name intent-create here.
-      expect(d.kind).not.toBe("print");
+      expect(d.kind, r.out).not.toBe("print");
       expect(d.kind).toBe("ask");
       expect(d.message ?? "").not.toContain("intent create");
       // The engine exposes exact record names accepted by the switch command,
@@ -131,7 +132,7 @@ describe("t171 creation gate consults the intent registry (Blocker B1)", () => {
       seedTwoIntentsNoCursor();
       const r = next(["poc"]); // positional valid-scope name, no --scope flag
       const d = JSON.parse(r.stdout.trim());
-      expect(d.kind).toBe("ask");
+      expect(d.kind, r.out).toBe("ask");
       expect(d.message ?? "").not.toContain("intent create");
       expect(d.question).toContain("/aidlc intent <name>");
       expect(recordDirs(proj).length).toBe(2); // no duplicate created
@@ -240,6 +241,7 @@ describe("t171 creation gate consults the intent registry (Blocker B1)", () => {
         .filter((name): name is string => typeof name === "string");
       expect(new Set(selectors).size).toBe(2);
       rmSync(cursorPath(proj), { force: true });
+      rmSync(sessionsDir(proj), { recursive: true, force: true });
 
       const routed = next([
         "poc",

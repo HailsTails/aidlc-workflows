@@ -337,6 +337,85 @@ describe("t294 provider diagnostics", () => {
     expect(result.regions).toEqual(["ap-southeast-2", "eu-west-1", "us-east-1"]);
   });
 
+  test("explicit Codex provider choice preserves consumer model and unrelated provider tables", () => {
+    const root = temp("aidlc-t294-neutral-codex-");
+    mkdirSync(join(root, ".codex"));
+    const path = join(root, ".codex", "config.toml");
+    writeFileSync(path, `model = "consumer-model"
+model_reasoning_effort = "high"
+[model_providers.custom]
+name = "Consumer provider"
+base_url = "https://consumer.example/api"
+wire_api = "responses"
+`);
+    applyConfigDiagnosticRecords(root, ".codex", "codex", emptyRecords({
+      schemaVersion: 1,
+      provider: "amazon-bedrock",
+      region: "eu-west-1",
+      profile: "dev",
+      opencodeDefault: false,
+      pendingActions: [],
+    }));
+    expect(Bun.TOML.parse(readFileSync(path, "utf-8"))).toMatchObject({
+      model: "consumer-model",
+      model_reasoning_effort: "high",
+      model_providers: {
+        custom: {
+          name: "Consumer provider",
+          base_url: "https://consumer.example/api",
+          wire_api: "responses",
+        },
+        "amazon-bedrock": { aws: { profile: "dev", region: "eu-west-1" } },
+      },
+    });
+  });
+
+  test("explicit Codex provider choice preserves unrelated AWS options", () => {
+    const root = temp("aidlc-t294-existing-codex-");
+    mkdirSync(join(root, ".codex"));
+    const path = join(root, ".codex", "config.toml");
+    writeFileSync(path, `[model_providers.amazon-bedrock.aws]
+profile = "old"
+region = "old"
+endpoint_url = "https://consumer.example/bedrock"
+`);
+    applyConfigDiagnosticRecords(root, ".codex", "codex", emptyRecords({
+      schemaVersion: 1,
+      provider: "amazon-bedrock",
+      region: "eu-west-1",
+      profile: "dev",
+      opencodeDefault: false,
+      pendingActions: [],
+    }));
+    expect(Bun.TOML.parse(readFileSync(path, "utf-8"))).toMatchObject({
+      model_providers: {
+        "amazon-bedrock": {
+          aws: {
+            profile: "dev",
+            region: "eu-west-1",
+            endpoint_url: "https://consumer.example/bedrock",
+          },
+        },
+      },
+    });
+  });
+
+  test("explicit Codex provider choice refuses a non-table AWS collision without writing", () => {
+    const root = temp("aidlc-t294-collision-codex-");
+    mkdirSync(join(root, ".codex"));
+    const path = join(root, ".codex", "config.toml");
+    writeFileSync(path, '[model_providers.amazon-bedrock]\naws = "consumer-value"\n');
+    expect(() => applyConfigDiagnosticRecords(root, ".codex", "codex", emptyRecords({
+      schemaVersion: 1,
+      provider: "amazon-bedrock",
+      region: "eu-west-1",
+      profile: "dev",
+      opencodeDefault: false,
+      pendingActions: [],
+    }))).toThrow();
+    expect(readFileSync(path, "utf-8")).toBe('[model_providers.amazon-bedrock]\naws = "consumer-value"\n');
+  });
+
   test("shared provider writers apply only the selected harness surfaces", () => {
     const record = reconcileProviderActions({
       schemaVersion: 1,
@@ -923,7 +1002,7 @@ describe("t294 config diagnostics CLI", () => {
     ], project, env);
     expect(reset.status, reset.stdout + reset.stderr).toBe(0);
     expect(readFileSync(join(project, ".claude", "settings.json"), "utf-8"))
-      .toContain('"AWS_REGION": "us-east-1"');
+      .not.toContain('"AWS_REGION"');
     expect(readConfigDiagnosticRecords(join(project, ".claude")).providers)
       .toBeNull();
 

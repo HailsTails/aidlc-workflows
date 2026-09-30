@@ -1,5 +1,6 @@
 ---
 slug: ci-pipeline
+number: 3.7
 name: CI Pipeline
 phase: construction
 execution: CONDITIONAL

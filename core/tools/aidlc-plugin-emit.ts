@@ -31,6 +31,7 @@ import {
 import {
   assertPluginContentHasNoSymlinks,
   assertSupportedPluginContributionPaths,
+  classifyPluginSourceFile,
   scanPluginFiles,
   walkPluginFiles,
 } from "./aidlc-plugin-validate.ts";
@@ -83,6 +84,7 @@ const CONTENT_DIRS = [
   "scopes",
   "agents",
   "knowledge",
+  "hooks",
 ] as const;
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -435,11 +437,30 @@ function copyPluginContent(
   outDir: string,
   target: PluginTarget,
   reviewers: ReadonlySet<string>,
+  templateHooksDir: string,
 ): void {
+  const reservedHookNames = new Set(readdirSync(templateHooksDir));
   for (const dir of CONTENT_DIRS) {
     const sourceDir = join(pluginRoot, dir);
     if (!existsSync(sourceDir)) continue;
-    for (const file of walkPluginFiles(sourceDir)) {
+    const sourceFiles = walkPluginFiles(sourceDir).filter(
+      (file) => classifyPluginSourceFile({ pluginRoot, file }) === "runtime",
+    );
+    if (target.harnessName === "codex" && dir === "agents") {
+      const authored = new Set(sourceFiles);
+      for (const file of sourceFiles.filter((path) => path.endsWith("-agent.md"))) {
+        const native = file.replace(/\.md$/, ".toml");
+        if (authored.has(native)) {
+          throw new Error(`${file}: authored Codex TOML collides with generated ${native}`);
+        }
+      }
+    }
+    for (const file of sourceFiles) {
+      if (dir === "hooks" && reservedHookNames.has(basename(file))) {
+        throw new Error(
+          `plugin '${basename(pluginRoot)}' ships hooks/${basename(file)}, which collides with the compose bootstrap the packager emits; rename it`,
+        );
+      }
       const outputDir =
         target.kind === "cursor" && dir === "agents"
           ? join(outDir, "aidlc", "agents")
@@ -665,7 +686,13 @@ export function buildPluginProjection(
         options.target,
       );
       writeHookWiring(pluginName, outDir, options.target);
-      copyPluginContent(pluginRoot, outDir, options.target, reviewers);
+      copyPluginContent(
+        pluginRoot,
+        outDir,
+        options.target,
+        reviewers,
+        options.templateHooksDir,
+      );
 
       return {
         pluginName,

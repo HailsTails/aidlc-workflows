@@ -56,6 +56,9 @@ jobs:
       - name: Run contract checks
         run: bun run check
 
+      - name: Run reusable Rin plugin tests
+        run: bun run test:rin
+
   test_smoke:
     name: Tests (smoke)
     runs-on: ubuntu-latest

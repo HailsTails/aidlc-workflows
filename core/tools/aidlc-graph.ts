@@ -199,6 +199,10 @@ export interface GraphStage extends StageEntry {
   // reviewer_max_iterations — review cycle cap before escalating to human.
   // Defaults to 2 when reviewer is present.
   reviewer_max_iterations?: number;
+  // approval_mode — how this stage's approval gate is cleared (human | autonomous).
+  // Absent -> human. Parsed from stage frontmatter and carried onto the compiled
+  // node so the approve handler's presence guard can read it.
+  approval_mode?: "human" | "autonomous";
   // review_class — how the review runs: "adversarial" (refute + fix loop up
   // to the cap, §12a classic) or "advisory" (single pass, findings quoted at
   // the human gate, no fix loop). Defaults to "adversarial" when a reviewer
@@ -303,7 +307,7 @@ const MEMORY_SEGMENTS = ["aidlc", "spaces", MEMORY_SPACE, "memory"] as const;
  *  analog of the default-pinned MEMORY_SEGMENTS. Keeps the `aidlc/spaces/<space>/
  *  memory` shape in one place so the project-family resolvers can never drift
  *  from the compile/display family's layout. */
-function memorySegmentsForSpace(space: string): string[] {
+export function memorySegmentsForSpace(space: string): string[] {
   return ["aidlc", "spaces", space, "memory"];
 }
 
@@ -488,6 +492,7 @@ const FIELD_ORDER = [
   "reviewer",
   "review_artifact",
   "reviewer_max_iterations",
+  "approval_mode",
   "review_class",
   "summary_confirmation",
   "inputs",
@@ -1853,9 +1858,14 @@ export function compileStageGraph(): {
             `"${phase}". Stage phase directories must be one of: ${PHASES.join(", ")}.`
         );
       }
-      const number = numberBySlug.get(slug);
+      // Authored frontmatter number/name are the topology source of truth (rin
+      // drift 019f7492): a stage that declares them fully determines its own
+      // placement from source, so a clean-room compile (no prior stage-graph.json)
+      // reproduces the graph. Upstream's pinned-row / topological-seed machinery
+      // remains the fallback for stages that author neither.
+      const number = validation.data.number ?? numberBySlug.get(slug);
       const name =
-        nameBySlug.get(slug) ?? validation.data.name ?? titleCaseSlug(slug);
+        validation.data.name ?? nameBySlug.get(slug) ?? titleCaseSlug(slug);
       if (number) {
         stages.push(buildGraphStage(validation.data, phase, number, name));
       } else {
@@ -2165,6 +2175,9 @@ function buildGraphStage(
   }
   if (parsed.summary_confirmation !== undefined) {
     stage.summary_confirmation = parsed.summary_confirmation;
+  }
+  if (parsed.approval_mode !== undefined) {
+    stage.approval_mode = parsed.approval_mode;
   }
   return stage;
 }

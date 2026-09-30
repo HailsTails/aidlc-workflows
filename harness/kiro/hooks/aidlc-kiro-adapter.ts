@@ -50,6 +50,7 @@ import {
   hasOpenGate,
   humanActedSinceGate,
   humanPresenceGuardDisabled,
+  invokingCheckoutFromCwd,
   isAutonomousMode,
   sanitizeHarnessPlainText,
   splitKiroCommandArgs,
@@ -181,7 +182,14 @@ if (!process.stdin.isTTY) {
 }
 
 const projectDirRaw =
-  process.env.AIDLC_PROJECT_DIR ?? kiro.cwd ?? process.cwd();
+  // Ordering matches core's `resolveProjectDirFromPayload`: the per-event cwd
+  // binds to the INVOKING checkout — the tree a worktree session is actually
+  // working in, rather than the one it started in. It wins only when cwd names
+  // a real checkout, so AIDLC_PROJECT_DIR keeps working as the deliberate
+  // override for pointing AIDLC at a project dir that is not the cwd.
+  invokingCheckoutFromCwd(kiro.cwd) ??
+  process.env.AIDLC_PROJECT_DIR ??
+  process.cwd();
 const projectDir = isAbsolute(projectDirRaw)
   ? projectDirRaw
   : resolve(process.cwd(), projectDirRaw);

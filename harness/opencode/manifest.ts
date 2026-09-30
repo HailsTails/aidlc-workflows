@@ -36,6 +36,9 @@ const manifest: HarnessManifest = {
   harnessDir: ".aidlc",
   orchestratorSkillPath: ".aidlc/skills/aidlc/SKILL.md",
   tierFlavor: "opencode",
+  // The method tree reaches ambient context via the `instructions` glob in
+  // opencode.json, and opencode auto-reads the project-root AGENTS.md.
+  baseRuleDelivery: "ambient",
   rootIntegrations: [
     {
       path: ".gitignore",

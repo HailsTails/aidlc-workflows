@@ -93,6 +93,7 @@ import { fileURLToPath } from "node:url";
 import {
   type AskDirective,
   type Directive,
+  type EnsembleSeatDispatch,
   type ErrorDirective,
   type GuardRecoveryAskDirective,
   GATE_UNRESOLVED,
@@ -3472,6 +3473,28 @@ function buildRunStageDirective(
   if (protocolModules.length > 0) {
     directive.protocol_modules = protocolModules;
   }
+  // A mesh stage emits its seat calls as DATA. The rows resolve through the same
+  // helpers the approval refusal reads, so what is dispatched is exactly what is
+  // later demanded — and the declared mode drives the stage instead of naming a
+  // topology nothing acts on.
+  if (
+    codekbCtx &&
+    (node.mode === "mob" || node.mode === "agent-team") &&
+    (node.support_agents?.length ?? 0) > 0
+  ) {
+    const seats = ensembleSeatDispatch(
+      node,
+      contributionDirsFor(
+        node,
+        node.slug,
+        codekbCtx.projectDir,
+        recordPrefix,
+        [],
+      ),
+      codekbCtx.projectDir,
+    );
+    if (seats.length > 0) directive.ensemble_dispatch = seats;
+  }
   // Decision D-E: bake the conductor persona into the FIRST run-stage of the
   // workflow. The optional field is omitted on every later directive (the
   // persona persists in the session once delivered). A missing conductor.md is
@@ -3957,8 +3980,19 @@ function transportRunStage(
   );
   if (loaded.error) return errorDirective(loaded.error);
 
+  // rules_in_context names every layer that GOVERNS this stage, including base
+  // layers whose text an ambient harness delivers and the engine therefore does
+  // not transport. "Which rules apply" and "which text this directive carries"
+  // are different questions; deriving the manifest from the transported content
+  // collapses them, and a deduped layer then reads as inapplicable.
   directive.rules_in_context = [
-    ...new Set(loaded.content.map((entry) => entry.path)),
+    ...new Set(
+      rulesContentEntries(
+        route.node,
+        route.codekbCtx.projectDir,
+        route.codekbCtx.space,
+      ).map((entry) => entry.rel),
+    ),
   ];
   const bundle = `sha256:${sha256(JSON.stringify(loaded.content))}`;
   const directiveHash = sha256(JSON.stringify(directive));
@@ -5838,6 +5872,7 @@ function activePerUnitWave(
                 node.slug,
                 guidance,
                 undefined,
+                null,
                 requestChangesResetIsExecutable(
                   stateContent ?? "",
                   node.slug,
@@ -7888,6 +7923,55 @@ function requiresEnsembleEvidence(node: GraphStage): boolean {
     (node.mode === "subagent" && (node.support_agents ?? []).length > 0);
 }
 
+// The identity marker a contribution file's first line must carry. ONE
+// definition, read by both the dispatch emitter and the completion-evidence
+// refusal: a seat told to write one marker while the check demands another is a
+// stage that can never be approved, and two derivations would drift apart
+// silently because only the refusal path runs on a failing run.
+function contributionIdentityMarker(agent: string): string {
+  return `**Collaborator:** ${agent}`;
+}
+
+// Where a stage's contribution sets live. Shared so the dispatch emitter resolves
+// the same directories the refusal reads.
+function contributionDirsFor(
+  node: GraphStage,
+  slug: string,
+  pd: string,
+  recordPrefix: string | null,
+  evidenceUnits: readonly string[],
+): Array<{ path: string; unit: string | null }> {
+  const prefix = recordPrefix ?? relativeSpaceRecordPrefix();
+  return evidenceUnits.length > 0
+    ? evidenceUnits.map((unit) => ({
+        path: join(pd, prefix, "construction", unit, slug, "contributions"),
+        unit,
+      }))
+    : [{
+        path: join(pd, prefix, node.phase, slug, "contributions"),
+        unit: null,
+      }];
+}
+
+// The seat calls a mesh stage owes, resolved to concrete paths and emitted onto
+// the directive. Without this the mode reaches the lead as a word in a field it
+// has read a hundred times, and the instruction that would make it act lives only
+// in protocol prose the lead may skip.
+function ensembleSeatDispatch(
+  node: GraphStage,
+  contributionDirs: ReadonlyArray<{ path: string; unit: string | null }>,
+  pd: string,
+): EnsembleSeatDispatch[] {
+  return contributionDirs.flatMap(({ path, unit }) =>
+    (node.support_agents ?? []).map((agent) => ({
+      agent,
+      contribution_path: toPosix(relative(pd, join(path, `${agent}.md`))),
+      identity_marker: contributionIdentityMarker(agent),
+      unit,
+    })),
+  );
+}
+
 // Validate the structural completion evidence required by mob and
 // subagent-with-supports stages. Per-unit stages carry one contribution set
 // under every unit's stage directory; ordinary stages carry one set under the
@@ -7945,15 +8029,13 @@ function checkEnsembleEvidence(
     requiredProduces.length === 0 ||
     applicableProduceNames(node, kinds?.get(unit) ?? null, false).length > 0
   );
-  const contributionDirs: Array<{ path: string; unit: string | null }> = usesUnitDirs
-    ? evidenceUnits.map((unit) => ({
-        path: join(pd, prefix, "construction", unit, slug, "contributions"),
-        unit,
-      }))
-    : [{
-        path: join(pd, prefix, node.phase, slug, "contributions"),
-        unit: null,
-      }];
+  const contributionDirs = contributionDirsFor(
+    node,
+    slug,
+    pd,
+    recordPrefix,
+    usesUnitDirs ? evidenceUnits : [],
+  );
   const missing: string[] = [];
   for (const { path, unit } of contributionDirs) {
     for (const agent of node.support_agents ?? []) {
@@ -7966,7 +8048,7 @@ function checkEnsembleEvidence(
         missing.push(`${subject} (no contribution file)`);
         continue;
       }
-      if (firstLine !== `**Collaborator:** ${agent}`) {
+      if (firstLine !== contributionIdentityMarker(agent)) {
         missing.push(`${subject} (missing identity-marker first line)`);
       }
     }
@@ -8720,6 +8802,8 @@ function handleReport(args: string[], projectDir: string | undefined): void {
   const protectedHumanGate =
     isGated &&
     stageCheckbox.state !== "completed" &&
+    node.approval_mode !== "autonomous" &&
+    readAutonomyMode(stateContent) !== "autonomous" &&
     !isAutonomousConstructionGate(stateContent, node) &&
     resolveProjectFlag("AIDLC_SKIP_HUMAN_PRESENCE_GUARD") !== "1";
 

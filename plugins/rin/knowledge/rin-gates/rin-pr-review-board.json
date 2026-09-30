@@ -1,0 +1,46 @@
+{
+  "id": "rin-pr-review",
+  "description": "Gate 5 (review cycle) decorrelated board — the pr-review hunts expressed as config, the review-side counterpart to the Gate-3 constitution board. The conductor fans out every producing lens as a read-only sub-agent in one parallel batch (decorrelated: reviewer != author, each blind to the others), collates PASS/VIOLATION, then runs the intent-defense meta-referee LAST. This board hunts what gates 1-4 + the automation cannot see; it does NOT re-walk the constitution (that is Gate 3's board). Reserved for gate-5-review-cycle.",
+  "reviewer_agent_marker": "decorrelated-review",
+  "review_surface": "the PR diff + the code-generation-plan + (on re-review) the existing disposition table — NOT the constitution rule areas (assume the audit + gates already ran)",
+  "model_source": "Each lens runs on the model its agent frontmatter declares, projected from that agent's `tier:` by the packager (judgment -> opus, balanced -> sonnet). The roster no longer carries a per-lens `model` override: a lens's model lived in two places and the tier projection is the single source. Dispatch each lens with NO model override so its own projected frontmatter governs.",
+  "producing_lenses": [
+    {
+      "lens": "pr-checkers",
+      "agent": "rin-pr-checkers-reviewer-agent"
+    },
+    {
+      "lens": "pr-evades",
+      "agent": "rin-pr-evades-reviewer-agent"
+    },
+    {
+      "lens": "pr-claims-vs-record",
+      "agent": "rin-pr-claims-reviewer-agent"
+    },
+    {
+      "lens": "pr-scope",
+      "agent": "rin-pr-scope-reviewer-agent"
+    },
+    {
+      "lens": "pr-tests-dead",
+      "agent": "rin-pr-tests-dead-reviewer-agent"
+    },
+    {
+      "lens": "pr-disposition",
+      "agent": "rin-pr-disposition-reviewer-agent"
+    }
+  ],
+  "synthesis_lens": {
+    "lens": "defended-on-intent",
+    "agent": "rin-intent-defense-reviewer-agent",
+    "runs": "last",
+    "input": "the collated PASS claims from every producing lens",
+    "role": "re-test each PASS against the intent of the cited rule/rail, not its letter; the decorrelation guarantee no script can catch"
+  },
+  "author_leg": {
+    "role": "On NOT-READY the conductor routes cited findings to the LEAD agent (the author role, rin-author) — never to a lens (disallowedTools: Task). The author works the exhaustive disposition contract (fixed@sha | push-back(ground) | defer(ack)), zero unresolved, then the sweep re-runs.",
+    "convergence_predicate": "READY iff every producing lens READY AND intent-defense finds zero surviving letter-vs-intent gaps AND the disposition gap is zero (every atom closed, every operator comment fixed-or-acked-push-back)."
+  },
+  "floor_not_ceiling": "The six hunts + intent-defense synthesis are the floor. For unusual surface (an auth PR, a schema migration, a .claude/ rail change) dispatch extra ad-hoc read-only lens sub-agents and fold their findings into the synthesis.",
+  "verdict_contract": "READY only on convergence (see author_leg.convergence_predicate). Any surviving VIOLATION, letter-vs-intent gap, or unresolved disposition row is NOT-READY with cited findings routed to the author lead for up to reviewer_max_iterations, then residue escalates to the human gate as a scope decision. A REQUEST_CHANGES round advances the DB nothing — no `merged` receipt until convergence."
+}

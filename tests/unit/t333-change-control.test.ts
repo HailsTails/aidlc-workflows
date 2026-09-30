@@ -32,6 +32,7 @@ import {
   readAuditShardEvents,
   resolveChangeControl,
   scopeChangeControlDefault,
+  sessionsDir,
   setField,
   structuredField,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
@@ -881,6 +882,7 @@ describe("t333 (7) a refusal's ERROR_LOGGED row lands in the selected workflow",
     expect(second.status, second.stderr).toBe(0);
     const secondIntent = readFileSync(join(altIntents, "active-intent"), "utf-8").trim();
     expect(secondIntent).not.toBe(selected.targetIntent);
+    rmSync(sessionsDir(selected.proj), { recursive: true, force: true });
     writeFileSync(join(altIntents, "active-intent"), `${selected.targetIntent}\n`);
 
     const beforeTarget = readAuditShardEvents(selected.proj, selected.targetIntent, "alt");

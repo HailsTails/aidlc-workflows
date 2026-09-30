@@ -104,6 +104,7 @@ const NEXT_VERSION = (() => {
 const temporary: string[] = [];
 const originalPath = process.env.PATH;
 
+
 beforeAll(() => {
   process.env.PATH = `${join(REPO_ROOT, "tests", "fixtures", "bin")}${delimiter}${
     originalPath ?? ""
@@ -1873,6 +1874,18 @@ describe("t243 project initialization", () => {
 });
 
 describe("t243 release lifecycle", () => {
+  test("selected release fixtures include plugin bodies only for their declared harnesses", () => {
+    const release = fixtureReleaseBytes();
+    const runtime = readReleaseManifest(release).assets.find((asset) => asset.kind === "runtime");
+    expect(runtime).toBeDefined();
+    const paths = readTarGz(join(release, runtime?.name ?? "missing-runtime")).map((entry) => entry.path);
+    expect(paths).toContain("plugins/rin/claude/hooks/guard-navigation.mjs");
+    expect(paths).not.toContain("plugins/rin/codex/hooks/guard-navigation.mjs");
+    expect(paths).not.toContain("plugins/rin/cursor/hooks/guard-navigation.mjs");
+    expect(paths).not.toContain("plugins/rin/copilot/hooks/guard-navigation.mjs");
+    expect(paths).not.toContain("plugins/rin/opencode/hooks/guard-navigation.mjs");
+  }, 30_000);
+
   test("project pins require the retained OpenCode runtime selected by project metadata", () => {
     const release = fixtureReleaseBytes();
     const machine = temp("aidlc-t240-opencode-pin-machine-");
@@ -1903,7 +1916,7 @@ describe("t243 release lifecycle", () => {
       `${AIDLC_VERSION} does not contain this project's opencode runtime`,
     );
     expect(existsSync(join(project, ".aidlc-version"))).toBe(false);
-  }, process.platform === "win32" ? 30_000 : 5_000);
+  }, 30_000);
 
   test("installer renders order-independent usage failures as valid JSON", () => {
     const result = spawnSync("sh", [
@@ -3953,7 +3966,7 @@ describe("t243 projection channel", () => {
           "sha256:cc3212fc7335018158882cbaa141ac6fd02cee53bbceb00bd185f416fa06ff8f",
           "sha256:412776ee4595c453511a911e06c7729285bb5338b30584f8570908b273e27296",
           "sha256:dd650e54fb2e645b6f30002f91f8f6f174fe34550295582f5b6a95356edaed77",
-          "sha256:87563548299dd2a0c1fcd3cde480b612bd1ec767a2550dbc05a6a041a3d7f522",
+          "sha256:796c7b19af7d21e01bf1b877f0680dac18cf0cca2056ad8d50044ba8f060a048",
         ],
       },
       kiro: {

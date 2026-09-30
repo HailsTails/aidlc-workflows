@@ -15,17 +15,19 @@
 // WHY SUBPROCESS. Same idiom as kiro's t141: the packager is a CLI; we pin
 // its observable behavior, not its internals.
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,27 +35,88 @@ import { delimiter, join } from "node:path";
 import { parse } from "smol-toml";
 import { TRUSTED_ROUTE_NAMESPACE } from "../../core/tools/aidlc-command.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
+import { composePluginFixture } from "../harness/plugin-kit.ts";
 
 const PACKAGE_SCRIPT = join(REPO_ROOT, "scripts", "package.ts");
+const TEST_PRO_AGENT_PATH = join(REPO_ROOT, "plugins", "test-pro", "agents", "test-pro-metrics-agent.md");
 const CLAUDE_SRC = join(REPO_ROOT, "dist", "claude", ".claude");
 const CODEX_DST = join(REPO_ROOT, "dist", "codex", ".codex");
-const TRUST_SUFFIXES = [
-  "session_start:0:0",
-  "user_prompt_submit:0:0",
-  "pre_tool_use:0:0",
-  "pre_tool_use:1:0",
-  "pre_tool_use:2:0",
-  "pre_tool_use:3:0",
-  "pre_tool_use:4:0",
-  "pre_tool_use:5:0",
-  "post_tool_use:0:0",
-  "post_tool_use:1:0",
-  "post_tool_use:2:0",
-  "post_tool_use:3:0",
-  "pre_compact:0:0",
-  "subagent_stop:0:0",
-  "stop:0:0",
-] as const;
+// Codex's own event→trust-key spelling: trust keys are snake_case while
+// hooks.json names events in PascalCase, so comparing the two surfaces needs
+// this translation. TOTAL by construction — an event present in hooks.json with
+// no mapping throws here, at arrange time, rather than degrading to a count of
+// zero that an assertion would then read as a real (and wrong) measurement.
+const SNAKE_BY_EVENT: Record<string, string> = {
+  SessionStart: "session_start",
+  UserPromptSubmit: "user_prompt_submit",
+  PreToolUse: "pre_tool_use",
+  PostToolUse: "post_tool_use",
+  PreCompact: "pre_compact",
+  SubagentStop: "subagent_stop",
+  Stop: "stop",
+};
+
+// A trust key is "<path>:<event_snake>:<group>:<idx>", so the event spelling is
+// the third field from the end. Total by construction for the same reason as
+// snakeForEvent: a key that does not carry one must fail loudly rather than be
+// dropped from the tally, where it would quietly lower a trusted count and turn
+// a real coverage gap into a passing comparison.
+const trustKeyEventSpelling = (key: string): string => {
+  const spelling = key.split(":").at(-3);
+  if (spelling === undefined) {
+    throw new Error(`trust key "${key}" carries no event field`);
+  }
+  return spelling;
+};
+
+// A repoRoot carrying no plugins/ directory, so pluginHookRows returns [] and
+// the generator reports CORE wiring alone. Used to separate core rows from
+// plugin-contributed ones without hardcoding either set.
+const PLUGINLESS_ROOT = mkdtempSync(join(tmpdir(), "t150-core-only-"));
+
+function selectedCodexProject(): string {
+  return composePluginFixture({
+    plugin: "rin", harness: "codex", projectDir: join(PLUGINLESS_ROOT, "selected-codex"),
+    pluginBuilt: join(REPO_ROOT, "dist", "plugins", "rin", "codex"),
+    beforeCompose: ({ projectDir }) => {
+      mkdirSync(join(projectDir, ".git"), { recursive: true });
+      const file = join(projectDir, ".codex", "tools", "data", "harness.json");
+      writeFileSync(file, `${JSON.stringify({ ...JSON.parse(readFileSync(file, "utf-8")), plugins: ["aidlc", "rin"] }, null, 2)}\n`);
+    },
+  }).projectDir;
+}
+
+const snakeForEvent = (event: string): string => {
+  const snake = SNAKE_BY_EVENT[event];
+  if (snake === undefined) {
+    throw new Error(
+      `hooks.json carries event "${event}" with no trust-key spelling — add it to SNAKE_BY_EVENT`,
+    );
+  }
+  return snake;
+};
+
+// Read from the COMMITTED dist artefact, never from trustEntries(). Deriving it
+// from the generator would compare the generator against itself — the exact
+// blindness that let plugin rows ship untrusted, since both sides would then
+// move together and agree no matter what they said. dist/codex is kept honest by
+// test 1's `package.ts codex --check`, which is what makes this an independent
+// source rather than a stale one.
+//
+// The trust surface is a SET of keys, each naming an event and a group index.
+// hooks.json groups by event while trustEntries emits in wiring order, so the
+// two agree on membership but not on sequence — and sequence here is an artefact
+// of how each surface is serialised, not a property of the contract. What IS
+// load-bearing is that every shipped group has a key and no key names a group
+// that does not exist, which is membership. Callers therefore compare sorted.
+const trustSuffixesFromShippedWiring = (): string[] => {
+  const wiring = JSON.parse(
+    readFileSync(join(CODEX_DST, "hooks.json"), "utf-8"),
+  ) as { hooks: Record<string, unknown[]> };
+  return Object.entries(wiring.hooks).flatMap(([event, groups]) =>
+    groups.map((_group, index) => `${snakeForEvent(event)}:${index}:0`),
+  );
+};
 
 type TrustDocument = {
   hooks: {
@@ -63,8 +126,9 @@ type TrustDocument = {
 
 type TrustEntries = (
   project: string,
-  hooksJson?: string,
-  harnessDir?: string,
+  hooksJson: string | undefined,
+  harnessDir: string,
+  repoRoot: string,
   harnessName?: string,
   invoke?: string,
 ) => string;
@@ -75,7 +139,10 @@ function parseTrustDocument(source: string): TrustDocument {
   return parse(source) as unknown as TrustDocument;
 }
 
-function trustEntries(): TrustEntries {
+function codexEmitter(): {
+  trustEntries: TrustEntries;
+  trustHash: (eventSnake: string, command: string) => string;
+} {
   const emitter = require(join(REPO_ROOT, "harness", "codex", "emit.ts")) as {
     trustEntries: (...args: [
       string,
@@ -84,27 +151,58 @@ function trustEntries(): TrustEntries {
       string,
       string,
       string,
+      string,
     ]) => string;
+    trustHash: (eventSnake: string, command: string) => string;
   };
-  return (
-    project,
-    hooksJson,
-    harnessDir = ".codex",
-    harnessName = "codex",
-    invoke = "aidlc",
-  ) => emitter.trustEntries(
-    project,
-    hooksJson,
-    harnessDir,
-    harnessName,
-    invoke,
-    TRUSTED_ROUTE_NAMESPACE,
-  );
+  return {
+    trustEntries: (
+      project,
+      hooksJson,
+      harnessDir,
+      repoRoot,
+      harnessName = "codex",
+      invoke = "aidlc",
+    ) =>
+      emitter.trustEntries(
+        project,
+        hooksJson,
+        harnessDir,
+        repoRoot,
+        harnessName,
+        invoke,
+        TRUSTED_ROUTE_NAMESPACE,
+      ),
+    trustHash: emitter.trustHash,
+  };
 }
 
-function expectedTrustKeys(hooksJsonPath: string): string[] {
-  return TRUST_SUFFIXES.map((suffix) => `${hooksJsonPath}:${suffix}`);
+function trustEntries(): TrustEntries {
+  return codexEmitter().trustEntries;
 }
+
+function trustHash(eventSnake: string, command: string): string {
+  return codexEmitter().trustHash(eventSnake, command);
+}
+
+// Sorted, because the two surfaces serialise in different orders (hooks.json
+// groups by event, trustEntries emits in wiring order) while carrying the same
+// set. Callers compare against sortedTrustKeys(actual) so the assertion is about
+// MEMBERSHIP — every shipped group trusted, no key naming a group that does not
+// exist — which is the property that was actually broken.
+//
+// Sorting genuinely gives up the sequence check, and no other assertion in this
+// file recovers it (see the honest bound in 6b). Sequence is not free of
+// meaning — Codex trusts positionally — so this is a real, named gap rather than
+// a property covered somewhere else.
+function expectedTrustKeys(hooksJsonPath: string): string[] {
+  return trustSuffixesFromShippedWiring()
+    .map((suffix) => `${hooksJsonPath}:${suffix}`)
+    .sort();
+}
+
+const sortedTrustKeys = (document: TrustDocument): string[] =>
+  Object.keys(document.hooks.state).sort();
 
 function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir).sort()) {
@@ -157,6 +255,43 @@ function runDoctorWithCodexVersion(version: string): {
     };
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// CD-47's "removes it afterwards" clause: PLUGINLESS_ROOT is module-scope, so it
+// has no try/finally to ride like the per-call root above. Without this it leaks
+// one empty directory per run — hermetic, but litter the rule asks us not to
+// leave.
+afterAll(() => {
+  rmSync(PLUGINLESS_ROOT, { recursive: true, force: true });
+});
+
+function buildSyntheticCodexPluginAgent(args: {
+  readonly label: string;
+  readonly source: string;
+}): { readonly status: number | null; readonly stderr: string; readonly nativeAgent: string | null } {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), `t150-${args.label}-`));
+  try {
+    for (const directory of ["scripts", "core", "harness"]) {
+      cpSync(join(REPO_ROOT, directory), join(fixtureRoot, directory), { recursive: true });
+    }
+    cpSync(join(REPO_ROOT, "plugins", "test-pro"), join(fixtureRoot, "plugins", "test-pro"), { recursive: true });
+    symlinkSync(join(REPO_ROOT, "node_modules"), join(fixtureRoot, "node_modules"), "dir");
+    writeFileSync(join(fixtureRoot, "plugins", "test-pro", "agents", "test-pro-metrics-agent.md"), args.source, "utf-8");
+    const outputRoot = join(fixtureRoot, "output");
+    const result = spawnSync("bun", [join(fixtureRoot, "scripts", "package.ts"), "plugin", "build", "test-pro", "codex", outputRoot], {
+      cwd: fixtureRoot,
+      encoding: "utf-8",
+      env: { ...process.env, AIDLC_TIER_CAP: "" },
+    });
+    const nativePath = join(outputRoot, "agents", "test-pro-metrics-agent.toml");
+    return {
+      status: result.status,
+      stderr: String(result.stderr ?? ""),
+      nativeAgent: existsSync(nativePath) ? readFileSync(nativePath, "utf-8") : null,
+    };
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
   }
 }
 
@@ -241,6 +376,10 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     // workspace root, where codex runs), NOT the old .codex/aidlc-rules.
     const config = readFileSync(join(CODEX_DST, "config.toml"), "utf-8");
     expect(config).toContain('AIDLC_RULES_DIR = "aidlc/spaces/default/memory"');
+    expect(config).not.toMatch(/^model\s*=/m);
+    expect(config).not.toMatch(/^model_provider\s*=/m);
+    expect(config).not.toContain("[model_providers.");
+    expect(config).toContain('model_reasoning_effort = "high"');
     expect(config).toContain("[agents]\nmax_depth = 1");
     // The compiled graph's rule display paths are harness-neutral now.
     const graph = readFileSync(join(CODEX_DST, "tools", "data", "stage-graph.json"), "utf-8");
@@ -257,7 +396,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
       ["PostToolUse", "PreCompact", "PreToolUse", "SessionStart", "Stop", "SubagentStop", "UserPromptSubmit"].sort(),
     );
     // Matchers per the verified tool-name map.
-    const postMatchers = wiring.hooks.PostToolUse.map((g) => g.matcher).sort();
+    const postMatchers = wiring.hooks.PostToolUse.slice(0, 4).map((g) => g.matcher).sort();
     expect(postMatchers).toEqual(["Bash", "apply_patch", "request_user_input", "update_plan"]);
     expect(
       wiring.hooks.PostToolUse.find((group) => group.matcher === "request_user_input")
@@ -293,7 +432,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     const emitTrustEntries = trustEntries();
     const shipped = readFileSync(join(CODEX_DST, "trust-seed.toml"), "utf-8");
     const parsed = parseTrustDocument(shipped);
-    expect(Object.keys(parsed.hooks.state)).toEqual(
+    expect(sortedTrustKeys(parsed)).toEqual(
       expectedTrustKeys("<PROJECT_DIR>/.codex/hooks.json"),
     );
     // The shipped file is a header comment block + the trustEntries() body. The
@@ -312,6 +451,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
       "<PROJECT_DIR>",
       undefined,
       ".codex",
+      REPO_ROOT,
       "codex",
       SOURCE_INVOKE,
     ).trimEnd();
@@ -322,6 +462,138 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     expect(shippedBody).toContain(
       'session_start:0:0"]\ntrusted_hash = "sha256:92de9e3a0fc738d1645c02577f54f3c5ce9892ec8389c000bc5f14ba5cb3bee9"',
     );
+  });
+
+  test("6b: selected plugin trust seed covers every final registered group with its matching identity", () => {
+    // THE INVARIANT NO OTHER TEST STATES. Codex identifies a trusted hook
+    // POSITIONALLY ("<hooks.json>:<event>:<group>:0") and silently declines to
+    // run any group without a matching trusted_hash. So a trust set that omits
+    // rows leaves them registered-but-dead: the file lists the guard, the guard
+    // never spawns, and every registration-shaped check still passes. Test 6
+    // cannot see this — it compares trustEntries() against a seed generated BY
+    // trustEntries(), so a source that omits plugin rows agrees with itself.
+    //
+    // Measured live on 2026-08-26 (codex-cli 0.149.1): shipped hooks.json
+    // carried 17 PreToolUse groups while the trust command emitted 5, so all 12
+    // rin guard rows were untrusted and a forbidden `node -e` write reached disk
+    // with no denial recorded.
+    //
+    // Both sides are derived INDEPENDENTLY here: group counts from the shipped
+    // artefact, trust keys from the generator. A test that read one source for
+    // both would reproduce exactly the defect it is meant to catch.
+    const project = selectedCodexProject();
+    const hooksPath = join(project, ".codex", "hooks.json");
+    const wiring = JSON.parse(
+      readFileSync(hooksPath, "utf-8"),
+    ) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+    const shippedGroupCounts = Object.fromEntries(
+      Object.entries(wiring.hooks).map(([event, groups]) => [
+        event,
+        groups.length,
+      ]),
+    );
+
+    const trustState = parseTrustDocument(readFileSync(join(project, ".codex", "trust-seed.toml"), "utf-8")).hooks.state;
+    const trustedKeys = Object.keys(trustState);
+    const trustedCounts = Object.fromEntries(
+      Object.entries(Object.groupBy(trustedKeys, trustKeyEventSpelling)).map(
+        ([event, keys]) => [event, keys?.length ?? 0],
+      ),
+    );
+
+    const untrusted = Object.entries(shippedGroupCounts)
+      .map(([event, shippedCount]) => ({
+        event,
+        shippedCount,
+        trustedCount: trustedCounts[snakeForEvent(event)] ?? 0,
+      }))
+      .filter(({ shippedCount, trustedCount }) => trustedCount !== shippedCount);
+
+    expect(untrusted).toEqual([]);
+
+    // THE ANTI-VACUITY FLOOR, and without it everything above is decoration.
+    //
+    // Both surfaces read plugin rows through pluginHookRows(REPO_ROOT), which
+    // resolves <REPO_ROOT>/plugins — a GITIGNORED staging dir the rin packager
+    // populates. In a fresh clone it is absent, both sides collapse to the core
+    // wiring, and every comparison above agrees at 5 === 5 while asserting
+    // nothing about the defect this test exists for. That is the same
+    // self-agreement pathology the trust surface itself had, one layer up.
+    //
+    // So assert the subject directly: at least one PLUGIN-CONTRIBUTED row must
+    // be present and trusted. A plugin row is one whose target is absent from
+    // the core HOOK_WIRING set — derived from the emitted commands rather than
+    // matched on a "rin-" prefix, because the property under test is
+    // "contributed by a plugin", not "belonging to one particular plugin".
+
+    // The core row count per event, obtained by pointing the generator at a
+    // repoRoot with NO plugins directory — so it reports the core wiring alone.
+    // A literal would go stale the moment core's wiring changes; this cannot.
+    const coreOnlyKeys = Object.keys(
+      parseTrustDocument(
+        trustEntries()("<PROJECT_DIR>", undefined, ".codex", PLUGINLESS_ROOT, "codex", SOURCE_INVOKE),
+      ).hooks.state,
+    );
+    const groupedCoreKeys = Object.groupBy(coreOnlyKeys, trustKeyEventSpelling);
+    const coreOnlyCounts = Object.fromEntries(
+      Object.entries(groupedCoreKeys).map(([event, keys]) => [event, keys?.length ?? 0]),
+    );
+
+    // Groups past the core count for their event are plugin-contributed —
+    // identified STRUCTURALLY (position beyond core's rows) rather than by a
+    // "rin-" prefix, because the property under test is "contributed by a
+    // plugin", not "belonging to one particular plugin".
+    const pluginGroups = Object.entries(wiring.hooks).flatMap(
+      ([event, groups]) =>
+        groups
+          .map((group, index) => ({ event, index, group }))
+          .filter(
+            ({ event: groupEvent, index }) =>
+              index >= (coreOnlyCounts[snakeForEvent(groupEvent)] ?? 0),
+          ),
+    );
+
+    expect(pluginGroups.length).toBeGreaterThan(0);
+
+    const untrustedPluginGroups = pluginGroups.filter(({ event, index }) => {
+      const key = `${hooksPath}:${snakeForEvent(event)}:${index}:0`;
+      return trustState[key] === undefined;
+    });
+
+    expect(untrustedPluginGroups).toEqual([]);
+
+    // Counts alone leave the key→identity pairing unchecked. Codex resolves a
+    // trust entry positionally, then compares the stored hash against the
+    // identity of whatever group actually sits at that index — and the hash
+    // covers the group's COMMAND. So a trust surface can carry exactly the right
+    // NUMBER of keys per event while every one of them is bound to the wrong
+    // row, and Codex would silently decline every mismatched hook: the same
+    // registered-but-dead fail-open, arriving through a door counting cannot
+    // watch. This asserts each shipped group's own command hashes to the entry
+    // stored at that group's key, with the command read from the committed
+    // artefact and the hash from the generator.
+    //
+    // HONEST BOUND, because the comment that used to sit here overstated it: this
+    // does NOT catch a reorder of HOOK_WIRING itself. Both surfaces regenerate
+    // from that one list, so a swap moves the command and the hash together and
+    // every assertion here still agrees. Catching that needs an anchor outside
+    // the generator — the pinned session_start hash in test 6 is one such anchor
+    // but binds only the first row. Nothing in this file currently binds the
+    // order of the rest, and that gap is real rather than covered elsewhere.
+    const misbound = Object.entries(wiring.hooks).flatMap(([event, groups]) =>
+      groups.flatMap((group, index) => {
+        const snake = snakeForEvent(event);
+        const key = `${hooksPath}:${snake}:${index}:0`;
+        const shippedCommand = group.hooks[0]?.command ?? "";
+        const stored = trustState[key]?.trusted_hash;
+        const expectedHash = trustHash(snake, shippedCommand);
+        return stored === expectedHash
+          ? []
+          : [{ key, shippedCommand, stored, expectedHash }];
+      }),
+    );
+
+    expect(misbound).toEqual([]);
   });
 
   test("7: default trust paths round-trip Unix and Windows path characters exactly", () => {
@@ -350,16 +622,25 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     ];
 
     for (const { project, hooksJson } of cases) {
-      const output = emitTrustEntries(project);
+      // repoRoot passed so the key set matches what an install really trusts:
+      // this case is about PATH round-tripping, and it must exercise the same
+      // row set the shipped wiring registers rather than a core-only subset.
+      const output = emitTrustEntries(project, undefined, ".codex", REPO_ROOT);
       const parsed = parseTrustDocument(output);
-      expect(Object.keys(parsed.hooks.state)).toEqual(expectedTrustKeys(hooksJson));
+      expect(sortedTrustKeys(parsed)).toEqual(expectedTrustKeys(hooksJson));
       for (const entry of Object.values(parsed.hooks.state)) {
         expect(entry.trusted_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
       }
     }
 
     // The common Unix form remains byte-identical to the historical output.
-    expect(emitTrustEntries("/tmp/example-proj")).toStartWith(
+    // This pins the FIRST emitted key and its real hash against a silent change
+    // to the trustHash recipe. It is NOT a general order anchor: it binds one
+    // row, and HOOK_WIRING puts SessionStart there, so a reorder among the rows
+    // that follow leaves it untouched.
+    expect(
+      emitTrustEntries("/tmp/example-proj", undefined, ".codex", REPO_ROOT),
+    ).toStartWith(
       '[hooks.state."/tmp/example-proj/.codex/hooks.json:session_start:0:0"]\n' +
         'trusted_hash = "sha256:4e23fffc05a5ef77e420b7d09b59be712919558a2a532c689d78f639731788db"\n\n',
     );
@@ -369,9 +650,9 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     const project = "/tmp/project path that must not replace the hook path";
     const hooksJson = String.raw`D:\custom hooks\hook "set"\hooks.json`;
     const emitTrustEntries = trustEntries();
-    const expected = emitTrustEntries(project, hooksJson);
+    const expected = emitTrustEntries(project, hooksJson, ".codex", REPO_ROOT);
     const direct = parseTrustDocument(expected);
-    expect(Object.keys(direct.hooks.state)).toEqual(expectedTrustKeys(hooksJson));
+    expect(sortedTrustKeys(direct)).toEqual(expectedTrustKeys(hooksJson));
 
     const r = spawnSync(
       "bun",
@@ -386,7 +667,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     // console.log adds one newline to the already newline-terminated TOML.
     expect(r.stdout).toBe(`${expected}\n`);
     const parsedStdout = parseTrustDocument(r.stdout);
-    expect(Object.keys(parsedStdout.hooks.state)).toEqual(expectedTrustKeys(hooksJson));
+    expect(sortedTrustKeys(parsedStdout)).toEqual(expectedTrustKeys(hooksJson));
     expect(r.stdout).not.toContain(project);
   });
 
@@ -413,7 +694,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
       });
       expect(r.status, project).toBe(0);
       expect(r.stderr, project).toBe("");
-      expect(Object.keys(parseTrustDocument(r.stdout).hooks.state)).toEqual(
+      expect(sortedTrustKeys(parseTrustDocument(r.stdout))).toEqual(
         expectedTrustKeys(hooksJson),
       );
     }
@@ -537,7 +818,9 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     };
     const groupCount = Object.values(wiring.hooks).reduce((n, g) => n + g.length, 0);
     expect(entries.length).toBe(groupCount);
-    expect(entries).toEqual(expectedTrustKeys("/tmp/example-proj/.codex/hooks.json"));
+    expect([...entries].sort()).toEqual(
+      expectedTrustKeys("/tmp/example-proj/.codex/hooks.json"),
+    );
     expect(r.stdout).not.toContain("<PROJECT_DIR>");
   });
 
@@ -554,5 +837,88 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     const supported = runDoctorWithCodexVersion("0.145.0");
     expect(supported.status).toBe(0);
     expect(supported.output).toContain("Harness CLI: codex codex-cli 0.145.0");
+  });
+
+  test("14: packaged Rin plugin agents have native Codex roles with projected policy and instructions", () => {
+    const agentRoot = join(REPO_ROOT, "dist", "plugins", "rin", "codex", "agents");
+    const sourceAgents = readdirSync(join(REPO_ROOT, "plugins", "rin", "agents"))
+      .filter((file) => file.endsWith("-agent.md"))
+      .map((file) => file.replace(/\.md$/, ".toml"))
+      .sort();
+    const nativeAgents = readdirSync(agentRoot)
+      .filter((file) => file.endsWith(".toml"))
+      .sort();
+    expect(nativeAgents).toEqual(sourceAgents);
+    const documents = nativeAgents.map((file) =>
+      parse(readFileSync(join(agentRoot, file), "utf-8")) as Record<string, unknown>
+    );
+    expect(documents.every((document) =>
+      typeof document.developer_instructions === "string" &&
+      !/\{\{[A-Z_]+\}\}/.test(document.developer_instructions)
+    )).toBe(true);
+    const balanced = parse(readFileSync(join(agentRoot, "rin-pr-evades-reviewer-agent.toml"), "utf-8")) as Record<string, unknown>;
+    expect(balanced.model).toBe("gpt-5.6-terra");
+    expect(balanced.model_reasoning_effort).toBe("medium");
+    expect(balanced.developer_instructions).toContain(".codex/knowledge/");
+    const judgment = parse(readFileSync(join(agentRoot, "rin-pr-checkers-reviewer-agent.toml"), "utf-8")) as Record<string, unknown>;
+    expect(judgment.model).toBeUndefined();
+    expect(judgment.model_reasoning_effort).toBeUndefined();
+    expect(judgment.description).toContain(".codex/");
+    const tierless = parse(readFileSync(join(REPO_ROOT, "dist", "plugins", "test-pro", "codex", "agents", "test-pro-metrics-agent.toml"), "utf-8")) as Record<string, unknown>;
+    expect(tierless.model).toBeUndefined();
+    expect(tierless.model_reasoning_effort).toBeUndefined();
+    expect(tierless.developer_instructions).toContain(".codex/aidlc-rules/");
+  });
+
+  test("15: isolated Codex plugin build applies the pack-time tier cap", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "t150-codex-plugin-cap-"));
+    try {
+      const built = spawnSync("bun", [PACKAGE_SCRIPT, "plugin", "build", "rin", "codex", outDir], {
+        cwd: REPO_ROOT,
+        encoding: "utf-8",
+        env: { ...process.env, AIDLC_TIER_CAP: "balanced" },
+      });
+      expect(built.status, built.stderr).toBe(0);
+      const judgment = parse(readFileSync(join(outDir, "agents", "rin-pr-checkers-reviewer-agent.toml"), "utf-8")) as Record<string, unknown>;
+      expect(judgment.model).toBe("gpt-5.6-terra");
+      expect(judgment.model_reasoning_effort).toBe("medium");
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  test("16: packaged Codex plugin instructions preserve TOML-sensitive content", () => {
+    const regression = [
+      "Regex \\d",
+      "Path C:\\Users",
+      "Literal \\n",
+      '"""quoted"""',
+      'model = "literal instruction"',
+    ].join("\n");
+    const source = `${readFileSync(TEST_PRO_AGENT_PATH, "utf-8")
+      .replace("model: sonnet", "tier: balanced")}\n${regression}\n`;
+    const result = buildSyntheticCodexPluginAgent({ label: "escaping", source });
+    expect(result.status, result.stderr).toBe(0);
+    const agent = parse(result.nativeAgent ?? "") as Record<string, unknown>;
+    expect(agent.model).toBe("gpt-5.6-terra");
+    expect(agent.model_reasoning_effort).toBe("medium");
+    expect(agent.developer_instructions).toContain(regression);
+  });
+
+  test("17: unresolved plugin tokens refuse native Codex projection", () => {
+    const source = `${readFileSync(TEST_PRO_AGENT_PATH, "utf-8")}\n{{UNKNOWN_TOKEN}}\n`;
+    const result = buildSyntheticCodexPluginAgent({ label: "unresolved-token", source });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("unresolved Codex agent token {{UNKNOWN_TOKEN}}");
+    expect(result.nativeAgent).toBeNull();
+  });
+
+  test("18: invalid plugin agent tiers refuse native Codex projection", () => {
+    const source = readFileSync(TEST_PRO_AGENT_PATH, "utf-8")
+      .replace("model: sonnet", "tier: unsupported");
+    const result = buildSyntheticCodexPluginAgent({ label: "invalid-tier", source });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("invalid agent tier");
+    expect(result.nativeAgent).toBeNull();
   });
 });

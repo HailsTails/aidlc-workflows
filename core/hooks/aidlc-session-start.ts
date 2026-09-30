@@ -44,6 +44,7 @@ import {
   findIntentByUuid,
   harnessDir,
   getField,
+  hookPayloadCwd,
   hooksHealthDir,
   isClaudeCodeHookInput,
   isoTimestamp,
@@ -54,7 +55,7 @@ import {
   recordHookDrop,
   recoveryFilePath,
   resolveWorkflowSelection,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   stateFilePathForSelection,
   validSessionId,
   writeCurrentSessionId,
@@ -68,7 +69,10 @@ import { writeCurrentTranscriptPath } from "../tools/aidlc-usage.ts";
 import { aidlcToolInvocation } from "../tools/aidlc-runtime-paths.ts";
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 
 // Read stdin before the workflow-state gate. A fresh session commonly starts
 // before the first intent is created; retaining its id lets intent-create stamp

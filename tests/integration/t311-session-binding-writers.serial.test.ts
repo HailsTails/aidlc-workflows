@@ -40,6 +40,12 @@ const BUN = process.execPath;
 const HOOK = join(AIDLC_SRC, "hooks", "aidlc-session-start.ts");
 const REBUILD = join(AIDLC_SRC, "hooks", "aidlc-rebuild-stage-graph.ts");
 const UTIL = join(AIDLC_SRC, "tools", "aidlc-utility.ts");
+const fixtureEnvironment: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([name]) => name !== "AIDLC_SESSION_OVERRIDE" &&
+      name !== "AIDLC_SESSION_OVERRIDE_SOURCE",
+  ),
+);
 
 let proj = "";
 
@@ -60,7 +66,7 @@ function fireSessionStart(sessionId: string): number {
     ),
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
+    env: { ...fixtureEnvironment, AIDLC_PROJECT_DIR: proj, CLAUDE_PROJECT_DIR: proj },
   });
   return result.exitCode;
 }
@@ -71,7 +77,7 @@ function fireSession(source: string, sessionId: string): { status: number; stdou
     stdin: new TextEncoder().encode(JSON.stringify({ source, session_id: sessionId })),
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
+    env: { ...fixtureEnvironment, AIDLC_PROJECT_DIR: proj, CLAUDE_PROJECT_DIR: proj },
   });
   return { status: result.exitCode, stdout: result.stdout.toString() };
 }
@@ -81,7 +87,7 @@ function util(args: string[]): { status: number; stdout: string; stderr: string 
     cmd: [BUN, UTIL, ...args, "--project-dir", proj],
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env },
+    env: { ...fixtureEnvironment },
   });
   return {
     status: result.exitCode,

@@ -4,7 +4,7 @@ Load this module when a directive names a reviewer with an effective review clas
 
 ## 12a. Reviewer Invocation
 
-If the `run-stage` directive includes a `reviewer` field (non-null), the orchestrator MUST invoke the reviewer as a **separate sub-agent** after the stage body produces its artifacts and before the §13 learnings ritual when the directive lists the `learnings` protocol module, otherwise before the approval gate.
+If the `run-stage` directive includes a `reviewer` field (non-null), the orchestrator MUST invoke the reviewer as a **separate sub-agent** after the stage body produces its artifacts and before the §13 learnings ritual when the directive lists the `learnings` protocol module, otherwise before the approval gate. The one coordinator marker exception is `rin-decorrelated-review-agent`: the conductor runs `{{HARNESS_DIR}}/knowledge/rin-gates/decorrelated-review.md` inline, dispatches that protocol's lens agents as separate subagents, and writes their collated result to the same review file. The review request and terminal receipt below are mandatory for this exception too. Invoking the marker directly is an incomplete review.
 
 The directive's `review_class` field tells you HOW the review runs - the engine has already resolved it (stage declaration, lowered by the scope's `review_cap` and any per-run `--review` override; a `none` resolution omits the reviewer block entirely, so a directive that carries a reviewer always carries a class):
 
@@ -23,6 +23,8 @@ A directive's `narration` value covers entering a stage; it cannot reach inside 
 Everything else in this section is silent. Nothing is said about invoking, handing off, sub-agents, iterations, budgets, receipts, dispatch records, the exempt list, or a verdict as a token: the user hears "a second look", never "the reviewer returned NOT-READY". Nor is the trigger for a re-check explained in the framework's terms: which declared outputs an edit touched, whether a recorded verdict is now stale, and what has to be re-recorded are all internal, so the sentence above is the whole of it. Name the trade, never the agent's file or slug. When the field is absent this check does not run, and that is not something the user hears either, in any wording: go straight to the next thing you actually do. Reasoning aloud about whether a branch applies is the surest way to leak internal vocabulary, because the only words for it are internal ones.
 
 ### Flow
+
+**Ordering constraint, binding on every stage: produce the gate's artefacts FIRST, convene the review board SECOND.** The review freeze reads receipt state, so a run that writes a declared `produces[]` artefact *after* a terminal receipt invalidates that receipt and trips the freeze, while a run that writes first and reviews second never does. This is not a preference about workflow tidiness — it is the difference between a gate that can complete and one that cannot, because the write that makes the gate approvable is otherwise the same write that makes it un-approvable. Finish the artefacts, then request the review.
 
 1. **Invoke reviewer sub-agent.** Before every dispatch, not only the first,
    record the request:
@@ -64,8 +66,9 @@ Everything else in this section is silent. Nothing is said about invoking, handi
    durable human dispositions from the audit ledger overlaid, so `Accepted
    risk` and `Rejected: <reason>` survive without touching any artifact.
 
-   Then delegate to the reviewer agent named in `directive.reviewer`. The
-   request remains unmatched while the reviewer runs, so the approval gate and
+   Then delegate to the reviewer agent named in `directive.reviewer`, except
+   for the named coordinator marker above: run its board protocol inline. The
+   request remains unmatched while the review runs, so the approval gate and
    completion stay blocked.
 
    Pass:
@@ -117,7 +120,7 @@ Everything else in this section is silent. Nothing is said about invoking, handi
 
    An `advisory` review keeps the evidence-grounding rule but not the refute-until-READY posture: tell the reviewer in the dispatch brief that this is a SINGLE normal-flow advisory pass whose findings go to the human at the approval gate - report only findings the human should weigh before approving, ranked by severity, with no fix-and-re-review loop behind it. The stale-receipt recovery below is a separate bounded request, not a repair loop.
 
-   The reviewer sub-agent:
+   The reviewer sub-agent, or the conductor coordinating the named board:
    - Reads the stage definition to understand what SHOULD have been produced
    - Reads the Q&A to understand context and constraints
    - Reads the artifact(s) to evaluate what WAS produced

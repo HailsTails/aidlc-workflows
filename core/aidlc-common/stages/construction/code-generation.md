@@ -1,5 +1,7 @@
 ---
 slug: code-generation
+number: 3.5
+name: Code Generation
 phase: construction
 execution: ALWAYS
 condition: Always executes for every unit in the execution plan.

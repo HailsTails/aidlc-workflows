@@ -1,5 +1,7 @@
 ---
 slug: rough-mockups
+number: 1.6
+name: Rough Mockups
 phase: ideation
 execution: CONDITIONAL
 condition: Execute when user-facing UI is part of the initiative; for API/backend, produce system interaction diagrams. Skip for non-UI, API-only, or infrastructure-only initiatives.

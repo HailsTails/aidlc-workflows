@@ -57,6 +57,7 @@ export type PluginValidationRule =
   | "contribution-target"
   | "stage-body"
   | "tools-payload"
+  | "content-payload"
   | "compose-template-missing"
   | "compose-hook-stale"
   | "compose-hook-absent"
@@ -363,6 +364,28 @@ export function walkPluginFiles(dir: string): string[] {
   return scan.files;
 }
 
+export function classifyPluginSourceFile({
+  pluginRoot,
+  file,
+}: {
+  readonly pluginRoot: string;
+  readonly file: string;
+}): "runtime" | "test" | "test-fixture" | "unsupported" {
+  const segments = relative(pluginRoot, file).split(sep);
+  const filename = segments.at(-1) ?? "";
+  if (segments.includes("test-fixtures")) return "test-fixture";
+  if (segments.some((segment) => ["tests", "__tests__", "fixtures"].includes(segment))) {
+    return "unsupported";
+  }
+  return /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(filename) ? "test" : "runtime";
+}
+
+function runtimePluginFiles(root: string, directory: string): string[] {
+  return scanPluginFiles(join(root, directory)).files.filter(
+    (file) => classifyPluginSourceFile({ pluginRoot: root, file }) === "runtime",
+  );
+}
+
 function validatePluginContentSymlinks(
   root: string,
   findings: MutableFindings,
@@ -436,7 +459,7 @@ function pluginAuthoringContext(): PluginAuthoringContext {
 }
 
 function pluginAgentRoster(root: string): string[] {
-  const pluginAgents = scanPluginFiles(join(root, "agents")).files
+  const pluginAgents = runtimePluginFiles(root, "agents")
     .filter((file) => file.endsWith("-agent.md"))
     .map((file) => basename(file, ".md"));
   return [
@@ -640,7 +663,7 @@ function validateStages(
     string,
     Array<{ file: string; slug: string }>
   >();
-  for (const file of scanPluginFiles(join(root, "stages")).files.filter((path) =>
+  for (const file of runtimePluginFiles(root, "stages").filter((path) =>
     path.endsWith(".md"),
   )) {
     const displayFile = posixRelative(root, file);
@@ -757,7 +780,7 @@ function validateContributions(
   const coreStages = new Set(
     coreStageSlugs ?? pluginAuthoringContext().stages,
   );
-  for (const file of scanPluginFiles(join(root, "contributions")).files.filter(
+  for (const file of runtimePluginFiles(root, "contributions").filter(
     (path) => path.endsWith(".md"),
   )) {
     const displayFile = posixRelative(root, file);
@@ -800,7 +823,7 @@ function validateScopes(
   findings: MutableFindings,
 ): void {
   const prefix = `${pluginName}-`;
-  for (const file of scanPluginFiles(join(root, "scopes")).files.filter((path) =>
+  for (const file of runtimePluginFiles(root, "scopes").filter((path) =>
     path.endsWith(".md"),
   )) {
     const displayFile = posixRelative(root, file);
@@ -883,7 +906,7 @@ function validateAgents(
   const filenameRe = new RegExp(
     `^${escaped}-[a-z][a-z0-9-]*-agent$`,
   );
-  for (const file of scanPluginFiles(join(root, "agents")).files.filter((path) =>
+  for (const file of runtimePluginFiles(root, "agents").filter((path) =>
     path.endsWith(".md"),
   )) {
     const displayFile = posixRelative(root, file);
@@ -931,27 +954,26 @@ function validateAgents(
   }
 }
 
-function validateTools(
+function validateRuntimeContentPayload(
   root: string,
   findings: MutableFindings,
 ): void {
-  const toolsRoot = join(root, "tools");
-  for (const file of scanPluginFiles(toolsRoot).files) {
-    const rel = posixRelative(toolsRoot, file);
-    const segments = rel.split("/");
-    const filename = segments.at(-1) ?? "";
-    const hasPayloadDir = segments
-      .slice(0, -1)
-      .some((segment) => segment === "tests" || segment === "fixtures");
-    if (!hasPayloadDir && !filename.endsWith(".test.ts")) continue;
+  const runtimeFiles = PLUGIN_SYMLINK_SCAN_DIRS.filter(
+    (directory) => directory !== ".aidlc-plugin",
+  ).flatMap((directory) => scanPluginFiles(join(root, directory)).files);
+  runtimeFiles.filter(
+    (file) => classifyPluginSourceFile({ pluginRoot: root, file }) === "unsupported",
+  ).forEach((file) => {
+    const displayFile = posixRelative(root, file);
+    const contentRoot = displayFile.split("/")[0] ?? "";
     addError(
       findings,
-      posixRelative(root, file),
-      "tools-payload",
-      "non-tool test or fixture payload under tools/ would be copied into every install",
-      "Move tests and fixtures to the plugin-root tests/ directory.",
+      displayFile,
+      contentRoot === "tools" ? "tools-payload" : "content-payload",
+      `unclassified test or fixture directory under ${contentRoot}/`,
+      `Move maintained fixtures under test-fixtures/ or move unrelated content outside ${contentRoot}/.`,
     );
-  }
+  });
 }
 
 function validateComposeHook(
@@ -1050,7 +1072,7 @@ export function validatePluginRoot(
   validateContributions(root, pluginName, findings, options.coreStageSlugs);
   validateScopes(root, pluginName, findings);
   validateAgents(root, pluginName, findings);
-  validateTools(root, findings);
+  validateRuntimeContentPayload(root, findings);
   const composeHook = validateComposeHook(
     root,
     findings,

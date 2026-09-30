@@ -1,5 +1,7 @@
 ---
 slug: workspace-scaffold
+number: 0.1
+name: Workspace Scaffold
 phase: initialization
 execution: ALWAYS
 condition: Ensure-exists the per-intent record and in-scope phase dirs, idempotent (creates on demand, skips existing)

@@ -882,8 +882,9 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
       },
     });
     expect(compose.status).toBe(0);
-    expect(existsSync(join(selectedProj, ".claude", "aidlc-common", "stages", "construction", "test-pro-integration.md"))).toBe(true);
-    expect(stage(selectedProj, "test-pro-integration")?.enabled).toBe(false);
+    expect(existsSync(join(selectedProj, ".claude", "aidlc-common", "stages", "construction", "test-pro-integration.md"))).toBe(false);
+    expect(stage(selectedProj, "test-pro-integration")).toBeUndefined();
+    expect(JSON.parse(readFileSync(harnessJson, "utf-8")).plugins).toEqual(["aidlc"]);
     expect(existsSync(join(selectedProj, ".claude", "skills", "test-pro-integration", "SKILL.md"))).toBe(false);
     expect(hookDrops(selectedProj)).toContain("select-plugins aidlc,test-pro");
   });

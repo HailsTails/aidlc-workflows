@@ -11,18 +11,22 @@ import {
   completeSubagentInflight,
   errorMessage,
   getField,
+  hookPayloadCwd,
   hooksHealthDir,
   isClaudeCodeHookInput,
   isoTimestamp,
   recordHookDrop,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   resolveWorkflowSelection,
   stateFilePathForSelection,
   validSessionId,
 } from "../tools/aidlc-lib.ts";
 
 export async function run(input: string): Promise<number> {
-  const projectDir = resolveProjectDirFromHook(import.meta.url);
+  const projectDir = resolveProjectDirFromPayload({
+    importMetaUrl: import.meta.url,
+    cwd: hookPayloadCwd(input),
+  });
 
   // Read JSON before workflow resolution: completion must remove only the
   // finishing session's in-flight entry, even when that session no longer has a

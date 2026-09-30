@@ -1,5 +1,7 @@
 # AI-DLC - one core, many harnesses
 
+For the Rin fork, see [fork installation and differences](docs/guide/rin-fork-installation.md).
+
 AI-DLC (AI-Driven Development Life Cycle) turns AI coding assistants into
 structured, verifiable software-delivery workflows. One harness-neutral core
 runs natively in Claude Code, Kiro CLI, Kiro IDE, Codex CLI, Cursor, opencode,

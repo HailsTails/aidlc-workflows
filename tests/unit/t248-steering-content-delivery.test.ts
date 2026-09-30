@@ -41,6 +41,7 @@ import {
   seededRecordDir,
   seededStateFile,
   setupIntegrationProject,
+  type IntegrationProjectOptions,
 } from "../harness/fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 import { resolveCapturedToolInput } from "../harness/sdk-drive.ts";
@@ -80,9 +81,20 @@ type HookRewrite = {
 
 const projects: string[] = [];
 
-function project(): string {
-  const proj = setupIntegrationProject();
+function project(input: {
+  delivery?: "explicit" | "ambient";
+  options?: IntegrationProjectOptions;
+} = {}): string {
+  const proj = setupIntegrationProject(input.options);
   projects.push(proj);
+  const metadata = join(proj, ".claude", "tools", "data", "harness.json");
+  writeFileSync(
+    metadata,
+    readFileSync(metadata, "utf8").replace(
+      '"baseRuleDelivery": "ambient"',
+      '"baseRuleDelivery": "' + (input.delivery ?? "explicit") + '"',
+    ),
+  );
   return proj;
 }
 
@@ -169,7 +181,7 @@ function runDispatchHook(
         cwd: proj,
       }),
       encoding: "utf-8",
-      env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
+      env: { ...process.env, AIDLC_PROJECT_DIR: proj, CLAUDE_PROJECT_DIR: proj },
     },
   );
   return {
@@ -193,6 +205,20 @@ function reviewerExecutionSurface(
 }
 
 describe("t248 deterministic steering delivery", () => {
+  test("ambient delivery retains governing rule references without transporting duplicate text", () => {
+    const proj = project({ delivery: "ambient" });
+    const result = drive(proj);
+    expect(result.loads).toEqual([]);
+    expect(result.contents).toEqual([]);
+    expect(result.final.kind).toBe("run-stage");
+    expect(result.final.rules_in_context).toEqual([
+      "aidlc/spaces/default/memory/org.md",
+      "aidlc/spaces/default/memory/team.md",
+      "aidlc/spaces/default/memory/project.md",
+      "aidlc/spaces/default/memory/phases/ideation.md",
+    ]);
+  });
+
   test("delivers substantive rules before run-stage and keeps knowledge path-loaded", () => {
     const proj = project();
     const result = drive(proj);
@@ -201,6 +227,8 @@ describe("t248 deterministic steering delivery", () => {
     expect(result.final.kind).toBe("run-stage");
     expect(result.final.rules_in_context).toEqual([
       "aidlc/spaces/default/memory/org.md",
+      "aidlc/spaces/default/memory/team.md",
+      "aidlc/spaces/default/memory/project.md",
       "aidlc/spaces/default/memory/phases/ideation.md",
     ]);
     expect(result.final).not.toHaveProperty("rules_content");
@@ -397,10 +425,9 @@ describe("t248 deterministic steering delivery", () => {
   });
 
   test("a continuation issued before the engine-directory migration remains valid", () => {
-    const proj = setupIntegrationProject({
-      withState: "state-brownfield-feature.md",
+    const proj = project({
+      options: { withState: "state-brownfield-feature.md" },
     });
-    projects.push(proj);
     const orgPath = join(
       proj,
       "aidlc",
@@ -446,10 +473,9 @@ describe("t248 deterministic steering delivery", () => {
   });
 
   test("engine observers are read-only for team and solo, and route checks bypass transport", () => {
-    const team = setupIntegrationProject({
-      withState: "state-brownfield-feature.md",
+    const team = project({
+      options: { withState: "state-brownfield-feature.md" },
     });
-    projects.push(team);
     const teamStatePath = seededStateFile(team);
     writeFileSync(
       teamStatePath,
@@ -522,10 +548,9 @@ describe("t248 deterministic steering delivery", () => {
     // machine-local steering key and publish the marker, and that publication is
     // what deleted the human's in-flight Plan Approval. A query must leave both
     // absent, whatever the Unit Ownership.
-    const solo = setupIntegrationProject({
-      withState: "state-brownfield-feature.md",
+    const solo = project({
+      options: { withState: "state-brownfield-feature.md" },
     });
-    projects.push(solo);
     const soloProbe = invoke(
       solo,
       "next",
@@ -550,10 +575,9 @@ describe("t248 deterministic steering delivery", () => {
 
     // A route check asks only which Unit would be routed, so it skips transport
     // entirely: no load-steering, no token, no key, no marker.
-    const routed = setupIntegrationProject({
-      withState: "state-brownfield-feature.md",
+    const routed = project({
+      options: { withState: "state-brownfield-feature.md" },
     });
-    projects.push(routed);
     const routeCheck = invoke(
       routed,
       "next",
@@ -570,8 +594,7 @@ describe("t248 deterministic steering delivery", () => {
   });
 
   test("sessionless continuation consumes the same token exactly once", () => {
-    const proj = setupIntegrationProject({ withState: "state-brownfield-feature.md" });
-    projects.push(proj);
+    const proj = project({ options: { withState: "state-brownfield-feature.md" } });
     const orgPath = join(proj, "aidlc", "spaces", "default", "memory", "org.md");
     writeFileSync(
       orgPath,
@@ -594,8 +617,7 @@ describe("t248 deterministic steering delivery", () => {
   });
 
   test("stage validity advisory survives every steering continuation", () => {
-    const proj = setupIntegrationProject({ withState: "state-operation.md" });
-    projects.push(proj);
+    const proj = project({ options: { withState: "state-operation.md" } });
     const state = readFileSync(seededStateFile(proj), "utf-8");
     const graphRaw = JSON.parse(
       readFileSync(
@@ -718,10 +740,9 @@ describe("t248 deterministic steering delivery", () => {
   });
 
   test("a changed workflow state invalidates an in-flight continuation", () => {
-    const proj = setupIntegrationProject({
-      withState: "state-mid-ideation.md",
+    const proj = project({
+      options: { withState: "state-mid-ideation.md" },
     });
-    projects.push(proj);
     const first = invoke(proj, "next", []).directive;
     appendFileSync(
       seededStateFile(proj),
@@ -1272,10 +1293,9 @@ describe("t248 deterministic steering delivery", () => {
     // prose must bind the ACTIVE stage's bundle (phase rule = ideation for
     // feasibility), not the mentioned stage's (inception for user-stories).
     // Only a stage-FILE path outranks the state file's Current Stage.
-    const proj = setupIntegrationProject({
-      withState: "state-mid-ideation.md", // Current Stage: feasibility
+    const proj = project({
+      options: { withState: "state-mid-ideation.md" },
     });
-    projects.push(proj);
     const result = runDispatchHook(proj, "Task", {
       subagent_type: "aidlc-architect-agent",
       prompt:
@@ -1295,10 +1315,9 @@ describe("t248 deterministic steering delivery", () => {
   });
 
   test("dispatch stage resolution: an unknown explicit path falls back to Current Stage", () => {
-    const proj = setupIntegrationProject({
-      withState: "state-mid-ideation.md", // Current Stage: feasibility
+    const proj = project({
+      options: { withState: "state-mid-ideation.md" },
     });
-    projects.push(proj);
     const result = runDispatchHook(proj, "Task", {
       subagent_type: "aidlc-architect-agent",
       prompt:

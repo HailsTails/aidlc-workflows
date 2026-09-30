@@ -34,6 +34,7 @@ import {
   routePolicyFor,
 } from "../../core/tools/aidlc.ts";
 import { validatePublicConfigArgs } from "../../core/tools/aidlc-init.ts";
+import { sessionsDir } from "../../core/tools/aidlc-lib.ts";
 import { launcherRouteUsesPin } from "../../core/tools/aidlc-command.ts";
 import {
   projectPinTargetPath,
@@ -147,6 +148,7 @@ afterAll(() => {
 
 function makeProject(): string {
   const project = createTestProject();
+  mkdirSync(join(project, ".git"), { recursive: true });
   const dataDir = join(project, ".claude", "tools", "data");
   mkdirSync(dataDir, { recursive: true });
   cpSync(
@@ -206,6 +208,7 @@ function makeUnselectedKiroProject(): string {
     ),
     { force: true },
   );
+  rmSync(sessionsDir(project), { recursive: true, force: true });
   return project;
 }
 
@@ -2808,6 +2811,37 @@ describe("t230 dispatcher hook routing", () => {
     expect(health()).toBe(true);
   });
 
+  test.each([
+    { name: "hook", route: ["engine", "hook", "validate-state"] },
+    { name: "adapter", route: ["engine", "adapter", "codex", "validate-state"] },
+  ])("explicit project directory wins over a conflicting payload checkout for $name", ({ route }) => {
+    const cwdProject = makeProject();
+    const targetProject = makeProject();
+    writeMinimalState(cwdProject, "intent-capture");
+    writeMinimalState(targetProject, "domain-design");
+    cpSync(join(REPO_ROOT, "dist", "codex", ".codex"), join(targetProject, ".codex"), { recursive: true });
+    const result = viaDispatcher([...route, "--project-dir", targetProject], cwdProject, {}, JSON.stringify({ hook_event_name: "PreCompact", cwd: cwdProject, session_id: "t230-explicit-conflict" }));
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(seededRecordDir(targetProject), ".aidlc-engine/hooks-health", "validate-state.last"))).toBe(true);
+    expect(existsSync(join(seededRecordDir(cwdProject), ".aidlc-engine/hooks-health", "validate-state.last"))).toBe(false);
+  });
+
+  test.each([
+    { name: "hook", route: ["engine", "hook", "validate-state"] },
+    { name: "adapter", route: ["engine", "adapter", "codex", "validate-state"] },
+  ])("without an explicit project directory the payload checkout remains authoritative for $name", ({ route }) => {
+    const cwdProject = makeProject();
+    const payloadProject = makeProject();
+    writeMinimalState(cwdProject, "intent-capture");
+    writeMinimalState(payloadProject, "domain-design");
+    cpSync(join(REPO_ROOT, "dist", "codex", ".codex"), join(cwdProject, ".codex"), { recursive: true });
+    cpSync(join(REPO_ROOT, "dist", "codex", ".codex"), join(payloadProject, ".codex"), { recursive: true });
+    const result = viaDispatcher([...route], cwdProject, {}, JSON.stringify({ hook_event_name: "PreCompact", cwd: payloadProject, session_id: "t230-default-payload" }));
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(seededRecordDir(payloadProject), ".aidlc-engine/hooks-health", "validate-state.last"))).toBe(true);
+    expect(existsSync(join(seededRecordDir(cwdProject), ".aidlc-engine/hooks-health", "validate-state.last"))).toBe(false);
+  });
+
   test("--project-dir overrides cwd and payload project for hook, statusline, and adapter", () => {
     const cwdProject = makeProject();
     const targetProject = makeProject();
@@ -2818,7 +2852,7 @@ describe("t230 dispatcher hook routing", () => {
        ["engine", "hook", "validate-state", "--project-dir", targetProject],
       cwdProject,
       {},
-      "{}",
+      JSON.stringify({ cwd: cwdProject, session_id: "t230-explicit-hook-project" }),
     );
     expect(hook.exitCode).toBe(0);
     expect(

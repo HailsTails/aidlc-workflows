@@ -101,6 +101,7 @@ function guarded(proj: string, args: string[]): { rc: number; out: string } {
   const env = { ...process.env };
   env.AIDLC_SKIP_ARTIFACT_GUARD = "1";
   env.AIDLC_SKIP_HUMAN_PRESENCE_GUARD = "1";
+  env.AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD = "1";
   env.AIDLC_ALLOW_DIRECT_STATE_TRANSITIONS = "1";
   delete env.AIDLC_SKIP_REVISION_BACKSTOP;
   delete env.AIDLC_DISABLE_ENSEMBLE_EVIDENCE;
@@ -117,6 +118,7 @@ function guardedReport(proj: string, args: string[]): { rc: number; out: string 
   const env = { ...process.env };
   env.AIDLC_SKIP_ARTIFACT_GUARD = "1";
   env.AIDLC_SKIP_HUMAN_PRESENCE_GUARD = "1";
+  env.AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD = "1";
   delete env.AIDLC_SKIP_REVISION_BACKSTOP;
   delete env.AIDLC_DISABLE_ENSEMBLE_EVIDENCE;
   const r = spawnSync(BUN, [ORCHESTRATE, "report", ...args, "--project-dir", proj], {
@@ -131,6 +133,7 @@ function guardedNoBackstop(proj: string, args: string[]): { rc: number; out: str
   const env = { ...process.env };
   env.AIDLC_SKIP_ARTIFACT_GUARD = "1";
   env.AIDLC_SKIP_HUMAN_PRESENCE_GUARD = "1";
+  env.AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD = "1";
   env.AIDLC_SKIP_REVISION_BACKSTOP = "1";
   env.AIDLC_ALLOW_DIRECT_STATE_TRANSITIONS = "1";
   const r = spawnSync(BUN, [STATE, ...args, "--project-dir", proj], {
@@ -188,7 +191,11 @@ function recordReview(proj: string, slug: string, iteration: number): void {
     "--project-dir",
     proj,
   ];
-  const request = spawnSync(BUN, args, { encoding: "utf-8", env: process.env });
+  const reviewEnvironment = {
+    ...process.env,
+    AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD: "1",
+  };
+  const request = spawnSync(BUN, args, { encoding: "utf-8", env: reviewEnvironment });
   if ((request.status ?? -1) !== 0) {
     throw new Error(`recordReview request failed: ${request.stdout ?? ""}${request.stderr ?? ""}`);
   }
@@ -210,7 +217,7 @@ function recordReview(proj: string, slug: string, iteration: number): void {
   );
   const verdict = spawnSync(BUN, [...args, "--verdict", "READY"], {
     encoding: "utf-8",
-    env: process.env,
+    env: reviewEnvironment,
   });
   if ((verdict.status ?? -1) !== 0) {
     throw new Error(`recordReview verdict failed: ${verdict.stdout ?? ""}${verdict.stderr ?? ""}`);
@@ -447,7 +454,7 @@ describe("t205: approve-time gate-revision backstop", () => {
     expect(eventCount(proj, "GATE_APPROVED")).toBe(1);
   });
 
-  test("3b: a recovered rejection invalidates the review checked before the backstop", () => {
+  test("3b: stale review refuses without mutation and a refreshed review permits approval", () => {
     seedStateFile(proj, "state-mid-inception.md");
     const slug = field(proj, "Current Stage");
     guarded(proj, ["checkbox", `${slug}=in-progress`]);
@@ -465,13 +472,16 @@ describe("t205: approve-time gate-revision backstop", () => {
     );
     recordHumanTurn(proj);
 
+    const stateBeforeRefusal = stateContent(proj);
     const refused = guarded(proj, ["approve", slug, "--user-input", "looks good now"]);
     expect(refused.rc).not.toBe(0);
-    expect(refused.out).toContain("has not reviewed the current output");
-    expect(eventCount(proj, "GATE_REJECTED")).toBe(1);
+    expect(refused.out).toContain("ARTIFACT_REVIEW_STALE");
+    expect(eventCount(proj, "GATE_REJECTED")).toBe(0);
     expect(eventCount(proj, "GATE_APPROVED")).toBe(0);
-    expect(field(proj, "Revision Count")).toBe("1");
-    expect(stateContent(proj)).toContain(`- [R] ${slug}`);
+    expect(eventCount(proj, "STAGE_REVISING")).toBe(0);
+    expect(eventCount(proj, "STAGE_COMPLETED")).toBe(0);
+    expect(field(proj, "Revision Count")).toBe("0");
+    expect(stateContent(proj)).toBe(stateBeforeRefusal);
     const recoveredGateRows = auditBlocks(proj).filter(
       (b) =>
         b.event === "STAGE_AWAITING_APPROVAL" &&
@@ -480,19 +490,16 @@ describe("t205: approve-time gate-revision backstop", () => {
     );
     expect(recoveredGateRows.length).toBe(0);
 
-    recordReview(proj, slug, 1);
-    const stillRevising = guarded(
+    recordReview(proj, slug, 2);
+    const accepted = guarded(
       proj,
       ["approve", slug, "--user-input", "looks good now"],
     );
-    expect(stillRevising.rc).not.toBe(0);
-    expect(stateContent(proj)).toContain(`- [R] ${slug}`);
-    expect(guarded(proj, ["revise", slug]).rc).toBe(0);
-    expect(stateContent(proj)).toContain(`- [?] ${slug}`);
-    recordHumanTurn(proj);
-    const accepted = guarded(proj, ["approve", slug, "--user-input", "looks good now"]);
     expect(accepted.rc).toBe(0);
     expect(eventCount(proj, "GATE_APPROVED")).toBe(1);
+    expect(eventCount(proj, "GATE_REJECTED")).toBe(1);
+    expect(field(proj, "Revision Count")).toBe("1");
+    expect(stateContent(proj)).toContain(`- [x] ${slug}`);
   });
 
   // --- Scenario 4: a properly recorded reject cycle - the backstop must not pile

@@ -1,5 +1,7 @@
 ---
 slug: user-stories
+number: 2.4
+name: User Stories
 phase: inception
 execution: CONDITIONAL
 condition: Execute when user-facing features, multiple personas, complex business logic, or cross-team work is involved. Skip for pure refactoring, isolated bug fixes, infrastructure-only changes, or developer tooling.

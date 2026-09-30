@@ -13,18 +13,22 @@ import {
   auditFilePath,
   errorMessage,
   getField,
+  hookPayloadCwd,
   hooksHealthDir,
   invalidateActiveDirectiveContext,
   isoTimestamp,
   recordHookDrop,
   recoveryFilePath,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   stateFilePath,
   validSessionId,
 } from "../tools/aidlc-lib.ts";
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 const stateFile = stateFilePath(projectDir);
 
 // Write health heartbeat

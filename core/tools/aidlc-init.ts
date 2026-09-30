@@ -54,6 +54,8 @@ import {
   runtimeRoot,
 } from "./aidlc-install-paths.ts";
 import { defaultHarnessPath } from "./aidlc-machine-config.ts";
+import { projectEvidence } from "./aidlc-plugin.ts";
+import { planCodexHookTrustSeed, planPluginHookRegistrations, projectedPluginHookContributionsSchema, type ProjectedPluginHookContributions } from "./aidlc-plugin-hook-registrations.ts";
 import { configureChannel, configureProjectPin } from "./aidlc-lifecycle.ts";
 import { RELEASE_CHANNELS } from "./aidlc-channel.ts";
 import {
@@ -3376,6 +3378,7 @@ type StageContribRecord = {
   consumes?: string[];
   required_sections?: string[];
   required_sections_created?: boolean;
+  hook_registrations?: unknown;
 };
 
 function resetProjectionCaches(): void {
@@ -3611,6 +3614,14 @@ const HARNESS_IDENTITY_KEYS = new Set([
   "rulesSubdir",
 ]);
 
+type PreparedRefreshSource = {
+  root: string;
+  cleanup?: string;
+  regenerated: ReadonlySet<string>;
+  hookCoreHashes: ReadonlyMap<string, string>;
+  pluginOwnedExtras: ReadonlySet<string>;
+};
+
 function prepareRefreshSource(
   projectDir: string,
   sourceRoot: string,
@@ -3619,8 +3630,11 @@ function prepareRefreshSource(
   modelPolicy: ModelPolicyRecord | null,
   projectFlags: ProjectFlagsRecord | null,
   diagnosticsOverride?: ConfigDiagnosticOverrides,
-): { root: string; cleanup?: string; regenerated: Set<string> } {
+): PreparedRefreshSource {
   const currentHarness = join(projectDir, descriptor.harnessDir);
+  const hookCoreHashes = new Map<string, string>();
+  const pluginOwnedExtras = new Set([...projectEvidence(projectDir, descriptor.harnessDir).ownership.values()]
+    .flatMap((record) => record.files.map((file) => file.path)).filter((path) => !existsSync(join(sourceRoot, path))));
   const currentHarnessData = join(currentHarness, "tools", "data", "harness.json");
   if (
     !prior &&
@@ -3629,7 +3643,7 @@ function prepareRefreshSource(
     projectFlags === null &&
     diagnosticsOverride === undefined
   ) {
-    return { root: sourceRoot, regenerated: new Set() };
+    return { root: sourceRoot, regenerated: new Set(), hookCoreHashes, pluginOwnedExtras };
   }
   const cleanup = mkdtempSync(join(tmpdir(), "aidlc-init-refresh-"));
   try {
@@ -3759,9 +3773,10 @@ function prepareRefreshSource(
     for (const nested of regularFilesBelow(currentDir)) {
       const rel = join(directory, nested).replaceAll("\\", "/");
       const staged = join(root, rel);
+      const pluginGenerated = pluginOwnedExtras.has(rel) || (dirname(rel) === `${descriptor.harnessDir}/tools/data` && /^plugin-(owned|compose|contrib|files)-[a-z][a-z0-9-]*\.json$/.test(basename(rel)));
       if (
         existsSync(staged) ||
-        prior?.files[rel] ||
+        (prior?.files[rel] && !pluginGenerated) ||
         !generatedOverlayCandidate(rel, descriptor.harnessDir)
       ) continue;
       mkdirSync(dirname(staged), { recursive: true });
@@ -3771,12 +3786,20 @@ function prepareRefreshSource(
   }
 
   const records = new Map<string, StageContribRecord>();
+  const hookRecords: { path: string; records: Record<string, StageContribRecord>; payload: ProjectedPluginHookContributions }[] = [];
   const dataDir = join(currentHarness, "tools", "data");
   if (pathPresent(dataDir) && lstatSync(dataDir).isDirectory()) {
     for (const file of readdirSync(dataDir).filter((name) => /^plugin-contrib-.+\.json$/.test(name))) {
       if (!regularFile(join(dataDir, file))) continue;
       const parsed = JSON.parse(readFileSync(join(dataDir, file), "utf-8")) as Record<string, StageContribRecord>;
+      const recordedHooks = parsed.$hooks?.hook_registrations;
+      if (recordedHooks !== undefined) {
+        const payload = projectedPluginHookContributionsSchema.parse(recordedHooks);
+        if (payload.kind === "invalid" || payload.value.pluginName !== file.slice("plugin-contrib-".length, -".json".length) || payload.value.harness !== distribution) throw new Error(`${file}: plugin hook contribution conflict: invalid ownership`);
+        hookRecords.push({ path: `${descriptor.harnessDir}/tools/data/${file}`, records: parsed, payload: payload.value });
+      }
       for (const [slug, record] of Object.entries(parsed)) {
+        if (slug === "$hooks") continue;
         const priorRecord = records.get(slug) ?? {};
         records.set(slug, {
           produces: [...new Set([...(priorRecord.produces ?? []), ...(record.produces ?? [])])],
@@ -3790,6 +3813,40 @@ function prepareRefreshSource(
         });
       }
     }
+  }
+
+  const hookPaths = [...new Set(hookRecords.flatMap(({ payload }) => payload.registrations.map(({ path }) => path)))];
+  const currentHooks = new Map(hookPaths.map((path) => [path, readFileSync(join(projectDir, path), "utf-8")]));
+  const strippedHooks = new Map(currentHooks);
+  hookRecords.forEach(({ payload }) => {
+    const plan = planPluginHookRegistrations({ pluginName: payload.pluginName, harness: payload.harness, selection: { kind: "deselected" }, previous: payload.registrations, current: [], documents: [...strippedHooks].map(([path, text]) => ({ path, text })) });
+    if (plan.kind === "conflict") throw new Error(`plugin hook contribution conflict: ${plan.error.path}: ${plan.error.reason}`);
+    plan.documents.forEach(({ path, text }) => { strippedHooks.set(path, text); });
+  });
+  const freshHooks = new Map(hookPaths.filter((path) => {
+    const hash = prior?.files[path];
+    return hash && regularFile(join(root, path)) && [currentHooks.get(path), strippedHooks.get(path)].some((text) => text !== undefined && sha256Bytes(text) === hash);
+  }).map((path) => [path, readFileSync(join(root, path), "utf-8")]));
+  freshHooks.forEach((text, path) => { hookCoreHashes.set(path, sha256Bytes(text)); });
+  hookRecords.forEach(({ path, records: sidecar, payload }) => {
+    if (payload.registrations.some((registration) => !freshHooks.has(registration.path))) return;
+    const plan = planPluginHookRegistrations({ pluginName: payload.pluginName, harness: payload.harness, selection: { kind: "selected" }, previous: [], current: payload.registrations, documents: [...freshHooks].map(([path, text]) => ({ path, text })) });
+    if (plan.kind === "conflict") throw new Error(`plugin hook contribution conflict: ${plan.error.path}: ${plan.error.reason}`);
+    plan.documents.forEach(({ path, text }) => { freshHooks.set(path, text); });
+    writeFileSync(join(root, path), `${JSON.stringify({ ...sidecar, $hooks: { ...sidecar.$hooks, hook_registrations: { ...payload, registrations: plan.ownedRegistrations } } }, null, 2)}\n`);
+    regenerated.add(path);
+  });
+  freshHooks.forEach((text, path) => { writeFileSync(join(root, path), text); regenerated.add(path); });
+  const codexHooks = freshHooks.get(`${descriptor.harnessDir}/hooks.json`);
+  if (distribution === "codex" && codexHooks !== undefined) {
+    const path = `${descriptor.harnessDir}/trust-seed.toml`;
+    const hooksPath = join(projectDir, descriptor.harnessDir, "hooks.json");
+    const currentSeed = planCodexHookTrustSeed({ document: JSON.parse(readFileSync(hooksPath, "utf-8")), hooksPath, hashIdentity: ({ identity }) => sha256Bytes(identity) });
+    if (!regularFile(join(projectDir, path)) || (sha256File(join(projectDir, path)) !== prior?.files[path] && (currentSeed.kind !== "planned" || readFileSync(join(projectDir, path), "utf-8") !== currentSeed.text))) throw new Error(`${path}: plugin hook contribution conflict: modified trust seed`);
+    const nextSeed = planCodexHookTrustSeed({ document: JSON.parse(codexHooks), hooksPath, hashIdentity: ({ identity }) => sha256Bytes(identity) });
+    if (nextSeed.kind !== "planned") throw new Error(`${path}: plugin hook contribution conflict: invalid native hooks`);
+    hookCoreHashes.set(path, sha256File(join(root, path)));
+    writeFileSync(join(root, path), nextSeed.text); regenerated.add(path);
   }
 
   const stageRoot = join(currentHarness, "aidlc-common", "stages");
@@ -3894,7 +3951,7 @@ function prepareRefreshSource(
     }
     resetProjectionCaches();
   }
-  return { root, cleanup, regenerated };
+  return { root, cleanup, regenerated, hookCoreHashes, pluginOwnedExtras };
   } catch (error) {
     rmSync(cleanup, { recursive: true, force: true });
     throw error;
@@ -5219,7 +5276,7 @@ function planManagedFiles(
   operations: TransactionOperation[],
   actions: PlannedAction[],
   nextHashes: Record<string, string>,
-  regenerated: ReadonlySet<string>,
+  prepared: PreparedRefreshSource,
 ): void {
   const shipped = new Set<string>();
   for (const directory of descriptor.managedDirectories) {
@@ -5227,6 +5284,8 @@ function planManagedFiles(
     if (!existsSync(sourceDir)) throw new Error(`projection is missing managed directory ${directory}`);
     for (const nested of walkFiles(sourceDir)) {
       const rel = join(directory, nested).replaceAll("\\", "/");
+      const pluginGenerated = prepared.pluginOwnedExtras.has(rel) ||
+        (dirname(rel) === `${descriptor.harnessDir}/tools/data` && /^plugin-(owned|compose|contrib|files)-[a-z][a-z0-9-]*\.json$/.test(basename(rel)));
       shipped.add(rel);
       const source = join(sourceRoot, rel);
       const target = join(projectDir, rel);
@@ -5258,15 +5317,15 @@ function planManagedFiles(
         }
         continue;
       }
-      if (runtimeGenerated(rel, descriptor.harnessDir, regenerated)) {
+      if (runtimeGenerated(rel, descriptor.harnessDir, prepared.regenerated)) {
         if (
-          ![
+          !pluginGenerated && ![
             `${descriptor.harnessDir}/tools/data/harness.json`,
             `${descriptor.harnessDir}/tools/data/stage-graph.json`,
             `${descriptor.harnessDir}/tools/data/scope-grid.json`,
           ].includes(rel)
         ) {
-          nextHashes[rel] = hash;
+          nextHashes[rel] = prepared.hookCoreHashes.get(rel) ?? hash;
         }
         if (targetRegular && sha256File(target) === hash) {
           actions.push({ path: rel, action: "preserve", detail: "runtime-generated" });
@@ -5291,7 +5350,7 @@ function planManagedFiles(
         });
         continue;
       }
-      nextHashes[rel] = hash;
+      nextHashes[rel] = prepared.hookCoreHashes.get(rel) ?? hash;
       if (targetRegular && sha256File(target) === hash) {
         actions.push({ path: rel, action: "preserve" });
         continue;
@@ -6339,7 +6398,7 @@ export async function main(
     }
   }
   let selected: ConfigSource | null = null;
-  let prepared: { root: string; cleanup?: string; regenerated: Set<string> } | null = null;
+  let prepared: PreparedRefreshSource | null = null;
   try {
     const existing = existingProject(projectDir, requestedHarness);
     const pinPath = join(projectDir, ".aidlc-version");
@@ -6459,7 +6518,7 @@ export async function main(
       operations,
       actions,
       files,
-      prepared.regenerated,
+      prepared,
     );
     if (!selected.projectProjection) {
       planRootIntegrations(

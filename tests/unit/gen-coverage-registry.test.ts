@@ -797,6 +797,10 @@ describe("mechanismsOf is body-derived (milestone 3)", () => {
   // when their segment stopped saying cli. Same predicate, same honesty ratchet:
   // a new spawning test still cannot land without a human edit here.
   const EXPECTED_NONE_TO_CLI = [
+    "integration/t342-plugin-hook-selection.test.ts",
+    "integration/t343-plugin-hook-composition.test.ts",
+    "integration/t344-plugin-hook-transactions.test.ts",
+    "integration/t345-plugin-core-refresh.test.ts",
     "unit/t341-orchestrate-wait.test.ts",
     "unit/t-kiro-ide-native-recovery.test.ts",
     "unit/t220-tier-projection-module.test.ts",

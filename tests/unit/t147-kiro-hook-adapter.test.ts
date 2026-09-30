@@ -105,8 +105,17 @@ function seedShell(dir: string): void {
 
 // Scratch project: a .kiro tree (copied) + the per-intent workspace shell with an
 // active workflow state so the core hooks' self-gates open. Built per test.
+function useExplicitRuleDelivery(dir: string): void {
+  const path = join(dir, ".kiro", "tools", "data", "harness.json");
+  writeFileSync(path, readFileSync(path, "utf-8").replace(
+    '"baseRuleDelivery": "ambient"',
+    '"baseRuleDelivery": "explicit"',
+  ));
+}
+
 function scratchProject(withState: boolean): string {
   const dir = mkdtempSync(join(tmpdir(), "t147-"));
+  mkdirSync(join(dir, ".git"));
   cpSync(KIRO_TREE, join(dir, ".kiro"), { recursive: true });
   seedShell(dir);
   if (withState) {
@@ -720,18 +729,34 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
     }
   });
 
-  test("4: todo_list create with [slug] suffix syncs the state file", () => {
+  test("4: todo_list refuses to move the current stage backward", () => {
     const dir = scratchProject(true);
     try {
       const before = readFileSync(seededStateFile(dir), "utf-8");
       const r = runAdapter(dir, "sync-workflow-state", FIXTURES.postToolUse_todo_create);
       expect(r.code).toBe(0);
       const after = readFileSync(seededStateFile(dir), "utf-8");
-      // The fixture's [intent-capture] slug dispatches set-status; assert the
-      // Current Stage field reflects it (robust to the fixture state already
-      // being on intent-capture: require the field present AND the heartbeat).
-      expect(/\*\*Current Stage\*\*:\s*intent-capture/.test(after)).toBe(true);
-      expect(before).toBeDefined();
+      expect(after).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("todo_list advances the state to its requested stage", () => {
+    const dir = scratchProject(true);
+    try {
+      const result = runAdapter(dir, "sync-workflow-state", {
+        hook_event_name: "postToolUse",
+        cwd: dir,
+        session_id: "cb3a220a-609f-4265-8ff9-2cafd3658000",
+        tool_name: "todo_list",
+        tool_input: {
+          command: "create",
+          tasks: [{ task_description: "Running User Stories [user-stories]" }],
+        },
+      });
+      expect(result.code).toBe(0);
+      expect(readFileSync(seededStateFile(dir), "utf-8")).toContain("**Current Stage**: user-stories");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -772,6 +797,7 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
 
   test("5b: subagent dispatch warns on incomplete rules (proceeds) and accepts exact rules", () => {
     const dir = scratchProject(true);
+    useExplicitRuleDelivery(dir);
     try {
       cpSync(
         join(REPO_ROOT, "dist", "kiro", "aidlc"),
@@ -864,6 +890,7 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
 
   test("5c: oversized valid rules use Kiro preload while unloadable rules still block", () => {
     const oversizedDir = scratchProject(true);
+    useExplicitRuleDelivery(oversizedDir);
     try {
       cpSync(
         join(REPO_ROOT, "dist", "kiro", "aidlc"),

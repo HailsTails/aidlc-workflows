@@ -1,0 +1,200 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!.aidlc",
+      "!.claude",
+      "!.codex",
+      "!.cursor",
+      "!.github/hooks",
+      "!.kiro",
+      "!.opencode",
+      "!aidlc",
+      "!plugins",
+      "!**/test-fixtures"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedFunctionParameters": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noDebugger": "error",
+        "noAlert": "error",
+        "noEvolvingTypes": "error",
+        "noUnassignedVariables": "error",
+        "noFocusedTests": "error",
+        "noSkippedTests": "error",
+        "noExportsInTest": "error",
+        "noMisplacedAssertion": "error",
+        "noImplicitAnyLet": "error",
+        "noEmptyBlockStatements": "error",
+        "noConsole": "error"
+      },
+      "style": {
+        "useNamingConvention": {
+          "level": "error",
+          "options": {
+            "strictCase": false,
+            "conventions": [
+              {
+                "selector": { "kind": "enumMember" },
+                "formats": ["CONSTANT_CASE"]
+              },
+              {
+                "selector": { "kind": "const" },
+                "formats": ["CONSTANT_CASE", "camelCase", "PascalCase"]
+              },
+              {
+                "selector": { "kind": "objectLiteralProperty" },
+                "formats": ["camelCase"]
+              },
+              {
+                "selector": { "kind": "typeProperty" },
+                "formats": ["camelCase", "PascalCase"]
+              }
+            ]
+          }
+        },
+        "useImportType": "error",
+        "useShorthandFunctionType": "error",
+        "noNonNullAssertion": "error",
+        "noEnum": "error",
+        "noNamespace": "error",
+        "noParameterAssign": "error",
+        "useAsConstAssertion": "error",
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": { "syntax": "shorthand" }
+        },
+        "useConsistentTypeDefinitions": {
+          "level": "error",
+          "options": { "style": "type" }
+        },
+        "noUselessElse": "error",
+        "useThrowOnlyError": "error",
+        "noCommonJs": "error",
+        "noDoneCallback": "error",
+        "noDefaultExport": "error",
+        "useExportsLast": "error",
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "strictCase": false,
+            "filenameCases": ["kebab-case", "PascalCase"]
+          }
+        },
+        "noProcessEnv": "error",
+        "noNestedTernary": "error",
+        "noMagicNumbers": "error",
+        "useObjectSpread": "error"
+      },
+      "complexity": {
+        "useLiteralKeys": "off",
+        "useOptionalChain": "error",
+        "noUselessTernary": "error",
+        "noUselessContinue": "error",
+        "noUselessRename": "error",
+        "noUselessLoneBlockStatements": "error",
+        "noUselessStringConcat": "error",
+        "noUselessStringRaw": "error",
+        "noUselessSwitchCase": "error",
+        "noUselessThisAlias": "error",
+        "noUselessCatch": "error",
+        "noUselessCatchBinding": "error",
+        "noStaticOnlyClass": "error",
+        "noUselessConstructor": "error",
+        "noExcessiveNestedTestSuites": "error",
+        "useArrowFunction": "error",
+        "useMaxParams": {
+          "level": "error",
+          "options": { "max": 2 }
+        },
+        "noExcessiveLinesPerFunction": "error",
+        "noExcessiveCognitiveComplexity": "error"
+      },
+      "performance": {
+        "noAccumulatingSpread": "error"
+      },
+      "nursery": {
+        "useExhaustiveSwitchCases": "error",
+        "useReduceTypeParameter": "error",
+        "useAwaitThenable": "error",
+        "noMisusedPromises": "error",
+        "noUselessReturn": "error",
+        "noUselessTypeConversion": "error",
+        "noUnnecessaryConditions": "error",
+        "noUnnecessaryTemplateExpression": "error",
+        "noConditionalExpect": "error",
+        "noIdenticalTestTitle": "error",
+        "useExpect": "error",
+        "noFloatingPromises": "error",
+        "useImportsFirst": "error",
+        "noNestedPromises": "error",
+        "noForIn": "error",
+        "useConsistentTestIt": {
+          "level": "error",
+          "options": { "function": "test", "withinDescribe": "test" }
+        },
+        "useFind": "error",
+        "noInlineStyles": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "**/vite.config.ts",
+        "**/vitest.config.ts",
+        "**/*.d.ts",
+        "**/main.tsx",
+        "**/App.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": { "noDefaultExport": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "style": { "noMagicNumbers": "off" },
+          "complexity": { "noExcessiveLinesPerFunction": "off" }
+        }
+      }
+    },
+    {
+      "includes": ["scripts/**", "**/scripts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noConsole": "off" }
+        }
+      }
+    }
+  ],
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

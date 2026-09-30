@@ -1,5 +1,7 @@
 ---
 slug: domain-design
+number: 2.6
+name: Domain Design
 phase: inception
 execution: CONDITIONAL
 condition: Execute when new components or logical building blocks are needed. Skip when changes are modifications to existing components only.

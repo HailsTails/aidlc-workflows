@@ -1,5 +1,7 @@
 ---
 slug: team-formation
+number: 1.5
+name: Team Formation
 phase: ideation
 execution: CONDITIONAL
 condition: Execute when team composition, capacity, or mob planning is relevant. Skip for solo developer or small team projects.

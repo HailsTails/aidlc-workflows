@@ -1,5 +1,7 @@
 ---
 slug: workspace-detection
+number: 0.2
+name: Workspace Detection
 phase: initialization
 execution: ALWAYS
 condition: Scans and classifies workspace — auto-proceeds (no approval gate)

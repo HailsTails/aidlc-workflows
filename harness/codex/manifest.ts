@@ -12,8 +12,9 @@
 //   - skills are NOT shipped in .codex/skills/ — Codex discovers skills at
 //     <project>/.agents/skills/, so skipRunnerGen is set and emit() composes
 //     the whole skill set (orchestrator + runners + session skills) there.
-//   - the only authored .codex/ file is the aidlc-codex-adapter.ts stdin shim
-//     (a harnessFile); the agent TOMLs in .codex/agents/ are emitted.
+//   - the authored .codex/ files are the aidlc-codex-adapter.ts stdin shim and
+//     its aidlc-codex-patch-context.ts helper module (harnessFiles); the agent
+//     TOMLs in .codex/agents/ are emitted.
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import emit from "./emit.ts";
@@ -25,6 +26,16 @@ const manifest: HarnessManifest = {
   harnessDir: ".codex",
   orchestratorSkillPath: ".agents/skills/aidlc/SKILL.md",
   tierFlavor: "codex",
+  // DELIBERATELY "explicit", and the one harness where the answer is not
+  // obvious. The `AIDLC_RULES_DIR` seam in the shipped config.toml points the
+  // stage resolver at the memory tree, and the onboarding says the orchestrator
+  // "injects the active-space memory paths into context ON DEMAND" — paths, on
+  // demand, not text every turn. That is a resolver seam, not an always-on
+  // include, so treating it as ambient would drop the base layers from the only
+  // channel that carries them. If Codex later gains a genuine always-on include
+  // (the way AGENTS.md works for Copilot/opencode), flip this to "ambient" and
+  // re-verify with the two-profile mutation in check-steering-injection.ts.
+  baseRuleDelivery: "explicit",
   rootIntegrations: [
     {
       path: ".gitignore",
@@ -82,10 +93,15 @@ const manifest: HarnessManifest = {
     { src: "hooks", dst: "hooks" },
   ],
 
-  // The one authored .codex/ surface: the stdin adapter shim. The orchestrator
+  // The authored .codex/ surface: the stdin adapter shim. The orchestrator
   // skill is authored too but is EMITTED into .agents/skills/aidlc/ by emit().
   harnessFiles: [
     { src: "hooks/aidlc-codex-adapter.ts", dst: "hooks/aidlc-codex-adapter.ts" },
+    // Side-effect-free apply_patch helpers the adapter imports by relative path.
+    {
+      src: "hooks/aidlc-codex-patch-context.ts",
+      dst: "hooks/aidlc-codex-patch-context.ts",
+    },
     // Project-root .gitignore (beside .codex/, not inside it) — re-rooted under
     // aidlc/spaces/* for the workspace layout (SEED): cursors + machine-local
     // runtime ignored, the shared work (memory/codekb/registry/state/audit

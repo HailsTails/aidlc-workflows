@@ -330,8 +330,19 @@ describe("t37 aidlc-utility doctor — graph-level checks", () => {
     const r = doctor(p, { AIDLC_STAGE_GRAPH: missingGraph });
     expect(r.status).toBe(1);
     expect(r.out).toContain("AI-DLC doctor");
+    expect(r.out).toContain("Schema validation: 0/0 stages validated");
+    expect(r.out).toContain("Paired sensor coverage: no sensor-bound rules");
+    expect(r.out).not.toContain('{"error":');
+  });
+
+  test("6c: malformed stage graph fails doctor without a JSON crash", () => {
+    const p = track(createTestProject());
+    const graphPath = join(p, "malformed-stage-graph.json");
+    writeFileSync(graphPath, "invalid graph JSON");
+    const r = doctor(p, { AIDLC_STAGE_GRAPH: graphPath });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("AI-DLC doctor");
     expect(r.out).toContain("Paired sensor coverage: check failed");
-    expect(r.out).toContain(`Stage graph not readable at ${missingGraph}`);
     expect(r.out).not.toContain('{"error":');
   });
 

@@ -107,7 +107,11 @@ describe("t219 Claude settings use quoted project-root dispatcher commands", () 
         commands.every((command) => command.startsWith(subject.commandPrefix)),
       ).toBe(true);
       expect(permissionEntries(settings)).toContain(EXPECTED_PERMISSION_GLOB);
-      expect(projectDirReferenceCount(permissionEntries(settings))).toBe(0);
+      expect(permissionEntries(settings).filter((entry) => entry.includes("$CLAUDE_PROJECT_DIR"))).toEqual([
+        'Bash(bun "$CLAUDE_PROJECT_DIR/.claude/tools/"*)',
+        'Bash(bun "$CLAUDE_PROJECT_DIR/.claude/hooks/"*)',
+        'Bash(node "$CLAUDE_PROJECT_DIR/.claude/hooks/"*)',
+      ]);
     });
 
     test(`${subject.label}: fold-usage is unfiltered on both tool events`, () => {

@@ -63,6 +63,9 @@ const manifest: HarnessManifest = {
   harnessDir: ".kiro",
   orchestratorSkillPath: ".kiro/skills/aidlc/SKILL.md",
   tierFlavor: "kiro",
+  // Always-included steering (`steering/aidlc-active-memory.md`) preloads the
+  // active-space memory tree.
+  baseRuleDelivery: "ambient",
   rootIntegrations: [
     {
       path: ".gitignore",

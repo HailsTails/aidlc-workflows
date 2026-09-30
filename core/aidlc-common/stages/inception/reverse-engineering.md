@@ -1,5 +1,7 @@
 ---
 slug: reverse-engineering
+number: 2.1
+name: Reverse Engineering
 phase: inception
 execution: CONDITIONAL
 condition: Execute when project is brownfield. On rerun the Step 1 guard checks store freshness (codekb-scope-diff) - verified-CURRENT stores may be reused by human choice, anything else rescans. Skip for greenfield projects.

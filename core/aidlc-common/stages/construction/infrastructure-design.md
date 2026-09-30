@@ -1,5 +1,7 @@
 ---
 slug: infrastructure-design
+number: 3.4
+name: Infrastructure Design
 phase: construction
 execution: CONDITIONAL
 condition: Infrastructure services need mapping, deployment architecture required, or cloud resources needed. Skip if no infrastructure changes and infrastructure already defined.

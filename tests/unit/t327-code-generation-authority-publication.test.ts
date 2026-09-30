@@ -76,6 +76,10 @@ function project(harness: "claude" | "kiro-ide" = "claude"): {
     destination,
     { recursive: true },
   );
+  const harnessMetadata = join(destination, "tools", "data", "harness.json");
+  const metadata = JSON.parse(readFileSync(harnessMetadata, "utf-8"));
+  metadata.baseRuleDelivery = "explicit";
+  writeFileSync(harnessMetadata, `${JSON.stringify(metadata, null, 2)}\n`);
   for (const tool of ["aidlc-lib.ts", "aidlc-orchestrate.ts"]) {
     cpSync(
       join(REPO_ROOT, "core", "tools", tool),

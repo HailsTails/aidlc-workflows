@@ -1,5 +1,6 @@
 ---
 slug: approval-handoff
+number: 1.7
 name: Approval & Handoff
 phase: ideation
 execution: ALWAYS

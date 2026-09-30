@@ -22,6 +22,9 @@ const manifest: HarnessManifest = {
   harnessDir: ".claude",
   orchestratorSkillPath: ".claude/skills/aidlc/SKILL.md",
   tierFlavor: "claude",
+  // The `.claude/rules/aidlc.md` @-import stub (a harnessFile below) pulls the
+  // whole active-space memory tree into ambient context every turn.
+  baseRuleDelivery: "ambient",
   rootIntegrations: [
     {
       path: ".gitignore",

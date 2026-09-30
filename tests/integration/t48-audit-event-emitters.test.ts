@@ -91,6 +91,18 @@ function tsFiles(dir: string): string[] {
 
 const ALL_SOURCE_FILES = [...tsFiles(TOOLS_DIR), ...tsFiles(HOOKS_DIR)];
 
+function terminalFactoryEvents(text: string): string[] {
+  const live = decommented(text);
+  const importedFactory = /import\s*\{[^}]*\bterminalAuditRowOf\b[^}]*\}\s*from\s*"\.\/aidlc-sensor-verdict\.ts"/.test(live);
+  const terminalEmitter = live.match(/^function emitTerminal\([\s\S]*?(?=^(?:export )?function |$(?![\s\S]))/m)?.[0] ?? "";
+  const wiredFactory = /const row = terminalAuditRowOf\(/.test(terminalEmitter) &&
+    /appendAuditEntryUnlocked\(\s*row\.event\s*,/.test(terminalEmitter);
+  if (!importedFactory || !wiredFactory) return [];
+  const verdict = decommented(readFileSync(join(TOOLS_DIR, "aidlc-sensor-verdict.ts"), "utf-8"));
+  const factory = verdict.match(/^export function terminalAuditRowOf\([\s\S]*?(?=^(?:export )?function |$(?![\s\S]))/m)?.[0] ?? "";
+  return [...factory.matchAll(/event:\s*"([A-Z_]+)"/g)].map((match) => match[1]);
+}
+
 /**
  * has_emission (.sh:40-60): is there a LIVE emission call site for `event` in
  * `text`? Four patterns, on the decommented view:
@@ -105,7 +117,7 @@ function hasEmission(event: string, text: string): boolean {
   const p2 = new RegExp(`eventType = [^;]*"${event}"`);
   const p3 = new RegExp(`^[ \\t]+"${event}"[ \\t]*(/\\*[^*]*\\*/)?[ \\t]*,`, "m");
   const p4 = new RegExp(`eventType:[ \\t]*"${event}"`);
-  return p1.test(live) || p2.test(live) || p3.test(live) || p4.test(live);
+  return p1.test(live) || p2.test(live) || p3.test(live) || p4.test(live) || terminalFactoryEvents(live).includes(event);
 }
 
 /** Read the emitter taxonomy registry rows from 12-state-machine.md.
@@ -205,6 +217,9 @@ describe("t48 audit event-emitter drift (migrated from t48-audit-event-emitters.
     const litReG = /"[A-Z_]+"/g;
     for (const f of ALL_SOURCE_FILES) {
       const live = decommented(readFileSync(f, "utf-8"));
+      terminalFactoryEvents(live).forEach((event) => {
+        emitted.add(event);
+      });
       // Pattern 1: helper(...,"EVENT") on one line.
       for (const hit of live.match(p1) ?? []) {
         for (const lit of hit.match(litReG) ?? []) {

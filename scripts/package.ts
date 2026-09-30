@@ -43,6 +43,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -59,6 +60,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import type { BunPlugin } from "bun";
 import type { HarnessManifest } from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
@@ -66,6 +68,13 @@ import {
   injectDelegatedKnowledgePreflight,
   reviewerAgentSet,
 } from "./agent-knowledge.ts";
+import {
+  pluginHookRows,
+  renderPluginHookContributions,
+  pluginTokens,
+  substitutePluginTokens,
+} from "./plugin-contributions.ts";
+import { isModelHarness } from "../core/tools/aidlc-model-policy.ts";
 import { renderOnboarding } from "./onboarding.ts";
 import {
   buildPluginProjection as emitPluginProjection,
@@ -76,6 +85,7 @@ import {
   type Harness,
   readEnvCap,
   readMemoryCap,
+  TIERS,
   type Tier,
 } from "../core/tools/aidlc-tiers.ts";
 import {
@@ -83,6 +93,7 @@ import {
   modelAgentName,
   resolveModelPolicy,
   serializeAgentTiers,
+  writeCodexAgentSurface,
   writeKiroAgentSurface,
   writeKiroCliSurface,
   writeMarkdownAgentSurface,
@@ -566,6 +577,11 @@ function writeHarnessData(treeRoot: string, m: HarnessManifest): void {
     name: m.name,
     harnessDir: m.harnessDir,
     rulesSubdir: m.rulesRename ?? "rules",
+    // Always emitted, never defaulted at the writer: the engine must be able to
+    // tell "this harness declares ambient delivery" from "this harness's
+    // manifest predates the field", and only an explicit value does that. The
+    // READER fails closed to "explicit" for an older harness.json.
+    baseRuleDelivery: m.baseRuleDelivery,
     ...(m.runnerFrontmatterAdditions?.length
       ? { runnerFrontmatterAdditions: m.runnerFrontmatterAdditions }
       : {}),
@@ -773,6 +789,8 @@ function buildTree(
     const finalDst = m.rulesRename && dst === "rules" ? m.rulesRename : dst;
     for (const file of walk(srcDir)) {
       const rel = relative(srcDir, file);
+      if (/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(rel)) continue;
+      if (rel.split(sep).includes("test-fixtures")) continue;
       const outPath = join(treeRoot, finalDst, rel);
       mkdirSync(dirname(outPath), { recursive: true });
       let out = transform(
@@ -1226,6 +1244,7 @@ function rewriteNativeInvocations(
       ) => string;
       emitTrustSeed: (
         harnessDir: string,
+        repoRoot: string,
         harnessName: string,
         invoke: string,
         trustedNamespace: string,
@@ -1237,7 +1256,13 @@ function rewriteNativeInvocations(
     );
     writeFileSync(
       join(outRoot, m.harnessDir, "trust-seed.toml"),
-      emitTrustSeed(m.harnessDir, m.name, "aidlc", TRUSTED_ROUTE_NAMESPACE),
+      emitTrustSeed(
+        m.harnessDir,
+        REPO_ROOT,
+        m.name,
+        "aidlc",
+        TRUSTED_ROUTE_NAMESPACE,
+      ),
     );
   }
   const descriptorPath = join(outRoot, m.harnessDir, PROJECTION_DATA);
@@ -1429,13 +1454,113 @@ function loadManifest(name: string): HarnessManifest {
 function writeHarness(name: string): void {
   const m = loadManifest(name);
   const distDir = join(REPO_ROOT, "dist", name);
-  // dist/<name>/ is one generated root. Sweep that root, not selected
-  // subdirectories, so removed/renamed project-root outputs cannot linger.
-  // Siblings at dist/ (plugins and unrelated local assets) remain outside this
-  // harness-owned boundary.
-  if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
-  buildTree(m, distDir);
-  console.log(`[${name}] regenerated dist/${name}/${m.harnessDir}`);
+  const treeRoot = join(distDir, m.harnessDir);
+  // Stash the committed compiled-data seed before the clean sweep so compile
+  // can bootstrap its number/name mappings (the seed survives the regenerate).
+  // When a manifest renames its harnessDir, treeRoot does not exist yet. Read
+  // the canonical Claude seed before sweeping dist/<name>/ as a fallback; for
+  // the Claude harness that fallback lives inside the root about to be removed.
+  const seedStash = mkdtempSync(join(tmpdir(), `aidlc-seed-${name}-`));
+  try {
+    const seedRoots = [treeRoot, join(REPO_ROOT, "dist", "claude", ".claude")];
+    for (const rel of COMPILED_DATA) {
+      const src = seedRoots.map((root) => join(root, rel)).find(existsSync);
+      if (src) {
+        const dst = join(seedStash, rel);
+        mkdirSync(dirname(dst), { recursive: true });
+        cpSync(src, dst);
+      }
+    }
+    // dist/<name>/ is one generated root. Sweep that root, not selected
+    // subdirectories, so removed/renamed project-root outputs cannot linger.
+    // Siblings at dist/ (plugins, specifications, and unrelated assets) remain
+    // outside this harness-owned boundary.
+    //
+    // RIN DIVERGENCE (drift register: atomic-dist-rebuild). Build into a staging
+    // sibling and RENAME into place, rather than removing the live root and
+    // repopulating it. The destructive form leaves the payload existing but
+    // incomplete for the whole build — measured at 45 distinct partial states,
+    // climbing 1 -> 266 — and a concurrent reader cannot tell a partial tree
+    // from a complete one. rin's orphan sweep accounts for tracked files by
+    // PATH PRESENCE in this payload, so a partial tree makes real files read as
+    // unsourced and fails the pre-push gate on trees that are not broken.
+    //
+    // The staging root is a SIBLING of dist/<name>, never tmpdir(): rename is
+    // only atomic within a filesystem, and tmpdir() is routinely a different
+    // one.
+    //
+    // The swap PREFERS rename-live-aside-then-rename-in, which makes the
+    // replacement genuinely atomic: the live tree goes from complete-old to
+    // complete-new with no observable state in between, and the old tree is
+    // torn down afterwards under a name nothing reads.
+    //
+    // That form is attempted, not assumed, because its availability is
+    // PLATFORM-DEPENDENT:
+    //
+    //   - POSIX (INFERRED from rename(2), not measured here — this machine is
+    //     Windows). rename() over a directory with open handles succeeds; the
+    //     old inode simply lingers until the last handle closes. So the atomic
+    //     path is expected to hold on every face on Linux/macOS — which is
+    //     where the autonomous lanes and CI actually run.
+    //   - Windows (MEASURED here). Renaming a directory throws EPERM whenever
+    //     any process holds a handle anywhere inside it. Measured across the
+    //     seven faces: six swap atomically, and `claude` always falls back —
+    //     because dist/claude is the installed engine the running session is
+    //     itself executing from, so a handle is always held.
+    //
+    // The fallback is rm-then-rename, and it leaves a real but much smaller
+    // window: the payload is ABSENT rather than PARTIAL. That distinction is
+    // the whole point — absent is a state every consumer already models and
+    // refuses on, while a partial tree is a WRONG ANSWER that reads as a
+    // complete tree missing files.
+    //
+    // Measured on one instrument, same face, fix stashed and restored:
+    // 35 partial observations before, 0-6 (typically 1) after. The residual is
+    // the .superseded teardown racing the sampler, not the build, and on the
+    // reasoning above it is a desktop-development artefact rather than
+    // something the deploy target sees. Chasing it to zero (background unlink,
+    // or a generation-suffixed dir behind a symlink swap) is deliberately NOT
+    // done here and is captured as a follow-up, to be taken up only if the
+    // desktop residual proves to matter.
+    const stagingDir = `${distDir}.staging`;
+    rmSync(stagingDir, { recursive: true, force: true });
+    // NOT positional. Pre-2.9.0 buildTree's third parameter was rin's
+    // `seedFrom`; 2.9.0 repurposed that position for `invoke`, so passing
+    // seedStash here substituted a Windows temp path into every projected
+    // .json and broke the parse with an invalid \U escape. The seed is
+    // restored explicitly after the tree is built instead.
+    buildTree(m, stagingDir);
+    for (const rel of COMPILED_DATA) {
+      const seeded = join(seedStash, rel);
+      if (!existsSync(seeded)) continue;
+      const dst = join(stagingDir, m.harnessDir, rel);
+      if (existsSync(dst)) continue;
+      mkdirSync(dirname(dst), { recursive: true });
+      cpSync(seeded, dst);
+    }
+    const supersededDir = `${distDir}.superseded`;
+    rmSync(supersededDir, { recursive: true, force: true });
+    const swappedAtomically = ((): boolean => {
+      if (!existsSync(distDir)) return false;
+      try {
+        renameSync(distDir, supersededDir);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    if (!swappedAtomically) rmSync(distDir, { recursive: true, force: true });
+    renameSync(stagingDir, distDir);
+    if (swappedAtomically) {
+      rmSync(supersededDir, { recursive: true, force: true });
+    }
+    console.log(
+      `[${name}] regenerated dist/${name}/${m.harnessDir}` +
+        ` (swap: ${swappedAtomically ? "atomic-rename" : "rm-then-rename"})`,
+    );
+  } finally {
+    rmSync(seedStash, { recursive: true, force: true });
+  }
 }
 
 function writeReleaseHarness(name: string): void {
@@ -1500,16 +1625,21 @@ if (argv[0] === "codex" && argv[1] === "trust") {
       project: string,
       hooksJson: string | undefined,
       harnessDir: string,
+      repoRoot: string,
       harnessName: string,
       invoke: string,
       trustedNamespace: string,
     ) => string;
   };
+  // REPO_ROOT so plugin-contributed rows are discovered: they occupy real group
+  // indices in the emitted hooks.json, and an entry set that omits them leaves
+  // those rows untrusted — registered, spawned by nothing, enforcing nothing.
   console.log(
     trustEntries(
       resolvedProject,
       hooksJson ?? undefined,
       ".codex",
+      REPO_ROOT,
       "codex",
       "aidlc",
       TRUSTED_ROUTE_NAMESPACE,
@@ -1585,19 +1715,51 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
   return pluginTargets()[harnessName] ?? null;
 }
 
-function buildRepositoryPluginProjection(
+async function bundlePluginRuntimeDependencies(input: {
+  readonly pluginRoot: string;
+  readonly outDir: string;
+  readonly files: readonly string[];
+}): Promise<void> {
+  const transpiler = new Bun.Transpiler({ loader: "ts" });
+  const runtimeFiles = input.files.filter((file) => /\.[cm]?[jt]s$/.test(file) && existsSync(join(input.pluginRoot, file)));
+  await runtimeFiles.reduce(async (previous, file) => {
+    await previous;
+    const sourceFile = join(input.pluginRoot, file);
+    const imports = transpiler.scanImports(readFileSync(sourceFile));
+    const hasPackageImports = imports.some(({ path }) =>
+      !path.startsWith(".") && !path.startsWith("node:") && path !== "bun" && !isAbsolute(path));
+    if (!hasPackageImports) return;
+    const authoredRelativeImports = imports.filter(({ path }) => path.startsWith("."))
+      .map(({ path }) => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const preserveAuthoredImports: BunPlugin = {
+      name: "preserve-authored-plugin-imports",
+      setup(builder) {
+        builder.onResolve({ filter: new RegExp(`^(?:${authoredRelativeImports.join("|")})$`) }, ({ path, importer }) =>
+          importer === sourceFile ? { path, external: true } : undefined);
+      },
+    };
+    const result = await Bun.build({ entrypoints: [sourceFile], target: "bun", format: "esm", minify: { whitespace: true, syntax: true, identifiers: false }, plugins: authoredRelativeImports.length > 0 ? [preserveAuthoredImports] : [] });
+    const output = result.outputs[0];
+    if (!result.success || result.outputs.length !== 1 || output === undefined) {
+      throw new Error(`plugin runtime dependency build failed: ${file}: ${result.logs.join("\n")}`);
+    }
+    writeFileSync(join(input.outDir, file), await output.text());
+  }, Promise.resolve());
+}
+
+async function buildRepositoryPluginProjection(
   pluginName: string,
   harnessName: string,
   outDir: string,
   outputBoundary = REPO_ROOT,
-): void {
+): Promise<void> {
   const target = pluginTargetFor(harnessName);
   if (!target) {
     throw new Error(
       `no plugin target for harness "${harnessName}" (missing manifest)`,
     );
   }
-  emitPluginProjection({
+  const projection = emitPluginProjection({
     pluginRoot: join(PLUGINS_ROOT, pluginName),
     target,
     outDir,
@@ -1605,6 +1767,165 @@ function buildRepositoryPluginProjection(
     templateHooksDir: PLUGIN_HOOKS_TEMPLATE_SRC,
     reviewerAgents: reviewerAgentSet(CORE_ROOT),
   });
+  projectPluginDocuments({ projection, outDir, pluginName, harnessName });
+  await bundlePluginRuntimeDependencies({ pluginRoot: join(PLUGINS_ROOT, pluginName), outDir, files: projection.files });
+  if (!isModelHarness(harnessName)) throw new Error(`unsupported plugin hook harness: ${harnessName}`);
+  const hookContributions = renderPluginHookContributions({
+    pluginName, harness: harnessName, harnessDir: target.harnessLeaf,
+    invocation: `bun ${target.harnessLeaf}/tools/aidlc.ts`, trustedNamespace: TRUSTED_ROUTE_NAMESPACE,
+    rows: pluginHookRows(REPO_ROOT, harnessName).filter((row) => row.pluginName === pluginName),
+  });
+  if (hookContributions.registrations.length === 0) return;
+  const registrationPath = join(outDir, "contributions", "hook-registrations.json");
+  mkdirSync(dirname(registrationPath), { recursive: true });
+  writeFileSync(registrationPath, JSON.stringify(hookContributions, null, 2) + "\n");
+}
+
+function pluginAgentFrontmatter(
+  content: string,
+  sourcePath: string,
+): { fields: Record<string, string>; body: string } {
+  const raw = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) {
+    throw new Error(`${sourcePath}: plugin agent has no closed frontmatter block.`);
+  }
+  const fields: Record<string, string> = {};
+  let current: string | null = null;
+  for (const line of match[1].split(/\r?\n/)) {
+    const entry = line.match(/^([A-Za-z_]+):\s*(.*)$/);
+    if (entry) {
+      current = entry[1];
+      fields[current] = entry[2].replace(/^>\s*$/, "");
+    } else if (current && /^\s+\S/.test(line) && !line.trim().startsWith("-")) {
+      fields[current] = `${fields[current]} ${line.trim()}`.trim();
+    }
+  }
+  return { fields, body: raw.slice(match[0].length) };
+}
+
+function isTier(value: string): value is Tier {
+  return TIERS.some((tier) => tier === value);
+}
+
+function projectCodexPluginAgent(
+  content: string,
+  sourcePath: string,
+  tier: Tier | null,
+): string {
+  const { fields, body } = pluginAgentFrontmatter(content, sourcePath);
+  const name = fields.name?.trim();
+  if (!name) throw new Error(`${sourcePath}: plugin agent has no name: line.`);
+  const description = (fields.description ?? "").replace(/\s+/g, " ").trim();
+  const instructions = body.trim();
+  const unresolved = `${description}\n${instructions}`.match(/\{\{[A-Z_]+\}\}/);
+  if (unresolved) {
+    throw new Error(`${sourcePath}: unresolved Codex agent token ${unresolved[0]}.`);
+  }
+  const effective = tier === null
+    ? null
+    : resolveModelPolicy(null, modelAgentName(sourcePath), tier, "codex", TIER_CAP);
+  const surface = `name = ${JSON.stringify(name)}\n` +
+    `description = ${JSON.stringify(description)}\n` +
+    `developer_instructions = ${JSON.stringify(instructions)}\n`;
+  return writeCodexAgentSurface(surface, effective ?? {});
+}
+
+// The engine PLACES; the packager PROJECTS. `aidlc-plugin-emit.ts` declares
+// itself free of any framework-checkout or harness-manifest dependency because
+// it is also the shipped offline builder's engine, so it cannot run the
+// authoring steps — which read CORE_ROOT, the harness manifest, and the memory
+// tier cap. Left there, plugin content reaches an install still carrying
+// `{{HARNESS_DIR}}`: core declares exactly ONE transform class
+// (scripts/plugin-contributions.ts) and plugin content never received it, so a
+// plugin authored to the documented convention ships literal tokens and
+// unrunnable commands.
+//
+// This runs the SAME `transform` core content gets, over the already-placed
+// tree, plus the plugin-token layer. Doing it here rather than inside the engine
+// keeps the engine's stated contract intact.
+//
+// KNOWN LIMIT, deliberately not papered over: this fixes the PACKAGER path only.
+// A plugin built through the offline `aidlc-plugin-build` CLI still receives no
+// projection, because the authoring steps genuinely need a checkout — the tier
+// projection alone reads a table (core/tools/aidlc-tiers.ts), a cap layered over
+// core/memory, and throws per-harness validation. Making that offline-capable
+// requires separating core's projection concerns first; it is not a matter of
+// passing more configuration. Recorded in the drift register rather than faked.
+function projectPluginDocuments(args: {
+  readonly projection: { readonly files: readonly string[] };
+  readonly outDir: string;
+  readonly pluginName: string;
+  readonly harnessName: string;
+}): void {
+  const manifest = loadManifest(args.harnessName);
+  const declaredTokens = pluginTokens(REPO_ROOT, args.pluginName, args.harnessName);
+  for (const relativePath of args.projection.files) {
+    if (!relativePath.endsWith(".md")) continue;
+    const absolutePath = join(args.outDir, relativePath);
+    const source = readFileSync(absolutePath);
+    const codexAgent = args.harnessName === "codex" &&
+      /(?:^|\/)agents\/[^/]+-agent\.md$/.test(relativePath);
+    const tierValue = codexAgent
+      ? agentTierFromMdOrNull(source.toString("utf-8"), absolutePath)
+      : null;
+    if (tierValue !== null && !isTier(tierValue)) {
+      throw new Error(`${absolutePath}: invalid agent tier ${JSON.stringify(tierValue)}.`);
+    }
+    const projected = transform(
+      absolutePath,
+      projectPluginAgentTier(
+        absolutePath,
+        source,
+        manifest.tierFlavor,
+      ),
+      manifest.harnessDir,
+      manifest.rulesRename,
+    );
+    const content = substitutePluginTokens(projected.toString("utf-8"), declaredTokens);
+    writeFileSync(absolutePath, content);
+    if (codexAgent) {
+      writeFileSync(
+        absolutePath.replace(/\.md$/, ".toml"),
+        projectCodexPluginAgent(content, absolutePath, tierValue),
+      );
+    }
+  }
+}
+
+// Tolerant tier reader for PLUGIN agents: returns null when the frontmatter
+// declares none. A PLUGIN agent may legitimately hand-pin `model:` directly
+// instead of opting into the tier vocabulary (the test-pro fixture does), so a
+// plugin's tier-less agent is shipped verbatim rather than failing the build -
+// the tier projection is opt-in for plugins, mandatory for core (agentTierFromMd
+// keeps the loud contract there). A malformed frontmatter block is still a hard
+// error in both readers.
+function agentTierFromMdOrNull(s: string, srcPath: string): string | null {
+  // Strip a UTF-8 BOM before anchoring - macOS/Windows editors occasionally
+  // save .md with one, and the ^--- anchor would otherwise miss (same
+  // tolerance as the rule-frontmatter parser).
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  const m = s.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!m) throw new Error(`${srcPath}: agent .md has no YAML frontmatter block.`);
+  const tierMatch = m[1].match(/^tier:\s*(\S+)\s*$/m);
+  return tierMatch ? tierMatch[1] : null;
+}
+
+// Project a plugin file's tier IFF it is a tier-declaring agent .md; every other
+// file (stages, sensors, knowledge, hand-pinned agents) is returned byte-for-byte
+// so this stays a superset of the old verbatim copy. Guarding on the tolerant
+// tier reader keeps token-substitution and rules-rename OUT of the plugin path -
+// only the tier line is rewritten, nothing else in the file moves.
+function projectPluginAgentTier(
+  srcPath: string,
+  content: Buffer,
+  harness: Harness,
+): Buffer {
+  const posixPath = srcPath.split(sep).join("/");
+  if (!posixPath.includes("/agents/") || !posixPath.endsWith("-agent.md")) return content;
+  const text = content.toString("utf-8");
+  if (agentTierFromMdOrNull(text, srcPath) === null) return content;
+  return Buffer.from(projectTierFrontmatter(text, srcPath, harness), "utf-8");
 }
 
 // Which harnesses get a projection = every built harness with a manifest (each
@@ -1613,14 +1934,14 @@ function pluginHarnessesFor(harnesses: string[]): string[] {
   return harnesses.filter((h) => pluginTargetFor(h) !== null);
 }
 
-function emitPlugins(
+async function emitPlugins(
   harnesses: string[],
   distRoot = join(REPO_ROOT, "dist"),
   log = true,
-): void {
+): Promise<void> {
   for (const pluginName of discoverPluginNames()) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
-      buildRepositoryPluginProjection(
+      await buildRepositoryPluginProjection(
         pluginName,
         harnessName,
         join(distRoot, "plugins", pluginName, harnessName),
@@ -1668,7 +1989,7 @@ function cleanWriteOutputs(harnesses: string[], fullBuild: boolean): void {
   }
 }
 
-function buildCheckPass(root: string, harnesses: string[]): void {
+async function buildCheckPass(root: string, harnesses: string[]): Promise<void> {
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
   for (const name of harnesses) {
@@ -1679,15 +2000,15 @@ function buildCheckPass(root: string, harnesses: string[]): void {
     buildTree(manifest, nativeRoot, "aidlc");
     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
   }
-  emitPlugins(harnesses, distRoot, false);
+  await emitPlugins(harnesses, distRoot, false);
 }
 
-function checkPackageDeterminism(harnesses: string[]): string[] {
+async function checkPackageDeterminism(harnesses: string[]): Promise<string[]> {
   const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
   const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
   try {
-    buildCheckPass(first, harnesses);
-    buildCheckPass(second, harnesses);
+    await buildCheckPass(first, harnesses);
+    await buildCheckPass(second, harnesses);
     return [
       ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
       ...diffTrees(
@@ -1738,7 +2059,7 @@ if (argv[0] === "plugin" && argv[1] === "build") {
   const outArg = outDir.replace(/[/\\]+$/, "") || outDir;
   const resolvedOut = isAbsolute(outArg) ? outArg : join(process.cwd(), outArg);
   try {
-    buildRepositoryPluginProjection(
+    await buildRepositoryPluginProjection(
       pluginName,
       harnessName,
       resolvedOut,
@@ -1765,7 +2086,7 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
 }
 
 if (check) {
-  const problems = checkPackageDeterminism(targets);
+  const problems = await checkPackageDeterminism(targets);
   if (problems.length > 0) {
     console.error(`\npackage --check FAILED (${problems.length} problem(s)):`);
     for (const p of problems.slice(0, 40)) console.error("  " + p);
@@ -1782,5 +2103,5 @@ if (check) {
     writeReleaseHarness(n);
   }
   // Emit plugin projections (the hybrid: per-harness host plugins from plugins/<name>/)
-  emitPlugins(targets);
+  await emitPlugins(targets);
 }

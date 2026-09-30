@@ -3,7 +3,9 @@
 // Projects the harness-neutral core/ tree into dist/cursor/.cursor/. Cursor is
 // the most "native" port so far: unlike opencode (engine hidden in .aidlc/) or
 // codex (skills composed by emit.ts), Cursor consumes the standard projection
-// directly — no emit.ts at all.
+// directly. Its emit.ts writes exactly one file: the plugin-hook-target map the
+// adapter reads to append contributed guards to the single `guards` chain that
+// this harness's static hooks.json routes every preToolUse call to.
 //
 // Cursor specifics vs Claude (all live-verified against cursor-agent
 // 2026.07.23 on Linux; the IDE shares the same .cursor/ discovery):
@@ -33,6 +35,7 @@
 //     adapter self-filters) to aidlc-cursor-adapter.ts, which normalizes
 //     payloads and subprocess-pipes into the byte-shared core hooks.
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import emit from "./emit.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const manifest: HarnessManifest = {
@@ -42,6 +45,9 @@ const manifest: HarnessManifest = {
   harnessDir: ".cursor",
   orchestratorSkillPath: ".cursor/skills/aidlc/SKILL.md",
   tierFlavor: "cursor",
+  // `rules/aidlc.mdc` always carries org/team/project, with the phase rules as
+  // sibling always-on .mdc files.
+  baseRuleDelivery: "ambient",
   rootIntegrations: [
     {
       path: ".gitignore",
@@ -130,7 +136,7 @@ const manifest: HarnessManifest = {
   // user-invocable is true, which is unsafe for state-mutating stage runners.
   runnerFrontmatterAdditions: ["disable-model-invocation: true"],
 
-  emit: null,
+  emit,
 
   plugin: { manifestDir: ".cursor-plugin", kind: "cursor" },
 };

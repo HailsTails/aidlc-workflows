@@ -116,10 +116,14 @@ export type Harness = keyof TierProjection;
 /** The projection table. Tune here; every harness moves in lock-step. */
 export const TIER_PROJECTIONS: Record<Tier, TierProjection> = {
   judgment: {
-    // The session's model AND effort win: `inherit` follows the session model
-    // (a Fable session keeps Fable), and the omitted effort key follows the
-    // session effort. The framework never silently downgrades judgment work.
-    claude: { model: "inherit", effort: null },
+    // Judgment work pins the top general model explicitly (`opus` resolves to
+    // the current Opus generation) rather than inheriting the session. Inherit
+    // is right where the session model IS the ceiling you want fanned out to
+    // every sub-agent; it is wrong where a fan-out of many judgment lenses off a
+    // high-tier session would multiply cost without bound. An explicit alias
+    // keeps the top tier where judgment needs it AND makes the per-seat cost
+    // knowable. The omitted effort key still follows the session effort.
+    claude: { model: "opus", effort: null },
     codex: { model: null, effort: null },
     kiro: { model: null },
     opencode: { model: null, variant: null },
@@ -133,20 +137,21 @@ export const TIER_PROJECTIONS: Record<Tier, TierProjection> = {
     // of an xhigh-inheriting one with no verdict/finding quality loss. A
     // session pinned to xhigh was silently doubling every review's cost.
     claude: { model: "sonnet", effort: "medium" },
-    codex: { model: "openai.gpt-5.6-terra", effort: "medium" },
+    codex: { model: "gpt-5.6-terra", effort: "medium" },
     cursor: { model: null },
     kiro: { model: null },
-    opencode: { model: "amazon-bedrock/global.anthropic.claude-sonnet-4-6", variant: "medium" },
+    opencode: { model: null, variant: "medium" },
     copilot: { model: null },
   },
   templated: {
-    // The tier remains a models-dial group for pattern-following work, but the
-    // shipped baseline inherits. Users who want a lower writing-up baseline
-    // record that per install through `aidlc config models`.
-    claude: { model: "inherit", effort: null },
-    codex: { model: null, effort: null },
+    // The pattern-following tier. It currently shares balanced's smaller-model,
+    // reduced-effort projection, but remains distinct so either can be retuned.
+    // rin keeps concrete pins here where upstream 2.9.0 moved to `inherit`:
+    // inheriting the session model is what silently doubled review cost.
+    claude: { model: "sonnet", effort: "medium" },
+    codex: { model: "gpt-5.6-terra", effort: "medium" },
     kiro: { model: null },
-    opencode: { model: null, variant: null },
+    opencode: { model: null, variant: "medium" },
     copilot: { model: null },
     cursor: { model: null },
   },

@@ -133,16 +133,16 @@ describe("t293 model policy resolution", () => {
     const writingUp = resolveModelPolicy(null, "delivery", "templated", "claude");
     expect(writingUp).toEqual(expect.objectContaining({
       layer: "shipped-tier-default",
-      model: "inherit",
+      model: "sonnet",
     }));
-    expect(writingUp.effort).toBeUndefined();
+    expect(writingUp.effort).toBe("medium");
 
     const writingUpCodex = resolveModelPolicy(null, "delivery", "templated", "codex");
     expect(writingUpCodex).toEqual(expect.objectContaining({
-      layer: "session-inherit",
+      layer: "shipped-tier-default",
+      model: "gpt-5.6-terra",
+      effort: "medium",
     }));
-    expect(writingUpCodex.model).toBeUndefined();
-    expect(writingUpCodex.effort).toBeUndefined();
 
     const shipped = resolveModelPolicy(null, "product-lead", "balanced", "claude");
     expect(shipped).toEqual(expect.objectContaining({
@@ -364,7 +364,7 @@ describe("t293 model policy resolution", () => {
 });
 
 describe("t293 config models CLI", () => {
-  test("presets apply all group efforts and restore inheritance; economical is rejected", () => {
+  test("presets apply group efforts and cleared overrides restore shipped defaults; economical is rejected", () => {
     const project = install("claude");
     const reviewer = join(
       project,
@@ -388,7 +388,7 @@ describe("t293 config models CLI", () => {
       const [preset, decidingEffort, reviewerEffort, writerEffort] of [
         ["balanced", "medium", "medium", "medium"],
         ["minimal", "medium", "medium", "low"],
-        ["thorough", null, "xhigh", null],
+        ["thorough", null, "xhigh", "medium"],
       ] as const
     ) {
       const applied = run([

@@ -1001,11 +1001,15 @@ describe("t66 compile error hardening (in-process + source grep)", () => {
 describe("t66 compile --check drift (spawnSync CLI exit-code)", () => {
   test("clean -> 0, mutated -> 1, restore -> 0", () => {
     const graph = seedGraphCopy();
-    const env = { ...process.env, AIDLC_STAGE_GRAPH: graph };
+    const env = {
+      ...process.env,
+      AIDLC_STAGE_GRAPH: graph,
+      AIDLC_RULES_DIR: join(TOOLS_DIR, "..", "..", "aidlc", "spaces", "default", "memory"),
+    };
 
     // Clean -> exit 0
     const clean = spawnSync(BUN, [GRAPH_TS, "compile", "--check"], { env, encoding: "utf8" });
-    expect(clean.status).toBe(0);
+    expect(clean.status, clean.stdout + clean.stderr).toBe(0);
 
     // Mutate temp graph -> exit 1
     const j = JSON.parse(readFileSync(graph, "utf8"));

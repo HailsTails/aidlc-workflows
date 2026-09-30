@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, relative } from "node:path";
 import {
   stateDigest,
@@ -40,8 +40,13 @@ describe("Claude hook project-root anchoring", () => {
     commands.push(expectedNative.statusLine);
     expect(commands.length).toBeGreaterThan(1);
     for (const hook of commands) {
-      expect(hook.command.startsWith(`${SOURCE_ENTRY} engine `), hook.command).toBe(true);
-      hook.command = `aidlc${hook.command.slice(SOURCE_ENTRY.length)}`;
+      if (hook.command.startsWith(`${SOURCE_ENTRY} engine `)) {
+        hook.command = `aidlc${hook.command.slice(SOURCE_ENTRY.length)}`;
+      } else {
+        const pluginRoute = /^(?:node|bun) "\$CLAUDE_PROJECT_DIR\/\.claude\/hooks\/([a-z0-9-]+\.(?:ts|mjs))"$/.exec(hook.command);
+        expect(pluginRoute, hook.command).not.toBeNull();
+        expect(existsSync(join(REPO_ROOT, "dist", "plugins", "rin", "claude", "hooks", pluginRoute?.[1] ?? "missing-hook")), hook.command).toBe(true);
+      }
     }
     expect(native.hooks).toEqual(expectedNative.hooks);
     expect(native.statusLine).toEqual(expectedNative.statusLine);
@@ -53,6 +58,7 @@ describe("Claude hook project-root anchoring", () => {
     renameSync(original, project);
     try {
       cpSync(AIDLC_SRC, join(project, ".claude"), { recursive: true });
+      mkdirSync(join(project, ".git"));
       const cwd = join(project, "app", "nested directory");
       mkdirSync(cwd, { recursive: true });
       writeFileSync(join(cwd, "source.ts"), "export const value = 1;\n");

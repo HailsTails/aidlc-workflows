@@ -32,6 +32,7 @@ import {
   type TransactionOperation,
   type TransactionPlan,
 } from "./aidlc-transaction.ts";
+import { planCodexHookTrustSeed, planPluginHookRegistrations, projectedPluginHookContributionsSchema } from "./aidlc-plugin-hook-registrations.ts";
 
 const SAFE_PLUGIN_KEY = /^[a-z][a-z0-9-]*$/;
 const STRICT_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -39,6 +40,7 @@ const COMPOSE_DIRS = [
   "agents",
   "contributions",
   "knowledge",
+  "hooks",
   "scopes",
   "sensors",
   "stages",
@@ -583,7 +585,7 @@ function parseOwnership(path: string): OwnershipRecord | null {
   }
 }
 
-function projectEvidence(projectDir: string, harnessDir: string): ProjectEvidence {
+export function projectEvidence(projectDir: string, harnessDir: string): ProjectEvidence {
   const dataDir = harnessDataDir(projectDir, harnessDir);
   const stamps = new Map<string, CompositionStamp>();
   const legacy = new Set<string>();
@@ -802,6 +804,7 @@ function pluginPrimitiveTargets(
     ["knowledge", join(harnessDir, "knowledge")],
     ["sensors", join(harnessDir, "sensors")],
     ["tools", join(harnessDir, "tools")],
+    ["hooks", join(harnessDir, "hooks")],
   ];
   for (const [sourceDir, targetDir] of mappings) {
     const sourceRoot = join(plugin.root, sourceDir);
@@ -956,9 +959,6 @@ async function runComposer(
     }
   }
   const retryMarker = join(stagedProject, "aidlc", `.plugin-compose-retry-${plugin.key}`);
-  if (existsSync(retryMarker)) {
-    throw new Error(`plugin ${plugin.key} composition did not complete; retry marker remains`);
-  }
   const drops: string[] = [];
   const aidlcRoot = join(stagedProject, "aidlc");
   if (existsSync(aidlcRoot)) {
@@ -970,7 +970,10 @@ async function runComposer(
     }
   }
   if (drops.length > 0) {
-    throw new Error(`plugin ${plugin.key} composition reported degraded drops: ${drops.join(", ")}`);
+    throw new Error(`plugin ${plugin.key} composition reported degraded drops: ${drops.map((path) => readFileSync(path, "utf-8")).join("\n")}`);
+  }
+  if (existsSync(retryMarker)) {
+    throw new Error(`plugin ${plugin.key} composition did not complete; retry marker remains`);
   }
   if (pluginSourceHash(plugin.root) !== plugin.sourceHash) {
     throw new Error(`plugin ${plugin.key} source changed during composition`);
@@ -1045,6 +1048,7 @@ function pruneContributions(stagedProject: string, harnessDir: string, key: stri
     consumes?: string[];
     required_sections?: string[];
     required_sections_created?: boolean;
+    hook_registrations?: unknown;
   }> = {};
   if (existsSync(sidecar)) {
     try {
@@ -1056,6 +1060,18 @@ function pruneContributions(stagedProject: string, harnessDir: string, key: stri
     } catch (error) {
       throw new Error(`${sidecar}: ownership sidecar is invalid: ${errorMessage(error)}`);
     }
+  }
+  const recordedHooks = records.$hooks?.hook_registrations;
+  if (recordedHooks !== undefined) {
+    const payload = projectedPluginHookContributionsSchema.parse(recordedHooks);
+    if (payload.kind === "invalid" || payload.value.pluginName !== key ||
+      (payload.value.harness === "kiro-ide" ? "kiro" : payload.value.harness) !== harnessKind(harnessDir)) throw new Error(`${sidecar}: recorded plugin hooks are invalid`);
+    const paths = [...new Set(payload.value.registrations.map((registration) => registration.path))];
+    const plan = planPluginHookRegistrations({ pluginName: key, harness: payload.value.harness,
+      selection: { kind: "deselected" }, previous: payload.value.registrations, current: [],
+      documents: paths.map((path) => ({ path, text: readFileSync(assertOwnedPath(stagedProject, path), "utf-8") })) });
+    if (plan.kind === "conflict") throw new Error(`plugin hook registration refused: ${plan.error.path}: ${plan.error.reason}`);
+    plan.documents.forEach((document) => { writeFileSync(assertOwnedPath(stagedProject, document.path), document.text); });
   }
   const stagesRoot = join(stagedProject, harnessDir, "aidlc-common", "stages");
   if (existsSync(stagesRoot)) {
@@ -1261,8 +1277,13 @@ export function projectDiffPlan(
 function compositionIsCurrent(
   plugin: InstalledPlugin,
   evidence: ProjectEvidence,
-  projectDir: string,
+  location: { projectDir: string; harnessDir: string },
 ): boolean {
+  const sidecar = join(harnessDataDir(location.projectDir, location.harnessDir), `plugin-contrib-${plugin.key}.json`);
+  if (existsSync(sidecar)) {
+    const records = readJson(sidecar);
+    if (records !== null && typeof records === "object" && !Array.isArray(records) && "$hooks" in records) return false;
+  }
   const stamp = evidence.stamps.get(plugin.key);
   if (
     !stamp ||
@@ -1272,7 +1293,7 @@ function compositionIsCurrent(
   const ownership = evidence.ownership.get(plugin.key);
   if (!ownership) return false;
   return ownership.files.every((file) => {
-    const target = assertOwnedPath(projectDir, file.path);
+    const target = assertOwnedPath(location.projectDir, file.path);
     return existsSync(target) &&
       lstatSync(target).isFile() &&
       sha256File(target) === file.sha256;
@@ -1341,16 +1362,19 @@ export async function syncPlugins(
         `plugin sync refused: ${inventory.invalid.map((item) => item.message).join("; ")}`,
       );
     }
-    plugins = inventory.installed;
-    if (plugins.length === 0) {
+    if (inventory.installed.length === 0) {
       throw new Error("host inventory unavailable; run sync through an installed plugin's host hook");
     }
+    plugins = inventory.installed.filter((plugin) => plugin.enabled && (selection === null || selection.has(plugin.key)));
   }
+  const deselected = inventory.installed.filter((plugin) =>
+    (!plugin.enabled || (selection !== null && !selection.has(plugin.key))) && evidence.ownership.has(plugin.key)).map((plugin) => plugin.key);
   const pruned = prune ? missing : [];
+  const removed = [...new Set([...pruned, ...deselected])];
   await confirmPrune(argv, pruned);
   if (
-    pruned.length === 0 &&
-    plugins.every((plugin) => compositionIsCurrent(plugin, evidence, projectDir))
+    removed.length === 0 &&
+    plugins.every((plugin) => compositionIsCurrent(plugin, evidence, { projectDir, harnessDir }))
   ) {
     return {
       synced: plugins.map((plugin) => plugin.key).sort(),
@@ -1375,7 +1399,7 @@ export async function syncPlugins(
       );
       await runComposer(plugin, stagedProject, harnessDir);
     }
-    for (const key of pruned) {
+    for (const key of removed) {
       pruneOwnedPlugin(stagedProject, harnessDir, key, evidence.ownership.get(key));
     }
     const claimedPaths = new Set<string>();
@@ -1389,7 +1413,14 @@ export async function syncPlugins(
         claimedPaths,
       );
     }
-    if (pruned.length > 0) regenerateAfterPrune(stagedProject, harnessDir);
+    if (removed.length > 0) regenerateAfterPrune(stagedProject, harnessDir);
+    if (harness === "codex") {
+      const seed = planCodexHookTrustSeed({ document: readJson(join(stagedProject, harnessDir, "hooks.json")),
+        hooksPath: join(projectDir, harnessDir, "hooks.json"),
+        hashIdentity: ({ identity }) => `sha256:${createHash("sha256").update(identity, "utf-8").digest("hex")}` });
+      if (seed.kind === "invalid-document") throw new Error("Codex hook trust refused: invalid hooks.json");
+      writeFileSync(join(stagedProject, harnessDir, "trust-seed.toml"), seed.text);
+    }
     const plan = projectDiffPlan(projectDir, stagedProject, harnessDir);
     const failAfter = Number(process.env.AIDLC_PLUGIN_SYNC_FAIL_AFTER ?? "0");
     try {
@@ -1410,9 +1441,9 @@ export async function syncPlugins(
       }
       const refreshedEvidence = projectEvidence(projectDir, harnessDir);
       if (
-        pruned.length === 0 &&
+        removed.length === 0 &&
         plugins.every((plugin) =>
-          compositionIsCurrent(plugin, refreshedEvidence, projectDir)
+          compositionIsCurrent(plugin, refreshedEvidence, { projectDir, harnessDir })
         )
       ) {
         return {

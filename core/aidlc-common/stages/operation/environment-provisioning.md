@@ -1,5 +1,7 @@
 ---
 slug: environment-provisioning
+number: 4.2
+name: Environment Provisioning
 phase: operation
 execution: CONDITIONAL
 condition: Execute when AWS environments need provisioning or validation

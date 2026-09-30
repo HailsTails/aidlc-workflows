@@ -1,5 +1,7 @@
 ---
 slug: deployment-execution
+number: 4.3
+name: Deployment Execution
 phase: operation
 execution: CONDITIONAL
 condition: Execute after deployment pipeline and environment are ready

@@ -1,5 +1,6 @@
 ---
 slug: nfr-requirements
+number: 3.2
 name: NFR Requirements
 phase: construction
 execution: CONDITIONAL

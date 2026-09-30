@@ -148,7 +148,8 @@ import {
   readSessionIntentHandoff,
   readSessionIntentUuid,
   recordHookDrop,
-  resolveProjectDirFromHook,
+  hookPayloadCwd,
+  resolveProjectDirFromPayload,
   resolveWorkflowSelection,
   stageDir,
   stateFilePathForSelection,
@@ -1283,7 +1284,10 @@ function continuationReason(
 // --- Main ---------------------------------------------------------------------
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 let earlySessionId = "";
 let earlyRawSessionId: unknown;
 try {

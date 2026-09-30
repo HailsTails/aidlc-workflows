@@ -13,6 +13,7 @@ import { appendAuditEntry, appendAuditEntryUnlocked } from "./aidlc-audit.ts";
 import {
   assertNoSymlinkInChainOrThrow,
   auditBlockField,
+  boltSlugForUnit,
   checkSummaryConfirmationEvidence,
   claimAttemptFields,
   clearSummaryAuthorization,
@@ -43,6 +44,8 @@ import {
   hookExecutionRecoveryText,
   hookLiveness,
   holdsAuditLock,
+  isAttemptBoundary,
+  isTeamUnitOwnership,
   humanActedSinceLastAnswer,
   humanPresenceGuardDisabled,
   isAutonomousConstructionDecision,
@@ -82,6 +85,9 @@ import {
   reviewAttemptAccounting,
   reviewAttemptEventMatchesCurrentClaim,
   reviewAttemptWindow,
+  reviewCompletionMatchesRequest,
+  reviewRequestBindingFromBlock,
+  reviewRequestBindingIsModern,
   serializeReviewRecord,
   resolveProjectDir,
   resolveWorkflowSelection,
@@ -104,12 +110,15 @@ import {
   writeUnitSourceSnapshot,
 } from "./aidlc-lib.js";
 import type {
+  AuditShardEvent,
   GuardAttemptState,
   GuardRefusal,
   TeamUnitGateResolution,
   PlanApprovalRuntimeChallenge,
   ReviewClass,
   ReviewRecord,
+  ReviewRecoveryCause,
+  ReviewRequestBinding,
   ReviewVerdict,
 } from "./aidlc-lib.js";
 import {
@@ -1298,6 +1307,461 @@ function handleLink(args: string[]): void {
 // PER UNIT, so pass --unit; the approve guard requires one review per unit.
 const VALID_VERDICTS = new Set(["READY", "NOT-READY"]);
 
+type ReviewAttemptSummary = {
+  requestCount: number;
+  boltStarted: boolean;
+  boltBatch: string | null;
+  boltSlug: string | null;
+  pendingIterations: Set<number>;
+  pendingRequests: Map<
+    number,
+    {
+      binding: ReviewRequestBinding | null;
+      retried: boolean;
+    }
+  >;
+  recoveryIteration: number | null;
+  recoverySpent: boolean;
+  artifactRecoverySpent: boolean;
+  ambiguity: string | null;
+};
+
+// Count requests in the current stage/unit attempt. The same chronological
+// floors used by receipt freshness reset the budget on workflow start, jump,
+// stage re-entry, or gate rejection. A matching BOLT_STARTED is a stronger
+// per-unit floor because the forked audit inherits the main workflow's prior
+// rows; it is also the proof that `--unit` belongs to an actual Bolt attempt.
+type CompletedReviewBinding = {
+  artifactFingerprint: string | null;
+  sourceFingerprint: string | null;
+};
+
+const FINGERPRINT_SHAPES = {
+  artifact: /^sha256:[0-9a-f]{64}$/,
+  // Both widths are real: a git tree sha1 (40) from the single-repo path and a
+  // sha256 digest (64) from the multi-repo fold. Admitting only one silently
+  // sent every value of the other width to the fail-closed reading.
+  source: /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/,
+} as const;
+
+function movedBetween(
+  before: string | null,
+  after: string | null,
+  shape: RegExp,
+): boolean | null {
+  if (before === null || after === null) return null;
+  if (!shape.test(before) || !shape.test(after)) return null;
+  return before !== after;
+}
+
+// Classify a pre-`Recovery Cause` recovery request from the evidence it already
+// carries: the preceding terminal receipt and this request each record an
+// artifact fingerprint, and the receipt records the source fingerprint the
+// reviewer was bound to. Whichever of the two moved across that interval is the
+// cause the recovery was for. This is a derivation from committed audit rows,
+// not a judgement — and where the rows cannot decide (a fingerprint missing or
+// malformed, or BOTH moved) it returns the ambiguous reading so the caller
+// keeps latching both budgets.
+function classifyMovement(
+  artifactMoved: boolean | null,
+  sourceMoved: boolean | null,
+): ReviewRecoveryCause {
+  // Defensive, and deliberately not unit-tested: a row whose artifact
+  // fingerprint is absent or malformed is rejected by
+  // `reviewRequestBindingFromBlock` before it can reach here, so no legitimate
+  // audit input drives this arm. It exists so a future caller that bypasses
+  // that filter still fails closed rather than widening a budget.
+  if (artifactMoved === null || sourceMoved === null) return "artifact+source";
+  if (artifactMoved && sourceMoved) return "artifact+source";
+  if (sourceMoved) return "source";
+  return "artifact";
+}
+
+function derivedRecoveryCause(
+  previousReceipt: CompletedReviewBinding | null,
+  request: ReviewRequestBinding,
+  recoveryReceipt: CompletedReviewBinding | null,
+): ReviewRecoveryCause {
+  if (previousReceipt === null) return "artifact+source";
+  const artifactMoved = movedBetween(
+    previousReceipt.artifactFingerprint,
+    request.artifactFingerprint,
+    FINGERPRINT_SHAPES.artifact,
+  );
+  const requestSourceMoved = movedBetween(
+    previousReceipt.sourceFingerprint,
+    request.sourceFingerprint,
+    FINGERPRINT_SHAPES.source,
+  );
+  if (requestSourceMoved !== null) {
+    return classifyMovement(artifactMoved, requestSourceMoved);
+  }
+  // Requests written before the request-side source binding existed carry no
+  // source field, so compare the two RECEIPTS instead. A receipt stamps the
+  // source live at completion, so had the source moved before this recovery
+  // ran, the recovery's own receipt would carry the new value; an unchanged
+  // pair therefore proves the source did not move across the whole window.
+  // Only available once the recovery's verdict was recorded — which is exactly
+  // the wedged population, where the NEXT request is the one being refused.
+  return classifyMovement(
+    artifactMoved,
+    movedBetween(
+      previousReceipt.sourceFingerprint,
+      recoveryReceipt?.sourceFingerprint ?? null,
+      FINGERPRINT_SHAPES.source,
+    ),
+  );
+}
+
+function reviewAttemptSummary(
+  rows: AuditShardEvent[],
+  stateContent: string,
+  stage: { slug: string; for_each?: string; workspace_requires?: boolean },
+  reviewer: string,
+  unit: string | undefined,
+  workflow: string | undefined,
+  attemptWindow?: ReturnType<typeof reviewAttemptWindow> | null,
+): ReviewAttemptSummary {
+  const relevant = new Set([
+    "WORKFLOW_STARTED",
+    "STAGE_STARTED",
+    "STAGE_COMPLETED",
+    "STAGE_JUMPED",
+    "GATE_REJECTED",
+    "BOLT_STARTED",
+    "BOLT_COMPLETED",
+    "BOLT_FAILED",
+    "REVIEW_REQUESTED",
+    "REVIEW_COMPLETED",
+  ]);
+  const events = rows
+    .filter((row) => relevant.has(row.event))
+    .sort((a, b) => {
+      if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
+      if (a.shard === b.shard) return a.pos - b.pos;
+      if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
+      return a.pos - b.pos;
+    });
+  const tiedAcrossShards = (index: number): boolean =>
+    events.some(
+      (row, other) =>
+        other !== index &&
+        row.timestamp === events[index].timestamp &&
+        row.shard !== events[index].shard,
+    );
+  const tiedOnlyToWorkflowBoundary = (index: number): boolean => {
+    let sawBoundary = false;
+    for (let other = 0; other < events.length; other++) {
+      if (
+        other === index ||
+        events[other].timestamp !== events[index].timestamp ||
+        events[other].shard === events[index].shard
+      ) {
+        continue;
+      }
+      if (
+        events[other].event !== "WORKFLOW_STARTED" &&
+        events[other].event !== "STAGE_JUMPED"
+      ) {
+        return false;
+      }
+      sawBoundary = true;
+    }
+    return sawBoundary;
+  };
+
+  const unitMajor =
+    stage.for_each === "unit-of-work" &&
+    getField(stateContent, "Construction Iteration")?.trim() === "unit-major";
+  const teamOwnership =
+    stage.for_each === "unit-of-work" &&
+    isTeamUnitOwnership(stateContent);
+  let floor = -1;
+  let boltStarted = false;
+  let boltBatch: string | null = null;
+  let boltSlug: string | null = null;
+  const expectedBoltSlug = unit === undefined ? null : boltSlugForUnit(unit);
+  let ambiguity: string | null = null;
+  for (let i = 0; i < events.length; i++) {
+    const entry = events[i];
+    if (workflow !== undefined) {
+      if (
+        entry.event === "STAGE_COMPLETED" &&
+        auditBlockField(entry.block, "Stage") === stage.slug &&
+        auditBlockField(entry.block, "Workflow") === workflow
+      ) {
+        floor = i;
+      }
+      continue;
+    }
+    if (entry.event === "WORKFLOW_STARTED" || entry.event === "STAGE_JUMPED") {
+      if (teamOwnership && tiedAcrossShards(i)) {
+        ambiguity = `cross-shard boundary tie at ${entry.timestamp}`;
+      }
+      floor = i;
+      boltStarted = false;
+      boltBatch = null;
+      boltSlug = null;
+      if (!teamOwnership || !tiedAcrossShards(i)) ambiguity = null;
+      continue;
+    }
+    if (
+      entry.event === "BOLT_STARTED" &&
+      unit !== undefined
+    ) {
+      const names = (auditBlockField(entry.block, "Bolt names") ?? "")
+        .split(",")
+        .map((name) => name.trim());
+      const startedSlug = auditBlockField(entry.block, "Bolt slug");
+      if (
+        !names.includes(unit) ||
+        (startedSlug !== null && startedSlug !== expectedBoltSlug)
+      ) {
+        continue;
+      }
+      if (tiedAcrossShards(i)) ambiguity = `cross-shard Bolt boundary tie at ${entry.timestamp}`;
+      floor = i;
+      boltStarted = true;
+      boltBatch = auditBlockField(entry.block, "Batch number");
+      boltSlug = startedSlug;
+      if (!tiedAcrossShards(i)) ambiguity = null;
+      continue;
+    }
+    if (
+      (entry.event === "BOLT_COMPLETED" || entry.event === "BOLT_FAILED") &&
+      unit !== undefined
+    ) {
+      const terminalNames = (
+        auditBlockField(
+          entry.block,
+          entry.event === "BOLT_FAILED" ? "Failed Bolt" : "Bolt names",
+        ) ?? ""
+      )
+        .split(",")
+        .map((name) => name.trim());
+      const terminalSlug = auditBlockField(entry.block, "Bolt slug");
+      const paired =
+        boltSlug !== null && terminalSlug !== null
+          ? boltSlug === terminalSlug
+          : terminalNames.includes(unit);
+      if (!paired) continue;
+      const tied = tiedAcrossShards(i);
+      if (tied) ambiguity = `cross-shard Bolt boundary tie at ${entry.timestamp}`;
+      else ambiguity = null;
+      floor = i;
+      boltStarted = false;
+      boltBatch = null;
+      boltSlug = null;
+      continue;
+    }
+    if (entry.event === "GATE_REJECTED") {
+      if (!isAttemptBoundary(entry.block)) continue;
+      const gateStages = (
+        auditBlockField(entry.block, "Gate Stages") ??
+          auditBlockField(entry.block, "Stage") ??
+          ""
+      ).split(",").map((value) => value.trim());
+      if (!gateStages.includes(stage.slug)) continue;
+      const rejectedUnit = auditBlockField(entry.block, "Unit");
+      if (teamOwnership && unit !== undefined && rejectedUnit !== unit) continue;
+      if (teamOwnership && unit === undefined && rejectedUnit !== null) continue;
+      const tied = tiedAcrossShards(i);
+      if (tied) ambiguity = `cross-shard gate boundary tie at ${entry.timestamp}`;
+      else ambiguity = null;
+      floor = i;
+      boltStarted = false;
+      boltBatch = null;
+      boltSlug = null;
+    } else if (
+      auditBlockField(entry.block, "Stage") === stage.slug &&
+      entry.event === "STAGE_STARTED" &&
+      !unitMajor &&
+      !auditBlockField(entry.block, "Workflow")?.startsWith("single-stage:")
+    ) {
+      const tied = tiedAcrossShards(i);
+      if (tied) ambiguity = `cross-shard stage boundary tie at ${entry.timestamp}`;
+      else ambiguity = null;
+      floor = i;
+      boltStarted = false;
+      boltBatch = null;
+      boltSlug = null;
+    }
+  }
+  if (
+    unit !== undefined &&
+    ambiguity?.startsWith("cross-shard Bolt boundary tie at ") &&
+    attemptWindow?.mergedBoltUnits.has(unit) === true &&
+    !attemptWindow.openBoltUnits.has(unit)
+  ) {
+    const timestamp = ambiguity.slice(
+      "cross-shard Bolt boundary tie at ".length,
+    );
+    const tied = attemptWindow.events.filter(
+      (event) => event.timestamp === timestamp,
+    );
+    const tiedShards = new Set(tied.map((event) => event.shard));
+    const lifecycleOnly =
+      tied.length > 1 &&
+      tiedShards.size > 1 &&
+      tied.every((event) => {
+        // AUDIT_MERGED is referee merge plumbing (main-emitted, merge
+        // protected); it carries no reviewer authority and cannot make the
+        // tie ambiguous for this unit's lifecycle accounting.
+        if (event.event === "AUDIT_MERGED") return true;
+        if (
+          event.event !== "BOLT_STARTED" &&
+          event.event !== "BOLT_COMPLETED" &&
+          event.event !== "BOLT_FAILED"
+        ) {
+          return false;
+        }
+        const field =
+          event.event === "BOLT_FAILED"
+            ? auditBlockField(event.block, "Failed Bolt")
+            : auditBlockField(event.block, "Bolt names");
+        return (field ?? "")
+          .split(",")
+          .map((name) => name.trim())
+          .includes(unit);
+      });
+    if (lifecycleOnly) {
+      ambiguity = null;
+      boltStarted = false;
+      boltBatch = null;
+      boltSlug = null;
+    }
+  }
+
+  let requestCount = 0;
+  let recoveryIteration: number | null = null;
+  let recoverySpent = false;
+  // The artifact and source freshness causes hold INDEPENDENT single-use
+  // recoveries. A merge-forward invalidates the source binding without
+  // touching a declared artifact, so collapsing both into one latch made a
+  // first merge spend the only recovery and a second terminal — reserved to a
+  // human GATE_REJECTED — for an event that changed nothing a reviewer judged.
+  // A recovery request carries its own `Recovery Cause`; a request predating
+  // that field (null cause) spends both, which is the fail-closed reading.
+  let artifactRecoverySpent = false;
+  let lastCompletedBinding: CompletedReviewBinding | null = null;
+  let pendingLegacyRecovery: {
+    iteration: number;
+    previousReceipt: CompletedReviewBinding | null;
+    request: ReviewRequestBinding;
+  } | null = null;
+  let legacyRecoveryReceipt: CompletedReviewBinding | null = null;
+  const pendingIterations = new Set<number>();
+  const pendingRequests = new Map<
+    number,
+    {
+      binding: ReviewRequestBinding | null;
+      retried: boolean;
+    }
+  >();
+  for (let i = floor + 1; i < events.length; i++) {
+    const entry = events[i];
+    if (
+      entry.event !== "REVIEW_REQUESTED" &&
+      entry.event !== "REVIEW_COMPLETED"
+    ) {
+      continue;
+    }
+    if (auditBlockField(entry.block, "Stage") !== stage.slug) continue;
+    if (auditBlockField(entry.block, "Reviewer") !== reviewer) continue;
+    const eventUnit = auditBlockField(entry.block, "Unit") || undefined;
+    if (eventUnit !== unit) continue;
+    const eventWorkflow = auditBlockField(entry.block, "Workflow") || undefined;
+    if (
+      workflow !== undefined
+        ? eventWorkflow !== workflow
+        : eventWorkflow?.startsWith("single-stage:")
+    ) {
+      continue;
+    }
+    if (
+      tiedAcrossShards(i) &&
+      !(!teamOwnership && tiedOnlyToWorkflowBoundary(i))
+    ) {
+      ambiguity = `cross-shard review authority tie at ${entry.timestamp}`;
+      continue;
+    }
+    const rawIteration = auditBlockField(entry.block, "Iteration");
+    if (!rawIteration || !/^[1-9][0-9]*$/.test(rawIteration)) continue;
+    const iteration = Number(rawIteration);
+    if (entry.event === "REVIEW_REQUESTED") {
+      const binding = reviewRequestBindingFromBlock(entry.block);
+      if (binding === null) continue;
+      if (auditBlockField(entry.block, "Retry") !== "pending-request") {
+        requestCount++;
+      }
+      if (auditBlockField(entry.block, "Recovery") === "stale-receipt") {
+        recoveryIteration = iteration;
+        recoverySpent = true;
+        const declaredCause = auditBlockField(entry.block, "Recovery Cause");
+        if (declaredCause !== null) {
+          if (declaredCause !== "source") artifactRecoverySpent = true;
+        } else {
+          // Predates the Recovery Cause field. The rows still carry the
+          // evidence to classify it, but the receipt-to-receipt fallback needs
+          // this recovery's own verdict, which appears later in the stream —
+          // so record the inputs now and resolve after the walk.
+          pendingLegacyRecovery = {
+            iteration,
+            previousReceipt: lastCompletedBinding,
+            request: binding,
+          };
+        }
+      }
+      pendingIterations.add(iteration);
+      const previous = pendingRequests.get(iteration);
+      const modernBinding = reviewRequestBindingIsModern(binding, stage);
+      pendingRequests.set(iteration, {
+        binding,
+        retried:
+          previous?.retried === true ||
+          (auditBlockField(entry.block, "Retry") === "pending-request" &&
+            modernBinding),
+      });
+    } else {
+      lastCompletedBinding = {
+        artifactFingerprint: auditBlockField(entry.block, "Artifact Fingerprint"),
+        sourceFingerprint: auditBlockField(entry.block, "Source Fingerprint"),
+      };
+      if (pendingLegacyRecovery?.iteration === iteration) {
+        legacyRecoveryReceipt = lastCompletedBinding;
+      }
+      const pending = pendingRequests.get(iteration);
+      if (
+        pending?.binding &&
+        reviewCompletionMatchesRequest(pending.binding, entry.block)
+      ) {
+        pendingIterations.delete(iteration);
+        pendingRequests.delete(iteration);
+      }
+    }
+  }
+  if (pendingLegacyRecovery !== null) {
+    const cause = derivedRecoveryCause(
+      pendingLegacyRecovery.previousReceipt,
+      pendingLegacyRecovery.request,
+      legacyRecoveryReceipt,
+    );
+    if (cause !== "source") artifactRecoverySpent = true;
+  }
+  return {
+    requestCount,
+    boltStarted,
+    boltBatch,
+    boltSlug,
+    pendingIterations,
+    pendingRequests,
+    recoveryIteration,
+    recoverySpent,
+    artifactRecoverySpent,
+    ambiguity,
+  };
+}
+
 function reviewBudgetMessage(stage: string, ordinal: number, budget: number): string {
   return (
     `Cannot request review pass ${ordinal} for "${stage}" because this stage allows ` +
@@ -1316,11 +1780,23 @@ export function reviewRecoverySpentMessage(
     slug: string | null;
     batch: string | null;
   },
+  cause: ReviewRecoveryCause | null = null,
   requestChangesResetValid = true,
 ): string {
   const prefix =
-    `Cannot start another review for "${stage}": the one recovery review was ` +
-    "already used, and this stage's output document changed again afterward. ";
+    cause === "source"
+      ? `Cannot start another review for "${stage}": the workspace source ` +
+        "changed after the last verdict, and no READY verdict is bound to the " +
+        "source as it now stands. Re-run the review board against the current " +
+        "tree so its verdict covers the source being approved; that recovery is " +
+        "then taken automatically. No declared output document is implicated. "
+      : cause === "artifact+source"
+        ? `Cannot start another review for "${stage}": this stage's output ` +
+          "document changed again after the one recovery review was already " +
+          "used, and the workspace source also changed. Re-running the board " +
+          "clears the source half; the document half is already spent. "
+        : `Cannot start another review for "${stage}": the one recovery review was ` +
+          "already used, and this stage's output document changed again afterward. ";
   if (autonomousBolt) {
     const slug = autonomousBolt.slug ?? autonomousBolt.unit;
     const batch = autonomousBolt.batch
@@ -1792,8 +2268,55 @@ function handleReview(args: string[]): void {
           sourceScopeStale &&
           (receipts?.sourceRecoverySpent === true ||
             receipts?.sourceStaleProgress?.recoverySpent === true);
-        const recoverySpent =
-          attempt.recoverySpent || sourceRecoverySpent;
+        // Each cause holds its own single-use recovery, so a merge-forward
+        // (source) never consumes the artifact recovery and vice versa.
+        //
+        // The recovery REQUEST is what dispatches the board against the new
+        // tree, so it cannot itself require a verdict already bound to that
+        // tree — that ordering is circular and would make the evidence
+        // unobtainable. The guarantee is enforced where it can actually hold:
+        // REVIEW_COMPLETED refuses unless the workspace source still matches
+        // the source the reviewer was dispatched against, so a recorded
+        // verdict is re-bound by construction.
+        const sourceRecoveryAvailable =
+          sourceScopeStale && !sourceRecoverySpent;
+        // The artifact half of the two-latch recovery model. Upstream's
+        // accounting latches only the source cause, so the artifact cause is
+        // derived here from the same attempt window; collapsing the two would
+        // let a merge-forward spend the document recovery.
+        //
+        // The window is resolved HERE rather than read from an outer binding:
+        // the one bound near the top of handleReview lives inside reviewSlot's
+        // arrow body, which closes before this branch, so reaching for it threw
+        // `attemptWindow is not defined` at runtime while type-checking clean.
+        const artifactAttemptWindow = reviewAttemptWindow(pd, state, node);
+        const artifactRecoverySpent =
+          artifactScopeStale &&
+          reviewAttemptSummary(
+            artifactAttemptWindow.allEvents.filter((row) =>
+              reviewAttemptEventMatchesCurrentClaim(pd, state, flags.unit, row),
+            ),
+            state,
+            node,
+            flags.reviewer,
+            flags.unit,
+            fields.Workflow,
+            artifactAttemptWindow,
+          ).artifactRecoverySpent;
+        const recoverySpent = sourceScopeStale
+          ? artifactScopeStale
+            ? artifactRecoverySpent && !sourceRecoveryAvailable
+            : !sourceRecoveryAvailable
+          : artifactScopeStale
+            ? artifactRecoverySpent
+            : attempt.recoverySpent;
+        const refusalCause: ReviewRecoveryCause | null = sourceScopeStale
+          ? artifactScopeStale
+            ? "artifact+source"
+            : "source"
+          : artifactScopeStale
+            ? "artifact"
+            : null;
         const refuseAttemptGuard = (
           code: string,
           invariant: string,
@@ -1855,6 +2378,7 @@ function handleReview(args: string[]): void {
                           batch: attempt.boltBatch,
                         }
                       : undefined,
+                    refusalCause,
                     requestChangesResetIsExecutable(
                       state,
                       flags.stage,
@@ -2041,6 +2565,7 @@ function handleReview(args: string[]): void {
                     batch: attempt.boltBatch,
                   }
                 : undefined,
+              refusalCause,
               requestChangesResetIsExecutable(
                 state,
                 flags.stage,

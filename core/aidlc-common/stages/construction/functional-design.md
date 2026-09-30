@@ -1,5 +1,7 @@
 ---
 slug: functional-design
+number: 3.1
+name: Functional Design
 phase: construction
 execution: CONDITIONAL
 condition: New data models, complex business logic, or business rules need design. Skip if simple logic changes with no new business logic.

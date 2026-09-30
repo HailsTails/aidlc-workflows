@@ -262,6 +262,8 @@ describe("t-active-space-includes: Codex config.toml AIDLC_RULES_DIR", () => {
     seedSpaces(root);
     mkdirSync(join(root, ".codex"), { recursive: true });
     cpSync(distSurface("codex", ".codex", "config.toml"), join(root, ".codex", "config.toml"));
+    const configPath = join(root, ".codex", "config.toml");
+    writeFileSync(configPath, `model_provider = "consumer-provider"\n${readFileSync(configPath, "utf-8")}`);
     return root;
   }
 

@@ -159,9 +159,13 @@ import {
   writeUnitScopeStamp,
   writeFileAtomic,
 } from "./aidlc-lib.js";
-import { memoryDirFor } from "./aidlc-graph.ts";
+import { memoryDirFor, memorySegmentsForSpace } from "./aidlc-graph.ts";
 import { inspectRequiredArtifactInstances } from "./aidlc-artifact-resolution.ts";
 import { compiledExecutable } from "./aidlc-runtime-paths.ts";
+import {
+  type FireVerdictLine,
+  lastFireVerdictLineOf,
+} from "./aidlc-sensor-verdict.ts";
 import {
   stageValidationAuditFields,
   VALIDATION_WARNING_FIELD,
@@ -2799,15 +2803,7 @@ function producesArtifactsExist(
   return false;
 }
 
-interface SensorFireVerdict {
-  fire_id: string;
-  sensor_id: string;
-  stage: string;
-  output_path: string;
-  result: "passed" | "failed" | "budget-override";
-  detail_path: string | null;
-  note?: string;
-}
+type SensorFireVerdict = FireVerdictLine;
 
 interface BlockingSensorIssue {
   sensorId: string;
@@ -2916,29 +2912,9 @@ function existingDeclaredArtifactPaths(
   return [...found];
 }
 
+// One verdict-line guard, shared with the PostToolUse hook's reader.
 function parseSensorFireVerdict(stdout: string): SensorFireVerdict | null {
-  const lines = stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  for (let i = lines.length - 1; i >= 0; i--) {
-    try {
-      const value = JSON.parse(lines[i]) as Partial<SensorFireVerdict>;
-      if (
-        typeof value.fire_id === "string" &&
-        typeof value.sensor_id === "string" &&
-        typeof value.stage === "string" &&
-        typeof value.output_path === "string" &&
-        (value.result === "passed" ||
-          value.result === "failed" ||
-          value.result === "budget-override") &&
-        (value.detail_path === null || typeof value.detail_path === "string") &&
-        (value.note === undefined || typeof value.note === "string")
-      ) {
-        return value as SensorFireVerdict;
-      }
-    } catch {
-      // Keep scanning in case a wrapper wrote a banner before the JSON verdict.
-    }
-  }
-  return null;
+  return lastFireVerdictLineOf(stdout);
 }
 
 function gateSensorDispatchTimeoutMs(): number | undefined {
@@ -3363,15 +3339,62 @@ function dirHasFile(dir: string): boolean {
   return false;
 }
 
+// rin drift (01a09df2, the method layer IS the deliverable): the layered practice
+// files under a space's `memory/` directory are a rules-layer record's entire
+// output, and the `rin-harness` scope's own escalation tripwire routes any change
+// touching them INTO the full rin-gates lane - a bare path test that states no
+// ground, but whose effect is to treat that surface as warranting every gate.
+// Gate 4 then refused that same change as planning-docs-only, because
+// the first-segment test below collapses the whole `aidlc/` tree to "doc". The two
+// rails contradicted each other: the only routes through were the env bypass or a
+// decoy commit touching an unrelated real-source path, and both corrupt the very
+// signal this guard exists to produce.
+//
+// The anchor is space-relative and POSITIONAL rather than a bare "a segment named
+// memory" test: a loose test would admit a `memory/` directory anywhere under
+// `aidlc/` - including inside a record dir - and record-dir artefacts are exactly
+// what must keep declining, or the guard stops distinguishing "produced the
+// deliverable" from "wrote its own planning docs". Stage diaries are files NAMED
+// `memory.md`, never `memory/` directories, so they cannot satisfy this by
+// construction.
+//
+// The shape comes from `memorySegmentsForSpace`, the engine's own single source of
+// truth for the method-layer layout, rather than from literals repeated here - its
+// doc comment exists so the resolvers "can never drift from the compile/display
+// family's layout", and a second hand-written copy is exactly that drift. The space
+// segment is positional because any space qualifies; the surrounding segments must
+// match the canonical shape.
+//
+// Scoped so the fail-closed property is untouched: this widens the doc set's one
+// wrong verdict and changes no other path's answer. A genuinely empty implement
+// stage still declines every check.
+function isSpaceMethodLayerPath(segments: readonly string[]): boolean {
+  // Derived inside the guard, not at module level: main() runs at module load far
+  // above this point, so a module-level binding here sits in its temporal dead zone
+  // for every dispatch that reaches the predicate - the #891 hazard.
+  //
+  // The canonical shape is built from the INPUT's own space segment, which makes the
+  // comparison TOTAL: every position is compared, so there is no wildcard position
+  // to locate and no sentinel whose non-collision would have to hold. Any space
+  // qualifies because the shape is built with that space's own value; a path whose
+  // surrounding segments do not match the layout fails on those segments instead.
+  const spaceSegmentIndex = 2;
+  const canonical = memorySegmentsForSpace(segments[spaceSegmentIndex] ?? "");
+  if (segments.length <= canonical.length) return false;
+  return canonical.every((segment, index) => segments[index] === segment);
+}
+
 // A git-reported path (status --porcelain or diff --name-only output) counts as
 // "source work" when its FIRST segment is not a harness/doc dir - i.e. it is a
 // real workspace file (src/..., a root file), not an aidlc/ planning doc or
-// framework file. Mirrors HARNESS_DOC_DIRS, the same set the FS walk skips.
+// framework file - OR when it is a space's method layer, which is a deliverable
+// rather than a doc. Mirrors HARNESS_DOC_DIRS, the same set the FS walk skips.
 function isNonDocPath(p: string): boolean {
   const rel = p.trim().replace(/^"|"$/g, ""); // git -z not used; strip any quoting
   if (rel.length === 0) return false;
-  const firstSeg = rel.split("/")[0];
-  return !HARNESS_DOC_DIRS.has(firstSeg);
+  const segments = rel.split("/");
+  if (isSpaceMethodLayerPath(segments)) return true;
+  return !HARNESS_DOC_DIRS.has(segments[0]);
 }
 
 // Run git in the workspace, fail-safe: returns null on any spawn/exec problem so
@@ -3396,6 +3419,118 @@ function isGitRepo(pd: string): boolean {
   return git(pd, ["rev-parse", "--is-inside-work-tree"])?.trim() === "true";
 }
 
+// rin drift (019f750a, verification-gate walk): the run-to-merged conductor drives a
+// Slice whose implementation may have landed in an EARLIER in-branch commit, then
+// commits the gate's record-dir artefacts (doc paths) AFTER it. That pushes the real
+// source commit outside the HEAD~1..HEAD window, so the last-commit check below wrongly
+// concluded "no recent code" and refused the Gate-4 approve. This helper widens the
+// signal to the whole branch walk: any non-doc commit since the branch diverged from
+// the trunk (origin/main) counts as real source work for this gate. Fail-closed is
+// preserved — a branch with only doc commits since the base still yields false. Reverts
+// when upstream honours implementation-ahead natively; see UPSTREAM-DRIFT.md 019f750a.
+export function branchHasSourceWork(pd: string): boolean {
+  const base = git(pd, ["merge-base", "HEAD", "origin/main"]);
+  if (base === null) return false;
+  const trimmedBase = base.trim();
+  if (trimmedBase.length === 0) return false;
+  const branchDiff = git(pd, ["diff", "--name-only", `${trimmedBase}`, "HEAD"]);
+  if (branchDiff === null) return false;
+  for (const line of branchDiff.split("\n")) {
+    if (isNonDocPath(line)) return true;
+  }
+  return false;
+}
+
+// rin drift (019f98fb, already-merged implementation): every check above is a window
+// ENDING at HEAD and BEGINNING at or after the branch point. When a Slice's
+// implementation merged to trunk in an EARLIER pull request, a freshly-cut branch's
+// merge-base sits AFTER those commits, so the source is outside all three windows by
+// construction — the branch legitimately holds zero source work. The guard is then
+// factually right about the branch and wrong about the Slice, and no HEAD-anchored
+// window can fix it. Three Slices parked on exactly this.
+//
+// The evidence this looks for is a commit REACHABLE FROM origin/main that touches BOTH
+// this stage's own artefact dir AND a non-doc path. That conjunction is the whole safety
+// argument: merged history alone proves nothing (every record's gate artefacts merge),
+// and non-doc history alone proves nothing (every brownfield repo has source). Only the
+// CO-TOUCH shows this record's implementation landed, and it cannot be minted by the
+// completing run — it requires an already-merged commit authored by a prior PR.
+// Fail-closed on every ambiguity: no record dir, a record dir outside pd, an unreadable
+// log, or no co-touching commit all yield false and leave the guard exactly as strict.
+//
+// The record-side half is scoped to THIS STAGE'S OWN artefact directory, never the record
+// root. Measured on real history (2026-08-21): a repo-wide ranking sweep touched 261
+// records' `importance-binding.json` alongside unrelated `plugins/` source, and a
+// record-root test read that as implementation evidence for a Slice it never implemented.
+// The implementing commit is the one that writes the stage's own artefacts beside the
+// source; record-root metadata churn is not implementation and must not count.
+export type MergedCoTouchOutcome =
+  | { kind: "answered"; coTouches: boolean }
+  | { kind: "unavailable"; reason: string };
+
+// The guard's total boundary. `mergedRecordCoTouchesSource` answers the
+// "was this actually implemented" question and is fail-closed by construction —
+// every ambiguity already yields false. This wrapper extends that discipline to
+// the one case the guard itself cannot express: an unexpected throw. A gate that
+// throws refuses nothing and blocks everything, so the throw is captured, the
+// reason is carried for the caller to surface, and the verdict stays NO.
+export function mergedCoTouchesSourceOutcome(
+  pd: string,
+  stage: { slug: string; phase: string },
+): MergedCoTouchOutcome {
+  try {
+    return { kind: "answered", coTouches: mergedRecordCoTouchesSource(pd, stage) };
+  } catch (error) {
+    return {
+      kind: "unavailable",
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export function mergedRecordCoTouchesSource(
+  pd: string,
+  stage: { slug: string; phase: string },
+): boolean {
+  // Declared inside the guard for the same TDZ reason as skeleton stance and
+  // construction iteration: main() runs at module load, far above this point in
+  // the file, so a module-level const here is uninitialised when an approve or
+  // gate-start dispatch reaches the guard. This path is the LAST fallback — it
+  // runs only when a records-only tip has declined every earlier check — so the
+  // dead-zone throw surfaced as a Gate 4 that was unavailable rather than strict.
+  const mergedCoTouchCommitScanLimit = 50;
+  const rec = recordDir(pd);
+  if (rec === null) return false;
+  const relativeRecord = relative(pd, rec).split(sep).join("/");
+  if (relativeRecord.length === 0 || relativeRecord.startsWith("..")) return false;
+  const stageArtefactDir = `${relativeRecord}/${stage.phase}/${stage.slug}`;
+  const log = git(pd, [
+    "log",
+    "--format=%H",
+    `-${mergedCoTouchCommitScanLimit}`,
+    "origin/main",
+    "--",
+    stageArtefactDir,
+  ]);
+  if (log === null) return false;
+  const shas = log.split("\n").filter((sha) => sha.trim().length > 0);
+  for (const sha of shas) {
+    const names = git(pd, [
+      "diff-tree",
+      "--no-commit-id",
+      "--name-only",
+      "-r",
+      sha.trim(),
+    ]);
+    if (names === null) continue;
+    const paths = names.split("\n").map((line) => line.trim());
+    const touchesStageArtefacts = paths.some((p) => p.startsWith(`${stageArtefactDir}/`));
+    const touchesSource = paths.some((p) => isNonDocPath(p));
+    if (touchesStageArtefacts && touchesSource) return true;
+  }
+  return false;
+}
+
 // Git-aware "did this workspace get real source work?" signal (issue #366
 // Update 3). Distinguishes "code produced this session" from a brownfield repo's
 // pre-existing src/ - which the bare filesystem check cannot. True when EITHER:
@@ -3407,9 +3542,13 @@ function isGitRepo(pd: string): boolean {
 // Returns null (NOT false) on any git error or a HEAD~1 miss (a single-commit or
 // 0-commit repo has no parent to diff), so the caller falls back to the
 // filesystem check rather than wrongly refusing a greenfield first commit. A
-// resolved HEAD~1 whose last commit is doc-only returns false (a real
-// "no recent code", e.g. a brownfield clean tree), so the guard still refuses.
-function gitHasSourceWork(pd: string): boolean | null {
+// resolved HEAD~1 whose last commit is doc-only, WITH no branch-since-base source
+// work either, returns false (a real "no recent code", e.g. a brownfield clean
+// tree), so the guard still refuses.
+export function gitHasSourceWork(
+  pd: string,
+  stage: { slug: string; phase: string },
+): boolean | null {
   const porcelain = git(pd, ["status", "--porcelain"]);
   if (porcelain === null) return null;
   // `XY <path>` per line; renames are `orig -> new` (take the new path).
@@ -3429,10 +3568,30 @@ function gitHasSourceWork(pd: string): boolean | null {
     for (const line of lastCommit.split("\n")) {
       if (isNonDocPath(line)) return true;
     }
-    // HEAD~1 resolved and the last commit was doc-only: a definitive "no recent
-    // code" (e.g. a brownfield repo whose src/ predates this session), so return
-    // false to refuse - the FS fallback would wrongly pass on the pre-existing
-    // src/.
+    // Last commit doc-only: before refusing, widen to the branch walk (rin drift
+    // 019f750a) - the verification-gate pattern where impl landed earlier in-branch.
+    if (branchHasSourceWork(pd)) return true;
+    // Last: the already-merged implementation case (rin drift 019f98fb). Evaluated
+    // only after every in-window check has declined, so it never shadows them.
+    // Total at this boundary: the guard answers "was this actually implemented",
+    // and an answer it cannot compute is a NO, never an unavailable gate. A throw
+    // escaping here refuses nothing and blocks everything, which is the opposite
+    // of fail-closed.
+    const mergedOutcome = mergedCoTouchesSourceOutcome(pd, stage);
+    if (mergedOutcome.kind === "answered" && mergedOutcome.coTouches) return true;
+    // An unavailable guard and an honest NO both refuse, and the refusal text is
+    // identical — so without this line an engine fault reads to the operator as a
+    // correctness verdict about their work. The verdict stays fail-closed; only
+    // the diagnosis is surfaced.
+    if (mergedOutcome.kind === "unavailable") {
+      console.error(
+        `[aidlc-state] merged co-touch guard unavailable, refusing closed: ${mergedOutcome.reason}`,
+      );
+    }
+    // HEAD~1 resolved, the last commit was doc-only, AND no branch-since-base source
+    // work: a definitive "no recent code" (e.g. a brownfield repo whose src/ predates
+    // this session), so return false to refuse - the FS fallback would wrongly pass on
+    // the pre-existing src/.
     return false;
   }
   // HEAD~1 did NOT resolve (a single-commit repo has no parent): we could not
@@ -3447,9 +3606,12 @@ function gitHasSourceWork(pd: string): boolean | null {
 // (precise - tells session-produced code from a brownfield baseline), else the
 // filesystem-existence fallback (shell-free, reliable in non-git workspaces and
 // the test fixtures). Fail-open: a git error falls back to the FS check.
-function workspaceHasWork(pd: string): boolean {
+function workspaceHasWork(
+  pd: string,
+  stage: { slug: string; phase: string },
+): boolean {
   if (isGitRepo(pd)) {
-    const gitVerdict = gitHasSourceWork(pd);
+    const gitVerdict = gitHasSourceWork(pd, stage);
     if (gitVerdict !== null) return gitVerdict;
   }
   return workspaceHasSourceFile(pd);
@@ -3499,12 +3661,15 @@ function verifyStageArtifacts(
     });
   }
 
-  if (stage.workspace_requires && !workspaceHasWork(pd)) {
+  if (stage.workspace_requires && !workspaceHasWork(pd, stage)) {
     const message =
       `${reviewerPreconditionPrefix(stage.slug, action)}: it is a code-producing stage ` +
         `(workspace_requires) but no source work is evident outside the aidlc/ ` +
-        `workspace tree. In a git workspace this means no uncommitted change and no ` +
-        `code in the last commit; otherwise no source file exists. Planning docs alone ` +
+        `workspace tree. In a git workspace this means ALL FOUR checks declined: no ` +
+        `uncommitted non-doc change, no code in the last commit, no non-doc path in ` +
+        `merge-base(HEAD, origin/main)..HEAD, and no commit reachable from origin/main ` +
+        `touching BOTH this intent's record dir and a non-doc path (the already-merged ` +
+        `implementation signal). Otherwise no source file exists. Planning docs alone ` +
         `do not satisfy ${stage.name} - write the code to the workspace.`;
     refuseStateGuard(pd, stateContent ?? readStateFile(pd), stage, {
       code: "REQUIRED_SOURCE_WORK_MISSING",
@@ -5396,7 +5561,11 @@ function verifyApprovalDecision(
         "project terms instead of recording their decision.",
     );
   }
-  if (!autonomousDecision && !humanPresenceGuardDisabled()) {
+  if (
+    !autonomousDecision &&
+    stage.approval_mode !== "autonomous" &&
+    !humanPresenceGuardDisabled()
+  ) {
     const rawRevisionCount = getField(content, "Revision Count");
     const parsedRevisionCount = rawRevisionCount
       ? parseInt(rawRevisionCount, 10)
@@ -5421,6 +5590,7 @@ function verifyApprovalDecision(
   }
   if (
     !autonomousDecision &&
+    stage.approval_mode !== "autonomous" &&
     !humanPresenceGuardDisabled() &&
     !humanActedSinceGate(pd)
   ) {
@@ -5534,6 +5704,8 @@ function handleApprove(args: string[]): void {
       );
     }
     if (
+      !autonomousDecision &&
+      stage.approval_mode !== "autonomous" &&
       !humanPresenceGuardDisabled() &&
       !humanActedSinceGate(pd)
     ) {
@@ -5579,20 +5751,61 @@ function handleApprove(args: string[]): void {
   verifyStageArtifacts(pd, stage);
   verifySummaryConfirmationPrecondition(pd, content, stage);
 
+  // Human-presence guard: a gate cannot be approved unless a real
+  // human acted at THIS gate since the last gate resolution. Runs BEFORE any
+  // mutation so a refusal (error() -> exit) leaves state untouched (same slot
+  // as the artifact guard above). Carve-outs FIRST, each naming one input to the
+  // single question "does clearing this gate require a live human turn?":
+  //   - autonomous Construction (swarm / Bolt), a workflow-wide runtime grant;
+  //   - the stage's own approval_mode: autonomous (a per-stage declaration, for a
+  //     gate whose approval is bound to a mechanism other than live presence);
+  //   - the suite-wide deterministic test off-switch.
+  if (autonomousDecision) {
+    // skip the presence check — autonomous Construction has no human at the gate
+  } else if (stage.approval_mode === "autonomous") {
+    // skip — the stage declares its approval is cleared without a human turn
+  } else if (humanPresenceGuardDisabled()) {
+    // skip — suite-wide deterministic off-switch (AIDLC_SKIP_HUMAN_PRESENCE_GUARD)
+  } else if (!humanActedSinceGate(pd)) {
+    // Ledger-event presence check: refuse unless a HUMAN_TURN event was appended
+    // AFTER the last gate resolution (GATE_APPROVED / GATE_REJECTED /
+    // QUESTION_ANSWERED) in ledger order - the boundary is the prior resolution,
+    // NOT this gate's open event (one human turn drives both open and approve).
+    // Cascade-safety + freshness fall out of order; no marker file / turn counter.
+    error(
+      `Refusing to approve "${slug}": a real human has not acted at this gate ` +
+        `since it opened. The approval gate requires a typed human turn before it ` +
+        `can commit. Acknowledge the gate as a human, then approve. (a stage with ` +
+        `approval_mode: autonomous, and autonomous Construction, are exempt)`
+    );
+  }
+
   // Gate-revision backstop: reconcile a revision the conductor performed at an
   // open gate but never recorded (it skipped the `reject` verb). When the ledger
   // proves the human revised this stage's artifact at the open gate with no
   // recorded reject (unrecordedRevisionSinceGateOpen), backfill the missing
   // GATE_REJECTED + STAGE_REVISING pair (tagged Recovered) and persist [R].
-  // A reviewer-bearing stage must then obtain a fresh post-rejection receipt
-  // before this command may emit the recovered gate re-entry. When that guard
-  // refuses, the durable [R] state routes the conductor through normal `revise`
-  // after review instead of leaving an invalid [?] gate open.
-  // Skipped under the off-switch and in autonomous Construction (no human at the
-  // gate, so no human-driven revision to reconcile).
+  // A reviewer-bearing stage must satisfy the same summary-confirmation and
+  // reviewer preconditions the recovered gate re-entry would otherwise assert,
+  // and they are checked BEFORE the backfill rather than after it. The receipt
+  // window floors on GATE_REJECTED, so a check placed after the backfill demands
+  // a receipt postdating a rejection this very transaction is minting — a
+  // receipt no caller can hold, making refusal the only reachable outcome and
+  // leaving the record durably [R] with an incremented Revision Count for a
+  // re-entry that never emitted. Checking first asks for the strongest receipt
+  // actually obtainable and keeps a refusal total: the record is untouched.
+  // Skipped under the off-switch, in autonomous Construction, and on a stage
+  // declaring approval_mode: autonomous — all three describe a gate with no
+  // human at it, and this backstop exists solely to reconstruct a HUMAN's
+  // unrecorded revision. The two autonomy carve-outs (autonomousDecision,
+  // approval_mode) are shared with the presence and offered-choice checks
+  // above; the off-switch here is the backstop's OWN deterministic switch
+  // (revisionBackstopDisabled), not the presence-guard switch — the backstop
+  // asks a different question, so it carries its own kill switch.
   const backstopNow =
     !revisionBackstopDisabled() &&
     !autonomousDecision &&
+    stage.approval_mode !== "autonomous" &&
     unrecordedRevisionSinceGateOpen(pd, stage);
   if (backstopNow && !preflightBackstop) {
     error(
@@ -5601,6 +5814,16 @@ function handleApprove(args: string[]): void {
     );
   }
   if (backstopNow) {
+    // Check BEFORE mutate (same contract as the artifact guard above): both
+    // preconditions of the recovered gate re-entry run while the record is still
+    // untouched, so a refusal (error() -> exit) cannot leave the record carrying
+    // [R] plus an incremented Revision Count for a re-entry that never emitted.
+    // They are re-checked against the pre-backstop `content`; neither reads the
+    // checkbox state or Revision Count this branch would change.
+    verifySummaryConfirmationPrecondition(pd, content, stage);
+    if (!reviewerGateGuardDisabled()) {
+      verifyReviewerPrecondition(pd, content, stage, "present-approval-gate");
+    }
     const priorCount = getField(content, "Revision Count");
     const priorParsed = priorCount ? parseInt(priorCount, 10) : 0;
     const revCount = (Number.isFinite(priorParsed) ? priorParsed : 0) + 1;
@@ -5627,12 +5850,13 @@ function handleApprove(args: string[]): void {
       error(`Audit emission failed: ${errorMessage(e)}`);
     }
     writeStateFile(pd, content);
+    // The summary-confirmation and reviewer preconditions already ran BEFORE the
+    // backfill above (rin drift: a receipt postdating a rejection this
+    // transaction mints is unobtainable, so checking after made refusal the only
+    // reachable outcome). Upstream's sensor and pipeline-link checks have no such
+    // ordering hazard and stay here.
     verifyGateSensorArtifactsUnchanged(slug, backstopSensorEvaluation);
-    verifySummaryConfirmationPrecondition(pd, content, stage);
     verifyPipelineLinkPrecondition(pd, stage);
-    if (!reviewerGateGuardDisabled()) {
-      verifyReviewerPrecondition(pd, content, stage, "present-approval-gate");
-    }
     enforceBlockingGateSensors(
       pd,
       content,
@@ -5853,8 +6077,13 @@ function handleReject(args: string[]): void {
   }
   const autonomousDecision =
     !teamGate && isAutonomousConstructionGate(content, stage);
+  // Offered-choice check, mirroring approve's: the same question, so the same
+  // three carve-outs — autonomous Construction, the stage's own approval_mode:
+  // autonomous, and the deterministic off-switch. A gate with no human at it
+  // cannot source the human-shaped "Request Changes" string this demands.
   if (
     !autonomousDecision &&
+    stage.approval_mode !== "autonomous" &&
     feedbackStatus === "not-applicable" &&
     !humanPresenceGuardDisabled() &&
     !isRequestChangesChoice(decision)
@@ -5894,8 +6123,17 @@ function handleReject(args: string[]): void {
     !teamGate &&
     autonomousMode &&
     reviewRecoverySpentInCurrentAttempt(pd, content, stage);
+  // Presence check, mirroring approve's: the stage's own approval_mode joins
+  // autonomous Construction as a carve-out, since neither has a human at the
+  // gate to supply the turn. recoveryResetNeedsHuman deliberately OVERRIDES
+  // both — a spent stale-receipt recovery re-requires a real human before
+  // GATE_REJECTED may reset review accounting, and that override is the reason
+  // this condition cannot simply reuse the approve-side shape.
+  const rejectionNeedsHumanTurn =
+    recoveryResetNeedsHuman ||
+    (!autonomousDecision && stage.approval_mode !== "autonomous");
   if (
-    (!autonomousDecision || recoveryResetNeedsHuman) &&
+    rejectionNeedsHumanTurn &&
     !humanPresenceGuardDisabled() &&
     !humanActedSinceGate(pd)
   ) {
@@ -5922,7 +6160,11 @@ function handleReject(args: string[]): void {
   // rejection here rather than laundering it into the trail as the human's.
   // Autonomous Construction is exempt (the conductor owns the decision there).
   const rejectionAuthorship =
-    autonomousDecision || humanPresenceGuardDisabled()
+    autonomousDecision ||
+    (!teamGate &&
+      stage.approval_mode === "autonomous" &&
+      !recoveryResetNeedsHuman) ||
+    humanPresenceGuardDisabled()
       ? null
       : selfAttributedDecisionMarker(feedback, "rejection");
   if (rejectionAuthorship) {

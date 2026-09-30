@@ -1,5 +1,7 @@
 ---
 slug: market-research
+number: 1.2
+name: Market Research
 phase: ideation
 execution: CONDITIONAL
 condition: Execute when initiative has external market positioning or build-vs-buy considerations. Skip for internal tools, bug fixes, or refactors.

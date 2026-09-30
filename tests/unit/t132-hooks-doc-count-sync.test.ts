@@ -41,7 +41,7 @@
 //   .sh test 8  assert_eq (DOC_BLOCK+1) DOC_TOTAL             -> "doc reverse: hooks-block (N) + statusLine (1) == total (whole split)"
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AIDLC_SRC, REPO_ROOT } from "../harness/fixtures.ts";
 
@@ -78,7 +78,12 @@ function settingsCounts(): SettingsCounts {
   for (const ev of Object.keys(s.hooks ?? {})) {
     for (const g of s.hooks![ev]) {
       for (const h of g.hooks ?? []) {
-        if (h.command) commands.add(h.command);
+        if (h.command?.includes(" engine hook ")) commands.add(h.command);
+        else if (h.command) {
+          const pluginRoute = /^(?:node|bun) "\$CLAUDE_PROJECT_DIR\/\.claude\/hooks\/([a-z0-9-]+\.(?:ts|mjs))"$/.exec(h.command);
+          expect(pluginRoute, h.command).not.toBeNull();
+          expect(existsSync(join(REPO_ROOT, "dist", "plugins", "rin", "claude", "hooks", pluginRoute?.[1] ?? "missing-hook")), h.command).toBe(true);
+        }
       }
     }
   }

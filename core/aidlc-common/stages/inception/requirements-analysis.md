@@ -1,5 +1,7 @@
 ---
 slug: requirements-analysis
+number: 2.3
+name: Requirements Analysis
 phase: inception
 execution: ALWAYS
 condition: Always executes — depth scales with project complexity

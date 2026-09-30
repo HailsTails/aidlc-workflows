@@ -29,7 +29,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +42,7 @@ const KIRO_TREE = join(REPO_ROOT, "dist", "kiro", ".kiro");
 // writes the counter/latch under aidlc/ itself.
 function scratchProject(): string {
   const dir = mkdtempSync(join(tmpdir(), "t180-"));
+  mkdirSync(join(dir, ".git"));
   cpSync(KIRO_TREE, join(dir, ".kiro"), { recursive: true });
   cpSync(join(REPO_ROOT, "dist", "kiro", "aidlc"), join(dir, "aidlc"), {
     recursive: true,
@@ -482,6 +483,11 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
 
   test("3f: explicit stage runner flags are pre-dispatched", () => {
     const dir = scratchProject();
+    const harnessPath = join(dir, ".kiro", "tools", "data", "harness.json");
+    writeFileSync(harnessPath, readFileSync(harnessPath, "utf-8").replace(
+      '"baseRuleDelivery": "ambient"',
+      '"baseRuleDelivery": "explicit"',
+    ));
     try {
       const r = runAdapter(dir, "verb-intercept", {
         prompt: promptWithNext(

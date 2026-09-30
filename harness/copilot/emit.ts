@@ -157,6 +157,17 @@ export default function emit(ctx: EmitContext): void {
     content: () => emitHooksJson(harnessDir),
   });
 
+  // The adapter resolves a plugin-contributed target to its hook body through
+  // this map, the same way the codex face does — without it a contributed row
+  // registers and then dispatches to nothing. It sits beside the ADAPTER in the
+  // harness dir, not in SHELL: the adapter reads it relative to its own
+  // location, and on this face those two directories differ.
+  emissions.push({
+    path: join(distRoot, harnessDir, "hooks", "plugin-hook-targets.json"),
+    content: () =>
+      `${JSON.stringify({}, null, 2)}\n`,
+  });
+
   // Persona custom agents from core/agents/*.md (body token → .aidlc).
   const agentsDir = join(coreRoot, "agents");
   for (const f of readdirSync(agentsDir).filter((x) => x.endsWith(".md")).sort()) {

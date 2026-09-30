@@ -518,6 +518,7 @@ describe("t221 piped search options preserve the reviewer boundary", () => {
 // intent registry -> docsRoot resolves to aidlc/spaces/default/intents/).
 function scratchProject(): string {
   const dir = mkdtempSync(join(tmpdir(), "t221-"));
+  mkdirSync(join(dir, ".git"));
   mkdirSync(join(dir, ".claude", "hooks"), { recursive: true });
   mkdirSync(join(dir, ".claude", "tools"), { recursive: true });
   cpSync(join(AIDLC_SRC, "hooks", "aidlc-reviewer-scope.ts"), join(dir, ".claude", "hooks", "aidlc-reviewer-scope.ts"));

@@ -18,18 +18,22 @@ import {
   errorMessage,
   hookDebug,
   hooksHealthDir,
+  hookPayloadCwd,
   isClaudeCodeHookInput,
   activeSummaryAuthorizationForRecordPath,
   isoTimestamp,
   loadStageGraphAll,
   recordHookDrop,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   SUMMARY_AUTHORIZATION_FIELD,
   withAuditLock,
 } from "../tools/aidlc-lib.ts";
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 hookDebug(projectDir, "write-audit-log", "invoked", { projectDir, cwd: process.cwd() });
 
 // Write health heartbeat

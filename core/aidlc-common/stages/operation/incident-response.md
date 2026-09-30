@@ -1,5 +1,7 @@
 ---
 slug: incident-response
+number: 4.5
+name: Incident Response
 phase: operation
 execution: CONDITIONAL
 condition: Execute when operational runbooks and incident response procedures are needed

@@ -1,5 +1,6 @@
 ---
 slug: feedback-optimization
+number: 4.7
 name: Feedback & Optimization
 phase: operation
 execution: CONDITIONAL

@@ -1090,26 +1090,77 @@ function writeClaudeProvider(
   writeJson(mcpPath, mcp);
 }
 
+function codexProviderTable(input: {
+  value: unknown;
+  path: string;
+}): Record<string, unknown> {
+  if (input.value === undefined) return {};
+  if (isRecord(input.value) && !(input.value instanceof Date)) return input.value;
+  throw new Error(`${input.path}: expected a TOML table`);
+}
+
+function upsertCodexProviderString(input: {
+  text: string;
+  key: "model_provider" | "profile" | "region";
+  value: string;
+  newline: string;
+}): string {
+  const line = `${input.key} = ${JSON.stringify(input.value)}`;
+  const existing = new RegExp(`^[ \\t]*${input.key}\\s*=[^\\r\\n]*`, "m");
+  if (existing.test(input.text)) return input.text.replace(existing, () => line);
+  return input.text + (input.text.endsWith("\n") || input.text.length === 0 ? "" : input.newline) + line + input.newline;
+}
+
 function writeCodexProvider(
   projectionRoot: string,
   harnessDir: string,
   record: ProvidersRecord,
 ): void {
+  if (!record.region) return;
   const path = join(projectionRoot, harnessDir, "config.toml");
   const content = readFileSync(path, "utf-8");
-  const section = /(\[model_providers\.amazon-bedrock\.aws\]\r?\n)([\s\S]*?)(?=\r?\n\[|$)/;
-  const match = section.exec(content);
-  if (!match) throw new Error(`${path}: missing amazon-bedrock aws provider section`);
-  const profile = record.profile ?? "default";
-  const lines = match[2].split(/\r?\n/).map((line) => {
-    if (/^profile\s*=/.test(line)) return `profile = ${JSON.stringify(profile)}`;
-    if (/^region\s*=/.test(line)) return `region = ${JSON.stringify(record.region)}`;
-    return line;
+  const config = codexProviderTable({ value: Bun.TOML.parse(content), path });
+  const providers = codexProviderTable({
+    value: config.model_providers,
+    path: `${path}: model_providers`,
   });
-  writeFileSync(
-    path,
-    content.replace(section, () => `${match[1]}${lines.join("\n")}`),
-  );
+  const bedrock = codexProviderTable({
+    value: providers["amazon-bedrock"],
+    path: `${path}: model_providers.amazon-bedrock`,
+  });
+  codexProviderTable({
+    value: bedrock.aws,
+    path: `${path}: model_providers.amazon-bedrock.aws`,
+  });
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const firstTable = content.search(/^[ \t]*\[/m);
+  const rootEnd = firstTable < 0 ? content.length : firstTable;
+  const root = upsertCodexProviderString({
+    text: content.slice(0, rootEnd),
+    key: "model_provider",
+    value: "amazon-bedrock",
+    newline,
+  });
+  const section = /(\[model_providers\.amazon-bedrock\.aws\][ \t]*(?:#[^\r\n]*)?(?:\r?\n|$))([\s\S]*?)(?=\r?\n[ \t]*\[|$)/;
+  const withProvider = root + content.slice(rootEnd);
+  const match = section.exec(withProvider);
+  const withProfile = upsertCodexProviderString({
+    text: match?.[2] ?? "",
+    key: "profile",
+    value: record.profile ?? "default",
+    newline,
+  });
+  const aws = upsertCodexProviderString({
+    text: withProfile,
+    key: "region",
+    value: record.region,
+    newline,
+  });
+  const updated = match
+    ? withProvider.replace(section, () => match[1] + aws)
+    : withProvider + (withProvider.endsWith("\n") ? "" : newline) + `[model_providers.amazon-bedrock.aws]${newline}` + aws;
+  Bun.TOML.parse(updated);
+  writeFileSync(path, updated);
 }
 
 // The `aws-mcp` region in `.kiro/settings/mcp.json` is plain MCP configuration.

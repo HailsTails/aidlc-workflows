@@ -1,5 +1,7 @@
 ---
 slug: contract-design
+number: 2.8
+name: Contract Design
 phase: inception
 execution: CONDITIONAL
 condition: Execute when the system has any formal contract to pin down — an inter-unit boundary (more than one unit that must integrate) OR a unit that exposes a public/external API consumed outside the system. Skip only for a single self-contained unit with no inter-unit boundaries and no externally consumed API.

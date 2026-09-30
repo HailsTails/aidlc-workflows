@@ -59,8 +59,9 @@ import {
   readStateFile,
   readUnitScopeStamp,
   releaseAuditLock,
+  hookPayloadCwd,
+  resolveProjectDirFromPayload,
   resolveProjectFlag,
-  resolveProjectDirFromHook,
   REVIEWER_DISPATCH_TTL_MS,
   reviewerDispatchPath,
   toPosix,
@@ -864,7 +865,13 @@ export async function run(input: string): Promise<number> {
   // Deterministic off-switch: enforcement disabled entirely.
   if (resolveProjectFlag("AIDLC_DISABLE_REVIEWER_SCOPE_HOOK") === "1") return 0;
 
-  const projectDir = resolveProjectDirFromHook(import.meta.url);
+  // The payload's `cwd` names the invoking checkout and so must be known
+  // before the project dir is resolved; the TTY guard ahead of this in the
+  // CLI entry means a terminal never blocks the stdin read that fed `input`.
+  const projectDir = resolveProjectDirFromPayload({
+    importMetaUrl: import.meta.url,
+    cwd: hookPayloadCwd(input),
+  });
 
   try {
     const healthDir = hooksHealthDir(projectDir);

@@ -66,6 +66,14 @@ import {
 	resolveHarnessPath,
 } from "./aidlc-runtime-paths.ts";
 import { parseSensorManifest } from "./aidlc-sensor-schema.ts";
+import {
+	type DetailWrite,
+	type FireOutcome,
+	type FireVerdict,
+	fireVerdictOf,
+	terminalAuditRowOf,
+	writerNoticeTextOf,
+} from "./aidlc-sensor-verdict.ts";
 import claimSourcesSensorSource from "../sensors/aidlc-claim-sources.md" with {
 	type: "text",
 };
@@ -119,16 +127,6 @@ const __FILE_DIR = dirname(fileURLToPath(import.meta.url));
 
 // --- Types ---
 
-type FireOutcome =
-	| { kind: "passed"; durationMs: number; note?: string }
-	| {
-			kind: "failed";
-			durationMs: number;
-			findingsCount: number;
-			detailBody: string;
-	  }
-	| { kind: "budget-override"; capValue: number; observedSeconds: number };
-
 interface FireContext {
 	sensor: SensorFile;
 	stageSlug: string;
@@ -138,16 +136,6 @@ interface FireContext {
 	scriptArgs: string[]; // CLI args appended to the script invocation
 	scriptAbsPath: string; // sibling-resolved absolute path
 	timeoutMs: number;
-}
-
-interface FireVerdict {
-	fire_id: string;
-	sensor_id: string;
-	stage: string;
-	output_path: string;
-	result: FireOutcome["kind"];
-	detail_path: string | null;
-	note?: string;
 }
 
 // --- Argv helpers ---
@@ -593,43 +581,39 @@ function handleFire(args: string[]): void {
 	const outcome = decideOutcome(ctx, result, elapsedMs, timeoutMs);
 
 	// --- 7. If FAILED: write detail file via wx-flag + rename ---
-	let finalOutcome = outcome;
+	let detailWrite: DetailWrite = { kind: "not-attempted" };
 	if (outcome.kind === "failed") {
 		try {
 			mkdirSync(detailDir, { recursive: true });
 			const tmp = `${detailPath}.tmp`;
 			writeFileSync(tmp, outcome.detailBody, { flag: "wx", encoding: "utf-8" });
 			renameSync(tmp, detailPath);
-		} catch (err) {
-			// Drop to script-error: bad-output equivalent — Note=detail-write-failed.
-			finalOutcome = {
-				kind: "passed",
-				durationMs: elapsedMs,
-				note: `script-error: detail-write-failed: ${errorMessage(err)}`,
+			detailWrite = {
+				kind: "written",
+				detailPath: relativizePath(detailPath, projectDir),
 			};
+		} catch (err) {
+			detailWrite = { kind: "failed", reason: errorMessage(err) };
 		}
 	}
 
-	// --- 8. Lock window B — emit terminal row ---
-	withAuditLock(projectDir, () => {
-		emitTerminal(ctx, finalOutcome, projectDir);
+	// --- 8. Machine-readable verdict for gate-boundary enforcement. A failed
+	// outcome whose detail file could not be written stays failed when it
+	// carries a writer notice, and otherwise drops to pass-with-note. ---
+	const verdict = fireVerdictOf({
+		fireId,
+		sensorId: id,
+		stage: stageSlug,
+		outputPath: relativizePath(outputPath, projectDir),
+		outcome,
+		detailWrite,
 	});
 
-	// --- 9. Machine-readable verdict for gate-boundary enforcement ---
-	const verdict: FireVerdict = {
-		fire_id: fireId,
-		sensor_id: id,
-		stage: stageSlug,
-		output_path: relativizePath(outputPath, projectDir),
-		result: finalOutcome.kind,
-		detail_path:
-			finalOutcome.kind === "failed"
-				? relativizePath(detailPath, projectDir)
-				: null,
-		...(finalOutcome.kind === "passed" && finalOutcome.note
-			? { note: finalOutcome.note }
-			: {}),
-	};
+	// --- 9. Lock window B — emit terminal row matching the verdict ---
+	withAuditLock(projectDir, () => {
+		emitTerminal(ctx, outcome, verdict, detailWrite, projectDir);
+	});
+
 	process.stdout.write(`${JSON.stringify(verdict)}\n`);
 
 	// --- 10. Process exit 0 ---
@@ -737,6 +721,7 @@ function decideOutcome(
 				durationMs: elapsedMs,
 				findingsCount,
 				detailBody,
+				writerNotice: writerNoticeTextOf(out),
 			};
 		}
 		// Branch d — PASSED
@@ -857,48 +842,23 @@ function relativizePath(absPath: string, projectDir: string): string {
 function emitTerminal(
 	ctx: FireContext,
 	outcome: FireOutcome,
+	verdict: FireVerdict,
+	detailWrite: DetailWrite,
 	projectDir: string,
 ): void {
-	const { sensor, stageSlug, outputPath, fireId, detailPath } = ctx;
-	const id = sensor.id;
-	const baseFields: Record<string, string> = {
-		"Fire id": fireId,
-		"Sensor ID": id,
-		"Stage slug": stageSlug,
-		"Output path": relativizePath(outputPath, projectDir),
-	};
-
-	if (outcome.kind === "passed") {
-		const fields: Record<string, string> = {
-			...baseFields,
-			"Duration ms": String(outcome.durationMs),
-		};
-		if (outcome.note) {
-			fields.Note = outcome.note;
-		}
-		appendAuditEntryUnlocked("SENSOR_PASSED", fields, projectDir);
-		return;
-	}
-	if (outcome.kind === "failed") {
-		// detailPath is absolute; emit it as the project-relative path for
-		// human readability. The audit-format spec calls for a relative
-			// path under the active record's .aidlc-engine/sensors/ directory.
-		const fields: Record<string, string> = {
-			...baseFields,
-			"Detail path": relativizePath(detailPath, projectDir),
-			"Findings count": String(outcome.findingsCount),
-		};
-		appendAuditEntryUnlocked("SENSOR_FAILED", fields, projectDir);
-		return;
-	}
-	// budget-override
-	const fields: Record<string, string> = {
-		...baseFields,
-		"Cap layer": "registry",
-		"Cap value": String(outcome.capValue),
-		"Observed value": String(outcome.observedSeconds),
-	};
-	appendAuditEntryUnlocked("SENSOR_BUDGET_OVERRIDE", fields, projectDir);
+	const { sensor, stageSlug, outputPath, fireId } = ctx;
+	const row = terminalAuditRowOf({ outcome, verdict, detailWrite });
+	appendAuditEntryUnlocked(
+		row.event,
+		{
+			"Fire id": fireId,
+			"Sensor ID": sensor.id,
+			"Stage slug": stageSlug,
+			"Output path": relativizePath(outputPath, projectDir),
+			...row.fields,
+		},
+		projectDir,
+	);
 }
 
 // --- Glob matcher (capability filter) ---

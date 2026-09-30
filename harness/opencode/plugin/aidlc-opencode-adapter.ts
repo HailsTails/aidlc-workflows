@@ -43,6 +43,7 @@
 //     but never scopes the main session.
 
 import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 const NUDGE_SENTINEL = "[aidlc-forwarding-nudge]";
@@ -55,6 +56,67 @@ const DEFAULT_AIDLC_COMMAND = PROJECTED_INVOKE.startsWith("{{")
   ? ["bun", ".aidlc/tools/aidlc.ts", PROJECTED_TRUSTED_NAMESPACE]
   : [...PROJECTED_INVOKE.trim().split(/\s+/), PROJECTED_TRUSTED_NAMESPACE];
 
+// The core hook bodies ship in the ENGINE dir (<project>/.aidlc/hooks/), not
+// beside this plugin — .opencode/ carries only natively-consumed surfaces.
+// Resolved per-call from the project directory opencode hands the plugin.
+const HARNESS_LEAF = ".aidlc";
+const HOOKS_SUBDIR = join(HARNESS_LEAF, "hooks");
+
+const hookPathFor = (hookFile: string, projectDir: string): string =>
+  hookFile.includes("/") || hookFile.includes("\\")
+    ? join(projectDir, hookFile)
+    : join(projectDir, HOOKS_SUBDIR, hookFile);
+
+// The opencode runtime is its own binary, so process.execPath is NOT bun.
+// Resolve bun from PATH, then the default install dir; absent → every hook is
+// a silent no-op (advisory hooks fail open, mirroring the plugin compose hook).
+// A hook may deny through EITHER protocol: exit code 2 with the reason on
+// stderr, or exit 0 carrying {"hookSpecificOutput":{"permissionDecision":
+// "deny","permissionDecisionReason":…}} on stdout. Claude Code honours both
+// natively; every shimmed face reaches its hooks through runCore, so the JSON
+// form is normalised to the exit-2 form HERE — once — rather than at each of
+// the call sites that test `code === 2`. Reading only the exit code silently
+// discards the JSON denials (inline-exec, gh-write and destructive-git all use
+// that form), which reads as an installed rail that permits what it forbids.
+function deniedByStructuredOutput(stdout: string): string | null {
+  const trimmed = stdout.trim();
+  if (trimmed.length === 0) return null;
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      hookSpecificOutput?: {
+        permissionDecision?: unknown;
+        permissionDecisionReason?: unknown;
+      };
+    };
+    const decision = parsed.hookSpecificOutput?.permissionDecision;
+    if (decision !== "deny") return null;
+    const reason = parsed.hookSpecificOutput?.permissionDecisionReason;
+    return typeof reason === "string" && reason.trim().length > 0
+      ? reason
+      : "Blocked by an AIDLC guard hook.";
+  } catch {
+    return null;
+  }
+}
+
+function normalisedHookResult(result: {
+  stdout: string;
+  stderr: string;
+  code: number;
+}): { stdout: string; stderr: string; code: number } {
+  if (result.code === 2) return result;
+  const denialReason = deniedByStructuredOutput(result.stdout);
+  if (denialReason === null) return result;
+  // The reason moves onto stderr because every call site sources its block
+  // message from there; leaving it only in stdout blocks with an empty message.
+  return {
+    stdout: result.stdout,
+    stderr: result.stderr.trim().length > 0 ? result.stderr : denialReason,
+    code: 2,
+  };
+}
+
 function runCoreHook(
   hookFile: string,
   input: Record<string, unknown>,
@@ -66,13 +128,41 @@ function runCoreHook(
     const hook = hookFile.replace(/^aidlc-/, "").replace(/\.ts$/, "");
     if (!bin) return resolve({ stdout: "", stderr: "", code: 0 });
     try {
-      const child = spawn(bin, [...prefix, "hook", hook, "--project-dir", cwd], {
+      // Core hooks route through the native dispatcher, which resolves the hook
+      // by NAME from the installed engine — the v2.9.0 install model. Every
+      // core body is named aidlc-<name>.ts, which is exactly the prefix the
+      // `hook` derivation above strips to recover that name.
+      //
+      // A plugin-contributed row is different IN KIND, not merely in spelling:
+      // the dispatcher knows only core's own hook names, so a plugin row can
+      // never be resolved by name and is always spawned by PATH. Such a row
+      // normally carries a bare filename resolved against the install's hooks
+      // dir (where a plugin's bodies arrive through the content path); it may
+      // instead declare a project-relative path for a body that legitimately
+      // sits elsewhere, such as a plugin's composer in its own dist tree, and
+      // hookPathFor handles both spellings.
+      //
+      // Discriminating on origin rather than on whether the string contains a
+      // separator is load-bearing: plugin rows are USUALLY bare filenames, so
+      // a separator test would route the common plugin row into the dispatcher
+      // and it would fail to resolve — a registered guard that never runs.
+      const isCoreHook = hookFile.startsWith("aidlc-");
+      const argv = isCoreHook
+        ? [...prefix, "hook", hook, "--project-dir", cwd]
+        : [hookPathFor(hookFile, cwd)];
+      const child = spawn(bin, argv, {
         cwd,
         stdio: ["pipe", "pipe", "pipe"],
         env: {
           ...process.env,
           AIDLC_PROJECT_DIR: cwd,
           CLAUDE_PROJECT_DIR: cwd,
+          // Core hooks that resolve a harness-relative path default to
+          // ".claude" when this is unset — correct for the Claude face and
+          // wrong for every other. The composer is the load-bearing case: it
+          // writes plugin content INTO the harness dir, so an unset value
+          // composes into a directory this face does not use.
+          AIDLC_HARNESS_DIR: HARNESS_LEAF,
         },
       });
       let out = "";
@@ -85,7 +175,9 @@ function runCoreHook(
       });
       child.on("error", () => resolve({ stdout: "", stderr: "", code: 0 })); // fail open
       child.on("close", (code: number | null) =>
-        resolve({ stdout: out, stderr: err, code: code ?? 0 })
+        resolve(
+          normalisedHookResult({ stdout: out, stderr: err, code: code ?? 0 })
+        )
       );
       child.stdin.write(JSON.stringify(input));
       child.stdin.end();
@@ -246,6 +338,71 @@ type ReviewerCall = {
   toolInput: Record<string, unknown>;
 };
 
+type PluginHookRow = {
+  event: string;
+  matcher?: string;
+  target: string;
+  hookFile: string;
+};
+
+// Plugin-contributed rows, emitted beside this plugin by harness/opencode/emit.ts.
+// Read from disk (never imported) because this file ships in dist/ with no
+// packager available. Absent or malformed reads to an empty list: a plugin
+// wiring problem must never break core's own routing.
+const pluginRowsCache = new Map<string, PluginHookRow[]>();
+
+function pluginRows(cwd: string): PluginHookRow[] {
+  const cached = pluginRowsCache.get(cwd);
+  if (cached !== undefined) return cached;
+  const rowsPath = join(cwd, HOOKS_SUBDIR, "plugin-hook-rows.json");
+  const rows = ((): PluginHookRow[] => {
+    if (!existsSync(rowsPath)) return [];
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(rowsPath, "utf-8"));
+      return Array.isArray(parsed) ? (parsed as PluginHookRow[]) : [];
+    } catch {
+      return [];
+    }
+  })();
+  pluginRowsCache.set(cwd, rows);
+  return rows;
+}
+
+function pluginRowsFor(event: string, cwd: string): PluginHookRow[] {
+  return pluginRows(cwd).filter((row) => row.event === event);
+}
+
+// opencode names its tools lowercase ("bash"); a contributed matcher is written
+// in the Claude vocabulary core hooks use ("Bash"), so the comparison is on the
+// projected name. Keeping one vocabulary means a plugin declares the same
+// matcher for every face rather than learning each harness's tool names.
+// opencode names its tools lowercase; a contributed matcher is written in the
+// Claude vocabulary core hooks use. Derived from the tool NAME alone, never from
+// a call built with empty args: a patch envelope with no paths yields no calls,
+// which would silently leave apply_patch unmatched by a Write|Edit matcher — a
+// guard that appears registered and never fires on the edit surface.
+const claudeToolNameByOpencodeTool: Readonly<Record<string, string>> = {
+  bash: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  apply_patch: "Write",
+  glob: "Glob",
+  grep: "Grep",
+  list: "LS",
+  task: "Task",
+  todowrite: "TaskUpdate",
+};
+
+function claudeToolName(tool: string): string {
+  return claudeToolNameByOpencodeTool[tool] ?? tool;
+}
+
+function matchesTool(matcher: string, tool: string): boolean {
+  const projected = claudeToolName(tool);
+  return matcher.split("|").some((candidate) => candidate.trim() === projected);
+}
+
 function reviewerCalls(tool: string, args: Record<string, unknown>): ReviewerCall[] {
   if (tool === "bash") {
     return [{ toolName: "Bash", toolInput: { command: (args.command as string) ?? "" } }];
@@ -373,6 +530,26 @@ export default async ({
         // A fresh project has no state yet, so the core hook emits no context.
         // Retry on later human turns until an active workflow is available.
         if (sessionStartHandled(result.stdout)) started.add(input.sessionID);
+        // Plugin-contributed SessionStart rows. On registry-bearing faces the
+        // host merges a plugin's hooks.json alongside core's own registration;
+        // opencode has no registry, so the equivalent merge happens here. The
+        // composer is the row that matters most — it is what copies a plugin's
+        // stages, scopes, agents and knowledge into the install, so without
+        // this arm an opencode adopter installs a plugin whose content never
+        // arrives.
+        await Promise.all(
+          pluginRowsFor("SessionStart", directory).map((row) =>
+            runCore(
+              row.hookFile,
+              {
+                hook_event_name: "SessionStart",
+                source: "startup",
+                session_id: input.sessionID,
+              },
+              directory,
+            ),
+          ),
+        );
       }
       await runCore(
         "aidlc-record-human-turn.ts",
@@ -566,6 +743,43 @@ export default async ({
         }
       }
 
+      // Plugin-contributed PreToolUse targets. The plugin's hook body reads the
+      // same ClaudeCodeHookInput shape core hooks do, so it inherits this
+      // adapter's normalisation and its reject contract (opencode blocks by
+      // THROWING, not by exit code — the code-2 convention is translated here
+      // exactly as it is for every core guard above).
+      for (const row of pluginRowsFor("PreToolUse", directory)) {
+        if (row.matcher && !matchesTool(row.matcher, input.tool)) continue;
+        // A file-shaped guard expects one call per path. reviewerCalls already
+        // fans a patch envelope into per-file Write calls, so reuse it and fall
+        // back to the raw args for tools it does not decompose (bash, task).
+        const fanned = reviewerCalls(input.tool, args);
+        const payloads =
+          fanned.length > 0
+            ? fanned.map((call) => ({
+                tool_name: call.toolName,
+                tool_input: call.toolInput,
+              }))
+            : [{ tool_name: claudeToolName(input.tool), tool_input: args }];
+        for (const payload of payloads) {
+          const contributed = await runCore(
+            row.hookFile,
+            {
+              hook_event_name: "PreToolUse",
+              ...payload,
+              cwd: directory,
+              ...(delegatedAgent ? { agent_type: delegatedAgent } : {}),
+            },
+            directory,
+          );
+          if (contributed.code === 2)
+            throw new Error(
+              contributed.stderr.trim() ||
+                `${row.target} denied this operation`,
+            );
+        }
+      }
+
       const calls = reviewerCalls(input.tool, args);
       if (calls.length === 0) return;
 
@@ -606,6 +820,24 @@ export default async ({
       output?: { output?: string },
     ) => {
       const { tool, args } = input;
+      // Plugin-contributed PostToolUse rows run FIRST: the core arms below
+      // return early per tool, so dispatching after them would silently skip
+      // every plugin row on write, edit, patch and todo tools — the shape that
+      // makes a registration look present while never firing.
+      for (const row of pluginRowsFor("PostToolUse", directory)) {
+        if (row.matcher && !matchesTool(row.matcher, tool)) continue;
+        await runCore(
+          row.hookFile,
+          {
+            hook_event_name: "PostToolUse",
+            tool_name: claudeToolName(tool),
+            tool_input: args,
+            tool_response: output?.output ?? "",
+            cwd: directory,
+          },
+          directory,
+        );
+      }
       if (tool === "write" || tool === "edit" || tool === "apply_patch") {
         const paths =
           tool === "apply_patch"
@@ -654,17 +886,20 @@ export default async ({
         return;
       }
       if (tool === "task") {
-        await runCore(
-          "aidlc-log-subagent.ts",
-          {
-            hook_event_name: "SubagentStop",
-            session_id: input.sessionID,
-            agent_type:
-              (args.subagent_type as string) ?? (args.agent as string) ?? "unknown",
-            agent_id: input.callID,
-          },
-          directory,
-        );
+        const subagentStop = {
+          hook_event_name: "SubagentStop",
+          session_id: input.sessionID,
+          agent_type:
+            (args.subagent_type as string) ?? (args.agent as string) ?? "unknown",
+          agent_id: input.callID,
+        };
+        await runCore("aidlc-log-subagent.ts", subagentStop, directory);
+        // Contributed SubagentStop hooks see the SAME payload core's does. The
+        // event cannot block, so each runs for its side effect and its exit code
+        // is not a verdict.
+        for (const row of pluginRowsFor("SubagentStop", directory)) {
+          await runCore(row.hookFile, subagentStop, directory);
+        }
       }
     },
 

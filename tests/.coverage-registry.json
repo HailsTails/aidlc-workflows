@@ -20,9 +20,9 @@
     "render-surface": "tui"
   },
   "counts": {
-    "total": 985,
+    "total": 992,
     "enumeratedByClass": {
-      "function": 675,
+      "function": 682,
       "audit": 99,
       "scope": 11,
       "stage": 33,
@@ -1600,6 +1600,13 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:baseRuleDelivery",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:BLOCKING_SENSOR_OVERRIDE_CHOICE",
       "minMechanism": "none",
       "coveredBy": [],
@@ -2553,6 +2560,13 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:decodeGateRejection",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:decodeHarnessPlainText",
       "minMechanism": "none",
       "coveredBy": [
@@ -3406,6 +3420,13 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:hookPayloadCwd",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:hooksHealthDir",
       "minMechanism": "none",
       "coveredBy": [],
@@ -3598,6 +3619,13 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:invokingCheckoutFromCwd",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:isArchivedIntent",
       "minMechanism": "none",
       "coveredBy": [
@@ -3607,6 +3635,13 @@
         }
       ],
       "status": "covered"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:isAttemptBoundary",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
     },
     {
       "unitClass": "function",
@@ -4375,6 +4410,13 @@
         }
       ],
       "status": "covered"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:memorySegmentsForSpace",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
     },
     {
       "unitClass": "function",
@@ -5895,6 +5937,13 @@
     {
       "unitClass": "function",
       "unitId": "function:resolveProjectDirFromHook",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:resolveProjectDirFromPayload",
       "minMechanism": "none",
       "coveredBy": [],
       "status": "UNCOVERED"
@@ -8536,10 +8585,6 @@
           "mechanism": "cli"
         },
         {
-          "file": "tests/integration/t40-settings-hook-config.test.ts",
-          "mechanism": "none"
-        },
-        {
           "file": "tests/unit/t10-hook-session-start.test.ts",
           "mechanism": "cli"
         },
@@ -8582,10 +8627,6 @@
         {
           "file": "tests/e2e/t-tui-journey-orientation.serial.test.ts",
           "mechanism": "tui"
-        },
-        {
-          "file": "tests/integration/t40-settings-hook-config.test.ts",
-          "mechanism": "none"
         },
         {
           "file": "tests/unit/t11.test.ts",
