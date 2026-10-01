@@ -54,6 +54,8 @@ from the next projection, including renamed stages. Unknown files are preserved;
 modified owned files refuse the transaction. Legacy files without recorded
 ownership hashes need a genuine baseline sync before deletion can be authorized.
 
+Core refresh can include unknown consumer files in its temporary graph projection without taking ownership of them. Those files remain consumer-owned across repeated refreshes; regeneration that would change one is a conflict.
+
 For a pre-manifest core installation, use its exact original projection to establish the baseline before changing versions. Configuration recognizes unchanged source bytes before regenerating tables; it still refuses an edited lookalike. A combined legacy projection can contain plugin files, so establish the plugin's genuine ownership with its original projection before switching to a core-only artifact. Inspect composition diagnostics and private settings before accepting either step.
 
 ## Fresh consumer installation

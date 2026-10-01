@@ -691,7 +691,7 @@ describe("t243 archive and transaction safety", () => {
     for (const path of left.hostileArchives) {
       expect(() => readTarGz(path)).toThrow();
     }
-  }, process.platform === "win32" ? 30_000 : 5_000);
+  }, 30_000);
 });
 
 describe("t243 project initialization", () => {

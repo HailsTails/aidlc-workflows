@@ -3624,6 +3624,7 @@ type PreparedRefreshSource = {
   cleanup?: string;
   regenerated: ReadonlySet<string>;
   sourceHashes: ReadonlyMap<string, string>;
+  projectOwnedExtras: ReadonlySet<string>;
   hookCoreHashes: ReadonlyMap<string, string>;
   pluginOwnedExtras: ReadonlySet<string>;
 };
@@ -3639,6 +3640,7 @@ function prepareRefreshSource(
 ): PreparedRefreshSource {
   const currentHarness = join(projectDir, descriptor.harnessDir);
   const hookCoreHashes = new Map<string, string>();
+  const projectOwnedExtras = new Set<string>();
   const pluginOwnedExtras = new Set([...projectEvidence(projectDir, descriptor.harnessDir).ownership.values()]
     .flatMap((record) => record.files.map((file) => file.path)).filter((path) => !existsSync(join(sourceRoot, path))));
   const currentHarnessData = join(currentHarness, "tools", "data", "harness.json");
@@ -3649,7 +3651,7 @@ function prepareRefreshSource(
     projectFlags === null &&
     diagnosticsOverride === undefined
   ) {
-    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), hookCoreHashes, pluginOwnedExtras };
+    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), projectOwnedExtras, hookCoreHashes, pluginOwnedExtras };
   }
   const cleanup = mkdtempSync(join(tmpdir(), "aidlc-init-refresh-"));
   try {
@@ -3788,6 +3790,7 @@ function prepareRefreshSource(
       mkdirSync(dirname(staged), { recursive: true });
       cpSync(join(projectDir, rel), staged, { preserveTimestamps: true });
       regenerated.add(rel);
+      if (!pluginGenerated) projectOwnedExtras.add(rel);
     }
   }
 
@@ -3957,7 +3960,7 @@ function prepareRefreshSource(
     }
     resetProjectionCaches();
   }
-  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, hookCoreHashes, pluginOwnedExtras };
+  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, projectOwnedExtras, hookCoreHashes, pluginOwnedExtras };
   } catch (error) {
     rmSync(cleanup, { recursive: true, force: true });
     throw error;
@@ -5324,6 +5327,15 @@ function planManagedFiles(
           });
           actions.push({ path: rel, action: "create" });
         }
+        continue;
+      }
+      // Overlaying consumer files lets the candidate compile its complete
+      // graph. It does not grant core ownership of those files on this or a
+      // later refresh, nor permission for regeneration to overwrite them.
+      if (prepared.projectOwnedExtras.has(rel)) {
+        actions.push(targetRegular && sha256File(target) === hash
+          ? { path: rel, action: "preserve", detail: "project-owned overlay" }
+          : { path: rel, action: "conflict", detail: "regeneration would change a project-owned overlay" });
         continue;
       }
       if (runtimeGenerated(rel, descriptor.harnessDir, prepared.regenerated)) {

@@ -110,10 +110,12 @@ describe("compatible refresh with independent workflows", () => {
     expect(readFileSync(join(project, ".claude/settings.json"))).toEqual(settingsBefore);
     expect(readFileSync(join(project, ".claude/settings.local.json"))).toEqual(localBefore);
     expect(readFileSync(join(project, ".claude/tools/consumer-only.ts"), "utf-8")).toBe("// consumer-owned\n");
+    expect(JSON.parse(readFileSync(join(project, ".claude/tools/data/aidlc-manifest.json"), "utf-8")).files[".claude/tools/consumer-only.ts"]).toBeUndefined();
     const restored = config(project, RELEASE, ["--refresh-open-workflows"]);
     expect(restored.status, restored.output).toBe(0);
     expect(readFileSync(join(project, tool), "utf-8")).toBe(original);
     expect(workspaceBytes(project)).toEqual(stateBefore);
+    expect(readFileSync(join(project, ".claude/tools/consumer-only.ts"), "utf-8")).toBe("// consumer-owned\n");
   }, 60_000);
 
   test("refuses a changed approval contract and a force combination without changing the project", () => {
