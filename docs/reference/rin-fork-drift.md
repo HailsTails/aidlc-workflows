@@ -2,21 +2,11 @@
 
 ## Repository automation
 
-The fork removes upstream's `.github/workflows/ai-pr-review.yml` by operator
-choice. CI does not launch review agents, assume a Bedrock review role, or publish
-agent-generated reviews.
+The fork removes upstream's `.github/workflows/ai-pr-review.yml` by operator choice. CI does not launch review agents, assume a Bedrock review role, or publish agent-generated reviews.
 
-The fork also removes upstream's other workflow files and owns its small
-`.github/workflows/rin-ci.yml` separately. Pull requests run one source-check job:
-frozen dependency installation, authored source/test type checking, lint and the
-Rin constitution audit. Its limit is ten minutes; a new push cancels the older
-run. There are no scheduled previews, push-triggered jobs, release pipelines,
-documentation deployments, security-scanner jobs or test matrices. Full builds,
-generated-adapter checks, determinism checks, tests and security scans remain
-local verification responsibilities. A green CI result covers only source checks.
-This budget choice is intended for the current two-maintainer fork.
-This is a local repository policy, not an upstream bug fix or upstream candidate.
-Reconsider only if the fork's maintainers explicitly choose agentic CI.
+The fork also removes upstream's other workflow files and owns its small `.github/workflows/rin-ci.yml` separately. Pull requests run one source-check job: frozen dependency installation, one package build to materialize the generated modules imported by source/test checks, type checking, lint and the Rin constitution audit. Its limit is ten minutes; a new push cancels the older run. There are no scheduled previews, push-triggered jobs, release pipelines, documentation deployments, security-scanner jobs or test matrices. Generated-adapter checks, determinism checks, tests and security scans remain local verification responsibilities. A green CI result covers packaging and source checks only. This budget choice is intended for the current two-maintainer fork. This is a local repository policy, not an upstream bug fix or upstream candidate. Reconsider only if the fork's maintainers explicitly choose agentic CI.
+
+Tests that asserted the removed upstream workflow YAML are retired with those workflows. Tests of the retained installer, release planner/publisher, version grammar, review tools and prompts remain. The source-check job does not execute those retained release or review tools.
 
 Comparison baseline: upstream AIDLC **2.9.0**, commit
 `22f5d1b15a064c9ae80046e5b1761d5877e2f69f`. This extraction ports the
@@ -55,31 +45,15 @@ generated `dist` trees are not another place to author policy.
 
 ## Verification snapshot
 
-The current reusable plugin suite passes 111 files and 2,067 tests. Public type
-checking and linting pass, and all seven harnesses build. Installed native hook
-transactions pass 19 tests with 112 assertions, including refusal when an
-owned native registration is edited or removed without changing the plugin
-projection. Selected-plugin core refresh
-passes nine independent tests with 63 assertions, including repeated updates,
-owned rename, Codex trust and atomic refusal of modified settings. Sensitivity
-checks demonstrate that removing ownership proof would overwrite user edits.
-Two isolated consumer roots pass the five configuration concerns, including
-actual installed workflow and identity tools, private lane installation, vault
-guards and host MCP configuration preservation. Bundled tools run without a
-consumer dependency installation. These results do not claim that a live model
-session has invoked every guard. The broader deterministic suite completed
-432 files with 10,646 reported assertions. Its only failing file was the two
-new unchanged-projection ownership controls, run against output built before
-the shortcut repair. The final regenerated-output delta check passes all 41
-tests and 480 assertions across hook transactions, core refresh and owned
-documentation parity. All seven final payloads also pass the existing
-two-build determinism check, and final type checking passes. Source
-transfer, committed consumer installation, update/rollback and publication
-remain pending at this checkpoint.
+The 2026-10-01 assessment builds all seven harnesses with byte-identical results across two independent builds. Public type checking and linting pass, as do the reusable plugin suite (111 files, 2,067 tests), constitution audit (zero violations across 229 files), derivation self-test (94/94) and colocated autonomy/hook-registration tests (22 tests, 46 assertions). The clean source-only CI sequence was exercised locally from a tree initially without generated distributions; no new remote CI result is claimed.
 
-In the table, **build** means covered by this build/type/lint snapshot; **plugin**
-means the passing reusable plugin suite. A named regression is the behavior to
-retest at each baseline change, even where a current focused result is pending.
+The full default deterministic run finished with exit 2: 432 files, two failed files, 10,636 reported assertions and four failed assertions. Two release-fixture tests exceeded Bun's default five-second limit; both pass with the 30-second budget already used by neighboring fixture tests, now assigned to those two tests without changing assertions or transport timeouts. The remaining proxy assertion passes unchanged in a child process without inherited proxy variables; an independent loopback probe confirms Bun 1.3.14 retains startup `NO_PROXY` behavior despite later environment deletion. A Cursor home-alias test fails because this environment's actual home is read-only. These diagnostic results do not make the default suite green. Live Claude-dependent cases were skipped by the runner. The full run preceded the final portable-consumption fixes; the plugin and build checks cover those final changes.
+
+Four test files retaining assertions against deliberately removed workflow YAML are repaired: the focused run passes 68 tests with 15 platform skips and 754 assertions. Runtime installer, planner/publisher, review-tool and grammar coverage remains. Reviewer and lens authority paths now name the projected installed rule corpus, keeping the existing CANNOT-REVIEW boundary if that corpus is missing. The debt-inventory tool resolves its rule corpus beside its module, so a consumer need not contain the authored plugin tree; its 22 unit tests pass and source execution preserves the previous inventory output.
+
+A fresh project consumer was rehearsed using the existing copy archive and Bun, including native hook composition, ownership recording and explicit plugin selection. Installed tools load without a consumer dependency installation. Full native host inventory is a separate installation route. The installation guide records the exercised command order and runtime-root binding. Actual consumer cutover, update/rollback acceptance and publication remain pending; these source checks do not establish a live model session or a completed consumer migration.
+
+In the table, **build** means covered by this build/type/lint snapshot; **plugin** means the passing reusable plugin suite. A named regression is the behavior to retest at each baseline change, even where a current focused result is pending.
 
 ## Retained capability groups
 
@@ -93,17 +67,6 @@ retest at each baseline change, even where a current focused result is pending.
 | U8, U9 | Codex plugin agent Markdown produces native TOML; first install copies and validates native agents before checking dispatched stages. | Packager, plugin emitter and compose; Codex plugin adopters. | Clean install retains stages with usable native agents; authored TOML collisions refuse. Codex packaging and compose tests passed. | Upstream owns equivalent native projection, collision protection and installation ordering. |
 | N1, N2, N3, N4, N5, N6, U2, U4 | Plugin manifest rows register and dispatch copied hook bodies; document tokens have public defaults. Core-only packages contain no Rin registrations. Selected plugin composition owns bodies and native registrations together using the existing transaction and contribution record. | Contributions, packager, harness emitters/adapters and compose; current Rin declarations cover Claude, Codex, Copilot, Cursor and OpenCode. Kiro's two faces declare no Rin hooks. | Core-only checks and 19 installed transaction tests pass, including owned rename/disable, conflicts with unchanged projections and trust. Nine core-refresh tests preserve component ownership across repeated updates. A live model session invoking every guard is not claimed. | Upstream supplies equivalent selected-plugin registration, component ownership and dispatch. Merely copying hook bodies is insufficient. |
 | N3b | Codex trust entries derive from the same combined wiring as hook registrations. | Codex emitter; plugins contributing Codex hooks. | Installed transaction and repeated-refresh tests verify the seed against actual final group positions. Consumer global Codex configuration remains unchanged. | Upstream uses one complete wiring source for both surfaces; independent of hook-seam retirement. |
-
-## Packaging cost
-
-The existing packager bundles runtime Zod, jsonc-parser and the TypeScript
-compiler API. Six retained audit tools use that compiler API; executing their
-TypeScript with Bun does not provide it. Consumers need no dependency install.
-Compiler bundling accounts for most of the plugin payload, approximately 46 MiB
-for the current Claude projection after minification. Relative imports preserve
-their authored paths. This repairs distribution of existing tools; it introduces
-no dependency ledger, shared loader or consumer setup. Dependency-free audit
-implementations remain future investigation, not part of this migration.
 | 7, U3 | Event hooks and supported harness adapters prefer the invoking checkout, retaining fallback when payload checkout information is absent. | Core hooks/lib and Codex, Cursor, Copilot, OpenCode adapters; worktree users. | Events affect the invocation's checkout, not an earlier session root; fallback still works. Build; complete adapter regression rerun pending. | Upstream resolves each affected event from its current checkout with equivalent fallback. |
 | 8 | Task-driven workflow synchronization refuses proven backward/completed-stage transitions. | `aidlc-sync-workflow-state.ts`; task-using harnesses. | Task labels cannot resurrect completed stages; missing ordering evidence retains prior permissive behavior. Build; focused regression pending. | Upstream applies equivalent forward-only checks to this activation path. |
 | 10, 11 | Reviewer refusals direct the stage's review process; the architecture reviewer names the inspected tree and can refuse unavailable evidence. | State error text, reviewer protocol/persona; review-using consumers. | Avoid hand-authored authority receipts; reject wrong-tree reviews. Plugin reviewer tests passed; core receipt regression pending. | Upstream supplies equivalent earned-receipt guidance and tree-binding contract. |
@@ -116,6 +79,10 @@ implementations remain future investigation, not part of this migration.
 | 17, 18, 19 | Abandoned unstamped locks are distinguishable from acquisitions; platform FFI loaders resolve lazily and stop retrying a known unavailable API. | `aidlc-lib.ts`, `aidlc-usage.ts`; Linux/macOS/Windows and Node test consumers. | Live token-bearing acquisition remains protected; imports load without eager Bun FFI; unavailable gates fail within their real lock budget. Build; platform probes pending. | Upstream repairs each independent locking/loading behavior; a single Windows fix does not retire the other platform paths. |
 | 20, 21 | Sensor writer notices reach Claude; Codex patch notices combine into one bounded context envelope without hiding gate failures. | Sensor verdict/dispatcher/state/hooks and Codex adapter; writing agents. | An unwritable detail file does not lose a writer notice; gate-time missing evidence still refuses; multi-file patch summaries survive. Plugin suite/build; focused host notice probes pending. | Upstream delivers equivalent writer feedback and patch aggregation; detail-file/audit behavior may retire independently. |
 | U5b, U7, N7, N8 | Shipped Claude/Codex settings and OpenCode tier rows avoid imposing a provider; onboarding does not require a particular provider. | Harness settings/onboarding, tier tables; all adopters selecting their own provider. | Existing consumer configuration remains authoritative; native model identifiers are valid for the selected host. Tier/packaging tests passed. | Upstream ships provider-neutral defaults. Concrete role model choices require the separate policy decision below. |
+
+## Packaging cost
+
+The existing packager bundles runtime Zod, jsonc-parser and the TypeScript compiler API. Six retained audit tools use that compiler API; executing their TypeScript with Bun does not provide it. Consumers need no dependency install. Compiler bundling accounts for most of the plugin payload, approximately 46 MiB for the current Claude projection after minification. Relative imports preserve their authored paths. This repairs distribution of existing tools; it introduces no dependency ledger, shared loader or consumer setup. Dependency-free audit implementations remain future investigation, not part of this migration.
 
 ## Fork defaults and consumer permissions
 

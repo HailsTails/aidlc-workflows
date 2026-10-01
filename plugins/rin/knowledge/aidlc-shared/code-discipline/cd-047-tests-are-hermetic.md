@@ -30,7 +30,7 @@ This is the general invariant. It is not a rule about git — git is simply the 
 
 ## Classes
 
-**Real git repositories — MECHANICALLY ENFORCED.** A test that spawns a real `git` subprocess builds its environment with the shared hermetic helper (`.claude/tools/hermetic-git/`, authored at `plugins/rin/tools/hermetic-git/`): `createHermeticGitRepository()` for a temp repo, or `hermeticGitEnvironment()` for a bare environment. It never inherits the ambient environment and never hand-rolls a scrub.
+**Real git repositories — MECHANICALLY ENFORCED.** A test that spawns a real `git` subprocess builds its environment with the shared hermetic helper (`{{HARNESS_DIR}}/tools/hermetic-git/`, authored at `plugins/rin/tools/hermetic-git/`): `createHermeticGitRepository()` for a temp repo, or `hermeticGitEnvironment()` for a bare environment. It never inherits the ambient environment and never hand-rolls a scrub.
 
 The environment is the whole mechanism: git resolves `GIT_DIR` from the environment ahead of `cwd`, so under a git hook — which exports it — a fixture's `git init` re-initialises the shared checkout and trips git's re-init bare-guess bug, writing `core.bare=true` into the shared config and breaking the primary plus every worktree. A `cwd`-scoped call is not protection. A hand-rolled scrub is insufficient in both of its usual forms: spreading `process.env` and assigning `GIT_DIR: undefined` leaves the key enumerable rather than absent, and stripping only `GIT_*` still lets the real `~/.gitconfig` and system config reach the child.
 

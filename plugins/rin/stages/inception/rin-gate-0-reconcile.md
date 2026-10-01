@@ -685,7 +685,7 @@ which reserved class the retirement falls in, or settle it yourself.
   evidence, and the pre-staged `--reason`, then proceed with the rest of the run.
 
 The test: **premise refuted ⇒ retire; merely not-worth-doing ⇒ {{OPERATOR}}'s.** See
-`plugins/rin/scopes/rin-retired.md` § "Who retires" for the full split.
+`{{HARNESS_DIR}}/scopes/rin-retired.md` § "Who retires" for the full split.
 
 ### Step 5: Resume a parked intent (never re-derive)
 If the selected intent's committed `aidlc-state.md` carries the engine's

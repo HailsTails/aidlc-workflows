@@ -96,7 +96,7 @@ requirements frame the marked unit's work and that the unit's own approved
 Gate-3 lock covers the contracts the plan will implement. If the
 parent, either approval, the unit marker, or that relationship cannot be
 established, stop before planning and route the gap to the parent. This is a
-lead and review-board judgement under `plugins/rin/scopes/rin-unit.md`, not an
+lead and review-board judgement under `{{HARNESS_DIR}}/scopes/rin-unit.md`, not an
 automated parent lookup or a new receipt.
 
 ## Native artefact chain (no Spec-Kit)

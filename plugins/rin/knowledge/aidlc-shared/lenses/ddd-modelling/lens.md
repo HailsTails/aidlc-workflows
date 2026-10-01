@@ -52,15 +52,7 @@ rules tagged `lens: ddd-modelling`; there are none, by design. Instead:
    abstraction. Cite findings against *those* clauses, by the ids the
    constitution declares — do not assume a fixed numbering.
 3. Read the substrate the gate provides: its requirement artefact, its decision artefacts, and its design artefacts, plus any glossary prose. The requirement text is the **ubiquitous-language source**; on conflicts the requirement is authoritative, the decision prose rephrases, and the design crystallises.
-4. If the codebase's constitution declares no modelling principles to anchor
-   against, say so and produce an empty finding set — do not invent a model.
-   **This applies only when the rule files were READ and none carry modelling
-   principles.** If the code-discipline directory does not exist or holds zero
-   `cd-*.md`, STOP and return CANNOT-REVIEW naming the resolved path — that is an
-   unloadable ruleset, not a codebase without modelling discipline (usual cause:
-   a detached worktree or fresh clone where the composed `.claude/` copy has not
-   been written; re-resolve against the maintained
-   `plugins/rin/knowledge/aidlc-shared/code-discipline/`).
+4. If the codebase's constitution declares no modelling principles to anchor against, say so and produce an empty finding set — do not invent a model. **This applies only when the rule files were READ and none carry modelling principles.** If the code-discipline directory does not exist or holds zero `cd-*.md`, STOP and return CANNOT-REVIEW naming the resolved path. Ensure the pinned plugin installation and its `{{HARNESS_DIR}}/knowledge/aidlc-shared/code-discipline/` directory are present in the review worktree; an unloadable ruleset is not a codebase without modelling discipline.
 
 ## Inspection procedure
 

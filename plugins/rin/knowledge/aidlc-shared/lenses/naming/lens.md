@@ -49,14 +49,7 @@ first; they override any default intuition.
 1. Resolve the codebase's code-discipline directory (the convention is
    `code-discipline/` beside the constitution; the dispatching workflow states
    the resolved path).
-2. Glob `cd-*.md`. **If the directory does not exist, or the glob yields zero
-   `cd-*.md` files at all, STOP and return CANNOT-REVIEW naming the resolved
-   path.** That is an unloadable ruleset, never a codebase without discipline —
-   the usual cause is a detached worktree or fresh clone where the composed
-   `.claude/` copy has not been written; re-resolve against the maintained
-   `plugins/rin/knowledge/aidlc-shared/code-discipline/`. Reviewing zero rules
-   would emit a PASS that means nothing. Then keep those whose frontmatter
-   `lens:` value is `naming`.
+2. Glob `cd-*.md`. **If the directory does not exist, or the glob yields zero `cd-*.md` files at all, STOP and return CANNOT-REVIEW naming the resolved path.** That is an unloadable ruleset, never a codebase without discipline. Ensure the pinned plugin installation and its `{{HARNESS_DIR}}/knowledge/aidlc-shared/code-discipline/` directory are present in the review worktree. Reviewing zero rules would emit a PASS that means nothing. Then keep those whose frontmatter `lens:` value is `naming`.
 3. Read each kept rule in full, including its `## Carve-outs` section. The
    carve-outs are the closed exception list — anything outside them is a finding.
    Carve-outs that name an exact permitted token (the single allowed
