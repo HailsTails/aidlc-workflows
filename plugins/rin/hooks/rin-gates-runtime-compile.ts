@@ -24,7 +24,7 @@ const auditSyncPayload = (raw: string): string | null => {
     }
     return JSON.stringify({
       ...parsed,
-      tool_input: { ...toolInput, source: "audit-sync" },
+      tool_input: { ...toolInput, source: "ide-audit-sync" },
     });
   } catch {
     return null;

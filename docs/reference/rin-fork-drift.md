@@ -128,3 +128,7 @@ upstream test suite is complete.
 ### Codex plugin runner location
 
 Plugin composition resolves Codex skills through `.agents/skills`, matching the native loader and runner generator. The inherited `.codex/skills` lookup emitted an advisory and skipped regeneration on a complete Codex installation. Covered by the Codex case in `t318-plugin-compose-source-only`; retire this correction when the upstream composer resolves the same native skills root.
+
+### Promotion rebuild adapter compatibility
+
+The Rin promotion wrapper delegates to upstream V2 `engine hook rebuild-stage-graph` with `tool_input.source: ide-audit-sync`, the existing upstream audit-tail contract. This corrects the extraction's `audit-sync` spelling, which silently skipped rebuilds. Retire this wrapper when upstream recognizes the consumer promotion command directly; no new rebuild engine or approval policy is introduced.
