@@ -124,3 +124,7 @@ establish a capability. Re-run the behavioral paths above; literal anchors and
 green build output cannot detect every newly split upstream approval or dispatch
 path. This account does not claim publication, consumer migration, or the full
 upstream test suite is complete.
+
+### Codex plugin runner location
+
+Plugin composition resolves Codex skills through `.agents/skills`, matching the native loader and runner generator. The inherited `.codex/skills` lookup emitted an advisory and skipped regeneration on a complete Codex installation. Covered by the Codex case in `t318-plugin-compose-source-only`; retire this correction when the upstream composer resolves the same native skills root.

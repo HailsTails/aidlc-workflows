@@ -55,6 +55,17 @@ function composeWithStaleInstalledContent(input: {
 }
 
 describe("t318 installed plugin composition source classification", () => {
+  test("Codex composition regenerates runners in its native agents skill directory", () => {
+    const result = composePluginFixture({
+      plugin: "test-pro",
+      harness: "codex",
+      projectDir: join(scratch, "codex-native-skills"),
+    });
+    expect(result.composeStatus).toBe(0);
+    expect(existsSync(join(result.projectDir, ".agents", "skills", "test-pro-integration", "SKILL.md"))).toBe(true);
+    expect(readPluginDropText(result.projectDir)).not.toContain("runner regeneration skipped");
+  });
+
   test("compose excludes maintained source while installing runtime content", () => {
     const result = composePluginFixture({
       plugin: "test-pro",
