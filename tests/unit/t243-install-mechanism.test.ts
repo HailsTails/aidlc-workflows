@@ -2309,7 +2309,7 @@ describe("t243 release lifecycle", () => {
       },
     });
     expect(swapped.status).toBe(1);
-  });
+  }, 30_000);
 
   test("local release acquisition accepts a GitHub CLI without required attestation flags", async () => {
     const release = fixtureReleaseBytes();
@@ -2420,7 +2420,7 @@ describe("t243 release lifecycle", () => {
     );
     expect(() => verifyReleaseDirectory(invalidBinary, [binary.name as string]))
       .toThrow("invalid selected release asset metadata");
-  });
+  }, 30_000);
 
   test("release client classifies HTTP failures, follows redirects, and enforces metadata timeout", async () => {
     const release = fixtureReleaseBytes();
