@@ -54,6 +54,8 @@ from the next projection, including renamed stages. Unknown files are preserved;
 modified owned files refuse the transaction. Legacy files without recorded
 ownership hashes need a genuine baseline sync before deletion can be authorized.
 
+For a pre-manifest core installation, use its exact original projection to establish the baseline before changing versions. Configuration recognizes unchanged source bytes before regenerating tables; it still refuses an edited lookalike. A combined legacy projection can contain plugin files, so establish the plugin's genuine ownership with its original projection before switching to a core-only artifact. Inspect composition diagnostics and private settings before accepting either step.
+
 ## Fresh consumer installation
 
 The following source-build route uses Claude as the concrete example. Replace
@@ -118,7 +120,7 @@ the resulting hook indices; they do not write the user's Codex configuration.
 
 ## Updating an existing consumer
 
-Core refresh obeys the existing [refresh safety gate](18-install-and-lifecycle.md#refresh-safety): any incomplete workflow in any space blocks it, including parked workflows. `--force`, `--yes` and a plan token do not bypass that gate. Do not close records or manufacture ownership hashes merely to make an update proceed.
+Core refresh retains the upstream [refresh safety gate](18-install-and-lifecycle.md#refresh-safety) by default. For a concurrent pipeline, add `--refresh-open-workflows` to the plan and apply commands below. This fork capability requires the same state schema and unchanged existing stage/scope contracts, keeps the entire `aidlc/` workspace read-only and retains ownership/conflict/rollback checks. It cannot combine with `--force` or `--mcp`. Do not close records or manufacture ownership hashes merely to make an update proceed.
 
 Build the new fork source with the commands above. Rebind the same environment
 variables to the intended consumer and current built projection. Inspect the

@@ -376,7 +376,7 @@ export const ROUTES: readonly Route[] = [
     outputModes: ["human", "quiet", "json"],
     human: [{ command: "config [args]", summary: "configure, pin, or refresh this project" }],
     all: [
-      "config [--harness <name>] [--from <path>] [--mcp <defaults|none>] [--pin <version>|--unpin] [--dry-run] [--yes] [--json] [--quiet] [--force] [--plan-token <token>] [--project-dir <path>]",
+      "config [--harness <name>] [--from <path>] [--mcp <defaults|none>] [--pin <version>|--unpin] [--dry-run] [--yes] [--json] [--quiet] [--force|--refresh-open-workflows] [--plan-token <token>] [--project-dir <path>]",
       "config models [--show [--json]|--check|--reset|--preset <name>|--from <preset|profile> --save-as <name>] [--local|--project|--global]",
       "config models [--deciding-effort <e>] [--reviewing-effort <e>] [--writing-up-effort <e>] [--agent <name> --effort <e> [--model <raw-id>]] [--local|--project|--global] [--dry-run] [--yes]",
       "config runtime [--show [--json]|--check|--record-paths|--reset] [--dry-run] [--yes]",

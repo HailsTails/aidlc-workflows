@@ -17,9 +17,8 @@ second file ownership database.
 ## Philosophy and ownership
 
 Most retained changes repair execution or make existing plugin contracts work
-across harnesses. Three differences affect workflow philosophy: optional
-per-stage autonomous approval, collaborators doing bounded work, and avoiding
-repeated delivery of ambient rules. They must be evaluated independently at an
+across harnesses. Four differences affect workflow philosophy: optional
+per-stage autonomous approval, collaborators doing bounded work, avoiding repeated delivery of ambient rules, and explicit compatible refresh while independent workflows remain open. They must be evaluated independently at an
 upstream update; equivalent code structure alone does not establish equivalent
 behavior.
 
@@ -51,6 +50,8 @@ The full default deterministic run finished with exit 2: 432 files, two failed f
 
 Four test files retaining assertions against deliberately removed workflow YAML are repaired: the focused run passes 68 tests with 15 platform skips and 754 assertions. Runtime installer, planner/publisher, review-tool and grammar coverage remains. Reviewer and lens authority paths now name the projected installed rule corpus, keeping the existing CANNOT-REVIEW boundary if that corpus is missing. The debt-inventory tool resolves its rule corpus beside its module, so a consumer need not contain the authored plugin tree; its 22 unit tests pass and source execution preserves the previous inventory output.
 
+The compatible-refresh addition passes the prescribed build, two-build determinism, three TypeScript checks and lint. Its eight focused cases cover open/parked state preservation, absent workspace seeds, update/restore, ownership refusal, schema/contract refusal and rollback through the existing transaction. Together with dispatcher and configuration regressions, the focused run passes 150 tests; ten existing refresh/adoption tests also pass. Pre-manifest adoption now recognizes exact source bytes before generated tables change them, while refusing edited files. These results do not replace the recorded full-suite limitations.
+
 A fresh project consumer was rehearsed using the existing copy archive and Bun, including native hook composition, ownership recording and explicit plugin selection. Installed tools load without a consumer dependency installation. Full native host inventory is a separate installation route. The installation guide records the exercised command order and runtime-root binding. Actual consumer cutover, update/rollback acceptance and publication remain pending; these source checks do not establish a live model session or a completed consumer migration.
 
 In the table, **build** means covered by this build/type/lint snapshot; **plugin** means the passing reusable plugin suite. A named regression is the behavior to retest at each baseline change, even where a current focused result is pending.
@@ -59,6 +60,7 @@ In the table, **build** means covered by this build/type/lint snapshot; **plugin
 
 | Registry | Difference and reason | Surface / affected consumer | Regression and current evidence | Retirement condition |
 | --- | --- | --- | --- | --- |
+| 22 | Explicit `config --refresh-open-workflows` permits compatible payload refresh without closing a concurrent pipeline. The default upstream refusal is unchanged. | `aidlc-init.ts`, `aidlc-refresh-compatibility.ts`; existing project installations. | Same state schema; every existing compiled stage/scope contract retained; workspace data read-only; ownership conflicts retained; compatibility inputs bound into plan approval and checked under the existing transaction lock. Focused update/restore, open/parked-state, schema/contract refusal, edited-file refusal and interrupted-transaction rollback tests pass. | Upstream supplies equivalent safe refresh for independent workflows. This is intentional workflow-policy divergence, not a blanket force bypass or state-migration engine. |
 | 1 | Plugin selection honors parked workflows, matching the engine's advised remedy. | `core/tools/aidlc-utility.ts`; consumers disabling core/plugin scopes. | Park then select without stranding live work; build, focused selection rerun pending. | Upstream honors parked workflows or supplies an equivalent supported transition. |
 | 2, 3, 3a | Implementation evidence recognizes earlier branch work, already merged stage/source co-touches, and the workspace method layer. | `aidlc-state.ts`, `aidlc-graph.ts`; stages requiring workspace work. | Reject documentation-only evidence and unrelated record sweeps; accept genuine implementation/method output. Build; consumer evidence regressions pending. | Retire each recognition independently when upstream supplies it with equivalent scope. |
 | 4, U1 | Graph topology is authored and compilation works without a committed generated seed. | Core stage frontmatter, graph loader/compiler; clean installs on every harness. | Empty generated tree builds the intended graph. Deterministic build passed. | Upstream regenerates equivalent topology from maintained source. Reconcile authored numbers rather than delete necessary topology. |
