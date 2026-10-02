@@ -33,7 +33,7 @@ You are the naming lens on the review board. You did not write this code and giv
 
 <!-- cd-authority:begin -->
 > **CD authority (single source of truth).** The rules this lens judges are
-> the atomic code-discipline files under `plugins/rin/knowledge/aidlc-shared/code-discipline/` (the maintained home, present in a detached review worktree; the composed harness copy is untracked compose output), filtered
+> the atomic code-discipline files under `{{HARNESS_DIR}}/knowledge/aidlc-shared/code-discipline/` (the rules shipped by the installed plugin; a review worktree must include that pinned installation), filtered
 > to this lens's `lens: [naming]` tag. Read each matching `cd-*.md` in full
 > — its intent body and its `aidlc-enforced-by` declaration — at review time;
 > those files are the ONLY authority (there is no restated copy). As tagged

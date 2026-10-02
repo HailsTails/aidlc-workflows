@@ -59,7 +59,13 @@ type CoEnforcedSensor = {
   readonly rules: readonly string[];
 };
 
-const CD_CORPUS_DIR = "plugins/rin/knowledge/aidlc-shared/code-discipline";
+const CD_CORPUS_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "knowledge",
+  "aidlc-shared",
+  "code-discipline",
+);
 const COLLAPSED_INTO = /^collapsed-into:\s*(CD-[\w-]+)\s*$/im;
 const RULE_ID = /^id:\s*(CD-[\w-]+)\s*$/im;
 
@@ -69,10 +75,10 @@ const atomicRuleIdsOf = (args: {
   args.rulePrefixes.filter((prefix) => !prefix.includes("/"));
 
 const collapseTargetsOf = (args: {
-  readonly projectDir: string;
+  readonly corpusDir: string;
   readonly reader: SidecarFileReader;
 }): ReadonlyMap<string, string> => {
-  const corpusDir = join(args.projectDir, CD_CORPUS_DIR);
+  const corpusDir = args.corpusDir;
   return args.reader
     .listDirectory(corpusDir)
     .filter((name) => /^cd-\d+[a-z]?-.*\.md$/.test(name))
@@ -262,7 +268,7 @@ const inventoryOf = (args: {
 }): InventoryReport => {
   const reader = args.reader ?? defaultSidecarFileReader();
   const collapseTargets = collapseTargetsOf({
-    projectDir: args.projectDir,
+    corpusDir: CD_CORPUS_DIR,
     reader,
   });
   const rawPairs = exemptionPairsOf({

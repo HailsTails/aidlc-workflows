@@ -1,7 +1,7 @@
 # Rin fork policy
 
 This page describes the maintained fork's defaults. The other upstream guide
-and reference pages retain the selected upstream revision's content; their
+and reference pages retain the selected upstream revision's content except the documented compatible-refresh additions in the installation/lifecycle and troubleshooting guides; their
 model and provider defaults can differ from this fork. See
 [installation and ownership](rin-fork-installation.md) and the
 [drift inventory](../reference/rin-fork-drift.md) for the remaining seams.

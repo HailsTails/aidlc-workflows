@@ -85,7 +85,7 @@ describe("selected ranking policy", () => {
     ).toEqual({
       outcome: "ok",
       selectionRankingPath: {
-        selectionRankingConfigPath: "/tools/selection-ranking.json",
+        selectionRankingConfigPath: join("/tools", "selection-ranking.json"),
       },
     });
   });

@@ -54,6 +54,10 @@ from the next projection, including renamed stages. Unknown files are preserved;
 modified owned files refuse the transaction. Legacy files without recorded
 ownership hashes need a genuine baseline sync before deletion can be authorized.
 
+Core refresh can include unknown consumer files in its temporary graph projection without taking ownership of them. Those files remain consumer-owned across repeated refreshes; regeneration that would change one is a conflict.
+
+For a pre-manifest core installation, use its exact original projection to establish the baseline before changing versions. Configuration recognizes unchanged source bytes before regenerating tables; it still refuses an edited lookalike. A combined legacy projection can contain plugin files, so establish the plugin's genuine ownership with its original projection before switching to a core-only artifact. Inspect composition diagnostics and private settings before accepting either step.
+
 ## Fresh consumer installation
 
 The following source-build route uses Claude as the concrete example. Replace
@@ -69,9 +73,7 @@ bun /absolute/fork/core/tools/aidlc-init.ts config \
   --project-dir /absolute/consumer
 ```
 
-Bind the existing composer and sync commands to this consumer and its built
-plugin projection. All three plugin-root aliases point to the same projection,
-so an inherited host binding cannot introduce a different plugin root:
+Bind the existing sync command to this consumer and its built plugin projection. All three plugin-root aliases point to the same projection, so an inherited host binding cannot introduce a different plugin root:
 
 ```bash
 export AIDLC_PROJECT_DIR=/absolute/consumer
@@ -82,21 +84,23 @@ export AIDLC_PLUGIN_ROOT=/absolute/fork/dist/plugins/rin/claude
 export PLUGIN_ROOT=/absolute/fork/dist/plugins/rin/claude
 export CLAUDE_PLUGIN_ROOT=/absolute/fork/dist/plugins/rin/claude
 
-bun /absolute/fork/dist/plugins/rin/claude/hooks/aidlc-plugin-compose.ts
-bun /absolute/fork/core/tools/aidlc-init.ts config project \
+bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
+  --project-dir /absolute/consumer
+bun /absolute/consumer/.claude/tools/aidlc-init.ts config \
+  --from /absolute/fork/dist/claude \
+  --project-dir /absolute/consumer
+AIDLC_RUNTIME_ROOT=/absolute/fork/dist \
+bun /absolute/consumer/.claude/tools/aidlc-init.ts config project \
   --plugins aidlc,rin --yes --project-dir /absolute/consumer
 bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
   --project-dir /absolute/consumer
-bun /absolute/consumer/.claude/tools/aidlc-plugin.ts list \
-  --project-dir /absolute/consumer --verbose
 ```
 
-Initial composition registers the plugin as available before explicit project
-selection. `config project` selects the installed names and does not imply MCP
-consent. Sync establishes the existing file-ownership records; ordinary
-no-clobber composition alone is not proof that old installed bodies can be
-deleted. Confirm each command succeeds before continuing and inspect any
-reported composition drops or ownership conflicts.
+The first sync composes the plugin, registers its available names and establishes file ownership. The following core refresh reconciles the generated scope/stage tables before explicit selection; otherwise selection can refuse the composer-updated `SKILL.md` as modified. `config project` needs a runtime source, so the command binds `AIDLC_RUNTIME_ROOT` for that invocation. Merely running its CLI from a source checkout does not provide an installed runtime. Explicit selection does not imply MCP consent. Confirm each command succeeds before continuing and inspect any reported drops or ownership conflicts. Ordinary no-clobber composition alone is not proof that old installed bodies can be deleted.
+
+This is a project installation. It does not register a plugin in the host's user-level marketplace or cache. `aidlc-plugin list --verbose` requires full host inventory and may report `inventory-unavailable` on this route even when explicit-root sync succeeds. Keep the built plugin projection available for future syncs; it need not be an authored source checkout. The native host-plugin bootstrap is separate from the contributed project hook registrations.
+
+For the copy archive emitted by `scripts/package-release.ts`, the equivalent roots are `runtime/<harness>/` and `plugins/rin/<harness>/` beneath the extracted archive. Set `AIDLC_RUNTIME_ROOT` to its `runtime/` directory for configuration selection. Verify the archive checksum and exact source commit before extracting it; the shared framework version alone does not distinguish this fork from upstream.
 
 For another harness, substitute all three values in this table: the core
 distribution, plugin projection and installed engine directory. Keep the
@@ -118,6 +122,8 @@ the resulting hook indices; they do not write the user's Codex configuration.
 
 ## Updating an existing consumer
 
+Core refresh retains the upstream [refresh safety gate](18-install-and-lifecycle.md#refresh-safety) by default. For a concurrent pipeline, add `--refresh-open-workflows` to the plan and apply commands below. This fork capability requires the same state schema and unchanged existing stage/scope contracts, keeps the entire `aidlc/` workspace read-only and retains ownership/conflict/rollback checks. It cannot combine with `--force` or `--mcp`. Do not close records or manufacture ownership hashes merely to make an update proceed.
+
 Build the new fork source with the commands above. Rebind the same environment
 variables to the intended consumer and current built projection. Inspect the
 core refresh plan, then apply it and explicitly synchronize owned plugin files:
@@ -131,8 +137,6 @@ bun /absolute/fork/core/tools/aidlc-init.ts config \
   --project-dir /absolute/consumer
 bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
   --project-dir /absolute/consumer
-bun /absolute/consumer/.claude/tools/aidlc-plugin.ts list \
-  --project-dir /absolute/consumer --verbose
 ```
 
 Core refresh preserves proven selected-plugin registrations and their ownership
@@ -148,7 +152,8 @@ To deselect Rin, record core-only selection with the same environment bindings,
 then synchronize:
 
 ```bash
-bun /absolute/fork/core/tools/aidlc-init.ts config project \
+AIDLC_RUNTIME_ROOT=/absolute/fork/dist \
+bun /absolute/consumer/.claude/tools/aidlc-init.ts config project \
   --plugins aidlc --yes --project-dir /absolute/consumer
 bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
   --project-dir /absolute/consumer
