@@ -11182,6 +11182,68 @@ export function hasOpenGate(stateContent: string | null): boolean {
   return parseCheckboxes(stateContent).some((c) => c.state === "awaiting-approval");
 }
 
+const CONSTRUCTION_POLICY_SETTER_FIELDS: Readonly<Record<string, string>> = {
+  "set-construction-iteration": "Construction Iteration",
+  "set-construction-checkpoints": "Construction Checkpoints",
+  "set-construction-execution": "Construction Execution",
+};
+
+// One Construction policy setter in exactly a form the engine issues, and the
+// field and value it sets, or null: `aidlc engine state <setter> <value>`,
+// `bun <harness>/tools/aidlc.ts engine state <setter> <value>`, or
+// `bun <harness>/tools/aidlc-state.ts <setter> <value>`, with the executable
+// named bare. No prelude, environment assignment, wrapper, interpreter option,
+// other path, chain, pipe, redirection or expansion matches.
+function literalConstructionPolicySetter(command: string): { field: string; value: string } | null {
+  const literal = parseLiteralShellInvocation(command);
+  if (!literal || literal.directory !== null) return null;
+  const words = literal.argv;
+  if (words.length !== literal.rawWords.length || words.some((word, i) => word !== literal.rawWords[i])) {
+    return null;
+  }
+  const tools = `${harnessDir()}/tools`;
+  let rest: string[];
+  if (words[0] === "aidlc" && words[1] === "engine" && words[2] === "state") rest = words.slice(3);
+  else if (words[0] === "bun" && words[1] === `${tools}/aidlc.ts` && words[2] === "engine" && words[3] === "state") {
+    rest = words.slice(4);
+  } else if (words[0] === "bun" && words[1] === `${tools}/aidlc-state.ts`) rest = words.slice(2);
+  else return null;
+  const field = CONSTRUCTION_POLICY_SETTER_FIELDS[rest[0] ?? ""];
+  return field !== undefined && rest.length === 2 ? { field, value: rest[1] } : null;
+}
+
+// The human-presence floors' one rule (Kiro CLI and Kiro IDE): whether a tool
+// call waits for the person's turn. It holds only while a stage gate the person
+// must answer is open and no turn of theirs is on record since it opened. A
+// gate the engine approves itself (isAutonomousConstructionGate, the rule its
+// approval uses) does not need them, and the one Construction policy setter
+// their recorded choice authorizes (the setter's own check) runs while a gate
+// stays open for its later approval. Neither lets through what the engine
+// would refuse, and either one that cannot be read leaves the floor holding.
+export function presenceFloorHolds(
+  projectDir: string,
+  stateContent: string | null,
+  command: string,
+): boolean {
+  if (!stateContent || !hasOpenGate(stateContent)) return false;
+  if (humanActedSinceGate(projectDir)) return false;
+  const setter = literalConstructionPolicySetter(command);
+  try {
+    if (setter !== null && constructionPolicyReceiptApplies(projectDir, setter.field, setter.value)) {
+      return false;
+    }
+  } catch { /* an unreadable receipt authorizes nothing */ }
+  return parseCheckboxes(stateContent).some((entry) => {
+    if (entry.state !== "awaiting-approval") return false;
+    try {
+      const stage = findStageBySlug(entry.slug);
+      return stage === undefined || !isAutonomousConstructionGate(stateContent, stage, projectDir);
+    } catch {
+      return true; // a gate that cannot be classified is the person's
+    }
+  });
+}
+
 // The interview path (handleAnswer) uses the SAME resolution-boundary check: a
 // QUESTION_ANSWERED is itself a gate resolution, so "a human turn since the last
 // resolution" gives one-answer-per-human-turn for free. Thin alias for call-site

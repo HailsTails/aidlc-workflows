@@ -5448,19 +5448,57 @@ describe("t218 enforce-approval-gate refusal names the reload steps", () => {
         AIDLC_SKIP_HUMAN_PRESENCE_GUARD: "0",
       });
       expect(r.code, r.stderr).toBe(2);
-      expect(r.stderr).toContain("no reply from the person is on record since it opened");
+      expect(r.stderr).toContain("An approval is waiting for the person's answer, so nothing runs until they give it: end the turn.");
       expect(r.stderr).toContain(
-        "If they already replied, that reply was not recorded: Kiro may not have passed it to AI-DLC's hooks in this window.",
+        "If they already answered, tell them to trust the folder if the Restricted Mode banner shows at the top of the window (select Manage, then Trust)",
       );
+      expect(r.stderr).toContain('run "Developer: Reload Window" from the Command Palette');
       expect(r.stderr).toContain(
-        "trusting the folder if the Restricted Mode banner shows at the top of the window (select Manage, then Trust)",
-      );
-      expect(r.stderr).toContain('running "Developer: Reload Window" from the Command Palette');
-      expect(r.stderr).toContain(
-        "choosing the aidlc agent in the chat panel's agent picker should let their next message be recorded; if it still is not, `/aidlc --doctor` shows why.",
+        "choose the aidlc agent in the chat panel's agent picker, so their next message is recorded; `/aidlc --doctor` shows anything else to fix.",
       );
       expect(r.stderr).toContain("In Kiro CLI, starting `kiro-cli` again in this folder does the same.");
+      // It says what to do, never how the hooks work, and never asks for the answer again.
+      expect(r.stderr).not.toContain("hooks");
       expect(r.stderr).not.toContain("reply again");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("t218 enforce-approval-gate lets only the engine-issued chosen setter through", () => {
+  test("the Construction setting the person chose runs at an open gate; an altered form waits", () => {
+    const dir = scratchProject(true);
+    try {
+      const statePath = seededStateFile(dir);
+      writeFileSync(
+        statePath,
+        readFileSync(statePath, "utf-8").replace("- [-] requirements-analysis", "- [?] requirements-analysis"),
+      );
+      const shard = join(seededAuditDir(dir), pinnedShardName());
+      writeFileSync(
+        shard,
+        readFileSync(shard, "utf-8") +
+        "\n## WORKFLOW_STARTED\n**Timestamp**: 2025-12-31T00:00:00Z\n**Event**: WORKFLOW_STARTED\n**Scope**: feature\n\n---\n" +
+        "\n## STAGE_STARTED\n**Timestamp**: 2026-01-01T00:00:00Z\n**Event**: STAGE_STARTED\n**Stage**: requirements-analysis\n\n---\n" +
+        "\n## HUMAN_TURN\n**Timestamp**: 2026-01-01T00:00:01Z\n**Event**: HUMAN_TURN\n**Session**: kiro-ide-person\n\n---\n" +
+          "\n## CONSTRUCTION_POLICY_RECORDED\n**Timestamp**: 2026-01-01T00:00:02Z\n**Event**: CONSTRUCTION_POLICY_RECORDED\n" +
+          "**Stage**: requirements-analysis\n**Checkpoint**: Construction Policy\n**Field**: Construction Iteration\n" +
+          "**Value**: unit-major\n**Session**: kiro-ide-person\n**User Input**: Approve\n\n---\n",
+        "utf-8",
+      );
+      const gate = (command: string) =>
+        runIdeStdin(dir, "enforce-approval-gate", JSON.stringify({
+          hook_event_name: "PreToolUse", cwd: dir, tool_name: "execute_bash", tool_input: { command },
+        }), { AIDLC_SKIP_HUMAN_PRESENCE_GUARD: "0" });
+      const setter = "bun .kiro/tools/aidlc.ts engine state set-construction-iteration unit-major";
+      const applied = gate(setter);
+      expect(applied.code, applied.stderr).toBe(0);
+      for (const altered of [`PATH=./bin ${setter}`, `env FOO=1 ${setter}`, `./bin/${setter}`]) {
+        expect(gate(altered).code, altered).toBe(2);
+      }
+      expect(gate("bun .kiro/tools/aidlc.ts engine orchestrate report --stage requirements-analysis --result approved").code)
+        .toBe(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -5564,7 +5602,7 @@ describe("t218 terminal-command-guard runs nothing while an approval gate awaits
         }), { AIDLC_SKIP_HUMAN_PRESENCE_GUARD: "0" });
       const gated = gate("sess_gated_chat");
       expect(gated.code, gated.stderr).toBe(2);
-      expect(gated.stderr).toContain("no reply from the person is on record since it opened");
+      expect(gated.stderr).toContain("An approval is waiting for the person's answer");
       const free = gate("sess_free_chat");
       expect(free.code, free.stderr).toBe(0);
     } finally {
