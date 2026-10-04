@@ -110,13 +110,13 @@ import {
   isAutonomousMode,
   isAutonomousSwarmStage,
   isTeamUnitOwnership,
-  unitScopedLifecycleFloors,
   isNonAnswer,
   isRequestChangesChoice,
   isRegularFile,
   isoTimestamp,
   KNOWN_CODEKB_STAGES,
-  latestMainWorkflowStageRunFloorForProject,
+  unitLifecycleRunFloorForProject,
+  unitScopedLifecycleFloors,
   loadScopeMapping,
   loadStageGraph,
   nextInScopeStage,
@@ -2374,12 +2374,14 @@ function handleUnit(args: string[]): void {
     const fields: Record<string, string> = {
       Stage: slug,
       Unit: unit,
-      "Run floor": latestMainWorkflowStageRunFloorForProject(
+      "Run floor": unitLifecycleRunFloorForProject(
         pd,
         slug,
         getField(content, "Construction Iteration")?.trim() === "unit-major" ||
           getField(content, "Construction Checkpoints") === "enabled",
-        unitScopedLifecycleFloors(content) ? unit : undefined,
+        unit,
+        undefined,
+        unitScopedLifecycleFloors(content),
       ),
       ...claimAttemptFields(pd, unit),
       ...(waveMode
@@ -6649,7 +6651,7 @@ function handleSkip(args: string[]): void {
       error(`Cannot skip "${slug}" for unit "${unit}": that unit owes nothing for this stage.`);
     }
     // Floored per Unit wherever its other lifecycle rows are (solo unit-major
-    // too, #1411); team-owned Units keep their own rule.
+    // too); team-owned Units keep their own rule.
     const checkpoints = getField(content, "Construction Checkpoints") === "enabled" ||
       (!isTeamUnitOwnership(content) && getField(content, "Construction Iteration")?.trim() === "unit-major");
     try {
@@ -6657,11 +6659,13 @@ function handleSkip(args: string[]): void {
         Stage: slug,
         Unit: unit,
         Reason: reason,
-        "Run floor": latestMainWorkflowStageRunFloorForProject(
+        "Run floor": unitLifecycleRunFloorForProject(
           pd,
           slug,
           true,
-          checkpoints ? unit : undefined,
+          unit,
+          undefined,
+          checkpoints,
         ),
         ...claimAttemptFields(pd, unit),
       });
