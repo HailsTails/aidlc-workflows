@@ -15779,19 +15779,29 @@ export function reviewRecordRelativePath(
  * Where the reviewer writes its review for one request: the scratch slot the
  * request opens (deleting any earlier draft) and the verdict consumes. The
  * record beside it is the review; the draft is the reviewer's input to it.
+ * A request with an id has a slot of its own, so a reviewer of a replaced
+ * request that writes late never fills the replacement's slot; a request
+ * recorded before request ids keeps the pass's shared slot.
  */
 export function reviewDraftRelativePath(
   stage: string,
   unit: string | undefined,
   attemptId: string,
   iteration: number,
+  requestId: string | null = null,
 ): string {
   if (!REVIEW_RECORD_SEGMENT_RE.test(stage)) throw new Error(`Invalid stage slug "${stage}".`);
   const unitProblem = unit === undefined ? null : validateUnitName(unit);
   if (unitProblem !== null) throw new Error(unitProblem);
+  if (requestId !== null && !REVIEW_REQUEST_ID_RE.test(requestId)) {
+    throw new Error(`Invalid review request id "${requestId}".`);
+  }
+  const name = requestId === null
+    ? `${iteration}.review.md`
+    : `${iteration}.${requestId.slice("review:".length)}.review.md`;
   return unit === undefined
-    ? `${REVIEW_RECORDS_DIR}/${stage}/stage/${attemptId}/${iteration}.review.md`
-    : `${REVIEW_RECORDS_DIR}/${stage}/units/${unit}/${attemptId}/${iteration}.review.md`;
+    ? `${REVIEW_RECORDS_DIR}/${stage}/stage/${attemptId}/${name}`
+    : `${REVIEW_RECORDS_DIR}/${stage}/units/${unit}/${attemptId}/${name}`;
 }
 
 /** Whether `path` has exactly one supported stage or Unit record shape. */
@@ -17043,6 +17053,9 @@ export interface ReviewAttemptAccounting {
     {
       binding: ReviewRequestBinding | null;
       retried: boolean;
+      // The request row names its own review file (rows recorded before
+      // per-request review files do not).
+      ownReviewFile: boolean;
     }
   >;
   recoveryIteration: number | null;
@@ -17319,6 +17332,7 @@ export function reviewAttemptAccounting(
     {
       binding: ReviewRequestBinding | null;
       retried: boolean;
+      ownReviewFile: boolean;
     }
   >();
   for (let i = floor + 1; i < events.length; i++) {
@@ -17354,7 +17368,11 @@ export function reviewAttemptAccounting(
     if (entry.event === "REVIEW_REQUESTED") {
       const binding = reviewRequestBindingFromBlock(entry.block);
       if (binding === null) continue;
-      if (auditBlockField(entry.block, "Retry") !== "pending-request") {
+      // A replacement takes the pass of the request it replaces: it is a new
+      // dispatch of new bytes, so it neither counts again nor inherits a retry.
+      const previous = pendingRequests.get(iteration);
+      const replacement = reviewRequestReplaces(entry.block, previous);
+      if (auditBlockField(entry.block, "Retry") !== "pending-request" && !replacement) {
         requestCount++;
       }
       if (auditBlockField(entry.block, "Recovery") === "stale-receipt") {
@@ -17362,14 +17380,15 @@ export function reviewAttemptAccounting(
         recoverySpent = true;
       }
       pendingIterations.add(iteration);
-      const previous = pendingRequests.get(iteration);
       const modernBinding = reviewRequestBindingIsModern(binding, stage);
       pendingRequests.set(iteration, {
         binding,
         retried:
-          previous?.retried === true ||
-          (auditBlockField(entry.block, "Retry") === "pending-request" &&
-            modernBinding),
+          !replacement &&
+          (previous?.retried === true ||
+            (auditBlockField(entry.block, "Retry") === "pending-request" &&
+              modernBinding)),
+        ownReviewFile: auditBlockField(entry.block, "Review File") !== null,
       });
     } else {
       const pending = pendingRequests.get(iteration);
@@ -17408,6 +17427,11 @@ export interface PendingReviewRequestStatus {
   requestCurrent: boolean;
   retryable: boolean;
   verdictRecordable: boolean;
+  // Its outputs or source changed since the request (every output and any unit
+  // source manifest still reads), so it can never finish and a new request may
+  // replace it. A missing output is not this: restoring it can make the request
+  // current again.
+  replaceable: boolean;
 }
 
 // Whether the request's artifact fingerprint still describes the bytes on disk.
@@ -17440,10 +17464,109 @@ export function reviewAppendedAfterRequest(
     : !binding.legacyAppendix.priorAppendix;
 }
 
+// Whether a pending request's binding still describes the bytes on disk: its
+// artifacts (one stable snapshot), the workspace source and, for a per-unit
+// workspace stage, the unit source. `readable` is false when an output or the
+// unit source manifest cannot be read: restoring it may make the request
+// current again. One check, shared by the attempt accounting view
+// (pendingReviewRequestStatus) and the receipts view (freshReviewReceipts).
+export function pendingRequestCurrency(
+  projectDir: string,
+  stage: ReviewFingerprintStage,
+  unit: string | undefined,
+  binding: ReviewRequestBinding,
+  options: {
+    requireRequiredArtifacts?: boolean;
+    boltDag?: BoltDagResolution;
+    mergedBoltUnits?: ReadonlySet<string>;
+    single?: boolean;
+    sourceState?: WorkspaceSourceState | null;
+  } = {},
+): { requestCurrent: boolean; readable: boolean; modernVerdictBinding: boolean } {
+  const snapshot = reviewArtifactSnapshot(projectDir, stage, unit, {
+    requireRequiredArtifacts: options.requireRequiredArtifacts,
+    boltDag: options.boltDag,
+    mergedBoltUnits: options.mergedBoltUnits,
+  });
+  if (snapshot === null) {
+    return { requestCurrent: false, readable: false, modernVerdictBinding: false };
+  }
+
+  let readable = true;
+  let requestCurrent =
+    reviewRequestArtifactsCurrent(binding, snapshot) ||
+    reviewAppendedAfterRequest(binding, snapshot);
+  let modernVerdictBinding = reviewRequestBindingIsModern(binding, stage);
+
+  const sourceState = stage.workspace_requires
+    ? options.sourceState !== undefined
+      ? options.sourceState
+      : workspaceSourceState(projectDir)
+    : null;
+  if (stage.workspace_requires) {
+    // A source walk that cannot be read proves no change, so the request is
+    // not one to replace; restoring the walk can make it current again.
+    if (sourceState === null) readable = false;
+    const currentSource =
+      sourceState?.fingerprint ?? UNBINDABLE_FINGERPRINT;
+    if (
+      binding.sourceFingerprint !== null &&
+      !sameWorkspaceSource(binding.sourceFingerprint, currentSource)
+    ) {
+      requestCurrent = false;
+    }
+  }
+
+  const bindsUnitSource =
+    stage.workspace_requires === true &&
+    unit !== undefined &&
+    stage.for_each === "unit-of-work" &&
+    options.single !== true;
+  if (bindsUnitSource) {
+    const manifest = readUnitSourceManifest(projectDir, stage.slug, unit);
+    if (manifest.ok !== true) {
+      requestCurrent = false;
+      modernVerdictBinding = false;
+      readable = false;
+    } else {
+      const currentUnitSource =
+        sourceState === null
+          ? UNBINDABLE_FINGERPRINT
+          : unitSourceFingerprint(
+              sourceState.listing,
+              manifest,
+              manifest.rawBytesSha256,
+            );
+      if (
+        binding.unitSourceFingerprint !== null &&
+        currentUnitSource !== binding.unitSourceFingerprint
+      ) {
+        requestCurrent = false;
+      }
+      if (binding.unitSourceFingerprint === null) modernVerdictBinding = false;
+    }
+  }
+  return { requestCurrent, readable, modernVerdictBinding };
+}
+
+// A REVIEW_REQUESTED row replaces the pending request at its scope and pass when
+// it names that request's id (`none` for one recorded before request ids). A
+// replacement interrupted in turn is replaced the same way. Any other row
+// carrying the field is an ordinary request.
+export function reviewRequestReplaces(
+  block: string,
+  pending: { binding: ReviewRequestBinding | null } | undefined,
+): boolean {
+  const named = auditBlockField(block, "Replaces Request Id");
+  if (named === null || pending === undefined || pending.binding === null) {
+    return false;
+  }
+  return named === (pending.binding.requestId ?? "none");
+}
+
 // What can still be done with the oldest pending review request: retried once
-// against its original binding, or completed with a verdict. Both require the
-// request's artifact and source identities to still describe the current bytes;
-// the verdict itself arrives as a review record, so nothing else is needed.
+// against its original binding, completed with a verdict, or (its outputs or
+// source changed) replaced by a new request at the same pass.
 export function pendingReviewRequestStatus(
   projectDir: string,
   stage: ReviewFingerprintStage,
@@ -17467,78 +17590,18 @@ export function pendingReviewRequestStatus(
       requestCurrent: false,
       retryable: false,
       verdictRecordable: false,
+      replaceable: false,
     };
   }
-
-  const snapshot = reviewArtifactSnapshot(projectDir, stage, unit, {
-    requireRequiredArtifacts: options.requireRequiredArtifacts,
-    boltDag: options.boltDag,
-    mergedBoltUnits: options.mergedBoltUnits,
-  });
-  if (snapshot === null) {
-    return {
-      iteration,
-      requestCurrent: false,
-      retryable: false,
-      verdictRecordable: false,
-    };
-  }
-
-  let requestCurrent =
-    reviewRequestArtifactsCurrent(binding, snapshot) ||
-    reviewAppendedAfterRequest(binding, snapshot);
-  let modernVerdictBinding = reviewRequestBindingIsModern(binding, stage);
-
-  const sourceState = stage.workspace_requires
-    ? options.sourceState !== undefined
-      ? options.sourceState
-      : workspaceSourceState(projectDir)
-    : null;
-  if (stage.workspace_requires) {
-    const currentSource =
-      sourceState?.fingerprint ?? UNBINDABLE_FINGERPRINT;
-    if (
-      binding.sourceFingerprint !== null &&
-      !sameWorkspaceSource(binding.sourceFingerprint, currentSource)
-    ) {
-      requestCurrent = false;
-    }
-  }
-
-  const bindsUnitSource =
-    stage.workspace_requires === true &&
-    unit !== undefined &&
-    stage.for_each === "unit-of-work" &&
-    options.single !== true;
-  if (bindsUnitSource) {
-    const manifest = readUnitSourceManifest(projectDir, stage.slug, unit);
-    if (manifest.ok !== true) {
-      requestCurrent = false;
-      modernVerdictBinding = false;
-    } else {
-      const currentUnitSource =
-        sourceState === null
-          ? UNBINDABLE_FINGERPRINT
-          : unitSourceFingerprint(
-              sourceState.listing,
-              manifest,
-              manifest.rawBytesSha256,
-            );
-      if (
-        binding.unitSourceFingerprint !== null &&
-        currentUnitSource !== binding.unitSourceFingerprint
-      ) {
-        requestCurrent = false;
-      }
-      if (binding.unitSourceFingerprint === null) modernVerdictBinding = false;
-    }
-  }
-
+  const { requestCurrent, readable, modernVerdictBinding } = pendingRequestCurrency(
+    projectDir, stage, unit, binding, options,
+  );
   return {
     iteration,
     requestCurrent,
     retryable: requestCurrent && !pending.retried,
     verdictRecordable: requestCurrent && modernVerdictBinding,
+    replaceable: readable && !requestCurrent,
   };
 }
 
@@ -17637,9 +17700,13 @@ export function worktreeReviewAttemptProjection(
       if (crossShardTied(i)) continue;
       const binding = reviewRequestBindingFromBlock(event.block);
       if (binding === null) continue;
+      // A retry or replacement of the recovery request is still the recovery
+      // request, as in freshReviewReceipts.
+      const previous = pendingRequests.get(requestKey);
       pendingRequests.set(requestKey, {
         binding,
         recovery:
+          previous?.recovery === true ||
           auditBlockField(event.block, "Recovery") === "stale-receipt",
         timestamp: event.timestamp,
         shard: event.shard,
@@ -18381,9 +18448,35 @@ export function freshReviewReceipts(
   }
   applyDeferredBoundaries();
 
+  // The workspace source is read once per call, here or for source freshness.
+  let sourceRead = false;
+  let sharedSource: WorkspaceSourceState | null = null;
+  const currentSource = (): WorkspaceSourceState | null => {
+    if (!sourceRead) {
+      sharedSource = options.sourceState !== undefined ? options.sourceState : workspaceSourceState(projectDir);
+      sourceRead = true;
+    }
+    return sharedSource;
+  };
+  const requireRequiredArtifacts =
+    resolveProjectFlag("AIDLC_SKIP_ARTIFACT_GUARD", process.env, projectDir) !== "1";
   for (const request of pendingRequests.values()) {
+    // A pending request whose outputs or source changed before its verdict can
+    // never finish (a retry re-dispatches the old bytes); the next move is a new
+    // request at the same pass, which is what `outstanding` names to every
+    // reader (wave entries, gates, recovery).
+    const currency =
+      request.binding === null
+        ? null
+        : pendingRequestCurrency(projectDir, stage, request.unit, request.binding, {
+            requireRequiredArtifacts,
+            boltDag: options.boltDag,
+            mergedBoltUnits,
+            ...(stage.workspace_requires ? { sourceState: currentSource() } : {}),
+          });
+    const replaceable = currency?.readable === true && !currency.requestCurrent;
     const pending: PendingReviewProgress = {
-      state: "retry-required",
+      state: replaceable ? "outstanding" : "retry-required",
       iteration: request.iteration,
       recovery: request.recovery,
       ...(request.verificationFailed ? { verificationFailed: true } : {}),
@@ -18407,9 +18500,7 @@ export function freshReviewReceipts(
     (newestSourceFingerprint !== null || modernUnitReceipts.size > 0);
   // One shared temp-index pass supplies BOTH global reconciliation and every
   // per-unit comparison. Never recompute inside the unit loop.
-  const currentSourceState = needsCurrentSource
-    ? options.sourceState !== undefined ? options.sourceState : workspaceSourceState(projectDir)
-    : null;
+  const currentSourceState = needsCurrentSource ? currentSource() : null;
   const currentSourceFingerprint = currentSourceState?.fingerprint ?? null;
   const currentSourceListing = currentSourceState?.listing ?? null;
   const sourceMismatch =
@@ -27381,14 +27472,18 @@ export function fenceSwitchSentence(
   }
 }
 
-export function renderReviewVerdictCommand(input: {
+interface ReviewCommandInput {
   projectDir: string;
   stage: string;
   reviewer: string;
   unit?: string;
   single?: boolean;
   iteration: number;
-}): string {
+}
+
+// The review request and its verdict, rendered once: the same scope selectors
+// and the project the request belongs to (a Bolt worktree included).
+function renderReviewCommand(input: ReviewCommandInput, verdict: boolean): string {
   return renderEngineInvocation({
     route: "log",
     args: [
@@ -27401,12 +27496,19 @@ export function renderReviewVerdictCommand(input: {
       ...(input.single ? ["--single"] : []),
       "--iteration",
       String(input.iteration),
-      "--verdict",
-      "<READY|NOT-READY>",
+      ...(verdict ? ["--verdict", "<READY|NOT-READY>"] : []),
       "--project-dir",
       input.projectDir,
     ],
   }, { harnessDir: harnessDir() });
+}
+
+export function renderReviewVerdictCommand(input: ReviewCommandInput): string {
+  return renderReviewCommand(input, true);
+}
+
+export function renderReviewRequestCommand(input: ReviewCommandInput): string {
+  return renderReviewCommand(input, false);
 }
 
 function restartStageRemedy(stage: string): GuardRemedy {
@@ -28005,7 +28107,7 @@ export function guardAttemptState(
   const pendingIterations = [...(accounting?.pendingIterations ?? [])].sort(
     (a, b) => a - b,
   );
-  const pendingReviewFor = (iteration: number) => ({
+  const pendingReviewAt = (iteration: number) => ({
     pendingReview: {
       iteration,
       retryable:
@@ -28024,6 +28126,12 @@ export function guardAttemptState(
       }),
     },
   });
+  // A pending request that can never finish (its outputs or source changed
+  // before a verdict) is requested again at the same pass, once per attempt.
+  const pendingReviewFor = (iteration: number) =>
+    pendingStatus?.iteration === iteration && pendingStatus.replaceable
+      ? { nextReview: { iteration } }
+      : pendingReviewAt(iteration);
   const budget = options.reviewBudget ?? null;
   const attempt: GuardAttemptState = {
     floor:

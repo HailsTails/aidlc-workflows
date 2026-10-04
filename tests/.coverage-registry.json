@@ -7118,6 +7118,13 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:pendingRequestCurrency",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:pendingReviewRequestStatus",
       "minMechanism": "none",
       "coveredBy": [
@@ -8557,6 +8564,18 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:renderReviewRequestCommand",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t271-review-iteration-ceiling.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:renderReviewVerdictCommand",
       "minMechanism": "none",
       "coveredBy": [
@@ -9393,6 +9412,13 @@
         }
       ],
       "status": "covered"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:reviewRequestReplaces",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
     },
     {
       "unitClass": "function",
