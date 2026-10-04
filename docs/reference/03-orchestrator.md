@@ -127,7 +127,7 @@ Overrides the test volume strategy (minimal, standard, comprehensive) independen
 
 ### `/aidlc --project-type <type>` -- New Project or Existing Code
 
-The person's word on whether the work is a new project (`greenfield`) or existing code (`brownfield`), which wins over the workspace scan. With no workflow, `next` threads it onto the creation command and the scope-confirm and compose answers, the composer dispatch tells the composer to score the plan with it in place of the scan's type, and the ceremony preview counts Reverse Engineering accordingly. With a workflow running, and before any other branch reads the request (a jump, a single run, compose, a setting), `next` emits a `print` naming `workspace reclassify --project-type <type>` (rescan, `Project Type Source: you`, repos found since creation, Reverse Engineering back on or off the plan, `WORKSPACE_RECLASSIFIED`) bound to the selected work's `--intent` and `--space`. Said on its own, it always rescans and replies, then a bare `next` continues; typed with more, the same `next` command runs again and, once the state holds that type as the person's, the rest of the request routes as usual, so nothing typed with it is dropped. On the happy path, `next` then names `aidlc-jump execute --target reverse-engineering --direction redo` when Reverse Engineering is on the plan, not started, behind the cursor, and no Construction stage has started; the redo leaves finished stages alone and the walk returns to the stage the person was on. When the scan set the work up as greenfield and the folder now scans brownfield before Construction, `next` returns a `project-type` ask (outside an open gate) whose two commands, bound to the work asked about, both record the type as the person's.
+The person's word on whether the work is a new project (`greenfield`) or existing code (`brownfield`), which wins over the workspace scan. With no workflow, `next` threads it onto the creation command and the scope-confirm and compose answers, the composer dispatch tells the composer to score the plan with it in place of the scan's type, and the ceremony preview counts Reverse Engineering accordingly. With a workflow running, and before any other branch reads the request (a jump, a single run, compose, a setting), `next` emits a `print` naming `workspace reclassify --project-type <type>` (rescan, `Project Type Source: you`, repos found since creation, Reverse Engineering back on or off the plan, `WORKSPACE_RECLASSIFIED`) bound to the selected work's `--intent` and `--space`. The reclassify reply is a typed directive; the person's lines are kept for the chat and said with the next step the agent speaks from (see [Lines carried to the next spoken step](#lines-carried-to-the-next-spoken-step)). Said on its own, it always rescans and replies with a `done` that continues, so a bare `next` follows; typed with more, the print adds `--then-rerun`, the reply is a `print` naming the same `next` command, and that command runs again and, once the state holds that type as the person's, the rest of the request routes as usual, so nothing typed with it is dropped. On the happy path, `next` then names `aidlc-jump execute --target reverse-engineering --direction redo` when Reverse Engineering is on the plan, not started, behind the cursor, and no Construction stage has started; the redo leaves finished stages alone and the walk returns to the stage the person was on. When the scan set the work up as greenfield and the folder now scans brownfield before Construction, `next` returns a `project-type` ask (outside an open gate) whose two commands, bound to the work asked about, both record the type as the person's.
 
 ### Intent creation -- the Initialization phase
 
@@ -412,6 +412,34 @@ no state file, the engine returns an error directive saying the receipt matched
 no current part and the stored route could not be verified. Issue a fresh
 `next --scope <scope> --stage <stage>`, adding `--single` if it was a single run.
 See [Rule delivery and the continuation cursor](06-hooks-and-tools.md#rule-delivery-and-the-continuation-cursor).
+
+### Lines carried to the next spoken step
+
+Some person-facing lines arrive on a step the agent passes through without
+speaking: the `print` that creates the work ("Setting up a poc workflow for
+this ... The folder has no code yet, so I'm starting this as a new project
+..."), and the `workspace reclassify` reply. The agent runs those and goes on,
+then speaks only at a later step, so a line left there was lost. A request
+typed with its scope never passed an ask, so its creation line also says how a
+pasted document was split (the `document_split` line); the stages that read
+the document do not say it again. The engine
+keeps such lines for the chat (`aidlc/.aidlc-sessions/<session>.person-lines`)
+and puts them, in order and once, in front of the `narration` of the next
+directive the agent speaks from: an `ask`, `present-gate`, `parked`, `error`
+or a final `done`, or any other directive that carries its own `narration`.
+A rules part (`load-steering`) never takes them; its `run-stage` does. They
+belong to the person's current turn: a newer prompt on the work, or fifteen
+minutes with no prompt hook, drops them, so a line never surfaces later or in
+another chat. A line a tool gives inside a stage (`document-input`'s
+`selection_note` and `onboard_note`) is held across the person's turns on the
+same work instead, and is also said with the `print` that opens or re-opens
+the stage's gate, so it reaches the person at the latest with the gate; it is
+said once per piece of work. Only a line whose paths are plain (letters,
+digits, spaces, `.`, `_`, `-`, `/`) is held, and the tool's result then says
+`notes_said_by_aidlc: true`; otherwise the stage says the line itself, next to
+the untrusted-path notice. Without a chat to keep them for, a line stays on
+its own step.
+A line that would push a step over its size limit waits for the next one.
 
 ### Inline Execution
 
@@ -1099,9 +1127,12 @@ Direct mismatches project `stale`. Propagation follows artifact dependencies
 observed in completed consumer receipts, so absent optional inputs do not cause
 false invalidation. If any completed result is stale or needs revalidation, the
 engine keeps the normal directive kind and attaches a machine-readable
-`stage_validity` advisory. The conductor surfaces its warning, then continues
-routing. Inspection-unavailable stages remain a per-turn advisory because they
-need attention. Receipt-less histories are reported as untracked by
+`stage_validity` advisory. Its `warning` is the person's line in plain words
+(which finished stage is behind and what to say to redo it, or that a check
+could not run); the conductor says it the first time it appears in a
+conversation and not again for the same warning, then continues routing.
+Inspection-unavailable stages remain a per-turn advisory because they need
+attention. Receipt-less histories are reported as untracked by
 `/aidlc --status` only, so migration does not add a warning to every `next`.
 
 The suggested recovery uses the existing explicit jump path:
