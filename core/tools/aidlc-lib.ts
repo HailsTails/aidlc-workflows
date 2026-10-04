@@ -1023,7 +1023,21 @@ export function stripOrchestratorLauncherOptions(args: readonly string[]): strin
   return normalized;
 }
 
-export type WorkspaceNoun = "intent" | "space";
+export const WORKSPACE_NOUNS = ["intent", "space"] as const;
+export type WorkspaceNoun = (typeof WORKSPACE_NOUNS)[number];
+
+// aidlc-testing-posture.ts runs the first of these it finds anywhere in argv.
+export const TESTING_POSTURE_SUBCOMMANDS = ["resolve", "render", "fingerprint", "verify", "begin", "brief", "reply"] as const;
+
+// The commands aidlc-utility.ts dispatches, as its unknown-command error lists them.
+export const UTILITY_COMMANDS = [
+  "help", "version", "status", "doctor", "intent-create", "intent", "space",
+  "space-create", "codekb-path", "codekb-snapshot", "codekb-publish", "project-description",
+  "document-input", "codekb-scope-diff", "detect", "reclassify", "select-plugins", "plugin-list",
+  "plugin-sync", "plugin-validate", "plugin-build", "recompose", "scope-change", "scope-save",
+  "config-change", "config-get", "config-list", "set-status", "detect-scope",
+  "resolve-env-scope", "scope-table", "stage-table", "upgrade",
+] as const;
 
 export const INTENT_VERBS: ReadonlySet<string> = new Set([
   "list",
@@ -1124,8 +1138,8 @@ function reservedFutureWorkspaceVerb(
   };
 }
 
-function isWorkspaceNoun(token: string | undefined): token is WorkspaceNoun {
-  return token === "intent" || token === "space";
+export function isWorkspaceNoun(token: string | undefined): token is WorkspaceNoun {
+  return (WORKSPACE_NOUNS as readonly (string | undefined)[]).includes(token);
 }
 
 function isReservedFutureWorkspaceVerb(
@@ -30738,11 +30752,13 @@ export function findAllEvents(
 ): { timestamp: string; block: string }[] {
   const results: { timestamp: string; block: string; pos: number }[] = [];
   const blocks = audit.replace(/\r\n/g, "\n").split(/\n---\n/);
-  const eventRegex = new RegExp(`^\\*\\*Event\\*\\*:\\s*${escapeRegex(event)}\\s*$`, "m");
+  // A field's value sits on its own line: `[ \t]*`, never `\s*`, which would
+  // read a bare `**Event**:` label's value from the next line.
+  const eventRegex = new RegExp(`^\\*\\*Event\\*\\*:[ \\t]*${escapeRegex(event)}[ \\t]*$`, "m");
   const slugRegex = slug
-    ? new RegExp(`^\\*\\*Bolt slug\\*\\*:\\s*${escapeRegex(slug)}\\s*$`, "m")
+    ? new RegExp(`^\\*\\*Bolt slug\\*\\*:[ \\t]*${escapeRegex(slug)}[ \\t]*$`, "m")
     : null;
-  const tsRegex = /^\*\*Timestamp\*\*:\s*(\S+)/m;
+  const tsRegex = /^\*\*Timestamp\*\*:[ \t]*(\S+)/m;
   let pos = 0;
   for (const block of blocks) {
     if (!eventRegex.test(block)) {
