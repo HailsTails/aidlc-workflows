@@ -4742,6 +4742,18 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:hookContextLine",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/integration/t-hook-context-reaches-claude.sdk.test.ts",
+          "mechanism": "sdk"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:hookDebug",
       "minMechanism": "none",
       "coveredBy": [],
@@ -12238,6 +12250,10 @@
           "mechanism": "cli"
         },
         {
+          "file": "tests/integration/t-hook-context-reaches-claude.sdk.test.ts",
+          "mechanism": "sdk"
+        },
+        {
           "file": "tests/integration/t351-fresh-clone-participation.test.ts",
           "mechanism": "cli"
         },
@@ -12377,6 +12393,10 @@
       "unitId": "aidlc-session-start",
       "minMechanism": "none",
       "coveredBy": [
+        {
+          "file": "tests/integration/t-hook-context-reaches-claude.sdk.test.ts",
+          "mechanism": "sdk"
+        },
         {
           "file": "tests/integration/t173-session-switch-restamp.test.ts",
           "mechanism": "cli"
