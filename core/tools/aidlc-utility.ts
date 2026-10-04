@@ -375,6 +375,7 @@ import {
   commandPath,
   inspectProjectPinTarget,
   inspectInstalledVersion,
+  gitBashLauncherRecovery,
   installRoot,
   readActiveExecutable,
   rollbackVersionPath,
@@ -4726,7 +4727,7 @@ export async function collectDoctorReport(
   );
   const workflowHasProgress = progressedStageCount > 0;
   const workflowStageStarted = auditAllShards.includes("**Event**: STAGE_STARTED");
-  const hookExecutionRecovery = hookExecutionRecoveryText(harnessName);
+  const hookExecutionRecovery = gitBashLauncherRecovery() ?? hookExecutionRecoveryText(harnessName);
   const hooksNotRunYet = hookActivation()?.notRunYet;
 
   // 6. Hook heartbeats
