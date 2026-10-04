@@ -419,6 +419,19 @@ import {
 // Read the workflow state file if it exists, else null. The engine's `next` is
 // a pure read: an absent state file is a legitimate branch (no workflow yet),
 // not an error to throw. Composes engineStateFilePath() for the canonical location.
+// The deepest folder every path shares (POSIX paths), or "" when none does.
+function commonFolder(paths: readonly string[]): string {
+  if (paths.length === 0) return "";
+  const split = paths.map((path) => path.split("/").slice(0, -1));
+  const shared: string[] = [];
+  for (let index = 0; index < split[0].length; index++) {
+    const segment = split[0][index];
+    if (split.some((parts) => parts[index] !== segment) || segment.includes("<")) break;
+    shared.push(segment);
+  }
+  return shared.join("/");
+}
+
 function loadStateFileIfPresent(projectDir: string): string | null {
   const path = engineStateFilePath(projectDir);
   if (!existsSync(path)) return null;
@@ -12175,13 +12188,21 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       ));
       return;
     }
-    emit({
+    // A stage skipped because it does not apply is said, in one line, with the
+    // next step the agent speaks from: the agent reports the skip and goes
+    // straight on. The agent's reason stays in the audit; it is the agent's
+    // own words, so it never becomes a line the engine says.
+    const skipped: Directive = {
       kind: "done",
       reason:
         `Committed skip for "${slug}" (scope: ${scope}). ` +
         "State routed forward; run next to continue.",
       ...workflowContinues(pd),
-    });
+      narration: `${node.name} does not apply here, so I skipped it.`,
+    };
+    // Carried only while the work goes on; the last stage's skip is said here.
+    if (skipped.kind === "done" && skipped.workflow_continues === true) carriesNarration.add(skipped);
+    emit(skipped);
     return;
   }
 
@@ -12565,8 +12586,26 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       changeNoticesFromToolOutput(res.stdout),
     );
     // The agent shows the gate next, so lines held from inside the stage are
-    // said with it.
-    if (flags.result === "awaiting-approval" || flags.result === "revised") leadsToSpeech.add(gateReply);
+    // said with it, and its Approve option names the stage the plan runs next
+    // now: a plan change made during the stage is in it.
+    if (flags.result === "awaiting-approval" || flags.result === "revised") {
+      leadsToSpeech.add(gateReply);
+      if (gateReply.kind === "print") {
+        const next = nextInScopeStage(slug, scope, loadStateFileIfPresent(pd) ?? undefined);
+        gateReply.next_stage = next ? next.name : null;
+        // Where the stage's output is, said with the gate, so the person can
+        // look even when no summary comes before the question. A stage that
+        // repeats per unit writes under the unit's folder, so without the unit
+        // named no folder is said rather than a wrong one.
+        const unit = flags.unit?.trim() || null;
+        const gateState = loadStateFileIfPresent(pd);
+        const unitFolders = isPerUnit(node) && !usesStageLevelPerUnitArtifacts(scope, gateState);
+        const folder = unitFolders && !unit
+          ? ""
+          : commonFolder(resolveProduces(node, unitFolders ? unit : null, engineRelativeRecordDir(pd), codekbCtxFor(pd)));
+        if (folder) gateReply.narration = `${node.name} is ready for your review: what it produced is in ${folder}/.`;
+      }
+    }
     emit(gateReply);
     return;
   }
