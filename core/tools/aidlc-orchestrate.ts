@@ -320,6 +320,9 @@ import {
   takeSessionSelectionNotice,
   addPendingPersonLines,
   pendingPersonLines,
+  personLineHeard,
+  PLAN_FIELD,
+  staleStageLine,
 } from "./aidlc-lib.ts";
 import { reviewRecoverySpentMessage } from "./aidlc-log.ts";
 import {
@@ -505,9 +508,11 @@ function projectStageValidityAdvisory(
     const name = earliest ? nodeForSlug(earliest)?.name ?? earliest : null;
     const warning = state === "drifted"
       ? name
-        ? `${name} finished before something it used changed; say "redo ${name.toLowerCase()}" to bring it up to date.`
+        ? staleStageLine(name)
         : `Some finished stages may be out of date; ${entrySkillInvocation()} --status shows which.`
       : stageValidityUnchecked();
+    // This chat already heard it, in the reply that named the stage.
+    if (engineSessionId && personLineHeard(projectDir, engineSessionId, warning)) return undefined;
     return {
       state,
       directly_stale: direct,
@@ -1496,8 +1501,9 @@ function narrateStageEntry(
 ): string {
   const stageName = node.name;
   if (isFirst) {
+    const plan = stateContent && getField(stateContent, PLAN_FIELD) ? "the plan you approved" : `the ${scope} plan`;
     return (
-      `Starting the ${scope} plan for this project. First step is ${stageName}, ` +
+      `Starting ${plan} for this project. First step is ${stageName}, ` +
       `and I will stop for your review before anything is final.`
     );
   }
@@ -3381,9 +3387,12 @@ function createPrintDirective(
   // The user named a scope (or one was inferred and confirmed), so the spoken
   // line can say what is being set up and how much process that means, with the
   // counts the compiled grid already gave us.
+  // A plan composed for this piece of work is the one the person approved; its
+  // base scope is not a name they know it by.
+  const plan = flags.planChanges ? "the plan you approved" : `a ${scope} workflow`;
   directive.narration = clause
-    ? `Setting up a ${scope} workflow for this: ${clause}.`
-    : `Setting up a ${scope} workflow for this.`;
+    ? `Setting up ${plan} for this: ${clause}.`
+    : `Setting up ${plan} for this.`;
   // A request typed with its scope was never shown on an ask, so the line on
   // how a pasted document was split is said here.
   if (description && !flags.request) directive.narration += documentSplitSentence(description);
@@ -6641,7 +6650,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     // Only a front composition continues into creation, which needs the
     // request by id; an in-flight reshape carries its text in the dispatch.
     // A request typed straight to compose passed no question, so how its
-    // pasted document was split is said here.
+    // pasted document was split is said here, before the plan is offered.
     let splitSaid = "";
     if (flags.intent && !flags.request && !inFlight) {
       splitSaid = documentSplitSentence(flags.intent);

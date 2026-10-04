@@ -6232,6 +6232,18 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:markPersonLinesHeard",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t352-workspace-reclassify.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:markProtectedQuestionReplied",
       "minMechanism": "none",
       "coveredBy": [
@@ -7165,6 +7177,18 @@
       "minMechanism": "none",
       "coveredBy": [],
       "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:personLineHeard",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t352-workspace-reclassify.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
     },
     {
       "unitClass": "function",
@@ -10259,6 +10283,18 @@
         {
           "file": "tests/unit/t330-authority-rebinding.test.ts",
           "mechanism": "none"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:staleStageLine",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t352-workspace-reclassify.test.ts",
+          "mechanism": "cli"
         }
       ],
       "status": "covered"
