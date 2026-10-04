@@ -24479,7 +24479,8 @@ export function stopHookDir(projectDir: string, intent?: string, space?: string)
 //   .aidlc-engine/human-turn   - touched by the UserPromptSubmit mint, once per human
 //                         prompt, alongside the HUMAN_TURN ledger event.
 //   .aidlc-engine/engine-touch - touched by aidlc-orchestrate on every ADVANCING
-//                         invocation (`next` / `report` / `park`).
+//                         invocation (`next` / `report` / `park`), and by
+//                         `intent create` for the work it creates.
 //
 //   conversational  <=>  mtime(.aidlc-engine/human-turn) > mtime(.aidlc-engine/engine-touch)
 //
@@ -24644,7 +24645,7 @@ export function askTurnEndIsOpen(projectDir: string, intent?: string, space?: st
 }
 
 // Record that the workflow engine was ADVANCED (not merely probed). Called from
-// aidlc-orchestrate.ts's `next` / `report` / `park` entry points. A no-op in three
+// orchestrate's `next` / `report` / `park` and `intent create`. A no-op in three
 // cases: when STOP_HOOK_PROBE_ENV is set (the Stop hook's own probe — see above),
 // for read-only utility routing (excluded at the call site), and before creation.
 //
@@ -24652,7 +24653,7 @@ export function askTurnEndIsOpen(projectDir: string, intent?: string, space?: st
 // isEngineToolCall (below) counts as engagement any non-read-only aidlc-jump /
 // aidlc-bolt / aidlc-swarm invocation and the mutating aidlc-state verbs
 // (approve, advance, skip, set, …). NONE of those tools touch this marker: the
-// only writers are orchestrate's three subcommands. So on a transcript-free
+// only writers are orchestrate's three subcommands and intent create. So on a transcript-free
 // harness a conductor that runs, say, `aidlc-jump` — mutating the stage pointer
 // and emitting audit — and then ends its turn without consulting the engine
 // reads as CONVERSATIONAL here, while the same turn BLOCKS on Claude/Codex where
