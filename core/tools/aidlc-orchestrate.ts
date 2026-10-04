@@ -9207,6 +9207,26 @@ type UnitMajorWalkStep =
     }
   | { kind: "covered" };
 
+// Where the walk stops a Unit at one block stage: its work, or the summary
+// confirmation after it. Null when the Unit is done there.
+function unitStageStop(
+  projectDir: string,
+  stateContent: string | null,
+  k: GraphStage,
+  u: string,
+  kind: string | null,
+  recordPrefix: string | null,
+  codekbCtx: CodekbCtx,
+  ledger: UnitLedger,
+): UnitMajorWalkStep | null {
+  if (!unitSettled(projectDir, k, u, recordPrefix, codekbCtx, kind, ledger)) {
+    return { kind: "work", stage: k, unit: u };
+  }
+  if (unitExempt(k, u, kind, ledger)) return null;
+  const confirmation = checkSummaryConfirmationEvidence(projectDir, k, { stateContent, unit: u });
+  return confirmation.ok ? null : { kind: "summary", stage: k, unit: u, confirmation };
+}
+
 function unitMajorWalkStep(
   projectDir: string,
   stateContent: string | null,
@@ -9238,17 +9258,8 @@ function unitMajorWalkStep(
   const stopFor = (u: string): UnitMajorWalkStep | null => {
     for (const k of block) {
       const ledger = ledgers.get(k.slug) ?? unitLedgerFor(projectDir, k.slug);
-      if (!unitSettled(projectDir, k, u, recordPrefix, codekbCtx, kinds?.get(u) ?? null, ledger)) {
-        return { kind: "work", stage: k, unit: u };
-      }
-      if (unitExempt(k, u, kinds?.get(u) ?? null, ledger)) continue;
-      const confirmation = checkSummaryConfirmationEvidence(projectDir, k, {
-        stateContent,
-        unit: u,
-      });
-      if (!confirmation.ok) {
-        return { kind: "summary", stage: k, unit: u, confirmation };
-      }
+      const stop = unitStageStop(projectDir, stateContent, k, u, kinds?.get(u) ?? null, recordPrefix, codekbCtx, ledger);
+      if (stop) return stop;
     }
     if (checkpoints && stateContent) {
       const kind: ConstructionCheckpointKind =
@@ -9529,11 +9540,14 @@ function unitMajorReopen(
     : "";
   const backTo = (unit: string, stage: string): string =>
     ` If they say 'back to ${unit}', run \`next --stage ${stage} --unit ${unit}\`.`;
-  // A Unit has reached the target when it finished it, or when the walk has it
-  // on a later step of the block (or at its checkpoint, after every step).
+  // A Unit has reached the target when it finished it, skipped it in this
+  // attempt (a jump ahead moved it past), or when the walk has it on a later
+  // step of the block (or at its checkpoint, after every step).
   const pastTarget = inFlight !== null &&
     (liveStage === null ? step.kind === "checkpoint" : blockSlugs.indexOf(liveStage) > targetIndex);
-  const reached = (unit: string): boolean => finished.has(unit) || (unit === inFlight && pastTarget);
+  const skippedHere = unitLedgerFor(projectDir, targetSlug).skipped;
+  const reached = (unit: string): boolean =>
+    finished.has(unit) || skippedHere.has(unit) || (unit === inFlight && pastTarget);
   const anyFinished = (): boolean =>
     walk.block.some((stage) => unitsWithStageWork(projectDir, stage, walk.context).length > 0);
   let reopened: string[];
@@ -9625,16 +9639,20 @@ function unitMajorReopen(
 
 // A forward jump in a solo unit-major walk. The person asked to go there, so it
 // goes through (#1411). When the target is the step the walk is already on,
-// plain routing lands there and skips nothing ("route"). Otherwise the jump runs
-// as it does anywhere, marking the steps it passes skipped for every unit, and
-// this returns the sentence naming the steps units have not finished, so the
-// agent can say what was skipped and how to reopen it. Null outside such a walk.
+// plain routing lands there and skips nothing ("route"). A target among the
+// later per-unit steps, once a unit has finished work, moves only the unit in
+// flight on: `execute --units` skips that unit's steps up to the target and
+// every other unit keeps its finished, approved work. Otherwise the jump runs
+// as it does anywhere, marking the steps it passes skipped for every unit.
+// Either way this returns the execute flags and the sentence naming what is
+// skipped, so the agent can say what was skipped and how to reopen it. Null
+// outside such a walk.
 function unitMajorForwardJump(
   projectDir: string,
   scope: string,
   stateContent: string,
   targetSlug: string,
-): "route" | string | null {
+): "route" | { before?: string; flags: string; said: string } | null {
   const currentSlug = getField(stateContent, "Current Stage")?.trim() ?? "";
   const walk = unitMajorWalkBeat(projectDir, scope, stateContent, currentSlug);
   if (!walk) return null;
@@ -9644,6 +9662,43 @@ function unitMajorForwardJump(
     : step.kind === "paused" ? step.stage : null;
   if (liveStage === targetSlug) return "route";
   const graph = loadGraph();
+  const at = (slug: string): number => graph.findIndex((node) => node.slug === slug);
+  const blockSlugs = walk.block.map((stage) => stage.slug);
+  const inFlight = step.kind === "paused" ? step.checkpoint.unit : step.kind === "covered" ? null : step.unit;
+  if (
+    inFlight !== null && liveStage !== null &&
+    blockSlugs.indexOf(targetSlug) > blockSlugs.indexOf(liveStage) &&
+    walk.block.some((stage) => unitsWithStageWork(projectDir, stage, walk.context).length > 0)
+  ) {
+    const kind = walk.context.kinds?.get(inFlight) ?? null;
+    const passed = walk.block
+      .slice(blockSlugs.indexOf(liveStage), blockSlugs.indexOf(targetSlug))
+      .filter((stage) => unitStageStop(
+        projectDir, stateContent, stage, inFlight, kind, walk.context.recordPrefix, walk.context.codekbCtx,
+        unitLedgerFor(projectDir, stage.slug),
+      ) !== null)
+      .map((stage) => stage.slug);
+    // A one-unit skip works on the steps at or after Current Stage, and on a
+    // step reopened behind its stage approval.
+    const approved = new Set(parseCheckboxes(stateContent).filter((row) => row.state === "completed").map((row) => row.slug));
+    if (passed.every((slug) => at(slug) >= at(currentSlug) || approved.has(slug))) {
+      // A parked workflow is unparked first: the unit moves on with Current
+      // Stage where it is, so the park would otherwise stop the next `next`.
+      const unpark = (getField(stateContent, "Parked") ?? "").trim().length > 0
+        ? `\`${aidlcToolInvocation("state")} unpark\`, then `
+        : "";
+      return {
+        before: unpark,
+        flags: ` --units ${inFlight}${passed.length > 0 ? ` --stages ${passed.join(",")}` : ""}`,
+        said: ` This moves only unit "${inFlight}" on to "${targetSlug}"` +
+          (passed.length > 0 ? `, skipping the steps it has not finished: ${passed.join(", ")}. Their files stay.` : ".") +
+          ` ${OTHER_UNITS_KEPT} After the jump, tell the person in one line what was skipped for unit ${inFlight}` +
+          (passed.length > 0
+            ? ` and that \`${entrySkillInvocation()} --stage ${passed[0]} --unit ${inFlight}\` reopens it.`
+            : "."),
+      };
+    }
+  }
   const targetIndex = graph.findIndex((stage) => stage.slug === targetSlug);
   // Steps before the target that a unit has not finished are skipped; steps
   // from the target on that a unit finished start a new attempt, so the walk
@@ -9672,14 +9727,17 @@ function unitMajorForwardJump(
         `and needs its approvals again: ${named(redone)}.`,
     );
   }
-  if (said.length === 0) return "";
+  if (said.length === 0) return { flags: "", said: "" };
   // The jump back that reopens what was skipped starts at the earliest skipped step.
   const earliestSkipped = walk.block
     .find((stage) => [...skipped.values()].some((steps) => steps.includes(stage.slug)))?.slug ?? currentSlug;
-  return ` ${said.join(" ")} After the jump, tell the person in one line what was ` +
-    (skipped.size > 0
-      ? `skipped${redone.size > 0 ? " or started over" : ""} and that \`${entrySkillInvocation()} --stage ${earliestSkipped}\` reopens it.`
-      : "started over.");
+  return {
+    flags: "",
+    said: ` ${said.join(" ")} After the jump, tell the person in one line what was ` +
+      (skipped.size > 0
+        ? `skipped${redone.size > 0 ? " or started over" : ""} and that \`${entrySkillInvocation()} --stage ${earliestSkipped}\` reopens it.`
+        : "started over."),
+  };
 }
 
 // Emit ONE iteration of the UNIT-MAJOR construction walk (opt-in via the
@@ -10295,8 +10353,8 @@ function emitJumpDirective(
     // conductor runs it, the NEXT `next` sees the pivoted state and emits the
     // run-stage for the now-current target.
     emit(printDirective(
-      `Run \`${aidlcToolInvocation("jump")} execute --target ${targetSlug} --direction ${direction} --scope ${scope}\` to perform the jump, then re-run \`next\` to continue from the jump target.` +
-        (unitMajor ?? "") + everyUnitLine,
+      `Run ${unitMajor?.before ?? ""}\`${aidlcToolInvocation("jump")} execute --target ${targetSlug} --direction ${direction}${unitMajor?.flags ?? ""} --scope ${scope}\` to perform the jump, then re-run \`next\` to continue from the jump target.` +
+        (unitMajor?.said ?? "") + everyUnitLine,
     ));
     return;
   }
