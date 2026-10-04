@@ -7952,7 +7952,7 @@ describe("t243 projection channel", () => {
       expect(opencode.permission.bash[`aidlc ${namespace} *`]).toBeUndefined();
     }
     const parsedHooks = JSON.parse(hooks) as {
-      hooks: Record<string, Array<{ hooks: Array<{ command: string; timeout: number }> }>>;
+      hooks: Record<string, Array<{ matcher?: string; hooks: Array<{ command: string; timeout: number }> }>>;
     };
     const snake: Record<string, string> = {
       SessionStart: "session_start",
@@ -7981,8 +7981,10 @@ describe("t243 projection channel", () => {
           expect(hook.timeout).toBe(
             (EXTENDED_SUBPROCESS_TIMEOUT_MS / 1000) * (compound ? 2 : 1),
           );
+          // Codex hashes the group's matcher too, when it has one.
           const identity = {
             event_name: snake[event],
+            ...(group.matcher === undefined ? {} : { matcher: group.matcher }),
             hooks: [{
               async: false,
               command: hook.command,
