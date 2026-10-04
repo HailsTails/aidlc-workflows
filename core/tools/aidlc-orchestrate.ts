@@ -1634,6 +1634,11 @@ interface RoutingCarried {
   creation: string;
   newWork: string;
   existingWork: string;
+  /**
+   * An approved plan's stage changes (`--skip`/`--add`): they belong to the
+   * plan they were approved on, so they ride only that plan's new-work answers.
+   */
+  planChanges: string;
 }
 
 function guardPolicyLowered(flags: ParsedFlags): boolean {
@@ -1645,11 +1650,25 @@ function carriedRoutingFlags(flags: ParsedFlags): RoutingCarried {
   if (flags.review) extra.push(`--review ${flags.review}`);
   if (flags.changeControl && !guardPolicyLowered(flags)) extra.push(`--guard-policy ${flags.changeControl}`);
   const existingWork = `${carriedCreationFlags(flags)}${extra.length > 0 ? ` ${extra.join(" ")}` : ""}`;
+  const stages: string[] = [];
+  if (flags.planChanges?.skip.length) stages.push(`--skip ${flags.planChanges.skip.join(",")}`);
+  if (flags.planChanges?.add.length) stages.push(`--add ${flags.planChanges.add.join(",")}`);
   return {
     creation: carriedCreationFlags(flags),
     newWork: `${existingWork}${guardPolicyLowered(flags) ? ` --guard-policy ${flags.changeControl}` : ""}`,
     existingWork,
+    planChanges: stages.length > 0 ? ` ${stages.join(" ")}` : "",
   };
+}
+
+// A routing question asked again keeps what the first one kept: the settings
+// it stored, read back through the same parser, never the narrower set its
+// answer command happened to carry. A stored value the parser refuses keeps
+// nothing (null), so no partial plan is asked about again.
+function carriedFromQuestion(question: StoredQuestion, flags: ParsedFlags): RoutingCarried | null {
+  if (!question.settings) return carriedRoutingFlags(flags);
+  const kept = parseNextFlags(question.settings.newWork);
+  return kept.parseError ? null : carriedRoutingFlags(kept);
 }
 
 function scopeConfirmAskDirective(
@@ -1852,6 +1871,9 @@ function routingQuestionAnswer(
     if (question?.origin !== "routing" || question.stateSha256 === undefined || !target) return null;
     const option = routingOptionReply(text, question.proposedScope);
     if (!option) return null;
+    // Once the request it stopped has started work, the question is spent:
+    // the person's words are their own again.
+    if (question.approvedRequest && intentStartedByQuestion(projectDir, question.approvedRequest)) return null;
     const statePath = stateFilePathForSelection(projectDir, {
       space: question.askedAbout!.space,
       intent: target.intent || null,
@@ -1933,7 +1955,8 @@ function newWorkRoutingAskDirective(
   askedAbout: { space: string; targets: QuestionTarget[] },
   availableIntents?: string[],
   stateSha256?: string,
-  carried: RoutingCarried = { creation: "", newWork: "", existingWork: "" },
+  carried: RoutingCarried = { creation: "", newWork: "", existingWork: "", planChanges: "" },
+  approvedRequest?: string,
 ): AskDirective {
   // Once emitted, this typed ask is the sole route authority for the pending
   // prose. Harnesses render it and stop rather than reclassifying the request.
@@ -1942,9 +1965,9 @@ function newWorkRoutingAskDirective(
   // reshape routes act only on the item(s) it names, and ask again otherwise.
   const tokens = (carriedFlags: string): string[] => carriedFlags.split(" ").filter((token) => token.length > 0);
   const stored = saveQuestion(projectDir, description, proposedScope, "routing", askedAbout, false, undefined, stateSha256, {
-    newWork: tokens(carried.newWork),
+    newWork: tokens(`${carried.newWork}${carried.planChanges}`),
     existingWork: tokens(carried.existingWork),
-  });
+  }, approvedRequest);
   const tool = aidlcToolInvocation("orchestrate");
   return {
     kind: "ask",
@@ -1955,8 +1978,9 @@ function newWorkRoutingAskDirective(
     new_work_description: authoritativeRequest(description),
     proposed_scope: proposedScope,
     new_intent_command:
-      `${tool} next --new-intent --scope ${shellArg(proposedScope)} --request ${stored.id}${carried.newWork}`,
-    scope_commands: scopeCommands(`${tool} next --new-intent`, stored.id, carried.newWork),
+      `${tool} next --new-intent --scope ${shellArg(proposedScope)} --request ${stored.id}${carried.newWork}${carried.planChanges}`,
+    scope_commands: scopeCommands(`${tool} next --new-intent`, stored.id, carried.newWork).map((entry) =>
+      entry.scope === proposedScope ? { ...entry, command: `${entry.command}${carried.planChanges}` } : entry),
     // Beside active work this reshapes it; with records to pick it composes
     // the new work, like a plan offer's compose answer.
     compose_command:
@@ -3367,7 +3391,7 @@ function composeDispatchDirective(
 // read-only: it emits a directive, it does not touch the cursor.
 function intentPickPromptIfRecordsExist(
   projectDir: string,
-  pendingWork?: { description: string; proposedScope: string; carried: RoutingCarried },
+  pendingWork?: { description: string; proposedScope: string; carried: RoutingCarried; approvedRequest?: string },
 ): AskDirective | ErrorDirective | null {
   const selection = engineSelection(projectDir);
   const space = selection.space;
@@ -3492,6 +3516,7 @@ function intentPickPromptIfRecordsExist(
       selectors,
       undefined,
       pendingWork.carried,
+      pendingWork.approvedRequest,
     );
   }
   // The harness's own entry: Codex users invoke a skill, not a slash command.
@@ -5601,6 +5626,11 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     const settings = routingAnswer.question.settings;
     if (settings) {
       const replay = parseNextFlags(routingAnswer.route === "separate" ? settings.newWork : settings.existingWork);
+      if (replay.parseError) {
+        emit(errorDirective(QUESTION_UNAVAILABLE));
+        return;
+      }
+      flags.planChanges = replay.planChanges;
       flags.depth = replay.depth;
       flags.testStrategy = replay.testStrategy;
       flags.projectType = replay.projectType;
@@ -5641,6 +5671,16 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     if (!found) {
       pruneQuestions();
       emit(repeatedAnswerDirective(questionDir, flags.request) ?? errorDirective(QUESTION_UNAVAILABLE));
+      return;
+    }
+    // A routing question that stopped an answer is answered once that answer's
+    // request started work, whichever of its routes runs.
+    const started = found.origin === "routing" && found.approvedRequest
+      ? repeatedAnswerDirective(questionDir, found.approvedRequest)
+      : null;
+    if (started) {
+      pruneQuestions();
+      emit(started);
       return;
     }
     question = found;
@@ -6013,6 +6053,8 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     }
   }
   let routingScopeProposal: string | undefined;
+  // A routing question asked again keeps what it kept the first time.
+  let askedAgain: { question: StoredQuestion; carried: RoutingCarried } | undefined;
   if (question?.origin === "routing" && (flags.compose || flags.continue)) {
     const named = questionTargetSelected(question, {
       ...selection,
@@ -6031,11 +6073,17 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       flags.continue = false;
       flags.scope = undefined;
       flags.positionalScope = undefined;
+      const kept = carriedFromQuestion(question, flags);
+      if (kept === null) {
+        emit(errorDirective(QUESTION_UNAVAILABLE));
+        return;
+      }
       if (stateContent === null) {
         const again = intentPickPromptIfRecordsExist(pd, {
           description: question.text,
           proposedScope: question.proposedScope,
-          carried: carriedRoutingFlags(flags),
+          carried: kept,
+          approvedRequest: question.approvedRequest,
         });
         if (again) {
           emit(again);
@@ -6047,6 +6095,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
         // Branch 9c asks again about the workflow selected now, proposing the
         // scope the human already confirmed.
         routingScopeProposal = question.proposedScope || undefined;
+        askedAgain = { question, carried: kept };
       }
     }
   } else if (flags.continue) {
@@ -6054,6 +6103,13 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       "--continue answers a new-work routing question; run the command that question supplied.",
     ));
     return;
+  }
+  // New work started from a routing question that stopped an answer (a plan
+  // approval, a scope confirmation) answers that request, whichever plan is
+  // named: the work starts once, and words said at that question reach it.
+  if (question?.origin === "routing" && question.approvedRequest && flags.newIntent &&
+    readQuestion(pd, question.approvedRequest) !== null) {
+    flags.request = question.approvedRequest;
   }
   if (question?.origin === "front" && stateContent !== null && !flags.compose && flags.scope) {
     flags.newIntent = true;
@@ -6565,6 +6621,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
             description: flags.intent,
             proposedScope: flags.positionalScope,
             carried: carriedRoutingFlags(flags),
+            approvedRequest: flags.request,
           }
         : undefined,
     );
@@ -6632,6 +6689,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
               description: flags.intent,
               proposedScope: scope,
               carried: carriedRoutingFlags(flags),
+              approvedRequest: flags.request,
             }
           : undefined,
       );
@@ -6751,7 +6809,8 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       { space: selection.space, targets: routingTargets() },
       undefined,
       stateDigest(stateContent),
-      carriedRoutingFlags(flags),
+      askedAgain?.carried ?? carriedRoutingFlags(flags),
+      askedAgain?.question.approvedRequest,
     ));
     return;
   }
