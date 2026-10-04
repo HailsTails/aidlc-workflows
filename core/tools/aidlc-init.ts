@@ -222,6 +222,7 @@ import {
   type ResolvedAidlcSettings,
   type SettingsTarget,
 } from "./aidlc-settings.ts";
+import { recordSwitchChange, switchesOffLines } from "./aidlc-recorded-switches.ts";
 
 type RootContribution =
   | { policy: "managed-block"; hash: string; marker?: string }
@@ -3095,6 +3096,7 @@ function showChoiceSection(
         resolved.flags,
         resolved,
       ),
+      switches: switchesOffLines(projectDir),
     };
   } else {
     const completion = records.project?.completions;
@@ -3183,6 +3185,7 @@ function showChoiceSection(
     for (const bypass of resolved.flags?.bypasses ?? []) {
       output += `  Bypass enabled: ${bypass} ${sourceLabel(bypass)}\n`;
     }
+    for (const line of data.switches as string[]) output += `  ${line}\n`;
     const files = data.files as ReturnType<typeof flagFiles>;
     if (files.length === 0) {
       output += "  Files carrying flags: none\n";
@@ -7845,6 +7848,7 @@ function handleSettingsOnlySection(
             record: resolved.flags,
             effective: effectiveProjectFlagValues(resolved.flags),
             sources: resolved.sources,
+            switches: switchesOffLines(projectDir),
           },
     ), options);
     return true;
@@ -7947,10 +7951,21 @@ function handleSettingsOnlySection(
       if (note) notes.push(note);
       invalidateSettingsCache(path);
     }
-    if (options.mode === "human") writeMenuLines("", notes.map((note) => `  Note: ${note}`));
+    const switchLines = section === "flags"
+      ? recordSwitchChange(projectDir, target, currentFile, nextFile)
+      : [];
+    if (options.mode === "human") {
+      writeMenuLines("", notes.map((note) => `  Note: ${note}`));
+      writeMenuLines("", switchLines);
+    }
     emitResult(success(
       `configured ${section} settings in ${path}`,
-      { target, path, ...(notes.length > 0 ? { notes } : {}) },
+      {
+        target,
+        path,
+        ...(notes.length > 0 ? { notes } : {}),
+        ...(switchLines.length > 0 ? { switches: switchLines } : {}),
+      },
     ), options);
   } catch (error) {
     emitResult(usage(
@@ -8120,11 +8135,18 @@ function recordBypassesOnly(
         );
       }
     }
+    // Which of the person's checks is now off or back on, in plain words.
+    // The lines above already name any other file that still records a
+    // cleared switch.
+    const switchLines = [...new Set(mutations.flatMap((change) =>
+      recordSwitchChange(projectDir, change.target, change.previous, change.next, { otherFiles: false })
+    ))];
     if (options.mode === "human") {
       writeMenuLines("", context.summaryLines);
       writeMenuLines("", context.notes.map((note) => `  Note: ${note}`));
       writeMenuLines("", changes.map((line) => `  ${line}`));
       writeMenuLines("", notes.map((note) => `  Note: ${note}`));
+      writeMenuLines("", switchLines.map((line) => `  ${line}`));
     }
     // With several harnesses and none named, no one harness's setup is the
     // person's to finish here.
@@ -8148,6 +8170,7 @@ function recordBypassesOnly(
         changes,
         outstandingActions,
         choices,
+        ...(switchLines.length > 0 ? { switches: switchLines } : {}),
       },
     ), options);
   } catch (error) {
@@ -9167,6 +9190,14 @@ export async function main(
     if (settingsMutation && settingsMutation.target !== "global") {
       invalidateSettingsCache(settingsMutation.path);
     }
+    const switchLines = choicesContext?.section === "flags" && choicesContext.settings
+      ? recordSwitchChange(
+          projectDir,
+          choicesContext.settings.target,
+          choicesContext.settings.previous,
+          choicesContext.settings.next,
+        )
+      : [];
     if (modelsContext && options.mode === "human") {
       writeMenuLines("", modelsContext.summaryLines);
       writeMenuLines("", modelsContext.notes.map((note) => `  Note: ${note}`));
@@ -9178,6 +9209,7 @@ export async function main(
     if (choicesContext && options.mode === "human") {
       writeMenuLines("", choicesContext.summaryLines);
       writeMenuLines("", choicesContext.notes.map((note) => `  Note: ${note}`));
+      writeMenuLines("", switchLines);
     }
     // Cursor may skip project hooks in a folder outside any git repository
     // (issue #976), so such a project gets `git init` as its first next step,
@@ -9272,6 +9304,7 @@ export async function main(
               },
             }
           : {}),
+        ...(switchLines.length > 0 ? { switches: switchLines } : {}),
       },
     ), options);
     if (

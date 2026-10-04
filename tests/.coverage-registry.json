@@ -5651,6 +5651,18 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:latestPersonTurn",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t-recorded-switch-notices.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:latestPipelineLinkArtifactMtime",
       "minMechanism": "none",
       "coveredBy": [
@@ -7025,6 +7037,18 @@
       "coveredBy": [
         {
           "file": "tests/unit/t-request-changes-own-words.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:personSpokeSinceGate",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t-recorded-switch-notices.test.ts",
           "mechanism": "cli"
         }
       ],
