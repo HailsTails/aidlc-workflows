@@ -1434,6 +1434,7 @@ export function workerBrief(
     `${marker}\n` +
     `AIDLC-TESTING-CONTRACT: ${contractHash}\n` +
     (resume ? progressSection(resume) : "") +
+    `\n## Files and commands\n\n${FILE_TOOLS_RULE}\n` +
     (continuation ? "\n## Current plan (plan-approval fence off)\n\n" : "\n## Approved plan\n\n") +
     `${projectedPlan}\n` +
     (continuation ? "\n## Current unit-test instructions\n\n" : "\n## Approved unit-test instructions\n\n") +
@@ -1975,12 +1976,32 @@ export function codeGenerationIssuance(
 }
 
 /**
- * How every command a Code Generation refusal names is to be run: as printed
- * and alone. A `cd`, a pipe, or a second command around an admitted command
- * makes the whole line a shell the plan-approval guard cannot read.
+ * How every command AI-DLC names is to be run: as printed and alone. A `cd`, a
+ * pipe, or a second command around an admitted command makes the whole line a
+ * shell the plan-approval guard cannot read.
  */
 export const AS_ITS_OWN_COMMAND =
   "exactly as written, as a command of its own (no `cd` before it, no pipe or second command after it)";
+
+/**
+ * How every AI-DLC agent does file work and runs AI-DLC's commands. The one
+ * owner of the wording: the worker brief renders it, and the conductor
+ * persona, the subagent dispatch protocol, and the reviewer protocol carry it
+ * verbatim (t-agent-conduct). Inside the project the file tools run without a
+ * prompt on every harness; a shell write, or a compound shell line, can stop
+ * and ask the person. The rule is about the agent writing a file itself: a
+ * project command the plan calls for that writes files on its own still runs.
+ * Reads go through the shell only where that is the harness's one way to read
+ * (Codex), as one plain command.
+ */
+export const FILE_TOOLS_RULE =
+  "Write and edit files yourself with your file tools, never through the shell (no heredoc, no `echo`, " +
+  "`printf`, or `python3` writing a file, no `sed -i`, no `mkdir`; the file-write tool creates any " +
+  "missing folder). A command the person asks for, or one the plan names (a package install, a build, " +
+  "a scaffolder, a migration, a formatter, a code generator, even a `mkdir`), still runs as written. " +
+  "Read, list, and search (your own knowledge files included) with your file tools where you have them; where the shell " +
+  "is your only way to read, use one plain read command (no `cd` before it, no pipe or second command " +
+  `after it). Run every AI-DLC command ${AS_ITS_OWN_COMMAND}: a shell line can stop and ask the person to approve it.`;
 
 // A rules part's receipt as the engine mints it: 8 base64url characters
 // (`steeringReceipt` in aidlc-orchestrate.ts).

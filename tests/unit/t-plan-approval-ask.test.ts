@@ -82,6 +82,7 @@ import {
   writeSessionPidEntry,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { appendAuditEntry } from "../../dist/claude/.claude/tools/aidlc-audit.ts";
+import { FILE_TOOLS_RULE } from "../../dist/claude/.claude/tools/aidlc-testing-posture.ts";
 
 setDefaultTimeout(120_000);
 
@@ -1017,7 +1018,8 @@ describe("when the stage rules arrive in parts", () => {
   for (const unit of [null, "unit-2"]) {
     test(`one approval, then the rules in parts, then the build (${unit ?? "no Units"})`, () => {
       const proj = withRulesInParts(unit ? unitProject(unit) : project());
-      writePlan(proj, "", unit);
+      // A step that runs a project command which writes files on its own.
+      writePlan(proj, "- [ ] Step 2: run `bun install` to add the slug dependency\n", unit);
       const ask = next(proj);
       expect(ask.kind, JSON.stringify(ask)).toBe("ask");
       expect(ask.ask_type).toBe("plan-approval");
@@ -1039,6 +1041,14 @@ describe("when the stage rules arrive in parts", () => {
       const brief = posture(proj, "brief", unit);
       expect(brief.status, brief.stderr).toBe(0);
       expect(brief.stdout).toContain("## Approved plan");
+      // The worker is told to do file work with its file tools, before the approved content.
+      expect(brief.stdout).toContain(`## Files and commands\n\n${FILE_TOOLS_RULE}\n`);
+      expect(brief.stdout.indexOf("## Files and commands")).toBeLessThan(brief.stdout.indexOf("## Approved plan"));
+      // The rule is about the worker writing a file itself: a command the
+      // person asks for or the plan names still runs, even a mkdir.
+      expect(brief.stdout).toContain("Step 2: run `bun install` to add the slug dependency");
+      expect(FILE_TOOLS_RULE).toContain("A command the person asks for, or one the plan names");
+      expect(FILE_TOOLS_RULE).toContain("even a `mkdir`), still runs as written");
       expect(auditText(proj).match(/\*\*Event\*\*: PLAN_APPROVAL_RECORDED/g)).toHaveLength(1);
     });
   }
