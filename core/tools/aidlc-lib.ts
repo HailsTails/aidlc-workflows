@@ -33521,6 +33521,15 @@ export interface UnitLifecycleSnapshot {
   mode: UnitLifecycleMode;
 }
 
+// A wave completion is a receipt while its outputs are the ones it recorded.
+// With Construction Checkpoints on, a later change to them is the Unit
+// checkpoint's to re-check or accept (`keepChanged`), so the completion holds
+// while every output is still there.
+function waveCompletionHolds(recorded: string | null, current: string | null, keepChanged: boolean): boolean {
+  return recorded !== null && /^sha256:[0-9a-f]{64}$/.test(recorded) &&
+    (current === recorded || (keepChanged && current !== null));
+}
+
 export function unitLifecycleSnapshot(
   projectDir: string,
   slug: string,
@@ -33531,6 +33540,7 @@ export function unitLifecycleSnapshot(
       stage: StageEntry,
       unit: string,
     ) => string | null;
+    keepChangedWaveCompletions?: boolean;
   } = {},
 ): UnitLifecycleSnapshot {
   const unitMajor =
@@ -33575,11 +33585,7 @@ export function unitLifecycleSnapshot(
           : reviewArtifactFingerprint(projectDir, stage, row.unit, {
               requireRequiredArtifacts: true,
             });
-    if (
-      recorded !== null &&
-      /^sha256:[0-9a-f]{64}$/.test(recorded) &&
-      current === recorded
-    ) {
+    if (waveCompletionHolds(recorded, current, options.keepChangedWaveCompletions === true)) {
       receipts.add(row.unit);
     } else {
       receipts.delete(row.unit);
@@ -33612,6 +33618,7 @@ export function unitLifecycleSnapshot(
 export function unitCompletedReceipts(
   projectDir: string,
   slug: string,
+  options: { keepChangedWaveCompletions?: boolean } = {},
 ): Set<string> {
   const audit = readAllAuditShards(projectDir);
   if (!audit) return new Set();
@@ -33634,11 +33641,7 @@ export function unitCompletedReceipts(
         : reviewArtifactFingerprint(projectDir, stage, row.unit, {
             requireRequiredArtifacts: true,
           });
-    if (
-      recorded !== null &&
-      /^sha256:[0-9a-f]{64}$/.test(recorded) &&
-      current === recorded
-    ) {
+    if (waveCompletionHolds(recorded, current, options.keepChangedWaveCompletions === true)) {
       done.add(row.unit);
     } else {
       done.delete(row.unit);
