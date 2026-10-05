@@ -12045,6 +12045,13 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:withoutEntryWord",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:withWorkspaceSourceStateCache",
       "minMechanism": "none",
       "coveredBy": [
