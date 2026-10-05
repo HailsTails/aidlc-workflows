@@ -377,13 +377,20 @@ describe("t241 OpenCode adapter command boundary and transition filter", () => {
     }
     // Still one command only: chaining, substitution and expansion outside or
     // inside double quotes, and $'...', which /bin/sh may read as more than one
-    // word, are refused.
-    for (const [i, command] of [
-      `${START_SINGLE} ; touch /tmp/x`,
-      `${START_SINGLE}\ntouch /tmp/x`,
+    // word, are refused. cmd.exe gives $ and the backtick no meaning, so there
+    // the quoted ones are one plain argument.
+    const posixExpansions = [
       "bun .aidlc/tools/aidlc.ts engine orchestrate next \"today's $(touch /tmp/x)\"",
       "bun .aidlc/tools/aidlc.ts engine orchestrate next \"today's `touch /tmp/x`\"",
       "bun .aidlc/tools/aidlc.ts engine orchestrate next \"$HOME\"",
+    ];
+    for (const [i, command] of posixExpansions.entries()) {
+      if (posix) await expect(invoke(`expand-${i}`, command)).rejects.toThrow("one direct invocation");
+      else await expect(invoke(`expand-${i}`, command)).resolves.toBeUndefined();
+    }
+    for (const [i, command] of [
+      `${START_SINGLE} ; touch /tmp/x`,
+      `${START_SINGLE}\ntouch /tmp/x`,
       "bun .aidlc/tools/aidlc.ts engine orchestrate next $'today\\'s rooms\\; touch /tmp/x'",
       "aidlc engine orchestrate next today\\' ; touch /tmp/x",
       // A line continuation: the shell joins the lines, the later guards do not.
@@ -468,6 +475,10 @@ describe("t241 OpenCode adapter command boundary and transition filter", () => {
     ['bun .aidlc/tools/aidlc.ts engine orchestrate next "Staff see today\'s rooms; 50% booked!"', ["Staff see today's rooms; 50% booked!"]],
     ['aidlc engine orchestrate next "Rename \u201cTasks\u201d, R&D | QA"', ["Rename \u201cTasks\u201d, R&D | QA"]],
     ['bun .aidlc/tools/aidlc.ts engine orchestrate next "Wow, say !T241_VALUE now"', ["Wow, say !T241_VALUE now"]],
+    // cmd.exe expands neither $ nor the backtick, so text holding them and an &
+    // (refused by PowerShell, which names cmd.exe) can be sent from here.
+    ['aidlc engine orchestrate next "Price rooms at $5k & up for `R&D`"', ["Price rooms at $5k & up for `R&D`"]],
+    ['bun .aidlc/tools/aidlc.ts engine orchestrate next $PATH "$HOME & `whoami`"', ["$PATH", "$HOME & `whoami`"]],
   ];
 
   test("PowerShell and cmd.exe each read their own quoting, and a quote either reads differently is refused", async () => {
@@ -714,6 +725,9 @@ describe("t241 OpenCode adapter reviewer scope", () => {
   test("blocks a sibling-unit read and allows the dispatched unit", async () => {
     const root = freshProject();
     copyCore(root, "hooks/aidlc-reviewer-scope.ts");
+    // The hook reads a shell command's write targets through the shared parser
+    // shipped beside it in every tree.
+    copyCore(root, "hooks/review-freeze-command.ts");
     copyCore(root, "tools/aidlc-audit.ts");
     copyCore(root, "tools/aidlc-lib.ts");
     copyCore(root, "tools/aidlc-artifact-vocabulary.ts");

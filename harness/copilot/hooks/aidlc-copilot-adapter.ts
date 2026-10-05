@@ -871,6 +871,7 @@ export async function run(
     let prefixCursor = 0;
     const prefixFirst = prefix[prefixCursor++] ?? "";
     let directPrefix = false;
+    let prefixDispatcher = false;
     // Another AI-DLC tool script: allowed when simple, otherwise no decision
     // (never a deny, so its shell forms keep their earlier answer).
     let toolPrefix = false;
@@ -881,7 +882,8 @@ export async function run(
       const dispatcherPath = join(projectDir, ".aidlc", "tools", "aidlc.ts");
       try {
         const resolved = realpathSync(resolve(projectDir, terminalPath(script)));
-        directPrefix = resolved === realpathSync(directPath) || resolved === realpathSync(dispatcherPath);
+        prefixDispatcher = resolved === realpathSync(dispatcherPath);
+        directPrefix = resolved === realpathSync(directPath) || prefixDispatcher;
         toolPrefix = !directPrefix && ownToolScript(resolved) !== null;
       } catch {
         const typed = resolve(projectDir, terminalPath(script));
@@ -910,7 +912,30 @@ export async function run(
     if (toolPrefix) return toolScriptCommand(command);
     if (!directPrefix) return { status: "unrelated" };
     const parsed = simpleCommand(command);
-    if (!parsed) return { status: "unsupported" };
+    if (!parsed) {
+      // A workflow step refused for its shell form names the form that runs,
+      // built from parts and never from the typed text. Every other AI-DLC
+      // command keeps the general refusal.
+      const bunLed = prefixFirst === "bun" || prefixFirst === process.execPath;
+      let verbs = prefix.slice(bunLed ? prefixCursor + 1 : 1);
+      const routed = verbs[0] === "engine" && verbs[1] === "orchestrate";
+      if (routed) verbs = verbs.slice(2);
+      const verb = verbs[0] === "--resume" ? "next" : verbs[0] ?? "";
+      if (!(["next", "continue", "report", "park"] as string[]).includes(verb)) return { status: "unsupported" };
+      // A resume keeps --resume: a bare next is refused while it waits.
+      const resume = verbs[0] === "--resume" || (verb === "next" && verbs[1] === "--resume");
+      const named = resume ? "next --resume" : verb;
+      const start = !bunLed ? "aidlc"
+        : `bun ${[".aidlc", "tools", prefixDispatcher ? "aidlc.ts" : "aidlc-orchestrate.ts"].join("/")}`;
+      // The dispatcher's routed form runs every step, the --resume shorthand included.
+      const orchestrate = !bunLed || prefixDispatcher ? " engine orchestrate" : "";
+      return {
+        status: "unsupported",
+        reason: "Use one simple direct, source-dispatcher, or compiled AI-DLC command without chaining, substitution, " +
+          `or redirection other than one terminal \`2>&1\`. Run \`${start}${orchestrate} ${named}\` as a command of its own, ` +
+          "with its own arguments.",
+      };
+    }
     if (parsed.expansionActive) return { status: "unrelated" };
     const words = parsed.words;
     let cursor = 0;
@@ -1951,12 +1976,12 @@ export async function run(
             // chat owns the step, this call reuses another call's id, or this
             // exact call is already pending.
             const reason = claimed.reason === "resume"
-              ? "A legacy Resume marker is still waiting or selected. Re-run `next --resume` in the owning session to supersede it before continuing; bare `next` remains denied until then."
+              ? "The workflow is waiting for its resume choice. Run `next --resume` to pick it up in this chat; a bare `next` stays refused until then."
               : claimed.reason === "attempt"
                 ? "This call carries the id of another pending AI-DLC call, so it did not run. Run a fresh `next` in this session."
               : claimed.reason === "foreign"
                 ? "This continuation belongs to another Copilot session. Run a fresh `next` in this session to take ownership; do not execute the owner's current token."
-                : "An equivalent `continue` is already pending for this cursor. Retry after that invocation settles; this duplicate did not replace it.";
+                : "An equivalent `continue` is already pending for this cursor. Retry after that invocation settles, or run a fresh `next` in this session; this duplicate did not replace it.";
             process.stdout.write(denyJson(reason));
             return 0;
           }

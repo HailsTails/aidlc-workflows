@@ -367,7 +367,9 @@ function runIdeStdin(
 
 const KIRO_GUARD_SWITCH_REFUSAL = "Guard settings cannot be lowered for the active piece of work in this Kiro IDE session because this version does not provide the submitted message. Update Kiro IDE or start a new piece of work from a scope whose default already uses the lower setting. You can still select strict or turn a fence on.";
 const KIRO_SUMMARY_WAY_OUT = "To turn summary confirmation off now, run `bun .kiro/tools/aidlc.ts config flags --bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --local --yes` in a terminal: it turns it off for all work in this project, including the work running now (run it again with `--clear-bypass` in place of `--bypass` to turn it back on). After you update Kiro IDE, you can instead type `/aidlc config set summary-confirmation off` yourself.";
-const KIRO_PLAN_APPROVAL_WAY_OUT = "To build code plans without being asked now, run `bun .kiro/tools/aidlc.ts config flags --bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --local --yes` in a terminal: it turns plan approval off for all work in this project, including the work running now (run it again with `--clear-bypass` in place of `--bypass` to turn it back on). After you update Kiro IDE, you can instead type `/aidlc config set plan-approval off` yourself.";
+// This build keeps its plan picker even with plan approval off, so the way out
+// promises no skip: it names the update, and the switch for the check's refusals.
+const KIRO_PLAN_APPROVAL_WAY_OUT = "This Kiro IDE build still shows each plan here for you to approve; after you update Kiro IDE, you can type `/aidlc config set plan-approval off` to build plans without being asked. If the plan approval check refuses work wrongly meanwhile, run `bun .kiro/tools/aidlc.ts config flags --bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --local --yes` in a terminal to turn that check off for all work in this project, including the work running now (run it again with `--clear-bypass` in place of `--bypass` to turn it back on).";
 const KIRO_PLAN_APPROVAL_SWITCH_REFUSAL = `Plan approval cannot be turned off for the active piece of work in this Kiro IDE session because this version does not provide the submitted message. ${KIRO_PLAN_APPROVAL_WAY_OUT}`;
 const KIRO_SUMMARY_SWITCH_REFUSAL = `Summary confirmation cannot be turned off for the active piece of work in this Kiro IDE session because this version does not provide the submitted message. ${KIRO_SUMMARY_WAY_OUT}`;
 const KIRO_PROMPT_CAPABILITY_NOTE = `Guard settings cannot be lowered, and summary confirmation and plan approval cannot be turned off, for the active piece of work in this Kiro IDE session because this version does not provide the submitted message. To use a lower guard setting, update Kiro IDE or start a new piece of work from a scope whose default already uses that setting. ${KIRO_SUMMARY_WAY_OUT} ${KIRO_PLAN_APPROVAL_WAY_OUT} You can still select strict or turn a fence on. An existing Change Control: relaxed|off line is renamed to Guard Policy without changing its value.`;
@@ -1317,6 +1319,8 @@ describe("t218 Kiro IDE hook adapter (USER_PROMPT env context)", () => {
     };
     try {
       const named = /run `([^`]+)` in a terminal/.exec(KIRO_PLAN_APPROVAL_WAY_OUT)?.[1] ?? "";
+      expect(named).toContain("--bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD");
+      expect(KIRO_PLAN_APPROVAL_WAY_OUT).not.toContain("without being asked now");
       const before = planLine();
       expect(before).toMatch(/^Plan Approval: on/);
       const bypass = run(named.split(" "));
@@ -2577,6 +2581,34 @@ describe("t218 Kiro IDE plan-approval enforcement", () => {
     }
   });
 
+  test("the switch that turns the Plan Approval check off turns the adapter's own refusals off too", () => {
+    // AIDLC_DISABLE_PLAN_APPROVAL_GUARD (in the environment or recorded with
+    // `config flags --bypass`) turns the core guard off before it reads anything;
+    // on Kiro IDE the adapter's own refusals for payloads that hide their target
+    // ignored it, so the person's way out did nothing here.
+    const dir = scratchProject(true);
+    try {
+      seedCodeGenerationDirective(dir);
+      const payloads: Array<[string, string]> = [
+        ["malformed tool name", JSON.stringify({ hook_event_name: "PreToolUse", tool_name: 42, tool_input: {} })],
+        ["malformed input", JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "fs_write", tool_input: [] })],
+        ["two developer stages", dispatchPayload(dir, "orchestrate_subagent", pipeline(
+          { name: "unit-a", role: "aidlc-developer-agent" },
+          { name: "unit-b", role: "aidlc-developer-agent" },
+        ))],
+      ];
+      for (const [label, payload] of payloads) {
+        // With the check on, the adapter refuses as before.
+        expect(runIdeStdin(dir, "plan-approval-guard", payload, { AIDLC_DISABLE_PLAN_APPROVAL_GUARD: "0" }).code, label).toBe(2);
+        const off = runIdeStdin(dir, "plan-approval-guard", payload, { AIDLC_DISABLE_PLAN_APPROVAL_GUARD: "1" });
+        expect(off.code, `${label}: ${off.stderr}`).toBe(0);
+        expect(off.stderr, label).toBe("");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("orchestrate_subagent with two developer stages is refused before any stage is decided", () => {
     const dir = scratchProject(true);
     try {
@@ -3164,6 +3196,21 @@ describe("t218 Kiro IDE plan-approval enforcement", () => {
         ).code,
         "orchestrate_subagent",
       ).toBe(0);
+      // An unlisted tool with a populated payload and no path the adapter can
+      // read goes to the core guard under its own name: after the approval it
+      // runs, where it used to be refused on every retry.
+      const unlisted = runIdeStdin(
+        dir,
+        "plan-approval-guard",
+        JSON.stringify({
+          hook_event_name: "PreToolUse",
+          cwd: dir,
+          tool_name: "custom_write_tool",
+          tool_input: { content: "generated" },
+        }),
+      );
+      expect(unlisted.code, unlisted.stderr).toBe(0);
+      expect(unlisted.stderr).not.toContain("target path is missing or unsupported");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

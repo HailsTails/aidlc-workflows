@@ -42,15 +42,17 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { REPO_ROOT } from "../harness/fixtures.ts";
-import { copyChannelDispatcherCommands, copyChannelToolScripts, machineReachingTools } from "../../core/tools/aidlc.ts";
+import { copyChannelDispatcherCommands, copyChannelToolScripts, machineReachingTools, resolveAction } from "../../core/tools/aidlc.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -348,6 +350,22 @@ describe("t275 dist/cursor packaging parity + shell shape", () => {
           `ok    rules/aidlc-phase-${phase.toLowerCase()}.mdc present (${phase} phase rule (agent-decided read instruction))`,
         );
       }
+      // When Cursor refuses every tool call because the hooks cannot start,
+      // the always-applied rule sends the person here: this doctor run prints
+      // the Runtime hook PATH line the rule names, and `aidlc doctor` routes.
+      expect(r.stdout).toContain("Runtime hook PATH");
+      // Each install names its own doctor: the copied one runs it through Bun.
+      for (const [tree, doctor] of [
+        [CURSOR_ROOT, "run `bun .cursor/tools/aidlc.ts doctor` (after installing Bun from https://bun.sh/install if `bun` is not found),"],
+        [CURSOR_RELEASE_ROOT, "run `aidlc doctor`,"],
+      ] as const) {
+        const standing = readFileSync(join(tree, ".cursor", "rules", "aidlc.mdc"), "utf-8");
+        expect(standing, tree).toContain("If every tool call here is refused before it runs");
+        expect(standing, tree).toContain(`${doctor}\nwhose Runtime hook PATH line names what to fix`);
+        expect(standing, tree).not.toContain("bun --version");
+        expect(standing, tree).toContain("quit Cursor fully and\nopen this folder again");
+      }
+      expect(resolveAction(["doctor"]).type).not.toBe("error");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -553,8 +571,21 @@ describe("t275 dist/cursor packaging parity + shell shape", () => {
       expect(install.status).toBe(1);
       expect(install.stderr).toContain("refusing to overwrite");
       expect(install.stderr).toContain(".cursor/rules/aidlc.mdc");
+      expect(install.stderr).toContain(
+        "To keep your changes, move these files somewhere else, then run the installer again.",
+      );
       expect(readFileSync(join(project, "AGENTS.md"), "utf-8")).toBe("# Keep me\n");
       expect(existsSync(join(project, ".cursor", "tools"))).toBe(false);
+      // The step it names: with the file moved aside, the installer runs.
+      renameSync(join(project, ".cursor", "rules", "aidlc.mdc"), join(project, "my-aidlc.mdc"));
+      const again = spawnSync("bun", [join(CURSOR_ROOT, "install.ts"), project], {
+        timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+        cwd: REPO_ROOT,
+        encoding: "utf-8",
+      });
+      expect(again.status, again.stderr).toBe(0);
+      expect(existsSync(join(project, ".cursor", "tools"))).toBe(true);
+      expect(readFileSync(join(project, "my-aidlc.mdc"), "utf-8")).toBe("project-owned\n");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -880,8 +911,21 @@ describe("t275 dist/cursor packaging parity + shell shape", () => {
       expect(fileInstall.status).toBe(1);
       expect(fileInstall.stderr).toContain("symlinked installer targets");
       expect(fileInstall.stderr).toContain("AGENTS.md");
+      expect(fileInstall.stderr).toContain(
+        "Replace that link with a regular file or folder, then run the installer again.",
+      );
       expect(readFileSync(externalFile, "utf-8")).toBe("# Outside\n");
       expect(existsSync(join(fileProject, ".cursor", "tools"))).toBe(false);
+      // The step it names: with a regular file in place of the link, it runs.
+      unlinkSync(join(fileProject, "AGENTS.md"));
+      writeFileSync(join(fileProject, "AGENTS.md"), "# Outside\n");
+      const replaced = spawnSync("bun", [join(CURSOR_ROOT, "install.ts"), fileProject], {
+        timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+        cwd: REPO_ROOT,
+        encoding: "utf-8",
+      });
+      expect(replaced.status, replaced.stderr).toBe(0);
+      expect(readFileSync(externalFile, "utf-8")).toBe("# Outside\n");
 
       const externalCursor = join(root, "external-cursor");
       mkdirSync(externalCursor);

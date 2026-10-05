@@ -240,7 +240,8 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
       const end = body.indexOf("**Autonomous reviewer boundary.**");
       expect(start, `${rel} lacks config alias block`).toBeGreaterThan(-1);
       expect(end, `${rel} lacks config alias end anchor`).toBeGreaterThan(start);
-      const block = body.slice(start, end).trim();
+      // The doctor is named the way each harness's entry is typed ($aidlc on Codex).
+      const block = body.slice(start, end).trim().replaceAll("$aidlc --doctor", "/aidlc --doctor");
       blocks.set(block, [...(blocks.get(block) ?? []), rel]);
     }
     expect(missing).toEqual([]);
@@ -1149,11 +1150,31 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
         "Never reconstruct a command from prose, invent missing arguments",
         "process its returned directive through the table above",
         "whose last line is a guard-recovery ask JSON follows the same ask contract",
-        "surface the actual error and stop that recovery attempt",
+        "say in one plain sentence what did not work and name the choices the ask still offers",
+        "and stop that recovery attempt",
         "When `directive.remedies` is empty the ask is terminal",
       ]) {
         if (!body.includes(token)) missing.push(`${rel}  missing: ${token}`);
       }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test("every conductor names a step when it stops: a malformed directive, an engine error, a failed remedy", () => {
+    // Each of these stops used to leave the person with no next step.
+    const missing: string[] = [];
+    for (const rel of skills) {
+      const body = readFileSync(join(REPO_ROOT, rel), "utf-8");
+      // Each names the doctor the way that harness's entry is typed.
+      const entry = rel.includes("/codex/") ? "$aidlc" : "/aidlc";
+      for (const token of [
+        `and that ${entry} --doctor shows what to fix, after which they can ask you to carry on) and stop`,
+        `names no step for the person, add one line: ${entry} --doctor shows what to fix.`,
+        `(or ${entry} --doctor when it offers none)`,
+      ]) {
+        if (!body.includes(token)) missing.push(`${rel}  missing: ${token}`);
+      }
+      expect(body, rel).not.toContain("surface the actual error and stop");
     }
     expect(missing).toEqual([]);
   });

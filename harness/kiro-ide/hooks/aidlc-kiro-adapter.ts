@@ -118,6 +118,7 @@ import {
   clearPlanApprovalLegacyWindow,
   recordHookDrop,
   recordPreWorkflowHeartbeat,
+  resolveProjectFlag,
   readPlanApprovalViolation,
   readPlanApprovalLegacyWindow,
   readPlanApprovalLegacyWindows,
@@ -138,6 +139,7 @@ import {
 import {
   approvalFingerprint,
   beginCodeGeneration,
+  codeGenerationPlanApprovalFence,
   legacyPlanApprovalGuardState,
   parseTestingContract,
   renderTestingContract,
@@ -1524,9 +1526,10 @@ function summaryConfirmationWayOut(): string {
 }
 
 // Plan approval off is read from what the person types or says, so this build
-// cannot carry the typed switch; the recorded one works now, as above.
+// cannot carry the typed switch, and it keeps its plan picker either way. The
+// recorded switch still turns the Plan Approval check's refusals off now.
 function planApprovalWayOut(): string {
-  return `To build code plans without being asked now, run \`${aidlcInvocation()} config flags --bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --local --yes\` in a terminal: it turns plan approval off for all work in this project, including the work running now (run it again with \`--clear-bypass\` in place of \`--bypass\` to turn it back on). After you update Kiro IDE, you can instead type \`/aidlc config set plan-approval off\` yourself.`;
+  return `This Kiro IDE build still shows each plan here for you to approve; after you update Kiro IDE, you can type \`/aidlc config set plan-approval off\` to build plans without being asked. If the plan approval check refuses work wrongly meanwhile, run \`${aidlcInvocation()} config flags --bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD --local --yes\` in a terminal to turn that check off for all work in this project, including the work running now (run it again with \`--clear-bypass\` in place of \`--bypass\` to turn it back on).`;
 }
 
 // "summary" when the only lowering is summary confirmation off, which skips
@@ -1910,6 +1913,23 @@ function extractAgentIdentity(toolResult: string, structured = ""): string {
 
 type Forward = { hook: string; input: Record<string, unknown> } | null;
 
+// A lowered Plan Approval check (Guard Policy relaxed or off, or the person's
+// own switch) lets changed content through once the plan is approved, as the
+// core guard does; it never supplies the first approval. These refusals are the
+// adapter's own, for payloads that hide their target, so they follow the same
+// rule. An unreadable state keeps the check up.
+function loweredPlanCheckAdmitsApprovedWork(): boolean {
+  try {
+    const state = legacyPlanApprovalGuardState(projectDir);
+    if (!state.active || !state.approved || state.target === null) return false;
+    return codeGenerationPlanApprovalFence(projectDir, state.target, {
+      sessionId: resolvedPlanApprovalSessionId(ide),
+    }).decision === "stand-aside";
+  } catch {
+    return false;
+  }
+}
+
 // The chat session a prompt starts, when the prompt names a session other than
 // the one this adapter last saw. Set by the record-human-turn route.
 let promptSessionStart = "";
@@ -1921,7 +1941,11 @@ function buildForward(): Forward {
       "kiro-adapter",
       `${target}: malformed hook context fields (${ide.malformedFields?.join(", ")}) — event not forwarded`,
     );
-    if (target === "plan-approval-guard" && !ideStandsOutside(projectDir, resolvedPlanApprovalSessionId(ide))) {
+    if (
+      target === "plan-approval-guard" &&
+      !ideStandsOutside(projectDir, resolvedPlanApprovalSessionId(ide)) &&
+      !loweredPlanCheckAdmitsApprovedWork()
+    ) {
       const malformedToolName = ide.toolName ?? "";
       if (
         readPlanApprovalLegacyWindows(projectDir).length > 0 &&
@@ -2258,6 +2282,7 @@ function buildForward(): Forward {
               },
             };
           }
+          if (loweredPlanCheckAdmitsApprovedWork()) return null;
         }
         if (
           state.active &&
@@ -2327,11 +2352,26 @@ function buildForward(): Forward {
           // denying here is what kept a Windows shell (`execute_pwsh`) from ever
           // running `aidlc-orchestrate.ts next` to start one.
           if (state.active && Object.keys(toolArgs).length > 0 && !isKiroShellTool(toolName)) {
+            // A populated payload with no path the adapter can read goes to the
+            // core guard under its own name, which decides an unlisted tool as
+            // it does on every harness: held before approval, run after it.
+            // A payload with no tool name gives the guard nothing to decide.
+            if (toolName === "") {
+              return {
+                hook: "__legacy_plan_approval_block__",
+                input: {
+                  reason:
+                    "Plan Approval blocked a mutation-capable payload whose target path is missing or unsupported.",
+                },
+              };
+            }
             return {
-              hook: "__legacy_plan_approval_block__",
+              hook: "aidlc-plan-approval-guard.ts",
               input: {
-                reason:
-                  "Plan Approval blocked a mutation-capable payload whose target path is missing or unsupported.",
+                hook_event_name: "PreToolUse",
+                tool_name: toolName,
+                tool_input: toolArgs,
+                cwd: projectDir,
               },
             };
           }
@@ -2787,6 +2827,9 @@ if (fwd === null) {
   return 0;
 }
 if (fwd.hook === "__legacy_plan_approval_block__") {
+  // The switch that turns the Plan Approval check off turns the adapter's own
+  // refusals off too, as it turns off the core guard before it reads anything.
+  if (resolveProjectFlag("AIDLC_DISABLE_PLAN_APPROVAL_GUARD", process.env, projectDir) === "1") return 0;
   process.stderr.write(`${String(fwd.input.reason ?? "Plan Approval blocked this tool.")}\n`);
   return 2;
 }

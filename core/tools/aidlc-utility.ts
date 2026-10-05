@@ -1405,7 +1405,8 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
       die(
         `select-plugins refused: the new selection would strand ${violations.length} active workflow dependency(ies):\n` +
           violations.map((v) => `  - ${v}`).join("\n") +
-          `\nComplete or park the workflow(s) first (or keep the plugin enabled), then re-run select-plugins.`,
+          `\nComplete or archive the workflow(s) first (\`${entrySkillInvocation()} intent archive <name>\`; a parked workflow ` +
+          "still needs its plugin when it resumes), or keep the plugin enabled, then re-run select-plugins.",
       );
     }
 
@@ -8633,7 +8634,8 @@ function refuseUnlessArchivable(
     }).claimed.map((claim) => claim.unit);
   } catch (cause) {
     die(
-      `Intent "${dirName}" cannot be archived because team Unit claims could not be verified: ${errorMessage(cause)}`,
+      `Intent "${dirName}" cannot be archived because team Unit claims could not be verified: ${errorMessage(cause)} ` +
+        `Run \`${aidlcInvocation()} doctor\` for the exact fix, then archive it again.`,
     );
   }
   if (claimed.length > 0) {
@@ -9666,7 +9668,24 @@ function handleCodekbSnapshot(
     recoverCodekbTransactions(projectDir, space, repo);
     const sourceFingerprint = codekbSourceFingerprint(repoDir, paths, excludes);
     if (sourceFingerprint === null) {
-      die(`codekb-snapshot: cannot fingerprint source paths: ${paths.join(", ")}`);
+      // Name what to change: a path that is not there, else an entry under
+      // the paths that cannot be read as a file or folder.
+      const absent = paths.filter((path) => {
+        try {
+          return lstatSync(join(repoDir, path), { throwIfNoEntry: false }) === undefined;
+        } catch {
+          return false;
+        }
+      });
+      die(
+        `codekb-snapshot: cannot fingerprint source paths: ${paths.join(", ")}. ` +
+          (absent.length > 0
+            ? `${absent.join(", ")} ${absent.length === 1 ? "is" : "are"} not in the repository: ` +
+              `run it again with --paths naming paths that exist.`
+            : `Something under ${paths.length === 1 ? "it" : "them"} is not a regular file or folder (a socket or named pipe) or ` +
+              `cannot be read: run it again with --paths naming only the folders that hold ` +
+              `source, leaving that one out.`),
+      );
     }
     return {
       repo,

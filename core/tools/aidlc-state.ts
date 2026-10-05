@@ -2177,7 +2177,9 @@ export function parkWorkflow(pd: string, opts: { attended?: boolean } = {}): Par
     error(
       "Refusing to park: Construction Autonomy Mode is autonomous and no reply from the person is on record " +
         "since the last decision, so the run keeps moving. When the person asks to stop, park then: their " +
-        "stop wins over the autonomous grant.",
+        "stop wins over the autonomous grant. If their stop is not on record, run " +
+        `\`${aidlcToolInvocation("bolt")} set-autonomy --mode gated\` (Construction then stops for approval at ` +
+        "each Bolt), then park.",
     );
   }
   const scopeStamp = validateLiveUnitScope(pd);
@@ -3686,7 +3688,9 @@ function enforceBlockingGateSensors(
       error(
         `Refusing blocking sensor override for "${slug}": Construction Autonomy Mode ` +
           "is autonomous. Unattended runs must halt on blocking sensor findings or " +
-          "unavailable evaluations.",
+          "unavailable evaluations. When the person chooses the override, run " +
+          `\`${aidlcToolInvocation("bolt")} set-autonomy --mode gated\` (Construction then stops for ` +
+          "approval at each Bolt), then report with the override again.",
       );
     }
     if (overrideInput?.trim() !== BLOCKING_SENSOR_OVERRIDE_CHOICE) {
@@ -3939,7 +3943,9 @@ function verifyStageArtifacts(
         `(workspace_requires) but no source work is evident outside the aidlc/ ` +
         `workspace tree. In a git workspace this means no uncommitted change and no ` +
         `code in the last commit; otherwise no source file exists. Planning docs alone ` +
-        `do not satisfy ${stage.name} - write the code to the workspace.`;
+        `do not satisfy ${stage.name} - write the code to the workspace (a source change ` +
+        `not committed yet counts, as does code in the last commit), or the person can ` +
+        `choose Request Changes and say what is missing.`;
     refuseStateGuard(pd, stateContent ?? readStateFile(pd), stage, {
       code: "REQUIRED_SOURCE_WORK_MISSING",
       blockedAction: action,

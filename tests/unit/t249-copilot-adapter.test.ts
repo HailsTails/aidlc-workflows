@@ -2251,6 +2251,23 @@ describe("t249 Copilot hook adapter (live-captured payload fixtures)", () => {
     }
   });
 
+  test("21f2: a duplicate continue names a fresh next, and that next is accepted", () => {
+    const dir = orchestrationProject();
+    inflateRules(dir);
+    const session = "host-duplicate-fresh-next";
+    const seeded = runLifecycle(dir, session, "direct", ["next"], "fresh-next-seed");
+    const token = String(seeded.directive.receipt);
+    runAdapter(dir, "guard-tool-call", commandPayload(dir, session, commandSpec(dir, "direct", ["continue", token]).text, "fresh-first"));
+    const duplicate = runAdapter(
+      dir, "guard-tool-call", commandPayload(dir, session, commandSpec(dir, "source", ["continue", token]).text, "fresh-second"),
+    );
+    expect(duplicate.stdout).toContain('"permissionDecision":"deny"');
+    expect(duplicate.stdout).toContain("or run a fresh `next` in this session");
+    const fresh = runAdapter(dir, "guard-tool-call", commandPayload(dir, session, commandSpec(dir, "direct", ["next"]).text, "fresh-next"));
+    expect(fresh.code).toBe(0);
+    expect(fresh.stdout).not.toContain('"permissionDecision":"deny"');
+  });
+
   test("21g: reusable duplicate continue has one engine winner and one deliverable result in both operation orders", () => {
     const scenarios = [
       { pre: ["direct", "source"] as const, engine: "first", post: "winner-first" },
@@ -3085,6 +3102,38 @@ describe("t249 Copilot hook adapter (live-captured payload fixtures)", () => {
       expect(followToRunStage(dir, session, resumed.directive, `legacy-${status}-resume`))
         .toMatchObject({ stage: "requirements-analysis" });
     }
+  });
+
+  // A `next` that reaches the engine outside the chat's own answer (a
+  // terminal, a delegate) while the resume question waits is not published.
+  // Retrying repeats that, so it names the answer, and the answer goes through.
+  test("23d: a next from outside the chat while the resume question waits names the answer, and the answer is accepted", () => {
+    const dir = orchestrationProject();
+    const session = "resume-wait-outside";
+    driveToRunStage(dir, session);
+    rewriteMarker(dir, (value) => {
+      value.kind = "ask";
+      value.delivery = "issued";
+      value.needs_rehydrate = false;
+      delete value.continue_token;
+      delete value.continue_token_sha256;
+      value.resume = {
+        status: "waiting",
+        issuing_stage: "requirements-analysis",
+        issuing_state_sha256: value.state_sha256,
+        issuing_session: session,
+        issuing_intent_uuid: value.intent_uuid,
+      };
+    });
+    const outside = runShell(dir, commandSpec(dir, "direct", ["next"]).text);
+    expect(outside.status, outside.stderr).toBe(0);
+    const refused = JSON.parse(outside.stdout.trim()) as { kind?: string; message?: string };
+    expect(refused.kind).toBe("error");
+    expect(refused.message).toContain("waiting for an answer to its resume question in the Copilot chat");
+    expect(refused.message).toContain("--resume` in that chat");
+    expect(refused.message).not.toContain("--doctor");
+    const resumed = runLifecycle(dir, session, "direct", ["next", "--resume"], "resume-wait-answer");
+    expect(resumed.directive).toMatchObject({ kind: "load-steering", stage: "requirements-analysis" });
   });
 
   test("24: Copilot conversational ordering, concurrent Stop count, unit fingerprint, and marker recovery are bounded", async () => {
