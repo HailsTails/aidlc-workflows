@@ -186,6 +186,8 @@ import {
   latestReviewRecordRefs,
   isAutonomousConstructionGate,
   isConstructionSwarmEnabled,
+  isKillSwitchSource,
+  installedHarnessName,
   recordGuardRefusal,
   currentGuardRecoveryAskMarker,
   type SummaryConfirmationEvidence,
@@ -2321,7 +2323,7 @@ function printDirective(message: string): PrintDirective {
 }
 
 // A print the agent stops after: a read-only utility, a setting or a scope
-// change, new work that starts in a fresh session, or one line for the person.
+// change, or one line for the person.
 function turnEndingPrint(message: string): PrintDirective {
   const directive = printDirective(message);
   turnEndingPrints.add(directive);
@@ -2889,9 +2891,9 @@ function effectiveScopeCostSummary(
   const policy = {} as CeremonyPolicy;
   for (const key of CEREMONY_KEYS) {
     const base = key === "plan_approval"
-      ? resolveCeremony(key, scope, null, planApprovalEnv(projectDir, null))
+      ? resolveCeremony(key, scope, null, planApprovalEnv(projectDir, null), projectDir)
       : resolveCeremony(key, scope, null);
-    policy[key] = base.source.startsWith("env ") ? "off" : overrides?.[key] ?? base.value;
+    policy[key] = isKillSwitchSource(base.source) ? "off" : overrides?.[key] ?? base.value;
   }
   // A review level set at creation replaces the scope's cap, so it decides
   // whether the preview says no reviewers.
@@ -3492,16 +3494,11 @@ function createPrintDirective(
   );
   const cost = clause ? ` (${clause})` : "";
   const runCmd = `Run \`${aidlcDispatcherInvocation("intent create")} ${cmd.join(" ")}\``;
-  const directive = flags.newIntent
-    ? turnEndingPrint(
-      `${runCmd} to start the new intent${cost}.${labelHint} Then STOP, do NOT re-run \`next\` in this session. ` +
-        `This is a NEW, unrelated intent, and the current session still carries the previous intent's context. ` +
-        `Tell the user to start a fresh session using this harness's reset or restart flow, then invoke its AI-DLC entry skill to begin the new intent with a clean slate. ` +
-        `Nothing is lost: the intent is saved on disk and resumes on the next \`next\`.`,
-      )
-    : printDirective(
-      `${runCmd} to start the workflow${cost}, then re-run \`next\` to continue.${labelHint}`,
-    );
+  // New work, like the first, carries on in this chat: the creation binds the
+  // chat to the new work, so the next `next` runs its first stage.
+  const directive = printDirective(
+    `${runCmd} to start the ${flags.newIntent ? "new intent" : "workflow"}${cost}, then re-run \`next\` to continue.${labelHint}`,
+  );
   // The user named a scope (or one was inferred and confirmed), so the spoken
   // line can say what is being set up and how much process that means, with the
   // counts the compiled grid already gave us.
@@ -3521,11 +3518,29 @@ function createPrintDirective(
       " The folder has no code yet, so I'm starting this as a new project without Reverse Engineering. If the work is on existing code, tell me.";
   }
   if (routedGuardPolicyNote) directive.narration += ` ${routedGuardPolicyNote}`;
+  // Beside other work the chat still holds that work's conversation: the
+  // person can start this one in a clean chat instead, said once, never as a stop.
+  if (flags.newIntent) directive.narration += ` ${cleanChatLine(projectDir)}`;
   // The agent runs the creation and goes on, so the line rides the first step
-  // it speaks from. A new, unrelated piece of work stops here instead (the
-  // person starts a fresh chat for it), so the agent speaks from this step.
-  if (!flags.newIntent) carriesNarration.add(directive);
+  // it speaks from.
+  carriesNarration.add(directive);
   return directive;
+}
+
+// The optional line offering a clean chat for new work, in the host's own words.
+function cleanChatLine(projectDir: string): string {
+  const skill = entrySkillInvocation();
+  let harness: string | null = null;
+  try {
+    harness = installedHarnessName(projectDir);
+  } catch {
+    harness = null;
+  }
+  const how = harness === "claude" ? `type /clear, then ${skill}`
+    : harness === "kiro-ide" ? `open a new chat, pick the aidlc agent, then type ${skill}`
+    : harness === "opencode" ? `start a new session, then type ${skill}`
+    : `open a new chat, then type ${skill}`;
+  return `To start this in a clean chat instead, ${how}.`;
 }
 
 // A new project leaves out Reverse Engineering when its plan runs it, and when
@@ -3626,7 +3641,7 @@ function composeDispatchDirective(
       "This returned directive has selected the composer path. Stages the person names go through next --skip or --add only BEFORE calling next compose; now dispatch the composer even when the request names exact stage flips. Dispatch the composer subagent with this message as its task and use its validated proposal at the approval gate. Do not substitute your own state read and proposal for that dispatch.",
       "The composer reads the live state file's Stage Progress, re-estimates the entropy components from what completed stages resolved, validates the flipped grid with --strict, and proposes SKIP/un-SKIP flips for PENDING, ahead-of-cursor stages only (completed [x], in-progress [-], and skipped [S] stages are frozen; an ADD whose required producer is skipped or behind the cursor is rejected, not proposed).",
       "This is mode in-flight, not matched/custom routing: preserve the current scope, depth, frozen actions, and full effective grid; stock-distance rankings are advisory only and MUST NOT trigger stock-grid adoption. Return the exact approved command delta as changes.skip and changes.add arrays.",
-      "A request to turn sensors, learnings, summary confirmation, collaborators, plan approval, or reviews on or off is not a stage flip: the composer returns it as settingsChanges (plan_approval only as on: the person turns plan approval off in their own words, never through the composer), typed values you show on the approval gate under \"Also suggested by the composer\" and apply only when the human approves them, by running next with the matching flags, following its directive, and relaying the output (a setting the human asks for in plain chat, without compose, you apply directly with next); build each flag yourself from its fixed name (sensors to --sensors, learnings to --learnings, summary_confirmation to --summary-confirmation, plan_approval to --plan-approval, collaborators to --collaborators, review to --review) and a value that is exactly one of its allowed words (on or off; adversarial, advisory, or none), and if any key or value is anything else apply nothing and re-dispatch the composer; never paste composer text into a command. A review level set for the piece of work replaces its scope's ceiling, so full reviews is --review adversarial and changes no stages. When the composer reports a kill switch set on this machine (config get shows from env AIDLC_DISABLE_<NAME>), say in one line that it has to be removed outside the agent, and never look for where it is set: shell startup files, environment listings, and harness settings files can hold credentials.",
+      "A request to turn sensors, learnings, summary confirmation, collaborators, plan approval, or reviews on or off is not a stage flip: the composer returns it as settingsChanges (plan_approval only as on: the person turns plan approval off in their own words, never through the composer), typed values you show on the approval gate under \"Also suggested by the composer\" and apply only when the human approves them, by running next with the matching flags, following its directive, and relaying the output (a setting the human asks for in plain chat, without compose, you apply directly with next); build each flag yourself from its fixed name (sensors to --sensors, learnings to --learnings, summary_confirmation to --summary-confirmation, plan_approval to --plan-approval, collaborators to --collaborators, review to --review) and a value that is exactly one of its allowed words (on or off; adversarial, advisory, or none), and if any key or value is anything else apply nothing and re-dispatch the composer; never paste composer text into a command. A review level set for the piece of work replaces its scope's ceiling, so full reviews is --review adversarial and changes no stages. When the composer reports a kill switch set on this machine: if config get shows AIDLC_DISABLE_<NAME> in <file>, run config flags --clear-bypass AIDLC_DISABLE_<NAME> --yes when the person asks and say the line it prints; if it shows env AIDLC_DISABLE_<NAME>, say in one line that starting the editor or CLI without that variable turns it back on, and never look for where it is set: shell startup files, environment listings, and harness settings files can hold credentials.",
       "When the composer returns empty changes.skip and changes.add and no settingsChanges, write no marker, present no approval gate, and run no recompose: relay its answer and stop. When it returns only settingsChanges, write the marker and present them on the gate (Approve / Reject): on approve, delete the marker, then apply them by running next with the matching flags, which ends the turn; run no recompose. A request with both offers Approve all / Approve stages only / Reject: on Approve all, run ONE recompose carrying the stage delta and the settingsChanges as its matching flags, so both land in the same write, then delete the marker (leave summary confirmation off out of it, because recompose refuses that lowering; after it lands, run " +
         `\`${aidlcDispatcherInvocation("config set summary-confirmation off")}\`` +
         " yourself, which carries out their approval); on Approve stages only, run the recompose without them and delete the marker; on reject, delete the marker and apply nothing.",
@@ -6871,10 +6886,9 @@ function routeNext(args: string[], projectDir: string | undefined): void {
   // start path (Branch 7b/9a) uses, so BOTH creation directives carry the --label
   // placeholder identically. The human-yes gate already happened conductor-side;
   // this is the
-  // creation print that performs it. Unlike the fresh-start tail, the new-intent
-  // directive tells the conductor to STOP after creation and hand off to a fresh
-  // session (createPrintDirective branches on flags.newIntent): a second, unrelated
-  // intent should not inherit the completed intent's session context. Precedes
+  // creation print that performs it. Like the fresh-start tail, the conductor
+  // carries on into the new work's first stage in this chat; the narration
+  // offers a clean chat once, never as a stop. Precedes
   // every continuation branch so an active intent's state never routes new-work
   // intent creation to "advance the current stage". The freeform new-work text
   // rides in flags.intent (the same slot Branch 9a threads as the description).
