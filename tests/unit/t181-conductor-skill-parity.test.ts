@@ -526,6 +526,27 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
     expect(missing).toEqual([]);
   });
 
+  // From live runs: on "please review Unit 1 again" the agent reviewed in chat,
+  // hand-wrote a review file, or started the stage again, because the rule lived
+  // only in the reviewer protocol, which a mid-chat request never opens.
+  test("every shipped conductor SKILL and the protocol record a review the person asks for through AI-DLC", () => {
+    const missing: string[] = [];
+    for (const rel of [...skills, "core/aidlc-common/protocols/stage-protocol.md"]) {
+      const body = readFileSync(join(REPO_ROOT, rel), "utf-8").replace(/\s+/g, " ");
+      for (const token of [
+        "When they ask for a review of a stage or of a Unit",
+        "record it through AI-DLC the first time they ask, under every Guard Policy",
+        "engine log review --stage <slug> --reviewer <the stage's reviewer> --iteration <next>",
+        "aidlc-common/protocols/stage-protocol-reviewer.md` says.",
+        "Never review it in chat yourself, never write a review file by hand, never start the stage again with " +
+          "`next --stage` to get one, and never offer to change the Guard Policy for it.",
+      ]) {
+        if (!body.includes(token)) missing.push(`${rel}  missing: ${token}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
   // From a live Kiro CLI run: "from here on, build one unit at a time; I'll
   // approve the design after" at a gate. The engine takes the agent's Approve
   // whatever the wording, so the guidance is what keeps a request that holds no
@@ -1288,6 +1309,7 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
       "core/hooks/aidlc-review-freeze.ts",
       "core/tools/aidlc-lib.ts",
       "docs/reference/17-skill-system.md",
+      "docs/reference/04-stage-protocol.md",
     ];
     for (const rel of files) {
       const text = readFileSync(join(REPO_ROOT, rel), "utf-8").replace(/\s+/g, " ");
@@ -1302,6 +1324,9 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
         "ask what outcome they care about most",
         "When a user defers to AI judgment, reframe",
         'Request Changes needs a separate answer to "What should change?"',
+        // A choice left to the agent was recorded as the person's own answer.
+        "record it as their answer with a note that they left it to you",
+        "records it as their answer with a note that they left it to the agent",
       ]) {
         if (text.includes(old)) stale.push(`${rel}  still says: ${old}`);
       }
@@ -1322,7 +1347,10 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
     const protocol = readFileSync(join(REPO_ROOT, "core/aidlc-common/protocols/stage-protocol.md"), "utf-8")
       .replace(/\s+/g, " ");
     for (const rule of [
-      'When a user leaves a choice to you ("up to you", "whatever you think is best"), decide',
+      'When a user leaves a choice to you ("up to you", "whatever you think is best", or "choose the recommended answers" for this stage), decide',
+      "--on-instruction '<their words that left it to you>'",
+      '**SAY:** "You left <the question> to me, so I chose <the choice>. Say if you want something else."',
+      '**SAY:** "Approvals are still yours: I\'ll stop at each stage for you to approve."',
       "When the person's request already chose",
       "answers in their own words, those words are their answer",
     ]) {
@@ -1440,5 +1468,19 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
     expect(
       readFileSync(join(REPO_ROOT, "core/hooks/aidlc-session-start.ts"), "utf-8"),
     ).toContain("(at an approval gate too, where it is that request and not the gate's answer)");
+  });
+
+  // In double quotes a shell runs a `$(...)`, a backtick or a `$NAME` inside
+  // the text, and a choice's text can come from the project: answer text is
+  // shown single-quoted, as the protocol's own rule for the person's words says.
+  test("the protocol never shows a double-quoted placeholder for answer text", () => {
+    const doubleQuoted = /--(?:details|on-instruction|user-input|instruction|answer) "</;
+    const found: string[] = [];
+    for (const rel of ["core/aidlc-common/protocols/stage-protocol.md", "docs/reference/04-stage-protocol.md"]) {
+      readFileSync(join(REPO_ROOT, rel), "utf-8").split("\n").forEach((line, index) => {
+        if (doubleQuoted.test(line)) found.push(`${rel}:${index + 1}  ${line.trim().slice(0, 120)}`);
+      });
+    }
+    expect(found).toEqual([]);
   });
 });

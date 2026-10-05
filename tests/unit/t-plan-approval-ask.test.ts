@@ -1,6 +1,7 @@
 // covers: function:routeCodeGenerationPlanApproval, function:publishPlanApprovalAsk, function:notePlanApprovalAskReply, function:recordPlanApprovalAnswer, function:requestPlanApprovalReviewNow, function:codeGenerationPlanReadiness, function:planSummaryLines,
 // function:PLAN_APPROVAL_ASK_TYPE, function:planApprovalRuntimeFile, function:readPlanApprovalRuntimeRecord,
-// function:writePlanApprovalRuntimeRecord, function:removePlanApprovalRuntimeRecord, function:releaseTakenGuardRecoveryReply
+// function:writePlanApprovalRuntimeRecord, function:removePlanApprovalRuntimeRecord, function:releaseTakenGuardRecoveryReply,
+// function:keepPlanApprovalAskOverStateWrite
 //
 // The engine asks for Plan Approval itself. These cases drive the real `next`,
 // the real human-turn hook, and the real plan-approval guard over one poc
@@ -45,7 +46,7 @@ import { NATIVE_STARTUP_TIMEOUT_MS, remainingOperationTimeoutMs } from "../harne
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   AIDLC_SRC,
@@ -77,6 +78,8 @@ import {
 import {
   activeDirectiveStorageDir,
   invalidateActiveDirectiveContext,
+  keepPlanApprovalAskOverStateWrite,
+  planApprovalAskIsOpen,
   mintProtectedQuestion,
   planApprovalRuntimeFile,
   readProtectedResponse,
@@ -414,6 +417,25 @@ describe("the engine asks for Plan Approval", () => {
     expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
     expect(result.stdout).toContain('Recorded \\"Approve Plan\\"');
     expect(result.stdout).toContain("could not be parked");
+    expect(readFileSync(file, "utf-8")).not.toContain("- **Parked**:");
+  });
+
+  // The approval is recorded before the stop. When the stop cannot be
+  // recorded (a state with no Runtime State section, as a live run hit), the
+  // person said stop, so nothing more runs until they say to go on.
+  test("an approval whose stop cannot be recorded says so and does not send the agent on to the build", () => {
+    const proj = project();
+    const file = seededStateFile(proj);
+    writeFileSync(file, readFileSync(file, "utf-8").replace(/^## Runtime State\n/m, ""), "utf-8");
+    askFor(proj);
+    reply(proj, "approve the plan, but let's stop there for today");
+    const said = answer(proj, "Approve Plan", ["--park", "--session", SESSION]);
+    expect(said.code, said.message).toBe(0);
+    expect(said.recorded).toBe("approve");
+    expect(said.message).toContain("the stop they asked for could not be recorded");
+    expect(said.message).toContain("Tell them in one line that the plan is approved");
+    expect(said.message).toContain("Do not run next or start any work until they do.");
+    expect(said.message).not.toMatch(/(?:^|[.;] )[Rr]un next\./);
     expect(readFileSync(file, "utf-8")).not.toContain("- **Parked**:");
   });
 
@@ -1925,6 +1947,172 @@ describe("the question's summary", () => {
   });
 });
 
+// While a plan waits, what the person asks for runs the first time: every
+// command the engine itself names for their request gets through the guard,
+// and code still waits for the approved plan.
+describe("what the engine names while a plan waits", () => {
+  // Commands a directive names: its command fields and backticked commands.
+  function namedCommands(directive: unknown): string[] {
+    const out = new Set<string>();
+    const visit = (value: unknown, key = ""): void => {
+      if (typeof value === "string") {
+        if (/(^|_)command$/.test(key) && /^(bun|aidlc)\b/.test(value)) out.add(value);
+        for (const m of value.matchAll(/`((?:bun|aidlc) [^`]*)`/g)) out.add(m[1]);
+      } else if (Array.isArray(value)) {
+        for (const entry of value) visit(entry, key);
+      } else if (value && typeof value === "object") {
+        for (const [k, v] of Object.entries(value)) visit(v, k);
+      }
+    };
+    visit(directive);
+    return [...out];
+  }
+  // The protocol's own placeholders, filled the way the agent fills them here.
+  function filled(command: string): string {
+    return command
+      .replaceAll("<slug>", "code-generation")
+      .replaceAll('"<directive.stage>"', "code-generation")
+      .replaceAll("<first|revision|stale>", "first")
+      .replace(/"<[^"]*>"/g, '"x"');
+  }
+  // The review brief and the stage's question rows, as the shipped protocol names them.
+  function protocolCommands(): string[] {
+    const dir = join(AIDLC_SRC, "aidlc-common", "protocols");
+    const text = ["stage-protocol.md", "stage-protocol-reviewer.md"]
+      .map((name) => readFileSync(join(dir, name), "utf-8")).join("\n");
+    // A checkpoint row keeps its own rule, so only the plain question rows.
+    const commands = [...text.matchAll(/`(bun \.claude\/tools\/[^`\n]*(?:aidlc-review-brief\.ts|engine log (?:decision|answer) --stage <slug>)[^`\n]*)`/g)]
+      .map((m) => filled(m[1]))
+      .filter((command) => !command.includes("--checkpoint"));
+    expect(commands.length, "the protocol names no review brief or log row").toBeGreaterThan(3);
+    return [...new Set(commands)];
+  }
+  function waitingPlan(): string {
+    const proj = project("strict");
+    cpSync(join(AIDLC_SRC, "tools"), join(proj, ".claude", "tools"), { recursive: true });
+    askFor(proj);
+    return proj;
+  }
+  function resumeReport(proj: string, choice: string): unknown {
+    const result = spawnSync(BUN, [ORCHESTRATE, "report", "--result", "resumed", "--user-input", choice, "--project-dir", proj], {
+      cwd: proj,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: proj, AIDLC_PROJECT_DIR: proj, AIDLC_UNATTENDED: "0" },
+      encoding: "utf-8",
+      timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+    });
+    const line = (result.stdout ?? "").split("\n").filter((entry) => entry.startsWith("{")).pop();
+    expect(line, `${result.stdout}${result.stderr}`).toBeDefined();
+    return JSON.parse(line as string);
+  }
+
+  test.each([
+    ["status", "/aidlc --status", ["--status"]],
+    ["help", "/aidlc --help", ["--help"]],
+    ["doctor", "/aidlc --doctor", ["--doctor"]],
+    ["version", "/aidlc --version", ["--version"]],
+    ["a jump back", "/aidlc --stage nfr-requirements", ["--stage", "nfr-requirements"]],
+    ["a jump to Reverse Engineering", "/aidlc --stage reverse-engineering", ["--stage", "reverse-engineering"]],
+    ["a redo of this stage", "/aidlc --stage code-generation", ["--stage", "code-generation"]],
+    ["a skip", "/aidlc --skip build-and-test", ["--skip", "build-and-test"]],
+    ["new work beside it", "/aidlc --new-intent add a csv export", ["--new-intent", "--scope", "poc", "add a csv export"]],
+    ["the resume menu's redo", "redo this stage from the start", null],
+  ] as const)("%s: every command the engine names gets through", (_label, typed, args) => {
+    const proj = waitingPlan();
+    reply(proj, typed);
+    const directive = args === null ? resumeReport(proj, "2") : next(proj, [...args]);
+    const commands = namedCommands(directive).map(filled);
+    expect(commands.length, `no command named: ${JSON.stringify(directive)}`).toBeGreaterThan(0);
+    for (const command of commands) {
+      const verdict = guardBash(proj, command);
+      expect(verdict.code, `${command}\n${verdict.stderr}`).toBe(0);
+    }
+    // Code is still held for the plan.
+    expect(guardWrite(proj, join(proj, "src", "slugify.ts")).code).toBe(2);
+  });
+
+  test("the review brief and the stage's question rows get through, and an added write does not", () => {
+    const proj = waitingPlan();
+    for (const command of protocolCommands()) {
+      const verdict = guardBash(proj, command);
+      expect(verdict.code, `${command}\n${verdict.stderr}`).toBe(0);
+      expect(guardBash(proj, `${command}; printf x > src/a.ts`).code, `${command} with a write`).toBe(2);
+    }
+  });
+
+  test("a move the person asked for waits for them to have spoken", () => {
+    const proj = waitingPlan();
+    const jump = "bun .claude/tools/aidlc-jump.ts execute --target nfr-requirements --direction backward --scope poc";
+    expect(guardBash(proj, jump).code).toBe(2);
+    expect(guardBash(proj, "bun .claude/tools/aidlc.ts engine recompose --skip build-and-test").code).toBe(2);
+    reply(proj, "/aidlc --stage nfr-requirements");
+    // The jump the engine printed for that request.
+    expect(namedCommands(next(proj, ["--stage", "nfr-requirements"]))).toContain(jump);
+    const verdict = guardBash(proj, jump);
+    expect(verdict.code, verdict.stderr).toBe(0);
+    // A skip passes with its own flags only.
+    expect(guardBash(proj, "bun .claude/tools/aidlc.ts engine recompose --skip build-and-test --scope feature").code).toBe(2);
+  });
+
+  // From a live run: a skip typed while the plan waited left the plan
+  // question behind, so the approval that followed was not kept against it
+  // and the record carried the person's earlier question as their words.
+  test("after a skip typed while the plan waits, the person's answer is kept with their words", () => {
+    const proj = waitingPlan();
+    // The skip reads the plan's scope from the installed tree.
+    cpSync(AIDLC_SRC, join(proj, ".claude"), { recursive: true });
+    reply(proj, "/aidlc --skip feedback-optimization");
+    const named = next(proj, ["--skip", "feedback-optimization"]);
+    const recompose = namedCommands(named).find((command) => command.includes("engine recompose"));
+    expect(recompose, JSON.stringify(named)).toBeDefined();
+    const verdict = guardBash(proj, recompose as string);
+    expect(verdict.code, `${recompose}\n${verdict.stderr}`).toBe(0);
+    runInstalled(proj, recompose as string);
+    // The plan question is still the open step.
+    expect(planApprovalAskIsOpen(proj)).toBe(true);
+    reply(proj, "approve the plan, but let's stop there for today");
+    const said = answer(proj, "Approve Plan", ["--park"]);
+    expect(said.code, said.message).toBe(0);
+    expect(auditText(proj)).toContain("**Person Reply**: approve the plan, but let's stop there for today");
+  });
+
+  // Only the skip's own write keeps the plan question open: any other change
+  // to the work's state still leaves it out of date, and the engine asks again.
+  test("a state change from anything but the skip still leaves the plan question out of date", () => {
+    const proj = waitingPlan();
+    expect(planApprovalAskIsOpen(proj)).toBe(true);
+    const file = seededStateFile(proj);
+    const before = readFileSync(file, "utf-8");
+    const after = before.replace("- **Depth**: Standard", "- **Depth**: Minimal");
+    expect(after).not.toBe(before);
+    writeFileSync(file, after, "utf-8");
+    expect(keepPlanApprovalAskOverStateWrite(proj, "# another state\n", after)).toBe(false);
+    expect(planApprovalAskIsOpen(proj)).toBe(false);
+  });
+
+  // "This is existing code" at Code Generation: Reverse Engineering runs on
+  // its own, and its own steps and writes are its work, not the build's.
+  test("a Reverse Engineering run on its own at Code Generation is not held for the plan", () => {
+    const proj = waitingPlan();
+    reply(proj, "/aidlc --stage reverse-engineering --single");
+    const run = next(proj, ["--stage", "reverse-engineering", "--single"]);
+    expect(run.kind, JSON.stringify(run)).toBe("run-stage");
+    expect(run.stage).toBe("reverse-engineering");
+    const record = guardWrite(proj, join(seededRecordDir(proj), "inception", "reverse-engineering", "notes.md"));
+    expect(record.code, record.stderr).toBe(0);
+    const scan = guardBash(proj, "bun .claude/tools/aidlc.ts engine workspace codekb-scope-diff");
+    expect(scan.code, scan.stderr).toBe(0);
+    // The workspace source still waits for the approved plan, and so do the
+    // work's state and a record hard-linked to source.
+    expect(guardWrite(proj, join(proj, "src", "slugify.ts")).code).toBe(2);
+    expect(guardBash(proj, "printf x > src/slugify.ts").code).toBe(2);
+    expect(guardWrite(proj, seededStateFile(proj)).code).toBe(2);
+    const linked = join(seededRecordDir(proj), "inception", "reverse-engineering", "linked.md");
+    mkdirSync(dirname(linked), { recursive: true });
+    linkSync(join(proj, "src", "base.ts"), linked);
+    expect(guardWrite(proj, linked).code).toBe(2);
+  });
+});
+
 describe("stopping for now at Code Generation", () => {
   // Coming back the next day: the unpark the engine names gets through the
   // guard, and the approved plan is built with no new question.
@@ -2061,6 +2249,29 @@ describe("a question about plan approval turns nothing off; a request does", () 
     expect(offRows(proj)).toBeGreaterThan(0);
     const after = next(proj);
     expect(after.kind === "ask" && after.ask_type === "plan-approval", JSON.stringify(after)).toBe(false);
+  });
+
+  // From a live run: the chat opened with `/aidlc`, the plan question came,
+  // and "skip plan approval?" turned the check off, because the opening
+  // command still read as a request. The person's latest word was a question.
+  test("after the chat's opening /aidlc, \"skip plan approval?\" still lowers nothing", () => {
+    const proj = project("off");
+    reply(proj, "/aidlc");
+    askFor(proj);
+    reply(proj, "skip plan approval?");
+    const refused = setter(proj);
+    expect(refused.code, refused.out).not.toBe(0);
+    expect(refused.out).toContain("asked a question about this check");
+    expect(offRows(proj)).toBe(0);
+    expect(next(proj)).toMatchObject({ kind: "ask", ask_type: "plan-approval" });
+  });
+
+  test("after the chat's opening /aidlc, a request to skip plan approval is still done at once", () => {
+    const proj = project("off");
+    reply(proj, "/aidlc");
+    askFor(proj);
+    reply(proj, "skip plan approval for this work");
+    expect(offRows(proj)).toBeGreaterThan(0);
   });
 });
 

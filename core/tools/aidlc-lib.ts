@@ -8933,6 +8933,22 @@ export function clearActiveDirectiveMarker(projectDir: string): void {
       ? { marker, result: true, preserve: true } : { marker: null, result: true });
 }
 
+// A plan change the person asked for while the code plan's question waits
+// leaves that question the open step: only its state digest follows the write,
+// so their next reply is still kept as their answer to it. Its binding (target,
+// fingerprint, run floor) does not use the state digest.
+export function keepPlanApprovalAskOverStateWrite(
+  projectDir: string,
+  previousStateContent: string,
+  nextStateContent: string,
+): boolean {
+  return transactActiveDirective(projectDir, (marker) =>
+    marker?.version === 2 && marker.kind === "ask" && marker.ask_type === PLAN_APPROVAL_ASK_TYPE &&
+      marker.state_sha256 === stateDigest(previousStateContent)
+      ? { marker: { ...marker, state_sha256: stateDigest(nextStateContent) }, result: true }
+      : { marker, result: false, preserve: true });
+}
+
 export function refreshActiveDirectiveMarker(
   projectDir: string,
   stage: string,
@@ -10781,14 +10797,19 @@ const DOCUMENT_AUDIT_EVENTS = new Set([
 // shard could not be read. With `replies`, a turn that was only a command to
 // AIDLC or a question about a switch (its HUMAN_TURN row says `Reply: command`
 // or `Reply: question`) is not a reply to the question, so it is left out.
-// With `requests`, only the question about a switch is left out: it asks for
-// nothing ("skip plan approval?").
+// With `requests`, a question about a switch ("skip plan approval?") asks for
+// nothing, and it ends the reach of the turns before it.
 export type HumanTurnState = "acted" | "answered" | "consumed" | "none";
 
 // The HUMAN_TURN marks for a turn that was only a command to AIDLC, and for a
 // turn that only asked about a switch ("skip plan approval?").
 export const COMMAND_TURN_REPLY = "command";
 export const QUESTION_TURN_REPLY = "question";
+
+// An answer the agent chose because the person left the choice to it ("up to
+// you", "choose the recommended answers"): the record says who chose and keeps
+// the words that handed it over (log answer --on-instruction).
+export const ANSWER_SOURCE_ON_INSTRUCTION = "chosen by the agent as the person asked";
 
 // A human turn that replied: more than a command to AIDLC or a question about
 // a switch.
@@ -10888,13 +10909,16 @@ export function humanTurnState(projectDir: string, options: { replies?: boolean;
           auditBlockField(blocks[i], "Mode") === "autonomous");
       if (!isResolution && ev !== "HUMAN_TURN") continue;
       if (options.replies && ev === "HUMAN_TURN" && !isReplyTurn({ event: ev, block: blocks[i] })) continue;
-      if (options.requests && ev === "HUMAN_TURN" && !isRequestTurn({ event: ev, block: blocks[i] })) continue;
+      // A question about a switch asks for nothing, and it ends the reach of
+      // the turns before it: the person's latest word was a question.
+      const questionTurn = options.requests === true && ev === "HUMAN_TURN" &&
+        !isRequestTurn({ event: ev, block: blocks[i] });
       events.push({
         ts: auditBlockField(blocks[i], "Timestamp") ?? "",
         shard: s,
         pos: i,
-        human: ev === "HUMAN_TURN",
-        event: ev,
+        human: ev === "HUMAN_TURN" && !questionTurn,
+        event: questionTurn ? "QUESTION_TURN" : ev,
       });
     }
   }
@@ -14236,6 +14260,14 @@ export interface FreshReviewReceipts {
    *  attempt recorded for paths it claims: another Unit's own reviewed build,
    *  not an edit after the review. Their review's source binding still holds. */
   unitSourceAttributed: Set<string>;
+  /** Units whose reviewed source moved to bytes no review in this attempt
+   *  recorded (an edit outside any review), under every Guard Policy and
+   *  whether or not a newer claim shields the path, with their next review. */
+  unitSourceMoved: Map<string, StaleReviewProgress>;
+  /** Units the person approved at their checkpoint after their latest
+   *  re-check: that approval opens a fresh one, so their progress above
+   *  reports it unspent. */
+  unitRecheckReopened: Set<string>;
   /** Effective stage-entry source baseline for unclaimed-path verification. */
   sourceBaseline: SourceBaselineResult;
   /** Current source listing from the guard's single workspace walk, when needed. */
@@ -18234,6 +18266,8 @@ export function freshReviewReceipts(
     unitStale: new Set(),
     freshUnitClaims: new Map(),
     unitSourceAttributed: new Set(),
+    unitSourceMoved: new Map(),
+    unitRecheckReopened: new Set(),
     sourceBaseline: { state: "legacy" },
     currentSourceListing: null,
     stageStaleProgress: null,
@@ -18396,13 +18430,7 @@ export function freshReviewReceipts(
   const isRelaxed = (): boolean => {
     if (resolvedRelaxed === null) {
       changeControlRead = true;
-      try {
-        resolvedRelaxed =
-          resolveGuardPolicy(projectDir, stateContent, { selection: options.selection }).value !==
-          "strict";
-      } catch {
-        resolvedRelaxed = false;
-      }
+      resolvedRelaxed = guardPolicyAcceptsChanges(projectDir, stateContent, { selection: options.selection });
     }
     return resolvedRelaxed;
   };
@@ -18831,10 +18859,16 @@ export function freshReviewReceipts(
     (newestSourceFingerprint === UNBINDABLE_FINGERPRINT ||
       currentSourceFingerprint === null ||
       (sourceMismatch && !isRelaxed()));
+  // A Unit's own source binding is compared path by path below, and says once
+  // which of its paths changed; the whole workspace also moves with another
+  // Unit's own build.
+  const unitBound = newestSourceUnit !== null && currentSourceListing !== null &&
+    sourceFreshnessApplies && (modernUnitReceipts.get(newestSourceUnit)?.fingerprint ?? null) !== null;
   if (
     sourceMismatch &&
     newestSourceFingerprint !== null &&
     currentSourceFingerprint !== null &&
+    !unitBound &&
     isRelaxed()
   ) {
     acceptedChanges.push({
@@ -18850,6 +18884,7 @@ export function freshReviewReceipts(
 
   const freshUnitClaims = new Map<string, SourceClaimModel>();
   const unitSourceAttributed = new Set<string>();
+  const unitSourceMoved = new Map<string, StaleReviewProgress>();
   if (sourceFreshnessApplies && currentSourceListing !== null) {
     const newerFreshClaims: SourceClaimModel[] = [];
     // What each newer validated review recorded, newest first: a path it claims
@@ -18943,6 +18978,9 @@ export function freshReviewReceipts(
             movedPathKeys.push(pathKey);
           }
           if (movedAtAll && allReviewedByNewer) unitSourceAttributed.add(unit);
+          if (movedAtAll && !allReviewedByNewer) {
+            unitSourceMoved.set(unit, { nextIteration: receipt.iteration + 1, recoverySpent: receipt.recovery });
+          }
           newerReviewedSources.push({ claims: claimModel, listing: reviewedListing });
           if (movedPathKeys.length > 0) {
             if (isRelaxed()) {
@@ -18992,6 +19030,27 @@ export function freshReviewReceipts(
         nextIteration: receipt.iteration + 1,
         recoverySpent: receipt.recovery,
       });
+    }
+  }
+
+  // A Unit's re-check is spent only until the person next approves the Unit
+  // at its checkpoint: that approval opens a fresh one.
+  const unitRecheckReopened = new Set<string>();
+  for (const unit of new Set([...unitSourceMoved.keys(), ...unitStaleProgress.keys()])) {
+    const recheck = events.slice(floorIdx + 1).findLast((row) =>
+      row.event === "REVIEW_REQUESTED" && auditBlockField(row.block, "Recovery") === "stale-receipt" &&
+      auditBlockField(row.block, "Stage") === stage.slug && auditBlockField(row.block, "Unit") === unit &&
+      auditBlockField(row.block, "Reviewer") === reviewer && eventMatchesClaimAttempt(projectDir, row.block, unit));
+    if (!recheck || !allEvents.some((row) =>
+      row.event === "GATE_APPROVED" && auditBlockField(row.block, "Unit") === unit &&
+      auditBlockField(row.block, "User Input") === "Approve" &&
+      ["construction-unit", "walking-skeleton"].includes(auditBlockField(row.block, "Checkpoint") ?? "") &&
+      gateStagesFromBlock(row.block).includes(stage.slug) &&
+      eventMatchesClaimAttempt(projectDir, row.block, unit) && attemptEventDefinitelyBefore(recheck, row))) continue;
+    unitRecheckReopened.add(unit);
+    for (const progress of [unitSourceMoved, unitStaleProgress]) {
+      const current = progress.get(unit);
+      if (current) progress.set(unit, { ...current, recoverySpent: false });
     }
   }
 
@@ -19090,6 +19149,8 @@ export function freshReviewReceipts(
     unitStale,
     freshUnitClaims,
     unitSourceAttributed,
+    unitSourceMoved,
+    unitRecheckReopened,
     sourceBaseline,
     currentSourceListing: sourceFreshnessApplies ? currentSourceListing : null,
     stageStaleProgress,
@@ -36096,6 +36157,24 @@ export function resolveGuardPolicy(
 }
 /** Retired alias of resolveGuardPolicy. */
 export const resolveChangeControl = resolveGuardPolicy;
+
+/**
+ * The one reading of whether this run records and announces a changed input
+ * instead of stopping on it: the effective Guard Policy is relaxed or off,
+ * whatever its source (a shipped, plugin or composed scope, a memory layer, or
+ * the person's own switch). A policy that cannot be read counts as strict.
+ */
+export function guardPolicyAcceptsChanges(
+  projectDir: string,
+  stateContent?: string | null,
+  options: { selection?: WorkflowSelectionOptions } = {},
+): boolean {
+  try {
+    return resolveGuardPolicy(projectDir, stateContent, { selection: options.selection }).value !== "strict";
+  } catch {
+    return false;
+  }
+}
 
 /** The one sentence a chat or flag flip gets while a memory layer holds strict. */
 export function guardPolicyMemoryStrictRefusal(

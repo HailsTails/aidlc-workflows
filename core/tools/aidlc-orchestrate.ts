@@ -233,6 +233,8 @@ import {
   humanPresenceGuardDisabled,
   isNonAnswer,
   personSpokeSinceGate,
+  planApprovalAskIsOpen,
+  recordDir,
   engineDir,
   isPlainObject,
   parseCeremonySetting,
@@ -1346,11 +1348,15 @@ function emit(requested: Directive): void {
     prepared.marker.ask_type === GUARD_RECOVERY_ASK_TYPE &&
     prepared.projectDir !== undefined &&
     guardRecoveryAskMarkerIsCurrent(prepared.projectDir, prepared.marker);
+  // A plan change while the code plan's question is open leaves the question
+  // as the published step.
+  const planQuestionStays = planWaitPrints.has(requested);
   if (
     prepared.marker &&
     !isReadOnlyEngineProbe() &&
     !retainedIssuedDirective &&
-    !sameGuardRecoveryAsk
+    !sameGuardRecoveryAsk &&
+    !planQuestionStays
   ) {
     const projectDir = prepared.projectDir;
     try {
@@ -4177,6 +4183,9 @@ type SteeringTokenPayload = {
 const runStageRoutes = new WeakMap<RunStageDirective, RunStageRoute>();
 // Prints the agent stops after (turnEndingPrint).
 const turnEndingPrints = new WeakSet<Directive>();
+// A plan change the person asked for while the code plan's question is open:
+// the question stays the published step (emit does not replace it).
+const planWaitPrints = new WeakSet<Directive>();
 const publicationContexts = new WeakMap<
   Directive,
   { projectDir: string; stateHash: string }
@@ -7020,7 +7029,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       const parts = [`--scope ${scopeArg(flags.scope)}`];
       for (const modifier of modifiers) parts.push(`--${modifier}`);
       const command = `${aidlcDispatcherInvocation("scope change")} ${parts.join(" ")}`;
-      emit(planChanges ? planChangeDirective(planChanges, command, null) : turnEndingPrint(
+      emit(planChanges ? planChangeDirective(planChanges, command, null, planApprovalAskIsOpen(pd)) : turnEndingPrint(
         `Run \`${command}\` to change scope, then print its output verbatim and stop.`,
       ));
       return;
@@ -7033,13 +7042,13 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     // same-as-current --scope: no sibling modifier may be silently discarded.
     if (modifiers.length > 0 && !describedWork) {
       const command = configSetCommand(modifiers);
-      emit(planChanges ? planChangeDirective(planChanges, command, plan) : turnEndingPrint(
+      emit(planChanges ? planChangeDirective(planChanges, command, plan, planApprovalAskIsOpen(pd)) : turnEndingPrint(
         `Run \`${command}\` to update the configuration, then print its output verbatim and stop.`,
       ));
       return;
     }
     if (planChanges) {
-      emit(planChangeDirective(planChanges, null, plan));
+      emit(planChangeDirective(planChanges, null, plan, planApprovalAskIsOpen(pd)));
       return;
     }
   }
@@ -7386,7 +7395,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
   // Reverse Engineering went back on the plan behind the cursor (the person
   // said this is existing code): run it now with a redo jump, which leaves the
   // finished stages alone; once it is approved the walk returns here.
-  if (reverseEngineeringOwedBehindCursor(stateContent)) {
+  if (reverseEngineeringOwedBehindCursor(stateContent, recordDir(pd))) {
     emit(printDirective(
       `Reverse Engineering is on the plan and has not run. Run \`${aidlcToolInvocation("jump")} execute --target reverse-engineering --direction redo --scope ${scopeArg(scope)}\` ` +
         `to run it now (finished stages stay finished, and the workflow returns to ${currentSlug} after it), then re-run \`next\` to continue.`,
@@ -7735,18 +7744,28 @@ function applyConstructionCheckpointShape(
     proof_path: checkpoint.proof_path,
     verification_command: checkpoint.verification_command,
     command_authorized: checkpoint.command_authorized,
+    ...(checkpoint.rereview ? { rereview: checkpoint.rereview } : {}),
+    ...(checkpoint.rechecked ? { rechecked: checkpoint.rechecked } : {}),
   };
   if (directive.construction_policy) {
     directive.construction_policy.human_completion_required = checkpoint.human_required;
   }
-  delete directive.reviewer;
-  delete directive.review_artifact;
-  delete directive.review_class;
-  delete directive.reviewer_max_iterations;
-  directive.protocol_modules = ["construction"];
+  // A re-check of changed code dispatches the reviewer; any other checkpoint
+  // has had its reviews.
+  if (!checkpoint.rereview) {
+    delete directive.reviewer;
+    delete directive.review_artifact;
+    delete directive.review_class;
+    delete directive.reviewer_max_iterations;
+  }
+  directive.protocol_modules = checkpoint.rereview ? ["reviewer", "construction"] : ["construction"];
   // A checkpoint the person approves offers one learnings ritual for the
-  // stages it covers, as a stage's own approval gate does.
-  if (directive.ceremony.learnings === "on" && checkpoint.human_required) {
+  // stages it covers, as a stage's own approval gate does. A re-check of
+  // changed code asks only for the approval.
+  if (
+    directive.ceremony.learnings === "on" && checkpoint.human_required &&
+    !checkpoint.rereview && !checkpoint.rechecked
+  ) {
     directive.protocol_modules.push("learnings");
   }
 }
@@ -10479,7 +10498,15 @@ function planChangeDirective(
   changes: PlanChanges,
   before: string | null,
   plan: { scope: string; stateContent: string } | null,
+  // The code plan's question is open: it stays the open step, so what the
+  // person says next is kept as their answer to it.
+  planWaits = false,
 ): PrintDirective {
+  const kept = (directive: PrintDirective): PrintDirective => {
+    if (planWaits) planWaitPrints.add(directive);
+    return directive;
+  };
+  const end = " Then stop.";
   // A stage the plan already skips or runs is no change: it is said, not sent
   // to recompose, so the undo line names only what changed. After a scope
   // change (plan null) the new plan is not known here, so every flip is sent.
@@ -10495,10 +10522,10 @@ function planChangeDirective(
     ? `${unchanged.join("; ").charAt(0).toUpperCase()}${unchanged.join("; ").slice(1)}.`
     : "";
   if (skip.length === 0 && add.length === 0) {
-    return turnEndingPrint(
+    return kept(turnEndingPrint(
       `${before ? `Run \`${before}\` and print its output verbatim, then tell` : "Tell"} the person in one line: ` +
-        `"${noted} The plan is unchanged." Then stop.`,
-    );
+        `"${noted} The plan is unchanged."${end}`,
+    ));
   }
   const flips = (skipped: string[], added: string[]): string => [
     ...(skipped.length > 0 ? [`--skip ${skipped.join(",")}`] : []),
@@ -10509,15 +10536,15 @@ function planChangeDirective(
     ...(add.length > 0 ? [`added ${add.join(", ")}`] : []),
   ].join(" and ");
   const recompose = `${aidlcDispatcherInvocation("recompose")} ${flips(skip, add)}`;
-  return turnEndingPrint(
+  return kept(turnEndingPrint(
     `${before ? `Run \`${before}\` and print its output verbatim, then run` : "Run"} \`${recompose}\` ` +
       "to change this workflow's remaining stages as the person asked, and do not show its output: " +
       "the one line below says what changed. " +
       "If a command refuses, tell the person in plain words why it could not, and the way it names to do it " +
       "instead, then stop. " +
       `Otherwise tell the person in one line: "${summary.charAt(0).toUpperCase()}${summary.slice(1)}. ` +
-      `To undo it, type \`${entrySkillInvocation()} ${flips(add, skip)}\`.${noted ? ` ${noted}` : ""}" Then stop.`,
-  );
+      `To undo it, type \`${entrySkillInvocation()} ${flips(add, skip)}\`.${noted ? ` ${noted}` : ""}"${end}`,
+  ));
 }
 
 // A jump to a stage the running plan skips. Ahead of the cursor, the jump

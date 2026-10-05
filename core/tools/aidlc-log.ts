@@ -96,6 +96,9 @@ import {
   recordAcceptedChanges,
   governedChangeControl,
   readAuditShardEvents,
+  isRequestTurn,
+  personSpokeSinceGate,
+  ANSWER_SOURCE_ON_INSTRUCTION,
   unitSkippedUnits,
   readActiveAuditShardEvents,
   sortAttemptEvents,
@@ -389,7 +392,23 @@ const DECISION_OPTIONS: ReadonlySet<string> = new Set([
 ]);
 // --units, --reason and --park: the engine's Plan Approval question, recorded as
 // the person chose (which Units, what to change, and whether to stop for now).
-const ANSWER_OPTIONS: ReadonlySet<string> = new Set([...LOG_INTERACTION_OPTIONS, "--details", "--units", "--reason", "--park"]);
+// --on-instruction: a stage question the person left to the agent.
+const ANSWER_OPTIONS: ReadonlySet<string> = new Set([
+  ...LOG_INTERACTION_OPTIONS, "--details", "--units", "--reason", "--park", "--on-instruction",
+]);
+
+// The person has said something in this piece of work: a turn that can carry a
+// request, or the request that started it. Their handing a choice over can
+// come before the question, so the words are what the record keeps.
+function personSpokeInThisWork(pd: string): boolean {
+  try {
+    return readAuditShardEvents(pd).some((row) =>
+      isRequestTurn(row) ||
+      (row.event === "WORKFLOW_STARTED" && (auditBlockField(row.block, "Request") ?? "").trim() !== ""));
+  } catch {
+    return false;
+  }
+}
 
 function verificationCommandFromFlags(pd: string, flags: Record<string, string>) {
   if ((flags.command !== undefined) === (flags["command-file"] !== undefined)) {
@@ -1087,7 +1106,7 @@ function handleAnswers(args: string[]): void {
 // --- Subcommand: answer ---
 // Usage: aidlc-log answer --stage <slug> --details <text>
 //   [--checkpoint summary-confirmation --questions-file <path>
-//   [--unit <unit>] [--single]]
+//   [--unit <unit>] [--single]] [--on-instruction <the person's words>]
 //
 // Fires AFTER the user answers a question.
 
@@ -1421,6 +1440,18 @@ function enginePlanApprovalChoices(): readonly string[] {
   return [...PLAN_APPROVAL_CHOICES, ...GROUPED_PLAN_APPROVAL_CHOICES, PLAN_REVIEW_CHOICE];
 }
 
+// What was recorded, when the stop the person asked for with it was not.
+const PARK_FAILED_LEAD = {
+  approve: "The person's Plan Approval is recorded",
+  "request-changes": "The person's change request for the plan is recorded",
+  edit: "The person's choice to edit the plan files is recorded",
+} as const;
+const PARK_FAILED_SAID = {
+  approve: "the plan is approved",
+  "request-changes": "their change request is saved",
+  edit: "their choice to edit the files is saved",
+} as const;
+
 // The conductor records what the person chose at the engine's Plan Approval
 // question, as it read their reply: approve, request changes, or edit the files
 // themselves, for every Unit asked about or the ones named in --unit/--units.
@@ -1487,7 +1518,15 @@ function answerEnginePlanApproval(
         return `${message} The workflow is parked, as the person asked: run next, which answers parked, and tell them ` +
           "how to resume.";
       })
-      .catch((e: unknown) => `${message} It could not be parked (${errorMessage(e)}); run next.`)
+      // An unattended run has nobody to stop for, so it keeps moving. Anyone
+      // else said stop: their choice stands, and nothing more runs until they
+      // say to go on. The whole message is replaced, since the recorded one
+      // ends by naming next.
+      .catch((e: unknown) => humanTurnMintAllowed()
+        ? `${PARK_FAILED_LEAD[choice]}, but the stop they asked for could not be recorded (${errorMessage(e)}). ` +
+          `Tell them in one line that ${PARK_FAILED_SAID[choice]} and that nothing more runs until they say to go on. ` +
+          "Do not run next or start any work until they do."
+        : `${message} It could not be parked (${errorMessage(e)}); run next.`)
       .then((text) => console.log(JSON.stringify({ recorded: choice, message: text })));
     return;
   }
@@ -1498,6 +1537,22 @@ function handleAnswer(args: string[]): void {
   const { flags } = parseFlags(args);
   if (!flags.stage) error("Missing --stage <slug>");
   if (!flags.details) error("Missing --details <text>");
+  // A stage question the person left to the agent. Checkpoints and approvals
+  // stay the person's own each time, and an unattended run has nobody to hand
+  // anything over.
+  const instruction = flags["on-instruction"]?.replace(/\s+/g, " ").trim();
+  if (instruction !== undefined) {
+    if (instruction === "") {
+      error("--on-instruction needs the person's own words that left the choice to you.");
+    }
+    if (flags.checkpoint !== undefined) {
+      error(`--on-instruction is for a stage question the person left to you; --checkpoint ${flags.checkpoint} ` +
+        "is theirs to answer. Ask them and record their reply.");
+    }
+    if (!humanTurnMintAllowed()) {
+      error("--on-instruction needs a person in the session; AIDLC_UNATTENDED=1 is set.");
+    }
+  }
 
   if (
     flags.checkpoint !== undefined &&
@@ -2052,6 +2107,9 @@ function handleAnswer(args: string[]): void {
     const pendingDecision =
       targetAtApprovalGate && hasPendingDecisionAtGate(pd, flags.stage);
     if (targetAtApprovalGate && !pendingDecision) {
+      if (instruction !== undefined) {
+        error("An approval is the person's own each time, so --on-instruction cannot record it. Ask them.");
+      }
       if (
         !autonomousDecision &&
         !humanPresenceGuardDisabled() &&
@@ -2074,7 +2132,14 @@ function handleAnswer(args: string[]): void {
       return;
     }
 
-    if (autonomousDecision) {
+    if (instruction !== undefined) {
+      if (!personSpokeInThisWork(pd)) {
+        error("Nothing the person said in this piece of work is on record, so no choice was left to you. Ask them." +
+          unattendedHumanPresenceHint());
+      }
+      fields["Answer Source"] = ANSWER_SOURCE_ON_INSTRUCTION;
+      fields.Instruction = instruction;
+    } else if (autonomousDecision) {
       // autonomous Construction: no human presence required
     } else if (humanPresenceGuardDisabled()) {
       // scoped test off-switch
@@ -2320,6 +2385,30 @@ function handleLink(args: string[]): void {
 // in aidlc-state.ts). On a per-unit Construction stage the reviewer fires once
 // PER UNIT, so pass --unit; the approve guard requires one review per unit.
 const VALID_VERDICTS = new Set(["READY", "NOT-READY"]);
+
+// The person asked for this review: they spoke since the last decision, after
+// the last request for this review. The pass cap and the one recovery bound
+// only the reviews the agent starts on its own.
+function personAskedForReview(
+  pd: string,
+  stage: string,
+  reviewer: string,
+  unit: string | undefined,
+  intent?: string | null,
+  space?: string,
+): boolean {
+  if (!personSpokeSinceGate(pd, { requests: true })) return false;
+  let turn: AuditShardEvent | null = null;
+  let request: AuditShardEvent | null = null;
+  for (const row of sortAttemptEvents(readAuditShardEvents(pd, intent ?? undefined, space))) {
+    if (isRequestTurn(row)) turn = row;
+    else if (
+      row.event === "REVIEW_REQUESTED" && auditBlockField(row.block, "Stage") === stage &&
+      auditBlockField(row.block, "Reviewer") === reviewer && (auditBlockField(row.block, "Unit") || undefined) === unit
+    ) request = row;
+  }
+  return turn !== null && (request === null || attemptEventDefinitelyBefore(request, turn));
+}
 
 function reviewBudgetMessage(stage: string, ordinal: number, budget: number): string {
   return (
@@ -2744,10 +2833,14 @@ function handleReview(args: string[]): void {
           single: flags.single === "true",
         })
       : null;
+    // A review of a Unit whose code or documents changed after its review,
+    // with checkpoints on, re-checks that change: it is reviewed, not accepted.
+    const recheck = flags.unit !== undefined &&
+      getField(state, "Construction Checkpoints") === "enabled";
     if (receipts?.changeControlRead || summaryEvidence.changeControlRead) {
       governedChangeControl(pd, state, { intent, space });
       notices.push(...recordAcceptedChanges(pd, [
-        ...(receipts?.acceptedChanges ?? []),
+        ...(receipts?.acceptedChanges ?? []).filter((change) => !recheck || change.unit !== flags.unit),
         ...(summaryEvidence.ok ? summaryEvidence.acceptedChanges ?? [] : []),
       ], { intent, space }));
     }
@@ -2855,22 +2948,37 @@ function handleReview(args: string[]): void {
           receipts?.newestSourceUnit === (flags.unit ?? null);
         const sourceScopeStale =
           sameSourceRecoveryScope && receipts?.sourceStale === true;
+        // A Unit whose reviewed work changed, whether the Guard Policy made its
+        // review stale or accepted the change, gets the same one recovery pass.
         const artifactScopeStale =
           receipts !== null &&
           (flags.unit
-            ? receipts.unitStale.has(flags.unit)
+            ? receipts.unitStale.has(flags.unit) ||
+              receipts.acceptedChanges.some((change) => change.unit === flags.unit)
             : receipts.stageStale);
+        // With Construction checkpoints on, a review of a Unit whose reviewed
+        // code changed outside any review re-checks that change: it is the
+        // recovery pass, and the person's approval of the Unit since the last
+        // re-check opens a fresh one.
+        const checkpointUnit = receipts !== null && flags.unit !== undefined &&
+          getField(state, "Construction Checkpoints") === "enabled";
+        const unitSourceScopeStale = checkpointUnit && !artifactScopeStale &&
+          receipts.unitSourceMoved.has(flags.unit as string);
         const scopeStale =
           process.env.AIDLC_SKIP_SOURCE_FRESHNESS !== "1" &&
           fields.Workflow === undefined &&
           receipts !== null &&
-          (sourceScopeStale || artifactScopeStale);
+          (sourceScopeStale || artifactScopeStale || unitSourceScopeStale);
         const sourceRecoverySpent =
           sourceScopeStale &&
           (receipts?.sourceRecoverySpent === true ||
             receipts?.sourceStaleProgress?.recoverySpent === true);
-        const recoverySpent =
-          attempt.recoverySpent || sourceRecoverySpent;
+        const recoverySpent = !(checkpointUnit && receipts.unitRecheckReopened.has(flags.unit as string)) &&
+          (attempt.recoverySpent || sourceRecoverySpent);
+        // A review the person asked for is never refused for want of passes.
+        let asked: boolean | null = null;
+        const personAsked = (): boolean =>
+          (asked ??= personAskedForReview(pd, flags.stage as string, flags.reviewer as string, flags.unit, intent, space));
         const refuseAttemptGuard = (
           code: string,
           invariant: string,
@@ -3162,7 +3270,7 @@ function handleReview(args: string[]): void {
           scopeStale &&
           attempt.pendingIterations.size === 0 &&
           !recoverySpent;
-        if (scopeStale && recoverySpent) {
+        if (scopeStale && recoverySpent && !personAsked()) {
           const message = reviewRecoverySpentMessage(
               flags.stage,
               autonomousCandidate && attempt.boltStarted
@@ -3193,7 +3301,7 @@ function handleReview(args: string[]): void {
             message,
           );
         }
-        if (recoverySpent) {
+        if (recoverySpent && !personAsked()) {
           const message = reviewRecoveryAlreadyRequestedMessage(
               flags.stage,
               attempt.recoveryIteration ?? iteration,
@@ -3243,7 +3351,7 @@ function handleReview(args: string[]): void {
         // REVIEW_EVIDENCE_MISSING, because the revision path needs the fresh
         // receipt the refusal just forbade. The only remedy left is a redo jump,
         // which discards the attempt the human was mid-revision on.
-        if (!recoveryEligible && budget !== null && expected > budget) {
+        if (!recoveryEligible && budget !== null && expected > budget && !personAsked()) {
           refuseAttemptGuard(
             "REVIEW_BUDGET_EXHAUSTED",
             "Review requests do not exceed the configured attempt budget.",

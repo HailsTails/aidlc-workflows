@@ -104,6 +104,11 @@ After the per-unit work:
 
 **Route checkpoints before bodies.** A `construction_checkpoint` directive
 verifies and approves existing Unit work; it does not rerun Code Generation.
+When it carries `rereview`, the Unit's code or documents changed since their review: run that
+request at once, without asking, then verify and ask the one approval question.
+Only Guard Policy `strict` re-checks: under `relaxed` and `off` there is no
+`rereview`, a change to the Unit's code or documents is accepted with one line,
+and the Unit's approval stands.
 With `command_authorized: false`, ask the verification-command question before
 any `verify`, complete the human decision/answer/setter flow, then call `next`.
 Show "Verified with `<full command>` (exit 0)" in the approval question;

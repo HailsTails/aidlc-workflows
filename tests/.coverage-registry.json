@@ -544,6 +544,10 @@
       "minMechanism": "none",
       "coveredBy": [
         {
+          "file": "tests/integration/t-journey-code-plan-approval.sdk.test.ts",
+          "mechanism": "sdk"
+        },
+        {
           "file": "tests/unit/t-plan-approval-recovery-paths.test.ts",
           "mechanism": "cli"
         }
@@ -1266,6 +1270,10 @@
       "minMechanism": "none",
       "coveredBy": [
         {
+          "file": "tests/integration/t-journey-code-plan-approval.sdk.test.ts",
+          "mechanism": "sdk"
+        },
+        {
           "file": "tests/integration/t-scope-run-moves-switch.test.ts",
           "mechanism": "none"
         },
@@ -1690,6 +1698,18 @@
       "coveredBy": [
         {
           "file": "tests/unit/t248-codekb-scope-diff.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:ANSWER_SOURCE_ON_INSTRUCTION",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t188-human-presence-gate.test.ts",
           "mechanism": "cli"
         }
       ],
@@ -4503,6 +4523,18 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:guardPolicyAcceptsChanges",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t342-construction-checkpoint-routing.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:guardPolicyAtLeast",
       "minMechanism": "none",
       "coveredBy": [
@@ -5775,6 +5807,18 @@
       "minMechanism": "none",
       "coveredBy": [],
       "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:keepPlanApprovalAskOverStateWrite",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t-plan-approval-ask.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
     },
     {
       "unitClass": "function",
@@ -12693,6 +12737,10 @@
           "mechanism": "cli"
         },
         {
+          "file": "tests/integration/t-journey-code-plan-approval.sdk.test.ts",
+          "mechanism": "sdk"
+        },
+        {
           "file": "tests/integration/t351-fresh-clone-participation.test.ts",
           "mechanism": "cli"
         },
@@ -12798,6 +12846,10 @@
         },
         {
           "file": "tests/integration/t-journey-check-off-on.sdk.test.ts",
+          "mechanism": "sdk"
+        },
+        {
+          "file": "tests/integration/t-journey-code-plan-approval.sdk.test.ts",
           "mechanism": "sdk"
         },
         {
