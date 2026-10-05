@@ -118,7 +118,11 @@ const gateItem = (row: AuditShardEvent) =>
  * person's grant of autonomous Construction is in force (the latest
  * WORKFLOW_STARTED or AUTONOMY_MODE_SET is AUTONOMY_MODE_SET to autonomous)
  * and the stage is a Construction stage; a walking-skeleton checkpoint still
- * asks the person. That grant is itself the person's decision, backed by a
+ * asks the person. A Construction stage gate is also the engine's once every
+ * Unit of the work's compiled DAG has its checkpoint approved (and not since
+ * rejected) and one of them covers the stage in its Gate Stages: the engine
+ * settles the stage gate from those approvals (isAutonomousConstructionGate),
+ * and each checkpoint approval is itself checked as the person's. That grant is itself the person's decision, backed by a
  * turn after the last gate resolution, as the engine requires. The rows an
  * approval backfills before it (a Recovered rejection and re-opening) leave
  * the gate's first opening in place, and the rejection is checked as usual.
@@ -137,6 +141,17 @@ export function unbackedDecisions(projectDir: string, start: AuditCursor, turns:
     let workspace = -1;
     let autonomous = false;
     let resolved = -1;
+    // The engine settles a Construction stage gate once every Unit of the
+    // work's compiled DAG has its checkpoint approved and one of them covers the
+    // stage (isAutonomousConstructionGate): per Unit, the stages its standing
+    // checkpoint approval covers. A rejection takes that Unit's approval back.
+    const units = dagUnits(projectDir, key);
+    const approvedUnits = new Map<string, Set<string>>();
+    const covers = (name: string) => {
+      const needed = units.length > 0 ? units : [...approvedUnits.keys()];
+      return needed.length > 0 && needed.every((unit) => approvedUnits.has(unit)) &&
+        needed.some((unit) => approvedUnits.get(unit)!.has(name));
+    };
     for (let index = 0; index < events.length; index++) {
       const row = events[index];
       const stage = auditBlockField(row.block, "Stage") ?? "";
@@ -146,9 +161,11 @@ export function unbackedDecisions(projectDir: string, start: AuditCursor, turns:
       // The engine writes Recovered only on the rows an approval backfills.
       const backfilled = auditBlockField(row.block, "Recovered") === "true" &&
         (row.event === "GATE_REJECTED" || row.event === "STAGE_AWAITING_APPROVAL");
-      const engineApproved = row.event === "GATE_APPROVED" && autonomous &&
-        audit().findStageBySlug(stage)?.phase === "construction" &&
-        auditBlockField(row.block, "Checkpoint") !== "walking-skeleton";
+      const construction = audit().findStageBySlug(stage)?.phase === "construction";
+      const checkpoint = auditBlockField(row.block, "Checkpoint");
+      const engineApproved = row.event === "GATE_APPROVED" && construction && (
+        (autonomous && checkpoint !== "walking-skeleton") || (checkpoint === null && covers(stage))
+      );
       let since: number | undefined;
       let reply = true;
       let answer = false;
@@ -194,7 +211,18 @@ export function unbackedDecisions(projectDir: string, start: AuditCursor, turns:
       }
       if (row.event === "STAGE_AWAITING_APPROVAL" && !backfilled) gates.set(gateItem(row), index);
       if (row.event === "WORKSPACE_INITIALISED" || row.event === "WORKSPACE_RECLASSIFIED") workspace = index;
-      if (row.event === "WORKFLOW_STARTED") autonomous = false;
+      if (row.event === "WORKFLOW_STARTED") {
+        autonomous = false;
+        approvedUnits.clear();
+      }
+      const unit = auditBlockField(row.block, "Unit");
+      if (gate && checkpoint !== null && unit !== null) {
+        if (row.event === "GATE_REJECTED") approvedUnits.delete(unit);
+        else {
+          const stages = (auditBlockField(row.block, "Gate Stages") ?? "").split(",").map((part) => part.trim());
+          approvedUnits.set(unit, new Set(stages.filter((name) => name.length > 0)));
+        }
+      }
       if (row.event === "AUTONOMY_MODE_SET") autonomous = auditBlockField(row.block, "Mode") === "autonomous";
       if (gate) resolved = index;
     }
@@ -213,6 +241,19 @@ function openQuestions(events: readonly AuditShardEvent[], at: number): number {
     else if (DECISION_CLOSING_EVENTS.has(row.event)) open = Math.max(0, open - 1);
   }
   return Math.max(open, 1);
+}
+
+/** The Units of the work's compiled DAG (`<record>/runtime-graph.json`), when it has one. */
+function dagUnits(projectDir: string, key: string): string[] {
+  const [space, intent] = key.split("/");
+  try {
+    const graph = JSON.parse(readFileSync(join(projectDir, "aidlc", "spaces", space, "intents", intent, "runtime-graph.json"), "utf-8")) as {
+      bolt_dag?: { units?: { name?: string }[] };
+    };
+    return (graph.bolt_dag?.units ?? []).map((unit) => unit.name).filter((name): name is string => typeof name === "string");
+  } catch {
+    return [];
+  }
 }
 
 function describe(row: AuditShardEvent, key: string, turns: readonly PersonTurn[]): string {

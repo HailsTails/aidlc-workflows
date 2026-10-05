@@ -116,6 +116,9 @@ bash tests/run-tests.sh --e2e
 # Filter by pattern
 bash tests/run-tests.sh --integration --filter "t25|t26"
 
+# Leave files out by pattern; the rest run as an ordinary tier
+bash tests/run-tests.sh --integration --exclude "^t-scope-run-"
+
 # Run tests concurrently within a level (larger levels benefit most; smoke/unit stay serial)
 bash tests/run-tests.sh --all --parallel 4
 bash tests/run-tests.sh --integration -P 8
@@ -203,8 +206,11 @@ For a single deterministic reproduction, manually dispatch
 `deterministic-tests.yml` with an immutable `ref`, selected `runner` and `tier`,
 and optional `diagnostic_filter` filename regex. The unit tier requires
 `unit-shard=N/M`; `1/1` selects all unit files before filtering. For smoke,
-integration or e2e, omit `unit-shard`; its default is empty. The filter exists
-only for manual dispatch, not reusable CI callers.
+integration or e2e, omit `unit-shard`; its default is empty. That
+`diagnostic_filter` exists only for manual dispatch. Reusable callers pass
+`filter` and `exclude` instead, both empty by default: `ci.yml` and
+`full-suite.yml` run the scope runs (`t-scope-run-*`) as an integration job of
+their own (`filter`) and leave them out of the other one (`exclude`).
 One fresh runner produces `ci-deterministic-probe-<OS>` diagnostics with all
 model gates closed; it cannot qualify full-suite or release coverage.
 

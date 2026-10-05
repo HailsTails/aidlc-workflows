@@ -18,6 +18,14 @@ on:
         description: N/M selector for the unit tier only
         default: ""
         type: string
+      filter:
+        description: Test file name filter for the tier (run-tests.ts --filter); empty runs the whole tier
+        default: ""
+        type: string
+      exclude:
+        description: Test file names to leave out of the tier (run-tests.ts --exclude); empty leaves none out
+        default: ""
+        type: string
       artifact-label:
         description: Artifact prefix; the actual runner OS is appended
         required: true
@@ -192,7 +200,8 @@ jobs:
         env:
           TEST_TIER: ${{ inputs.tier }}
           UNIT_SHARD: ${{ inputs.unit-shard }}
-          TEST_FILTER: ${{ inputs.diagnostic_filter || '' }}
+          TEST_FILTER: ${{ inputs.filter || inputs.diagnostic_filter || '' }}
+          TEST_EXCLUDE: ${{ inputs.exclude || '' }}
           RETRY_ONCE: ${{ inputs.retry-once == true }}
         run: |
           set -euo pipefail
@@ -210,6 +219,9 @@ jobs:
           fi
           if [ -n "$TEST_FILTER" ]; then
             args+=(--filter "$TEST_FILTER")
+          fi
+          if [ -n "${TEST_EXCLUDE:-}" ]; then
+            args+=(--exclude "$TEST_EXCLUDE")
           fi
           # Finish test work before the step's hard stop so the runner can
           # retire processes, finish its summaries, and preserve partial results.

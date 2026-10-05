@@ -156,6 +156,8 @@ OUTPUT MODIFIERS (combinable with any tier/profile):
                   driver traces to tests/logs/
   --filter PAT    Only run tests whose filename matches extended regex PAT
                   Fails if a selected file executes no cases or no files match.
+  --exclude PAT   Leave out tests whose filename matches PAT (the same names
+                  --filter matches); the rest run as an ordinary tier.
   --parallel N    Run up to N test files concurrently within a tier (alias: -P N).
                   Default: 1 (serial). Smoke and unit tiers always run serially.
                   Recommended range: 1-8. See docs/reference/09-testing.md.
@@ -216,6 +218,18 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 const args = parseArgs(process.argv.slice(2));
+// --exclude drops the files it matches from every tier, as if they were not
+// there: the rest run as an ordinary tier, so their optional skips stay SKIP
+// (unlike --filter, which makes each matched file an explicit selection).
+const excludeRegex: RegExp | null = (() => {
+  if (!args.exclude) return null;
+  try {
+    return new RegExp(args.exclude);
+  } catch (err) {
+    process.stderr.write(`ERROR: --exclude must be a valid JavaScript regex: ${err}\n`);
+    process.exit(2);
+  }
+})();
 const RUN_DEADLINE_MS = args.runTimeout === null
   ? undefined
   : Date.now() + args.runTimeout * 1000;
@@ -1214,6 +1228,9 @@ function pluginTestFiles(): string[] {
 function levelFiles(level: Level, excludes: string[] = []): string[] {
   const dir = join(SCRIPT_DIR, level);
   const excludeSet = new Set(excludes);
+  // --exclude applies after shard selection, so a shard is the same set of
+  // files with or without it.
+  const kept = (f: string) => excludeRegex === null || !matchesE2eFilter(f, excludeRegex);
   const files = existsSync(dir)
     ? readdirSync(dir)
         .filter((f) => f.endsWith(".test.ts"))
@@ -1237,7 +1254,7 @@ function levelFiles(level: Level, excludes: string[] = []): string[] {
     const names = files.map((file) => basename(file));
     try {
       const selected = new Set(selectShard(names, args.shard, config));
-      return files.filter((file) => selected.has(basename(file)));
+      return files.filter((file) => selected.has(basename(file)) && kept(file));
     } catch (error) {
       process.stderr.write(
         `ERROR: ${error instanceof Error ? error.message : String(error)}\n`,
@@ -1245,7 +1262,7 @@ function levelFiles(level: Level, excludes: string[] = []): string[] {
       process.exit(2);
     }
   }
-  return files;
+  return files.filter(kept);
 }
 
 function remainingRunMs(): number {
