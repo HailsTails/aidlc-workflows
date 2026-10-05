@@ -63,11 +63,13 @@ import {
   frontmatterBlock,
   hasRunnerGenMarker,
   isPluginEnabled,
+  isScopeName,
   loadScopeMetadataAll,
   loadStageGraphAll,
   pluginsEnabled,
   runnerFrontmatterAdditions,
   scopeGridPath,
+  SCOPE_NAME_RULE,
 } from "./aidlc-lib.ts";
 import { type GraphStage, loadGraph } from "./aidlc-graph.ts";
 import {
@@ -558,6 +560,11 @@ function readScopeFront(path: string): ScopeFront {
   if (fm === null) throw new Error(`Scope file missing frontmatter: ${path}`);
   const name = scalarField(fm, "name");
   if (!name) throw new Error(`Scope file ${path} missing required frontmatter: name`);
+  if (!isScopeName(name)) {
+    throw new Error(
+      `Scope file ${path} has a name a scope cannot have. Rename the scope to ${SCOPE_NAME_RULE}.`,
+    );
+  }
   const plugin = scalarField(fm, "plugin");
   const runnerRaw = scalarField(fm, "runner");
   let runner: boolean | undefined;

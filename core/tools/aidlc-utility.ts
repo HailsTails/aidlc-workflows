@@ -316,7 +316,8 @@ import {
   scalarField,
   stageEnabledBySelection,
   stagesInScope,
-  shellArg,
+  isScopeName,
+  scopeArg,
   stateFilePath,
   clearSessionIntentUuid,
   sourceBaselineAuditFields,
@@ -7725,7 +7726,7 @@ function handleIntentCreate(projectDir: string, flags: Record<string, string>): 
       die(
         "intent-create refused: this project still has the flat aidlc-docs/ layout, " +
           "which moves into its own intent before any new work is created. Run " +
-          `\`${aidlcDispatcherInvocation("intent create")} --scope ${shellArg(scope)}\` once to move it, ` +
+          `\`${aidlcDispatcherInvocation("intent create")} --scope ${scopeArg(scope)}\` once to move it, ` +
           "then run this command again; the question stays answerable.",
       );
     }
@@ -10826,8 +10827,8 @@ function handleScopeChange(projectDir: string, flags: Record<string, string>): v
       // setting whose value changed. Nothing runs until the person asks.
       outputLines = [
         `Switched to ${newScope}: ${executeStages.length} stages (${completedCount} done), ` +
-          `${gates} approval gates${ceremonyOffClause(summary)}. ` +
-          `To go back, type \`${entrySkillInvocation()} --scope ${oldScope}\`.`,
+          `${gates} approval gates${ceremonyOffClause(summary)}.` +
+          (isScopeName(oldScope) ? ` To go back, type \`${entrySkillInvocation()} --scope ${scopeArg(oldScope)}\`.` : ""),
         ...skippedNow.map(({ slug, was }) =>
           `Skipped ${findStageBySlug(slug)?.name ?? slug} (${was}): ${newScope} does not run it. ` +
             `To run it on its own, type \`${entrySkillInvocation()} --stage ${slug} --single\`.`),
@@ -11341,7 +11342,7 @@ function handleScopeSave(projectDir: string, flags: Record<string, string>, rawA
     ].join(", ");
     process.stdout.write(
       `Saved as scope ${name} (${running} stages, ${settings}).\n` +
-        `Next time: ${entrySkillInvocation()} --scope ${name} "<what to build>"\n`,
+        `Next time: ${entrySkillInvocation()} --scope ${scopeArg(name)} "<what to build>"\n`,
     );
   }, undefined, undefined, WORKSPACE_MUTATION_LOCK_RETRIES);
 }

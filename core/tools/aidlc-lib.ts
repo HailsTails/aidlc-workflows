@@ -10049,7 +10049,7 @@ function copilotGuardRestartPrintHashes(
     return ["aidlc engine jump", `bun ${runtimeHarnessDir()}/tools/aidlc-jump.ts`].map(
       (invocation) => contentSha256(JSON.stringify({
         kind: "print",
-        message: `Run \`${invocation} execute --target ${operation.stage} --direction ${direction} --scope ${scope}\` to perform the jump, then re-run \`next\` to continue from the jump target.`,
+        message: `Run \`${invocation} execute --target ${operation.stage} --direction ${direction} --scope ${scopeArg(scope)}\` to perform the jump, then re-run \`next\` to continue from the jump target.`,
       })),
     );
   } catch {
@@ -33498,6 +33498,31 @@ function loadScopeGridForMapping(): ScopeGridForMapping {
   }
 }
 
+// A scope name becomes part of file names and of the commands the engine
+// prints, so wherever it is read it is one word every shell and file system
+// takes as written: letters, digits, and . _ - + @, starting with a letter
+// or digit.
+const SCOPE_NAME = /^[A-Za-z0-9][A-Za-z0-9._+@-]*$/;
+
+export function isScopeName(name: string): boolean {
+  return SCOPE_NAME.test(name);
+}
+
+export const SCOPE_NAME_RULE =
+  "letters, digits, and . _ - + @ only, starting with a letter or digit";
+
+// A scope the engine prints into a command may come from the workflow's own
+// files (state, audit), so it is checked again before it is printed.
+export function scopeArg(scope: string): string {
+  if (scope !== "" && !isScopeName(scope)) {
+    throw new Error(
+      `This workflow's scope is not a scope name, so no command was printed for it. ` +
+        `Switch the workflow to a scope with \`${entrySkillInvocation()} --scope <name>\`.`,
+    );
+  }
+  return shellArg(scope);
+}
+
 export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
   if (_scopeMetadataAll !== null) return _scopeMetadataAll;
   const dir = scopesDir();
@@ -33519,6 +33544,9 @@ export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
     if (fm === null) throw new Error(`Scope file missing frontmatter: ${filePath}`);
     const name = scalarField(fm, "name");
     if (!name) throw new Error(`Scope file ${filePath} missing required frontmatter: name`);
+    if (!isScopeName(name)) {
+      throw new Error(`Scope file ${filePath} has a name a scope cannot have. Rename the scope to ${SCOPE_NAME_RULE}.`);
+    }
     const previousFile = nameToFile.get(name);
     if (previousFile) {
       throw new Error(
@@ -33779,7 +33807,9 @@ let _validScopes: ReadonlySet<string> | null = null;
 
 export function validScopes(): ReadonlySet<string> {
   if (!_validScopes) {
-    _validScopes = new Set(Object.keys(loadScopeMapping()).sort());
+    // A name that is not a scope name (only a fixture mapping can carry one)
+    // is never offered or run as a scope.
+    _validScopes = new Set(Object.keys(loadScopeMapping()).filter(isScopeName).sort());
   }
   return _validScopes;
 }

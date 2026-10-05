@@ -2929,7 +2929,7 @@
       "coveredBy": [
         {
           "file": "tests/unit/t344-composed-scope-record.test.ts",
-          "mechanism": "none"
+          "mechanism": "cli"
         }
       ],
       "status": "covered"
@@ -5608,6 +5608,18 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:isScopeName",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t344-composed-scope-record.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:isStopHookProbe",
       "minMechanism": "none",
       "coveredBy": [
@@ -6920,7 +6932,7 @@
       "coveredBy": [
         {
           "file": "tests/unit/t344-composed-scope-record.test.ts",
-          "mechanism": "none"
+          "mechanism": "cli"
         }
       ],
       "status": "covered"
@@ -8736,7 +8748,7 @@
       "coveredBy": [
         {
           "file": "tests/unit/t344-composed-scope-record.test.ts",
-          "mechanism": "none"
+          "mechanism": "cli"
         }
       ],
       "status": "covered"
@@ -9766,10 +9778,34 @@
     },
     {
       "unitClass": "function",
+      "unitId": "function:SCOPE_NAME_RULE",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t344-composed-scope-record.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
       "unitId": "function:SCOPE_SETTING_KEYS",
       "minMechanism": "none",
       "coveredBy": [],
       "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:scopeArg",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t344-composed-scope-record.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
     },
     {
       "unitClass": "function",
