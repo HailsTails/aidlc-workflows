@@ -130,6 +130,7 @@ import {
   staleStageLine,
   activeWorkflowDescriptions,
   runningWorkflows,
+  workflowDisplayName,
   readActiveIntentCursor,
   activeSpace,
   authoritativeProjectDescription,
@@ -1298,7 +1299,16 @@ function activeWorkflowDependencyViolations(
   projectDir: string,
   enabled: ReadonlySet<string>,
 ): string[] {
-  const violations: string[] = [];
+  return activeWorkflowPluginDependencies(projectDir, enabled).map((dependency) => dependency.text);
+}
+
+// The same check, with the plugin each dependency needs, for a command that
+// says what a selection change stops instead of refusing it.
+export function activeWorkflowPluginDependencies(
+  projectDir: string,
+  enabled: ReadonlySet<string>,
+): Array<{ plugin: string; workflow: string; text: string }> {
+  const violations: Array<{ plugin: string; workflow: string; text: string }> = [];
   const scopeOwner = new Map<string, string>();
   for (const [name, meta] of Object.entries(loadScopeMetadataAll())) {
     scopeOwner.set(name, meta.plugin ?? "aidlc");
@@ -1327,7 +1337,11 @@ function activeWorkflowDependencyViolations(
       if (scope) {
         const owner = scopeOwner.get(scope);
         if (owner && !enabled.has(owner)) {
-          violations.push(`${where} runs under scope "${scope}" owned by plugin "${owner}"`);
+          violations.push({
+            plugin: owner,
+            workflow: workflowDisplayName(space.name, intent),
+            text: `${where} runs under scope "${scope}" owned by plugin "${owner}"`,
+          });
         }
       }
       // Pending/active plugin-owned stages in the plan (EXECUTE rows that are
@@ -1338,7 +1352,11 @@ function activeWorkflowDependencyViolations(
         if (!cb.suffix.startsWith("EXECUTE")) continue;
         const owner = stageOwner.get(cb.slug);
         if (owner && !enabled.has(owner)) {
-          violations.push(`${where} has pending stage "${cb.slug}" owned by plugin "${owner}"`);
+          violations.push({
+            plugin: owner,
+            workflow: workflowDisplayName(space.name, intent),
+            text: `${where} has pending stage "${cb.slug}" owned by plugin "${owner}"`,
+          });
         }
       }
     }
@@ -3517,24 +3535,6 @@ function hookDropEntry(hook: string, lines: readonly string[]): string {
   return `${hook} x${lines.length} (last ${lastTs})${top.length > 0 ? `, top reasons: ${top.join(", ")}` : ""}`;
 }
 
-// config refuses to refresh a harness tree while a workflow runs, so bringing
-// the older trees level waits for it; until then the tools whose trees are on
-// the release they catch up to follow that one release.
-function harnessTreeCatchUpFix(
-  workflows: string,
-  count: number,
-  steadyTools: readonly string[],
-  release: string,
-  catchUp: string,
-): string {
-  const done = count === 1 ? "completes" : "complete";
-  return steadyTools.length > 0
-    ? `continue ${workflows} in ${steadyTools.join(" or ")}, whose files are on ${release}; after ${
-      count === 1 ? "it" : "they"
-    } ${done}, ${catchUp}`
-    : `after ${workflows} ${done}, ${catchUp}`;
-}
-
 function harnessTreeProduct(tree: ProjectHarness): string | undefined {
   const products: Readonly<Record<string, string>> = HARNESS_PRODUCT_NAMES;
   return Object.hasOwn(products, tree.distribution) ? products[tree.distribution] : undefined;
@@ -3574,7 +3574,6 @@ export function harnessTreeVersionsCheck(projectDir: string): DoctorCheck | null
   const newest = trees.filter((tree) => tree.frameworkVersion)
     .sort((left, right) => compareVersions(right.frameworkVersion ?? "", left.frameworkVersion ?? ""))[0];
   const release = pinned ?? (native ? AIDLC_VERSION : newest.frameworkVersion ?? AIDLC_VERSION);
-  const steady = trees.filter((tree) => tree.frameworkVersion === release);
   const behind = trees.filter((tree) => tree.frameworkVersion !== release);
   const fromProject = normalizeDriveLetter(resolve(projectDir)) === normalizeDriveLetter(resolve(process.cwd()));
   const target = fromProject ? "" : ` --project-dir ${quoteCommandArgument(projectDir)}`;
@@ -3601,12 +3600,6 @@ export function harnessTreeVersionsCheck(projectDir: string): DoctorCheck | null
   );
   const run = `run ${steps.map((step) => `\`${step}\``).join(", then ")}`;
   const catchUp = native || pinned ? run : `get ${copyRuntimeUrl(release)} and its .sha256 into one folder, then ${run}`;
-  // A workflow is named, as code, only by the names the engine gives one, so
-  // no other text in a project's folder names reaches the line.
-  const named = workflows.every((workflow) => {
-    const [space, intent] = workflow.split("/");
-    return SPACE_NAME_REGEX.test(space) && INTENT_SELECTOR_REGEX.test(intent ?? "");
-  });
   return {
     pass: false,
     severity: "warn",
@@ -3618,17 +3611,8 @@ export function harnessTreeVersionsCheck(projectDir: string): DoctorCheck | null
         }`;
       }).join(", ")
     }${pinned ? ` (the project is pinned to ${pinned})` : ""} - a workflow can behave differently depending on which tool runs it`,
-    fix: workflows.length === 0 ? catchUp : harnessTreeCatchUpFix(
-      named
-        ? workflows.map((workflow) => `\`${workflow}\``).join(", ")
-        : workflows.length === 1
-        ? "the running workflow"
-        : "the running workflows",
-      workflows.length,
-      steady.map((tree) => harnessTreeProduct(tree) ?? tree.harnessDir),
-      release,
-      catchUp,
-    ),
+    // A refresh carries open work on, so the trees are brought level now.
+    fix: catchUp,
   };
 }
 
