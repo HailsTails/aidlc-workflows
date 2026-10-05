@@ -48,6 +48,7 @@ import {
   assertProjectionPathHasNoSymlinks,
   hostToolPath,
   insertJsoncSetting,
+  jsonFileText,
   isCustomClaudeStatusLine,
   jsoncRootMembers,
   jsoncSettingValue,
@@ -55,6 +56,7 @@ import {
   mergeBlock,
   type ProjectionDescriptor,
   projectionFiles,
+  readJsonFile,
   readRootIntegrations,
   removeJsoncSetting,
   replaceJsoncSetting,
@@ -66,6 +68,7 @@ import {
   unionBlocks,
   validateProjectionDescriptor,
   walkFiles,
+  withoutBom,
 } from "./aidlc-distribution.ts";
 import {
   activeVersion,
@@ -4594,8 +4597,9 @@ function preserveClaudeProviderFields(
   const currentPath = join(projectDir, relative);
   const stagedPath = join(stagedRoot, relative);
   if (!regularFile(currentPath) || !regularFile(stagedPath)) return retiredManagedFiles;
-  const current = JSON.parse(readFileSync(currentPath, "utf-8")) as Record<string, unknown>;
-  const staged = JSON.parse(readFileSync(stagedPath, "utf-8")) as Record<string, unknown>;
+  const currentText = readFileSync(currentPath, "utf-8");
+  const current = JSON.parse(withoutBom(currentText)) as Record<string, unknown>;
+  const staged = readJsonFile(stagedPath) as Record<string, unknown>;
   const priorEntries = prior?.entries?.[relative];
   const incomingHookHashes = aidlcHookRegistrationHashes(staged.hooks);
   const recordedHookTargets = Object.keys(priorEntries ?? {})
@@ -4779,7 +4783,7 @@ function preserveClaudeProviderFields(
     delete currentEnv.AWS_AIDLC_DEFAULT_SCOPE;
   }
   staged.env = { ...stagedEnv, ...currentEnv };
-  writeFileSync(stagedPath, `${JSON.stringify(staged, null, 2)}\n`);
+  writeFileSync(stagedPath, jsonFileText(staged, currentText));
   return retiredManagedFiles;
 }
 
@@ -4978,12 +4982,19 @@ function preserveOpenCodeProviderFields(
   const currentPath = join(projectDir, "opencode.json");
   const stagedPath = join(stagedRoot, "opencode.json");
   if (!regularFile(currentPath) || !regularFile(stagedPath)) return;
-  const current = JSON.parse(readFileSync(currentPath, "utf-8")) as Record<string, unknown>;
+  const currentText = readFileSync(currentPath, "utf-8");
+  const current = JSON.parse(withoutBom(currentText)) as Record<string, unknown>;
   if (!current.provider || typeof current.provider !== "object" ||
       Array.isArray(current.provider)) {
+    // The release copy takes the mark the person's file has, so a mark alone
+    // is never read as their change.
+    const stagedText = readFileSync(stagedPath, "utf-8");
+    if (currentText.startsWith("\uFEFF") && !stagedText.startsWith("\uFEFF")) {
+      writeFileSync(stagedPath, `\uFEFF${stagedText}`);
+    }
     return;
   }
-  const staged = JSON.parse(readFileSync(stagedPath, "utf-8")) as Record<string, unknown>;
+  const staged = readJsonFile(stagedPath) as Record<string, unknown>;
   const stagedProviders = staged.provider && typeof staged.provider === "object" &&
       !Array.isArray(staged.provider)
     ? staged.provider as Record<string, unknown>
@@ -4992,7 +5003,7 @@ function preserveOpenCodeProviderFields(
     ...stagedProviders,
     ...current.provider as Record<string, unknown>,
   };
-  writeFileSync(stagedPath, `${JSON.stringify(staged, null, 2)}\n`);
+  writeFileSync(stagedPath, jsonFileText(staged, currentText));
 }
 
 function preserveUserProviderFields(
@@ -5039,7 +5050,7 @@ function unrecordedLegacyProviderMigration(
     const relative = `${harnessDir}/settings.json`;
     const path = join(projectDir, relative);
     if (!regularFile(path)) return null;
-    const settings = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    const settings = readJsonFile(path) as Record<string, unknown>;
     const env = settings.env && typeof settings.env === "object" &&
         !Array.isArray(settings.env)
       ? settings.env as Record<string, unknown>
@@ -5787,7 +5798,7 @@ function ownFilesCoverChoices(
   if (regularFile(rootBlockPath(join(projectDir, descriptor.harnessDir), integration))) return true;
   let servers: unknown;
   try {
-    servers = (JSON.parse(readFileSync(join(projectDir, integration.path), "utf-8")) as Record<string, unknown>)[
+    servers = (readJsonFile(join(projectDir, integration.path)) as Record<string, unknown>)[
       integration.jsonKey
     ];
   } catch {
@@ -7851,7 +7862,7 @@ function holdsShippedServers(projectDir: string, descriptor: Pick<ProjectionDesc
     const path = join(projectDir, integration.path);
     try {
       if (!lstatSync(path).isFile()) continue;
-      const map = (JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>)[integration.jsonKey ?? ""];
+      const map = (readJsonFile(path) as Record<string, unknown>)[integration.jsonKey ?? ""];
       if (!isRecord(map)) continue;
       for (const [entry, hashes] of Object.entries(integration.legacySignatures?.jsonEntryHashes ?? {})) {
         if (entry in map && hashes.includes(sha256Bytes(canonical(map[entry])))) return true;
@@ -8053,7 +8064,7 @@ function planRootIntegrations(
       let targetValue: unknown;
       let sourceValue: unknown;
       try {
-        targetValue = current ? JSON.parse(current) : {};
+        targetValue = current ? JSON.parse(withoutBom(current)) : {};
         sourceValue = JSON.parse(readFileSync(sourcePath, "utf-8"));
         // Claude's copy in the harness folder takes the recorded region here.
         if (
@@ -8161,11 +8172,11 @@ function planRootIntegrations(
         entries: nextEntries,
         key: integration.jsonKey,
       };
-      const semanticChanged = canonical(targetValue) !== canonical(current ? JSON.parse(current) : {});
+      const semanticChanged = canonical(targetValue) !== canonical(current ? JSON.parse(withoutBom(current)) : {});
       if (!semanticChanged) {
         actions.push({ path: integration.path, action: "preserve" });
       } else {
-        const value = `${JSON.stringify(target, null, 2)}\n`;
+        const value = jsonFileText(target, current);
         operations.push(writeOperation(integration.path, value, expected(targetPath)));
         actions.push({ path: integration.path, action: targetExists ? "merge" : "create" });
       }
@@ -8248,7 +8259,7 @@ function planRootIntegrations(
       let targetValue: unknown;
       let sourceValue: unknown;
       try {
-        targetValue = current ? JSON.parse(current) : {};
+        targetValue = current ? JSON.parse(withoutBom(current)) : {};
         sourceValue = JSON.parse(readFileSync(sourcePath, "utf-8"));
       } catch {
         actions.push({ path: integration.path, action: "conflict", detail: "malformed JSON" });
@@ -8295,13 +8306,13 @@ function planRootIntegrations(
         entries: nextEntries,
         key,
       };
-      const semanticChanged = canonical(targetValue) !== canonical(current ? JSON.parse(current) : {});
+      const semanticChanged = canonical(targetValue) !== canonical(current ? JSON.parse(withoutBom(current)) : {});
       if (!semanticChanged) {
         actions.push({ path: integration.path, action: "preserve" });
       } else {
         operations.push(writeOperation(
           integration.path,
-          `${JSON.stringify(targetValue, null, 2)}\n`,
+          jsonFileText(targetValue, current),
           expected(targetPath),
         ));
         actions.push({ path: integration.path, action: targetExists ? "merge" : "create" });
@@ -8314,8 +8325,10 @@ function planRootIntegrations(
       ? priorContribution.hash
       : undefined;
     const currentHash = sha256Bytes(current);
+    // A byte order mark the person's editor added is not their change.
+    const owned = currentHash === priorHash || (withoutBom(current) !== current && sha256Bytes(withoutBom(current)) === priorHash);
     const adoptedLegacy = integration.legacySignatures?.wholeFileHashes?.includes(currentHash) ?? false;
-    if (!retainBaseline || currentHash === priorHash) {
+    if (!retainBaseline || owned) {
       contributions[integration.path] = { policy: "whole-file", hash: shippedHash };
     } else if (priorContribution) {
       contributions[integration.path] = priorContribution;
@@ -8323,7 +8336,7 @@ function planRootIntegrations(
     if (
       !recordOnly &&
       targetExists &&
-      currentHash !== priorHash &&
+      !owned &&
       currentHash !== shippedHash &&
       !adoptedLegacy
     ) {
@@ -8395,7 +8408,7 @@ function planRemovedRootIntegrations(
     if (contribution.policy === "json-map") {
       let parsed: unknown;
       try {
-        parsed = JSON.parse(text);
+        parsed = JSON.parse(withoutBom(text));
       } catch {
         actions.push({ path, action: "conflict", detail: "retired JSON integration is malformed" });
         continue;
@@ -8419,7 +8432,7 @@ function planRemovedRootIntegrations(
         actions.push({ path, action: "conflict", detail: "retired JSON entry was locally modified" });
         continue;
       }
-      operations.push(writeOperation(path, `${JSON.stringify(parsed, null, 2)}\n`, expected(targetPath)));
+      operations.push(writeOperation(path, jsonFileText(parsed, text), expected(targetPath)));
       actions.push({ path, action: "merge", detail: "removed retired JSON entries" });
       continue;
     }
@@ -8445,7 +8458,7 @@ function planRemovedRootIntegrations(
     if (contribution.policy === "json-array") {
       let parsed: unknown;
       try {
-        parsed = JSON.parse(text);
+        parsed = JSON.parse(withoutBom(text));
       } catch {
         actions.push({ path, action: "conflict", detail: "retired JSON integration is malformed" });
         continue;
@@ -8461,7 +8474,7 @@ function planRemovedRootIntegrations(
         sha256Bytes(canonical(value)) !== contribution.entries[value]
       );
       if ((parsed[contribution.key] as unknown[]).length === 0) delete parsed[contribution.key];
-      operations.push(writeOperation(path, `${JSON.stringify(parsed, null, 2)}\n`, expected(targetPath)));
+      operations.push(writeOperation(path, jsonFileText(parsed, text), expected(targetPath)));
       actions.push({ path, action: "merge", detail: "removed retired JSON array entries" });
       continue;
     }

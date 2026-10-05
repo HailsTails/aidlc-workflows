@@ -71,8 +71,10 @@ import {
   aidlcDispatcherTarget,
   aidlcHookRegistrationHashes,
   isCustomClaudeStatusLine,
+  readJsonFile,
   sha256Bytes,
   TEAM_MEMORY_FILES,
+  withoutBom,
 } from "./aidlc-distribution.ts";
 import {
   artifactsRegistryFor,
@@ -2223,7 +2225,7 @@ function resolveManagedBooleanSetting(
     let effective: boolean | undefined;
     for (const path of managedSettingsFiles(candidate)) {
       try {
-        const parsed = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+        const parsed = readJsonFile(path) as Record<string, unknown>;
         const value = parsed[key];
         if (typeof value === "boolean") effective = value;
       } catch {
@@ -4015,7 +4017,7 @@ export async function collectDoctorReport(
       // in settings.json (hook command paths like
       // "bun $CLAUDE_PROJECT_DIR/.claude/hooks/aidlc-write-audit-log.ts" and the
       // statusLine command). Basename, not path, so the probe is dir-relative.
-      const parsed = JSON.parse(raw) as unknown;
+      const parsed = JSON.parse(withoutBom(raw)) as unknown;
       const parsedSettings = isPlainObject(parsed) ? parsed : {};
       settingsHooks = parsedSettings.hooks;
       customStatusLine = isCustomClaudeStatusLine(
@@ -4207,7 +4209,7 @@ export async function collectDoctorReport(
       if (managedDisableAllHooks === undefined) {
         for (const [path, label] of hookDisableLayers) {
           try {
-            const parsed = JSON.parse(readFileSync(path, "utf-8")) as {
+            const parsed = readJsonFile(path) as {
               disableAllHooks?: unknown;
             };
             // Only a layer that EXPLICITLY sets the boolean resolves it; a layer
@@ -4345,7 +4347,7 @@ export async function collectDoctorReport(
       const cliSettingsPath = join(projectDir, harness, "settings", "cli.json");
       let pinned = false;
       try {
-        const settings = JSON.parse(readFileSync(cliSettingsPath, "utf-8")) as Record<string, unknown>;
+        const settings = readJsonFile(cliSettingsPath) as Record<string, unknown>;
         pinned = settings["chat.agentEngine"] === "v3" && settings["chat.defaultAgent"] === "aidlc";
       } catch {
         pinned = false;
