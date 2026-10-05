@@ -68,7 +68,6 @@ import {
   guardAttemptState,
   guardRefusalOutput,
   humanAuthorityState,
-  harnessDir,
   hookExecutionRecoveryText,
   hookLiveness,
   holdsAuditLock,
@@ -193,7 +192,7 @@ import {
   recordPlanApprovalOverrideReceipt,
   recordPlanApprovalReceipt,
 } from "./aidlc-testing-posture.js";
-import { entrySkillInvocation, runtimeHarnessName } from "./aidlc-runtime-paths.ts";
+import { entrySkillInvocation } from "./aidlc-runtime-paths.ts";
 import {
   APPROVAL_GATE_CHOICES,
   SUMMARY_CONFIRMATION_CHOICES,
@@ -810,7 +809,7 @@ function handleDecision(args: string[]): void {
           `${liveness.newestHeartbeat?.timestampRaw}, but the workflow last advanced ` +
           `${liveness.newestStageOrGateEvent?.timestampRaw}. No Plan Approval challenge was ` +
           "minted because the human's answer is recorded by the hooks. " +
-          hookExecutionRecoveryText(runtimeHarnessName(pd, harnessDir())),
+          hookExecutionRecoveryText(pd),
       );
     }
   }
@@ -1444,7 +1443,7 @@ function answerEnginePlanApproval(
     if (!humanPresenceGuardDisabled() && !humanRepliedSinceGate(pd)) {
       error(
         "No reply from the person has arrived since the last decision. Record their request once they ask " +
-          `to review the plan.${commandTurnHint(pd)}${unattendedHumanPresenceHint()}`,
+          `to review the plan.${commandTurnHint(pd)}${unattendedHumanPresenceHint(pd)}`,
       );
     }
     const message = requestPlanApprovalReviewNow(pd);
@@ -1821,7 +1820,7 @@ function handleAnswer(args: string[]): void {
         error(
           "Cannot record the summary choice because no human reply has arrived after this "
             + "question, or that turn was already used by another decision. End the turn, "
-            + `wait for the human's choice, then try again.${unattendedHumanPresenceHint()}`,
+            + `wait for the human's choice, then try again.${unattendedHumanPresenceHint(pd)}`,
         );
       }
       // The confirmation authorizes the outputs generated from it. Mint the
@@ -2060,7 +2059,7 @@ function handleAnswer(args: string[]): void {
           "Cannot record this approval choice because no new human reply has arrived. "
             + "After the human types their choice, use aidlc-orchestrate.ts report --result "
             + "approved or rejected; do not use aidlc-log.ts answer for an approval."
-            + unattendedHumanPresenceHint(),
+            + unattendedHumanPresenceHint(pd),
         );
       }
       console.log(
@@ -2087,7 +2086,7 @@ function handleAnswer(args: string[]): void {
       error(
         "Cannot record this answer because no new human reply has arrived for the question. "
           + "Wait for the human to type an answer, then try again."
-          + commandTurnHint(pd) + unattendedHumanPresenceHint(),
+          + commandTurnHint(pd) + unattendedHumanPresenceHint(pd),
       );
     }
 

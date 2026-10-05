@@ -375,9 +375,12 @@ export interface DocumentExtractorSpec {
 /** A harness's advice for a host that runs no project hooks until the person acts (trust, reload, engine). */
 export interface HookActivation {
   recovery: string;
-  missedReply: string;
+  missedReply?: string;
+  missesReplies?: true;
   notRunYet?: string;
   notRunInWorkflow?: string;
+  agentStep?: string;
+  agentStepEdits?: string;
 }
 
 interface ShippedHarnessData {
@@ -547,14 +550,18 @@ function readShippedHarnessData(): ShippedHarnessData {
     // callers keep the generic hook advice.
     const activation = parsed.hookActivation as Record<string, unknown> | null | undefined;
     const hookActivation: HookActivation | null =
-      typeof activation?.recovery === "string" && typeof activation.missedReply === "string"
+      typeof activation?.recovery === "string" &&
+        (typeof activation.missedReply === "string" || typeof activation.agentStep === "string")
         ? {
           recovery: activation.recovery,
-          missedReply: activation.missedReply,
+          ...(typeof activation.missedReply === "string" ? { missedReply: activation.missedReply } : {}),
+          ...(activation.missesReplies === true ? { missesReplies: true as const } : {}),
           ...(typeof activation.notRunYet === "string" ? { notRunYet: activation.notRunYet } : {}),
           ...(typeof activation.notRunInWorkflow === "string"
             ? { notRunInWorkflow: activation.notRunInWorkflow }
             : {}),
+          ...(typeof activation.agentStep === "string" ? { agentStep: activation.agentStep } : {}),
+          ...(typeof activation.agentStepEdits === "string" ? { agentStepEdits: activation.agentStepEdits } : {}),
         }
         : null;
     _shippedHarnessData = {
@@ -24514,8 +24521,6 @@ export function hooksHealthReadDir(projectDir: string, intent?: string, space?: 
 // ordering without hiding a resumed workflow that advances after hooks die.
 export const HOOK_HEARTBEAT_STALE_SLACK_MS = 5 * 60 * 1000;
 
-export const HOOK_EXECUTION_RECOVERY_CLAUDE =
-  "1. Run /hooks to check hook approval and policy state. 2. If hooks need approval, approve them and fully restart the CLI; approval does not take effect until a full restart. 3. If /hooks says hooks are restricted by policy, only your Claude Code administrator can lift allowManagedHooksOnly in managed-settings.json. Until then, for an attended session, launch the CLI with AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1 and AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD=1";
 export const HOOK_EXECUTION_RECOVERY_OTHER =
   "verify this harness's hook registration or trust configuration, then fully restart the harness before resuming the workflow";
 
@@ -24529,10 +24534,63 @@ export function hookActivation(): HookActivation | null {
 }
 
 /** The doctor's recovery sentence for hooks that stopped firing, per harness. */
-export function hookExecutionRecoveryText(harnessName: string): string {
+export function hookExecutionRecoveryText(projectDir?: string): string {
   const declared = hookActivation()?.recovery;
-  if (declared) return declared;
-  return harnessName === "claude" ? HOOK_EXECUTION_RECOVERY_CLAUDE : HOOK_EXECUTION_RECOVERY_OTHER;
+  if (declared) return fillHookActivationText(declared, projectDir);
+  return HOOK_EXECUTION_RECOVERY_OTHER;
+}
+
+// A harness's hook-activation text names the person's own entry command and
+// project folder as <entry> and <folder>, and the engine's next step as
+// <next>, so one manifest string reads right on every install channel.
+// `next`'s stop names the command it stopped instead, in fixed words: the
+// command's own arguments never enter the text.
+export const HOOKS_OFF_RERUN = "the engine command that returned this message again, exactly as you ran it,";
+
+export function fillHookActivationText(text: string, projectDir?: string, next?: string): string {
+  return text
+    .replaceAll("<entry>", entrySkillInvocation())
+    .replaceAll("<next>", next ?? `\`${aidlcInvocation()} engine orchestrate next\``)
+    .replaceAll("<folder>", projectDir ?? "this project's folder");
+}
+
+// What every agent step for hooks that are not running starts with, from
+// what agents did live when they had only a description: they ran the hook
+// scripts by hand (which records hooks that never ran), offered to switch the
+// checks off, kept searching for a cause, or went after other doctor rows and
+// changed files outside the project.
+const HOOKS_OFF_AGENT_RULES =
+  "Do not run AI-DLC's hook scripts yourself, do not offer to switch any AI-DLC check off, and do not " +
+  "look for another cause. While you fix this, do not take on other doctor problems, and change " +
+  "nothing outside this project's folder.";
+
+/**
+ * What the agent does, then the one line it shows the person, when this
+ * harness's hooks are not running here; null for a harness that declares no
+ * such step. `next` stops with it before any work, and a refusal for a reply
+ * that was not recorded carries it.
+ */
+export function hooksOffAgentStep(projectDir?: string, next?: string): string | null {
+  const activation = hookActivation();
+  if (!activation?.agentStep) return null;
+  // Through a link the agent would change a file outside the project.
+  const edits = activation.agentStepEdits;
+  if (edits && !plainProjectFile(resolveProjectDir(projectDir), edits)) {
+    return `${HOOKS_OFF_AGENT_RULES} \`${edits}\` in this project is a link, so do not change it. Show the person ` +
+      `this line and end your turn: "${edits} in this project is a link, so it was left as it is. Make it a plain ` +
+      `file in this project, then send your next message."`;
+  }
+  return `${HOOKS_OFF_AGENT_RULES} ${fillHookActivationText(activation.agentStep, projectDir, next)}`;
+}
+
+function plainProjectFile(projectDir: string, rel: string): boolean {
+  try {
+    const path = assertNoSymlinkInChainOrThrow(realpathSync(projectDir), rel);
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    return stat === undefined || (stat.isFile() && stat.nlink === 1);
+  } catch {
+    return false;
+  }
 }
 
 export interface HookHeartbeatStamp {
@@ -24566,9 +24624,13 @@ export interface HookLiveness {
 // the two cannot disagree about what "hooks are not firing" means.
 export function hookLiveness(
   projectDir: string,
-  events: readonly AuditShardEvent[] = readAuditShardEvents(projectDir),
+  events?: readonly AuditShardEvent[],
+  // The workflow to read, when the caller already resolved it (the engine's
+  // own selection for this command); otherwise the project's current one.
+  workflow: { intent?: string; space?: string } = {},
 ): HookLiveness {
-  const healthDir = hooksHealthReadDir(projectDir);
+  const healthDir = hooksHealthReadDir(projectDir, workflow.intent, workflow.space);
+  const recordEvents = events ?? readAuditShardEvents(projectDir, workflow.intent, workflow.space);
   const heartbeatEntries: string[] = [];
   let newestHeartbeat: HookHeartbeatStamp | null = null;
   let hasHookFiredContent = false;
@@ -24597,7 +24659,7 @@ export function hookLiveness(
     }
   }
   let newestStageOrGateEvent: HookHeartbeatStamp | null = null;
-  for (const event of events) {
+  for (const event of recordEvents) {
     if (!event.event.startsWith("STAGE_") && !event.event.startsWith("GATE_")) continue;
     const timestampMs = Date.parse(event.timestamp);
     if (
@@ -24620,6 +24682,29 @@ export function hookLiveness(
         HOOK_HEARTBEAT_STALE_SLACK_MS,
     neverFired: !hasHookFiredContent && newestStageOrGateEvent !== null,
   };
+}
+
+// Whether a link sits on the way to a record's hooks-health directory. Hook
+// status files are never written through one, so there a missing heartbeat
+// does not show that the hooks did not run.
+export function hookStatusPathLinked(projectDir: string, intent?: string, space?: string): boolean {
+  try {
+    const record = docsRoot(projectDir, intent, space);
+    const anchorReal = realpathSync(record);
+    const parts = relative(record, hooksHealthDir(projectDir, intent, space))
+      .split(/[\\/]/)
+      .filter((part) => part.length > 0);
+    for (let i = 1; i <= parts.length; i++) {
+      try {
+        assertNoSymlinkInChainOrThrow(anchorReal, parts.slice(0, i).join("/"));
+      } catch {
+        return true;
+      }
+    }
+  } catch {
+    // No record on disk yet: nothing is linked.
+  }
+  return false;
 }
 
 // Before the first workflow no core hook writes a heartbeat, so doctor could
@@ -27305,8 +27390,8 @@ export function isAutonomousSwarmStage(
 // Its one off-switch is AIDLC_SKIP_HUMAN_PRESENCE_GUARD, set in the environment
 // or recorded with `config flags --bypass` (the engine then says it is off).
 // Persisted per-work settings cannot lower this guard.
-export function humanPresenceGuardDisabled(): boolean {
-  return resolveProjectFlag("AIDLC_SKIP_HUMAN_PRESENCE_GUARD") === "1";
+export function humanPresenceGuardDisabled(projectDir?: string): boolean {
+  return resolveProjectFlag("AIDLC_SKIP_HUMAN_PRESENCE_GUARD", process.env, projectDir) === "1";
 }
 
 // An unattended driver is the only component that knows its prompt-submit
@@ -27316,7 +27401,19 @@ export function humanTurnMintAllowed(): boolean {
   return process.env.AIDLC_UNATTENDED !== "1";
 }
 
-export function unattendedHumanPresenceHint(): string {
+// The same hard signal `next`'s stop reads, for the current workflow: a stage
+// or gate event and no heartbeat at all, with no link on the way to the
+// status files. Anything unreadable proves nothing.
+function hooksNeverRanHere(projectDir?: string): boolean {
+  try {
+    const project = resolveProjectDir(projectDir);
+    return hookLiveness(project).neverFired && !hookStatusPathLinked(project);
+  } catch {
+    return false;
+  }
+}
+
+export function unattendedHumanPresenceHint(projectDir?: string): string {
   // Explain unattended submissions when relevant.
   if (!humanTurnMintAllowed()) {
     return " AIDLC_UNATTENDED=1 is set, so automated prompt submissions cannot count " +
@@ -27327,6 +27424,15 @@ export function unattendedHumanPresenceHint(): string {
   // failed to record, so every such refusal also says what happened to a reply
   // the person did send, and never asks them to send it again. A host that runs
   // no hooks until the person acts names its own steps; the others name doctor.
+  // A harness that declares the agent's own step for hooks that are not
+  // running gives it here too, so the reply is never asked for again, but
+  // only when the record shows the hooks never ran: with a heartbeat there
+  // they run, and the step would send the person after a setting already on.
+  const agentStep = hooksNeverRanHere(projectDir) ? hooksOffAgentStep(projectDir) : null;
+  if (agentStep !== null) {
+    return " If the person already replied, that reply was not recorded because AI-DLC's hooks are not " +
+      `running here, so do not ask them to answer again; do this instead: ${agentStep}`;
+  }
   const missedReply = hookActivation()?.missedReply ??
     "If the person already replied, that reply was not recorded for this question. Tell them " +
       `that, and that ${entrySkillInvocation()} --doctor shows whether AI-DLC's hooks run here.`;

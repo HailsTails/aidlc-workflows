@@ -306,6 +306,10 @@ import {
   harnessDir,
   hookActivation,
   hookLiveness,
+  hooksOffAgentStep,
+  HOOKS_OFF_RERUN,
+  hookStatusPathLinked,
+  humanTurnMintAllowed,
   type WorkspaceCommand,
   type WorkflowSelection,
   writeActiveDirectiveMarker,
@@ -600,13 +604,53 @@ function hookHealthNotice(): string | null {
   const projectDir = engineProjectDir;
   if (!notice || projectDir === undefined || engineUnjoined) return null;
   try {
-    if (delegatedWorktreeIntent(projectDir) === null && hookLiveness(projectDir).neverFired) {
+    if (delegatedWorktreeIntent(projectDir) === null && hookLiveness(projectDir, undefined, engineWorkflow(projectDir)).neverFired) {
       activeHookHealthNotice = notice;
     }
   } catch {
     // Advisory: an unreadable record says nothing about the hooks.
   }
   return activeHookHealthNotice;
+}
+
+// The workflow this command resolved, for reads that must agree with it.
+function engineWorkflow(projectDir: string): { intent?: string; space: string } {
+  const selection = engineSelection(projectDir);
+  return { intent: selection.intent ?? undefined, space: selection.space };
+}
+
+// `next` does no work while the engine KNOWS this harness's hooks have never
+// run in the joined workflow: the harness declares the agent's step for that
+// only when a hook on the agent's own shell command leaves a heartbeat in the
+// record before the engine runs, and the workflow has a stage or gate event
+// but no heartbeat at all. Weaker signals stay warnings. There is no stop for
+// an unattended run, for a person who switched the presence check off (the
+// notice above still says it), in a delegated worktree, whose hooks beat in
+// the parent checkout, or where a link on the way to the status files keeps
+// any heartbeat from being written. A `next` that does not move the workflow
+// (status, doctor, help, config, the intent, space, plugin and knowledge
+// commands, park, team-board, a claim or release) runs as asked. The step
+// runs the stopped command again, so what it carried goes on.
+function hooksOffStop(projectDir: string, selection: WorkflowSelection, nextArgs: string[]): string | null {
+  if (selection.intent === null || !humanTurnMintAllowed() || humanPresenceGuardDisabled(projectDir)) return null;
+  const flags = parseNextFlags(nextArgs);
+  if (
+    flags.parseError || !nextEngagesWorkflow(nextArgs, flags) || flags.orchestratorVerb !== undefined ||
+    flags.pluginCommand !== undefined || flags.knowledgeCommand !== undefined ||
+    flags.claim !== undefined || flags.release !== undefined
+  ) return null;
+  const step = hooksOffAgentStep(projectDir, HOOKS_OFF_RERUN);
+  if (step === null) return null;
+  try {
+    if (delegatedWorktreeIntent(projectDir) !== null) return null;
+    const workflow = { intent: selection.intent, space: selection.space };
+    if (!hookLiveness(projectDir, undefined, workflow).neverFired) return null;
+    if (hookStatusPathLinked(projectDir, workflow.intent, workflow.space)) return null;
+  } catch {
+    // An unreadable record proves nothing about the hooks.
+    return null;
+  }
+  return step;
 }
 
 // Print exactly one directive as JSON to stdout, after validating it against
@@ -5877,6 +5921,19 @@ function handleNext(args: string[], projectDir: string | undefined): void {
   }
 }
 
+// A `next` that moves the workflow, as opposed to a read-only utility, a
+// configuration or workspace command, the read-only board, or terminal
+// guidance. The engine marker and the stop for hooks that never ran read it.
+function nextEngagesWorkflow(args: string[], flags: ParsedFlags = parseNextFlags(args)): boolean {
+  return !flags.readOnly &&
+    !flags.config &&
+    !flags.retiredOnly &&
+    !flags.configCommand &&
+    !flags.workspaceCommand &&
+    flags.orchestratorVerb !== "team-board" &&
+    !isRefusedModifierNextArgv(args);
+}
+
 // The `next` handler reads workflow state and emits exactly one directive. A
 // normal rule-transport request may lazily mint its machine-local MAC key.
 // Internal observer modes are strictly read-only: route checks bypass transport,
@@ -5910,14 +5967,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
   // errored command still counted on the transcript path.
   // A modifier-only next it refuses is terminal on every harness, like the
   // refused --config alias: see isRefusedModifierNextArgv.
-  const engagesWorkflow =
-    !flags.readOnly &&
-    !flags.config &&
-    !flags.retiredOnly &&
-    !flags.configCommand &&
-    !flags.workspaceCommand &&
-    flags.orchestratorVerb !== "team-board" &&
-    !isRefusedModifierNextArgv(args);
+  const engagesWorkflow = nextEngagesWorkflow(args, flags);
   if (engagesWorkflow) {
     touchEngineMarker(projectDir);
   }
@@ -13465,6 +13515,15 @@ export function main(argv: string[]): void {
       return;
     }
     engineSelections.set(resolvedProjectDir, { ...resolvedSelection, intent: null, binding: null });
+  }
+  if (commandKind === "next" && !unjoined) {
+    const stop = hooksOffStop(resolvedProjectDir, resolvedSelection, subArgs);
+    if (stop !== null) {
+      // The stop carries the step; the notice is not added on top.
+      activeHookHealthNotice = null;
+      emit(printDirective(stop));
+      return;
+    }
   }
   if (commandKind) engineInvocation = {
     commandKind,
