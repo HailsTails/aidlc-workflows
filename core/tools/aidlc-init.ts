@@ -55,6 +55,7 @@ import {
 } from "./aidlc-install-paths.ts";
 import { defaultHarnessPath } from "./aidlc-machine-config.ts";
 import { projectEvidence } from "./aidlc-plugin.ts";
+import { planCompatibleRefresh } from "./aidlc-refresh-compatibility.ts";
 import { planCodexHookTrustSeed, planPluginHookRegistrations, projectedPluginHookContributionsSchema, type ProjectedPluginHookContributions } from "./aidlc-plugin-hook-registrations.ts";
 import { configureChannel, configureProjectPin } from "./aidlc-lifecycle.ts";
 import { RELEASE_CHANNELS } from "./aidlc-channel.ts";
@@ -399,6 +400,7 @@ const ROOT_CONFIG_FLAGS = new Set([
   "--project-dir",
   "--quiet",
   "--release-base-url",
+  "--refresh-open-workflows",
   "--unpin",
   "--verbose",
   "--yes",
@@ -644,6 +646,9 @@ function validateChannelConfigArgs(argv: readonly string[]): string | null {
 }
 
 function validateRootConfigArgs(argv: readonly string[]): string | null {
+  if (argv.includes("--refresh-open-workflows") && argv.some((flag) => ["--force", "--mcp"].includes(flag))) {
+    return "--refresh-open-workflows cannot be combined with --force or --mcp";
+  }
   const hasPin = argv.includes("--pin");
   const hasUnpin = argv.includes("--unpin");
   if (hasPin && hasUnpin) return "--pin and --unpin are mutually exclusive";
@@ -687,7 +692,7 @@ function validateRootConfigArgs(argv: readonly string[]): string | null {
       ? [...commonBare, "--offline"]
       : hasUnpin
       ? [...commonBare, "--unpin"]
-      : [...commonBare, "--force"],
+      : [...commonBare, "--force", "--refresh-open-workflows"],
   );
   const grammar = validateConfigOptionGrammar(argv, mode, {
     values,
@@ -3618,6 +3623,8 @@ type PreparedRefreshSource = {
   root: string;
   cleanup?: string;
   regenerated: ReadonlySet<string>;
+  sourceHashes: ReadonlyMap<string, string>;
+  projectOwnedExtras: ReadonlySet<string>;
   hookCoreHashes: ReadonlyMap<string, string>;
   pluginOwnedExtras: ReadonlySet<string>;
 };
@@ -3633,6 +3640,7 @@ function prepareRefreshSource(
 ): PreparedRefreshSource {
   const currentHarness = join(projectDir, descriptor.harnessDir);
   const hookCoreHashes = new Map<string, string>();
+  const projectOwnedExtras = new Set<string>();
   const pluginOwnedExtras = new Set([...projectEvidence(projectDir, descriptor.harnessDir).ownership.values()]
     .flatMap((record) => record.files.map((file) => file.path)).filter((path) => !existsSync(join(sourceRoot, path))));
   const currentHarnessData = join(currentHarness, "tools", "data", "harness.json");
@@ -3643,7 +3651,7 @@ function prepareRefreshSource(
     projectFlags === null &&
     diagnosticsOverride === undefined
   ) {
-    return { root: sourceRoot, regenerated: new Set(), hookCoreHashes, pluginOwnedExtras };
+    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), projectOwnedExtras, hookCoreHashes, pluginOwnedExtras };
   }
   const cleanup = mkdtempSync(join(tmpdir(), "aidlc-init-refresh-"));
   try {
@@ -3782,6 +3790,7 @@ function prepareRefreshSource(
       mkdirSync(dirname(staged), { recursive: true });
       cpSync(join(projectDir, rel), staged, { preserveTimestamps: true });
       regenerated.add(rel);
+      if (!pluginGenerated) projectOwnedExtras.add(rel);
     }
   }
 
@@ -3951,7 +3960,7 @@ function prepareRefreshSource(
     }
     resetProjectionCaches();
   }
-  return { root, cleanup, regenerated, hookCoreHashes, pluginOwnedExtras };
+  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, projectOwnedExtras, hookCoreHashes, pluginOwnedExtras };
   } catch (error) {
     rmSync(cleanup, { recursive: true, force: true });
     throw error;
@@ -5277,6 +5286,7 @@ function planManagedFiles(
   actions: PlannedAction[],
   nextHashes: Record<string, string>,
   prepared: PreparedRefreshSource,
+  workspaceMode: "seed" | "read-only",
 ): void {
   const shipped = new Set<string>();
   for (const directory of descriptor.managedDirectories) {
@@ -5292,18 +5302,20 @@ function planManagedFiles(
       const targetExists = pathPresent(target);
       const targetRegular = targetExists && lstatSync(target).isFile();
       const hash = sha256File(source);
+      const exactSourceProjection = targetRegular && prepared.sourceHashes.get(rel) === sha256File(target);
       const adoptedManagedFile = prior === null &&
         targetRegular &&
         (
-          descriptor.legacyManagedFileHashes?.[rel]?.includes(
+          exactSourceProjection ||
+          (descriptor.legacyManagedFileHashes?.[rel]?.includes(
             sha256File(target),
-          ) ?? false
+          ) ?? false)
         );
       const seedOnly = rel === "aidlc/active-space" ||
         (rel.startsWith("aidlc/spaces/") && rel.includes("/memory/"));
       if (seedOnly) {
-        if (targetExists) {
-          actions.push({ path: rel, action: "preserve", detail: "project-owned seed" });
+        if (targetExists || workspaceMode === "read-only") {
+          actions.push({ path: rel, action: "preserve", detail: targetExists ? "project-owned seed" : "workspace remains read-only" });
         } else {
           operations.push({
             kind: "copy",
@@ -5315,6 +5327,15 @@ function planManagedFiles(
           });
           actions.push({ path: rel, action: "create" });
         }
+        continue;
+      }
+      // Overlaying consumer files lets the candidate compile its complete
+      // graph. It does not grant core ownership of those files on this or a
+      // later refresh, nor permission for regeneration to overwrite them.
+      if (prepared.projectOwnedExtras.has(rel)) {
+        actions.push(targetRegular && sha256File(target) === hash
+          ? { path: rel, action: "preserve", detail: "project-owned overlay" }
+          : { path: rel, action: "conflict", detail: "regeneration would change a project-owned overlay" });
         continue;
       }
       if (runtimeGenerated(rel, descriptor.harnessDir, prepared.regenerated)) {
@@ -5378,7 +5399,7 @@ function planManagedFiles(
       actions.push({
         path: rel,
         action: targetExists ? "update" : "create",
-        detail: adoptedManagedFile ? "adopted exact copy-channel signature" : undefined,
+        detail: adoptedManagedFile ? exactSourceProjection ? "adopted exact source projection" : "adopted exact copy-channel signature" : undefined,
       });
     }
   }
@@ -6341,6 +6362,7 @@ export async function main(
         "--pin",
         "--plan-token",
         "--quiet",
+        "--refresh-open-workflows",
         "--unpin",
         "--yes",
       ].includes(token)
@@ -6361,6 +6383,7 @@ export async function main(
         "--pin",
         "--plan-token",
         "--quiet",
+        "--refresh-open-workflows",
         "--unpin",
         "--yes",
       ].includes(token)
@@ -6399,8 +6422,12 @@ export async function main(
   }
   let selected: ConfigSource | null = null;
   let prepared: PreparedRefreshSource | null = null;
+  const refreshOpenWorkflows = argv.includes("--refresh-open-workflows");
   try {
     const existing = existingProject(projectDir, requestedHarness);
+    if (refreshOpenWorkflows && !existing.distribution) {
+      throw new Error("--refresh-open-workflows requires an existing project installation");
+    }
     const pinPath = join(projectDir, ".aidlc-version");
     if (pathPresent(pinPath) && !regularFile(pinPath)) {
       throw new Error("project pin .aidlc-version is not a regular file");
@@ -6436,7 +6463,7 @@ export async function main(
     if (existing.distribution && existing.distribution !== stamp.distribution) {
       throw new Error(`project uses ${existing.distribution}; refusing ${stamp.distribution}`);
     }
-    if (existing.distribution) assertRefreshSafe(projectDir);
+    if (existing.distribution && !refreshOpenWorkflows) assertRefreshSafe(projectDir);
     if (regularFile(pinPath) && readFileSync(pinPath, "utf-8").trim() !== stamp.frameworkVersion) {
       throw new Error(
         `project pin requires ${readFileSync(pinPath, "utf-8").trim()}, but source is ${stamp.frameworkVersion}; run aidlc config --pin ${readFileSync(pinPath, "utf-8").trim()}`,
@@ -6519,6 +6546,7 @@ export async function main(
       actions,
       files,
       prepared,
+      refreshOpenWorkflows ? "read-only" : "seed",
     );
     if (!selected.projectProjection) {
       planRootIntegrations(
@@ -6625,8 +6653,12 @@ export async function main(
       ]),
     );
     const plan: TransactionPlan = { schemaVersion: 1, root: projectDir, operations };
+    const compatibleRefresh = refreshOpenWorkflows
+      ? planCompatibleRefresh({ projectDir, sourceRoot: prepared.root, harnessDir: descriptor.harnessDir, plan })
+      : null;
     const approvalPlan = {
       ...plan,
+      ...(compatibleRefresh ? { refreshCompatibility: compatibleRefresh.evidence } : {}),
       operations: plan.operations.map((operation) =>
         operation.kind === "copy"
           ? {
@@ -6674,6 +6706,7 @@ export async function main(
           counts,
           actions,
           planToken,
+          ...(compatibleRefresh ? { refreshCompatibility: compatibleRefresh.evidence } : {}),
           ...(modelsContext
             ? {
                 models: {
@@ -6729,8 +6762,12 @@ export async function main(
       withAuditLock(
         projectDir,
         () => {
-          assertRefreshSafe(projectDir);
-          executeSettingsAndProjectMutation(settingsMutation, plan);
+          if (compatibleRefresh) {
+            executePlan(plan, { validateLocked: compatibleRefresh.validateLocked });
+          } else {
+            assertRefreshSafe(projectDir);
+            executeSettingsAndProjectMutation(settingsMutation, plan);
+          }
         },
         undefined,
         undefined,
@@ -6791,6 +6828,7 @@ export async function main(
         counts,
         actions,
         planToken,
+        ...(compatibleRefresh ? { refreshCompatibility: compatibleRefresh.evidence } : {}),
         outstandingActions,
         ...(modelsContext
           ? {

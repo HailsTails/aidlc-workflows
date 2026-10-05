@@ -808,6 +808,7 @@ describe("mechanismsOf is body-derived (milestone 3)", () => {
     "unit/t231-handler-additions.test.ts",
     "unit/t238-build-binaries.test.ts",
     "unit/t243-install-mechanism.test.ts",
+    "unit/t243-open-workflow-refresh.test.ts",
     "unit/t267-usage.test.ts",
     "unit/t270-metrics-transport.test.ts",
     "unit/t280-contract-design-wiring.test.ts",

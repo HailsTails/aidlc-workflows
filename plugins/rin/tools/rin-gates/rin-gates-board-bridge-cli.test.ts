@@ -276,7 +276,7 @@ describe("bridge consumer workflow wiring", () => {
     expect(result.status).toBe(1);
     const expectsUtilityCall = rawSelectedSpace !== "";
     const expectedMessage = expectsUtilityCall
-      ? "spaces/alpha/intents/fixture-record"
+      ? join("spaces", "alpha", "intents", "fixture-record")
       : "selected-space-invalid";
     const expectedArguments = expectsUtilityCall
       ? [

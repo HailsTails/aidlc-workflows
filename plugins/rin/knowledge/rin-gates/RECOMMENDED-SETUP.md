@@ -101,7 +101,7 @@ The review gate rests on the forge refusing to let an actor approve its own pull
 
 The code-discipline rules split into two halves. The judgement half reaches you through the review lenses. The **deterministic** half — no `any` (CD-1), no non-null assertions and no casts outside the closed list (CD-2), no authored classes (CD-14), no `for…in` (CD-15), no `default:` on a closed union (CD-8), single-object arguments (CD-45), no enums, no namespaces, no parameter reassignment — is ordinary linting, and without a linter config nothing checks it.
 
-The plugin ships one at `plugins/rin/knowledge/rin-gates/biome.default.json`. Copy it to `biome.json` at your project root and install biome. It is a starting point you own from that moment, not a managed file.
+The plugin ships one at `{{HARNESS_DIR}}/knowledge/rin-gates/biome.default.json`. Copy it to `biome.json` at your project root and install biome. It is a starting point you own from that moment, not a managed file.
 
 **It excludes the installed harness and `plugins/` deliberately.** That content is the plugin's, not yours: it is written to a wire format your conventions do not govern, and linting someone else's vendored code produces findings you cannot act on. Your linter should govern your code. This mirrors what rin does with its own vendored tree.
 

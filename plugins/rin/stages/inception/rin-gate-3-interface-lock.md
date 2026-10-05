@@ -67,7 +67,7 @@ A record under scope `rin-unit` delivers one unit of a parent record's work and 
 - **Premises live in the unit's own `facts.md`.** The unit restates the parent's design premises its piece relies on, measures them there, and cites those rows.
 - **A failed parent premise routes back to the parent**, through a new intent or the parent's own backward jump fired by the parent's own run. It never goes through this stage's own route-back to Gate 2, which the unit record skips.
 
-The scope file `plugins/rin/scopes/rin-unit.md` carries the full entry rule.
+The scope file `{{HARNESS_DIR}}/scopes/rin-unit.md` carries the full entry rule.
 
 ## Steps
 

@@ -46,7 +46,7 @@ describe("auditSyncPayload", () => {
       [toolInputField]: {
         command: PROMOTE_COMMAND,
         timeout: 30_000,
-        source: "audit-sync",
+        source: "ide-audit-sync",
       },
       [toolResponseField]: { stdout: "Intent created", [exitCodeField]: 0 },
     });
@@ -79,7 +79,7 @@ describe("run", () => {
     expect(JSON.parse(dispatchedPayload ?? "null")).toMatchObject({
       [sessionIdField]: "session-1",
       cwd: "/workspace",
-      [toolInputField]: { command: PROMOTE_COMMAND, source: "audit-sync" },
+      [toolInputField]: { command: PROMOTE_COMMAND, source: "ide-audit-sync" },
     });
   });
 

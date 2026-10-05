@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   createNodeWorkflowUtilityExecutor,
@@ -43,7 +44,7 @@ describe("resolveConsumerWorkflowContext", () => {
       consumerWorkflowContext: {
         consumerRoot: "/consumer",
         space: "alpha-team",
-        intentsRoot: "/consumer/aidlc/spaces/alpha-team/intents",
+        intentsRoot: join("/consumer", "aidlc", "spaces", "alpha-team", "intents"),
       },
     });
     expect(commands).toEqual([
@@ -80,7 +81,7 @@ describe("resolveConsumerWorkflowContext", () => {
       consumerWorkflowContext: {
         consumerRoot: "/consumer",
         space: "default",
-        intentsRoot: "/consumer/aidlc/spaces/default/intents",
+        intentsRoot: join("/consumer", "aidlc", "spaces", "default", "intents"),
       },
     });
   });

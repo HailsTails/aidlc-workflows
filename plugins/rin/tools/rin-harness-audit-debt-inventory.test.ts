@@ -47,23 +47,23 @@ describe("collapseTargetsOf", () => {
   test("reads a collapsed rule's redirect target from its frontmatter", () => {
     const reader = readerOver({
       files: {
-        "root/plugins/rin/knowledge/aidlc-shared/code-discipline/cd-020-stdlib.md":
+        "rules/cd-020-stdlib.md":
           "---\nid: CD-20\nstatus: collapsed-into\ncollapsed-into: CD-19\n---\n",
       },
     });
     expect([
-      ...collapseTargetsOf({ projectDir: "root", reader }).entries(),
+      ...collapseTargetsOf({ corpusDir: "rules", reader }).entries(),
     ]).toEqual([["CD-20", "CD-19"]]);
   });
 
   test("omits an active rule that declares no redirect", () => {
     const reader = readerOver({
       files: {
-        "root/plugins/rin/knowledge/aidlc-shared/code-discipline/cd-002-casts.md":
+        "rules/cd-002-casts.md":
           "---\nid: CD-2\nstatus: active\n---\n",
       },
     });
-    expect(collapseTargetsOf({ projectDir: "root", reader }).size).toBe(0);
+    expect(collapseTargetsOf({ corpusDir: "rules", reader }).size).toBe(0);
   });
 });
 

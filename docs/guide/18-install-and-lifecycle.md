@@ -292,6 +292,7 @@ interactive wizard.
 | `--dry-run` | Calculate the complete plan without creating the target directory or changing bytes |
 | `--plan-token <token>` | Apply only the exact plan approved from a JSON dry run |
 | `--force` | Replace locally modified framework-owned files and managed blocks where that policy permits |
+| `--refresh-open-workflows` | Fork capability: refresh an existing installation only while retaining its state schema and every installed stage/scope contract; keeps `aidlc/` read-only and cannot combine with `--force` or `--mcp` |
 | `--yes` | Confirm an otherwise unrecognized target directory or a section mutation; it does not imply MCP consent or choose a section answer |
 | `--json` | Emit one result object with counts, actions, and `data.planToken` |
 | `--quiet` | Emit one summary or remediation line |
@@ -683,14 +684,13 @@ the apply fails closed.
 
 ### Refresh Safety
 
-A refresh changes project engine and graph files, so config refuses while any
-workflow in any space is not complete. Parked workflows still count as
-active. Complete every workflow named in the error, then rerun config.
+By default, config retains upstream's refusal while any workflow in any space is incomplete, including parked workflows. `--force`, `--yes` and `--plan-token` do not bypass that default. `aidlc update` and `aidlc use` change machine state only.
 
-The check runs once while planning and again under the workspace audit lock
-immediately before commit. `--force`, `--yes`, and `--plan-token` do not bypass
-it. `aidlc update` and `aidlc use` remain safe during a workflow because
-they only change machine state.
+This fork additionally supports `config --refresh-open-workflows` for compatible payload updates in projects running an independent pipeline of workflows. It is an explicit refresh mode, not a force override. The existing and candidate runtimes must export the same literal `CURRENT_STATE_VERSION`; every existing compiled stage and scope contract must remain identical in the candidate. Additional independent contracts are allowed. This conservative comparison includes approval policy, outputs, dependencies and sensor bindings. It does not claim to prove arbitrary tool behavior compatible or repair already-invalid records. A schema or workflow-contract change needs a separately reviewed migration.
+
+The mode never writes beneath `aidlc/`, including memory, record state, audit evidence and cursors; absent seed files remain absent. It still uses the existing ownership-aware plan, expected-byte checks, transaction lock and rollback, and it refuses locally modified or unowned installed files. Compatibility inputs are included in the dry-run plan token and rechecked under the transaction lock immediately before writes. It cannot combine with `--force` or `--mcp`, and is unavailable for first installation or section-specific configuration. Open or parked records do not need to be completed or archived.
+
+This is not a promise of a whole-runtime atomic switch for already executing readers: the existing transaction replaces files individually and rolls back failed writes. Apply in an isolated worktree, inspect the installation diff and verify its consumers before accepting the updated committed payload. Plugin synchronization retains its separate ownership contract; this flag validates the core refresh with the currently composed plugin contracts, not an unrelated subsequent plugin redesign.
 
 Refresh preserves:
 
