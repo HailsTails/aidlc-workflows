@@ -252,7 +252,7 @@ import {
   recordHookDrop,
   recoveryGuidance,
   markEngineTouch,
-  markAskTurnEnd,
+  markTurnEnd,
   kiroIdeLegacyPlanApprovalSessionId,
   relativeCodekbDir,
   relativeRecordDirForSelection,
@@ -458,6 +458,8 @@ interface PreparedEmission {
   transported: Directive; serialized: string; resultSha256: string; projectDir?: string;
   // Clears the person lines this step carries, once it is written.
   personLinesSaid?: () => void;
+  // The agent stops after this step (see writePrepared).
+  endsTurn?: true;
   marker?: {
     kind: "ask" | "load-steering" | "run-stage" | "invoke-swarm"; stage: string; unit?: string;
     units?: string[];
@@ -657,6 +659,8 @@ function sayPendingPersonLines(requested: Directive, transported: Directive): ((
 
 function prepareEmission(directive: Directive): PreparedEmission {
   const requested = directive;
+  // Read before the notices below can copy the directive.
+  const endsTurn = directive.kind === "ask" || turnEndingPrints.has(directive);
   if (
     directive.kind === "run-stage" && directive.construction_policy &&
     directive.gate === false
@@ -888,6 +892,7 @@ function prepareEmission(directive: Directive): PreparedEmission {
         : {}),
     ...(marker ? { marker } : {}),
     ...(personLinesSaid ? { personLinesSaid } : {}),
+    ...(endsTurn ? { endsTurn } : {}),
   };
 }
 
@@ -970,13 +975,14 @@ function writePrepared(prepared: PreparedEmission): void {
   // same work handed over again, or a `continue` to the next part), ends a
   // switch's one-shot stop, so the loop holds it like any other work (#1263).
   const kind = prepared.transported.kind;
-  // An ask is the person's to answer, so the turn ends at it on purpose; any
-  // other step the agent is handed means the turn goes on.
-  const askDir = prepared.projectDir ?? engineProjectDir;
+  // A question for the person or a print the agent stops after ends the turn
+  // on purpose; any other step the agent is handed means the turn goes on. A
+  // park and the finished workflow need no mark: `next` itself still says so.
+  const turnDir = prepared.projectDir ?? engineProjectDir;
   // A conversation that has not joined the record writes nothing into it.
-  if (askDir && !engineUnjoined) {
+  if (turnDir && !engineUnjoined) {
     try {
-      markAskTurnEnd(resolveProjectDir(askDir), kind === "ask");
+      markTurnEnd(resolveProjectDir(turnDir), prepared.endsTurn === true);
     } catch {
       /* advisory: the Stop hook falls back to its usual checks */
     }
@@ -2244,6 +2250,14 @@ function printDirective(message: string): PrintDirective {
   return { kind: "print", message };
 }
 
+// A print the agent stops after: a read-only utility, a setting or a scope
+// change, new work that starts in a fresh session, or one line for the person.
+function turnEndingPrint(message: string): PrintDirective {
+  const directive = printDirective(message);
+  turnEndingPrints.add(directive);
+  return directive;
+}
+
 // The question for a folder set up as a new project that now holds code.
 // Null when the type was the person's word, Construction has started, or the
 // folder still scans as a new project.
@@ -3409,7 +3423,7 @@ function createPrintDirective(
   const cost = clause ? ` (${clause})` : "";
   const runCmd = `Run \`${aidlcDispatcherInvocation("intent create")} ${cmd.join(" ")}\``;
   const directive = flags.newIntent
-    ? printDirective(
+    ? turnEndingPrint(
       `${runCmd} to start the new intent${cost}.${labelHint} Then STOP, do NOT re-run \`next\` in this session. ` +
         `This is a NEW, unrelated intent, and the current session still carries the previous intent's context. ` +
         `Tell the user to start a fresh session using this harness's reset or restart flow, then invoke its AI-DLC entry skill to begin the new intent with a clean slate. ` +
@@ -4074,6 +4088,8 @@ type SteeringTokenPayload = {
 };
 
 const runStageRoutes = new WeakMap<RunStageDirective, RunStageRoute>();
+// Prints the agent stops after (turnEndingPrint).
+const turnEndingPrints = new WeakSet<Directive>();
 const publicationContexts = new WeakMap<
   Directive,
   { projectDir: string; stateHash: string }
@@ -6080,7 +6096,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     const rhythmArg = flags.claimRhythm
       ? ` --rhythm ${shellArg(flags.claimRhythm)}`
       : "";
-    emit(printDirective(
+    emit(turnEndingPrint(
       `Run \`${aidlcInvocation()} --${verb} ${shellArg(unit)}${teamArg}${rhythmArg}\`, ` +
         `print its output verbatim, then stop. Re-run ${entrySkillInvocation()} after the claim registry changes.`,
     ));
@@ -6183,7 +6199,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       ? ` ${flags.readOnlyArgs.join(" ")}`
       : "";
     const command = `${aidlcInvocation()} ${terminalDispatcherArgv({ subcommand: sub, source: "read-only-flag" }).join(" ")}`;
-    emit(printDirective(
+    emit(turnEndingPrint(
       `Run \`${command}${extra}\`, print its output verbatim, then stop. This is a read-only utility, NOT workflow work: do NOT run \`next\` and do NOT advance, resume, or run any workflow stage.`,
     ));
     return;
@@ -6226,6 +6242,9 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     const terminalBoundary = command.kind === "create-intent"
       ? ""
       : " Do not call `next` or `report`, run a stage, or offer to resume a workflow after this command, even if the selected space or intent has unfinished work.";
+    // A switch keeps its own stop rule: a turn that only selects ends at the
+    // switch, while stage work after it, or a switch straight back to the
+    // intent in hand, does not. So it marks no turn end here.
     emit(printDirective(
       `Run \`${aidlcDispatcherInvocation(route)}${suffix}\`, print its output verbatim, then stop.${terminalBoundary}`,
     ));
@@ -6245,7 +6264,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     const suffix = tail.length > 0 ? ` ${tail.map(shellArg).join(" ")}` : "";
     const command = `${aidlcDispatcherInvocation(`config ${verb}`)}${suffix}`;
     if (isReadOnlyEngineProbe()) {
-      emit(printDirective(
+      emit(turnEndingPrint(
         `Run \`${command}\`, print its output verbatim, then stop. This read-only probe did not execute the configuration command.`,
       ));
       return;
@@ -6259,7 +6278,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       return;
     }
     if (run.stderr) process.stderr.write(run.stderr);
-    emit(printDirective(
+    emit(turnEndingPrint(
       `\`${command}\` completed. Print the following output verbatim, then stop. ` +
         "This is a setting, NOT workflow work: do NOT run `next` and do NOT advance, resume, or run any workflow stage.\n\n" +
         run.stdout.trimEnd(),
@@ -6273,7 +6292,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
   // and, over an active workflow, drew the new-work offer (a second intent).
   // The engine names the exact public command; the mutation stays in `park`.
   if (flags.orchestratorVerb === "park") {
-    emit(printDirective(
+    emit(turnEndingPrint(
       `Run \`${aidlcInvocation()} park\`. It prints a \`parked\` directive: act on it exactly as the directive table says (tell the user the workflow is parked and how to resume with ${entrySkillInvocation()} --resume), then stop. This is a deliberate park, NOT new work: do NOT run \`next\` and do NOT advance or run any workflow stage.`,
     ));
     return;
@@ -6282,7 +6301,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     const extra = flags.orchestratorVerbArgs && flags.orchestratorVerbArgs.length > 0
       ? ` ${flags.orchestratorVerbArgs.join(" ")}`
       : "";
-    emit(printDirective(
+    emit(turnEndingPrint(
       `Run \`${aidlcInvocation()} team-board${extra}\`, print its output verbatim, then stop. This is a read-only board, NOT workflow work: do NOT run \`next\` and do NOT advance, resume, or run any workflow stage.`,
     ));
     return;
@@ -6301,7 +6320,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     const [verb, ...tail] = argv;
     const routeVerb = verb === "select-plugins" ? "select" : verb.replace(/^plugin-/, "");
     const suffix = tail.length > 0 ? ` ${tail.map(shellArg).join(" ")}` : "";
-    emit(printDirective(
+    emit(turnEndingPrint(
       `Run \`${aidlcDispatcherInvocation(`plugin ${routeVerb}`)}${suffix}\`, print its output verbatim, then stop. This is a terminal utility, NOT workflow work: do NOT run \`next\` and do NOT advance, resume, or run any workflow stage.`,
     ));
     return;
@@ -6320,7 +6339,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     const argv = command.kind === "help" ? ["help"] : command.argv;
     const [verb, ...tail] = argv;
     const suffix = tail.length > 0 ? ` ${tail.map(shellArg).join(" ")}` : "";
-    emit(printDirective(
+    emit(turnEndingPrint(
       `Run \`${aidlcToolInvocation("knowledge")} ${verb}${suffix}\`, print its output verbatim, then stop. This is a terminal utility, NOT workflow work: do NOT run \`next\` and do NOT advance, resume, or run any workflow stage.`,
     ));
     return;
@@ -6880,7 +6899,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       const parts = [`--scope ${flags.scope}`];
       for (const modifier of modifiers) parts.push(`--${modifier}`);
       const command = `${aidlcDispatcherInvocation("scope change")} ${parts.join(" ")}`;
-      emit(planChanges ? planChangeDirective(planChanges, command, null) : printDirective(
+      emit(planChanges ? planChangeDirective(planChanges, command, null) : turnEndingPrint(
         `Run \`${command}\` to change scope, then print its output verbatim and stop.`,
       ));
       return;
@@ -6893,7 +6912,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     // same-as-current --scope: no sibling modifier may be silently discarded.
     if (modifiers.length > 0 && !describedWork) {
       const command = configSetCommand(modifiers);
-      emit(planChanges ? planChangeDirective(planChanges, command, plan) : printDirective(
+      emit(planChanges ? planChangeDirective(planChanges, command, plan) : turnEndingPrint(
         `Run \`${command}\` to update the configuration, then print its output verbatim and stop.`,
       ));
       return;
@@ -9702,7 +9721,7 @@ function unitMajorReopen(
   stateContent: string,
   targetSlug: string,
   flags: ParsedFlags,
-): { kind: "print" | "error"; message: string } | "route" | null {
+): PrintDirective | { kind: "error"; message: string } | "route" | null {
   const currentSlug = getField(stateContent, "Current Stage")?.trim() ?? "";
   const walk = unitMajorWalkBeat(projectDir, scope, stateContent, currentSlug);
   if (!walk) return null;
@@ -9790,22 +9809,20 @@ function unitMajorReopen(
       };
     }
     if (!reached(named)) {
-      return {
-        kind: "print",
-        message: `Nothing to reopen: tell the person in one line, "unit ${named} has not reached ` +
+      return turnEndingPrint(
+        `Nothing to reopen: tell the person in one line, "unit ${named} has not reached ` +
           `${stageName} yet, so there is nothing to reopen." Run nothing else.`,
-      };
+      );
     }
     reopened = [named];
   } else if (flags.everyUnit) {
     // Every unit includes one that is on the target step now: it starts it again.
     reopened = units.filter((unit) => reached(unit) || open.get(unit)?.stage === targetSlug);
     if (reopened.length === 0) {
-      return {
-        kind: "print",
-        message: `Nothing to reopen: tell the person in one line, "no unit has reached ${stageName} yet, ` +
+      return turnEndingPrint(
+        `Nothing to reopen: tell the person in one line, "no unit has reached ${stageName} yet, ` +
           `so there is nothing to reopen." Run nothing else.`,
-      };
+      );
     }
   } else {
     if (inFlight !== null && liveStage === targetSlug && anyFinished()) return "route";
@@ -10374,7 +10391,7 @@ function planChangeDirective(
     ? `${unchanged.join("; ").charAt(0).toUpperCase()}${unchanged.join("; ").slice(1)}.`
     : "";
   if (skip.length === 0 && add.length === 0) {
-    return printDirective(
+    return turnEndingPrint(
       `${before ? `Run \`${before}\` and print its output verbatim, then tell` : "Tell"} the person in one line: ` +
         `"${noted} The plan is unchanged." Then stop.`,
     );
@@ -10388,7 +10405,7 @@ function planChangeDirective(
     ...(add.length > 0 ? [`added ${add.join(", ")}`] : []),
   ].join(" and ");
   const recompose = `${aidlcDispatcherInvocation("recompose")} ${flips(skip, add)}`;
-  return printDirective(
+  return turnEndingPrint(
     `${before ? `Run \`${before}\` and print its output verbatim, then run` : "Run"} \`${recompose}\` ` +
       "to change this workflow's remaining stages as the person asked, and do not show its output: " +
       "the one line below says what changed. " +
@@ -10540,14 +10557,14 @@ function emitJumpDirective(
     const reopen = unitMajorReopen(projectDir, scope, unitMajorState, targetSlug, flags);
     if (reopen === "route") return "route";
     if (reopen !== null) {
-      emit(reopen.kind === "error" ? errorDirective(reopen.message) : printDirective(reopen.message));
+      emit(reopen.kind === "error" ? errorDirective(reopen.message) : reopen);
       return;
     }
     // A named unit this jump cannot honor is never dropped for a jump that
     // redoes the step for every unit. `--every-unit` asks for exactly what the
     // jump below does here, so it goes through and says so in one line.
     if (flags.jumpUnit !== undefined) {
-      emit(printDirective(unitChoiceRefusal(unitMajorState, targetSlug)));
+      emit(turnEndingPrint(unitChoiceRefusal(unitMajorState, targetSlug)));
       return;
     }
     const everyUnitLine = flags.everyUnit && direction !== "forward"

@@ -24687,12 +24687,13 @@ export function humanTurnMarkerPath(projectDir: string, intent?: string, space?:
 export function engineTouchMarkerPath(projectDir: string, intent?: string, space?: string): string {
   return join(engineDir(projectDir, intent, space), "engine-touch");
 }
-// The engine's last word to the agent was a question for the person (an `ask`):
-// where new work goes, which plan to start it with, and the like. `next` alone
-// can still return the work in progress, so this marker is how the Stop hook
-// knows the turn ends at a question on purpose.
-export function askTurnEndMarkerPath(projectDir: string, intent?: string, space?: string): string {
-  return join(engineDir(projectDir, intent, space), "ask-turn-end");
+// The engine's last word to the agent ended the turn on purpose: a question for
+// the person (where new work goes, which plan to start it with) or a print the
+// agent stops after (status, a setting, a scope change, new work that starts
+// in a fresh session). `next` alone can still return the work in progress, so
+// this marker is how the Stop hook knows.
+export function turnEndMarkerPath(projectDir: string, intent?: string, space?: string): string {
+  return join(engineDir(projectDir, intent, space), "turn-end");
 }
 
 // The env marker that identifies the Stop hook's OWN read-only `next` probe.
@@ -24752,20 +24753,45 @@ export function isReadOnlyEngineProbe(): boolean {
 // fails closed on the read side, and the unlink succeeds in the root-owned case
 // because the containing directory stays user-writable. If even the unlink
 // fails there is nothing further to do; the block cap remains the backstop.
-function touchTurnMarker(path: string): void {
+// The marker lives in the record's engine folder and is reached through no
+// symlink, the leaf included, so a link in the record never sends the write or
+// the clean-up anywhere else.
+function touchTurnMarker(projectDir: string, name: string, intent?: string, space?: string): void {
+  const recordRoot = docsRoot(projectDir, intent, space);
+  const relative = join(ENGINE_DIR, name);
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${isoTimestamp()}\n`, "utf-8");
+    const anchor = realpathSync(recordRoot);
+    const target = assertNoSymlinkInChainOrThrow(anchor, relative);
+    mkdirSync(dirname(target), { recursive: true });
+    assertNoSymlinkInChainOrThrow(anchor, relative);
+    const noFollow = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0;
+    const fd = openSync(target, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | noFollow, 0o644);
+    try {
+      writeSync(fd, `${isoTimestamp()}\n`);
+    } finally {
+      closeSync(fd);
+    }
   } catch {
     // Degrade to "no evidence" rather than leaving a stale mtime that would
     // silently relax the carve-out from here on. `recursive` so a directory
     // squatting on the path (an unlikely but possible way for the write to fail
     // while the path survives) is cleared too, not just a stale file.
-    try {
-      rmSync(path, { force: true, recursive: true });
-    } catch {
-      /* nothing left to try - the cap-bounded block is the backstop */
-    }
+    clearTurnMarker(recordRoot, relative);
+  }
+}
+
+// A turn mark's stat, read through the same no-symlink path it is written by:
+// a link anywhere on the way reads as no mark.
+function turnMarkerStat(projectDir: string, name: string, intent?: string, space?: string) {
+  const target = recordFileTargetOrThrow(docsRoot(projectDir, intent, space), join(ENGINE_DIR, name));
+  return lstatSync(target, { throwIfNoEntry: false });
+}
+
+function clearTurnMarker(recordRoot: string, relative: string): void {
+  try {
+    rmSync(recordFileTargetOrThrow(recordRoot, relative), { force: true, recursive: true });
+  } catch {
+    /* nothing left to try - the cap-bounded block is the backstop */
   }
 }
 
@@ -24790,36 +24816,32 @@ function workflowIsCreated(projectDir: string, intent?: string, space?: string):
 // adapter; direct execution of the authority-bearing hook file is inert.
 export function markHumanTurn(projectDir: string, intent?: string, space?: string): void {
   if (!workflowIsCreated(projectDir, intent, space)) return;
-  touchTurnMarker(humanTurnMarkerPath(projectDir, intent, space));
+  touchTurnMarker(projectDir, "human-turn", intent, space);
 }
 
-// Record what the engine handed out last: an ask sets the marker, anything else
-// clears it. The Stop hook's own probe changes nothing.
-export function markAskTurnEnd(projectDir: string, asked: boolean, intent?: string, space?: string): void {
+// Record what the engine handed out last: a step that ends the turn sets the
+// marker, anything else clears it. The Stop hook's own probe changes nothing.
+export function markTurnEnd(projectDir: string, endsTurn: boolean, intent?: string, space?: string): void {
   if (isReadOnlyEngineProbe()) return;
   if (!workflowIsCreated(projectDir, intent, space)) return;
-  const path = askTurnEndMarkerPath(projectDir, intent, space);
-  if (asked) {
-    touchTurnMarker(path);
+  if (endsTurn) {
+    touchTurnMarker(projectDir, "turn-end", intent, space);
     return;
   }
-  try {
-    rmSync(path, { force: true, recursive: true });
-  } catch {
-    /* a stale marker only lets one turn end at a question that is no longer open */
-  }
+  // A stale marker only lets one turn end at a step that is no longer the last.
+  clearTurnMarker(docsRoot(projectDir, intent, space), join(ENGINE_DIR, "turn-end"));
 }
 
-// True when the engine's last word was a question the person has not answered:
-// the ask marker is newer than their last message. Fail-closed like the
+// True when the engine's last word ended the turn and the person has not
+// written since: the marker is newer than their last message. Fail-closed like the
 // conversational reading: a missing or unreadable marker on either side is no
 // evidence, and the caller falls through to its usual checks.
-export function askTurnEndIsOpen(projectDir: string, intent?: string, space?: string): boolean {
+export function turnEndIsOpen(projectDir: string, intent?: string, space?: string): boolean {
   try {
-    const askStat = statSync(askTurnEndMarkerPath(projectDir, intent, space), { throwIfNoEntry: false });
-    const humanStat = statSync(humanTurnMarkerPath(projectDir, intent, space), { throwIfNoEntry: false });
-    if (!askStat?.isFile() || !humanStat?.isFile()) return false;
-    return askStat.mtimeMs > humanStat.mtimeMs;
+    const endStat = turnMarkerStat(projectDir, "turn-end", intent, space);
+    const humanStat = turnMarkerStat(projectDir, "human-turn", intent, space);
+    if (!endStat?.isFile() || !humanStat?.isFile()) return false;
+    return endStat.mtimeMs > humanStat.mtimeMs;
   } catch {
     return false;
   }
@@ -24851,7 +24873,7 @@ export function askTurnEndIsOpen(projectDir: string, intent?: string, space?: st
 export function markEngineTouch(projectDir: string, intent?: string, space?: string): void {
   if (isReadOnlyEngineProbe()) return;
   if (!workflowIsCreated(projectDir, intent, space)) return;
-  touchTurnMarker(engineTouchMarkerPath(projectDir, intent, space));
+  touchTurnMarker(projectDir, "engine-touch", intent, space);
 }
 
 // The transcript-free reading of "the ending turn was conversational": the last
@@ -24867,8 +24889,6 @@ export function turnMarkersShowConversational(
   space?: string,
 ): boolean {
   try {
-    const humanPath = humanTurnMarkerPath(projectDir, intent, space);
-    const enginePath = engineTouchMarkerPath(projectDir, intent, space);
     // Both markers must be present AND be regular files. An absent engine
     // marker is NOT read as "the engine was never touched, therefore chat": it
     // is read as "no evidence", because that is also the shape of a fresh
@@ -24877,8 +24897,8 @@ export function turnMarkersShowConversational(
     // dangling symlink) would otherwise contribute a meaningless mtime to the
     // comparison, and on the engine side a meaningless-but-old mtime reads as
     // "chat" and releases the stop.
-    const humanStat = statSync(humanPath, { throwIfNoEntry: false });
-    const engineStat = statSync(enginePath, { throwIfNoEntry: false });
+    const humanStat = turnMarkerStat(projectDir, "human-turn", intent, space);
+    const engineStat = turnMarkerStat(projectDir, "engine-touch", intent, space);
     if (!humanStat?.isFile() || !engineStat?.isFile()) return false;
     return humanStat.mtimeMs > engineStat.mtimeMs;
   } catch {
