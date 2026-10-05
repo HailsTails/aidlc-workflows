@@ -118,6 +118,23 @@ test("never descends vendored upstream or a composed harness face", () => {
   ]);
 });
 
+test("prunes generated release output while retaining sibling source", () => {
+  const readDirectory = fakeReaderFrom({
+    tree: {
+      root: [dir("packages")],
+      [join("root", "packages")]: [dir("tool")],
+      [join("root", "packages", "tool")]: [dir("src"), dir("dist-release")],
+      [join("root", "packages", "tool", "src")]: [file("source.ts")],
+      [join("root", "packages", "tool", "dist-release")]: [
+        file("generated.ts"),
+      ],
+    },
+  });
+  expect(walkSourceFiles({ rootDir: "root", readDirectory })).toEqual([
+    join("root", "packages", "tool", "src", "source.ts"),
+  ]);
+});
+
 test("returns empty for an unreadable root", () => {
   const readDirectory = fakeReaderFrom({ tree: {} });
   expect(walkSourceFiles({ rootDir: "absent", readDirectory })).toEqual([]);

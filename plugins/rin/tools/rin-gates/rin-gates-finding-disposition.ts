@@ -1,63 +1,24 @@
-// Which cited findings still BLOCK a verdict (task 019f6d3e).
-//
-// Step 5 of the decorrelated-review protocol (decorrelated-review.md:99-101) says
-// READY requires every producing lens READY *or its VIOLATIONs resolved at a
-// principled bar*. Only the first clause was ever enforced, so a lens (or a
-// caller) could assert READY over its own live cited violations and nothing could
-// refuse it. This predicate is that second clause made checkable.
-//
-// It lives beside `rin-gate-namespace.ts` — the same shape of small shared module
-// projected across the .claude/ and plugins/rin/ trees — because BOTH doors to a
-// gate verdict must agree on what READY means: the SubagentStop review-scribe
-// (which harvests findings from each lens's own verdict section) and this
-// directory's CLI emitter (which takes them from the caller). A predicate
-// reachable from only one tree would let the two doors drift apart, which is the
-// gap itself in a new form.
-//
-// THE EVIDENCE REQUIREMENT, and why a bare prefix is not a disposition. The
-// ratified closed set is `fixed@<sha>` / `push-back(<ground>)` / `defer(ack:<ref>)`
-// (rin-gate-5-review-cycle.md:110-111) — the trailing reference is the SUBSTANCE
-// of each disposition, not decoration: a defer without an ack is by definition
-// unresolved. An earlier draft of this predicate matched the bare words, which
-// re-opened under a more credible-sounding token the exact escape hatch this task
-// exists to close: a live violation prefixed `DEFERRED:` would have cleared the
-// gate that `non-blocking note` no longer clears. Each prefix therefore demands
-// its own evidence shape below.
-//
-// Note the direction of THIS defect class, which is the opposite of the
-// extractor's. A finding wrongly read as LIVE costs a re-review. A finding wrongly
-// read as DISPOSED removes a refusal that should have fired — the central failure
-// of a refusal-only guard. So the bar is set to over-block: an unrecognised
-// disposition shape is LIVE.
+import {
+  CHAIN_LABEL,
+  REQUIRED_WHY_COUNT,
+  restatesTheException,
+} from "../rin-harness-why-chain.ts";
 
-// `fixed` / `resolved` carry the commit that did it: `fixed@<sha>` (also accepted
-// as `fixed <sha>` / `fixed: <sha>`), where <sha> is a git-ish hex of 7+ chars.
+const DISPOSITION_WORDS = [
+  "FIXED",
+  "RESOLVED",
+  "PUSH-?BACK",
+  "DEFER(?:RED)?",
+  "WITHDRAWN",
+] as const;
+
 const FIXED_WITH_SHA =
   /^(?:FIXED|RESOLVED)\b[\s:@]*(?:@|\bin\b)?\s*[0-9a-f]{7,40}\b/i;
 
-// `push-back` carries the ground it stands on, PARENTHESISED as the ratified
-// `push-back(<ground>)` shape requires. The parentheses are load-bearing and not
-// cosmetic: they delimit the author's own justification from the finding text it
-// precedes. A shape that merely looked for a CD-id or a `file:line` ANYWHERE
-// after the prefix would be satisfied by the cited finding itself — every finding
-// carries a coordinate and a CD-id by construction — so `push-back: <finding>`
-// would self-justify. The ground must be a span the author wrote, not the row.
 const PUSH_BACK_WITH_GROUND = /^PUSH-?BACK\s*\([^)]*\S[^)]*\)/i;
 
-// `defer` carries the acknowledgement that authorises it — a defer with no ack is
-// unresolved. Same delimiting reason as above: the ack sits inside the parens.
 const DEFER_WITH_ACK = /^DEFER(?:RED)?\s*\([^)]*\S[^)]*\)/i;
 
-// `withdrawn` is the reviewer retracting its OWN finding — a fourth disposition
-// beyond the ratified three, and the only self-serve one. It therefore needs the
-// author-delimited span MOST, not least: the other three carry an externally
-// checkable referent (a sha, a ground, an ack), so a fabricated one is at least a
-// checkable lie. A withdrawal has no external referent by design, which makes the
-// delimiter the only check there can be. An earlier draft required merely one
-// non-whitespace token after the prefix — satisfied by the FINDING'S OWN first
-// token, so `WITHDRAWN: <finding>` self-disposed. That is the same
-// self-justification defect closed above, surviving on the one shape least able
-// to afford it.
 const WITHDRAWN_WITH_REASON = /^WITHDRAWN\s*\([^)]*\S[^)]*\)/i;
 
 const DISPOSITION_SHAPES: readonly RegExp[] = [
@@ -67,18 +28,170 @@ const DISPOSITION_SHAPES: readonly RegExp[] = [
   WITHDRAWN_WITH_REASON,
 ];
 
-// A leading list bullet is the ordinary way a lens writes its finding rows, so it
-// is stripped before the shapes are tested — it carries no meaning either way.
-const LEADING_BULLET = /^[-*]\s*/;
+const EXCEPTION_DISPOSITIONS: readonly RegExp[] = [
+  PUSH_BACK_WITH_GROUND,
+  DEFER_WITH_ACK,
+];
 
-const isDisposed = (finding: string): boolean => {
-  const withoutBullet = finding.trim().replace(LEADING_BULLET, "");
-  return DISPOSITION_SHAPES.some((shape) => shape.test(withoutBullet));
+const MINIMUM_WHY_CHARACTERS = 12;
+const WHY_QUESTION_AND_ANSWER =
+  /^why\b.+?(?:\?|\s+[—–-]\s+|\bbecause\b)\s*(?:because\s+)?(\S.*?)\s*\([^()]{4,}\)/i;
+const REPEATED_CHARACTER = /^(.)\1+$/;
+
+const NUMBERED_WHY = new RegExp(
+  `(?:^|[\\s|>])([1-${REQUIRED_WHY_COUNT}])\\.\\s*(.*?)(?=(?:[\\s|>]\\d+\\.\\s)|$)`,
+  "gs",
+);
+
+const isReasoned = (text: string): boolean =>
+  text.trim().length >= MINIMUM_WHY_CHARACTERS;
+
+const ROOT_CAUSE_AND_OWNER =
+  /root\s+cause\s*[:—-]\s*([^|\n]*?)\s*\bowner\s*:\s*([^(.|\n]+)\s*\([^()]{4,}\)/i;
+
+const isReasonedWhy = (span: string): boolean => {
+  const answer = span.trim().match(WHY_QUESTION_AND_ANSWER)?.[1]?.trim();
+  return (
+    answer !== undefined &&
+    isReasoned(answer) &&
+    !REPEATED_CHARACTER.test(answer)
+  );
 };
 
-// Consulted ONLY to refuse a READY, never to grant one. Combined with the
-// over-blocking bar above, an unrecognised or evidence-free disposition keeps the
-// finding live rather than silently clearing it.
+const hasCauseAndOwner = (span: string): boolean => {
+  const causeAndOwner = span.match(ROOT_CAUSE_AND_OWNER);
+  const rootCause = causeAndOwner?.[1]?.trim().replace(/[.]$/, "").trim();
+  const owner = causeAndOwner?.[2]?.trim();
+  return (
+    rootCause !== undefined &&
+    rootCause.length >= MINIMUM_WHY_CHARACTERS &&
+    !restatesTheException({ rootCause }) &&
+    owner !== undefined &&
+    owner.length > 0
+  );
+};
+
+const carriesNumberedChain = (text: string): boolean => {
+  const steps = new Map(
+    [...text.matchAll(NUMBERED_WHY)].flatMap((match) =>
+      match[1] === undefined || match[2] === undefined
+        ? []
+        : [[Number(match[1]), match[2]] as const],
+    ),
+  );
+  return (
+    Array.from({ length: REQUIRED_WHY_COUNT - 1 }, (_, index) =>
+      steps.get(index + 1),
+    ).every((step) => step !== undefined && isReasonedWhy(step)) &&
+    hasCauseAndOwner(steps.get(REQUIRED_WHY_COUNT) ?? "")
+  );
+};
+
+const carriesCompleteChain = (finding: string): boolean =>
+  CHAIN_LABEL.test(finding) && carriesNumberedChain(finding);
+
+const isExceptionDisposition = (finding: string): boolean =>
+  EXCEPTION_DISPOSITIONS.some((shape) => shape.test(finding));
+
+const LEADING_BULLET = /^[-*]\s*/;
+
+const UNESCAPED_PIPE = /(?<!\\)\|/;
+const LEADING_PIPE = /^\|/;
+const TRAILING_PIPE = /(?<!\\)\|$/;
+const BACKTICK = /`/g;
+const DOCUMENTED_ROW_CELLS = 3;
+
+type JudgedRow =
+  | {
+      readonly kind: "table";
+      readonly disposition: string;
+      readonly chain: string;
+    }
+  | { readonly kind: "prose"; readonly text: string };
+
+const judgedRowOf = (finding: string): JudgedRow => {
+  const text = finding.trim().replace(LEADING_BULLET, "");
+  const cells = text.startsWith("|")
+    ? text
+        .replace(LEADING_PIPE, "")
+        .trimEnd()
+        .replace(TRAILING_PIPE, "")
+        .split(UNESCAPED_PIPE)
+        .map((cell) => cell.trim())
+    : [];
+  const [, disposition, chain] = cells;
+  return cells.length === DOCUMENTED_ROW_CELLS &&
+    disposition !== undefined &&
+    chain !== undefined
+    ? { kind: "table", disposition: disposition.replace(BACKTICK, ""), chain }
+    : { kind: "prose", text };
+};
+
+const DISPOSITION_PREFIX = new RegExp(
+  `\\b(?:${DISPOSITION_WORDS.join("|")})\\b\\s*[(@:]`,
+  "gi",
+);
+
+const claimedJudgements = (finding: string): number =>
+  [...finding.matchAll(DISPOSITION_PREFIX)].length;
+
+const disposes = ({
+  disposition,
+  chainComplete,
+  exceptionWhyChainsEnabled,
+}: {
+  readonly disposition: string;
+  readonly chainComplete: boolean;
+  readonly exceptionWhyChainsEnabled: boolean;
+}): boolean =>
+  claimedJudgements(disposition) <= 1 &&
+  DISPOSITION_SHAPES.some((shape) => shape.test(disposition)) &&
+  (!exceptionWhyChainsEnabled ||
+    !isExceptionDisposition(disposition) ||
+    chainComplete);
+
+const isDisposed = ({
+  finding,
+  exceptionWhyChainsEnabled,
+}: {
+  readonly finding: string;
+  readonly exceptionWhyChainsEnabled: boolean;
+}): boolean => {
+  const row = judgedRowOf(finding);
+  switch (row.kind) {
+    case "table":
+      return disposes({
+        disposition: row.disposition,
+        chainComplete: carriesNumberedChain(row.chain),
+        exceptionWhyChainsEnabled,
+      });
+    case "prose":
+      return disposes({
+        disposition: row.text,
+        chainComplete: carriesCompleteChain(row.text),
+        exceptionWhyChainsEnabled,
+      });
+  }
+};
+
+const blockingFindingsWithPolicy = ({
+  findings,
+  exceptionWhyChainsEnabled,
+}: {
+  readonly findings: readonly string[];
+  readonly exceptionWhyChainsEnabled: boolean;
+}): readonly string[] =>
+  findings.filter(
+    (finding) => !isDisposed({ finding, exceptionWhyChainsEnabled }),
+  );
+
 export const blockingFindingsIn = (
   findings: readonly string[],
-): readonly string[] => findings.filter((finding) => !isDisposed(finding));
+): readonly string[] =>
+  blockingFindingsWithPolicy({ findings, exceptionWhyChainsEnabled: true });
+
+export {
+  blockingFindingsWithPolicy,
+  carriesCompleteChain,
+  isExceptionDisposition,
+};

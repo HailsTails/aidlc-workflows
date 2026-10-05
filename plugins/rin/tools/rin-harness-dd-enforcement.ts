@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
+import { configR7OptIn } from "./rin-harness-config.ts";
 import {
   type DocRule,
   type Finding,
@@ -83,6 +84,33 @@ const cleanResult = ({
   scanned,
 });
 
+const r7SensorGate = ({
+  ddIds,
+  label,
+  projectDir,
+}: {
+  readonly ddIds: readonly DocRule[];
+  readonly label: string;
+  readonly projectDir: string;
+}): DdSensorResult | undefined => {
+  if (!ddIds.includes("DD-7")) return undefined;
+  const optIn = configR7OptIn({ projectDir });
+  switch (optIn.kind) {
+    case "invalid":
+      return {
+        pass: false,
+        dd: label,
+        findingsCount: 0,
+        findings: [],
+        scanned: `UNMEASURED — harness.config.json is invalid: ${optIn.reason}`,
+      };
+    case "disabled":
+      return cleanResult({ ddId: label, scanned: "(DD-7 not adopted)" });
+    case "enabled":
+      return undefined;
+  }
+};
+
 const runDdSensor = ({
   ddIds,
 }: {
@@ -90,6 +118,15 @@ const runDdSensor = ({
 }): void => {
   const flags = parseFlags({ argv: process.argv.slice(2) });
   const label = ddIds.join("+");
+  const r7Result = r7SensorGate({
+    ddIds,
+    label,
+    projectDir: flags.projectDir ?? process.cwd(),
+  });
+  if (r7Result !== undefined) {
+    emit({ result: r7Result });
+    return;
+  }
   const recordDir =
     flags.outputPath === undefined
       ? undefined
@@ -102,13 +139,30 @@ const runDdSensor = ({
     return;
   }
 
-  const findings = inspectRecordDirectory({
+  const inspection = inspectRecordDirectory({
     recordDir,
     stageGraphPath: join(
       flags.projectDir ?? process.cwd(),
       STAGE_GRAPH_RELATIVE,
     ),
-  }).filter((finding) => ddIds.includes(finding.rule));
+  });
+
+  if (inspection.kind === "unmeasurable") {
+    emit({
+      result: {
+        pass: false,
+        dd: label,
+        findingsCount: 0,
+        findings: [],
+        scanned: `UNMEASURED — ${inspection.reason}: ${STAGE_GRAPH_RELATIVE} is absent, so the official-artefact set (DD-4) could not be resolved`,
+      },
+    });
+    return;
+  }
+
+  const findings = inspection.findings.filter((finding) =>
+    ddIds.includes(finding.rule),
+  );
 
   emit({
     result: {

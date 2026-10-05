@@ -4,6 +4,7 @@ import { join } from "node:path";
 const EXCLUDED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
   "node_modules",
   "dist",
+  "dist-release",
   "build",
   "coverage",
   ".git",

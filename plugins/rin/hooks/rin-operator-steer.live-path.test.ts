@@ -11,11 +11,17 @@
 // suspended-parent window: the operator sends during a seat, the seat's output
 // lands after it, and the hook must still find the steer on resume.
 
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import {
   runRanHookProcess,
   transcriptAssistantEntry,
@@ -28,6 +34,14 @@ const hookPath = join(
   dirname(fileURLToPath(import.meta.url)),
   "rin-operator-steer.ts",
 );
+
+const fixtureDirectories: string[] = [];
+
+afterEach(() => {
+  fixtureDirectories.splice(0).forEach((directory) => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+});
 
 const humanPrompt = (text: string) => transcriptUserEntry({ content: text });
 
@@ -61,6 +75,8 @@ const invokeAgainst = async (lines: readonly string[]) => {
   const workingDirectory = mkdtempSync(
     join(tmpdir(), "rin-operator-steer-live-"),
   );
+  fixtureDirectories.push(workingDirectory);
+  mkdirSync(join(workingDirectory, ".git"));
   const transcriptPath = join(workingDirectory, "transcript.jsonl");
   writeFileSync(transcriptPath, lines.join("\n"), "utf8");
   return runRanHookProcess({
@@ -84,6 +100,7 @@ const invokeAgainst = async (lines: readonly string[]) => {
 describe("the ledger resolves to the primary checkout, not the invoking worktree", () => {
   test("a steer surfaced from a worktree writes its ledger into the primary git dir", async () => {
     const root = mkdtempSync(join(tmpdir(), "rin-steer-worktree-"));
+    fixtureDirectories.push(root);
     const primaryGitDir = join(root, "primary", ".git");
     const worktreeGitDir = join(primaryGitDir, "worktrees", "lane");
     const worktree = join(root, "worktree");

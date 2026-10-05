@@ -1,12 +1,29 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
+import { CHAIN_LABEL } from "./rin-harness-why-chain.ts";
 
 const FACT_ROW = /^\|\s*\*\*([A-Z]+-\d+)\*\*\s*\|/;
 const KEY_REFERENCE = /\b([A-Z]+-\d+)\b/g;
 
-// Rule-id namespaces are NOT fact keys. They share the <PREFIX>-<N> shape, so a
-// prose citation of DD-4 or CD-19 would otherwise read as a dangling reference.
 const RESERVED_PREFIXES = new Set(["DD", "CD", "IF", "G3", "FR", "AC", "NFR"]);
+
+const SELF_NUMBERED_HEADINGS: Readonly<Record<string, RegExp>> = {
+  "rin-framing-questions.md": /^#{2,6}\s+([QD]-\d+)\b/gm,
+  "rin-plan-review-questions.md": /^#{2,6}\s+(D-\d+)\b/gm,
+};
+
+const isSelfNumbered = ({
+  key,
+  document,
+}: {
+  readonly key: string;
+  readonly document: ProseDocument;
+}): boolean => {
+  const heading = SELF_NUMBERED_HEADINGS[document.name];
+  return heading === undefined
+    ? false
+    : [...document.body.matchAll(heading)].some((match) => match[1] === key);
+};
 
 const isReservedKey = ({ key }: { readonly key: string }): boolean =>
   RESERVED_PREFIXES.has(key.split("-")[0] ?? "");
@@ -15,14 +32,18 @@ const TABLE_ROW = /^\s*\|/;
 
 const ISO_DATE = /\b\d{4}-\d{2}-\d{2}\b/g;
 const RECORD_SLUG = /\b\d{6}-[a-z0-9-]+/g;
-const PR_REFERENCE = /#\d+/g;
+const PR_REFERENCE = /#\d+|https?:\/\/\S+/g;
+
+const RECEIPT_TOKEN = /\breview:[0-9a-f]{32}\b/g;
+
+const ALGORITHM_NAME = /\b(?:sha|md|blake|crc|base|utf)-?\d+\b/gi;
 const SECTION_REFERENCE = /§\s*\d+[a-z]?/g;
 const GATE_REFERENCE = /\b[Gg]ate\s+\d+/g;
 const ALLOWED_BARE = [/^20\d{2}$/, /^\d{1,2}$/];
 
 const FACTS_FILENAME = "facts.md";
 
-type DocRule = "DD-1" | "DD-2" | "DD-3";
+type DocRule = "DD-1" | "DD-2" | "DD-3" | "DD-7";
 
 type Finding = {
   readonly rule: DocRule;
@@ -129,7 +150,7 @@ const findDanglingFindings = ({
 }): readonly Finding[] =>
   proseDocuments.flatMap((document) =>
     collectReferences({ body: document.body }).flatMap(({ key, line }) =>
-      definedKeys.has(key)
+      definedKeys.has(key) || isSelfNumbered({ key, document })
         ? []
         : [
             {
@@ -202,6 +223,8 @@ const findBareFigureFindings = ({
       }
       const scrubbed = line
         .replace(/`[^`]*`/g, " ")
+        .replace(RECEIPT_TOKEN, " ")
+        .replace(ALGORITHM_NAME, " ")
         .replace(ISO_DATE, " ")
         .replace(RECORD_SLUG, " ")
         .replace(PR_REFERENCE, " ")
@@ -220,13 +243,102 @@ const findBareFigureFindings = ({
     });
   });
 
+const EXCEPTION_CLAIM =
+  /\b(?:deferred|defer(?:ring)?\s+(?:this|that|it)|(?:is|are|was|were|stays?|remains?|left|treated\s+as|classified\s+as)\s+(?:\w+\s+){0,2}?(?:out\s+of\s+scope|inherited\s+debt)|carved\s+out|grandfathered)\b/i;
+
+const MENTION_SPANS = [/`[^`]*`/g, /"[^"]*"/g, /\*"[^"]*"\*/g] as const;
+
+const withoutMentions = (text: string): string =>
+  MENTION_SPANS.reduce((stripped, span) => stripped.replace(span, " "), text);
+
+const NEGATED_CLAIM =
+  /\b(?:never|not|nothing|none|no|cannot|can't|must\s+not|neither|nor|without)\b[^.;]{0,40}?\b(?:deferred|defer(?:ring)?|out\s+of\s+scope|inherited\s+debt|carved\s+out|grandfathered)\b/i;
+
+const CHAIN_SHAPE = /(?:^|[\s|>])5\.\s*\S|\broot cause\b/i;
+const SECTION_HEADING = /^#{1,6}\s/;
+
+const SUBJECT_EXCERPT_LENGTH = 120;
+
+type Section = {
+  readonly heading: string;
+  readonly startLine: number;
+  readonly lines: readonly { readonly text: string; readonly line: number }[];
+};
+
+const sectionsOf = ({
+  body,
+}: {
+  readonly body: string;
+}): readonly Section[] => {
+  const sections: Section[] = [];
+  let current: {
+    heading: string;
+    startLine: number;
+    lines: { text: string; line: number }[];
+  } = { heading: "(preamble)", startLine: 1, lines: [] };
+  let fenced = false;
+
+  body.split("\n").forEach((text, index) => {
+    const line = index + 1;
+    if (FENCE.test(text)) {
+      fenced = !fenced;
+      return;
+    }
+    if (!fenced && SECTION_HEADING.test(text)) {
+      sections.push(current);
+      current = { heading: text.trim(), startLine: line, lines: [] };
+      return;
+    }
+    if (!fenced) {
+      current.lines.push({ text, line });
+    }
+  });
+  sections.push(current);
+  return sections;
+};
+
+const findUnchainedExceptionFindings = ({
+  proseDocuments,
+}: {
+  readonly proseDocuments: readonly ProseDocument[];
+}): readonly Finding[] =>
+  proseDocuments.flatMap((document) =>
+    sectionsOf({ body: document.body }).flatMap((section) => {
+      const sectionText = section.lines.map((entry) => entry.text).join("\n");
+      if (
+        CHAIN_LABEL.test(sectionText) ||
+        CHAIN_LABEL.test(section.heading) ||
+        CHAIN_SHAPE.test(sectionText)
+      ) {
+        return [];
+      }
+      const claim = section.lines.find(
+        (entry) =>
+          !TABLE_ROW.test(entry.text) &&
+          EXCEPTION_CLAIM.test(withoutMentions(entry.text)) &&
+          !NEGATED_CLAIM.test(withoutMentions(entry.text)),
+      );
+      return claim === undefined
+        ? []
+        : [
+            {
+              rule: "DD-7" as const,
+              artefact: document.name,
+              line: claim.line,
+              subject: claim.text.trim().slice(0, SUBJECT_EXCERPT_LENGTH),
+              remedy: `${document.name}:${claim.line} claims an exception with no Five Whys chain in its section. Add the chain beside the claim — five answered whys, each citing evidence, ending at a root cause and its owner (project.md § R7).`,
+            },
+          ];
+    }),
+  );
+
 const officialArtefactStems = ({
   stageGraphPath,
 }: {
   readonly stageGraphPath: string;
-}): ReadonlySet<string> => {
+}): ReadonlySet<string> | undefined => {
   if (!existsSync(stageGraphPath)) {
-    return new Set();
+    return undefined;
   }
   const parsed: unknown = JSON.parse(readFileSync(stageGraphPath, "utf8"));
   const nodes = Array.isArray(parsed)
@@ -255,30 +367,46 @@ const officialProseIn = ({
   return walk(recordDir);
 };
 
+type RecordInspection =
+  | { readonly kind: "inspected"; readonly findings: readonly Finding[] }
+  | { readonly kind: "unmeasurable"; readonly reason: "no-stage-graph" };
+
 const inspectRecordDirectory = ({
   recordDir,
   stageGraphPath,
 }: {
   readonly recordDir: string;
   readonly stageGraphPath: string;
-}): readonly Finding[] => {
-  const factsPath = join(recordDir, FACTS_FILENAME);
-  if (!existsSync(factsPath)) {
-    return [];
-  }
+}): RecordInspection => {
   const stems = officialArtefactStems({ stageGraphPath });
+  if (stems === undefined) {
+    return { kind: "unmeasurable", reason: "no-stage-graph" };
+  }
   const proseDocuments = officialProseIn({ recordDir, stems }).map((path) => ({
     name: basename(path),
     body: readFileSync(path, "utf8"),
   }));
+
+  const unchainedExceptions = findUnchainedExceptionFindings({
+    proseDocuments,
+  });
+
+  const factsPath = join(recordDir, FACTS_FILENAME);
+  if (!existsSync(factsPath)) {
+    return { kind: "inspected", findings: unchainedExceptions };
+  }
   const sources = {
     factsBody: readFileSync(factsPath, "utf8"),
     proseDocuments,
   };
-  return [
-    ...findKeyIntegrityFindings(sources),
-    ...findBareFigureFindings(sources),
-  ];
+  return {
+    kind: "inspected",
+    findings: [
+      ...findKeyIntegrityFindings(sources),
+      ...findBareFigureFindings(sources),
+      ...unchainedExceptions,
+    ],
+  };
 };
 
 export {
@@ -288,9 +416,11 @@ export {
   type Finding,
   findBareFigureFindings,
   findKeyIntegrityFindings,
+  findUnchainedExceptionFindings,
   inspectRecordDirectory,
   officialArtefactStems,
   officialProseIn,
   type ProseDocument,
+  type RecordInspection,
   type RecordSources,
 };

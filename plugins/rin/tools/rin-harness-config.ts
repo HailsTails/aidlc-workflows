@@ -110,6 +110,20 @@ type ConstitutionScopeConfig = {
   readonly uiGlobs: readonly string[];
 };
 
+const rinGatesSchema = z.object({
+  exceptionWhyChains: z.boolean().default(false),
+});
+
+type RinGatesConfig = z.infer<typeof rinGatesSchema>;
+
+type SettledR7OptIn =
+  | { readonly kind: "enabled" }
+  | { readonly kind: "disabled" };
+
+type R7OptIn =
+  | SettledR7OptIn
+  | { readonly kind: "invalid"; readonly reason: string };
+
 type HarnessConfig = {
   readonly projectName: string;
   readonly defaultScope: string;
@@ -119,6 +133,7 @@ type HarnessConfig = {
   readonly mechanisms: MechanismsConfig;
   readonly projectIdentity: ProjectIdentityConfig;
   readonly constitution?: ConstitutionScopeConfig;
+  readonly rinGates: RinGatesConfig;
 };
 
 type ConfigSource = "file" | "defaults";
@@ -201,6 +216,7 @@ const defaultConfig: HarnessConfig = {
   },
   mechanisms: defaultMechanisms,
   projectIdentity: defaultProjectIdentity,
+  rinGates: { exceptionWhyChains: false },
 };
 
 type Validation<T> =
@@ -619,6 +635,29 @@ const validateConstitution = ({
   };
 };
 
+const validateRinGates = ({
+  container,
+}: {
+  readonly container: Record<string, unknown>;
+}): Validation<RinGatesConfig> => {
+  const declared = container["rinGates"];
+  const parsed = rinGatesSchema.safeParse(
+    declared === undefined ? {} : declared,
+  );
+  if (parsed.success) {
+    return { ok: true, value: parsed.data };
+  }
+  const offendsBlock = parsed.error.issues.some(
+    (issue) => issue.path.length === 0,
+  );
+  return {
+    ok: false,
+    error: offendsBlock
+      ? `"rinGates" must be an object`
+      : `"rinGates.exceptionWhyChains" must be a boolean`,
+  };
+};
+
 const validateHarnessConfig = ({
   parsed,
 }: {
@@ -646,6 +685,8 @@ const validateHarnessConfig = ({
   if (!projectIdentity.ok) return projectIdentity;
   const constitution = validateConstitution({ container: parsed });
   if (!constitution.ok) return constitution;
+  const rinGates = validateRinGates({ container: parsed });
+  if (!rinGates.ok) return rinGates;
   return {
     ok: true,
     value: {
@@ -656,6 +697,7 @@ const validateHarnessConfig = ({
       packageManager: packageManager.value,
       mechanisms: mechanisms.value,
       projectIdentity: projectIdentity.value,
+      rinGates: rinGates.value,
       ...(constitution.value === undefined
         ? {}
         : { constitution: constitution.value }),
@@ -864,6 +906,34 @@ const configConstitution = ({
 }): ConstitutionScopeConfig | undefined =>
   loadHarnessConfig({ projectDir }).constitution;
 
+const configR7OptIn = ({
+  projectDir,
+}: {
+  readonly projectDir: string;
+}): R7OptIn => {
+  const loaded = readConfig({ projectDir });
+  if (loaded.failure?.kind === "missing-file") return { kind: "disabled" };
+  if (loaded.failure !== null) {
+    return { kind: "invalid", reason: loaded.failure.detail };
+  }
+  return loaded.config.rinGates.exceptionWhyChains
+    ? { kind: "enabled" }
+    : { kind: "disabled" };
+};
+
+const requiresExceptionWhyChains = ({
+  optIn,
+}: {
+  readonly optIn: SettledR7OptIn;
+}): boolean => {
+  switch (optIn.kind) {
+    case "enabled":
+      return true;
+    case "disabled":
+      return false;
+  }
+};
+
 const invokedDirectly =
   process.argv[1]?.endsWith("rin-harness-config.ts") ?? false;
 
@@ -899,9 +969,12 @@ export type {
   ProjectIdentityConfig,
   ProjectIdentityFailure,
   ProjectIdentityOutcome,
+  R7OptIn,
   ResolvedReviewCommand,
   ReviewCommandBinding,
+  RinGatesConfig,
   SensitiveVaultPathMarker,
+  SettledR7OptIn,
   VaultConfigurationReader,
   VaultPolicyReadFailure,
   VaultPolicyResolution,
@@ -916,6 +989,7 @@ export {
   configMechanisms,
   configNotesSink,
   configProjectName,
+  configR7OptIn,
   configRulesetRoot,
   configRunnerAllowlist,
   configStageGraphPath,
@@ -926,6 +1000,7 @@ export {
   loadHarnessConfig,
   readConfig,
   readVaultPolicy,
+  requiresExceptionWhyChains,
   resolveProjectIdentity,
   resolveVaultWritePolicy,
   validateProjectIdentity,

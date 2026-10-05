@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import {
   runRanHookProcess,
   transcriptPayload,
@@ -14,6 +14,14 @@ const hookPath = join(
   dirname(fileURLToPath(import.meta.url)),
   "rin-operator-steer.ts",
 );
+
+const fixtureDirectories: string[] = [];
+
+afterEach(() => {
+  fixtureDirectories.splice(0).forEach((directory) => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+});
 
 const userEntry = (content: unknown, isMeta?: boolean) =>
   transcriptUserEntry({
@@ -42,6 +50,7 @@ const invokeWithTranscript = async (input: {
   readonly hookEventName?: string;
 }) => {
   const workingDirectory = mkdtempSync(join(tmpdir(), "rin-operator-steer-"));
+  fixtureDirectories.push(workingDirectory);
   mkdirSync(join(workingDirectory, ".git"));
   const transcriptPath = join(workingDirectory, "transcript.jsonl");
   writeFileSync(transcriptPath, input.lines.join("\n"), "utf8");

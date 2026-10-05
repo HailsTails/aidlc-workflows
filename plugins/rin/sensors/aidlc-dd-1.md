@@ -41,4 +41,4 @@ Resolution is **record-wide**, not per-artefact (DD-3). A Gate-4 artefact refere
 
 Reports only. A DD finding never refuses a write and never fails a gate.
 
-**Advisory is the mechanism, not the rules' standing.** DD-1..DD-6 are binding rule text. This sensor surfaces a violation at write time with a pre-formed remedy, so the author fixes it before a reviewer has to raise it.
+**Advisory is the mechanism, not the rules' standing.** DD-1..DD-7 are binding rule text. This sensor surfaces a violation at write time with a pre-formed remedy, so the author fixes it before a reviewer has to raise it.

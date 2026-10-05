@@ -27,6 +27,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { z } from "zod";
 import type { ReviewVerdict } from "../../hooks/rin-gates-autonomy-gate.ts";
 import { composePluginFixture } from "../../../../tests/harness/plugin-kit.ts";
 import {
@@ -993,6 +994,48 @@ const GATE_STAGES = [
   GATE_5_STAGE,
   "rin-gate-6-operate",
 ];
+
+const r7SensorGraphSchema = z.array(
+  z.object({
+    slug: z.string(),
+    sensors_applicable: z.array(z.object({ id: z.string() })),
+  }),
+);
+
+const r7SensorGraph = r7SensorGraphSchema.safeParse(
+  loadStageGraphNodes(join(PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json")),
+);
+record(
+  "R7/IF-7 composed graph has readable stage and sensor rows",
+  r7SensorGraph.success,
+  r7SensorGraph.success ? "compiled graph parsed" : "compiled graph missing or malformed",
+);
+if (r7SensorGraph.success) {
+  const rinGateStages = r7SensorGraph.data.filter((stage) =>
+    stage.slug.startsWith("rin-gate-"),
+  );
+  record(
+    "R7/IF-7 compiled graph carries every Rin gate",
+    rinGateStages.length === GATE_STAGES.length &&
+      GATE_STAGES.every((slug) => rinGateStages.some((stage) => stage.slug === slug)),
+    `compiled gates=${rinGateStages.map((stage) => stage.slug).join(",")}`,
+  );
+  [
+    { sensorId: "dd-7", expectedCount: GATE_STAGES.length },
+    { sensorId: "dd-99", expectedCount: 0 },
+    { sensorId: "dd-1", expectedCount: GATE_STAGES.length },
+    { sensorId: "dd-2", expectedCount: GATE_STAGES.length },
+  ].forEach(({ sensorId, expectedCount }) => {
+    const observedCount = rinGateStages.filter((stage) =>
+      stage.sensors_applicable.some((sensor) => sensor.id === sensorId),
+    ).length;
+    record(
+      `R7/IF-7 ${sensorId} resolves on ${expectedCount} compiled Rin gates`,
+      observedCount === expectedCount,
+      `observed=${observedCount} expected=${expectedCount}`,
+    );
+  });
+}
 
 const gridRowOf = (
   executeStages: readonly string[],

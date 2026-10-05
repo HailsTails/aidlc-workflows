@@ -58,6 +58,12 @@ Core refresh can include unknown consumer files in its temporary graph projectio
 
 For a pre-manifest core installation, use its exact original projection to establish the baseline before changing versions. Configuration recognizes unchanged source bytes before regenerating tables; it still refuses an edited lookalike. A combined legacy projection can contain plugin files, so establish the plugin's genuine ownership with its original projection before switching to a core-only artifact. Inspect composition diagnostics and private settings before accepting either step.
 
+## Exception why-chains (R7)
+
+R7 is opt-in per consumer through `harness.config.json`: set `rinGates.exceptionWhyChains` to `true` to require chains on the existing registry and review-disposition surfaces. Omitted configuration leaves R7 disabled. The reusable producer supplies enforcement and the `dd-7` sensor; each consumer owns its opt-in, operating rules and project-root `.r7-legacy-baseline.json`. Installing or refreshing the plugin does not create or enlarge that baseline.
+
+The `dd-7` sensor is advisory. Chain evidence and reasoning quality remain review responsibilities, and baseline growth has no mechanical guard. The normal Rin integration selftest checks sensor resolution against its composed graph; source tests and the legacy-baseline test helper remain excluded from installed payloads.
+
 ## Fresh consumer installation
 
 The following source-build route uses Claude as the concrete example. Replace

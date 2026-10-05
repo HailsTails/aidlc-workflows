@@ -29,6 +29,7 @@ sensors:
   - required-sections
   - dd-1
   - dd-2
+  - dd-7
 scopes:
   - rin-gates
   - rin-ops

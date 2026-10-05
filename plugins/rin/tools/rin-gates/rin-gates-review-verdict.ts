@@ -92,11 +92,15 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  configR7OptIn,
+  requiresExceptionWhyChains,
+} from "../rin-harness-config.ts";
+import {
   type GatePhase,
   type GateSlug,
   gateDirSegments,
 } from "./rin-gate-namespace.ts";
-import { blockingFindingsIn } from "./rin-gates-finding-disposition.ts";
+import { blockingFindingsWithPolicy } from "./rin-gates-finding-disposition.ts";
 
 const SHORT_SHA_LENGTH = 8;
 
@@ -577,13 +581,45 @@ const landedVerdictPayloadOf = (input: {
 });
 
 // Findings arrive as the lenses' own cited rows. Newlines and semicolons both
-// separate, because a shell caller reaches for whichever its quoting makes easy;
-// the rows themselves are pipe-delimited, so neither separator is ambiguous.
-const parseFindings = (raw: string | null): readonly string[] =>
-  (raw ?? "")
-    .split(/[\n;]/)
+// separate, because a shell caller reaches for whichever its quoting makes easy.
+// A semicolon inside parentheses belongs to the row: a disposition token such as
+// `defer(ack: <ruling>; <carried file>)` carries one as part of its evidence.
+type FindingScan = {
+  readonly rows: readonly string[];
+  readonly current: string;
+  readonly depth: number;
+};
+
+const PARENTHESIS_DEPTH_CHANGE: Readonly<Record<string, number>> = {
+  "(": 1,
+  ")": -1,
+};
+
+const scanFindingCharacter = (
+  scan: FindingScan,
+  character: string,
+): FindingScan =>
+  character === "\n" || (character === ";" && scan.depth === 0)
+    ? { rows: [...scan.rows, scan.current], current: "", depth: 0 }
+    : {
+        rows: scan.rows,
+        current: scan.current + character,
+        depth: Math.max(
+          0,
+          scan.depth + (PARENTHESIS_DEPTH_CHANGE[character] ?? 0),
+        ),
+      };
+
+const parseFindings = (raw: string | null): readonly string[] => {
+  const scan = [...(raw ?? "")].reduce<FindingScan>(scanFindingCharacter, {
+    rows: [],
+    current: "",
+    depth: 0,
+  });
+  return [...scan.rows, scan.current]
     .map((finding) => finding.trim())
     .filter((finding) => finding !== "");
+};
 
 const LANDED_FLAGS = [
   "--pr",
@@ -622,7 +658,11 @@ const parseBindingRequest = (): BindingRequest => {
   };
 };
 
-const parseVerdictInputs = (): VerdictInputs => {
+const parseVerdictInputs = ({
+  workspaceRoot,
+}: {
+  readonly workspaceRoot: string;
+}): VerdictInputs => {
   if (process.env["RIN_GATES_VERDICT_EMITTER"] !== "1") {
     fail(
       "must run with RIN_GATES_VERDICT_EMITTER=1 (the token the verdict guard requires) — the verdict is tool-writable-only.",
@@ -653,7 +693,14 @@ const parseVerdictInputs = (): VerdictInputs => {
   const findings = parseFindings(argValue("--findings"));
   // The findings gate. Consulted ONLY to refuse a READY, so it can never upgrade
   // a NOT-READY — the same one-directional safety the extractor holds.
-  const blocking = blockingFindingsIn(findings);
+  const optIn = configR7OptIn({ projectDir: workspaceRoot });
+  if (optIn.kind === "invalid") {
+    fail(`harness.config.json is invalid: ${optIn.reason}`);
+  }
+  const blocking = blockingFindingsWithPolicy({
+    findings,
+    exceptionWhyChainsEnabled: requiresExceptionWhyChains({ optIn }),
+  });
   if (verdict === "READY" && blocking.length > 0) {
     fail(
       `refusing a READY verdict over ${blocking.length} undisposed finding(s) — Step 5 (decorrelated-review.md) requires every VIOLATION resolved before READY. Fix them and re-review, or dispose of each WITH ITS EVIDENCE — 'fixed@<sha>', 'push-back(<ground citing CD-N / principle / file:line>)', 'defer(ack:<ref>)', or 'withdrawn(<reason>)'. A bare disposition word is not a disposition:\n${blocking.map((finding) => `  - ${finding}`).join("\n")}`,
@@ -720,11 +767,11 @@ const composedVerdictOf = (input: {
 };
 
 const run = (): void => {
-  const inputs = parseVerdictInputs();
-
-  const space = process.env["RIN_GATES_SPACE"] ?? "default";
   const workspaceRoot =
     process.env["RIN_GATES_WORKSPACE_ROOT"] ?? INVOKING_CHECKOUT;
+  const inputs = parseVerdictInputs({ workspaceRoot });
+
+  const space = process.env["RIN_GATES_SPACE"] ?? "default";
   const recordDirPath = join(
     workspaceRoot,
     "aidlc",

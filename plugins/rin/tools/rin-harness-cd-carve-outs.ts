@@ -1,14 +1,22 @@
 import { basename, join } from "node:path";
 import type { CarveOut } from "./constitution-audit/index.ts";
+import { configR7OptIn } from "./rin-harness-config.ts";
+import {
+  type ChainBaseline,
+  chainBaselineFor,
+  whyChainProblemForEntry,
+} from "./rin-harness-exception-baseline.ts";
 import {
   defaultSidecarFileReader,
   type SidecarFileReader,
 } from "./rin-harness-sidecar-file-reader.ts";
+import { parsedWhyChain, type WhyChain } from "./rin-harness-why-chain.ts";
 
 type CdCarveOut = {
   readonly files: readonly string[];
   readonly reason: string;
   readonly decision: string;
+  readonly whyChain?: WhyChain;
 };
 
 type OwnedCarveOut = CdCarveOut & {
@@ -63,7 +71,15 @@ const parsedJson = (raw: string): { readonly parsed: unknown } | undefined => {
   }
 };
 
-const entryProblem = (entry: unknown): string | undefined => {
+const entryProblem = ({
+  entry,
+  baseline,
+  sidecar,
+}: {
+  readonly entry: unknown;
+  readonly baseline: ChainBaseline;
+  readonly sidecar: string;
+}): string | undefined => {
   if (!isRecord(entry)) return "entry is not a JSON object";
   if (!isNonEmptyStringArray(entry.files)) {
     return "`files` must be a non-empty array of non-empty strings";
@@ -74,17 +90,23 @@ const entryProblem = (entry: unknown): string | undefined => {
   if (!isNonEmptyString(entry.decision)) {
     return "`decision` is required and must be a non-empty string naming the carve-out's provenance";
   }
-  return undefined;
+  return whyChainProblemForEntry({
+    entry,
+    baseline,
+    origin: { registry: CARVE_OUT_DIR, sidecar },
+  });
 };
 
 const validatedEntries = ({
   parsed,
   cdId,
   sidecar,
+  baseline,
 }: {
   readonly parsed: unknown;
   readonly cdId: string;
   readonly sidecar: string;
+  readonly baseline: ChainBaseline;
 }): CarveOutSidecarLoad => {
   if (!Array.isArray(parsed)) {
     return {
@@ -93,7 +115,7 @@ const validatedEntries = ({
     };
   }
   const problems = parsed.flatMap((entry, index) => {
-    const problem = entryProblem(entry);
+    const problem = entryProblem({ entry, baseline, sidecar });
     return problem === undefined ? [] : [`entry ${index}: ${problem}`];
   });
   if (problems.length > 0) {
@@ -114,7 +136,15 @@ const validatedEntries = ({
       ) {
         return [];
       }
-      return [{ cd: cdId, files, reason, decision }];
+      return [
+        {
+          cd: cdId,
+          files,
+          reason,
+          decision,
+          whyChain: parsedWhyChain(entry.whyChain),
+        },
+      ];
     }),
   };
 };
@@ -130,6 +160,16 @@ const loadCarveOutSidecarForCd = ({
 }): CarveOutSidecarLoad => {
   const sidecar = sidecarName(cdId);
   const path = join(carveOutDir(projectDir), sidecar);
+  const optIn = configR7OptIn({ projectDir });
+  if (optIn.kind === "invalid") {
+    return {
+      outcome: "rejected",
+      rejection: {
+        sidecar,
+        problem: `harness.config.json is invalid: ${optIn.reason}`,
+      },
+    };
+  }
   if (!reader.fileExists(path)) return { outcome: "loaded", entries: [] };
   const raw = reader.readFile(path);
   if (raw === undefined) {
@@ -145,7 +185,12 @@ const loadCarveOutSidecarForCd = ({
       rejection: { sidecar, problem: "sidecar is not valid JSON" },
     };
   }
-  return validatedEntries({ parsed: json.parsed, cdId, sidecar });
+  return validatedEntries({
+    parsed: json.parsed,
+    cdId,
+    sidecar,
+    baseline: chainBaselineFor({ optIn, projectDir, reader }),
+  });
 };
 
 const loadOwnedCarveOutsForCd = ({

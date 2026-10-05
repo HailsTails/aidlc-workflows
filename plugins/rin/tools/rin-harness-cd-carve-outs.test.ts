@@ -9,17 +9,24 @@ import {
   SENTINEL_SERVICE,
   sidecarName,
 } from "./rin-harness-cd-carve-outs.ts";
+import { legacyBaselineFor } from "./test-fixtures/r7-legacy-baseline.ts";
 import type { SidecarFileReader } from "./rin-harness-sidecar-file-reader.ts";
 
 const PROJECT_DIR = "/repo";
 
 const fakeReader = (
   files: Readonly<Record<string, string>>,
-): SidecarFileReader => ({
-  fileExists: (path) => Object.hasOwn(files, path),
-  readFile: (path) => files[path],
-  listDirectory: () => Object.keys(files).map((path) => basename(path)),
-});
+): SidecarFileReader => {
+  const withBaseline = {
+    ...legacyBaselineFor({ files, projectDir: PROJECT_DIR }),
+    ...files,
+  };
+  return {
+    fileExists: (path) => Object.hasOwn(withBaseline, path),
+    readFile: (path) => withBaseline[path],
+    listDirectory: () => Object.keys(files).map((path) => basename(path)),
+  };
+};
 
 const readerWithSidecar = ({
   cdId,

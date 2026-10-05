@@ -26,6 +26,7 @@ sensors:
   - required-sections
   - dd-1
   - dd-2
+  - dd-7
   - format
   - linter
   - type-check
@@ -122,6 +123,25 @@ contract** (`pr-feedback`): every atom gets exactly one closed disposition —
 {{OPERATOR}} comment is a non-droppable atom closed only by `fixed` or an {{OPERATOR}}-acked
 push-back. The disposition table is this stage's `rin-disposition-table` artefact
 and the machine-diffable convergence predicate. Then re-run the decorrelated sweep.
+
+**When `harness.config.json` enables `rinGates.exceptionWhyChains`, a `push-back` or `defer` row carries a `why-chain` block (R7).** Those two
+dispositions leave the cited violation STANDING — one argues it away, the other
+parks it — so each is an exception judgement and carries its Five Whys chain in
+the row: five numbered whys, each answered with cited evidence, the last naming
+the root cause and its owner. `fixed@<sha>` and `withdrawn(<reason>)` carry no
+chain and that asymmetry is deliberate: a fix removes the violation and a
+withdrawal retracts the finding, so neither grants a standing exception. The
+row's shape is:
+
+| atom | disposition | why-chain |
+|---|---|---|
+| `<lens>: <finding>` | `defer(ack:<ref>)` | 1. `<why>` — `<because>` (`<evidence>`) <br> 2. … <br> 5. root cause: `<cause>`. owner: `<record-or-capture-id>` (`<evidence>`). |
+
+This is enforced, not asked for: the verdict emitter's disposition predicate
+treats a `push-back`/`defer` row carrying no complete chain as UNDISPOSED, so the
+finding stays live and a READY over it is refused with the same message an
+evidence-free disposition gets. A chain that terminates at a symptom — "the gate
+was failing", "no time", "out of scope" — is not a chain (project.md § R7).
 
 **The fix-leg writes code, so the deterministic teeth fire here too.** A `fixed`
 disposition is a code change, and a review round is exactly where discipline

@@ -47,6 +47,7 @@ sensors:
   - carve-out-decay
   - dd-1
   - dd-2
+  - dd-7
 scopes:
   - rin-gates
   - rin-harness

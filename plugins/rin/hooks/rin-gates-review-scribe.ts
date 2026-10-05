@@ -49,12 +49,17 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { gateDirSegments } from "../tools/rin-gates/rin-gate-namespace.ts";
+import { blockingFindingsWithPolicy } from "../tools/rin-gates/rin-gates-finding-disposition.ts";
 import {
   declaredReviewArtifactPathFor,
   declaredReviewerFor,
   loadStageGraphNodes,
   stageGraphPath,
 } from "../tools/rin-gates/rin-gates-reviewer-identity.ts";
+import {
+  configR7OptIn,
+  requiresExceptionWhyChains,
+} from "../tools/rin-harness-config.ts";
 import {
   type LensReport,
   lensReportFromHookPayload,
@@ -67,7 +72,6 @@ import {
   spawnEngineReview,
 } from "./rin-gates-engine-receipt.ts";
 import {
-  blockingFindingsIn,
   extractLensVerdict,
   type LensVerdict,
 } from "./rin-gates-lens-verdict.ts";
@@ -485,9 +489,11 @@ const latestVerdictForLens = (
 const aggregateVerdictOf = ({
   captures,
   roster,
+  exceptionWhyChainsEnabled,
 }: {
   readonly captures: readonly Capture[];
   readonly roster: readonly string[];
+  readonly exceptionWhyChainsEnabled: boolean;
 }): {
   readonly live: readonly Capture[];
   readonly aggregate: "READY" | "NOT-READY";
@@ -498,9 +504,10 @@ const aggregateVerdictOf = ({
     (lens) => latestVerdictForLens(captures, lens) === "READY",
   );
   const anyNotReady = live.some((capture) => capture.verdict === "NOT-READY");
-  const blockingFindings = blockingFindingsIn(
-    live.flatMap((capture) => capture.findings),
-  );
+  const blockingFindings = blockingFindingsWithPolicy({
+    findings: live.flatMap((capture) => capture.findings),
+    exceptionWhyChainsEnabled,
+  });
   return {
     live,
     aggregate:
@@ -785,9 +792,18 @@ const writeAggregateVerdict = ({
   readonly aggregate: "READY" | "NOT-READY";
   readonly lenses: readonly string[];
 } => {
+  const optIn = configR7OptIn({ projectDir: context.checkoutRoot });
+  if (optIn.kind === "invalid") {
+    return exitDiscarded({
+      reason: "harness.config.json is invalid",
+      remedy: optIn.reason,
+      entry: { agentType: context.agentType, gate: context.gate },
+    });
+  }
   const { live, aggregate, blockingFindings } = aggregateVerdictOf({
     captures,
     roster,
+    exceptionWhyChainsEnabled: requiresExceptionWhyChains({ optIn }),
   });
   const gateDir = join(context.recordDir, ...context.gateSegments);
   mkdirSync(gateDir, { recursive: true });

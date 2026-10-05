@@ -5,11 +5,13 @@ import { inspect } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   CONFIG_FILENAME,
+  configR7OptIn,
   createDefaultVaultConfigurationReader,
   defaultProjectIdentity,
   type ProjectIdentityConfig,
   readConfig,
   readVaultPolicy,
+  requiresExceptionWhyChains,
   resolveProjectIdentity,
   validateProjectIdentity,
 } from "./rin-harness-config.ts";
@@ -57,6 +59,87 @@ const commandFields: readonly (keyof ProjectIdentityConfig)[] = [
   "prCommand",
   "deployCommand",
 ];
+
+const minimalConfig = {
+  projectName: "ada",
+  defaultScope: "workshop",
+  rulesetRoot: "aidlc/spaces/default/memory",
+  stageGraph: ".claude/tools/data/stage-graph.json",
+  packageManager: { primary: "bun", runnerAllowlist: ["pnpm"] },
+};
+
+describe("configR7OptIn", () => {
+  test("defaults off when no config file exists", () => {
+    const projectDir = createProjectDir({ contents: null });
+    expect(configR7OptIn({ projectDir })).toEqual({ kind: "disabled" });
+  });
+
+  test("defaults off when a valid config omits the opt-in", () => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify(minimalConfig),
+    });
+    expect(configR7OptIn({ projectDir })).toEqual({ kind: "disabled" });
+  });
+
+  test("honors an explicit project opt-in", () => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify({
+        ...minimalConfig,
+        rinGates: { exceptionWhyChains: true },
+      }),
+    });
+    expect(configR7OptIn({ projectDir })).toEqual({ kind: "enabled" });
+  });
+
+  test("does not enable R7 from a malformed flag", () => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify({
+        ...minimalConfig,
+        rinGates: { exceptionWhyChains: "true" },
+      }),
+    });
+    expect(configR7OptIn({ projectDir })).toEqual({
+      kind: "invalid",
+      reason: '"rinGates.exceptionWhyChains" must be a boolean',
+    });
+  });
+
+  test.each([
+    ["null", null],
+    ["a string", "on"],
+    ["an array", []],
+  ] as const)("does not enable R7 from a rinGates block that is %s", (_label, block) => {
+    const projectDir = createProjectDir({
+      contents: JSON.stringify({ ...minimalConfig, rinGates: block }),
+    });
+    expect(configR7OptIn({ projectDir })).toEqual({
+      kind: "invalid",
+      reason: '"rinGates" must be an object',
+    });
+  });
+
+  test("reports an existing config that cannot be parsed", () => {
+    const projectDir = createProjectDir({ contents: "{ broken" });
+    expect(configR7OptIn({ projectDir })).toEqual({
+      kind: "invalid",
+      reason: "harness.config.json is unreadable or not valid JSON",
+    });
+  });
+});
+
+describe("requiresExceptionWhyChains", () => {
+  test("an opted-in project requires why-chains on exception dispositions", () => {
+    expect(requiresExceptionWhyChains({ optIn: { kind: "enabled" } })).toBe(
+      true,
+    );
+  });
+
+  test("a project that has not opted in does not require them", () => {
+    expect(requiresExceptionWhyChains({ optIn: { kind: "disabled" } })).toBe(
+      false,
+    );
+  });
+});
 
 describe("validateProjectIdentity", () => {
   test("accepts a fully specified identity whose two GitHub roles differ", () => {

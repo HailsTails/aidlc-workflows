@@ -1,6 +1,8 @@
-# Doc Discipline — DD-1..DD-6
+# Doc Discipline — DD-1..DD-7
 
-DD-1..DD-6 are binding rule text, cited by id at review the way CD rules are. Each rule's `status:` frontmatter carries its standing.
+DD-1..DD-7 are binding rule text, cited by id at review the way CD rules are. Each rule's `status:` frontmatter carries its standing.
+
+DD-1..DD-6 are `portability: portable` and travel to any project adopting the set. **DD-7 is `portability: project`**: it serves rin's operating-mode rule R7 and applies only when `harness.config.json` enables `rinGates.exceptionWhyChains`.
 
 **Binding is not the same as blocking.** The sensors that enforce these rules run `default_severity: advisory` and report rather than refuse — that is the enforcement **mechanism**, and it does not soften a rule's standing. A DD violation is a real finding a reviewer raises and an author fixes; the sensor surfaces it at write time with a pre-formed remedy rather than gating the write.
 
@@ -20,6 +22,7 @@ Identical to the CD set, and for the same reason. **Soft qualifiers (`preferred`
 | [DD-4](dd-004-official-artefacts-only.md) | DD rules bind the official artefacts a gate produces, and nothing else | population rule — governs every DD sensor's scope |
 | [DD-5](dd-005-memory-is-append-only.md) | Discovery narration lives in memory, append-only; artefacts carry no history | judgement — review board |
 | [DD-6](dd-006-required-sections.md) | A gate artefact carries the sections its stage requires | sensor `required-sections` |
+| [DD-7](dd-007-exceptions-carry-their-chain.md) | An artefact claiming an exception carries its Five Whys chain beside the claim | sensor `dd-7` + audit |
 
 ## Enforcement — the same dual hookup the CDs have
 
