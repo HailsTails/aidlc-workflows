@@ -162,6 +162,8 @@ const manifest: HarnessManifest = {
           // The variant whose Guards section did not say that the guards as a
           // whole are the Guard Policy.
           "sha256:038b76450d7264af3092a0121bb60567f31391180f244532a399867ed94ca994",
+          // The variant shipped before the onboarding waited for the person to invoke AI-DLC.
+          "sha256:00efc5b85d53364a162f5f0eb604842f96fa94fdcb1e23ee6c286b707b93f336",
         ],
       },
     },

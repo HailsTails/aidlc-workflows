@@ -482,7 +482,7 @@ The framework follows a built-in retry protocol:
 
 ### Manual recovery
 
-Re-run `/aidlc` — it detects the `[-]` (in-progress) state and offers to resume or redo the stage. Check the `audit/` shards for the error entry to understand what failed.
+Re-run `/aidlc`: it detects the `[-]` (in-progress) state and carries on with the stage; say redo to run it again from the start. Check the `audit/` shards for the error entry to understand what failed.
 
 ---
 
@@ -772,9 +772,9 @@ Run `/aidlc` after compaction. The framework:
 
 1. Reads `aidlc-state.md` to load workflow position
 2. Compares `.aidlc-engine/recovery.md` against the state file - warns if they differ
-3. Offers four resume options
+3. Carries on where the work stopped
 
-If the recovery breadcrumb warns about a mismatch, choose **Redo current stage** to safely re-execute the stage that was in progress during compaction.
+If the recovery breadcrumb warns about a mismatch, say "redo this stage" to safely re-execute the stage that was in progress during compaction.
 
 ### The build stops after a compaction
 
@@ -924,6 +924,6 @@ for the full report contents and safety model.
 ## Next Steps
 
 - [State Tracking and Audit Trail](10-state-and-audit.md) — State file structure
-- [Session Management](11-session-management.md) — Resume options after compaction
+- [Session Management](11-session-management.md): carrying on after compaction
 - [CLI Commands](12-cli-commands.md) — `--doctor`, `--status`, `--stage` usage
 - [Glossary](glossary.md) — Definitions for compaction, recovery breadcrumb, hook

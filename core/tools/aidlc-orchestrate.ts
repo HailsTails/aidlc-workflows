@@ -140,6 +140,7 @@ import {
   attemptEventIsCrossShardTied,
   artifactFilename,
   auditBlockField,
+  REDO_REUSE_SOURCE,
   boltSlugForUnit,
   BLOCKING_SENSOR_OVERRIDE_CHOICE,
   type CheckboxState,
@@ -335,6 +336,7 @@ import {
   personLineHeard,
   PLAN_FIELD,
   extractMarkdownSection,
+  validateUnitName,
 } from "./aidlc-lib.ts";
 import { reviewRecoverySpentMessage } from "./aidlc-log.ts";
 import {
@@ -9738,7 +9740,7 @@ function unitNames(units: string[]): string {
 const OTHER_UNITS_KEPT =
   "The other units keep their finished work, reviews, Plan Approvals and checkpoint approvals.";
 
-// The Redo answer to the resume menu while a solo unit-major walk is on a
+// The person's Redo on re-entry while a solo unit-major walk is on a
 // Unit's step, or null to keep the stage redo. A redo jump's STAGE_JUMPED
 // starts a new attempt for every Unit's finished steps, so once any Unit has
 // finished work Redo stays with the Unit the walk is on (#1411): it reopens
@@ -9779,8 +9781,8 @@ function unitMajorRedo(
       `${unpark ? `run ${unpark}` : ""}re-run \`next\` and do "${redone}" for unit "${unit}" from the start. ` +
       OTHER_UNITS_KEPT;
   }
-  const reopen = `${aidlcToolInvocation("jump")} reopen --target ${redone} ` +
-    `--stages ${blockSlugs.slice(blockSlugs.indexOf(redone)).join(",")} --units ${unit} --via redo --scope ${scopeArg(scope)}`;
+  const reopen = `${aidlcToolInvocation("jump")} reopen --target ${shellArg(redone)} ` +
+    `--stages ${shellArg(blockSlugs.slice(blockSlugs.indexOf(redone)).join(","))} --units ${shellArg(unit)} --via redo --scope ${shellArg(scope)}`;
   // Code Generation is redone plan included, so a new plan is approved again
   // unless plan approval is off.
   const name = walk.block.find((stage) => stage.slug === redone)?.name || redone;
@@ -9795,7 +9797,7 @@ function unitMajorRedo(
     `for unit "${unit}" again from the start. ${OTHER_UNITS_KEPT}`;
 }
 
-// Whether the person's Redo on the resume menu answered the re-use question for
+// Whether the person's Redo on re-entry answered the re-use question for
 // this Unit's step (`jump reopen --via redo` records it). The answer is spent
 // once the Unit starts the step, and a later reopen or jump asks again. Rows are
 // read in the audit's time order across shards, and an answer whose order
@@ -9805,7 +9807,7 @@ function redoChosenForUnitStep(projectDir: string, slug: string, unit: string): 
     row.event === "ARTIFACT_REUSED" &&
     auditBlockField(row.block, "Stage") === slug && auditBlockField(row.block, "Unit") === unit &&
     auditBlockField(row.block, "Decision") === "redo" &&
-    auditBlockField(row.block, "Source") === "Redo on the resume menu";
+    auditBlockField(row.block, "Source") === REDO_REUSE_SOURCE;
   const spends = (row: AuditShardEvent): boolean => {
     if (row.event === "STAGE_JUMPED" || row.event === "WORKFLOW_STARTED") return true;
     if (auditBlockField(row.block, "Unit") !== unit) return false;
@@ -10684,7 +10686,10 @@ function emitJumpDirective(
     // conductor runs it, the NEXT `next` sees the pivoted state and emits the
     // run-stage for the now-current target.
     emit(printDirective(
-      `Run ${unitMajor?.before ?? ""}\`${aidlcToolInvocation("jump")} execute --target ${targetSlug} --direction ${direction}${unitMajor?.flags ?? ""} --scope ${scopeArg(scope)}\` to perform the jump, then re-run \`next\` to continue from the jump target.` +
+      // A unit-major forward jump already says how to go back for its Units.
+      (direction === "forward" && !unitMajor?.said
+        ? `Run ${unitMajor?.before ?? ""}\`${aidlcToolInvocation("jump")} execute --target ${targetSlug} --direction ${direction}${unitMajor?.flags ?? ""} --scope ${scopeArg(scope)}\` to perform the jump. When its output carries \`notice\`, tell the person that line once, as written. Then re-run \`next\` to continue from the jump target.`
+        : `Run ${unitMajor?.before ?? ""}\`${aidlcToolInvocation("jump")} execute --target ${targetSlug} --direction ${direction}${unitMajor?.flags ?? ""} --scope ${scopeArg(scope)}\` to perform the jump, then re-run \`next\` to continue from the jump target.`) +
         (unitMajor?.said ?? "") + everyUnitLine,
     ));
     return;
@@ -10950,6 +10955,12 @@ interface ReportFlags {
   overrideBlockingSensors?: boolean;
   unit?: string; // --unit <name>: required for team-owned per-unit gates
   park?: boolean; // --park: the person also asked to stop here for now
+  // A re-entry request (--result resumed): the choice the conductor read from
+  // the person's words, the stage they named for a jump, and the Units it is
+  // for when they named one (--unit) or said every Unit (--every-unit).
+  choice?: string;
+  target?: string;
+  everyUnit?: boolean;
   parseError?: string; // an argument report cannot act on (see parseReportFlags)
 }
 
@@ -10967,6 +10978,9 @@ const REPORT_FLAGS = [
   "--single",
   "--override-blocking-sensors",
   "--park",
+  "--choice",
+  "--target",
+  "--every-unit",
 ] as const;
 
 // Extract report's flags. --result is the verdict; --user-input carries the
@@ -11021,8 +11035,16 @@ function parseReportFlags(args: string[]): ReportFlags {
     } else if (a === "--unit" && i + 1 < args.length) {
       flags.unit = args[i + 1];
       i++;
+    } else if (a === "--choice" && i + 1 < args.length) {
+      flags.choice = args[i + 1];
+      i++;
+    } else if (a === "--target" && i + 1 < args.length) {
+      flags.target = args[i + 1];
+      i++;
     } else if (a === "--single") {
       flags.single = true;
+    } else if (a === "--every-unit") {
+      flags.everyUnit = true;
     } else if (a === "--override-blocking-sensors") {
       flags.overrideBlockingSensors = true;
     } else if (a === "--park") {
@@ -11043,6 +11065,11 @@ function parseReportFlags(args: string[]): ReportFlags {
       missingValue(a, "a stage name");
     } else if (a === "--unit") {
       missingValue(a, "a unit name");
+    } else if (a === "--choice") {
+      missingValue(a, "<resume|redo|jump|fresh>");
+    } else if (a === "--target") {
+      missingValue(a, "a stage name");
+
     } else if (a !== "--") {
       refuse(
         `report does not accept "${a}". It accepts ${REPORT_FLAGS.join(", ")}. ` +
@@ -12033,9 +12060,9 @@ function handleResumeReport(
     ));
     return;
   }
-  if (!flags.userInput?.trim()) {
+  if (flags.choice === undefined && !flags.userInput?.trim()) {
     emit(errorDirective(
-      "report --result resumed requires --user-input with the human's resume choice.",
+      "report --result resumed requires --choice <resume|redo|jump|fresh>, the choice you read from the person's words.",
     ));
     return;
   }
@@ -12054,6 +12081,10 @@ function handleResumeReport(
     ));
     return;
   }
+  if (flags.choice !== undefined) {
+    emitTypedResumeChoice(flags, pd, stateContent, slug);
+    return;
+  }
   // Numbered-prose harnesses show this fixed menu as 1-4. Normalize an exact
   // visible response key before semantic matching so the engine, not the
   // conductor, owns that stable mapping.
@@ -12063,23 +12094,15 @@ function handleResumeReport(
     "3": "jump to a stage",
     "4": "start fresh",
   };
-  const rawChoice = flags.userInput.trim().toLowerCase();
+  const rawChoice = (flags.userInput ?? "").trim().toLowerCase();
   const choice = numericChoices[rawChoice] ?? rawChoice;
   if (choice.includes("redo")) {
-    const scope = getField(stateContent, "Scope")?.trim() ?? "";
-    const unitRedo = unitMajorRedo(pd, scope, stateContent, slug);
-    if (unitRedo) {
-      emit(printDirective(unitRedo));
-      return;
-    }
-    emit(printDirective(
-      `Redo accepted at "${slug}". Run \`${aidlcToolInvocation("jump")} execute --target ${slug} --direction redo --scope ${scopeArg(scope)}\` to reset the current stage, then re-run \`next\` to start it over.`,
-    ));
+    emit(redoCurrentStage(pd, getField(stateContent, "Scope")?.trim() ?? "", stateContent, slug));
     return;
   }
   if (choice.includes("jump")) {
     emit(printDirective(
-      `Jump accepted. Ask the human which stage to jump to, then re-run \`next --stage <slug>\`; the direction and the target are worked out and checked for you.`,
+      `Jump accepted. Run \`next --stage <slug>\` for the stage the person named; ask which stage only when they named none. The direction and the target are worked out and checked for you.`,
     ));
     return;
   }
@@ -12101,6 +12124,169 @@ function handleResumeReport(
   }
   emit(errorDirective(
     `Unrecognized resume choice "${flags.userInput}". Accepted choices: 1/resume from last checkpoint, 2/redo the current stage, 3/jump to a stage, or 4/start fresh.`,
+  ));
+}
+
+// The redo of the current stage, run only for a stage and a scope AI-DLC knows,
+// with every value quoted, so nothing read from the state file runs as shell.
+function redoCurrentStage(pd: string, scope: string, stateContent: string, slug: string): PrintDirective | ErrorDirective {
+  if (nodeForSlug(slug) === undefined) {
+    return errorDirective(
+      `This workflow's current stage is not one AI-DLC knows, so it cannot be redone from here. Run \`${entrySkillInvocation()} --status\` to see where it stands.`,
+    );
+  }
+  // A saved scope that is not a scope name stops here, as every printed command does.
+  const scopeText = scopeArg(scope);
+  if (!validScopes().has(scope)) {
+    return errorDirective(
+      `This workflow's scope is not one AI-DLC knows, so its stage cannot be redone from here. Run \`${entrySkillInvocation()} --status\` to see where it stands.`,
+    );
+  }
+  const unitRedo = unitMajorRedo(pd, scope, stateContent, slug);
+  return printDirective(unitRedo ??
+    `Redo accepted at "${slug}". Run \`${aidlcToolInvocation("jump")} execute --target ${shellArg(slug)} --direction redo --scope ${scopeText}\` to reset the current stage, then re-run \`next\` to start it over.`);
+}
+
+// A redo, jump, or start-fresh request on re-entry, typed by the conductor
+// from the person's own words; none of their words travel in the command. Each
+// print names the whole command, or the one thing to ask when the person left
+// it out.
+function emitTypedResumeChoice(
+  flags: ReportFlags,
+  pd: string,
+  stateContent: string,
+  slug: string,
+): void {
+  let choice = flags.choice?.trim().toLowerCase() ?? "";
+  const scope = getField(stateContent, "Scope")?.trim() ?? "";
+  let named = flags.target;
+  // The Unit step a "redo <stage>" named, kept so the redo is of that exact step.
+  let unitStep: string | undefined;
+  // The stage a "redo <stage>" named, so a redo for named Units reopens it.
+  let redoStage: string | undefined;
+  // "Redo <stage>": the current stage is a plain redo, a stage that already
+  // ran is the jump back to it, and a stage that has not run yet has nothing
+  // to redo.
+  if (choice === "redo" && named !== undefined) {
+    const wanted = named.trim();
+    // Unit-by-Unit Construction keeps Current Stage on the block's first stage
+    // while the Unit works through later ones: the step it is on is current too.
+    const unitStage = getField(stateContent, "Unit Stage")?.trim();
+    if (wanted === slug) {
+      named = undefined;
+      redoStage = slug;
+    } else if (unitStage !== undefined && wanted === unitStage && nodeForSlug(unitStage) !== undefined) {
+      named = undefined;
+      unitStep = unitStage;
+      redoStage = unitStage;
+    } else if ((flags.unit !== undefined || flags.everyUnit) && nodeForSlug(wanted) !== undefined) {
+      // A redo for named Units is reopening that step for them, and the reopen
+      // judges what each Unit has run: a Unit can finish a step while the
+      // stage's own checkbox waits for the others.
+      named = undefined;
+      redoStage = wanted;
+    }
+    else if (parseCheckboxes(stateContent).some((box) => box.slug === wanted && box.state === "completed")) choice = "jump";
+    else {
+      emit(errorDirective(
+        `${nodeForSlug(wanted) ? `"${wanted}" has not run yet, so there is nothing to redo` : `No stage is named "${wanted}"`}. ` +
+          "Tell the person, and ask whether they want to jump there or redo the current stage.",
+      ));
+      return;
+    }
+  }
+  if (named !== undefined && choice !== "jump") {
+    emit(errorDirective("--target goes only with --choice jump: it names the stage to jump to."));
+    return;
+  }
+  if ((flags.unit !== undefined || flags.everyUnit) && choice !== "jump" && choice !== "redo") {
+    emit(errorDirective(
+      "--unit and --every-unit go only with --choice redo or jump: they name the Units the request is for.",
+    ));
+    return;
+  }
+  if (flags.unit !== undefined && flags.everyUnit) {
+    emit(errorDirective("Use --unit <unit> or --every-unit, not both."));
+    return;
+  }
+  const unitProblem = flags.unit !== undefined ? validateUnitName(flags.unit) : null;
+  if (unitProblem !== null) {
+    emit(errorDirective(unitProblem));
+    return;
+  }
+  if (choice === "resume") {
+    emit(printDirective(
+      `Resume choice accepted at "${slug}". Re-run \`next\` to continue from the last checkpoint.`,
+    ));
+    return;
+  }
+  // The Units the person named travel with the move, so it is their work that
+  // is redone or reopened.
+  const units = flags.unit !== undefined
+    ? ` --unit ${flags.unit}`
+    : flags.everyUnit ? " --every-unit" : "";
+  if (choice === "redo" && units !== "") {
+    // Redoing a step for named Units is reopening that step for them: the
+    // stage the person named, else the step the walk is on, as a jump back to
+    // it would.
+    const unitStage = getField(stateContent, "Unit Stage")?.trim();
+    const step = redoStage ?? (unitStage && nodeForSlug(unitStage) ? unitStage : slug);
+    if (nodeForSlug(step) === undefined) {
+      emit(errorDirective(
+        `This workflow's current stage is not one AI-DLC knows, so it cannot be redone from here. Run \`${entrySkillInvocation()} --status\` to see where it stands.`,
+      ));
+      return;
+    }
+    emit(printDirective(
+      `Redo accepted. Run \`next --stage ${shellArg(step)}${units}\`; it reopens that step for the Units named and says plainly if it cannot.`,
+    ));
+    return;
+  }
+  if (choice === "redo" && unitStep !== undefined) {
+    // The step the Unit is on is redone the way Unit-by-Unit Construction
+    // redoes it (reopened for that Unit, its work started over), never the
+    // block's first stage. With nothing written for it yet, there is nothing to
+    // throw away: doing it now starts it from the start.
+    if (!validScopes().has(scope)) {
+      emit(redoCurrentStage(pd, scope, stateContent, slug));
+      return;
+    }
+    emit(printDirective(unitMajorRedo(pd, scope, stateContent, slug) ??
+      `Redo accepted at "${unitStep}": nothing is written for it yet, so it starts from the start. Re-run \`next\` and do "${unitStep}".`));
+    return;
+  }
+  if (choice === "redo") {
+    emit(redoCurrentStage(pd, scope, stateContent, slug));
+    return;
+  }
+  if (choice === "jump") {
+    const target = named?.trim() ?? "";
+    if (!target) {
+      emit(printDirective(
+        "Ask the person which stage they want, then report again with `--choice jump --target <stage>`.",
+      ));
+      return;
+    }
+    const node = nodeForSlug(target);
+    if (node === undefined) {
+      emit(errorDirective(
+        `No stage is named "${target}". Report again with --target set to one of: ${loadGraph().map((stage) => stage.slug).join(", ")}.`,
+      ));
+      return;
+    }
+    emit(printDirective(
+      `Jump accepted. Run \`next --stage ${node.slug}${units}\`; the direction and the target are worked out and checked for you.`,
+    ));
+    return;
+  }
+  if (choice === "fresh") {
+    emit(printDirective(
+      "Start-fresh accepted. When the person has said what the new work is (ask them if they have not), run `next --new-intent` with their description as one single-quoted argument, quoted the way the engine's own commands quote a person's words; the work in progress stays as it is, and the new work starts alongside it.",
+    ));
+    return;
+  }
+  emit(errorDirective(
+    `Unknown --choice "${flags.choice}". Use resume, redo, jump, or fresh.`,
   ));
 }
 
@@ -12163,6 +12349,27 @@ function handleReport(args: string[], projectDir: string | undefined): void {
     }
   }
 
+  // The typed re-entry flags are refused on every other report before any
+  // branch below commits something with them dropped.
+  if (
+    (flags.choice !== undefined || flags.target !== undefined || flags.everyUnit) &&
+    !(flags.result && RESUME_RESULTS.has(flags.result))
+  ) {
+    emit(errorDirective(
+      "--choice, --target, and --every-unit go only with --result resumed: a redo, jump, or start-fresh request on re-entry.",
+    ));
+    return;
+  }
+  if (
+    flags.result && RESUME_RESULTS.has(flags.result) &&
+    (flags.single || flags.skeletonStance !== undefined)
+  ) {
+    emit(errorDirective(
+      "A re-entry request is a report of its own: drop --single and --skeleton-stance.",
+    ));
+    return;
+  }
+
   // Branch -1 — the --single stage-runner completion. A stage-runner reports
   // its lone stage via `report --single --stage <slug> --result <outcome>`; the
   // engine closes the synthetic attempt opened by `next --single` (audit only)
@@ -12214,7 +12421,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       message:
         `Unknown --result "${flags.result}". ` +
         `accepted outcomes: ${[...REPORT_RESULTS].join(", ")}. ` +
-        "Answers to AI-DLC questions are not reported, except the resume menu: run the command the question supplied, or re-run next to see the question again.",
+        "Answers to AI-DLC questions are not reported, except a redo, jump, or start-fresh request on re-entry (report --result resumed): run the command the question supplied, or re-run next to see the question again.",
     });
     return;
   }
@@ -12226,7 +12433,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       kind: "error",
       message:
         "No active intent workflow state found (aidlc-state.md is absent) - nothing to report a transition for. " +
-        "Answers to AI-DLC questions are not reported, except the resume menu: run the command the question supplied, or re-run next to see the question again.",
+        "Answers to AI-DLC questions are not reported, except a redo, jump, or start-fresh request on re-entry (report --result resumed): run the command the question supplied, or re-run next to see the question again.",
     });
     return;
   }

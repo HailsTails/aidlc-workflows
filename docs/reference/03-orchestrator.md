@@ -1,6 +1,6 @@
 # Orchestrator
 
-Orchestration is split across two pieces. A deterministic **engine** (`aidlc-orchestrate.ts`, with exactly six subcommands: `next`, `continue`, `report`, `park`, `team-board`, and `wait`; `continue` is internal steering transport and `team-board` is the read-only Team Construction query, and `wait` is the bounded read-only wait for dispatched work) owns every between-stage decision - scope determination, stage routing, jump resolution, resume and init guards, gate status, and workflow completion - and emits a typed **directive** on each `next`. The **conductor** (`.claude/skills/aidlc/SKILL.md`, invoked via `/aidlc`) is a thin forwarding loop that acts on each directive - running the named stage, asking the human a question, fanning out a swarm - and reports stage-work outcomes with `report`. Engine ask answers instead follow their typed `next`, `command`, `claim`, or `execute-remedy` route; only the prompt-rendered resume menu uses a non-stage report. SKILL.md is not the control plane: the routing decisions live in the engine and the compiled data it reads (`tools/data/stage-graph.json`, `tools/data/scope-grid.json`), while SKILL.md owns execution quality inside the move the engine names.
+Orchestration is split across two pieces. A deterministic **engine** (`aidlc-orchestrate.ts`, with exactly six subcommands: `next`, `continue`, `report`, `park`, `team-board`, and `wait`; `continue` is internal steering transport and `team-board` is the read-only Team Construction query, and `wait` is the bounded read-only wait for dispatched work) owns every between-stage decision - scope determination, stage routing, jump resolution, resume and init guards, gate status, and workflow completion - and emits a typed **directive** on each `next`. The **conductor** (`.claude/skills/aidlc/SKILL.md`, invoked via `/aidlc`) is a thin forwarding loop that acts on each directive - running the named stage, asking the human a question, fanning out a swarm - and reports stage-work outcomes with `report`. Engine ask answers instead follow their typed `next`, `command`, `claim`, or `execute-remedy` route; only a re-entry request to redo, jump, or start fresh uses a non-stage report (`report --result resumed`). SKILL.md is not the control plane: the routing decisions live in the engine and the compiled data it reads (`tools/data/stage-graph.json`, `tools/data/scope-grid.json`), while SKILL.md owns execution quality inside the move the engine names.
 
 This chapter documents the workflow behaviour from the conductor's side — entry points, session management, scope-to-stage mapping, the stage execution and advancement protocol, and the deliberate deviations. For the engine internals — the `next`/`report` contract, the typed directive union, the conductor persona, plural skills, scope shape, and the swarm referee — see [Engine and Skill System](17-skill-system.md). For user-facing command usage, see the [User Guide -- CLI Commands](../guide/12-cli-commands.md).
 
@@ -107,7 +107,7 @@ Jumps directly to a specific stage or phase. Supports both forward and backward 
 **Backward jump** (target is behind current position):
 1. Same resolution and validation as forward jump.
 2. Resets all downstream stages (after the target) to `[ ]` (not started). Artifacts on disk are preserved, not deleted.
-3. When the target stage and subsequent stages re-execute, they detect existing artifacts and offer: Keep / Modify / Redo from scratch, unless the person already said which they want (for example, Redo on the resume menu).
+3. When the target stage and subsequent stages re-execute, they detect existing artifacts and offer: Keep / Modify / Redo from scratch, unless the person already said which they want (for example, they asked to redo it).
 4. Creates stage-level tasks and begins execution from the target stage.
 
 Composable with `--scope` (to set/override scope), `--depth` (to override depth level), and `--test-strategy` (to override test volume).
@@ -141,16 +141,16 @@ There is no separate scaffold command (the earlier `init` flag was retired; the 
 
 ### Resume (State File Exists)
 
-When the active intent's `aidlc-state.md` exists and a new harness session re-enters with bare `/aidlc`, the session-start context tells the conductor to present the standard Resume / Redo / Jump / Start Fresh menu. The conductor feeds that choice to `report --result resumed --user-input`; the engine keeps the per-choice routing deterministic.
+When the active intent's `aidlc-state.md` exists and a new harness session re-enters with bare `/aidlc`, the session-start context tells the conductor to carry on with the work, the same as `/aidlc --resume`: the first call is `next --resume`, with no resume menu. After the first line that says where the work picks up, the conductor says the recovery protocol's one SAY line, that the person can ask to redo, jump to a stage, or start fresh. When they do, the conductor reads which one they mean and reports it with `report --result resumed --choice <redo|jump|fresh>` (plus `--target <stage slug>` for a named stage); none of the person's words travel in that command, and the engine keeps the per-choice routing deterministic.
 
 1. The session-start hook reads the state file and injects the persisted scope, phase, stage, status, agent, and next action.
 2. It flags `.aidlc-engine/recovery.md` (in the intent's record dir) when present so the conductor can check for compaction-related state corruption.
-3. On bare `/aidlc` re-entry, the conductor presents the four-option menu.
-4. The engine routes the reported choice; Resume re-runs normal `next`, while Redo, Jump, and Start Fresh return the exact follow-up move.
+3. On bare `/aidlc` re-entry, the conductor calls `next --resume` and continues.
+4. When the person asks to redo, jump, or start fresh, the engine routes their words and returns the exact follow-up move.
 
 Under solo unit-major Construction, Current Stage stays on the first per-unit stage while each Unit works through the later ones. The session-start context therefore names the active Unit's own stage (`Active Unit: <unit> on <stage>` and `Current Step: <stage> for unit <unit>`). Once any Unit has finished work, Redo names no jump, because a redo jump would throw away every Unit's finished work. It names `aidlc-jump.ts reopen --via redo` for that Unit's step instead, with no question, so only that Unit redoes it from a new attempt: the step the Unit is on or paused at (its build progress and Plan Approval do not carry over), the summary's step, or at a Unit checkpoint the last step the Unit did. The agent tells the person in one line what is redone; for Code Generation that is the plan too, which comes back to them for approval unless plan approval is off. A step the Unit has not started yet has nothing to reset, so Redo there tells the conductor to re-run `next` and do it. The reopen records Redo as the answer to that step's artifact re-use question, so the step's directive carries `artifact_reuse` and the conductor redoes it without asking Keep, Modify or Redo again. The other Units keep their finished work, reviews, Plan Approvals and checkpoint approvals.
 
-Explicit `/aidlc --resume` is different: the dispatcher calls `next --resume`, which skips the menu and falls through to the same continuation route as bare `next`. A parked workflow still emits the unpark instruction first; with no selected state, unfinished work in the space is put to the person to pick and only an empty space errors; and `/aidlc --resume --stage <slug>` takes the explicit jump route.
+Explicit `/aidlc --resume` takes the same route: the dispatcher calls `next --resume`, which falls through to the same continuation route as bare `next`. A parked workflow still emits the unpark instruction first; with no selected state, unfinished work in the space is put to the person to pick and only an empty space errors; and `/aidlc --resume --stage <slug>` takes the explicit jump route.
 
 ### When the hooks have never run
 
@@ -162,7 +162,7 @@ Explicit `/aidlc --resume` is different: the dispatcher calls `next --resume`, w
 
 ### Session Resume Flow
 
-Bare session re-entry and explicit resume intentionally diverge. The conductor owns the four-option menu on bare `/aidlc`; explicit `--resume` expresses the choice up front and enters the engine's normal continuation routing.
+Bare session re-entry on an active intent and explicit resume take the same route: the first call is `next --resume`, so a parked workflow is unparked and the work carries on, with no resume menu. The conductor says where the work picked up and that the person can ask to redo, jump to a stage, or start fresh instead; such a request goes to `report --result resumed --choice <redo|jump|fresh>`, which returns the exact follow-up move.
 
 ```mermaid
 flowchart TD
@@ -172,15 +172,11 @@ flowchart TD
     RECOVERY_CHECK{".aidlc-engine/recovery.md\nexists?"}
     CORRUPTION{"State matches\nrecovery file?"}
     WARN["Warn user about\npossible corruption"]
-    RESUME_MENU["AskUserQuestion:\nResume Options"]
-    OPT_RESUME["Resume from\nlast checkpoint"]
-    OPT_REDO["Redo\ncurrent stage"]
-    OPT_JUMP["Jump to\nspecific stage"]
-    OPT_FRESH["Start fresh\n(archive existing)"]
     RESUME_STATE{"State exists?"}
     PARKED{"Workflow parked?"}
     UNPARK["Print unpark command"]
     CONTINUE["Normal next routing:\nload-steering / run-stage"]
+    OTHER["Person asks to redo,\njump, or start fresh:\nreport --result resumed"]
     JUMP["Explicit stage jump"]
     NO_STATE["Error: no workflow state"]
     SCOPE_DETECT{"Known scope\nor freeform text?"}
@@ -197,29 +193,23 @@ flowchart TD
     STATE_EXISTS -->|Yes| RECOVERY_CHECK
     STATE_EXISTS -->|No| SCOPE_DETECT
 
-    RECOVERY_CHECK -->|Yes| CORRUPTION
-    RECOVERY_CHECK -->|No| RESUME_MENU
-    CORRUPTION -->|Mismatch| WARN --> RESUME_MENU
-    CORRUPTION -->|Match| RESUME_MENU
-
-    RESUME_MENU --> OPT_RESUME
-    RESUME_MENU --> OPT_REDO
-    RESUME_MENU --> OPT_JUMP
-    RESUME_MENU --> OPT_FRESH
+    RECOVERY_CHECK -->|"Yes"| CORRUPTION
+    RECOVERY_CHECK -->|"No: next --resume"| RESUME_STATE
+    CORRUPTION -->|Mismatch| WARN --> RESUME_STATE
+    CORRUPTION -->|Match| RESUME_STATE
 
     RESUME_STATE -->|No| NO_STATE
     RESUME_STATE -->|Yes| PARKED
     PARKED -->|Yes| UNPARK --> CONTINUE
     PARKED -->|No| CONTINUE
-
-    OPT_FRESH -->|"archive + confirm"| CREATE
+    CONTINUE -.->|"any time"| OTHER
 
     SCOPE_DETECT -->|"Known scope"| KNOWN_SCOPE --> CONFIRM_SCOPE
     SCOPE_DETECT -->|"Freeform text"| FREEFORM --> CONFIRM_SCOPE
     CONFIRM_SCOPE --> CREATE
 
     style START fill:#e1bee7,stroke:#7b1fa2,color:#000
-    style RESUME_MENU fill:#bbdefb,stroke:#1565c0,color:#000
+    style OTHER fill:#bbdefb,stroke:#1565c0,color:#000
     style CONTINUE fill:#c8e6c9,stroke:#388e3c,color:#000
     style CREATE fill:#c8e6c9,stroke:#388e3c,color:#000
     style WARN fill:#ffcdd2,stroke:#c62828,color:#000
@@ -274,17 +264,17 @@ The recovery breadcrumb (`.aidlc-engine/recovery.md` in the intent's record dir)
 
 On session resume, the orchestrator compares the breadcrumb's "Current stage" with the state file's "Current Stage". If they differ, it warns the user that compaction may have caused state corruption. This is important because PreCompact hooks are informational-only and cannot block compaction.
 
-### Resume Options
+### Redo, Jump, or Start Fresh on Re-entry
 
-On bare `/aidlc` session re-entry, the conductor presents four options. The conductor reports the human's answer via `report --result resumed --user-input "<answer>"`; the engine matches the choice and returns a per-choice directive naming the exact move (an unrecognized answer errors with the accepted choices). Explicit `/aidlc --resume` skips this menu and performs option 1 directly:
+Session re-entry, bare or with `--resume`, carries on (option 1) with no menu. The person can ask for one of the others in their own words; the conductor reads which one they mean and reports it via `report --result resumed --choice <resume|redo|jump|fresh>`, and the engine returns a per-choice directive naming the exact move. `--choice`, `--target`, and `--every-unit` are refused on any other report (and a re-entry request refuses `--single` and `--skeleton-stance`), `--target` on any choice but redo and jump, and `--unit` and `--every-unit` on any choice but redo and jump. A redo that names a stage redoes it when it is the current stage or the step the Unit is on, jumps back to it when it already ran, and is refused, with the question to ask the person, when it has not run yet. Without `--choice`, the report still accepts the old menu's exact answers (1-4 and their labels) through `--user-input`:
 
-**1. Resume from last checkpoint** -- Continues from the in-progress stage: re-run `next`, which reads `aidlc-state.md` to determine completed/in-progress/not-started stages.
+**1. Resume from last checkpoint** -- The default. Continues from the in-progress stage: `next --resume` reads `aidlc-state.md` to determine completed/in-progress/not-started stages.
 
-**2. Redo current stage** -- The directive names `aidlc-jump.ts execute --target <current> --direction redo --scope <scope>`, which resets the current stage's checkbox; the next `next` re-runs it from scratch. Under solo unit-major Construction, once any Unit has finished work, Redo applies to the Unit the walk is on instead and the other Units keep their finished work: it names `aidlc-jump.ts reopen ... --via redo` for that Unit's step, whether the Unit is on it, paused at it, or at its summary or checkpoint stop (after `aidlc-state.ts unpark` in a parked workflow). On a step the Unit has not started it names only `aidlc-state.ts unpark` in a parked workflow (re-run `next` and do the step). See the unit-major paragraph under "Resume (State File Exists)" above.
+**2. Redo current stage** -- With `--unit <unit>` or `--every-unit` for the Units the person named, the directive names `next --stage <the step the walk is on>` with that flag, which reopens that step for those Units. Otherwise the directive names `aidlc-jump.ts execute --target <current> --direction redo --scope <scope>`, which resets the current stage's checkbox; the next `next` re-runs it from scratch. Under solo unit-major Construction, once any Unit has finished work, Redo applies to the Unit the walk is on instead and the other Units keep their finished work: it names `aidlc-jump.ts reopen ... --via redo` for that Unit's step, whether the Unit is on it, paused at it, or at its summary or checkpoint stop (after `aidlc-state.ts unpark` in a parked workflow). On a step the Unit has not started it names only `aidlc-state.ts unpark` in a parked workflow (re-run `next` and do the step). See the unit-major paragraph under "Resume (State File Exists)" above.
 
-**3. Jump to stage** -- The directive instructs the conductor to ask for the target, then route through `next --stage <slug>` (the engine resolves the direction and validates the target).
+**3. Jump to stage** -- With `--target <stage slug>` for the stage the person named, the directive names `next --stage <that slug>`, with `--unit <unit>` or `--every-unit` carried over when the person named a Unit or said every Unit (an unknown stage is refused with the stage list; `next --stage` resolves the direction and validates the target). Without a target, it tells the conductor to ask which stage, then report again with it.
 
-**4. Start fresh** -- The directive routes through the second-intent flow: confirm scope and description, then `next --new-intent --scope <scope> "<description>"`; the existing workflow stays in place alongside the new intent.
+**4. Start fresh** -- The directive tells the conductor to ask what the new work is if the person has not said, then run `next --new-intent` with their description as one single-quoted argument (the shell-safe form the engine's own commands use), which offers the scope for confirmation as a new description does; the existing workflow stays in place alongside the new intent.
 
 ### Session Resume Context Loading
 

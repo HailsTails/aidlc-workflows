@@ -6,6 +6,7 @@ import { appendAuditEntry } from "./aidlc-audit.ts";
 import { readReviewArtifactContexts } from "./aidlc-review-brief.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { isCompiledExecutable } from "./aidlc-runtime-paths.ts";
+import { stageLabel } from "./aidlc-validity.ts";
 import {
   type CheckboxState,
   countCheckboxes,
@@ -38,6 +39,8 @@ import {
   toPosix,
   UNIT_NAME_REGEX,
   writeStateFile,
+  entrySkillInvocation,
+  REDO_REUSE_SOURCE,
 } from "./aidlc-lib.js";
 
 // The EFFECTIVE per-stage action: the live state file's EXECUTE/SKIP suffix
@@ -155,6 +158,23 @@ export function main(argv: string[]): void {
   }
 }
 
+// A forward jump says, in the person's terms, what it passed over and how to
+// come back: jumping back to where they were resets those stages again. The
+// agent repeats this as written, so a plugin's stage is named by its slug,
+// never by its own display text.
+export function forwardJumpNotice(
+  target: { slug: string; name: string; plugin?: string },
+  skipped: readonly { slug: string; name: string; plugin?: string }[],
+  cameFrom: string,
+): string {
+  const names = skipped
+    .map((node) => stageLabel(node, node.slug))
+    .filter((name): name is string => name !== null);
+  const list = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `Moved to ${stageLabel(target, target.slug) ?? "that stage"}${list ? `; skipped ${list}` : ""}. ` +
+    `To go back, type \`${entrySkillInvocation()} --stage ${cameFrom}\`.`;
+}
+
 if (import.meta.main) {
   main(process.argv.slice(2));
 }
@@ -195,7 +215,7 @@ function handleReopen(args: string[]): void {
   if (!targetSlug || units.length === 0) {
     error("Usage: reopen --target <slug> [--stages <slug[,slug...]>] --units <unit[,unit...]> [--via redo] [--scope <scope>]");
   }
-  // `--via redo`: the person chose Redo on the resume menu, not a jump.
+  // `--via redo`: the person asked to redo the step on re-entry, not a jump.
   if (flags.via !== undefined && flags.via !== "redo") error(`Unknown --via: ${flags.via} (only "redo")`);
   const targetStage = findStageBySlug(targetSlug);
   if (!targetStage || !isPerUnitStage(targetStage)) error(`Not a per-unit stage: ${targetSlug}`);
@@ -217,7 +237,7 @@ function handleReopen(args: string[]): void {
       "Gate Scope": "unit-end",
       Unit: unit,
       Feedback: flags.via === "redo"
-        ? `Redid ${stageName} for unit ${unit} at the person's request (Redo on the resume menu).`
+        ? `Redid ${stageName} for unit ${unit} at the person's request (redo on re-entry).`
         : `Reopened ${stageName} for unit ${unit} at the person's request (/aidlc --stage ${targetSlug}).`,
     });
     // Redo is the person's answer to the re-use question for this Unit's step
@@ -228,7 +248,7 @@ function handleReopen(args: string[]): void {
         Decision: "redo",
         Artifacts: `construction/${unit}/${targetSlug}/`,
         Unit: unit,
-        Source: "Redo on the resume menu",
+        Source: REDO_REUSE_SOURCE,
       });
     }
   }
@@ -423,6 +443,10 @@ function handleExecute(args: string[]): void {
 
   // Get current stage for audit
   const currentSlug = getField(content, "Current Stage") || "state-init";
+  // Where the person was: the active Unit's own step in a unit-at-a-time walk,
+  // which Current Stage does not name.
+  const unitStage = getField(content, "Unit Stage")?.trim() ?? "";
+  const cameFrom = graph.some((node) => node.slug === unitStage) ? unitStage : currentSlug;
 
   // States that count as "in-flight" (skip on forward jump, reset on backward jump)
   const IN_FLIGHT_STATES: CheckboxState[] = [
@@ -659,11 +683,16 @@ function handleExecute(args: string[]): void {
 
   writeStateFile(pd, content);
 
+  const notice = direction === "forward"
+    ? forwardJumpNotice(targetStage, graph.filter((node) => stagesSkipped.includes(node.slug)), cameFrom)
+    : undefined;
+
   console.log(
     JSON.stringify({
       direction,
       target: targetSlug,
       target_phase: targetStage.phase.toUpperCase(),
+      ...(notice ? { notice } : {}),
       stages_skipped: stagesSkipped,
       stages_reset: stagesReset,
       state_updated: true,

@@ -170,7 +170,7 @@ alone) is not marked, because that beat can still apply a fix.
 | `{Active,Revising} → Skipped` | `aidlc-orchestrate.ts report --stage <slug> --result skipped --reason <text>` | `tools/aidlc-state.ts` (internal routed-skip emitter) |
 | `AwaitingApproval -> Skipped` (plan row SKIP) | The same skipped report, only when the stage's plan row now says SKIP (the person said the work is a new project while Reverse Engineering waited at its gate); the gate closes as skipped, never as approved | `tools/aidlc-state.ts` (internal routed-skip emitter) |
 | `Pending → Skipped` | Scope composition or `aidlc-jump execute` | `tools/aidlc-utility.ts`, `tools/aidlc-jump.ts` |
-| `{Pending,Active,Revising} -> Skipped` (unit-major walk) | `aidlc-orchestrate.ts report --stage <directive.stage> --unit <directive.unit> --result skipped --reason <text>` once no unit owes the stage (each unit skipped or kind-vacuous) | `tools/aidlc-state.ts` (internal `skip --unit` emitter; one `UNIT_SKIPPED` per unit) |
+| `{Pending,Active,Revising} -> Skipped` (unit-major walk) | `aidlc-orchestrate.ts report --stage <directive.stage> --unit <directive.unit> --result skipped --reason <text>`, or a forward jump that moves the unit in flight on (`aidlc-jump.ts execute --units <unit> --stages <steps>`), once no unit owes the stage (each unit skipped or kind-vacuous) | `tools/aidlc-state.ts` (internal `skip --unit` emitter; one `UNIT_SKIPPED` per unit) |
 
 The `approved` report owns the full post-gate transition: it emits
 `GATE_APPROVED + STAGE_COMPLETED`, then routes to the next in-scope stage,
@@ -202,8 +202,8 @@ covers that unit only. The internal `skip --unit` transition emits one
 `UNIT_SKIPPED` receipt at the unit's `Run floor`, so the unit owes the stage
 nothing in this attempt (outputs, review, summary, and its Construction
 checkpoint alike, as for a kind-vacuous unit), the walk moves on, and every
-other unit still gets the stage. A forward jump inside the per-unit steps
-moves only the unit in flight on the same way: `aidlc-jump.ts execute --units`
+other unit still gets the stage. Once a unit has finished work, a forward jump
+inside the per-unit steps moves only the unit in flight on the same way: `aidlc-jump.ts execute --units`
 runs this transition for each step the walk would stop that unit at before the
 target, also for a step reopened behind its stage approval, whose checkbox and
 Current Stage stay as they are. When some units did the stage and others
@@ -780,7 +780,7 @@ and do not enforce that scope comparison.
 |---|---|---|
 | `ARTIFACT_CREATED` | `hooks/aidlc-write-audit-log.ts` | Write to net-new path, distinguished from UPDATED via `mtimeMs == birthtimeMs` stat check. Carries `Summary Authorization Id` when the written stage and Unit have an active summary confirmation, so completion can ask whether the output descends from the current confirmation |
 | `ARTIFACT_UPDATED` | `hooks/aidlc-write-audit-log.ts` | Edit tool or Write overwriting existing file. Same `Summary Authorization Id` stamp as `ARTIFACT_CREATED` |
-| `ARTIFACT_REUSED` | `tools/aidlc-state.ts`, `tools/aidlc-jump.ts` | `reuse-artifact` subcommand records keep/modify/redo decisions; `jump reopen --via redo` records the person's resume-menu Redo as the redo decision for that Unit's step (Unit, Source), so the next run-stage for that Unit and step carries `artifact_reuse` and the conductor does not ask again; the Unit's `unit start` for that step, or a later reopen or jump, spends it. Keep and modify retain the stage scope's engine-owned findings and human decisions. Redo starts a fresh list at `R-01` with no inherited decisions. Optional `Repo` scopes evidence to one registered repo, optional `--single` binds it to the open synthetic attempt, but only `keep` with a complete authoritative artifact set and still-`CURRENT` isolated Reverse Engineering store grants that pipeline exemption. |
+| `ARTIFACT_REUSED` | `tools/aidlc-state.ts`, `tools/aidlc-jump.ts` | `reuse-artifact` subcommand records keep/modify/redo decisions; `jump reopen --via redo` records the person's Redo on re-entry as the redo decision for that Unit's step (Unit, Source), so the next run-stage for that Unit and step carries `artifact_reuse` and the conductor does not ask again; the Unit's `unit start` for that step, or a later reopen or jump, spends it. Keep and modify retain the stage scope's engine-owned findings and human decisions. Redo starts a fresh list at `R-01` with no inherited decisions. Optional `Repo` scopes evidence to one registered repo, optional `--single` binds it to the open synthetic attempt, but only `keep` with a complete authoritative artifact set and still-`CURRENT` isolated Reverse Engineering store grants that pipeline exemption. |
 
 ### Construction Bolts
 

@@ -363,6 +363,9 @@ describe("t118 differential corpus — engine vs aidlc-jump resolve (migrated fr
     const jump = report("Jump to a stage");
     expect(jump.kind).toBe("print");
     expect(jump.message).toContain("next --stage");
+    // A stage the person already named is never asked for again.
+    expect(jump.message).toContain("for the stage the person named");
+    expect(jump.message).not.toContain("Ask the human which stage to jump to");
 
     const fresh = report("Start fresh");
     expect(fresh.kind).toBe("print");
@@ -400,6 +403,215 @@ describe("t118 differential corpus — engine vs aidlc-jump resolve (migrated fr
     expect(outOfRange.message).toContain("Accepted choices: 1/resume");
     expect(readFileSync(statePath(p), "utf-8")).toBe(before);
   });
+
+  test("SP4f: a redo never runs text from the state file", () => {
+    const p = projWithState("state-jumped.md");
+    const state = readFileSync(statePath(p), "utf-8");
+    const report = (...extra: string[]) =>
+      directive(run(ORCHESTRATE, ["report", "--result", "resumed", ...extra, "--project-dir", p]));
+    writeFileSync(statePath(p), state.replace(/^- \*\*Scope\*\*: .*$/m, "- **Scope**: feature; touch pwned"), "utf-8");
+    // A saved scope that is not a scope name prints no command, as everywhere.
+    for (const extra of [["--choice", "redo"], ["--user-input", "2"]]) {
+      const r = run(ORCHESTRATE, ["report", "--result", "resumed", ...extra, "--project-dir", p]);
+      expect(r.status).not.toBe(0);
+      expect(r.stdout).toBe("");
+      expect(r.out).toContain("is not a scope name, so no command was printed");
+      expect(r.out).not.toContain("touch pwned");
+    }
+    // A blank or unknown saved scope gets no redo command either, never a default plan.
+    for (const saved of ["", "nosuchscope"]) {
+      writeFileSync(statePath(p), state.replace(/^- \*\*Scope\*\*: .*$/m, `- **Scope**: ${saved}`), "utf-8");
+      for (const r of [report("--choice", "redo"), report("--user-input", "2")]) {
+        expect(r.kind, saved).toBe("error");
+        expect(r.message).toContain("cannot be redone from here");
+        expect(r.message).not.toContain("--direction redo");
+      }
+    }
+    writeFileSync(statePath(p), state.replace(/^- \*\*Current Stage\*\*: .*$/m, "- **Current Stage**: code-generation$(touch pwned)"), "utf-8");
+    for (const r of [
+      report("--choice", "redo"),
+      report("--user-input", "2"),
+      report("--choice", "redo", "--unit", "beta"),
+      report("--choice", "redo", "--every-unit"),
+    ]) {
+      expect(r.kind).toBe("error");
+      expect(r.message).not.toContain("touch pwned");
+    }
+  });
+
+  test("SP4e: a typed re-entry request gets a complete command; the person's words are never classified", () => {
+    const p = projWithState("state-jumped.md");
+    const before = readFileSync(statePath(p), "utf-8");
+    const report = (...extra: string[]) =>
+      directive(run(ORCHESTRATE, [
+        "report", "--result", "resumed", ...extra, "--project-dir", p,
+      ]));
+    const words = (text: string) => ["--user-input", text];
+
+    // Words no keyword would match still route, because the conductor typed them.
+    const back = report("--choice", "jump", "--target", "requirements-analysis",
+      ...words("take me back to requirements analysis"));
+    expect(back.kind).toBe("print");
+    expect(back.message).toContain("Run `next --stage requirements-analysis`");
+    expect(back.message).not.toContain("<slug>");
+
+    const unnamed = report("--choice", "jump", ...words("let's go somewhere else"));
+    expect(unnamed.kind).toBe("print");
+    expect(unnamed.message).toContain("Ask the person which stage");
+
+    const unknown = report("--choice", "jump", "--target", "no-such-stage", ...words("go to the moon"));
+    expect(unknown.kind).toBe("error");
+    expect(unknown.message).toContain('No stage is named "no-such-stage"');
+
+    // A fresh start carries none of the person's words: the new work starts the
+    // way new work always does, with their description quoted shell-safe.
+    const fresh = report("--choice", "fresh");
+    expect(fresh.kind).toBe("print");
+    expect(fresh.message).toContain("run `next --new-intent` with their description as one single-quoted argument");
+    expect(fresh.message).toContain("ask them if they have not");
+    expect(fresh.message).not.toContain("<scope>");
+
+    const redo = report("--choice", "redo", ...words("do this one again please"));
+    expect(redo.message).toContain("--direction redo");
+
+    const resume = report("--choice", "resume", ...words("keep going"));
+    expect(resume.message).toContain("Re-run `next`");
+
+    const wrong = report("--choice", "sideways", ...words("hmm"));
+    expect(wrong.kind).toBe("error");
+    expect(wrong.message).toContain('Unknown --choice "sideways"');
+
+    // "Redo <stage>" never drops the stage it names: the current stage is a
+    // plain redo, a stage that ran is the jump back to it, and a stage that has
+    // not run has nothing to redo.
+    const redoHere = report("--choice", "redo", "--target", "code-generation");
+    expect(redoHere.kind).toBe("print");
+    expect(redoHere.message).toContain("--direction redo");
+    const redoThere = report("--choice", "redo", "--target", "market-research");
+    expect(redoThere.kind).toBe("print");
+    expect(redoThere.message).toContain("Run `next --stage market-research`");
+    for (const notRun of ["requirements-analysis", "build-and-test"]) {
+      const r = report("--choice", "redo", "--target", notRun);
+      expect(r.kind).toBe("error");
+      expect(r.message).toContain(`"${notRun}" has not run yet, so there is nothing to redo`);
+    }
+    // Unit by Unit, the step the Unit is on is the current one too.
+    const unitMajor = readFileSync(statePath(p), "utf-8");
+    writeFileSync(
+      statePath(p),
+      unitMajor
+        .replace(/^- \*\*Current Stage\*\*: .*$/m, "- **Current Stage**: functional-design\n- **Unit Stage**: code-generation"),
+      "utf-8",
+    );
+    // Redone, never just navigated to, and never the block's first stage.
+    const forTheStep = report("--choice", "redo", "--target", "code-generation");
+    expect(forTheStep.kind).toBe("print");
+    expect(forTheStep.message).toContain('Redo accepted at "code-generation"');
+    expect(forTheStep.message).not.toContain("functional-design");
+    expect(forTheStep.message).not.toContain("Run `next --stage");
+    const forBetaStep = report("--choice", "redo", "--target", "code-generation", "--unit", "beta");
+    expect(forBetaStep.message).toContain("Run `next --stage code-generation --unit beta`");
+    // The block's first stage named for a Unit is that stage, not the Unit's step.
+    const forBetaFirst = report("--choice", "redo", "--target", "functional-design", "--unit", "beta");
+    expect(forBetaFirst.kind).toBe("print");
+    expect(forBetaFirst.message).toContain("Run `next --stage functional-design --unit beta`");
+    // A step beta finished while the stage's own checkbox still waits is
+    // reopened for beta, never refused as not run.
+    const forBetaEarlier = report("--choice", "redo", "--target", "nfr-design", "--unit", "beta");
+    expect(forBetaEarlier.kind).toBe("print");
+    expect(forBetaEarlier.message).toContain("Run `next --stage nfr-design --unit beta`");
+    writeFileSync(
+      statePath(p),
+      unitMajor.replace(
+        /^- \*\*Current Stage\*\*: .*$/m,
+        "- **Current Stage**: functional-design\n- **Unit Stage**: code-generation\n- **Active Unit**: alpha",
+      ),
+      "utf-8",
+    );
+    const forActive = report("--choice", "redo", "--target", "code-generation");
+    expect(forActive.message).toContain('Redo accepted at "code-generation"');
+    expect(forActive.message).not.toContain("functional-design");
+    writeFileSync(statePath(p), unitMajor, "utf-8");
+    // The choice alone is enough; the person's words are not needed in the command.
+    expect(report("--choice", "resume").message).toContain("Re-run `next`");
+
+    // A jump for a Unit the person named, or for every Unit, keeps that scope.
+    const forBeta = report("--choice", "jump", "--target", "requirements-analysis", "--unit", "beta");
+    expect(forBeta.kind).toBe("print");
+    expect(forBeta.message).toContain("Run `next --stage requirements-analysis --unit beta`");
+    const forEvery = report("--choice", "jump", "--target", "requirements-analysis", "--every-unit");
+    expect(forEvery.message).toContain("Run `next --stage requirements-analysis --every-unit`");
+    // Redoing the step for a named Unit reopens that step for it.
+    const redoBeta = report("--choice", "redo", "--unit", "beta");
+    expect(redoBeta.kind).toBe("print");
+    expect(redoBeta.message).toMatch(/Run `next --stage [a-z-]+ --unit beta`/);
+    for (const [extra, refusal] of [
+      [["--choice", "fresh", "--every-unit"], "go only with --choice redo or jump"],
+      [["--choice", "resume", "--unit", "beta"], "go only with --choice redo or jump"],
+      [["--choice", "jump", "--target", "requirements-analysis", "--skeleton-stance", "on"], "a report of its own"],
+      [["--choice", "redo", "--single"], "a report of its own"],
+      [["--choice", "jump", "--target", "requirements-analysis", "--unit", "beta", "--every-unit"], "not both"],
+      [["--choice", "jump", "--target", "requirements-analysis", "--unit", "../beta"], "Invalid Unit name"],
+    ] as const) {
+      const refused = report(...extra);
+      expect(refused.kind, extra.join(" ")).toBe("error");
+      expect(refused.message, extra.join(" ")).toContain(refusal);
+    }
+
+    // The typed flags belong only to a re-entry request.
+    const misplaced = directive(run(ORCHESTRATE, [
+      "report", "--stage", "code-generation", "--result", "approved", "--choice", "redo", "--project-dir", p,
+    ]));
+    expect(misplaced.kind).toBe("error");
+    expect(misplaced.message).toContain("go only with --result resumed");
+    // Nor does a single-stage completion or a stance report run with them dropped.
+    for (const extra of [
+      ["--single", "--stage", "requirements-analysis", "--result", "completed", "--choice", "redo"],
+      ["--skeleton-stance", "on", "--choice", "jump", "--target", "requirements-analysis"],
+      ["--stage", "code-generation", "--result", "approved", "--every-unit"],
+    ]) {
+      const dropped = directive(run(ORCHESTRATE, ["report", ...extra, "--project-dir", p]));
+      expect(dropped.kind, extra.join(" ")).toBe("error");
+      expect(dropped.message, extra.join(" ")).toContain("go only with --result resumed");
+    }
+
+    expect(readFileSync(statePath(p), "utf-8")).toBe(before);
+  });
+
+  test("SP4f: a redo, jump, or fresh request at an open gate is that request, never a rejection", () => {
+    const p = projWithState("state-mid-ideation.md");
+    run(ORCHESTRATE, [
+      "report", "--stage", "feasibility", "--result", "awaiting-approval", "--project-dir", p,
+    ]);
+    const atGate = readFileSync(statePath(p), "utf-8");
+    expect(atGate).toContain("- [?] feasibility");
+    const report = (...extra: string[]) =>
+      directive(run(ORCHESTRATE, ["report", "--result", "resumed", ...extra, "--project-dir", p]));
+
+    const jump = report("--choice", "jump", "--target", "requirements-analysis");
+    expect(jump.kind).toBe("print");
+    expect(jump.message).toContain("Run `next --stage requirements-analysis`");
+    const fresh = report("--choice", "fresh");
+    expect(fresh.kind).toBe("print");
+    expect(fresh.message).toContain("next --new-intent");
+    const redo = report("--choice", "redo");
+    expect(redo.kind).toBe("print");
+    const command = /(execute --target feasibility --direction redo --scope [^`\s]+)`/
+      .exec(redo.message)?.[1];
+    expect(command, redo.message).toBeDefined();
+    // The answers change nothing by themselves, and none is a gate answer.
+    expect(readFileSync(statePath(p), "utf-8")).toBe(atGate);
+    expect(eventCount(p, "GATE_REJECTED")).toBe(0);
+
+    // The redo it names starts the stage over from the open gate, with no rejection.
+    const reset = run(JUMP, [...(command as string).split(" "), "--project-dir", p]);
+    expect(reset.status, reset.out).toBe(0);
+    const after = readFileSync(statePath(p), "utf-8");
+    expect(after).toContain("- [-] feasibility");
+    expect(after).not.toContain("- [?] feasibility");
+    expect(eventCount(p, "GATE_REJECTED")).toBe(0);
+    expect(eventCount(p, "STAGE_REVISING")).toBe(0);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
   // ============================================================
   // Special path 5: CREATE (P4: --init retired) — (a) named scope on a clean

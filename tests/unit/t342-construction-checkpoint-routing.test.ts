@@ -1,5 +1,6 @@
 // covers: subcommand:aidlc-orchestrate:next, subcommand:aidlc-orchestrate:report, subcommand:aidlc-bolt:checkpoint, subcommand:aidlc-state:set-construction-checkpoints, subcommand:aidlc-state:set-construction-execution, function:isAutonomousConstructionGate, function:isConstructionSwarmEnabled
 // covers: function:constructionCheckpointGaps
+// covers: function:REDO_REUSE_SOURCE
 // covers: subcommand:aidlc-state:set, subcommand:aidlc-state:set-construction-iteration
 // covers: audit:CONSTRUCTION_POLICY_RECORDED, function:authorizedConstructionPolicyChange, function:recordProtectedHumanResponse
 // covers: function:constructionPolicyChangeAuthority, function:constructionPolicyChangeAllowed
@@ -25,7 +26,7 @@ import {
 import {
   artifactFilename, findStageBySlug, latestMainWorkflowStageRunFloorForProject,
   reviewArtifactFingerprint, authorizedConstructionPolicyChange, auditBlockField, readAuditShardEvents, setField, unitCompletedReceipts,
-  hasPendingDecision, guardRecoveryAskFromRefusalText, freshReviewReceipts, getField, presenceFloorHolds,
+  hasPendingDecision, guardRecoveryAskFromRefusalText, freshReviewReceipts, getField, presenceFloorHolds, REDO_REUSE_SOURCE,
   _resetStageGraphForTests,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 
@@ -1288,6 +1289,8 @@ describe("t342 a unit-major recovery keeps every Unit's finished work", () => {
       expect(jump.message).toContain("tell the person in one line what was skipped");
       // The way back starts at the earliest step it skips, not the first per-unit stage.
       expect(jump.message).toContain("--stage code-generation` reopens it");
+      // One way back only: the jump's generic notice is not relayed as well.
+      expect(jump.message).not.toContain("carries `notice`");
       expect(jump.message).not.toContain("nothing needs skipping");
       expect(readFileSync(seededStateFile(p), "utf-8")).toBe(before);
     }
@@ -2018,7 +2021,7 @@ describe("t342 a unit-major recovery keeps every Unit's finished work", () => {
     expect(next(p).artifact_reuse).toBeUndefined();
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("unit-major Redo at a Unit checkpoint in a parked workflow unparks first and credits the Redo menu", () => {
+  test("unit-major Redo at a Unit checkpoint in a parked workflow unparks first and credits the person's Redo", () => {
     const p = betaBuilding();
     cover(p, "beta", ["code-generation"]);
     expect(next(p).construction_checkpoint?.unit).toBe("beta");
@@ -2033,8 +2036,11 @@ describe("t342 a unit-major recovery keeps every Unit's finished work", () => {
     expect(next(p)).toMatchObject({ stage: "code-generation", unit: "beta" });
     const rejected = readAuditShardEvents(p).filter((row) => row.event === "GATE_REJECTED").at(-1)!;
     expect(auditBlockField(rejected.block, "Feedback")).toBe(
-      "Redid Code Generation for unit beta at the person's request (Redo on the resume menu).",
+      "Redid Code Generation for unit beta at the person's request (redo on re-entry).",
     );
+    // The Redo answers the step's re-use question with the Source the engine reads back.
+    const reused = readAuditShardEvents(p).filter((row) => row.event === "ARTIFACT_REUSED").at(-1)!;
+    expect(auditBlockField(reused.block, "Source")).toBe(REDO_REUSE_SOURCE);
     expect(approved(p, "alpha")).toBe(true);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 

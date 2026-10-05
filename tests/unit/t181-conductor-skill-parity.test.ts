@@ -1044,8 +1044,9 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
   test("no conductor routes an engine ask answer through a generic report", () => {
     // The ask row once ended "For every other ask, feed the human's answer back
     // on the next `report`", so conductors reported scope-confirm and compose
-    // answers and invented results the engine rejects. Only the prompt-rendered
-    // resume menu reports; every engine ask names its route and commands.
+    // answers and invented results the engine rejects. Only a redo, jump, or
+    // start-fresh request on re-entry reports; every engine ask names its route
+    // and commands.
     const failures: string[] = [];
     const askRowOf = (rel: string): string =>
       readFileSync(join(REPO_ROOT, rel), "utf-8")
@@ -1328,5 +1329,116 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
       if (!protocol.includes(rule)) stale.push(`stage-protocol.md  missing: ${rule}`);
     }
     expect(stale).toEqual([]);
+  });
+
+  test("a bare re-entry carries on: no surface offers the old resume menu", () => {
+    // A new session's bare /aidlc used to stop on a Resume / Redo / Jump / Start
+    // Fresh menu although the person wanted to carry on. Every copy of that rule
+    // is gone; a person who wants redo, jump, or start fresh says so.
+    const surfaces = [
+      ...skills,
+      ...harnessQuestionAnnexes().filter((rel) => existsSync(join(REPO_ROOT, rel))),
+      "core/hooks/aidlc-session-start.ts",
+      "core/tools/aidlc-runner-gen.ts",
+      "core/tools/aidlc-orchestrate.ts",
+      "core/tools/aidlc-jump.ts",
+      "core/tools/aidlc-directive.ts",
+      "core/aidlc-common/protocols/stage-protocol.md",
+      "core/aidlc-common/protocols/stage-protocol-recovery.md",
+      "core/knowledge/aidlc-shared/audit-format.md",
+      // The neutral onboarding every harness ships, always loaded or injected.
+      "core/templates/onboarding.md",
+      ...[...new Bun.Glob("dist/*/**/{AGENTS,CLAUDE}.md").scanSync({ cwd: REPO_ROOT, dot: true })].sort(),
+      "README.md",
+      ...[...new Bun.Glob("docs/**/*.md").scanSync({ cwd: REPO_ROOT })].sort(),
+    ];
+    const stale: string[] = [];
+    for (const rel of surfaces) {
+      const text = readFileSync(join(REPO_ROOT, rel), "utf-8");
+      for (const old of [
+        /prompt-rendered resume menu/i,
+        /Resume \/ Redo \/\s*Jump \/ Start Fresh/i,
+        /standard resume options/i,
+        /four resume options/i,
+        /on the resume menu/i,
+        /answer to the resume menu/i,
+        /resume menu is prompt-rendered/i,
+        /offers resume options/i,
+        /four-option menu/i,
+        /presents four options/i,
+        /skips this menu/i,
+        /Redo menu/,
+        /Offer to resume from the last incomplete stage/i,
+        /offers? to resume from (the )?last/i,
+        /result resumed --user-input/,
+        /choice <redo\|jump\|fresh> --user-input/,
+        /--description "<the new work>"/,
+        /skip this probe and menu/i,
+        /offers to resume or redo/i,
+      ]) {
+        if (old.test(text)) stale.push(`${rel}  ${old.source}`);
+      }
+    }
+    expect(stale).toEqual([]);
+    // Always-loaded onboarding waits for the person: it never starts work itself.
+    expect(readFileSync(join(REPO_ROOT, "core/templates/onboarding.md"), "utf-8")).toContain(
+      "If found, load prior context and wait for the person: when they invoke AI-DLC, the work carries on",
+    );
+  });
+
+  test("a re-entry request is typed by the conductor and the hint is one SAY line", () => {
+    // The conductor reads redo, jump, or start fresh from the person's words and
+    // passes the choice; the engine never classifies their words.
+    const typed = "report --result resumed --choice <redo|jump|fresh>` with the choice you read from their words";
+    const missing = skills.filter((rel) => !readFileSync(join(REPO_ROOT, rel), "utf-8").includes(typed));
+    expect(missing).toEqual([]);
+    const recovery = readFileSync(
+      join(REPO_ROOT, "core/aidlc-common/protocols/stage-protocol-recovery.md"),
+      "utf-8",
+    );
+    expect(recovery).toContain(
+      '**SAY:** "Say redo, jump to a stage, or start fresh if you\'d rather."',
+    );
+    expect(recovery).toContain("--choice <redo|jump|fresh>`");
+    expect(recovery).toContain("at an approval gate too");
+    expect(recovery).not.toContain("Offer to resume from the last incomplete stage");
+  });
+
+  test("opencode's bare re-entry carries on too, in the tree opencode users get", () => {
+    // opencode has no channel for the session-start hook's context, so its own
+    // skill carries the re-entry rule: a bare /aidlc on active work, at a waiting
+    // approval included, enters with next --resume and asks no menu question.
+    for (const rel of [
+      "harness/opencode/skills/aidlc/SKILL.md",
+      "dist/opencode/.aidlc/skills/aidlc/SKILL.md",
+    ]) {
+      const text = readFileSync(join(REPO_ROOT, rel), "utf-8");
+      const start = text.indexOf("**Bare session re-entry on opencode.**");
+      expect(start, rel).toBeGreaterThan(-1);
+      const rule = text.slice(start, text.indexOf("\n\n", start)).replace(/\s+/g, " ");
+      expect(rule, rel).toContain("If it reports an active workflow, carry on with it: enter the loop with `next --resume`, with no resume menu");
+      expect(rule, rel).toContain("including its one SAY line");
+      expect(rule, rel).toContain("(at an approval gate too, where it is that request and not the gate's answer)");
+      expect(rule, rel).not.toMatch(/menu and STOP|Start Fresh|--user-input/);
+    }
+  });
+
+  test("at an approval gate a redo, jump, or fresh request is that request, not the gate's answer", () => {
+    // The SAY line invites these requests at a gate too, so every place that
+    // reads a gate reply gives them precedence over Request Changes.
+    const gateToo = "start fresh (at an approval gate too, where it is that request and not the gate's answer), call `report --result resumed";
+    const missing = skills.filter((rel) => !readFileSync(join(REPO_ROOT, rel), "utf-8").includes(gateToo));
+    expect(missing).toEqual([]);
+    const protocol = (name: string) =>
+      readFileSync(join(REPO_ROOT, "core/aidlc-common/protocols", name), "utf-8").replace(/\s+/g, " ");
+    expect(protocol("stage-protocol-recovery.md")).toContain(
+      "At an approval gate such a request is not the gate's answer: report it this way, never as Request Changes.",
+    );
+    expect(protocol("stage-protocol.md")).toContain(
+      "A reply that asks to redo the whole stage, jump to a stage, or start fresh is not a gate answer",
+    );
+    expect(
+      readFileSync(join(REPO_ROOT, "core/hooks/aidlc-session-start.ts"), "utf-8"),
+    ).toContain("(at an approval gate too, where it is that request and not the gate's answer)");
   });
 });
