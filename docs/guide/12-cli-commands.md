@@ -1201,8 +1201,14 @@ setter too); update Kiro IDE or start new work from a lower-default scope.
 In either the config or flags-first form, `--intent <name>` and `--space <name>`
 select the piece of work; omitted selectors use the hook payload session's
 workflow selection.
-A nonexistent named intent is refused, and a selection without a state file
-receives: `Guard Policy relaxed and fence switches apply to a piece of work: create it, then type this again.`
+A nonexistent named intent is refused. A Guard Policy `relaxed` or `off`
+switch typed before the work exists is kept for the piece of work this chat
+starts next: `Guard Policy relaxed for the piece of work you start now (set by you).`
+Typed with a request, it goes with that request
+(`Guard Policy relaxed for the work you are asking for (set by you).`): new work
+takes it at creation, and continuing open work applies it there; the message
+alone never changes open work. A fence switch with no state file receives:
+`Guard Policy relaxed and fence switches apply to a piece of work: create it, then type this again.`
 The `off` form names `off` instead of `relaxed`.
 Hooks run on Windows too, so the typed switch works on every harness that
 forwards the prompt without a setter-side session lookup.
@@ -1240,7 +1246,7 @@ person has arrived since the last decision, refuses with:
 Direct `scope change --guard-policy relaxed|off` uses the same rule. Direct
 `intent create --guard-policy relaxed|off` from chat is refused when the value
 is below that default (`relaxed` on an `off` scope is a raise and applies):
-create the piece of work, and the agent runs the setter when the person asks for the lower value. Naming the scope's own default at creation records the scope's
+create the piece of work, and the agent runs the setter when the person asks for the lower value. Typed by the person before the work exists, or in the same message as new work, Guard Policy `relaxed` or `off` is kept for the piece of work this chat starts next and answers that request: `intent create --request <id>` for it records `Guard Policy: <value> (set by you)`, with or without the flag, and any open work keeps its own policy. Naming the scope's own default at creation records the scope's
 value without another prompt. A running workflow moving to a scope with a lower
 default takes it when the person asked for the scope change; otherwise it keeps
 its stricter policy and says so in one line. Creation that would lower the
@@ -1341,7 +1347,10 @@ by you)` into `aidlc-state.md` and one `GUARD_DISABLED` audit row carrying
 `Guard`, `Scope`, and `Source`; switching it back on removes it from that list and
 writes `GUARD_RESTORED`. Setting `on` raises a policy-lowered fence, records it in
 `- **Guards On**: <comma list> (set by you)`, and writes `GUARD_RESTORED` with the
-same fields. Repeating a setting already in force is a no-op that says so;
+same fields. Setting the Guard Policy word yourself clears both lines (except a
+fence the same command names), writing the same rows for each fence that
+changes, so `off` leaves none on and `strict` leaves none off; a single-fence
+switch after it still applies. Repeating a setting already in force is a no-op that says so;
 setting `on` for a policy-lowered fence is not a no-op. Neither state line accepts
 human presence, and a persisted human-presence entry is ignored.
 `/aidlc --status` prints a `Checks off:` line naming each one you or an
@@ -1843,7 +1852,8 @@ When the Unit's code or documents changed after their review, the checkpoint's `
 the one re-check request, and the agent runs it before verifying. That happens
 under Guard Policy `strict`; under `relaxed` and `off` the change is accepted
 instead, an approved Unit stays approved, and `verify` returns its one line as
-`change_notices`:
+`change_notices`. The same holds with reviews off: the next Unit's `verify`, or
+the Construction stage's own check, returns the line:
 
 ```bash
 aidlc engine bolt checkpoint --action status --unit "<Unit>" --kind <unit|skeleton>
@@ -2304,9 +2314,13 @@ The staged directory must contain exactly the nine CodeKB artifacts.
 Publication acquires the same space+repo lock, rechecks both snapshot values,
 validates the timestamp's final scope fingerprint, and swaps the complete
 candidate into the shared store with rollback and crash recovery. A concurrent
-CodeKB publication returns `CODEKB_STORE_CHANGED`; source movement returns
-`CODEKB_SOURCE_CHANGED`. Both publish nothing and require a fresh re-merge or
-scan rather than a last-writer-wins overwrite.
+CodeKB publication returns `CODEKB_STORE_CHANGED`, publishes nothing, and
+requires a fresh re-merge rather than a last-writer-wins overwrite. Source
+movement under a strict Guard Policy returns `CODEKB_SOURCE_CHANGED` (or
+`CODEKB_CANDIDATE_STALE`) and publishes nothing until a fresh scan. Under
+`relaxed` or `off` the scan is published as captured, with one line
+(`change_notices` in `--json`) that names "redo reverse engineering" to scan
+again.
 
 After a successful publication the utility renames the staged directory aside
 in one step, then checks each of the nine files against the bytes it just

@@ -45,7 +45,9 @@ import {
   applyReviewOverride,
   CONFIG_KEYS,
   type ConfigKey,
+  consumeGuardPolicyCreationGrant,
   consumePlanApprovalCreationGrant,
+  guardPolicyCreationGranted,
   formatPlanApprovalSetting,
   type IntentSettingsRequest,
   parseReviewOverride,
@@ -7649,8 +7651,15 @@ function handleIntentCreate(projectDir: string, flags: Record<string, string>): 
   // Naming the scope's own default is not a lowering: the same creation without
   // the flag would carry that value from the scope, so it is recorded that way.
   const scopeDefaultPolicy = scopeDefinitionGuardPolicy(loadScopeMapping()[scope]);
+  // Guard Policy relaxed or off the person typed in this chat with this work,
+  // or before it existed: the human-turn hook kept their words for it.
+  const guardPolicyAsked = preflightMemoryStrict === null
+    ? guardPolicyCreationGranted(projectDir, initialSelection.sessionId, questionId ?? null) : null;
+  consumeGuardPolicyCreationGrant(projectDir, initialSelection.sessionId);
+  const wantedChangeControl = flaggedChangeControl ?? guardPolicyAsked;
+  const guardPolicySetByPerson = guardPolicyAsked !== null && wantedChangeControl === guardPolicyAsked;
   const requestedChangeControl =
-    flaggedChangeControl !== "strict" && flaggedChangeControl === scopeDefaultPolicy ? null : flaggedChangeControl;
+    wantedChangeControl !== "strict" && wantedChangeControl === scopeDefaultPolicy ? null : wantedChangeControl;
   // Plan approval off is the person's move too. Naming the scope's own default
   // is not a lowering; a memory-held strict Guard Policy keeps it on for everyone.
   // When the person asked for it off in this chat before the work existed (the
@@ -7677,7 +7686,7 @@ function handleIntentCreate(projectDir: string, flags: Record<string, string>): 
   // Only a value below the scope default lowers fences: relaxed on an off scope raises them.
   if (
     requestedChangeControl !== null && requestedChangeControl !== "strict" &&
-    !guardPolicyAtLeast(requestedChangeControl, scopeDefaultPolicy)
+    !guardPolicyAtLeast(requestedChangeControl, scopeDefaultPolicy) && !guardPolicySetByPerson
   ) {
     const wanted: GuardSwitch = { key: "guard-policy", value: requestedChangeControl };
     // An unattended driver never lowers fences, including a recorded presence bypass.
@@ -10256,6 +10265,9 @@ const STARTED_STATES: ReadonlySet<string> = new Set(["in-progress", "awaiting-ap
 // folder holds code AI-DLC wrote, so the scan no longer tells new from
 // existing, and the workflow is not moved back into Inception.
 export function constructionHasStarted(content: string, workRecordDir?: string | null): boolean {
+  // Construction output in the record means this work has built: a jump back
+  // resets its stages, but the code in the folder is still its own.
+  if (workRecordDir && holdsAnyFile(join(workRecordDir, "construction"))) return true;
   const states = new Map(parseCheckboxes(content).map((c) => [c.slug, c.state]));
   const started = loadStageGraph().filter((stage) =>
     (stage.phase === "construction" || stage.phase === "operation") &&
@@ -10263,9 +10275,10 @@ export function constructionHasStarted(content: string, workRecordDir?: string |
   if (started.length !== 1 || !workRecordDir) return started.length > 0;
   // Only just entered: an approval moved the cursor onto the first
   // Construction stage and nothing of it is written yet, so nothing was built
-  // for a new project.
+  // for a new project. A jump straight into Operation is work under way.
   const [only] = started;
   return !(
+    only.phase === "construction" &&
     only.slug === getField(content, "Current Stage") &&
     states.get(only.slug) === "in-progress" &&
     !holdsAnyFile(join(workRecordDir, "construction"))
@@ -10708,17 +10721,27 @@ function handleScopeChange(projectDir: string, flags: Record<string, string>): v
         const strictness = { off: 0, relaxed: 1, strict: 2 } as const;
         const nextPolicy = scopeDefinitionGuardPolicy(newScopeDef);
         // Scope changes raise the policy automatically. A lower default
-        // follows the scope only on the person's own request for the change
-        // (the authority a direct Guard Policy lowering needs); otherwise the
-        // work keeps its value and the output says so in one line.
+        // follows the scope only on the person's own request for the change,
+        // on this work's own record (the authority a direct Guard Policy
+        // lowering needs); otherwise the work keeps its value and the output
+        // says so in one line.
         if (strictness[nextPolicy] >= strictness[previousCC.value]) {
           requested["guard-policy"] ??= { value: nextPolicy, source };
-        } else if (process.env.AIDLC_UNATTENDED !== "1" && personSpokeSinceGate(projectDir, { requests: true })) {
+        } else if (
+          process.env.AIDLC_UNATTENDED !== "1" &&
+          personSpokeSinceGate(projectDir, { requests: true, intent, space })
+        ) {
           requested["guard-policy"] ??= { value: nextPolicy, source };
         } else {
+          // Work picked by name is switched by name: the plain words reach
+          // the work this chat is on.
+          const switchWords = flags.intent
+            ? `${entrySkillInvocation()} config set guard-policy ${nextPolicy} --intent ${intent}` +
+              (flags.space ? ` --space ${space}` : "")
+            : `guard policy ${nextPolicy}`;
           keptPolicyLine =
             `Guard Policy stays ${previousCC.value} (from ${previousCC.source}). ` +
-            `Say "guard policy ${nextPolicy}" to match ${newScope}.`;
+            `Say "${switchWords}" to match ${newScope}.`;
         }
       }
       for (const key of CEREMONY_KEYS) {

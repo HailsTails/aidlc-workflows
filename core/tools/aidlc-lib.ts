@@ -3427,6 +3427,20 @@ export function codekbFingerprintExcludes(projectDir: string, sourceDir: string)
   return [...excluded].sort();
 }
 
+// The same files, as a Unit's source accounting reads them: a change to one of
+// AI-DLC's own files at the workspace root (an install or upgrade writing its
+// .gitignore block or AGENTS.md, a second tool added) is no Unit's application
+// source, so no Unit has to claim it. Keys are `<repo>\0<path>`; a sibling
+// repo holds none of these files.
+export function aidlcOwnedSourceKey(projectDir: string): (pathKey: string) => boolean {
+  const owned = codekbFingerprintExcludes(projectDir, projectDir);
+  return (pathKey) => {
+    const parsed = splitSourcePathKey(pathKey);
+    return parsed !== null && parsed.repo === "" &&
+      owned.some((entry) => parsed.path === entry || parsed.path.startsWith(`${entry}/`));
+  };
+}
+
 function generatedRunnerSkill(skillDir: string): boolean {
   try {
     const skillMd = join(skillDir, "SKILL.md");
@@ -10857,13 +10871,17 @@ export function personRepliedAfter(projectDir: string, mark: AuditMark): boolean
   }
 }
 
-export function humanTurnState(projectDir: string, options: { replies?: boolean; requests?: boolean } = {}): HumanTurnState {
+// With `intent` and `space`, the turns read are that work's, not the active work's.
+export function humanTurnState(
+  projectDir: string,
+  options: { replies?: boolean; requests?: boolean; intent?: string; space?: string } = {},
+): HumanTurnState {
   // Per-shard reads (not the concatenated buffer): buffer position across
   // shards is FILENAME order, not execution order, so it can only serve as an
   // ordering tiebreak WITHIN one shard. Cross-shard same-second ties are
   // genuinely unordered (isoTimestamp is second-precision) and fail closed
   // below.
-  const shards = auditShards(projectDir);
+  const shards = auditShards(projectDir, options.intent, options.space);
   const events: { ts: string; shard: number; pos: number; human: boolean; event: string }[] = [];
   // Questions logged since a turn: a later question's reply is not the one the
   // earlier answers used.
@@ -11013,11 +11031,15 @@ export function commandTurnHint(projectDir: string): string {
 // turn exists (an empty ledger, which reads as acted for older workflows, does
 // not count). Lowering a check the person asked for in their own words needs it.
 // With `replies`, the turn must be a reply, not only a command to AIDLC; with
-// `requests`, anything but a question about a switch.
-export function personSpokeSinceGate(projectDir: string, options: { replies?: boolean; requests?: boolean } = {}): boolean {
+// `requests`, anything but a question about a switch. With `intent` and
+// `space`, the turn must be on that work's record.
+export function personSpokeSinceGate(
+  projectDir: string,
+  options: { replies?: boolean; requests?: boolean; intent?: string; space?: string } = {},
+): boolean {
   if (humanTurnState(projectDir, options) !== "acted") return false;
   try {
-    return readAuditShardEvents(projectDir).some((row) =>
+    return readAuditShardEvents(projectDir, options.intent, options.space).some((row) =>
       options.replies ? isReplyTurn(row) : options.requests ? isRequestTurn(row) : row.event === "HUMAN_TURN");
   } catch {
     return false;
@@ -28592,11 +28614,25 @@ export function evaluateGuardRefusal(
       input.attempt.reviewCoverage === "current" &&
       openForWork
     ) {
+      // With Construction checkpoints the Unit's checkpoint is its gate, and
+      // the stage cannot be reported for approval until every Unit's
+      // checkpoint is approved; `next` shows this Unit's checkpoint again.
+      const walk = constructionCheckpointsApply(input.stateContent)
+        ? soloUnitMajorRefusal(input)
+        : null;
+      const checkpointUnit = walk?.live ? walk.unit : null;
+      const showCheckpoint = renderEngineInvocation({
+        route: "orchestrate",
+        args: ["next", ...(input.projectDir ? ["--project-dir", input.projectDir] : [])],
+      }, { harnessDir: harnessDir() });
       remedies.push({
         op: "present-approval-gate",
-        action:
-          "Present the unresolved review findings at the approval gate for the " +
-          "human instead of starting another review pass.",
+        action: checkpointUnit === null
+          ? "Present the unresolved review findings at the approval gate for the " +
+            "human instead of starting another review pass."
+          : `Present the unresolved review findings at unit "${checkpointUnit}"'s checkpoint ` +
+            `for the human instead of starting another review pass: run \`${showCheckpoint}\`, ` +
+            "which shows that checkpoint again, and ask it with the findings.",
         requiresHuman: true,
         executableNow: true,
       });
@@ -35865,7 +35901,8 @@ export type ChangeCheckpoint =
   | "plan-approval"
   | "review-receipt"
   | "summary-confirmation"
-  | "swarm-batch";
+  | "swarm-batch"
+  | "construction-unit";
 
 /** One accepted input change, ready to become a CHANGE_ACCEPTED row. */
 export interface AcceptedChange {
@@ -36517,7 +36554,9 @@ const PLAN_APPROVAL_OFF_WORDS_RE = new RegExp(
 
 const GUARD_POLICY_WORDS_RE = /^(?:guard[- ]policy|change[- ]control)\s+(relaxed|off)$/i;
 
-export function parseTypedGuardSwitchRequest(prompt: string): {
+// With `wordsAnswer`, the words after the flags answer the question that is
+// open, so the flags are for the work open now rather than for new work.
+export function parseTypedGuardSwitchRequest(prompt: string, options: { wordsAnswer?: boolean } = {}): {
   switches: GuardSwitch[];
   settings: Array<{ key: string; value: string }>;
   space: string | null;
@@ -36526,8 +36565,12 @@ export function parseTypedGuardSwitchRequest(prompt: string): {
   error: string | null;
   /** `--plan-approval off` typed as a flag of the new work the message describes. */
   newWorkPlanApprovalOff?: true;
+  /** `--guard-policy relaxed|off` typed as a flag of the new work the message describes. */
+  newWorkGuardPolicy?: "relaxed" | "off";
   /** The plain-words switch asked as a question ("skip plan approval?"). */
   asked?: true;
+  /** The words typed after the flags, when there are any. */
+  words?: string;
 } {
   const trimmed = prompt.trim();
   const trailing = trimmed.match(/[.,;:!?]+$/)?.[0] ?? "";
@@ -36580,6 +36623,7 @@ export function parseTypedGuardSwitchRequest(prompt: string): {
   const error: string | null = null;
   let guardPolicySpelling: "guard-policy" | "change-control" | null = null;
   let described = false;
+  const words: string[] = [];
   let index = configForm ? 2 : 0;
   if (configForm && tokens.length < 4) {
     return { switches: [], settings: [], space: null, intent: null, scope: null, error: null };
@@ -36589,6 +36633,7 @@ export function parseTypedGuardSwitchRequest(prompt: string): {
     const token = tokens[index++];
     if (!configForm && token === "--") {
       described = index < tokens.length;
+      words.push(...tokens.slice(index));
       break;
     }
     const configKey = (
@@ -36601,6 +36646,7 @@ export function parseTypedGuardSwitchRequest(prompt: string): {
     if (configKey === null) {
       if (!configForm) {
         described = true;
+        words.push(token);
         continue;
       }
       return { switches: [], settings: [], space: null, intent: null, scope: null, error: null };
@@ -36675,12 +36721,21 @@ export function parseTypedGuardSwitchRequest(prompt: string): {
   // about the flag. Either way it is not the person's switch at prompt time.
   // Plan approval off typed for the new work is still the person's: creation
   // honors it for the piece of work this chat creates next.
-  const newWorkPlanApprovalOff = described && settings.get("plan-approval") === "off";
+  const forNewWork = described && options.wordsAnswer !== true;
+  const newWorkPlanApprovalOff = forNewWork && settings.get("plan-approval") === "off";
   for (const ceremony of ["summary-confirmation", "plan-approval"] as const) {
-    if (described && settings.get(ceremony) === "off") {
+    if (forNewWork && settings.get(ceremony) === "off") {
       switches.delete(ceremony);
       settings.delete(ceremony);
     }
+  }
+  // Guard Policy typed with the new work is for that work, never for the work
+  // open now: creation honors it for the piece of work this chat creates next.
+  const typedPolicy = settings.get("guard-policy");
+  const newWorkGuardPolicy = forNewWork && (typedPolicy === "relaxed" || typedPolicy === "off") ? typedPolicy : undefined;
+  if (newWorkGuardPolicy !== undefined) {
+    switches.delete("guard-policy");
+    settings.delete("guard-policy");
   }
   return {
     switches: [...switches.values()],
@@ -36690,6 +36745,8 @@ export function parseTypedGuardSwitchRequest(prompt: string): {
     scope,
     error,
     ...(newWorkPlanApprovalOff ? { newWorkPlanApprovalOff: true as const } : {}),
+    ...(newWorkGuardPolicy ? { newWorkGuardPolicy } : {}),
+    ...(words.length > 0 ? { words: words.join(" ") } : {}),
   };
 }
 

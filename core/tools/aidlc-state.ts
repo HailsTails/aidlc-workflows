@@ -166,6 +166,7 @@ import {
   resolveProjectFlag,
   resolveWorkflowSelection,
   sourceClaimCovers,
+  aidlcOwnedSourceKey,
   sourceBaselineAuditFields,
   sourceListingEntriesEqual,
   resolveProjectDir,
@@ -214,6 +215,7 @@ import {
 } from "./aidlc-usage.ts";
 import { deriveTeamUnitProgressModel } from "./aidlc-orchestrate.ts";
 import { promotableTestingPosture } from "./aidlc-testing-posture.ts";
+import { approvedUnitChanges } from "./aidlc-construction-checkpoints.ts";
 
 // All valid checkbox states (lib.ts adds [?] awaiting-approval and [R] revising)
 const VALID_CHECKBOX_STATES: CheckboxState[] = [
@@ -4297,8 +4299,13 @@ function verifyReviewerPrecondition(
       if (!baseline.has(pathKey)) baselineChanged.add(pathKey);
     }
     const claimModels = [...receipts.freshUnitClaims.values()];
+    // AI-DLC's own files (its .gitignore block, AGENTS.md, a second tool's
+    // install) are no Unit's to claim.
+    const aidlcOwned = aidlcOwnedSourceKey(pd);
     baselineUnclaimed = [...baselineChanged]
-      .filter((pathKey) => !claimModels.some((claims) => sourceClaimCovers(pathKey, claims)))
+      .filter((pathKey) =>
+        !aidlcOwned(pathKey) && !claimModels.some((claims) => sourceClaimCovers(pathKey, claims))
+      )
       .sort();
   }
   const resolutionForReconciliation = perUnit ? resolveBoltDag(pd) : null;
@@ -5587,6 +5594,9 @@ function verifyConstructionCheckpointPrecondition(
 ): void {
   if (artifactGuardDisabled(pd)) return;
   const gaps = constructionCheckpointGaps(pd, stateContent, stage);
+  // A change to an approved Unit's work its Guard Policy accepted, made after
+  // its checkpoint and not said yet, is recorded and said once here.
+  if (gaps !== null) observeChangeControl(pd, stateContent, approvedUnitChanges(pd, stateContent));
   if (gaps === null || gaps.length === 0) return;
   refuseStateGuard(pd, stateContent, stage, {
     code: "CONSTRUCTION_CHECKPOINTS_MISSING",

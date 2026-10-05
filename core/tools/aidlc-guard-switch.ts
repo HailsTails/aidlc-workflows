@@ -1,10 +1,13 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { appendAuditEntries, type AuditEntryInput } from "./aidlc-audit.ts";
 import { firstFrontQuestionSince, latestFrontQuestionId, readQuestion } from "./aidlc-question-store.ts";
 import {
+  guardPolicyAtLeast,
   latestPersonTurn,
   personSpokeSinceGate,
   assertChangeControlLedgerWritable,
+  auditBlockField,
+  auditFilePath,
   CEREMONY_ENV,
   CEREMONY_FIELDS,
   CEREMONY_FLAGS,
@@ -229,6 +232,32 @@ function setCeremonyField(content: string, key: CeremonyKey, value: CeremonySett
 
 // Pure state transformation plus audit/output preparation. CLI setters and the
 // human-turn hook call this under the intent lock and commit audit before state.
+// The old value of the Guard Policy row the human-turn hook wrote for `value`
+// as this turn's message arrived: it applies a typed `--guard-policy` before
+// recording the turn, so the row sits just before the latest HUMAN_TURN. A
+// setter run for the same value then says what changed, not that it was
+// "already" so. A row after that turn is the agent's own earlier run.
+function guardPolicyTypedThisTurn(projectDir: string, value: string, intent?: string, space?: string): string | null {
+  let blocks: string[];
+  try {
+    blocks = readFileSync(auditFilePath(projectDir, intent, space), "utf-8").replace(/\r\n/g, "\n").split("\n---\n");
+  } catch {
+    return null;
+  }
+  let turns = 0;
+  for (let index = blocks.length - 1; index >= 0; index--) {
+    const event = auditBlockField(blocks[index], "Event");
+    if (event === "HUMAN_TURN" && ++turns === 2) return null;
+    if (event === "GUARD_POLICY_SET") {
+      return turns === 1 && auditBlockField(blocks[index], "New Value") === value &&
+          auditBlockField(blocks[index], "Source") === "you"
+        ? auditBlockField(blocks[index], "Old Value")
+        : null;
+    }
+  }
+  return null;
+}
+
 export function applyIntentSettings(
   projectDir: string,
   content: string,
@@ -339,8 +368,40 @@ export function applyIntentSettings(
       }
     }
   }
+  // The person's Guard Policy word covers every check in its own direction:
+  // off clears this work's checks kept on, strict its checks turned off, and
+  // relaxed neither, so relaxed never turns a check back on or off. A check
+  // this command names keeps its own setting. A check they had kept on that
+  // the word turns off is a lowering too.
+  const wholePolicy = ccRequest?.source === "you" && changeControl !== null;
+  const namedFences = new Set(fenceRequests.map((request) => request.fence));
+  const withoutPerCheckEntries = (text: string): string => {
+    const off = parseGuardsOffLine(getField(text, GUARDS_OFF_FIELD));
+    const on = parseGuardsOnLine(getField(text, GUARDS_ON_FIELD));
+    const keepOff = changeControl === "strict" ? off.filter((fence) => namedFences.has(fence)) : off;
+    const keepOn = changeControl === "off" ? on.filter((fence) => namedFences.has(fence)) : on;
+    let updated = text;
+    if (keepOff.length !== off.length) updated = setGuardsOffLine(updated, keepOff);
+    if (keepOn.length !== on.length) updated = setGuardsOnLine(updated, keepOn);
+    return updated;
+  };
+  if (wholePolicy) {
+    const policyContent = setGuardPolicyLine(content, formatGuardPolicy(changeControl, ccRequest.source));
+    const cleared = withoutPerCheckEntries(policyContent);
+    if (cleared !== policyContent) {
+      const now = resolveFences(cc, content);
+      const after = resolveFences(resolveGuardPolicy(projectDir, cleared, { selection }), cleared);
+      for (const fence of SWITCHABLE_GUARD_FENCES) {
+        if (!namedFences.has(fence) && now[fence].value === "on" && after[fence].value === "off") {
+          lowering.push({ key: `guard.${fence}`, value: "off" });
+        }
+      }
+    }
+  }
+  // Only a value below the one in force lowers anything: off to relaxed raises
+  // the checks, and needs no one's word.
   if (ccRequest?.source === "you" && (changeControl === "relaxed" || changeControl === "off") &&
-    (cc.rawStateValue !== formatGuardPolicy(changeControl, ccRequest.source) || cc.conflict !== undefined)) {
+    !guardPolicyAtLeast(changeControl, cc.value)) {
     lowering.push({ key: "guard-policy", value: changeControl });
   }
   // Summary confirmation off removes the person's `Looks correct` checkpoint,
@@ -443,8 +504,13 @@ export function applyIntentSettings(
   if (ccRequest !== undefined && changeControl !== null) {
     const previous = cc.rawStateValue;
     const line = formatGuardPolicy(changeControl, ccRequest.source);
+    const alreadyLine = (): string => {
+      const appliedFrom = guardPolicyTypedThisTurn(projectDir, changeControl, selection.intent, selection.space);
+      if (appliedFrom === null) return `Guard Policy is already ${line}`;
+      return appliedFrom === changeControl ? `Guard Policy is ${line}` : `Guard Policy changed: ${appliedFrom} to ${line}`;
+    };
     if (previous === line && cc.stateField === GUARD_POLICY_FIELD && getField(content, CHANGE_CONTROL_FIELD) === null) {
-      if (!scopeDefault("guard-policy")) lines.push(`Guard Policy is already ${line}`);
+      if (!scopeDefault("guard-policy")) lines.push(alreadyLine());
     } else {
       // Every write keeps only the Guard Policy line, even when its stored text is unchanged.
       // Resolving a conflict records one GUARD_POLICY_SET from the prior effective policy, not a name-only rename.
@@ -468,7 +534,35 @@ export function applyIntentSettings(
           lines.push(`Guard Policy changed: ${oldDisplay} to ${line}`);
         }
       } else if (!scopeDefault("guard-policy")) {
-        lines.push(`Guard Policy is already ${line}`);
+        lines.push(alreadyLine());
+      }
+    }
+  }
+  if (wholePolicy) {
+    const cleared = withoutPerCheckEntries(content);
+    if (cleared !== content) {
+      const policy = resolveGuardPolicy(projectDir, content, { selection });
+      const before = resolveFences(policy, content);
+      const after = resolveFences(policy, cleared);
+      content = cleared;
+      for (const fence of SWITCHABLE_GUARD_FENCES) {
+        if (before[fence].value === after[fence].value) continue;
+        const fenceFields = {
+          Guard: fence, Scope: getField(content, "Scope") ?? "", Source: ccRequest.source,
+          ...(askedIn && after[fence].value === "off" ? { "Person Reply": askedIn } : {}),
+        };
+        audit.push(
+          after[fence].value === "off"
+            ? { eventType: "GUARD_DISABLED", fields: fenceFields }
+            : { eventType: "GUARD_RESTORED", fields: fenceFields },
+        );
+        if (!saidAsAsked(`guard.${fence}`)) {
+          lines.push(
+            after[fence].value === "off"
+              ? `The ${checkLabel(fence)} is off for this piece of work (logged; back on for the next one)`
+              : `The ${checkLabel(fence)} is back on for this piece of work`,
+          );
+        }
       }
     }
   }
@@ -559,6 +653,11 @@ export function applyIntentSettings(
   return { content, audit, lines };
 }
 
+// A check as the person knows it: "review freeze check", "reviewer read scope check".
+function checkLabel(fence: string): string {
+  return `${fence.replace("reviewer-scope", "reviewer read scope").replaceAll("-", " ")} check`;
+}
+
 // What the person hears when the agent turned one of their checks off because
 // they asked in the chat: what is off, for this piece of work, in their words,
 // and the way back.
@@ -569,9 +668,7 @@ function askedSwitchLine(item: GuardSwitch, words: string | null, previousPolicy
     return `Guard Policy is ${item.value} for this piece of work, ${why}. ` +
       `Say "put Guard Policy back to ${previousPolicy}" to restore it (${entry} --guard-policy ${previousPolicy}).`;
   }
-  const label = item.key === "summary-confirmation"
-    ? "summary confirmation"
-    : `${item.key.slice("guard.".length).replace("reviewer-scope", "reviewer read scope").replaceAll("-", " ")} check`;
+  const label = item.key === "summary-confirmation" ? "summary confirmation" : checkLabel(item.key.slice("guard.".length));
   return `The ${label} is off for this piece of work, ${why}. ` +
     `Say "turn it back on" to restore it (${entry} config set ${item.key} on).`;
 }
@@ -593,16 +690,27 @@ export function applyTypedGuardSwitchPrompt(
   projectDir: string,
   sessionId: string,
   prompt: string,
+  options: { wordsAnswer?: boolean } = {},
 ): TypedGuardSwitchOutcome | null {
-  const parsed = parseTypedGuardSwitchRequest(prompt);
+  const parsed = parseTypedGuardSwitchRequest(prompt, options);
   if (process.env.AIDLC_UNATTENDED === "1") return null;
   // Plan approval back on, typed before the work exists, withdraws an earlier off.
   if (parsed.settings.some((setting) => setting.key === "plan-approval" && setting.value === "on")) {
     consumePlanApprovalCreationGrant(projectDir, sessionId);
   }
+  // So does Guard Policy strict for an earlier relaxed or off: the latest word stands.
+  if (parsed.settings.some((setting) => setting.key === "guard-policy" && setting.value === "strict")) {
+    consumeGuardPolicyCreationGrant(projectDir, sessionId);
+  }
+  const forNewWork: TypedGuardSwitchOutcome[] = [];
   if (parsed.newWorkPlanApprovalOff === true && parsed.error === null) {
-    const outcome = grantPlanApprovalOffAtCreation(projectDir, sessionId, parsed.space, true);
-    if (parsed.switches.length === 0) return outcome;
+    forNewWork.push(grantPlanApprovalOffAtCreation(projectDir, sessionId, parsed.space, true));
+  }
+  if (parsed.newWorkGuardPolicy !== undefined && parsed.error === null) {
+    forNewWork.push(grantGuardPolicyAtCreation(projectDir, sessionId, parsed.space, parsed.newWorkGuardPolicy, true));
+  }
+  if (forNewWork.length > 0 && parsed.switches.length === 0) {
+    return { applied: forNewWork.every((outcome) => outcome.applied), lines: forNewWork.flatMap((outcome) => outcome.lines) };
   }
   if (parsed.switches.length === 0) return null;
   if (parsed.error !== null) return { applied: false, lines: [parsed.error] };
@@ -629,6 +737,10 @@ export function applyTypedGuardSwitchPrompt(
       // confirmation): the work this chat creates next starts with it off.
       if (guardSwitches.length === 0 && parsed.switches.some((wanted) => wanted.key === "plan-approval")) {
         return grantPlanApprovalOffAtCreation(projectDir, sessionId, space);
+      }
+      const policy = guardSwitches.find((wanted) => wanted.key === "guard-policy");
+      if (policy !== undefined && guardSwitches.length === 1 && (policy.value === "relaxed" || policy.value === "off")) {
+        return grantGuardPolicyAtCreation(projectDir, sessionId, space, policy.value);
       }
       const wanted = guardSwitches[0];
       if (wanted === undefined) return null;
@@ -873,4 +985,78 @@ export function planApprovalOffForOpenRequest(projectDir: string, sessionId: str
 export function consumePlanApprovalCreationGrant(projectDir: string, sessionId: string | null): void {
   if (!sessionId) return;
   removePlanApprovalRuntimeRecord(planApprovalCreationGrantPath(projectDir, sessionId));
+}
+
+// Guard Policy relaxed or off, typed by the person with the new work or before
+// any work exists, is theirs for the piece of work this chat creates next, the
+// same way as plan approval off: their words, kept by the human-turn hook, and
+// bound to the request they answered.
+interface GuardPolicyCreationGrant extends PlanApprovalCreationGrant {
+  value: "relaxed" | "off";
+}
+
+function guardPolicyCreationGrantPath(projectDir: string, sessionId: string): string {
+  const segment = sessionId.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96);
+  return planApprovalRuntimeFile(projectDir, `guard-policy-at-creation-${segment}.json`);
+}
+
+function grantGuardPolicyAtCreation(
+  projectDir: string,
+  sessionId: string,
+  space: string | null,
+  value: "relaxed" | "off",
+  withDescription = false,
+): TypedGuardSwitchOutcome {
+  try {
+    const memoryStrict = memoryGuardPolicyDeclarations(projectDir, { ...(space === null ? {} : { space }), sessionId })
+      .find((declaration) => declaration.value === "strict");
+    if (memoryStrict !== undefined) return { applied: false, lines: [guardPolicyMemoryStrictRefusal(memoryStrict)] };
+    const grant: GuardPolicyCreationGrant = {
+      version: 1,
+      session: sessionId,
+      value,
+      request: withDescription ? null : latestFrontQuestionId(projectDir, OPEN_QUESTION_WINDOW_MS),
+      recordedAt: isoTimestamp(),
+      ...(withDescription ? { withDescription: true as const } : {}),
+    };
+    writePlanApprovalRuntimeRecord(projectDir, guardPolicyCreationGrantPath(projectDir, sessionId), `${JSON.stringify(grant)}\n`);
+  } catch (error) {
+    return { applied: false, lines: [errorMessage(error)] };
+  }
+  return {
+    applied: true,
+    lines: [withDescription
+      ? `Guard Policy ${value} for the work you are asking for (set by you).`
+      : `Guard Policy ${value} for the piece of work you start now (set by you).`],
+  };
+}
+
+/** The Guard Policy the person asked for in this chat before this work existed, for the request it answered. */
+export function guardPolicyCreationGranted(
+  projectDir: string,
+  sessionId: string | null,
+  request: string | null = null,
+): "relaxed" | "off" | null {
+  if (!sessionId || request === null || process.env.AIDLC_UNATTENDED === "1") return null;
+  try {
+    const grant = readPlanApprovalRuntimeRecord<GuardPolicyCreationGrant>(
+      guardPolicyCreationGrantPath(projectDir, sessionId),
+      "Guard Policy creation grant",
+    );
+    if (grant?.version !== 1 || grant.session !== sessionId || (grant.value !== "relaxed" && grant.value !== "off")) {
+      return null;
+    }
+    const answered = grant.request ??
+      firstFrontQuestionSince(projectDir, grant.recordedAt, OPEN_QUESTION_WINDOW_MS, { routing: grant.withDescription === true });
+    return answered !== null && (answered === request || readQuestion(projectDir, request)?.composedFrom === answered)
+      ? grant.value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Spent by the next piece of work this chat creates, as plan approval off is. */
+export function consumeGuardPolicyCreationGrant(projectDir: string, sessionId: string | null): void {
+  if (!sessionId) return;
+  removePlanApprovalRuntimeRecord(guardPolicyCreationGrantPath(projectDir, sessionId));
 }

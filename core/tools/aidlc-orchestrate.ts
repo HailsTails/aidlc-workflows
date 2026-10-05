@@ -407,6 +407,7 @@ import { sameGuardOperation } from "./aidlc-guard-operation.ts";
 import {
   isPlanApprovalBeat,
   legacyPlanApprovalOffNotice,
+  openPlanApprovalQuestion,
   publishPlanApprovalAsk,
   publishPlanApprovalSkip,
   routeCodeGenerationPlanApproval,
@@ -415,6 +416,7 @@ import {
 } from "./aidlc-plan-approval-ask.ts";
 import { codeGenerationResumeNarration, promotableTestingPosture } from "./aidlc-testing-posture.ts";
 import {
+  guardPolicyCreationGranted,
   planApprovalOffAtCreation,
   planApprovalEnv,
   planApprovalOffForOpenRequest,
@@ -1866,14 +1868,16 @@ function guardPolicyLowered(flags: ParsedFlags): boolean {
 function carriedRoutingFlags(flags: ParsedFlags): RoutingCarried {
   const extra: string[] = [];
   if (flags.review) extra.push(`--review ${flags.review}`);
-  if (flags.changeControl && !guardPolicyLowered(flags)) extra.push(`--guard-policy ${flags.changeControl}`);
+  // The human-turn hook keeps a lowered Guard Policy typed with the request
+  // off the open work, so it rides every answer and lands on the work picked.
+  if (flags.changeControl) extra.push(`--guard-policy ${flags.changeControl}`);
   const existingWork = `${carriedCreationFlags(flags)}${extra.length > 0 ? ` ${extra.join(" ")}` : ""}`;
   const stages: string[] = [];
   if (flags.planChanges?.skip.length) stages.push(`--skip ${flags.planChanges.skip.join(",")}`);
   if (flags.planChanges?.add.length) stages.push(`--add ${flags.planChanges.add.join(",")}`);
   return {
     creation: carriedCreationFlags(flags),
-    newWork: `${existingWork}${guardPolicyLowered(flags) ? ` --guard-policy ${flags.changeControl}` : ""}`,
+    newWork: existingWork,
     existingWork,
     planChanges: stages.length > 0 ? ` ${stages.join(" ")}` : "",
   };
@@ -2238,6 +2242,34 @@ function openStageQuestion(projectDir: string, stateContent: string): { stage: s
   }
 }
 
+// The stage whose approval gate is open in a solo walk: the current stage is
+// held at its gate. Null under autonomous Construction, or when unreadable.
+function openApprovalGateStage(stateContent: string): string | null {
+  try {
+    if (getField(stateContent, "Construction Autonomy Mode")?.trim() === "autonomous") return null;
+    const stage = getField(stateContent, "Current Stage")?.trim() ?? "";
+    if (stage.length === 0) return null;
+    return parseCheckboxes(stateContent).find((row) => row.slug === stage)?.state === "awaiting-approval" ? stage : null;
+  } catch {
+    return null;
+  }
+}
+
+// Words while a stage's approval gate is open: the conductor reads whether
+// they answer it, the same split as openQuestionReplyDirective.
+function openGateReplyDirective(stage: string, requestId: string): PrintDirective {
+  const orchestrate = aidlcToolInvocation("orchestrate");
+  return printDirective(
+    `Stage "${stage}" is waiting for the person's approval, and their reply may answer it. Read it. If it ` +
+      `approves, run \`${orchestrate} report --stage ${shellArg(stage)} --result approved --user-input "Approve"\`; ` +
+      `if it asks for changes, run \`${orchestrate} report --stage ${shellArg(stage)} --result rejected ` +
+      `--user-input "Request Changes"\`. Then follow what it returns. If it is about something else, such as new ` +
+      `work or a change to the plan, run \`${orchestrate} next --request ${requestId}\` and follow what it returns: ` +
+      "the engine kept their words and asks them where that work belongs. If you cannot tell which it is, ask the " +
+      "person in one short question and follow their answer.",
+  );
+}
+
 // Prose while the current stage has a question the person has not answered
 // yet (the audit pairing the Stop hook reads) may be its answer, or something
 // else. Reading which is the conductor's job, so it gets a command for each:
@@ -2264,6 +2296,24 @@ function openQuestionReplyDirective(stage: string, checkpoint: string | null, re
       `or a change to the plan, run \`${orchestrate} next --request ${requestId}\` and follow what it returns: the ` +
       "engine kept their words and asks them where that work belongs. If you cannot tell which it is, ask the " +
       "person in one short question and follow their answer.",
+  );
+}
+
+// Prose while the engine's code plan question is open: the conductor reads
+// whether it answers that question (or, while the person edits the files,
+// says they are done), the same split as openQuestionReplyDirective.
+function openPlanQuestionReplyDirective(editing: boolean, requestId: string): PrintDirective {
+  const orchestrate = aidlcToolInvocation("orchestrate");
+  const answer = editing
+    ? `The person is editing the code plan files themselves. If their reply says they are done, run bare \`${orchestrate} next\`.`
+    : "The code plan question is open, and the person's reply may answer it. Read it. If it does, record the choice " +
+      `they made with \`${aidlcToolInvocation("log")} answer --stage code-generation --checkpoint plan-approval ` +
+      `--details "<their choice>"\`, then run bare \`${orchestrate} next\`.`;
+  return printDirective(
+    `${answer} If it is about something else, such as new work or a change to the plan, run ` +
+      `\`${orchestrate} next --request ${requestId}\` and follow what it returns: the engine kept their words and asks ` +
+      "them where that work belongs. If you cannot tell which it is, ask the person in one short question and follow " +
+      "their answer.",
   );
 }
 
@@ -3366,6 +3416,16 @@ function parseNextFlags(args: string[]): ParsedFlags {
   return flags;
 }
 
+// What follows `/aidlc` or `$aidlc` is the person's reply, not a command, when
+// `next` reads it as nothing but words: no flag, scope, verb or noun of its
+// own ("/aidlc approve the code plan"). parseNextFlags is the one reading of
+// those arguments, so a flag or verb it learns is a command here at once.
+export function nextArgsAreOnlyWords(args: string[]): boolean {
+  if (args.length === 0) return false;
+  const parsed = parseNextFlags(args);
+  return typeof parsed.intent === "string" && Object.keys(parsed).length === 1;
+}
+
 // Appended to the `done` reason emitted when the ACTIVE intent has no in-scope
 // stage left (a completed workflow). Without this, a scope-runner's forwarding
 // loop ("repeat until done") dead-ends here with no cue that new, unrelated
@@ -3596,6 +3656,17 @@ function activeWorkLabel(stateContent: string): string {
 function routedGuardPolicyNote(flags: ParsedFlags, projectDir: string, question: StoredQuestion): string {
   if (!guardPolicyLowered(flags)) return "";
   const value = flags.changeControl as string;
+  // Typed with the new work, it is that work's: creation applies the words the
+  // human-turn hook kept for this chat.
+  let session: string | null = null;
+  try {
+    session = resolveInvokingSessionId(projectDir);
+  } catch {
+    session = null;
+  }
+  if (guardPolicyCreationGranted(projectDir, session, question.id) === value) {
+    return `Guard Policy ${value} for the new work (set by you).`;
+  }
   const words = value === "off" ? "turn the guard policy off" : "relax the guard policy";
   const target = question.askedAbout?.targets.length === 1 ? question.askedAbout.targets[0] : undefined;
   let askedState: string | null = null;
@@ -7276,6 +7347,41 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     flags.intent && !flags.scope && !flags.positionalScope && !flags.resume && question === undefined &&
     !isTeamUnitOwnership(stateContent)
   ) {
+    // The engine's own code plan question takes the reply from any chat, so
+    // words beside it ("approve the code plan", typed in a new chat) are read
+    // as its answer first, never asked about as new work.
+    const planQuestion = openPlanApprovalQuestion(pd, flags.intent);
+    if (planQuestion !== null) {
+      // A later pick against the one on record: their latest word stands.
+      if (planQuestion.answered && planQuestion.isChoice && planQuestion.overrules !== null) {
+        const log = aidlcToolInvocation("log");
+        emit(printDirective(planQuestion.overrules === "request-changes"
+          ? "The person asked for changes to the code plan earlier and now approves it. Run " +
+            `\`${log} answer --stage code-generation --checkpoint plan-approval --details 'Approve Plan'\`, then bare ` +
+            `\`${aidlcToolInvocation("orchestrate")} next\`: it builds the plan.`
+          : "The person approved the code plan earlier and now picks another choice, and nothing is built yet. Run " +
+            `\`${log} answer --stage code-generation --checkpoint plan-approval --details 'Review the plan'\`, then bare ` +
+            `\`${aidlcToolInvocation("orchestrate")} next\`: the plan question comes back before anything is built. ` +
+            "Ask what they want changed when they did not say."));
+        return;
+      }
+      // Exactly one of its choices, already recorded from their reply.
+      if (planQuestion.answered && planQuestion.isChoice) {
+        emit(printDirective(
+          "The person's reply answered the code plan question, and it is recorded. Run bare " +
+            `\`${aidlcToolInvocation("orchestrate")} next\`: it carries out their choice.`,
+        ));
+        return;
+      }
+      if (!planQuestion.answered) {
+        const words = saveQuestion(
+          pd, flags.intent, "", "routing", { space: selection.space, targets: routingTargets() }, false, undefined,
+          undefined, routingSettings(carriedRoutingFlags(flags)),
+        );
+        emit(openPlanQuestionReplyDirective(planQuestion.editing, words.id));
+        return;
+      }
+    }
     const open = openStageQuestion(pd, stateContent);
     if (open !== null) {
       // The settings typed with these words ride on with them.
@@ -7284,6 +7390,17 @@ function routeNext(args: string[], projectDir: string | undefined): void {
         undefined, routingSettings(carriedRoutingFlags(flags)),
       );
       emit(openQuestionReplyDirective(open.stage, auditBlockField(open.block, "Checkpoint"), words.id));
+      return;
+    }
+    // Words at an approval gate the person is looking at ("approve") may be
+    // its answer, read the same way.
+    const gateStage = openApprovalGateStage(stateContent);
+    if (gateStage !== null) {
+      const words = saveQuestion(
+        pd, flags.intent, "", "routing", { space: selection.space, targets: routingTargets() }, false, undefined,
+        undefined, routingSettings(carriedRoutingFlags(flags)),
+      );
+      emit(openGateReplyDirective(gateStage, words.id));
       return;
     }
   }

@@ -545,6 +545,85 @@ describe("the engine asks for Plan Approval", () => {
     expect(next(proj).plan_approval).toEqual({ status: "approved" });
   });
 
+  // A new chat whose first message is "/aidlc approve the code plan": the words
+  // answer the open question the first time. They are not asked about as new
+  // work, and the agent's record of the choice is not refused.
+  test("a reply typed after /aidlc in a new chat answers the plan question, with no new-work question", () => {
+    const proj = project();
+    askFor(proj);
+    reply(proj, "/aidlc approve the code plan", OTHER_SESSION);
+    const read = next(proj, ["approve", "the", "code", "plan"]);
+    expect(read.kind, JSON.stringify(read)).toBe("print");
+    expect(read.ask_type).toBeUndefined();
+    expect(read.message).toContain("--checkpoint plan-approval");
+    const recorded = answer(proj, "Approve Plan");
+    expect(recorded.code, recorded.message).toBe(0);
+    expect(auditText(proj)).toContain("**Person Reply**: approve the code plan");
+    expect(next(proj).plan_approval).toEqual({ status: "approved" });
+  });
+
+  test("an exact pick typed after /aidlc is recorded at once, and its words lead straight to the build", () => {
+    const proj = project();
+    askFor(proj);
+    reply(proj, "/aidlc 1");
+    expect(auditText(proj)).toContain("**Event**: PLAN_APPROVAL_RECORDED");
+    const read = next(proj, ["1"]);
+    expect(read.kind, JSON.stringify(read)).toBe("print");
+    expect(read.message).toContain("it is recorded");
+    expect(next(proj).plan_approval).toEqual({ status: "approved" });
+  });
+
+  // The person's latest pick stands: a Request Changes after an exact approval
+  // is never reported as recorded while the approval builds.
+  test("a later Request Changes after an exact approval names the step that brings the plan back", () => {
+    const proj = project();
+    askFor(proj);
+    reply(proj, "/aidlc 1");
+    expect(auditText(proj)).toContain("**Event**: PLAN_APPROVAL_RECORDED");
+    reply(proj, "/aidlc Request Changes");
+    const read = next(proj, ["Request", "Changes"]);
+    expect(read.kind, JSON.stringify(read)).toBe("print");
+    expect(read.message).not.toContain("it is recorded");
+    expect(read.message).toContain("--details 'Review the plan'");
+    const reviewed = answer(proj, "Review the plan");
+    expect(reviewed.code, reviewed.message).toBe(0);
+    const again = next(proj);
+    expect(again.kind, JSON.stringify(again)).toBe("ask");
+    expect(again.ask_type).toBe("plan-approval");
+  });
+
+  // Both halves of one message are done: the switch lands on this work, and
+  // the choice typed after it answers the plan question.
+  test("a switch typed before a plan choice applies to this work, and the choice is recorded", () => {
+    const proj = project("strict");
+    askFor(proj);
+    reply(proj, "/aidlc --guard-policy relaxed Approve Plan");
+    expect(readFileSync(seededStateFile(proj), "utf-8")).toContain("- **Guard Policy**: relaxed (set by you)");
+    expect(auditText(proj)).toContain("**Event**: PLAN_APPROVAL_RECORDED");
+    expect(next(proj).plan_approval).toEqual({ status: "approved" });
+  });
+
+  test("Guard Policy off typed before a plan choice lands on this work, which then builds", () => {
+    const proj = project("strict");
+    askFor(proj);
+    reply(proj, "/aidlc --guard-policy off Approve Plan");
+    expect(readFileSync(seededStateFile(proj), "utf-8")).toContain("- **Guard Policy**: off (set by you)");
+    const build = next(proj);
+    expect(build.kind, JSON.stringify(build)).toBe("run-stage");
+  });
+
+  test("a command typed after /aidlc is still no answer to the plan question", () => {
+    const proj = project();
+    askFor(proj);
+    reply(proj, "/aidlc --status");
+    const early = answer(proj, "Approve Plan");
+    expect(early.code).not.toBe(0);
+    expect(auditText(proj)).not.toContain("**Event**: PLAN_APPROVAL_RECORDED");
+    // The step it names works once they reply.
+    reply(proj, "approve it");
+    expect(answer(proj, "Approve Plan").code).toBe(0);
+  });
+
   test("an answer from another chat on the same work counts", () => {
     const proj = project();
     askFor(proj);
@@ -801,6 +880,29 @@ describe("the engine asks for Plan Approval", () => {
     askFor(proj);
     reply(proj, "1");
     writePlan(proj, "- [ ] Step 2: add a fast path\n");
+    expect(next(proj).kind).toBe("ask");
+  });
+
+  // With Guard Policy off or relaxed a changed file is not a new question: a
+  // note added to the answered questions file, or a checkout that rewrote its
+  // line endings, keeps the person's approval. Strict still asks.
+  test.each(["relaxed", "off"] as const)("under %s, a note or new line endings in the answered questions file keep the approval", (policy) => {
+    const proj = project(policy);
+    askFor(proj);
+    reply(proj, "1");
+    const path = join(stageDir(proj), "code-generation-questions.md");
+    writeFileSync(path, `${readFileSync(path, "utf-8").replace(/\n/g, "\r\n")}\r\nNote: checked with the team.\r\n`, "utf-8");
+    const build = next(proj);
+    expect(build.kind, JSON.stringify(build)).toBe("run-stage");
+    expect(build.plan_approval).toEqual({ status: "approved" });
+  });
+
+  test("under strict, a note added to the answered questions file is asked about again", () => {
+    const proj = project("strict");
+    askFor(proj);
+    reply(proj, "1");
+    const path = join(stageDir(proj), "code-generation-questions.md");
+    writeFileSync(path, `${readFileSync(path, "utf-8")}\nNote: checked with the team.\n`, "utf-8");
     expect(next(proj).kind).toBe("ask");
   });
 
@@ -2147,6 +2249,63 @@ describe("what the engine names while a plan waits", () => {
     mkdirSync(dirname(linked), { recursive: true });
     linkSync(join(proj, "src", "base.ts"), linked);
     expect(guardWrite(proj, linked).code).toBe(2);
+  });
+});
+
+// A project whose files cannot all be read (a very large repository, a link
+// that loops) is no stop when Guard Policy is relaxed or off, or plan approval
+// is off: the plan is asked about, or built as written, and the build starts
+// with one line. Strict with plan approval on still names the repair.
+describe("a project whose files cannot all be read", () => {
+  function unreadable<T>(run: () => T): T {
+    const before = process.env.AIDLC_TEST_SOURCE_MAX_ENTRIES;
+    process.env.AIDLC_TEST_SOURCE_MAX_ENTRIES = "1";
+    try {
+      return run();
+    } finally {
+      if (before === undefined) delete process.env.AIDLC_TEST_SOURCE_MAX_ENTRIES;
+      else process.env.AIDLC_TEST_SOURCE_MAX_ENTRIES = before;
+    }
+  }
+
+  test.each(["relaxed", "off"] as const)("under %s the plan is asked, approved and built, with one line", (policy) => {
+    const proj = project(policy);
+    unreadable(() => {
+      writePlan(proj);
+      const asked = next(proj);
+      expect(asked.kind, JSON.stringify(asked)).toBe("ask");
+      expect(asked.ask_type).toBe("plan-approval");
+      reply(proj, "1");
+      expect(auditText(proj)).toContain("**Event**: PLAN_APPROVAL_RECORDED");
+      const build = next(proj);
+      expect(build.kind, JSON.stringify(build)).toBe("run-stage");
+      expect(build.plan_approval).toEqual({ status: "approved" });
+      const begun = posture(proj, "begin", null);
+      expect(begun.status, begun.stderr).toBe(0);
+      expect(begun.stdout).toContain("Building without a check of the project's files");
+    });
+  });
+
+  test("plan approval off under strict builds the plan as written", () => {
+    const proj = project("strict", "off");
+    unreadable(() => {
+      writePlan(proj);
+      const build = next(proj);
+      expect(build.kind, JSON.stringify(build)).toBe("run-stage");
+      expect(build.plan_approval?.status).toBe("approved");
+      const begun = posture(proj, "begin", null);
+      expect(begun.status, begun.stderr).toBe(0);
+    });
+  });
+
+  test("strict with plan approval on still says what to repair before asking", () => {
+    const proj = project("strict");
+    unreadable(() => {
+      writePlan(proj);
+      const stopped = next(proj);
+      expect(stopped.kind, JSON.stringify(stopped)).toBe("error");
+      expect(stopped.message).toContain("cannot be presented");
+    });
   });
 });
 
