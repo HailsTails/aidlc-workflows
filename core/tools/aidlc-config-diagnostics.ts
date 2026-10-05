@@ -876,17 +876,24 @@ const HARNESS_CLI: Record<
     required: false,
     install: "Install the Cursor CLI and ensure `cursor --version` works; IDE-only installs may omit it.",
   },
+  // The 2.x line is where the hooks, skills and workspace default agent this
+  // distribution relies on shipped; the guide asks for 2.6 or later.
   kiro: {
     command: "kiro-cli",
     required: true,
-    install: "Install Kiro CLI and ensure `kiro-cli --version` works.",
+    minimumVersion: "2.6.0",
+    install: "Install or upgrade Kiro CLI to 2.6.0 or later.",
   },
-  // Probed so a machine with only Kiro CLI detects this row next to the kiro
-  // row: first-run setup then asks instead of silently choosing the legacy one.
+  // Probed so a machine with only a supported Kiro CLI detects this row next to
+  // the kiro row: first-run setup then asks instead of silently choosing the
+  // legacy one. 2.24.1 is the oldest Kiro CLI this row has been checked on (its
+  // v3 engine runs the hooks, and `/aidlc --doctor` reports no problem); an
+  // older one counts only for the kiro row, and doctor warns about it here.
   "kiro-ide": {
     command: "kiro-cli",
     required: false,
-    install: "Kiro CLI is optional here: install it only to run AI-DLC from a terminal, and ensure `kiro-cli --version` works.",
+    minimumVersion: "2.24.1",
+    install: "Kiro CLI is optional here: to run AI-DLC from a terminal, install or upgrade Kiro CLI to 2.24.1 or later; Kiro IDE-only installs may omit it.",
   },
   opencode: {
     command: "opencode",
