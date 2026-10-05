@@ -380,8 +380,10 @@ recovery unspent again), so every later edit is re-checked and asked about once.
 `WORKFLOW_STARTED`, `STAGE_JUMPED`, and a `workspace_requires`
 `STAGE_STARTED` record content-addressed source-listing baselines. After every
 applicable unit has fresh modern evidence, completion compares baseline to the
-current listing and refuses any changed application-source path outside the
-fresh claims union. Unit-major Construction always uses the workflow/jump
+current listing. Under Guard Policy strict it refuses any changed
+application-source path outside the fresh claims union; under relaxed or off it
+records those paths once as `CHANGE_ACCEPTED` (checkpoint `review-receipt`) and
+names them to the person in one line. Unit-major Construction always uses the workflow/jump
 boundary because source work can precede its late `STAGE_STARTED`. Equal-second
 cross-shard rows that would decide a boundary or newest claimant fail closed
 instead of trusting shard filename order.
@@ -428,17 +430,29 @@ Registered paths are content-bound regardless of encoding and are included in
 the canonical listing and autonomous swarm Source Commit. Absolute, traversing,
 framework, sensor-cache, and dependency/cache paths are rejected. Missing
 registered repositories contribute an explicit marker; unreadable, unstable,
-over-budget, or malformed boundaries remain `unbindable` and fail closed.
+over-budget, or malformed boundaries remain `unbindable` and fail closed under
+Guard Policy strict. Under relaxed or off, source that cannot be bound or read
+now, a Unit's reviewed-source snapshot or written review missing on this
+machine, and a Unit manifest that claims a path after its review keep the
+recorded verdict: the review counts, the person hears one line, and the change
+is recorded once as `CHANGE_ACCEPTED`.
 
 Migration is deliberate: a pre-upgrade workflow with no baseline skips the
 unclaimed check, and a fieldless per-unit receipt retains the #629 global
 policy. A present but `unbindable`, missing, or corrupt modern baseline/unit
-snapshot fails closed. `AIDLC_SKIP_SOURCE_FRESHNESS=1` bypasses both global and
+snapshot fails closed under strict; under relaxed or off a missing or corrupt
+stage-entry baseline skips the unclaimed check with one line, and a missing unit
+snapshot keeps the unit's verdict. `AIDLC_SKIP_SOURCE_FRESHNESS=1` bypasses both global and
 per-unit checks; missing/invalid-manifest receipts explicitly record
 `Unit Source Binding Bypass: true`, so the switch must be present again at
 completion. In a modern Bolt, finalize also verifies the attested base-to-
 worktree footprint is a subset of the reviewed manifest claims before the
-settled-swarm stage-level exemption applies.
+settled-swarm stage-level exemption applies. Under a relaxed or off Guard
+Policy a Unit's manifest that changed after its review, and files the Unit
+changed outside its manifest, keep the review: finalize records each once as
+`CHANGE_ACCEPTED` and returns its line in the Unit's `change_notices`. Swarm
+prepare likewise keeps parent source that moved after Plan Approval (generation
+start records it and says it), as the single-agent build does.
 
 Swarm footprint verification and immutable Source Commit creation apply the
 same boundary. Clean-filter raw-byte replacement is restricted to exact
@@ -699,8 +713,9 @@ remain allowed. Memory-held strict also forces any previously lowered fence
 back on while that line stands, unless a machine-wide kill switch takes
 precedence. The persisted `Guards Off` entry remains and takes effect again
 only after the memory line no longer holds strict. Scope-owned Guard Policy
-follows a stricter new scope default, while a lower default preserves the
-stored value until the person asks for the lower value. Ceremony values still
+follows a stricter new scope default. A lower default follows when the person
+asked for the scope change; otherwise the stored value stays and the output
+says so in one line. Ceremony values still
 follow the new scope under memory policy, which controls the effective Guard
 Policy. Changed stored values or sources are audited with scope provenance;
 explicit overrides and absent legacy rows are preserved. Explicit Guard
@@ -739,7 +754,8 @@ current line with source `you` need no key.
 Direct `intent create --guard-policy relaxed|off` from chat is refused when the
 value is below the scope default: create
 the piece of work, and the agent runs the setter when the person asks for the
-lower value; scope defaults apply without asking.
+lower value; a scope's own default applies at creation without asking, and on a
+scope change a lower default applies when the person asked for that change.
 `AIDLC_UNATTENDED=1` suppresses prompt-time application and refuses CLI lowering
 before the presence bypass can apply.
 The session-start hook keeps its `presence-bypass-<session>` stamp in the Plan
@@ -1301,8 +1317,8 @@ state (`in-progress`, `awaiting-approval`, `revising`, `completed`, `pending`,
 closed `op` from `GUARD_REMEDY_OPS` in `aidlc-lib.ts` (`present-approval-gate`,
 `request-review`, `start-recovery-review`, `apply-repairs-then-request`,
 `record-verdict`, `retry-pending`, `request-changes`, `finish-revision`, `redo-jump`,
-`restore-or-jump`, `restart-stage`, `redo-unit-step`, `change-scope`, `restore-scope`,
-`abort-bolt`, `record-unit-completion`, `repair-source-boundary`, `reconfirm-summary`,
+`restore-or-jump`, `restart-stage`, `redo-unit-step`, `reopen-unit-step`,
+`review-advisory-gate`, `change-scope`, `restore-scope`, `abort-bolt`, `record-unit-completion`, `repair-source-boundary`, `reconfirm-summary`,
 `unset-unattended`, `lower-fence`). Routing decisions compare `op` and never the
 remedy sentence; the directive contract refuses an unknown `op`. `lower-fence`
 is the one remedy a refusal adds LAST, and only when the refusal is a fence
@@ -1326,12 +1342,19 @@ approvals, but only when two things hold. The step must be the one the walk is
 on: the recorded `Active Unit` and `Unit Stage`, when present, must name it. And
 redoing it must be able to clear the refusal: no review in flight, review budget
 left, and the one stale-review recovery not used once a review exists. It resets
-no attempt (a Unit-scoped attempt boundary does not exist yet), so a refusal
-about the review attempt itself gets no redo. A later block stage then offers
-nothing executable, because its restart either lands back on the same step or
-jumps and starts every Unit's finished work over, and a repeated refusal
-reaches the terminal ask, where the person decides; prose recovery guidance
-says the same.
+no attempt, so a refusal about the review attempt itself gets no redo. A later
+block stage then offers `reopen-unit-step` for that same Unit instead: a
+`command` remedy whose operation `{kind: "reopen-unit", stage, unit}` renders
+`aidlc engine jump reopen --target <stage> --units <unit>`. Once the person
+picks it, it writes the Unit-scoped `GATE_REJECTED` a Unit checkpoint's Request
+Changes writes, a new attempt for that Unit and stage only, and every other Unit
+keeps its finished work. A stage restart is never offered there, because it
+either lands back on the same step or jumps and starts every Unit's finished
+work over. When this work allows no review at all (a review budget of 0), a new
+attempt clears nothing, so nothing is offered and a repeated refusal reaches the
+terminal ask, where the person decides. Prose recovery guidance names the same
+reopen, or, with no Unit on record, asks the person which Unit does the step
+again with `/aidlc --stage <stage> --unit <name>`.
 The first block stage still offers `restart-stage`, which is no forward jump,
 with its cost. The stage-wide resets offered in other states (`request-changes`,
 `unset-unattended`, `redo-jump`, `restore-or-jump`) say in their action that
@@ -1370,10 +1393,16 @@ the selected interaction:
 | `human-input` | Present the action's follow-up and end the turn. Request Changes needs a separate answer to "What should change?"; when it is the only remedy, a reply that does not pick it (and is not a dismissed question) is taken as that answer, so the person is not asked twice, and a later reply replaces it until the reject is submitted. A Scope remedy needs the human's concrete Scope. |
 | `external-work` | Perform the described work through its existing protocol and tools. Selection needs no additional feedback turn, but it does not prove that the work succeeded or supply missing arguments. |
 
-`aidlc-guard-operation.ts` defines four operations:
+`aidlc-guard-operation.ts` defines six operations:
 `{kind: "restart-stage", stage}`, `{kind: "abort-bolt", unit, slug}`,
-`{kind: "lower-fence", fence}`, and
-`{kind: "record-unit-completion", stage, unit}`. The last renders
+`{kind: "lower-fence", fence}`, `{kind: "reopen-unit", stage, unit}` (one Unit's
+step of a unit-major walk starts again, above), `{kind: "review-advisory"}`, and
+`{kind: "record-unit-completion", stage, unit}`. `review-advisory` renders
+`aidlc engine config set review advisory` and is offered beside
+`apply-repairs-then-request` as `review-advisory-gate`: when the person wants to
+decide now instead of another review pass, this work's reviews go advisory, so
+the reviewer's NOT-READY is final and its open findings go to the approval gate.
+`record-unit-completion` renders
 `aidlc engine state unit complete --stage <stage> --unit <unit>` and is offered,
 first, when a team Unit's gate is refused `UNIT_COMPLETION_MISSING` while its
 work is open: the Unit's artifacts are on disk and only the receipt is missing.
@@ -1419,7 +1448,8 @@ follow-up: `orchestrate report --result rejected` with their words for Request
 Changes, and `log answer --checkpoint summary-confirmation` for their
 confirmation. A Scope remedy opens no route: the person types `/aidlc --scope
 <scope>`, which runs through `next`. Neither does `redo-unit-step`: `next`
-routes the Unit's step again.
+routes the Unit's step again. `reopen-unit-step` and `review-advisory-gate` are
+`command` remedies: once picked, their exact command is admitted.
 Before the person picks, the offer alone admits nothing. When the picked remedy's
 work happens while the question is open (`apply-repairs-then-request` and
 `finish-revision` on the pick, `reconfirm-summary` once the person confirmed),

@@ -907,7 +907,7 @@ Change the active scope of a running workflow.
 /aidlc --scope enterprise
 ```
 
-**Behavior:** Updates the scope configuration in `aidlc-state.md`, recalculates which stages should execute and which should be skipped, and logs a `SCOPE_CHANGED` audit event. Can be combined with `--depth`, `--test-strategy`, `--review`, `--guard-policy`, `--sensors`, `--learnings`, `--summary-confirmation`, and the `--guard.<fence>` switches. Scope-sourced Guard Policy follows a stricter new default automatically, but a lower default does not reduce the running workflow's policy; type the Guard Policy lowering switch first. Ceremony values follow the new scope's defaults, while explicit human overrides and absent legacy rows are preserved. Memory strict still controls the effective policy. Explicit flags retain human provenance and follow the same lowering rule as `config-change`. Selecting the current scope still applies supplied settings through the same configuration applier, without a spurious scope-change event. Invalid or unknown flags, or an unauthorized `--guard-policy relaxed` or `--guard-policy off`, refuse the whole CLI update. Stage checkboxes carry over unchanged, including an open approval (`[?]`) and a revision (`[R]`), except where the new scope skips a stage that is waiting for approval, or skips the current stage before it has started: those stages are skipped with the change (`[S]`, one `STAGE_SKIPPED` row and one output line each, naming `/aidlc --stage <slug> --single` to run one on its own). Nothing else starts: the next `/aidlc` moves on to the next stage the new scope runs. The one refusal is a change that would skip the current per-unit Construction stage under team Unit Ownership (finish it for every Unit first).
+**Behavior:** Updates the scope configuration in `aidlc-state.md`, recalculates which stages should execute and which should be skipped, and logs a `SCOPE_CHANGED` audit event. Can be combined with `--depth`, `--test-strategy`, `--review`, `--guard-policy`, `--sensors`, `--learnings`, `--summary-confirmation`, and the `--guard.<fence>` switches. Scope-sourced Guard Policy follows a stricter new default automatically. A lower default follows when you asked for the scope change; otherwise the running workflow keeps its policy and the output says so in one line. Ceremony values follow the new scope's defaults, while explicit human overrides and absent legacy rows are preserved. Memory strict still controls the effective policy. Explicit flags retain human provenance and follow the same lowering rule as `config-change`. Selecting the current scope still applies supplied settings through the same configuration applier, without a spurious scope-change event. Invalid or unknown flags, or an unauthorized `--guard-policy relaxed` or `--guard-policy off`, refuse the whole CLI update. Stage checkboxes carry over unchanged, including an open approval (`[?]`) and a revision (`[R]`), except where the new scope skips a stage that is waiting for approval, or skips the current stage before it has started: those stages are skipped with the change (`[S]`, one `STAGE_SKIPPED` row and one output line each, naming `/aidlc --stage <slug> --single` to run one on its own). Nothing else starts: the next `/aidlc` moves on to the next stage the new scope runs. The one refusal is a change that would skip the current per-unit Construction stage under team Unit Ownership (finish it for every Unit first).
 
 The reply's first line gives the new plan's stages, how many are done, and its approval gates, and says how to go back (`/aidlc --scope <old scope>`). Then comes one line per stage the change skipped, and one per setting whose value changed; a default the new scope leaves as it was is not listed, while a setting you typed with the scope is always reported, changed or not. The `; no ...` clause after the approval gate count lists ceremonies effectively disabled after the change, including retained human overrides and environment kill switches, rather than only the new scope's defaults. The reviewers entry follows the scope's review cap.
 
@@ -1241,8 +1241,9 @@ Direct `scope change --guard-policy relaxed|off` uses the same rule. Direct
 `intent create --guard-policy relaxed|off` from chat is refused when the value
 is below that default (`relaxed` on an `off` scope is a raise and applies):
 create the piece of work, and the agent runs the setter when the person asks for the lower value. Naming the scope's own default at creation records the scope's
-value without another prompt. A running workflow preserves its stricter policy
-when moving to a scope with a lower default. Creation that would lower the
+value without another prompt. A running workflow moving to a scope with a lower
+default takes it when the person asked for the scope change; otherwise it keeps
+its stricter policy and says so in one line. Creation that would lower the
 policy to `relaxed` refuses with:
 
 > Creating this intent with Guard Policy relaxed would lower fences, which is the person's call. Create it, then, when they ask for it in their own words, run `aidlc engine config set guard-policy relaxed` yourself and say in one line what changed. A scope default applies without asking.
@@ -1296,7 +1297,8 @@ saved intent value (raw text if invalid; `strict` when no line existed), not
 the memory-effective value. Governed-checkpoint observations still record
 effective old/new values.
 An older intent without the line stays strict until it is set; a new intent
-starts from its scope's default. When a memory layer's `## Guard Policy`
+starts from its scope's default, or from a memory layer's `Mode: relaxed` or
+`Mode: off` when one is set. When a memory layer's `## Guard Policy`
 section says `Mode: strict`, an explicit `relaxed` or `off` refuses the whole
 command, including any other supplied settings, and names that file: edit the
 memory line there to relax it for everyone. An explicit strict setting is still
@@ -1906,9 +1908,17 @@ command in `command_label`, plus exit status, full captured stdout/stderr byte
 counts and SHA-256 digests, and the last 2 KiB of each stream in `stdout_tail` and
 `stderr_tail`. Tails are decoded as UTF-8 after dropping a leading partial
 multibyte sequence; control characters other than newline and tab are replaced
-with U+FFFD. Full output is not retained. Project check commands must not print
-secrets: these diagnostic tails are not secret-redacted. Approval binds
-`Verification Command SHA-256` on `GATE_APPROVED` to the proof's `command_sha256`.
+with U+FFFD. Full output is not retained; the check writes it to temporary files
+rather than memory, so a long-running suite's output never fails a passing check.
+A check that changes the Unit's files while it runs (a formatter, a generator)
+runs once more against the files as they are then; if it changes them again, the
+proof's `error` says to use a check that leaves the files as they are. Project
+check commands must not print secrets: these diagnostic tails are not
+secret-redacted. Approval binds `Verification Command SHA-256` on `GATE_APPROVED`
+to the proof's `command_sha256`. A Unit approved under an earlier authorized
+command keeps its approval when the person approves a new one; the new command
+verifies the Units still to be approved, and the setter returns the line
+`Using <command> from here on.` as `notice`.
 Use the tails to explain a failure; if more diagnostics are needed, use the same
 authorized project check, not a newly chosen command. Version-1 through version-3
 proofs are unverified after upgrading; authorize the recorded command and run
@@ -1936,6 +1946,12 @@ in any session; ask again only after fresh verification, source landing, and a
 batch status of `ready: true`. Only verified native passes
 receive `SWARM_UNIT_CONVERGED`, with the authorized `Command SHA-256` (rows
 from an earlier release may lack it). Land their source through the native worktree merge before `next`.
+Edits the person made to the main checkout while the batch built stop that merge
+under a strict Guard Policy (the refusal names the step: undo them and run the merge
+again, or say `guard policy relaxed` to keep them); under relaxed or off they are
+kept, recorded once as `CHANGE_ACCEPTED` (`swarm-batch`), and the merge prints one
+`note:` line. The same holds for edits made after the last merge when the stage
+completes.
 
 ### `aidlc engine bolt swarm-checkpoint` - approve a completed batch
 
@@ -1982,8 +1998,14 @@ ready question-and-answer flow. Readiness
 comes from the completed batch's current evidence, including each Unit's native
 `Command SHA-256` matching the current
 authorized Construction Verification Command. Batch approval binds that digest
-too: changing the authorized command invalidates prior approval, and older
-native receipts without the digest require fresh verification. Resolve `errors`
+too: a batch already approved keeps its approval when the person approves a new
+command, a batch not yet approved needs fresh verification with it, and older
+native receipts without the digest require fresh verification. When the batch's
+claimed files or outputs changed after it was checked, a strict Guard Policy
+makes it unready with `changed_after_check: true`, and `ask` then offers the
+person Request Changes only; under relaxed or off the change is kept, recorded
+once as `CHANGE_ACCEPTED` (`swarm-batch`), and `ask` / `approve` return its line
+in `notices`. Resolve `errors`
 rather than rebuilding the whole batch or inventing a pass. Re-run `next` after
 approval or rejection; a batch approval is not whole-stage
 approval. Later completion-only stage directives settle bookkeeping without

@@ -127,6 +127,10 @@
       "minMechanism": "none",
       "coveredBy": [
         {
+          "file": "tests/unit/t-guard-policy-off-means-off.test.ts",
+          "mechanism": "cli"
+        },
+        {
           "file": "tests/unit/t334-change-control-execution.test.ts",
           "mechanism": "cli"
         },
@@ -4527,6 +4531,14 @@
       "minMechanism": "none",
       "coveredBy": [
         {
+          "file": "tests/integration/t-guard-policy-every-scope.test.ts",
+          "mechanism": "cli"
+        },
+        {
+          "file": "tests/unit/t-guard-policy-off-means-off.test.ts",
+          "mechanism": "cli"
+        },
+        {
           "file": "tests/unit/t342-construction-checkpoint-routing.test.ts",
           "mechanism": "cli"
         }
@@ -5143,6 +5155,18 @@
       "minMechanism": "none",
       "coveredBy": [],
       "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:inertPath",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/unit/t-guard-policy-off-means-off.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
     },
     {
       "unitClass": "function",
@@ -8899,8 +8923,13 @@
       "unitClass": "function",
       "unitId": "function:renderChangedPaths",
       "minMechanism": "none",
-      "coveredBy": [],
-      "status": "UNCOVERED"
+      "coveredBy": [
+        {
+          "file": "tests/unit/t-guard-policy-off-means-off.test.ts",
+          "mechanism": "cli"
+        }
+      ],
+      "status": "covered"
     },
     {
       "unitClass": "function",
@@ -9198,6 +9227,10 @@
       "unitId": "function:resolveGuardPolicy",
       "minMechanism": "none",
       "coveredBy": [
+        {
+          "file": "tests/integration/t-guard-policy-every-scope.test.ts",
+          "mechanism": "cli"
+        },
         {
           "file": "tests/unit/t333-change-control.test.ts",
           "mechanism": "cli"
@@ -10000,6 +10033,18 @@
         {
           "file": "tests/unit/t213-scope-cost-summary.test.ts",
           "mechanism": "none"
+        }
+      ],
+      "status": "covered"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:scopeDefinitionGuardPolicy",
+      "minMechanism": "none",
+      "coveredBy": [
+        {
+          "file": "tests/integration/t-guard-policy-every-scope.test.ts",
+          "mechanism": "cli"
         }
       ],
       "status": "covered"

@@ -21,6 +21,7 @@ import {
   runOrchestrateNext, seedAidlcMemory, seedBoltDag, seededRecordDir, seededStateFile,
 } from "../harness/fixtures.ts";
 import { appendAuditEntry } from "../../dist/claude/.claude/tools/aidlc-audit.ts";
+import { guardOperationInvocation } from "../../dist/claude/.claude/tools/aidlc-guard-operation.ts";
 import {
   codeGenerationRecordDir, renderTestingContract, resolveTestingPosture,
 } from "../../dist/claude/.claude/tools/aidlc-testing-posture.ts";
@@ -28,7 +29,7 @@ import {
   artifactFilename, findStageBySlug, latestMainWorkflowStageRunFloorForProject,
   reviewArtifactFingerprint, authorizedConstructionPolicyChange, auditBlockField, readAuditShardEvents, setField, unitCompletedReceipts,
   hasPendingDecision, guardRecoveryAskFromRefusalText, freshReviewReceipts, getField, presenceFloorHolds, REDO_REUSE_SOURCE,
-  _resetStageGraphForTests, _resetScopeMappingForTests,
+  _resetStageGraphForTests, _resetScopeMappingForTests, constructionCheckpointGaps,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -1270,6 +1271,24 @@ describe("t342 a unit-major recovery keeps every Unit's finished work", () => {
     expect(next(p)).toMatchObject({ stage: "code-generation", unit: "beta" });
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
+  // The command a stuck refusal offers for the Unit on the step, once the
+  // person picks it: only beta starts Code Generation again.
+  test("starting beta's Code Generation again runs, and alpha keeps its approval", () => {
+    const p = betaBuilding();
+    const reopen = guardOperationInvocation({ kind: "reopen-unit", stage: "code-generation", unit: "beta" });
+    expect(reopen.route).toBe("jump");
+    const run = tool(p, "jump", reopen.args);
+    expect(run.status, run.out).toBe(0);
+    expect(JSON.parse(run.stdout)).toMatchObject({ reopened: "code-generation", units: ["beta"] });
+    const rejected = readAuditShardEvents(p).filter((row) => row.event === "GATE_REJECTED");
+    expect(rejected).toHaveLength(1);
+    expect(auditBlockField(rejected[0].block, "Unit")).toBe("beta");
+    expect(auditBlockField(rejected[0].block, "Gate Scope")).toBe("unit-end");
+    expect(jumped(p)).toBe(0);
+    expect(approved(p, "alpha")).toBe(true);
+    expect(next(p)).toMatchObject({ stage: "code-generation", unit: "beta" });
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
   test("stage-major control: a refusal for a stage not yet in progress still offers the restart", () => {
     const p = fixture({ iteration: "stage-major" });
     for (const unit of ["alpha", "beta"]) cover(p, unit, stages.slice(0, 4));
@@ -2301,7 +2320,7 @@ describe("t342 a unit-major recovery keeps every Unit's finished work", () => {
   }
 
   const ALPHA_EDIT_LINE =
-    "src/alpha.ts changed after it was reviewed. Continuing to the gate with the diff (Guard Policy: relaxed or off).";
+    "src/alpha.ts changed after Unit alpha's review; carrying on.";
 
   // The Guard Policy line as the work recorded it, on the scope it runs on,
   // with the scope's own review level unless `review` overrides it.
@@ -2467,7 +2486,7 @@ describe("t342 a unit-major recovery keeps every Unit's finished work", () => {
       const verified = tool(p, "bolt", ["checkpoint", "--unit", "alpha", "--kind", "unit", "--action", "verify"]);
       expect(verified.status, verified.out).toBe(0);
       expect(JSON.parse(verified.stdout)).toMatchObject({ errors: [], change_notices: [
-        `${relativeDocument} changed after it was reviewed. Continuing to the gate with the diff (Guard Policy: relaxed or off).`,
+        `${relativeDocument} changed after Unit alpha's review; carrying on.`,
       ] });
       expect(readFileSync(join(p, relativeDocument), "utf-8")).toContain("Tests use a temporary notes file.");
       approve(p, "alpha");
@@ -2636,5 +2655,42 @@ describe("t342 a unit-major recovery keeps every Unit's finished work", () => {
     expect(own.out).toContain("allows 1 review pass");
     policyHuman(p, "Please review alpha again", "t342-pick");
     expect(reviewThroughLog(p, codeReview("alpha", 2)).status).toBe(0);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+});
+
+// The walking skeleton gates the per-unit stages. Once they are all done or
+// skipped, a jump or a later fix that retires the skeleton's approval must not
+// hold Build and Test, because nothing routes back to the skeleton from there.
+describe("t342 Build and Test after the per-unit stages", () => {
+  function atBuildAndTest(perUnit: "done" | "skipped" | "pending"): string {
+    const p = fixture({ stance: "on", current: "build-and-test" });
+    const marker = perUnit === "done" ? "x" : perUnit === "skipped" ? "S" : " ";
+    let text = readFileSync(seededStateFile(p), "utf-8");
+    // The state's checkbox lines separate the slug and its action with U+2014.
+    const sep = "\u2014";
+    for (const stage of stages) text = text.replace(`- [ ] ${stage} ${sep} EXECUTE`, `- [${marker}] ${stage} ${sep} EXECUTE`);
+    text = text.replace(`- [ ] build-and-test ${sep} EXECUTE`, `- [-] build-and-test ${sep} EXECUTE`);
+    writeFileSync(seededStateFile(p), text);
+    return p;
+  }
+
+  test("a skeleton approval retired after every per-unit stage finished does not hold the gate", () => {
+    for (const perUnit of ["done", "skipped"] as const) {
+      const p = atBuildAndTest(perUnit);
+      const state = readFileSync(seededStateFile(p), "utf-8");
+      // Skipped per-unit stages leave nothing to checkpoint at all (null).
+      expect(constructionCheckpointGaps(p, state, findStageBySlug("build-and-test")!) ?? [], perUnit).toEqual([]);
+      const report = spawnSync(process.execPath, [
+        join(AIDLC_SRC, "tools/aidlc-orchestrate.ts"), "report", "--stage", "build-and-test",
+        "--result", "awaiting-approval", "--project-dir", p,
+      ], { timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS), encoding: "utf-8" });
+      expect(`${report.stdout}${report.stderr}`).not.toContain("Construction checkpoints are not approved");
+    }
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("while a per-unit stage is still open the skeleton still gates", () => {
+    const p = atBuildAndTest("pending");
+    const state = readFileSync(seededStateFile(p), "utf-8");
+    expect(constructionCheckpointGaps(p, state, findStageBySlug("build-and-test")!)).toEqual(['skeleton Unit "alpha"']);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });

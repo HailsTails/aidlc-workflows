@@ -30,6 +30,7 @@ import {
   docsRoot,
   errorMessage,
   getField,
+  guardPolicyAcceptsChanges,
   guardStoodAsideLine,
   gitCommitSourceListing,
   isoTimestamp,
@@ -349,7 +350,7 @@ export function planSourceDriftStrictMessage(paths: string[] | null, unbound = f
 /** The relaxed human sentence for source drift after the plan was approved. */
 export function planSourceDriftRelaxedNotice(paths: string[] | null, unbound = false): string {
   return (
-    `${describeSourceDrift(paths, unbound)} Continuing (Guard Policy: relaxed or off). ` +
+    `${describeSourceDrift(paths, unbound)} Carrying on. ` +
     "Say 'review the plan again' to reopen approval."
   );
 }
@@ -3975,7 +3976,14 @@ function approvedWorktreeSource(
     }
     return { parentSource, expectedBytes: discarded.expectedBytes };
   }
-  if (!parentSource || (!approved.continuing && !sameWorkspaceSource(approved.receipt.certifiedSourceSha256, parentSource.fingerprint))) {
+  // Under a relaxed or off Guard Policy, parent source that moved after Plan
+  // Approval is kept, as on the single-agent path: generation start records it
+  // and says it in one line.
+  if (!parentSource || (
+    !approved.continuing &&
+    !sameWorkspaceSource(approved.receipt.certifiedSourceSha256, parentSource.fingerprint) &&
+    !guardPolicyAcceptsChanges(parent)
+  )) {
     throw new Error("Parent source has changed since Plan Approval or cannot be bound. Re-present and approve the plan against the current parent source.");
   }
   const prefix = `${repo.repo ?? ""}\0`;

@@ -56,7 +56,9 @@ import {
   checkSummaryConfirmationEvidence,
   type AcceptedChange,
   governedChangeControl,
+  guardPolicyAcceptsChanges,
   recordAcceptedChanges,
+  inertPath,
   resolveChangeControl,
   resolveCeremony,
   claimAttemptFields,
@@ -1113,7 +1115,14 @@ function handleSetConstructionVerificationCommand(args: string[]): void {
       error("No current VERIFICATION_COMMAND_RECORDED with matching Command SHA-256 and User Input: Approve authorizes this command. " + VERIFICATION_COMMAND_RECOVERY);
     }
     writeStateFile(pd, updated);
-    console.log(JSON.stringify({ updated: true, command_sha256: command.sha256, command_label: command.label }));
+    // A new command checks the Units and batches still to be approved; the
+    // ones already approved keep their approval.
+    const previous = getField(content, VERIFICATION_COMMAND_CHECKPOINT);
+    const notice = previous !== null && previous.trim() !== "" && previous !== command.command
+      ? `Using \`${command.label}\` from here on.` : null;
+    console.log(JSON.stringify({
+      updated: true, command_sha256: command.sha256, command_label: command.label, ...(notice ? { notice } : {}),
+    }));
   });
 }
 
@@ -3115,6 +3124,17 @@ function verifySettledSwarmSourceBinding(
     );
   }
   const current = workspaceSourceState(pd);
+  if (current !== null && !sameWorkspaceSource(chain.fingerprint, current.fingerprint) && guardPolicyAcceptsChanges(pd)) {
+    // Kept under relaxed or off: edits made after the last merge stay, once recorded.
+    if (changeControlPreflight) return;
+    const notices = recordAcceptedChanges(pd, [{
+      checkpoint: "swarm-batch", stage: stage.slug, unit: null, changed: null,
+      recorded: chain.fingerprint, current: current.fingerprint,
+      notice: "Files in the main checkout changed after the last unit was merged. Kept them.",
+    }]);
+    if (notices.length > 0) console.log(JSON.stringify({ change_notices: notices }));
+    return;
+  }
   if (current === null || !sameWorkspaceSource(chain.fingerprint, current.fingerprint)) {
     error(
       `Refusing to complete "${stage.slug}": the main checkout source no longer matches the final reviewed swarm merge (source-fingerprint mismatch). Revert the unreviewed edit or restart and re-review the affected Bolt.`,
@@ -3991,6 +4011,12 @@ function observeChangeControl(
   if (notices.length > 0) console.log(JSON.stringify({ change_notices: notices }));
 }
 
+// A change outside every unit's work that relaxed or off keeps: recorded once
+// and said once, the same way the receipt scan's accepted changes are.
+function acceptOutsideUnitChanges(pd: string, content: string, change: AcceptedChange): void {
+  observeChangeControl(pd, content, { changeControlRead: true, acceptedChanges: [change] });
+}
+
 function verifySummaryConfirmationPrecondition(
   pd: string,
   content: string,
@@ -4493,16 +4519,29 @@ function verifyReviewerPrecondition(
     stage.workspace_requires === true && !sourceFreshnessOff && !settledSwarm;
   if (!attributionApplies) return;
 
+  // Under relaxed or off, what changed outside the units is kept and said once;
+  // only strict holds completion on it.
+  const acceptsChanges = guardPolicyAcceptsChanges(pd, content);
   if (
     receipts.sourceBaseline.state === "unbindable" ||
     receipts.sourceBaseline.state === "invalid"
   ) {
+    if (acceptsChanges) {
+      acceptOutsideUnitChanges(pd, content, {
+        checkpoint: "review-receipt",
+        stage: stage.slug,
+        unit: null,
+        changed: null,
+        recorded: "(stage start unavailable)",
+        current: "(not checked)",
+        notice: `I could not check ${stage.name} for files changed outside the units on this machine; carrying on.`,
+      });
+      return;
+    }
     error(
-      `Refusing to complete "${stage.slug}": the stage's source baseline snapshot is missing, ` +
-        `inconsistent with other modern source-binding evidence, or does not match its recorded hash, ` +
-        `so unclaimed source changes cannot be verified. Re-enter the stage ` +
-        `(a stage jump records a fresh baseline) or set AIDLC_SKIP_SOURCE_FRESHNESS=1 to bypass ` +
-        `deterministically.`,
+      `Refusing to complete "${stage.slug}": the record of what this stage started from is missing or ` +
+        `does not match on this machine, so changes outside the units cannot be checked. Restart the ` +
+        `stage with \`${entrySkillInvocation()} --stage ${stage.slug}\` to check again from here.`,
     );
   }
   if (
@@ -4515,9 +4554,23 @@ function verifyReviewerPrecondition(
         const separator = key.indexOf("\0");
         const repo = key.slice(0, separator);
         const path = key.slice(separator + 1);
-        return repo ? `${repo}/${path}` : path;
+        return inertPath(repo ? `${repo}/${path}` : path);
       });
-      const more = unclaimed.length > 10 ? ` … and ${unclaimed.length - 10} more` : "";
+      const more = unclaimed.length > 10 ? ` and ${unclaimed.length - 10} more` : "";
+      if (acceptsChanges) {
+        const listing = receipts.currentSourceListing;
+        const entries = unclaimed.map((key) => `${key}\t${listing.get(key) ?? "-"}`).join("\n");
+        acceptOutsideUnitChanges(pd, content, {
+          checkpoint: "review-receipt",
+          stage: stage.slug,
+          unit: null,
+          changed: rendered,
+          recorded: "(outside the units)",
+          current: `sha256:${createHash("sha256").update(entries).digest("hex")}`,
+          notice: `These files changed outside any unit's work in ${stage.name}: ${rendered.join(", ")}${more}. Kept them.`,
+        });
+        return;
+      }
       error(
         `Refusing to complete "${stage.slug}": ${unclaimed.length} application-source path(s) changed during this stage run ` +
           `that no reviewed unit's source manifest claims (${rendered.join(", ")}${more}). Add each path to the owning ` +
@@ -4567,6 +4620,20 @@ function staleSourcePreconditionError(
       code: "SOURCE_BOUNDARY_UNBINDABLE",
       blockedAction: action,
       invariant: "Reviewed source is bound to a reproducible workspace boundary.",
+      userMessage: message,
+      receipts,
+    });
+  }
+  if (reason === "source-unreadable") {
+    const message =
+      `Refusing to complete "${slug}": the project source could not be read on this machine to ` +
+        `check it against the review by ${reviewer}; nothing is known to have changed. Run ` +
+        `\`${entrySkillInvocation()} --doctor\`, which names the path that could not be read, fix that ` +
+        "path, then try again.";
+    refuseStateGuard(pd, content, stage, {
+      code: "SOURCE_REVIEW_STALE",
+      blockedAction: action,
+      invariant: "The current source remains covered by reviewer evidence.",
       userMessage: message,
       receipts,
     });
@@ -5976,10 +6043,14 @@ function handleApprove(args: string[]): void {
       preflightStage,
     );
   }
+  // Under Guard Policy relaxed or off an edit at the open gate is a change the
+  // person's Approve accepts (the review scan names it once), never a Request
+  // Changes they did not give.
   const preflightBackstop =
     preflightTeamGate === null &&
     !revisionBackstopDisabled() &&
     !preflightDecision.autonomousDecision &&
+    !guardPolicyAcceptsChanges(pd, preflightContent) &&
     unrecordedRevisionSinceGateOpen(pd, preflightStage);
   const backstopSensorEvaluation = preflightBackstop
     ? fireGateSensors(pd, preflightStage, preflightContent)
@@ -6100,6 +6171,7 @@ function handleApprove(args: string[]): void {
   const backstopNow =
     !revisionBackstopDisabled() &&
     !autonomousDecision &&
+    !guardPolicyAcceptsChanges(pd, content) &&
     unrecordedRevisionSinceGateOpen(pd, stage);
   if (backstopNow && !preflightBackstop) {
     error(

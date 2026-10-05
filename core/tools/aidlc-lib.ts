@@ -9418,6 +9418,8 @@ const GUARD_REMEDY_ANSWER_ROUTES: Record<GuardRemedyOp, GuardRemedyAnswerPhases 
   "restart-stage": null,
   // Carried out through `next`, which routes the Unit's step again.
   "redo-unit-step": null,
+  "reopen-unit-step": null,
+  "review-advisory-gate": null,
   // The person types `/aidlc --scope <scope>`, which runs through `next`: the
   // Scope is theirs, never a value the conductor fills in.
   "change-scope": null,
@@ -11333,6 +11335,12 @@ export function constructionCheckpointGaps(
     return dag.units.filter((unit) => !approved.has(unit)).map((unit) => `Unit "${unit}"`);
   }
   if (constructionSkeletonOn(stateContent)) {
+    // Once every per-unit stage is done or skipped the skeleton has done its
+    // job: a later stage (Build and Test, CI Pipeline) does not wait on an
+    // approval a jump or a later fix retired, which nothing routes back to.
+    if (stage.for_each !== "unit-of-work" && unitMajorConstructionStageSlugs(scope, stateContent).length === 0) {
+      return [];
+    }
     const first = dag.batches.flat()[0];
     return approved.has(first) ? [] : [`skeleton Unit "${first}"`];
   }
@@ -13003,9 +13011,21 @@ export function checkSummaryConfirmationEvidence(
         "stale",
       );
     }
-    if (
-      auditBlockField(receipt.block, "Questions SHA-256") !== currentHash
-    ) {
+    const confirmedHash = auditBlockField(receipt.block, "Questions SHA-256");
+    if (confirmedHash !== currentHash && changeControl() !== "strict") {
+      // Under relaxed or off, an answer fixed or a follow-up question added
+      // after "Looks correct" keeps the confirmation: recorded and said once.
+      const questionsFile = toPosix(relative(projectDir, question.path));
+      acceptedChanges.push({
+        checkpoint: "summary-confirmation",
+        stage: stage.slug,
+        unit: question.unit ?? options.unit ?? null,
+        changed: [questionsFile],
+        recorded: confirmedHash ?? "(not recorded)",
+        current: currentHash,
+        notice: `${questionsFile} changed after you confirmed its summary; carrying on with it as it is now.`,
+      });
+    } else if (confirmedHash !== currentHash) {
 			if (hashScope !== null && LEGACY_SUMMARY_CONFIRMATION_HASH_SCOPES.includes(hashScope)) {
 				return failure(
 					"SUMMARY_CONTENT_SEMANTICS_CHANGED",
@@ -13089,8 +13109,8 @@ export function checkSummaryConfirmationEvidence(
               recorded: receiptAuthorization,
               current: stamps.join(", "),
               notice:
-                `${toPosix(relative(projectDir, artifactAbs))} was saved without the current ` +
-                "summary confirmation. Continuing (Guard Policy: relaxed or off).",
+                `${toPosix(relative(projectDir, artifactAbs))} was saved before you confirmed the current ` +
+                "summary; carrying on.",
             });
             continue;
           }
@@ -14246,7 +14266,7 @@ export interface FreshReviewReceipts {
   sourceStale: boolean;
   /** Why the newest source binding is stale. An unbindable boundary is repaired
    *  through source-boundary configuration, not by reverting application bytes. */
-  sourceStaleReason: "boundary-unbindable" | "fingerprint-mismatch" | null;
+  sourceStaleReason: "boundary-unbindable" | "source-unreadable" | "fingerprint-mismatch" | null;
   /** Recovery ordinal/budget state associated with the newest source binding. */
   sourceStaleProgress: StaleReviewProgress | null;
   /** A workspace-global source-staleness recovery request has been emitted in
@@ -16334,6 +16354,27 @@ function isReviewRecord(value: unknown): value is ReviewRecord {
  * missing, malformed, or its bytes no longer hash to the digest the row pinned:
  * a record that was edited after it was recorded is not the review.
  */
+/**
+ * Whether the written review a completion names is simply not in this
+ * checkout: some part of its path does not exist, and nothing on the way is a
+ * symlink. A dangling or redirected entry is there, and is not that review.
+ */
+function reviewRecordAbsent(projectDir: string, relativePath: string): boolean {
+  if (!isReviewRecordRelativePath(relativePath)) return false;
+  const record = recordDir(projectDir);
+  if (record === null) return true;
+  let at = record;
+  for (const part of relativePath.split("/")) {
+    at = join(at, part);
+    try {
+      if (lstatSync(at).isSymbolicLink()) return false;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT";
+    }
+  }
+  return false;
+}
+
 export function readReviewRecord(
   projectDir: string,
   ref: { path: string; digest: string },
@@ -18439,8 +18480,26 @@ export function freshReviewReceipts(
   // matches the current bytes, and fed the produces[] paths written after it.
   const acceptedArtifactChanges = new Map<string, AcceptedChange>();
   const acceptedChanges: AcceptedChange[] = [];
-  const relaxedReviewNotice = (artifact: string): string =>
-    `${artifact} changed after it was reviewed. Continuing to the gate with the diff (Guard Policy: relaxed or off).`;
+  // What changed, whose review it came after, and that the work carries on.
+  const reviewedStageName = findStageBySlug(stage.slug)?.name ?? stage.slug;
+  const relaxedReviewNotice = (what: string, unit: string | null): string =>
+    `${what} changed after ${unit ? `Unit ${unit}'s` : `the ${reviewedStageName}`} review; carrying on.`;
+  // Under relaxed or off, source that cannot be checked against its review on
+  // this machine is said once and the verdict stands.
+  let uncheckedSourceNoticed = false;
+  const acceptUncheckedSource = (unit: string | null, recorded: string, current: string | null): void => {
+    if (uncheckedSourceNoticed) return;
+    uncheckedSourceNoticed = true;
+    acceptedChanges.push({
+      checkpoint: "review-receipt",
+      stage: stage.slug,
+      unit,
+      changed: null,
+      recorded,
+      current: current ?? "(not readable here)",
+      notice: `The project source could not be checked against the ${findStageBySlug(stage.slug)?.name ?? stage.slug} review on this machine; carrying on.`,
+    });
+  };
   const resetUnitReviewState = (unit: string): void => {
     for (const [key, request] of pendingRequests) {
       if (request.unit === unit) pendingRequests.delete(key);
@@ -18658,10 +18717,26 @@ export function freshReviewReceipts(
       continue;
     }
     if (!completionCarriesVerifiedReview(projectDir, request.binding, e.block)) {
-      if (reviewCompletionMatchesRequest(request.binding, e.block)) {
-        request.verificationFailed = true;
+      const matchesRequest = reviewCompletionMatchesRequest(request.binding, e.block);
+      const recordRef = matchesRequest ? reviewRecordRefFromBlock(e.block) : null;
+      // Under relaxed or off, a review whose written record is not on this
+      // machine (another checkout, a clean) keeps its recorded verdict. A
+      // record that is here but does not match what was recorded is not
+      // that review, so it is checked again under every policy.
+      const recordAbsent = recordRef !== null && reviewRecordAbsent(projectDir, recordRef.path);
+      if (!recordAbsent || !isRelaxed()) {
+        if (matchesRequest) request.verificationFailed = true;
+        continue;
       }
-      continue;
+      acceptedChanges.push({
+        checkpoint: "review-receipt",
+        stage: stage.slug,
+        unit: unit ?? null,
+        changed: null,
+        recorded: recordRef.digest,
+        current: "(review text not on this machine)",
+        notice: `The written review for ${findStageBySlug(stage.slug)?.name ?? stage.slug}${unit ? ` (unit ${unit})` : ""} is not on this machine; using its recorded verdict.`,
+      });
     }
     pendingRequests.delete(requestKey);
     const recordedFingerprint = auditBlockField(e.block, "Artifact Fingerprint");
@@ -18852,13 +18927,19 @@ export function freshReviewReceipts(
     newestSourceFingerprint !== UNBINDABLE_FINGERPRINT &&
     currentSourceFingerprint !== null &&
     !sameWorkspaceSource(newestSourceFingerprint, currentSourceFingerprint);
-  // An unbindable boundary or an unreadable workspace is not a change and stays
-  // stale under both values; a moved fingerprint is the governed drift.
+  // An unbindable boundary or an unreadable workspace is not a change: strict
+  // holds it stale, relaxed and off say once that it could not be checked. A
+  // moved fingerprint is the governed drift.
+  const sourceUnchecked =
+    newestSourceFingerprint !== null &&
+    (newestSourceFingerprint === UNBINDABLE_FINGERPRINT || currentSourceFingerprint === null);
+  const acceptUnchecked = sourceUnchecked && isRelaxed();
+  if (acceptUnchecked && newestSourceFingerprint !== null) {
+    acceptUncheckedSource(newestSourceUnit, newestSourceFingerprint, currentSourceFingerprint);
+  }
   const sourceStale =
     newestSourceFingerprint !== null &&
-    (newestSourceFingerprint === UNBINDABLE_FINGERPRINT ||
-      currentSourceFingerprint === null ||
-      (sourceMismatch && !isRelaxed()));
+    ((sourceUnchecked && !acceptUnchecked) || (sourceMismatch && !isRelaxed()));
   // A Unit's own source binding is compared path by path below, and says once
   // which of its paths changed; the whole workspace also moves with another
   // Unit's own build.
@@ -18878,7 +18959,7 @@ export function freshReviewReceipts(
       changed: null,
       recorded: newestSourceFingerprint,
       current: currentSourceFingerprint,
-      notice: relaxedReviewNotice("Reviewed source"),
+      notice: relaxedReviewNotice("The project's code", newestSourceUnit),
     });
   }
 
@@ -18913,7 +18994,7 @@ export function freshReviewReceipts(
       // Shielding needs a real newest claimant. Equal-second receipts from
       // different shards are causally unordered, so invalidate that tied set
       // rather than let shard filename order choose authority.
-      if (ambiguousReceiptTimes.has(receipt.timestamp)) {
+      if (ambiguousReceiptTimes.has(receipt.timestamp) && !isRelaxed()) {
         unitVerdicts.delete(unit);
         unitStale.add(unit);
         unitStaleProgress.set(unit, {
@@ -18925,11 +19006,17 @@ export function freshReviewReceipts(
       // No modern binding marker at all is migration evidence: keep the #629
       // global policy for this unit and do not invent claims from current bytes.
       if (receipt.fingerprint === null && !receipt.bypass) continue;
-      let stale = receipt.bypass;
+      let stale = false;
       let claimModel: SourceClaimModel | null = null;
       let reviewedListing: WorkspaceSourceListing | null = null;
-      if (!stale && receipt.fingerprint === UNBINDABLE_FINGERPRINT) stale = true;
-      if (!stale && receipt.fingerprint !== null) {
+      // A review recorded under the source bypass, or against a boundary that
+      // could not be bound: strict holds it stale; relaxed and off keep it.
+      const unchecked = receipt.bypass || receipt.fingerprint === UNBINDABLE_FINGERPRINT;
+      if (unchecked) {
+        if (isRelaxed()) acceptUncheckedSource(unit, receipt.fingerprint ?? "(not recorded)", null);
+        else stale = true;
+      }
+      if (!unchecked && receipt.fingerprint !== null) {
         const snapshot = readUnitSourceSnapshot(
           projectDir,
           stage.slug,
@@ -18938,7 +19025,27 @@ export function freshReviewReceipts(
         );
         const manifest = readUnitSourceManifest(projectDir, stage.slug, unit);
         if (snapshot === null || !manifest.ok || snapshot.manifestSha256 !== manifest.rawBytesSha256) {
-          stale = true;
+          if (!isRelaxed()) {
+            stale = true;
+          } else if (snapshot === null || !manifest.ok) {
+            // The reviewed listing is not on this machine, or the manifest
+            // cannot be read: the verdict stands, said once.
+            acceptUncheckedSource(unit, receipt.fingerprint, manifest.ok ? manifest.rawBytesSha256 : null);
+            if (manifest.ok) claimModel = { claims: manifest.claims, prefixes: manifest.prefixes };
+          } else {
+            // The unit's manifest changed after its review (a path claimed
+            // since): the verdict stands, the new claims count, said once.
+            claimModel = { claims: manifest.claims, prefixes: manifest.prefixes };
+            acceptedChanges.push({
+              checkpoint: "review-receipt",
+              stage: stage.slug,
+              unit,
+              changed: null,
+              recorded: receipt.fingerprint,
+              current: unitSourceFingerprint(currentSourceListing, claimModel, manifest.rawBytesSha256),
+              notice: `Unit ${unit}'s list of files changed after its review; carrying on.`,
+            });
+          }
         } else {
           claimModel = { claims: manifest.claims, prefixes: manifest.prefixes };
           reviewedListing = recordedSourceListingUnderCurrentBoundary(snapshot.listing, currentSourceListing);
@@ -18998,7 +19105,7 @@ export function freshReviewReceipts(
                   claimModel,
                   manifest.rawBytesSha256,
                 ),
-                notice: relaxedReviewNotice(renderChangedPaths(paths)),
+                notice: relaxedReviewNotice(renderChangedPaths(paths), unit),
               });
             } else {
               stale = true;
@@ -19024,6 +19131,11 @@ export function freshReviewReceipts(
     for (const [unit, receipt] of modernUnitReceipts) {
       if (!unitVerdicts.has(unit)) continue;
       if (receipt.fingerprint === null && !receipt.bypass) continue;
+      // The workspace cannot be read now: relaxed and off keep the verdicts.
+      if (isRelaxed()) {
+        acceptUncheckedSource(unit, receipt.fingerprint ?? "(not recorded)", null);
+        continue;
+      }
       unitVerdicts.delete(unit);
       unitStale.add(unit);
       unitStaleProgress.set(unit, {
@@ -19136,7 +19248,9 @@ export function freshReviewReceipts(
       ? null
       : newestSourceFingerprint === UNBINDABLE_FINGERPRINT
         ? "boundary-unbindable"
-        : "fingerprint-mismatch",
+        : currentSourceFingerprint === null
+          ? "source-unreadable"
+          : "fingerprint-mismatch",
     sourceStaleProgress: sourceStale
       ? newestSourceProgress === null
         ? null
@@ -19168,7 +19282,8 @@ export function freshReviewReceipts(
         notice: relaxedReviewNotice(
           change.changed !== null && change.changed.length > 0
             ? renderChangedPaths(change.changed)
-            : stage.review_artifact ?? `The ${stage.slug} output`,
+            : stage.review_artifact ?? "Its documents",
+          change.unit ?? null,
         ),
       })),
       ...acceptedChanges,
@@ -27828,6 +27943,12 @@ export const GUARD_REMEDY_OPS = [
   // Redo one Unit's step in a solo unit-major walk, where a stage restart
   // would reach every Unit's finished work.
   "redo-unit-step",
+  // Start one Unit's step again in a solo unit-major walk, when redoing it
+  // cannot clear the refusal: a new attempt for that Unit and stage only.
+  "reopen-unit-step",
+  // The person asked for the gate while the reviewer still wants repairs: set
+  // this work's reviews to advisory and present the open findings there.
+  "review-advisory-gate",
   "change-scope",
   "restore-scope",
   "abort-bolt",
@@ -28149,6 +28270,19 @@ function redoUnitStepRemedy(stage: string, unit: string): GuardRemedy {
   };
 }
 
+function reopenUnitStepRemedy(stage: string, unit: string): GuardRemedy {
+  return {
+    op: "reopen-unit-step",
+    action:
+      `Start "${stage}" again for unit "${unit}" only, then re-run next. Unit "${unit}" does that ` +
+      "step again; the other units keep their finished work, reviews, Plan Approvals and " +
+      "checkpoint approvals.",
+    ...guardOperation({ kind: "reopen-unit", stage, unit }),
+    requiresHuman: true,
+    executableNow: true,
+  };
+}
+
 // What a stage-wide reset still offered in a solo unit-major walk throws away,
 // said where it is offered: it reaches every Unit, not just this one.
 function unitMajorResetCost(reset: "jump" | "reject", stage: string): string {
@@ -28212,9 +28346,16 @@ function lifecycleResetRemedies(
     // Restarting the first block stage is not a forward jump, so it is still
     // offered with its cost. A later block stage's restart either lands back on
     // the same step (when the walk is on it), which cannot clear the refusal, or
-    // jumps and starts every Unit's finished work over, so nothing is offered
-    // and a repeated refusal reaches the terminal ask, where the person decides.
-    if (!walk.firstStage) return [];
+    // jumps and starts every Unit's finished work over. So the Unit on this
+    // step starts it again on its own: a new attempt, which clears every
+    // refusal about the old one unless this work allows no review at all. With
+    // no such Unit nothing is offered and a repeated refusal reaches the
+    // terminal ask, where the person decides.
+    if (!walk.firstStage) {
+      return walk.unit !== null && walk.live && input.attempt.reviewBudget?.limit !== 0
+        ? [reopenUnitStepRemedy(input.stage, walk.unit)]
+        : [];
+    }
     const restart = restartStageRemedy(input.stage);
     return [{ ...restart, action: restart.action + cost("jump") }];
   }
@@ -28407,6 +28548,16 @@ export function evaluateGuardRefusal(
           "Apply the reviewer's requested repairs, then request review iteration " +
           `${input.attempt.repairReview.iteration + 1}.`,
         requiresHuman: false,
+        executableNow: input.attempt.summaryCoverage === "current" && openForWork,
+      });
+      // Another pass is the reviewer's call; the person may want the gate now.
+      remedies.push({
+        op: "review-advisory-gate",
+        action:
+          "If the person wants to decide now, set reviews to advisory for this piece of work, then " +
+          "present the reviewer's open findings at the approval gate for them to decide.",
+        ...guardOperation({ kind: "review-advisory" }),
+        requiresHuman: true,
         executableNow: input.attempt.summaryCoverage === "current" && openForWork,
       });
     }
@@ -29123,11 +29274,16 @@ export function recoveryGuidance(
     humanAuthority: humanAuthorityState(null),
     ...(options.teamGate ? { teamGate: options.teamGate } : {}),
   });
-  const executable = refusal.remedies.find((remedy) => remedy.executableNow)?.action;
-  if (executable !== undefined) return executable;
+  const remedy = refusal.remedies.find((candidate) => candidate.executableNow);
+  // The reopen runs as its own command, which a prose refusal has to name.
+  if (remedy?.op === "reopen-unit-step" && remedy.command) {
+    return `${remedy.action} When the person says so, run \`${remedy.command}\`.`;
+  }
+  if (remedy !== undefined) return remedy.action;
   if (options.teamGate?.resolved === false) return unresolvedTeamGateRemedy(options.teamGate).action;
   // A later block stage of a solo unit-major walk has no restart to offer: it
-  // lands back on the same step or starts every Unit's finished work over.
+  // lands back on the same step or starts every Unit's finished work over. The
+  // person names the one unit that does it again.
   const walk = soloUnitMajorRefusal({
     stateContent,
     stage: stageSlug,
@@ -29135,9 +29291,11 @@ export function recoveryGuidance(
     ...(options.teamGate ? { teamGate: options.teamGate } : {}),
   });
   if (walk && !walk.firstStage) {
-    const target = walk.unit ? `unit "${walk.unit}"'s "${stageSlug}"` : `"${stageSlug}"`;
-    return `Stop and ask the person how to go on with ${target}. Construction runs one unit at a ` +
-      `time here, so restarting "${stageSlug}" would throw away the work every unit has finished.`;
+    const ask = walk.unit
+      ? `Ask the person whether unit "${walk.unit}" should do "${stageSlug}" again; when they say so, run `
+      : `Ask the person which unit should do "${stageSlug}" again, then run `;
+    return ask + `${entrySkillInvocation()} --stage ${stageSlug} --unit ${walk.unit ?? "<name>"}. ` +
+      "Only that unit does it again; the other units keep their finished work.";
   }
   return restartStageRemedy(stageSlug).action;
 }
@@ -31596,6 +31754,7 @@ function pipelineAttemptFloor(
   events: OrderedPipelineEvidenceEvent[],
   stageSlug: string,
   singleRun: boolean,
+  rejectionKeepsReceipts = false,
 ): PipelineAttemptFloor | null {
   const workflow = `single-stage:${stageSlug}`;
   const boundaries = events.filter((entry) => {
@@ -31607,6 +31766,7 @@ function pipelineAttemptFloor(
         entry.event === "STAGE_JUMPED" ||
         (
           entry.event === "GATE_REJECTED" &&
+          !rejectionKeepsReceipts &&
           auditBlockField(entry.block, "Stage") === stageSlug
         )
       ) &&
@@ -31733,7 +31893,9 @@ export function currentPipelineLinkReceipts(
   const events = orderedPipelineEvidenceEvents(projectDir);
   const singleRun = options.singleRun === true;
   const workflow = `single-stage:${stageSlug}`;
-  const floor = pipelineAttemptFloor(events, stageSlug, singleRun);
+  // Under Guard Policy relaxed or off, Request Changes for a targeted fix keeps
+  // the pipeline's earlier handoffs: the agents do not all run again.
+  const floor = pipelineAttemptFloor(events, stageSlug, singleRun, guardPolicyAcceptsChanges(projectDir));
   const receipts: PipelineLinkReceipt[] = [];
   for (const entry of events) {
     if (!pipelineEventAfterFloor(entry, floor)) continue;
@@ -31837,6 +31999,9 @@ function pipelineReceiptArtifactIsCurrent(
       guardedPath,
       true,
     );
+    // Under Guard Policy relaxed or off, an edited, copied or cloned handoff
+    // still records the scan the developer agent did.
+    if (guardPolicyAcceptsChanges(projectDir)) return true;
     if (
       Math.abs(snapshot.mtimeMs - receipt.artifactMtimeMs) > 0.01
     ) {
@@ -31861,7 +32026,7 @@ function currentPipelineReuseEvidence(
   singleRun: boolean,
 ): Set<string | null> {
   const events = orderedPipelineEvidenceEvents(projectDir);
-  const floor = pipelineAttemptFloor(events, stageSlug, singleRun);
+  const floor = pipelineAttemptFloor(events, stageSlug, singleRun, guardPolicyAcceptsChanges(projectDir));
   const workflow = `single-stage:${stageSlug}`;
   const reused = new Set<string | null>();
   for (const entry of events) {
@@ -32879,6 +33044,17 @@ export function currentSwarmSourceMergeChain(
   const lastMerge = new Map<string, AuditShardEvent>();
   let priorFingerprint: string | null = null;
   let openingPrevious: string | null = null;
+  let openingRow: AuditShardEvent | null = null;
+  // A link may start from a main checkout the person changed during the build
+  // when that change was kept and recorded first (relaxed or off).
+  const keptChange = (recorded: string, current: string, merge: AuditShardEvent): boolean =>
+    allRows.some((row) =>
+      row.event === "CHANGE_ACCEPTED" &&
+      auditBlockField(row.block, "Checkpoint") === "swarm-batch" &&
+      auditBlockField(row.block, "Stage") === slug &&
+      auditBlockField(row.block, "Recorded") === recorded &&
+      auditBlockField(row.block, "Current") === current &&
+      attemptEventDefinitelyBefore(row, merge));
   for (let start = 0; start < rows.length;) {
     let end = start + 1;
     while (end < rows.length && rows[end].timestamp === rows[start].timestamp) end++;
@@ -32927,13 +33103,16 @@ export function currentSwarmSourceMergeChain(
           reason: `duplicate SWARM_SOURCE_MERGED authority for unit ${JSON.stringify(unit)}`,
         };
       }
-      if (priorFingerprint !== null && previous !== priorFingerprint) {
+      if (priorFingerprint !== null && previous !== priorFingerprint && !keptChange(priorFingerprint, previous, row)) {
         return {
           state: "invalid",
           reason: `broken SWARM_SOURCE_MERGED aggregate link before unit ${JSON.stringify(unit)}`,
         };
       }
-      if (openingPrevious === null) openingPrevious = previous;
+      if (openingPrevious === null) {
+        openingPrevious = previous;
+        openingRow = row;
+      }
       const convergenceRows = allRows
         .filter(
           (candidate) =>
@@ -33012,7 +33191,10 @@ export function currentSwarmSourceMergeChain(
   if (opening.state === "invalid") {
     return opening;
   }
-  if (openingPrevious !== opening.fingerprint) {
+  if (
+    openingPrevious !== opening.fingerprint &&
+    !(openingPrevious !== null && openingRow !== null && keptChange(opening.fingerprint, openingPrevious, openingRow))
+  ) {
     return {
       state: "invalid",
       reason: `opening SWARM_SOURCE_MERGED link does not match the current ${opening.source === "prior-accepted" ? "prior accepted aggregate" : "stage baseline"}`,
@@ -35682,7 +35864,8 @@ export function noteGuardPolicyRename(write: (line: string) => void = (line) => 
 export type ChangeCheckpoint =
   | "plan-approval"
   | "review-receipt"
-  | "summary-confirmation";
+  | "summary-confirmation"
+  | "swarm-batch";
 
 /** One accepted input change, ready to become a CHANGE_ACCEPTED row. */
 export interface AcceptedChange {
@@ -36103,7 +36286,15 @@ export function memoryGuardPolicyDeclarations(
 /** Retired alias of memoryGuardPolicyDeclarations. */
 export const memoryChangeControlDeclarations = memoryGuardPolicyDeclarations;
 
-/** The scope's default from its frontmatter; strict when the scope declares none. */
+/** A scope's Guard Policy default: what its file declares, else off, the
+ *  default of every shipped scope but enterprise (which declares strict). An
+ *  author who wants strict writes it. A scope that is not defined here at all
+ *  stays strict. */
+export function scopeDefinitionGuardPolicy(definition: { guardPolicy?: GuardPolicy } | undefined): GuardPolicy {
+  return definition === undefined ? "strict" : definition.guardPolicy ?? "off";
+}
+
+/** The scope's default from its frontmatter; off when the scope declares none. */
 export function scopeGuardPolicyDefault(scope: string | null | undefined): GuardPolicy {
   if (!scope) return "strict";
   let mapping: Record<string, ScopeDefinition>;
@@ -36112,7 +36303,7 @@ export function scopeGuardPolicyDefault(scope: string | null | undefined): Guard
   } catch {
     return "strict";
   }
-  return mapping[scope.trim().toLowerCase()]?.guardPolicy ?? "strict";
+  return scopeDefinitionGuardPolicy(mapping[scope.trim().toLowerCase()]);
 }
 /** Retired alias of scopeGuardPolicyDefault. */
 export const scopeChangeControlDefault = scopeGuardPolicyDefault;
@@ -36120,8 +36311,10 @@ export const scopeChangeControlDefault = scopeGuardPolicyDefault;
 /**
  * Resolved value = the intent's own valid line if present, else strict. Two
  * disagreeing state lines resolve to strict until a write keeps one line.
- * If ANY memory layer declares strict, that file is the source instead.
- * Memory `relaxed` or an absent section has no effect. A lone malformed state
+ * If ANY memory layer declares strict, that file is the source instead. A
+ * memory `relaxed` or `off` (the narrowest layer that declares one) replaces a
+ * value that came from the scope or is not set; the person's own switch keeps
+ * its value. An absent section has no effect. A lone malformed state
  * line is a validation error unless the repair command opts into reading it
  * tolerantly. Pure: reads state and memory, writes nothing.
  */
@@ -36169,11 +36362,11 @@ export function resolveGuardPolicy(
   }
   const stateValue = conflict === undefined ? intent?.value ?? "strict" : "strict";
   const stateSource = conflict === undefined ? intent?.source ?? "not set" : "conflicting state lines";
-  const memoryStrict =
-    memoryGuardPolicyDeclarations(projectDir, {
-      intent: selection.intent ?? undefined,
-      space: selection.space,
-    }).find((declaration) => declaration.value === "strict") ?? null;
+  const declarations = memoryGuardPolicyDeclarations(projectDir, {
+    intent: selection.intent ?? undefined,
+    space: selection.space,
+  });
+  const memoryStrict = declarations.find((declaration) => declaration.value === "strict") ?? null;
   if (memoryStrict !== null) {
     return {
       value: "strict",
@@ -36185,6 +36378,22 @@ export function resolveGuardPolicy(
       stateField,
       ...(conflict === undefined ? {} : { conflict }),
       memoryStrict,
+    };
+  }
+  // A memory layer's relaxed or off (the narrowest layer that declares one)
+  // replaces a value that came from the scope, or none at all; the person's
+  // own switch and a strict lock still win.
+  const layered = [...declarations].reverse()[0];
+  if (layered !== undefined && conflict === undefined && (intent === null || intent.source.startsWith("scope "))) {
+    return {
+      value: layered.value,
+      source: `${layered.layer}.md`,
+      scopeDefault,
+      intent,
+      stateValue,
+      rawStateValue,
+      stateField,
+      memoryStrict: null,
     };
   }
   return {
@@ -37178,8 +37387,18 @@ function appendGuardPolicySetRow(
 }
 
 /** A bounded, human-readable list of changed paths. */
+// A path anyone can name may carry a line break or a control character. In a
+// line the person or the conductor reads it stays one inert line.
+export function inertPath(path: string): string {
+  return path.replace(
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: escaping them is the point
+    /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+}
+
 export function renderChangedPaths(paths: readonly string[]): string {
-  const shown = paths.slice(0, CHANGE_CONTROL_MAX_LISTED_PATHS);
+  const shown = paths.slice(0, CHANGE_CONTROL_MAX_LISTED_PATHS).map(inertPath);
   const more = paths.length - shown.length;
   return more > 0 ? `${shown.join(", ")} (and ${more} more)` : shown.join(", ");
 }
