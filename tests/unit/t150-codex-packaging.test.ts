@@ -33,6 +33,9 @@ import {
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { parse } from "smol-toml";
+import { z } from "zod";
+import type { CodexHookTrustIdentityInput } from "../../core/tools/aidlc-plugin-hook-registrations.ts";
+import { trustEntries as emitCodexTrustEntries, trustHash as hashCodexHookIdentity } from "../../harness/codex/emit.ts";
 import { TRUSTED_ROUTE_NAMESPACE } from "../../core/tools/aidlc-command.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 import { composePluginFixture } from "../harness/plugin-kit.ts";
@@ -139,22 +142,25 @@ function parseTrustDocument(source: string): TrustDocument {
   return parse(source) as unknown as TrustDocument;
 }
 
-function codexEmitter(): {
+type CodexEmitter = {
   trustEntries: TrustEntries;
-  trustHash: (eventSnake: string, command: string) => string;
-} {
-  const emitter = require(join(REPO_ROOT, "harness", "codex", "emit.ts")) as {
-    trustEntries: (...args: [
-      string,
-      string | undefined,
-      string,
-      string,
-      string,
-      string,
-      string,
-    ]) => string;
-    trustHash: (eventSnake: string, command: string) => string;
-  };
+  trustHash: (input: CodexHookTrustIdentityInput) => string;
+};
+
+type CodexHookDocument = {
+  hooks: Record<string, Array<{ matcher?: string | undefined; hooks: Array<{ command: string }> }>>;
+};
+
+function parseCodexHookDocument(input: { source: string }): CodexHookDocument {
+  return z.object({
+    hooks: z.record(z.string(), z.array(z.object({
+      matcher: z.string().optional(),
+      hooks: z.array(z.object({ command: z.string() })),
+    }))),
+  }).parse(JSON.parse(input.source));
+}
+
+function codexEmitter(): CodexEmitter {
   return {
     trustEntries: (
       project,
@@ -164,7 +170,7 @@ function codexEmitter(): {
       harnessName = "codex",
       invoke = "aidlc",
     ) =>
-      emitter.trustEntries(
+      emitCodexTrustEntries(
         project,
         hooksJson,
         harnessDir,
@@ -173,7 +179,7 @@ function codexEmitter(): {
         invoke,
         TRUSTED_ROUTE_NAMESPACE,
       ),
-    trustHash: emitter.trustHash,
+    trustHash: hashCodexHookIdentity,
   };
 }
 
@@ -181,8 +187,8 @@ function trustEntries(): TrustEntries {
   return codexEmitter().trustEntries;
 }
 
-function trustHash(eventSnake: string, command: string): string {
-  return codexEmitter().trustHash(eventSnake, command);
+function trustHash(input: CodexHookTrustIdentityInput): string {
+  return codexEmitter().trustHash(input);
 }
 
 // Sorted, because the two surfaces serialise in different orders (hooks.json
@@ -483,9 +489,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     // both would reproduce exactly the defect it is meant to catch.
     const project = selectedCodexProject();
     const hooksPath = join(project, ".codex", "hooks.json");
-    const wiring = JSON.parse(
-      readFileSync(hooksPath, "utf-8"),
-    ) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+    const wiring = parseCodexHookDocument({ source: readFileSync(hooksPath, "utf-8") });
     const shippedGroupCounts = Object.fromEntries(
       Object.entries(wiring.hooks).map(([event, groups]) => [
         event,
@@ -586,7 +590,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
         const key = `${hooksPath}:${snake}:${index}:0`;
         const shippedCommand = group.hooks[0]?.command ?? "";
         const stored = trustState[key]?.trusted_hash;
-        const expectedHash = trustHash(snake, shippedCommand);
+        const expectedHash = trustHash({ eventSnake: snake, command: shippedCommand, matcher: group.matcher });
         return stored === expectedHash
           ? []
           : [{ key, shippedCommand, stored, expectedHash }];

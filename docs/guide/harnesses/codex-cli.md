@@ -63,6 +63,8 @@ trust action before those hooks run:
   `$CODEX_HOME/config.toml`. Replace an existing set for that hooks path rather
   than appending duplicate TOML tables.
 
+Each hash includes the normalized event, its supported matcher, the command, and Codex's command defaults. The trust key also includes the absolute hooks path and final group/handler indices. Regenerate the seed after changing those registrations. Configuration, composition, and sync generate the seed without changing the user's trust settings.
+
 Merge the generated `.codex/config.toml` settings into your user config as
 needed. Then run `$aidlc --doctor` in Codex.
 

@@ -88,9 +88,23 @@ function validHookContribution(value: unknown): value is PluginHookContribution 
   return false;
 }
 
-function codexHookTrustIdentity(input: { eventSnake: string; command: string }): string {
+type CodexHookTrustIdentityInput = {
+  readonly eventSnake: string;
+  readonly command: string;
+  readonly matcher?: string | undefined;
+};
+
+const codexMatcherEvents = new Set([
+  "pre_tool_use", "permission_request", "post_tool_use", "session_start",
+  "session_end", "subagent_start", "subagent_stop", "pre_compact", "post_compact",
+]);
+
+function codexHookTrustIdentity(input: CodexHookTrustIdentityInput): string {
+  const matcher = codexMatcherEvents.has(input.eventSnake) ? input.matcher : undefined;
+  const timeoutSec = input.eventSnake === "session_end" || input.eventSnake === "interrupt" ? 1 : 600;
   return JSON.stringify({ event_name: input.eventSnake,
-    hooks: [{ async: false, command: input.command, timeout: 600, type: "command" }] });
+    hooks: [{ async: false, command: input.command, timeout: timeoutSec, type: "command" }],
+    matcher });
 }
 
 function validCommandHookGroup(value: unknown): value is Extract<NativeHookGroup, { readonly hooks: readonly unknown[] }> {
@@ -109,7 +123,7 @@ function planCodexHookTrustSeed(input: {
   const entries = events.flatMap(({ event, groups }) => groups?.flatMap((group, groupIndex) =>
     group.hooks.map((hook, hookIndex) => {
       const eventSnake = event.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-      const hash = input.hashIdentity({ identity: codexHookTrustIdentity({ eventSnake, command: hook.command }) });
+      const hash = input.hashIdentity({ identity: codexHookTrustIdentity({ eventSnake, command: hook.command, matcher: group.matcher }) });
       return `[hooks.state.${JSON.stringify(`${input.hooksPath}:${eventSnake}:${groupIndex}:${hookIndex}`)}]\ntrusted_hash = ${JSON.stringify(hash)}`;
     })) ?? []);
   return { kind: "planned", text: entries.length > 0 ? `${entries.join("\n\n")}\n` : "[hooks.state]\n" };
@@ -255,6 +269,7 @@ export {
   type PluginHookRow,
   type ProjectedPluginHookContributions,
   planPluginHookRegistrations,
+  type CodexHookTrustIdentityInput,
   codexHookTrustIdentity,
   planCodexHookTrustSeed,
   projectedPluginHookContributionsSchema,

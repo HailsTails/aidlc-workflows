@@ -116,9 +116,7 @@ explicit harness name because Copilot and OpenCode share `.aidlc`.
 | `kiro` | `dist/kiro` | `dist/plugins/rin/kiro` | `.kiro` |
 | `kiro-ide` | `dist/kiro-ide` | `dist/plugins/rin/kiro-ide` | `.kiro` |
 
-Codex consumers use a Git repository for native project-hook discovery. The
-existing composition and sync routes finalize the project trust seed against
-the resulting hook indices; they do not write the user's Codex configuration.
+Codex consumers use a Git repository for native project-hook discovery. The existing composition and sync routes finalize the project trust seed against the resulting hook indices and native event/matcher/command identities; they do not write the user's Codex configuration. After updating an older producer, regenerate the installed seed through these routes and review the hook trust action described in the [Codex guide](harnesses/codex-cli.md). A generated seed does not itself establish that Codex has trusted or executed a hook.
 
 ## Updating an existing consumer
 

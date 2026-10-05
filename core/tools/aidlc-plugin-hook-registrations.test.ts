@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import {
   type HookRegistrationPlanResult,
   type PlanPluginHookRegistrationsInput,
   type PluginHookContribution,
   planPluginHookRegistrations,
+  codexHookTrustIdentity,
+  planCodexHookTrustSeed,
 } from "./aidlc-plugin-hook-registrations.ts";
 
 const claudeContribution: PluginHookContribution = {
@@ -286,5 +288,114 @@ describe("owned plugin hook registration lifecycle", () => {
       documents: [{ path: ".aidlc/hooks/plugin-hook-rows.json", text: '[{"event":"PreToolUse","target":"example-guard","hookFile":"guard.ts","pluginName":"example","matcher":"Bash"},{"event":"PreToolUse","target":"user-guard","hookFile":"user.ts","pluginName":"user"}]' }],
     });
     expect(plannedDocument({ result, path: ".aidlc/hooks/plugin-hook-rows.json" })).toEqual([{ event: "PreToolUse", target: "user-guard", hookFile: "user.ts", pluginName: "user" }]);
+  });
+});
+
+
+describe("normalized native Codex hook trust identity", () => {
+  test("a tool matcher belongs to the canonical single-command identity", () => {
+    expect(codexHookTrustIdentity({
+      eventSnake: "pre_tool_use", matcher: "Bash",
+      command: "bun .codex/tools/aidlc.ts engine adapter codex rin-block-inline-exec",
+    })).toBe('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"bun .codex/tools/aidlc.ts engine adapter codex rin-block-inline-exec","timeout":600,"type":"command"}],"matcher":"Bash"}');
+  });
+
+  test("an omitted matcher retains the previous unrestricted identity", () => {
+    expect(codexHookTrustIdentity({ eventSnake: "session_start", command: "guard" }))
+      .toBe('{"event_name":"session_start","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}]}');
+  });
+
+  test("an empty matcher remains an explicit identity field", () => {
+    expect(codexHookTrustIdentity({ eventSnake: "pre_tool_use", command: "guard", matcher: "" }))
+      .toBe('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":""}');
+  });
+
+  test("a match-all selector remains distinct from an omitted matcher", () => {
+    expect(codexHookTrustIdentity({ eventSnake: "post_tool_use", command: "guard", matcher: "*" }))
+      .toBe('{"event_name":"post_tool_use","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"*"}');
+  });
+
+  test("a session selector retains its exact spelling", () => {
+    expect(codexHookTrustIdentity({ eventSnake: "session_start", command: "guard", matcher: "startup|resume" }))
+      .toBe('{"event_name":"session_start","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"startup|resume"}');
+  });
+
+  test("a selector retains whitespace without normalization", () => {
+    expect(codexHookTrustIdentity({ eventSnake: "pre_tool_use", command: "guard", matcher: " Bash " }))
+      .toBe('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":" Bash "}');
+  });
+
+  test.each([
+    { eventSnake: "permission_request", expected: '{"event_name":"permission_request","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
+    { eventSnake: "session_end", expected: '{"event_name":"session_end","hooks":[{"async":false,"command":"guard","timeout":1,"type":"command"}],"matcher":"Bash"}' },
+    { eventSnake: "subagent_start", expected: '{"event_name":"subagent_start","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
+    { eventSnake: "subagent_stop", expected: '{"event_name":"subagent_stop","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
+    { eventSnake: "pre_compact", expected: '{"event_name":"pre_compact","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
+    { eventSnake: "post_compact", expected: '{"event_name":"post_compact","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
+  ])("$eventSnake retains its matcher in the native identity", ({ eventSnake, expected }) => {
+    expect(codexHookTrustIdentity({ eventSnake, command: "guard", matcher: "Bash" })).toBe(expected);
+  });
+
+  test("a prompt event discards a matcher ignored by native Codex", () => {
+    expect(codexHookTrustIdentity({ eventSnake: "user_prompt_submit", command: "guard", matcher: "^hello" }))
+      .toBe('{"event_name":"user_prompt_submit","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}]}');
+  });
+
+  test("a stop event discards a matcher ignored by native Codex", () => {
+    expect(codexHookTrustIdentity({ eventSnake: "stop", command: "guard", matcher: "*" }))
+      .toBe('{"event_name":"stop","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}]}');
+  });
+
+  test("an interrupt event discards a matcher ignored by native Codex", () => {
+    expect(codexHookTrustIdentity({ eventSnake: "interrupt", command: "guard", matcher: "*" }))
+      .toBe('{"event_name":"interrupt","hooks":[{"async":false,"command":"guard","timeout":1,"type":"command"}]}');
+  });
+});
+
+describe("project-specific Codex trust seed planning", () => {
+  test("the final installed matcher reaches the hash port with its native identity", () => {
+    const hashIdentity = mock((_identityRequest: { identity: string }) => "sha256:baf42fc38cc3a0b4bacdf6d17c88276c8d7aae2f728be8f46e291c93a866097e");
+    const result = planCodexHookTrustSeed({
+      document: { hooks: { PreToolUse: [{
+        matcher: "Bash", hooks: [{ type: "command", command: "bun .codex/tools/aidlc.ts engine adapter codex rin-block-inline-exec" }],
+      }] } },
+      hooksPath: "/consumer/.codex/hooks.json", hashIdentity,
+    });
+    expect(hashIdentity.mock.calls).toEqual([[{
+      identity: '{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"bun .codex/tools/aidlc.ts engine adapter codex rin-block-inline-exec","timeout":600,"type":"command"}],"matcher":"Bash"}',
+    }]]);
+    expect(result).toEqual({
+      kind: "planned",
+      text: '[hooks.state."/consumer/.codex/hooks.json:pre_tool_use:0:0"]\ntrusted_hash = "sha256:baf42fc38cc3a0b4bacdf6d17c88276c8d7aae2f728be8f46e291c93a866097e"\n',
+    });
+  });
+
+  test("each handler preserves its final group and handler index", () => {
+    const hashIdentity = mock((_identityRequest: { identity: string }) => "first").mockReturnValueOnce("first").mockReturnValueOnce("second").mockReturnValueOnce("third");
+    const result = planCodexHookTrustSeed({
+      document: { hooks: { PostToolUse: [
+        { matcher: "Read", hooks: [{ type: "command", command: "one" }, { type: "command", command: "two" }] },
+        { matcher: "Write", hooks: [{ type: "command", command: "three" }] },
+      ] } },
+      hooksPath: "/consumer/.codex/hooks.json", hashIdentity,
+    });
+    expect(hashIdentity.mock.calls).toEqual([
+      [{ identity: '{"event_name":"post_tool_use","hooks":[{"async":false,"command":"one","timeout":600,"type":"command"}],"matcher":"Read"}' }],
+      [{ identity: '{"event_name":"post_tool_use","hooks":[{"async":false,"command":"two","timeout":600,"type":"command"}],"matcher":"Read"}' }],
+      [{ identity: '{"event_name":"post_tool_use","hooks":[{"async":false,"command":"three","timeout":600,"type":"command"}],"matcher":"Write"}' }],
+    ]);
+    expect(result).toEqual({
+      kind: "planned",
+      text: '[hooks.state."/consumer/.codex/hooks.json:post_tool_use:0:0"]\ntrusted_hash = "first"\n\n[hooks.state."/consumer/.codex/hooks.json:post_tool_use:0:1"]\ntrusted_hash = "second"\n\n[hooks.state."/consumer/.codex/hooks.json:post_tool_use:1:0"]\ntrusted_hash = "third"\n',
+    });
+  });
+
+  test("an invalid matcher refuses before invoking the hash port", () => {
+    const hashIdentity = mock((_identityRequest: { identity: string }) => "unused");
+    expect(planCodexHookTrustSeed({
+      document: { hooks: { PreToolUse: [{ matcher: 7, hooks: [{ type: "command", command: "guard" }] }] } },
+      hooksPath: "/consumer/.codex/hooks.json", hashIdentity,
+    })).toEqual({ kind: "invalid-document" });
+    expect(hashIdentity).not.toHaveBeenCalled();
   });
 });

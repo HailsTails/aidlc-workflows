@@ -32,7 +32,7 @@ import {
   resolveModelPolicy,
   writeCodexAgentSurface,
 } from "../../core/tools/aidlc-model-policy.ts";
-import { codexHookTrustIdentity } from "../../core/tools/aidlc-plugin-hook-registrations.ts";
+import { type CodexHookTrustIdentityInput, codexHookTrustIdentity } from "../../core/tools/aidlc-plugin-hook-registrations.ts";
 
 // ---------------------------------------------------------------------------
 // Hook wiring (kiro-normative shape: register ONLY events with a real core-hook
@@ -171,17 +171,9 @@ prefix_rule(pattern = ["git", "add"], decision = "allow")
 `;
 }
 
-// S9a trust-hash recipe. Identity = {event_name: <snake>, hooks: [{async:false,
-// command, timeout:600, type:"command"}]} → canonical JSON (sorted keys,
-// compact) → sha256.
-// Exported so a test can bind a trust key to the command of the group that
-// actually sits at that position in the shipped hooks.json. Without that pairing
-// the trust surface is only checkable as a SET, and a reorder that preserves
-// per-event membership rebinds every hash to the wrong row while every
-// set-shaped assertion still agrees.
-export function trustHash(eventSnake: string, command: string): string {
-  const blob = codexHookTrustIdentity({ eventSnake, command });
-  return "sha256:" + createHash("sha256").update(blob, "utf-8").digest("hex");
+export function trustHash(input: CodexHookTrustIdentityInput): string {
+  const identity = codexHookTrustIdentity(input);
+  return "sha256:" + createHash("sha256").update(identity, "utf-8").digest("hex");
 }
 
 const SNAKE: Record<string, string> = {
@@ -221,15 +213,15 @@ export function trustEntries(
   const path = hooksJsonPath ?? projectPath.join(projectDir, harnessDir, "hooks.json");
   const counters: Record<string, number> = {};
   const state: Record<string, { trusted_hash: string }> = {};
-  for (const { event, target } of HOOK_WIRING) {
+  HOOK_WIRING.forEach(({ event, matcher, target }) => {
     const snake = SNAKE[event];
     const idx = counters[snake] ?? 0;
     counters[snake] = idx + 1;
     const command = adapterCmd(harnessName, target, trustedNamespace)
       .replace("{{INVOKE}}", invoke);
-    const hash = trustHash(snake, command);
+    const hash = trustHash({ eventSnake: snake, command, matcher });
     state[`${path}:${snake}:${idx}:0`] = { trusted_hash: hash };
-  }
+  });
   return stringify({ hooks: { state } });
 }
 
@@ -251,7 +243,7 @@ export function emitTrustSeed(
     `# Paste the complete stdout into the USER config.toml ($CODEX_HOME/config.toml).\n` +
     `# If entries for that hooks.json path already exist, replace the full set;\n` +
     `# appending a second set creates invalid TOML. The hash covers the\n` +
-    `# normalized hook identity (event + command + defaults), NOT the path —\n` +
+    `# normalized hook identity (event + matcher + command + defaults), NOT the path —\n` +
     `# only the key changes per install. Codex then runs the hooks without a\n` +
     `# TUI trust pass (the --dangerously-bypass-hook-trust flag does NOT fire\n` +
     `# untrusted hooks at 0.137-0.139; never rely on it).\n\n` +
