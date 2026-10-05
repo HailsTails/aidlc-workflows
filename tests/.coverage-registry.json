@@ -8459,6 +8459,10 @@
         {
           "file": "tests/unit/t-copilot-hook-health.test.ts",
           "mechanism": "cli"
+        },
+        {
+          "file": "tests/unit/t-hooks-off-step.test.ts",
+          "mechanism": "cli"
         }
       ],
       "status": "covered"
@@ -12273,6 +12277,13 @@
     {
       "unitClass": "function",
       "unitId": "function:writePlanApprovalViolation",
+      "minMechanism": "none",
+      "coveredBy": [],
+      "status": "UNCOVERED"
+    },
+    {
+      "unitClass": "function",
+      "unitId": "function:writeProjectHookStatusFile",
       "minMechanism": "none",
       "coveredBy": [],
       "status": "UNCOVERED"
