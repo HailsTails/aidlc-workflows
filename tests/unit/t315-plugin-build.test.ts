@@ -270,6 +270,31 @@ describe("t315 standalone plugin builder", () => {
     }
   });
 
+  test("Codex standalone builder emits a root-relative supported marketplace beside its native plugin manifest", () => {
+    const pluginRoot = copyPlugin("supported-codex-marketplace");
+    const outDir = join(scratch, "supported-codex-marketplace-output");
+    const result = run([pluginRoot, "codex", outDir, "--json"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(outDir, ".codex-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(join(outDir, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(JSON.parse(readFileSync(join(outDir, ".agents", "plugins", "marketplace.json"), "utf-8"))).toEqual(
+      expect.objectContaining({
+        name: "aidlc-plugins",
+        plugins: [expect.objectContaining({ name: "aidlc-test-pro", source: "." })],
+      }),
+    );
+  });
+
+  test("Claude standalone builder preserves its existing marketplace layout", () => {
+    const pluginRoot = copyPlugin("preserved-claude-marketplace");
+    const outDir = join(scratch, "preserved-claude-marketplace-output");
+    const result = run([pluginRoot, "claude", outDir, "--json"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(outDir, ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(join(outDir, ".claude-plugin", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(outDir, ".agents", "plugins", "marketplace.json"))).toBe(false);
+  });
+
   test("Codex standalone builder places Markdown without packager-native TOML", () => {
     const pluginRoot = copyPlugin("generic-codex-placement");
     const outDir = join(scratch, "generic-codex-placement-output");

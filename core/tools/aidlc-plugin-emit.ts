@@ -658,8 +658,12 @@ export function buildPluginProjection(
           2,
         )}\n`,
       );
+      const marketplaceDir = options.target.harnessName === "codex"
+        ? join(outDir, ".agents", "plugins")
+        : hostManifestDir;
+      mkdirSync(marketplaceDir, { recursive: true });
       writeFileSync(
-        join(hostManifestDir, "marketplace.json"),
+        join(marketplaceDir, "marketplace.json"),
         `${JSON.stringify(
           {
             name: "aidlc-plugins",
