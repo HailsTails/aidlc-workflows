@@ -11696,6 +11696,9 @@ type GuardPreflightOptions = {
   action: GuardPreflightAction;
   unit?: string;
   entrypoint?: "approve" | "advance" | "finalize" | "complete-workflow";
+  // The person's own approval: the step it opens or records may go over a
+  // review that never finished (the state tool checks their reply).
+  personApproves?: boolean;
 };
 
 // The same admission call the state tool makes before it changes state, run
@@ -11795,7 +11798,11 @@ function preflightSequenceDirective(
     const verb = subArgs[0];
     let options: GuardPreflightOptions | null = null;
     if (verb === "gate-start") {
-      options = { action: "present-approval-gate", ...(unit ? { unit } : {}) };
+      options = {
+        action: "present-approval-gate",
+        ...(unit ? { unit } : {}),
+        ...(subArgs.includes("--person-approves") ? { personApproves: true } : {}),
+      };
     } else if (verb === "revise") {
       options = { action: "revise", ...(unit ? { unit } : {}) };
     } else if (verb === "approve") {
@@ -11803,6 +11810,7 @@ function preflightSequenceDirective(
         action: "complete",
         entrypoint: "approve",
         ...(unit ? { unit } : {}),
+        ...(subArgs.includes("--user-input") ? { personApproves: true } : {}),
       };
     } else if (
       verb === "advance" ||
@@ -13247,6 +13255,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
             "--recovered",
             "--unit",
             unit,
+            ...(flags.userInput?.trim() ? ["--person-approves"] : []),
           ]);
         }
         sequence.push(approveArgs(slug, flags));
@@ -13668,8 +13677,14 @@ function handleReport(args: string[], projectDir: string | undefined): void {
         return;
       }
       // Backfilled gate — tag the row Recovered=true so audit consumers can
-      // tell the engine-opened gate from an organic gate-start.
-      sequence.push(["gate-start", slug, "--recovered"]);
+      // tell the engine-opened gate from an organic gate-start. Opened for the
+      // person's reported approval, it may open over a review that never finished.
+      sequence.push([
+        "gate-start",
+        slug,
+        "--recovered",
+        ...(flags.userInput?.trim() ? ["--person-approves"] : []),
+      ]);
     }
     // Reviewer precondition (§12a / RFC Track 1) is NOT enforced here. Like the
     // artifact, human-presence, and revision guards, it lives in
