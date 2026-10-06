@@ -239,8 +239,9 @@ hook output. Its capability note also explains that automatic rename.
 #### Copilot adapter
 
 Copilot forwards UserPromptSubmit to the core human-turn hook even before a
-state file exists, so a first-use lowering switch gets the instruction to create
-the piece of work and type the switch again rather than being saved for later.
+state file exists, so Guard Policy `relaxed` or `off` and plan approval `off`
+are kept for the piece of work this chat starts next, and any other first-use
+fence switch gets the instruction to create the piece of work and type it again.
 Its human-sequence coordination marker still requires an existing state file.
 
 Every subagent launch is one dispatch. VS Code's subagent tool is `runSubagent`
