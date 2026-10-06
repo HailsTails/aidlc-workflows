@@ -224,7 +224,13 @@ Verifies the orchestrator's structural correctness without invoking the LLM. If 
 - Scope runs: every shipped scope driven from the person's first request to done (integration, `tests/integration/t-scope-run-*`; see below)
 - Guard matrix: what the person meets when files change under approved work, per Guard Policy, review cap and plan approval (integration, `tests/integration/t-guard-matrix-*`; see below)
 
-**Run:** `bun tests/run-tests.ts` (default, no flags needed). `bash tests/run-tests.sh` is a compatibility wrapper for existing POSIX commands. The scope runs and the guard matrix run only when a `--filter` selects them, or with `--release`/`--all` (see the CLI reference).
+**Run:** `bun tests/run-tests.ts --no-llm`. The default profile includes the
+integration level, so the run needs the LLM and opens the live-model gate
+whenever the `claude` CLI is on PATH. `--no-llm` closes that gate and keeps this
+layer LLM-free; the deterministic tests still run. `bash tests/run-tests.sh` is a
+compatibility wrapper for existing POSIX commands. The scope runs and the guard
+matrix run only when a `--filter` selects them, or with `--release`/`--all` (see
+the CLI reference).
 
 ### Scope runs
 
