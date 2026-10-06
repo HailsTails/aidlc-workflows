@@ -19,6 +19,7 @@ import {
   type VerificationCommand,
   claimAttemptFields,
   completionCarriesVerifiedReview,
+  reviewRecordNotHere,
   effectivePlanAction,
   eventMatchesClaimAttempt,
   filterProducesByKind,
@@ -461,8 +462,11 @@ function snapshot(
   const humanRequired = kind === "skeleton" || !autonomous;
   const floors: Record<string, string> = {};
   const evidence: unknown[] = [];
-  if (listing === null) errors.push("The Unit's source boundary cannot be fingerprinted.");
+  // Said after the stages, in this place: under relaxed and off a review that
+  // kept its source binding stands for source that cannot be read here.
+  const unreadableAt = errors.length;
   let sourceStages = 0;
+  let sourceKeptUnread = 0;
   let rereview: ConstructionCheckpoint["rereview"] = null;
   let recheckVerdict: string | null = null;
   let recheckChanged: "code" | "documents" = "code";
@@ -598,14 +602,22 @@ function snapshot(
       // Another Unit's own reviewed build of a path this Unit claims, or any
       // change to its code or documents the Guard Policy accepts, is not a
       // change to this Unit's approved work: its review's binding still holds.
+      // So is source the Guard Policy keeps without a compare: the reviewed
+      // listing not on this machine, the Unit's list of files changed after
+      // its review, or source that cannot be read here.
       const reviewedSource = review ? auditBlockField(review.block, "Unit Source Fingerprint") : null;
+      const sourceKept = receipts.unitSourceKept.has(unit) && acceptsChanges();
       if (
-        stage.workspace_requires && source !== null && reviewedSource !== null &&
-        reviewedSource !== source && (
-          receipts.unitSourceAttributed.has(unit) ||
-          (receipts.unitSourceMoved.has(unit) && acceptsChanges())
+        stage.workspace_requires && reviewedSource !== null && reviewedSource !== source && (
+          sourceKept || (source !== null && (
+            receipts.unitSourceAttributed.has(unit) ||
+            (receipts.unitSourceMoved.has(unit) && acceptsChanges())
+          ))
         )
-      ) source = reviewedSource;
+      ) {
+        if (source === null && listing === null) sourceKeptUnread++;
+        source = reviewedSource;
+      }
       const reviewedArtifact = review ? auditBlockField(review.block, "Artifact Fingerprint") : null;
       if (
         artifact !== null && reviewedArtifact !== null && reviewedArtifact !== artifact &&
@@ -613,7 +625,11 @@ function snapshot(
       ) artifact = reviewedArtifact;
       if (
         !review || !receipts.unitVerdicts.has(unit) ||
-        !binding || !completionCarriesVerifiedReview(projectDir, binding, review.block) ||
+        !binding || (
+          !completionCarriesVerifiedReview(projectDir, binding, review.block) &&
+          // A written review not on this machine keeps its recorded verdict.
+          !(acceptsChanges() && reviewRecordNotHere(projectDir, binding, review.block))
+        ) ||
         receipts.unitPending.has(unit) || receipts.openBoltUnits.has(unit) ||
         reviewFloor !== floor ||
         auditBlockField(review.block, "Artifact Fingerprint") !== artifact ||
@@ -627,10 +643,14 @@ function snapshot(
       ) {
         errors.push(`${slug}: current artifact/source-bound terminal review evidence is required.`);
         // Only the reviewed code or documents moved (no review is waiting):
-        // the one recovery review re-checks them.
+        // the one recovery review re-checks them. So does readable code the
+        // review no longer binds (its list of files changed, or the listing it
+        // saw is not on this machine).
         const moved = receipts.unitSourceMoved.get(unit) ??
-          (review && auditBlockField(review.block, "Artifact Fingerprint") !== artifact
-            ? receipts.unitStaleProgress.get(unit) : undefined);
+          (review && (
+            auditBlockField(review.block, "Artifact Fingerprint") !== artifact ||
+            (receipts.unitStale.has(unit) && listing !== null)
+          ) ? receipts.unitStaleProgress.get(unit) : undefined);
         if (review && moved && !moved.recoverySpent && !receipts.unitPending.has(unit)) {
           const reviewer = stage.reviewer!;
           const iteration = moved.nextIteration;
@@ -685,6 +705,9 @@ function snapshot(
       reviewer: reviewClass === "none" ? null : stage.reviewer ?? null,
       review_verdict: review ? auditBlockField(review.block, "Verdict") : null,
     });
+  }
+  if (listing === null && (sourceStages === 0 || sourceKeptUnread < sourceStages)) {
+    errors.splice(unreadableAt, 0, "The Unit's source boundary cannot be fingerprinted.");
   }
   if (sourceStages === 0) errors.push("No applicable stage supplies the Unit's source manifest.");
   if (errors.length !== 1) rereview = null;
