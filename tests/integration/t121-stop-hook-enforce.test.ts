@@ -1202,19 +1202,13 @@ describe("t121 aidlc-continue-workflow hook — forwarding-loop enforcement (mig
     seedActive(proj, "requirements-analysis");
     const r = runHook(proj, '{"stop_hook_active":false}', "run-stage");
     const reason = (JSON.parse(r.out) as { reason: string }).reason;
-    // The stage context is carried into the continuation, in plain words: the
-    // agent repeats what it is told, so no hook, section, or engine term.
-    expect(reason).toStartWith('The AI-DLC workflow is not finished (current stage "requirements-analysis"). ');
+    // The person sees the note too (Claude Code shows it as "Stop hook error"):
+    // one line naming the open step by its name and the one command the agent
+    // runs next, with no hook, section, or engine term. What the agent does
+    // when its own question waits, or the person asked to stop, is in every
+    // conductor SKILL (t181).
+    expect(reason).toMatch(/^Requirements Analysis is not finished yet\. Next: `[^`]*aidlc-orchestrate[^`]* next`\.$/);
     expect(reason).not.toMatch(/hook|\u00a7|forwarding|directive|delivered|rubber-stamp|receipt|run-stage|loop/i);
-    // A question shown before it was recorded is recorded, never asked again.
-    expect(reason).toContain(
-      'If you just asked the person a question and are waiting for the answer, run `',
-    );
-    expect(reason).toContain(
-      "engine log decision --stage requirements-analysis --decision \"<the question>\" --options \"<the choices>\"`, adding any `--single`, `--checkpoint` or `--questions-file` flags that question's own instructions use, and end your turn without asking it again.",
-    );
-    expect(reason).toContain("If the person asked to stop here, run `");
-    expect(reason).toContain("tell the person nothing about this note");
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
   test("(a) reason is a sanctioned continuation (re-feeds the loop, no override verbs)", () => {
@@ -1243,9 +1237,7 @@ describe("t121 aidlc-continue-workflow hook — forwarding-loop enforcement (mig
     };
     expect(parsed.decision).toBe("block");
     const reasonText = parsed.reason ?? "";
-    expect(reasonText).toContain("continue steering-token-495");
-    expect(reasonText).toContain("follow each step it returns until it answers `run-stage`");
-    expect(reasonText).toContain("Do not summarise or narrate rule chunks");
+    expect(reasonText).toMatch(/^Requirements Analysis is not finished yet\. Next: `[^`]* continue steering-token-495`\.$/);
 
     // The payload never rides along: neither the rule text nor its path.
     expect(reasonText).not.toContain("ALWAYS preserve this exact stop-recovered policy.");
@@ -1279,7 +1271,8 @@ describe("t121 aidlc-continue-workflow hook — forwarding-loop enforcement (mig
     };
     expect(first.rc).toBe(0);
     expect(parsed.decision).toBe("block");
-    expect(parsed.reason).toContain(message);
+    // The engine's own sentence, worded for the person, behind one short lead.
+    expect(parsed.reason).toBe(`The last AI-DLC step stopped on a problem: ${message}`);
     expect(parsed.reason).not.toMatch(/\breport\b/i);
     expect(parsed.reason).not.toMatch(/repeat until/i);
     expect(parsed.reason).not.toContain("repeat-until-done");
@@ -1440,7 +1433,10 @@ describe("t121 aidlc-continue-workflow hook — forwarding-loop enforcement (mig
     const proj = makeProject();
     seedActive(proj);
     const result = runHook(proj, '{"session_id":"error-utf8"}', "error", "", "", "requirements-analysis", "", false, { MOCK_MESSAGE: message });
-    const diagnostic = JSON.parse(result.out).reason.split("--- begin engine diagnostic ---\n")[1].split("\n--- end engine diagnostic ---")[0];
+    const lead = "The last AI-DLC step stopped on a problem: ";
+    const reason = String(JSON.parse(result.out).reason);
+    expect(reason.startsWith(lead)).toBe(true);
+    const diagnostic = reason.slice(lead.length);
     expect(diagnostic).toBe(expected);
     expect(readFileSync(pinnedShardPath(proj), "utf-8")).toContain(`**Error**: ${expected}\n`);
   });
@@ -2462,11 +2458,10 @@ describe("t121 aidlc-continue-workflow hook — forwarding-loop enforcement (mig
     );
     const stop = () => runHook(proj, '{"stop_hook_active":false}', "run-stage", "", "alpha", "code-generation");
     const reminder = (JSON.parse(stop().out) as { reason: string }).reason;
-    // A team Unit's wait matches only a record for that Unit, so the record
-    // step names it.
-    expect(reminder).toContain(
-      "engine log decision --stage code-generation --unit alpha --decision \"<the question>\" --options \"<the choices>\"`, adding any `--single`, `--checkpoint` or `--questions-file` flags that question's own instructions use, and end your turn without asking it again.",
-    );
+    // The note names the Unit. A team Unit's wait matches only a record for
+    // that Unit, so the SKILL's record step adds `--unit` in team-owned Unit
+    // work (t181), and that record then ends the turn.
+    expect(reminder).toMatch(/^Code Generation for alpha is not finished yet\. Next: `[^`]* next`\.$/);
     seedInteractionAudit(proj, [{ event: "DECISION_RECORDED", stage: "code-generation", unit: "alpha" }]);
     expect(stop().out).toBe("");
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
