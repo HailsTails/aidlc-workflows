@@ -283,12 +283,17 @@ command, never abbreviated, in the approval question: "Verified with
 `verification_command` from the current tool output, with a code-span delimiter
 that preserves any backticks. When the checkpoint carries `rechecked`, this is
 the one question about the re-check: no learnings question comes before it, and
-its line after the verified sentence is "<unit>'s <changed> changed since you
-approved it, so it was re-checked: <verdict>. Approve it?" when
+its line takes the place of "Approve this completed <unit>?" after
+"Verified with `<full command>` (exit 0).", so the person is asked once:
+"<unit>'s <changed> changed since you approved it, so it was re-checked:
+<verdict>. Approve it?" when
 `rechecked.approved_before` is true, otherwise "<unit>'s <changed> changed after
 its review, so it was re-checked: <verdict>. Approve it?", with `<changed>` as
 `rechecked.changed` (code, or documents) and the verdict in plain words (ready,
-or not ready). On a `NOT-READY` verdict, print the Review brief
+or not ready). When `rechecked.redone` is true, the person asked for that work
+to be redone, so the line is instead "<unit>'s design was redone and its review
+says <verdict>. Approve it?" ("code" in place of "design" when
+`rechecked.changed` is code). On a `NOT-READY` verdict, print the Review brief
 first, as the reviewer module asks after a recovery verdict:
 `bun {{HARNESS_DIR}}/tools/aidlc-review-brief.ts review --stage "<directive.stage>" --unit "<unit>" --why stale`.
 The human's reply in that session, to this checkpoint question, authorizes the
