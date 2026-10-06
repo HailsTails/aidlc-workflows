@@ -701,6 +701,7 @@ dist/claude/.claude/
 |   |   +-- prioritization-frameworks.md
 |   |   +-- user-story-patterns.md
 |   |   +-- market-research-methods.md
+|   |   +-- corner-checklist.md
 |   +-- aidlc-architect-agent/
 |   |   +-- architecture-guide.md
 |   |   +-- nfr-design-guide.md
