@@ -190,7 +190,9 @@ import {
   parseGuardPolicyStateLine,
   SKELETON_STANCES,
   guardRefusalStreakView,
+  pendingGuardRecoveryAsk,
   type GuardRemedy,
+  type GuardRecoveryAskData,
   humanAuthorityState,
   latestMainWorkflowStageRunFloorForProject,
   latestReviewRecordRefs,
@@ -1472,12 +1474,17 @@ function emit(requested: Directive): void {
   // A plan change while the code plan's question is open leaves the question
   // as the published step.
   const planQuestionStays = planWaitPrints.has(requested);
+  // A hook refusal's question is asked as the hook used to print it, not
+  // published, so the person's own words from the request that led to it still
+  // carry their Request Changes.
+  const hookRefusalAsk = hookRefusalAsks.has(requested);
   if (
     prepared.marker &&
     !isReadOnlyEngineProbe() &&
     !retainedIssuedDirective &&
     !sameGuardRecoveryAsk &&
-    !planQuestionStays
+    !planQuestionStays &&
+    !hookRefusalAsk
   ) {
     const projectDir = prepared.projectDir;
     try {
@@ -4514,6 +4521,7 @@ const turnEndingPrints = new WeakSet<Directive>();
 // A plan change the person asked for while the code plan's question is open:
 // the question stays the published step (emit does not replace it).
 const planWaitPrints = new WeakSet<Directive>();
+const hookRefusalAsks = new WeakSet<Directive>();
 const publicationContexts = new WeakMap<
   Directive,
   { projectDir: string; stateHash: string }
@@ -7843,6 +7851,17 @@ function routeNext(args: string[], projectDir: string | undefined): void {
 
   const checkboxes = parseCheckboxes(stateContent);
   const currentState = checkboxStateOf(checkboxes, currentSlug);
+
+  // A guard hook refused a step and left its recovery question here.
+  const pendingRecovery = pendingGuardRecoveryDirective(
+    pd,
+    stateContent,
+    currentState === "awaiting-approval",
+  );
+  if (pendingRecovery) {
+    emit(pendingRecovery);
+    return;
+  }
 
   // A folder set up as a new project gained code before Construction: ask the
   // person which it is, at a stage boundary rather than over an open gate.
@@ -11900,7 +11919,33 @@ function retiredGuardPolicyNotice(projectDir: string, stateContent: string): str
 function guardRecoveryAskFromToolOutput(
   output: string,
 ): GuardRecoveryAskDirective | null {
-  const ask = guardRecoveryAskFromRefusalText(output);
+  return validGuardRecoveryAsk(guardRecoveryAskFromRefusalText(output));
+}
+
+// The recovery question a hook refusal left for this `next` (the hook's own
+// message names only `next`). It waits behind a question already put to the
+// person: the open gate, or an engine question still being answered. A
+// read-only probe reads it and writes nothing. It is asked once and not
+// published as the active question, the same as when the hook printed it.
+function pendingGuardRecoveryDirective(
+  projectDir: string,
+  stateContent: string,
+  gateOpen: boolean,
+): GuardRecoveryAskDirective | null {
+  const held = gateOpen || readActiveDirectiveMarker(projectDir, stateContent)?.kind === "ask";
+  const probe = isReadOnlyEngineProbe();
+  const ask = pendingGuardRecoveryAsk(projectDir, stateContent, {
+    take: !probe && !held,
+    prune: !probe,
+  });
+  const directive = held ? null : validGuardRecoveryAsk(ask);
+  if (directive) hookRefusalAsks.add(directive);
+  return directive;
+}
+
+function validGuardRecoveryAsk(
+  ask: GuardRecoveryAskData | null,
+): GuardRecoveryAskDirective | null {
   if (ask === null) return null;
   const result = validateDirective(ask);
   if (
