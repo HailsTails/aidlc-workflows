@@ -143,7 +143,9 @@ import {
 import {
   approvalFingerprint,
   beginCodeGeneration,
+  codeGenerationExecutionAllowed,
   codeGenerationPlanApprovalFence,
+  evaluateCodeGenerationApproval,
   legacyPlanApprovalGuardState,
   parseTestingContract,
   renderTestingContract,
@@ -235,6 +237,24 @@ interface KiroDelegationTarget {
 // `tool_input.stages[].role`; an `orchestrate_subagent` stage's own
 // `prompt_template` is what that delegate receives. `agent` is "" when the
 // payload names no delegate.
+// A call with no arguments may build any Unit of a group, so continuing past a
+// changed approved plan needs every Unit the active directive builds to be
+// approved or to continue from its own approval: a Unit the person never
+// approved is never built. A single-target directive has only its own target.
+function everyUnitContinuesFromApproval(projectDir: string): boolean {
+  try {
+    const state = readFileSync(stateFilePath(projectDir), "utf-8");
+    const marker = readActiveDirectiveMarker(projectDir, state);
+    if (marker?.kind !== "invoke-swarm") return true;
+    return (marker.units ?? []).every((unit) =>
+      evaluateCodeGenerationApproval(projectDir, { unit }).ok ||
+      codeGenerationExecutionAllowed(projectDir, { unit })
+    );
+  } catch {
+    return false;
+  }
+}
+
 // Whether the workflow is at Code Generation: the state's Current Stage or the
 // active directive names it. Unreadable state is not Code Generation, matching
 // the core guard's fail-open outside that stage.
@@ -526,7 +546,12 @@ function processLegacyPlanApprovalWrite(
     }
     return null;
   }
-  if (state.approved) return null;
+  // An approved plan, or one that changed since under a lowered check, is not
+  // a planning window: its writes are the build's.
+  if (
+    state.approved ||
+    (codeGenerationExecutionAllowed(projectDir, state.target) && everyUnitContinuesFromApproval(projectDir))
+  ) return null;
   const authority = resolveCodeGenerationAuthority(projectDir, state.target);
   const planPath = join(authority.stageDir, "code-generation-plan.md");
   const instructionsPath = join(authority.stageDir, "unit-test-instructions.md");
@@ -2005,11 +2030,16 @@ type Forward = { hook: string; input: Record<string, unknown> } | null;
 // own switch) lets changed content through once the plan is approved, as the
 // core guard does; it never supplies the first approval. These refusals are the
 // adapter's own, for payloads that hide their target, so they follow the same
-// rule. An unreadable state keeps the check up.
+// rule: an approved plan that changed since is still approved here, through the
+// core's own continuation. An unreadable state keeps the check up.
 function loweredPlanCheckAdmitsApprovedWork(): boolean {
   try {
     const state = legacyPlanApprovalGuardState(projectDir);
-    if (!state.active || !state.approved || state.target === null) return false;
+    if (!state.active || state.target === null) return false;
+    if (
+      !state.approved &&
+      (!codeGenerationExecutionAllowed(projectDir, state.target) || !everyUnitContinuesFromApproval(projectDir))
+    ) return false;
     return codeGenerationPlanApprovalFence(projectDir, state.target, {
       sessionId: resolvedPlanApprovalSessionId(ide),
     }).decision === "stand-aside";
@@ -2335,10 +2365,41 @@ function buildForward(): Forward {
             },
           };
         }
+        // An approved plan that changed since, under a lowered check, builds on.
+        if (state.active && !state.approved && state.target !== null && loweredPlanCheckAdmitsApprovedWork()) {
+          try {
+            beginCodeGeneration(projectDir, state.target);
+          } catch (error) {
+            return {
+              hook: "__legacy_plan_approval_block__",
+              input: {
+                reason:
+                  `Legacy Code Generation could not start its protected authority: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+              },
+            };
+          }
+          return null;
+        }
+        // Under a lowered check the person's answer accepts source drift, so
+        // the plan is not shown again: the checks below wait while the question
+        // is open, and name the answer's own write once the person has replied.
+        let lowered = false;
+        if (state.active && !state.approved && !state.sourceFloorValid && state.target !== null) {
+          try {
+            lowered = codeGenerationPlanApprovalFence(projectDir, state.target, {
+              sessionId: resolvedPlanApprovalSessionId(ide),
+            }).decision === "stand-aside";
+          } catch {
+            lowered = false;
+          }
+        }
         if (
           state.active &&
           !state.approved &&
           !state.sourceFloorValid &&
+          !lowered &&
           !isLegacyPlanningWriteTool(toolName)
         ) {
           // The canonical planning writes stay open: re-presenting the plan is
