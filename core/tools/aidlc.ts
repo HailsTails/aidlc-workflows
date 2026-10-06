@@ -1338,18 +1338,41 @@ export function copyChannelToolScripts(): string[] {
   return [...new Set(Object.values(TOOLS))].filter((tool) => !machine.has(tool)).sort();
 }
 
-// The dispatcher's public commands, outside its engine namespace, that a copy
-// channel pre-approves, each spelled exactly as AI-DLC runs it: the doctor and
-// version utilities and config's read-only forms. A host that matches text as
-// written cannot tell a quoted or re-spelled machine-wide config flag from a
-// project one, so every other config command is left to the host's prompt.
+// The dispatcher's public commands, outside its engine namespace, that every
+// install pre-approves, each spelled exactly as AI-DLC runs it: the doctor,
+// status and version utilities in both spellings agents use (doctor with or
+// without `--verbose`), config's read-only forms (`--show`, with or without
+// `--json`, top level or per section, and `--help`), and
+// turning one recorded check back on
+// (`config flags --clear-bypass <switch> --yes`, the form the skills name),
+// which only ever raises a check. A host that matches text as written cannot
+// tell a quoted or re-spelled machine-wide config flag from a project one, so
+// every other config command, bare `config` (the guided setup) and turning a
+// check off included, is left to the host's prompt.
 export function copyChannelDispatcherCommands(): string[] {
+  // Only the packager and the tests ask for this list, so the settings reader
+  // loads here and the dispatcher's own start stays as light as before.
+  const { RECORDABLE_PROJECT_BYPASSES } = require("./aidlc-settings.ts") as typeof import("./aidlc-settings.ts");
   return [
     "doctor",
+    "doctor --verbose",
     "version",
     "--doctor",
+    "--doctor --verbose",
+    "--version",
     "status",
-    ...CONFIG_SECTIONS.flatMap((section) => [`config ${section} --show --json`, `config ${section} --help`]),
+    "--status",
+    "config --help",
+    // An unknown option there, answered with the config usage line and no
+    // change; agents run it first for "show my settings".
+    "config --show",
+    "config --show --json",
+    ...CONFIG_SECTIONS.flatMap((section) => [
+      `config ${section} --show`,
+      `config ${section} --show --json`,
+      `config ${section} --help`,
+    ]),
+    ...RECORDABLE_PROJECT_BYPASSES.map((name) => `config flags --clear-bypass ${name} --yes`),
   ];
 }
 
