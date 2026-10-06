@@ -6310,15 +6310,29 @@ export interface WorkflowSelectionOptions {
 // Throws SessionResolutionConflictError when the two disagree and the override
 // did not come from a validated hook payload.
 export function resolveInvokingSessionId(projectDir: string): string | null {
-  const envSession = validSessionId(process.env.AIDLC_SESSION_OVERRIDE);
+  const overrideSession = validSessionId(process.env.AIDLC_SESSION_OVERRIDE);
+  // Codex gives every command it runs CODEX_THREAD_ID, the session id its
+  // hooks carry, so a Codex tool needs no override written into the command.
+  const codexSession = overrideSession === null && runtimeHarnessDir(projectDir) === ".codex"
+    ? validSessionId(process.env.CODEX_THREAD_ID)
+    : null;
+  const envSession = overrideSession ?? codexSession;
   // This refusal is a footgun guard against stale exported overrides, not a
   // security boundary. The SOURCE marker is an internal hookChildEnv contract.
   // Deliberately setting both variables is an intentional same-user act
   // equivalent to a sanctioned session switch; no privilege boundary exists
   // between callers that could authenticate it.
   const payloadOverride =
-    envSession !== null &&
-    process.env.AIDLC_SESSION_OVERRIDE_SOURCE === "payload";
+    codexSession !== null ||
+    (overrideSession !== null && process.env.AIDLC_SESSION_OVERRIDE_SOURCE === "payload");
+  if (
+    overrideSession !== null &&
+    process.env.AIDLC_SESSION_OVERRIDE_SOURCE === "payload" &&
+    process.env.CODEX_THREAD_ID === overrideSession &&
+    runtimeHarnessDir(projectDir) === ".codex"
+  ) {
+    noteCodexThreadSession(projectDir, overrideSession);
+  }
   const ancestrySession = resolveSessionIdFromAncestry(projectDir);
   if (
     envSession &&
@@ -6329,6 +6343,28 @@ export function resolveInvokingSessionId(projectDir: string): string | null {
     throw new SessionResolutionConflictError(envSession, ancestrySession);
   }
   return envSession ?? ancestrySession;
+}
+
+// Codex hands its thread id to the commands it runs but not to its hooks, so
+// the Bash hook cannot see it. A tool that finds the id in its command matching
+// the session the hook wrote records that here, and the hook then leaves this
+// session's later commands as written.
+export function codexThreadSessionPath(projectDir: string, sessionId: string): string | null {
+  const safe = safeSessionId(sessionId);
+  return safe ? join(sessionsDir(projectDir), `${safe}.codex-thread`) : null;
+}
+
+function noteCodexThreadSession(projectDir: string, sessionId: string): void {
+  const path = codexThreadSessionPath(projectDir, sessionId);
+  if (path === null || existsSync(path)) return;
+  try {
+    const dir = dirname(path);
+    assertNoSymlinkInChainOrThrow(projectDir, relative(projectDir, dir));
+    mkdirSync(dir, { recursive: true });
+    writeFileAtomic(path, "");
+  } catch {
+    // Without the note the hook keeps writing the session into each command.
+  }
 }
 
 // Resolve one stable workflow target for an operation. Explicit selectors win,
