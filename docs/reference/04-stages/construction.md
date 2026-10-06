@@ -995,12 +995,17 @@ This stage has a **two-part structure**: planning followed by generation.
 
 #### PART 2 -- Generation (Steps 4-7)
 
-4. **Generate Code** -- Before delegating, display to the user:
-   "Generating code for [N] plan steps. This may take several minutes
-   depending on project complexity. I'll show a summary when complete."
-   When the directive's `narration` says where an interrupted build picks up
-   (for example "Picking up unit-2's code at step 5 of 9 (1-4 done)."), say
-   that line instead.
+4. **Generate Code** -- The directive's `narration` is the user's line for
+   this build, said once before delegating. The engine counts the plan from
+   the plan file, once for both lines:
+   "Generating unit-2's code for 9 plan steps. This may take several minutes
+   depending on project complexity. I'll show a summary when complete." at
+   the start, and where an interrupted build picks up ("Picking up unit-2's
+   code at step 5 of 9 (1-4 done)."). When the plan groups its tasks under
+   "Step N" headings, both lines count the tasks and name the heading
+   ("Generating unit-2's code for the 19 tasks in 4 plan steps ...", "Picking
+   up unit-2's code at task 7 of 19, in Step 3 (tasks 1-6 done)."). The agent
+   never counts the steps itself.
 
    Delegate to Task tool with the aidlc-developer-agent subagent
    (subagent_type="aidlc-developer-agent").
@@ -1029,10 +1034,13 @@ This stage has a **two-part structure**: planning followed by generation.
      postapproval edits, use the current brief without calling the edits approved
    - When a build of the same approved plan was interrupted, that output also
      carries a `## Progress before the interruption` section after its marker
-     lines: the steps the plan file ticks, any ticked step to redo because a
-     file it names in a code span is missing, and the first unticked step to
-     continue at. It appears only when the build already started under the
-     approval that is current now (the receipt for this target, stage attempt,
+     lines: the steps the plan file ticks (or, with none ticked, the steps
+     whose named files changed since the build started), each file a done step
+     names in a code span that is not in the project (a bare file name counts
+     when a file of that name is anywhere in it), stated as a fact for the
+     worker to judge, and the step to continue at. It appears only when the
+     build already started under the approval that is current now (the
+     receipt for this target, stage attempt,
      and approved content is at `generation`); a Redo, a rejected gate, a new
      approval, or an edited plan starts the steps fresh. When a build starts
      under a new approval, the engine sets the plan file's task markers back to
