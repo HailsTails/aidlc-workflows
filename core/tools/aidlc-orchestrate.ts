@@ -183,6 +183,7 @@ import {
   withWorkspaceSourceStateCache,
   guardRecoveryAskFromRefusalText,
   guardPolicyStateField,
+  parseGuardPolicyStateLine,
   SKELETON_STANCES,
   guardRefusalStreakView,
   type GuardRemedy,
@@ -1932,6 +1933,15 @@ function typedSettingModifiers(flags: ParsedFlags): string[] {
     }
   }
   return modifiers;
+}
+
+// A typed `guard-policy <value>` the state already holds as set by you.
+function typedPolicyApplied(modifier: string, stateContent: string): boolean {
+  const [key, value] = modifier.split(" ");
+  if (key !== "guard-policy") return false;
+  const field = guardPolicyStateField(stateContent);
+  const line = parseGuardPolicyStateLine(field === null ? null : getField(stateContent, field));
+  return line !== null && line.value === value && line.source === "you";
 }
 
 function configSetCommand(modifiers: string[]): string {
@@ -7230,7 +7240,10 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     // the person named the stages, so no approval re-asks it. Any scope or
     // setting change in the same command runs first.
     const planChanges = flags.planChanges;
-    const modifiers = typedSettingModifiers(flags);
+    // A Guard Policy typed with the command was applied by the human-turn
+    // hook as the message arrived, and its note says what changed; naming the
+    // setter again would only tell the person it is "already" so.
+    const modifiers = typedSettingModifiers(flags).filter((modifier) => !typedPolicyApplied(modifier, stateContent));
     // A scope-change requires a VALID --scope that DIFFERS from the active
     // workflow's scope. Otherwise state remains authoritative and any supplied
     // settings still take the config-only path below.
@@ -7244,8 +7257,9 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       const parts = [`--scope ${scopeArg(flags.scope)}`];
       for (const modifier of modifiers) parts.push(`--${modifier}`);
       const command = `${aidlcDispatcherInvocation("scope change")} ${parts.join(" ")}`;
-      emit(planChanges ? planChangeDirective(planChanges, command, null, planApprovalAskIsOpen(pd)) : turnEndingPrint(
-        `Run \`${command}\` to change scope, then print its output verbatim and stop.`,
+      emit(planChanges ? planChangeDirective(planChanges, command, null, planApprovalAskIsOpen(pd)) : keptWhilePlanWaits(
+        turnEndingPrint(`Run \`${command}\` to change scope, then print its output verbatim and stop.`),
+        planApprovalAskIsOpen(pd),
       ));
       return;
     }
@@ -7257,13 +7271,23 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     // same-as-current --scope: no sibling modifier may be silently discarded.
     if (modifiers.length > 0 && !describedWork) {
       const command = configSetCommand(modifiers);
-      emit(planChanges ? planChangeDirective(planChanges, command, plan, planApprovalAskIsOpen(pd)) : turnEndingPrint(
-        `Run \`${command}\` to update the configuration, then print its output verbatim and stop.`,
+      emit(planChanges ? planChangeDirective(planChanges, command, plan, planApprovalAskIsOpen(pd)) : keptWhilePlanWaits(
+        turnEndingPrint(`Run \`${command}\` to update the configuration, then print its output verbatim and stop.`),
+        planApprovalAskIsOpen(pd),
       ));
       return;
     }
     if (planChanges) {
       emit(planChangeDirective(planChanges, null, plan, planApprovalAskIsOpen(pd)));
+      return;
+    }
+    // Only a setting the hook already applied was typed: the command is done,
+    // and no stage work starts from it.
+    if (!describedWork && !flags.resume && typedSettingModifiers(flags).length > 0) {
+      emit(keptWhilePlanWaits(
+        turnEndingPrint("The setting the person typed is already applied: say the line it printed, then stop."),
+        planApprovalAskIsOpen(pd),
+      ));
       return;
     }
   }
@@ -10869,6 +10893,14 @@ function emitSingleRunStage(
     : directive);
 }
 
+// A change the person asked for while the code plan's question is open: the
+// question stays the published step, so what they say next is kept as their
+// answer to it.
+function keptWhilePlanWaits<T extends Directive>(directive: T, planWaits: boolean): T {
+  if (planWaits) planWaitPrints.add(directive);
+  return directive;
+}
+
 // A typed `--skip`/`--add` on a running workflow. The person named the
 // stages, so recompose applies them straight away (after any scope or setting
 // command typed with them), and one line says what changed and the opposite
@@ -10883,10 +10915,7 @@ function planChangeDirective(
   // person says next is kept as their answer to it.
   planWaits = false,
 ): PrintDirective {
-  const kept = (directive: PrintDirective): PrintDirective => {
-    if (planWaits) planWaitPrints.add(directive);
-    return directive;
-  };
+  const kept = (directive: PrintDirective): PrintDirective => keptWhilePlanWaits(directive, planWaits);
   const end = " Then stop.";
   // A stage the plan already skips or runs is no change: it is said, not sent
   // to recompose, so the undo line names only what changed. After a scope
