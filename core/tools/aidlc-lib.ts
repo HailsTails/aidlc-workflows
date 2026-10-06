@@ -37437,6 +37437,8 @@ export function parseTypedGuardSwitchRequest(prompt: string, options: { wordsAns
   newWorkGuardPolicy?: "relaxed" | "off";
   /** Sensors, learnings or summary confirmation typed as flags of the new work the message describes. */
   newWorkCeremonies?: Record<string, "on" | "off">;
+  /** `--guard.<fence> off` typed as flags of the new work the message describes. */
+  newWorkFencesOff?: SwitchableGuardFence[];
   /** The plain-words switch asked as a question ("skip plan approval?"). */
   asked?: true;
   /** The words typed after the flags, when there are any. */
@@ -37580,7 +37582,12 @@ export function parseTypedGuardSwitchRequest(prompt: string, options: { wordsAns
     } else {
       if (!currentKey.startsWith("guard.")) continue;
       const fence = currentKey.slice("guard.".length);
-      if (!isSwitchableGuardFence(fence) || normalizedValue !== "off") continue;
+      if (!isSwitchableGuardFence(fence)) continue;
+      // The last value wins here too, so a later on drops an earlier off.
+      if (normalizedValue !== "off") {
+        switches.delete(`guard.${fence}`);
+        continue;
+      }
       key = `guard.${fence}`;
     }
     if (normalizedValue === "relaxed" || normalizedValue === "off") {
@@ -37614,6 +37621,14 @@ export function parseTypedGuardSwitchRequest(prompt: string, options: { wordsAns
     switches.delete("guard-policy");
     settings.delete("guard-policy");
   }
+  // So is a check turned off with it, when off is the last word typed for it.
+  const newWorkFencesOff: SwitchableGuardFence[] = [];
+  for (const fence of SWITCHABLE_GUARD_FENCES) {
+    if (!forNewWork || fence === "plan-approval" || settings.get(`guard.${fence}`) !== "off") continue;
+    newWorkFencesOff.push(fence);
+    switches.delete(`guard.${fence}`);
+    settings.delete(`guard.${fence}`);
+  }
   return {
     switches: [...switches.values()],
     settings: [...settings].map(([key, value]) => ({ key, value })),
@@ -37624,6 +37639,7 @@ export function parseTypedGuardSwitchRequest(prompt: string, options: { wordsAns
     ...(newWorkPlanApprovalOff ? { newWorkPlanApprovalOff: true as const } : {}),
     ...(newWorkGuardPolicy ? { newWorkGuardPolicy } : {}),
     ...(Object.keys(newWorkCeremonies).length > 0 ? { newWorkCeremonies } : {}),
+    ...(newWorkFencesOff.length > 0 ? { newWorkFencesOff } : {}),
     ...(words.length > 0 ? { words: words.join(" ") } : {}),
   };
 }
