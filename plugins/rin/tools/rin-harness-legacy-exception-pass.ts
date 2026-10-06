@@ -48,8 +48,8 @@ const isRecord = (
   !Array.isArray(candidate);
 
 const filesOf = ({ entry }: { readonly entry: unknown }): readonly string[] => {
-  if (!isRecord(entry) || !Array.isArray(entry.files)) return [];
-  return entry.files.filter((file): file is string => typeof file === "string");
+  if (!isRecord(entry) || !Array.isArray(entry["files"])) return [];
+  return entry["files"].filter((file): file is string => typeof file === "string");
 };
 
 const problemFor = ({
@@ -58,10 +58,10 @@ const problemFor = ({
   readonly entry: unknown;
 }): string | undefined => {
   if (!isRecord(entry)) return "entry is not a JSON object";
-  if (entry.whyChain === undefined) {
+  if (entry["whyChain"] === undefined) {
     return "carries no whyChain — its recorded reason names a program or a symptom, never a cause";
   }
-  const problem = whyChainProblem(entry.whyChain);
+  const problem = whyChainProblem(entry["whyChain"]);
   return problem === undefined
     ? undefined
     : `whyChain is incomplete: ${problem}`;

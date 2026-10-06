@@ -60,7 +60,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import type { BunPlugin } from "bun";
+import { createPluginRuntimePort, preparePluginRuntimeArtifacts } from "./plugin-runtime.ts";
 import type { HarnessManifest } from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
@@ -80,6 +80,7 @@ import {
   buildPluginProjection as emitPluginProjection,
   type PluginTarget,
   type PluginTargetTable,
+  type PluginProjectionResult,
 } from "../core/tools/aidlc-plugin-emit.ts";
 import {
   type Harness,
@@ -107,7 +108,7 @@ import {
 import { ROUTES } from "../core/tools/aidlc.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
-import { sha256Bytes } from "../core/tools/aidlc-distribution.ts";
+import { sha256Bytes, walkFiles } from "../core/tools/aidlc-distribution.ts";
 import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -1720,31 +1721,18 @@ async function bundlePluginRuntimeDependencies(input: {
   readonly outDir: string;
   readonly files: readonly string[];
 }): Promise<void> {
-  const transpiler = new Bun.Transpiler({ loader: "ts" });
-  const runtimeFiles = input.files.filter((file) => /\.[cm]?[jt]s$/.test(file) && existsSync(join(input.pluginRoot, file)));
-  await runtimeFiles.reduce(async (previous, file) => {
-    await previous;
-    const sourceFile = join(input.pluginRoot, file);
-    const imports = transpiler.scanImports(readFileSync(sourceFile));
-    const hasPackageImports = imports.some(({ path }) =>
-      !path.startsWith(".") && !path.startsWith("node:") && path !== "bun" && !isAbsolute(path));
-    if (!hasPackageImports) return;
-    const authoredRelativeImports = imports.filter(({ path }) => path.startsWith("."))
-      .map(({ path }) => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const preserveAuthoredImports: BunPlugin = {
-      name: "preserve-authored-plugin-imports",
-      setup(builder) {
-        builder.onResolve({ filter: new RegExp(`^(?:${authoredRelativeImports.join("|")})$`) }, ({ path, importer }) =>
-          importer === sourceFile ? { path, external: true } : undefined);
-      },
-    };
-    const result = await Bun.build({ entrypoints: [sourceFile], target: "bun", format: "esm", minify: { whitespace: true, syntax: true, identifiers: false }, plugins: authoredRelativeImports.length > 0 ? [preserveAuthoredImports] : [] });
-    const output = result.outputs[0];
-    if (!result.success || result.outputs.length !== 1 || output === undefined) {
-      throw new Error(`plugin runtime dependency build failed: ${file}: ${result.logs.join("\n")}`);
-    }
-    writeFileSync(join(input.outDir, file), await output.text());
-  }, Promise.resolve());
+  const sources = input.files.filter((file) =>
+    /\.[cm]?[jt]s$/.test(file) && !/\.d\.[cm]?ts$/.test(file) && existsSync(join(input.pluginRoot, file)),
+  ).map((file) => ({ file, source: readFileSync(join(input.pluginRoot, file), "utf-8") }));
+  const prepared = await preparePluginRuntimeArtifacts({
+    pluginRoot: input.pluginRoot, files: input.files, sources, port: createPluginRuntimePort({ projectRoot: REPO_ROOT }),
+  });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  for (const artifact of prepared.artifacts) {
+    const path = join(input.outDir, artifact.file);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, artifact.content);
+  }
 }
 
 async function buildRepositoryPluginProjection(
@@ -1752,7 +1740,7 @@ async function buildRepositoryPluginProjection(
   harnessName: string,
   outDir: string,
   outputBoundary = REPO_ROOT,
-): Promise<void> {
+): Promise<PluginProjectionResult> {
   const target = pluginTargetFor(harnessName);
   if (!target) {
     throw new Error(
@@ -1775,10 +1763,12 @@ async function buildRepositoryPluginProjection(
     invocation: `bun ${target.harnessLeaf}/tools/aidlc.ts`, trustedNamespace: TRUSTED_ROUTE_NAMESPACE,
     rows: pluginHookRows(REPO_ROOT, harnessName).filter((row) => row.pluginName === pluginName),
   });
-  if (hookContributions.registrations.length === 0) return;
-  const registrationPath = join(outDir, "contributions", "hook-registrations.json");
-  mkdirSync(dirname(registrationPath), { recursive: true });
-  writeFileSync(registrationPath, JSON.stringify(hookContributions, null, 2) + "\n");
+  if (hookContributions.registrations.length > 0) {
+    const registrationPath = join(outDir, "contributions", "hook-registrations.json");
+    mkdirSync(dirname(registrationPath), { recursive: true });
+    writeFileSync(registrationPath, JSON.stringify(hookContributions, null, 2) + "\n");
+  }
+  return { ...projection, files: walkFiles(outDir).map((file) => file.split(sep).join("/")) };
 }
 
 function pluginAgentFrontmatter(

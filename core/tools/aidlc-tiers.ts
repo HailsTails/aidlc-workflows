@@ -174,13 +174,13 @@ export function isTier(v: string): v is Tier {
  *  high to low, so the clamped tier is the one with the LARGER index. */
 export function capTier(t: Tier, cap: Tier | null | undefined): Tier {
   if (!cap) return t;
-  return TIERS[Math.max(TIERS.indexOf(t), TIERS.indexOf(cap))];
+  return TIERS.indexOf(t) < TIERS.indexOf(cap) ? cap : t;
 }
 
 /** Read the AIDLC_TIER_CAP env var. Unset/empty -> null; an unknown value is
  *  a loud error (the packager must fail, not silently ship uncapped). */
 export function readEnvCap(env: NodeJS.ProcessEnv = process.env): Tier | null {
-  const v = env.AIDLC_TIER_CAP;
+  const v = env["AIDLC_TIER_CAP"];
   if (!v) return null;
   if (isTier(v)) return v;
   throw new Error(
@@ -202,11 +202,13 @@ const MEMORY_CAP_FILES = ["org.md", "team.md", "project.md"] as const;
 function tierCapFromFrontmatter(raw: string, file: string): Tier | null {
   const cleaned = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
   const m = cleaned.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) return null;
-  const kv = m[1].match(/^tier_cap:(.*)$/m);
-  if (!kv) return null;
+  const frontmatter = m?.[1];
+  if (frontmatter === undefined) return null;
+  const kv = frontmatter.match(/^tier_cap:(.*)$/m);
+  const scalar = kv?.[1];
+  if (scalar === undefined) return null;
   // Strip a trailing comment, whitespace, and matching quotes.
-  let v = kv[1].replace(/\s#.*$/, "").trim();
+  let v = scalar.replace(/\s#.*$/, "").trim();
   if (
     (v.startsWith('"') && v.endsWith('"') && v.length >= 2) ||
     (v.startsWith("'") && v.endsWith("'") && v.length >= 2)

@@ -240,12 +240,12 @@ export function projectionFiles(root: string): {
   const candidates = readdirSync(root)
     .filter((name) => existsSync(join(root, name, "tools", "data", "aidlc-stamp.json")))
     .sort();
-  if (candidates.length !== 1) {
+  const [harnessDir] = candidates;
+  if (candidates.length !== 1 || harnessDir === undefined) {
     throw new Error(
       `${root}: expected exactly one projected harness directory, found ${candidates.length}`,
     );
   }
-  const harnessDir = candidates[0];
   const data = join(root, harnessDir, "tools", "data");
   const stamp = parseJson<ProjectionStamp>(join(data, "aidlc-stamp.json"));
   const descriptor = parseJson<ProjectionDescriptor>(join(data, "aidlc-projection.json"));

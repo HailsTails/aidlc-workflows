@@ -220,12 +220,12 @@ function parseGroupPolicies(
     if (!isRecord(raw) || Object.keys(raw).some((key) => key !== "effort")) {
       throw new Error(`${where}.${name} must contain only effort`);
     }
-    if (typeof raw.effort !== "string" || !isModelEffort(raw.effort)) {
+    if (typeof raw["effort"] !== "string" || !isModelEffort(raw["effort"])) {
       throw new Error(
         `${where}.${name}.effort must be one of ${MODEL_EFFORTS.join(", ")}`,
       );
     }
-    groups[name] = { effort: raw.effort };
+    groups[name] = { effort: raw["effort"] };
   }
   return groups;
 }
@@ -233,7 +233,7 @@ function parseGroupPolicies(
 export function normalizeModelPolicy(value: unknown): ModelPolicyRecord | null {
   if (value === undefined || value === null) return null;
   if (!isRecord(value)) throw new Error("models policy must be an object");
-  if (value.schemaVersion !== 1) {
+  if (value["schemaVersion"] !== 1) {
     throw new Error(`models policy schemaVersion must be 1`);
   }
   const unknown = Object.keys(value).filter((key) => !POLICY_KEYS.has(key));
@@ -241,22 +241,22 @@ export function normalizeModelPolicy(value: unknown): ModelPolicyRecord | null {
     throw new Error(`models policy has unknown key(s): ${unknown.join(", ")}`);
   }
   const out: ModelPolicyRecord = { schemaVersion: 1 };
-  if (value.preset !== undefined) {
-    if (typeof value.preset !== "string" || !isModelPreset(value.preset)) {
+  if (value["preset"] !== undefined) {
+    if (typeof value["preset"] !== "string" || !isModelPreset(value["preset"])) {
       throw new Error(
         `models policy preset must be one of ${Object.keys(MODEL_PRESETS).join(", ")}`,
       );
     }
-    out.preset = value.preset;
+    out.preset = value["preset"];
   }
-  if (value.groups !== undefined) {
-    const groups = parseGroupPolicies(value.groups, "models.groups");
+  if (value["groups"] !== undefined) {
+    const groups = parseGroupPolicies(value["groups"], "models.groups");
     if (Object.keys(groups).length > 0) out.groups = groups;
   }
-  if (value.agents !== undefined) {
-    if (!isRecord(value.agents)) throw new Error("models.agents must be an object");
+  if (value["agents"] !== undefined) {
+    if (!isRecord(value["agents"])) throw new Error("models.agents must be an object");
     const agents: Record<string, ModelAgentPolicy> = {};
-    for (const [name, raw] of Object.entries(value.agents)) {
+    for (const [name, raw] of Object.entries(value["agents"])) {
       if (!PROFILE_NAME.test(name)) {
         throw new Error(`models.agents has invalid agent name ${JSON.stringify(name)}`);
       }
@@ -267,42 +267,42 @@ export function normalizeModelPolicy(value: unknown): ModelPolicyRecord | null {
         throw new Error(`${name} agent exception may contain only model and effort`);
       }
       const entry: ModelAgentPolicy = {};
-      if (raw.effort !== undefined) {
-        if (typeof raw.effort !== "string" || !isModelEffort(raw.effort)) {
+      if (raw["effort"] !== undefined) {
+        if (typeof raw["effort"] !== "string" || !isModelEffort(raw["effort"])) {
           throw new Error(
             `models.agents.${name}.effort must be one of ${MODEL_EFFORTS.join(", ")}`,
           );
         }
-        entry.effort = raw.effort;
+        entry.effort = raw["effort"];
       }
-      if (raw.model !== undefined) {
-        if (typeof raw.model !== "string" || raw.model.trim().length === 0) {
+      if (raw["model"] !== undefined) {
+        if (typeof raw["model"] !== "string" || raw["model"].trim().length === 0) {
           throw new Error(`models.agents.${name}.model must be a non-empty string`);
         }
-        entry.model = raw.model.trim();
+        entry.model = raw["model"].trim();
       }
       if (Object.keys(entry).length > 0) agents[name] = entry;
     }
     if (Object.keys(agents).length > 0) out.agents = agents;
   }
-  if (value.profiles !== undefined) {
-    if (!isRecord(value.profiles)) {
+  if (value["profiles"] !== undefined) {
+    if (!isRecord(value["profiles"])) {
       throw new Error("models.profiles must be an object");
     }
     const profiles: Record<string, ModelProfile> = {};
-    for (const [name, raw] of Object.entries(value.profiles)) {
+    for (const [name, raw] of Object.entries(value["profiles"])) {
       if (!PROFILE_NAME.test(name)) {
         throw new Error(`models.profiles has invalid profile name ${JSON.stringify(name)}`);
       }
       if (
         !isRecord(raw) ||
         Object.keys(raw).some((key) => key !== "groups") ||
-        raw.groups === undefined
+        raw["groups"] === undefined
       ) {
         throw new Error(`${name} profile must contain only groups`);
       }
       profiles[name] = {
-        groups: parseGroupPolicies(raw.groups, `models.profiles.${name}.groups`),
+        groups: parseGroupPolicies(raw["groups"], `models.profiles.${name}.groups`),
       };
     }
     if (Object.keys(profiles).length > 0) out.profiles = profiles;
@@ -476,7 +476,8 @@ export function writeMarkdownAgentSurface(
   options: MarkdownProjectionOptions = {},
 ): string {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  if (!match) throw new Error("agent markdown has no closed frontmatter block");
+  const frontmatter = match?.[1];
+  if (!match || frontmatter === undefined) throw new Error("agent markdown has no closed frontmatter block");
   const effortKey = options.effortKey ?? "effort";
   const removeKeys = new Set([
     "tier",
@@ -485,7 +486,7 @@ export function writeMarkdownAgentSurface(
     "variant",
     ...(options.removeKeys ?? []),
   ]);
-  const source = match[1].split(/\r?\n/);
+  const source = frontmatter.split(/\r?\n/);
   const insertionKeys = new Set(options.insertBeforeKeys ?? []);
   let insertAt = source.findIndex((line) => {
     const key = /^([A-Za-z_][\w-]*):/.exec(line)?.[1];
@@ -541,8 +542,8 @@ export function writeKiroAgentSurface(
   effective: Pick<EffectiveModelPolicy, "model">,
 ): string {
   const parsed = JSON.parse(content) as Record<string, unknown>;
-  if (effective.model === undefined) delete parsed.model;
-  else parsed.model = effective.model;
+  if (effective.model === undefined) delete parsed["model"];
+  else parsed["model"] = effective.model;
   return `${JSON.stringify(parsed, null, 2)}\n`;
 }
 
@@ -562,10 +563,10 @@ export function writeKiroCliSurface(
       defaults[model] = { output_config: { effort } };
       continue;
     }
-    const output = isRecord(rawEntry.output_config) ? rawEntry.output_config : {};
-    const current = typeof output.effort === "string" &&
-        (effortOrder as readonly string[]).includes(output.effort)
-      ? output.effort as KiroEffort
+    const output = isRecord(rawEntry["output_config"]) ? rawEntry["output_config"] : {};
+    const current = typeof output["effort"] === "string" &&
+        (effortOrder as readonly string[]).includes(output["effort"])
+      ? output["effort"] as KiroEffort
       : undefined;
     if (!current || effortOrder.indexOf(effort) > effortOrder.indexOf(current)) {
       defaults[model] = {
@@ -711,12 +712,12 @@ export function modelPolicySurfaceDrift(
           .map((item) => ({ model: item.model, effort: item.effort })),
       )
     : {};
-  for (const [name] of Object.entries(tiers).sort(([left], [right]) =>
+  for (const [name, expected] of Object.entries(expectedByAgent).sort(([left], [right]) =>
     left.localeCompare(right)
   )) {
-    const expected = expectedByAgent[name];
-    const surfaceExpected = harness === "kiro" && expected.model && kiroCollapsed[expected.model]
-      ? { ...expected, effort: kiroCollapsed[expected.model] }
+    const collapsedEffort = expected.model === undefined ? undefined : kiroCollapsed[expected.model];
+    const surfaceExpected = harness === "kiro" && collapsedEffort !== undefined
+      ? { ...expected, effort: collapsedEffort }
       : expected;
     for (const field of expected.unexpressed) {
       issues.push(`${name}: ${field} policy is not expressible on ${harness}`);
@@ -736,7 +737,8 @@ export function modelPolicySurfaceDrift(
       path = join(harnessRoot, "agents", `${modelAgentStem(name)}.json`);
       if (existsSync(path)) {
         const parsed = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
-        actual.model = typeof parsed.model === "string" ? parsed.model : undefined;
+        const model = parsed["model"];
+        if (typeof model === "string") actual.model = model;
         if (surfaceExpected.model && surfaceExpected.effort) {
           const cli = JSON.parse(
             readFileSync(join(harnessRoot, "settings", "cli.json"), "utf-8"),
@@ -746,10 +748,9 @@ export function modelPolicySurfaceDrift(
             : {};
           const rawEntry = defaults[surfaceExpected.model];
           const entry: Record<string, unknown> = isRecord(rawEntry) ? rawEntry : {};
-          const output = isRecord(entry.output_config) ? entry.output_config : {};
-          actual.effort = typeof output.effort === "string" && isModelEffort(output.effort)
-            ? output.effort
-            : undefined;
+          const output = isRecord(entry["output_config"]) ? entry["output_config"] : {};
+          const effort = output["effort"];
+          if (typeof effort === "string" && isModelEffort(effort)) actual.effort = effort;
         }
       }
     } else {

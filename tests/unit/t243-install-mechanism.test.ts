@@ -4173,7 +4173,7 @@ describe("t243 projection channel", () => {
       expect(opencode.permission.bash[`aidlc ${namespace} *`]).toBeUndefined();
     }
     const parsedHooks = JSON.parse(hooks) as {
-      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+      hooks: Record<string, Array<{ matcher?: string; hooks: Array<{ command: string }> }>>;
     };
     const snake: Record<string, string> = {
       SessionStart: "session_start",
@@ -4200,6 +4200,7 @@ describe("t243 projection channel", () => {
         for (const hook of group.hooks) {
           const identity = {
             event_name: snake[event],
+            matcher: group.matcher,
             hooks: [{
               async: false,
               command: hook.command,

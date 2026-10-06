@@ -114,7 +114,9 @@ const rinGatesSchema = z.object({
   exceptionWhyChains: z.boolean().default(false),
 });
 
-type RinGatesConfig = z.infer<typeof rinGatesSchema>;
+type RinGatesConfig = {
+  exceptionWhyChains: boolean;
+};
 
 type SettledR7OptIn =
   | { readonly kind: "enabled" }

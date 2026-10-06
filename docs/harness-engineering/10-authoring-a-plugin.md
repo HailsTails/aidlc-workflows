@@ -366,6 +366,24 @@ first-party `dist/plugins/<name>/<harness>/` trees, so its byte-parity guard als
 guards external builds. Publish the output to a git repo with semver tags and a
 `marketplace.json`; teams then install through the host's native commands.
 
+The repository packager bundles runtime package dependencies without requiring
+consumer npm installation. For package-importing TypeScript modules, the
+original `.ts` path becomes a static export facade backed by
+`<stem>.runtime.js` and the compiler-generated `<stem>.runtime.d.ts`.
+Direct invocation through the original path retains its entry-point status
+and module URL; unsupported `import.meta` forms refuse packaging.
+
+When exported types depend on a package, its exact resolved declaration graph,
+package identity, and license ship under
+`tools/<plugin>-runtime-types/node_modules/<package>/`. This owned folder
+contains declarations rather than an installed runtime dependency. Preserving
+package identity keeps exported schemas compatible with the same producer
+package version. The generated companions and declaration graph participate
+in normal projection, archive, collision, and installed-file ownership checks.
+They are generated outputs; edit the authored module and regenerate them.
+The standalone shipped builder remains a source projection and does not
+perform this repository-only dependency packaging step.
+
 ### Claude / Codex (host store)
 
 ```bash

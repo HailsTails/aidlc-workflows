@@ -66,24 +66,24 @@ const registrationRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 function validPluginHookRow(value: unknown): value is PluginHookRow {
-  return registrationRecord(value) && [value.event, value.target, value.hookFile, value.pluginName].every((field) => typeof field === "string" && field.length > 0) &&
-    (value.matcher === undefined || typeof value.matcher === "string") && (value.capabilityId === undefined || typeof value.capabilityId === "string");
+  return registrationRecord(value) && [value["event"], value["target"], value["hookFile"], value["pluginName"]].every((field) => typeof field === "string" && field.length > 0) &&
+    (value["matcher"] === undefined || typeof value["matcher"] === "string") && (value["capabilityId"] === undefined || typeof value["capabilityId"] === "string");
 }
 
 function validNativeHookGroup(value: unknown): value is NativeHookGroup {
   if (!registrationRecord(value)) return false;
-  if (value.type === "command") return typeof value.bash === "string" && typeof value.powershell === "string" && typeof value.timeoutSec === "number" && value.timeoutSec > 0;
-  return (value.matcher === undefined || typeof value.matcher === "string") && Array.isArray(value.hooks) && value.hooks.length > 0 &&
-    value.hooks.every((hook) => registrationRecord(hook) && hook.type === "command" && typeof hook.command === "string");
+  if (value["type"] === "command") return typeof value["bash"] === "string" && typeof value["powershell"] === "string" && typeof value["timeoutSec"] === "number" && value["timeoutSec"] > 0;
+  return (value["matcher"] === undefined || typeof value["matcher"] === "string") && Array.isArray(value["hooks"]) && value["hooks"].length > 0 &&
+    value["hooks"].every((hook) => registrationRecord(hook) && hook["type"] === "command" && typeof hook["command"] === "string");
 }
 
 function validHookContribution(value: unknown): value is PluginHookContribution {
-  if (!registrationRecord(value) || typeof value.path !== "string") return false;
-  switch (value.kind) {
-    case "group": return typeof value.event === "string" && validNativeHookGroup(value.group);
-    case "target": return typeof value.target === "string" && typeof value.hookFile === "string";
-    case "event-body": return typeof value.event === "string" && typeof value.hookFile === "string";
-    case "event-row": return validPluginHookRow(value.row);
+  if (!registrationRecord(value) || typeof value["path"] !== "string") return false;
+  switch (value["kind"]) {
+    case "group": return typeof value["event"] === "string" && validNativeHookGroup(value["group"]);
+    case "target": return typeof value["target"] === "string" && typeof value["hookFile"] === "string";
+    case "event-body": return typeof value["event"] === "string" && typeof value["hookFile"] === "string";
+    case "event-row": return validPluginHookRow(value["row"]);
   }
   return false;
 }
@@ -116,8 +116,8 @@ function planCodexHookTrustSeed(input: {
   hooksPath: string;
   hashIdentity: (input: { identity: string }) => string;
 }): { kind: "planned"; text: string } | { kind: "invalid-document" } {
-  if (!registrationRecord(input.document) || !registrationRecord(input.document.hooks)) return { kind: "invalid-document" };
-  const events = Object.entries(input.document.hooks).map(([event, groups]) => ({ event,
+  if (!registrationRecord(input.document) || !registrationRecord(input.document["hooks"])) return { kind: "invalid-document" };
+  const events = Object.entries(input.document["hooks"]).map(([event, groups]) => ({ event,
     groups: Array.isArray(groups) && groups.every(validCommandHookGroup) ? groups : null }));
   if (events.some(({ groups }) => groups === null)) return { kind: "invalid-document" };
   const entries = events.flatMap(({ event, groups }) => groups?.flatMap((group, groupIndex) =>
@@ -131,17 +131,17 @@ function planCodexHookTrustSeed(input: {
 
 const projectedPluginHookContributionsSchema = {
   parse(value: unknown): { kind: "parsed"; value: ProjectedPluginHookContributions } | { kind: "invalid" } {
-    if (!registrationRecord(value) || value.schemaVersion !== 1 || typeof value.pluginName !== "string" || typeof value.harness !== "string" || !isModelHarness(value.harness) || !Array.isArray(value.registrations)) return { kind: "invalid" };
-    const registrations = value.registrations;
+    if (!registrationRecord(value) || value["schemaVersion"] !== 1 || typeof value["pluginName"] !== "string" || typeof value["harness"] !== "string" || !isModelHarness(value["harness"]) || !Array.isArray(value["registrations"])) return { kind: "invalid" };
+    const registrations = value["registrations"];
     if (!registrations.every(validHookContribution)) return { kind: "invalid" };
-    const harnessDir = value.harness === "claude" ? ".claude" : value.harness === "codex" ? ".codex" : value.harness === "cursor" ? ".cursor" : value.harness.startsWith("kiro") ? ".kiro" : ".aidlc";
+    const harnessDir = value["harness"] === "claude" ? ".claude" : value["harness"] === "codex" ? ".codex" : value["harness"] === "cursor" ? ".cursor" : value["harness"].startsWith("kiro") ? ".kiro" : ".aidlc";
     if (!registrations.every((registration) => {
       const expectedPath = registration.kind === "group"
-        ? value.harness === "claude" ? `${harnessDir}/settings.json` : value.harness === "codex" ? `${harnessDir}/hooks.json` : value.harness === "copilot" ? ".github/hooks/aidlc.json" : ""
+        ? value["harness"] === "claude" ? `${harnessDir}/settings.json` : value["harness"] === "codex" ? `${harnessDir}/hooks.json` : value["harness"] === "copilot" ? ".github/hooks/aidlc.json" : ""
         : `${harnessDir}/hooks/${registration.kind === "event-row" ? "plugin-hook-rows.json" : "plugin-hook-targets.json"}`;
       return registration.path === expectedPath && (registration.kind === "group" || /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:ts|mjs|js)$/.test(registration.kind === "event-row" ? registration.row.hookFile : registration.hookFile));
     })) return { kind: "invalid" };
-    return { kind: "parsed", value: { schemaVersion: 1, pluginName: value.pluginName, harness: value.harness, registrations } };
+    return { kind: "parsed", value: { schemaVersion: 1, pluginName: value["pluginName"], harness: value["harness"], registrations } };
   },
 };
 
@@ -167,7 +167,7 @@ function registrationEntries(input: { contribution: PluginHookContribution; docu
     const value = input.document[input.contribution.target];
     return value === undefined ? [] : [value];
   }
-  const registry = input.contribution.kind === "group" ? input.document.hooks ?? {} : input.document;
+  const registry = input.contribution.kind === "group" ? input.document["hooks"] ?? {} : input.document;
   if (!registrationRecord(registry)) return null;
   const entries = registry[input.contribution.event] ?? [];
   return Array.isArray(entries) ? entries : null;
@@ -191,7 +191,7 @@ function writeRegistrationEntries(input: { contribution: PluginHookContribution;
       : Object.fromEntries(Object.entries(input.document).filter(([key]) => key !== target));
   }
   if (input.contribution.kind === "event-body") return { ...input.document, [input.contribution.event]: input.entries };
-  const hooks = registrationRecord(input.document.hooks) ? input.document.hooks : {};
+  const hooks = registrationRecord(input.document["hooks"]) ? input.document["hooks"] : {};
   return { ...input.document, hooks: { ...hooks, [input.contribution.event]: input.entries } };
 }
 

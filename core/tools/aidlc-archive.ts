@@ -118,7 +118,7 @@ export function extractTarGz(
     (options.reservedTopLevelNames ?? []).map((name) => name.toLowerCase()),
   );
   for (const entry of entries) {
-    const topLevel = entry.path.split("/", 1)[0].toLowerCase();
+    const topLevel = (entry.path.split("/", 1)[0] ?? entry.path).toLowerCase();
     if (reserved.has(topLevel)) {
       throw new Error(`archive entry uses reserved top-level name: ${entry.path}`);
     }

@@ -87,8 +87,17 @@ const whyChainSchema = z.object(
   { error: "`whyChain` is not a JSON object" },
 );
 
-type WhyChain = z.infer<typeof whyChainSchema>;
-type Why = WhyChain["whys"][number];
+type Why = {
+  why: string;
+  because: string;
+  evidence: string;
+};
+
+type WhyChain = {
+  whys: Why[];
+  rootCause: string;
+  owner: string;
+};
 
 const describeIssue = (issue: z.core.$ZodIssue): WhyChainProblem => {
   const [field, position] = issue.path;
