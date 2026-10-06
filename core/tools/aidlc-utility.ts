@@ -370,6 +370,8 @@ import {
   normalizeDriveLetter,
   humanPresenceGuardDisabled,
   personSpokeSinceGate,
+  personSaidProjectType,
+  clearProjectTypeAsked,
   recordDir,
   removeRecordFileNoFollow,
   toPosix,
@@ -10420,8 +10422,8 @@ function handleReclassify(projectDir: string, flags: Record<string, string>, raw
   }
   // What the folder is, is the person's word: it is recorded as theirs only
   // once they have said something since the last decision (an answer to the
-  // question, or the command they typed).
-  if (!humanPresenceGuardDisabled() && !personSpokeSinceGate(projectDir, { requests: true })) {
+  // question, or the command they typed), after the question when it was asked.
+  if (!humanPresenceGuardDisabled() && !personSaidProjectType(projectDir)) {
     die(
       "The person has not said yet whether this folder is existing code. Ask them the question you were given, " +
         "end the turn, and run this command after they answer.",
@@ -10511,6 +10513,7 @@ function handleReclassify(projectDir: string, flags: Record<string, string>, raw
         },
       },
     ], projectDir, intent, space);
+    clearProjectTypeAsked(projectDir);
     if (repos.length > 0 && intent !== undefined) recordDiscoveredRepos(projectDir, intent, repos, space);
     writeStateFile(projectDir, content, intent, space);
 
