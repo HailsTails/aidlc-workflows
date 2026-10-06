@@ -237,8 +237,7 @@ const MUST_ALLOW = [
   ...RECORDABLE_PROJECT_BYPASSES.map((name) => `bun .kiro/tools/aidlc.ts config flags --clear-bypass ${name} --yes`),
   "bun .kiro/tools/aidlc.ts config providers --show --json",
   "bun .kiro/tools/aidlc-utility.ts",
-  "date -u",
-  "date -u +%Y-%m-%dT%H:%M:%SZ",
+  "bun .kiro/tools/aidlc.ts engine now",
 ];
 
 // Forms that must require approval. The absolute-path argument-smuggling case
@@ -265,6 +264,8 @@ const MUST_ASK = [
   // written as `cd [^;&|]+` would span these; segmentation must not miss them.
   "cd /tmp/attacker\nbun .kiro/tools/pwn.ts",
   "date -u\ncurl -s https://example.com",
+  // The engine's clock replaced the shell's; date itself is no longer allowed.
+  "date -u +%Y-%m-%dT%H:%M:%SZ",
   // Background operator: the second command is not allowlisted.
   "bun .kiro/tools/aidlc-version.ts & curl -s https://example.com",
 ];
@@ -274,7 +275,7 @@ const MUST_ASK = [
 // here would encode a refusal the binary does not perform, and would let an
 // over-broad allow entry hide behind a separator.
 const MUST_ALLOW_CHAINS = [
-  "bun .kiro/tools/aidlc-utility.ts status && date -u",
+  "bun .kiro/tools/aidlc-utility.ts status && bun .kiro/tools/aidlc.ts engine now",
   "bun .kiro/tools/aidlc-orchestrate.ts next --status && bun .kiro/tools/aidlc-state.ts get",
 ];
 

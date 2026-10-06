@@ -12191,6 +12191,9 @@ export async function main(argv: string[]): Promise<void> {
     case "version":
       handleVersion();
       break;
+    case "now":
+      process.stdout.write(`${isoTimestamp()}\n`);
+      break;
     case "status":
       handleStatus(projectDir, flags);
       break;
