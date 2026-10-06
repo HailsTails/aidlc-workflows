@@ -287,6 +287,7 @@ import {
   reviewAttemptWindow,
   setField,
   withoutEntryWord,
+  isBareContinuationPhrase,
   sortAttemptEvents,
   resolveBoltDag,
   type BoltDagResolution,
@@ -6500,6 +6501,9 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     // The settings typed with the request ride this answer as they ride the
     // option's command: the question it names fills them in below.
   }
+  // "carry on", "keep going" and the like, said on their own, name no new
+  // work: while work is in progress they get what no words get (see below).
+  const bareContinuation = routingAnswer === null && onlyProse && isBareContinuationPhrase(flags.intent ?? "");
 
   // An answer names its question by id. The copy is removed once the answer
   // starts work, so a missing copy may mean a repeated answer: carry on with
@@ -7161,7 +7165,8 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       // or their own words): the work carries on, as `--resume` does, and
       // their words are read below. The Stop hook's probe still sees the park.
       const back = !isReadOnlyEngineProbe() && personSpokeSincePark(pd);
-      if (back && args.length === 0) {
+      // "carry on", "resume" and the like, said on their own, are no words.
+      if (back && (args.length === 0 || bareContinuation)) {
         emit(printDirective(
           `This workflow is parked. Run \`${aidlcToolInvocation("state")} unpark\` ` +
             "to clear the park marker, then re-run `next` to continue.",
@@ -7619,6 +7624,15 @@ function routeNext(args: string[], projectDir: string | undefined): void {
   //     COMPOSE OFFER, never a silent default. The conductor renders
   //     it; on "compose" it re-runs `next compose "<text>"` to reach the
   //     Branch 4c dispatch.
+  // A continuation phrase on its own where work is in progress but none is
+  // selected asks which work to pick up, as no words do.
+  if (!stateContent && bareContinuation) {
+    const pick = intentPickPromptIfRecordsExist(pd);
+    if (pick) {
+      emit(pick);
+      return;
+    }
+  }
   if (
     !stateContent &&
     flags.intent &&
@@ -7795,8 +7809,9 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     }
     // Words alone (nothing `next` reads as a flag, scope, verb or noun) may
     // ask to redo, jump to a stage, or start fresh, read the same way; words
-    // with a setting typed beside them are asked about with it, as below.
-    if (nextArgsAreOnlyWords(args)) {
+    // with a setting typed beside them are asked about with it, as below. A
+    // continuation phrase on its own asks none of these: it carries on below.
+    if (nextArgsAreOnlyWords(args) && !bareContinuation) {
       const words = saveQuestion(
         pd, flags.intent, "", "routing", { space: selection.space, targets: routingTargets() }, false, undefined,
         undefined, routingSettings(carriedRoutingFlags(flags)),
@@ -7805,6 +7820,10 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       return;
     }
   }
+  // A continuation phrase on its own continues the work in progress: no
+  // routing question, the same step no words get. A question or gate the
+  // person has open read the words as its possible answer above.
+  if (bareContinuation) flags.intent = undefined;
   // A plan named by its word before the description (`/aidlc bugfix Fix login`)
   // is the scope that new work would get, asked about the same way.
   if (
