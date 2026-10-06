@@ -37141,6 +37141,162 @@ export function ceremonyPolicyValues(
   };
 }
 
+// --- Answer mode (stage-protocol.md section 3, Step 2) ---
+//
+// How the person answers a stage's questions: Guide me, I'll edit the file, or
+// Chat. The first stage with questions asks; later stages in the same piece of
+// work reuse the person's choice and say so in one line. The person changes it
+// by saying so, and the agent records the new choice the same way.
+export type AnswerModeChoice = "guide" | "file" | "chat";
+/** The STAGE_STARTED field recording the mode a stage starts with. */
+export const ANSWER_MODE_FIELD = "Answer Mode";
+/** The recorded Decision text of the mode question starts with this. */
+export const ANSWER_MODE_QUESTION_PREFIX = "How would you like to answer";
+export const ANSWER_MODE_LABELS: Record<AnswerModeChoice, string> = {
+  guide: "Guide me",
+  file: "I'll edit the file",
+  chat: "Chat",
+};
+const ANSWER_MODE_OTHERS: Record<AnswerModeChoice, string> = {
+  guide: "edit the file or chat",
+  file: "be guided through them here or chat",
+  chat: "be guided through them here or edit the file",
+};
+
+/**
+ * The mode a recorded answer to the mode question names: the option label the
+ * agent recorded, or its option number. The agent reads what the person meant
+ * and records the label; this reads only that exact label or number, so it
+ * never judges the person's own words. Anything else names no mode.
+ */
+export function answerModeFromReply(details: string | null | undefined): AnswerModeChoice | null {
+  if (!details) return null;
+  const text = details
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/\u2019/g, "'")
+    .trim()
+    .toLowerCase();
+  const numbered = /^([123])(?:\s*[.):]\s*(.*))?$/.exec(text);
+  const label = numbered ? (numbered[2] ?? "").trim() : text;
+  const byLabel = (Object.keys(ANSWER_MODE_LABELS) as AnswerModeChoice[])
+    .find((mode) => ANSWER_MODE_LABELS[mode].toLowerCase() === label);
+  if (numbered) {
+    const byNumber = (["guide", "file", "chat"] as const)[Number(numbered[1]) - 1];
+    return label === "" || byLabel === byNumber ? byNumber : null;
+  }
+  return byLabel ?? null;
+}
+
+export interface RecordedAnswerMode {
+  mode: AnswerModeChoice;
+  stage: string;
+  timestamp: string;
+}
+
+/**
+ * The person's latest answer to the mode question in this piece of work's
+ * main workflow: a QUESTION_ANSWERED that closes an open DECISION_RECORDED
+ * whose Decision is the mode question (the same pairing hasPendingDecision
+ * reads). Isolated `--single` rows never count. Null when none names a mode.
+ */
+export function latestRecordedAnswerMode(
+  projectDir: string,
+  intent?: string,
+  space?: string,
+): RecordedAnswerMode | null {
+  let rows: AuditShardEvent[];
+  try {
+    rows = readAuditShardEvents(projectDir, intent, space);
+  } catch {
+    return null;
+  }
+  const events = rows
+    .filter((row) => DECISION_PAIRING_EVENTS.has(row.event))
+    .filter((row) => !(auditBlockField(row.block, "Workflow") ?? "").startsWith("single-stage:"))
+    .sort((a, b) => {
+      if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
+      if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
+      return a.pos - b.pos;
+    });
+  const open = new Map<string, string | null>();
+  let latest: RecordedAnswerMode | null = null;
+  for (const row of events) {
+    const stage = auditBlockField(row.block, "Stage");
+    if (stage === null) continue;
+    const key = `${stage}\u0000${auditBlockField(row.block, "Unit") ?? ""}`;
+    const before = open.get(key) ?? null;
+    const after = nextOpenDecision(before, row.event, row.block);
+    if (
+      before !== null && after === null && row.event === "QUESTION_ANSWERED" &&
+      auditBlockField(before, "Checkpoint") === null &&
+      (auditBlockField(before, "Decision") ?? "").trim().startsWith(ANSWER_MODE_QUESTION_PREFIX)
+    ) {
+      const mode = answerModeFromReply(auditBlockField(row.block, "Details"));
+      if (mode !== null) latest = { mode, stage, timestamp: row.timestamp };
+    }
+    open.set(key, after);
+  }
+  return latest;
+}
+
+export interface StageAnswerMode {
+  /** The mode this stage uses without asking; null when it asks. */
+  mode: AnswerModeChoice | null;
+  /** True when this stage presents the mode question before its questions. */
+  ask: boolean;
+  /** The stage whose recorded answer is reused, when the mode came from one. */
+  reused_from: string | null;
+  /** The one line the conductor shows the person about the mode. */
+  notice: string;
+}
+
+/**
+ * The answer mode one stage runs with. `projectDir` null skips the recorded
+ * choice (a piece of work being created, or an isolated run, has none).
+ */
+export function resolveStageAnswerMode(
+  projectDir: string | null,
+  options: { intent?: string; space?: string } = {},
+): StageAnswerMode {
+  const recorded = projectDir === null ? null : latestRecordedAnswerMode(projectDir, options.intent, options.space);
+  if (recorded !== null) {
+    return {
+      mode: recorded.mode,
+      ask: false,
+      reused_from: recorded.stage,
+      notice: `Answering the way you chose earlier: ${ANSWER_MODE_LABELS[recorded.mode]}. ` +
+        `Say if you'd rather ${ANSWER_MODE_OTHERS[recorded.mode]}.`,
+    };
+  }
+  return {
+    mode: null,
+    ask: true,
+    reused_from: null,
+    notice: "Later stages will use this way too. Say any time if you'd rather switch.",
+  };
+}
+
+/**
+ * STAGE_STARTED fields recording a reused answer mode, e.g.
+ * `Answer Mode: guide (reused from requirements-analysis)`, so the audit shows
+ * how a stage that asked no mode question was answered. Empty when the stage
+ * asks (its own question and answer are the record) and on any read error.
+ */
+export function answerModeStageStartedFields(
+  projectDir: string | null,
+  options: { intent?: string; space?: string } = {},
+): Record<string, string> {
+  try {
+    const mode = resolveStageAnswerMode(projectDir, options);
+    return mode.mode !== null && mode.reused_from !== null
+      ? { [ANSWER_MODE_FIELD]: `${mode.mode} (reused from ${mode.reused_from})` }
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * The collaborators a stage ACTUALLY gets for this run — the single owner of
  * the collaborators switch. Returns the stage's declared `support_agents`, or

@@ -484,7 +484,31 @@ Stage files list **topic areas and example questions** — they are guidance, no
 - **Give each question one line of context** — why it is being asked or what depends on the answer — when the reason is not obvious from the prompt itself. "We found two conflicting retention values in the requirements (30 days vs 90 days); which governs?" beats "What is the retention period?".
 - **Prefer a concrete phrasing over an abstract one.** Ask about the actual decision in the user's domain terms, not the framework's internal vocabulary. If you would need to explain the question when asked to rephrase it, phrase it that clear way the first time.
 
-**Step 2: Offer the user a choice of interaction mode:**
+**Step 2: Use the person's earlier answer mode, or ask for it.**
+
+The person picks how to answer once per piece of work, at the first stage with
+questions; later stages reuse that choice. The run-stage directive's
+`answer_mode` carries it:
+
+- `answer_mode.ask === false`: do not ask the mode question. Say
+  `answer_mode.notice` as one line, then go straight to the step for
+  `answer_mode.mode` (`guide` is Step 3a, `file` is Step 3b, `chat` is Step 3c).
+  Log nothing for the mode: the stage's `STAGE_STARTED` row already records it.
+- `answer_mode.ask === true` (or no `answer_mode` field): offer the choice
+  below. After the person answers, say `answer_mode.notice` as one line.
+
+Record the mode the person chose as its option label (`Guide me`, `I'll edit
+the file`, or `Chat`): the one they picked, or the one you understood when they
+answered in their own words. The engine reuses only a recorded label, so the
+person is never asked again because of how they worded it. If their reply
+leaves the mode unclear, ask one short follow-up instead of guessing.
+
+When the person asks for a different way at any stage ("let me just edit the
+file"), switch for this stage (see "Users can switch modes mid-stage" below) and
+record the new choice as below, with `--on-instruction '<their words>'`, so the
+later stages use it too.
+
+Offer the user a choice of interaction mode:
 ```question
 prompt: "I've created [N] questions at `[file path]`. How would you like to answer them?"
 header: Questions
@@ -503,7 +527,7 @@ numbered lines: `1. Guide me`, `2. I'll edit the file`, `3. Chat`, and the final
 `4. Other`. Mentioning Other in a nearby tip or sentence does not satisfy the
 structured-question contract.
 
-Record the mode question and the user's mode choice through the log tool, the same pair every non-gate question uses (section 2 checklist item 2): `{{INVOKE}} engine log decision --stage <slug> --decision "How would you like to answer the questions?" --options "Guide me,I'll edit the file,Chat"` before presenting it, then `{{INVOKE}} engine log answer --stage <slug> --details '<exact choice>'` after the response. When their request already said how they want to answer ("guide me through it"), do not ask it again: log the question as usual, record that choice with `--on-instruction '<their words>'` (in single quotes, as **Their words on a command line** above says), and say **SAY:** "You asked to be guided, so I'll ask the questions here. Say if you'd rather edit the file or chat." The tool stamps the row. Never write the audit shard yourself.
+Record the mode question and the user's mode choice through the log tool, the same pair every non-gate question uses (section 2 checklist item 2): `{{INVOKE}} engine log decision --stage <slug> --decision "How would you like to answer the questions?" --options "Guide me,I'll edit the file,Chat"` before presenting it, then `{{INVOKE}} engine log answer --stage <slug> --details '<the option label>'` after the response. When their request already said how they want to answer ("guide me through it"), do not ask it again: log the question as usual, record that choice with `--on-instruction '<their words>'` (in single quotes, as **Their words on a command line** above says), and say **SAY:** "You asked to be guided, so I'll ask the questions here. Say if you'd rather edit the file or chat." The tool stamps the row. Never write the audit shard yourself.
 
 **Step 3a: If "Guide me" (interactive mode):**
 - Present questions as structured questions in batches (batching limits are harness-specific — see the question-rendering annex)

@@ -372,6 +372,7 @@ import {
   PLAN_NAME_PATTERN,
   extractMarkdownSection,
   validateUnitName,
+  resolveStageAnswerMode,
 } from "./aidlc-lib.ts";
 import { reviewRecoverySpentMessage } from "./aidlc-log.ts";
 import {
@@ -5601,6 +5602,11 @@ function buildRunStageDirective(
       ruleEntries?.map((entry) => entry.rel) ??
       (node.rules_in_context ?? []).map((r) => r.path),
     ceremony,
+    // The person's earlier answer to the mode question is reused; an isolated
+    // run never reuses the main workflow's choice.
+    answer_mode: resolveStageAnswerMode(
+      singleRun || !stateContent ? null : codekbCtx?.projectDir ?? null,
+    ),
     sensors_applicable: ceremony.sensors === "off"
       ? []
       : (node.sensors_applicable ?? []).map((s) => s.id),
