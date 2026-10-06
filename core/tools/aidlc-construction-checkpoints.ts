@@ -489,6 +489,9 @@ function snapshot(
   let sourceStages = 0;
   let sourceKeptUnread = 0;
   let rereview: ConstructionCheckpoint["rereview"] = null;
+  // Stages whose only gap is a change the one re-check covers; the first in
+  // stage order is re-checked, then the next.
+  let recheckable = 0;
   let recheckVerdict: string | null = null;
   let recheckChanged: "code" | "documents" = "code";
   const accepted: AcceptedChange[] = [];
@@ -675,7 +678,8 @@ function snapshot(
         if (review && moved && !moved.recoverySpent && !receipts.unitPending.has(unit)) {
           const reviewer = stage.reviewer!;
           const iteration = moved.nextIteration;
-          rereview = {
+          recheckable++;
+          rereview ??= {
             stage: slug, reviewer, iteration,
             command: renderReviewRequestCommand({ projectDir, stage: slug, reviewer, unit, iteration }),
           };
@@ -731,7 +735,7 @@ function snapshot(
     errors.splice(unreadableAt, 0, "The Unit's source boundary cannot be fingerprinted.");
   }
   if (sourceStages === 0) errors.push("No applicable stage supplies the Unit's source manifest.");
-  if (errors.length !== 1) rereview = null;
+  if (errors.length !== recheckable) rereview = null;
   const fingerprint = digest({
     version: 1, intent, record: relative(projectDir, root), kind, unit,
     unit_kind: dag.unitKinds?.get(unit) ?? null,
