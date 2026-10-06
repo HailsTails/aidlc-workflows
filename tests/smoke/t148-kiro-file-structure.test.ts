@@ -394,18 +394,24 @@ describe("t148 dist/kiro file structure", () => {
         : command === pattern;
     const excludeMatches = (pattern: string, command: string): boolean =>
       pattern.endsWith("*") ? command.startsWith(pattern.slice(0, -1)) : command === pattern;
-    const ruleOf = (file: string): { match: string[]; exclude: string[] } => {
+    // The deny is split into one rule per command its excludes name, after
+    // the rule that denies the whole allow (delegate-shell-deny.ts); the
+    // risky-form deny that follows them carries no excludes.
+    type DenyRule = { match: string[]; exclude: string[] };
+    const ruleOf = (file: string): DenyRule[] => {
       const fm = frontmatter(file);
-      const at = fm.indexOf("    - capability: shell\n      effect: deny\n      match:\n");
-      expect(at, `${file} has a shell deny rule`).toBeGreaterThanOrEqual(0);
-      const lines = fm.slice(at).split("\n").slice(3);
+      const head = "    - capability: shell\n      effect: deny\n      match:\n";
+      expect(fm.indexOf(head), `${file} has a shell deny rule`).toBeGreaterThanOrEqual(0);
       const list = (from: string[]): string[] =>
         from.slice(0, from.findIndex((line) => !line.startsWith("        - "))).map((line) =>
           line.slice('        - "'.length, -1)
         );
-      const match = list(lines);
-      const rest = lines.slice(match.length);
-      return { match, exclude: rest[0] === "      exclude:" ? list(rest.slice(1)) : [] };
+      return fm.split(head).slice(1).map((block) => {
+        const lines = block.split("\n");
+        const match = list(lines);
+        const rest = lines.slice(match.length);
+        return { match, exclude: rest[0] === "      exclude:" ? list(rest.slice(1)) : [] };
+      }).filter((rule) => rule.exclude.length > 0);
     };
     const partsOf = (command: string): string[] => {
       const substitution = /[$<]\(([^()]*)\)|`([^`]*)`/g;
@@ -415,13 +421,15 @@ describe("t148 dist/kiro file structure", () => {
         .map((part) => part.trim())
         .filter((part) => part.length > 0);
     };
-    const deniesPart = (rule: { match: string[]; exclude: string[] }, part: string): boolean =>
-      rule.match.some((pattern) => denyMatches(pattern, part)) &&
-      !rule.exclude.some((pattern) => excludeMatches(pattern, part));
-    const denies = (rule: { match: string[]; exclude: string[] }, command: string): boolean =>
-      partsOf(command).some((part) => deniesPart(rule, part));
-    const runsUnprompted = (rule: { match: string[]; exclude: string[] }, allows: string[], command: string): boolean =>
-      partsOf(command).every((part) => allows.some((allow) => denyMatches(allow, part)) && !deniesPart(rule, part));
+    const deniesPart = (rules: DenyRule[], part: string): boolean =>
+      rules.some((rule) =>
+        rule.match.some((pattern) => denyMatches(pattern, part)) &&
+        !rule.exclude.some((pattern) => excludeMatches(pattern, part))
+      );
+    const denies = (rules: DenyRule[], command: string): boolean =>
+      partsOf(command).some((part) => deniesPart(rules, part));
+    const runsUnprompted = (rules: DenyRule[], allows: string[], command: string): boolean =>
+      partsOf(command).every((part) => allows.some((allow) => denyMatches(allow, part)) && !deniesPart(rules, part));
     // Each refused command is one the guard refuses a delegate, spelled as
     // written, re-quoted, re-spaced, or with a flag before the verb; each
     // allowed one is a command personas run.
@@ -615,23 +623,30 @@ describe("t148 dist/kiro file structure", () => {
       }
       expect(readdirSync(agents), `${tree} agents`).toContain("aidlc-pipeline-deploy-agent.md");
       for (const file of readdirSync(agents).filter((name) => name.endsWith("-agent.md"))) {
-        const rule = ruleOf(join(agents, file));
-        expect(rule.match, `${tree} ${file}`).toEqual(allows);
-        for (const command of refused) expect(denies(rule, command), `${tree} ${file}: ${command}`).toBe(true);
+        const rules = ruleOf(join(agents, file));
+        expect(rules[0]?.match, `${tree} ${file}`).toEqual(allows);
+        // Each later rule names one command under the allow.
+        for (const { match } of rules.slice(1)) {
+          const [command] = match;
+          const named = match.length === 1 && command.endsWith(" *") &&
+            allows.some((allow) => denyMatches(allow, command.slice(0, -2)));
+          expect(named, `${tree} ${file}: ${match}`).toBe(true);
+        }
+        for (const command of refused) expect(denies(rules, command), `${tree} ${file}: ${command}`).toBe(true);
         // Host-only routing surfaces (hooks, the adapter, sensors) stay denied
         // though no lifecycle rule names them.
-        for (const command of hostOnly) expect(denies(rule, command), `${tree} ${file}: ${command}`).toBe(true);
+        for (const command of hostOnly) expect(denies(rules, command), `${tree} ${file}: ${command}`).toBe(true);
         // A command the guard lets through stays denied unless it is admitted.
-        for (const command of unadmitted) expect(denies(rule, command), `${tree} ${file}: ${command}`).toBe(true);
+        for (const command of unadmitted) expect(denies(rules, command), `${tree} ${file}: ${command}`).toBe(true);
         // An allowed command with a foreign command appended still asks.
-        expect(runsUnprompted(rule, allows, foreign), `${tree} ${file}: ${foreign}`).toBe(false);
+        expect(runsUnprompted(rules, allows, foreign), `${tree} ${file}: ${foreign}`).toBe(false);
         for (const command of allowed) {
-          expect(runsUnprompted(rule, allows, command), `${tree} ${file}: ${command}`).toBe(true);
+          expect(runsUnprompted(rules, allows, command), `${tree} ${file}: ${command}`).toBe(true);
         }
         const ownRole = file === "aidlc-pipeline-deploy-agent.md";
         for (const command of roleOnly) {
-          expect(runsUnprompted(rule, allows, command), `${tree} ${file}: ${command}`).toBe(ownRole);
-          expect(denies(rule, command), `${tree} ${file}: ${command}`).toBe(!ownRole);
+          expect(runsUnprompted(rules, allows, command), `${tree} ${file}: ${command}`).toBe(ownRole);
+          expect(denies(rules, command), `${tree} ${file}: ${command}`).toBe(!ownRole);
         }
       }
     }
@@ -834,6 +849,38 @@ describe("t148 dist/kiro file structure", () => {
     }
   });
 
+  type KiroRule = { capability: string; effect: string; match?: string[]; exclude?: string[] };
+  // Every built Kiro agent that carries permissions.rules, plugins included.
+  function builtKiroAgentRules(): { path: string; rules: KiroRule[] }[] {
+    const agentDirs: string[] = [];
+    for (const tree of ["dist", "dist-release"]) {
+      const root = join(REPO_ROOT, tree);
+      for (const entry of readdirSync(root)) {
+        if (entry === "plugins") {
+          for (const plugin of readdirSync(join(root, entry))) {
+            for (const harness of readdirSync(join(root, entry, plugin))) agentDirs.push(join(root, entry, plugin, harness, ".kiro", "agents"));
+          }
+        } else {
+          agentDirs.push(join(root, entry, ".kiro", "agents"));
+        }
+      }
+    }
+    const agents: { path: string; rules: KiroRule[] }[] = [];
+    for (const dir of agentDirs.filter((candidate) => existsSync(candidate))) {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        const definition = name.endsWith(".md")
+          ? Bun.YAML.parse(frontmatter(path)) as { permissions?: { rules?: unknown } } | null
+          : name.endsWith(".json")
+          ? JSON.parse(readFileSync(path, "utf-8")) as { permissions?: { rules?: unknown } }
+          : null;
+        const rules = definition?.permissions?.rules;
+        if (Array.isArray(rules)) agents.push({ path, rules: rules as KiroRule[] });
+      }
+    }
+    return agents;
+  }
+
   // Kiro (IDE 1.1 and 1.2, and the v3 engine Kiro CLI shares with it) compiles
   // an agent's permissions.rules into ONE Cedar policy set: each pattern becomes
   // `resource.path like "<pattern>"`, with `**` folded to `*`, every `\` doubled
@@ -860,46 +907,23 @@ describe("t148 dist/kiro file structure", () => {
       }
       return null;
     };
-    const agentDirs: string[] = [];
-    for (const tree of ["dist", "dist-release"]) {
-      const root = join(REPO_ROOT, tree);
-      for (const entry of readdirSync(root)) {
-        if (entry === "plugins") {
-          for (const plugin of readdirSync(join(root, entry))) {
-            for (const harness of readdirSync(join(root, entry, plugin))) agentDirs.push(join(root, entry, plugin, harness, ".kiro", "agents"));
-          }
-        } else {
-          agentDirs.push(join(root, entry, ".kiro", "agents"));
-        }
-      }
-    }
     let checked = 0;
-    for (const dir of agentDirs.filter((candidate) => existsSync(candidate))) {
-      for (const name of readdirSync(dir)) {
-        const path = join(dir, name);
-        const definition = name.endsWith(".md")
-          ? Bun.YAML.parse(frontmatter(path)) as { permissions?: { rules?: unknown } } | null
-          : name.endsWith(".json")
-          ? JSON.parse(readFileSync(path, "utf-8")) as { permissions?: { rules?: unknown } }
-          : null;
-        const rules = definition?.permissions?.rules;
-        if (!Array.isArray(rules)) continue;
-        checked++;
-        for (const rule of rules as { capability: string; effect: string; match?: string[]; exclude?: string[] }[]) {
-          for (const pattern of [...rule.match ?? [], ...rule.exclude ?? []]) {
-            const literals = [cedarLiteral(pattern)];
-            if (pattern.endsWith(" *") && !/[*?]/.test(pattern.slice(0, -2))) {
-              literals.push(pattern.slice(0, -2).replace(/\\/g, "\\\\").replace(/"/g, '\\"'));
-            }
-            for (const literal of literals) {
-              expect(cedarRejects(literal), `${path}: ${rule.effect} ${JSON.stringify(pattern)}`).toBeNull();
-            }
+    for (const { path, rules } of builtKiroAgentRules()) {
+      checked++;
+      for (const rule of rules) {
+        for (const pattern of [...rule.match ?? [], ...rule.exclude ?? []]) {
+          const literals = [cedarLiteral(pattern)];
+          if (pattern.endsWith(" *") && !/[*?]/.test(pattern.slice(0, -2))) {
+            literals.push(pattern.slice(0, -2).replace(/\\/g, "\\\\").replace(/"/g, '\\"'));
           }
-          // Never a shell allow for every command.
-          if (rule.capability === "shell" && rule.effect === "allow") {
-            expect(rule.match?.length ?? 0, `${path}: shell allow with no match`).toBeGreaterThan(0);
-            expect(rule.match, `${path}: shell allow`).not.toContain("*");
+          for (const literal of literals) {
+            expect(cedarRejects(literal), `${path}: ${rule.effect} ${JSON.stringify(pattern)}`).toBeNull();
           }
+        }
+        // Never a shell allow for every command.
+        if (rule.capability === "shell" && rule.effect === "allow") {
+          expect(rule.match?.length ?? 0, `${path}: shell allow with no match`).toBeGreaterThan(0);
+          expect(rule.match, `${path}: shell allow`).not.toContain("*");
         }
       }
     }
@@ -918,6 +942,34 @@ describe("t148 dist/kiro file structure", () => {
         expect(kiroShellEffect(fm, command), `${tree} conductor: ${JSON.stringify(command)}`).not.toBe("allow");
       }
     }
+  });
+
+  // Kiro compiles each match pattern of a rule into its own policy whose
+  // conditions are the match, one per exclude, and one more on an ask, all
+  // joined by &&. Kiro's bundled cedar-wasm runs out of memory evaluating a
+  // long chain: on Kiro IDE 1.2.4 a policy of 306 conditions traps ("memory
+  // access out of bounds") on a command it matches, while 305 evaluate. Kiro
+  // then treats that agent's shell policy as deny-all, and a trap can leave the
+  // chat's whole policy broken: every later shell command, the conductor's
+  // plain engine commands included, asks with "Kiro could not parse this
+  // command" until a new chat. A persona deny that held all 305 of its excludes
+  // on one rule did that on every Practices Discovery dispatch (2026-10-06), so
+  // each compiled policy stays at half the measured limit.
+  test("no compiled Kiro policy holds more conditions than Kiro's Cedar evaluator survives", () => {
+    const MAX_CONDITIONS = 152;
+    const conditionsOf = (rule: KiroRule): number => {
+      const matchless = !rule.match || rule.match.length === 0 || (rule.match.length === 1 && rule.match[0] === "*");
+      return (matchless ? 0 : 1) + (rule.exclude?.length ?? 0) + (rule.effect === "ask" ? 1 : 0);
+    };
+    let checked = 0;
+    for (const { path, rules } of builtKiroAgentRules()) {
+      checked++;
+      for (const rule of rules) {
+        expect(conditionsOf(rule), `${path}: ${rule.capability} ${rule.effect} ${JSON.stringify(rule.match ?? [])}`)
+          .toBeLessThanOrEqual(MAX_CONDITIONS);
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(30);
   });
 
   test("Kiro IDE first-run guidance sends the user to the aidlc agent in the agent picker", () => {
