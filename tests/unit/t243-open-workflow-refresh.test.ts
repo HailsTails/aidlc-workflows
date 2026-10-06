@@ -178,6 +178,76 @@ function contractFixture() {
 }
 
 describe("refresh compatibility at the existing transaction boundary", () => {
+  test("updates and restores advisory write sensors without writing either workflow record", () => {
+    const fixture = contractFixture();
+    const graph = ".claude/tools/data/stage-graph.json";
+    const original = '[{"slug":"work","mode":"inline"}]';
+    const newer = '[{"slug":"work","mode":"inline","sensors":["advisory-write"],"sensors_applicable":[{"id":"advisory-write","path":".claude/sensors/advisory.md","fire_on":"write","default_severity":"advisory"}]}]';
+    put(fixture.sourceRoot, graph, newer);
+    const update: TransactionPlan = { ...fixture.plan, operations: [
+      writeOperation(graph, newer, sha256File(join(fixture.projectDir, graph))),
+    ] };
+    const validation = planCompatibleRefresh({ ...fixture, plan: update });
+    executePlan(update, { validateLocked: validation.validateLocked });
+    expect(readFileSync(join(fixture.projectDir, graph), "utf-8")).toBe(newer);
+    expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/default/intents/open/aidlc-state.md"), "utf-8")).toBe(
+      "# AI-DLC State Tracking\n- **State Version**: 8\n- **Scope**: feature\n- **Status**: Running\n- **Current Stage**: requirements-analysis\n");
+    expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/other/intents/open/aidlc-state.md"), "utf-8")).toBe(
+      "# AI-DLC State Tracking\n- **State Version**: 8\n- **Scope**: feature\n- **Status**: Running\n- **Current Stage**: requirements-analysis\n- **Parked**: independent work\n");
+    expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/default/intents/open/audit.md"), "utf-8")).toBe("Existing audit evidence.\n");
+    expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/other/intents/open/audit.md"), "utf-8")).toBe("Existing audit evidence.\n");
+    put(fixture.sourceRoot, graph, original);
+    const restore: TransactionPlan = { ...fixture.plan, operations: [
+      writeOperation(graph, original, sha256File(join(fixture.projectDir, graph))),
+    ] };
+    const rollback = planCompatibleRefresh({ ...fixture, plan: restore });
+    executePlan(restore, { validateLocked: rollback.validateLocked });
+    expect(readFileSync(join(fixture.projectDir, graph), "utf-8")).toBe(original);
+    expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/default/intents/open/aidlc-state.md"), "utf-8")).toBe(
+      "# AI-DLC State Tracking\n- **State Version**: 8\n- **Scope**: feature\n- **Status**: Running\n- **Current Stage**: requirements-analysis\n");
+    expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/other/intents/open/aidlc-state.md"), "utf-8")).toBe(
+      "# AI-DLC State Tracking\n- **State Version**: 8\n- **Scope**: feature\n- **Status**: Running\n- **Current Stage**: requirements-analysis\n- **Parked**: independent work\n");
+    expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/default/intents/open/audit.md"), "utf-8")).toBe("Existing audit evidence.\n");
+    expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/other/intents/open/audit.md"), "utf-8")).toBe("Existing audit evidence.\n");
+  });
+
+  test.each([
+    { sensors: ["new-sensor"], sensors_applicable: [{ id: "new-sensor", path: ".claude/sensors/new.md", fire_on: "gate", default_severity: "advisory" }] },
+    { sensors: ["new-sensor"], sensors_applicable: [{ id: "new-sensor", path: ".claude/sensors/new.md", fire_on: "write", default_severity: "blocking" }] },
+    { sensors: [], sensors_applicable: [{ id: "new-sensor", path: ".claude/sensors/new.md", fire_on: "write", default_severity: "advisory" }] },
+    { sensors: ["new-sensor", "new-sensor"], sensors_applicable: [
+      { id: "new-sensor", path: ".claude/sensors/new.md", fire_on: "write", default_severity: "advisory" },
+      { id: "new-sensor", path: ".claude/sensors/new.md", fire_on: "write", default_severity: "advisory" },
+    ] },
+    { sensors: ["new-sensor"], sensors_applicable: [{ id: "new-sensor", path: ".claude/sensors/new.md", fire_on: "write", default_severity: "advisory", enforcement: "blocking" }] },
+    { sensors: null, sensors_applicable: null },
+    { sensors: ["new-sensor"], sensors_applicable: [{ id: "new-sensor", path: "", fire_on: "write", default_severity: "advisory" }] },
+  ])("refuses added gate/blocking sensors or malformed advisory registration %#", (change) => {
+    const fixture = contractFixture();
+    put(fixture.sourceRoot, ".claude/tools/data/stage-graph.json",
+      JSON.stringify([{ slug: "work", mode: "inline", ...change }]));
+    expect(() => planCompatibleRefresh(fixture)).toThrow('stage "work" changes or disappears');
+    expect(readFileSync(join(fixture.projectDir, ".claude/tools/one.ts"), "utf-8")).toBe("before one\n");
+  });
+
+  test.each([
+    { sensors: [], sensors_applicable: [] },
+    { sensors_applicable: [{ id: "required", path: ".claude/sensors/required.md", fire_on: "write", default_severity: "advisory" }] },
+    { sensors_applicable: [{ id: "required", path: ".claude/sensors/other.md", fire_on: "gate", default_severity: "blocking" }] },
+    { approval_mode: "autonomous" },
+    { produces: [] },
+  ])("retains gate sensor metadata and approval/artifact contract %#", (change) => {
+    const fixture = contractFixture();
+    const graph = ".claude/tools/data/stage-graph.json";
+    const stage = { slug: "work", mode: "inline", approval_mode: "explicit",
+      produces: ["facts"], sensors: ["required"], sensors_applicable: [
+        { id: "required", path: ".claude/sensors/required.md", fire_on: "gate", default_severity: "blocking" },
+      ] };
+    put(fixture.projectDir, graph, JSON.stringify([stage]));
+    put(fixture.sourceRoot, graph, JSON.stringify([{ ...stage, ...change }]));
+    expect(() => planCompatibleRefresh(fixture)).toThrow('stage "work" changes or disappears');
+  });
+
   test("rolls back an interrupted payload update and leaves both workflow records untouched", () => {
     const fixture = contractFixture();
     const stateBefore = workspaceBytes(fixture.projectDir);

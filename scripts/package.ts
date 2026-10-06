@@ -765,11 +765,11 @@ function emitActiveSpace(outRoot: string): void {
 // generated-file inventory rooted there, including project-root files beside
 // <harnessDir> (onboarding/config, workspace memory, emitted skills, and so on).
 // ---------------------------------------------------------------------------
-function buildTree(
+async function buildTree(
   m: HarnessManifest,
   outRoot: string,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
-): string[] {
+): Promise<string[]> {
   const harnessDir = m.harnessDir;
   const treeRoot = join(outRoot, harnessDir);
   // Every harness projects onto ONE of the five flavors the tier module
@@ -816,6 +816,11 @@ function buildTree(
       writeFileSync(outPath, out);
     }
   }
+  await bundleRuntimeDependencies({
+    pluginRoot: CORE_ROOT,
+    outDir: treeRoot,
+    files: Array.from(walk(treeRoot), (file) => relative(treeRoot, file).split(sep).join("/")),
+  });
   const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
   if (fmMissed.length > 0) {
     throw new Error(
@@ -1452,7 +1457,7 @@ function loadManifest(name: string): HarnessManifest {
 // ---------------------------------------------------------------------------
 // write mode: regenerate dist/<name> in place (clean-sweep).
 // ---------------------------------------------------------------------------
-function writeHarness(name: string): void {
+async function writeHarness(name: string): Promise<void> {
   const m = loadManifest(name);
   const distDir = join(REPO_ROOT, "dist", name);
   const treeRoot = join(distDir, m.harnessDir);
@@ -1530,7 +1535,7 @@ function writeHarness(name: string): void {
     // seedStash here substituted a Windows temp path into every projected
     // .json and broke the parse with an invalid \U escape. The seed is
     // restored explicitly after the tree is built instead.
-    buildTree(m, stagingDir);
+    await buildTree(m, stagingDir);
     for (const rel of COMPILED_DATA) {
       const seeded = join(seedStash, rel);
       if (!existsSync(seeded)) continue;
@@ -1564,12 +1569,12 @@ function writeHarness(name: string): void {
   }
 }
 
-function writeReleaseHarness(name: string): void {
+async function writeReleaseHarness(name: string): Promise<void> {
   const m = loadManifest(name);
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  buildTree(m, releaseDir, "aidlc");
+  await buildTree(m, releaseDir, "aidlc");
   rewriteNativeInvocations(releaseDir, m, copyRoot);
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
@@ -1716,7 +1721,7 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
   return pluginTargets()[harnessName] ?? null;
 }
 
-async function bundlePluginRuntimeDependencies(input: {
+async function bundleRuntimeDependencies(input: {
   readonly pluginRoot: string;
   readonly outDir: string;
   readonly files: readonly string[];
@@ -1756,7 +1761,7 @@ async function buildRepositoryPluginProjection(
     reviewerAgents: reviewerAgentSet(CORE_ROOT),
   });
   projectPluginDocuments({ projection, outDir, pluginName, harnessName });
-  await bundlePluginRuntimeDependencies({ pluginRoot: join(PLUGINS_ROOT, pluginName), outDir, files: projection.files });
+  await bundleRuntimeDependencies({ pluginRoot: join(PLUGINS_ROOT, pluginName), outDir, files: projection.files });
   if (!isModelHarness(harnessName)) throw new Error(`unsupported plugin hook harness: ${harnessName}`);
   const hookContributions = renderPluginHookContributions({
     pluginName, harness: harnessName, harnessDir: target.harnessLeaf,
@@ -1986,8 +1991,8 @@ async function buildCheckPass(root: string, harnesses: string[]): Promise<void> 
     const manifest = loadManifest(name);
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
-    buildTree(manifest, copyRoot);
-    buildTree(manifest, nativeRoot, "aidlc");
+    await buildTree(manifest, copyRoot);
+    await buildTree(manifest, nativeRoot, "aidlc");
     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
   }
   await emitPlugins(harnesses, distRoot, false);
@@ -2089,8 +2094,8 @@ if (check) {
 } else {
   cleanWriteOutputs(targets, named === undefined);
   for (const n of targets) {
-    writeHarness(n);
-    writeReleaseHarness(n);
+    await writeHarness(n);
+    await writeReleaseHarness(n);
   }
   // Emit plugin projections (the hybrid: per-harness host plugins from plugins/<name>/)
   await emitPlugins(targets);

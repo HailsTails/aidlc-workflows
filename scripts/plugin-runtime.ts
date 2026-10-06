@@ -110,6 +110,7 @@ function ownedDeclarationBundle(input: {
   readonly pluginRoot: string;
   readonly file: string;
   readonly options: ts.CompilerOptions;
+  readonly runtimeModules: readonly string[];
 }): DeclarationBundle {
   const companions = new Map<string, RuntimeArtifact>();
   const copied = new Set<string>();
@@ -159,7 +160,7 @@ function ownedDeclarationBundle(input: {
     return destination;
   };
   const replacements = new Map<string, string>();
-  for (const module of declarationModules({ source: input.content })) {
+  for (const module of [...new Set([...declarationModules({ source: input.content }), ...input.runtimeModules])]) {
     if (module.startsWith(".") || module.startsWith("node:") || module === "bun") continue;
     const resolved = ts.resolveModuleName(module, input.sourceFile, input.options, ts.sys).resolvedModule;
     if (resolved === undefined) throw new Error(`plugin declaration package is unresolved: ${input.file}: ${module}`);
@@ -300,7 +301,10 @@ export function createPluginRuntimePort(input: { readonly projectRoot: string })
       if (emitted.emitSkipped || declaration === undefined) throw new Error(
         `plugin runtime declaration build produced no entry declaration: ${file}`,
       );
-      return ownedDeclarationBundle({ content: declaration, sourceFile, pluginRoot, file, options });
+      return ownedDeclarationBundle({
+        content: declaration, sourceFile, pluginRoot, file, options,
+        runtimeModules: transpiler.scan(readFileSync(sourceFile, "utf-8")).imports.map(({ path }) => path),
+      });
     },
     bundle: async ({ pluginRoot, file, relativeImports }) => {
       const sourceFile = join(pluginRoot, file);

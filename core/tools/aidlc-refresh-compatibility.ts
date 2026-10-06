@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import { assertProjectionPathHasNoSymlinks, sha256File } from "./aidlc-distribution.ts";
+import { stageRefreshContract } from "./aidlc-stage-refresh-contract.ts";
 import type { TransactionPlan } from "./aidlc-transaction.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -50,9 +51,10 @@ function assertRetainedContracts(
   kind: string,
   installed: ReadonlyMap<string, unknown>,
   candidate: ReadonlyMap<string, unknown>,
+  equivalent: (installed: unknown, candidate: unknown) => boolean,
 ): void {
   for (const [name, contract] of installed) {
-    if (!candidate.has(name) || canonical(candidate.get(name)) !== canonical(contract)) {
+    if (!candidate.has(name) || !equivalent(contract, candidate.get(name))) {
       throw new Error(`open-workflow refresh refused: ${kind} ${JSON.stringify(name)} changes or disappears; use a separately reviewed workflow migration`);
     }
   }
@@ -117,8 +119,14 @@ export function planCompatibleRefresh(args: {
   const installedScopes = new Map(Object.entries(readObject(join(args.projectDir, metadataPaths[2]))));
   const candidateScopes = new Map(Object.entries(readObject(join(args.sourceRoot, metadataPaths[2]))));
   if (installedScopes.size === 0) throw new Error("open-workflow refresh refused: installed scope grid is empty");
-  assertRetainedContracts("stage", installedStages, candidateStages);
-  assertRetainedContracts("scope", installedScopes, candidateScopes);
+  assertRetainedContracts("stage", installedStages, candidateStages, (installed, candidate) => {
+    const before = stageRefreshContract({ stage: installed });
+    const after = stageRefreshContract({ stage: candidate });
+    return before.kind === "comparable" && after.kind === "comparable" &&
+      canonical(before.value) === canonical(after.value);
+  });
+  assertRetainedContracts("scope", installedScopes, candidateScopes,
+    (installed, candidate) => canonical(installed) === canonical(candidate));
   const validateLocked = (): void => {
     assertWorkspaceReadOnly(args.plan);
     if (canonical(hashes(args.projectDir)) !== canonical(installed) || canonical(hashes(args.sourceRoot)) !== canonical(candidate)) {

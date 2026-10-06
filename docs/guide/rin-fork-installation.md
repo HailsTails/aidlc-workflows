@@ -130,7 +130,7 @@ Codex consumers use a Git repository for native project-hook discovery. The exis
 
 ## Updating an existing consumer
 
-Core refresh retains the upstream [refresh safety gate](18-install-and-lifecycle.md#refresh-safety) by default. For a concurrent pipeline, add `--refresh-open-workflows` to the plan and apply commands below. This fork capability requires the same state schema and unchanged existing stage/scope contracts, keeps the entire `aidlc/` workspace read-only and retains ownership/conflict/rollback checks. It cannot combine with `--force` or `--mcp`. Do not close records or manufacture ownership hashes merely to make an update proceed.
+Core refresh retains the upstream [refresh safety gate](18-install-and-lifecycle.md#refresh-safety) by default. For a concurrent pipeline, add `--refresh-open-workflows` to the plan and apply commands below. This fork capability requires the same state schema and unchanged existing stage/scope completion contracts (advisory write-sensor registrations may change), keeps the entire `aidlc/` workspace read-only and retains ownership/conflict/rollback checks. It cannot combine with `--force` or `--mcp`. Do not close records or manufacture ownership hashes merely to make an update proceed.
 
 Build the new fork source with the commands above. Rebind the same environment
 variables to the intended consumer and current built projection. Inspect the
