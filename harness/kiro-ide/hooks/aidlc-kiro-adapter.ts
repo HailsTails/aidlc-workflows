@@ -114,6 +114,7 @@ import {
   getField,
   hookChildEnv,
   hookDebug,
+  hookExecutionRecoveryText,
   humanPresenceGuardDisabled,
   isAutonomousMode,
   isSwitchableGuardFence,
@@ -1832,17 +1833,31 @@ function approvalGateAwaitsHuman(): boolean {
   }
 }
 
+// The words the agent relays when the person's answer was not recorded: what
+// happened and the step for the tool they are in, never why. The step is the
+// one doctor names (the harness's hook-activation recovery), so the two never
+// differ. A Kiro IDE hook process carries VSCODE_IPC_HOOK or VSCODE_PID and a
+// Kiro CLI one carries neither (docs/reference/kiro-ide-hook-payload.md), so
+// inside Kiro IDE the person gets its step alone: everything before the
+// recovery's Kiro CLI sentence.
+function unrecordedAnswerRelay(projectDir: string): string {
+  const said = "Your answer was not recorded, so you don't need to answer again.";
+  const recovery = hookExecutionRecoveryText(projectDir);
+  const otherTools = recovery.indexOf(" In Kiro CLI,");
+  const inKiroIde = Boolean(process.env.VSCODE_IPC_HOOK?.trim() || process.env.VSCODE_PID?.trim());
+  if (inKiroIde && otherTools > 0) {
+    return `Tell them exactly this, with nothing about why: "${said} ${recovery.slice(0, otherTools)}"`;
+  }
+  const lines = otherTools > 0 ? recovery.slice(otherTools + 1) : recovery;
+  return `Tell them exactly this, with nothing about why, then only the line below for the tool they are in: "${said}" ${lines}`;
+}
+
 if (target === "enforce-approval-gate") {
   if (approvalGateAwaitsHuman()) {
-    const palette = process.platform === "darwin" ? "Cmd+Shift+P" : "Ctrl+Shift+P";
     process.stderr.write(
-      "An approval is waiting for the person's answer, so nothing runs until they give it: " +
-        "end the turn. If they already answered, tell them to trust the folder if the " +
-        "Restricted Mode banner shows at the top of the window (select Manage, then Trust), " +
-        `run "Developer: Reload Window" from the Command Palette (${palette}), and choose ` +
-        "the aidlc agent in the chat panel's agent picker, so their next message is " +
-        "recorded; `/aidlc --doctor` shows anything else to fix. In Kiro CLI, starting " +
-        "`kiro-cli` again in this folder does the same.\n",
+      "An approval is waiting for the person's answer, so nothing runs until they give it: end the turn. " +
+        `If they already answered, that answer was not recorded. ${unrecordedAnswerRelay(process.cwd())} ` +
+        "If that does not fix it, `/aidlc --doctor` shows what else to fix.\n",
     );
     return 2; // Kiro reject contract: exit 2 + stderr BLOCKS the tool call.
   }
