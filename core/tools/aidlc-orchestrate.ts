@@ -488,7 +488,8 @@ import {
   rulesContentEntries,
   type RuleContent,
 } from "./aidlc-steering.ts";
-import { chatHoldsRules, noteRulesDelivered } from "./aidlc-rules-held.ts";
+import { chatHoldsRules, noteRulesDelivered, RULES_HELD_NOTE } from "./aidlc-rules-held.ts";
+import { refreshKiroIdeSteering } from "./aidlc-includes.ts";
 
 // Read the workflow state file if it exists, else null. The engine's `next` is
 // a pure read: an absent state file is a legitimate branch (no workflow yet),
@@ -1299,6 +1300,11 @@ function writePrepared(prepared: PreparedEmission): void {
       preparedRulesDelivery.bundle,
       preparedRulesDelivery.held,
     );
+    // Kiro IDE: a chat that starts after the memory files changed captures
+    // their new text (a no-op when the steering file already holds it).
+    if (!preparedRulesDelivery.held) {
+      refreshKiroIdeSteering(preparedRulesDelivery.projectDir, preparedRulesDelivery.space);
+    }
   }
   // Stage work handed to the session, by any path (a fresh publication, the
   // same work handed over again, or a `continue` to the next part), ends a
@@ -4965,7 +4971,7 @@ let preparedTransportIdentity: { bundle: string; directiveSha256: string } | nul
 // The rule bundle this invocation prepared, and whether the chat already held
 // it, so writing a run-stage that carried the text can record it (Codex, see
 // aidlc-rules-held.ts).
-let preparedRulesDelivery: { projectDir: string; bundle: string; held: boolean } | null = null;
+let preparedRulesDelivery: { projectDir: string; space: string; bundle: string; held: boolean } | null = null;
 
 // "First run-stage of the workflow" — the deterministic signal D-E delivery
 // keys on. The engine is stateless per call, so it cannot track a "session";
@@ -6591,9 +6597,12 @@ function transportRunStage(
     directive.rules_in_context,
     bundle,
   );
-  if (held) directive.rules_held = bundle;
+  if (held) {
+    directive.rules_held = bundle;
+    directive.rules_held_note = RULES_HELD_NOTE;
+  }
   const content = held ? [] : loaded.content;
-  preparedRulesDelivery = { projectDir: route.codekbCtx.projectDir, bundle, held };
+  preparedRulesDelivery = { projectDir: route.codekbCtx.projectDir, space: route.codekbCtx.space, bundle, held };
   const directiveHash = sha256(JSON.stringify(directive));
   const persona = personaSentAhead(directive);
   if (persona !== null) delete directive.conductor_persona;
