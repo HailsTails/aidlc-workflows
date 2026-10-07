@@ -90,12 +90,6 @@ type PromoteOutcome =
       readonly scope: string;
     };
 
-// IF-2's ratified failure union. `record-dir-absent` is a genuinely distinct
-// state, not a label: the recovery advice differs. A dir that does not exist
-// means the record was never really minted (nothing to hand-write into,
-// nothing to delete), while a failed write into a dir that DOES exist leaves a
-// real record on disk needing a hand fix. Collapsing them to one opaque string
-// makes the rendered guidance wrong in the first case.
 type BindingWriteFailure =
   | { readonly kind: "record-dir-absent"; readonly recordDirName: string }
   | {
@@ -124,22 +118,10 @@ type PromoteFailure =
       readonly kind: "operator-flag-not-lane-writable";
       readonly received: string;
     }
-  // A no-milestone mint must carry a scored tier. The operator banned `unscored`
-  // outright on this shape (2026-09-04): an intent that fits no milestone is
-  // still scored, with evidence. T3 is the answer for a claim that cannot name a
-  // currency, an amount and evidence — it is the derived floor, never a value to
-  // be avoided by declining to score. The ban is on CHOOSING unscored here; the
-  // token stays legal on a milestone-bound mint — and is the ONLY legal tier on a
-  // RATIFIED one, since FR-4 below keys on ratification rather than on carrying
-  // any milestone at all. The reader-side fallback for an absent tier key is
-  // untouched: most bindings carry no tier key, so it is what keeps them readable.
   | {
       readonly kind: "unscored-tier-on-no-milestone";
       readonly received: string;
     }
-  // FR-4: a ratified milestone and a scored tier are mutually exclusive. Meta
-  // work is the tax the milestones pay, so a record cannot both carry a ratified
-  // goal and claim the budget that funds it.
   | {
       readonly kind: "ratified-milestone-with-scored-tier";
       readonly milestoneIdentifier: string;
@@ -148,9 +130,6 @@ type PromoteFailure =
   | { readonly kind: "malformed-tier-claim"; readonly received: string }
   | BindingWriteFailure;
 
-// Never reports success over a no-op: the outcome distinguishes a created
-// binding from a replaced one, so a caller can never be told "done" about a
-// write that changed nothing (FR-2, NFR-4).
 type BindingWriteOutcome = "created" | "replaced";
 
 type IntentBirthRequest = {
@@ -212,9 +191,6 @@ const findPromotedRecord = (args: {
       succeed(null),
     );
 
-// FR-4 at the write boundary, where a Result channel exists (IF-2, IF-6). Whether
-// a milestone is ratified is config-resolved rather than parseable, so the roster
-// arrives here rather than being re-derived.
 const checkMilestoneTierExclusion = (args: {
   readonly importance: LaneImportance;
   readonly ratifiedMilestones: readonly string[];
@@ -262,10 +238,6 @@ const writtenImportanceFor = (args: {
   }),
 });
 
-// The mint transaction's record-dir artefacts, written after the engine births
-// the record. BOTH failures leave a record on disk needing a hand fix before any
-// re-run: without provenance a re-run double-mints; without the binding the
-// record reads as unbound and silently rejoins the standing pool.
 const writeRecordArtefacts = (args: {
   readonly ports: PromotePorts;
   readonly recordDirName: string;
@@ -334,9 +306,6 @@ const promote = (args: {
     tierClaim: request.tierClaim,
   });
 
-  // Refused before the engine births anything: a rejected write after the mint
-  // would leave a record on disk needing a hand fix, and the exclusion is a fact
-  // about the arguments rather than about the write.
   const exclusion = checkMilestoneTierExclusion({
     importance: writtenImportance,
     ratifiedMilestones: args.ratifiedMilestones,
@@ -389,11 +358,6 @@ const UNSCORED_TIER_TOKEN = "unscored";
 const TIER_VALUES: readonly TierValue[] = ["T0", "T1", "T2", "T3"];
 const IMPORTANCE_SLOT_COUNT = 3;
 
-// Parsed by explicit slot COUNT, never by first-separator slice. The two-slot
-// form sliced everything after the first `:` into the milestone identifier, so a
-// third slot appended to it would have been silently absorbed as part of that
-// identifier rather than rejected — a malformed token reading as a valid
-// milestone (IF-7).
 const parseTierToken = (args: {
   readonly token: string;
 }): MetaTier | "malformed" => {
@@ -402,14 +366,6 @@ const parseTierToken = (args: {
   return value === undefined ? "malformed" : { kind: "scored", value };
 };
 
-// `--importance <flag>:<milestone-id|no-milestone>:<tier>`. The refusal is
-// against SILENCE, not against low importance: `not-flagged:no-milestone:T3` is a
-// valid, accepted, recorded decision, and T3 is the honest answer whenever the
-// claim cannot name a currency, an amount and evidence. `operator-flagged` is rejected here
-// because the promotion path is lane-facing and only the operator's surface may
-// write the value rung 2 honours (IF-2). That refusal fires on the flag slot
-// before any tier parsing, so no tier value and no malformed tier slot can cause
-// it to be skipped, reordered, or reached differently (IF-7).
 const parseLaneImportance = (args: {
   readonly received: string;
 }): Result<LaneImportance, PromoteFailure> => {
@@ -436,12 +392,6 @@ const parseLaneImportance = (args: {
   if (flagged === undefined || milestoneToken === "") return malformed;
   const tier = parseTierToken({ token: tierToken });
   if (tier === "malformed") return malformed;
-  // Refused here rather than at the FR-4 exclusion, which cannot see it: that
-  // check early-returns on `no-milestone || unscored`, and this pair satisfies
-  // BOTH disjuncts. The two rules are complements over the same two slots —
-  // FR-4 refuses a ratified milestone WITH a scored tier, this refuses no
-  // milestone WITHOUT one — so between them every mint carries exactly one of a
-  // goal or a budget claim.
   if (tier.kind === "unscored" && milestoneToken === NO_MILESTONE_TOKEN) {
     return failWith({
       kind: "unscored-tier-on-no-milestone",
@@ -571,13 +521,6 @@ type FailureReport = {
   readonly manualRecoveryRequired: boolean;
 };
 
-// Both post-mint write failures leave a record on disk that needs a hand fix
-// before any re-run — a re-run would otherwise double-mint (provenance) or
-// silently rejoin the unbound pool (binding).
-//
-// `record-dir-absent` is deliberately NOT in this set: there is no record on
-// disk to recover, so reporting manual recovery would send the operator to
-// hand-write into a directory that does not exist.
 const MINTED_RECORD_FAILURES: readonly PromoteFailure["kind"][] = [
   "provenance-write-failed",
   "binding-write-failed",
@@ -610,10 +553,6 @@ type ImportanceFailure = Extract<
   }
 >;
 
-// The tier ladder is spelled out in the refusal rather than pointed at, because
-// the caller reaching this message is mid-promotion and the whole failure mode
-// being closed is a lane declining to score. A message that says only "pick a
-// tier" re-opens it.
 const renderUnscoredTierRefusal = (args: {
   readonly received: string;
 }): string =>
@@ -827,13 +766,6 @@ const readProvenanceTaskIdAt = (args: {
   }
 };
 
-// The framing travels as a single argv entry, and a spawn that exceeds the
-// platform's command-line limit fails with an empty stderr — so it reads as a
-// missing binary, and the operator's natural recovery is to shorten the framing
-// until it works. That "fix" SUCCEEDS and mints a record carrying degraded
-// framing, which is worse than the failure: six records were born that way
-// before the cause was found (2026-08-04/05). Refusing up front, naming the
-// argument and the length, keeps the failure loud and the framing intact.
 const PROMOTION_ARGUMENTS_LIMIT = 1000;
 
 const birthIntentVia = (args: {
@@ -904,11 +836,6 @@ const writeBindingFile = (args: {
   }
 };
 
-// Atomic create-or-replace: the exclusive `wx` write fails with EEXIST rather
-// than clobbering, so the outcome is derived from the write ITSELF instead of a
-// separate existsSync whose answer can go stale between the two syscalls. That
-// window matters because two lanes both reading "absent" would both report
-// `created` while one silently overwrites the other's binding.
 const writeBindingAt = (args: {
   readonly recordDir: string;
   readonly recordDirName: string;

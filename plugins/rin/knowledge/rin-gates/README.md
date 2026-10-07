@@ -214,6 +214,41 @@ start instead of re-deriving pipeline state in prose, and a PR carrying a
 `transition-owners.json` is the projection's companion: it resolves each record's
 owning lane by gate (indexed by the `gate` field).
 
+## Promotion and selection invariants
+
+A mint without a milestone must carry an evidence-based scored tier. T3 is the
+floor when the claim cannot name a currency, amount and evidence. Choosing
+`unscored` is refused for that shape. A milestone-bound mint can be unscored;
+a ratified milestone must be unscored because its goal and a scored budget
+claim are mutually exclusive. Reading an older binding without a tier retains
+the existing fallback.
+
+The lane-facing importance argument has exactly three slots:
+`<flag>:<milestone-id|no-milestone>:<tier>`. Extra slots cannot become part of a
+milestone identifier. The operator-only flag is refused before tier parsing;
+`not-flagged:no-milestone:T3` is a valid recorded decision. Invalid argument
+combinations and oversized framing are refused before record creation.
+Framing remains intact rather than being shortened to evade command-line
+limits, and scoring refusals explain the tier ladder.
+
+After record creation, provenance and binding write failures require recovery
+before retrying: missing provenance risks another mint, while a missing binding
+returns the record to the unbound pool. An absent record directory has a
+distinct failure because no record exists to repair. Binding writes report
+creation or replacement from the atomic exclusive write and its result, rather
+than from a separate existence check that could race another writer.
+
+Neglect uses the newest matching stage advance, then promotion time, then the
+record directory's parsed date, then no clock. Both modern `rin-gate-N-*` and
+legacy `gate-N-*` stage names count. Only stage-completion or gate-approval events
+with a matching Stage name establish this clock; unrelated event kinds or
+stage names do not.
+Append-only audit blocks are scanned backwards to the first matching event,
+and the newest matching timestamp across shards wins. An unparseable directory
+date falls through to no clock. No clock or an invalid timestamp ranks as
+positive infinity; descending neglect order makes this failure conservative
+for the affected record.
+
 ## Files
 
 - `{{HARNESS_DIR}}/aidlc-common/stages/{inception,construction,operation}/rin-gate-*.md` — the seven gate stages (0–6).

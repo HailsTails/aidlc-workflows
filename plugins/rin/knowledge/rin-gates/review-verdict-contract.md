@@ -91,6 +91,66 @@ Both doors apply the same predicate (`rin-gates-finding-disposition.ts`, one def
 
 **Fail-safe in one direction only**, exactly as extraction is: findings are consulted *only* to refuse a READY and can never grant one. A NOT-READY is recorded whatever its findings say, and a malformed or absent findings list changes nothing on a NOT-READY. A predicate that is wrong can cost a re-review; it can never manufacture an approval.
 
+## Emitter binding and complete-output reads
+
+The emitter records the caller's verdict and requires a nonempty lens list.
+Live mode records the invoking checkout's HEAD and an advisory diff digest.
+A failed diff read produces an explicit failure marker rather than a digest
+indistinguishable from an empty diff.
+
+Landed mode records the pull request, reviewed head, merge commit and digest
+of that merge commit's patch. Its three arguments (`--pr`,
+`--reviewed-head-sha` and `--merge-commit-sha`) are required together;
+a partial set cannot silently select live mode. The autonomy gate checks
+merge-commit ancestry and patch digest locally. Pull-request head and merge
+identity are read by the emitter; these network facts are not re-fetched by
+the gate. The test HEAD/digest seams require `RIN_GATES_TEST_MODE=1` and
+do not substitute for landed evidence.
+
+Child output goes to a file descriptor instead of a bounded pipe, then returns
+as raw bytes for the digest calculation. This preserves complete output rather
+than accepting a truncated patch. A killed reader and a nonzero command exit
+have distinct failures: one identifies incomplete output, the other the
+command's answer.
+
+Findings can be separated by newlines or semicolons. A semicolon inside
+parentheses belongs to the disposition's evidence rather than separating
+findings.
+
+## Board review publication
+
+The board bridge posts a converged verdict as a GitHub review. An audit log
+establishes that reviewers ran; its truncated messages do not establish their
+conclusions. Publication therefore consumes the verdict file.
+
+The bridge accepts the emitter's live `binding.headSha` and the scribe's
+top-level `headSha`. A live binding takes precedence; absence of both heads is
+refused. A landed binding has a distinct refusal because it describes merged
+content rather than an open pull-request head. Legacy payloads without
+`blockingFindings` default to an empty list.
+
+Posting requires the live pull-request head to equal the reviewed head and
+passes that reviewed SHA explicitly as `commit_id`. A moved head requires
+review of the new content; it cannot retarget an existing verdict. A standing
+review at the same head governs instead of receiving a duplicate post. An
+older-head review does not establish a verdict for the current content.
+
+## Reusable R7 disposition rulings
+
+R7 defaults to disabled. Opting in selects enforcement; consumer baseline
+bootstrap remains a consumer responsibility. A reusable bootstrap facility
+needs its own packaging design for consumer-owned registry inputs.
+
+The shared configuration loader's filesystem port is a separate responsibility
+from the registry-sidecar reader. R7 depends on the shared opt-in read; that
+dependency does not transfer ownership of the shared loader migration to R7.
+
+The emitter tests distill these rulings into three-column disposition rows with
+five-why chains and an acknowledgment containing a semicolon. These rows test
+parser structure and policy behavior; they do not assert a historical review or
+operator approval. Record/task fields use the test purpose, and SHA-bearing
+disposition syntax reuses the existing opaque head value from the test seam.
+
 ## Minimum roster (the coverage gate)
 
 > **Before convening a board, resolve the roster — do not recall it:**

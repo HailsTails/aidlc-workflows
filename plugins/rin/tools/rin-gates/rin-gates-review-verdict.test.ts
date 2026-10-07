@@ -1,18 +1,3 @@
-// The CLI emitter's findings gate (task 019f6d3e).
-//
-// This emitter is the DOMINANT door to a review-verdict.json — 121 of the 141
-// verdicts committed under `aidlc/spaces/default/intents/` carry its stamp
-// against the review-scribe's 20 (re-derive below). Closing the laundering gap
-// only in the scribe would therefore have left the majority path open.
-//
-//   grep -ro '"emittedBy": "[^"]*"' aidlc/spaces/default/intents \
-//     --include=review-verdict.json | sed 's/.*: //' | sort | uniq -c
-//
-// It took `--verdict` from the caller and held no finding state whatever, so it
-// structurally could not refuse a READY that coexisted with a live blocking
-// VIOLATION. It now accepts the findings and applies the same predicate the
-// review-scribe applies to its captures.
-
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -31,7 +16,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const EMITTER = join(HERE, "rin-gates-review-verdict.ts");
 
 const GATE = "rin-gate-0-reconcile";
-const RECORD = "260809-verdict-findings-gate";
+const RECORD = "verdict-findings-gate";
 const HEAD_SHA = "2222222222222222222222222222222222222222";
 
 const LIVE_FINDING =
@@ -119,7 +104,7 @@ const baseArgs = (verdict: string): readonly string[] => [
   "--gate",
   GATE,
   "--task-id",
-  "019f6d3e-fa88-750a-aa6e-61446fdd7217",
+  RECORD,
   "--verdict",
   verdict,
   "--lenses",
@@ -172,15 +157,12 @@ describe("the emitter's findings gate is fail-safe toward NOT-READY", () => {
     const outcome = emit([
       ...baseArgs("READY"),
       "--findings",
-      `RESOLVED: 667ef9c4 ${LIVE_FINDING}`,
+      `RESOLVED: ${HEAD_SHA.slice(0, 8)} ${LIVE_FINDING}`,
     ]);
     expect(outcome.status).toBe(0);
     expect(outcome.verdictFile?.verdict).toBe("READY");
   });
 
-  // The bare-prefix laundering channel: a disposition word carrying no evidence
-  // is not a disposition, or it becomes a more credible-sounding replacement for
-  // the "non-blocking note" this change abolishes.
   test("a bare DEFERRED prefix does not launder a live finding", () => {
     const outcome = emit([
       ...baseArgs("READY"),
@@ -211,7 +193,7 @@ describe("the emitter's findings gate is fail-safe toward NOT-READY", () => {
 });
 
 describe("R7 is project opt-in at the verdict emitter", () => {
-  const deferredFinding = `defer(ack:Helen 2026-08-09) ${LIVE_FINDING}`;
+  const deferredFinding = `defer(ack: configuration-loader responsibility) ${LIVE_FINDING}`;
 
   test("a project without R7 accepts the acknowledged defer shape", () => {
     const outcome = emit([...baseArgs("READY"), "--findings", deferredFinding]);
@@ -228,10 +210,10 @@ describe("R7 is project opt-in at the verdict emitter", () => {
 });
 
 const PUSH_BACK_ROW_WITH_COLUMN_CHAIN =
-  "| D-5 architecture Major: an adopter that opts in has no baseline generator, because `scripts/rin-ops/` is project-owned | push-back(no R7 requirement is unmet: the opt-in defaults to disabled, so no project meets the gap until it opts in, and the only opted-in project is rin, whose generator exists; the fix needs a packaging design decision, so it is not a 2026-09-27 Minor and goes to its own Gate 0 on capture 01a0f1bf-1c1f-7229-a4e0-61e4d91a0ecc) | 1. Why is it not fixed here? — no acceptance criterion of R7 names adopter bootstrap, and no project other than rin can reach the gap, because the opt-in defaults to false (`rin-harness-config.ts`, the `exceptionWhyChains` schema default). <br> 2. Why is there a gap? — commit 18ee9d360 made R7 opt-in per project and moved the baseline to the project root, and left the generator in rin's `scripts/rin-ops/` (`git show 18ee9d360 --stat`). <br> 3. Why did the generator stay? — it resolves the registries by relative path and imports from `plugins/rin/tools/`, so it only runs inside rin's checkout (`scripts/rin-ops/generate-exception-baseline.ts`, its imports). <br> 4. Why was that not caught earlier? — R7 was authored against rin's own corpus and the opt-in scoping arrived as a later correction, with no adopter path designed (the 18ee9d360 commit message). <br> 5. root cause: the plugin has no adopter-side baseline generator and no design for bootstrapping one. owner: capture 01a0f1bf-1c1f-7229-a4e0-61e4d91a0ecc (`git grep -n \"generate-exception-baseline\" -- plugins scripts`). |";
+  "| An opted-in consumer needs baseline bootstrap | push-back(R7 defaults disabled; baseline bootstrap is consumer-owned and needs a packaging design) | 1. Why is bootstrap separate? — the opt-in selects enforcement rather than provisioning (exceptionWhyChains schema default). <br> 2. Why does that matter? — enabling enforcement requires a consumer baseline (exceptionWhyChains opt-in). <br> 3. Why does the consumer own it? — baseline generation resolves consumer registry paths (baseline generator imports and paths). <br> 4. Why is a packaging design needed? — reusable bootstrap must support consumer-owned inputs (consumer baseline responsibility). <br> 5. root cause: adopter-side baseline bootstrap needs a packaging design. owner: consumer bootstrap design (R7 opt-in and baseline ownership ruling). |";
 
 const DEFER_ROW_WITH_SEMICOLON_IN_ACK =
-  '| E-2 clean-architecture Minor: `rin-harness-config.ts` reads the opt-in with `node:fs` directly, bypassing the injected reader | defer(ack: Helen 2026-09-27 converging-review ruling, knowledge/pipeline/decisions.md; carried-forward.md row E-2, unit capture 01a0f1bf-1fc4-7157-a660-46ccc0ce1740) | 1. Why is it carried and not fixed here? — the read sits in `readConfig`, which every harness config consumer shares, and the port for that loader is owned by the one-config-reader collapse rather than by R7 (capture 019f7efa-fbcc-726b-92b2-9d3ff315dc82, absorbed by record 260927-one-harness-collapse). <br> 2. Why does R7 touch it? — `configR7OptIn` and its callers depend on the opt-in read (`git grep -n "configR7OptIn" -- plugins/rin`). <br> 3. Why is there no reader on the config path? — the config loader was never migrated onto the `SidecarFileReader` port (`rin-harness-config.ts` imports `existsSync` and `readFileSync` from `node:fs`). <br> 4. Why was it never migrated? — the loader predates the port, and the port was introduced for the registry sidecars only (`rin-harness-sidecar-file-reader.ts`, its single consumer family). <br> 5. root cause: config loading has no filesystem port. owner: record 260927-one-harness-collapse, via capture 01a0f1bf-1fc4-7157-a660-46ccc0ce1740 (`git grep -n "existsSync\\|readFileSync" -- plugins/rin/tools/rin-harness-config.ts`). |';
+  "| The shared configuration loader reads the opt-in directly | defer(ack: shared configuration-loader responsibility; retain the R7 opt-in read) | 1. Why is this separate? — every harness config consumer shares the same loader (readConfig shared loader). <br> 2. Why does R7 use it? — enforcement depends on the configured opt-in (configR7OptIn callers). <br> 3. Why is there no injected reader? — the shared loader reads through filesystem functions (readConfig existsSync and readFileSync). <br> 4. Why is the sidecar port insufficient? — its responsibility is registry sidecars rather than shared configuration (SidecarFileReader consumer boundary). <br> 5. root cause: shared configuration loading has no filesystem port. owner: shared configuration loader (configuration-loader ownership ruling). |";
 
 describe("the documented disposition-table row is accepted by the R7 emitter", () => {
   test.each([

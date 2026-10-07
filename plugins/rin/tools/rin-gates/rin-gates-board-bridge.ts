@@ -1,39 +1,5 @@
-// Turn a converged decorrelated board verdict into a POSTED GitHub review.
-//
-// The gap this closes (ledger rows A3/A9/A10/A12 on record
-// `260904-upstream-feature-adoptio`): a board's consensus lives in
-// `review-verdict.json`, written unforgeably by the SubagentStop scribe, while
-// the merge path reads only GitHub's `reviewDecision`. Nothing joined them, so
-// every lane reconciled by hand and an in-session APPROVE that was never posted
-// read as a review that never happened. The audit shard cannot stand in: it
-// truncates each subagent's message at 200 chars
-// (`aidlc-log-subagent.ts`), so it proves WHO ran and never WHAT they
-// concluded.
-//
-// WHY THE HEAD BINDING IS THE SUBSTANCE, not a detail. GitHub resolves an
-// omitted `commit_id` to the PR's head AT THE MOMENT THE POST IS SERVED, so a
-// commit landing between the board finishing and the review posting silently
-// attributes the verdict to content no lens read (task 01a06e87). The merge
-// wrapper already refuses when `review.commit_id !== headSha`, but that check
-// is only as good as the value written — and today nothing writes it. This
-// bridge therefore REFUSES to post when the live head has moved off the
-// reviewed head, and passes the reviewed sha explicitly when it posts. Both
-// halves are needed: refusing alone leaves the value unset for the merge guard,
-// and passing alone would faithfully record a verdict for unreviewed content.
-//
-// WHY IT REFUSES RATHER THAN RE-TARGETS. A moved head is a real re-review
-// trigger, not a formatting problem — the diff the board judged is not the diff
-// on the branch. Retargeting would launder a stale verdict onto new content,
-// which is the exact defect the sha-binding exists to prevent.
-//
-// NEWER STATE GOVERNS. The scheduled gate-5 sweep and a lane can both act on
-// one PR. When a review already stands at the reviewed head, this bridge posts
-// nothing and reports the standing verdict — inheriting a concurrent reviewer's
-// conclusion rather than stacking a duplicate on top of it.
-
 import { z } from "zod";
 
-// Enough of a sha to identify a commit in prose without wrapping the line.
 const SHORT_SHA_LENGTH = 7;
 
 const REVIEW_EVENTS = {
@@ -44,33 +10,11 @@ const REVIEW_EVENTS = {
 type BoardVerdict = keyof typeof REVIEW_EVENTS;
 type ReviewEvent = (typeof REVIEW_EVENTS)[BoardVerdict];
 
-// TWO writers produce this file and they do NOT agree on shape. The emitter
-// (`rin-gates-review-verdict.ts`) wraps the head in `binding: { mode, headSha }`;
-// the SubagentStop scribe (`rin-gates-review-scribe.ts`) writes a TOP-LEVEL
-// `headSha` and no `binding` key at all. Measured on the committed corpus: 344
-// verdict files, 123 carrying `binding` and 221 without — including all 41 the
-// scribe wrote.
-//
-// So the head is read from either position, exactly as the other consumer of
-// this same file already does — `rin-gates-autonomy-gate.ts` states the contract:
-// "A verdict carrying no `binding` at all is read as live from its headSha (an
-// older emitter wrote it); a verdict carrying neither is denied by name." A
-// second reader inventing a stricter rule is two readers disagreeing about one
-// store, which is the defect class this repo has already paid for.
-//
-// A LANDED binding is refused by its own named kind rather than as malformed: it
-// describes a merged PR and has no open head to post against, which is a
-// different fact from an unreadable file and deserves a different message.
 const BoardVerdictFileSchema = z.object({
   gate: z.string().min(1),
   taskId: z.string().min(1),
   verdict: z.enum(["READY", "NOT-READY"]),
   lenses: z.array(z.string()).default([]),
-  // Older emitter payloads omit this key entirely (verified against committed
-  // verdicts). An ABSENT list means "no live blocking finding was recorded",
-  // which is what the verdict token already says — so it defaults to empty
-  // rather than making the file unreadable. It is never inferred to be
-  // non-empty: only a present, populated list blocks.
   blockingFindings: z.array(z.string()).default([]),
   headSha: z.string().min(1).optional(),
   binding: z
@@ -167,8 +111,6 @@ const proceed = (value: BridgeOutcome): BridgeResult => ({
   value,
 });
 
-// The reviewed head, wherever the writer put it. `binding.headSha` wins when a
-// live binding is present; otherwise the top-level field carries it.
 const reviewedHeadOf = (
   verdict: BoardVerdictFile,
 ): { readonly headSha: string } | { readonly refusal: BridgeRefusal } => {
@@ -196,9 +138,6 @@ const parseVerdictFile = (
     : { detail: decoded.error.issues.map((issue) => issue.message).join("; ") };
 };
 
-// A review already standing AT THE REVIEWED HEAD is the concurrent sweep's
-// conclusion about exactly this content. Anything older describes a different
-// tree and is not a reason to withhold this verdict.
 const standingReviewAt = (input: {
   readonly reviews: readonly StandingReview[];
   readonly headSha: string;

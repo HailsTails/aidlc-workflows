@@ -1,80 +1,3 @@
-// rin-gates review-verdict emitter — the ONLY legitimate writer of
-// review-verdict.json (rin-gates-verdict-guard.ts denies every other writer).
-//
-// Root cause addressed (Gate-5 review B1, 2026-07-13): the autonomy backstop
-// hook trusts a review-verdict.json to prove a decorrelated review converged
-// before an autonomous `report --result approved`. A freely-writable verdict
-// lets a lane fabricate its own READY and rubber-stamp the gate. This emitter +
-// its guard make the verdict producible only here, and BIND it to the reviewed
-// content so a verdict cannot be pre-written or replayed:
-//
-//   - headSha  — the invoking checkout's HEAD at emit time (git rev-parse).
-//     THIS is the enforced anti-replay binding: the autonomy hook rejects a
-//     verdict whose headSha != current HEAD, so a verdict emitted at commit A
-//     cannot approve commit B.
-//   - diffDigest — sha256 of `git diff <base>...HEAD` at emit time. ADVISORY
-//     audit metadata that records exactly which content the review covered (for
-//     later forensics); it is NOT separately enforced by the hook (headSha
-//     already pins the commit). Recorded, not load-bearing.
-//   - lenses   — the decorrelated lenses that ran; REQUIRED non-empty (a verdict
-//     with no lenses is not a review).
-//   - verdict  — READY | NOT-READY, supplied by the caller from the ACTUAL
-//     review outcome. The emitter does not invent it; it records + binds it —
-//     but it is no longer taken on trust: see the findings gate below.
-//   - findings — the lens-cited rows the sweep produced, in the lenses' own
-//     citation shape. REQUIRED to be consistent with the verdict: a READY
-//     carrying an undisposed finding is REFUSED (task 019f6d3e).
-//
-// THE FINDINGS GATE (task 019f6d3e). Until now this emitter held no finding
-// state at all — `--verdict` was caller-supplied and `--lenses` was a list of
-// NAMES — so it structurally could not refuse a READY that coexisted with a live
-// blocking VIOLATION. `decorrelated-review.md:99-102` (Step 5) states the rule
-// ("READY iff every producing lens is READY or its VIOLATIONs resolved"); nothing
-// enforced it, and every board's guarantee rested on lens self-discipline at
-// exactly that step. The emitter now takes the findings and applies the same
-// predicate the review-scribe applies to its captures, so the two doors to a
-// review-verdict.json cannot disagree about what READY means.
-//
-// Fail-safe toward NOT-READY, exactly as extraction is: findings can only ever
-// move a verdict AWAY from READY. A NOT-READY is recorded whatever its findings
-// say (it already blocks), and a malformed/absent findings list on a NOT-READY
-// changes nothing — it is only ever consulted to REFUSE a READY.
-//
-// The trust boundary is the guard: the model/lane cannot hand-write the verdict,
-// so a READY can only reach disk through this tool, which stamps a real
-// timestamp + the content binding. Combined with the emitter being invoked as a
-// distinct step from `report`, a fabricated-then-approved verdict is no longer a
-// silent free Write — it is a recorded, content-bound, guard-gated artefact.
-//
-// Usage:
-//   RIN_GATES_VERDICT_EMITTER=1 bun .claude/rin-gates/rin-gates-review-verdict.ts \
-//     --record-dir <name> --gate <slug> --task-id <uuid> \
-//     --verdict READY|NOT-READY --lenses <a,b,c> --base <ref|sha> \
-//     [--findings <newline-or-semicolon-separated cited rows>]
-//
-// TWO BINDING MODES (Slice 260816-verdict-landed-binding). The headSha binding
-// above pins a LIVE review to the commit under review. A review performed on a
-// MERGED pull request has no live head to pin: the reviewed branch is gone and
-// the invoking HEAD is a later trunk commit, so recording it would claim the
-// review covered content it never saw. The landed mode records what the review
-// actually covered — the pull request, the reviewed head, the merge commit, and
-// a sha256 of that merge commit's own patch — and the autonomy gate re-verifies
-// the two locally-recomputable halves (the merge commit is an ancestor of HEAD,
-// and its patch still digests to the recorded value). The network facts
-// (headRefOid equality, merge-commit identity) are read here through `gh` and
-// ride the emitter stamp; the gate makes no network call.
-//
-//   --pr <n> --reviewed-head-sha <sha> --merge-commit-sha <sha>
-//     [--reviewed-at <iso8601>]
-//
-// All three are required together; a strict subset is refused rather than
-// silently emitting a live verdict a caller believes is landed.
-//
-// Env seams (selftest hermeticity): RIN_GATES_WORKSPACE_ROOT, RIN_GATES_SPACE,
-// RIN_GATES_HEAD_SHA (test HEAD), RIN_GATES_DIFF_DIGEST (test digest). Both sha
-// seams are honoured only under RIN_GATES_TEST_MODE=1, and neither reaches the
-// landed digest — the landed evidence is read from real git and real `gh`.
-
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -141,12 +64,6 @@ const headShaOf = (checkout: string): string | null => {
   return result.status === 0 && sha ? sha : null;
 };
 
-// The live diff has no size ceiling either, and its failure is no longer folded
-// into the happy path: hashing "" on a failed read made a failure indistinguish-
-// able from a genuinely empty diff, since both produced sha256 of no bytes. The
-// digest is advisory audit metadata rather than an enforced binding, so a failed
-// read reports itself as an explicit marker instead of a plausible-looking hash
-// no one can tell apart from a real one.
 const diffDigestOf = (checkout: string, base: string): string => {
   if (process.env["RIN_GATES_TEST_MODE"] === "1") {
     const injected = process.env["RIN_GATES_DIFF_DIGEST"];
@@ -180,29 +97,11 @@ type SpawnedOutputFailure =
     }
   | { readonly cause: "exited"; readonly exitCode: number };
 
-// The two causes read differently because they send a diagnosis to different
-// places: a kill is this tool's problem (the output never arrived whole), a
-// non-zero exit is git's answer about the commit. The old single string rendered
-// a kill as `exited null`, which named neither.
 const describeSpawnedOutputFailure = (failure: SpawnedOutputFailure): string =>
   failure.cause === "killed"
     ? `the reading process was killed by ${failure.signal} after ${failure.bytesWritten} byte(s), so its output is truncated rather than absent — this is a reader fault, not a fault in the commit`
     : `git exited ${failure.exitCode}`;
 
-// Reads a child's whole stdout with NO ceiling on its size.
-//
-// The bytes go to a FILE DESCRIPTOR rather than a pipe, which is the entire
-// point: spawnSync's `maxBuffer` governs pipes only, so a redirect to an fd has
-// no ceiling to overflow and cannot silently truncate. The previous piped read
-// inherited Node's 1 MB default, and on overflow returned `status: null` with a
-// PARTIAL buffer (measured: 1,052,672 bytes of a 2,260,517-byte patch) — a
-// truncation that only the status check kept out of the hash.
-//
-// Returns the raw Buffer rather than a digest, so the locked digest expression
-// stays in the pure core where IF-5 puts it (260816-verdict-landed-binding) and
-// the raw-bytes property stays compiler-enforced by IF-4's Result<Buffer, _>.
-// Residency is therefore the whole output, unchanged; what this removes is the
-// ceiling and the silent truncation, which are the defect.
 const readSpawnedOutput = (input: {
   readonly command: string;
   readonly args: readonly string[];
@@ -580,10 +479,6 @@ const landedVerdictPayloadOf = (input: {
   },
 });
 
-// Findings arrive as the lenses' own cited rows. Newlines and semicolons both
-// separate, because a shell caller reaches for whichever its quoting makes easy.
-// A semicolon inside parentheses belongs to the row: a disposition token such as
-// `defer(ack: <ruling>; <carried file>)` carries one as part of its evidence.
 type FindingScan = {
   readonly rows: readonly string[];
   readonly current: string;
@@ -691,8 +586,6 @@ const parseVerdictInputs = ({
   if (gateSegments === null)
     fail(`gate '${gateArg}' has no known phase mapping`);
   const findings = parseFindings(argValue("--findings"));
-  // The findings gate. Consulted ONLY to refuse a READY, so it can never upgrade
-  // a NOT-READY — the same one-directional safety the extractor holds.
   const optIn = configR7OptIn({ projectDir: workspaceRoot });
   if (optIn.kind === "invalid") {
     fail(`harness.config.json is invalid: ${optIn.reason}`);

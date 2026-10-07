@@ -12,12 +12,6 @@ const MS_PER_DAY = 86_400_000;
 
 const CENTURY_PREFIX = "20";
 
-// A gate advance names its stage as `rin-gate-N-*` today, but 24 shards in the
-// corpus carry the LEGACY bare `gate-N-*` spelling from before the rin- prefix.
-// Matching only the modern spelling silently rejects those records' real
-// advances and drops them to a weaker clock level — a fail-open on precisely
-// the oldest records the starvation guard exists to surface. Measured
-// 2026-08-16: 428 shards modern, 24 legacy.
 const GATE_STAGE_PATTERN = /^(?:rin-)?gate-\d/;
 
 const fieldIn = (block: string, label: string): string | null => {
@@ -28,9 +22,6 @@ const fieldIn = (block: string, label: string): string | null => {
 
 type BlockKind = "gate-advance" | "not-an-advance";
 
-// Keys on the event's OWN Stage field, never on presence in the directory: a
-// shard can carry events naming a SIBLING record, so "newest timestamp in the
-// dir" would read another record's activity as this record's progress.
 const blockKind = (block: string): BlockKind => {
   const event = fieldIn(block, "Event");
   if (event === null) return "not-an-advance";
@@ -43,9 +34,6 @@ const blockKind = (block: string): BlockKind => {
     : "not-an-advance";
 };
 
-// Read backwards and stop at the first hit: blocks are append-only, so the last
-// matching block is the newest. Locked design property (IF-6) — a naive full
-// read is ~18x the projection's current byte volume against a 4.31 MB worst case.
 const lastAdvanceInShard = (args: {
   readonly shardBody: string;
 }): string | null => {
@@ -68,10 +56,6 @@ const latestAdvanceAcrossShards = (args: {
     : stamps.reduce((latest, stamp) => (stamp > latest ? stamp : latest));
 };
 
-// A record dir is named YYMMDD-<slug>. The prefix EXISTING is guaranteed by
-// construction; that it PARSES is not — a hand-created dir, a migrated legacy
-// record or a rename can yield an unparseable prefix, which is why this returns
-// null and the chain bottoms out in `no-clock` rather than a silent NaN.
 const DIR_NAME_DATE_PREFIX =
   /^(?<year>\d{2})(?<month>\d{2})(?<day>\d{2})(?:-|$)/;
 
@@ -100,10 +84,6 @@ const readNeglectClock = (args: {
     : { source: "dir-name-prefix", at: prefixDate };
 };
 
-// `no-clock` resolves to POSITIVE_INFINITY — an absolute encoding, never a
-// pool-relative one, so a record the pipeline knows nothing about ranks as
-// maximally neglected knowing only itself. This is fail-closed ONLY because
-// rung 5 sorts neglect descending (IF-6); the two decisions hold together.
 const resolveNeglectDays = (args: {
   readonly clock: NeglectClock;
   readonly now: () => Date;
