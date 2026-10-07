@@ -72,6 +72,8 @@ import {
   patchWriteTargetsOf,
 } from "./aidlc-codex-patch-context.ts";
 
+import { normalizeCodexDispatchTool } from "./aidlc-codex-dispatch-tool.ts";
+
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 
 interface CodexHookInput {
@@ -194,6 +196,15 @@ if (!process.stdin.isTTY) {
   } catch {
     return 0; // malformed stdin — advisory hooks fail open
   }
+}
+
+const toolName = normalizeCodexDispatchTool({
+  eventName: codex.hook_event_name,
+  toolName: codex.tool_name,
+});
+if (toolName !== undefined && toolName !== codex.tool_name) {
+  codex = { ...codex, tool_name: toolName };
+  rawInput = JSON.stringify(codex);
 }
 
 // Ordering matches core's `resolveProjectDirFromPayload`: the per-event cwd

@@ -26,9 +26,9 @@ interface KiroIdeMatcherRegistration extends MatcherRegistration {
 const CODEX_FIXTURE_GAPS = [
   {
     event: "PreToolUse",
-    matcher: "spawn_agent",
+    matcher: "^(spawn_agent|collaboration\\.spawn_agent)$",
     reason:
-      "harness/codex/emit.ts:39-41 records this registration as verified live on Codex 0.142.5; #777 has no delegation capture yet",
+      "The legacy dispatch registration was verified on Codex 0.142.5; native 0.153.4 V2 tool events establish collaboration.spawn_agent, but this fixture has no dispatch hook payload capture yet",
   },
   {
     event: "PostToolUse",
@@ -104,10 +104,6 @@ function matcherRegistrations(document: JsonObject, source: string): MatcherRegi
   return registrations;
 }
 
-function selectedLiteralNames(matcher: string, toolNames: readonly string[]): string[] {
-  return toolNames.filter((name) => name === matcher);
-}
-
 function selectedPatternNames(matcher: string, toolNames: readonly string[]): string[] {
   const pattern = new RegExp(matcher);
   return toolNames.filter((name) => {
@@ -134,7 +130,7 @@ describe("t308 hook registration matchers select captured fixture tool names", (
       );
       if (gap) continue;
       expect(
-        selectedLiteralNames(registration.matcher, toolNames),
+        selectedPatternNames(registration.matcher, toolNames),
         `Codex ${registration.event}/${registration.matcher} must select a captured tool_name`,
       ).not.toEqual([]);
     }
@@ -149,7 +145,7 @@ describe("t308 hook registration matchers select captured fixture tool names", (
         gap.reason,
       ).toBe(true);
       expect(
-        selectedLiteralNames(gap.matcher, toolNames),
+        selectedPatternNames(gap.matcher, toolNames),
         `${gap.reason}; remove this fixture-gap entry once a capture lands`,
       ).toEqual([]);
     }

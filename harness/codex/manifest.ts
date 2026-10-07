@@ -97,6 +97,10 @@ const manifest: HarnessManifest = {
   // skill is authored too but is EMITTED into .agents/skills/aidlc/ by emit().
   harnessFiles: [
     { src: "hooks/aidlc-codex-adapter.ts", dst: "hooks/aidlc-codex-adapter.ts" },
+    {
+      src: "hooks/aidlc-codex-dispatch-tool.ts",
+      dst: "hooks/aidlc-codex-dispatch-tool.ts",
+    },
     // Side-effect-free apply_patch helpers the adapter imports by relative path.
     {
       src: "hooks/aidlc-codex-patch-context.ts",

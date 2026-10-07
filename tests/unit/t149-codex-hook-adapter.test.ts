@@ -29,7 +29,8 @@
 // would bypass the exact stdin/stdout/exit-code surface being contracted.
 // (Same idiom as kiro's t142.)
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import "../../harness/codex/hooks/aidlc-codex-dispatch-tool.test.ts";
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
@@ -559,6 +560,79 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("native V2 dispatch compatibility", () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = scratchProject(true);
+    });
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    test("native V2 dispatch delivers stage rules without losing task, role or fork fields", () => {
+      cpSync(join(REPO_ROOT, "dist", "codex", "aidlc"), join(dir, "aidlc"), { recursive: true });
+      const response = runAdapter(dir, "deliver-stage-rules", {
+        hook_event_name: "PreToolUse",
+        cwd: dir,
+        agent_type: "aidlc-quality-agent",
+        tool_name: "collaboration.spawn_agent",
+        tool_input: {
+          task_name: "architecture_reviewer_probe",
+          agent_type: "aidlc-product-agent",
+          fork_turns: "none",
+          message: "Run .codex/aidlc-common/stages/inception/user-stories.md.",
+        },
+      }, { TMPDIR: dir });
+      expect(response.code).toBe(0);
+      const output: unknown = JSON.parse(response.stdout);
+      expect(output).toEqual({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+          updatedInput: {
+            task_name: "architecture_reviewer_probe",
+            agent_type: "aidlc-product-agent",
+            fork_turns: "none",
+            message: expect.stringContaining("AIDLC_DISPATCH_RULES_BEGIN"),
+          },
+        },
+      });
+      expect(response.stdout).toContain("Given/When/Then");
+      expect(response.stdout).toContain("Run .codex/aidlc-common/stages/inception/user-stories.md.");
+    });
+
+    test("native V2 developer dispatch reaches plan refusal and reviewer dispatch remains allowed", () => {
+      seedUnapprovedCodeGeneration(dir, "todo-core");
+      const denied = runAdapter(dir, "plan-approval-guard", {
+        hook_event_name: "PreToolUse",
+        cwd: dir,
+        tool_name: "collaboration.spawn_agent",
+        tool_input: {
+          task_name: "developer_probe",
+          agent_type: "aidlc-developer-agent",
+          fork_turns: "none",
+          message: "AIDLC-UNIT: todo-core\nImplement todo-core",
+        },
+      }, { TMPDIR: dir });
+      expect(denied.code).toBe(2);
+      expect(denied.stderr).toContain("Code generation cannot start");
+      const allowed = runAdapter(dir, "plan-approval-guard", {
+        hook_event_name: "PreToolUse",
+        cwd: dir,
+        tool_name: "collaboration.spawn_agent",
+        tool_input: {
+          task_name: "reviewer_probe",
+          agent_type: "aidlc-quality-agent",
+          fork_turns: "none",
+          message: "Review aidlc-developer-agent output for todo-core",
+        },
+      }, { TMPDIR: dir });
+      expect(allowed.code).toBe(0);
+      expect(allowed.stderr).toBe("");
+    });
+
   });
 
   test("2c: plan-approval guard reads the spawn target from tool_input.agent_type", () => {

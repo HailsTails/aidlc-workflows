@@ -26,6 +26,7 @@ import {
 } from "../../scripts/agent-knowledge.ts";
 import { renderOnboarding } from "../../scripts/onboarding.ts";
 import onboardingFills from "./onboarding.fills.ts";
+import { CODEX_DISPATCH_MATCHER } from "./hooks/aidlc-codex-dispatch-tool.ts";
 import type { Tier } from "../../core/tools/aidlc-tiers.ts";
 import {
   modelAgentName,
@@ -44,7 +45,7 @@ const HOOK_WIRING: Array<{ event: string; matcher?: string; target: string }> = 
   // POSIX Codex commands receive the validated payload session directly, so
   // sandboxed macOS does not depend on `ps` ancestry for workflow isolation.
   { event: "PreToolUse", matcher: "Bash", target: "bind-bash-session" },
-  { event: "PreToolUse", matcher: "spawn_agent", target: "deliver-stage-rules" },
+  { event: "PreToolUse", matcher: CODEX_DISPATCH_MATCHER, target: "deliver-stage-rules" },
   { event: "PreToolUse", target: "state-transition-guard" },
   // No matcher: the reviewer-scope target self-filters (Bash + apply_patch;
   // everything else exits 0 instantly), and Codex read access rides the shell

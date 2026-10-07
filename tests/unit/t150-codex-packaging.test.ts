@@ -281,6 +281,7 @@ function buildSyntheticCodexPluginAgent(args: {
     for (const directory of ["scripts", "core", "harness"]) {
       cpSync(join(REPO_ROOT, directory), join(fixtureRoot, directory), { recursive: true });
     }
+    cpSync(join(REPO_ROOT, "tsconfig.json"), join(fixtureRoot, "tsconfig.json"));
     cpSync(join(REPO_ROOT, "plugins", "test-pro"), join(fixtureRoot, "plugins", "test-pro"), { recursive: true });
     symlinkSync(join(REPO_ROOT, "node_modules"), join(fixtureRoot, "node_modules"), "dir");
     writeFileSync(join(fixtureRoot, "plugins", "test-pro", "agents", "test-pro-metrics-agent.md"), args.source, "utf-8");
@@ -316,6 +317,18 @@ describe("t150 dist/codex packaging determinism + trust", () => {
       "deterministic across two independent build(s) for codex",
     );
   }, 60_000);
+
+  test("native dispatch matcher is emitted on the stage-rule delivery group", () => {
+    const wiring = parseCodexHookDocument({
+      source: readFileSync(join(CODEX_DST, "hooks.json"), "utf-8"),
+    });
+    expect(wiring.hooks.PreToolUse?.filter((group) =>
+      group.hooks.some((hook) => hook.command.endsWith(" adapter codex deliver-stage-rules")),
+    )).toEqual([{
+      matcher: "^(spawn_agent|collaboration\\.spawn_agent)$",
+      hooks: [{ command: "bun .codex/tools/aidlc.ts engine adapter codex deliver-stage-rules" }],
+    }]);
+  });
 
   test("2: packaged .ts files differ only at declared projection tokens", () => {
     // tools/ + hooks/ carry the deterministic core. The codex adapter
