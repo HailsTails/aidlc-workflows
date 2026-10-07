@@ -449,8 +449,10 @@ import {
   isPlanApprovalBeat,
   legacyPlanApprovalOffNotice,
   noteOpenEngineQuestion,
+  notePlanApprovalAskReply,
   openPlanApprovalQuestion,
   planApprovalKeptReplyWaits,
+  withdrawLatestPlanApprovalReply,
   withdrawPlanApprovalReplies,
   publishPlanApprovalAsk,
   publishPlanApprovalSkip,
@@ -767,6 +769,8 @@ const openQuestionMarkers = new WeakSet<object>();
 // question that work is waiting on, with their words already kept as its
 // reply, is answered by those words (see emit).
 let routingAnsweredAsActiveWork = false;
+// The words that answer was about, for the question the work in progress has open.
+let routingAnsweredWords: string | null = null;
 
 function isKeptRequest(args: readonly string[]): boolean {
   const flags = parseNextFlags([...args]);
@@ -1769,15 +1773,23 @@ function emit(requested: Directive): void {
         // Asked where their words belong, the person said the work in
         // progress, which waits on its code plan question: the question is
         // the open step again, and the words it kept as their reply answer it.
+        // Words typed while the work was parked never reached the question
+        // (parked, it was not the open step): now that it is, they are its
+        // reply, kept once, as the latest.
         if (
           routingAnsweredAsActiveWork &&
           prepared.transported.kind === "ask" &&
           prepared.transported.ask_type === PLAN_APPROVAL_ASK_TYPE &&
-          !prepared.transported.plan_approval.editing &&
-          planApprovalKeptReplyWaits(projectDir)
+          !prepared.transported.plan_approval.editing
         ) {
-          writePrepared(prepareEmission(planQuestionAnsweredByWordsDirective()));
-          return;
+          if (routingAnsweredWords !== null && !isReadOnlyEngineProbe()) {
+            withdrawPlanApprovalReplies(projectDir, routingAnsweredWords);
+            notePlanApprovalAskReply(projectDir, engineSessionId ?? "", routingAnsweredWords);
+          }
+          if (planApprovalKeptReplyWaits(projectDir)) {
+            writePrepared(prepareEmission(planQuestionAnsweredByWordsDirective()));
+            return;
+          }
         }
       }
     } catch (e) {
@@ -7497,6 +7509,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       flags.intent = undefined;
       flags.request = undefined;
       flags.scope = typedScope;
+      routingAnsweredWords = question.text;
       question = undefined;
       routingAnsweredAsActiveWork = true;
     } else if (!named) {
@@ -7692,11 +7705,17 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       // or their own words): the work carries on, as `--resume` does, and
       // their words are read below. The Stop hook's probe still sees the park.
       const back = !isReadOnlyEngineProbe() && personSpokeSincePark(pd);
-      // "carry on", "resume" and the like, said on their own, are no words.
-      if (back && (args.length === 0 || bareContinuation)) {
+      // "carry on", "resume" and the like, said on their own, are no words;
+      // "part of that work, continue it", chosen on the routing question, is
+      // that same carrying on (its words were read when the question was asked).
+      if (back && (args.length === 0 || bareContinuation || routingAnsweredAsActiveWork)) {
+        // The routing answer is re-run as it was, so the work it continues
+        // still knows the person's words were about it (a bare `next` would
+        // ask the code plan question again with their reply unread).
+        const again = routingAnsweredAsActiveWork && args.length > 0 ? `next ${args.join(" ")}` : "next";
         emit(printDirective(
           `This workflow is parked. Run \`${aidlcToolInvocation("state")} unpark\` ` +
-            "to clear the park marker, then re-run `next` to continue.",
+            `to clear the park marker, then re-run \`${again}\` to continue.`,
         ));
         return;
       }
@@ -15014,6 +15033,16 @@ function handlePark(_args: string[], projectDir: string | undefined): void {
     emit(stateRefusalDirective("Cannot park the workflow", "this step", (res.stderr || res.stdout).trim()));
     return;
   }
+  // The message that asked for the park ("let's stop here for today") is no
+  // reply to an open code plan question: when the work comes back, the
+  // question is theirs to answer. A park typed as a command kept no such
+  // message, and an earlier reply of theirs stays.
+  try {
+    const turn = readAuditShardEvents(pd).filter((row) => row.event === "HUMAN_TURN").at(-1);
+    if (turn !== undefined && auditBlockField(turn.block, "Reply") === null) withdrawLatestPlanApprovalReply(pd);
+  } catch {
+    // The reply stays kept; the question is asked again with it.
+  }
   emit(parkedAfterPark(pd, res.stdout));
 }
 
@@ -15739,6 +15768,7 @@ export function main(argv: string[]): void {
     activeSwitchOffNotices = null;
     activeKeptRequestLine = null;
     routingAnsweredAsActiveWork = false;
+    routingAnsweredWords = null;
     engineProjectDir = undefined;
     resolvedDirectiveLimit = null;
     engineSessionId = undefined;
