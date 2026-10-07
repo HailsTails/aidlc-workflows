@@ -60,6 +60,33 @@ A fresh project consumer was rehearsed using the existing copy archive and Bun, 
 
 In the table, **build** means covered by this build/type/lint snapshot; **plugin** means the passing reusable plugin suite. A named regression is the behavior to retest at each baseline change, even where a current focused result is pending.
 
+## Migration compatibility findings
+
+The [2026-10-07 Codex compatibility account](rin-codex-compatibility.md)
+extends this register with the migration's measured native behavior,
+source-derived limits and unresolved repairs. It distinguishes upstream AIDLC
+candidates, upstream Codex issues/compatibility constraints, Rin personal
+requirements or drift, local setup defects and withdrawn assumptions, with
+owners and removal conditions. No upstream acceptance is claimed.
+
+The public producer at `50cda419` has the reviewed native hook-name,
+marketplace, trust-identity and runtime-companion repairs. **V2 rule delivery
+remains broken** because its opaque message is still rewritten; the name fix
+and green source CI do not establish native delivery. A bounded V1 diagnostic
+proved complete rule transport and real named-role handback, but its scribe
+correctly refused a review verdict. All eight allocated investigation
+invocations are consumed; call nine is unallocated. A later substantive READY
+was genuinely captured with a matching engine receipt, but its mandatory
+knowledge-read order and model-visible completeness failed verification.
+Neither result earns a gate.
+
+DD7/Five Whys and explicit open-workflow refresh remain Rin policy choices.
+The reusable refresh comparison permits only coherent advisory write-sensor
+registration changes while retaining gate/blocking sensors and all other
+compiled completion contracts. The stronger universal pre-model admission
+guarantee was introduced by the investigation and is withdrawn; canonical
+delegated-rule and native-evidence requirements remain unchanged.
+
 ## Retained capability groups
 
 | Registry | Difference and reason | Surface / affected consumer | Regression and current evidence | Retirement condition |
