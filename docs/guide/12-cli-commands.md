@@ -1240,9 +1240,12 @@ application and refuses CLI lowering.
 Scope defaults apply without asking.
 An already-off fence or an identical policy word already marked `set by you`
 needs no key because the CLI update is a no-op.
-After memory-strict and unattended checks, `fenceKeyBypassed` is the only way a
-CLI setter lowers without the person's prompt: it recognizes the fixture or
-harness-launch presence bypass, not an inline environment assignment.
+After memory-strict and unattended checks, a CLI setter lowers without the
+person's prompt in two cases only: you typed it at your own terminal (both ends a
+terminal, no chat identity on the command, and no mark of a host that opens
+terminals for its agent), which is your own act; or `fenceKeyBypassed` recognizes
+the fixture or harness-launch presence bypass, not an inline environment
+assignment.
 The session-start hook keeps its `presence-bypass-<session>` stamp in the Plan
 Approval runtime directory for an attended harness launched with
 `AIDLC_SKIP_HUMAN_PRESENCE_GUARD=1`.
@@ -1409,13 +1412,20 @@ Memory-held strict refuses first and overrides a fence lowered earlier, which
 machine-wide kill switch takes precedence. Its persisted `Guards Off` entry
 remains and takes effect again only after the memory line no longer holds strict.
 
-A setter that would turn the review-freeze fence off, run when no reply from the
-person has arrived since the last decision, refuses with:
+A setter that would turn the review-freeze fence off, run by the agent on your
+behalf when no reply of yours has arrived since the last decision, refuses with:
 
 > Turning the review-freeze check off is the person's call. No reply from the person has arrived since the last decision: run it when they ask for it. They can also type `/aidlc config set guard.review-freeze off`.
 
 The other fence refusals substitute that fence's name; unattended runs also
-receive the driver guidance. This command controls the three switchable fences,
+receive the driver guidance. The same command typed by you at your own terminal
+is never refused for that reason: it is your own act, so it is carried out, said
+in one line ("The review freeze check (it stops edits to work you already
+approved) is off for this piece of work, set by you. You can turn it back on any
+time."), and recorded as set by you. A terminal your editor opens for its own
+agent (Copilot in VS Code, Kiro IDE, Cursor) is not your terminal: there the
+refusal reads "To turn the review-freeze check off, ask for it in your Kiro
+chat.", naming your tool. This command controls the three switchable fences,
 including any the policy word leaves up. A switchable fence's main-session
 refusal names the command; a human-presence refusal names no switch and says
 what happened to a reply the person already sent: on a harness that runs hooks
@@ -1570,23 +1580,27 @@ terminal, or an edit to the file. The nine that take a check away from you
 (plan approval, review freeze, reviewer read scope, human presence, summary
 confirmation and its check, the stage output check, the revision backstop, and
 the pipeline handoff check) are always said. The next step the agent relays
-carries one line naming the check, since when, how it was set, and the command
-that turns it back on, for example:
+carries one line naming the check, what it is for, since when, how it was set,
+and an offer to turn it back on, for example:
 
-> The review freeze check is off for this project since 10:42, because you said: "turn the review freeze check off for this project". Say "turn it back on" to restore it (aidlc config flags --clear-bypass AIDLC_DISABLE_REVIEW_FREEZE_HOOK --yes).
+> The review freeze check (it stops edits to work you already approved) is off for this project since 10:42, because you said: "turn the review freeze check off for this project". Do you want it back on?
+
+Right after you turn a check off yourself, that line states the way back instead
+of asking about what you just decided: "You can turn it back on any time."
 
 When the engine cannot tie it to a message of yours in the chat, the line says
 only that the check is off and since when. Every new chat opens with the
 same line while the check stays off (except on opencode, which shows no
 session-start context), and `config flags --show` and the doctor Flags row (a
-warning, which does not change doctor's exit code) list it. Say "turn it back
-on" and the agent runs that command; if something else still keeps the check
-off (the environment variable, or another settings file), the command says so
-and names it. When the switch is cleared but the open piece of work keeps the
-check off on its own (its scope or its Guard Policy), the line says so and names
-the way to turn it on for that work too, for example:
+warning, which does not change doctor's exit code) list it. Answer that offer in
+your own words and the agent runs the command; if something else still keeps the
+check off (the environment variable, or another settings file), the command says
+so and asks whether you want that cleared too. When the switch is cleared but the
+open piece of work keeps the check off on its own (its scope or its Guard
+Policy), the line says so and offers to turn it on for that work too, for
+example:
 
-> The review freeze check switch is cleared for this project, but it stays off for this piece of work: guard policy off (set by you). Say "turn it on for this work" to restore it there (/aidlc config set guard.review-freeze on).
+> The review freeze check (it stops edits to work you already approved) switch is cleared for this project, but it stays off for this piece of work: guard policy off (set by you). Do you want it on for this piece of work too?
 
 `config get` names where a switch keeps a check off: `off (AIDLC_DISABLE_REVIEW_FREEZE_HOOK in aidlc.settings.local.json)`
 when a settings file records it, or `off (env AIDLC_DISABLE_REVIEW_FREEZE_HOOK)`

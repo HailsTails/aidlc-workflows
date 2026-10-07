@@ -579,8 +579,8 @@ describe("t338 summary confirmation off is the person's switch", () => {
     // One line: the setter's own "changed" line is not said beside it.
     expect(changed.stdout).not.toContain("Summary Confirmation changed:");
     expect(changed.stdout).toContain(
-      'The summary confirmation is off for this piece of work, because you said: "skip the looks correct check from now on". ' +
-        'Say "turn it back on" to restore it (/aidlc config set summary-confirmation on).',
+      "The summary confirmation (it reads your words back to you before the work goes on) is off for this piece " +
+        'of work, because you said: "skip the looks correct check from now on". You can turn it back on any time.',
     );
     const unattended = project("feature");
     recordHumanPrompt(unattended.proj, "skip the looks correct check from now on");
@@ -669,12 +669,20 @@ describe("t338 summary confirmation off is the person's switch", () => {
     expect(parsed.settings.map((setting) => setting.key)).not.toContain("summary-confirmation");
   });
 
-  test("the request's own flags carry no switch, and an unknown flag still drops every switch", () => {
+  test("the request's own flags carry no switch, and a flag nobody knows costs them none", () => {
     const beside = parseTypedGuardSwitchRequest("/aidlc --skip user-stories --project-type brownfield --plan-approval off build B");
     expect(beside.newWorkPlanApprovalOff).toBe(true);
     expect(beside.switches).toEqual([]);
+    // A flag-shaped token this parser cannot read is left out and named back to
+    // them; the switch they typed readably is still theirs.
     const unknown = parseTypedGuardSwitchRequest("/aidlc --bogus x --plan-approval off build B");
-    expect(unknown.newWorkPlanApprovalOff).toBeUndefined();
+    expect(unknown.newWorkPlanApprovalOff).toBe(true);
+    expect(unknown.unread).toBe("--bogus");
+    // Among their words it is one of their words, with nothing to report.
+    const described = parseTypedGuardSwitchRequest("/aidlc --plan-approval off build B --bogus x");
+    expect(described.newWorkPlanApprovalOff).toBe(true);
+    expect(described.unread).toBeUndefined();
+    expect(described.words).toContain("--bogus");
   });
 
   test.each([
