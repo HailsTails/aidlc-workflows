@@ -1280,6 +1280,16 @@ function aidlcOwnEntry(entry: Pick<JsonEntry, "path" | "item">): boolean {
   );
 }
 
+/** The id of a JSON entry at `path`, as mergeJsonEntries records it. */
+export function jsonEntryId(path: readonly string[]): string {
+  return JSON.stringify({ path });
+}
+
+/** The hash of a JSON entry's value, as mergeJsonEntries records it. */
+export function jsonEntryHash(value: unknown): string {
+  return sha256Bytes(canonical(value));
+}
+
 /** Who owns the entries already in the file before this merge. */
 export type JsonEntriesOwnership =
   /** The entries AI-DLC recorded, with the value hash it wrote. */
@@ -1443,6 +1453,10 @@ export function mergeJsonEntries(
   shippedText: string,
   ownership: JsonEntriesOwnership,
   force = false,
+  // Entry ids the person set in this run (an explicit provider choice): a
+  // present one is taken over at its current value, so the shipped value
+  // replaces it and AI-DLC records it as its own from here on.
+  claim: readonly string[] = [],
 ): JsonEntriesResult {
   let shippedValue: unknown;
   try {
@@ -1464,7 +1478,7 @@ export function mergeJsonEntries(
   const present = jsonEntriesOf(currentValue);
   const presentHashes = new Map(present.map((entry) => [entry.id, entry.hash]));
   const prior: Record<string, string> = ownership.kind === "recorded"
-    ? ownership.entries
+    ? { ...ownership.entries }
     : ownership.kind === "whole"
     ? Object.fromEntries(presentHashes)
     : Object.fromEntries(
@@ -1472,6 +1486,10 @@ export function mergeJsonEntries(
         .filter((entry) => presentHashes.get(entry.id) === entry.hash && (ownership.kind === "matching" || aidlcOwnEntry(entry)))
         .map((entry) => [entry.id, entry.hash]),
     );
+  for (const id of claim) {
+    const hash = presentHashes.get(id);
+    if (hash !== undefined) prior[id] = hash;
+  }
   let plain = true;
   try {
     JSON.parse(withoutBom(current));

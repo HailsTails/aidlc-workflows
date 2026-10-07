@@ -16,14 +16,18 @@ import { delimiter, dirname, extname, join, relative, resolve } from "node:path"
 import {
   assertProjectionPathHasNoSymlinks,
   isSafeOnboardingPath,
+  jsonEntryHash,
+  jsonEntryId,
   jsonFileText,
   jsoncRootMembers,
   jsoncSettingValue,
   managedBlockIsSafe,
   managedBlockMarkers,
   mergeBlock,
+  mergeJsonEntries,
   missingJsonEntries,
   readJsonFile,
+  removeJsonEntries,
   type RootIntegration,
   rootBlockPath,
   sha256Matching,
@@ -1512,14 +1516,70 @@ function openCodeJsonOrNull(path: string): Record<string, unknown> | null {
   }
 }
 
+/**
+ * The entries of the team's opencode.json an explicit Bedrock choice sets:
+ * provider.amazon-bedrock.options.region, and .profile when one is recorded.
+ */
+export function openCodeProviderEntryIds(record: ProvidersRecord): string[] {
+  const options = ["provider", "amazon-bedrock", "options"];
+  return [
+    jsonEntryId([...options, "region"]),
+    ...(record.profile ? [jsonEntryId([...options, "profile"])] : []),
+  ];
+}
+
+// The same entries with the values the record wrote, for removing them while
+// they still hold those values.
+function openCodeProviderEntryHashes(record: ProvidersRecord): Record<string, string> {
+  const options = ["provider", "amazon-bedrock", "options"];
+  return {
+    [jsonEntryId([...options, "region"])]: jsonEntryHash(record.region),
+    ...(record.profile ? { [jsonEntryId([...options, "profile"])]: jsonEntryHash(record.profile) } : {}),
+  };
+}
+
+/**
+ * The Bedrock region and profile the team's opencode.json names itself
+ * (comments allowed); empty when the file is absent, unreadable or names none.
+ */
+export function openCodeFileProvider(projectDir: string): { region?: string; profile?: string } {
+  try {
+    const value = Bun.JSONC.parse(readFileSync(join(projectDir, "opencode.json"), "utf-8").replace(/^\uFEFF/, ""));
+    const providers = isRecord(value) && isRecord(value.provider) ? value.provider : {};
+    const bedrock = isRecord(providers["amazon-bedrock"]) ? providers["amazon-bedrock"] : {};
+    const options = isRecord(bedrock.options) ? bedrock.options : {};
+    return {
+      ...(typeof options.region === "string" ? { region: options.region } : {}),
+      ...(typeof options.profile === "string" ? { profile: options.profile } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
 function writeOpenCodeProvider(
   projectionRoot: string,
   record: ProvidersRecord,
 ): void {
   if (!record.opencodeDefault) return;
   const path = join(projectionRoot, "opencode.json");
+  if (!existsSync(path)) return;
   const value = openCodeJsonOrNull(path);
-  if (value === null) return;
+  if (value === null) {
+    // The team's own file with comments (a copy's own tree): set the two
+    // leaves in place and keep everything else, comments included.
+    const current = readFileSync(path, "utf-8");
+    const options = { region: record.region, ...(record.profile ? { profile: record.profile } : {}) };
+    const merged = mergeJsonEntries(
+      current,
+      JSON.stringify({ provider: { "amazon-bedrock": { options } } }),
+      { kind: "none" },
+      false,
+      openCodeProviderEntryIds(record),
+    );
+    if (!("conflict" in merged) && merged.text !== current) writeFileSync(path, merged.text);
+    return;
+  }
   const providers = isRecord(value.provider) ? { ...value.provider } : {};
   const existing = isRecord(providers["amazon-bedrock"])
     ? providers["amazon-bedrock"]
@@ -1565,7 +1625,17 @@ function clearOpenCodeProvider(
   const path = join(projectionRoot, "opencode.json");
   if (!existsSync(path)) return;
   const value = openCodeJsonOrNull(path);
-  if (value === null || !isRecord(value.provider)) return;
+  if (value === null) {
+    // The team's own file with comments (a copy's own tree): remove the two
+    // leaves the previous choice wrote, while they still hold its values, the
+    // same comment-keeping way they were set.
+    if (previousProvider?.provider !== "amazon-bedrock" || previousProvider.opencodeDefault !== true || !previousProvider.region) return;
+    const current = readFileSync(path, "utf-8");
+    const next = removeJsonEntries(current, openCodeProviderEntryHashes(previousProvider));
+    if (next !== null && next !== current) writeFileSync(path, next);
+    return;
+  }
+  if (!isRecord(value.provider)) return;
   const providers = { ...value.provider };
   if (!openCodeProviderMatchesRecord(
     providers["amazon-bedrock"],

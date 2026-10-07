@@ -381,3 +381,63 @@ describe("the entry merge", () => {
     }
   });
 });
+
+// The person picks or types a Bedrock region; setup says "Using amazon-bedrock
+// in <region>". The team's file already names a region of its own, so the
+// explicit choice must still reach it: the region and profile leaves become
+// AI-DLC's, the file says so once, and doctor reports no mismatch.
+describe("an explicit provider choice reaches the team's opencode.json", () => {
+  const PLAIN_FILE = `${JSON.stringify(parse(TEAM_FILE), null, 2)}\n`;
+  const PROFILE_FILE = TEAM_FILE.replace('"region": "eu-west-1"', '"region": "eu-west-1", "profile": "team-ops"');
+  const NOTE = "opencode.json now uses Bedrock in us-east-1 (was eu-west-1).";
+  test.each([
+    ["with comments", TEAM_FILE, NOTE, undefined],
+    ["plain JSON", PLAIN_FILE, NOTE, undefined],
+    // A profile the choice does not name stays the team's, and the line says so.
+    ["with the team's own profile", PROFILE_FILE, "opencode.json now uses Bedrock in us-east-1 (was eu-west-1); profile team-ops from opencode.json still applies.", "team-ops"],
+  ])("config providers --region replaces the team's region, says so once, and doctor agrees (%s)", (label, teamFile, note, teamProfile) => {
+    const dir = project(teamFile);
+    configured(dir);
+    const changed = run([
+      "config", "providers", "--project-dir", dir,
+      "--provider", "amazon-bedrock", "--region", "us-east-1", "--opencode-default", "yes", "--yes",
+    ], dir);
+    expect(changed.status, changed.stdout + changed.stderr).toBe(0);
+    const text = readFileSync(join(dir, "opencode.json"), "utf-8");
+    if (label === "with comments") expect(text).toContain("// The team's own model and provider.");
+    const value = parse(text);
+    expect(value.provider["amazon-bedrock"].options.region).toBe("us-east-1");
+    expect(value.provider["amazon-bedrock"].options.profile).toBe(teamProfile);
+    expect(value.model).toBe("amazon-bedrock/team-model");
+    expect(value.permission.bash["*"]).toBe("allow");
+    expect(Object.keys(contribution(dir).entries)).toContain(JSON.stringify({ path: ["provider", "amazon-bedrock", "options", "region"] }));
+    expect(changed.stdout).toContain(note);
+    expect(changed.stdout.match(/now uses Bedrock/g)).toHaveLength(1);
+    const check = run(["config", "providers", "--project-dir", dir, "--check"], dir);
+    expect(check.stdout + check.stderr).not.toContain("provider-opencode");
+    // Rerunning with the same choice changes nothing and says nothing new.
+    const again = run([
+      "config", "providers", "--project-dir", dir,
+      "--provider", "amazon-bedrock", "--region", "us-east-1", "--opencode-default", "yes", "--yes",
+    ], dir);
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    expect(again.stdout).not.toContain("now uses Bedrock");
+    // A reset removes what the explicit choice wrote, the region, and nothing of the team's.
+    const reset = run(["config", "providers", "--project-dir", dir, "--reset", "--yes"], dir);
+    expect(reset.status, reset.stdout + reset.stderr).toBe(0);
+    const afterText = readFileSync(join(dir, "opencode.json"), "utf-8");
+    if (label === "with comments") expect(afterText).toContain("// The team's own model and provider.");
+    const after = parse(afterText);
+    if (teamProfile) expect(after.provider["amazon-bedrock"].options).toEqual({ profile: teamProfile });
+    else expect(after.provider).toBeUndefined();
+    expect(after.model).toBe("amazon-bedrock/team-model");
+    expect(after.permission.bash["*"]).toBe("allow");
+  });
+
+  test("the profile prompt starts from the profile the team's file names", async () => {
+    const { openCodeFileProvider } = await import("../../core/tools/aidlc-config-diagnostics.ts");
+    expect(openCodeFileProvider(project(PROFILE_FILE))).toEqual({ region: "eu-west-1", profile: "team-ops" });
+    expect(openCodeFileProvider(project(TEAM_FILE))).toEqual({ region: "eu-west-1" });
+    expect(openCodeFileProvider(project())).toEqual({});
+  });
+});

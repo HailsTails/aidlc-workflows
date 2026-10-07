@@ -227,6 +227,8 @@ import {
   insideGitRepository,
   managedBlockMarkers,
   normalizeProvidersRecord,
+  openCodeFileProvider,
+  openCodeProviderEntryIds,
   withRecordedMcpRegion,
   normalizeProjectChoicesRecord,
   normalizeRuntimeRecord,
@@ -2078,7 +2080,9 @@ function diagnosticWizard(
       );
       const profileAnswer = promptTextDefault(
         "  AWS profile",
-        recordedBedrock?.profile ?? "default credential chain",
+        recordedBedrock?.profile ??
+          (selected.harness === "opencode" ? openCodeFileProvider(projectDir).profile : undefined) ??
+          "default credential chain",
       );
       const profile = profileAnswer === "default credential chain"
         ? ""
@@ -7887,6 +7891,7 @@ function providerForHarness(
 }
 
 function customizeFirstRun(
+  projectDir: string,
   initial: InstalledSourceCandidate,
   candidates: readonly InstalledSourceCandidate[],
   detection: FirstRunDetection,
@@ -7993,7 +7998,9 @@ function customizeFirstRun(
         choices.region = promptTextDefault("  AWS region", choices.region);
         const profile = promptTextDefault(
           "  AWS profile",
-          choices.profile || "default credential chain",
+          choices.profile ||
+            (harness === "opencode" ? openCodeFileProvider(projectDir).profile : undefined) ||
+            "default credential chain",
         );
         choices.profile = profile === "default credential chain" ? "" : profile;
         if (choices.candidate.stamp.distribution === "opencode") {
@@ -8332,7 +8339,7 @@ async function runFirstRunWizard(projectDir: string): Promise<boolean> {
       }
     }
   } else {
-    choices = customizeFirstRun(candidate, candidates, detection);
+    choices = customizeFirstRun(projectDir, candidate, candidates, detection);
   }
   if (!choices) return true;
   const snapshot = snapshotFirstRunMutationPaths(projectDir, choices);
@@ -8665,6 +8672,42 @@ function sameJsonText(left: string, right: string): boolean {
   }
 }
 
+// The two leaves of the team's opencode.json an explicit `config providers`
+// Bedrock choice sets this run (provider.amazon-bedrock.options.region and
+// .profile), and the one line that says what changed, when the file said
+// something else before. A refresh, a reset or another section claims nothing.
+function openCodeProviderClaim(
+  projectDir: string,
+  harness: ModelHarness,
+  overrides: ConfigDiagnosticOverrides | undefined,
+): { entries: Record<string, readonly string[]>; note?: string } {
+  const provider = overrides && Object.hasOwn(overrides, "providers")
+    ? normalizeProvidersRecord(overrides.providers)
+    : null;
+  if (
+    harness !== "opencode" || provider?.provider !== "amazon-bedrock" ||
+    provider.opencodeDefault !== true || !provider.region
+  ) {
+    return { entries: {} };
+  }
+  const ids = openCodeProviderEntryIds(provider);
+  const file = openCodeFileProvider(projectDir);
+  const was = file.region ?? null;
+  const profileWas = file.profile ?? null;
+  const regionChanged = was !== null && was !== provider.region;
+  const profileChanged = Boolean(provider.profile) && profileWas !== null && profileWas !== provider.profile;
+  let note: string | undefined;
+  if (regionChanged || profileChanged) {
+    // A profile the record does not name is not touched: the team's stays in
+    // force, and the line says so rather than reading as if it were gone.
+    const now = provider.profile ? `${provider.region} with profile ${provider.profile}` : provider.region;
+    const before = provider.profile && profileWas ? `${was ?? provider.region}, profile ${profileWas}` : was ?? provider.region;
+    const keeps = !provider.profile && profileWas ? `; profile ${profileWas} from opencode.json still applies` : "";
+    note = `opencode.json now uses Bedrock in ${now} (was ${before})${keeps}.`;
+  }
+  return { entries: { "opencode.json": ids }, ...(note ? { note } : {}) };
+}
+
 function planRootIntegrations(
   projectDir: string,
   sourceRoot: string,
@@ -8687,6 +8730,9 @@ function planRootIntegrations(
   // The source is the project's own copied tree, whose json-entries file is
   // the team's own with AI-DLC's part merged in.
   ownJsonEntries = ownBytes,
+  // Entries the person set in this run, by root integration path: an explicit
+  // provider choice replaces the team's value for exactly those leaves.
+  claimJsonEntries: Record<string, readonly string[]> = {},
 ): void {
   let siblings: ProjectHarness[] | undefined;
   let siblingProjections: Array<{
@@ -9079,7 +9125,7 @@ function planRootIntegrations(
           ? { kind: "whole" }
           : { kind: "none" };
       }
-      const merged = mergeJsonEntries(current, shippedText, ownership, force);
+      const merged = mergeJsonEntries(current, shippedText, ownership, force, claimJsonEntries[integration.path] ?? []);
       if ("conflict" in merged) {
         actions.push({ path: integration.path, action: "conflict", detail: merged.conflict });
         continue;
@@ -11576,6 +11622,15 @@ export async function main(
         detail: "retired attributable manifestless hook",
       });
     }
+    // An explicit Bedrock choice for OpenCode owns the region and profile leaves
+    // of the team's opencode.json from now on, and says so once when it changes
+    // what the file said.
+    const openCodeClaim = openCodeProviderClaim(
+      projectDir,
+      modelHarness(descriptor.distribution),
+      diagnosticsContext?.overrides,
+    );
+    if (openCodeClaim.note && diagnosticsContext) diagnosticsContext.notes.push(openCodeClaim.note);
     if (!selected.projectProjection) {
       planRootIntegrations(
         projectDir,
@@ -11591,6 +11646,8 @@ export async function main(
         rootContributions,
         false,
         keepPresentServers,
+        false,
+        openCodeClaim.entries,
       );
       planRemovedRootIntegrations(
         projectDir,
@@ -11628,6 +11685,7 @@ export async function main(
           ownFilesProject,
           keepPresentServers,
           true,
+          openCodeClaim.entries,
         );
       }
     }
