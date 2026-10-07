@@ -108,6 +108,7 @@ import {
 import {
   engineQuestionHoldsReplies,
   notePlanApprovalAskReply,
+  notePlanApprovalFileAnswer,
   openPlanApprovalQuestion,
 } from "../tools/aidlc-plan-approval-ask.ts";
 import { aidlcEntryWords, isAidlcCommandPrompt } from "../tools/aidlc-reply-reader.ts";
@@ -653,6 +654,22 @@ try {
         });
       } catch {
         // Authority bookkeeping remains fail-open for the human's turn.
+      }
+      try {
+        // The questions file invites the person to answer on its `[Answer]:`
+        // line and say done. Their turn and their words are on record now, so
+        // an exact choice they wrote there is recorded the way an exact pick
+        // typed in chat is, and anything else they wrote is named for the
+        // agent to read. Never blocks the turn.
+        // Another engine question on screen owns the reply, and the plan
+        // question's own record is bound to its own marker, so this reads the
+        // file only while the plan question is the open step.
+        if (!notAReply && !answersEngineQuestion && replyText) {
+          const fileAnswer = notePlanApprovalFileAnswer(projectDir, sessionId, replyText);
+          if (fileAnswer !== null) notes.push(fileAnswer);
+        }
+      } catch {
+        // Their words stay on the line; the agent reads them as before.
       }
       try {
         // A reply the engine's guard-recovery ask took as its answer is that

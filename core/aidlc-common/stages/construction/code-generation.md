@@ -230,6 +230,12 @@ When both files from Step 2 are written, run `next`:
   then. When they also asked to stop for now, add `--park`. A question gets an
   answer, and their next reply decides; ask only when their intent is genuinely
   unclear. Then run `next`.
+  When the person says they answered in the file, in whatever words they use
+  ("done", "I put my answer in the file", "my answer is in the questions file"),
+  their answer is on the `[Answer]:` line of `questions_path`: read it and record
+  the choice they made, exactly as you would a reply typed in chat. An answer
+  there that is one of the choices is already recorded for you, and the engine
+  says so in one line; never ask them to type it again in chat.
 - **Edit mode.** For "I'll edit the files", `next` returns the question with
   `plan_approval.editing: true`. Tell the person they can change `plan_path` and
   `instructions_path`; then end the turn and wait for them to say done. While
@@ -249,7 +255,10 @@ When both files from Step 2 are written, run `next`:
     its own step, then run `next`.
   - `repair`: fix exactly what `plan_approval.note` names (for example re-render
     a Testing Contract block an edit broke), then run `next`; the engine asks the
-    person once to build the edited plan.
+    person once to build the edited plan. A Testing Contract left out of date by
+    a scope or setting change the person asked for is not a repair: the engine
+    renders that block again when they approve, their approval stands, and it
+    says so in one line for you to pass on.
   - `plan`: write or finish the Step 2 files, fixing what `plan_approval.note`
     names when present, then run `next`.
 
