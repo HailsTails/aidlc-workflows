@@ -19,6 +19,7 @@ import {
   type VerificationCommand,
   claimAttemptFields,
   completionCarriesVerifiedReview,
+  reviewCompletionDidNotFinish,
   reviewRecordNotHere,
   effectivePlanAction,
   eventMatchesClaimAttempt,
@@ -42,7 +43,7 @@ import {
   latestMainWorkflowStageRunFloorForProject,
   loadStageGraph,
   maximalAttemptEvents,
-  memoryStrictHoldsGuardPolicy,
+  personMayApproveOverUnfinishedReview,
   parseCheckboxes,
   personSpokeSinceGate,
   readAuditShardEvents,
@@ -382,6 +383,9 @@ interface Snapshot {
   /** This work's Guard Policy lets the person approve the Unit over the
    *  unfinished review `rereview` names. */
   overAllowed: boolean;
+  /** The stages whose unfinished review the person let the Unit go on
+   *  without, which its verification records. */
+  waivedStages: string[];
 }
 
 /** One stage's evidence as an approval of the Unit saw it. */
@@ -670,12 +674,15 @@ function snapshot(
   ));
   // The person said to approve the Unit as it is over a review of its that
   // has not finished: in their words now (`personAllows`), or as the
-  // verification that took them recorded it, per stage at its run floor. Only
-  // under off and relaxed, and never over a strict the team locks.
+  // verification that took them recorded it, per stage at its run floor. As at
+  // a stage gate: never over a strict the team locks.
   const notFinishedBefore = notFinishedReviews(verification);
   const notFinished: string[] = [];
+  // Stages whose review ended in the NOT-READY fallback no reviewer gave:
+  // ready as before, and asked about and approved as not finished.
+  const endedUnfinished: string[] = [];
   let mayGoOn: boolean | null = null;
-  const overAllowed = (): boolean => (mayGoOn ??= acceptsChanges() && !memoryStrictHoldsGuardPolicy(projectDir, state));
+  const overAllowed = (): boolean => (mayGoOn ??= personMayApproveOverUnfinishedReview(projectDir, state));
   // The unfinished review `rereview` names is one the person may go on without.
   let unfinishedMayGoOn = false;
 
@@ -752,6 +759,10 @@ function snapshot(
       : "none";
     let review: AuditShardEvent | null = null;
     let waived = false;
+    // The person approved this Unit as it was over this stage's review, and
+    // that review's verdict came in after: it is on record, and the approval
+    // stands on the review as it was then, so the Unit is not asked about again.
+    let lateVerdict = false;
     if (reviewClass !== "none") {
       let receipts = shared.receipts.get(slug);
       if (!receipts) {
@@ -783,6 +794,10 @@ function snapshot(
         eventMatchesClaimAttempt(projectDir, row.block, unit),
       ));
       const binding = request ? reviewRequestBindingFromBlock(request.block) : null;
+      lateVerdict = review !== null && request !== null && gate?.event === "GATE_APPROVED" &&
+        auditBlockField(gate.block, "Unit") === unit && auditBlockField(gate.block, "Review") === "not finished" &&
+        notFinishedBefore.get(slug) === floor &&
+        attemptEventDefinitelyBefore(request, gate) && attemptEventDefinitelyBefore(gate, review);
       // Another Unit's own reviewed build of a path this Unit claims, or any
       // change to its code or documents the Guard Policy accepts, is not a
       // change to this Unit's approved work: its review's binding still holds.
@@ -880,7 +895,7 @@ function snapshot(
                 projectDir, stage: slug, reviewer, unit, iteration,
                 ...(pending.state === "retry-required" ? { retryPending: true } : {}),
               }),
-              unfinished: receipts.awaitingVerdict?.has(unit) ? "no-verdict" : "not-ready",
+              unfinished: receipts.awaitingVerdict?.has(unit) || pending.didNotFinish ? "no-verdict" : "not-ready",
             };
             unfinishedMayGoOn = pending.verificationFailed !== true;
           }
@@ -894,6 +909,8 @@ function snapshot(
             first: true,
           };
         }
+      } else if (review && reviewCompletionDidNotFinish(projectDir, review.block)) {
+        endedUnfinished.push(slug);
       } else if (request && auditBlockField(request.block, "Recovery") === "stale-receipt") {
         // A re-check of code alone asked about the documents the review before
         // it saw; a re-check of documents asked about new ones.
@@ -940,7 +957,7 @@ function snapshot(
       // Receipt presence/currentness is checked above. Re-recording the same
       // evidence is not a change to the approved work.
       reviewer: reviewClass === "none" ? null : stage.reviewer ?? null,
-      review_verdict: review ? auditBlockField(review.block, "Verdict") : null,
+      review_verdict: review && !lateVerdict ? auditBlockField(review.block, "Verdict") : null,
     });
   }
   if (listing === null && (sourceStages === 0 || sourceKeptUnread < sourceStages)) {
@@ -1039,17 +1056,19 @@ function snapshot(
       verdict: recheckVerdict, approved_before: approvedBefore, changed: recheckChanged,
       ...(redone ? { redone: true as const } : {}),
     };
+  const unfinishedStages = stages.filter((slug) => notFinished.includes(slug) || endedUnfinished.includes(slug));
   return {
     root, rows, state, verificationCommand: shared.verificationCommand, accepted,
     approvedEvidence: JSON.stringify(approvedEvidence),
     overAllowed: rereview?.unfinished !== undefined && unfinishedMayGoOn && overAllowed(),
+    waivedStages: notFinished,
     result: {
       kind, unit, stages, fingerprint, verified, approved,
       human_required: humanRequired, enabled, ready, errors,
       verification_command: shared.verificationCommand?.label ?? null,
       command_authorized: shared.verificationCommand !== null,
-      ...(notFinished.length > 0 ? {
-        review_not_finished: { stages: notFinished, question: `Approve ${unit}? Its ${reviewsNamed(notFinished)} did not finish.` },
+      ...(unfinishedStages.length > 0 ? {
+        review_not_finished: { stages: unfinishedStages, question: `Approve ${unit}? Its ${reviewsNamed(unfinishedStages)} did not finish.` },
       } : {}),
       run_floor: floors[stages.at(-1)!] ?? "unstarted#0",
       run_floors: floors, proof_path: `${root}/${proofPath}`, verification: proof ?? restored,
@@ -1110,7 +1129,8 @@ function requireReady(current: Snapshot): void {
       ? `repair what it found, request the next pass with \`${step.command}\`, record the verdict, then verify`
       : `request it again with \`${step?.command}\`, record the verdict, then verify`;
     // The person may let the Unit go on without a review that did not finish;
-    // strict, in the state or locked by the team, keeps it required.
+    // a strict the team locks keeps it required, and the agent finishes it
+    // without asking them.
     const rereview = !step ? ""
       : step.first
         ? ` The ${reviewsNamed([step.stage])} for ${result.unit} was never asked for: request it with \`${step.command}\`, ` +
@@ -1122,7 +1142,7 @@ function requireReady(current: Snapshot): void {
           (current.overAllowed
             ? `If the person said to approve ${result.unit} as it is (their words since the last question), verify ` +
               `with --over-unfinished-review; otherwise finish the review: ${finish}.`
-            : `Finish it first: ${finish}.`);
+            : `Finish it first, without asking the person: ${finish}.`);
     throw new Error(`Construction checkpoint is not ready: ${result.errors.join(" ")}${rereview}`);
   }
 }
@@ -1306,8 +1326,8 @@ function verifyOnce(
       "Exit Code": String(proof.exit_code),
       Verified: String(proof.verified),
       "Run floor": before.result.run_floor,
-      ...(before.result.review_not_finished ? {
-        "Review Not Finished": JSON.stringify(Object.fromEntries(before.result.review_not_finished.stages
+      ...(before.waivedStages.length > 0 ? {
+        "Review Not Finished": JSON.stringify(Object.fromEntries(before.waivedStages
           .map((stage) => [stage, before.result.run_floors[stage]]))),
       } : {}),
       ...claimAttemptFields(projectDir, unit),
