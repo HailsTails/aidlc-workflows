@@ -78,6 +78,7 @@ import {
   walkFiles,
   withOwnTitleLine,
   withoutBom,
+  withSpace,
 } from "./aidlc-distribution.ts";
 import {
   activeVersion,
@@ -142,7 +143,7 @@ import {
   writeFileAtomic,
 } from "./aidlc-lib.ts";
 import { regenerateRunnerSurfaces } from "./aidlc-runner-gen.ts";
-import { KIRO_IDE_STEERING, kiroIdeSteering } from "./aidlc-includes.ts";
+import { KIRO_IDE_STEERING, kiroIdeSteering, repointedIncludeText } from "./aidlc-includes.ts";
 import {
   activeWorkflowPluginDependencies,
   canonicalScopeTableRegion,
@@ -8424,6 +8425,20 @@ function workspaceState(rel: string): boolean {
   return rel.startsWith("aidlc/") && !workspaceSeed(rel);
 }
 
+// The hash a managed file counts as: its own, or the known one it equals once
+// line endings Git rewrote (#2057) or the include paths a space switch pointed
+// at another space are set aside; `switched` says it was the latter.
+function ownedFileHash(path: string, known: readonly (string | undefined)[]): { hash: string; switched: boolean } {
+  const bytes = readFileSync(path);
+  const hash = sha256Matching(bytes, known);
+  if (known.includes(hash)) return { hash, switched: false };
+  const text = bytes.toString("utf-8");
+  const shipped = withSpace(text, DEFAULT_SPACE);
+  if (shipped === text) return { hash, switched: false };
+  const asShipped = sha256Matching(shipped, known);
+  return known.includes(asShipped) ? { hash: asShipped, switched: true } : { hash, switched: false };
+}
+
 function planManagedFiles(
   projectDir: string,
   sourceRoot: string,
@@ -8452,10 +8467,12 @@ function planManagedFiles(
       const targetRegular = targetExists && lstatSync(target).isFile();
       const hash = sha256File(source);
       const priorHash = prior?.files[rel];
-      // A copy Git checked out with other line endings is the file it was.
-      const currentHash = targetRegular
-        ? sha256FileMatching(target, [hash, priorHash, ...(descriptor.legacyManagedFileHashes?.[rel] ?? [])])
+      // A copy Git checked out with other line endings is the file it was, and
+      // so is an include a space switch pointed at another space.
+      const owned = targetRegular
+        ? ownedFileHash(target, [hash, priorHash, ...(descriptor.legacyManagedFileHashes?.[rel] ?? [])])
         : undefined;
+      const currentHash = owned?.hash;
       const adoptedManagedFile = prior === null &&
         currentHash !== undefined &&
         (
@@ -8552,14 +8569,18 @@ function planManagedFiles(
         actions.push({ path: rel, action: "conflict", detail: "locally modified or unowned" });
         continue;
       }
-      operations.push({
-        kind: "copy",
-        path: rel,
-        source,
-        sourceHash: hash,
-        expected: expected(target),
-        mode: statSync(source).mode & 0o777,
-      });
+      // The update keeps the space the person switched to.
+      const atSpace = owned?.switched ? repointedIncludeText(rel, readFileSync(source, "utf-8"), activeSpace(projectDir)) : null;
+      operations.push(atSpace !== null
+        ? writeOperation(rel, atSpace, expected(target), statSync(source).mode & 0o777)
+        : {
+          kind: "copy",
+          path: rel,
+          source,
+          sourceHash: hash,
+          expected: expected(target),
+          mode: statSync(source).mode & 0o777,
+        });
       actions.push({
         path: rel,
         action: targetExists ? "update" : "create",
@@ -8886,9 +8907,12 @@ function planRootIntegrations(
           const body = restored.slice(begin.length, restored.length - end.length).trim().replace(/\r\n/g, "\n");
           return body === shippedBody || (legacyWholeFileHashes ?? []).includes(sha256Bytes(`${body}\n`));
         };
+        // A space switch may also have pointed its include lines elsewhere.
         const own = ownTitleLine(
           current.slice(current.indexOf(begin), current.indexOf(end) + end.length),
-          (restored) => priorHash ? sha256Matching(restored, [priorHash]) === priorHash : shippedPart(restored),
+          (restored) => [restored, withSpace(restored, DEFAULT_SPACE)].some((text) =>
+            priorHash ? sha256Matching(text, [priorHash]) === priorHash : shippedPart(text)
+          ),
         );
         const beginAt = value.indexOf(begin);
         const endAt = value.indexOf(end) + end.length;
@@ -8937,6 +8961,10 @@ function planRootIntegrations(
           });
           continue;
         }
+      }
+      // Include lines a space switch pointed at another space stay there.
+      if (withSpace(current, DEFAULT_SPACE) !== current) {
+        value = repointedIncludeText(integration.path, value, activeSpace(projectDir)) ?? value;
       }
       contributions[integration.path] = {
         policy: "managed-block",
