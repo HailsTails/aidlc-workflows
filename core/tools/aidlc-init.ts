@@ -57,6 +57,7 @@ import {
   legacyAidlcHookTarget,
   mergeBlock,
   mergeJsonEntries,
+  ownTitleLine,
   type ProjectionDescriptor,
   projectionFiles,
   readJsonFile,
@@ -74,6 +75,7 @@ import {
   unionBlocks,
   validateProjectionDescriptor,
   walkFiles,
+  withOwnTitleLine,
   withoutBom,
 } from "./aidlc-distribution.ts";
 import {
@@ -6321,6 +6323,8 @@ function prepareRefreshSource(
 // files) in AI-DLC's part of .gitignore; a refresh keeps those lines as the
 // project's own and says so once.
 const KEPT_GITIGNORE_LINES_DETAIL = "kept your own ignore lines";
+// A line the person wrote in place of the onboarding's title stays (#2058).
+const KEPT_TITLE_LINE_DETAIL = "kept your title line";
 const KEPT_GITIGNORE_LINES_NOTE =
   "Kept your .gitignore entries for node_modules, dist and editor files; AI-DLC now adds only its own lines.";
 
@@ -8514,6 +8518,27 @@ function planManagedFiles(
         actions.push({ path: rel, action: "preserve" });
         continue;
       }
+      // A line the person wrote in place of the onboarding's title stays
+      // theirs, and the rest of the file refreshes around it (#2058). The
+      // baseline keeps the shipped file's hash, so the next refresh tells
+      // their line from AI-DLC's text the same way.
+      if (rel === descriptor.onboarding && targetRegular && !unproven.has(rel) && currentHash !== priorHash) {
+        const text = readFileSync(target, "utf-8");
+        // A copied tree config never ran in has no record: the file the release ships counts.
+        const owned = [priorHash, hash, ...(prior === null ? descriptor.legacyManagedFileHashes?.[rel] ?? [] : [])]
+          .filter((known): known is string => known !== undefined);
+        const own = ownTitleLine(text, (restored) => owned.includes(sha256Matching(restored, owned)));
+        const kept = own === null ? null : withOwnTitleLine(readFileSync(source, "utf-8"), own);
+        if (kept === text) {
+          actions.push({ path: rel, action: "preserve", detail: KEPT_TITLE_LINE_DETAIL });
+          continue;
+        }
+        if (kept !== null) {
+          operations.push(writeOperation(rel, kept, expected(target), statSync(source).mode & 0o777));
+          actions.push({ path: rel, action: "update", detail: KEPT_TITLE_LINE_DETAIL });
+          continue;
+        }
+      }
       if (
         targetExists &&
         (
@@ -8838,13 +8863,39 @@ function planRootIntegrations(
         });
         continue;
       }
-      const value = merged.value as string;
+      let value = merged.value as string;
       const priorHash = priorContribution?.policy === "managed-block"
         ? priorContribution.hash
         : undefined;
       let combinedWith: string | undefined;
 
+      // A line the person wrote in place of the title in AI-DLC's part stays
+      // theirs, and the rest of the part refreshes around it (#2058).
+      let keptTitle = false;
+      if (merged.currentHash && merged.currentHash !== merged.nextHash && merged.currentHash !== priorHash) {
+        const { begin, end } = managedBlockMarkers(integration.path, marker);
+        // With no record (a copied tree config never ran in), the part with the
+        // title put back must be one a release shipped, as mergeBlock reads it.
+        const shippedBody = shipped.trim().replace(/\r\n/g, "\n");
+        const shippedPart = (restored: string): boolean => {
+          const body = restored.slice(begin.length, restored.length - end.length).trim().replace(/\r\n/g, "\n");
+          return body === shippedBody || (legacyWholeFileHashes ?? []).includes(sha256Bytes(`${body}\n`));
+        };
+        const own = ownTitleLine(
+          current.slice(current.indexOf(begin), current.indexOf(end) + end.length),
+          (restored) => priorHash ? sha256Matching(restored, [priorHash]) === priorHash : shippedPart(restored),
+        );
+        const beginAt = value.indexOf(begin);
+        const endAt = value.indexOf(end) + end.length;
+        const block = own === null ? null : withOwnTitleLine(value.slice(beginAt, endAt), own);
+        if (block !== null) {
+          value = `${value.slice(0, beginAt)}${block}${value.slice(endAt)}`;
+          keptTitle = true;
+        }
+      }
+
       if (
+        !keptTitle &&
         merged.currentHash &&
         merged.currentHash !== merged.nextHash &&
         merged.currentHash !== priorHash &&
@@ -8888,13 +8939,15 @@ function planRootIntegrations(
         marker: integration.marker,
       };
       if (value === current) {
-        actions.push({ path: integration.path, action: "preserve" });
+        actions.push({ path: integration.path, action: "preserve", detail: keptTitle ? KEPT_TITLE_LINE_DETAIL : undefined });
       } else {
         operations.push(writeOperation(integration.path, value, expected(targetPath)));
         actions.push({
           path: integration.path,
           action: targetExists ? "merge" : "create",
-          detail: merged.keptOwnLines
+          detail: keptTitle
+            ? KEPT_TITLE_LINE_DETAIL
+            : merged.keptOwnLines
             ? KEPT_GITIGNORE_LINES_DETAIL
             : combinedWith
             ? `combined with ${combinedWith}`

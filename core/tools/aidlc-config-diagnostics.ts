@@ -26,6 +26,7 @@ import {
   mergeBlock,
   mergeJsonEntries,
   missingJsonEntries,
+  ownTitleLine,
   readJsonFile,
   removeJsonEntries,
   type RootIntegration,
@@ -2994,11 +2995,18 @@ function instructionStates(
       };
     }
     const content = readFileSync(target);
+    // A line the person wrote in place of the onboarding's title is theirs,
+    // and config keeps it, so it is not a change to AI-DLC's text (#2058).
+    const ownTitleOnly = (text: string, hash: string): boolean =>
+      ownTitleLine(text, (restored) => sha256Matching(restored, [hash]) === hash) !== null;
     if (contribution.policy === "whole-file") {
       return {
         path,
         kind: contribution.policy,
-        state: sha256Matching(content, [contribution.hash]) === contribution.hash ? "intact" : "conflict",
+        state: sha256Matching(content, [contribution.hash]) === contribution.hash ||
+            (path === onboardingPath && ownTitleOnly(content.toString("utf-8"), contribution.hash))
+          ? "intact"
+          : "conflict",
       };
     }
     if (contribution.policy === "json-entries") {
@@ -3037,7 +3045,9 @@ function instructionStates(
     return {
       path,
       kind: contribution.policy,
-      state: sha256Matching(block, [contribution.hash]) === contribution.hash ? "intact" : "conflict",
+      state: sha256Matching(block, [contribution.hash]) === contribution.hash || ownTitleOnly(block, contribution.hash)
+        ? "intact"
+        : "conflict",
     };
   });
   if (onboardingPath && !onboardingHash) {
