@@ -133,6 +133,14 @@ The outcome is `{ applied, lines }`; the hook prints a context line
 (`hookContextLine`, below) carrying `AIDLC Guard Policy: ...` with the same
 result lines the CLI prints, and harnesses that inject hook context deliver it
 to the conductor.
+What the PERSON hears does not travel that way: a host may fold hook output
+away, an adapter may drop it, and an agent may not pass it on. So when the
+switch applied, the same lines are kept for the engine's next step
+(`addPendingPersonLines`, queued once the turn is marked), which says them in
+every harness, and the note adds that the engine says it and that the switch is
+already applied, so the conductor runs no setter of its own. An outcome that
+applied nothing (a companion flag the parser refuses, a rule the team holds)
+keeps exactly its earlier shape: the note alone, for the conductor to answer.
 An unrecognized prompt returns `null` and applies nothing. When
 `AIDLC_UNATTENDED=1` withholds authority, a recognized typed lowering switch
 applies nothing and the hook emits this `additionalContext` line:
@@ -242,7 +250,7 @@ review of what the agent runs are the outer boundary.
 
 #### Kiro IDE adapter
 
-When UserPromptSubmit carries a typed fence or Guard Policy switch, the adapter forwards it to the core human-turn hook, which applies it at prompt time under the payload session and returns an `AIDLC Guard Policy:` note; shell setters are not run inside the adapter.
+When UserPromptSubmit carries a typed fence or Guard Policy switch, the adapter forwards it to the core human-turn hook, which applies it at prompt time under the payload session and returns an `AIDLC Guard Policy:` note; the adapter hands that note to the agent in the same `hookSpecificOutput` context envelope it uses for session-start (dropping it is why the agent ran a setter of its own on the piece of work that was open instead of the one the person asked about), and shell setters are not run inside the adapter.
 On empty-prompt builds such as IDE 1.0.242, the per-turn `prompt-empty` marker makes the adapter refuse lowering shell commands (exit 2 with stderr), including environment-prefixed invocations, summary confirmation `off` on a `config set`, `config-change`, or `scope-change`, and a `config set` whose trailing `--<key> <value>` pairs carry either lowering. `verb-intercept` emits a once-per-session capability note explaining that active work cannot be lowered on that build and directing the person to update Kiro IDE or start new work from a lower-default scope. For summary confirmation and for plan approval, the refusal and the note first name the project-wide terminal command `<invoke> config flags --bypass AIDLC_DISABLE_SUMMARY_CONFIRMATION --local --yes` or `--bypass AIDLC_DISABLE_PLAN_APPROVAL_GUARD` (`--clear-bypass` undoes it), which works on the running work too because recording it refreshes no project files, then say that after updating Kiro IDE the person can type the switch instead. Raising to `strict`, turning a fence or summary confirmation `on`, and creation flags remain available.
 Before forwarding an empty prompt, the adapter performs the same field-only
 normalization and prints its migration note because some builds discard core
@@ -345,6 +353,20 @@ Codex or Claude Code, also records one `QUESTION_REPLIED` row per question,
 with the question as shown and the reply as given. That row decides nothing
 and spends no turn. An answer the agent records with `log answer` carries the
 person's latest kept words as `Person Reply`.
+A setter that lowers one of the person's checks quotes their words, and records
+them as `Person Reply`, unless the command carrying it out is one they ran
+themselves: `runFromPersonsTerminal` (`aidlc-lib.ts`) answers that, from a
+terminal they are typing at with no chat identity on the command (an agent's tool
+call arrives with pipes on both ends, and Codex marks the commands it runs). A
+command of theirs at a terminal belongs to no chat: it is still their own act and
+still applies, the line reads `set by you`, and no message of theirs is quoted or
+kept beside it (the same rule words the project switch record, so a later chat
+claims nothing either). Which session is running the command decides nothing
+here. Ancestry resolves the same session for a terminal open beside a chat, so it
+cannot tell them apart, and it fails closed under load, which would drop the
+person's own words from their record for no reason they could see. A harness that
+ran a tool call on a pseudo-terminal would read as the person's own terminal and
+lose the quoted clause; nothing else about the switch changes.
 
 ### Shared Characteristics
 
