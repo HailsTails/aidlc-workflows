@@ -129,6 +129,7 @@ import {
   type ScopeCommandRow,
   type StageValidityAdvisory,
   validateDirective,
+  withAgentNotes,
 } from "./aidlc-directive.ts";
 import {
   docsRoot,
@@ -1011,6 +1012,9 @@ function prepareEmission(directive: Directive): PreparedEmission {
   // Before transport, so a run-stage delivered in parts (rebuilt by
   // `continue`) carries the person's kept replies too.
   directive = withKeptReplies(directive);
+  // The agent notes count toward the size transport measures, so a step that
+  // only fits without them is delivered in parts like any other.
+  directive = withAgentNotes(directive, aidlcToolInvocation("orchestrate"), aidlcToolInvocation("log"));
   // A route check asks one question: which Unit would the engine route now? It
   // never loads rules, so it skips transport entirely - which also keeps it from
   // minting the machine-local steering key on a checkout that has none.
@@ -1039,6 +1043,8 @@ function prepareEmission(directive: Directive): PreparedEmission {
     }
   }
   transported = withPickUpLine(transported);
+  // Again for what was added after transport (a rebind notice).
+  transported = withAgentNotes(transported, aidlcToolInvocation("orchestrate"), aidlcToolInvocation("log"));
   const personLinesSaid = sayPendingPersonLines(requested, transported);
   const result = validateDirective(transported);
   if (!result.valid) {
@@ -12402,6 +12408,8 @@ function completionOpensGateMessage(target: string): string {
 }
 const GATE_RESULTS = new Set(["awaiting-approval", "rejected", "revised"]);
 const RESUME_RESULTS = new Set(["resume", "resumed"]);
+// The results that carry the person's decision at a gate.
+const SOLO_DECISION_RESULTS = new Set(["approved", "rejected", "revised"]);
 const SKIP_RESULT = "skipped";
 const REPORT_RESULTS = new Set([
   ...FORWARD_RESULTS,
@@ -14511,13 +14519,22 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       ));
       return;
     }
+  } else if (flags.unit && SOLO_DECISION_RESULTS.has(flags.result)) {
+    // The person's decision (their approval, or the changes they asked for)
+    // is the stage's in a solo walk: it is recorded for the stage, as the same
+    // report without --unit would be, so it is never lost.
+    flags.unit = undefined;
   } else if (flags.unit) {
     // A solo Unit cannot be reported on its own; when its work is done and
     // only its completion receipt is missing, that receipt is the step.
     const owed = soloUnitReceiptStep(pd, node, flags.unit, scope, stateContent);
-    emit(owed !== null
-      ? printDirective(`${owed} Then run \`${aidlcToolInvocation("orchestrate")} next\`.`)
-      : errorDirective("--unit gate reporting requires Unit Ownership: team."));
+    // Otherwise the agent reported a Unit the walk reports for it: the step is
+    // to carry on, never an error the person would be shown.
+    emit(printDirective(owed !== null
+      ? `${owed} Then run \`${aidlcToolInvocation("orchestrate")} next\`.`
+      : `A Unit is not reported on its own in this work: when this Unit's work for "${slug}" is done, run ` +
+        `\`${aidlcToolInvocation("orchestrate")} next\` and follow the step it returns; it asks the person ` +
+        "whatever needs their approval."));
     return;
   }
 
