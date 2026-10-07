@@ -472,6 +472,7 @@ import {
   fencesOffCreationGranted,
   guardPolicyCreationGranted,
   guardPolicyNamed,
+  unreadSettingLine,
   planApprovalOffAtCreation,
   planApprovalEnv,
   planApprovalOffForOpenRequest,
@@ -3629,6 +3630,13 @@ interface ParsedFlags {
   claimRhythm?: string;
   projectDir?: string;
   parseError?: string;
+  /**
+   * A flag-shaped token that is all the person typed, which no parser here reads
+   * as a setting (`--review-freeze off` without the `guard.` prefix, or a
+   * misspelt name). It describes no work, so `next` ends the turn naming it
+   * rather than running a stage while they believe a check went off.
+   */
+  unreadSetting?: string;
   retiredFlags?: string[];
   retiredOnly?: boolean;
 }
@@ -3654,6 +3662,30 @@ type ConfigSection = (typeof CONFIG_SECTIONS)[number];
 // an argument (withoutEntryWord, shared with the terminal classifiers), or at
 // the front of the description; either way the work is never named after it.
 const ENTRY_WORD_PREFIX = /^[/$]aidlc\s+/i;
+
+/**
+ * The first flag-shaped token of a line that describes no work, or null when the
+ * line is a description. A line made only of flag-shaped tokens this engine does
+ * not know, and the values that follow them, describes nothing: the person typed
+ * a setting whose name could not be read, and starting a piece of work called
+ * "--nonsense 1" would spend what they set on work they never asked for. The
+ * token comes back so the step can name it: with no readable switch beside it on
+ * the line, the human-turn hook read nothing and said nothing, so the step is the
+ * only place the person hears that their setting was not read.
+ * One flag-shaped word among real words is still their sentence, as the typed
+ * switch parser reads it the same way, and so are words the person marked as
+ * theirs (after `--`, or beside a plan they named), which this is not asked about.
+ */
+function unreadSettingOnly(words: readonly string[]): string | null {
+  // One quoted argument can hold the whole request, as Kiro IDE's PowerShell hands it over.
+  const tokens = words.flatMap((word) => word.split(/\s+/)).filter((token) => token.length > 0);
+  for (let index = 0; index < tokens.length; index++) {
+    if (!tokens[index].startsWith("--")) return null;
+    const next = tokens[index + 1];
+    if (next !== undefined && !next.startsWith("-")) index++;
+  }
+  return tokens[0] ?? null;
+}
 
 function parseNextFlags(argv: string[]): ParsedFlags {
   const args = withoutEntryWord(argv);
@@ -4035,7 +4067,17 @@ function parseNextFlags(argv: string[]): ParsedFlags {
       else intentWords.shift();
     }
   }
-  if (intentWords.length > 0) flags.intent = intentWords.join(" ").replace(ENTRY_WORD_PREFIX, "");
+  // Words the person marked as theirs stand as they are: after the literal
+  // delimiter, or beside a plan they named, flag-shaped tokens are kept at
+  // creation (`t198-compose-surfaces`). Only an unmarked line the engine cannot
+  // read as a description is not one.
+  const planNamed = Boolean(flags.scope || flags.positionalScope || flags.newScope);
+  const unreadSetting = literalIntent || planNamed ? null : unreadSettingOnly(intentWords);
+  if (intentWords.length > 0 && unreadSetting === null) {
+    flags.intent = intentWords.join(" ").replace(ENTRY_WORD_PREFIX, "");
+  } else if (unreadSetting !== null) {
+    flags.unreadSetting = unreadSetting;
+  }
   if (!flags.claim && (flags.claimTeam || flags.claimRhythm)) {
     flags.parseError = "--team and --rhythm require --claim <unit>.";
   }
@@ -6873,6 +6915,34 @@ function routeNext(args: string[], projectDir: string | undefined): void {
   if (flags.parseError) {
     emit(errorDirective(flags.parseError));
     return;
+  }
+
+  // All the person typed was something that reads like a setting, and no parser
+  // here could read it: with no readable switch beside it the human-turn hook
+  // said nothing, so running a stage now would leave them believing a check went
+  // off while it is still on. The turn ends with the one sentence that is true,
+  // in the same words the hook uses when it can say it, and the agent runs the
+  // setter once they say what they meant. Nothing of theirs has changed.
+  if (flags.unreadSetting !== undefined) {
+    const line = unreadSettingLine(flags.unreadSetting);
+    // When the hook already said that sentence, a readable switch was on the line
+    // with it: what they set was applied, they have heard which part was not
+    // read, and the step they need now is the ordinary one for where they are
+    // (the one that keeps their switch for the work they start next, or the
+    // stage). Only when nothing said it is this the person's only word on it.
+    const heard = engineProjectDir && engineSessionId
+      ? pendingPersonLines(engineProjectDir, engineSessionId).lines
+      : [];
+    if (!heard.includes(line)) {
+      const step = turnEndingPrint(
+        "The person typed something that reads like a setting, and this engine cannot read it. Say the line above in " +
+          "your reply and wait: nothing of theirs changed, no stage ran, and when they say which setting they meant, " +
+          "run the setter for it.",
+      );
+      step.narration = line;
+      emit(step);
+      return;
+    }
   }
 
   if (flags.retiredOnly) {
