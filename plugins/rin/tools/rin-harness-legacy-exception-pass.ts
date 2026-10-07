@@ -1,10 +1,10 @@
 import { join } from "node:path";
+import { z } from "zod";
 import type { R7OptIn } from "./rin-harness-config.ts";
 import {
   BASELINE_RESTORE_REMEDY,
   type BaselineLoad,
   type BaselineUnreadable,
-  baselineIsMeasurable,
   type ExceptionEntryLocation,
   entryDigest,
   loadBaseline,
@@ -25,7 +25,12 @@ type LegacyExceptionEntry = ExceptionEntryLocation & {
   readonly problem: string;
 };
 
-type UnmeasurableReason = BaselineUnreadable | "width" | "config-invalid";
+type RegistryUnreadable = "registry-unreadable" | "registry-unparseable" | "registry-not-array";
+type UnmeasurableReason = BaselineUnreadable | RegistryUnreadable | "config-invalid";
+type RegistryEntry = ExceptionEntryLocation & { readonly entry: unknown };
+type RegistryEntries =
+  | { readonly kind: "read"; readonly entries: readonly RegistryEntry[] }
+  | { readonly kind: "unreadable"; readonly reason: RegistryUnreadable };
 
 type PassMeasurement =
   | { readonly kind: "measured" }
@@ -75,26 +80,25 @@ const entriesIn = ({
   readonly registry: string;
   readonly projectDir: string;
   readonly reader: SidecarFileReader;
-}): readonly {
-  readonly sidecar: string;
-  readonly entry: unknown;
-  readonly index: number;
-}[] =>
-  reader
-    .listDirectory(join(projectDir, registry))
-    .filter((name) => name.endsWith(".json"))
-    .flatMap((sidecar) => {
-      const raw = reader.readFile(join(projectDir, registry, sidecar));
-      if (raw === undefined) return [];
-      try {
-        const parsed: unknown = JSON.parse(raw);
-        return Array.isArray(parsed)
-          ? parsed.map((entry: unknown, index) => ({ sidecar, entry, index }))
-          : [];
-      } catch {
-        return [];
-      }
-    });
+}): RegistryEntries => {
+  const names = reader.listDirectory(join(projectDir, registry));
+  if (names === undefined) return { kind: "unreadable", reason: "registry-unreadable" };
+  return names.filter((name) => name.endsWith(".json")).reduce<RegistryEntries>((result, sidecar) => {
+    if (result.kind === "unreadable") return result;
+    const raw = reader.readFile(join(projectDir, registry, sidecar));
+    if (raw === undefined) return { kind: "unreadable", reason: "registry-unreadable" };
+    try {
+      const parsed = z.array(z.unknown()).safeParse(JSON.parse(raw));
+      if (!parsed.success) return { kind: "unreadable", reason: "registry-not-array" };
+      return {
+        kind: "read",
+        entries: [...result.entries, ...parsed.data.map((entry: unknown, index) => ({ registry, sidecar, entry, index }))],
+      };
+    } catch {
+      return { kind: "unreadable", reason: "registry-unparseable" };
+    }
+  }, { kind: "read", entries: [] });
+};
 
 const measurementOf = ({
   baseline,
@@ -104,9 +108,7 @@ const measurementOf = ({
   if (baseline.kind === "unreadable") {
     return { kind: "unmeasurable", reason: baseline.reason };
   }
-  return baselineIsMeasurable({ baseline })
-    ? { kind: "measured" }
-    : { kind: "unmeasurable", reason: "width" };
+  return { kind: "measured" };
 };
 
 const unscannedPass = ({
@@ -129,12 +131,16 @@ const scannedPass = ({
   readonly reader: SidecarFileReader;
 }): LegacyExceptionPass => {
   const baseline = loadBaseline({ projectDir, reader });
-  const all = REGISTRY_DIRECTORIES.flatMap((registry) =>
-    entriesIn({ registry, projectDir, reader }).map((found) => ({
-      ...found,
-      registry,
-    })),
-  );
+  const population = REGISTRY_DIRECTORIES.reduce<RegistryEntries>((result, registry) => {
+    if (result.kind === "unreadable") return result;
+    const found = entriesIn({ registry, projectDir, reader });
+    if (found.kind === "unreadable") return found;
+    return { kind: "read", entries: [...result.entries, ...found.entries] };
+  }, { kind: "read", entries: [] });
+  if (population.kind === "unreadable") {
+    return unscannedPass({ measurement: { kind: "unmeasurable", reason: population.reason } });
+  }
+  const all = population.entries;
   const legacyDigests =
     baseline.kind === "loaded" ? baseline.digests : new Set<string>();
   const legacy = all.filter((found) =>
@@ -199,6 +205,9 @@ const CLEAN_EXIT = 0;
 const UNMEASURABLE_EXIT = 1;
 
 const REMEDY: Readonly<Record<UnmeasurableReason, string>> = {
+  "registry-unreadable": "a constitution registry directory or listed sidecar could not be read, so its population cannot be measured. Restore readable registry files",
+  "registry-unparseable": "a listed constitution registry sidecar is invalid JSON, so its population cannot be measured. Repair the registry sidecar",
+  "registry-not-array": "a listed constitution registry sidecar is not a JSON array, so its population cannot be measured. Repair the registry sidecar",
   absent: `the baseline file is missing, so no entry can resolve as legacy and every figure below would be meaningless. ${BASELINE_RESTORE_REMEDY}`,
   "unreadable-io": `the baseline file exists but could not be read, so no entry can resolve as legacy. ${BASELINE_RESTORE_REMEDY}`,
   "config-invalid":

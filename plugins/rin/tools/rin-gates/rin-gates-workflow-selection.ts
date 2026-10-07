@@ -58,6 +58,7 @@ type WorkflowUtilityExecutor = {
   readonly execute: (workflowUtilityCommand: {
     readonly executable: "bun";
     readonly commandArguments: readonly string[];
+    readonly workingDirectory?: string;
   }) => WorkflowUtilityExecution;
 };
 
@@ -121,9 +122,10 @@ const workflowUtilityCommand = ({
 
 const createNodeWorkflowUtilityExecutor: CreateNodeWorkflowUtilityExecutor =
   () => ({
-    execute: ({ executable, commandArguments }) => {
+    execute: ({ executable, commandArguments, workingDirectory }) => {
       try {
         const result = spawnSync(executable, [...commandArguments], {
+          ...(workingDirectory === undefined ? {} : { cwd: workingDirectory }),
           env: process.env,
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],

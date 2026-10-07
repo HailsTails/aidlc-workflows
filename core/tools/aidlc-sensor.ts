@@ -597,9 +597,6 @@ function handleFire(args: string[]): void {
 		}
 	}
 
-	// --- 8. Machine-readable verdict for gate-boundary enforcement. A failed
-	// outcome whose detail file could not be written stays failed when it
-	// carries a writer notice, and otherwise drops to pass-with-note. ---
 	const verdict = fireVerdictOf({
 		fireId,
 		sensorId: id,
@@ -609,7 +606,6 @@ function handleFire(args: string[]): void {
 		detailWrite,
 	});
 
-	// --- 9. Lock window B — emit terminal row matching the verdict ---
 	withAuditLock(projectDir, () => {
 		emitTerminal(ctx, outcome, verdict, detailWrite, projectDir);
 	});

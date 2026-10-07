@@ -7,14 +7,7 @@ import { fileURLToPath } from "node:url";
 import { TextDecoder } from "node:util";
 import { createRequire } from "node:module";
 import { inflateSync } from "node:zlib";
-// `bun:ffi` is a BUN-ONLY builtin, and a static import of it makes this module
-// unloadable under Node — the import is resolved at load time whatever the
-// platform, so every Node consumer breaks even where the FFI is never reached.
-// This module is imported directly by Node-run tests (vitest), so an eager
-// import takes the whole suite down with "Cannot find package 'bun:ffi'".
-// The FFI is used by ONE Windows-only function whose call sites are already
-// lazy; deferring resolution to that function keeps them synchronous and leaves
-// runtime behaviour under Bun unchanged.
+
 type BunFfi = typeof import("bun:ffi");
 type Pointer = import("bun:ffi").Pointer;
 const loadBunFfi = (): BunFfi | null => {
@@ -126,10 +119,7 @@ export interface StageEntry {
     category?: string;
     matches?: string;
   }>;
-  // approval_mode — how this stage's approval gate is cleared. Absent -> "human"
-  // (a typed human turn is required, per the presence guard in aidlc-state.ts).
-  // "autonomous" clears the gate without that turn (its approval is gated by a
-  // mechanism other than live human presence). Authored per-stage in frontmatter.
+
   approval_mode?: "human" | "autonomous";
 }
 
@@ -490,11 +480,7 @@ function readShippedHarnessData(): ShippedHarnessData {
       }
       runnerFrontmatterAdditions = [...parsed.runnerFrontmatterAdditions];
     }
-    // baseRuleDelivery: strict, and FAIL-CLOSED to "explicit". An unrecognised
-    // or absent value must mean "transport the base layers" — the pre-existing
-    // behaviour — because the failure directions are not symmetric: a harness
-    // wrongly treated as explicit re-sends text it already has (wasteful), while
-    // one wrongly treated as ambient loses its method entirely (broken).
+
     const declaredDelivery = (parsed as { baseRuleDelivery?: unknown })
       .baseRuleDelivery;
     if (
@@ -528,11 +514,6 @@ function readShippedHarnessData(): ShippedHarnessData {
   return _shippedHarnessData;
 }
 
-/**
- * Whether this harness loads the base method layers itself on every turn.
- * "explicit" (the fail-closed default) means the engine is the only channel and
- * must transport them.
- */
 export function baseRuleDelivery(): "ambient" | "explicit" {
   return readShippedHarnessData().baseRuleDelivery;
 }
@@ -724,17 +705,6 @@ export function resolveProjectDirFromHook(importMetaUrl: string): string {
   return cwd;
 }
 
-// The INVOKING checkout: the working tree the session is actually running in,
-// walked up from a hook payload's `cwd` to the nearest ancestor holding a `.git`
-// entry. A multi-worktree session's hook FILE is pinned by the harness to the
-// primary checkout (CLAUDE_PROJECT_DIR at session start), so resolving the
-// project dir from the hook file's location (resolveProjectDirFromHook) points
-// every hook at the PRIMARY's record — audit events, health heartbeats, and
-// state reads all land in a checkout the session never touched, while the
-// conductor's own engine calls resolve from the worktree. Reading the payload
-// `cwd` binds hook and conductor to ONE frame of reference, not two. Returns
-// undefined when `cwd` is absent (a harness that omits it) or names no checkout,
-// so callers fall back to resolveProjectDirFromHook and are never worse off.
 export function invokingCheckoutFromCwd(cwd: string | undefined): string | undefined {
   if (cwd === undefined || cwd === "") return undefined;
   let candidate = resolvePath(cwd);
@@ -746,9 +716,6 @@ export function invokingCheckoutFromCwd(cwd: string | undefined): string | undef
   }
 }
 
-// Resolve a hook's project dir from its payload `cwd` when present, falling back
-// to the hook-file location. The single seam every payload-carrying hook uses so
-// the invoking-checkout binding is defined once, not duplicated per hook.
 export function resolveProjectDirFromPayload(args: {
   importMetaUrl: string;
   cwd: string | undefined;
@@ -756,10 +723,6 @@ export function resolveProjectDirFromPayload(args: {
   return invokingCheckoutFromCwd(args.cwd) ?? resolveProjectDirFromHook(args.importMetaUrl);
 }
 
-// Read the `cwd` field off a raw hook payload without committing to the rest of
-// the shape. Hooks resolve their project dir BEFORE their own full parse, so
-// this stays deliberately narrow: malformed or absent JSON yields undefined and
-// the caller falls back to the hook-file resolution.
 export function hookPayloadCwd(raw: string): string | undefined {
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -1219,7 +1182,6 @@ export interface TerminalCommand {
   display?: string;
   source: "read-only-flag" | "workspace-verb" | "plugin-verb" | "knowledge-verb";
 }
-
 
 function terminalCommandFromPluginCommand(
   command: PluginCommand,
@@ -9362,15 +9324,6 @@ export function auditBlockField(block: string, fieldName: string): string | null
   return null;
 }
 
-// A GATE_REJECTED row carries two domain events under one event name: a human
-// Request-Changes decision, and the revision backstop's own bookkeeping
-// backfill, which tags itself `Recovered: "true"` at emission. They have
-// opposite consequences for the review budget — a human rejection resets it,
-// a backfill must not consume it — so they are decoded into a closed union
-// here, once, rather than re-checked as an optional flag at each consumer.
-// Every attempt-boundary reader asks `isAttemptBoundary`; none reads
-// `Recovered`. Mirrors the exclusion `unrecordedRevisionSinceGateOpen` already
-// makes for its own anchor in aidlc-state.ts.
 export type GateRejectionOrigin =
   | { readonly kind: "human-decision" }
   | { readonly kind: "machine-backfill" };
@@ -9381,10 +9334,6 @@ export function decodeGateRejection(block: string): GateRejectionOrigin {
     : { kind: "human-decision" };
 }
 
-// Only a human Request-Changes decision bounds a review attempt. Flooring on a
-// backfill consumes a budget that, by the engine's own refusal text, only a
-// human rejection can restore — closing both exits and leaving the record
-// unable to complete its gate.
 export function isAttemptBoundary(block: string): boolean {
   const origin = decodeGateRejection(block);
   switch (origin.kind) {
@@ -11915,7 +11864,6 @@ function swarmConvergenceSourceKind(block: string): SwarmConvergenceSourceKind {
   return "invalid";
 }
 
-
 // Collect the fresh terminal review receipts for a stage from the audit
 // ledger. Builds ONE position-tiebroken event stream (the same interleave
 // idiom unrecordedRevisionSinceGateOpen uses) - a timestamp-only floor is
@@ -12934,7 +12882,6 @@ export function pendingReviewRequestStatus(
   };
 }
 
-
 export interface WorktreeReviewAttemptProjection {
   events: AuditShardEvent[];
   boltStart: AuditShardEvent | null;
@@ -13611,18 +13558,13 @@ export function freshReviewReceipts(
       const recovery =
         previous?.recovery === true ||
         auditBlockField(e.block, "Recovery") === "stale-receipt";
-      // Only a recovery that was taken FOR the source cause spends the source
-      // budget. An artifact-caused recovery (declared, or derived from the rows
-      // for a pre-`Recovery Cause` request) leaves it available; an ambiguous
-      // reading still spends it, keeping the fail-closed default.
+
       if (recovery) {
         const declaredCause = auditBlockField(e.block, "Recovery Cause");
         if (declaredCause !== null) {
           if (declaredCause !== "artifact") sourceRecoverySpent = true;
         } else {
-          // Pre-`Recovery Cause` request: defer until this recovery's own
-          // verdict is seen, so the source binding either side of it can be
-          // compared. Resolved after the walk; ambiguity stays fail-closed.
+
           legacyRecoveryPending = {
             key: requestKey,
             priorSourceFingerprint: newestSourceFingerprint,
@@ -13691,9 +13633,7 @@ export function freshReviewReceipts(
       // otherwise the expected repair edit would consume recovery prematurely.
       const sourceFingerprint = auditBlockField(e.block, "Source Fingerprint");
       if (legacyRecoveryPending?.key === requestKey) {
-        // The recovery's own receipt stamps the source live at completion, so
-        // an unchanged pair proves the source did not move across the recovery
-        // window; a changed or unreadable pair spends the budget (fail-closed).
+
         const prior: string | null =
           legacyRecoveryPending.priorSourceFingerprint;
         if (
@@ -14198,33 +14138,10 @@ const AIDLC_SENSOR_CACHE_GLOBS = [
   `:(glob)**/aidlc/spaces/*/intents/**/${LEGACY_SENSORS_DIR}/**`,
 ];
 
-// Run telemetry the GATE TOOLING ITSELF writes — a row per stage run. With it in
-// scope, the act of recording that a gate ran moved the fingerprint that same
-// gate's completion check then compares against its review receipt: a stage whose
-// board genuinely converged was refused for a change nobody made on the work's
-// behalf, naming a source change the lane cannot see in an ordinary status
-// listing because the file is untracked. Measured twice on record
-// `260914-gate5-verdict-one-action`: dropping the single post-receipt row
-// recomputed the fingerprint to the receipt's value exactly, on two independent
-// review iterations.
 //
-// Root-anchored, for the reason the sensor-cache comment above states and a
-// Gate-4 board re-applied here: depth tolerance is NOT permission to match the
-// leaf name alone. A bare `**/.gate-runs/**` would exclude ANY directory of that
-// name, so an application tracking source under a dot-prefixed, framework-named
-// directory (`apps/some-service/.gate-runs/fixture.ts`) could be edited or
-// deleted without moving the fingerprint — the fingerprint blind to the thing it
-// exists to observe, which is this defect in the opposite direction. Every writer
-// resolves through `join(projectDir, ".gate-runs", unit)`, so the telemetry is
-// always exactly `<root>/.gate-runs/`, and the anchored form is available.
+
 //
-// Deliberately NOT expressed as "exclude ignored paths", though every path
-// involved is ignored. Measured on that same tree: 312 untracked files were in
-// scope and all 312 were ignored, but 309 of them are the composed engine payload
-// under `vendor/aidlc-upstream/plugins/rin/`, which the source identity SHOULD
-// cover. The ignore rules do not distinguish tool-written telemetry from vendored
-// source, so keying on them would silently drop the engine from the fingerprint.
-// The discriminator is what writes the path, not whether it is tracked.
+
 const GATE_RUN_TELEMETRY_GLOBS = [":(glob).gate-runs/**"];
 
 function isGateRunTelemetryPath(path: string): boolean {
@@ -18586,7 +18503,6 @@ export function readUnitSourceSnapshot(
     : { listing, manifestSha256: header[1], serialized };
 }
 
-
 // True iff `dir` looks like a git checkout: it holds a `.git` (a directory for a
 // normal clone, OR a file for a submodule / linked worktree). Workspace-internal
 // dirs that are never code repos are excluded by the discovery scan, not here.
@@ -22772,9 +22688,6 @@ function tryAcquireNativeGateMutex(
   }
 }
 
-// True once the platform has told us the native gate API cannot be had at all —
-// the FFI is absent, or no candidate library exposes the symbol. That is a
-// property of the RUNTIME, not of this lock, so it cannot change by waiting.
 const nativeGateApiUnavailable = (): boolean =>
   process.platform === "win32"
     ? WINDOWS_PROCESS_API === null
@@ -22788,13 +22701,7 @@ function acquireNativeGateMutex(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const receipt = tryAcquireNativeGateMutex(lockDir);
     if (receipt) return receipt;
-    // Retrying is for CONTENTION — another process holds the gate and will let
-    // go. An unavailable API is not contention: every remaining attempt will
-    // fail identically, so the budget buys nothing and costs
-    // maxRetries * retryMs per call. Measured before this guard: a runtime
-    // whose FFI load threw poisoned the cache on the first attempt, after which
-    // each acquireAuditLock burned two full 500ms budgets (~1.03s), turning a
-    // 50-retry acquisition into ~57s of sleeping against a dead API.
+
     if (nativeGateApiUnavailable()) return null;
     if (attempt < maxRetries) Bun.sleepSync(retryMs);
   }
@@ -23035,15 +22942,7 @@ function reapCandidate(lockDir: string): ReapCandidate | null {
   if (inspected.status === "missing") {
     const mtime = lockDirMtimeMs(lockDir);
     if (mtime === null) return null;
-    // The grace window exists to protect an acquirer that is mid-flight between
-    // mkdir(lockDir) and writeOwnerStamp. That acquirer creates its generation
-    // token directory BETWEEN those two steps, so a lock dir holding no token
-    // is not a mid-flight acquisition — it is abandoned debris from a process
-    // that died in the window, and no amount of waiting will stamp it. Waiting
-    // out the full grace for it is pure latency: measured 5s per acquisition,
-    // additive across every later acquirer, with no possible change in outcome.
-    // A dir that DOES hold a token still serves the full window, because there
-    // the acquisition may genuinely still be in progress.
+
     if (
       holdsGenerationToken(lockDir) &&
       lockAcquireEpochMs() - mtime <= unstampedGraceMs()
@@ -23467,9 +23366,6 @@ function abandonUnstampedUnderGate(lockDir: string, token: string): void {
   try { rmSync(retired, { recursive: true, force: true }); } catch { /* private debris */ }
 }
 
-// The last non-EEXIST failure seen while trying to CREATE a lock dir, per lock
-// dir. Ordinary contention (EEXIST) is not recorded — only the environmental
-// failures that retrying cannot fix, so the refusal can say which it hit.
 const LOCK_ACQUISITION_FAULTS = new Map<string, string>();
 
 function recordLockAcquisitionFault(
@@ -23520,14 +23416,7 @@ function acquireOwnerStampedLock(
       };
       return receipt;
     } catch (error) {
-      // DIAGNOSTIC, and the reason it is worth keeping: EEXIST is ordinary
-      // contention (someone holds the lock), while any OTHER errno is an
-      // environmental failure — a permission, path, or filesystem problem that
-      // no amount of retrying can clear. Both returned null indistinguishably,
-      // so an unwritable lock dir presented as a busy one and burned the whole
-      // retry budget plus the stale window before reporting "after retries",
-      // naming a holder that never existed. Recording the non-EEXIST errno is
-      // what tells those two apart in a log.
+
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EEXIST") recordLockAcquisitionFault(lockDir, code, error);
       return null;
@@ -24238,11 +24127,7 @@ export function withAuditLock<T>(
         reapLiveOwnerAfterStale,
       )
     ) {
-      // Name WHY, not just that it failed. "after retries" alone reads as
-      // contention and sends the reader looking for a holder — which is wrong
-      // and expensive when the real cause was an unwritable lock dir. The
-      // owner stamp (when one exists) names the actual holder; the recorded
-      // errno (when one was seen) names the environmental failure instead.
+
       const lockDir = auditLockDir(projectDir, intent, space);
       const fault = lockAcquisitionFault(lockDir);
       const holder = readOwnerStamp(lockDir);
@@ -25057,16 +24942,6 @@ function gateEventMatchesUnit(
   return unit === undefined ? eventUnit === null : eventUnit === unit;
 }
 
-// A GATE_REJECTED row carries two distinct domain events under one event name:
-// a human Request-Changes decision, and the revision backstop's own bookkeeping
-// backfill, which tags itself `Recovered: "true"` at emission. Only the human
-// decision is an attempt boundary. Flooring on the backfill consumes a review
-// budget that, by the engine's own refusal text, only a human rejection can
-// restore -- closing both exits and leaving the record unable to complete its
-// gate. This is the same hazard `unrecordedRevisionSinceGateOpen` already
-// excludes for its own anchor (see aidlc-state.ts: a Recovered row is report's
-// approve-time backfill and never the anchor); the review floor needs the
-// identical exclusion.
 function gateRejectionMatchesAttempt(
   block: string,
   slug: string,
@@ -25230,7 +25105,6 @@ export function teamUnitGateStatus(
     gateStage,
   };
 }
-
 
 // Exact identity for the current main-workflow attempt of one stage. The token
 // names the latest relevant boundary plus its matching-event ordinal, so two
@@ -26352,11 +26226,7 @@ export function loadStageGraphAll(): StageEntry[] {
   try {
     raw = readFileSync(p, "utf-8");
   } catch (err) {
-    // A missing graph is the clean-room / first-compile case, not an error:
-    // compileStageGraph seeds an empty graph and derives every stage's topology
-    // from authored sources (frontmatter number/name, else auto-seed). Returning
-    // [] here is what lets a truly-empty tree build. Any other read failure
-    // (permissions, corruption) still throws.
+
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
       _stageGraphAll = [];
       return _stageGraphAll;
@@ -29423,10 +29293,10 @@ function computeBatches(edges: UnitDependencyEdge[]): string[][] | null {
 //     - name: api
 //       depends_on: [auth]
 //   ```
-//
+
 // The optional `kind:` line (UNIT_KINDS) drives the per-unit construction
 // design-artifact pruning; omitting it keeps a unit on the full matrix.
-//
+
 // Pure data — no model call, no NLP. A given body always parses to the same
 // result, so a hook-fired re-compile of runtime-graph.json stays
 // byte-identical (no model in the path; the determinism invariant holds).

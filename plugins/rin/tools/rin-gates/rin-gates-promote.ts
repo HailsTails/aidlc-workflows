@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -771,6 +770,8 @@ const PROMOTION_ARGUMENTS_LIMIT = 1000;
 const birthIntentVia = (args: {
   readonly engineCli: string;
   readonly request: IntentBirthRequest;
+  readonly space: string;
+  readonly executor: WorkflowUtilityExecutor;
 }): Result<string, PromoteFailure> => {
   const { engineCli, request } = args;
   if (
@@ -783,9 +784,9 @@ const birthIntentVia = (args: {
       limit: PROMOTION_ARGUMENTS_LIMIT,
     });
   }
-  const birth = spawnSync(
-    "bun",
-    [
+  const birth = args.executor.execute({
+    executable: "bun",
+    commandArguments: [
       engineCli,
       "intent-create",
       "--scope",
@@ -794,19 +795,27 @@ const birthIntentVia = (args: {
       request.label,
       "--project-dir",
       request.workspaceRoot,
+      "--space",
+      args.space,
       ...(request.promotionArguments === null
         ? []
         : ["--arguments", request.promotionArguments]),
     ],
-    { encoding: "utf-8", cwd: request.workspaceRoot },
-  );
-  if (birth.status !== 0) {
+    workingDirectory: request.workspaceRoot,
+  });
+  if (birth.kind !== "completed") {
     return failWith({
       kind: "intent-birth-failed",
-      detail: birth.stderr ?? birth.stdout ?? "",
+      detail: birth.kind === "interrupted" ? birth.terminationSignal : "engine utility could not be launched",
     });
   }
-  const engineOutput = birth.stdout ?? "";
+  if (birth.processStatus !== 0) {
+    return failWith({
+      kind: "intent-birth-failed",
+      detail: birth.stderr || birth.stdout,
+    });
+  }
+  const engineOutput = birth.stdout;
   const recordDirName = recordDirFromEngineOutput(engineOutput);
   return recordDirName === null
     ? failWith({ kind: "record-dir-unresolvable", engineOutput })
@@ -877,6 +886,8 @@ const writeBindingAt = (args: {
 
 const filesystemPorts = (args: {
   readonly intentsRoot: string;
+  readonly space: string;
+  readonly executor: WorkflowUtilityExecutor;
   readonly engineCli: string;
   readonly now: () => Date;
 }): PromotePorts => ({
@@ -884,7 +895,7 @@ const filesystemPorts = (args: {
   readProvenanceTaskId: (recordDirName) =>
     readProvenanceTaskIdAt({ intentsRoot: args.intentsRoot, recordDirName }),
   birthIntent: (request) =>
-    birthIntentVia({ engineCli: args.engineCli, request }),
+    birthIntentVia({ engineCli: args.engineCli, request, space: args.space, executor: args.executor }),
   writeProvenance: ({ recordDirName, taskId }) => {
     try {
       writeFileSync(
@@ -1125,6 +1136,8 @@ const run = (argv: readonly string[]): number => {
     boundAt: now().toISOString(),
     ports: filesystemPorts({
       intentsRoot: consumerWorkflowContext.intentsRoot,
+      space: consumerWorkflowContext.space,
+      executor: workflowUtilityExecutor,
       engineCli,
       now,
     }),

@@ -94,13 +94,7 @@ export interface StageFrontmatter {
   // `required` means every run must create the questions file and record the
   // human's consolidated-summary choice; `if-present` is for conditional Q&A.
   summary_confirmation?: "required" | "if-present";
-  // approval_mode — how this stage's approval gate is cleared. "human" (the
-  // default when absent) requires a typed human turn since the gate opened, read
-  // by the human-presence guard in aidlc-state.ts. "autonomous" clears the gate
-  // without that turn — for a stage whose approval is gated by a mechanism other
-  // than live human presence (e.g. an emitted, work-bound review verdict on a
-  // scheduled run). Names the presence axis on the stage itself so any scope can
-  // declare it, rather than deriving it from a workflow-wide autonomy flag.
+
   approval_mode?: "human" | "autonomous";
   // when — structured activation predicate (plugin mechanism, Layer 4). A
   // single-key map; the one predicate is `producer-in-plan: <artifact-slug>`.
@@ -406,9 +400,6 @@ export function validateStageFrontmatter(
     }
   }
 
-  // approval_mode — optional closed union (human | autonomous). Absent -> human
-  // (the default the human-presence guard applies). Mirrors `mode`'s validation:
-  // a type error is reported by checkString, an out-of-union token by checkEnum.
   checkString(o, "approval_mode", errors);
   checkEnum(o, "approval_mode", VALID_APPROVAL_MODES, errors);
 

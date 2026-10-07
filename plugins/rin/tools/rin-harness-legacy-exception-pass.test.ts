@@ -453,3 +453,58 @@ describe("the pass counts the legacy population, not the whole registry", () => 
     expect(pass.legacy).toBe(3);
   });
 });
+
+describe("registry failures cannot produce a measured population", () => {
+  const failedReader = (raw: string | undefined): SidecarFileReader => ({
+    fileExists: () => true,
+    readFile: (path) => path === baselinePath(PROJECT_DIR)
+      ? '{"entryCount":0,"digests":[]}'
+      : raw,
+    listDirectory: (path) => path === join(PROJECT_DIR, CARVE_OUT_REGISTRY)
+      ? ["cd-19.json"] : [],
+  });
+
+  test.each([
+    [undefined, "registry-unreadable"],
+    ["{ broken", "registry-unparseable"],
+    ['{"entries":[]}', "registry-not-array"],
+  ] as const)("a listed sidecar containing %s refuses figures", (raw, reason) => {
+    const pass = legacyExceptionPass({ projectDir: PROJECT_DIR, reader: failedReader(raw) });
+    expect(pass.measurement).toEqual({ kind: "unmeasurable", reason });
+    expect(passReport({ pass }).exitCode).toBe(1);
+    expect(passReport({ pass }).stdout).toBe("");
+    expect(passReport({ pass }).stderr).toContain("registry");
+  });
+
+  test("an unreadable directory refuses figures", () => {
+    const pass = legacyExceptionPass({
+      projectDir: PROJECT_DIR,
+      reader: { ...failedReader("[]"), listDirectory: () => undefined },
+    });
+    expect(pass.measurement).toEqual({ kind: "unmeasurable", reason: "registry-unreadable" });
+    expect(passReport({ pass }).stdout).toBe("");
+  });
+
+  test("an empty readable registry remains a measured zero", () => {
+    const pass = legacyExceptionPass({ projectDir: PROJECT_DIR, reader: failedReader("[]") });
+    expect(pass.measurement).toEqual({ kind: "measured" });
+    expect(pass.scanned).toBe(0);
+    expect(passReport({ pass }).exitCode).toBe(0);
+  });
+});
+
+test("a readable sibling cannot hide a listed unreadable sidecar", () => {
+  const pass = legacyExceptionPass({
+    projectDir: PROJECT_DIR,
+    reader: {
+      fileExists: () => true,
+      readFile: (path) => new Map([
+        ["/repo/.r7-legacy-baseline.json", '{"entryCount":0,"digests":[]}'],
+        ["/repo/.constitution-carve-outs/readable.json", '[{"files":["fixture.ts"]}]'],
+      ]).get(path),
+      listDirectory: (path) => path === "/repo/.constitution-carve-outs" ? ["readable.json", "unreadable.json"] : [],
+    },
+  });
+  expect(pass.measurement).toEqual({ kind: "unmeasurable", reason: "registry-unreadable" });
+  expect(passReport({ pass })).toMatchObject({ exitCode: 1, stdout: "" });
+});

@@ -1,7 +1,9 @@
 // covers: tool:aidlc-init, file:core/tools/aidlc-refresh-compatibility.ts
 import { afterAll, describe, expect, test } from "bun:test";
+import "../../core/tools/aidlc-refresh-compatibility.test.ts";
+import { ok as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -178,6 +180,14 @@ function contractFixture() {
 }
 
 describe("refresh compatibility at the existing transaction boundary", () => {
+  test("a schema mismatch is an explicit refusal result", () => {
+    const fixture = contractFixture();
+    put(fixture.sourceRoot, ".claude/tools/aidlc-lib.ts", 'export const CURRENT_STATE_VERSION = "9";');
+    expect(planCompatibleRefresh(fixture)).toMatchObject({
+      kind: "refused", reason: "state-schema-changed",
+    });
+  });
+
   test("updates and restores advisory write sensors without writing either workflow record", () => {
     const fixture = contractFixture();
     const graph = ".claude/tools/data/stage-graph.json";
@@ -188,6 +198,7 @@ describe("refresh compatibility at the existing transaction boundary", () => {
       writeOperation(graph, newer, sha256File(join(fixture.projectDir, graph))),
     ] };
     const validation = planCompatibleRefresh({ ...fixture, plan: update });
+    assert(validation.kind === "planned");
     executePlan(update, { validateLocked: validation.validateLocked });
     expect(readFileSync(join(fixture.projectDir, graph), "utf-8")).toBe(newer);
     expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/default/intents/open/aidlc-state.md"), "utf-8")).toBe(
@@ -201,6 +212,7 @@ describe("refresh compatibility at the existing transaction boundary", () => {
       writeOperation(graph, original, sha256File(join(fixture.projectDir, graph))),
     ] };
     const rollback = planCompatibleRefresh({ ...fixture, plan: restore });
+    assert(rollback.kind === "planned");
     executePlan(restore, { validateLocked: rollback.validateLocked });
     expect(readFileSync(join(fixture.projectDir, graph), "utf-8")).toBe(original);
     expect(readFileSync(join(fixture.projectDir, "aidlc/spaces/default/intents/open/aidlc-state.md"), "utf-8")).toBe(
@@ -226,7 +238,7 @@ describe("refresh compatibility at the existing transaction boundary", () => {
     const fixture = contractFixture();
     put(fixture.sourceRoot, ".claude/tools/data/stage-graph.json",
       JSON.stringify([{ slug: "work", mode: "inline", ...change }]));
-    expect(() => planCompatibleRefresh(fixture)).toThrow('stage "work" changes or disappears');
+    expect(planCompatibleRefresh(fixture)).toMatchObject({ kind: "refused", reason: "stage-contract-changed" });
     expect(readFileSync(join(fixture.projectDir, ".claude/tools/one.ts"), "utf-8")).toBe("before one\n");
   });
 
@@ -245,13 +257,14 @@ describe("refresh compatibility at the existing transaction boundary", () => {
       ] };
     put(fixture.projectDir, graph, JSON.stringify([stage]));
     put(fixture.sourceRoot, graph, JSON.stringify([{ ...stage, ...change }]));
-    expect(() => planCompatibleRefresh(fixture)).toThrow('stage "work" changes or disappears');
+    expect(planCompatibleRefresh(fixture)).toMatchObject({ kind: "refused", reason: "stage-contract-changed" });
   });
 
   test("rolls back an interrupted payload update and leaves both workflow records untouched", () => {
     const fixture = contractFixture();
     const stateBefore = workspaceBytes(fixture.projectDir);
     const validation = planCompatibleRefresh(fixture);
+    assert(validation.kind === "planned");
     expect(() => executePlan(fixture.plan, { validateLocked: validation.validateLocked, failAfter: 1 })).toThrow("injected transaction failure");
     expect(readFileSync(join(fixture.projectDir, ".claude/tools/one.ts"), "utf-8")).toBe("before one\n");
     expect(readFileSync(join(fixture.projectDir, ".claude/tools/two.ts"), "utf-8")).toBe("before two\n");
@@ -261,8 +274,13 @@ describe("refresh compatibility at the existing transaction boundary", () => {
   test("refuses compatibility input changes made after planning", () => {
     const fixture = contractFixture();
     const validation = planCompatibleRefresh(fixture);
+    assert(validation.kind === "planned");
     put(fixture.projectDir, ".claude/tools/data/scope-grid.json", '{"new-scope":{}}');
-    expect(() => executePlan(fixture.plan, { validateLocked: validation.validateLocked })).toThrow("inputs changed after planning");
+    expect(executePlan(fixture.plan, { validateLocked: validation.validateLocked })).toMatchObject({
+      kind: "refused", message: "open-workflow refresh compatibility inputs changed after planning; plan again",
+    });
+    expect(existsSync(join(fixture.projectDir, ".aidlc-transaction.lock"))).toBe(false);
+    expect(readFileSync(join(fixture.projectDir, ".claude/tools/two.ts"), "utf-8")).toBe("before two\n");
     expect(readFileSync(join(fixture.projectDir, ".claude/tools/one.ts"), "utf-8")).toBe("before one\n");
   });
 
@@ -270,14 +288,14 @@ describe("refresh compatibility at the existing transaction boundary", () => {
     const fixture = contractFixture();
     planCompatibleRefresh(fixture);
     put(fixture.sourceRoot, ".claude/tools/aidlc-lib.ts", 'export const CURRENT_STATE_VERSION = "9";\n');
-    expect(() => planCompatibleRefresh(fixture)).toThrow("state schemas must agree");
+    expect(planCompatibleRefresh(fixture)).toMatchObject({ kind: "refused", reason: "state-schema-changed" });
   });
 
   test("refuses a changed scope and any attempt to write workflow data", () => {
     const fixture = contractFixture();
     put(fixture.sourceRoot, ".claude/tools/data/scope-grid.json", '{"feature":{"stages":{"work":"SKIP"}}}');
-    expect(() => planCompatibleRefresh(fixture)).toThrow('scope "feature" changes or disappears');
+    expect(planCompatibleRefresh(fixture)).toMatchObject({ kind: "refused", reason: "scope-contract-changed" });
     fixture.plan.operations.push(writeOperation("././aidlc/spaces/default/intents/open/aidlc-state.md", "closed"));
-    expect(() => planCompatibleRefresh(fixture)).toThrow("project workspace is read-only");
+    expect(planCompatibleRefresh(fixture)).toMatchObject({ kind: "refused", reason: "workspace-write" });
   });
 });

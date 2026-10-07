@@ -235,8 +235,7 @@ const listCarveOutCds = ({
   readonly projectDir: string;
   readonly reader?: SidecarFileReader;
 }): readonly string[] =>
-  reader
-    .listDirectory(carveOutDir(projectDir))
+  (reader.listDirectory(carveOutDir(projectDir)) ?? [])
     .filter((name) => /^cd-.*\.json$/.test(name))
     .map((name) => basename(name, ".json").toUpperCase())
     .sort();

@@ -1,7 +1,4 @@
-// Sensor fire verdicts: the dispatcher's outcome type, the verdict line it
-// prints, and the readers that parse that line back. Side-effect free so the
-// PostToolUse hook, the gate-time reader and tests can import it without
-// loading the dispatcher's bundled sensor manifests.
+
 
 export type FireOutcome =
 	| { kind: "passed"; durationMs: number; note?: string }
@@ -25,9 +22,6 @@ export interface FireVerdict {
 	writer_notice?: string;
 }
 
-// The shape a reader accepts: writer_notice is carried through unvalidated so
-// a malformed notice degrades to a silent finding instead of an unreadable
-// verdict.
 export type FireVerdictLine = Omit<FireVerdict, "writer_notice"> & {
 	writer_notice?: unknown;
 };
@@ -95,7 +89,6 @@ export function isFireVerdictLine(value: unknown): value is FireVerdictLine {
 	);
 }
 
-// Scan from the last line so a banner a wrapper printed first is skipped.
 export function lastFireVerdictLineOf(stdout: string): FireVerdictLine | null {
 	const lines = stdout
 		.split(/\r?\n/)
@@ -106,7 +99,7 @@ export function lastFireVerdictLineOf(stdout: string): FireVerdictLine | null {
 			const value: unknown = JSON.parse(lines[i]);
 			if (isFireVerdictLine(value)) return value;
 		} catch {
-			// Not JSON; keep scanning.
+
 		}
 	}
 	return null;
@@ -148,8 +141,7 @@ export function fireVerdictOf(args: {
 			...notice,
 		};
 	}
-	// The detail file is missing. A finding the writer can still be told about
-	// stays failed; one with nothing to tell keeps the historical pass-with-note.
+
 	if (outcome.writerNotice === undefined && detailWrite.kind === "failed") {
 		return {
 			...identity,
@@ -166,9 +158,6 @@ export interface TerminalAuditRow {
 	fields: Record<string, string>;
 }
 
-// The terminal audit row follows the verdict's result, so the audit and the
-// verdict line never disagree about a fire whose detail file was not written.
-// The fire's identity fields are the caller's to add.
 export function terminalAuditRowOf(args: {
 	outcome: FireOutcome;
 	verdict: FireVerdict;

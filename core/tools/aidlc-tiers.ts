@@ -116,13 +116,7 @@ export type Harness = keyof TierProjection;
 /** The projection table. Tune here; every harness moves in lock-step. */
 export const TIER_PROJECTIONS: Record<Tier, TierProjection> = {
   judgment: {
-    // Judgment work pins the top general model explicitly (`opus` resolves to
-    // the current Opus generation) rather than inheriting the session. Inherit
-    // is right where the session model IS the ceiling you want fanned out to
-    // every sub-agent; it is wrong where a fan-out of many judgment lenses off a
-    // high-tier session would multiply cost without bound. An explicit alias
-    // keeps the top tier where judgment needs it AND makes the per-seat cost
-    // knowable. The omitted effort key still follows the session effort.
+
     claude: { model: "opus", effort: null },
     codex: { model: null, effort: null },
     kiro: { model: null },
@@ -144,10 +138,7 @@ export const TIER_PROJECTIONS: Record<Tier, TierProjection> = {
     copilot: { model: null },
   },
   templated: {
-    // The pattern-following tier. It currently shares balanced's smaller-model,
-    // reduced-effort projection, but remains distinct so either can be retuned.
-    // rin keeps concrete pins here where upstream 2.9.0 moved to `inherit`:
-    // inheriting the session model is what silently doubled review cost.
+
     claude: { model: "sonnet", effort: "medium" },
     codex: { model: "gpt-5.6-terra", effort: "medium" },
     kiro: { model: null },

@@ -144,16 +144,11 @@ export interface RunStagePipeline {
   completed: string[];
 }
 
-// One dispatched collaborator seat on a mesh stage. The engine resolves the
-// contribution path and identity marker here so the lead dispatches against the
-// same triple the completion-evidence check refuses on — a brief and a refusal
-// that derive paths independently agree today and diverge later, and only the
-// refusal path is exercised on a failing run.
 export interface EnsembleSeatDispatch {
   agent: string;
   contribution_path: string;
   identity_marker: string;
-  // The unit this seat covers on a per-unit stage; null on a stage-level one.
+
   unit: string | null;
 }
 
@@ -243,14 +238,7 @@ export interface RunStageDirective {
   // protocol files the conductor reads before the stage body. The prose
   // triggers remain the compatibility fallback when this field is absent.
   protocol_modules?: ProtocolModule[];
-  // ensemble_dispatch — the seat calls a mesh stage owes, emitted as DATA
-  // rather than left to protocol prose the conductor may skim. Present only on
-  // modes whose seats are dispatched (mob; agent-team when its transport
-  // activates). Each row names the agent, the file it must write, and the
-  // identity marker that file's first line must carry — the same triple the
-  // completion-evidence check refuses on, so dispatch and refusal cannot
-  // disagree about what is owed. The refusal already existed; a refusal with no
-  // matching dispatch is a trap rather than a protocol.
+
   ensemble_dispatch?: EnsembleSeatDispatch[];
   // Gate-only re-entry after every autonomous swarm Unit and reviewer receipt
   // converged. Present only as literal true; the conductor must not rerun the
@@ -1446,10 +1434,6 @@ function checkOptionalStringArray(
   checkStringArray(o, field, kind, errors);
 }
 
-// A dispatched seat row names its agent, where that agent writes, and the exact
-// first line making the file count. All three are checked: a row missing any one
-// of them is a dispatch the completion check later refuses for a reason the brief
-// never stated.
 function checkOptionalEnsembleDispatch(
   o: Record<string, unknown>,
   kind: DirectiveKind,

@@ -79,8 +79,7 @@ const collapseTargetsOf = (args: {
   readonly reader: SidecarFileReader;
 }): ReadonlyMap<string, string> => {
   const corpusDir = args.corpusDir;
-  return args.reader
-    .listDirectory(corpusDir)
+  return (args.reader.listDirectory(corpusDir) ?? [])
     .filter((name) => /^cd-\d+[a-z]?-.*\.md$/.test(name))
     .reduce<ReadonlyMap<string, string>>((accumulated, name) => {
       const raw = args.reader.readFile(join(corpusDir, name));

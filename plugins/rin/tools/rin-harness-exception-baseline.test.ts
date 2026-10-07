@@ -227,7 +227,7 @@ describe("the baseline's location is project-owned", () => {
 describe("the opt-in decides which baseline the registry doors judge against", () => {
   const PRESENT_BASELINE: SidecarFileReader = {
     fileExists: (path) => path === baselinePath("/repo"),
-    readFile: () => '{"entryCount":1,"digests":["aaaa"]}',
+    readFile: () => '{"entryCount":1,"digests":["0123456789abcdef"]}',
     listDirectory: () => [],
   };
 
@@ -238,7 +238,7 @@ describe("the opt-in decides which baseline the registry doors judge against", (
         projectDir: "/repo",
         reader: PRESENT_BASELINE,
       }),
-    ).toEqual({ kind: "loaded", digests: new Set(["aaaa"]) });
+    ).toEqual({ kind: "loaded", digests: new Set(["0123456789abcdef"]) });
   });
 
   test("a disabled project is not asked for chains, whatever its files hold", () => {
@@ -263,7 +263,7 @@ describe("a baseline whose declared size disagrees with its rows is unusable", (
     expect(
       loadBaseline({
         projectDir: "/repo",
-        reader: readerWith('{"entryCount":2,"digests":["aaaa","bbbb"]}'),
+        reader: readerWith('{"entryCount":2,"digests":["0123456789abcdef","fedcba9876543210"]}'),
       }).kind,
     ).toBe("loaded");
   });
@@ -346,5 +346,24 @@ describe("an absent baseline reports that it could not run", () => {
         baseline: ABSENT,
       }),
     ).toContain("cannot be established");
+  });
+});
+
+describe("baseline loading validates every digest before granting legacy status", () => {
+  test("a matching digest beside a wrong-width digest cannot grant an exemption", () => {
+    const baseline = loadBaseline({
+      projectDir: "/repo",
+      reader: {
+        fileExists: () => true,
+        readFile: () => JSON.stringify({
+          entryCount: 2,
+          digests: [entryDigest({ entry: LEGACY_ENTRY }), "bad"],
+        }),
+        listDirectory: () => [],
+      },
+    });
+    expect(baseline).toEqual({ kind: "unreadable", reason: "width" });
+    expect(whyChainProblemForEntry({ entry: LEGACY_ENTRY, baseline })).toContain("width");
+    expect(whyChainProblemForEntry({ entry: LEGACY_ENTRY, baseline })).toContain("absence is not an exemption");
   });
 });

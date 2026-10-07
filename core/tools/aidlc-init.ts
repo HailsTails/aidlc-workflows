@@ -5329,9 +5329,7 @@ function planManagedFiles(
         }
         continue;
       }
-      // Overlaying consumer files lets the candidate compile its complete
-      // graph. It does not grant core ownership of those files on this or a
-      // later refresh, nor permission for regeneration to overwrite them.
+
       if (prepared.projectOwnedExtras.has(rel)) {
         actions.push(targetRegular && sha256File(target) === hash
           ? { path: rel, action: "preserve", detail: "project-owned overlay" }
@@ -6656,6 +6654,10 @@ export async function main(
     const compatibleRefresh = refreshOpenWorkflows
       ? planCompatibleRefresh({ projectDir, sourceRoot: prepared.root, harnessDir: descriptor.harnessDir, plan })
       : null;
+    if (compatibleRefresh?.kind === "refused") {
+      emitResult(failure(compatibleRefresh.message, EXIT.integrity, configCommand("--dry-run --json")), options);
+      return;
+    }
     const approvalPlan = {
       ...plan,
       ...(compatibleRefresh ? { refreshCompatibility: compatibleRefresh.evidence } : {}),
@@ -6759,11 +6761,11 @@ export async function main(
       return;
     }
     if (existing.distribution) {
-      withAuditLock(
+      const refreshResult = withAuditLock(
         projectDir,
         () => {
           if (compatibleRefresh) {
-            executePlan(plan, { validateLocked: compatibleRefresh.validateLocked });
+            return executePlan(plan, { validateLocked: compatibleRefresh.validateLocked });
           } else {
             assertRefreshSafe(projectDir);
             executeSettingsAndProjectMutation(settingsMutation, plan);
@@ -6773,6 +6775,10 @@ export async function main(
         undefined,
         600,
       );
+      if (refreshResult?.kind === "refused") {
+        emitResult(failure(refreshResult.message, EXIT.integrity, configCommand("--dry-run --json")), options);
+        return;
+      }
     } else {
       executeSettingsAndProjectMutation(settingsMutation, plan);
     }

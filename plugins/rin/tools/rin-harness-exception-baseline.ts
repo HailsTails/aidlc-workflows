@@ -25,7 +25,8 @@ type BaselineUnreadable =
   | "absent"
   | "unreadable-io"
   | "unparseable"
-  | "truncated";
+  | "truncated"
+  | "width";
 
 const parseBaselineFile = ({
   raw,
@@ -100,6 +101,9 @@ const loadBaseline = ({
   }
   if (parsed.entryCount !== parsed.digests.length) {
     return { kind: "unreadable", reason: "truncated" };
+  }
+  if (parsed.digests.some((digest) => digest.length !== DIGEST_LENGTH)) {
+    return { kind: "unreadable", reason: "width" };
   }
   return { kind: "loaded", digests: new Set(parsed.digests) };
 };

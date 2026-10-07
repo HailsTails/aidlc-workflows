@@ -53,18 +53,6 @@ export function isSubstantiveRuleText(text: string): boolean {
   });
 }
 
-// The BASE method layers — the space `memory/` files. On a harness that loads
-// these itself every turn (`baseRuleDelivery: "ambient"` in harness.json),
-// re-transporting their text tells the session nothing it does not have; the
-// steering bundle carries the reference instead, and the stage delta becomes
-// the only thing in the payload. On an "explicit" harness the engine is the
-// ONLY channel, so they travel in full.
-//
-// Why this is a declared harness lever and not a heuristic: the failure
-// directions are not symmetric. Wrongly treating an ambient harness as explicit
-// re-sends text it already has; wrongly treating an explicit one as ambient
-// drops its method entirely. So it fails closed to "explicit", and the value is
-// read from harness config rather than guessed from prose or the harness name.
 const BASE_RULE_BASENAMES = new Set([
   "org.md",
   "team.md",
@@ -137,10 +125,7 @@ export function readRuleBundle(
           "The stage has not started. Restore the file or fix its permissions/UTF-8 encoding, then run `next` again.",
       };
     }
-    // The file is READ before this filter, deliberately: an unreadable or
-    // non-UTF-8 rule must still fail the stage, so skipping its transport never
-    // weakens the integrity check — it only stops re-sending text the session
-    // already holds through the harness's own include.
+
     if (baseRuleDelivery() === "ambient" && isBaseRuleLayer(entry.rel)) continue;
     if (isSubstantiveRuleText(text)) content.push({ path: entry.rel, text });
   }

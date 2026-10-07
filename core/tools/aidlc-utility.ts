@@ -1211,11 +1211,7 @@ function activeWorkflowDependencyViolations(
       const content = readFileSync(sp, "utf-8");
       const status = getField(content, "Status") ?? "";
       if (status === "Completed" || status === "Archived") continue;
-      // rin drift (IF-2 amendment, 2026-07-17; reverts when upstream 019f7051
-      // lands): a PARKED workflow is not live, so it cannot be stranded. The
-      // error text below already advises "park the workflow(s) first"; upstream
-      // honours only Completed/Archived, making that advice a no-op. Mirror the
-      // status skip on the park marker the engine's own `park` verb writes.
+
       if ((getField(content, "Parked") ?? "") !== "") continue;
       const where = `workflow "${intent.dirName}" (space ${space.name})`;
       const scope = getField(content, "Scope");
@@ -2927,14 +2923,10 @@ export async function collectDoctorReport(
     try {
       const raw = readFileSync(settingsForHooks, "utf-8");
       // jq-free: collect every distinct aidlc-*.ts basename referenced anywhere
-      // in settings.json under a hooks/ path segment (hook command paths like
+
       // "bun $CLAUDE_PROJECT_DIR/.claude/hooks/aidlc-write-audit-log.ts" and the
       // statusLine command). Basename, not path, so the probe is dir-relative.
-      // rin's former `hooks/`-segment regex is RETIRED at 2.9.0: it guarded
-      // against settings.json entries naming aidlc-*.ts files that are not
-      // hooks (the Bash permission-allowlist entries for engine tools), and
-      // upstream's command-walk below excludes those structurally by collecting
-      // only `command` strings. The workaround's reason no longer holds.
+
       const parsed = JSON.parse(raw) as unknown;
       const commands: string[] = [];
       const collectCommands = (value: unknown): void => {
@@ -7852,7 +7844,6 @@ function handleSpaceCreate(projectDir: string, positional: string[], _flags: Rec
   );
 }
 
-
 // Caller is responsible for applying any scope- or project-type-specific
 // downgrades (e.g., reverse-engineering SKIP for greenfield) to the mapping
 // before calling this helper. Walks post-init stages and returns the slug of
@@ -8520,7 +8511,6 @@ function handleConfigChange(projectDir: string, flags: Record<string, string>): 
     process.stdout.write(`${update.lines.join("\n")}\n`);
   }, intent, space);
 }
-
 
 // ---------------------------------------------------------------------------
 // set-status — atomically update statusline fields at stage start

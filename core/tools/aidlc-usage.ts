@@ -1018,15 +1018,7 @@ const USAGE_LOCK_INTENT = "__usage-ledger__";
 const USAGE_LOCK_SPACE = "__runtime__";
 // The directory lock's stale-reaper restore gap can admit two holders on Win32.
 // A kernel mutex closes that gap and transfers ownership after an abandoned owner.
-// RIN DIVERGENCE, same class as drift-register entry 18 one file over. 2.9.0
-// introduced this mutex with a STATIC `import { dlopen, ptr } from "bun:ffi"`
-// and resolved the library at MODULE SCOPE. Both are unloadable under Node: the
-// import resolves at load time whatever the platform, and this initialiser runs
-// on import even off win32. `aidlc-lib.ts` already carries the lazy shim and
-// states the reason; 2.9.0 reintroduced the eager form here, which took four
-// vendor-drift suites down with "Cannot find package 'bun:ffi'" before any test
-// body ran. Resolution is deferred to first use, so behaviour under Bun on
-// win32 is unchanged and every other platform never loads the FFI at all.
+
 type BunFfi = Pick<typeof import("bun:ffi"), "dlopen" | "ptr">;
 
 const loadBunFfi = (): BunFfi | null => {

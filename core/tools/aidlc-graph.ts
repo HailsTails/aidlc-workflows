@@ -199,9 +199,7 @@ export interface GraphStage extends StageEntry {
   // reviewer_max_iterations — review cycle cap before escalating to human.
   // Defaults to 2 when reviewer is present.
   reviewer_max_iterations?: number;
-  // approval_mode — how this stage's approval gate is cleared (human | autonomous).
-  // Absent -> human. Parsed from stage frontmatter and carried onto the compiled
-  // node so the approve handler's presence guard can read it.
+
   approval_mode?: "human" | "autonomous";
   // review_class — how the review runs: "adversarial" (refute + fix loop up
   // to the cap, §12a classic) or "advisory" (single pass, findings quoted at
@@ -1858,11 +1856,7 @@ export function compileStageGraph(): {
             `"${phase}". Stage phase directories must be one of: ${PHASES.join(", ")}.`
         );
       }
-      // Authored frontmatter number/name are the topology source of truth (rin
-      // drift 019f7492): a stage that declares them fully determines its own
-      // placement from source, so a clean-room compile (no prior stage-graph.json)
-      // reproduces the graph. Upstream's pinned-row / topological-seed machinery
-      // remains the fallback for stages that author neither.
+
       const number = validation.data.number ?? numberBySlug.get(slug);
       const name =
         validation.data.name ?? nameBySlug.get(slug) ?? titleCaseSlug(slug);

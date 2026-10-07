@@ -68,12 +68,14 @@ const readerFor = ({
   sidecar,
   entries,
   legacyEntries,
+  extraBaselineDigest,
 }: {
   readonly projectDir: string;
   readonly dir: string;
   readonly sidecar: string;
   readonly entries: readonly unknown[];
   readonly legacyEntries: readonly unknown[] | undefined;
+  readonly extraBaselineDigest?: string;
 }): SidecarFileReader => {
   const files: Record<string, string> = {
     [join(dir, sidecar)]: JSON.stringify(entries),
@@ -81,13 +83,13 @@ const readerFor = ({
       ? {}
       : {
           [baselinePath(projectDir)]: JSON.stringify({
-            entryCount: legacyEntries.length,
-            digests: legacyEntries.map((entry) =>
+            entryCount: legacyEntries.length + (extraBaselineDigest === undefined ? 0 : 1),
+            digests: [...legacyEntries.map((entry) =>
               entryDigest({
                 entry,
                 origin: { registry: basename(dir), sidecar },
               }),
-            ),
+            ), ...(extraBaselineDigest === undefined ? [] : [extraBaselineDigest])],
           }),
         }),
   };
@@ -107,10 +109,12 @@ const DOORS = [
       projectDir = PROJECT_DIR,
       entries,
       legacyEntries,
+      extraBaselineDigest,
     }: {
       readonly projectDir?: string;
       readonly entries: readonly unknown[];
       readonly legacyEntries: readonly unknown[] | undefined;
+      readonly extraBaselineDigest?: string;
     }): DoorLoad =>
       loadCarveOutSidecarForCd({
         projectDir,
@@ -121,6 +125,7 @@ const DOORS = [
           sidecar: carveOutSidecarName(CD_ID),
           entries,
           legacyEntries,
+          extraBaselineDigest,
         }),
       }),
   },
@@ -130,10 +135,12 @@ const DOORS = [
       projectDir = PROJECT_DIR,
       entries,
       legacyEntries,
+      extraBaselineDigest,
     }: {
       readonly projectDir?: string;
       readonly entries: readonly unknown[];
       readonly legacyEntries: readonly unknown[] | undefined;
+      readonly extraBaselineDigest?: string;
     }): DoorLoad =>
       loadSidecarForCd({
         projectDir,
@@ -144,6 +151,7 @@ const DOORS = [
           sidecar: authorisedSidecarName(CD_ID),
           entries,
           legacyEntries,
+          extraBaselineDigest,
         }),
       }),
   },
@@ -345,5 +353,13 @@ describe.each(
         legacyEntries: [LEGACY_ENTRY],
       }).outcome,
     ).toBe("loaded");
+  });
+});
+
+describe.each(DOORS)("mixed-width baselines grant nothing at the $name door", ({ load }) => {
+  test("a matching legacy entry beside a malformed digest is rejected", () => {
+    const result = load({ entries: [LEGACY_ENTRY], legacyEntries: [LEGACY_ENTRY], extraBaselineDigest: "bad" });
+    expect(result.outcome).toBe("rejected");
+    expect(result.rejection).toMatchObject({ problem: expect.stringContaining("width") });
   });
 });

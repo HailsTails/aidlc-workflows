@@ -54,11 +54,14 @@ export type TransactionPlan = {
   operations: TransactionOperation[];
 };
 
+export type TransactionRefusal = { readonly kind: "refused"; readonly message: string };
+export type TransactionValidation = { readonly kind: "validated" } | TransactionRefusal;
+
 export type TransactionOptions = {
   failAfter?: number;
   failAt?: string;
   allowPendingWindowsUninstall?: boolean;
-  validateLocked?: () => void;
+  validateLocked?: (() => void) | (() => TransactionValidation);
   validateCandidates?: (candidateRoot: string) => void;
   validateCommitted?: () => void;
 };
@@ -481,7 +484,7 @@ function syncTree(path: string): void {
 export function executePlan(
   plan: TransactionPlan,
   options: TransactionOptions = {},
-): void {
+): undefined | TransactionRefusal {
   const root = canonicalRoot(plan.root);
   if (plan.operations.length > 0) {
     enforceRouteMutationPlan(root, plan.operations);
@@ -513,7 +516,8 @@ export function executePlan(
       );
     }
     quarantineOrphanStaging(root, staging);
-    options.validateLocked?.();
+    const validation = options.validateLocked?.();
+    if (validation?.kind === "refused") return validation;
     failpoint(options, "before-plan-validation");
     verifyPlan(plan, root);
     failpoint(options, "after-plan-validation");

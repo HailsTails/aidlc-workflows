@@ -1326,11 +1326,6 @@ type ReviewAttemptSummary = {
   ambiguity: string | null;
 };
 
-// Count requests in the current stage/unit attempt. The same chronological
-// floors used by receipt freshness reset the budget on workflow start, jump,
-// stage re-entry, or gate rejection. A matching BOLT_STARTED is a stronger
-// per-unit floor because the forked audit inherits the main workflow's prior
-// rows; it is also the proof that `--unit` belongs to an actual Bolt attempt.
 type CompletedReviewBinding = {
   artifactFingerprint: string | null;
   sourceFingerprint: string | null;
@@ -1338,9 +1333,7 @@ type CompletedReviewBinding = {
 
 const FINGERPRINT_SHAPES = {
   artifact: /^sha256:[0-9a-f]{64}$/,
-  // Both widths are real: a git tree sha1 (40) from the single-repo path and a
-  // sha256 digest (64) from the multi-repo fold. Admitting only one silently
-  // sent every value of the other width to the fail-closed reading.
+
   source: /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/,
 } as const;
 
@@ -1354,23 +1347,11 @@ function movedBetween(
   return before !== after;
 }
 
-// Classify a pre-`Recovery Cause` recovery request from the evidence it already
-// carries: the preceding terminal receipt and this request each record an
-// artifact fingerprint, and the receipt records the source fingerprint the
-// reviewer was bound to. Whichever of the two moved across that interval is the
-// cause the recovery was for. This is a derivation from committed audit rows,
-// not a judgement — and where the rows cannot decide (a fingerprint missing or
-// malformed, or BOTH moved) it returns the ambiguous reading so the caller
-// keeps latching both budgets.
 function classifyMovement(
   artifactMoved: boolean | null,
   sourceMoved: boolean | null,
 ): ReviewRecoveryCause {
-  // Defensive, and deliberately not unit-tested: a row whose artifact
-  // fingerprint is absent or malformed is rejected by
-  // `reviewRequestBindingFromBlock` before it can reach here, so no legitimate
-  // audit input drives this arm. It exists so a future caller that bypasses
-  // that filter still fails closed rather than widening a budget.
+
   if (artifactMoved === null || sourceMoved === null) return "artifact+source";
   if (artifactMoved && sourceMoved) return "artifact+source";
   if (sourceMoved) return "source";
@@ -1396,13 +1377,7 @@ function derivedRecoveryCause(
   if (requestSourceMoved !== null) {
     return classifyMovement(artifactMoved, requestSourceMoved);
   }
-  // Requests written before the request-side source binding existed carry no
-  // source field, so compare the two RECEIPTS instead. A receipt stamps the
-  // source live at completion, so had the source moved before this recovery
-  // ran, the recovery's own receipt would carry the new value; an unchanged
-  // pair therefore proves the source did not move across the whole window.
-  // Only available once the recovery's verdict was recorded — which is exactly
-  // the wedged population, where the NEXT request is the one being refused.
+
   return classifyMovement(
     artifactMoved,
     movedBetween(
@@ -1604,9 +1579,7 @@ function reviewAttemptSummary(
       tied.length > 1 &&
       tiedShards.size > 1 &&
       tied.every((event) => {
-        // AUDIT_MERGED is referee merge plumbing (main-emitted, merge
-        // protected); it carries no reviewer authority and cannot make the
-        // tie ambiguous for this unit's lifecycle accounting.
+
         if (event.event === "AUDIT_MERGED") return true;
         if (
           event.event !== "BOLT_STARTED" &&
@@ -1635,13 +1608,7 @@ function reviewAttemptSummary(
   let requestCount = 0;
   let recoveryIteration: number | null = null;
   let recoverySpent = false;
-  // The artifact and source freshness causes hold INDEPENDENT single-use
-  // recoveries. A merge-forward invalidates the source binding without
-  // touching a declared artifact, so collapsing both into one latch made a
-  // first merge spend the only recovery and a second terminal — reserved to a
-  // human GATE_REJECTED — for an event that changed nothing a reviewer judged.
-  // A recovery request carries its own `Recovery Cause`; a request predating
-  // that field (null cause) spends both, which is the fail-closed reading.
+
   let artifactRecoverySpent = false;
   let lastCompletedBinding: CompletedReviewBinding | null = null;
   let pendingLegacyRecovery: {
@@ -1701,10 +1668,7 @@ function reviewAttemptSummary(
         if (declaredCause !== null) {
           if (declaredCause !== "source") artifactRecoverySpent = true;
         } else {
-          // Predates the Recovery Cause field. The rows still carry the
-          // evidence to classify it, but the receipt-to-receipt fallback needs
-          // this recovery's own verdict, which appears later in the stream —
-          // so record the inputs now and resolve after the walk.
+
           pendingLegacyRecovery = {
             iteration,
             previousReceipt: lastCompletedBinding,
@@ -2268,27 +2232,10 @@ function handleReview(args: string[]): void {
           sourceScopeStale &&
           (receipts?.sourceRecoverySpent === true ||
             receipts?.sourceStaleProgress?.recoverySpent === true);
-        // Each cause holds its own single-use recovery, so a merge-forward
-        // (source) never consumes the artifact recovery and vice versa.
-        //
-        // The recovery REQUEST is what dispatches the board against the new
-        // tree, so it cannot itself require a verdict already bound to that
-        // tree — that ordering is circular and would make the evidence
-        // unobtainable. The guarantee is enforced where it can actually hold:
-        // REVIEW_COMPLETED refuses unless the workspace source still matches
-        // the source the reviewer was dispatched against, so a recorded
-        // verdict is re-bound by construction.
+
         const sourceRecoveryAvailable =
           sourceScopeStale && !sourceRecoverySpent;
-        // The artifact half of the two-latch recovery model. Upstream's
-        // accounting latches only the source cause, so the artifact cause is
-        // derived here from the same attempt window; collapsing the two would
-        // let a merge-forward spend the document recovery.
-        //
-        // The window is resolved HERE rather than read from an outer binding:
-        // the one bound near the top of handleReview lives inside reviewSlot's
-        // arrow body, which closes before this branch, so reaching for it threw
-        // `attemptWindow is not defined` at runtime while type-checking clean.
+
         const artifactAttemptWindow = reviewAttemptWindow(pd, state, node);
         const artifactRecoverySpent =
           artifactScopeStale &&
