@@ -3248,6 +3248,19 @@ function workflowParkedDirective(
       );
 }
 
+// Whether the workflow is parked where it stands. A park the workflow has
+// since moved past is stale and holds nothing.
+function parkedWhereItStands(stateContent: string): boolean {
+  const parkedAt = (getField(stateContent, "Parked At Stage") ?? "").trim();
+  return (getField(stateContent, "Parked") ?? "").trim().length > 0 && parkedAt.length > 0 &&
+    parkedAt === (getField(stateContent, "Current Stage") ?? "").trim();
+}
+
+// What the person hears after a change made over parked work.
+function stillParkedLine(): string {
+  return `Your work is still paused. Type \`${entrySkillInvocation()} --resume\` when you want to pick it back up.`;
+}
+
 // The `parked` a successful park answers with. A team Unit checkout parks
 // only its Unit, locally, so it names the Unit.
 function parkedAfterPark(pd: string, parkStdout: string): ParkedDirective {
@@ -7319,6 +7332,13 @@ function routeNext(args: string[], projectDir: string | undefined): void {
   //   2. STALE-BY-PROGRESS - only emit `parked` while `Parked At Stage` still
   //      equals `Current Stage`. If the workflow has advanced past the parked
   //      slug (a stale marker), ignore it and fall through to the normal route.
+  // A change the person typed to the parked work's plan (another scope, stages
+  // to skip or add, a reshape) is made as a typed setting is, and the work
+  // stays parked: answering it with the park would drop it.
+  const parkedPlanChange = stateContent !== null && (
+    (flags.scope !== undefined && flags.scope !== (getField(stateContent, "Scope") ?? "").trim()) ||
+    flags.planChanges !== undefined || Boolean(flags.compose || flags.newScope || flags.report)
+  );
   if (
     stateContent &&
     !unitScope &&
@@ -7326,6 +7346,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     !flags.stage &&
     !flags.phase &&
     !flags.review &&
+    !parkedPlanChange &&
     !flags.newIntent &&
     (getField(stateContent, "Parked") ?? "").trim().length > 0
   ) {
@@ -7665,6 +7686,12 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     // Words typed with a differing scope may be new work or the reason for
     // the change: Branch 9c asks which, so they are never dropped.
     const scopeWithWords = Boolean(flags.intent) && !planChanges && !flags.resume;
+    // Parked work stays parked through the change: the line the person reads
+    // also says so, and how to pick the work back up.
+    const stillParked = !unitScope && parkedWhereItStands(stateContent) ? stillParkedLine() : null;
+    const verbatimThenStop = stillParked === null
+      ? "print its output verbatim and stop."
+      : `print its output verbatim followed by "${stillParked}", and stop.`;
     if (
       flags.scope &&
       validScopes().has(flags.scope) &&
@@ -7674,8 +7701,8 @@ function routeNext(args: string[], projectDir: string | undefined): void {
       const parts = [`--scope ${scopeArg(flags.scope)}`];
       for (const modifier of modifiers) parts.push(`--${modifier}`);
       const command = `${aidlcDispatcherInvocation("scope change")} ${parts.join(" ")}`;
-      emit(planChanges ? planChangeDirective(planChanges, command, null, planApprovalAskIsOpen(pd)) : keptWhilePlanWaits(
-        turnEndingPrint(`Run \`${command}\` to change scope, then print its output verbatim and stop.`),
+      emit(planChanges ? planChangeDirective(planChanges, command, null, planApprovalAskIsOpen(pd), stillParked) : keptWhilePlanWaits(
+        turnEndingPrint(`Run \`${command}\` to change scope, then ${verbatimThenStop}`),
         planApprovalAskIsOpen(pd),
       ));
       return;
@@ -7688,14 +7715,14 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     // same-as-current --scope: no sibling modifier may be silently discarded.
     if (modifiers.length > 0 && !describedWork) {
       const command = configSetCommand(modifiers);
-      emit(planChanges ? planChangeDirective(planChanges, command, plan, planApprovalAskIsOpen(pd)) : keptWhilePlanWaits(
-        turnEndingPrint(`Run \`${command}\` to update the configuration, then print its output verbatim and stop.`),
+      emit(planChanges ? planChangeDirective(planChanges, command, plan, planApprovalAskIsOpen(pd), stillParked) : keptWhilePlanWaits(
+        turnEndingPrint(`Run \`${command}\` to update the configuration, then ${verbatimThenStop}`),
         planApprovalAskIsOpen(pd),
       ));
       return;
     }
     if (planChanges) {
-      emit(planChangeDirective(planChanges, null, plan, planApprovalAskIsOpen(pd)));
+      emit(planChangeDirective(planChanges, null, plan, planApprovalAskIsOpen(pd), stillParked));
       return;
     }
     // Only a setting the hook already applied was typed: the command is done,
@@ -11500,9 +11527,12 @@ function planChangeDirective(
   // The code plan's question is open: it stays the open step, so what the
   // person says next is kept as their answer to it.
   planWaits = false,
+  // Parked work stays parked: the one line ends by saying so.
+  stillParked: string | null = null,
 ): PrintDirective {
   const kept = (directive: PrintDirective): PrintDirective => keptWhilePlanWaits(directive, planWaits);
   const end = " Then stop.";
+  const parkedTail = stillParked === null ? "" : ` ${stillParked}`;
   // A stage the plan already skips or runs is no change: it is said, not sent
   // to recompose, so the undo line names only what changed. After a scope
   // change (plan null) the new plan is not known here, so every flip is sent.
@@ -11520,7 +11550,7 @@ function planChangeDirective(
   if (skip.length === 0 && add.length === 0) {
     return kept(turnEndingPrint(
       `${before ? `Run \`${before}\` and print its output verbatim, then tell` : "Tell"} the person in one line: ` +
-        `"${noted} The plan is unchanged."${end}`,
+        `"${noted} The plan is unchanged.${parkedTail}"${end}`,
     ));
   }
   const flips = (skipped: string[], added: string[]): string => [
@@ -11539,7 +11569,7 @@ function planChangeDirective(
       "If a command refuses, tell the person in plain words why it could not, and the way it names to do it " +
       "instead, then stop. " +
       `Otherwise tell the person in one line: "${summary.charAt(0).toUpperCase()}${summary.slice(1)}. ` +
-      `To undo it, type \`${entrySkillInvocation()} ${flips(add, skip)}\`.${noted ? ` ${noted}` : ""}"${end}`,
+      `To undo it, type \`${entrySkillInvocation()} ${flips(add, skip)}\`.${noted ? ` ${noted}` : ""}${parkedTail}"${end}`,
   ));
 }
 
