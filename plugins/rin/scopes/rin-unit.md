@@ -33,7 +33,7 @@ Each unit becomes its own record under this scope. It enters the pipeline at Gat
 - **The unit is born with the engine's own verb**, with the parent line first in `--arguments`:
 
   ```
-  bun .claude/tools/aidlc-utility.ts intent-create --scope rin-unit --label "<unit label>" \
+  bun {{HARNESS_DIR}}/tools/aidlc-utility.ts intent-create --scope rin-unit --label "<unit label>" \
     --arguments "Unit of <parent record dir>: <unit as the parent's rin-components marks it>. <what this unit delivers>"
   ```
 

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { env, stdin } from "node:process";
 import { fileURLToPath } from "node:url";
+import { gateToolsDirectoryOf, isCompletionReport } from "./rin-gate-invocation.ts";
 import { appendGateRun } from "../tools/rin-harness-gate-runs.ts";
 
 type HookInput = {
@@ -40,8 +41,6 @@ type AuditOutcome =
       readonly reason: string;
     };
 
-const REPORT_COMPLETION = /aidlc-orchestrate\.ts\s+report\b/;
-const COMPLETION_RESULT = /--result\s+(approved|completed)\b/;
 const BYPASS_TOKEN = "AIDLC_CONSTITUTION_BYPASS=1";
 const MAX_FINDINGS_SHOWN = 8;
 // A fresh worktree's FIRST spawn pays bun's cold-start cost (transpile-cache warm,
@@ -287,14 +286,18 @@ const runVerdictTool = ({
   auditRoot,
   windows,
   ports,
+  hookDirectory = hookDir,
+  assetExists = existsSync,
 }: {
   readonly scriptName: string;
   readonly auditRoot: string;
   readonly windows: SpawnWindows;
   readonly ports: VerdictToolPorts;
+  readonly hookDirectory?: string;
+  readonly assetExists?: (path: string) => boolean;
 }): AuditOutcome => {
-  const scriptPath = join(auditRoot, ".claude", "tools", scriptName);
-  if (!existsSync(scriptPath)) {
+  const scriptPath = join(gateToolsDirectoryOf({ hookDirectory, checkoutRoot: auditRoot }), scriptName);
+  if (!assetExists(scriptPath)) {
     return {
       kind: "unavailable",
       scriptName,
@@ -339,7 +342,7 @@ const gatedInvocationFrom = ({
   }
   if (!isShellToolName(input.tool_name)) return null;
   const command = input.tool_input?.command ?? "";
-  if (!(REPORT_COMPLETION.test(command) && COMPLETION_RESULT.test(command))) {
+  if (!isCompletionReport({ command })) {
     return null;
   }
   if (command.includes(BYPASS_TOKEN)) return null;
@@ -506,6 +509,8 @@ if (import.meta.main) {
 }
 
 export {
+  gatedInvocationFrom,
+  runVerdictTool,
   type AuditOutcome,
   type AuditSpawnOutcome,
   resolveSpawnWindows,

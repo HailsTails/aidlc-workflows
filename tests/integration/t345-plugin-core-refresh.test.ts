@@ -17,7 +17,7 @@ const faces: Face[] = [
   { harness: "codex", leaf: ".codex", nativeFile: ".codex/hooks.json", navigationNeedle: "rin-guard-navigation" },
 ];
 const scratch = mkdtempSync(join(tmpdir(), "aidlc-t345-"));
-const navigationTrustHash = `sha256:${createHash("sha256").update('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"bun .codex/tools/aidlc.ts engine adapter codex rin-guard-navigation","timeout":600,"type":"command"}]}').digest("hex")}`;
+const navigationTrustHash = `sha256:${createHash("sha256").update('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"bun .codex/tools/aidlc.ts engine adapter codex rin-guard-navigation","timeout":600,"type":"command"}],"matcher":"Bash"}').digest("hex")}`;
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 

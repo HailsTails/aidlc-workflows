@@ -70,6 +70,7 @@ import {
 import {
   mergedPatchContextOf,
   patchWriteTargetsOf,
+  runPluginPatchGuards,
 } from "./aidlc-codex-patch-context.ts";
 
 import { normalizeCodexDispatchTool } from "./aidlc-codex-dispatch-tool.ts";
@@ -930,20 +931,16 @@ switch (target) {
     // does not recognise and allows the whole patch.
     if ((codex.tool_name ?? "") === "apply_patch") {
       const command = (codex.tool_input?.command as string) ?? "";
-      for (const f of patchedFiles(command)) {
-        const fanned = runCoreWithStderr(
-          hookFile,
-          JSON.stringify({
-            hook_event_name: codex.hook_event_name ?? "PreToolUse",
-            tool_name: f.tool,
-            tool_input: { file_path: f.path },
-          }),
-        );
-        if (fanned.code === 2) {
-          persistResponse(fanned.stdout, 2, fanned.stderr);
-          process.stderr.write(fanned.stderr);
-          return 2;
-        }
+      const denied = runPluginPatchGuards({
+        command,
+        projectDir,
+        event: codex.hook_event_name ?? "PreToolUse",
+        dispatch: (payload) => runCoreWithStderr(hookFile, payload),
+      });
+      if (denied) {
+        persistResponse(denied.stdout, 2, denied.stderr);
+        process.stderr.write(denied.stderr);
+        return 2;
       }
       persistResponse("", 0);
       return 0;

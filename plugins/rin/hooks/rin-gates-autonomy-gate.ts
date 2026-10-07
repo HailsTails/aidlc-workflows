@@ -73,6 +73,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { env, stdin } from "node:process";
 import { fileURLToPath } from "node:url";
+import { gateScopeGridPathOf, isCompletionReport } from "./rin-gate-invocation.ts";
 import {
   phaseOfGate,
   reviewVerdictSegments,
@@ -214,8 +215,6 @@ type BindingReadFailure =
     }
   | { readonly kind: "binding-absent-and-no-head-sha" };
 
-const REPORT_COMPLETION = /aidlc-orchestrate\.ts\s+report\b/;
-const COMPLETION_RESULT = /--result\s+(approved|completed)\b/;
 // M1: the bypass is an env var (an operator override), not a substring of
 // the command — a substring match let any command merely CONTAINING the token
 // pass, and left no trace. Honouring it emits a loud stderr marker.
@@ -234,7 +233,6 @@ const ACCEPTED_VERDICT_EMITTERS: readonly string[] = [
 ];
 const RIN_GATES_SCOPE = "rin-gates";
 const GATE_5_STAGE = "rin-gate-5-review-cycle";
-const SCOPE_GRID_SEGMENTS = [".claude", "tools", "data", "scope-grid.json"];
 
 // Test seams (hermetic selftest — never spawns real git): RIN_GATES_SPACE
 // overrides the space; under RIN_GATES_TEST_MODE=1 ONLY, RIN_GATES_HEAD_SHA
@@ -391,7 +389,7 @@ const gatedInvocationFrom = ({
   }
   if (!isShellToolName(input.tool_name)) return null;
   const command = input.tool_input?.command ?? "";
-  if (!(REPORT_COMPLETION.test(command) && COMPLETION_RESULT.test(command))) {
+  if (!isCompletionReport({ command })) {
     return null;
   }
   return input;
@@ -805,7 +803,7 @@ type ScopeCoverage =
   | { readonly kind: "indeterminate"; readonly reason: string };
 
 const gridPathFor = (checkoutRoot: string): string =>
-  join(checkoutRoot, ...SCOPE_GRID_SEGMENTS);
+  gateScopeGridPathOf({ hookDirectory: hookDir, checkoutRoot });
 
 const parsedGridFrom = (path: string): unknown => {
   if (!existsSync(path)) return undefined;
@@ -980,6 +978,7 @@ if (import.meta.main) {
 }
 
 export {
+  gatedInvocationFrom,
   type BindingReadFailure,
   bindingOf,
   phaseOfGate,

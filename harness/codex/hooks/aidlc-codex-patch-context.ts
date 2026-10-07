@@ -112,3 +112,41 @@ export function mergedPatchContextOf(coreStdouts: readonly string[]): string {
     hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: merged },
   })}\n`;
 }
+
+export function patchMutationTargetsOf(input: {
+  readonly command: string;
+  readonly projectDir: string;
+}): readonly PatchWriteTarget[] {
+  return input.command.split(/\r?\n/).flatMap((line) => {
+    const file = FILE_HEADER.exec(line);
+    const move = MOVE_HEADER.exec(line);
+    return file
+      ? [{ path: projectPathOf(file[2], input.projectDir), tool: file[1] === "Add" ? "Write" as const : "Edit" as const }]
+      : move
+        ? [{ path: projectPathOf(move[1], input.projectDir), tool: "Edit" as const }]
+        : [];
+  });
+}
+
+export interface PatchGuardOutcome {
+  readonly code: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+export function runPluginPatchGuards(input: {
+  readonly command: string;
+  readonly projectDir: string;
+  readonly event: string;
+  readonly dispatch: (payload: string) => PatchGuardOutcome;
+}): PatchGuardOutcome | null {
+  const targets = input.event === "PostToolUse"
+    ? patchWriteTargetsOf(input)
+    : patchMutationTargetsOf(input);
+  return targets.reduce<PatchGuardOutcome | null>((denial, target) =>
+    denial ?? ((outcome) => outcome.code === 2 ? outcome : null)(input.dispatch(JSON.stringify({
+      hook_event_name: input.event,
+      tool_name: target.tool,
+      tool_input: { file_path: target.path },
+    }))), null);
+}
