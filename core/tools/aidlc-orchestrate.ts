@@ -918,8 +918,11 @@ function sayPendingPersonLines(requested: Directive, transported: Directive): ((
 
 function prepareEmission(directive: Directive): PreparedEmission {
   const requested = directive;
-  // Read before the notices below can copy the directive.
-  const endsTurn = directive.kind === "ask" || turnEndingPrints.has(directive);
+  // Read before the notices below can copy the directive. A guard-recovery
+  // ask whose ways on are the conductor's own work (agent_work) is no question
+  // for the person: the turn goes on, and the conductor carries them out.
+  const endsTurn = (directive.kind === "ask" && (directive as { agent_work?: unknown }).agent_work !== true) ||
+    turnEndingPrints.has(directive);
   if (
     directive.kind === "run-stage" && directive.construction_policy &&
     directive.gate === false
@@ -12761,7 +12764,8 @@ function remedyRepeatsPreflightedAction(
 // The ask for a refusal the router derived itself (a review request the wave
 // cannot make, a summary confirmation the Unit lacks). Always an ask, never an
 // error directive. The streak is the same one the enforcing tool keeps; an
-// observer reads it without writing.
+// observer reads it as it stands without writing, so a probe of an unchanged
+// refusal is the ask the agent holds, not a repeat put to the person.
 function routedRefusalDirective(
   projectDir: string,
   routed: RoutedGuardRefusal,
@@ -12772,6 +12776,7 @@ function routedRefusalDirective(
         routed.refusal,
         routed.attempt,
         routed.resources,
+        true,
       )
     : recordGuardRefusal(
         projectDir,
