@@ -1,0 +1,266 @@
+{
+  "provenance": {
+    "evidenceKind": "source-derived native PreToolUse contract; not captured command-hook stdin",
+    "upstream": "https://github.com/openai/codex",
+    "versions": {
+      "0.153.4": {
+        "tag": "rust-v0.153.4",
+        "tagObject": {
+          "sha": "042fb41b7c813ac7999105e886b2b7aa715b5081",
+          "type": "tag",
+          "url": "https://api.github.com/repos/openai/codex/git/tags/042fb41b7c813ac7999105e886b2b7aa715b5081"
+        },
+        "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a"
+      },
+      "0.160.0": {
+        "tag": "rust-v0.160.0",
+        "tagObject": {
+          "sha": "79b1b666f2e8551f8abbbca34957227f67f3f553",
+          "type": "tag",
+          "url": "https://api.github.com/repos/openai/codex/git/tags/79b1b666f2e8551f8abbbca34957227f67f3f553"
+        },
+        "commit": "a956835d020762cb2b570053af06f643a11c0ecc"
+      }
+    },
+    "sources": [
+      {
+        "version": "0.153.4",
+        "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+        "path": "core/src/tools/registry.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/3d2ee51ca2d5db578f328aa75e20aa22c0197c9a/codex-rs/core/src/tools/registry.rs",
+        "bytes": 30218,
+        "sha256": "f90bfac6c021ffa0aadce1208bd7d13679915ac2b1bfcec227e9648e9992343a"
+      },
+      {
+        "version": "0.153.4",
+        "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+        "path": "core/src/tools/hook_names.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/3d2ee51ca2d5db578f328aa75e20aa22c0197c9a/codex-rs/core/src/tools/hook_names.rs",
+        "bytes": 2498,
+        "sha256": "ab0f235f27bc063feb6468d8d0d57201a08538798cfe45dd8008eab60d991553"
+      },
+      {
+        "version": "0.153.4",
+        "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+        "path": "core/src/tools/mod.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/3d2ee51ca2d5db578f328aa75e20aa22c0197c9a/codex-rs/core/src/tools/mod.rs",
+        "bytes": 4986,
+        "sha256": "0c8ec9324f67053cf7c14dac5d53504c9e8c370b84cb2323fdb0239e674572d7"
+      },
+      {
+        "version": "0.153.4",
+        "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+        "path": "hooks/src/events/pre_tool_use.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/3d2ee51ca2d5db578f328aa75e20aa22c0197c9a/codex-rs/hooks/src/events/pre_tool_use.rs",
+        "bytes": 28591,
+        "sha256": "11a421933eac6f78749470b221c4b30eeb71e5cd75e8f091f06067da7c1652e6"
+      },
+      {
+        "version": "0.160.0",
+        "commit": "a956835d020762cb2b570053af06f643a11c0ecc",
+        "path": "core/src/tools/registry.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/core/src/tools/registry.rs",
+        "bytes": 31508,
+        "sha256": "d2793cddbdc34ad8d849a991dafd5871a3ce8ded4b33c446b2c1934e1cee526b"
+      },
+      {
+        "version": "0.160.0",
+        "commit": "a956835d020762cb2b570053af06f643a11c0ecc",
+        "path": "core/src/tools/hook_names.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/core/src/tools/hook_names.rs",
+        "bytes": 2498,
+        "sha256": "ab0f235f27bc063feb6468d8d0d57201a08538798cfe45dd8008eab60d991553"
+      },
+      {
+        "version": "0.160.0",
+        "commit": "a956835d020762cb2b570053af06f643a11c0ecc",
+        "path": "core/src/tools/mod.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/core/src/tools/mod.rs",
+        "bytes": 5240,
+        "sha256": "510635e3ae67e4c63e1feaf6d645f25dc2590f54391645dddeec0a84c1d17616"
+      },
+      {
+        "version": "0.160.0",
+        "commit": "a956835d020762cb2b570053af06f643a11c0ecc",
+        "path": "hooks/src/events/pre_tool_use.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/hooks/src/events/pre_tool_use.rs",
+        "bytes": 28591,
+        "sha256": "11a421933eac6f78749470b221c4b30eeb71e5cd75e8f091f06067da7c1652e6"
+      },
+      {
+        "version": "0.153.4",
+        "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+        "path": "protocol/src/tool_name.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/3d2ee51ca2d5db578f328aa75e20aa22c0197c9a/codex-rs/protocol/src/tool_name.rs",
+        "bytes": 2523,
+        "sha256": "2d102304a638001c46ffd5bd31fba05960b88a870e3db5b163b87eb9652c65ac"
+      },
+      {
+        "version": "0.153.4",
+        "commit": "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a",
+        "path": "core/src/hook_runtime.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/3d2ee51ca2d5db578f328aa75e20aa22c0197c9a/codex-rs/core/src/hook_runtime.rs",
+        "bytes": 48837,
+        "sha256": "87b678af0f9ea87e0de6041fe82f9f90315b0b18c10524731deba9b7f9841f1e"
+      },
+      {
+        "version": "0.160.0",
+        "commit": "a956835d020762cb2b570053af06f643a11c0ecc",
+        "path": "protocol/src/tool_name.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/protocol/src/tool_name.rs",
+        "bytes": 2523,
+        "sha256": "2d102304a638001c46ffd5bd31fba05960b88a870e3db5b163b87eb9652c65ac"
+      },
+      {
+        "version": "0.160.0",
+        "commit": "a956835d020762cb2b570053af06f643a11c0ecc",
+        "path": "core/src/hook_runtime.rs",
+        "url": "https://raw.githubusercontent.com/openai/codex/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/core/src/hook_runtime.rs",
+        "bytes": 50072,
+        "sha256": "579a4cab9d82c9aaba7f925f2188fc14fa6940948e7f30ece02fdb24b20a2ae1"
+      }
+    ],
+    "derivation": [
+      "ToolName.is_default_namespace treats absent, empty and functions as default.",
+      "function_hook_tool_name canonicalizes default and multi_agent_v1 spawn_agent to spawn_agent with Agent matcher alias.",
+      "Other function names cross flat_tool_name, which appends namespace then name with no delimiter.",
+      "hook_runtime copies HookToolName.name into PreToolUseRequest; command_input_json copies request.tool_name unchanged."
+    ],
+    "empiricalLimit": "A native V2 Responses event exposed namespace collaboration/name spawn_agent. No V2 command-hook stdin capture, exact source-to-binary build attestation or live UI comparison is available."
+  },
+  "nativeFunctionCases": [
+    {
+      "namespace": null,
+      "name": "spawn_agent",
+      "hookName": "spawn_agent",
+      "matcherAliases": [
+        "Agent"
+      ],
+      "expectedMatch": true
+    },
+    {
+      "namespace": "functions",
+      "name": "spawn_agent",
+      "hookName": "spawn_agent",
+      "matcherAliases": [
+        "Agent"
+      ],
+      "expectedMatch": true
+    },
+    {
+      "namespace": "multi_agent_v1",
+      "name": "spawn_agent",
+      "hookName": "spawn_agent",
+      "matcherAliases": [
+        "Agent"
+      ],
+      "expectedMatch": true
+    },
+    {
+      "namespace": "collaboration",
+      "name": "spawn_agent",
+      "hookName": "collaborationspawn_agent",
+      "matcherAliases": [],
+      "expectedMatch": true
+    },
+    {
+      "namespace": "collaboration",
+      "name": "wait_agent",
+      "hookName": "collaborationwait_agent",
+      "matcherAliases": [],
+      "expectedMatch": false
+    },
+    {
+      "namespace": "other",
+      "name": "spawn_agent",
+      "hookName": "otherspawn_agent",
+      "matcherAliases": [],
+      "expectedMatch": false
+    },
+    {
+      "namespace": "mcp__server",
+      "name": "spawn_agent",
+      "hookName": "mcp__serverspawn_agent",
+      "matcherAliases": [],
+      "expectedMatch": false
+    }
+  ],
+  "normalizationCases": [
+    {
+      "eventName": "PreToolUse",
+      "toolName": "spawn_agent",
+      "expectedName": "spawn_agent"
+    },
+    {
+      "eventName": "PreToolUse",
+      "toolName": "collaborationspawn_agent",
+      "expectedName": "spawn_agent"
+    },
+    {
+      "eventName": "PreToolUse",
+      "toolName": "collaboration.spawn_agent",
+      "expectedName": "collaboration.spawn_agent"
+    },
+    {
+      "eventName": "PreToolUse",
+      "toolName": "collaborationwait_agent",
+      "expectedName": "collaborationwait_agent"
+    },
+    {
+      "eventName": "PreToolUse",
+      "toolName": "otherspawn_agent",
+      "expectedName": "otherspawn_agent"
+    },
+    {
+      "eventName": "PreToolUse",
+      "toolName": "mcp__serverspawn_agent",
+      "expectedName": "mcp__serverspawn_agent"
+    },
+    {
+      "eventName": "PreToolUse",
+      "toolName": "mcp__server__spawn_agent",
+      "expectedName": "mcp__server__spawn_agent"
+    },
+    {
+      "eventName": "PostToolUse",
+      "toolName": "collaborationspawn_agent",
+      "expectedName": "collaborationspawn_agent"
+    },
+    {
+      "eventName": "SubagentStop",
+      "toolName": "collaborationspawn_agent",
+      "expectedName": "collaborationspawn_agent"
+    },
+    {
+      "eventName": "Stop",
+      "toolName": "collaborationspawn_agent",
+      "expectedName": "collaborationspawn_agent"
+    }
+  ],
+  "foreignNameCases": [
+    {
+      "toolName": "collaboration.spawn_agent",
+      "expectedMatch": false
+    },
+    {
+      "toolName": "other.spawn_agent",
+      "expectedMatch": false
+    },
+    {
+      "toolName": "collaborationXspawn_agent",
+      "expectedMatch": false
+    },
+    {
+      "toolName": "mcp__server__spawn_agent",
+      "expectedMatch": false
+    },
+    {
+      "toolName": "spawn_agent_suffix",
+      "expectedMatch": false
+    },
+    {
+      "toolName": "prefixcollaborationspawn_agent",
+      "expectedMatch": false
+    }
+  ]
+}

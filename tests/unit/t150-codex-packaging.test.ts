@@ -325,7 +325,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     expect(wiring.hooks.PreToolUse?.filter((group) =>
       group.hooks.some((hook) => hook.command.endsWith(" adapter codex deliver-stage-rules")),
     )).toEqual([{
-      matcher: "^(spawn_agent|collaboration\\.spawn_agent)$",
+      matcher: "^(spawn_agent|collaborationspawn_agent)$",
       hooks: [{ command: "bun .codex/tools/aidlc.ts engine adapter codex deliver-stage-rules" }],
     }]);
   });

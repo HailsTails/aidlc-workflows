@@ -562,7 +562,7 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
     }
   });
 
-  describe("native V2 dispatch compatibility", () => {
+  describe("source-derived native dispatch compatibility", () => {
     let dir: string;
     beforeEach(() => {
       dir = scratchProject(true);
@@ -571,17 +571,23 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       rmSync(dir, { recursive: true, force: true });
     });
 
-    test("native V2 dispatch delivers stage rules without losing task, role or fork fields", () => {
+    test.each([
+      { forkTurns: "all" },
+      { forkTurns: "none" },
+      { forkTurns: "3" },
+    ])("source-derived V2 hook dispatch preserves fork_turns=$forkTurns and execution fields", ({ forkTurns }) => {
       cpSync(join(REPO_ROOT, "dist", "codex", "aidlc"), join(dir, "aidlc"), { recursive: true });
       const response = runAdapter(dir, "deliver-stage-rules", {
         hook_event_name: "PreToolUse",
         cwd: dir,
         agent_type: "aidlc-quality-agent",
-        tool_name: "collaboration.spawn_agent",
+        tool_name: "collaborationspawn_agent",
         tool_input: {
           task_name: "architecture_reviewer_probe",
           agent_type: "aidlc-product-agent",
-          fork_turns: "none",
+          fork_turns: forkTurns,
+          model: "fixture-model",
+          reasoning_effort: "medium",
           message: "Run .codex/aidlc-common/stages/inception/user-stories.md.",
         },
       }, { TMPDIR: dir });
@@ -594,7 +600,9 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
           updatedInput: {
             task_name: "architecture_reviewer_probe",
             agent_type: "aidlc-product-agent",
-            fork_turns: "none",
+            fork_turns: forkTurns,
+            model: "fixture-model",
+            reasoning_effort: "medium",
             message: expect.stringContaining("AIDLC_DISPATCH_RULES_BEGIN"),
           },
         },
@@ -603,12 +611,53 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       expect(response.stdout).toContain("Run .codex/aidlc-common/stages/inception/user-stories.md.");
     });
 
-    test("native V2 developer dispatch reaches plan refusal and reviewer dispatch remains allowed", () => {
+    test("legacy V1 named-role item dispatch preserves fork_context=false and execution fields", () => {
+      cpSync(join(REPO_ROOT, "dist", "codex", "aidlc"), join(dir, "aidlc"), { recursive: true });
+      const response = runAdapter(dir, "deliver-stage-rules", {
+        hook_event_name: "PreToolUse",
+        cwd: dir,
+        tool_name: "spawn_agent",
+        tool_input: {
+          agent_type: "aidlc-product-agent",
+          fork_context: false,
+          model: "fixture-model",
+          reasoning_effort: "medium",
+          items: [{
+            type: "text",
+            text: "Run .codex/aidlc-common/stages/inception/user-stories.md.",
+          }],
+        },
+      }, { TMPDIR: dir });
+      expect(response.code).toBe(0);
+      const output: unknown = JSON.parse(response.stdout);
+      expect(output).toEqual({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+          updatedInput: {
+            agent_type: "aidlc-product-agent",
+            fork_context: false,
+            model: "fixture-model",
+            reasoning_effort: "medium",
+            items: [{
+              type: "text",
+              text: "Run .codex/aidlc-common/stages/inception/user-stories.md.",
+            }, {
+              type: "text",
+              text: expect.stringContaining("AIDLC_DISPATCH_RULES_BEGIN"),
+            }],
+          },
+        },
+      });
+      expect(response.stdout).toContain("Run .codex/aidlc-common/stages/inception/user-stories.md.");
+    });
+
+    test("source-derived V2 developer dispatch reaches plan refusal and reviewer dispatch remains allowed", () => {
       seedUnapprovedCodeGeneration(dir, "todo-core");
       const denied = runAdapter(dir, "plan-approval-guard", {
         hook_event_name: "PreToolUse",
         cwd: dir,
-        tool_name: "collaboration.spawn_agent",
+        tool_name: "collaborationspawn_agent",
         tool_input: {
           task_name: "developer_probe",
           agent_type: "aidlc-developer-agent",
@@ -621,7 +670,7 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       const allowed = runAdapter(dir, "plan-approval-guard", {
         hook_event_name: "PreToolUse",
         cwd: dir,
-        tool_name: "collaboration.spawn_agent",
+        tool_name: "collaborationspawn_agent",
         tool_input: {
           task_name: "reviewer_probe",
           agent_type: "aidlc-quality-agent",

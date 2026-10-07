@@ -26,9 +26,9 @@ interface KiroIdeMatcherRegistration extends MatcherRegistration {
 const CODEX_FIXTURE_GAPS = [
   {
     event: "PreToolUse",
-    matcher: "^(spawn_agent|collaboration\\.spawn_agent)$",
+    matcher: "^(spawn_agent|collaborationspawn_agent)$",
     reason:
-      "The legacy dispatch registration was verified on Codex 0.142.5; native 0.153.4 V2 tool events establish collaboration.spawn_agent, but this fixture has no dispatch hook payload capture yet",
+      "Official native Codex 0.153.4/0.160.0 registry and flat_tool_name source derive collaborationspawn_agent; aidlc-codex-dispatch-tool.fixture.json records immutable source provenance. No V2 command-hook stdin capture exists; dotted Responses display is not hook payload evidence",
   },
   {
     event: "PostToolUse",
