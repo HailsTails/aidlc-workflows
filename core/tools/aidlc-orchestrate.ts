@@ -464,7 +464,6 @@ import {
   codeGenerationIssuance,
   codeGenerationResumeNarration,
   codeGenerationStartNarration,
-  isApprovedPlanUndoRequest,
   promotableTestingPosture,
 } from "./aidlc-testing-posture.ts";
 import {
@@ -2740,7 +2739,7 @@ function openQuestionReplyDirective(stage: string, block: string, requestId: str
 // Prose while the engine's code plan question is open: the conductor reads
 // whether it answers that question (or, while the person edits the files,
 // says they are done), the same split as openQuestionReplyDirective.
-function openPlanQuestionReplyDirective(editing: boolean, requestId: string): PrintDirective {
+function openPlanQuestionReplyDirective(editing: boolean, requestId: string, undo = ""): PrintDirective {
   const orchestrate = aidlcToolInvocation("orchestrate");
   const answer = editing
     ? `The person is editing the code plan files themselves. If their reply says they are done, run bare \`${orchestrate} next\`.`
@@ -2748,7 +2747,7 @@ function openPlanQuestionReplyDirective(editing: boolean, requestId: string): Pr
       `they made with \`${aidlcToolInvocation("log")} answer --stage code-generation --checkpoint plan-approval ` +
       `--details "<their choice>"\`, then run bare \`${orchestrate} next\`.`;
   return printDirective(
-    `${answer} If it is about something else, such as new work or a change to the plan, run ` +
+    `${undo}${answer} If it is about something else, such as new work or a change to the plan, run ` +
       `\`${orchestrate} next --request ${requestId}\` and follow what it returns: the engine kept their words and asks ` +
       "them where that work belongs. If you cannot tell which it is, ask the person in one short question and follow " +
       "their answer.",
@@ -2792,24 +2791,24 @@ function withdrawRoutedWords(projectDir: string, question: StoredQuestion): void
   }
 }
 
-// The words the change line gives the person ("go back to the approved
-// plan"), said in any chat while a plan they approved has changed and is not
-// built yet: the restore of that plan, as the stage rules name it, then next.
-function approvedPlanUndoDirective(projectDir: string, stateContent: string): PrintDirective | null {
+// A plan the person approved changed before the build, and the change line
+// asked whether to go back to it: their words, in any chat and in any wording,
+// may say yes. The conductor reads that first; the restore itself needs their
+// word on record. Empty when no plan they approved changed.
+function approvedPlanUndoReading(projectDir: string, stateContent: string): string {
   const marker = readActiveDirectiveMarker(projectDir, stateContent);
-  if (marker?.version !== 2 || marker.stage !== "code-generation") return null;
+  if (marker?.version !== 2 || marker.stage !== "code-generation") return "";
   const issued = codeGenerationIssuance(marker, true);
-  if (issued === null) return null;
+  if (issued === null) return "";
   const units = issued.kind === "run-stage" ? [issued.unit ?? null] : issued.units;
   const changed = units.filter((unit) => approvedPlanChangeLine(projectDir, { unit }, issued) !== null);
-  if (changed.length === 0) return null;
+  if (changed.length === 0) return "";
   const posture = aidlcToolInvocation("testing-posture");
   const restores = changed.map((unit) =>
     `\`${posture} restore ${unit === null ? "--stage-level" : `--unit ${shellArg(unit)}`}\``);
-  return printDirective(
-    `The person asked to go back to the plan they approved. Run ${restores.join(", then ")}, say the line it ` +
-      `prints, then run bare \`${aidlcToolInvocation("orchestrate")} next\`.`,
-  );
+  return "A plan the person approved changed before the build, and they were asked whether to go back to it. If " +
+    `their words say to go back to the plan they approved, run ${restores.join(", then ")}, say the line it prints, ` +
+    `then run bare \`${aidlcToolInvocation("orchestrate")} next\`. Otherwise: `;
 }
 
 // Words while a workflow is active may ask to redo, jump to a stage, or start
@@ -2817,10 +2816,10 @@ function approvedPlanUndoDirective(projectDir: string, stateContent: string): Pr
 // change to this work: the conductor reads which, the same split as
 // openGateReplyDirective. The person's words never travel in the re-entry
 // report; the engine kept them for the other reading.
-function reentryReplyDirective(requestId: string): PrintDirective {
+function reentryReplyDirective(requestId: string, undo = ""): PrintDirective {
   const orchestrate = aidlcToolInvocation("orchestrate");
   return printDirective(
-    "Work is in progress, and the person's words may ask to redo, jump to a stage, or start fresh. Read them. If " +
+    `${undo}Work is in progress, and the person's words may ask to redo, jump to a stage, or start fresh. Read them. If ` +
       `they do, run \`${orchestrate} report --result resumed --choice <redo|jump|fresh>\` with the choice you read ` +
       "from their words (add `--target <stage slug>` for the stage they named, and `--unit <unit>` or `--every-unit` " +
       "when they named a Unit or said every Unit), then follow the print it returns. If they are about something " +
@@ -8255,13 +8254,10 @@ function routeNext(args: string[], projectDir: string | undefined): void {
     flags.intent && !flags.scope && !flags.positionalScope && !flags.resume && question === undefined &&
     !isTeamUnitOwnership(stateContent)
   ) {
-    // The words the change line told the person to say undo the change, in
-    // any chat: never a question about where they belong.
-    const undo = isApprovedPlanUndoRequest(flags.intent) ? approvedPlanUndoDirective(pd, stateContent) : null;
-    if (undo !== null) {
-      emit(undo);
-      return;
-    }
+    // While a plan the person approved changed before the build, their words
+    // may say to go back to it, in any chat: read before the rest, never a
+    // question about where they belong.
+    const undo = approvedPlanUndoReading(pd, stateContent);
     // The engine's own code plan question takes the reply from any chat, so
     // words beside it ("approve the code plan", typed in a new chat) are read
     // as its answer first, never asked about as new work.
@@ -8299,7 +8295,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
           pd, flags.intent, "", "routing", { space: selection.space, targets: routingTargets() }, false, undefined,
           undefined, routingSettings(carriedRoutingFlags(flags)),
         );
-        emit(openPlanQuestionReplyDirective(planQuestion.editing, words.id));
+        emit(openPlanQuestionReplyDirective(planQuestion.editing, words.id, undo));
         return;
       }
     }
@@ -8333,7 +8329,7 @@ function routeNext(args: string[], projectDir: string | undefined): void {
         pd, flags.intent, "", "routing", { space: selection.space, targets: routingTargets() }, false, undefined,
         undefined, routingSettings(carriedRoutingFlags(flags)),
       );
-      emit(reentryReplyDirective(words.id));
+      emit(reentryReplyDirective(words.id, undo));
       return;
     }
   }
@@ -11286,7 +11282,7 @@ function unitMajorReopen(
     ? `\`${aidlcToolInvocation("state")} unpark\`, then `
     : "";
   const backTo = (unit: string, stage: string): string =>
-    ` If they say 'back to ${unit}', run \`next --stage ${stage} --unit ${unit}\`.`;
+    ` If they ask to pick ${unit} up again, run \`next --stage ${stage} --unit ${unit}\`.`;
   // A Unit has reached the target when it finished it, skipped it in this
   // attempt (a jump ahead moved it past), or when the walk has it on a later
   // step of the block (or at its checkpoint, after every step).
@@ -11316,7 +11312,7 @@ function unitMajorReopen(
       const resume = `${aidlcToolInvocation("state")} unit resume --stage ${targetSlug} --unit ${named}`;
       const line = aside && inFlight !== null
         ? `Paused unit ${inFlight} at ${nameOf(aside.stage)} and picked unit ${named} up at ${stageName}. ` +
-          `Say 'back to ${inFlight}' to pick ${inFlight} up again.`
+          `You can pick ${inFlight} up again any time.`
         : `Picked unit ${named} up at ${stageName}.`;
       return {
         kind: "print",
@@ -11365,9 +11361,9 @@ function unitMajorReopen(
   const first = asides[0];
   const line = first
     ? `Paused ${list(asides.map((entry) => `unit ${entry.unit} at ${nameOf(entry.aside.stage)}`))} and reopened ` +
-      `${reopenedText}. Say 'back to ${first.unit}' to pick ${first.unit} up again.${keptLine}`
+      `${reopenedText}. You can pick ${first.unit} up again any time.${keptLine}`
     : `Reopened ${reopenedText}.` +
-      (kept.length > 0 ? `${keptLine} Say 'for every unit' to redo it for ${kept.length === 1 ? kept[0] : "them"} too.` : "");
+      (kept.length > 0 ? `${keptLine} You can redo it for ${kept.length === 1 ? kept[0] : "them"} too.` : "");
   const reopen =
     `${aidlcToolInvocation("jump")} reopen --target ${targetSlug} --stages ${stages.join(",")} --units ${reopened.join(",")} --scope ${scopeArg(scope)}` +
     (flags.change ? " --via change" : "");
@@ -12051,15 +12047,15 @@ function unitChoiceRefusal(stateContent: string, targetSlug: string): string {
   const name = node?.name || targetSlug;
   const why = !node || !isPerUnit(node)
     ? `${name} is done once for all units, so it cannot be redone for one unit. Nothing changed. ` +
-      "Say 'for every unit' to redo it."
+      "Do you want me to redo it for every unit?"
     : readConstructionIteration(stateContent) === "unit-major" && !checkpointPolicyEnabled(stateContent)
       ? `${name} was approved for every unit at its stage approval, so it can only be reopened for every unit. ` +
-        "Nothing changed. Say 'for every unit' to do that."
+        "Nothing changed. Do you want me to reopen it for every unit?"
       : readConstructionIteration(stateContent) === "unit-major"
-        ? `${name} can only be reopened for every unit from here. Nothing changed. Say 'for every unit' to do that.`
+        ? `${name} can only be reopened for every unit from here. Nothing changed. Do you want me to reopen it for every unit?`
         : `${name} can be reopened for one unit only while Construction builds one unit at a time; here it can ` +
-          "only be reopened for every unit. Nothing changed. Say 'for every unit' to do that.";
-  return `Run nothing. Tell the person in one line: "${why}" If they say 'for every unit', ` +
+          "only be reopened for every unit. Nothing changed. Do you want me to reopen it for every unit?";
+  return `Run nothing. Tell the person in one line: "${why}" If they say yes, ` +
     `run \`next --stage ${targetSlug} --every-unit\`.`;
 }
 

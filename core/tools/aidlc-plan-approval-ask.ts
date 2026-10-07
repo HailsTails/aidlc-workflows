@@ -737,7 +737,8 @@ export function routeCodeGenerationPlanApproval(projectDir: string, directive: D
   const states = units.map((unit) => targetState(projectDir, unit, intentId, record, directive, planApprovalOff));
   if (states.every((state) => state.kind === "approved")) {
     // Under a lowered Guard Policy an approved plan that changed before the
-    // build still builds; the person hears what changed and how to go back.
+    // build still builds; the person hears what changed and is asked whether
+    // to go back.
     const approved = withPlanState(directive, { status: "approved" });
     const changed = units.flatMap((unit) => approvedPlanChangeLine(projectDir, { unit }, directive) ?? []);
     if (changed.length > 0) approved.change_notices = [...(approved.change_notices ?? []), ...changed];
@@ -789,8 +790,9 @@ export function routeCodeGenerationPlanApproval(projectDir: string, directive: D
   const reShown = record !== null && record.results === undefined && record.question === question &&
     record.targets.length === askUnits.length && record.targets.every((target) => askUnits.includes(target.unit));
   // Under strict a changed approved plan is asked about again; the question
-  // says first what changed since the person approved it.
-  const changed = askUnits.flatMap((unit) => approvedPlanChangeLine(projectDir, { unit }, directive) ?? []);
+  // says first what changed since the person approved it, and that they can
+  // go back to it.
+  const changed = askUnits.flatMap((unit) => approvedPlanChangeLine(projectDir, { unit }, directive, true) ?? []);
   return planApprovalAskDirective(projectDir, askUnits, {
     question,
     editing: false,
@@ -947,7 +949,7 @@ function planApprovalOffNotice(projectDir: string, units: Array<string | null>, 
   const written = paths.length === 1 ? `Plan written: ${paths[0]}.` : `Plans written: ${paths.join(", ")}.`;
   return `${written} Plan approval (${CHECK_GLOSS["plan-approval"]}) is off for this piece of work ` +
     `(${changeControlSourceLabel(setting.source)}). Starting code generation now. ` +
-    "Do you want to look at the plan and approve it first?";
+    "Do you want me to go over the plan with you?";
 }
 
 /**
