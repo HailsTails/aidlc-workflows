@@ -91,19 +91,33 @@ function tsFiles(dir: string): string[] {
 
 const ALL_SOURCE_FILES = [...tsFiles(TOOLS_DIR), ...tsFiles(HOOKS_DIR)];
 
+function terminalFactoryEvents(text: string): string[] {
+  const live = decommented(text);
+  const importedFactory = /import\s*\{[^}]*\bterminalAuditRowOf\b[^}]*\}\s*from\s*"\.\/aidlc-sensor-verdict\.ts"/.test(live);
+  const terminalEmitter = live.match(/^function emitTerminal\([\s\S]*?(?=^(?:export )?function |$(?![\s\S]))/m)?.[0] ?? "";
+  const wiredFactory = /const row = terminalAuditRowOf\(/.test(terminalEmitter) &&
+    /appendAuditEntryUnlocked\(\s*row\.event\s*,/.test(terminalEmitter);
+  if (!importedFactory || !wiredFactory) return [];
+  const verdict = decommented(readFileSync(join(TOOLS_DIR, "aidlc-sensor-verdict.ts"), "utf-8"));
+  const factory = verdict.match(/^export function terminalAuditRowOf\([\s\S]*?(?=^(?:export )?function |$(?![\s\S]))/m)?.[0] ?? "";
+  return [...factory.matchAll(/event:\s*"([A-Z_]+)"/g)].map((match) => match[1]);
+}
+
 /**
  * has_emission (.sh:40-60): is there a LIVE emission call site for `event` in
- * `text`? Three patterns, on the decommented view:
+ * `text`? Four patterns, on the decommented view:
  *   1. helper(...,"EVENT"...) on one line
  *   2. eventType = ... "EVENT"   (audit-logger ternary)
  *   3. an indented `"EVENT" ,`   line (multi-line helper, literal on own line)
+ *   4. eventType: "EVENT"        (appendAuditEntries batch member)
  */
 function hasEmission(event: string, text: string): boolean {
   const live = decommented(text);
   const p1 = new RegExp(`${EMITTERS}\\([^)]*"${event}"`);
   const p2 = new RegExp(`eventType = [^;]*"${event}"`);
   const p3 = new RegExp(`^[ \\t]+"${event}"[ \\t]*(/\\*[^*]*\\*/)?[ \\t]*,`, "m");
-  return p1.test(live) || p2.test(live) || p3.test(live);
+  const p4 = new RegExp(`eventType:[ \\t]*"${event}"`);
+  return p1.test(live) || p2.test(live) || p3.test(live) || p4.test(live) || terminalFactoryEvents(live).includes(event);
 }
 
 /** Read the emitter taxonomy registry rows from 12-state-machine.md.
@@ -197,10 +211,15 @@ describe("t48 audit event-emitter drift (migrated from t48-audit-event-emitters.
     const emitted = new Set<string>();
     const p1 = new RegExp(`${EMITTERS}\\([^)]*"[A-Z_]+"`, "g");
     const p2 = /eventType = [^;]*"[A-Z_]+"/g;
+    // Object members are appendAuditEntries batch emissions.
+    const p4 = /eventType:[ \t]*"[A-Z_]+"/g;
     const litRe = /"([A-Z_]+)"/;
     const litReG = /"[A-Z_]+"/g;
     for (const f of ALL_SOURCE_FILES) {
       const live = decommented(readFileSync(f, "utf-8"));
+      terminalFactoryEvents(live).forEach((event) => {
+        emitted.add(event);
+      });
       // Pattern 1: helper(...,"EVENT") on one line.
       for (const hit of live.match(p1) ?? []) {
         for (const lit of hit.match(litReG) ?? []) {
@@ -212,6 +231,11 @@ describe("t48 audit event-emitter drift (migrated from t48-audit-event-emitters.
         for (const lit of hit.match(litReG) ?? []) {
           emitted.add(lit.replace(/"/g, ""));
         }
+      }
+      // Pattern 4: appendAuditEntries batch object member.
+      for (const hit of live.match(p4) ?? []) {
+        const lit = hit.match(litRe);
+        if (lit) emitted.add(lit[1]);
       }
       // Pattern 3: multi-line helper — helper-name line opens (no close paren),
       // then the first "EVENT" literal on a following line closes it (.sh:164-175).
@@ -277,7 +301,8 @@ describe("t48 audit event-emitter drift (migrated from t48-audit-event-emitters.
   // function_body (.sh:251-261): the body from the named function's signature
   // to the next top-level function / const-arrow declaration. check_pairing
   // (.sh:271-302): every listed event must appear inside a LIVE emission call
-  // in that body (helper(...,"EVENT") | eventType="EVENT" | indented "EVENT",).
+  // in that body (helper(...,"EVENT") | eventType="EVENT" | indented "EVENT", |
+  // eventType: "EVENT" in an appendAuditEntries batch).
   function functionBody(name: string, file: string): string | null {
     const lines = readFileSync(file, "utf-8").split("\n");
     const sigFn = new RegExp(`^(export +)?(async +)?function ${name}\\(`);
@@ -309,11 +334,13 @@ describe("t48 audit event-emitter drift (migrated from t48-audit-event-emitters.
     const missing: string[] = [];
     for (const event of events) {
       // .sh allows the event literal anywhere inside the emission call (multi-
-      // line tolerant: `([^)]|$)*`), or the ternary, or an indented `"E",`.
+      // line tolerant: `([^)]|$)*`), the ternary, an indented `"E",`, or an
+      // appendAuditEntries batch object member.
       const inCall = new RegExp(`${EMITTERS}\\(([^)]|\\n)*"${event}"`).test(live);
       const inTernary = new RegExp(`eventType = [^;]*"${event}"`).test(live);
       const onOwnLine = new RegExp(`^[ \\t]+"${event}"[ \\t]*,`, "m").test(live);
-      if (!(inCall || inTernary || onOwnLine)) missing.push(event);
+      const inBatch = new RegExp(`eventType:[ \\t]*"${event}"`).test(live);
+      if (!(inCall || inTernary || onOwnLine || inBatch)) missing.push(event);
     }
     return missing;
   }

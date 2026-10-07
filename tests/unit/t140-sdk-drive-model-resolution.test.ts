@@ -1,17 +1,12 @@
 // covers: harness-instrument:sdk-drive-model-resolution
 //
-// Pins the SDK harness' model-source rule without driving a live Claude turn:
-// default to the shipped dist/claude/.claude/settings.json model/env so tests
-// exercise the model configuration users actually receive.
-
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveDriveSdkSettings } from "../harness/sdk-drive.ts";
 
-const SHIPPED_MODEL = "opus[1m]";
-const SHIPPED_OPUS = "global.anthropic.claude-opus-4-8[1m]";
+const HARNESS_DEFAULT_MODEL = "opus[1m]";
 
 function withTempProject(assertions: (projectDir: string) => void): void {
   const projectDir = mkdtempSync(join(tmpdir(), "aidlc-sdk-model-"));
@@ -32,29 +27,31 @@ function writeProjectSettings(
 }
 
 describe("sdk-drive model resolution", () => {
-  test("bare project defaults to the shipped dist model/env", () => {
+  test("bare project uses the test harness model without pinning a provider", () => {
     withTempProject((projectDir) => {
       const resolved = resolveDriveSdkSettings(projectDir);
 
-      expect(resolved.model).toBe(SHIPPED_MODEL);
-      expect(resolved.env.CLAUDE_CODE_USE_BEDROCK).toBe("1");
-      expect(resolved.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(SHIPPED_OPUS);
+      expect(resolved.model).toBe(HARNESS_DEFAULT_MODEL);
+      expect(resolved.modelSource).toBe("harness-default");
+      expect(resolved.env.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
+      expect(resolved.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBeUndefined();
     });
   });
 
-  test("shipped dist settings win over project settings by default", () => {
+  test("project model and provider settings survive the neutral shipped defaults", () => {
     withTempProject((projectDir) => {
       writeProjectSettings(projectDir, {
         model: "sonnet",
         env: {
-          ANTHROPIC_DEFAULT_OPUS_MODEL: "project-opus-should-not-win",
+          ANTHROPIC_DEFAULT_OPUS_MODEL: "consumer-opus",
         },
       });
 
       const resolved = resolveDriveSdkSettings(projectDir);
 
-      expect(resolved.model).toBe(SHIPPED_MODEL);
-      expect(resolved.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(SHIPPED_OPUS);
+      expect(resolved.model).toBe("sonnet");
+      expect(resolved.modelSource).toBe(join(projectDir, ".claude", "settings.json"));
+      expect(resolved.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("consumer-opus");
     });
   });
 
@@ -68,6 +65,7 @@ describe("sdk-drive model resolution", () => {
       });
 
       expect(resolved.model).toBe("sonnet");
+      expect(resolved.modelSource).toBe("option");
       expect(resolved.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("explicit-opus");
     });
   });

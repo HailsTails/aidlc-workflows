@@ -61,11 +61,19 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  invokingCheckoutFromCwd,
   isNonAnswer,
   sessionsDir,
   stateFilePath,
   validSessionId,
 } from "../tools/aidlc-lib.ts";
+import {
+  mergedPatchContextOf,
+  patchWriteTargetsOf,
+  runPluginPatchGuards,
+} from "./aidlc-codex-patch-context.ts";
+
+import { normalizeCodexDispatchTool } from "./aidlc-codex-dispatch-tool.ts";
 
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -191,8 +199,30 @@ if (!process.stdin.isTTY) {
   }
 }
 
+const toolName = normalizeCodexDispatchTool({
+  eventName: codex.hook_event_name,
+  toolName: codex.tool_name,
+});
+if (toolName !== undefined && toolName !== codex.tool_name) {
+  codex = { ...codex, tool_name: toolName };
+  rawInput = JSON.stringify(codex);
+}
+
+// Ordering matches core's `resolveProjectDirFromPayload`: the per-event cwd
+// binds to the INVOKING checkout, which is what a worktree session needs — an
+// env var pinned at session start names the tree the session began in, so a
+// hook resolving a record dir from it writes into the primary's record rather
+// than the one being worked on.
+//
+// It wins only when cwd resolves to a real checkout. AIDLC_PROJECT_DIR is a
+// deliberate operator override (core reads it right after an explicit
+// --project-dir flag) for pointing AIDLC at a project dir that is NOT the cwd,
+// such as multi-repo work where the workspace sits outside the repo being
+// edited. Letting a non-checkout cwd outrank it would break that.
 const projectDirRaw =
-  process.env.AIDLC_PROJECT_DIR ?? codex.cwd ?? process.cwd();
+  invokingCheckoutFromCwd(codex.cwd) ??
+  process.env.AIDLC_PROJECT_DIR ??
+  process.cwd();
 const projectDir = isAbsolute(projectDirRaw)
   ? projectDirRaw
   : resolve(process.cwd(), projectDirRaw);
@@ -292,12 +322,79 @@ if (!bypassReplay) {
 
 // --- Core-hook subprocess plumbing ------------------------------------------
 
+// Plugin-contributed target → hook body, emitted beside this adapter by
+// harness/codex/emit.ts. Read from disk (never imported) because the adapter
+// ships in dist/ with no packager available. Absent or malformed reads to an
+// empty map: a plugin wiring problem must not break core's own targets.
+function pluginHookTargets(): Record<string, string> {
+  const mapPath = join(HOOKS_DIR, "plugin-hook-targets.json");
+  if (!existsSync(mapPath)) return {};
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(mapPath, "utf-8"));
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+// A hook may deny through EITHER protocol: exit code 2 with the reason on
+// stderr, or exit 0 carrying {"hookSpecificOutput":{"permissionDecision":
+// "deny","permissionDecisionReason":…}} on stdout. Claude Code honours both
+// natively; a shimmed face reaches its hooks through these runners, so the
+// JSON form is normalised to the exit-2 form HERE — once — rather than at each
+// call site that tests `code === 2`. Reading only the exit code silently
+// discards the JSON denials (inline-exec, gh-write and destructive-git all use
+// that form), which reads as an installed rail that permits what it forbids.
+function structuredDenialReason(stdout: string): string | null {
+  const trimmed = stdout.trim();
+  if (trimmed.length === 0 || !trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      hookSpecificOutput?: {
+        permissionDecision?: unknown;
+        permissionDecisionReason?: unknown;
+      };
+    };
+    if (parsed.hookSpecificOutput?.permissionDecision !== "deny") return null;
+    const reason = parsed.hookSpecificOutput?.permissionDecisionReason;
+    return typeof reason === "string" && reason.trim().length > 0
+      ? reason
+      : "Blocked by an AIDLC guard hook.";
+  } catch {
+    return null;
+  }
+}
+
+function normalisedResult<T extends { stdout: string; stderr?: string; code: number }>(
+  result: T,
+): T {
+  if (result.code === 2) return result;
+  const reason = structuredDenialReason(result.stdout);
+  if (reason === null) return result;
+  // The reason moves onto stderr because the call sites source their block
+  // message from there; leaving it only in stdout blocks with an empty message.
+  const existing = result.stderr?.trim() ?? "";
+  return {
+    ...result,
+    ...(existing.length > 0 ? {} : { stderr: reason }),
+    code: 2,
+  };
+}
+
 function runCore(hookFile: string, input: string): { stdout: string; code: number } {
   // Reuse the exact bun binary running this adapter; the child must not depend on
   // PATH containing bun (the hook environment often lacks the bun install dir).
-  const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
+  // The compiled-executable path addresses a hook by its CORE slug, so it can
+  // only serve core's own `aidlc-*.ts` bodies. A plugin-contributed body has no
+  // slug in that binary — stripping its extension would name a subcommand that
+  // does not exist — so it always spawns from the hooks dir.
+  const executable = hookFile.startsWith("aidlc-")
+    ? process.env.AIDLC_COMPILED_EXECUTABLE
+    : undefined;
   const command = executable
-    ? [executable, "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
+    ? [executable, "engine", "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
     : [process.execPath, join(HOOKS_DIR, hookFile)];
   const r = Bun.spawnSync(command, {
     stdin: Buffer.from(input, "utf-8"),
@@ -306,7 +403,10 @@ function runCore(hookFile: string, input: string): { stdout: string; code: numbe
     cwd: projectDir,
     env: projectEnv,
   });
-  return { stdout: r.stdout?.toString() ?? "", code: r.exitCode ?? 0 };
+  return normalisedResult({
+    stdout: r.stdout?.toString() ?? "",
+    code: r.exitCode ?? 0,
+  });
 }
 
 // Variant capturing stderr - the reviewer-scope block channel (exit 2 + the
@@ -315,9 +415,15 @@ function runCoreWithStderr(
   hookFile: string,
   input: string,
 ): { stdout: string; stderr: string; code: number } {
-  const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
+  // The compiled-executable path addresses a hook by its CORE slug, so it can
+  // only serve core's own `aidlc-*.ts` bodies. A plugin-contributed body has no
+  // slug in that binary — stripping its extension would name a subcommand that
+  // does not exist — so it always spawns from the hooks dir.
+  const executable = hookFile.startsWith("aidlc-")
+    ? process.env.AIDLC_COMPILED_EXECUTABLE
+    : undefined;
   const command = executable
-    ? [executable, "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
+    ? [executable, "engine", "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
     : [process.execPath, join(HOOKS_DIR, hookFile)];
   const r = Bun.spawnSync(command, {
     stdin: Buffer.from(input, "utf-8"),
@@ -326,11 +432,11 @@ function runCoreWithStderr(
     cwd: projectDir,
     env: projectEnv,
   });
-  return {
+  return normalisedResult({
     stdout: r.stdout?.toString() ?? "",
     stderr: r.stderr?.toString() ?? "",
     code: r.exitCode ?? 0,
-  };
+  });
 }
 
 // Re-wrap the core context output ({"additionalContext": ...}) into the
@@ -358,13 +464,37 @@ function wrapContext(coreStdout: string, eventName: string): string {
   return coreStdout;
 }
 
+function allowUpdatedInput(coreStdout: string): string {
+  try {
+    const parsed = JSON.parse(coreStdout) as {
+      hookSpecificOutput?: {
+        hookEventName?: unknown;
+        permissionDecision?: unknown;
+        updatedInput?: unknown;
+      };
+    };
+    const output = parsed.hookSpecificOutput;
+    if (
+      output?.hookEventName === "PreToolUse" &&
+      output.updatedInput !== undefined &&
+      output.permissionDecision === undefined
+    ) {
+      output.permissionDecision = "allow";
+      return `${JSON.stringify(parsed)}\n`;
+    }
+  } catch {
+    // Unparseable core output is not a successful input rewrite.
+  }
+  return coreStdout;
+}
+
 function wrapUpdatedInput(updatedInput: Record<string, unknown>): string {
-  return `${JSON.stringify({
+  return allowUpdatedInput(`${JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       updatedInput,
     },
-  })}\n`;
+  })}\n`);
 }
 
 // --- D-4: SESSION_ENDED reconcile-at-next-start ------------------------------
@@ -468,21 +598,26 @@ switch (target) {
   }
 
   case "audit-and-sensors": {
-    // apply_patch → write-audit-log THEN run-sensors per touched file (mirrors
-    // the Claude settings.json Write|Edit registration order). Advisory.
+    // apply_patch → write-audit-log THEN run-sensors per file the patch leaves
+    // written (mirrors the Claude settings.json Write|Edit registration order).
+    // A moved file is its destination. Advisory: each file's sensor context is
+    // merged into ONE envelope, since Codex delivers none of several.
+    const sensorStdouts: string[] = [];
     if ((codex.tool_name ?? "") === "apply_patch") {
       const command = (codex.tool_input?.command as string) ?? "";
-      for (const f of patchedFiles(command)) {
+      for (const f of patchWriteTargetsOf({ command, projectDir })) {
         const fwd = JSON.stringify({
           hook_event_name: "PostToolUse",
           tool_name: f.tool,
           tool_input: { file_path: f.path },
         });
         runCore("aidlc-write-audit-log.ts", fwd);
-        runCore("aidlc-run-sensors.ts", fwd);
+        sensorStdouts.push(runCore("aidlc-run-sensors.ts", fwd).stdout);
       }
     }
-    persistResponse("", 0);
+    const merged = mergedPatchContextOf(sensorStdouts);
+    persistResponse(merged, 0);
+    if (merged) process.stdout.write(merged);
     return 0;
   }
 
@@ -523,7 +658,7 @@ switch (target) {
 
   case "log-subagent": {
     // SubagentStop already carries agent_type (real role name since Codex
-    // 0.139.0; the doctor-enforced floor is 0.145.0) + agent_id. Verbatim pipe.
+    // 0.139.0; the doctor-advised floor is 0.145.0) + agent_id. Verbatim pipe.
     runCore("aidlc-log-subagent.ts", rawInput);
     persistResponse("", 0);
     return 0;
@@ -638,12 +773,14 @@ switch (target) {
 
   case "deliver-stage-rules": {
     // Codex 0.145 consumes the same PreToolUse hookSpecificOutput.updatedInput
-    // contract as Claude. The core hook recognizes spawn_agent and appends the
-    // exact active-stage bundle to message/items without adapter re-shaping.
+    // contract as Claude, plus an explicit allow decision for rewritten input.
+    // The core hook recognizes spawn_agent and appends the exact active-stage
+    // bundle to message/items; the adapter completes the Codex envelope.
     const r = runCoreWithStderr("aidlc-deliver-stage-rules.ts", rawInput);
     const answeredCode = r.code === 2 ? 2 : 0;
-    persistResponse(r.stdout, answeredCode, r.stderr);
-    if (r.stdout) process.stdout.write(r.stdout);
+    const stdout = r.code === 2 ? r.stdout : allowUpdatedInput(r.stdout);
+    persistResponse(stdout, answeredCode, r.stderr);
+    if (stdout) process.stdout.write(stdout);
     if (r.code === 2) {
       process.stderr.write(r.stderr);
       return 2;
@@ -749,27 +886,74 @@ switch (target) {
     // state existing (same self-gate as the core record-human-turn hook) so a prompt in a
     // project that never ran the framework does not scaffold audit shards.
     // Fail-open: a record-human-turn failure must never block the turn. Advisory, no stdout.
-    const responseText =
-      explicitHumanSelectionText(codex.tool_response) ||
-      codex.prompt ||
-      codex.user_prompt ||
-      codex.message ||
-      "";
-    runCoreWithStderr(
-      "aidlc-record-human-turn.ts",
-      JSON.stringify({
-        hook_event_name: "UserPromptSubmit",
-        ...(codex.session_id ? { session_id: codex.session_id } : {}),
-        prompt: responseText,
-      }),
-    );
+    //
+    // A structured request_user_input selection is forwarded as the tool
+    // response it is, never as typed prompt text: the core hook records the
+    // Plan Approval choice from either channel, but the break-glass override
+    // phrase counts only when the human typed it as a prompt.
+    const selectionText = explicitHumanSelectionText(codex.tool_response);
+    const forwarded =
+      codex.tool_name === "request_user_input"
+        ? {
+            hook_event_name: "PostToolUse",
+            ...(codex.session_id ? { session_id: codex.session_id } : {}),
+            tool_name: "request_user_input",
+            tool_response: { answer: selectionText },
+          }
+        : {
+            hook_event_name: "UserPromptSubmit",
+            ...(codex.session_id ? { session_id: codex.session_id } : {}),
+            prompt: codex.prompt || codex.user_prompt || codex.message || "",
+          };
+    runCoreWithStderr("aidlc-record-human-turn.ts", JSON.stringify(forwarded));
     persistResponse("", 0);
     return 0;
   }
 
-  default:
-    persistResponse("", 0);
+  default: {
+    // A plugin-contributed target (emit.ts unions plugin rows into hooks.json
+    // and writes the target→hookFile map beside this adapter). The plugin's
+    // hook body reads the SAME ClaudeCodeHookInput shape core hooks do, so it
+    // reuses this adapter's normalisation, replay cache and block contract
+    // verbatim rather than re-implementing them per plugin.
+    const hookFile = pluginHookTargets()[target];
+    if (!hookFile) {
+      // Genuinely unknown target: unchanged no-op. An unrecognised name must
+      // stay inert rather than fail the tool call — a stale hooks.json entry
+      // after a plugin is disabled would otherwise block every matching event.
+      persistResponse("", 0);
+      return 0;
+    }
+    // Edits arrive as one apply_patch envelope carrying many file paths, while
+    // a hook written to the Claude contract expects one Write/Edit call per
+    // file. Fan out here exactly as the core arms do, so a plugin's file-shaped
+    // guard sees every touched path — without this it receives an envelope it
+    // does not recognise and allows the whole patch.
+    if ((codex.tool_name ?? "") === "apply_patch") {
+      const command = (codex.tool_input?.command as string) ?? "";
+      const denied = runPluginPatchGuards({
+        command,
+        projectDir,
+        event: codex.hook_event_name ?? "PreToolUse",
+        dispatch: (payload) => runCoreWithStderr(hookFile, payload),
+      });
+      if (denied) {
+        persistResponse(denied.stdout, 2, denied.stderr);
+        process.stderr.write(denied.stderr);
+        return 2;
+      }
+      persistResponse("", 0);
+      return 0;
+    }
+    const r = runCoreWithStderr(hookFile, rawInput);
+    persistResponse(r.stdout, r.code === 2 ? 2 : 0, r.stderr);
+    if (r.code === 2) {
+      process.stderr.write(r.stderr);
+      return 2;
+    }
+    if (r.stdout) process.stdout.write(r.stdout);
     return 0;
+  }
 }
 }
 

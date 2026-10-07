@@ -1,5 +1,5 @@
 // Stage-graph library + CLI. Exports the 8-function API consumed by
-// the doctor handler (see aidlc-utility.ts handleDoctor) and the
+// the doctor collector (see aidlc-utility.ts collectDoctorReport) and the
 // runtime resolution layer (lib.ts's nextInScopeStage,
 // firstInScopeStageOfPhase, stagesInScope delegate here via lazy
 // require).
@@ -19,12 +19,14 @@
 //     (doctor consumes them) and for future scheduling; they do not
 //     gate runtime iteration today.
 //
-// Compile is the YAML -> JSON transform. It bootstraps number + name
-// from today's stage-graph.json so YAML stays the authored source of
-// truth for everything else while computed fields stay computed. Numbers
-// are ALWAYS assigned by the engine, never claimed by authors — a plugin's
-// authored `number:` is a relative-ordering hint among its own new stages,
-// its absolute value never used, so uncoordinated plugins cannot collide.
+// Compile is the YAML -> JSON transform. In an installed runtime it preserves
+// number + name from the existing stage-graph.json so composed plugin rows stay
+// pinned. A clean source package has no existing graph: core numbers derive
+// from requires_stage order, and display names come from authored `name:`
+// overrides or title-cased slugs. Numbers are ALWAYS assigned by the engine,
+// never claimed by authors — a plugin's authored `number:` is a
+// relative-ordering hint among its own new stages, its absolute value never
+// used, so uncoordinated plugins cannot collide.
 //
 // A NEW stage slug (a .md on disk with no row in stage-graph.json yet) is
 // seeded on compile rather than rejected: each phase's batch of new
@@ -33,21 +35,19 @@
 // then slug), then assigned next-free contiguous indices
 // (`<PHASES.indexOf(phase)>.<maxIndexInPhase + 1>` onward); name comes
 // from authored `name:`, defaulting to the title-cased slug. Both are
-// written into the regenerated JSON, so the FIRST compile assigns them
-// and every subsequent compile harvests the pinned values, the assignment
-// happens once and is stable thereafter. An author who wants a hand-tuned
-// display name edits that one JSON field after the seeding compile; the
-// next compile preserves it. Renumbering an existing stage is still an
-// explicit JSON edit. (Seeding only ever ADDS rows, it never renumbers a
-// stage that already has a row, so an in-flight workflow's slug-keyed
-// state is safe.)
+// written into the regenerated JSON. Installed compiles then preserve those
+// pinned rows. A core author who needs a hand-tuned display name writes `name:`
+// in stage frontmatter. (Seeding only ever ADDS rows, it never renumbers a
+// stage that already has a row, so an in-flight workflow's slug-keyed state is
+// safe.)
 //
 // See docs/reference/16-artifact-vocabulary.md for artifact naming.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  aidlcToolInvocation,
   resolveDistributionPath,
   resolveHarnessPath,
   runtimeProjectDir,
@@ -60,6 +60,7 @@ import {
   auditLockOwnedByProcess,
   type AgentMetadata,
   errorMessage,
+  refuseEngineObserverWrite,
   gridCostSummary,
   loadAgents,
   loadScopeMapping,
@@ -77,6 +78,11 @@ import {
   mustShift,
   parseStageFrontmatter,
   planFilePath,
+  CHANGE_CONTROL_VALUES,
+  type ChangeControl,
+  changeControlMemoryStrictRefusal,
+  memoryChangeControlDeclarations,
+  parseChangeControl,
   resolveProjectDir,
   resolveWorkflowSelection,
   type ScopeDefinition,
@@ -193,6 +199,8 @@ export interface GraphStage extends StageEntry {
   // reviewer_max_iterations — review cycle cap before escalating to human.
   // Defaults to 2 when reviewer is present.
   reviewer_max_iterations?: number;
+
+  approval_mode?: "human" | "autonomous";
   // review_class — how the review runs: "adversarial" (refute + fix loop up
   // to the cap, §12a classic) or "advisory" (single pass, findings quoted at
   // the human gate, no fix loop). Defaults to "adversarial" when a reviewer
@@ -219,6 +227,10 @@ export interface ScopeValidation {
   // not an LLM recount or the earlier mechanical screen. In-flight treats the
   // ranking as advisory and preserves the running plan.
   nearest_stock?: Array<{ scope: string; diff: number; differs: string[] }>;
+  // The Change Control value the proposal carried (`--change-control` or the
+  // proposal's `changeControl` member), echoed once validated so the gate row
+  // the human sees is the validator's word.
+  change_control?: ChangeControl;
 }
 
 // --- Module-local state ---
@@ -293,7 +305,7 @@ const MEMORY_SEGMENTS = ["aidlc", "spaces", MEMORY_SPACE, "memory"] as const;
  *  analog of the default-pinned MEMORY_SEGMENTS. Keeps the `aidlc/spaces/<space>/
  *  memory` shape in one place so the project-family resolvers can never drift
  *  from the compile/display family's layout. */
-function memorySegmentsForSpace(space: string): string[] {
+export function memorySegmentsForSpace(space: string): string[] {
   return ["aidlc", "spaces", space, "memory"];
 }
 
@@ -478,6 +490,7 @@ const FIELD_ORDER = [
   "reviewer",
   "review_artifact",
   "reviewer_max_iterations",
+  "approval_mode",
   "review_class",
   "summary_confirmation",
   "inputs",
@@ -1084,7 +1097,7 @@ export function nearestStockScopes(
 /** Resolve a scope's plan: the EXECUTE/SKIP slice over the full graph in
  *  numeric order, shaped `{slug, phase, action}` — byte-identical to
  *  lib.ts's stagesInScope() / the legacy scope-mapping-derived plan. The
- *  `aidlc-graph resolve` subcommand writes this to .aidlc-plan.json. The
+ *  `aidlc-graph resolve` subcommand writes this to .aidlc-engine/plan.json. The
  *  parity test asserts this matches the legacy plan across all 11 scopes. */
 export function resolvePlanForScope(
   scope: string
@@ -1671,9 +1684,10 @@ export function selectionDroppedOrderingEdges(
   return dropped.sort();
 }
 
-/** Regenerate stage-graph.json from the 31 YAML stage files.
- *  Bootstraps number + name from the existing JSON (the "computed
- *  not authored" contract — see stage-definition.md). Asserts the
+/** Regenerate stage-graph.json from the YAML stage files.
+ *  Preserves pinned rows from an installed graph when present; a clean source
+ *  build derives core ordering and display names from stage frontmatter.
+ *  Asserts the
  *  edge-local invariant: every requires_stage edge points from a
  *  higher-numbered stage to a lower-numbered one. Also transposes each
  *  stage's `scopes:` into the compiled scope-grid.json (gridJson) — both
@@ -1688,10 +1702,13 @@ export function compileStageGraph(): {
   // as a single enabled freeform default, fail during compile.
   loadScopeMetadata();
 
-  // Harvest number + name mappings from existing JSON. A slug already in
-  // the JSON keeps its pinned number + name (the "computed not authored,
-  // stable thereafter" contract); a NEW slug is auto-seeded below.
-  const existing = loadStageGraphAll();
+  // Harvest number + name mappings from existing JSON. A slug already in the
+  // JSON keeps its pinned row; a NEW slug is auto-seeded below, with an
+  // authored name override when present.
+  // A source checkout has no compiled graph until packaging materializes one.
+  // Installed runtimes still preserve their pinned rows (including plugin
+  // stages), while a clean package build derives the core graph from YAML.
+  const existing = existsSync(stageGraphPath()) ? loadStageGraphAll() : [];
   const numberBySlug = new Map(existing.map((s) => [s.slug, s.number]));
   const nameBySlug = new Map(existing.map((s) => [s.slug, s.name]));
 
@@ -1839,9 +1856,10 @@ export function compileStageGraph(): {
             `"${phase}". Stage phase directories must be one of: ${PHASES.join(", ")}.`
         );
       }
-      const number = numberBySlug.get(slug);
+
+      const number = validation.data.number ?? numberBySlug.get(slug);
       const name =
-        nameBySlug.get(slug) ?? validation.data.name ?? titleCaseSlug(slug);
+        validation.data.name ?? nameBySlug.get(slug) ?? titleCaseSlug(slug);
       if (number) {
         stages.push(buildGraphStage(validation.data, phase, number, name));
       } else {
@@ -2152,6 +2170,9 @@ function buildGraphStage(
   if (parsed.summary_confirmation !== undefined) {
     stage.summary_confirmation = parsed.summary_confirmation;
   }
+  if (parsed.approval_mode !== undefined) {
+    stage.approval_mode = parsed.approval_mode;
+  }
   return stage;
 }
 
@@ -2160,7 +2181,7 @@ function runCompileCheck(): void {
   const graphOnDisk = readFileSync(stageGraphPath(), "utf-8");
   if (json !== graphOnDisk) {
     console.error(
-      "stage-graph.json is out of date. Run `bun aidlc-graph.ts compile` to regenerate."
+      `stage-graph.json is out of date. Run \`${aidlcToolInvocation("graph", undefined, false)} compile\` to regenerate.`
     );
     process.exit(1);
   }
@@ -2190,7 +2211,7 @@ function runCompileCheck(): void {
   }
   if (gridJson !== gridOnDisk) {
     console.error(
-      "scope-grid.json is out of date. Run `bun aidlc-graph.ts compile` to regenerate."
+      `scope-grid.json is out of date. Run \`${aidlcToolInvocation("graph", undefined, false)} compile\` to regenerate.`
     );
     process.exit(1);
   }
@@ -2791,8 +2812,43 @@ const COMMANDS: Record<string, Handler> = {
     if (kwRaw !== undefined) {
       const granted = kwRaw.split(",").map((k) => k.trim()).filter(Boolean);
       for (const err of keywordCollisions(granted)) r.errors.push(err);
-      r.valid = r.errors.length === 0;
     }
+    // The composer's Change Control proposal rides with the grid: `--change-control
+    // <value>` or a `changeControl` member beside `stages`. It must be one of the
+    // two values, and a memory layer that declares strict refuses a relaxed
+    // proposal here, before the gate, naming that file.
+    const ccIdx = args.indexOf("--change-control");
+    const ccRaw =
+      ccIdx >= 0
+        ? args[ccIdx + 1]
+        : typeof obj.changeControl === "string"
+          ? obj.changeControl
+          : undefined;
+    if (ccIdx >= 0 && (ccRaw === undefined || ccRaw.startsWith("--"))) {
+      console.error("validate-grid: --change-control requires <strict|relaxed>.");
+      process.exit(1);
+    }
+    if (ccRaw !== undefined) {
+      const changeControl = parseChangeControl(ccRaw);
+      if (changeControl === null) {
+        r.errors.push(
+          `Change Control must be one of: ${CHANGE_CONTROL_VALUES.join(", ")} (got "${ccRaw}").`,
+        );
+      } else {
+        r.change_control = changeControl;
+        if (changeControl === "relaxed") {
+          const projectDir = resolveProjectDir();
+          const intentIdx = args.indexOf("--intent");
+          const spaceIdx = args.indexOf("--space");
+          const memoryStrict = memoryChangeControlDeclarations(projectDir, {
+            intent: intentIdx >= 0 ? args[intentIdx + 1] : undefined,
+            space: spaceIdx >= 0 ? args[spaceIdx + 1] : undefined,
+          }).find((declaration) => declaration.value === "strict");
+          if (memoryStrict) r.errors.push(changeControlMemoryStrictRefusal(memoryStrict));
+        }
+      }
+    }
+    r.valid = r.errors.length === 0;
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     if (!r.valid) process.exit(1);
   },
@@ -2831,7 +2887,7 @@ const COMMANDS: Record<string, Handler> = {
     }
   },
   resolve: (args) => {
-    // resolve <scope> — emit the active scope's plan (.aidlc-plan.json) to
+    // resolve <scope> - emit the active scope's plan (.aidlc-engine/plan.json) to
     // the project dir. The plan is the EXECUTE/SKIP slice for the scope,
     // derived from the compiled grid (the same transpose runtime reads).
     // Feature-flagged via AIDLC_GRAPH_RESOLVE=1 so it ships
@@ -2852,6 +2908,10 @@ const COMMANDS: Record<string, Handler> = {
       process.stdout.write(planJson);
       return;
     }
+    refuseEngineObserverWrite("writeFileAtomic");
+    if (process.env.AIDLC_PLAN_PATH === undefined) {
+      mkdirSync(dirname(outPath), { recursive: true });
+    }
     writeFileAtomic(outPath, planJson);
     console.log(outPath);
   },
@@ -2869,7 +2929,9 @@ const COMMANDS: Record<string, Handler> = {
       if (json !== expected) {
         console.error(
           `export --check: bundle drift vs ${fixturePath}. ` +
-            `Regenerate with: bun aidlc-graph.ts export > ${fixturePath}`
+            `Regenerate with: ${
+              aidlcToolInvocation("graph", undefined, false)
+            } export > ${fixturePath}`
         );
         process.exit(1);
       }
@@ -2921,7 +2983,7 @@ Common forms:
                                        two gate tables (data: tools/data/ars-priors.json)
   aidlc-graph compile                  Regenerate stage-graph.json + scope-grid.json from YAML
   aidlc-graph compile --check          CI drift guard (exit 1 on mismatch)
-  aidlc-graph resolve <name>           Emit .aidlc-plan.json for a scope (AIDLC_GRAPH_RESOLVE=1)
+  aidlc-graph resolve <name>           Emit .aidlc-engine/plan.json for a scope (AIDLC_GRAPH_RESOLVE=1)
   aidlc-graph export                   Emit designer-facing bundle (stdout)
   aidlc-graph export --check           CI drift guard against fixture
 

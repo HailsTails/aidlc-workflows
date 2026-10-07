@@ -3,7 +3,9 @@
 // Projects the harness-neutral core/ tree into dist/cursor/.cursor/. Cursor is
 // the most "native" port so far: unlike opencode (engine hidden in .aidlc/) or
 // codex (skills composed by emit.ts), Cursor consumes the standard projection
-// directly — no emit.ts at all.
+// directly. Its emit.ts writes exactly one file: the plugin-hook-target map the
+// adapter reads to append contributed guards to the single `guards` chain that
+// this harness's static hooks.json routes every preToolUse call to.
 //
 // Cursor specifics vs Claude (all live-verified against cursor-agent
 // 2026.07.23 on Linux; the IDE shares the same .cursor/ discovery):
@@ -33,13 +35,45 @@
 //     adapter self-filters) to aidlc-cursor-adapter.ts, which normalizes
 //     payloads and subprocess-pipes into the byte-shared core hooks.
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import emit from "./emit.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const manifest: HarnessManifest = {
   name: "cursor",
+  productName: "Cursor",
+  configNextStep: "open this project in Cursor, then run `/aidlc --doctor`",
   harnessDir: ".cursor",
   orchestratorSkillPath: ".cursor/skills/aidlc/SKILL.md",
   tierFlavor: "cursor",
+  // `rules/aidlc.mdc` always carries org/team/project, with the phase rules as
+  // sibling always-on .mdc files.
+  baseRuleDelivery: "ambient",
+  rootIntegrations: [
+    {
+      path: ".gitignore",
+      policy: "managed-block",
+      marker: "gitignore",
+      legacySignatures: {
+        wholeFileHashes: [
+          // Keep pre-engine-directory unmarked root files recognizable.
+          "sha256:b4bf7694361e76aae9feabc5d985d09afb7863cf8458b0c9aaa73f20a589582f",
+        ],
+      },
+    },
+    {
+      path: "AGENTS.md",
+      policy: "managed-block",
+      marker: "agents",
+      legacySignatures: {
+        wholeFileHashes: [
+          // Keep pre-engine-directory unmarked root files recognizable.
+          "sha256:78c906200a55665f3a3ce410272c71d4bdcb5764174407da0f69d8ad6d143184",
+          "sha256:2907b5293bfd8bd9d5f8b7a8025bfe23edd0ffcd31f925761916088517880936",
+        ],
+      },
+    },
+    { path: "install.ts", policy: "whole-file" },
+  ],
 
   // Same core projection as claude, into .cursor/.
   coreDirs: [
@@ -102,7 +136,7 @@ const manifest: HarnessManifest = {
   // user-invocable is true, which is unsafe for state-mutating stage runners.
   runnerFrontmatterAdditions: ["disable-model-invocation: true"],
 
-  emit: null,
+  emit,
 
   plugin: { manifestDir: ".cursor-plugin", kind: "cursor" },
 };

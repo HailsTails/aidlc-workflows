@@ -11,18 +11,22 @@ import {
   activeIntentUuid,
   errorMessage,
   findIntentByUuid,
+  hookPayloadCwd,
   hooksHealthDir,
   isClaudeCodeHookInput,
   isoTimestamp,
   readSessionIntentUuid,
   recordHookDrop,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   stateFilePath,
   validSessionId,
 } from "../tools/aidlc-lib.ts";
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 
 // Read stdin for the reason and session identity. The session stamp preserves
 // attribution when intent-create has already moved the shared active cursor.

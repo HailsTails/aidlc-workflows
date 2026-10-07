@@ -12,9 +12,11 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  type CheckboxState,
   type ClaudeCodeHookInput,
   getField,
   hookDebug,
+  hookPayloadCwd,
   hooksHealthDir,
   isClaudeCodeHookInput,
   isoTimestamp,
@@ -22,13 +24,76 @@ import {
   parseCheckboxes,
   readAllAuditShards,
   readStateFile,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   stateFilePath,
-  harnessDir,
 } from "../tools/aidlc-lib.ts";
+import { setStatus } from "../tools/aidlc-utility.ts";
+
+// A stage may be adopted only if it does not move the workflow BACKWARD.
+//
+// The ide-audit-sync path below has carried this guarantee since finding 1
+// (t218 F1a/F1b/F1c). The TaskUpdate path never did: any activeForm suffixed
+// "[slug]" drove set-status unconditionally, and set-status rewrites Current
+// Stage, Lifecycle Phase, Active Agent AND forces the checkbox to in-progress.
+// A long gate session that names an earlier gate in a task label therefore
+// rewound its own record — demoting a completed gate to in-progress and moving
+// Current Stage back to it (defect 019fc00e-8edd). Because the review scribe
+// resolves a lens's gate from Current Stage, that rewind is what produced the
+// "lens gate mismatch" rejection blocking verdict binding on parked Gate-4
+// Slices.
+//
+// Order comes from the checkbox list, which parseCheckboxes returns in document
+// order — the same ordering the state file already uses to express the pipeline.
+// The compiled stage graph is NOT the authority here: it is scope-mixed (every
+// scope's stages in one list) and returns [] on a missing graph, so indexing
+// against it would compare unrelated scopes and carry its own absent-evidence
+// case. The checkbox list is this record's own declared pipeline.
+//
+// The guard only ever REFUSES on positive evidence of a backward move. Absent
+// ordering evidence it permits, because this hook's job is to keep the
+// statusline current and a guard that fails closed on every unparsed state file
+// would break that job everywhere rather than fix the rewind. Two such cases:
+// an empty checkbox list (no ordering to reason about at all) and a Current
+// Stage the list does not mention (nothing to be behind).
+
+// Exhaustive over CheckboxState so a newly added state must be decided here
+// rather than silently falling through as adoptable.
+const STAGE_ALREADY_SETTLED: Record<CheckboxState, boolean> = {
+  pending: false,
+  "in-progress": false,
+  "awaiting-approval": false,
+  revising: false,
+  completed: true,
+  skipped: true,
+};
+
+export function adoptableStage({
+  checkboxes,
+  currentStage,
+  targetStage,
+}: {
+  readonly checkboxes: readonly {
+    readonly slug: string;
+    readonly state: CheckboxState;
+  }[];
+  readonly currentStage: string;
+  readonly targetStage: string;
+}): boolean {
+  if (targetStage === currentStage) return true;
+  if (checkboxes.length === 0) return true;
+  const targetIndex = checkboxes.findIndex((c) => c.slug === targetStage);
+  if (targetIndex === -1) return true;
+  if (STAGE_ALREADY_SETTLED[checkboxes[targetIndex].state]) return false;
+  const currentIndex = checkboxes.findIndex((c) => c.slug === currentStage);
+  if (currentIndex === -1) return true;
+  return targetIndex > currentIndex;
+}
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 hookDebug(projectDir, "sync-workflow-state", "invoked");
 
 // Read JSON from stdin. Exit cleanly if stdin is a TTY — no Claude Code JSON
@@ -97,7 +162,25 @@ if (source === "ide-audit-sync") {
   if (!activeForm) return 0;
   const slugMatch = activeForm.match(/\[([a-z][a-z0-9-]*)\]$/);
   if (!slugMatch) return 0;
-  slug = slugMatch[1];
+  const target = slugMatch[1];
+
+  // Forward-only, same as the ide-audit-sync path above.
+  const stateContent = readStateFile(projectDir);
+  const current = (getField(stateContent, "Current Stage") ?? "").trim();
+  if (
+    !adoptableStage({
+      checkboxes: parseCheckboxes(stateContent),
+      currentStage: current,
+      targetStage: target,
+    })
+  ) {
+    hookDebug(projectDir, "sync-statusline", "skip: would move backward", {
+      current,
+      target,
+    });
+    return 0;
+  }
+  slug = target;
 }
 
 // Health heartbeat
@@ -105,17 +188,15 @@ const healthDir = hooksHealthDir(projectDir);
 mkdirSync(healthDir, { recursive: true });
 writeFileSync(join(healthDir, "sync-workflow-state.last"), isoTimestamp(), "utf-8");
 
-// Update state file via set-status (call the utility tool directly)
-const toolPath = join(projectDir, harnessDir(), "tools", "aidlc-utility.ts");
+// Update state through the shared implementation; the hook owns this mutation.
 hookDebug(projectDir, "sync-workflow-state", "set-status", { slug });
-Bun.spawnSync(["bun", toolPath, "set-status", "--stage", slug, "--project-dir", projectDir], {
-  env: {
-    ...process.env,
-    AIDLC_STATUSLINE_OWNER: `statusline:${process.pid}`,
-  },
-  stdout: "ignore",
-  stderr: "ignore",
-});
+try {
+  setStatus(projectDir, { stage: slug });
+} catch (error) {
+  hookDebug(projectDir, "sync-workflow-state", "set-status failed", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
 return 0;
 }
 

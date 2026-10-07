@@ -29,6 +29,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { classifyPluginSourceFile } from "../../core/tools/aidlc-plugin-validate.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CORE = join(REPO_ROOT, "core");
@@ -51,19 +52,19 @@ function* walkTs(dir: string): Generator<string> {
   }
 }
 
+function directiveViolations({ file, source }: { file: string; source: string }): string[] {
+  if (classifyPluginSourceFile({ pluginRoot: CORE, file }) !== "runtime") return [];
+  return source.split("\n").flatMap((line, index) =>
+    HARDCODED_DIRECTIVE_RE.test(line) ? [`${relative(CORE, file)}:${index + 1}: ${line.trim()}`] : []);
+}
+
 describe("t153 engine directive harness seam — no hardcoded .claude/tools in core directives", () => {
   // biome-ignore lint/suspicious/noTemplateCurlyInString: test name documents literal source syntax
   test("every `bun <harness>/tools|hooks/` directive in core/*.ts uses ${harnessDir()}, not a hardcoded dir", () => {
     const stray: string[] = [];
     for (const scanDir of SCAN_DIRS) {
       for (const file of walkTs(scanDir)) {
-        const rel = relative(CORE, file);
-        const lines = readFileSync(file, "utf-8").split("\n");
-        lines.forEach((line, i) => {
-          if (HARDCODED_DIRECTIVE_RE.test(line)) {
-            stray.push(`${rel}:${i + 1}: ${line.trim()}`);
-          }
-        });
+        stray.push(...directiveViolations({ file, source: readFileSync(file, "utf-8") }));
       }
     }
     if (stray.length > 0) {
@@ -76,18 +77,29 @@ describe("t153 engine directive harness seam — no hardcoded .claude/tools in c
     expect(stray).toEqual([]);
   });
 
-  test("harnessDir() IS the idiom the engine's directive strings use (seam in active use)", () => {
-    // Positive control: the engine MUST build at least some directive through
-    // harnessDir() — if this drops to zero, a refactor has bypassed the seam and
-    // the negative test above would be vacuously green.
+  test("aidlcToolInvocation() is the active directive invocation seam", () => {
+    // Positive control: engine directives MUST call the channel-aware helper.
+    // Exclude its declaration so this proves call sites remain in active use.
     let seamUses = 0;
     for (const scanDir of SCAN_DIRS) {
       for (const file of walkTs(scanDir)) {
+        if (classifyPluginSourceFile({ pluginRoot: CORE, file }) !== "runtime") continue;
+        if (file.endsWith("aidlc-runtime-paths.ts")) continue;
         const src = readFileSync(file, "utf-8");
-        const m = src.match(/bun \$\{harnessDir\(\)\}\/tools\//g);
+        const m = src.match(/aidlcToolInvocation\(/g);
         if (m) seamUses += m.length;
       }
     }
     expect(seamUses).toBeGreaterThan(0);
+  });
+
+  test("a hardcoded command in maintained runtime source remains a violation", () => {
+    const violations = directiveViolations({ file: join(CORE, "tools", "example.ts"), source: '"bun .codex/tools/aidlc.ts engine state approve"' });
+    expect(violations).toEqual(['tools/example.ts:1: "bun .codex/tools/aidlc.ts engine state approve"']);
+  });
+
+  test("source-only test command fixtures are excluded from runtime directive checks", () => {
+    const violations = directiveViolations({ file: join(CORE, "tools", "example.test.ts"), source: '"bun .codex/tools/aidlc.ts engine state approve"' });
+    expect(violations).toEqual([]);
   });
 });

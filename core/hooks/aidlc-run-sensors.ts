@@ -10,12 +10,14 @@
 //
 // Coexists with `aidlc-write-audit-log.ts` under the same Write|Edit
 // matcher; recursion guard skips writes to the active record's
-// `.aidlc-sensors/` directory.
+// `.aidlc-engine/sensors/` directory.
 //
 // Exit-code contract (G5): always exit 0. Sensor verdicts surface
 // through the dispatcher's audit rows (SENSOR_FIRED + paired
-// SENSOR_PASSED|FAILED|BUDGET_OVERRIDE) and detail files. Blocking
-// semantics defer to the future ralph driver.
+// SENSOR_PASSED|FAILED|BUDGET_OVERRIDE) and detail files. A failed verdict
+// carrying a sensor-supplied writer_notice is also surfaced to the writer as
+// one advisory PostToolUse additionalContext. Blocking semantics defer to
+// the future ralph driver.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -25,29 +27,90 @@ import {
   auditFilePath,
   type ClaudeCodeHookInput,
   getField,
+  hookPayloadCwd,
   hooksHealthDir,
   isClaudeCodeHookInput,
   isoTimestamp,
+  LEGACY_SENSORS_DIR,
   readActiveDirectiveMarker,
   readStateFile,
   recordHookDrop,
-  resolveProjectDirFromHook,
+  resolveCeremony,
+  resolveProjectDirFromPayload,
+  resolveProjectFlag,
   sensorsDir,
+  sensorsReadDir,
   stateFilePath,
   harnessDir,
 } from "../tools/aidlc-lib.ts";
+import {
+  type DispatchedVerdict,
+  verdictOfDispatcherStdout,
+} from "../tools/aidlc-sensor-verdict.ts";
+
+const WRITER_CONTEXT_CHARACTER_LIMIT = 4000;
+const DETAIL_LINE_PREFIX = "(full detail: ";
+const CUT_DETAIL_MARKER = "… more in the detail files";
+const KEPT_DETAIL_MARKER = "… more in the detail files named above";
+
+type NoticeVerdict = Extract<DispatchedVerdict, { result: "failed-with-notice" }>;
+
+function isNoticeVerdict(verdict: DispatchedVerdict): verdict is NoticeVerdict {
+  return verdict.result === "failed-with-notice";
+}
+
+function noticeLinesOf(verdict: NoticeVerdict): string[] {
+  const lines = `[${verdict.sensorId}] ${verdict.writerNotice}`.split("\n");
+  return verdict.detailFile.kind === "written"
+    ? [...lines, `${DETAIL_LINE_PREFIX}${verdict.detailFile.path})`]
+    : lines;
+}
+
+// The one advisory text for one write: a summary line naming every sensor
+// that supplied a writer notice, then each notice and its detail file, cut at
+// a line boundary so the whole text (marker included) fits the limit. The
+// notice text is the sensor's; this function never inspects it.
+export function writerContextOf(verdicts: readonly DispatchedVerdict[]): string {
+  const kept = verdicts.filter(isNoticeVerdict);
+  if (kept.length === 0) return "";
+  const lines = [
+    `Advisory sensor findings for ${kept[0].outputPath}: ${kept.map((verdict) => verdict.sensorId).join(", ")}`,
+    ...kept.flatMap(noticeLinesOf),
+  ];
+  const whole = lines.join("\n");
+  if (whole.length <= WRITER_CONTEXT_CHARACTER_LIMIT) return whole;
+  // Keep the longest prefix of whole lines that, with its marker, fits. The
+  // marker only claims the detail files are named above when no detail line
+  // was cut.
+  for (let fitting = lines.length - 1; fitting > 0; fitting--) {
+    const head = lines.slice(0, fitting);
+    const detailCut = lines
+      .slice(fitting)
+      .some((line) => line.startsWith(DETAIL_LINE_PREFIX));
+    const text = [
+      ...head,
+      detailCut ? CUT_DETAIL_MARKER : KEPT_DETAIL_MARKER,
+    ].join("\n");
+    if (text.length <= WRITER_CONTEXT_CHARACTER_LIMIT) return text;
+  }
+  return lines[0].slice(0, WRITER_CONTEXT_CHARACTER_LIMIT);
+}
 
 export async function run(input: string): Promise<number> {
-// Step 1 — Resolve project dir from import.meta.url. Mirrors
-// aidlc-write-audit-log.ts and aidlc-rebuild-stage-graph.ts precedent.
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+// Step 1 — Resolve project dir from the payload's invoking checkout, falling
+// back to import.meta.url. Mirrors aidlc-write-audit-log.ts and
+// aidlc-rebuild-stage-graph.ts precedent.
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 
 // Subprocess timeout. Defaults to 90s (covers tsc's 60s manifest cap +
 // dispatcher overhead). t95's timeout case overrides via env var to
 // avoid patching the production source tree. `Number(undefined) || N`
 // pattern handles unset / empty / unparseable equally.
 const SUBPROCESS_TIMEOUT_MS =
-  Number(process.env.AIDLC_SENSOR_TIMEOUT_MS) || 90_000;
+  Number(resolveProjectFlag("AIDLC_SENSOR_TIMEOUT_MS")) || 90_000;
 
 // Health-dir for the heartbeat (run-sensors.last). Read by the future
 // hook-health doctor.
@@ -79,21 +142,15 @@ const filePath = isAbsolute(rawFilePath)
   ? rawFilePath
   : join(projectDir, rawFilePath);
 
-// Step 5 — Recursion guard. Skip writes to the dispatcher's detail-file
-// directory. Post-workspace-move that dir re-roots per intent
-// (<record>/.aidlc-sensors/ via sensorsDir(projectDir, intent, space)); the
-// active-intent resolution is implicit in sensorsDir's bare projectDir call
-// (it resolves the active record root). Keep the flat `aidlc-docs/.aidlc-sensors/`
-// literal as the transitional flat-legacy fallback (retired in P9). Dispatcher
-// uses direct fs I/O so the loop isn't reachable today; defensive depth for
-// future LLM sensors that may emit findings via Write.
-const sensorsLeaf = sensorsDir(projectDir).replace(/\\/g, "/").replace(/\/$/, "");
+// Step 5 - Recursion guard. Cover new output and the readable legacy findings
+// directory, including the older flat aidlc-docs location. Writers always use
+// sensorsDir; resolving a legacy read never creates or moves either directory.
+const sensorsLeaves = [sensorsDir(projectDir), sensorsReadDir(projectDir)]
+  .map((path) => path.replace(/\\/g, "/").replace(/\/$/, ""));
 const filePathNorm = filePath.replace(/\\/g, "/");
 if (
-  filePathNorm === sensorsLeaf ||
-  filePathNorm.startsWith(`${sensorsLeaf}/`) ||
-  filePath.includes("aidlc-docs/.aidlc-sensors/") ||
-  filePath.includes("aidlc-docs\\.aidlc-sensors\\")
+  sensorsLeaves.some((leaf) => filePathNorm === leaf || filePathNorm.startsWith(`${leaf}/`)) ||
+  filePathNorm.includes(`aidlc-docs/${LEGACY_SENSORS_DIR}/`)
 ) {
   return 0;
 }
@@ -116,6 +173,11 @@ try {
 } catch {
   return 0;
 }
+
+// Scope and intent policy disable automatic sensors without leaving health
+// markers or the first-fire banner. Explicit sensor fire remains available.
+const scope = getField(stateContent, "Scope");
+if (resolveCeremony("sensors", scope, stateContent).value === "off") return 0;
 
 // Step 8 — Heartbeat (G3). The future hook-health doctor reads this
 // file's mtime to detect silent-hook failure. Placement: AFTER
@@ -200,6 +262,7 @@ if (applicableSensors.length === 0) return 0;
 // upstream dispatcher's bespoke globToRegex rejects the *.md form even though
 // Bun.Glob accepts both — both engines agree on the relaxed form.
 const sensorTs = join(projectDir, harnessDir(), "tools", "aidlc-sensor.ts");
+const verdicts: DispatchedVerdict[] = [];
 for (const entry of applicableSensors) {
   // Gate-fired sensors run once per existing deliverable at gate-start. Older
   // compiled graphs omit fire_on, which preserves the historical write default.
@@ -234,6 +297,14 @@ for (const entry of applicableSensors) {
       ],
       {
         cwd: projectDir,
+        // Carry the invoking checkout to the dispatcher so a session whose
+        // project dir names another checkout (a worktree entered mid-session)
+        // still fires against the file actually written.
+        env: {
+          ...process.env,
+          AIDLC_PROJECT_DIR: projectDir,
+          CLAUDE_PROJECT_DIR: projectDir,
+        },
         timeout: SUBPROCESS_TIMEOUT_MS,
         stdio: ["ignore", "pipe", "pipe"],
       }
@@ -272,6 +343,19 @@ for (const entry of applicableSensors) {
         "run-sensors",
         `${entry.id}: dispatcher exit ${result.status}${stderr ? `: ${stderr}` : ""}`
       );
+    } else {
+      // Status 0: read the dispatcher's verdict line so a sensor-supplied
+      // writer notice can reach the writer. An unreadable line is a drop.
+      const reading = verdictOfDispatcherStdout(result.stdout?.toString() ?? "");
+      if (reading.kind === "verdict") {
+        verdicts.push(reading.verdict);
+      } else {
+        recordHookDrop(
+          projectDir,
+          "run-sensors",
+          `${entry.id}: unreadable verdict`
+        );
+      }
     }
   } catch (e: unknown) {
     // Thrown error from spawnSync itself — not from the child process.
@@ -283,7 +367,19 @@ for (const entry of applicableSensors) {
   }
 }
 
-// Step 12 — exit 0 (advisory always per G5).
+// Step 12 — Surface sensor-supplied writer notices as one advisory
+// PostToolUse context. Nothing is printed when no sensor supplied one, and
+// the hook never emits a decision: the context is advisory only.
+const additionalContext = writerContextOf(verdicts);
+if (additionalContext !== "") {
+  process.stdout.write(
+    `${JSON.stringify({
+      hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext },
+    })}\n`
+  );
+}
+
+// Step 13 — exit 0 (advisory always per G5).
 return 0;
 }
 

@@ -146,7 +146,95 @@ function treeDiff(expected: string, actual: string): string[] {
 }
 
 describe("t315 standalone plugin builder", () => {
-  test("copied tools build byte-identical test-pro projections for every harness", () => {
+  test("native hook declarations require the repository packager before any output is created", () => {
+    const pluginRoot = minimalPlugin("native-hooks");
+    const manifestPath = join(pluginRoot, ".aidlc-plugin", "plugin.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.aidlc.hooks = { claude: [{ event: "PreToolUse", matcher: "Bash", target: "native-hooks-guard", hookFile: "native-hooks-guard.mjs", capabilityId: "native-hooks-guard" }] };
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    mkdirSync(join(pluginRoot, "hooks"));
+    writeFileSync(join(pluginRoot, "hooks", "native-hooks-guard.mjs"), "process.exit(0);\n");
+    const output = join(scratch, "native-hook-cli-output");
+    const result = run([pluginRoot, "claude", output, "--json"]);
+    expect(result.status).toBe(1);
+    expect(result.stdout + result.stderr).toContain("repository packager");
+    expect(existsSync(output)).toBe(false);
+  });
+
+  test("repository package writer keeps maintained source out of repeated runtime builds", () => {
+    const checkout = join(scratch, "package-writer-checkout");
+    cpSync(join(REPO_ROOT, "core"), join(checkout, "core"), { recursive: true });
+    cpSync(join(REPO_ROOT, "harness"), join(checkout, "harness"), { recursive: true });
+    cpSync(join(REPO_ROOT, "scripts"), join(checkout, "scripts"), { recursive: true });
+    cpSync(SOURCE_PLUGIN, join(checkout, "plugins", "test-pro"), { recursive: true });
+    symlinkSync(join(REPO_ROOT, "node_modules"), join(checkout, "node_modules"), "dir");
+    const pluginRoot = join(checkout, "plugins", "test-pro");
+    const toolTest = join(pluginRoot, "tools", "probe.test.ts");
+    const toolSpec = join(pluginRoot, "tools", "probe.spec.ts");
+    const testFixture = join(pluginRoot, "tools", "test-fixtures", "input.json");
+    const knowledgeSpec = join(pluginRoot, "knowledge", "probe.spec.ts");
+    const runtimeTool = join(pluginRoot, "tools", "probe.ts");
+    writeFileSync(toolTest, "export const toolTestSentinel = true;\n");
+    writeFileSync(toolSpec, "export const toolSpecSentinel = true;\n");
+    mkdirSync(dirname(testFixture), { recursive: true });
+    writeFileSync(testFixture, "{\"fixture\":true}\n");
+    writeFileSync(knowledgeSpec, "export const knowledgeSpecSentinel = true;\n");
+    writeFileSync(runtimeTool, "export const runtimeToolSentinel = true;\n");
+    const sourceSnapshot = join(scratch, "package-writer-source-snapshot");
+    cpSync(pluginRoot, sourceSnapshot, { recursive: true });
+    const packageScript = join(checkout, "scripts", "package.ts");
+    const firstOutput = join(scratch, "package-writer-first-output");
+    const secondOutput = join(scratch, "package-writer-second-output");
+
+    const first = spawnSync(process.execPath, [packageScript, "plugin", "build", "test-pro", "claude", firstOutput], {
+      cwd: checkout,
+      encoding: "utf-8",
+    });
+    const second = spawnSync(process.execPath, [packageScript, "plugin", "build", "test-pro", "claude", secondOutput], {
+      cwd: checkout,
+      encoding: "utf-8",
+    });
+
+    expect(first.status, first.stderr).toBe(0);
+    expect(second.status, second.stderr).toBe(0);
+    expect(treeDiff(firstOutput, secondOutput)).toEqual([]);
+    expect(existsSync(join(firstOutput, "tools", "probe.test.ts"))).toBe(false);
+    expect(existsSync(join(firstOutput, "tools", "probe.spec.ts"))).toBe(false);
+    expect(existsSync(join(firstOutput, "tools", "test-fixtures", "input.json"))).toBe(false);
+    expect(existsSync(join(firstOutput, "knowledge", "probe.spec.ts"))).toBe(false);
+    expect(readFileSync(join(firstOutput, "tools", "probe.ts"), "utf-8")).toBe("export const runtimeToolSentinel = true;\n");
+    expect(existsSync(join(firstOutput, "hooks", "compose.ts"))).toBe(true);
+    expect(existsSync(join(firstOutput, "agents", "test-pro-metrics-agent.md"))).toBe(true);
+    expect(existsSync(join(firstOutput, "stages", "construction", "test-pro-integration.md"))).toBe(true);
+    expect(existsSync(join(firstOutput, "scopes", "test-pro-validation.md"))).toBe(true);
+    expect(treeDiff(sourceSnapshot, pluginRoot)).toEqual([]);
+  });
+
+  test("maintained tests stay in source and out of every runtime projection", () => {
+    const pluginRoot = copyPlugin("source-only-content");
+    const toolsRoot = join(pluginRoot, "tools");
+    mkdirSync(join(toolsRoot, "test-fixtures"), { recursive: true });
+    writeFileSync(join(toolsRoot, "probe.test.ts"), "export const testSentinel = true;\n");
+    writeFileSync(join(toolsRoot, "probe.spec.ts"), "export const specSentinel = true;\n");
+    writeFileSync(join(toolsRoot, "test-fixtures", "input.json"), "{}\n");
+    writeFileSync(join(toolsRoot, "probe.ts"), "export const runtimeSentinel = true;\n");
+
+    for (const harness of HARNESSES) {
+      const outDir = join(scratch, "source-only-outputs", harness);
+      const result = run([pluginRoot, harness, outDir, "--json"]);
+      expect(result.status, `${harness}: ${result.stderr}`).toBe(0);
+      expect(existsSync(join(outDir, "tools", "probe.ts"))).toBe(true);
+      expect(existsSync(join(outDir, "tools", "probe.test.ts"))).toBe(false);
+      expect(existsSync(join(outDir, "tools", "probe.spec.ts"))).toBe(false);
+      expect(existsSync(join(outDir, "tools", "test-fixtures", "input.json"))).toBe(false);
+    }
+
+    expect(existsSync(join(toolsRoot, "probe.test.ts"))).toBe(true);
+    expect(existsSync(join(toolsRoot, "probe.spec.ts"))).toBe(true);
+    expect(existsSync(join(toolsRoot, "test-fixtures", "input.json"))).toBe(true);
+  });
+
+  test("copied tools place the same test-pro files for every harness", () => {
     expect(HARNESSES).toEqual(EXPECTED_HARNESSES);
     const pluginRoot = copyPlugin("all-harnesses");
     for (const harness of HARNESSES) {
@@ -156,23 +244,96 @@ describe("t315 standalone plugin builder", () => {
       const json = JSON.parse(result.stdout) as Record<string, unknown>;
       expect(Object.keys(json)).toEqual(["valid", "errors", "warnings"]);
       expect(json.valid).toBe(true);
-      expect(
-        treeDiff(join(EXPECTED_ROOT, harness), outDir),
-        harness,
-      ).toEqual([]);
+      const packagedTree = treeFiles(join(EXPECTED_ROOT, harness));
+      const placedTree = treeFiles(outDir);
+      const packagedFiles = [...packagedTree.keys()]
+        .filter((file) => harness !== "codex" || !file.endsWith(".toml"))
+        .sort();
+      expect([...placedTree.keys()].sort(), harness).toEqual(packagedFiles);
+      const harnessDir = readPluginTargets(
+        join(SOURCE_TOOLS, "data", "plugin-targets.json"),
+      )[harness]?.harnessLeaf;
+      expect(harnessDir).toBeDefined();
+      const rulesLeaf = ({ codex: "aidlc-rules", kiro: "steering", "kiro-ide": "steering" } as Record<string, string>)[harness] ?? "rules";
+      const changedContent = [...placedTree].flatMap(([file, content]) => {
+        const projectedMarkdown = content.toString("utf-8")
+          .replaceAll("{{HARNESS_DIR}}/rules/", `${harnessDir}/${rulesLeaf}/`)
+          .replaceAll("{{HARNESS_DIR}}", harnessDir ?? "");
+        const projected = file.endsWith(".md")
+          ? Buffer.from(projectedMarkdown)
+          : content;
+        return projected.equals(packagedTree.get(file) ?? Buffer.alloc(0))
+          ? []
+          : [file];
+      });
+      expect(changedContent, harness).toEqual([]);
     }
+  });
+
+  test("Codex standalone builder emits a root-relative supported marketplace beside its native plugin manifest", () => {
+    const pluginRoot = copyPlugin("supported-codex-marketplace");
+    const outDir = join(scratch, "supported-codex-marketplace-output");
+    const result = run([pluginRoot, "codex", outDir, "--json"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(outDir, ".codex-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(join(outDir, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(JSON.parse(readFileSync(join(outDir, ".agents", "plugins", "marketplace.json"), "utf-8"))).toEqual(
+      expect.objectContaining({
+        name: "aidlc-plugins",
+        plugins: [expect.objectContaining({ name: "aidlc-test-pro", source: "." })],
+      }),
+    );
+  });
+
+  test("Claude standalone builder preserves its existing marketplace layout", () => {
+    const pluginRoot = copyPlugin("preserved-claude-marketplace");
+    const outDir = join(scratch, "preserved-claude-marketplace-output");
+    const result = run([pluginRoot, "claude", outDir, "--json"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(outDir, ".claude-plugin", "plugin.json"))).toBe(true);
+    expect(existsSync(join(outDir, ".claude-plugin", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(outDir, ".agents", "plugins", "marketplace.json"))).toBe(false);
+  });
+
+  test("Codex standalone builder places Markdown without packager-native TOML", () => {
+    const pluginRoot = copyPlugin("generic-codex-placement");
+    const outDir = join(scratch, "generic-codex-placement-output");
+    const result = run([pluginRoot, "codex", outDir, "--json"]);
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    const sourceAgents = readdirSync(join(pluginRoot, "agents"))
+      .filter((file) => file.endsWith("-agent.md"))
+      .sort();
+    const placedAgents = readdirSync(join(outDir, "agents"))
+      .filter((file) => file.endsWith("-agent.md"))
+      .sort();
+    const nativeAgents = readdirSync(join(outDir, "agents"))
+      .filter((file) => file.endsWith(".toml"));
+    expect(placedAgents).toEqual(sourceAgents);
+    expect(nativeAgents).toEqual([]);
+  });
+
+  test("authored Codex TOML cannot overwrite a generated native agent", () => {
+    const pluginRoot = copyPlugin("colliding-codex-agent");
+    writeFileSync(
+      join(pluginRoot, "agents", "test-pro-metrics-agent.toml"),
+      'name = "colliding-agent"\n',
+      "utf8",
+    );
+    const result = run([pluginRoot, "codex", join(scratch, "colliding-codex-output"), "--json"]);
+    expect(result.status).toBe(1);
+    const parsed = JSON.parse(result.stdout) as {
+      errors: Array<{ message: string }>;
+    };
+    expect(parsed.errors[0]?.message).toContain("authored Codex TOML collides");
   });
 
   test("default output is <plugin-root>/dist/<harness>", () => {
     const pluginRoot = copyPlugin("default-output");
     const result = run([pluginRoot, "claude", "--json"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(
-      treeDiff(
-        join(EXPECTED_ROOT, "claude"),
-        join(pluginRoot, "dist", "claude"),
-      ),
-    ).toEqual([]);
+    const explicitOutput = join(scratch, "default-explicit-output");
+    expect(run([pluginRoot, "claude", explicitOutput, "--json"]).status).toBe(0);
+    expect(treeDiff(explicitOutput, join(pluginRoot, "dist", "claude"))).toEqual([]);
   });
 
   test("the same plugin and harness can rebuild its owned projection", () => {
@@ -272,7 +433,7 @@ describe("t315 standalone plugin builder", () => {
     }
   });
 
-  test("direct emission refuses a contended output lock before creating output", () => {
+  test("direct emission reclaims an abandoned unstamped output lock", () => {
     const pluginRoot = copyPlugin("contended-output-lock");
     const outDir = join(scratch, "contended-output");
     const lockDir = pluginBuildLockPath(outDir);
@@ -280,24 +441,15 @@ describe("t315 standalone plugin builder", () => {
     const target = readPluginTargets(
       join(SOURCE_TOOLS, "data", "plugin-targets.json"),
     ).claude;
-    try {
-      expect(() =>
-        buildPluginProjection({
-          pluginRoot,
-          target,
-          outDir,
-          templateHooksDir: join(
-            SOURCE_TOOLS,
-            "data",
-            "plugin-hooks-template",
-          ),
-          lockTimeoutMs: 25,
-        })
-      ).toThrow("could not acquire plugin build output lock");
-      expect(existsSync(outDir)).toBe(false);
-    } finally {
-      rmSync(lockDir, { recursive: true, force: true });
-    }
+    buildPluginProjection({
+      pluginRoot,
+      target,
+      outDir,
+      templateHooksDir: join(SOURCE_TOOLS, "data", "plugin-hooks-template"),
+      lockTimeoutMs: 25,
+    });
+    expect(existsSync(outDir)).toBe(true);
+    expect(existsSync(lockDir)).toBe(false);
   });
 
   test("direct emission reclaims a dead owner-stamped output lock", () => {
@@ -429,12 +581,12 @@ describe("t315 standalone plugin builder", () => {
 
     const result = run([pluginRoot, "claude", outDir, "--json"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(
-      treeDiff(join(EXPECTED_ROOT, "claude"), outDir),
-    ).toEqual([]);
+    const directOutput = join(scratch, "symlinked-environment-direct");
+    expect(run([pluginRoot, "claude", directOutput, "--json"]).status).toBe(0);
+    expect(treeDiff(directOutput, outDir)).toEqual([]);
   });
 
-  test("a matching vendored compose hook is used without changing output", () => {
+  test("authored compose hook cannot occupy the reserved bootstrap path", () => {
     const pluginRoot = copyPlugin("vendored-hook");
     const vendored = join(pluginRoot, "hooks", "compose.ts");
     mkdirSync(dirname(vendored), { recursive: true });
@@ -451,8 +603,11 @@ describe("t315 standalone plugin builder", () => {
     );
     const outDir = join(scratch, "vendored-output");
     const result = run([pluginRoot, "claude", outDir, "--json"]);
-    expect(result.status, result.stderr).toBe(0);
-    expect(treeDiff(join(EXPECTED_ROOT, "claude"), outDir)).toEqual([]);
+    expect(result.status).toBe(1);
+    const parsed = JSON.parse(result.stdout) as {
+      errors: Array<{ message: string }>;
+    };
+    expect(parsed.errors[0]?.message).toContain("collides with the compose bootstrap");
   });
 
   test("validation errors refuse the build with exit 1", () => {

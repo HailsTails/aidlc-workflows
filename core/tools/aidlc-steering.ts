@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import {
+  baseRuleDelivery,
   errorMessage,
   resolveWorkflowSelection,
   toPosix,
@@ -50,6 +51,28 @@ export function isSubstantiveRuleText(text: string): boolean {
     if (/^-{3,}$/.test(trimmed)) return false;
     return true;
   });
+}
+
+const BASE_RULE_BASENAMES = new Set([
+  "org.md",
+  "team.md",
+  "project.md",
+  "ideation.md",
+  "inception.md",
+  "construction.md",
+  "operation.md",
+]);
+
+export function isBaseRuleLayer(rel: string): boolean {
+  const marker = "/memory/";
+  const index = rel.indexOf(marker);
+  if (index < 0) return false;
+  const subpath = rel.slice(index + marker.length);
+  const basename = subpath.split("/").pop() ?? "";
+  const isPhaseRule = subpath.startsWith("phases/");
+  return (
+    BASE_RULE_BASENAMES.has(basename) && (isPhaseRule || !subpath.includes("/"))
+  );
 }
 
 // Resolve graph display paths against the active space. AIDLC_RULES_DIR keeps
@@ -102,6 +125,8 @@ export function readRuleBundle(
           "The stage has not started. Restore the file or fix its permissions/UTF-8 encoding, then run `next` again.",
       };
     }
+
+    if (baseRuleDelivery() === "ambient" && isBaseRuleLayer(entry.rel)) continue;
     if (isSubstantiveRuleText(text)) content.push({ path: entry.rel, text });
   }
   return { content, error: null };

@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { ok as assert } from "node:assert";
 // covers: subcommand:aidlc-orchestrate:report, function:reviewArtifactFingerprint
 //
 // t236 — the ensemble evidence gate (2.5.0). On a mob stage (or a
@@ -695,6 +697,52 @@ describe("t236 ensemble evidence gate — mob approval requires contribution fil
     const before = mutationSnapshot(proj);
     const d = report(proj, { AIDLC_STAGE_GRAPH: graph });
     expect(d.message ?? "").not.toContain('aidlc-design-agent for unit "pack"');
+    expectApprovalCommitted(proj, d, before);
+  });
+
+  test("a per-unit directive dispatches the contribution accepted by completion", () => {
+    const proj = seedProject("[-]");
+    const graph = perUnitEnsembleGraph(proj);
+    seedBoltDag(proj, ["alpha"]);
+    seedAidlcMemory(proj);
+    writeFileSync(seededStateFile(proj), readFileSync(seededStateFile(proj), "utf-8")
+      .replace("- [x] requirements-analysis — EXECUTE", "- [x] requirements-analysis — EXECUTE\n- [x] units-generation — EXECUTE")
+      .replace("- **Scope**: feature", "- **Scope**: feature\n- **Skeleton Stance**: off"));
+    const start = runOrchestrateNext(ORCH, proj, ["--scope", "feature"], {
+      cwd: proj, env: { ...process.env, AIDLC_STAGE_GRAPH: graph },
+    });
+    expect(start.status, start.stderr).toBe(0);
+    expect(start.directive?.unit, JSON.stringify(start.directive)).toBe("alpha");
+    assert(start.directive?.kind === "run-stage");
+    expect(start.directive.ensemble_dispatch).toEqual([{
+      agent: "aidlc-design-agent",
+      contribution_path: "aidlc/spaces/default/intents/fixture-8000000000000001/construction/alpha/user-stories/contributions/aidlc-design-agent.md",
+      identity_marker: "**Collaborator:** aidlc-design-agent",
+      unit: "alpha",
+    }]);
+    const dispatch = z.array(z.object({
+      contribution_path: z.string(), identity_marker: z.string(),
+    })).safeParse(start.directive.ensemble_dispatch);
+    assert(dispatch.success);
+    const seat = dispatch.data[0];
+    assert(seat);
+    mkdirSync(dirname(join(proj, seat.contribution_path)), { recursive: true });
+    writeFileSync(join(proj, seat.contribution_path), seat.identity_marker + "\nFixture contribution.\n");
+    writeUnitArtifact(proj, "alpha");
+    recordReview(proj, "alpha", graph);
+    const before = mutationSnapshot(proj);
+    expectApprovalCommitted(proj, report(proj, { AIDLC_STAGE_GRAPH: graph }), before);
+  });
+
+  test("an entirely kind-pruned DAG owes no stage-level contribution", () => {
+    const proj = seedProject();
+    const graph = perUnitEnsembleGraph(proj, (node) => {
+      node.produces_kinds = { "fixture-artifact": ["service"] };
+    });
+    seedBoltDag(proj, [{ name: "pack", kind: "packaging" }]);
+    const before = mutationSnapshot(proj);
+    const d = report(proj, { AIDLC_STAGE_GRAPH: graph });
+    expect(d.message ?? "").not.toContain("collaborator notes are missing or incomplete");
     expectApprovalCommitted(proj, d, before);
   });
 

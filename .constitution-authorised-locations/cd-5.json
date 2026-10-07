@@ -1,0 +1,8 @@
+[
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-constitution.test.ts"
+    ],
+    "reason": "This is the CD-5 walker's own test suite: proving the walker flags bare `// TODO` / `// biome-ignore` / `// @ts-expect-error` annotations requires naming those exact literals in test titles and rule-string assertions, so the per-line matcher fires on the assertions themselves. A test of the annotation rule cannot avoid writing the annotations. The deliberately-violating fixture files it exercises live under test-fixtures/, which is scope-excluded; this entry covers only the assertion strings in the test body."
+  }
+]

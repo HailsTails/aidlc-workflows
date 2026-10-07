@@ -33,6 +33,8 @@ import {
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import type { ProjectedPluginHookContributions } from "../../core/tools/aidlc-plugin-hook-registrations.ts";
+import { createHash } from "node:crypto";
 
 const PLUGIN_ROOT =
   process.env.CLAUDE_PLUGIN_ROOT ||
@@ -68,16 +70,15 @@ const HARNESS_NAME = (() => {
 const IS_COPILOT = HARNESS_NAME === "copilot";
 const IS_OPENCODE = HARNESS_NAME === "opencode";
 const STAGES_DIR = join(HARNESS_DIR, "aidlc-common", "stages");
-const SKILLS_DIR = IS_COPILOT
-  ? join(PROJECT_DIR, ".github", "skills")
-  : join(HARNESS_DIR, "skills");
+const SKILLS_DIR = HARNESS_NAME === "codex"
+  ? join(PROJECT_DIR, ".agents", "skills")
+  : IS_COPILOT
+    ? join(PROJECT_DIR, ".github", "skills")
+    : join(HARNESS_DIR, "skills");
 const PHASES = ["initialization", "ideation", "inception", "construction", "operation"];
 const COMPOSE_LOCK_RETRIES = 600;
-const SCOPE_TABLE_BEGIN =
-  "<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` - do NOT hand-edit -->";
+const NATIVE_RUNTIME = Boolean(process.env.AIDLC_COMPILED_EXECUTABLE?.trim());
 const SCOPE_TABLE_END = "<!-- END: compiled scope grid -->";
-const STAGE_TABLE_BEGIN =
-  "<!-- BEGIN: compiled stage graph via `bun aidlc-utility.ts stage-table` - do NOT hand-edit -->";
 const STAGE_TABLE_END = "<!-- END: compiled stage graph -->";
 type ParseStageFrontmatter = (raw: string) => Record<string, unknown>;
 interface InstalledAidlcLib {
@@ -129,7 +130,11 @@ function slugFromPath(path: string): string {
   return path.replace(/\\/g, "/").split("/").pop()!.replace(/\.md$/, "");
 }
 
+const SAFE_PLUGIN_KEY = /^[a-z][a-z0-9-]*$/;
+
 function pluginNameFromRoot(): string {
+  const supplied = process.env.AIDLC_PLUGIN_KEY?.trim();
+  if (supplied && SAFE_PLUGIN_KEY.test(supplied)) return supplied;
   if (!PLUGIN_ROOT) return "plugin";
   for (const md of [
     ".claude-plugin",
@@ -141,16 +146,42 @@ function pluginNameFromRoot(): string {
   ]) {
     try {
       const m = JSON.parse(readFileSync(join(PLUGIN_ROOT, md, "plugin.json"), "utf-8"));
-      if (typeof m?.name === "string" && m.name.trim()) {
-        const hostName = m.name.trim();
-        // Emitted AIDLC plugins use aidlc-<name> as the host package ID while
-        // stage/scope ownership uses the logical <name>.
-        return hostName.startsWith("aidlc-") ? hostName.slice("aidlc-".length) : hostName;
+      if (typeof m?.name === "string" && m.name.startsWith("aidlc-")) {
+        const key = m.name.slice("aidlc-".length);
+        if (SAFE_PLUGIN_KEY.test(key)) return key;
       }
     } catch { /* try next / fall through */ }
   }
+  const fromContent = firstPluginFieldInPlugin();
+  if (fromContent) return fromContent;
   const parts = PLUGIN_ROOT.replace(/\\/g, "/").replace(/\/+$/, "").split("/");
   return parts[parts.length - 2] || parts[parts.length - 1] || "plugin";
+}
+
+function firstPluginFieldInPlugin(): string | null {
+  const roots = ["stages", "scopes", "contributions"];
+  const visit = (dir: string): string | null => {
+    if (!existsSync(dir)) return null;
+    for (const entry of readdirSync(dir).sort()) {
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) {
+        const nested = visit(path);
+        if (nested) return nested;
+        continue;
+      }
+      if (!entry.endsWith(".md")) continue;
+      const match = readFileSync(path, "utf-8").match(
+        /^plugin:\s*([a-z][a-z0-9-]*)\s*$/m,
+      );
+      if (match) return match[1];
+    }
+    return null;
+  };
+  for (const root of roots) {
+    const found = visit(join(PLUGIN_ROOT, root));
+    if (found) return found;
+  }
+  return null;
 }
 
 // The plugin's stable IDENTITY, computed once up front so every per-plugin
@@ -159,7 +190,8 @@ function pluginNameFromRoot(): string {
 // plugin-root basename: a projection root is `dist/plugins/<name>/<harness>`, so
 // its basename is the harness leaf (claude/kiro), shared by every plugin — keying
 // on it would let two plugins on one harness clobber each other's drops/retry
-// files. Prefer the manifest `name`; fall back to the parent-dir <name> segment.
+// files. Transactional sync injects the normalized host-manifest key; direct
+// compatibility composition derives the same key from that manifest.
 const PLUGIN_NAME = pluginNameFromRoot();
 const PLUGIN_KEY = PLUGIN_NAME.replace(/[^\w.-]/g, "_");
 
@@ -176,7 +208,7 @@ async function resolveHealthDir(): Promise<string> {
   if (typeof lib?.hooksHealthDir === "function") {
     dir = lib.hooksHealthDir(PROJECT_DIR);
   } else {
-    dir = join(PROJECT_DIR, "aidlc", "spaces", "default", "intents", ".aidlc-hooks-health");
+    dir = join(PROJECT_DIR, "aidlc", "spaces", "default", "intents", ".aidlc-engine", "hooks-health");
   }
   _healthDir = dir;
   return dir;
@@ -226,15 +258,6 @@ async function flushDrops(): Promise<void> {
   _drops.length = 0;
 }
 
-// Installed test/fixture payloads are a property of ONE harness's installed
-// tools tree, not of whichever plugin happens to compose next. Legacy compose
-// versions recorded no tool-file provenance, so audit them in an ownership-
-// neutral file instead of blaming every current plugin through its per-plugin
-// drops record. The record is keyed by the harness leaf: each compose scans
-// only its own HARNESS_DIR/tools, so a clean compose on one harness (e.g.
-// .codex) must never erase the advisory another harness (.claude) still needs.
-// --doctor scans every *.drops file in the health dir, so scoped names stay
-// visible.
 const HARNESS_KEY = HARNESS_LEAF.replace(/^\./, "").replace(/[^\w.-]/g, "_") || "harness";
 async function flushInstalledToolPayloadDrops(): Promise<void> {
   if (!installedToolPayloadAuditRan) return;
@@ -294,7 +317,10 @@ function selectCommandForPlugin(): string {
   const selected = selectedPlugins();
   const names = new Set<string>(selected ?? ["aidlc"]);
   names.add(PLUGIN_NAME);
-  return `bun ${HARNESS_LEAF}/tools/aidlc-utility.ts select-plugins ${[...names].sort().join(",")}`;
+  const selection = [...names].sort().join(",");
+  return NATIVE_RUNTIME
+    ? `aidlc engine plugin select ${selection}`
+    : `bun ${HARNESS_LEAF}/tools/aidlc-utility.ts select-plugins ${selection}`;
 }
 
 function installedToolCommand(tool: "utility" | "graph" | "runner", args: string[]): string[] {
@@ -307,11 +333,12 @@ function installedToolCommand(tool: "utility" | "graph" | "runner", args: string
     };
     return [process.execPath, join(HARNESS_DIR, "tools", files[tool]), ...args];
   }
-  if (tool === "utility") return [executable, "gen", ...args];
-  if (tool === "graph") return [executable, "graph", ...args];
-  if (args[0] === "write") return [executable, "gen", "runners", ...args.slice(1)];
-  if (args[0] === "scopes") return [executable, "gen", "runner-scopes", ...args.slice(1)];
-  if (args[0] === "list") return [executable, "gen", "runner-list", ...args.slice(1)];
+  if (tool === "utility") return [executable, "engine", "gen", ...args];
+  if (tool === "graph") return [executable, "engine", "graph", ...args];
+  if (args[0] === "write") return [executable, "engine", "gen", "runners", ...args.slice(1)];
+  if (args[0] === "check") return [executable, "engine", "gen", "runners", "--check", ...args.slice(1)];
+  if (args[0] === "scopes") return [executable, "engine", "gen", "runner-scopes", ...args.slice(1)];
+  if (args[0] === "list") return [executable, "engine", "gen", "runner-list", ...args.slice(1)];
   throw new Error(`No compiled dispatcher route for aidlc-runner-gen ${args.join(" ")}`);
 }
 
@@ -341,7 +368,6 @@ function installedToolEnv(): NodeJS.ProcessEnv {
 
 function refreshSkillGeneratedRegion(
   verb: "scope-table" | "stage-table",
-  beginMarker: string,
   endMarker: string,
 ): void {
   const skillMd = installedOrchestratorSkillPath();
@@ -351,11 +377,15 @@ function refreshSkillGeneratedRegion(
   }
 
   const before = readFileSync(skillMd, "utf-8").replace(/\r\n/g, "\n");
-  if (!before.includes(beginMarker)) {
+  const kind = verb === "stage-table" ? "stage graph" : "scope grid";
+  const beginMatch = before.match(
+    new RegExp(`<!-- BEGIN: compiled ${kind}[^\\n]* -->`),
+  );
+  if (!beginMatch || beginMatch.index === undefined) {
     recordDrop(`${verb} refresh skipped: SKILL.md missing BEGIN marker`, "advisory");
     return;
   }
-  const beginIdx = before.indexOf(beginMarker);
+  const beginIdx = beginMatch.index;
   const endIdx = before.indexOf(endMarker, beginIdx);
   if (endIdx === -1) {
     recordDrop(`${verb} refresh failed: SKILL.md missing END marker after BEGIN marker`);
@@ -374,7 +404,10 @@ function refreshSkillGeneratedRegion(
   }
 
   const region = (r.stdout || "").replace(/\r\n/g, "\n").replace(/\n$/, "");
-  if (!region.includes(beginMarker) || !region.includes(endMarker)) {
+  if (
+    !new RegExp(`<!-- BEGIN: compiled ${kind}[^\\n]* -->`).test(region) ||
+    !region.includes(endMarker)
+  ) {
     recordDrop(`aidlc-utility ${verb} emitted an invalid generated region`);
     return;
   }
@@ -486,6 +519,8 @@ if (!pluginEnabledBySelection()) {
     `plugin "${PLUGIN_NAME}" composed but is not enabled by tools/data/harness.json; run \`${selectCommandForPlugin()}\` to expose its stages, scopes, and runners`,
     "advisory",
   );
+  await flushDrops();
+  return;
 }
 
 // --- helpers ---------------------------------------------------------------
@@ -696,56 +731,52 @@ function doctorScriptOwnershipPrecheck(): CopyPrecheck {
   };
 }
 
-function toolsTestPayloadPrecheck(): CopyPrecheck {
-  const targetRoot = join(HARNESS_DIR, "tools");
-  const payloadDirs = new Set(["tests", "__tests__", "fixtures"]);
-  const payloadReason = (relPosix: string): string | null => {
-    const segments = relPosix.split("/");
-    const payloadDir = segments.find((segment) => payloadDirs.has(segment));
-    if (payloadDir) return `it uses the reserved "${payloadDir}/" test/fixture path`;
-    const base = basename(relPosix);
-    return /\.(?:test|spec)\.ts$/.test(base)
-      ? `its basename "${base}" matches a co-located test pattern`
-      : null;
-  };
-  const drop = (relPosix: string, why: string): void => {
-    recordDrop(
-      `plugin "${PLUGIN_NAME}" tool file "${relPosix}" is a test/fixture payload: ${why}; plugin tests and fixtures live in top-level "tests/", never inside "tools/" - not copied`,
-      "advisory",
-    );
-  };
-  // Audit the INSTALLED tree independently of the current source projection.
-  // Older compose versions recorded no owning plugin for arbitrary tool files,
-  // so these diagnostics deliberately do not attribute the path to PLUGIN_NAME.
-  // The tree is user-writable: traversal never follows symlinks, and a failed
-  // scan must neither abort composition nor let a partial (hence possibly
-  // clean-looking) result erase the previous record for this harness.
+function sourceOnlyReason(path: string): string | null {
+  const segments = path.replace(/\\/g, "/").split("/");
+  if (segments.includes("test-fixtures")) {
+    return 'it uses the maintained "test-fixtures/" source path';
+  }
+  const payloadDir = segments.find((segment) =>
+    ["tests", "__tests__", "fixtures"].includes(segment)
+  );
+  if (payloadDir) return `it uses the reserved "${payloadDir}/" test/fixture path`;
+  const base = segments.at(-1) ?? "";
+  return /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(base)
+    ? `its basename "${base}" matches a co-located test pattern`
+    : null;
+}
+
+function auditInstalledContentPayload(): void {
   installedToolPayloadAuditRan = true;
+  let auditedDirectory = "tools";
   try {
-    for (const file of walkInstalledNoFollow(targetRoot)) {
-      const relPosix = relative(targetRoot, file).replace(/\\/g, "/");
-      const why = payloadReason(relPosix);
-      if (why) {
+    ([
+      { directory: "tools", kind: "tool" },
+      { directory: "knowledge", kind: "knowledge" },
+      { directory: "agents", kind: "agent" },
+      { directory: "scopes", kind: "scope" },
+      { directory: "sensors", kind: "sensor" },
+      { directory: "aidlc-common/stages", kind: "stage" },
+    ] as const).forEach(({ directory, kind }) => {
+      auditedDirectory = directory;
+      const targetRoot = join(HARNESS_DIR, directory);
+      walkInstalledNoFollow(targetRoot).forEach((file) => {
+        const relPosix = relative(targetRoot, file).replace(/\\/g, "/");
+        const why = sourceOnlyReason(relPosix);
+        if (!why) return;
         recordInstalledToolPayloadDrop(
-          `installed tool file "${relPosix}" is a test/fixture payload: ${why}; originating plugin is not recorded in legacy installs, so ownership is not attributed; remove the file and re-run compose`,
+          `installed ${kind} file "${relPosix}" is a test/fixture payload: ${why}; originating plugin is not recorded in legacy installs, so ownership is not attributed; remove the file and re-run compose`,
         );
-      }
-    }
+      });
+    });
   } catch (e) {
     installedToolPayloadAuditRan = false;
     _installedToolPayloadDrops.length = 0;
     recordDrop(
-      `installed tools audit under "${HARNESS_LEAF}/tools" failed (${String(e)}); keeping the previous installed-payload record for this harness - fix the unreadable path and re-run compose`,
+      `installed ${auditedDirectory} audit under "${HARNESS_LEAF}/${auditedDirectory}" failed (${String(e)}); keeping the previous installed-payload record for this harness - fix the unreadable path and re-run compose`,
       "degraded",
     );
   }
-  return ({ rel }) => {
-    const relPosix = rel.replace(/\\/g, "/");
-    const why = payloadReason(relPosix);
-    if (!why) return true;
-    drop(relPosix, why);
-    return false;
-  };
 }
 
 function projectOpencodeAgentMemory(raw: string): string {
@@ -871,6 +902,23 @@ function opencodeNativeAgentPrecheck(dst: string): CopyPrecheck {
 }
 
 const COPILOT_WORKER_TOOLS = ["read", "edit", "search", "execute", "web", "todo"] as const;
+const COPILOT_TOOL_ALIASES: Readonly<Record<string, string>> = {
+  read: "read", notebookread: "read", search: "search", grep: "search", glob: "search",
+  edit: "edit", multiedit: "edit", write: "edit", notebookedit: "edit",
+  execute: "execute", shell: "execute", bash: "execute", powershell: "execute",
+  web: "web", websearch: "web", webfetch: "web", todo: "todo", todowrite: "todo",
+  agent: "agent", "custom-agent": "agent", task: "agent",
+};
+
+function copilotAgentTools(input: { content: string }): readonly string[] | null {
+  const declared = frontmatter(input.content).match(/^tools:\s*(.*?)\s*$/m)?.[1];
+  if (declared === undefined) return COPILOT_WORKER_TOOLS;
+  if (declared.trim() === "[]") return [];
+  const tools = declared.replace(/^\[|\]$/g, "").split(",").map((tool) =>
+    COPILOT_TOOL_ALIASES[tool.trim().replace(/^["']|["']$/g, "").toLowerCase()]);
+  if (tools.some((tool) => tool === undefined)) return null;
+  return [...new Set(tools.filter((tool): tool is string => tool !== undefined && tool !== "agent"))];
+}
 
 function copilotNativeAgentPrecheck(dst: string): CopyPrecheck {
   const collision = installedNameCollisionPrecheck(dst, "agents");
@@ -896,14 +944,43 @@ function copilotNativeAgentPrecheck(dst: string): CopyPrecheck {
       );
       return false;
     }
-    if (/^tools:/m.test(fm)) {
+    if (copilotAgentTools({ content: ctx.content }) === null) {
       recordDrop(
-        `plugin "${PLUGIN_NAME}" agent file "${ctx.rel}" declares both tools and disallowedTools; Copilot projection would be ambiguous`,
+        `plugin "${PLUGIN_NAME}" agent file "${ctx.rel}" declares tools that cannot be projected to Copilot's native aliases`,
       );
       return false;
     }
     return true;
   };
+}
+
+const OPENCODE_TOOL_NAMES = [
+  "bash", "edit", "glob", "grep", "invalid", "list", "patch", "question",
+  "read", "skill", "task", "todowrite", "webfetch", "websearch", "write",
+] as const;
+
+const OPENCODE_TOOL_ALIASES: Readonly<Record<string, string>> = {
+  multiedit: "edit",
+  notebookedit: "edit",
+  ls: "list",
+};
+
+function opencodeToolKey(name: string): string | null {
+  const lowered = name.trim().toLowerCase();
+  if (!lowered) return null;
+  const aliased = OPENCODE_TOOL_ALIASES[lowered] ?? lowered;
+  return OPENCODE_TOOL_NAMES.some((tool) => tool === aliased) ? aliased : null;
+}
+
+function opencodeToolsMapLines(allowlist: string): string[] | null {
+  const allowed = new Set(
+    allowlist.split(",").map(opencodeToolKey).filter((entry): entry is string => entry !== null),
+  );
+  if (allowed.size === 0) return null;
+  return [
+    "tools:",
+    ...OPENCODE_TOOL_NAMES.map((tool) => `  ${tool}: ${allowed.has(tool) ? "true" : "false"}`),
+  ];
 }
 
 function emitOpencodeNativeAgent({ file, content }: CopyContext): string {
@@ -920,6 +997,10 @@ function emitOpencodeNativeAgent({ file, content }: CopyContext): string {
     .filter((line) => {
       const model = line.match(/^model:\s*(.*?)(?:\s+#.*)?\s*$/)?.[1];
       return model === undefined || model.includes("/");
+    })
+    .flatMap((line) => {
+      const allowlist = line.match(/^tools:\s*(\S.*?)\s*$/)?.[1];
+      return allowlist === undefined ? [line] : opencodeToolsMapLines(allowlist) ?? [line];
     })
     .join("\n");
   if (/^permission:\s*$/m.test(fm)) {
@@ -938,12 +1019,14 @@ function emitOpencodeNativeAgent({ file, content }: CopyContext): string {
 function emitCopilotNativeAgent({ file, content }: CopyContext): string {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   if (!m) throw new Error(`${file}: plugin agent has no closed frontmatter block`);
+  const tools = copilotAgentTools({ content });
+  if (tools === null) throw new Error(`${file}: unsupported Copilot tool declaration`);
   const fm = m[1]
     .split(/\r?\n/)
     .flatMap((line) => {
-      if (/^(tier|model|effort):/.test(line)) return [];
+      if (/^(tier|model|effort|tools):/.test(line)) return [];
       if (/^disallowedTools:/.test(line)) {
-        return [`tools: [${COPILOT_WORKER_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`];
+        return [`tools: [${tools.map((tool) => `"${tool}"`).join(", ")}]`];
       }
       return [line];
     })
@@ -1052,12 +1135,28 @@ function pluginShipsViableNativeAgent(agent: string): boolean {
   const disallowed = frontmatter(content).match(/^disallowedTools:\s*(.*?)\s*$/m)?.[1];
   if (IS_COPILOT && !disallowed) return false;
   if (disallowed && !/^\s*Task\s*$/i.test(disallowed)) return false;
-  if (IS_COPILOT && disallowed && /^tools:/m.test(frontmatter(content))) return false;
+  if (IS_COPILOT && copilotAgentTools({ content }) === null) return false;
   const rosterDir = nativeAgentsDir();
   const name = frontmatterName(content);
   if (!name) return true;
   const collidingFile = installedNameRoster(rosterDir).get(name);
   return !collidingFile || collidingFile === join(rosterDir, `${agent}.md`);
+}
+
+function installedCodexAgentIsDispatchable(agentsDir: string, agent: string): boolean {
+  try {
+    const native: unknown = Bun.TOML.parse(
+      readFileSync(join(agentsDir, `${agent}.toml`), "utf-8"),
+    );
+    if (typeof native !== "object" || native === null) return false;
+    const instructions = "developer_instructions" in native
+      ? native.developer_instructions
+      : null;
+    return "name" in native && native.name === agent &&
+      typeof instructions === "string" && instructions.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function yamlIndent(line: string): number {
@@ -1368,8 +1467,10 @@ async function kiroPluginAgentPrechecks(): Promise<KiroPluginAgentPrechecks | nu
         agent,
         missingSurface: isKiroIde
           ? !installedIdeAgentIsDispatchable(surfaceDir, agent)
-          : !existsSync(join(surfaceDir, `${agent}${surfaceExt}`)) &&
-            !(HARNESS_LEAF === ".aidlc" && pluginShipsViableNativeAgent(agent)),
+          : HARNESS_LEAF === ".codex"
+            ? !installedCodexAgentIsDispatchable(surfaceDir, agent)
+            : !existsSync(join(surfaceDir, `${agent}${surfaceExt}`)) &&
+              !(HARNESS_LEAF === ".aidlc" && pluginShipsViableNativeAgent(agent)),
         missingTrust: isKiroCli && !trustedAgents.has(agent),
       };
       if (gap.missingSurface || gap.missingTrust) gaps.set(agent, gap);
@@ -1492,6 +1593,21 @@ function copyTreeNoClobber(
   let wrote = false;
   for (const file of walk(src)) {
     const rel = relative(src, file);
+    const pluginRelativePath = relative(PLUGIN_ROOT, file).replace(/\\/g, "/");
+    const sourceOnly = sourceOnlyReason(pluginRelativePath);
+    if (sourceOnly) {
+      const relPosix = rel.replace(/\\/g, "/");
+      const remediation = pluginRelativePath.split("/").includes("test-fixtures")
+        ? "maintained test-fixtures stay in plugin source"
+        : kind === "tool"
+          ? 'plugin tests and fixtures live in top-level "tests/", never inside "tools/"'
+          : "move source tests and fixtures outside runtime content";
+      recordDrop(
+        `plugin "${PLUGIN_NAME}" ${kind} file "${relPosix}" is a test/fixture payload: ${sourceOnly}; ${remediation} - not copied`,
+        "advisory",
+      );
+      continue;
+    }
     const dest = join(dst, rel);
     let buf = readFileSync(file);
     if (file.endsWith(".md")) {
@@ -1828,6 +1944,20 @@ try {
       "plugin-owned stages/scopes/agents not composed: installed engine predates the plugin: ownership key - re-copy your dist/<harness>/ shell, then re-run compose",
     );
   } else {
+    const scopesDir = join(HARNESS_DIR, "scopes");
+    const agentsDir = join(HARNESS_DIR, "agents");
+    const pluginAgentsDir =
+      HARNESS_LEAF === ".cursor"
+        ? join(PLUGIN_ROOT, "aidlc", "agents")
+        : join(PLUGIN_ROOT, "agents");
+    if (HARNESS_LEAF === ".codex") {
+      changed = copyTreeNoClobber(
+        pluginAgentsDir,
+        agentsDir,
+        "agents",
+        installedNameCollisionPrecheck(agentsDir, "agents"),
+      ) || changed;
+    }
     const kiroAgentPrechecks = await kiroPluginAgentPrechecks();
     const stagePrecheck = combinePrechecks(
       await unsupportedRuntimeModePrecheck(),
@@ -1835,14 +1965,8 @@ try {
       await installedStageSchemaPrecheck(),
     );
     changed = copyTreeNoClobber(join(PLUGIN_ROOT, "stages"), STAGES_DIR, "stage", stagePrecheck) || changed;
-    const scopesDir = join(HARNESS_DIR, "scopes");
-    const agentsDir = join(HARNESS_DIR, "agents");
-    const pluginAgentsDir =
-      HARNESS_LEAF === ".cursor"
-        ? join(PLUGIN_ROOT, "aidlc", "agents")
-        : join(PLUGIN_ROOT, "agents");
     changed = copyTreeNoClobber(join(PLUGIN_ROOT, "scopes"), scopesDir, "scopes", installedNameCollisionPrecheck(scopesDir, "scopes")) || changed;
-    changed = copyTreeNoClobber(
+    if (HARNESS_LEAF !== ".codex") changed = copyTreeNoClobber(
       pluginAgentsDir,
       agentsDir,
       "agents",
@@ -1925,11 +2049,21 @@ try {
     );
   }
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "sensors"), join(HARNESS_DIR, "sensors"), "sensor", sensorManifestNamePrecheck()) || changed;
+  auditInstalledContentPayload();
   changed = copyTreeNoClobber(
     join(PLUGIN_ROOT, "tools"),
     join(HARNESS_DIR, "tools"),
     "tool",
-    combinePrechecks(toolsTestPayloadPrecheck(), doctorScriptOwnershipPrecheck()),
+    doctorScriptOwnershipPrecheck(),
+  ) || changed;
+  const hookBootstrapFiles = new Set(["compose.ts", "aidlc-plugin-compose.ts", "hooks.json"]);
+  changed = copyTreeNoClobber(
+    join(PLUGIN_ROOT, "hooks"),
+    join(HARNESS_DIR, "hooks"),
+    "hook",
+    ({ rel }) => !hookBootstrapFiles.has(rel),
+    undefined,
+    ({ rel }) => hookBootstrapFiles.has(rel) ? "handled" : "compare",
   ) || changed;
 
   // 2. Merge contributions into stage SOURCE (structural + prose fragments).
@@ -1942,7 +2076,7 @@ try {
   // fragment records let doctor verify sentinel-marked prose after an engine
   // reinstall. Accumulated across re-runs: structural entries are unioned, while
   // a fragment upgrade replaces the prior hash for its (anchor, order) identity.
-  type StageContribRecord = { produces?: string[]; sensors?: string[]; consumes?: Array<string | ConsumeEntry>; scopes?: string[]; required_sections?: string[]; required_sections_created?: boolean; fragments?: FragmentRecord[] };
+  type StageContribRecord = { produces?: string[]; sensors?: string[]; consumes?: Array<string | ConsumeEntry>; scopes?: string[]; required_sections?: string[]; required_sections_created?: boolean; fragments?: FragmentRecord[]; hook_registrations?: ProjectedPluginHookContributions };
   type StringContribField = "produces" | "sensors" | "scopes" | "required_sections";
   const contribManifestPath = join(HARNESS_DIR, "tools", "data", `plugin-contrib-${PLUGIN_KEY}.json`);
   let contribManifestLoadError: string | null = null;
@@ -2063,6 +2197,7 @@ try {
     let files: string[];
     try { files = readdirSync(phaseDir); } catch { continue; }
     for (const file of files) {
+      if (sourceOnlyReason(relative(PLUGIN_ROOT, join(phaseDir, file)))) continue;
       if (!file.endsWith(".md")) continue;
       // Normalize CRLF once so every downstream block/list regex is newline-safe;
       // strip a leading UTF-8 BOM and any leading blank lines so the `^---`
@@ -2314,6 +2449,38 @@ try {
   // Persist structural and fragment provenance when this run changes it.
   // A prose-only plugin therefore leaves a sidecar that doctor can verify after
   // a fresh engine distribution overwrites the composed stage source.
+  const hookPayloadPath = join(PLUGIN_ROOT, "contributions", "hook-registrations.json");
+  if (pluginEnabledBySelection() && existsSync(hookPayloadPath)) {
+    const runtime: typeof import("../../core/tools/aidlc-plugin-hook-registrations.ts") = await import(join(HARNESS_DIR, "tools", "aidlc-plugin-hook-registrations.ts"));
+    const rawPayload: unknown = JSON.parse(readFileSync(hookPayloadPath, "utf-8"));
+    const payload = runtime.projectedPluginHookContributionsSchema.parse(rawPayload);
+    if (payload.kind === "invalid" || payload.value.pluginName !== PLUGIN_NAME || payload.value.harness !== HARNESS_NAME) throw new Error("plugin hook contribution payload is invalid");
+    const priorPayload = contribManifest.$hooks?.hook_registrations;
+    const parsedPrior = priorPayload === undefined ? null : runtime.projectedPluginHookContributionsSchema.parse(priorPayload);
+    if (parsedPrior?.kind === "invalid" || (parsedPrior?.kind === "parsed" && (parsedPrior.value.pluginName !== PLUGIN_NAME || parsedPrior.value.harness !== HARNESS_NAME))) throw new Error("recorded plugin hook contributions are invalid");
+    const previous = parsedPrior?.kind === "parsed" ? parsedPrior.value.registrations : [];
+    const paths = [...new Set([...previous, ...payload.value.registrations].map((registration) => registration.path))];
+    const documents = paths.map((path) => ({ path, text: readFileSync(join(PROJECT_DIR, path), "utf-8") }));
+    const plan = runtime.planPluginHookRegistrations({ pluginName: PLUGIN_NAME, harness: payload.value.harness, selection: { kind: "selected" }, previous, current: payload.value.registrations, documents });
+    if (plan.kind === "conflict") throw new Error(`plugin hook registration refused: ${plan.error.path}: ${plan.error.reason}`);
+    plan.documents.forEach((document) => {
+      const path = join(PROJECT_DIR, document.path);
+      if (readFileSync(path, "utf-8") !== document.text) { writeComposeFile(path, document.text); changed = true; }
+    });
+    if (payload.value.harness === "codex") {
+      const seed = runtime.planCodexHookTrustSeed({ document: JSON.parse(readFileSync(join(HARNESS_DIR, "hooks.json"), "utf-8")),
+        hooksPath: join(PROJECT_DIR, HARNESS_LEAF, "hooks.json"),
+        hashIdentity: ({ identity }) => `sha256:${createHash("sha256").update(identity, "utf-8").digest("hex")}` });
+      if (seed.kind === "invalid-document") throw new Error("Codex hook trust refused: invalid hooks.json");
+      const seedPath = join(HARNESS_DIR, "trust-seed.toml");
+      if (!existsSync(seedPath) || readFileSync(seedPath, "utf-8") !== seed.text) writeComposeFile(seedPath, seed.text);
+    }
+    const hooks = { ...payload.value, registrations: plan.ownedRegistrations };
+    if (JSON.stringify(contribManifest.$hooks?.hook_registrations) !== JSON.stringify(hooks)) {
+      contribManifest.$hooks = { hook_registrations: hooks };
+      contribManifestDirty = true;
+    }
+  }
   if (contribManifestDirty) {
     try {
       mkdirSync(join(HARNESS_DIR, "tools", "data"), { recursive: true });
@@ -2403,15 +2570,15 @@ try {
       if (retryPending) {
         try { rmSync(retryMarker, { force: true }); } catch { /* best-effort */ }
       }
-      refreshSkillGeneratedRegion("stage-table", STAGE_TABLE_BEGIN, STAGE_TABLE_END);
-      refreshSkillGeneratedRegion("scope-table", SCOPE_TABLE_BEGIN, SCOPE_TABLE_END);
+      refreshSkillGeneratedRegion("stage-table", STAGE_TABLE_END);
+      refreshSkillGeneratedRegion("scope-table", SCOPE_TABLE_END);
     }
   }
 
   const pluginShipsScopes = existsSync(join(PLUGIN_ROOT, "scopes"));
   if (recompiled || missingPluginStageRunner) {
     if (!skillsDirExists) {
-      recordDrop(`runner regeneration skipped: ${HARNESS_LEAF}/skills not present in this install`, "advisory");
+      recordDrop(`runner regeneration skipped: ${relative(PROJECT_DIR, SKILLS_DIR)} not present in this install`, "advisory");
     } else {
       const runnerEnv = installedToolEnv();
       const runRunnerGen = (args: string[], label: string): boolean => {

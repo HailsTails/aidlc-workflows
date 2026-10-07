@@ -4,7 +4,7 @@
 // of compaction — fired at the real compaction moment, with full state-file
 // context available.
 //
-// Also writes aidlc-docs/.aidlc-recovery.md as a breadcrumb for the orchestrator
+// Also writes <record>/.aidlc-engine/recovery.md as a breadcrumb for the orchestrator
 // to detect compaction-related state corruption on the next turn.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,18 +13,22 @@ import {
   auditFilePath,
   errorMessage,
   getField,
+  hookPayloadCwd,
   hooksHealthDir,
   invalidateActiveDirectiveContext,
   isoTimestamp,
   recordHookDrop,
   recoveryFilePath,
-  resolveProjectDirFromHook,
+  resolveProjectDirFromPayload,
   stateFilePath,
   validSessionId,
 } from "../tools/aidlc-lib.ts";
 
 export async function run(input: string): Promise<number> {
-const projectDir = resolveProjectDirFromHook(import.meta.url);
+const projectDir = resolveProjectDirFromPayload({
+  importMetaUrl: import.meta.url,
+  cwd: hookPayloadCwd(input),
+});
 const stateFile = stateFilePath(projectDir);
 
 // Write health heartbeat

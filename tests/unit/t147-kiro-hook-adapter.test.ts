@@ -22,7 +22,6 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   appendFileSync,
   cpSync,
@@ -46,6 +45,7 @@ import {
   writeActiveDirectiveMarker,
   writeSessionIntentHandoff,
   writeSessionIntentUuid,
+  stateDigest,
 } from "../../core/tools/aidlc-lib.ts";
 import {
   DEFAULT_RECORD_DIR,
@@ -105,8 +105,17 @@ function seedShell(dir: string): void {
 
 // Scratch project: a .kiro tree (copied) + the per-intent workspace shell with an
 // active workflow state so the core hooks' self-gates open. Built per test.
+function useExplicitRuleDelivery(dir: string): void {
+  const path = join(dir, ".kiro", "tools", "data", "harness.json");
+  writeFileSync(path, readFileSync(path, "utf-8").replace(
+    '"baseRuleDelivery": "ambient"',
+    '"baseRuleDelivery": "explicit"',
+  ));
+}
+
 function scratchProject(withState: boolean): string {
   const dir = mkdtempSync(join(tmpdir(), "t147-"));
+  mkdirSync(join(dir, ".git"));
   cpSync(KIRO_TREE, join(dir, ".kiro"), { recursive: true });
   seedShell(dir);
   if (withState) {
@@ -222,7 +231,7 @@ function seedUnapprovedCodeGeneration(dir: string, unit: string): void {
     kind: "run-stage",
     stage: "code-generation",
     unit,
-    state_sha256: createHash("sha256").update(state).digest("hex"),
+    state_sha256: stateDigest(state),
   });
   mkdirSync(join(seededRecordDir(dir), "construction", unit, "code-generation"), {
     recursive: true,
@@ -337,6 +346,31 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
         expect(r.code).toBe(2);
         expect(r.stderr).toContain("Code generation cannot");
       }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("1bc: execute_pwsh normalises to Bash in the plan-approval-guard path like execute_bash", () => {
+    const dir = scratchProject(true);
+    try {
+      seedUnapprovedCodeGeneration(dir, "todo-core");
+      const verdict = (toolName: string) =>
+        runAdapter(dir, "plan-approval-guard", {
+          hook_event_name: "preToolUse",
+          cwd: dir,
+          tool_name: toolName,
+          tool_input: { command: "sort input.txt -o src/blocked.txt" },
+        });
+      const bash = verdict("execute_bash");
+      expect(bash.code).toBe(2);
+      expect(bash.stderr).toContain("Code generation cannot");
+      // On a Windows host the same shell tool is named execute_pwsh: guarded, not
+      // failed open, with the identical verdict and reason.
+      const pwsh = verdict("execute_pwsh");
+      expect(pwsh.code).toBe(2);
+      expect(pwsh.stderr).toBe(bash.stderr);
+      expect(pwsh.stdout).toBe(bash.stdout);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -695,18 +729,34 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
     }
   });
 
-  test("4: todo_list create with [slug] suffix syncs the state file", () => {
+  test("4: todo_list refuses to move the current stage backward", () => {
     const dir = scratchProject(true);
     try {
       const before = readFileSync(seededStateFile(dir), "utf-8");
       const r = runAdapter(dir, "sync-workflow-state", FIXTURES.postToolUse_todo_create);
       expect(r.code).toBe(0);
       const after = readFileSync(seededStateFile(dir), "utf-8");
-      // The fixture's [intent-capture] slug dispatches set-status; assert the
-      // Current Stage field reflects it (robust to the fixture state already
-      // being on intent-capture: require the field present AND the heartbeat).
-      expect(/\*\*Current Stage\*\*:\s*intent-capture/.test(after)).toBe(true);
-      expect(before).toBeDefined();
+      expect(after).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("todo_list advances the state to its requested stage", () => {
+    const dir = scratchProject(true);
+    try {
+      const result = runAdapter(dir, "sync-workflow-state", {
+        hook_event_name: "postToolUse",
+        cwd: dir,
+        session_id: "cb3a220a-609f-4265-8ff9-2cafd3658000",
+        tool_name: "todo_list",
+        tool_input: {
+          command: "create",
+          tasks: [{ task_description: "Running User Stories [user-stories]" }],
+        },
+      });
+      expect(result.code).toBe(0);
+      expect(readFileSync(seededStateFile(dir), "utf-8")).toContain("**Current Stage**: user-stories");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -747,6 +797,7 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
 
   test("5b: subagent dispatch warns on incomplete rules (proceeds) and accepts exact rules", () => {
     const dir = scratchProject(true);
+    useExplicitRuleDelivery(dir);
     try {
       cpSync(
         join(REPO_ROOT, "dist", "kiro", "aidlc"),
@@ -839,6 +890,7 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
 
   test("5c: oversized valid rules use Kiro preload while unloadable rules still block", () => {
     const oversizedDir = scratchProject(true);
+    useExplicitRuleDelivery(oversizedDir);
     try {
       cpSync(
         join(REPO_ROOT, "dist", "kiro", "aidlc"),
@@ -935,19 +987,19 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
       expect(config.hooks?.preToolUse ?? [], name).toContainEqual({
         matcher: "execute_bash",
         command:
-          `bun .kiro/hooks/aidlc-kiro-adapter.ts state-transition-guard ${config.name}`,
+          `bun .kiro/tools/aidlc.ts engine adapter kiro state-transition-guard ${config.name}`,
         timeout_ms: 15000,
       });
       expect(config.hooks?.preToolUse ?? [], name).toContainEqual({
         matcher: "fs_write",
         command:
-          "bun .kiro/hooks/aidlc-kiro-adapter.ts plan-approval-guard",
+          "bun .kiro/tools/aidlc.ts engine adapter kiro plan-approval-guard",
         timeout_ms: 15000,
       });
       expect(config.hooks?.preToolUse ?? [], name).toContainEqual({
         matcher: "execute_bash",
         command:
-          "bun .kiro/hooks/aidlc-kiro-adapter.ts plan-approval-guard",
+          "bun .kiro/tools/aidlc.ts engine adapter kiro plan-approval-guard",
         timeout_ms: 15000,
       });
     }
@@ -979,9 +1031,10 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
   test("5f: defensive read and mutation shapes reach the scoped guard adapters", () => {
     const dir = scratchProject(true);
     try {
-      const healthDir = join(seededRecordDir(dir), ".aidlc-hooks-health");
+      const healthDir = join(seededRecordDir(dir), ".aidlc-engine/hooks-health");
+      mkdirSync(dirname(join(seededRecordDir(dir), ".aidlc-engine/reviewer-dispatch.json")), { recursive: true });
       writeFileSync(
-        join(seededRecordDir(dir), ".aidlc-reviewer-dispatch.json"),
+        join(seededRecordDir(dir), ".aidlc-engine/reviewer-dispatch.json"),
         JSON.stringify({
           reviewer: "aidlc-architecture-reviewer-agent",
           stage: "nfr-design",
@@ -1120,7 +1173,7 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
   test("7: write-like adapter inputs reach audit and sensors while delete stays out", () => {
     const dir = scratchProject(true);
     try {
-      const healthDir = join(seededRecordDir(dir), ".aidlc-hooks-health");
+      const healthDir = join(seededRecordDir(dir), ".aidlc-engine/hooks-health");
       const auditHeartbeat = join(healthDir, "write-audit-log.last");
       const sensorHeartbeat = join(healthDir, "run-sensors.last");
       for (const tool_name of ADAPTER_TOOL_NAMES.writes) {
@@ -1220,7 +1273,7 @@ describe("t147 Kiro hook adapter (live-captured payload fixtures)", () => {
         session_id: sid,
         tool_name: "shell",
         tool_input: {
-          command: "bun .kiro/tools/aidlc-utility.ts intent-create --scope poc",
+          command: "bun .kiro/tools/aidlc.ts engine intent create --scope poc",
         },
         tool_response: {
           items: [

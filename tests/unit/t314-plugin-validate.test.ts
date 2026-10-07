@@ -382,15 +382,94 @@ adds:
     );
   });
 
-  test("f: tests, fixtures, and *.test.ts payloads under tools fail", () => {
+  test("f: unclassified tests and fixtures directories under tools fail", () => {
     const root = fixture();
     write(join(root, "tools", "tests", "case.json"), "{}\n");
+    write(join(root, "tools", "nested", "__tests__", "case.ts"), "export {};\n");
     write(join(root, "tools", "fixtures", "input.txt"), "fixture\n");
     write(join(root, "tools", "helper.test.ts"), "test\n");
     const payloads = validatePluginRoot(root).errors.filter(
       (finding) => finding.rule === "tools-payload",
     );
-    expect(payloads).toHaveLength(3);
+    expect(payloads.map((finding) => finding.file)).toEqual([
+      "tools/fixtures/input.txt",
+      "tools/nested/__tests__/case.ts",
+      "tools/tests/case.json",
+    ]);
+  });
+
+  test("maintained tool tests and test fixtures validate with runtime tools", () => {
+    const root = fixture();
+    write(join(root, "tools", "helper.test.ts"), "export {};\n");
+    write(join(root, "tools", "nested", "helper.spec.mtsx"), "export {};\n");
+    write(join(root, "tools", "test-fixtures", "input.json"), "{}\n");
+
+    const result = validatePluginRoot(root);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("maintained Markdown fixtures skip stage, scope, agent, and contribution validation", () => {
+    const root = fixture();
+    write(join(root, "stages", "construction", "test-fixtures", "example.md"), "# example\n");
+    write(join(root, "scopes", "test-fixtures", "example.md"), "# example\n");
+    write(join(root, "agents", "test-fixtures", "example.md"), "# example\n");
+    write(join(root, "contributions", "construction", "test-fixtures", "example.md"), "# example\n");
+
+    const result = validatePluginRoot(root);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("malformed runtime Markdown under each semantic content root still refuses", () => {
+    const root = fixture();
+    write(join(root, "stages", "construction", "broken.md"), "# broken\n");
+    write(join(root, "scopes", "broken.md"), "# broken\n");
+    write(join(root, "agents", "broken.md"), "# broken\n");
+    write(join(root, "contributions", "construction", "broken.md"), "# broken\n");
+
+    const result = validatePluginRoot(root);
+    expect(result.errors).toContainEqual(expect.objectContaining({ file: "stages/construction/broken.md", rule: "stage-frontmatter" }));
+    expect(result.errors).toContainEqual(expect.objectContaining({ file: "scopes/broken.md", rule: "scope-frontmatter" }));
+    expect(result.errors).toContainEqual(expect.objectContaining({ file: "agents/broken.md", rule: "agent-frontmatter" }));
+    expect(result.errors).toContainEqual(expect.objectContaining({ file: "contributions/construction/broken.md", rule: "contribution-target" }));
+  });
+
+  test("fixture agents cannot satisfy a runtime stage agent reference", () => {
+    const root = fixture();
+    write(
+      join(root, "agents", "test-fixtures", "fixture-plugin-ghost-agent.md"),
+      "---\nname: fixture-plugin-ghost-agent\nplugin: fixture-plugin\n---\n",
+    );
+    const stage = join(root, "stages", "construction", "fixture-plugin-stage.md");
+    writeFileSync(
+      stage,
+      readFileSync(stage, "utf-8").replace(
+        "lead_agent: aidlc-quality-agent",
+        "lead_agent: fixture-plugin-ghost-agent",
+      ),
+    );
+
+    const result = validatePluginRoot(root);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        file: "stages/construction/fixture-plugin-stage.md",
+        rule: "stage-schema",
+      }),
+    );
+  });
+
+  test("unsupported nested payload under another runtime content root is refused", () => {
+    const root = fixture();
+    write(join(root, "knowledge", "nested", "fixtures", "input.json"), "{}\n");
+
+    const result = validatePluginRoot(root);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        file: "knowledge/nested/fixtures/input.json",
+      }),
+    );
   });
 
   test("linked plugin files and directories fail with path-specific findings", () => {

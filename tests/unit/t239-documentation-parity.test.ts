@@ -33,7 +33,7 @@ function filesBelow(root: string, suffix: string): string[] {
 }
 
 function numberWord(value: number): string {
-  const words = ["zero", "one", "two", "three", "four", "five"];
+  const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
   return words[value] ?? String(value);
 }
 
@@ -49,8 +49,16 @@ function agentTokens(text: string): string[] {
 }
 
 function documentedDistNames(text: string): string[] {
-  return [...new Set([...text.matchAll(/dist\/([a-z][a-z-]+)\//g)].map((match) => match[1]))]
-    .sort();
+  return [
+    ...new Set([
+      ...[...text.matchAll(/(?:dist|runtime)\/([a-z][a-z-]+)\//g)].map(
+        (match) => match[1],
+      ),
+      ...[...text.matchAll(/--harness\s+([a-z][a-z-]+)/g)].map(
+        (match) => match[1],
+      ),
+    ]),
+  ].sort();
 }
 
 function markdownCells(line: string): string[] {
@@ -146,7 +154,7 @@ const engineCommands = [...engineMain.matchAll(/case "([^"]+)":/g)].map((match) 
 
 describe("documentation parity derives current behavior from authored implementation", () => {
   test("event count and user-guide taxonomy match VALID_EVENT_TYPES", () => {
-    expect(eventTypes.length).toBe(91);
+    expect(eventTypes.length).toBe(99);
 
     const guide = read("docs", "guide", "10-state-and-audit.md");
     const guideTaxonomy = sliceBetween(
@@ -275,7 +283,7 @@ describe("documentation parity derives current behavior from authored implementa
     expect(reviewerProtocol).toContain(
       "On a harness without reviewer-scope enforcement (Kiro IDE today)",
     );
-    expect(skill).not.toContain(".aidlc-reviewer-dispatch.json");
+    expect(skill).not.toContain(".aidlc-engine/reviewer-dispatch.json");
     expect(skill).not.toContain("kiro-cli");
     expect(questionRendering).toContain("Kiro IDE has no structured-question tool");
     expect(questionRendering).not.toContain("Kiro CLI");
@@ -426,6 +434,7 @@ describe("documentation parity derives current behavior from authored implementa
       "report",
       "park",
       "team-board",
+      "wait",
     ]);
     const expected =
       `exactly ${numberWord(engineCommands.length)} subcommands: ${codeList(engineCommands)}`;
@@ -500,7 +509,7 @@ describe("documentation parity derives current behavior from authored implementa
     }
   });
 
-  test("workspace CLI docs follow the implemented router and keep utility-only verbs direct-only", () => {
+  test("workspace CLI docs follow the implemented public and hidden routes", () => {
     const lib = read("core", "tools", "aidlc-lib.ts");
     const workspaceBlock = sliceBetween(
       lib,
@@ -512,25 +521,26 @@ describe("documentation parity derives current behavior from authored implementa
 
     const cliGuide = read("docs", "guide", "12-cli-commands.md");
     for (const verb of workspaceVerbs) expect(cliGuide).toContain(`/aidlc ${verb}`);
-    const directOnlyVerbs = [
-      "codekb-path",
-      "codekb-snapshot",
-      "codekb-publish",
-      "codekb-scope-diff",
-      "select-plugins",
-    ];
-    for (const verb of directOnlyVerbs) {
+    const hiddenUtilityRoutes = new Map([
+      ["codekb-path", "aidlc engine workspace codekb"],
+      ["select-plugins", "aidlc config"],
+    ]);
+    for (const [verb, route] of hiddenUtilityRoutes) {
       expect(workspaceVerbs).not.toContain(verb);
-      expect(cliGuide).toContain("direct utility invocation");
-      expect(cliGuide).toContain(`not an \`/aidlc ${verb}\` command`);
+      expect(cliGuide).toContain(route);
     }
+    expect(workspaceVerbs).not.toContain("codekb-scope-diff");
+    expect(workspaceVerbs).not.toContain("codekb-snapshot");
+    expect(workspaceVerbs).not.toContain("codekb-publish");
+    expect(cliGuide).toContain("direct utility invocation");
+    expect(cliGuide).toContain("not an `/aidlc codekb-scope-diff` command");
 
     const helpTail = sliceBetween(
       read("core", "tools", "aidlc-utility.ts"),
       "const HELP_TEXT_TAIL = `",
       "`;",
     );
-    for (const verb of directOnlyVerbs) expect(helpTail).not.toContain(verb);
+    for (const verb of hiddenUtilityRoutes.keys()) expect(helpTail).not.toContain(verb);
   });
 
   test("Codex onboarding fills and rendered output name the emitted agent TOML directory", () => {
@@ -552,16 +562,21 @@ describe("documentation parity derives current behavior from authored implementa
     };
     expect(pkg.name).toBe("aidlc-workflows-dev");
     expect(pkg.description).toContain("multi-harness");
-    expect(pkg.repository.url).toBe("https://github.com/awslabs/aidlc-workflows");
+    expect(pkg.repository.url).toBe("https://github.com/HailsTails/aidlc-workflows");
     expect(pkg.repository.directory).toBeUndefined();
     expect(read("bun.lock")).toContain(`"name": "${pkg.name}"`);
   });
 
-  test("documented model-pinning tier projections match TIER_PROJECTIONS", () => {
-    // The authored table is the single source of truth; every prose copy of it
-    // is derived here rather than trusted. The cell convention is shared by
-    // both surfaces: `model: <m>` then either a pinned effort or the explicit
-    // statement that the key is absent.
+  test("fork policy tool inventory is derived from authored aidlc tools", () => {
+    const toolCount = readdirSync(at("core", "tools"))
+      .filter((name) => /^aidlc-.*\.ts$/.test(name) && !/\.(test|spec)\.ts$/.test(name))
+      .length;
+    expect(read("docs", "guide", "rin-fork-policy.md")).toContain(
+      `${toolCount} aidlc-*.ts engine and authoring tools`,
+    );
+  });
+
+  test("owned fork policy tier table matches every shipped harness projection", () => {
     const claudeCell = (tier: Tier): string => {
       const { model, effort } = TIER_PROJECTIONS[tier].claude;
       return effort === null
@@ -578,121 +593,36 @@ describe("documentation parity derives current behavior from authored implementa
       const { model, variant } = TIER_PROJECTIONS[tier].opencode;
       return model === null && variant === null
         ? "no `model:`/`variant:` keys"
-        : `\`model: ${model}\`, \`variant: ${variant}\``;
+        : model === null
+          ? `no \`model:\` key, \`variant: ${variant}\``
+          : `\`model: ${model}\`, \`variant: ${variant}\``;
     };
-
-    const agentSystemTable = sliceBetween(
-      read("docs", "reference", "05-agent-system.md"),
+    const policy = read("docs", "guide", "rin-fork-policy.md");
+    const table = sliceBetween(
+      policy,
       "| Tier | Claude Code (.md frontmatter) |",
-      "Key facts behind the table:",
+      "`balanced` and `templated` currently project IDENTICALLY",
     );
-    const claudeSurfaces: [string, string][] = [
-      [
-        "docs/reference/05-agent-system.md",
-        agentSystemTable,
-      ],
-      [
-        "docs/reference/14-claude-features.md",
-        sliceBetween(
-          read("docs", "reference", "14-claude-features.md"),
-          "| Tier | Agents | Claude Code projection | Rationale |",
-          "An omitted `effort:` key",
-        ),
-      ],
-    ];
-
     for (const tier of TIERS) {
-      for (const [label, table] of claudeSurfaces) {
-        const row = table.split("\n").find((line) => line.startsWith(`| \`${tier}\``));
-        expect(row, `${label} must carry a row for the ${tier} tier`).toBeDefined();
-        expect(
-          normalized(row as string),
-          `${label} must state the shipped Claude projection for ${tier}`,
-        ).toContain(normalized(claudeCell(tier)));
-      }
-
-      const agentSystemRow = agentSystemTable
-        .split("\n")
-        .find((line) => line.startsWith(`| \`${tier}\``));
-      expect(agentSystemRow, `agent-system must carry a row for the ${tier} tier`).toBeDefined();
-      const cells = markdownCells(agentSystemRow as string);
-      expect(
-        normalized(cells[2]),
-        `agent-system must state the shipped Codex projection for ${tier}`,
-      ).toContain(normalized(codexCell(tier)));
-      expect(
-        normalized(cells[5]),
-        `agent-system must state the shipped opencode projection for ${tier}`,
-      ).toContain(normalized(opencodeCell(tier)));
+      const row = table.split("\n").find((line) => line.startsWith(`| \`${tier}\``));
+      expect(row, `fork policy must carry the ${tier} row`).toBeDefined();
+      const cells = markdownCells(row ?? "");
+      expect(cells).toHaveLength(8);
+      expect(normalized(cells[1])).toBe(normalized(claudeCell(tier)));
+      expect(normalized(cells[2])).toBe(normalized(codexCell(tier)));
+      expect(TIER_PROJECTIONS[tier].kiro.model).toBeNull();
+      expect(cells[3]).toBe("field OMITTED (inherits session model)");
+      expect(cells[4]).toBe("no tier entry");
+      expect(normalized(cells[5])).toBe(normalized(opencodeCell(tier)));
+      expect(TIER_PROJECTIONS[tier].copilot.model).toBeNull();
+      expect(cells[6]).toBe("omitted (inherits session model)");
+      expect(TIER_PROJECTIONS[tier].cursor.model).toBeNull();
+      expect(cells[7]).toBe("`model:` OMITTED (inherits session model)");
     }
-
-    // Effort-stepping claims. `judgment` is the only tier that inherits the
-    // session effort; any doc calling a single tier the only downgrade is wrong
-    // the moment a second tier pins one.
-    const pinned = TIERS.filter((tier) => TIER_PROJECTIONS[tier].claude.effort !== null);
-    expect(pinned.length, "expected at least one tier to pin a Claude effort").toBeGreaterThan(0);
-    if (pinned.length > 1) {
-      const narrativePaths = [
-        ["core", "tools", "aidlc-tiers.ts"],
-        ["docs", "guide", "13-customization.md"],
-        ["docs", "harness-engineering", "03-adding-an-agent.md"],
-        ["docs", "reference", "05-agent-system.md"],
-        ["docs", "reference", "14-claude-features.md"],
-        ["docs", "reference", "agents", "README.md"],
-        ["harness", "codex", "emit.ts"],
-        ["scripts", "package.ts"],
-        ["tests", "unit", "t216-agent-tier-projection.test.ts"],
-      ];
-      for (const path of narrativePaths) {
-        const text = normalized(read(...path));
-        for (const claim of [
-          "a mid-size model, session effort",
-          "only for templated work",
-          "the one deliberate downgrade",
-          "the one tier that steps effort down",
-          "absence is the contract for judgment and balanced",
-          "absence is deliberate for the first two tiers",
-          "templated agents additionally reduce effort",
-          "balanced -> `model: sonnet` with no effort pin",
-          "mid-size model at session effort suffices",
-          "balanced pins a model but inherits effort",
-          "inherit contract for judgment/balanced agents",
-          "effort: is pinned for templated agents and ABSENT everywhere else",
-        ]) {
-          expect(
-            text,
-            `${path.join("/")} must not claim a single stepped-down tier while ${codeList([...pinned])} all pin an effort`,
-          ).not.toContain(claim);
-        }
-      }
-    }
-
-    // Two tier names that project identically must say so, or a reader infers
-    // two rungs where the shipped projection has one.
-    const sortDeep = (value: unknown): unknown =>
-      value && typeof value === "object"
-        ? Object.fromEntries(
-            Object.keys(value as object)
-              .sort()
-              .map((key) => [key, sortDeep((value as Record<string, unknown>)[key])]),
-          )
-        : value;
-    const identical =
-      JSON.stringify(sortDeep(TIER_PROJECTIONS.balanced)) ===
-      JSON.stringify(sortDeep(TIER_PROJECTIONS.templated));
-    const agentSystem = normalized(read("docs", "reference", "05-agent-system.md"));
-    const equivalenceNote = "`balanced` and `templated` currently project IDENTICALLY in every harness";
-    if (identical) {
-      expect(
-        agentSystem,
-        "balanced and templated project identically, so the reference must say so",
-      ).toContain(normalized(equivalenceNote));
-    } else {
-      expect(
-        agentSystem,
-        "balanced and templated no longer project identically, so the equivalence note must go",
-      ).not.toContain(normalized(equivalenceNote));
-    }
+    expect(TIER_PROJECTIONS.balanced).toEqual(TIER_PROJECTIONS.templated);
+    expect(policy).toContain("`balanced` and `templated` currently project IDENTICALLY in every harness");
+    expect(policy).toContain("upstream guide");
+    expect(policy).toContain("Consumer per-agent exceptions override group dials");
   });
 
   test("documented agent stage-involvement matrix matches stage frontmatter", () => {

@@ -31,9 +31,14 @@ import {
 import {
   assertPluginContentHasNoSymlinks,
   assertSupportedPluginContributionPaths,
+  classifyPluginSourceFile,
   scanPluginFiles,
   walkPluginFiles,
 } from "./aidlc-plugin-validate.ts";
+import {
+  TRUSTED_ROUTE_NAMESPACE,
+  trustedCommand,
+} from "./aidlc-command.ts";
 import { runWithOwnerStampedLock } from "./aidlc-lib.ts";
 
 export type PluginTargetKind = "store" | "kiro" | "kiro-ide" | "cursor";
@@ -79,6 +84,7 @@ const CONTENT_DIRS = [
   "scopes",
   "agents",
   "knowledge",
+  "hooks",
 ] as const;
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -336,16 +342,24 @@ function composeCommand(target: PluginTarget): string {
     );
   }
   const composePath = `${rootExpr}/hooks/compose.ts`;
+  // Probe aidlc on PATH first, then bun on PATH / ~/.bun/bin. If neither is
+  // executable, exit 0 with a note rather than running a non-existent binary.
   const aidlcExpr =
     "AIDLC=$(command -v aidlc 2>/dev/null || true); " +
     `[ -n "$AIDLC" ] && { AIDLC_HARNESS_DIR=${target.harnessLeaf} ` +
-    `AIDLC_HARNESS_NAME=${target.harnessName} "$AIDLC" plugin sync && exit 0; }; `;
+    `AIDLC_HARNESS_NAME=${target.harnessName} "$AIDLC" ${TRUSTED_ROUTE_NAMESPACE} plugin sync; exit $?; }; `;
   const bunExpr =
     "BUN=$(command -v bun 2>/dev/null || true); " +
     '[ -z "$BUN" ] && [ -x "$HOME/.bun/bin/bun" ] && BUN="$HOME/.bun/bin/bun"; ' +
-    '[ -z "$BUN" ] && { echo "aidlc plugin compose: aidlc and bun not found, skipping" >&2; exit 0; }';
+    `[ -z "$BUN" ] && { echo "${trustedCommand("plugin compose")}: aidlc and bun not found, skipping" >&2; exit 0; }`;
+  // Source/tree installs without an aidlc binary still prefer the project's
+  // shared plugin tool over the vendored compose fallback.
+  const sharedToolExpr =
+    `PROJECT_ROOT="\${CLAUDE_PROJECT_DIR:-\${AIDLC_PROJECT_DIR:-$PWD}}"; ` +
+    `PLUGIN_TOOL="$PROJECT_ROOT/${target.harnessLeaf}/tools/aidlc-plugin.ts"; ` +
+    `[ -f "$PLUGIN_TOOL" ] && { AIDLC_HARNESS_DIR=${target.harnessLeaf} AIDLC_HARNESS_NAME=${target.harnessName} "$BUN" "$PLUGIN_TOOL" sync; exit $?; }; `;
   return (
-    `sh -c '${aidlcExpr}${bunExpr}; AIDLC_HARNESS_DIR=${target.harnessLeaf} ` +
+    `sh -c '${aidlcExpr}${bunExpr}; ${sharedToolExpr}AIDLC_HARNESS_DIR=${target.harnessLeaf} ` +
     `AIDLC_HARNESS_NAME=${target.harnessName} "$BUN" "${composePath}"'`
   );
 }
@@ -423,11 +437,30 @@ function copyPluginContent(
   outDir: string,
   target: PluginTarget,
   reviewers: ReadonlySet<string>,
+  templateHooksDir: string,
 ): void {
+  const reservedHookNames = new Set(readdirSync(templateHooksDir));
   for (const dir of CONTENT_DIRS) {
     const sourceDir = join(pluginRoot, dir);
     if (!existsSync(sourceDir)) continue;
-    for (const file of walkPluginFiles(sourceDir)) {
+    const sourceFiles = walkPluginFiles(sourceDir).filter(
+      (file) => classifyPluginSourceFile({ pluginRoot, file }) === "runtime",
+    );
+    if (target.harnessName === "codex" && dir === "agents") {
+      const authored = new Set(sourceFiles);
+      for (const file of sourceFiles.filter((path) => path.endsWith("-agent.md"))) {
+        const native = file.replace(/\.md$/, ".toml");
+        if (authored.has(native)) {
+          throw new Error(`${file}: authored Codex TOML collides with generated ${native}`);
+        }
+      }
+    }
+    for (const file of sourceFiles) {
+      if (dir === "hooks" && reservedHookNames.has(basename(file))) {
+        throw new Error(
+          `plugin '${basename(pluginRoot)}' ships hooks/${basename(file)}, which collides with the compose bootstrap the packager emits; rename it`,
+        );
+      }
       const outputDir =
         target.kind === "cursor" && dir === "agents"
           ? join(outDir, "aidlc", "agents")
@@ -625,8 +658,12 @@ export function buildPluginProjection(
           2,
         )}\n`,
       );
+      const marketplaceDir = options.target.harnessName === "codex"
+        ? join(outDir, ".agents", "plugins")
+        : hostManifestDir;
+      mkdirSync(marketplaceDir, { recursive: true });
       writeFileSync(
-        join(hostManifestDir, "marketplace.json"),
+        join(marketplaceDir, "marketplace.json"),
         `${JSON.stringify(
           {
             name: "aidlc-plugins",
@@ -653,7 +690,13 @@ export function buildPluginProjection(
         options.target,
       );
       writeHookWiring(pluginName, outDir, options.target);
-      copyPluginContent(pluginRoot, outDir, options.target, reviewers);
+      copyPluginContent(
+        pluginRoot,
+        outDir,
+        options.target,
+        reviewers,
+        options.templateHooksDir,
+      );
 
       return {
         pluginName,

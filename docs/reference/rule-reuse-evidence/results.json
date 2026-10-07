@@ -1,0 +1,275 @@
+{
+  "publicSource": "761b3c48758598fd0b4d1ae695430a4f29aca93a",
+  "producerArchiveCommit": "50cda419b787644f77e8d9ec8493a1862b100fbb",
+  "stockSource": "0dba615ffd4375d85fbe16a36040b0cbf58f2960",
+  "prototypeNotProduction": true,
+  "closureFiles": [
+    "constitution-audit/apply-authorised-locations.ts",
+    "constitution-audit/apply-carve-outs.ts",
+    "constitution-audit/audit-boolean-parameters.runtime.d.ts",
+    "constitution-audit/audit-boolean-parameters.runtime.js",
+    "constitution-audit/audit-boolean-parameters.ts",
+    "constitution-audit/audit-cast-expressions.runtime.d.ts",
+    "constitution-audit/audit-cast-expressions.runtime.js",
+    "constitution-audit/audit-cast-expressions.ts",
+    "constitution-audit/audit-constitution.ts",
+    "constitution-audit/audit-identifier-names.runtime.d.ts",
+    "constitution-audit/audit-identifier-names.runtime.js",
+    "constitution-audit/audit-identifier-names.ts",
+    "constitution-audit/audit-input-mutation.runtime.d.ts",
+    "constitution-audit/audit-input-mutation.runtime.js",
+    "constitution-audit/audit-input-mutation.ts",
+    "constitution-audit/audit-test-discipline.runtime.d.ts",
+    "constitution-audit/audit-test-discipline.runtime.js",
+    "constitution-audit/audit-test-discipline.ts",
+    "constitution-audit/audit-tsconfig-strict.runtime.d.ts",
+    "constitution-audit/audit-tsconfig-strict.runtime.js",
+    "constitution-audit/audit-tsconfig-strict.ts",
+    "constitution-audit/export-surface.runtime.d.ts",
+    "constitution-audit/export-surface.runtime.js",
+    "constitution-audit/export-surface.ts",
+    "constitution-audit/index.ts",
+    "constitution-audit/walk-source-files.ts",
+    "rin-harness-cd-authorised-locations.ts",
+    "rin-harness-cd-carve-outs.ts",
+    "rin-harness-cd-enforcement.ts",
+    "rin-harness-config.runtime.d.ts",
+    "rin-harness-config.runtime.js",
+    "rin-harness-config.ts",
+    "rin-harness-constitution-scope.ts",
+    "rin-harness-dd-enforcement.ts",
+    "rin-harness-doc-discipline.ts",
+    "rin-harness-exception-baseline.runtime.d.ts",
+    "rin-harness-exception-baseline.runtime.js",
+    "rin-harness-exception-baseline.ts",
+    "rin-harness-path-operations.ts",
+    "rin-harness-sensor-cd-extras.ts",
+    "rin-harness-sidecar-file-reader.ts",
+    "rin-harness-why-chain.runtime.d.ts",
+    "rin-harness-why-chain.runtime.js",
+    "rin-harness-why-chain.ts"
+  ],
+  "canonicalInputHashes": {
+    "cd-7/knowledge/aidlc-shared/code-discipline/cd-007-no-categorical-filenames.md": "8bc1b54b38efaba6aec76a45a553a48c2753ce3a0ed236877eb82db8f40e9c3d",
+    "cd-7/sensors/aidlc-cd-7.md": "25e502569e85984462e5a335d43d7b4df561c8e2fa2a4f234baf3bd6c747b9f1",
+    "cd-7/tools/rin-harness-sensor-cd-7.ts": "04287204bb82a46ce3d5254a0d5f839a681eb5d246f211b54f5a682a1ab2a5fa",
+    "dd-1/knowledge/aidlc-shared/doc-discipline/dd-001-facts-are-keyed-rows.md": "4a23b8d524e0ef5168045243ec3614ca136623cf8b240bf5751fdcd81f521d3f",
+    "dd-1/knowledge/aidlc-shared/doc-discipline/dd-003-fact-keys-resolve-intent-wide.md": "e298d3d422f13d6df88ccc0514eec0aa9edd1adbb5ef7d7a35cd404e7fc827df",
+    "dd-1/knowledge/aidlc-shared/doc-discipline/dd-004-official-artefacts-only.md": "257b300b5a75b23651d831685ef4e26cd4e0b60379e183af7b35fdd7affb9999",
+    "dd-1/sensors/aidlc-dd-1.md": "7bc010a65a9f734dcf3a38572fc259a4ad44a5f1db44efc20a4dfeb8cce6c0c4",
+    "dd-1/tools/rin-harness-sensor-dd-1.ts": "0e181ef92765df40adb62952ea4dc56838cb44c546fc58d75240905d875941d4"
+  },
+  "stockBaseline": {
+    "stockUpstreamBase": "0dba615ffd4375d85fbe16a36040b0cbf58f2960",
+    "stockStageGraphSHA256": "c2d00a0e04a1fe2cf994d26a98ab6f35511c08b99e201a3cb145befc9b7f1eef",
+    "stockScopes": {
+      ".claude/scopes/aidlc-enterprise.md": "04210660646c91c8bd606cf43d66a3985015dc3eb26a473ddfe0bc210a006e37",
+      ".claude/scopes/aidlc-security-patch.md": "e6fe5589a345da9150c71f07192ea3fc9d761ab620f243c7e2a74c9a61751e33",
+      ".claude/scopes/aidlc-classic.md": "c80b65bc9d86c91a4ce090bf435055322c4465165c6e0f5e0f1ce3fbfaabc2ad",
+      ".claude/scopes/aidlc-infra.md": "d687ee85d8b724101b0a638b2e147b1356654b0fdf36b7501c24bc1841ecdd45",
+      ".claude/scopes/aidlc-refactor.md": "64998bbaff629f73f8cca4b841a1d67461c36b2ab4e80ed64ddda3e88912dd83",
+      ".claude/scopes/aidlc-bugfix.md": "96fac9e575ffd94c6fbf69d08d64e4bf6914f3b6c40d7804463df975a7f60b75",
+      ".claude/scopes/aidlc-feature.md": "b401441adae1ba06dd45f89ce57b7bce02574a7aaaed92ccaeadfa53bca7bd60",
+      ".claude/scopes/aidlc-mvp.md": "2a94d5267446a32dab01c1f01778e71fcb0807da2a27854c7e0741eb0cc7d2fa",
+      ".claude/scopes/aidlc-express.md": "7b357e9100caba92eeddde0150711dae4840023af8264361f112de2d0f5c5424",
+      ".claude/scopes/aidlc-workshop.md": "0a40a53e0840925e6898179339f723777d25559013a5e14d92374f64ae0e0e8a",
+      ".claude/scopes/aidlc-poc.md": "839b6c8ae7a83a96c2a82e0861034825a687c9c498e6ac228aa166db21e6ac2e"
+    },
+    "stageGraphAndScopesUnchangedAfterRefusal": true,
+    "rinInstalled": false,
+    "individualSubsetSupported": false,
+    "marketplaceOnlyPatchDoesNotTouchStockStagesOrScopes": true
+  },
+  "mechanics": {
+    "selectedPlugins": [
+      "aidlc",
+      "cd-7",
+      "dd-1",
+      "discipline-runtime"
+    ],
+    "selectedCD7Active": true,
+    "omittedCD14InactiveInSelectedEntrypoint": true,
+    "CD14ControlFindingConfirmed": true,
+    "selectedDD1Active": true,
+    "DD3JointSensorDependency": true,
+    "DD4PopulationReadFromStockGraph": true,
+    "omittedDD2InactiveInSelectedEntrypoint": true,
+    "DD2ControlFindingConfirmed": true,
+    "R7Off": true,
+    "advisorySensorExitCode": 0,
+    "consumerEnforcementFailureExitCode": 1,
+    "consumerEnforcementCorrectedExitCode": 0,
+    "CDDataset": [
+      "src/purchase-amount.ts"
+    ],
+    "DDDataset": [
+      "facts.md",
+      "ideation/intent-capture/intent-statement.md"
+    ],
+    "knownCoverageNonempty": true,
+    "LefthookBinaryAvailable": false,
+    "actualLefthookRunClaimed": false,
+    "automaticStockStageWiringClaimed": false
+  },
+  "lifecycle": {
+    "actualChangedUpdatePaths": [
+      ".claude/knowledge/aidlc-shared/preferred-policy-adoption.md",
+      ".claude/tools/data/plugin-compose-cd-7.json",
+      ".claude/tools/data/plugin-owned-cd-7.json"
+    ],
+    "ownedEditRefusalAllFilesUnchanged": true,
+    "rollbackRestoredOwnedAuxiliaryBytes": true,
+    "stockWorkflowUnchanged": true,
+    "dependencySelectionOmissionAccepted": true,
+    "explicitClosureRequired": true,
+    "stockDeselectionRemovalSucceeded": false,
+    "stockExplicitRootSyncIgnoresSelectionInCurrentRootOnlyInventory": true,
+    "deselectedDDStillCallable": true,
+    "forkGenericConsumerRemovalSeparatelyPassed": true,
+    "finalPlugins": [
+      "aidlc",
+      "discipline-runtime",
+      "cd-7",
+      "dd-1"
+    ],
+    "finalValidSelectionRestored": true
+  },
+  "scopeProbe": {
+    "scope": "workshop",
+    "scopeAuthority": "existing resolvePlanForScope/subgraphForScope, unchanged stock install",
+    "stageActions": {
+      "requirements-analysis": "EXECUTE",
+      "intent-capture": "SKIP"
+    },
+    "fixtures": {
+      "included": "inception/requirements-analysis/requirements.md",
+      "excluded": "ideation/intent-capture/intent-statement.md",
+      "facts": "facts.md"
+    },
+    "negative": {
+      "all": {
+        "kind": "inspected",
+        "findings": [
+          {
+            "rule": "DD-1",
+            "artefact": "requirements.md",
+            "line": 3,
+            "subject": "INCLUDED-2",
+            "remedy": "INCLUDED-2 is referenced but has no row in facts.md. Add a row for INCLUDED-2 with its value and re-derive command, or correct the reference."
+          },
+          {
+            "rule": "DD-1",
+            "artefact": "intent-statement.md",
+            "line": 3,
+            "subject": "EXCLUDED-3",
+            "remedy": "EXCLUDED-3 is referenced but has no row in facts.md. Add a row for EXCLUDED-3 with its value and re-derive command, or correct the reference."
+          }
+        ]
+      },
+      "selectedControl": {
+        "kind": "inspected",
+        "findings": [
+          {
+            "rule": "DD-1",
+            "artefact": "requirements.md",
+            "line": 3,
+            "subject": "INCLUDED-2",
+            "remedy": "INCLUDED-2 is referenced but has no row in facts.md. Add a row for INCLUDED-2 with its value and re-derive command, or correct the reference."
+          }
+        ]
+      }
+    },
+    "selectedCorrection": {
+      "all": {
+        "kind": "inspected",
+        "findings": [
+          {
+            "rule": "DD-1",
+            "artefact": "intent-statement.md",
+            "line": 3,
+            "subject": "EXCLUDED-3",
+            "remedy": "EXCLUDED-3 is referenced but has no row in facts.md. Add a row for EXCLUDED-3 with its value and re-derive command, or correct the reference."
+          }
+        ]
+      },
+      "selectedControl": {
+        "kind": "inspected",
+        "findings": []
+      }
+    },
+    "filteredGraph": "diagnostic control only; no installed graph modification",
+    "verifiedBug": "DD officialArtefactStems unions every graph node produces, ignoring selected scope. Out-of-population EXCLUDED-3 incorrectly generates a DD-1 finding.",
+    "priorPrototypeLimit": "Previous intent-capture fixture proved mechanical DD key detection, not workshop DD-4 applicability; intent-capture is SKIP in workshop."
+  },
+  "CD46": {
+    "untouchedPass": true,
+    "touchedRetainedExemptionFails": true,
+    "entryRetirementDoesNotProvePaydown": true,
+    "nonbaselineKnownBlobIncorrectlyPasses": true,
+    "R7": false
+  },
+  "payload": {
+    "totalBytes": 41855246,
+    "groups": {
+      "bundledJavaScript": 40906049,
+      "runtimeTypesAndLicenses": 844906,
+      "declarations": 12981,
+      "helpersAndManifest": 91310
+    },
+    "executableClosureBytes": {
+      "CD7Dispatcher": 40979951,
+      "DD1": 894965
+    }
+  },
+  "nativeModelCallsForTheseProbes": 0,
+  "workflowGateEarned": false,
+  "LefthookExecuted": false,
+  "publicationScope": "Synthetic fixtures, public source pins and sanitized result summaries only",
+  "registryConflict": {
+    "R7": false,
+    "carvedOnly": {
+      "pass": true,
+      "cd": "CD-7",
+      "findings_count": 0,
+      "findings": [],
+      "scanned": "project scope, constitution walker filtered to CD-7",
+      "stale_authorised_paths": [],
+      "stale_carved_paths": [],
+      "doubly_held_paths": []
+    },
+    "bothRegistries": {
+      "pass": false,
+      "cd": "CD-7",
+      "findings_count": 0,
+      "findings": [],
+      "scanned": "project scope, constitution walker filtered to CD-7",
+      "stale_authorised_paths": [],
+      "stale_carved_paths": [],
+      "doubly_held_paths": [
+        "src/utils.ts"
+      ]
+    },
+    "authorisedOnly": {
+      "pass": true,
+      "cd": "CD-7",
+      "findings_count": 0,
+      "findings": [],
+      "scanned": "project scope, constitution walker filtered to CD-7",
+      "stale_authorised_paths": [],
+      "stale_carved_paths": [],
+      "doubly_held_paths": []
+    },
+    "malformedRegistry": {
+      "outcome": "rejected",
+      "rejection": {
+        "sidecar": "cd-7.json",
+        "problem": "entry 0: `reason` is required and must be a non-empty string"
+      }
+    }
+  },
+  "portableReproducersVerified": {
+    "preparedCanonicalHashesMatch": true,
+    "scopeProbePassed": true,
+    "CD46ProbePassed": true
+  }
+}

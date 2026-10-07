@@ -55,7 +55,46 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { engineDirFor } from "../tools/aidlc-lib.ts";
+
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
+
+// The nearest enclosing git checkout at or above `cwd`, or undefined when the
+// path names none. Mirrors core's `invokingCheckoutFromCwd`; this adapter
+// imports nothing from the core lib, so the walk is inlined rather than
+// reaching across the tree for four lines.
+function invokingCheckoutFromCwd(cwd: string | undefined): string | undefined {
+  if (cwd === undefined || cwd === "") return undefined;
+  let candidate = resolve(cwd);
+  for (;;) {
+    if (existsSync(join(candidate, ".git"))) return candidate;
+    const parent = dirname(candidate);
+    if (parent === candidate) return undefined;
+    candidate = parent;
+  }
+}
+
+// Plugin-contributed hook bodies, grouped by event, written beside this adapter
+// by emit.ts. Cursor's hooks.json is static and cannot carry a contributed row,
+// so each contributed hook joins the chain this adapter already runs for its
+// event. The map is keyed by event precisely so a PostToolUse sensor is never
+// run as a PreToolUse guard. Read lazily and tolerantly: a plugin wiring problem
+// must never break core's own hooks.
+function pluginHooksFor(event: string): string[] {
+  const mapPath = join(HOOKS_DIR, "plugin-hook-targets.json");
+  if (!existsSync(mapPath)) return [];
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(mapPath, "utf-8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      return [];
+    const forEvent = (parsed as Record<string, unknown>)[event];
+    return Array.isArray(forEvent)
+      ? forEvent.filter((f): f is string => typeof f === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 interface CursorHookInput {
   hook_event_name?: string;
@@ -99,7 +138,18 @@ export async function run(
     }
   }
 
+  // Ordering matches core's `resolveProjectDirFromPayload`: the per-event cwd
+  // binds to the INVOKING checkout, which is what a worktree session needs — an
+  // env var pinned at session start names the tree the session began in, so a
+  // hook resolving a record dir from it writes into the primary's record rather
+  // than the one being worked on.
+  //
+  // It wins only when cwd resolves to a real checkout. AIDLC_PROJECT_DIR is a
+  // deliberate operator override for pointing AIDLC at a project dir that is
+  // NOT the cwd, such as multi-repo work where the workspace sits outside the
+  // repo being edited. A non-checkout cwd must not outrank it.
   const projectDirRaw =
+    invokingCheckoutFromCwd(cursor.cwd) ??
     process.env.AIDLC_PROJECT_DIR ??
     process.env.CURSOR_PROJECT_DIR ??
     process.env.CLAUDE_PROJECT_DIR ??
@@ -120,7 +170,7 @@ export async function run(
   function runCore(hookFile: string, stdinText: string): { stdout: string; code: number } {
     const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
     const command = executable
-      ? [executable, "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
+      ? [executable, "engine", "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
       : [process.execPath, join(HOOKS_DIR, hookFile)];
     const r = Bun.spawnSync(command, {
       stdin: Buffer.from(stdinText, "utf-8"),
@@ -132,13 +182,56 @@ export async function run(
     return { stdout: r.stdout?.toString() ?? "", code: r.exitCode ?? 0 };
   }
 
+  // A hook may deny through EITHER protocol: exit code 2 with the reason on
+  // stderr, or exit 0 carrying {"hookSpecificOutput":{"permissionDecision":
+  // "deny","permissionDecisionReason":…}} on stdout. Claude Code honours both
+  // natively; this face reaches its hooks through the runner below, so the JSON
+  // form is normalised to the exit-2 form there — once — rather than at each
+  // call site. Reading only the exit code silently discards the JSON denials
+  // (inline-exec, gh-write and destructive-git all use that form), which reads
+  // as an installed rail that permits what it forbids.
+  function structuredDenialReason(stdout: string): string | null {
+    const trimmed = stdout.trim();
+    if (trimmed.length === 0 || !trimmed.startsWith("{")) return null;
+    try {
+      const parsed = JSON.parse(trimmed) as {
+        hookSpecificOutput?: {
+          permissionDecision?: unknown;
+          permissionDecisionReason?: unknown;
+        };
+      };
+      if (parsed.hookSpecificOutput?.permissionDecision !== "deny") return null;
+      const reason = parsed.hookSpecificOutput?.permissionDecisionReason;
+      return typeof reason === "string" && reason.trim().length > 0
+        ? reason
+        : "Blocked by an AIDLC guard hook.";
+    } catch {
+      return null;
+    }
+  }
+
+  function normalisedHookResult(result: {
+    stdout: string;
+    stderr: string;
+    code: number;
+  }): { stdout: string; stderr: string; code: number } {
+    if (result.code === 2) return result;
+    const reason = structuredDenialReason(result.stdout);
+    if (reason === null) return result;
+    return {
+      stdout: result.stdout,
+      stderr: result.stderr.trim().length > 0 ? result.stderr : reason,
+      code: 2,
+    };
+  }
+
   function runCoreWithStderr(
     hookFile: string,
     stdinText: string,
   ): { stdout: string; stderr: string; code: number } {
     const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
     const command = executable
-      ? [executable, "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
+      ? [executable, "engine", "hook", hookFile.replace(/^aidlc-|\.ts$/g, "")]
       : [process.execPath, join(HOOKS_DIR, hookFile)];
     const r = Bun.spawnSync(command, {
       stdin: Buffer.from(stdinText, "utf-8"),
@@ -147,11 +240,11 @@ export async function run(
       cwd: projectDir,
       env: projectEnv,
     });
-    return {
+    return normalisedHookResult({
       stdout: r.stdout?.toString() ?? "",
       stderr: r.stderr?.toString() ?? "",
       code: r.exitCode ?? 1,
-    };
+    });
   }
 
   // --- Subagent-identity ledger -------------------------------------------------
@@ -319,7 +412,7 @@ export async function run(
       const activePointer = join(intentsDir, "active-intent");
       const activeIntent = readFileSync(activePointer, "utf-8").trim();
       if (!activeIntent || activeIntent.includes("/") || activeIntent.includes("\\")) return null;
-      const dispatch = join(intentsDir, activeIntent, ".aidlc-reviewer-dispatch.json");
+      const dispatch = join(engineDirFor(join(intentsDir, activeIntent)), "reviewer-dispatch.json");
       const stat = statSync(dispatch);
       activeReviewerDispatchCache =
         stat.isFile() && Date.now() - stat.mtimeMs <= REVIEWER_DISPATCH_TTL_MS
@@ -2582,12 +2675,12 @@ export async function run(
   async function touchesProtectedReviewerState(): Promise<boolean> {
     const toolInput = cursor.tool_input ?? {};
     const serialized = JSON.stringify(toolInput).replaceAll("\\", "/");
+    // A Windows path serializes its backslash as an escaped pair, so the engine
+    // directory and the dispatch file may end up separated by two slashes.
+    const reviewerDispatch = new RegExp(`${engineDirFor("").replaceAll("\\", "/").replaceAll(".", "\\.")}/+reviewer-dispatch\\.json`);
     if (
-      [
-        ".aidlc-cursor-subagents",
-        ".aidlc-reviewer-dispatch.json",
-        "aidlc-cursor-subagent-",
-      ].some((token) => serialized.includes(token))
+      reviewerDispatch.test(serialized) ||
+      [".aidlc-cursor-subagents", "aidlc-cursor-subagent-"].some((token) => serialized.includes(token))
     ) {
       return true;
     }
@@ -3005,6 +3098,14 @@ export async function run(
           input: claudeShaped("PreToolUse", planToolName),
         });
       }
+      // Contributed guards run AFTER core's own, on the same block contract.
+      // They receive the unmodified Claude-shaped payload and self-filter by
+      // tool, exactly as core's do. Re-expressed as pushes when upstream turned
+      // this array literal into incremental pushes; the AFTER-core ordering is
+      // the load-bearing part and is preserved by appending last.
+      for (const file of pluginHooksFor("PreToolUse")) {
+        guards.push({ file, input: claudeShaped("PreToolUse") });
+      }
       for (const guard of guards) {
         if (blockedByGuard(guard.file, guard.input)) return 0;
       }
@@ -3021,11 +3122,23 @@ export async function run(
         runCore("aidlc-run-sensors.ts", fwd);
       } else if (toolName === "Task") {
         const sub = cursor.tool_input?.subagent_type;
+        // cwd travels with the payload: a hook that resolves a record dir or a
+        // checkout root from it would otherwise fall back to its own process
+        // cwd, which in a worktree is the wrong tree.
         const fwd = JSON.stringify({
           hook_event_name: "SubagentStop",
+          cwd: effectiveCwd(),
           ...(typeof sub === "string" && sub.length > 0 ? { agent_type: sub } : {}),
         });
         runCore("aidlc-log-subagent.ts", fwd);
+        // Contributed SubagentStop hooks see the SAME payload core's does. This
+        // harness surfaces subagent completion through postToolUse on Task
+        // rather than a subagentStop registration, so the contributed chain
+        // hangs here — registering subagentStop separately would build a second
+        // path to the event core already handles.
+        for (const file of pluginHooksFor("SubagentStop")) {
+          runCore(file, fwd);
+        }
         clearSpawn();
       }
       return 0;
@@ -3050,6 +3163,7 @@ export async function run(
       runCore("aidlc-validate-state.ts", rawInput);
       return 0;
     }
+
 
     case "stop": {
       // Cursor's stop hook CANNOT block (no decision channel). The core stop

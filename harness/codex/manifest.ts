@@ -12,17 +12,72 @@
 //   - skills are NOT shipped in .codex/skills/ — Codex discovers skills at
 //     <project>/.agents/skills/, so skipRunnerGen is set and emit() composes
 //     the whole skill set (orchestrator + runners + session skills) there.
-//   - the only authored .codex/ file is the aidlc-codex-adapter.ts stdin shim
-//     (a harnessFile); the agent TOMLs in .codex/agents/ are emitted.
+//   - the authored .codex/ files are the aidlc-codex-adapter.ts stdin shim and
+//     its aidlc-codex-patch-context.ts helper module (harnessFiles); the agent
+//     TOMLs in .codex/agents/ are emitted.
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import emit from "./emit.ts";
 
 const manifest: HarnessManifest = {
   name: "codex",
+  productName: "Codex CLI",
+  configNextStep: "run `codex`, then `$aidlc --doctor`",
   harnessDir: ".codex",
   orchestratorSkillPath: ".agents/skills/aidlc/SKILL.md",
   tierFlavor: "codex",
+  // DELIBERATELY "explicit", and the one harness where the answer is not
+  // obvious. The `AIDLC_RULES_DIR` seam in the shipped config.toml points the
+  // stage resolver at the memory tree, and the onboarding says the orchestrator
+  // "injects the active-space memory paths into context ON DEMAND" — paths, on
+  // demand, not text every turn. That is a resolver seam, not an always-on
+  // include, so treating it as ambient would drop the base layers from the only
+  // channel that carries them. If Codex later gains a genuine always-on include
+  // (the way AGENTS.md works for Copilot/opencode), flip this to "ambient" and
+  // re-verify with the two-profile mutation in check-steering-injection.ts.
+  baseRuleDelivery: "explicit",
+  rootIntegrations: [
+    {
+      path: ".gitignore",
+      policy: "managed-block",
+      marker: "gitignore",
+      legacySignatures: {
+        wholeFileHashes: [
+          "sha256:f919e4bac1790bd1a371d371af473ccbc644f3bb80e4569d190c9364fad771b3",
+          // Keep pre-engine-directory unmarked root files recognizable.
+          "sha256:d2569b56aef154c3c04766ed3263947a2d8026c99546a3006775526641951db9",
+        ],
+      },
+    },
+    {
+      path: "AGENTS.md",
+      policy: "managed-block",
+      marker: "agents",
+      legacySignatures: {
+        wholeFileHashes: [
+          "sha256:30a9f5f43d87cd29b63e75333b8ef6695f8f4e11909fd6af64e2b6cf0b8cb292",
+          "sha256:47678f42e0233de9b0164eb4ec318a3ba3196074d6ec88f69aa7980bc1f2fd0d",
+          "sha256:821b2149c7c6c2b6592eecd10623823fc5579fc4ae52f2ad272e00c93013d027",
+          "sha256:83c6e5141646dc604c87d80622fc898761a69bd0c9caebb398441bce9f1d0727",
+          "sha256:b3a07e9bb603fb0a2328004fc7cf2294afc670ec6f350a43de9c15d6e27aa04e",
+          "sha256:bfc2adb83e00041750b1d19c9f3167cb7f5f5502a62af83a58d0a2828890febf",
+          "sha256:d8afae6a0813f5298cf873a047664cf485308c6e0dad41dde53d8dcb27dd7769",
+          "sha256:f1deb7dc72a78fe7d39c71ad2fe6c0f41248c03cde7fb36b7a478f5b9233881c",
+          "sha256:f7c55e9917d3801f676fba066fdd78d8df2c36311e8d6e78068965fc7b4371fa",
+          "sha256:457ff3626bf6ff4a0f6f1f7a44a1d2cbcd91490600e2332742dcf655da25b7f3",
+          "sha256:9be9c5cc4a25e5b4c71b3ae35188e1a543504f19cbd5d0a20892777b0904800e",
+          "sha256:bc41aca84970977673af3c0b8212a1f7a4d995a4b47fc7894b1c5b342e4a3601",
+          "sha256:b3d4d0d178a01591629dbf79083b00e7a3ad42f59f79cbfc88d05b7615704a70",
+          // The pre-v2-sync shipped variant (2.6.123 merge changed the bytes).
+          "sha256:d9be36630b49183203ae4d97946c243e3b8840202ee6f080c738e0f01343e33a",
+          // Keep pre-engine-directory unmarked root files recognizable.
+          "sha256:cc3212fc7335018158882cbaa141ac6fd02cee53bbceb00bd185f416fa06ff8f",
+          "sha256:412776ee4595c453511a911e06c7729285bb5338b30584f8570908b273e27296",
+          "sha256:dd650e54fb2e645b6f30002f91f8f6f174fe34550295582f5b6a95356edaed77",
+        ],
+      },
+    },
+  ],
 
   // Core projection: rules→aidlc-rules, NO session skills (emitted to
   // .agents/skills/ by emit). Persona .md files ARE core (the conductor reads
@@ -38,17 +93,26 @@ const manifest: HarnessManifest = {
     { src: "hooks", dst: "hooks" },
   ],
 
-  // The one authored .codex/ surface: the stdin adapter shim. The orchestrator
+  // The authored .codex/ surface: the stdin adapter shim. The orchestrator
   // skill is authored too but is EMITTED into .agents/skills/aidlc/ by emit().
   harnessFiles: [
     { src: "hooks/aidlc-codex-adapter.ts", dst: "hooks/aidlc-codex-adapter.ts" },
+    {
+      src: "hooks/aidlc-codex-dispatch-tool.ts",
+      dst: "hooks/aidlc-codex-dispatch-tool.ts",
+    },
+    // Side-effect-free apply_patch helpers the adapter imports by relative path.
+    {
+      src: "hooks/aidlc-codex-patch-context.ts",
+      dst: "hooks/aidlc-codex-patch-context.ts",
+    },
     // Project-root .gitignore (beside .codex/, not inside it) — re-rooted under
     // aidlc/spaces/* for the workspace layout (SEED): cursors + machine-local
     // runtime ignored, the shared work (memory/codekb/registry/state/audit
     // shards/artifacts) committed. Net-new for Codex — it shipped none before.
     // Authored as dot-gitignore so it does not act as a live ignore inside
     // harness/codex/. projectRoot routes it to dist/codex/.gitignore + the
-    // --check drift guard.
+    // --check determinism guard.
     { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
   ],
 

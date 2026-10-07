@@ -29,9 +29,9 @@
 // would bypass the exact stdin/stdout/exit-code surface being contracted.
 // (Same idiom as kiro's t142.)
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import "../../harness/codex/hooks/aidlc-codex-dispatch-tool.test.ts";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
@@ -54,6 +54,7 @@ import {
   setActiveSpaceCursor,
   writeSessionBinding,
   writeActiveDirectiveMarker,
+  stateDigest,
 } from "../../core/tools/aidlc-lib.ts";
 import {
   DEFAULT_RECORD_DIR,
@@ -115,6 +116,7 @@ function seedShell(dir: string): void {
 // cwd to the scratch dir, exactly what a real install sees.
 function scratchProject(withState: boolean): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "t149-")));
+  mkdirSync(join(dir, ".git"));
   cpSync(CODEX_TREE, join(dir, ".codex"), { recursive: true });
   seedShell(dir);
   if (withState) {
@@ -175,7 +177,7 @@ function seedUnapprovedCodeGeneration(dir: string, unit: string): void {
     kind: "run-stage",
     stage: "code-generation",
     unit,
-    state_sha256: createHash("sha256").update(state).digest("hex"),
+    state_sha256: stateDigest(state),
   });
   mkdirSync(join(seededRecordDir(dir), "construction", unit, "code-generation"), {
     recursive: true,
@@ -444,10 +446,12 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       const output = JSON.parse(r.stdout) as {
         hookSpecificOutput?: {
           hookEventName?: string;
+          permissionDecision?: string;
           updatedInput?: { command?: string };
         };
       };
       expect(output.hookSpecificOutput?.hookEventName).toBe("PreToolUse");
+      expect(output.hookSpecificOutput?.permissionDecision).toBe("allow");
       expect(output.hookSpecificOutput?.updatedInput?.command).toBe(
         "export AIDLC_SESSION_OVERRIDE='codex-command-session' " +
           "AIDLC_SESSION_OVERRIDE_SOURCE='payload'; " +
@@ -480,8 +484,8 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       const out = JSON.parse(r.stdout) as { decision?: string; reason?: string };
       expect(out.decision).toBe("block");
       expect(out.reason ?? "").not.toBe("");
-      // The continuation reason names the codex tools path (harnessDir seam).
-      expect(out.reason).toContain(".codex/tools/aidlc-orchestrate.ts");
+      // Copy-channel continuation guidance uses the harness-local Bun tool.
+      expect(out.reason).toContain("bun .codex/tools/aidlc-orchestrate.ts next");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -542,9 +546,13 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
       expect(r.code, r.stderr).toBe(0);
       const out = JSON.parse(r.stdout) as {
         hookSpecificOutput?: {
+          hookEventName?: string;
+          permissionDecision?: string;
           updatedInput?: { message?: string };
         };
       };
+      expect(out.hookSpecificOutput?.hookEventName).toBe("PreToolUse");
+      expect(out.hookSpecificOutput?.permissionDecision).toBe("allow");
       const message = out.hookSpecificOutput?.updatedInput?.message ?? "";
       expect(message).toContain("first-class");
       expect(message).toContain("Given/When/Then");
@@ -552,6 +560,128 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("source-derived native dispatch compatibility", () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = scratchProject(true);
+    });
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    test.each([
+      { forkTurns: "all" },
+      { forkTurns: "none" },
+      { forkTurns: "3" },
+    ])("source-derived V2 hook dispatch preserves fork_turns=$forkTurns and execution fields", ({ forkTurns }) => {
+      cpSync(join(REPO_ROOT, "dist", "codex", "aidlc"), join(dir, "aidlc"), { recursive: true });
+      const response = runAdapter(dir, "deliver-stage-rules", {
+        hook_event_name: "PreToolUse",
+        cwd: dir,
+        agent_type: "aidlc-quality-agent",
+        tool_name: "collaborationspawn_agent",
+        tool_input: {
+          task_name: "architecture_reviewer_probe",
+          agent_type: "aidlc-product-agent",
+          fork_turns: forkTurns,
+          model: "fixture-model",
+          reasoning_effort: "medium",
+          message: "Run .codex/aidlc-common/stages/inception/user-stories.md.",
+        },
+      }, { TMPDIR: dir });
+      expect(response.code).toBe(0);
+      const output: unknown = JSON.parse(response.stdout);
+      expect(output).toEqual({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+          updatedInput: {
+            task_name: "architecture_reviewer_probe",
+            agent_type: "aidlc-product-agent",
+            fork_turns: forkTurns,
+            model: "fixture-model",
+            reasoning_effort: "medium",
+            message: expect.stringContaining("AIDLC_DISPATCH_RULES_BEGIN"),
+          },
+        },
+      });
+      expect(response.stdout).toContain("Given/When/Then");
+      expect(response.stdout).toContain("Run .codex/aidlc-common/stages/inception/user-stories.md.");
+    });
+
+    test("legacy V1 named-role item dispatch preserves fork_context=false and execution fields", () => {
+      cpSync(join(REPO_ROOT, "dist", "codex", "aidlc"), join(dir, "aidlc"), { recursive: true });
+      const response = runAdapter(dir, "deliver-stage-rules", {
+        hook_event_name: "PreToolUse",
+        cwd: dir,
+        tool_name: "spawn_agent",
+        tool_input: {
+          agent_type: "aidlc-product-agent",
+          fork_context: false,
+          model: "fixture-model",
+          reasoning_effort: "medium",
+          items: [{
+            type: "text",
+            text: "Run .codex/aidlc-common/stages/inception/user-stories.md.",
+          }],
+        },
+      }, { TMPDIR: dir });
+      expect(response.code).toBe(0);
+      const output: unknown = JSON.parse(response.stdout);
+      expect(output).toEqual({
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+          updatedInput: {
+            agent_type: "aidlc-product-agent",
+            fork_context: false,
+            model: "fixture-model",
+            reasoning_effort: "medium",
+            items: [{
+              type: "text",
+              text: "Run .codex/aidlc-common/stages/inception/user-stories.md.",
+            }, {
+              type: "text",
+              text: expect.stringContaining("AIDLC_DISPATCH_RULES_BEGIN"),
+            }],
+          },
+        },
+      });
+      expect(response.stdout).toContain("Run .codex/aidlc-common/stages/inception/user-stories.md.");
+    });
+
+    test("source-derived V2 developer dispatch reaches plan refusal and reviewer dispatch remains allowed", () => {
+      seedUnapprovedCodeGeneration(dir, "todo-core");
+      const denied = runAdapter(dir, "plan-approval-guard", {
+        hook_event_name: "PreToolUse",
+        cwd: dir,
+        tool_name: "collaborationspawn_agent",
+        tool_input: {
+          task_name: "developer_probe",
+          agent_type: "aidlc-developer-agent",
+          fork_turns: "none",
+          message: "AIDLC-UNIT: todo-core\nImplement todo-core",
+        },
+      }, { TMPDIR: dir });
+      expect(denied.code).toBe(2);
+      expect(denied.stderr).toContain("Code generation cannot start");
+      const allowed = runAdapter(dir, "plan-approval-guard", {
+        hook_event_name: "PreToolUse",
+        cwd: dir,
+        tool_name: "collaborationspawn_agent",
+        tool_input: {
+          task_name: "reviewer_probe",
+          agent_type: "aidlc-quality-agent",
+          fork_turns: "none",
+          message: "Review aidlc-developer-agent output for todo-core",
+        },
+      }, { TMPDIR: dir });
+      expect(allowed.code).toBe(0);
+      expect(allowed.stderr).toBe("");
+    });
+
   });
 
   test("2c: plan-approval guard reads the spawn target from tool_input.agent_type", () => {
@@ -701,17 +831,38 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
     }
   });
 
-  test("6: update_plan in_progress step with [slug] suffix syncs the state file", () => {
+  test("6: update_plan advances the state to its in_progress stage", () => {
     const dir = scratchProject(true);
     try {
       const r = runAdapter(
         dir,
         "sync-workflow-state",
-        withCwd(FIXTURES.postToolUse_updatePlan_slug, dir),
+        withCwd({
+          ...FIXTURES.postToolUse_updatePlan_slug,
+          tool_input: {
+            plan: [{ step: "Running User Stories [user-stories]", status: "in_progress" }],
+          },
+        }, dir),
       );
       expect(r.code).toBe(0);
       const after = readFileSync(seededStateFile(dir), "utf-8");
-      expect(/\*\*Current Stage\*\*:\s*intent-capture/.test(after)).toBe(true);
+      expect(after).toContain("**Current Stage**: user-stories");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("update_plan refuses to move the current stage backward", () => {
+    const dir = scratchProject(true);
+    try {
+      const before = readFileSync(seededStateFile(dir), "utf-8");
+      const result = runAdapter(
+        dir,
+        "sync-workflow-state",
+        withCwd(FIXTURES.postToolUse_updatePlan_slug, dir),
+      );
+      expect(result.code).toBe(0);
+      expect(readFileSync(seededStateFile(dir), "utf-8")).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -795,7 +946,7 @@ describe("t149 Codex hook adapter (live-captured payload fixtures)", () => {
               session_id: "prior-session-0000",
               tool_input: {
                 command:
-                  "bun .codex/tools/aidlc-utility.ts intent-create --scope poc",
+                  "bun .codex/tools/aidlc.ts engine intent create --scope poc",
               },
               tool_response: firstCreate.stdout,
             },

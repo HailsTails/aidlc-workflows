@@ -634,6 +634,8 @@ describe("t116 inline context roster", () => {
     ]);
     expect(directive.rules_in_context).toEqual([
       `aidlc/spaces/${DEFAULT_SPACE}/memory/org.md`,
+      `aidlc/spaces/${DEFAULT_SPACE}/memory/team.md`,
+      `aidlc/spaces/${DEFAULT_SPACE}/memory/project.md`,
       `aidlc/spaces/${DEFAULT_SPACE}/memory/phases/inception.md`,
     ]);
     for (const path of directive.rules_in_context) {
