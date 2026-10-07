@@ -441,3 +441,79 @@ describe("an explicit provider choice reaches the team's opencode.json", () => {
     expect(openCodeFileProvider(project())).toEqual({});
   });
 });
+
+// A team that keeps opencode.jsonc gets AI-DLC's entries in that file, with
+// its comments, and never a second opencode.json beside it (opencode reads
+// both files and merges them, so a second file would compete with theirs).
+describe("a team that keeps opencode.jsonc", () => {
+  test("setup adds AI-DLC's entries to opencode.jsonc and creates no opencode.json", async () => {
+    const dir = project();
+    writeFileSync(join(dir, "opencode.jsonc"), TEAM_FILE);
+    const result = configure(dir);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(existsSync(join(dir, "opencode.json"))).toBe(false);
+    const text = readFileSync(join(dir, "opencode.jsonc"), "utf-8");
+    expect(text).toContain("// The team's own model and provider.");
+    const value = parse(text);
+    expect(value.model).toBe("amazon-bedrock/team-model");
+    expect(value.skills).toEqual({ paths: [".aidlc/skills"] });
+    expect(value.instructions).toContain(".aidlc/onboarding.md");
+    expect(value.permission.bash["*"]).toBe("allow");
+    expect(value.permission.bash[AIDLC_RULE]).toBe("allow");
+    const { instructionFileDoctorCheck } = await import("../../core/tools/aidlc-config-diagnostics.ts");
+    const doctor = instructionFileDoctorCheck(dir, ".aidlc");
+    expect(doctor.pass, doctor.label).toBe(true);
+    // A refresh keeps it that way.
+    expect(configure(dir).status).toBe(0);
+    expect(existsSync(join(dir, "opencode.json"))).toBe(false);
+    // An explicit Bedrock region reaches the jsonc, named as the file it is.
+    const changed = run([
+      "config", "providers", "--project-dir", dir,
+      "--provider", "amazon-bedrock", "--region", "us-east-1", "--opencode-default", "yes", "--yes",
+    ], dir);
+    expect(changed.status, changed.stdout + changed.stderr).toBe(0);
+    expect(existsSync(join(dir, "opencode.json"))).toBe(false);
+    expect(parse(readFileSync(join(dir, "opencode.jsonc"), "utf-8")).provider["amazon-bedrock"].options.region).toBe("us-east-1");
+    expect(changed.stdout).toContain("opencode.jsonc now uses Bedrock in us-east-1 (was eu-west-1)");
+    const check = run(["config", "providers", "--project-dir", dir, "--check"], dir);
+    expect(check.stdout + check.stderr).not.toContain("provider-opencode");
+  });
+
+  // A problem in the team's jsonc is reported against that file, never against
+  // an opencode.json the team does not have.
+  test("a shape or a non-file at opencode.jsonc is reported as opencode.jsonc", () => {
+    const shape = project();
+    const text = '{\n  "permission": "ask"\n}\n';
+    writeFileSync(join(shape, "opencode.jsonc"), text);
+    const result = configure(shape);
+    expect(result.status).toBe(4);
+    expect(result.stdout + result.stderr).toContain("opencode.jsonc (permission must be a JSON object)");
+    expect(result.stdout + result.stderr).not.toContain("opencode.json (");
+    expect(readFileSync(join(shape, "opencode.jsonc"), "utf-8")).toBe(text);
+    expect(existsSync(join(shape, "opencode.json"))).toBe(false);
+    const folder = project();
+    mkdirSync(join(folder, "opencode.jsonc"));
+    const blocked = configure(folder);
+    expect(blocked.status).toBe(4);
+    expect(blocked.stdout + blocked.stderr).toContain("opencode.jsonc (root integration is not a regular file)");
+    expect(blocked.stdout + blocked.stderr).not.toContain("opencode.json (");
+  });
+
+  test("where setup never ran, the first session adds AI-DLC's part to opencode.jsonc", async () => {
+    const dir = project();
+    cpSync(join(DIST, "opencode"), dir, { recursive: true });
+    rmSync(join(dir, "opencode.json"));
+    writeFileSync(join(dir, "opencode.jsonc"), TEAM_FILE);
+    const { addRootBlocks } = await import("../../core/tools/aidlc-includes.ts");
+    expect(addRootBlocks(dir)).toContain("opencode.jsonc");
+    expect(existsSync(join(dir, "opencode.json"))).toBe(false);
+    const text = readFileSync(join(dir, "opencode.jsonc"), "utf-8");
+    expect(text).toContain("// The team's own model and provider.");
+    const value = parse(text);
+    expect(value.model).toBe("amazon-bedrock/team-model");
+    expect(value.instructions).toContain(".aidlc/onboarding.md");
+    expect(value.permission.bash["*"]).toBe("allow");
+    // Once is enough.
+    expect(addRootBlocks(dir)).not.toContain("opencode.jsonc");
+  });
+});

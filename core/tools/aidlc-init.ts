@@ -67,6 +67,7 @@ import {
   replaceJsoncSetting,
   copyStartsWithout,
   rootBlockPath,
+  rootIntegrationTarget,
   sha256Bytes,
   sha256File,
   sha256FileMatching,
@@ -2098,7 +2099,7 @@ function diagnosticWizard(
       );
       if (selected.harness === "opencode") {
         const offer = promptYesDefault(
-          "  Write amazon-bedrock provider options to opencode.json?",
+          `  Write amazon-bedrock provider options to ${rootIntegrationTarget(projectDir, "opencode.json")}?`,
           recordedBedrock?.opencodeDefault ?? false,
         );
         args.push("--opencode-default", offer ? "yes" : "no");
@@ -7452,7 +7453,7 @@ function firstRunMutationPaths(
       join(projectDir, path)
     ),
     ...choices.candidate.descriptor.rootIntegrations.map((integration) =>
-      join(projectDir, integration.path)
+      join(projectDir, rootIntegrationTarget(projectDir, integration.path))
     ),
     join(projectDir, ".gitignore"),
     settingsPathForTarget(projectDir, choices.target),
@@ -8725,10 +8726,11 @@ function openCodeProviderClaim(
   if (regionChanged || profileChanged) {
     // A profile the record does not name is not touched: the team's stays in
     // force, and the line says so rather than reading as if it were gone.
+    const fileName = rootIntegrationTarget(projectDir, "opencode.json");
     const now = provider.profile ? `${provider.region} with profile ${provider.profile}` : provider.region;
     const before = provider.profile && profileWas ? `${was ?? provider.region}, profile ${profileWas}` : was ?? provider.region;
-    const keeps = !provider.profile && profileWas ? `; profile ${profileWas} from opencode.json still applies` : "";
-    note = `opencode.json now uses Bedrock in ${now} (was ${before})${keeps}.`;
+    const keeps = !provider.profile && profileWas ? `; profile ${profileWas} from ${fileName} still applies` : "";
+    note = `${fileName} now uses Bedrock in ${now} (was ${before})${keeps}.`;
   }
   return { entries: { "opencode.json": ids }, ...(note ? { note } : {}) };
 }
@@ -8782,12 +8784,15 @@ function planRootIntegrations(
     const sourcePath = fromShippedCopy
       ? shippedCopy
       : shippedRootIntegrationPath(sourceRoot, descriptor.harnessDir, integration);
-    const targetPath = join(projectDir, integration.path);
+    // The team's file this lands in (the opencode.jsonc a team keeps, for
+    // opencode.json); the record stays keyed by the integration's own path.
+    const targetRel = rootIntegrationTarget(projectDir, integration.path);
+    const targetPath = join(projectDir, targetRel);
     const targetExists = pathPresent(targetPath);
     const targetRegular = targetExists && lstatSync(targetPath).isFile();
     if (targetExists && !targetRegular && !force) {
       actions.push({
-        path: integration.path,
+        path: targetRel,
         action: "conflict",
         detail: "root integration is not a regular file",
       });
@@ -9180,7 +9185,7 @@ function planRootIntegrations(
       }
       const merged = mergeJsonEntries(current, shippedText, ownership, force, claimJsonEntries[integration.path] ?? []);
       if ("conflict" in merged) {
-        actions.push({ path: integration.path, action: "conflict", detail: merged.conflict });
+        actions.push({ path: targetRel, action: "conflict", detail: merged.conflict });
         continue;
       }
       const created = !targetExists || priorContribution?.policy === "whole-file" ||
@@ -9191,11 +9196,11 @@ function planRootIntegrations(
         ...(created ? { created: true } : {}),
       };
       if (merged.text === current) {
-        actions.push({ path: integration.path, action: "preserve" });
+        actions.push({ path: targetRel, action: "preserve" });
       } else {
-        operations.push(writeOperation(integration.path, merged.text, expected(targetPath)));
+        operations.push(writeOperation(targetRel, merged.text, expected(targetPath)));
         actions.push({
-          path: integration.path,
+          path: targetRel,
           action: !targetExists ? "create" : merged.whole ? "update" : "merge",
           detail: legacyMatch && priorContribution?.policy !== "json-entries" ? "adopted exact legacy signature" : undefined,
         });
@@ -9313,14 +9318,15 @@ function planRemovedRootIntegrations(
   const current = new Set(descriptor.rootIntegrations.map((item) => item.path));
   for (const [path, contribution] of Object.entries(prior?.rootContributions ?? {})) {
     if (current.has(path)) continue;
-    const targetPath = join(projectDir, path);
+    const targetRel = rootIntegrationTarget(projectDir, path);
+    const targetPath = join(projectDir, targetRel);
     if (!pathPresent(targetPath)) continue;
     if (!regularFile(targetPath)) {
       if (!force) {
         actions.push({ path, action: "conflict", detail: "retired root integration is not a regular file" });
         continue;
       }
-      operations.push({ kind: "remove", path, expected: expected(targetPath) });
+      operations.push({ kind: "remove", path: targetRel, expected: expected(targetPath) });
       actions.push({ path, action: "remove", detail: NO_LONGER_SHIPPED });
       continue;
     }
@@ -9345,10 +9351,10 @@ function planRemovedRootIntegrations(
       let value = `${text.slice(0, beginAt)}${text.slice(blockEnd)}`;
       value = value.replace(/^\r?\n/, "").replace(/\r?\n\r?\n$/, "\n");
       if (!value) {
-        operations.push({ kind: "remove", path, expected: expected(targetPath) });
+        operations.push({ kind: "remove", path: targetRel, expected: expected(targetPath) });
         actions.push({ path, action: "remove", detail: NO_LONGER_SHIPPED });
       } else {
-        operations.push(writeOperation(path, value, expected(targetPath)));
+        operations.push(writeOperation(targetRel, value, expected(targetPath)));
         actions.push({ path, action: "merge", detail: "removed retired managed block" });
       }
       continue;
@@ -9380,7 +9386,7 @@ function planRemovedRootIntegrations(
         actions.push({ path, action: "conflict", detail: "retired JSON entry was locally modified" });
         continue;
       }
-      operations.push(writeOperation(path, jsonFileText(parsed, text), expected(targetPath)));
+      operations.push(writeOperation(targetRel, jsonFileText(parsed, text), expected(targetPath)));
       actions.push({ path, action: "merge", detail: "removed retired JSON entries" });
       continue;
     }
@@ -9395,10 +9401,10 @@ function planRemovedRootIntegrations(
       if (value === text) {
         actions.push({ path, action: "preserve", detail: "retired settings were changed or already removed" });
       } else if (contribution.created && jsoncRootMembers(value)?.members.length === 0 && value.replace(/\s/g, "") === "{}") {
-        operations.push({ kind: "remove", path, expected: expected(targetPath) });
+        operations.push({ kind: "remove", path: targetRel, expected: expected(targetPath) });
         actions.push({ path, action: "remove", detail: NO_LONGER_SHIPPED });
       } else {
-        operations.push(writeOperation(path, value, expected(targetPath)));
+        operations.push(writeOperation(targetRel, value, expected(targetPath)));
         actions.push({ path, action: "merge", detail: "removed retired settings" });
       }
       continue;
@@ -9411,10 +9417,10 @@ function planRemovedRootIntegrations(
       } else if (value === text) {
         actions.push({ path, action: "preserve", detail: "retired entries were changed or already removed" });
       } else if (contribution.created && emptyJsonObject(value)) {
-        operations.push({ kind: "remove", path, expected: expected(targetPath) });
+        operations.push({ kind: "remove", path: targetRel, expected: expected(targetPath) });
         actions.push({ path, action: "remove", detail: NO_LONGER_SHIPPED });
       } else {
-        operations.push(writeOperation(path, value, expected(targetPath)));
+        operations.push(writeOperation(targetRel, value, expected(targetPath)));
         actions.push({ path, action: "merge", detail: "removed retired JSON entries" });
       }
       continue;
@@ -9438,7 +9444,7 @@ function planRemovedRootIntegrations(
         sha256Bytes(canonical(value)) !== contribution.entries[value]
       );
       if ((parsed[contribution.key] as unknown[]).length === 0) delete parsed[contribution.key];
-      operations.push(writeOperation(path, jsonFileText(parsed, text), expected(targetPath)));
+      operations.push(writeOperation(targetRel, jsonFileText(parsed, text), expected(targetPath)));
       actions.push({ path, action: "merge", detail: "removed retired JSON array entries" });
       continue;
     }
@@ -9446,7 +9452,7 @@ function planRemovedRootIntegrations(
       actions.push({ path, action: "conflict", detail: "retired whole-file integration was locally modified" });
       continue;
     }
-    operations.push({ kind: "remove", path, expected: expected(targetPath) });
+    operations.push({ kind: "remove", path: targetRel, expected: expected(targetPath) });
     actions.push({ path, action: "remove", detail: NO_LONGER_SHIPPED });
   }
 }
