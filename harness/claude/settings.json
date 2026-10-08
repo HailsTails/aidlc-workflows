@@ -37,7 +37,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook fold-usage"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook fold-usage",
+            "timeout": 1800
           }
         ]
       },
@@ -46,7 +47,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook deliver-stage-rules"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook deliver-stage-rules",
+            "timeout": 1800
           }
         ]
       },
@@ -55,15 +57,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook state-transition-guard"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook state-transition-guard",
+            "timeout": 1800
           },
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook reviewer-scope"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook reviewer-scope",
+            "timeout": 1800
           },
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook review-freeze"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook review-freeze",
+            "timeout": 1800
           }
         ]
       },
@@ -72,7 +77,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook plan-approval-guard"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook plan-approval-guard",
+            "timeout": 1800
           }
         ]
       }
@@ -83,7 +89,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook record-human-turn"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook record-human-turn",
+            "timeout": 1800
           }
         ]
       }
@@ -94,7 +101,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook session-start"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook session-start",
+            "timeout": 1800
           }
         ]
       }
@@ -105,7 +113,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook session-end"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook session-end",
+            "timeout": 60
           }
         ]
       }
@@ -116,11 +125,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook write-audit-log"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook write-audit-log",
+            "timeout": 1800
           },
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook run-sensors"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook run-sensors",
+            "timeout": 3600
           }
         ]
       },
@@ -129,7 +140,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook sync-workflow-state"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook sync-workflow-state",
+            "timeout": 1800
           }
         ]
       },
@@ -138,7 +150,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook record-human-turn"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook record-human-turn",
+            "timeout": 1800
           }
         ]
       },
@@ -147,7 +160,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook rebuild-stage-graph"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook rebuild-stage-graph",
+            "timeout": 1800
+          }
+        ]
+      },
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook deliver-stage-rules",
+            "timeout": 1800
           }
         ]
       },
@@ -156,7 +180,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook fold-usage"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook fold-usage",
+            "timeout": 1800
           }
         ]
       }
@@ -167,7 +192,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook validate-state"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook validate-state",
+            "timeout": 1800
           }
         ]
       }
@@ -178,7 +204,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook log-subagent"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook log-subagent",
+            "timeout": 1800
           }
         ]
       }
@@ -189,7 +216,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook continue-workflow"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/{{HARNESS_DIR}}/tools/aidlc.ts\" engine hook continue-workflow",
+            "timeout": 3600
           }
         ]
       }

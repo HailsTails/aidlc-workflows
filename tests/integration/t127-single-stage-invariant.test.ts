@@ -49,7 +49,7 @@
 //   .sh 12 (refused report commits no STAGE_COMPLETED)  -> test "12: refused report --single commits no STAGE_COMPLETED"
 //   .sh 13 (next --single no --stage errors)            -> test "13: next --single with no --stage errors"
 //   .sh 14 (next --single rejects init stage)           -> test "14: next --single rejects an initialization stage"
-//   .sh 15 (next --single rejects SKIP-for-scope stage) -> test "15: next --single rejects a SKIP-for-scope stage"
+//   .sh 15 (next --single on a SKIP-for-scope stage)     -> test "15: next --single runs a SKIP-for-scope stage and says it is not in the plan"
 //   .sh 16 (next --single --phase mutually exclusive)   -> test "16: next --single --phase errors"
 //
 // §6-E note: tests 11/13/14/15/16 are the tool-enforced REFUSALS — each
@@ -59,9 +59,10 @@
 // state file back, proving the pointer is unmoved — not merely absent of a
 // move directive.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { NATIVE_FIXTURE_SETUP_TIMEOUT_MS } from "../harness/test-budget.ts";
+import { setDefaultTimeout, afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import {
   AIDLC_SRC,
@@ -76,10 +77,14 @@ import {
 } from "../harness/fixtures.ts";
 import { appendAuditEntry } from "../../dist/claude/.claude/tools/aidlc-audit.ts";
 import {
+  artifactFilename,
+  loadStageGraphAll,
   SUMMARY_CONFIRMATION_HASH_SCOPE,
   summaryConfirmationContentHash,
   stateDigest,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+
+setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
 const BUN = process.execPath; // the bun running this test
 const TOOL = join(AIDLC_SRC, "tools", "aidlc-orchestrate.ts");
@@ -127,8 +132,9 @@ function run(tool: string, args: string[]): { out: string; status: number } {
 function runSummaryGuarded(
   tool: string,
   args: string[],
+  extraEnv: NodeJS.ProcessEnv = {},
 ): { out: string; status: number } {
-  const env = { ...process.env };
+  const env = { ...process.env, ...extraEnv };
   delete env.AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD;
   delete env.AIDLC_SKIP_HUMAN_PRESENCE_GUARD;
   const res = spawnSync(BUN, [tool, ...args], { encoding: "utf-8", env });
@@ -242,6 +248,8 @@ describe("t127 --single pointer invariant (migrated from t127-single-stage-invar
       "--project-dir", proj,
     ]);
     expect(r.out).toContain('"kind":"done"');
+    // The isolated run is over; its done never says the main workflow goes on.
+    expect(r.out).not.toContain("workflow_continues");
   });
 
   test("7: report --single leaves the main Current Stage untouched [.sh 7]", () => {
@@ -597,6 +605,137 @@ describe("t127 --single pointer invariant (migrated from t127-single-stage-invar
       proj,
     ]);
     expect(result.out).toContain('"kind":"done"');
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  describe("isolated NFR review with a parent plan that skips Units Generation", () => {
+    const stage = "nfr-requirements";
+    const guardedEnv = {
+      AIDLC_DISABLE_SUMMARY_CONFIRMATION: "0",
+      AIDLC_SKIP_ARTIFACT_GUARD: "0",
+    };
+
+    function prepare(
+      parentScope: "feature" | "classic",
+      confirmation: "single" | "main" | "none" = "single",
+    ) {
+      const proj = freshProject();
+      seedStateFile(proj, STATE_FIXTURE);
+      seedAuditFile(proj);
+      const statePath = join(seededRecordDir(proj), "aidlc-state.md");
+      const parentState = readFileSync(statePath, "utf-8")
+        .replace("- **Scope**: feature", `- **Scope**: ${parentScope}`)
+        .replace(
+          /^- \[[^\]]+\] units-generation.*$/m,
+          "- [S] units-generation — SKIP",
+        )
+        .replace(
+          "## Scope Configuration",
+          "## Scope Configuration\n- **Summary Confirmation**: on (set by you)",
+        );
+      writeFileSync(statePath, parentState);
+      const started = runOrchestrateNext(
+        TOOL,
+        proj,
+        ["--stage", stage, "--single"],
+        { env: { ...process.env, ...guardedEnv } },
+      );
+      expect(started.status, started.out).toBe(0);
+      expect(started.directive).toMatchObject({
+        kind: "run-stage",
+        single: true,
+        ceremony: { summary_confirmation: parentScope === "classic" ? "off" : "on" },
+      });
+      expect(started.directive?.produces).toContain(
+        `${relative(proj, seededRecordDir(proj)).replaceAll("\\", "/")}/construction/{unit-name}/${stage}/security-requirements.md`,
+      );
+      const stageDir = join(seededRecordDir(proj), "construction", "api", stage);
+      mkdirSync(stageDir, { recursive: true });
+      const questions = join(stageDir, `${stage}-questions.md`);
+      const body = "# Questions\n\n## Q1\nEncrypt stored credentials.\n\n" +
+        "## Consolidated Summary Confirmation\n\n- Looks correct\n- Request changes\n\n[Answer]: ";
+      writeFileSync(questions, `${body}\n`);
+      const identity = [
+        "--stage", stage, "--checkpoint", "summary-confirmation",
+        "--questions-file", questions,
+        ...(confirmation === "single" ? ["--single"] : []),
+        "--project-dir", proj,
+      ];
+      if (confirmation !== "none") {
+        const decision = runSummaryGuarded(LOG_TOOL, [
+          "decision", ...identity, "--decision", "Does this all look correct?",
+        ], guardedEnv);
+        expect(decision.status, decision.out).toBe(0);
+        appendAuditEntry("HUMAN_TURN", {}, proj);
+      }
+      writeFileSync(questions, `${body}Looks correct\n`);
+      if (confirmation !== "none") {
+        const answer = runSummaryGuarded(LOG_TOOL, [
+          "answer", ...identity, "--details", "Looks correct",
+        ], guardedEnv);
+        expect(answer.status, answer.out).toBe(0);
+      }
+      const node = loadStageGraphAll().find((entry) => entry.slug === stage)!;
+      for (const name of node.produces ?? []) {
+        const artifact = join(stageDir, artifactFilename(name));
+        writeFileSync(artifact, `# ${name}\n`);
+        recordArtifactWriteViaHook(proj, artifact);
+      }
+      return { proj, questions, statePath, parentState };
+    }
+
+    function requestReview(proj: string) {
+      return runSummaryGuarded(LOG_TOOL, [
+        "review", "--stage", stage, "--single",
+        "--reviewer", "aidlc-architecture-reviewer-agent", "--iteration", "1",
+        "--project-dir", proj,
+      ], guardedEnv);
+    }
+
+    test(
+      "review and completion accept the isolated Unit's confirmation",
+      () => {
+        const { proj, statePath, parentState } = prepare("feature");
+        const review = requestReview(proj);
+        expect(review.status, review.out).toBe(0);
+        expect(review.out).toContain('"emitted":"REVIEW_REQUESTED"');
+        const report = runSummaryGuarded(TOOL, [
+          "report", "--single", "--stage", stage, "--result", "completed",
+          "--project-dir", proj,
+        ], guardedEnv);
+        expect(report.out).toContain('"kind":"done"');
+        expect(readFileSync(statePath, "utf-8")).toBe(parentState);
+      },
+      NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
+    );
+
+    test.each([
+      ["none", "no fresh human-backed"],
+      ["main", "no fresh human-backed"],
+      ["stale", "changed after the human confirmed"],
+    ] as const)("review still refuses %s confirmation evidence", (condition, message) => {
+      const { proj, questions } = prepare("feature", condition === "stale" ? "single" : condition);
+      if (condition === "stale") {
+        writeFileSync(questions, readFileSync(questions, "utf-8").replace(
+          "Encrypt stored credentials.", "Require hardware-backed keys.",
+        ));
+      }
+      const review = requestReview(proj);
+      expect(review.status, review.out).not.toBe(0);
+      expect(review.out).toContain(message);
+      expect(countEvent(proj, "REVIEW_REQUESTED")).toBe(0);
+    });
+
+    test("placement isolation preserves the review caller's explicit ceremony setting", () => {
+      const { proj, questions, statePath, parentState } = prepare("classic", "none");
+      writeFileSync(statePath, parentState.replace(
+        "**Summary Confirmation**: on (set by you)",
+        "**Summary Confirmation**: off (set by you)",
+      ));
+      rmSync(questions);
+      const review = requestReview(proj);
+      expect(review.status, review.out).toBe(0);
+      expect(review.out).toContain('"emitted":"REVIEW_REQUESTED"');
+    }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
   });
 
   test("12f: isolated hash recovery stays on the --single workflow", () => {
@@ -681,12 +820,13 @@ describe("t127 --single pointer invariant (migrated from t127-single-stage-invar
   });
 
   // =========================================================================
-  // Test 15: a SKIP-for-scope stage cannot run via --single.
-  // `user-stories` is SKIP for bugfix; --single relays the verbatim skip
-  // wording. Use a NO-STATE project so the explicit --scope bugfix resolves
-  // (an active workflow's state Scope would win the precedence ladder).
+  // Test 15: a SKIP-for-scope stage runs via --single when asked for.
+  // `user-stories` is SKIP for bugfix. An isolated run never touches the plan
+  // or the cursor, so it runs, with one change notice saying it is not part
+  // of the plan. Use a NO-STATE project so the explicit --scope bugfix
+  // resolves (an active workflow's state Scope would win the precedence ladder).
   // =========================================================================
-  test("15: next --single rejects a SKIP-for-scope stage with the verbatim skip wording [.sh 15]", () => {
+  test("15: next --single runs a SKIP-for-scope stage and says it is not in the plan [.sh 15]", () => {
     const proj = freshProject();
     // No-state project: createTestProject already leaves aidlc-docs/ empty, so
     // there is no aidlc-state.md (the .sh did `rm -f` defensively — here it
@@ -695,10 +835,20 @@ describe("t127 --single pointer invariant (migrated from t127-single-stage-invar
       "next", "--stage", "user-stories", "--single", "--scope", "bugfix",
       "--project-dir", proj,
     ]);
-    // The verbatim wording is `Stage "..." is skipped for scope "bugfix".`; in
-    // JSON stdout the quotes are backslash-escaped, so match the quote-free
-    // substring (same as the .sh).
-    expect(r.out).toContain("is skipped for scope");
+    const directive = JSON.parse(r.out.split("\n").find((line) => line.startsWith("{")) ?? "{}") as {
+      kind?: string;
+      stage?: string;
+      single?: boolean;
+      change_notices?: string[];
+    };
+    expect(directive.kind, r.out).toBe("run-stage");
+    expect(directive.stage).toBe("user-stories");
+    expect(directive.single).toBe(true);
+    expect(directive.change_notices).toContain(
+      "\"user-stories\" is not part of the bugfix plan. It runs on its own because you asked for it; " +
+        "the plan and your workflow stay as they are.",
+    );
+    expect(r.out).not.toContain("is skipped for scope");
   });
 
   // =========================================================================

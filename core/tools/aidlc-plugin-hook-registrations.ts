@@ -1,3 +1,4 @@
+import { codexHookTrustHash, codexHookTrustIdentity, type CodexHookTrustIdentityInput } from "./aidlc-command.ts";
 import type { ModelHarness } from "./aidlc-model-policy.ts";
 import { isModelHarness } from "./aidlc-model-policy.ts";
 
@@ -13,7 +14,7 @@ type PluginHookRow = {
 type NativeHookGroup =
   | {
       readonly matcher?: string;
-      readonly hooks: readonly { readonly type: "command"; readonly command: string }[];
+      readonly hooks: readonly { readonly type: "command"; readonly command: string; readonly timeout?: number | undefined }[];
     }
   | {
       readonly type: "command";
@@ -74,7 +75,8 @@ function validNativeHookGroup(value: unknown): value is NativeHookGroup {
   if (!registrationRecord(value)) return false;
   if (value["type"] === "command") return typeof value["bash"] === "string" && typeof value["powershell"] === "string" && typeof value["timeoutSec"] === "number" && value["timeoutSec"] > 0;
   return (value["matcher"] === undefined || typeof value["matcher"] === "string") && Array.isArray(value["hooks"]) && value["hooks"].length > 0 &&
-    value["hooks"].every((hook) => registrationRecord(hook) && hook["type"] === "command" && typeof hook["command"] === "string");
+    value["hooks"].every((hook) => registrationRecord(hook) && hook["type"] === "command" && typeof hook["command"] === "string" &&
+      (hook["timeout"] === undefined || (typeof hook["timeout"] === "number" && Number.isSafeInteger(hook["timeout"]) && hook["timeout"] >= 0)));
 }
 
 function validHookContribution(value: unknown): value is PluginHookContribution {
@@ -88,25 +90,6 @@ function validHookContribution(value: unknown): value is PluginHookContribution 
   return false;
 }
 
-type CodexHookTrustIdentityInput = {
-  readonly eventSnake: string;
-  readonly command: string;
-  readonly matcher?: string | undefined;
-};
-
-const codexMatcherEvents = new Set([
-  "pre_tool_use", "permission_request", "post_tool_use", "session_start",
-  "session_end", "subagent_start", "subagent_stop", "pre_compact", "post_compact",
-]);
-
-function codexHookTrustIdentity(input: CodexHookTrustIdentityInput): string {
-  const matcher = codexMatcherEvents.has(input.eventSnake) ? input.matcher : undefined;
-  const timeoutSec = input.eventSnake === "session_end" || input.eventSnake === "interrupt" ? 1 : 600;
-  return JSON.stringify({ event_name: input.eventSnake,
-    hooks: [{ async: false, command: input.command, timeout: timeoutSec, type: "command" }],
-    matcher });
-}
-
 function validCommandHookGroup(value: unknown): value is Extract<NativeHookGroup, { readonly hooks: readonly unknown[] }> {
   return validNativeHookGroup(value) && "hooks" in value;
 }
@@ -114,7 +97,7 @@ function validCommandHookGroup(value: unknown): value is Extract<NativeHookGroup
 function planCodexHookTrustSeed(input: {
   document: unknown;
   hooksPath: string;
-  hashIdentity: (input: { identity: string }) => string;
+  hashHook: (input: CodexHookTrustIdentityInput) => string;
 }): { kind: "planned"; text: string } | { kind: "invalid-document" } {
   if (!registrationRecord(input.document) || !registrationRecord(input.document["hooks"])) return { kind: "invalid-document" };
   const events = Object.entries(input.document["hooks"]).map(([event, groups]) => ({ event,
@@ -123,7 +106,7 @@ function planCodexHookTrustSeed(input: {
   const entries = events.flatMap(({ event, groups }) => groups?.flatMap((group, groupIndex) =>
     group.hooks.map((hook, hookIndex) => {
       const eventSnake = event.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-      const hash = input.hashIdentity({ identity: codexHookTrustIdentity({ eventSnake, command: hook.command, matcher: group.matcher }) });
+      const hash = input.hashHook({ eventSnake, command: hook.command, matcher: group.matcher, timeout: hook.timeout });
       return `[hooks.state.${JSON.stringify(`${input.hooksPath}:${eventSnake}:${groupIndex}:${hookIndex}`)}]\ntrusted_hash = ${JSON.stringify(hash)}`;
     })) ?? []);
   return { kind: "planned", text: entries.length > 0 ? `${entries.join("\n\n")}\n` : "[hooks.state]\n" };
@@ -270,6 +253,7 @@ export {
   type ProjectedPluginHookContributions,
   planPluginHookRegistrations,
   type CodexHookTrustIdentityInput,
+  codexHookTrustHash,
   codexHookTrustIdentity,
   planCodexHookTrustSeed,
   projectedPluginHookContributionsSchema,

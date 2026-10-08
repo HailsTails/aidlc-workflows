@@ -37,6 +37,7 @@
 // the sibling primitives already own (Bolt Refs, Worktree Path) — this is
 // the t48 emitter-pairing rule.
 
+import { LONG_SUBPROCESS_TIMEOUT_MS, EXTENDED_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -44,33 +45,59 @@ import { fileURLToPath } from "node:url";
 import { appendAuditEntry, appendAuditEntryUnlocked } from "./aidlc-audit.ts";
 import {
   boltSlugForUnit,
+  BOLT_INTENT_ID8_REGEX,
   emitError,
   errorMessage,
   claimAttemptFields,
   getField,
   holdsAuditLock,
-  humanActedSinceGate,
+  commandTurnHint,
   humanPresenceGuardDisabled,
+  keepActiveDirectiveOverAutonomyWrite,
+  personSpokeSinceGate,
   readAuditShardEvents,
+  recordHookDrop,
+  unattendedHumanPresenceHint,
   auditBlockField,
   isTeamUnitOwnership,
   isWalkingSkeletonUnitOnMain,
+  parseParkedStampInstant,
   relativeRecordDir,
   readStateFile,
   resolveAuditWorktreePath,
   requireLiveClaimForTeamUnit,
   resolveBoltDag,
+  resolveBoltIdentity,
   resolveProjectDir,
+  resolveWorkflowSelection,
   setOrInsertField,
   validateUnitName,
   slugify,
   validateLiveUnitScope,
   withAuditLock,
-  worktreePath,
   worktreeStateFilePath,
   writeStateFile,
+  VERIFICATION_COMMAND_RECOVERY,
+  type BoltIdentity,
+  legacyParkedRefPrefix,
+  resolveInvokingSessionId,
 } from "./aidlc-lib.js";
-import { compiledExecutable } from "./aidlc-runtime-paths.ts";
+import { compiledExecutable, entrySkillInvocation } from "./aidlc-runtime-paths.ts";
+import { type EngineInvocation, renderEngineInvocation } from "./aidlc-guard-operation.ts";
+import {
+  askConstructionCheckpoint,
+  approveConstructionCheckpoint,
+  rejectConstructionCheckpoint,
+  resolveConstructionCheckpoint,
+  verifyConstructionCheckpoint,
+  type ConstructionCheckpointKind,
+} from "./aidlc-construction-checkpoints.ts";
+import {
+  askSwarmCheckpoint,
+  approveSwarmCheckpoint,
+  rejectSwarmCheckpoint,
+  resolveSwarmCheckpoint,
+} from "./aidlc-swarm-checkpoints.ts";
 
 function resolveTeamUnitSlug(
   projectDir: string,
@@ -150,9 +177,9 @@ function splitBooleanFlags(args: string[]): { booleans: Set<string>; rest: strin
 
 // Spawn a sibling tool (same project-dir) and return {ok, stdout, stderr}.
 // Used by --worktree / --merge / --discard branches to delegate to
-// state-fork / audit-fork / worktree-discard subcommands. 30s timeout
-// matches the merge-dispatch budget; on timeout, signal === "SIGTERM"
-// distinguishes the timeout case from an exit-code failure.
+// state-fork / audit-fork / worktree-discard subcommands. Compound operations
+// use the shared long backstop; discard also snapshots the source tree.
+// On timeout, signal === "SIGTERM" distinguishes it from an exit-code failure.
 function spawnSibling(
   pd: string,
   toolName:
@@ -187,7 +214,9 @@ function spawnSibling(
   const result = spawnSync(command[0], command.slice(1), {
     encoding: "utf-8",
     cwd: pd,
-    timeout: 30_000,
+    timeout: toolName === "aidlc-worktree.ts" && subargs[0] === "discard"
+      ? EXTENDED_SUBPROCESS_TIMEOUT_MS
+      : LONG_SUBPROCESS_TIMEOUT_MS,
   });
   return {
     ok: result.status === 0,
@@ -219,8 +248,9 @@ function parseFlags(args: string[]): Record<string, string> {
 function latestWorktreeCreationFields(
   projectDir: string,
   slug: string,
+  identity: BoltIdentity,
 ): { modern: boolean; baseCommit: string | null; baseSourceListing: string | null } | null {
-  const currentWorktreePath = worktreePath(projectDir, slug);
+  const currentWorktreePath = identity.dir;
   const rows = readAuditShardEvents(projectDir)
     .filter(
       (row) =>
@@ -253,9 +283,10 @@ function latestWorktreeCreationFields(
 function worktreeBaseFields(
   projectDir: string,
   slug: string,
+  identity: BoltIdentity,
 ): { baseCommit: string; baseSourceListing: string } | null {
-  const creation = latestWorktreeCreationFields(projectDir, slug);
-  const metaPath = join(worktreePath(projectDir, slug), ".aidlc", "worktree-meta.json");
+  const creation = latestWorktreeCreationFields(projectDir, slug, identity);
+  const metaPath = join(identity.dir, ".aidlc", "worktree-meta.json");
   if (!existsSync(metaPath)) {
     if (creation?.modern) {
       throw new Error(`modern WORKTREE_CREATED for "${slug}" requires worktree metadata at ${metaPath}`);
@@ -276,6 +307,8 @@ function worktreeBaseFields(
   const allowed = new Set([
     "version",
     "boltSlug",
+    "intentId8",
+    "branch",
     "baseBranch",
     "baseCommit",
     "baseSourceListing",
@@ -301,6 +334,15 @@ function worktreeBaseFields(
     throw new Error(
       `invalid worktree metadata at ${metaPath}: boltSlug must equal ${JSON.stringify(slug)}`,
     );
+  }
+  if (
+    "intentId8" in meta &&
+    (typeof meta.intentId8 !== "string" || !BOLT_INTENT_ID8_REGEX.test(meta.intentId8))
+  ) {
+    throw new Error(`invalid worktree metadata at ${metaPath}: intentId8 must be 8 lowercase hex characters when present`);
+  }
+  if ("branch" in meta && (typeof meta.branch !== "string" || meta.branch.length === 0)) {
+    throw new Error(`invalid worktree metadata at ${metaPath}: branch must be non-empty when present`);
   }
   if (typeof meta.baseBranch !== "string" || meta.baseBranch.length === 0) {
     throw new Error(`invalid worktree metadata at ${metaPath}: baseBranch must be non-empty`);
@@ -406,7 +448,7 @@ function handleStart(args: string[]): void {
   if (stateContent && getField(stateContent, "Status") === "Archived") {
     error(
       "Cannot start a Bolt for an Archived workflow. Bring it back first with " +
-        "`/aidlc intent unarchive <name>`.",
+        `\`${entrySkillInvocation()} intent unarchive <name>\`.`,
     );
   }
   const teamOwnership = isTeamUnitOwnership(stateContent);
@@ -443,8 +485,10 @@ function handleStart(args: string[]): void {
   let baseFields: { baseCommit: string; baseSourceListing: string } | null = null;
   if (useWorktree) {
     try {
+      const selection = resolveWorkflowSelection(pd, { intent: flags.intent, space: flags.space });
+      const identity = resolveBoltIdentity(pd, flags.slug, selection);
       readStateFile(pd);
-      baseFields = worktreeBaseFields(pd, flags.slug);
+      baseFields = worktreeBaseFields(pd, flags.slug, identity);
     } catch (e) {
       failJson("start-worktree", flags.slug, "state-or-worktree-meta-read-failed", errorMessage(e));
     }
@@ -606,7 +650,7 @@ function handleComplete(args: string[]): void {
   if (stateContent && getField(stateContent, "Status") === "Archived") {
     error(
       "Cannot complete a Bolt for an Archived workflow. Bring it back first with " +
-        "`/aidlc intent unarchive <name>`.",
+        `\`${entrySkillInvocation()} intent unarchive <name>\`.`,
     );
   }
   const teamOwnership = isTeamUnitOwnership(stateContent);
@@ -805,9 +849,9 @@ function handleFail(args: string[]): void {
 // emitted by the orchestrator when code-gen returns failure).
 //
 // Default behaviour preserves the worktree directory for inspection. With
-// --discard, calls aidlc-worktree discard --slug <slug> to tear it down
-// (audit-of-intent: WORKTREE_DISCARDED emits before tear-down inside the
-// discard subprocess; on discard failure, halt without state damage).
+// --discard, calls aidlc-worktree discard --slug <slug> to park then remove it.
+// WORKTREE_DISCARDED emits after parking and before removal; a parking failure
+// halts before audit/removal, leaving the live attempt intact.
 function handleAbort(args: string[]): void {
   const { booleans, rest } = splitBooleanFlags(args);
   const flags = parseFlags(rest);
@@ -816,7 +860,14 @@ function handleAbort(args: string[]): void {
   if (!flags.reason) error("Missing --reason <text>");
 
   const pd = resolveProjectDir(projectDir);
+  const selection = resolveWorkflowSelection(pd, { intent: flags.intent, space: flags.space });
+  if (selection.intent !== null) flags.intent = selection.intent;
+  flags.space = selection.space;
   const useDiscard = booleans.has("discard");
+  let parkedRef: string | null = null;
+  let parkedStamp: string | null = null;
+  let parkedMode: "snapshot" | "branch-tip" | "evidence-only" | null = null;
+  let parkedRepo: string | null = null;
 
   // Discard-FIRST when --discard set, audit-AFTER. If we emitted BOLT_FAILED
   // (Reason: aborted) before discard and discard then timed out / errored,
@@ -827,6 +878,7 @@ function handleAbort(args: string[]): void {
   // Default path (no --discard) preserves the worktree per US-1 AC line 51,
   // so emit-before-noop is safe and the ordering only matters for --discard.
   if (useDiscard) {
+    const identity = resolveBoltIdentity(pd, flags.slug, selection);
     const result = spawnSibling(pd, "aidlc-worktree.ts", [
       "discard",
       "--slug",
@@ -841,6 +893,25 @@ function handleAbort(args: string[]): void {
         reason,
         `aidlc-worktree discard --slug ${flags.slug} exited ${result.status}: ${result.stderr || result.stdout || "(no output)"}`
       );
+    }
+    try {
+      const discarded = JSON.parse(result.stdout);
+      if (typeof discarded?.parked_ref === "string") parkedRef = discarded.parked_ref;
+      if (typeof discarded?.parked_stamp === "string" &&
+        (discarded.parked_mode === "snapshot" || discarded.parked_mode === "branch-tip" || discarded.parked_mode === "evidence-only") &&
+        (discarded.parked_repo === null || typeof discarded.parked_repo === "string")) {
+        parkedStamp = discarded.parked_stamp;
+        parkedMode = discarded.parked_mode;
+        parkedRepo = discarded.parked_repo;
+      } else if (parkedRef !== null) {
+        const namespace = parkedRef;
+        const prefix = [identity.parkedRefPrefix, legacyParkedRefPrefix(flags.slug)]
+          .find((candidate) => namespace.startsWith(candidate));
+        const stamp = prefix === undefined ? "" : parkedRef.slice(prefix.length);
+        if (parseParkedStampInstant(stamp) !== null) parkedStamp = stamp;
+      }
+    } catch {
+      // Older sibling versions or no-op output may not carry a recovery descriptor.
     }
   }
 
@@ -861,13 +932,54 @@ function handleAbort(args: string[]): void {
     error(`Audit emission failed: ${errorMessage(e)}`);
   }
 
+  let restoreOperation: EngineInvocation | undefined;
+  let restoreHint: string | undefined;
+  let restoreHintError: string | undefined;
+  let recoveryHint: string | undefined;
+  if (parkedRef !== null && (parkedMode === "snapshot" || parkedMode === "branch-tip")) {
+    restoreOperation = {
+      route: "worktree",
+      args: [
+        "restore", "--slug", flags.slug,
+        ...(parkedStamp === null ? [] : ["--parked", parkedStamp]),
+        "--repo", parkedRepo ?? ".",
+        ...selectorArgs(flags),
+      ],
+    };
+    try {
+      restoreHint = renderEngineInvocation(restoreOperation);
+    } catch (e) {
+      restoreHintError = errorMessage(e);
+    }
+  } else if (parkedRef !== null && parkedMode === null) {
+    // Legacy output identifies a namespace, not its repository or saved mode.
+    // Doctor can inspect the parked refs without guessing a restore target.
+    recoveryHint = "run doctor to list set-aside attempts and their exact restore commands";
+  }
+
   console.log(
     JSON.stringify({
       emitted: "BOLT_FAILED",
       reason: "aborted",
+      abort_reason: flags.reason,
       failed_bolt: flags.name,
       slug: flags.slug,
       discarded: useDiscard,
+      parked_ref: parkedRef,
+      ...(parkedRef !== null ? {
+        parked_stamp: parkedStamp,
+        parked_mode: parkedMode,
+        parked_repo: parkedRepo,
+      } : {}),
+      ...(recoveryHint === undefined ? {} : { recovery_hint: recoveryHint }),
+      ...(restoreOperation === undefined ? {} : {
+        restore_operation: restoreOperation,
+        restore_hint: restoreHint,
+        restore_hint_error: restoreHintError,
+        parked_excludes: parkedMode === "branch-tip"
+          ? ["uncommitted files (no working tree existed)"]
+          : ["ignored files", "eol/text=auto normalization"],
+      }),
     })
   );
 }
@@ -877,8 +989,7 @@ function handleAbort(args: string[]): void {
 //        aidlc-bolt release-merge --slug <slug>
 //
 // HOLD-MERGE invariant tooling. Sets / clears the `Merge-Held` field in
-// the per-Bolt forked state file at
-// `<projectDir>/.aidlc/worktrees/bolt-<slug>/aidlc-docs/aidlc-state.md`.
+// the per-Bolt forked state file in the selected intent's worktree record.
 // Idempotent — re-running hold-merge on an already-held Bolt or
 // release-merge on an unheld Bolt succeeds without error. The field is
 // inserted under `## Project Information` on first hold-merge so the
@@ -924,7 +1035,9 @@ function forkedStateFilePath(
   intent?: string,
   space?: string,
 ): string | null {
-  const wtPath = worktreePath(pd, slug);
+  const selection = resolveWorkflowSelection(pd, { intent, space });
+  const identity = resolveBoltIdentity(pd, slug, selection);
+  const wtPath = identity.dir;
   // Pin the worktree mirror to the SAME record the state fork wrote (null ->
   // flat legacy mirror, today's behaviour).
   const recordPrefix = relativeRecordDir(pd, intent, space);
@@ -1112,23 +1225,25 @@ function handleSetAutonomy(args: string[]): void {
     if (getField(content, "Status") === "Archived") {
       error(
         "Cannot change autonomy for an Archived workflow. Bring it back first with " +
-          "`/aidlc intent unarchive <name>`.",
+          `\`${entrySkillInvocation()} intent unarchive <name>\`.`,
       );
     }
     // Human-presence guard on ESCALATION only. Switching to autonomous is the
     // human's ladder-prompt grant and consumes that turn through the emitted
     // AUTONOMY_MODE_SET row. De-escalation restores gates without presence.
+    // The approval given in the same message ("approve the plan, and run on
+    // its own from here") leaves the rest of it standing, as for the switches.
     if (
       flags.mode === "autonomous" &&
       !humanPresenceGuardDisabled() &&
-      !humanActedSinceGate(pd)
+      !personSpokeSinceGate(pd, { replies: true, outlivesApproval: true })
     ) {
       error(
-        "Refusing to switch Construction to autonomous: a real human has not acted since the last " +
-          "gate resolution, and autonomous mode is granted only by the human's ladder-prompt answer " +
-          "(it waives every later gate, so the grant itself needs a fresh human turn). Ask the human " +
-          "to confirm autonomous mode in a typed message, then retry. Do not log the ladder choice " +
-          "via aidlc-log answer; the choice is recorded by set-autonomy itself.",
+        "Refusing to switch Construction to autonomous: no reply from the person is on record since " +
+          "the last gate resolution, and autonomous mode is granted only by their answer to the ladder " +
+          "prompt (it waives every later gate, so the grant itself needs their reply). Run it after " +
+          "they choose it. Do not log the ladder choice via aidlc-log answer; the choice is recorded " +
+          `by set-autonomy itself.${commandTurnHint(pd)}${unattendedHumanPresenceHint(pd)}`,
       );
     }
 
@@ -1164,6 +1279,13 @@ function handleSetAutonomy(args: string[]): void {
       error(`Audit emission failed: ${errorMessage(e)}`);
     }
     writeStateFile(pd, updated);
+    // The step already issued stays the open step: the plan question is still
+    // the person's to answer, and the build of a plan they approved goes on.
+    try {
+      keepActiveDirectiveOverAutonomyWrite(pd, content, updated);
+    } catch (e) {
+      recordHookDrop(pd, "active-directive", errorMessage(e));
+    }
   });
 
   console.log(
@@ -1176,6 +1298,101 @@ function handleSetAutonomy(args: string[]): void {
 }
 
 // --- CLI entry point ---
+
+// The session a checkpoint question and its answer belong to. The tool finds
+// the session it runs in, the same way the engine does; `--session` is only an
+// override, so an agent never has to look its own session up. When two
+// sessions claim this process, the resolver's own refusal names the way out.
+// The person's approval or rejection needs it as much as the ask does: with no
+// session to find, the agent retries the same action with the one it asked
+// in, and the reply the person already gave is never asked for again.
+function checkpointSession(pd: string, flagged: string | undefined, required: boolean): string {
+  const session = flagged?.trim() || resolveInvokingSessionId(pd) || "";
+  if (required && !session) {
+    error(
+      "Could not tell which session this is. Run the command again with " +
+        "--session set to the Runtime Session shown in this session's AI-DLC context.",
+    );
+  }
+  return session;
+}
+
+function handleCheckpoint(args: string[]): void {
+  // The person said to approve the Unit as it is over a review that did not
+  // finish; verify reads it, and the engine checks their words are on record.
+  const overUnfinishedReview = args.includes("--over-unfinished-review");
+  const flags = parseFlags(args.filter((arg) => arg !== "--over-unfinished-review"));
+  if (overUnfinishedReview && flags.action !== "verify") {
+    error("checkpoint --over-unfinished-review goes with --action verify.");
+  }
+  if (flags["check-cmd"] !== undefined) {
+    error("checkpoint no longer accepts --check-cmd. " + VERIFICATION_COMMAND_RECOVERY + " Run checkpoint --action verify without --check-cmd.");
+  }
+  if (!flags.unit) error("checkpoint requires --unit <name>");
+  const kind = flags.kind ?? "unit";
+  if (kind !== "unit" && kind !== "skeleton") {
+    error("checkpoint --kind must be unit or skeleton");
+  }
+  const checkpointKind: ConstructionCheckpointKind = kind;
+  const pd = resolveProjectDir(projectDir);
+  let result: ReturnType<typeof resolveConstructionCheckpoint>;
+  switch (flags.action ?? "status") {
+    case "status":
+      result = resolveConstructionCheckpoint(pd, flags.unit, checkpointKind);
+      break;
+    case "ask":
+      result = askConstructionCheckpoint(pd, flags.unit, checkpointKind, checkpointSession(pd, flags.session, true));
+      break;
+    case "verify":
+      result = verifyConstructionCheckpoint(
+        pd, flags.unit, checkpointKind, { overUnfinishedReview },
+      );
+      break;
+    case "approve":
+      result = approveConstructionCheckpoint(
+        pd, flags.unit, checkpointKind, flags["user-input"], checkpointSession(pd, flags.session, flags["user-input"] !== undefined),
+      );
+      break;
+    case "reject":
+      result = rejectConstructionCheckpoint(
+        pd, flags.unit, checkpointKind, flags["user-input"] ?? "", flags.reason ?? "", checkpointSession(pd, flags.session, true),
+      );
+      break;
+    default:
+      error("checkpoint --action must be status, ask, verify, approve or reject");
+  }
+  console.log(JSON.stringify(result));
+  if (flags.action === "verify" && !result.verified) process.exitCode = 1;
+}
+
+function handleSwarmCheckpoint(args: string[]): void {
+  const flags = parseFlags(args);
+  const batch = Number(flags.batch);
+  if (!Number.isSafeInteger(batch) || batch < 1) error("swarm-checkpoint requires --batch <positive integer>");
+  const units = (flags.units ?? "").split(",").map((unit) => unit.trim()).filter(Boolean);
+  if (units.length === 0) error("swarm-checkpoint requires --units <comma-separated names>");
+  const pd = resolveProjectDir(projectDir);
+  let result: ReturnType<typeof resolveSwarmCheckpoint>;
+  switch (flags.action ?? "status") {
+    case "status":
+      result = resolveSwarmCheckpoint(pd, batch, units);
+      break;
+    case "ask":
+      result = askSwarmCheckpoint(pd, batch, units, checkpointSession(pd, flags.session, true));
+      break;
+    case "approve":
+      result = approveSwarmCheckpoint(
+        pd, batch, units, flags["user-input"], checkpointSession(pd, flags.session, flags["user-input"] !== undefined),
+      );
+      break;
+    case "reject":
+      result = rejectSwarmCheckpoint(pd, batch, units, flags["user-input"] ?? "", flags.reason ?? "", checkpointSession(pd, flags.session, true));
+      break;
+    default:
+      error("swarm-checkpoint --action must be status, ask, approve or reject");
+  }
+  console.log(JSON.stringify(result));
+}
 
 let projectDir: string | undefined;
 
@@ -1211,6 +1428,12 @@ export function main(argv: string[]): void {
       case "set-autonomy":
         handleSetAutonomy(filteredArgs.slice(1));
         break;
+      case "checkpoint":
+        handleCheckpoint(filteredArgs.slice(1));
+        break;
+      case "swarm-checkpoint":
+        handleSwarmCheckpoint(filteredArgs.slice(1));
+        break;
       case "dispatch-event":
         handleDispatchEvent(filteredArgs.slice(1));
         break;
@@ -1222,7 +1445,7 @@ export function main(argv: string[]): void {
         break;
       default:
         error(
-          `Unknown subcommand: ${subcommand}. Valid: start, complete, fail, abort, set-autonomy, dispatch-event, hold-merge, release-merge`
+          `Unknown subcommand: ${subcommand}. Valid: start, complete, fail, abort, set-autonomy, checkpoint, swarm-checkpoint, dispatch-event, hold-merge, release-merge`
         );
     }
   } catch (e) {
