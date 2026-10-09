@@ -43,6 +43,9 @@
 
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
+import { z } from "zod";
+
+export type EngineReviewRoute = "conductor-report" | "legacy-append";
 
 export type BoardVerdictToken = "READY" | "NOT-READY";
 
@@ -59,6 +62,11 @@ export type ReceiptRefusalReason =
   | "other";
 
 export type ReceiptOutcome =
+  | {
+      readonly kind: "conductor-report";
+      readonly reviewer: string;
+      readonly verdict: BoardVerdictToken;
+    }
   | {
       readonly kind: "recorded";
       readonly reviewer: string;
@@ -121,14 +129,6 @@ const LEGACY_EXPECTED_ORDINAL =
   /Refusing REVIEW_REQUESTED for "([^"]+)": iteration ([1-9][0-9]*) is out of sequence; expected ([1-9][0-9]*) from the current audit attempt/;
 const MODERN_EXPECTED_ORDINAL =
   /Cannot start review iteration ([1-9][0-9]*) for "([^"]+)" because the next iteration is ([1-9][0-9]*)\. Retry with --iteration ([1-9][0-9]*)/;
-const LEGACY_PENDING_ORDINAL =
-  /Refusing REVIEW_REQUESTED for "([^"]+)": iteration ([1-9][0-9]*) is still unmatched/;
-const MODERN_PENDING_ORDINAL =
-  /Cannot start another review for "([^"]+)" because iteration ([1-9][0-9]*) is still waiting for a verdict/;
-
-const MODERN_REVIEW_LIMIT =
-  /Cannot request review pass ([1-9][0-9]*) for "([^"]+)" because this stage allows ([1-9][0-9]*) review passes/;
-
 const engineMessageIn = (output: string): string => {
   try {
     const envelope: unknown = JSON.parse(output);
@@ -171,19 +171,6 @@ const expectedOrdinalIn = (args: {
   return null;
 };
 
-const pendingOrdinalIn = (args: {
-  readonly output: string;
-  readonly stage: string;
-}): number | null => {
-  const message = engineMessageIn(args.output);
-  const legacy = message.match(LEGACY_PENDING_ORDINAL);
-  if (legacy !== null && legacy[1] === args.stage) return Number(legacy[2]);
-  const modern = message.match(MODERN_PENDING_ORDINAL);
-  return modern !== null && modern[1] === args.stage
-    ? Number(modern[2])
-    : null;
-};
-
 // The engine's stale-receipt recovery refusals — reviewRecoverySpentMessage and
 // reviewRecoveryAlreadyRequestedMessage in .claude/tools/aidlc-log.ts — share
 // this phrase and nothing else does. Both mean the same thing to this bridge:
@@ -201,6 +188,25 @@ const refusalReasonIn = (output: string): ReceiptRefusalReason => {
     return "out-of-sequence-unrecovered";
   }
   return "other";
+};
+
+const legacyRequestSchema = z.object({
+  emitted: z.literal("REVIEW_REQUESTED"),
+  stage: z.string(),
+  reviewFile: z.never().optional(),
+  recordVerdict: z.never().optional(),
+});
+
+const supportedLegacyRequest = (input: {
+  readonly output: string;
+  readonly stage: string;
+}): boolean => {
+  try {
+    const decoded = legacyRequestSchema.safeParse(JSON.parse(input.output));
+    return decoded.success && decoded.data.stage === input.stage;
+  } catch {
+    return false;
+  }
 };
 
 const FIRST_ITERATION = 1;
@@ -263,39 +269,35 @@ export const recordEngineReceipt = (args: {
   readonly gate: string;
   readonly declaredReviewer: string | null;
   readonly aggregate: BoardVerdictToken;
+  readonly route?: EngineReviewRoute;
   readonly invokeEngine: EngineInvocation;
   readonly appendReviewSection: ReviewSectionAppend;
 }): ReceiptOutcome => {
   if (args.declaredReviewer === null) return { kind: "no-declared-reviewer" };
   const reviewer = args.declaredReviewer;
+  if ((args.route ?? "conductor-report") === "conductor-report") {
+    return { kind: "conductor-report", reviewer, verdict: args.aggregate };
+  }
 
-  const request = (iteration: number) =>
-    args.invokeEngine({
+  const request = (iteration: number) => {
+    const result = args.invokeEngine({
       projectDir: args.projectDir,
       stage: args.gate,
       reviewer,
       iteration,
       verdict: null,
     });
+    if (!result.ok || supportedLegacyRequest({ output: result.output, stage: args.gate })) return result;
+    return {
+      ok: false,
+      output: "Legacy append requires a successful legacy REVIEW_REQUESTED response without a modern reviewFile or recordVerdict. Use the conductor report route.",
+    };
+  };
 
   const firstAttempt = request(FIRST_ITERATION);
-  const limit = firstAttempt.ok
-    ? null
-    : engineMessageIn(firstAttempt.output).match(MODERN_REVIEW_LIMIT);
-  if (
-    limit !== null &&
-    limit[2] === args.gate &&
-    Number(limit[1]) === Number(limit[3]) + 1
-  ) {
-    return completeReceipt({ args, reviewer, iteration: Number(limit[3]) });
-  }
-  const pendingIteration = firstAttempt.ok
-    ? null
-    : pendingOrdinalIn({ output: firstAttempt.output, stage: args.gate });
   const iteration = firstAttempt.ok
     ? FIRST_ITERATION
-    : pendingIteration ??
-      expectedOrdinalIn({
+    : expectedOrdinalIn({
         output: firstAttempt.output,
         stage: args.gate,
         requestedIteration: FIRST_ITERATION,
@@ -308,29 +310,8 @@ export const recordEngineReceipt = (args: {
       detail: firstAttempt.output,
     };
   }
-  if (pendingIteration !== null) {
-    return completeReceipt({
-      args,
-      reviewer,
-      iteration,
-    });
-  }
-  const requested =
-    firstAttempt.ok ? firstAttempt : request(iteration);
+  const requested = firstAttempt.ok ? firstAttempt : request(iteration);
   if (!requested.ok) {
-    const acceptedPendingIteration = pendingOrdinalIn({
-      output: requested.output,
-      stage: args.gate,
-    });
-    if (
-      acceptedPendingIteration === iteration
-    ) {
-      return completeReceipt({
-        args,
-        reviewer,
-        iteration,
-      });
-    }
     return {
       kind: "refused",
       step: "requested",
@@ -338,9 +319,8 @@ export const recordEngineReceipt = (args: {
       detail: requested.output,
     };
   }
-
   return completeReceipt({ args, reviewer, iteration });
-}
+};
 
 // The production seam: the engine CLI itself, so its validation applies to every
 // receipt this bridge produces.

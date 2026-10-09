@@ -25,7 +25,10 @@ const recordingEngine = (
       verdict: args.verdict,
     };
     calls.push(call);
-    return respond(call);
+    const response = respond(call);
+    return response.ok && response.output === "" && call.verdict === null
+      ? { ok: true, output: JSON.stringify({ emitted: "REVIEW_REQUESTED", stage: call.stage }) }
+      : response;
   };
   return { invoke, calls };
 };
@@ -51,38 +54,24 @@ const recordingAppend = (
 };
 
 describe("recordEngineReceipt", () => {
-  test.each([
-    true,
-    false,
-  ])("validates final-pass completion through the engine when its request budget is exhausted: %s", (completionAccepted) => {
-    const engine = recordingEngine((call) =>
-      call.verdict === null
-        ? {
-            ok: false,
-            output: JSON.stringify({
-              error:
-                'Cannot request review pass 3 for "rin-gate-1-framing" because this stage allows 2 review passes.',
-            }),
-          }
-        : {
-            ok: completionAccepted,
-            output: completionAccepted ? "" : "No matching pending request",
-          },
-    );
+  test("does not authorize legacy append from an exhausted modern request", () => {
+    const engine = recordingEngine(() => ({
+      ok: false,
+      output: JSON.stringify({ error: 'Cannot request review pass 3 for "rin-gate-1-framing" because this stage allows 2 review passes.' }),
+    }));
+    const appendPort = recordingAppend();
     const outcome = recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-1-framing",
       declaredReviewer: "aidlc-architecture-reviewer-agent",
       aggregate: "READY",
       invokeEngine: engine.invoke,
-      appendReviewSection: recordingAppend().append,
+      appendReviewSection: appendPort.append,
     });
-    expect(engine.calls[1]).toMatchObject({ iteration: 2, verdict: "READY" });
-    expect(outcome).toMatchObject(
-      completionAccepted
-        ? { kind: "recorded", iteration: 2 }
-        : { kind: "refused", step: "completed" },
-    );
+    expect(outcome).toMatchObject({ kind: "refused", step: "requested" });
+    expect(engine.calls).toHaveLength(1);
+    expect(appendPort.appended).toEqual([]);
   });
 
   test.each([
@@ -92,6 +81,7 @@ describe("recordEngineReceipt", () => {
     const engine = recordingEngine(() => ({ ok: false, output }));
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-1-framing",
         declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -106,6 +96,7 @@ describe("recordEngineReceipt", () => {
   test("records the request/verdict pair for the gate's declared reviewer", () => {
     const engine = recordingEngine(accepting);
     const outcome = recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-0-reconcile",
       declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -138,6 +129,7 @@ describe("recordEngineReceipt", () => {
   test("mirrors a NOT-READY aggregate into the receipt rather than reporting READY", () => {
     const engine = recordingEngine(accepting);
     recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-2-plan-review",
       declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -161,6 +153,7 @@ describe("recordEngineReceipt", () => {
     );
 
     const outcome = recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-4-implement",
       declaredReviewer: "rin-decorrelated-review-agent",
@@ -189,6 +182,7 @@ describe("recordEngineReceipt", () => {
     );
 
     const outcome = recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-4-implement",
       declaredReviewer: "rin-decorrelated-review-agent",
@@ -208,7 +202,7 @@ describe("recordEngineReceipt", () => {
   test.each([
     'Cannot start another review for "rin-gate-1-framing" because iteration 1 is still waiting for a verdict. Record that verdict, or repeat the same iteration with --retry-pending if the reviewer did not run.',
     'Refusing REVIEW_REQUESTED for "rin-gate-1-framing": iteration 1 is still unmatched. Complete it, or repeat that exact ordinal with --retry-pending.',
-  ])("completes the existing pending request: %s", (error) => {
+  ])("refuses legacy append from a pending-request refusal: %s", (error) => {
     const engine = recordingEngine((call) =>
       call.verdict === null
         ? {
@@ -221,6 +215,7 @@ describe("recordEngineReceipt", () => {
     );
 
     const outcome = recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-1-framing",
       declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -229,15 +224,11 @@ describe("recordEngineReceipt", () => {
       appendReviewSection: recordingAppend().append,
     });
 
-    expect(outcome).toEqual({
-      kind: "recorded",
-      reviewer: "aidlc-architecture-reviewer-agent",
-      iteration: 1,
-    });
-    expect(engine.calls.map((call) => call.verdict)).toEqual([null, "READY"]);
+    expect(outcome).toMatchObject({ kind: "refused", step: "requested" });
+    expect(engine.calls.map((call) => call.verdict)).toEqual([null]);
   });
 
-  test("completes a pending request found after modern ordinal discovery", () => {
+  test("refuses legacy append when ordinal discovery ends at a pending modern request", () => {
     const engine = recordingEngine((call) => {
       if (call.iteration === 1) {
         return {
@@ -256,6 +247,7 @@ describe("recordEngineReceipt", () => {
     });
 
     const outcome = recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-4-implement",
       declaredReviewer: "rin-decorrelated-review-agent",
@@ -264,12 +256,8 @@ describe("recordEngineReceipt", () => {
       appendReviewSection: recordingAppend().append,
     });
 
-    expect(outcome).toEqual({
-      kind: "recorded",
-      reviewer: "rin-decorrelated-review-agent",
-      iteration: 3,
-    });
-    expect(engine.calls.map((call) => call.iteration)).toEqual([1, 3, 3]);
+    expect(outcome).toMatchObject({ kind: "refused", step: "requested" });
+    expect(engine.calls.map((call) => call.iteration)).toEqual([1, 3]);
   });
 
   test("refuses a pending ordinal that disagrees with the requested iteration", () => {
@@ -289,6 +277,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-4-implement",
         declaredReviewer: "rin-decorrelated-review-agent",
@@ -314,6 +303,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-1-framing",
         declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -339,6 +329,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-4-implement",
         declaredReviewer: "rin-decorrelated-review-agent",
@@ -367,6 +358,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-6-operate",
         declaredReviewer: "rin-decorrelated-review-agent",
@@ -398,6 +390,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-4-implement",
         declaredReviewer: "rin-decorrelated-review-agent",
@@ -425,6 +418,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-4-implement",
         declaredReviewer: "rin-decorrelated-review-agent",
@@ -452,6 +446,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-4-implement",
         declaredReviewer: "rin-decorrelated-review-agent",
@@ -476,6 +471,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-0-reconcile",
         declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -497,6 +493,7 @@ describe("recordEngineReceipt", () => {
 
     expect(
       recordEngineReceipt({
+      route: "legacy-append",
         projectDir: "/checkout",
         gate: "rin-gate-9-unreviewed",
         declaredReviewer: null,
@@ -513,6 +510,7 @@ describe("recordEngineReceipt", () => {
     const appendPort = recordingAppend();
 
     recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-0-reconcile",
       declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -530,6 +528,7 @@ describe("recordEngineReceipt", () => {
     const engine = recordingEngine(accepting);
 
     const outcome = recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-0-reconcile",
       declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -552,6 +551,7 @@ describe("recordEngineReceipt", () => {
     const appendPort = recordingAppend();
 
     recordEngineReceipt({
+      route: "legacy-append",
       projectDir: "/checkout",
       gate: "rin-gate-0-reconcile",
       declaredReviewer: "aidlc-architecture-reviewer-agent",
@@ -594,4 +594,60 @@ describe("reviewSectionFor", () => {
     expect(authorityLines.filter((line) => line.startsWith("|"))).toEqual([]);
     expect(authorityLines.filter((line) => line.startsWith("-"))).toEqual([]);
   });
+});
+
+describe("modern conductor ownership", () => {
+  test.each(["READY", "NOT-READY"] as const)("hands %s to the conductor without engine calls or artifact writes", (aggregate) => {
+    const engine = recordingEngine(accepting);
+    const appendPort = recordingAppend();
+    const outcome = recordEngineReceipt({
+      projectDir: "/checkout",
+      gate: "rin-gate-2-plan-review",
+      declaredReviewer: "rin-decorrelated-review-agent",
+      aggregate,
+      invokeEngine: engine.invoke,
+      appendReviewSection: appendPort.append,
+    });
+    expect(outcome).toEqual({ kind: "conductor-report", reviewer: "rin-decorrelated-review-agent", verdict: aggregate });
+    expect(engine.calls).toEqual([]);
+    expect(appendPort.appended).toEqual([]);
+  });
+
+  test.each([
+    '{"emitted":"REVIEW_REQUESTED","stage":"rin-gate-2-plan-review","reviewFile":"owned/review.md","recordVerdict":"owned command"}',
+    '{"kind":"print","message":"Finish the prerequisite"}',
+    '{"emitted":"REVIEW_REQUESTED","stage":"another-stage"}',
+    ' ',
+    'not JSON',
+  ])("refuses an unsupported successful legacy request: %s", (output) => {
+    const engine = recordingEngine(() => ({ ok: true, output }));
+    const appendPort = recordingAppend();
+    const outcome = recordEngineReceipt({
+      route: "legacy-append",
+      projectDir: "/checkout",
+      gate: "rin-gate-2-plan-review",
+      declaredReviewer: "rin-decorrelated-review-agent",
+      aggregate: "READY",
+      invokeEngine: engine.invoke,
+      appendReviewSection: appendPort.append,
+    });
+    expect(outcome).toMatchObject({ kind: "refused", step: "requested" });
+    expect(engine.calls).toHaveLength(1);
+    expect(appendPort.appended).toEqual([]);
+  });
+});
+
+test("an empty successful legacy subprocess response is not request evidence", () => {
+  const appendPort = recordingAppend();
+  const outcome = recordEngineReceipt({
+    route: "legacy-append",
+    projectDir: "/checkout",
+    gate: "rin-gate-2-plan-review",
+    declaredReviewer: "rin-decorrelated-review-agent",
+    aggregate: "READY",
+    invokeEngine: () => ({ ok: true, output: "" }),
+    appendReviewSection: appendPort.append,
+  });
+  expect(outcome).toMatchObject({ kind: "refused", step: "requested" });
+  expect(appendPort.appended).toEqual([]);
 });

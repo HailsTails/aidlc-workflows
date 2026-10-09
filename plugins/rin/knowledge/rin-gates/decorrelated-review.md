@@ -109,6 +109,28 @@ letter-level PASS to a VIOLATION on the owning lens.
 ### Step 6 — Write the review and emit the rin-gates verdict
 
 The conductor writes exactly one review file at the path supplied in the reviewer request.
+
+The scribe defaults to the producer's conductor report route. Its guarded
+verdict includes each latest lens's exact report text, findings and native
+agent/session/channel/head provenance under `reports`. Read these as review
+data, together with the prior findings retained from the engine brief. Preserve
+the reported severity, workspace-relative location, finding and required action;
+do not infer missing fields from a citation string. If a lens omitted a required
+severity, location, action or prior response, request that lens's own supplement
+before recording the report. Preserve the engine's prior
+IDs and reported `Fixed`/`Still applies` responses without inventing a decision.
+If `reportsComplete` is false, re-dispatch the missing report before recording
+a verdict. The scribe does not request or complete an engine review and never
+appends to the reviewed artifact on this route. Use the already-open request's
+exact `reviewFile` and returned `recordVerdict` once.
+
+`RIN_GATES_ENGINE_REVIEW_ROUTE=conductor-report` explicitly selects this default
+for a project hook invocation. `legacy-append` is compatibility for an old engine
+whose successful request does not advertise `reviewFile` or `recordVerdict`.
+It cannot select the legacy writer for a modern request, a prerequisite response,
+or a pending/exhausted request refusal. Never use it as a remedy for a modern
+report failure.
+
 Use the stage reviewer template: one rendered `**Verdict:** READY|NOT-READY`,
 `**Reviewer:** rin-decorrelated-review-agent`, and `**Iteration:** <n>` line,
 with cited findings in its `### Findings` table. Include the reviewed head sha,
