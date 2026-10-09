@@ -91,6 +91,7 @@ import {
 import { defaultHarnessPath } from "./aidlc-machine-config.ts";
 import { projectEvidence } from "./aidlc-plugin.ts";
 import { planCompatibleRefresh } from "./aidlc-refresh-compatibility.ts";
+import { captureRefreshRuleInputs, type RefreshRuleInputs } from "./aidlc-refresh-rules.ts";
 import { planCodexHookTrustSeed, planPluginHookRegistrations, projectedPluginHookContributionsSchema, type ProjectedPluginHookContributions } from "./aidlc-plugin-hook-registrations.ts";
 import {
   configureChannel,
@@ -331,6 +332,7 @@ type PreparedRefreshSource = {
   unproven: ReadonlySet<string>;
   entries?: Baseline["entries"];
   notes: string[];
+  readonly ruleInputs: RefreshRuleInputs;
 };
 
 type PlannedAction = {
@@ -5856,17 +5858,19 @@ function unrecordedLegacyProviderMigration(
   return null;
 }
 
-function prepareRefreshSource(
-  projectDir: string,
-  sourceRoot: string,
-  descriptor: ProjectionDescriptor,
-  prior: Baseline | null,
-  modelPolicy: ModelPolicyRecord | null,
-  projectFlags: ProjectFlagsRecord | null,
-  recordOnly: boolean,
-  projectProjection: boolean,
-  diagnosticsOverride?: ConfigDiagnosticOverrides,
-): PreparedRefreshSource {
+function prepareRefreshSource(input: {
+  readonly projectDir: string;
+  readonly sourceRoot: string;
+  readonly descriptor: ProjectionDescriptor;
+  readonly prior: Baseline | null;
+  readonly modelPolicy: ModelPolicyRecord | null;
+  readonly projectFlags: ProjectFlagsRecord | null;
+  readonly recordOnly: boolean;
+  readonly projectProjection: boolean;
+  readonly workspaceMode: "seed" | "read-only";
+  readonly diagnosticsOverride?: ConfigDiagnosticOverrides;
+}): PreparedRefreshSource {
+  const { projectDir, sourceRoot, descriptor, prior, modelPolicy, projectFlags, recordOnly, projectProjection, workspaceMode, diagnosticsOverride } = input;
   // A copied project is not a release: never baseline the user's edits as
   // shipped entries during an in-place record mutation.
   const entries: Baseline["entries"] = projectProjection ? prior?.entries : {};
@@ -5895,6 +5899,7 @@ function prepareRefreshSource(
       ...Object.fromEntries(codexFrameworkValueEntries(config)),
     };
   }
+  const ruleInputs = captureRefreshRuleInputs({ projectDir });
   const currentHarness = join(projectDir, descriptor.harnessDir);
   const hookCoreHashes = new Map<string, string>();
   const projectOverlays = new Set<string>();
@@ -5908,18 +5913,20 @@ function prepareRefreshSource(
     : null;
   if (
     !prior &&
+    !existsSync(memoryDirFor(projectDir, DEFAULT_SPACE)) &&
     !regularFile(currentHarnessData) &&
     !(currentConfiguration && pathPresent(currentConfiguration)) &&
     modelPolicy === null &&
     projectFlags === null &&
     diagnosticsOverride === undefined
   ) {
-    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), entries, notes };
+    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), entries, notes };
   }
   const cleanup = mkdtempSync(join(tmpdir(), "aidlc-init-refresh-"));
   try {
   const root = join(cleanup, "projection");
   cpSync(sourceRoot, root, { recursive: true, preserveTimestamps: true });
+  ruleInputs.materialize({ stagedRoot: root, workspaceMode });
   // A copy runtime leaves the team's json-entries file out; AI-DLC's part
   // (root-blocks) stands in for it, so a provider answer lands in that part.
   for (const integration of descriptor.rootIntegrations) {
@@ -6405,7 +6412,7 @@ function prepareRefreshSource(
       }
     }
   }
-  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, entries, notes };
+  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, entries, notes };
   } catch (error) {
     rmSync(cleanup, { recursive: true, force: true });
     throw error;
@@ -11732,17 +11739,13 @@ export async function main(
       projectedSettings.models,
       modelHarness(stamp.distribution),
     );
-    prepared = prepareRefreshSource(
-      projectDir,
-      selected.root,
-      descriptor,
-      prior,
-      projectedPolicy,
-      projectedSettings.flags,
-      recordOnly,
-      Boolean(selected.projectProjection),
-      diagnosticsContext?.overrides ?? choicesContext?.overrides,
-    );
+    const workspaceMode = refreshOpenWorkflows ? "read-only" : "seed";
+    prepared = prepareRefreshSource({
+      projectDir, sourceRoot: selected.root, descriptor, prior, modelPolicy: projectedPolicy,
+      projectFlags: projectedSettings.flags, recordOnly,
+      projectProjection: Boolean(selected.projectProjection), workspaceMode,
+      diagnosticsOverride: diagnosticsContext?.overrides ?? choicesContext?.overrides,
+    });
     prepared.notes.unshift(...sourceNotes);
     const preparedRoot = prepared.root;
     const preparedRegenerated = prepared.regenerated;
@@ -11809,7 +11812,7 @@ export async function main(
       actions,
       files,
       prepared,
-      refreshOpenWorkflows ? "read-only" : "seed",
+      workspaceMode,
       retainBaseline,
     );
     for (const rel of prepared.retiredManagedFiles) {
@@ -12047,6 +12050,11 @@ export async function main(
       ]),
     );
     const plan: TransactionPlan = { schemaVersion: 1, root: projectDir, operations };
+    const ruleInputValidation = prepared.ruleInputs.validateLocked();
+    if (ruleInputValidation?.kind === "refused") {
+      emitResult(failure(ruleInputValidation.message, EXIT.integrity, configCommand("--dry-run --json")), options);
+      return;
+    }
     const compatibleRefresh = refreshOpenWorkflows
       ? planCompatibleRefresh({ projectDir, sourceRoot: prepared.root, harnessDir: descriptor.harnessDir, plan })
       : null;
@@ -12057,6 +12065,7 @@ export async function main(
     const approvalPlan = {
       ...plan,
       ...(compatibleRefresh ? { refreshCompatibility: compatibleRefresh.evidence } : {}),
+      ruleInputs: prepared.ruleInputs.evidence,
       operations: plan.operations.map((operation) =>
         operation.kind === "copy"
           ? {
@@ -12247,29 +12256,29 @@ export async function main(
     const projectChecks: Pick<TransactionOptions, "validateLocked" | "validateCommitted"> = {
       ...hookChecks,
       validateLocked: () => {
+        const ruleInputs = prepared?.ruleInputs?.validateLocked();
+        if (ruleInputs?.kind === "refused") return ruleInputs;
         const compatibility = compatibleRefresh?.validateLocked();
         if (compatibility?.kind === "refused") return compatibility;
         hookChecks.validateLocked?.();
         return { kind: "validated" };
       },
     };
-    if (refreshing) {
-      const refreshResult = withAuditLock(
-        projectDir,
-        () => {
-          if (!refreshOpenWorkflows) assertRefreshSafe(projectDir);
-          return executeSettingsAndProjectMutation(settingsMutation, plan, projectChecks);
-        },
-        undefined,
-        undefined,
-        600,
-      );
-      if (refreshResult?.kind === "refused") {
-        emitResult(failure(refreshResult.message, EXIT.integrity, configCommand("--dry-run --json")), options);
-        return;
-      }
-    } else {
-      executeSettingsAndProjectMutation(settingsMutation, plan);
+    const mutationResult = refreshing
+      ? withAuditLock(
+          projectDir,
+          () => {
+            if (!refreshOpenWorkflows) assertRefreshSafe(projectDir);
+            return executeSettingsAndProjectMutation(settingsMutation, plan, projectChecks);
+          },
+          undefined,
+          undefined,
+          600,
+        )
+      : executeSettingsAndProjectMutation(settingsMutation, plan, projectChecks);
+    if (mutationResult?.kind === "refused") {
+      emitResult(failure(mutationResult.message, EXIT.integrity, configCommand("--dry-run --json")), options);
+      return;
     }
     // Said as soon as it is done, so no later step can leave it unsaid.
     if (options.mode === "human") {

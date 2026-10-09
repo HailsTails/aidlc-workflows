@@ -1089,8 +1089,9 @@ function parseRuleHeadings(raw: string): Map<string, string> {
  *  this same walker (single walking surface, no parser duplication).
  *  Tolerates a missing rules dir (returns []) so the zero-rules edge
  *  case stays clean. */
-export function loadRules(): RuleFile[] {
-  const dir = rulesDir();
+export function loadRules(args?: { readonly projectDir: string }): RuleFile[] {
+  const dir = args ? memoryDirFor(args.projectDir, MEMORY_SPACE) : rulesDir();
+  if (args) refuseLinkOnTheWay(args.projectDir, dir);
   if (!existsSync(dir)) return [];
 
   // Each candidate: the absolute on-disk path to read, the display sub-path
@@ -1120,6 +1121,7 @@ export function loadRules(): RuleFile[] {
   // 2. Phase-scoped files nested under phases/<phase>.md.
   const phasesDir = join(dir, PHASE_RULES_SUBDIR);
   if (existsSync(phasesDir)) {
+    if (args) refuseLinkOnTheWay(args.projectDir, phasesDir);
     for (const f of readdirSync(phasesDir)) {
       const m = f.match(PHASE_FILE_REGEX);
       if (!m) continue;
@@ -1134,6 +1136,7 @@ export function loadRules(): RuleFile[] {
 
   const matched: RuleFile[] = [];
   for (const c of candidates) {
+    if (args) refuseLinkOnTheWay(args.projectDir, c.filePath);
     const raw = readFileSync(c.filePath, "utf-8");
     const fm = parseRuleFrontmatter(raw);
     validateRuleFrontmatter(fm, c.filePath);
