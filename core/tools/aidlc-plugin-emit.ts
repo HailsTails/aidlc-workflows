@@ -365,12 +365,16 @@ function composeCommand(target: PluginTarget): string {
   );
 }
 
-function writeHookWiring(
-  pluginName: string,
-  outDir: string,
-  target: PluginTarget,
-): void {
-  const command = composeCommand(target);
+export function writePluginHookWiring(input: {
+  readonly pluginName: string;
+  readonly outDir: string;
+  readonly target: PluginTarget;
+  readonly channel?: "copy" | "native";
+}): void {
+  const { pluginName, outDir, target } = input;
+  const command = input.channel === "native"
+    ? `AIDLC_HARNESS_DIR=${target.harnessLeaf} AIDLC_HARNESS_NAME=${target.harnessName} ${trustedCommand("plugin sync")}`
+    : composeCommand(target);
   if (target.kind === "kiro") return;
   if (target.kind === "kiro-ide") {
     const hooksDir = join(outDir, target.harnessLeaf, "hooks");
@@ -695,7 +699,7 @@ export function buildPluginProjection(
         options.templateHooksDir,
         options.target,
       );
-      writeHookWiring(pluginName, outDir, options.target);
+      writePluginHookWiring({ pluginName, outDir, target: options.target });
       copyPluginContent(
         pluginRoot,
         outDir,

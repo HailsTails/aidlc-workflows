@@ -32,7 +32,7 @@ import {
   NATIVE_STARTUP_TIMEOUT_MS,
   remainingOperationTimeoutMs,
 } from "../harness/test-budget.ts";
-import { describe, expect, test, setDefaultTimeout } from "bun:test";
+import { afterAll, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -489,7 +489,7 @@ describe("t275 dist/cursor packaging parity + shell shape", () => {
       writeFileSync(
         join(cursorDir, "cli.json"),
         `${JSON.stringify({
-          // Shell(bun) is the entry earlier releases shipped; refresh drops it.
+          // An identical project grant has no framework ownership receipt.
           permissions: { allow: ["Shell(git)", "Shell(bun)"], deny: ["Shell(rm)"] },
           projectSetting: true,
         }, null, 2)}\n`,
@@ -522,7 +522,7 @@ describe("t275 dist/cursor packaging parity + shell shape", () => {
         projectSetting: boolean;
       };
       expect(cli.projectSetting).toBe(true);
-      expect(cli.permissions.allow).toEqual(["Shell(git)", ...SHIPPED_ALLOW]);
+      expect(cli.permissions.allow).toEqual(["Shell(git)", "Shell(bun)", ...SHIPPED_ALLOW]);
       expect(cli.permissions.deny).toEqual(["Shell(rm)", ...SHIPPED_DENY]);
       expect(readFileSync(join(cursorDir, ".gitignore"), "utf-8")).toBe(
         "project-cursor-cache\n",
@@ -549,6 +549,55 @@ describe("t275 dist/cursor packaging parity + shell shape", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  const grantFixtureRoots: string[] = [];
+  const grantCli = '{"permissions":{"allow":["Shell(bun)"],"deny":[]}}';
+  const ownedGrantFiles = { ".cursor/cli.json": "5e7c21ec5283f33df670fc03191e6b9e534ba9ecbb12eca9811f9c2fd1d935fe" };
+  afterAll(() => {
+    grantFixtureRoots.forEach((root) => { rmSync(root, { recursive: true, force: true }); });
+  });
+
+  test.each([
+    { provenance: "owned", initialCli: grantCli, managedFiles: ownedGrantFiles, expectedAllow: SHIPPED_ALLOW },
+    { provenance: "unknown", initialCli: grantCli, managedFiles: {}, expectedAllow: ["Shell(bun)", ...SHIPPED_ALLOW] },
+    { provenance: "modified", initialCli: grantCli + "\n", managedFiles: ownedGrantFiles, expectedAllow: ["Shell(bun)", ...SHIPPED_ALLOW] },
+  ])("9a: Cursor grant refresh respects $provenance provenance", ({ initialCli, managedFiles, expectedAllow }) => {
+    const root = mkdtempSync(join(tmpdir(), "t275-cursor-grants-"));
+    grantFixtureRoots.push(root);
+    const cursorDir = join(root, ".cursor");
+    mkdirSync(cursorDir);
+    const cliPath = join(cursorDir, "cli.json");
+    const receiptPath = join(cursorDir, "aidlc-install.json");
+    writeFileSync(cliPath, initialCli);
+    writeFileSync(receiptPath, JSON.stringify({ schemaVersion: 1, managedFiles }));
+    const priorCli = readFileSync(cliPath, "utf-8");
+    const priorReceipt = readFileSync(receiptPath, "utf-8");
+    const hooksPath = join(cursorDir, "hooks.json");
+    writeFileSync(hooksPath, "invalid");
+    const invalidRefresh = spawnSync("bun", [join(CURSOR_ROOT, "install.ts"), root], {
+      cwd: REPO_ROOT, encoding: "utf-8",
+    });
+    expect(invalidRefresh.status).toBe(1);
+    expect(readFileSync(cliPath, "utf-8")).toBe(priorCli);
+    expect(readFileSync(receiptPath, "utf-8")).toBe(priorReceipt);
+    rmSync(hooksPath);
+    const install = spawnSync("bun", [join(CURSOR_ROOT, "install.ts"), root], {
+      cwd: REPO_ROOT, encoding: "utf-8",
+    });
+    expect(install.status, install.stderr).toBe(0);
+    const cli = JSON.parse(readFileSync(cliPath, "utf-8"));
+    expect(cli.permissions.allow).toEqual(expectedAllow);
+    writeFileSync(cliPath, JSON.stringify({ ...cli, permissions: { ...cli.permissions, deny: [SHIPPED_ALLOW[0]] } }));
+    const beforeCli = readFileSync(cliPath, "utf-8");
+    const beforeReceipt = readFileSync(receiptPath, "utf-8");
+    const refused = spawnSync("bun", [join(CURSOR_ROOT, "install.ts"), root], {
+      cwd: REPO_ROOT, encoding: "utf-8",
+    });
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("shipped permissions conflict");
+    expect(readFileSync(cliPath, "utf-8")).toBe(beforeCli);
+    expect(readFileSync(receiptPath, "utf-8")).toBe(beforeReceipt);
   });
 
   test("9b: native Cursor installer replaces legacy adapter wiring without duplication", () => {

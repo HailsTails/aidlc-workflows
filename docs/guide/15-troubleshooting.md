@@ -468,10 +468,11 @@ The state file is created during Initialization or when a scope is provided to `
 
 The `validate-state.ts` hook checks for two required sections on every compaction: `## Stage Progress` and `## Current Status`. To repair:
 
-1. Run `/aidlc --doctor` and address any reported state, graph, or hook issues
-2. If the generated Stage Progress rows are stale, re-run the engine path that owns state resync: start or resume the workflow with `/aidlc`, or change scope through `/aidlc --scope <scope>` so the compiled graph and scope grid are reapplied
-3. Use `.claude/knowledge/aidlc-shared/state-template.md` only as the section and field contract; do not restore stage rows by hand from the template
-4. If the record cannot be repaired, retire it with `/aidlc intent archive <name>` (its record dir under `aidlc/spaces/<space>/intents/` is preserved) and run `/aidlc` to start fresh
+1. Preserve the damaged state and audit shards. Read `aidlc engine audit history` for the affected record: audit transitions and approvals are authoritative, and unordered results must not be assigned an invented order. Artifacts recover decision content, but their presence does not prove completion, approval or current-attempt evidence
+2. Run `/aidlc --doctor` for diagnostic evidence. Do not follow remedies that ask you to edit status, stage checkboxes or the current stage by hand; state repair must use the supported engine-owned resync path below
+3. If the generated Stage Progress rows are stale, re-run the engine path that owns state resync: start or resume the workflow with `/aidlc`, or change scope through `/aidlc --scope <scope>` so the compiled graph and scope grid are reapplied
+4. Use `.claude/knowledge/aidlc-shared/state-template.md` only as the section and field contract; do not restore stage rows by hand from the template
+5. Never hand-mark completed stages or fabricate audit events or receipts. If audit evidence is insufficient or contradictory, stop and report the unresolved progress. If the record cannot be repaired, retire it with `/aidlc intent archive <name>` (its record dir under `aidlc/spaces/<space>/intents/` is preserved) and run `/aidlc` to start fresh
 
 ---
 

@@ -108,6 +108,7 @@ delegated-rule and native-evidence requirements remain unchanged.
 | 5 | Optional per-stage `approval_mode` is carried through schema, graph, approve, reject and orchestrator checks; failed checks precede revision mutation. | Core workflow tools; every harness, stages explicitly opting in. | Autonomous stages need no fabricated human reply; default human stages still require one. Build; full approval-path regression rerun pending. | Upstream adopts equivalent per-stage semantics across every decision path. Check-before-mutate has an independent retirement condition. |
 | 6, U6 | Plugin agent tiers, document transforms and substitution tokens are projected using the same maintained packager as core. Bootstrap hook collisions are refused. | `scripts/package.ts`, `aidlc-plugin-emit.ts`, plugin contributions; all plugin adopters. | Native model/effort and resolved document tokens; authored runtime tables stay unchanged; bootstrap remains intact. Tier and plugin build tests passed. | Upstream projects these contracts natively and preserves the bootstrap boundary. |
 | U8, U9 | Codex plugin agent Markdown produces native TOML; first install copies and validates native agents before checking dispatched stages. | Packager, plugin emitter and compose; Codex plugin adopters. | Clean install retains stages with usable native agents; authored TOML collisions refuse. Codex packaging and compose tests passed. | Upstream owns equivalent native projection, collision protection and installation ordering. |
+| Codex plugin runner skill root | Ordinary plugin composition resolves Codex runners under `.agents/skills`, where Codex discovers them. This correction remains a fork difference at pinned upstream `7a61fa7b`; its ordinary compose template still uses `.codex/skills`. | `scripts/plugin-hooks-template/compose.ts`; Codex plugin adopters. | The retained `t318-plugin-compose-source-only` Codex case covers the fork correction, not pristine-upstream equivalence. The separate pruning path already uses the native root upstream. | Evaluate later upstream fix `fdcdd894` (#2241) at an adopted fork pin; validate ordinary composition, generated explicit-only guards and consumer installation separately. Native agent projection, component ownership and selected hook registration have independent retirement conditions. |
 | N1, N2, N3, N4, N5, N6, U2, U4 | Plugin manifest rows register and dispatch copied hook bodies; document tokens have public defaults. Core-only packages contain no Rin registrations. Selected plugin composition owns bodies and native registrations together using the existing transaction and contribution record. | Contributions, packager, harness emitters/adapters and compose; current Rin declarations cover Claude, Codex, Copilot, Cursor and OpenCode. Kiro's two faces declare no Rin hooks. | Core-only checks and 19 installed transaction tests pass, including owned rename/disable, conflicts with unchanged projections and trust. Nine core-refresh tests preserve component ownership across repeated updates. A live model session invoking every guard is not claimed. | Upstream supplies equivalent selected-plugin registration, component ownership and dispatch. Merely copying hook bodies is insufficient. |
 | N3b | Codex trust entries derive from the same combined wiring as hook registrations; upstream now owns the canonical timeout/matcher-aware hash. | Codex emitter; plugins contributing Codex hooks. | Installed transaction and repeated-refresh tests verify the seed against actual final group positions. Consumer global Codex configuration remains unchanged. | Upstream uses one complete wiring source for both surfaces; independent of hook-seam retirement. |
 | 7, U3 | Event hooks and supported harness adapters prefer the invoking checkout, retaining fallback when payload checkout information is absent. | Core hooks/lib and Codex, Cursor, Copilot, OpenCode adapters; worktree users. | Events affect the invocation's checkout, not an earlier session root; fallback still works. Build; complete adapter regression rerun pending. | Upstream resolves each affected event from its current checkout with equivalent fallback. |
@@ -144,7 +145,6 @@ preserve the consumer's committed settings and permissions.
 | Registry / area | Disposition and reason |
 | --- | --- |
 | U5b, U7 provider neutrality, N7, N8 | The duplicate provider-neutral implementation difference is retired at upstream 7a61fa7. Upstream Claude/Codex defaults inherit the host provider, and OpenCode onboarding no longer requires a provider selection. Packaging, tier and source-only composition checks cover the adopted surfaces. Concrete role model/effort choices and Codex high session reasoning remain separate retained fork policy. |
-| Codex plugin runner skill root | The fork's runner path correction is retired because upstream resolves plugin skills under the same native .agents/skills root. The source-only composition regression passes. Native agent projection, copied component ownership and selected hook registration remain retained capabilities. |
 | 9 | The old doctor hook-path regex workaround is behaviorally retired: upstream's command-only JSON walk excludes permission strings structurally. Historical comments do not represent a retained executable fix. |
 | 14 | Unmarked output-directory reclaim is omitted. Directory-only contents do not prove packager ownership; upstream's valid-marker refusal remains. A generic retry convenience must not authorize deleting an unknown directory. |
 | Private reservoir and operational lanes | Kept in the Rin consumer, including their service binding and operational knowledge. They are not public framework defaults. |
@@ -154,19 +154,81 @@ preserve the consumer's committed settings and permissions.
 
 ## Updating this account
 
-At an upstream update, compare maintained `core`, `harness` and `scripts` with
-the pinned pristine tree, then re-evaluate each capability's retirement
-condition. Include new files and keep source tests in the comparison where they
-establish a capability. Re-run the behavioral paths above; literal anchors and
-green build output cannot detect every newly split upstream approval or dispatch
-path. This account does not claim publication, consumer migration, or the full
-upstream test suite is complete.
+Begin each upstream drift review with every retained capability's intended
+outcome, invariant and reason for differing from upstream. Record the exact
+upstream, fork and consumer pins being compared. Map each outcome to its actual
+enforcement owners across engine and tool APIs, configuration resolution and
+defaults, migrations and provisioning, harness adapters, and live agent-facing
+instructions. Include the generated and installed surfaces those owners produce.
 
-### Codex plugin runner location
+Compare those owners with the pinned pristine upstream tree, including
+non-conflicting changes, new files and newly available native features. Trace
+every applicable entry point and decision path; a clean merge, matching symbol
+or unchanged instruction does not establish preserved behavior. Check whether
+new code controls or changed defaults make an existing prose workaround
+ineffective, unnecessary or contradictory, and whether configuration precedence
+or upgrade behavior changes what an existing consumer actually runs.
 
-The runner-location difference is retired at pinned upstream 7a61fa7: its composer resolves Codex skills through `.agents/skills`, matching the native loader and runner generator. The prior `.codex/skills` lookup had emitted an advisory and skipped regeneration on a complete Codex installation. The retained Codex case in `t318-plugin-compose-source-only` checks equivalent native-root behavior.
+For each outcome, distinguish upstream availability, fork inclusion and
+consumer activation. Identify required configuration, installation, migration
+and adoption steps, preserving the consumer's chosen policy and owned settings.
+Retire drift only when the upstream implementation satisfies its original
+reason across the affected paths. Separate independent obligations within a
+capability so one equivalent mechanism does not erase another retained need.
 
-### Promotion rebuild adapter compatibility
+Bind each retained, retired, regressed or unverified disposition to source
+evidence and suitable behavior and configuration tests. Exercise positive and
+refusal paths, defaults and overrides, and relevant upgrade or recovery paths
+where those establish the invariant. Reuse passing evidence only for unchanged
+owners and inputs; record its exact scope and pin, along with unresolved gaps.
+Literal anchors, packaging checks and green CI are supporting evidence, not
+proof of every behavior or native host enforcement.
+
+Reconcile findings with the consuming project's active intents, bugs and
+acceptance requirements. Close an item only when its complete acceptance scope
+is satisfied at the adopted consumer pin; an upstream fix or prepared fork
+change alone is a closure candidate. Distinguish historical records from live
+guidance, and identify stale instructions in authored sources and their derived
+outputs. Update this account with the resulting reason-based dispositions and
+adoption conditions; publication, consumer migration, the full upstream test
+suite and native workflow acceptance remain separately evidenced.
+
+## Rin scope policy and ceremony controls
+
+Rin scopes explicitly declare native `guard_policy: strict` to preserve the
+chosen policy for new intents. Upstream known scopes without that declaration
+default new intents to off; existing intents with no state policy field still
+resolve strict. Scope defaults do not rewrite existing state or bypass explicit
+user authorization and strict memory locks. This is workflow policy, separate
+from host security and trust settings.
+
+Stage autonomy and ceremony controls must be traced separately. Ceremony
+controls existed by September commit `1b0645858`; autonomous stage approval
+does not set those switches. An enabled switch alone does not prove a pause:
+Rin stages omit summary checkpoints, and learning questions require human
+gates. This change does not alter those ceremonies.
+
+## Codex plugin runner location
+
+At pinned upstream `7a61fa7b2bca5bc701ab0a7e6ca3608df8f4694f`,
+ordinary composition in `scripts/plugin-hooks-template/compose.ts` still
+looks under `.codex/skills`. A complete Codex installation discovers skills
+under `.agents/skills`, so that lookup records an advisory and skips plugin
+runner regeneration. PR #3 at `7b260d8c` retains the fork's native-root
+correction; its `t318-plugin-compose-source-only` Codex regression exercises
+the fork behavior. Upstream's separate `aidlc-plugin.ts` pruning path already
+resolves `.agents/skills`, which does not establish ordinary compose behavior.
+
+Later upstream commit
+[`fdcdd894a1faecb458ae1b4d63c5b20ab3deef98`](https://github.com/awslabs/aidlc-workflows/commit/fdcdd894a1faecb458ae1b4d63c5b20ab3deef98)
+(#2241) corrects the ordinary compose root and adds generated Codex runners'
+`agents/openai.yaml` explicit-only guard. That commit is beyond this comparison
+pin. It is a candidate for a future adoption review, not evidence that the
+current fork or consumer has adopted it. Runner location, explicit-only
+invocation, native agent projection, component ownership and selected hook
+registration require separate acceptance evidence.
+
+## Promotion rebuild adapter compatibility
 
 The Rin promotion wrapper delegates to upstream V2 `engine hook rebuild-stage-graph` with `tool_input.source: ide-audit-sync`, the existing upstream audit-tail contract. This corrects the extraction's `audit-sync` spelling, which silently skipped rebuilds. Retire this wrapper when upstream recognizes the consumer promotion command directly; no new rebuild engine or approval policy is introduced.
 

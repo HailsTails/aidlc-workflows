@@ -363,8 +363,13 @@ bun <tools-dir>/aidlc-plugin-build.ts <plugin-root> <harness> [outDir]
 
 The default output is `<plugin-root>/dist/<harness>/`. Run it once for each
 harness you publish. The repository packager uses the same emitter to build
-first-party `dist/plugins/<name>/<harness>/` trees, so its byte-parity guard also
-guards external builds. Publish the output to a git repo with semver tags and a
+first-party copy-channel `dist/plugins/<name>/<harness>/` trees and native
+`dist-release/plugins/<name>/<harness>/` trees. Core engine invocations in
+native plugin instructions and hook registrations use the same channel-aware
+invocation projection as core; copy-channel instructions retain Bun commands.
+Each runtime archive takes plugins from its own channel tree. Contributed
+script execution remains the host runner contract: runtime companions do not
+make arbitrary plugin hooks native executables. Publish the output to a git repo with semver tags and a
 `marketplace.json`; teams then install through the host's native commands.
 
 The repository packager bundles runtime package dependencies without requiring
@@ -372,7 +377,13 @@ consumer npm installation. For package-importing TypeScript modules, the
 original `.ts` path becomes a static export facade backed by
 `<stem>.runtime.js` and the compiler-generated `<stem>.runtime.d.ts`.
 Direct invocation through the original path retains its entry-point status
-and module URL; unsupported `import.meta` forms refuse packaging.
+and module URL; unsupported `import.meta` forms refuse packaging. Pinned esbuild
+bundles dependencies at the source boundary. CommonJS dependency `__dirname`
+and `__filename` resolve to the emitted runtime companion's location, rather
+than embedding the build checkout's absolute paths. Dependencies that require
+unbundled sibling runtime assets need an explicit packaging contract before use.
+The output-root `--check` guard remains useful; cross-checkout regression tests
+also exercise distinct dependency roots and execution after relocation.
 
 When exported types depend on a package, its exact resolved declaration graph,
 package identity, and license ship under

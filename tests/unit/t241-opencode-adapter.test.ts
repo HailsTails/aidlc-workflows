@@ -1224,13 +1224,14 @@ writeFileSync(${JSON.stringify(stopInput)}, await Bun.stdin.text(), "utf-8");
       expect(run.exitCode, run.stderr.toString()).toBe(0);
       return run.stdout.toString();
     };
+    const { client, prompts } = fakeClient();
+    const adapter = await createAdapter({ client, directory: root });
+    await adapter["chat.message"]({ sessionID: "other-chat" }, { parts: [{ type: "text", text: "build a lunch poll" }] });
     const offer = JSON.parse(engine("other-chat", "orchestrate", "next", "--scope", "poc", "build a lunch poll")) as { message?: string };
     const request = /--request ([0-9a-f]{8})/.exec(String(offer.message))?.[1];
     expect(request, String(offer.message)).toBeDefined();
     engine("other-chat", "intent", "create", "--scope", "poc", "--request", request ?? "", "--label", "lunch-poll");
 
-    const { client, prompts } = fakeClient();
-    const adapter = await createAdapter({ client, directory: root });
     const idle = { event: { type: "session.idle", properties: { sessionID: "main" } } };
     await adapter["chat.message"]({ sessionID: "main" }, { parts: [{ type: "text", text: "what does the lunch poll do?" }] });
     await adapter.event(idle);
@@ -1660,5 +1661,162 @@ writeFileSync(${JSON.stringify(recorded)}, await Bun.stdin.text(), "utf-8");
     const rows = ceremonyRows();
     expect(rows).toHaveLength(1);
     expect(auditBlockField(rows[0].block, "Source")).toBe("you");
+  });
+});
+
+
+describe("t241 contributed source dispatch", () => {
+  test.each([
+    ["source", [process.execPath, "engine"]],
+    ["copy", [process.execPath, ".aidlc/tools/aidlc.ts", "engine"]],
+  ] as const)("%s dispatcher executes contributed files with Bun", async (_channel, aidlcCommand) => {
+    const root = freshProject();
+    writeHook(root, "aidlc-fixture-contributed.ts", `
+      const input = JSON.parse(await Bun.stdin.text());
+      if (input.cwd !== process.cwd() || process.env.AIDLC_HARNESS_DIR !== ".aidlc" ||
+          !import.meta.main || process.env.BUN_BE_BUN !== undefined ||
+          process.env.AIDLC_OPENCODE_CONTRIBUTED_CHILD !== undefined) process.exit(1);
+      console.log(JSON.stringify({ hookSpecificOutput: {
+        permissionDecision: "deny", permissionDecisionReason: "contributed fixture denial"
+      } }));
+    `);
+    writeHook(root, "plugin-hook-rows.json", JSON.stringify([
+      { event: "PreToolUse", matcher: "Read", target: "fixture", hookFile: "aidlc-fixture-contributed.ts" },
+    ]));
+    const { client } = fakeClient();
+    const adapter = await createAdapter({ client, directory: root, aidlcCommand });
+    await expect(adapter["tool.execute.before"](
+      { tool: "read", sessionID: "main", callID: "fixture" },
+      { args: { filePath: "fixture.txt" } },
+    )).rejects.toThrow("contributed fixture denial");
+    await expect(adapter["tool.execute.before"](
+      { tool: "list", sessionID: "main", callID: "unmatched" }, { args: {} },
+    )).resolves.toBeUndefined();
+  });
+
+  test("contributed lifecycle files execute for startup, post-tool and subagent events", async () => {
+    const root = freshProject();
+    writeHook(root, "aidlc-fixture-lifecycle.ts", `
+      import { appendFileSync } from "node:fs";
+      const input = JSON.parse(await Bun.stdin.text());
+      appendFileSync("fixture-events.log", input.hook_event_name + "\\n");
+    `);
+    writeHook(root, "plugin-hook-rows.json", JSON.stringify([
+      { event: "SessionStart", target: "fixture", hookFile: "aidlc-fixture-lifecycle.ts" },
+      { event: "PostToolUse", matcher: "Write", target: "fixture", hookFile: "aidlc-fixture-lifecycle.ts" },
+      { event: "SubagentStop", target: "fixture", hookFile: "aidlc-fixture-lifecycle.ts" },
+    ]));
+    const { client } = fakeClient();
+    const adapter = await createAdapter({ client, directory: root, aidlcCommand: TEST_AIDLC_COMMAND });
+    await adapter["chat.message"]({ sessionID: "main" }, { parts: [{ type: "text", text: "start" }] });
+    await adapter["tool.execute.after"](postTool("write", { filePath: "fixture.txt" }));
+    await adapter["tool.execute.after"](postTool("task", { subagent_type: "fixture-agent" }));
+    expect(readFileSync(join(root, "fixture-events.log"), "utf-8")).toBe("SessionStart\nPostToolUse\nSubagentStop\n");
+  });
+
+  test.each(["wrong-target", undefined])("preload leaves unrelated source-mode environment intact: %s", (marker) => {
+    const root = freshProject();
+    const runner = join(root, "unrelated-runner.ts");
+    writeFileSync(runner, `
+      import ${JSON.stringify(join(REPO_ROOT, "harness/opencode/plugin/aidlc-opencode-adapter.ts"))};
+      console.log(JSON.stringify({ flag: process.env.BUN_BE_BUN,
+        marker: process.env.AIDLC_OPENCODE_CONTRIBUTED_CHILD ?? null }));
+    `);
+    const result = spawnSync(process.execPath, [runner], {
+      cwd: root, encoding: "utf-8",
+      env: { ...process.env, PATH: root, HOME: root, XDG_CONFIG_HOME: root,
+        BUN_BE_BUN: "1", AIDLC_OPENCODE_CONTRIBUTED_CHILD: marker },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ flag: "1", marker: marker ?? null });
+  });
+
+  test("compiled dispatcher runs contributed guards without PATH Bun and isolates child environment", () => {
+    const root = freshProject();
+    const nativeEntry = join(root, "native-entry.ts");
+    const nativeExecutable = join(root, process.platform === "win32" ? "fixture-aidlc.exe" : "fixture-aidlc");
+    writeFileSync(nativeEntry, `
+      if (process.argv[2] !== "version") process.exit(2);
+      console.log(JSON.stringify({ version: "fixture", flag: process.env.BUN_BE_BUN ?? null,
+        marker: process.env.AIDLC_OPENCODE_CONTRIBUTED_CHILD ?? null }));
+    `);
+    const build = spawnSync(process.execPath, ["build", "--compile", nativeEntry, "--outfile", nativeExecutable], {
+      cwd: root, encoding: "utf-8", timeout: 30_000,
+    });
+    expect(build.status, build.stderr).toBe(0);
+    writeHook(root, "aidlc-fixture-native.ts", `
+      import { spawnSync } from "node:child_process";
+      const input = JSON.parse(await Bun.stdin.text());
+      if (!import.meta.main || process.env.BUN_BE_BUN !== undefined ||
+          process.env.AIDLC_OPENCODE_CONTRIBUTED_CHILD !== undefined) process.exit(1);
+      const nested = spawnSync(process.execPath, ["version"], { encoding: "utf-8" });
+      if (nested.status !== 0 || JSON.parse(nested.stdout).flag !== null) process.exit(1);
+      if (input.tool_input.file_path.endsWith("exit.txt")) {
+        process.stderr.write("native fixture exit denial"); process.exit(2);
+      }
+      console.log(JSON.stringify({ hookSpecificOutput: {
+        permissionDecision: "deny", permissionDecisionReason: "native fixture structured denial"
+      } }));
+    `);
+    writeHook(root, "plugin-hook-rows.json", JSON.stringify([
+      { event: "PreToolUse", matcher: "Read", target: "fixture", hookFile: "aidlc-fixture-native.ts" },
+    ]));
+    const runner = join(root, "runner.ts");
+    writeFileSync(runner, `
+      import createAdapter from ${JSON.stringify(join(REPO_ROOT, "harness/opencode/plugin/aidlc-opencode-adapter.ts"))};
+      import { spawnSync } from "node:child_process";
+      const flags = () => ({ flag: process.env.BUN_BE_BUN, marker: process.env.AIDLC_OPENCODE_CONTRIBUTED_CHILD });
+      const before = flags();
+      const client = { session: { get: async () => ({ data: {} }), prompt: async () => {} } };
+      const adapter = await createAdapter({ client, directory: ${JSON.stringify(root)},
+        aidlcCommand: [${JSON.stringify(nativeExecutable)}, "engine"] });
+      const denials = [];
+      for (const filePath of ["structured.txt", "exit.txt"]) {
+        try { await adapter["tool.execute.before"]({ tool: "read", sessionID: "main", callID: filePath },
+          { args: { filePath } }); }
+        catch (error) { denials.push(error.message); }
+      }
+      const unrelated = spawnSync(${JSON.stringify(nativeExecutable)}, ["version"], { encoding: "utf-8" });
+      console.log(JSON.stringify({ denials, before, after: flags(), unrelatedStatus: unrelated.status,
+        unrelated: JSON.parse(unrelated.stdout) }));
+    `);
+    const result = spawnSync(process.execPath, [runner], {
+      cwd: root, encoding: "utf-8", timeout: 30_000,
+      env: { ...process.env, PATH: root, HOME: root, XDG_CONFIG_HOME: root,
+        BUN_BE_BUN: "", AIDLC_OPENCODE_CONTRIBUTED_CHILD: "parent-marker" },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      denials: ["native fixture structured denial", "native fixture exit denial"],
+      before: { flag: "", marker: "parent-marker" },
+      after: { flag: "", marker: "parent-marker" },
+      unrelatedStatus: 0,
+      unrelated: { version: "fixture", flag: "", marker: "parent-marker" },
+    });
+  }, 60_000);
+
+  test("missing contributed source preserves advisory failure behavior", async () => {
+    const root = freshProject();
+    writeHook(root, "plugin-hook-rows.json", JSON.stringify([
+      { event: "PreToolUse", matcher: "Read", target: "missing", hookFile: "missing-fixture.ts" },
+    ]));
+    const { client } = fakeClient();
+    const adapter = await createAdapter({ client, directory: root, aidlcCommand: [process.execPath, "engine"] });
+    await expect(adapter["tool.execute.before"](
+      { tool: "read", sessionID: "main", callID: "missing" }, { args: { filePath: "fixture.txt" } },
+    )).resolves.toBeUndefined();
+  });
+
+  test("project-relative contributed source preserves exit-two denial", async () => {
+    const root = freshProject();
+    writeHook(root, "fixture-deny.ts", 'process.stderr.write("fixture exit denial"); process.exit(2);');
+    writeHook(root, "plugin-hook-rows.json", JSON.stringify([
+      { event: "PreToolUse", matcher: "Read", target: "fixture", hookFile: ".aidlc/hooks/fixture-deny.ts" },
+    ]));
+    const { client } = fakeClient();
+    const adapter = await createAdapter({ client, directory: root, aidlcCommand: [process.execPath, "engine"] });
+    await expect(adapter["tool.execute.before"](
+      { tool: "read", sessionID: "main", callID: "fixture" }, { args: { filePath: "fixture.txt" } },
+    )).rejects.toThrow("fixture exit denial");
   });
 });

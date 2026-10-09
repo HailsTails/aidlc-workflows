@@ -955,7 +955,7 @@ function mergeHooks(sourcePath: string, targetPath: string): string {
 
 const RETIRED_SHIPPED_ALLOW = new Set(["Shell(bun)"]);
 
-function mergeCli(sourcePath: string, targetPath: string): string {
+function mergeCli(sourcePath: string, targetPath: string, priorReceipt: InstallReceipt | null): string {
   const source = parseObject(sourcePath);
   const existing = existsSync(targetPath) ? parseObject(targetPath) : {};
   const sourcePermissions = source.permissions;
@@ -967,10 +967,11 @@ function mergeCli(sourcePath: string, targetPath: string): string {
 
   const shippedAllow = stringArray(sourcePermissions.allow, `${sourcePath}: permissions.allow`);
   const shippedDeny = stringArray(sourcePermissions.deny, `${sourcePath}: permissions.deny`);
-  // The allow entry earlier releases shipped, which covered every bun command;
-  // the narrower shipped entries replace it on refresh.
+  const priorCliHash = priorReceipt?.managedFiles[".cursor/cli.json"];
+  const isOwnedCli = priorCliHash !== undefined && existsSync(targetPath) &&
+    sha256(readFileSync(targetPath)) === priorCliHash;
   const projectAllow = stringArray(existingPermissions?.allow, `${targetPath}: permissions.allow`)
-    .filter((entry) => !RETIRED_SHIPPED_ALLOW.has(entry));
+    .filter((entry) => !isOwnedCli || !RETIRED_SHIPPED_ALLOW.has(entry));
   const projectDeny = stringArray(existingPermissions?.deny, `${targetPath}: permissions.deny`);
   const conflicts = [
     ...shippedAllow.filter((entry) => projectDeny.includes(entry)),
@@ -1149,7 +1150,7 @@ export async function install(targetDir: string): Promise<void> {
   }
 
   for (const [rel, priorHash] of Object.entries(priorReceipt?.managedFiles ?? {})) {
-    if (Object.hasOwn(managedFiles, rel)) continue;
+    if (sharedJson.has(rel) || Object.hasOwn(managedFiles, rel)) continue;
     const target = join(targetRoot, rel);
     if (!existsSync(target)) continue;
     const comparable = receiptComparableContent(
@@ -1167,7 +1168,7 @@ export async function install(targetDir: string): Promise<void> {
   const hooksTarget = join(targetRoot, ".cursor", "hooks.json");
   const cliTarget = join(targetRoot, ".cursor", "cli.json");
   const hooks = mergeHooks(join(DIST_ROOT, ".cursor", "hooks.json"), hooksTarget);
-  const cli = mergeCli(join(DIST_ROOT, ".cursor", "cli.json"), cliTarget);
+  const cli = mergeCli(join(DIST_ROOT, ".cursor", "cli.json"), cliTarget, priorReceipt);
   actions.push({ kind: "write", target: hooksTarget, content: hooks });
   actions.push({ kind: "write", target: cliTarget, content: cli });
 

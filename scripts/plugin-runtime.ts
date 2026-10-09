@@ -1,7 +1,7 @@
-import { basename, isAbsolute, join, posix, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, sep } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
-import type { BunPlugin } from "bun";
+import { build, type Plugin } from "esbuild";
 import ts from "typescript";
 
 type RuntimeSource = { readonly file: string; readonly source: string };
@@ -309,12 +309,19 @@ export function createPluginRuntimePort(input: { readonly projectRoot: string })
     bundle: async ({ pluginRoot, file, relativeImports }) => {
       const sourceFile = join(pluginRoot, file);
       const escaped = relativeImports.map((path) => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-      const preserveAuthoredImports: BunPlugin = {
+      const preserveAuthoredImports: Plugin = {
         name: "preserve-authored-plugin-imports",
         setup(builder) {
+          builder.onResolve({ filter: /^aidlc:runtime-location$/ }, () => ({
+            path: "runtime-location", namespace: "aidlc-runtime-location",
+          }));
+          builder.onLoad({ filter: /.*/, namespace: "aidlc-runtime-location" }, () => ({
+            contents: "export const __dirname = import.meta.dirname; export const __filename = import.meta.filename;",
+            loader: "js",
+          }));
           builder.onLoad({ filter: /\.[cm]?[jt]s$/ }, ({ path }) => {
             if (path !== sourceFile) return undefined;
-            return { contents: entrySourceForCompanion({
+            return { resolveDir: dirname(sourceFile), contents: entrySourceForCompanion({
               source: readFileSync(sourceFile, "utf-8"), file,
             }), loader: "ts" };
           });
@@ -322,15 +329,17 @@ export function createPluginRuntimePort(input: { readonly projectRoot: string })
             ({ path, importer }) => importer === sourceFile ? { path, external: true } : undefined);
         },
       };
-      const result = await Bun.build({
-        entrypoints: [sourceFile], target: "bun", format: "esm",
-        minify: { whitespace: true, syntax: true, identifiers: false },
+      const result = await build({
+        absWorkingDir: input.projectRoot, entryPoints: [sourceFile], bundle: true, platform: "node", format: "esm",
+        target: "esnext", write: false, external: ["bun"], conditions: ["bun"],
+        minifyWhitespace: true, minifySyntax: true, minifyIdentifiers: false,
+        inject: ["aidlc:runtime-location"], mainFields: ["module", "main"],
         plugins: [preserveAuthoredImports],
       });
-      const output = result.outputs[0];
-      if (!result.success || result.outputs.length !== 1 || output === undefined)
-        throw new Error(`plugin runtime dependency build failed: ${file}: ${result.logs.join("\n")}`);
-      return output.text();
+      const output = result.outputFiles[0];
+      if (result.outputFiles.length !== 1 || output === undefined)
+        throw new Error(`plugin runtime dependency build produced no single companion: ${file}`);
+      return output.text;
     },
   };
 }

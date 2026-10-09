@@ -23,8 +23,8 @@
 //     :53-99 the five phase resume-context headings (INITIALIZATION … OPERATION)
 //     :59,74,101 the ideation/inception/operation artefact-dir cites
 //     :117 "### Corrupted state file recovery"
-//     :119 "aidlc-state.md.bak" backup-before-recovery
-//     :121 "Rebuild `aidlc-state.md` from artifact evidence"
+//     :119 preserve state and audit before recovery
+//     :121 audit-authoritative supported recovery
 //     :129 "### Missing artifact recovery"
 //     :138 "### Error Severity Levels"
 //     :144-147 the Critical/High/Medium/Low severity rows (High/Medium/Low are
@@ -58,8 +58,8 @@
 //   .sh 12 (inception artifacts dir)      -> "resume references <record>/inception/"
 //   .sh 13 (operation artifacts dir)      -> "resume references <record>/operation/"
 //   .sh 14 (### Corrupted state recovery) -> "corrupted state file recovery subsection exists"
-//   .sh 15 (aidlc-state.md.bak)           -> "creates aidlc-state.md.bak backup before recovery"
-//   .sh 16 (Rebuild...artifact evidence)  -> "rebuilds state from artifact evidence"
+//   .sh 15 (aidlc-state.md.bak)           -> "preserves damaged state and audit shards"
+//   .sh 16 (Rebuild...artifact evidence)  -> "uses audit authority, never artifact completion inference"
 //   .sh 17 (### Missing artifact recovery)-> "missing artifact recovery subsection exists"
 //   .sh 18 (### Error Severity Levels)    -> "error severity levels subsection exists"
 //   .sh 19 (Critical)                     -> "severity level Critical present"
@@ -173,13 +173,18 @@ describe("§6 Error Recovery — corrupted state + missing artifact recovery", (
     expect(recovery).toContain("### Corrupted state file recovery");
   });
 
-  test("creates aidlc-state.md.bak backup before recovery [.sh 15]", () => {
-    expect(recovery).toContain("aidlc-state.md.bak");
+  test("preserves damaged state and audit shards", () => {
+    expect(recovery).toContain("Preserve the damaged state file and the record's audit shards");
   });
 
-  test("rebuilds state from artifact evidence [.sh 16]", () => {
-    // .sh: assert_grep "Rebuild.*from artifact evidence" — same regex shape.
-    expect(/Rebuild.*from artifact evidence/.test(recovery)).toBe(true);
+  test("uses audit authority and refuses invented completion", () => {
+    expect(recovery).toContain("The audit is the authority for recorded transitions and approvals");
+    expect(recovery).toContain("Never infer completion or hand-mark stage checkboxes");
+    expect(recovery).toContain("for diagnostic evidence only");
+    expect(recovery).toContain("Do not follow any remedy that asks you to edit status, stage checkboxes or the current stage by hand");
+    expect(recovery).toContain("engine-owned state resync");
+    expect(recovery).not.toContain("Rebuild `aidlc-state.md` from artifact evidence");
+    expect(recovery).not.toContain("mark RE stages complete");
   });
 
   test("missing artifact recovery subsection exists [.sh 17]", () => {

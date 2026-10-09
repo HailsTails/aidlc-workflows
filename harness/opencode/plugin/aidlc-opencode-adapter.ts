@@ -54,6 +54,15 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const CONTRIBUTED_CHILD_MARKER = "AIDLC_OPENCODE_CONTRIBUTED_CHILD";
+const contributedChildTarget = process.env[CONTRIBUTED_CHILD_MARKER];
+if (contributedChildTarget !== undefined && contributedChildTarget === process.argv[1] &&
+    process.env.BUN_BE_BUN === "1") {
+  delete process.env.BUN_BE_BUN;
+  delete process.env[CONTRIBUTED_CHILD_MARKER];
+}
 
 const NUDGE_SENTINEL = "[aidlc-forwarding-nudge]";
 const PROJECTED_INVOKE = "{{INVOKE}}";
@@ -76,9 +85,6 @@ const hookPathFor = (hookFile: string, projectDir: string): string =>
     ? join(projectDir, hookFile)
     : join(projectDir, HOOKS_SUBDIR, hookFile);
 
-// The opencode runtime is its own binary, so process.execPath is NOT bun.
-// Resolve bun from PATH, then the default install dir; absent → every hook is
-// a silent no-op (advisory hooks fail open, mirroring the plugin compose hook).
 // A hook may deny through EITHER protocol: exit code 2 with the reason on
 // stderr, or exit 0 carrying {"hookSpecificOutput":{"permissionDecision":
 // "deny","permissionDecisionReason":…}} on stdout. Claude Code honours both
@@ -126,44 +132,30 @@ function normalisedHookResult(result: {
   };
 }
 
-function runCoreHook(
-  hookFile: string,
-  input: Record<string, unknown>,
-  cwd: string,
-  aidlcCommand: readonly string[],
-): Promise<{ stdout: string; stderr: string; code: number }> {
+function runCoreHook({ hookFile, input, cwd, aidlcCommand, origin }: {
+  readonly hookFile: string;
+  readonly input: Record<string, unknown>;
+  readonly cwd: string;
+  readonly aidlcCommand: readonly string[];
+  readonly origin: "core" | "contributed";
+}): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
     const [bin, ...prefix] = aidlcCommand;
     const hook = hookFile.replace(/^aidlc-/, "").replace(/\.ts$/, "");
     if (!bin) return resolve({ stdout: "", stderr: "", code: 0 });
     try {
-      // Core hooks route through the native dispatcher, which resolves the hook
-      // by NAME from the installed engine — the v2.9.0 install model. Every
-      // core body is named aidlc-<name>.ts, which is exactly the prefix the
-      // `hook` derivation above strips to recover that name.
-      //
-      // A plugin-contributed row is different IN KIND, not merely in spelling:
-      // the dispatcher knows only core's own hook names, so a plugin row can
-      // never be resolved by name and is always spawned by PATH. Such a row
-      // normally carries a bare filename resolved against the install's hooks
-      // dir (where a plugin's bodies arrive through the content path); it may
-      // instead declare a project-relative path for a body that legitimately
-      // sits elsewhere, such as a plugin's composer in its own dist tree, and
-      // hookPathFor handles both spellings.
-      //
-      // Discriminating on origin rather than on whether the string contains a
-      // separator is load-bearing: plugin rows are USUALLY bare filenames, so
-      // a separator test would route the common plugin row into the dispatcher
-      // and it would fail to resolve — a registered guard that never runs.
-      const isCoreHook = hookFile.startsWith("aidlc-");
-      const argv = isCoreHook
+      const argv = origin === "core"
         ? [...prefix, "hook", hook, "--project-dir", cwd]
-        : [hookPathFor(hookFile, cwd)];
+        : ["--preload", fileURLToPath(import.meta.url), hookPathFor(hookFile, cwd)];
       const child = spawn(bin, argv, {
         cwd,
         stdio: ["pipe", "pipe", "pipe"],
         env: {
           ...process.env,
+          ...(origin === "contributed" ? {
+            BUN_BE_BUN: "1",
+            [CONTRIBUTED_CHILD_MARKER]: hookPathFor(hookFile, cwd),
+          } : {}),
           AIDLC_PROJECT_DIR: cwd,
           CLAUDE_PROJECT_DIR: cwd,
           // Core hooks that resolve a harness-relative path default to
@@ -693,11 +685,11 @@ export default async ({
   aidlcCommand = DEFAULT_AIDLC_COMMAND,
   platform = process.platform,
 }: PluginInput) => {
-  const runCore = (
-    hookFile: string,
-    input: Record<string, unknown>,
-    _cwd = directory,
-  ) => runCoreHook(hookFile, input, directory, aidlcCommand);
+  const runCore = (input: { readonly hookFile: string; readonly input: Record<string, unknown> }) =>
+    runCoreHook({ ...input, cwd: directory, aidlcCommand, origin: "core" });
+
+  const runContributed = (input: { readonly hookFile: string; readonly input: Record<string, unknown> }) =>
+    runCoreHook({ ...input, cwd: directory, aidlcCommand, origin: "contributed" });
 
   // The rebuild-stage-graph hook's only stdout on this harness is the
   // engine-error relay: one {"systemMessage": <exact directive.message>} line.
@@ -823,15 +815,11 @@ export default async ({
       interrupted.delete(input.sessionID);
       rejectedUnowned = false;
       if (!started.has(input.sessionID)) {
-        const result = await runCore(
-          "aidlc-session-start.ts",
-          {
+        const result = await runCore({ hookFile: "aidlc-session-start.ts", input: {
             hook_event_name: "SessionStart",
             source: "startup",
             session_id: input.sessionID,
-          },
-          directory,
-        );
+          } });
         // A fresh project has no state yet, so the core hook emits no context.
         // Retry on later human turns until an active workflow is available.
         if (sessionStartHandled(result.stdout)) started.add(input.sessionID);
@@ -844,27 +832,19 @@ export default async ({
         // arrives.
         await Promise.all(
           pluginRowsFor("SessionStart", directory).map((row) =>
-            runCore(
-              row.hookFile,
-              {
+            runContributed({ hookFile: row.hookFile, input: {
                 hook_event_name: "SessionStart",
                 source: "startup",
                 session_id: input.sessionID,
-              },
-              directory,
-            ),
+              } }),
           ),
         );
       }
-      await runCore(
-        "aidlc-record-human-turn.ts",
-        {
+      await runCore({ hookFile: "aidlc-record-human-turn.ts", input: {
           hook_event_name: "UserPromptSubmit",
           session_id: input.sessionID,
           prompt: typed ?? first?.text ?? "",
-        },
-        directory,
-      );
+        } });
     },
 
     "command.execute.before": async (
@@ -881,17 +861,13 @@ export default async ({
     ) => {
       const args = output.args ?? {};
       if (input.tool === "task") {
-        const dispatch = await runCore(
-          "aidlc-deliver-stage-rules.ts",
-          {
+        const dispatch = await runCore({ hookFile: "aidlc-deliver-stage-rules.ts", input: {
             hook_event_name: "PreToolUse",
             session_id: input.sessionID,
             tool_name: "task",
             tool_input: args,
             cwd: directory,
-          },
-          directory,
-        );
+          } });
         if (dispatch.code === 2) {
           throw new Error(
             dispatch.stderr.trim() ||
@@ -928,9 +904,7 @@ export default async ({
         // wiring. The state CLI's ownership check remains the hard floor; this
         // gives the conductor the same immediate redirect the other harnesses
         // get instead of a late CLI error.
-        const guard = await runCore(
-          "aidlc-state-transition-guard.ts",
-          {
+        const guard = await runCore({ hookFile: "aidlc-state-transition-guard.ts", input: {
             hook_event_name: "PreToolUse",
             // The guards judge the workflow of the session that owns this call.
             session_id: await owningSession(input.sessionID),
@@ -938,9 +912,7 @@ export default async ({
             tool_input: { command },
             cwd: directory,
             ...(delegatedAgent ? { agent_type: delegatedAgent } : {}),
-          },
-          directory,
-        );
+          } });
         if (guard.code === 2) {
           throw new Error(
             guard.stderr.trim() ||
@@ -971,17 +943,13 @@ export default async ({
                   toolInput: { file_path: filePath },
                 }));
         for (const call of freezeCalls) {
-          const freeze = await runCore(
-            "aidlc-review-freeze.ts",
-            {
+          const freeze = await runCore({ hookFile: "aidlc-review-freeze.ts", input: {
               hook_event_name: "PreToolUse",
               session_id: await owningSession(input.sessionID),
               tool_name: call.toolName,
               tool_input: call.toolInput,
               cwd: directory,
-            },
-            directory,
-          );
+            } });
           if (freeze.code === 2) {
             throw new Error(
               freeze.stderr.trim() ||
@@ -1012,17 +980,13 @@ export default async ({
                   toolInput: { file_path: filePath },
                 }));
         for (const call of planCalls) {
-          const guard = await runCore(
-            "aidlc-plan-approval-guard.ts",
-            {
+          const guard = await runCore({ hookFile: "aidlc-plan-approval-guard.ts", input: {
               hook_event_name: "PreToolUse",
               tool_name: call.toolName,
               tool_input: call.toolInput,
               session_id: await owningSession(input.sessionID),
               cwd: directory,
-            },
-            directory,
-          );
+            } });
           if (guard.code === 2) {
             throw new Error(
               guard.stderr.trim() ||
@@ -1036,9 +1000,7 @@ export default async ({
         const target =
           (args.subagent_type as string) ?? (args.agent as string) ?? "";
         if (target === "aidlc-developer-agent") {
-          const guard = await runCore(
-            "aidlc-plan-approval-guard.ts",
-            {
+          const guard = await runCore({ hookFile: "aidlc-plan-approval-guard.ts", input: {
               hook_event_name: "PreToolUse",
               tool_name: "Task",
               tool_input: {
@@ -1049,9 +1011,7 @@ export default async ({
               },
               session_id: await owningSession(input.sessionID),
               cwd: directory,
-            },
-            directory,
-          );
+            } });
           if (guard.code === 2) {
             throw new Error(
               guard.stderr.trim() ||
@@ -1080,16 +1040,12 @@ export default async ({
               }))
             : [{ tool_name: claudeToolName(input.tool), tool_input: args }];
         for (const payload of payloads) {
-          const contributed = await runCore(
-            row.hookFile,
-            {
+          const contributed = await runContributed({ hookFile: row.hookFile, input: {
               hook_event_name: "PreToolUse",
               ...payload,
               cwd: directory,
               ...(delegatedAgent ? { agent_type: delegatedAgent } : {}),
-            },
-            directory,
-          );
+            } });
           if (contributed.code === 2)
             throw new Error(
               contributed.stderr.trim() ||
@@ -1111,18 +1067,14 @@ export default async ({
       if (identity === null) return;
 
       for (const call of calls) {
-        const result = await runCore(
-          "aidlc-reviewer-scope.ts",
-          {
+        const result = await runCore({ hookFile: "aidlc-reviewer-scope.ts", input: {
             hook_event_name: "PreToolUse",
             session_id: await owningSession(input.sessionID),
             tool_name: call.toolName,
             tool_input: call.toolInput,
             cwd: directory,
             ...identity,
-          },
-          directory,
-        );
+          } });
         if (result.code === 2) {
           throw new Error(result.stderr.trim() || "reviewer read-scope refused this tool call");
         }
@@ -1145,17 +1097,13 @@ export default async ({
       // makes a registration look present while never firing.
       for (const row of pluginRowsFor("PostToolUse", directory)) {
         if (row.matcher && !matchesTool(row.matcher, tool)) continue;
-        await runCore(
-          row.hookFile,
-          {
+        await runContributed({ hookFile: row.hookFile, input: {
             hook_event_name: "PostToolUse",
             tool_name: claudeToolName(tool),
             tool_input: args,
             tool_response: output?.output ?? "",
             cwd: directory,
-          },
-          directory,
-        );
+          } });
       }
       if (tool === "write" || tool === "edit" || tool === "apply_patch") {
         const paths =
@@ -1171,8 +1119,8 @@ export default async ({
             tool_input: { file_path: absolutePath },
           };
           // audit THEN sensors, mirroring the Claude settings.json order.
-          await runCore("aidlc-write-audit-log.ts", payload, directory);
-          await runCore("aidlc-run-sensors.ts", payload, directory);
+          await runCore({ hookFile: "aidlc-write-audit-log.ts", input: payload });
+          await runCore({ hookFile: "aidlc-run-sensors.ts", input: payload });
         }
         return;
       }
@@ -1184,7 +1132,7 @@ export default async ({
           session_id: input.sessionID,
           tool_response: output?.output ?? "",
         };
-        const result = await runCore("aidlc-rebuild-stage-graph.ts", payload, directory);
+        const result = await runCore({ hookFile: "aidlc-rebuild-stage-graph.ts", input: payload });
         await showEngineErrorToast(result.stdout);
         return;
       }
@@ -1194,15 +1142,11 @@ export default async ({
         const todos = (args.todos as Array<{ content?: string; status?: string }>) ?? [];
         const active = todos.find((t) => t.status === "in_progress");
         if (!active?.content) return;
-        await runCore(
-          "aidlc-sync-workflow-state.ts",
-          {
+        await runCore({ hookFile: "aidlc-sync-workflow-state.ts", input: {
             hook_event_name: "PostToolUse",
             tool_name: "TaskUpdate",
             tool_input: { status: "in_progress", activeForm: active.content },
-          },
-          directory,
-        );
+          } });
         return;
       }
       if (tool === "task") {
@@ -1213,23 +1157,19 @@ export default async ({
             (args.subagent_type as string) ?? (args.agent as string) ?? "unknown",
           agent_id: input.callID,
         };
-        await runCore("aidlc-log-subagent.ts", subagentStop, directory);
+        await runCore({ hookFile: "aidlc-log-subagent.ts", input: subagentStop });
         // Contributed SubagentStop hooks see the SAME payload core's does. The
         // event cannot block, so each runs for its side effect and its exit code
         // is not a verdict.
         for (const row of pluginRowsFor("SubagentStop", directory)) {
-          await runCore(row.hookFile, subagentStop, directory);
+          await runContributed({ hookFile: row.hookFile, input: subagentStop });
         }
       }
     },
 
     "experimental.session.compacting": async (input: { sessionID: string }) => {
       // The compacting session's own id: a child's compaction concerns the child.
-      await runCore(
-        "aidlc-validate-state.ts",
-        { hook_event_name: "PreCompact", session_id: input.sessionID },
-        directory,
-      );
+      await runCore({ hookFile: "aidlc-validate-state.ts", input: { hook_event_name: "PreCompact", session_id: input.sessionID } });
     },
 
     event: async ({ event }: { event: { type: string; properties?: Record<string, unknown> } }) => {
@@ -1269,15 +1209,11 @@ export default async ({
       // chat.message arm's aidlc-record-human-turn.ts forward writes the former.
       let nudgeReason: string | null = null;
       try {
-        const res = await runCore(
-          "aidlc-continue-workflow.ts",
-          {
+        const res = await runCore({ hookFile: "aidlc-continue-workflow.ts", input: {
             hook_event_name: "Stop",
             stop_hook_active: false,
             session_id: sessionID,
-          },
-          directory,
-        );
+          } });
         try {
           const parsed = JSON.parse(res.stdout) as { decision?: string; reason?: string };
           if (parsed.decision === "block" && parsed.reason) {

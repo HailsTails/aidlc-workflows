@@ -79,7 +79,7 @@ import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
 import {
-  buildPluginProjection as emitPluginProjection,
+  buildPluginProjection as emitPluginProjection, writePluginHookWiring,
   type PluginTarget,
   type PluginTargetTable,
   type PluginProjectionResult,
@@ -109,6 +109,7 @@ import {
   trustedCommand,
 } from "../core/tools/aidlc-command.ts";
 import { copyChannelDispatcherCommands, copyChannelToolScripts, ROUTES, TOOLS } from "../core/tools/aidlc.ts";
+import { parseSensorManifest } from "../core/tools/aidlc-sensor-schema.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyStartsWithout, sha256Bytes, walkFiles, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
@@ -1379,13 +1380,73 @@ function projectedNamespaceInvocationViolations(
     );
 }
 
-function rewriteNativeInvocations(
-  outRoot: string,
-  m: HarnessManifest,
-  copyRoot: string,
-): void {
-  projectNativeRootIntegrations(outRoot, m);
-  applyNativeReplacements(outRoot, m);
+function nativeSensorSelectorSource(input: {
+  readonly outRoot: string;
+  readonly relativeFile: string;
+  readonly source: string;
+}): string {
+  const manifest = parseSensorManifest(input.source);
+  const command = trustedCommand(`sensor-${manifest.id}`);
+  const tool = join(input.outRoot, dirname(dirname(input.relativeFile)), "tools", `aidlc-sensor-${manifest.id}.ts`);
+  if (manifest.command !== command || basename(input.relativeFile) !== `aidlc-${manifest.id}.md` || !existsSync(tool))
+    return input.source;
+  return input.source.replace(/^(---\r?\n)([\s\S]*?)(\r?\n---)/, (_match, opening: string, fields: string, closing: string) =>
+    opening + fields.replace(new RegExp(`^command: ${escapeRegExp(command)}$`, "m"), "") + closing);
+}
+
+function assertNativeInvocationFiles(outRoot: string, m: HarnessManifest): void {
+  const harnessDir = escapeRegExp(m.harnessDir);
+  const delegateNames = Object.values(TOOLS)
+    .map((file) => escapeRegExp(file.slice("aidlc-".length, -".ts".length)))
+    .join("|");
+  const bareToolCheck = new RegExp(String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`, "i");
+  // A manifest's nativeReplacements text is generated from the route table
+  // (permission globs, not invocations), so the prose check skips it; its
+  // lines stay as blank lines so reported line numbers still match the file.
+  const withoutNativeReplacements = (value: string): string =>
+    (m.nativeReplacements ?? []).reduce(
+      (text, { to }) => text.replaceAll(to, to.replace(/[^\n]/g, "")),
+      value,
+    );
+  const leftovers: string[] = [];
+  for (const file of walk(outRoot)) {
+    if (!/\.(?:md|mdc|json|toml|hook|[cm]?[jt]s)$/.test(file)) continue;
+    const value = readFileSync(file, "utf-8");
+    for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}"]) {
+      if (value.includes(token)) {
+        leftovers.push(`${relative(outRoot, file)}: unexpanded ${token}`);
+      }
+    }
+    if (new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: bun invocation survived native projection`);
+    }
+    if (bareToolCheck.test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: bare bun invocation survived native projection`);
+    }
+    if (/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: retired engine alias survived native projection`);
+    }
+    const relativeFile = relative(outRoot, file).split(sep).join("/");
+    const sensorDirectory = dirname(relativeFile);
+    const sensorSource = sensorDirectory === "sensors" || sensorDirectory === `${m.harnessDir}/sensors`
+      ? nativeSensorSelectorSource({ outRoot, relativeFile, source: value })
+      : value;
+    leftovers.push(
+      ...projectedNamespaceInvocationViolations(relativeFile, withoutNativeReplacements(sensorSource)),
+    );
+    if (
+      relative(outRoot, file).split(sep).join("/").includes("/agents/") &&
+      /"allowedCommands"\s*:\s*\[[\s\S]*?"bun [^"]*tools\//.test(value)
+    ) {
+      leftovers.push(`${relative(outRoot, file)}: bun allowlist survived native projection`);
+    }
+  }
+  if (leftovers.length > 0) {
+    throw new Error(`[${m.name}] native invocation projection failed:\n${leftovers.join("\n")}`);
+  }
+}
+
+function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void {
   const harnessDir = escapeRegExp(m.harnessDir);
   // The hand-maintained list had drifted to 23 of 33 tools, omitting review-brief.
   // Deriving it from TOOLS keeps new delegates' bare bun aidlc-<name>.ts forms
@@ -1417,9 +1478,8 @@ function rewriteNativeInvocations(
     String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`,
     "gi",
   );
-  const bareToolCheck = new RegExp(bareToolPattern.source, "i");
   for (const file of walk(outRoot)) {
-    if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
+    if (!/\.(?:md|mdc|json|toml|hook|[cm]?[jt]s)$/.test(file)) continue;
     let value = readFileSync(file, "utf-8");
     // Claude's source hook/statusline dispatcher is rooted at the project, so
     // it still loads after an application command changes cwd. JSON escapes
@@ -1466,6 +1526,16 @@ function rewriteNativeInvocations(
       configUtilityPattern,
       (_match, key: string) => trustedCommand(`config set ${key}`),
     );
+    const intentCreatePattern = new RegExp(
+      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+intent-create\b`,
+      "gi",
+    );
+    value = value.replace(intentCreatePattern, trustedCommand("intent create"));
+    const namespacedDispatcherPattern = new RegExp(
+      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc\.ts${suffix}\s+${TRUSTED_ROUTE_NAMESPACE}\b`,
+      "gi",
+    );
+    value = value.replace(namespacedDispatcherPattern, TRUSTED_COMMAND_PREFIX);
     value = value.replace(toolPattern, (_match, delegate: string | undefined) =>
       delegate ? trustedCommand(delegate) : TRUSTED_COMMAND_PREFIX
     );
@@ -1490,6 +1560,16 @@ function rewriteNativeInvocations(
     value = rewriteNativeOnboarding(value, m.tierFlavor === "claude" || m.tierFlavor === "cursor" || m.tierFlavor === "kiro");
     writeFileSync(file, value);
   }
+}
+
+function rewriteNativeInvocations(
+  outRoot: string,
+  m: HarnessManifest,
+  copyRoot: string,
+): void {
+  projectNativeRootIntegrations(outRoot, m);
+  applyNativeReplacements(outRoot, m);
+  projectNativeInvocationFiles(outRoot, m);
   rewriteKiroNativeAllowlists(outRoot, m);
   rewriteClaudeNativePermissions(outRoot, m);
   rewriteCursorNativePermissions(outRoot, m);
@@ -1557,45 +1637,7 @@ function rewriteNativeInvocations(
   }
   writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
 
-  // A manifest's nativeReplacements text is generated from the route table
-  // (permission globs, not invocations), so the prose check skips it; its
-  // lines stay as blank lines so reported line numbers still match the file.
-  const withoutNativeReplacements = (value: string): string =>
-    (m.nativeReplacements ?? []).reduce(
-      (text, { to }) => text.replaceAll(to, to.replace(/[^\n]/g, "")),
-      value,
-    );
-  const leftovers: string[] = [];
-  for (const file of walk(outRoot)) {
-    if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
-    const value = readFileSync(file, "utf-8");
-    for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}"]) {
-      if (value.includes(token)) {
-        leftovers.push(`${relative(outRoot, file)}: unexpanded ${token}`);
-      }
-    }
-    if (new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: bun invocation survived native projection`);
-    }
-    if (bareToolCheck.test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: bare bun invocation survived native projection`);
-    }
-    if (/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: retired engine alias survived native projection`);
-    }
-    leftovers.push(
-      ...projectedNamespaceInvocationViolations(relative(outRoot, file), withoutNativeReplacements(value)),
-    );
-    if (
-      relative(outRoot, file).split(sep).join("/").includes("/agents/") &&
-      /"allowedCommands"\s*:\s*\[[\s\S]*?"bun [^"]*tools\//.test(value)
-    ) {
-      leftovers.push(`${relative(outRoot, file)}: bun allowlist survived native projection`);
-    }
-  }
-  if (leftovers.length > 0) {
-    throw new Error(`[${m.name}] native invocation projection failed:\n${leftovers.join("\n")}`);
-  }
+  assertNativeInvocationFiles(outRoot, m);
 }
 
 // Run an in-tree tool (bun <treeRoot>/<rel> ...) with the harness env seams set
@@ -2203,8 +2245,17 @@ async function emitPlugins(
         join(distRoot, "plugins", pluginName, harnessName),
         distRoot,
       );
+      const nativeOut = join(dirname(distRoot), "dist-release", "plugins", pluginName, harnessName);
+      rmSync(nativeOut, { recursive: true, force: true });
+      cpSync(join(distRoot, "plugins", pluginName, harnessName), nativeOut, { recursive: true });
+      const target = pluginTargetFor(harnessName);
+      if (!target) throw new Error(`no native plugin target for ${harnessName}`);
+      writePluginHookWiring({ pluginName, outDir: nativeOut, target, channel: "native" });
+      const manifest = loadManifest(harnessName);
+      projectNativeInvocationFiles(nativeOut, manifest);
+      assertNativeInvocationFiles(nativeOut, manifest);
       if (log) {
-        console.log(`[plugin:${pluginName}] emitted dist/plugins/${pluginName}/${harnessName}/`);
+        console.log(`[plugin:${pluginName}] emitted copy and native projections for ${harnessName}/`);
       }
     }
   }
@@ -2230,8 +2281,9 @@ function cleanWriteOutputs(harnesses: string[], fullBuild: boolean): void {
       distRoot,
       new Set([...harnesses, "plugins"]),
     );
-    removeUnexpectedGeneratedEntries(releaseRoot, new Set(harnesses));
+    removeUnexpectedGeneratedEntries(releaseRoot, new Set([...harnesses, "plugins"]));
     rmSync(join(distRoot, "plugins"), { recursive: true, force: true });
+    rmSync(join(releaseRoot, "plugins"), { recursive: true, force: true });
     return;
   }
 

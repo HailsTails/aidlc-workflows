@@ -95,7 +95,8 @@ function verifyGeneratedInventory(): {
   plugins: string[];
 } {
   const harnesses = sourceHarnesses();
-  const releaseHarnesses = directoryNames(join(REPO_ROOT, "dist-release"));
+  const releaseHarnesses = directoryNames(join(REPO_ROOT, "dist-release"))
+    .filter((name) => name !== "plugins");
   if (!sameNames(releaseHarnesses, harnesses)) {
     throw new Error(
       `generated release harness inventory differs from source: expected ` +
@@ -114,6 +115,10 @@ function verifyGeneratedInventory(): {
   const plugins = sourcePlugins();
   const pluginsRoot = join(REPO_ROOT, "dist", "plugins");
   const generatedPlugins = directoryNames(pluginsRoot);
+  const generatedNativePlugins = directoryNames(join(REPO_ROOT, "dist-release", "plugins"));
+  if (!sameNames(generatedNativePlugins, plugins)) {
+    throw new Error("generated native plugin inventory differs from source");
+  }
   if (!sameNames(generatedPlugins, plugins)) {
     throw new Error(
       `generated plugin inventory differs from source: expected ` +
@@ -121,6 +126,10 @@ function verifyGeneratedInventory(): {
     );
   }
   for (const plugin of plugins) {
+    const nativePluginHarnesses = directoryNames(join(REPO_ROOT, "dist-release", "plugins", plugin));
+    if (!sameNames(nativePluginHarnesses, harnesses)) {
+      throw new Error(`generated native plugin ${plugin} harness inventory differs from source`);
+    }
     const pluginHarnesses = directoryNames(join(pluginsRoot, plugin));
     if (!sameNames(pluginHarnesses, harnesses)) {
       throw new Error(
@@ -321,7 +330,11 @@ function build(argv: string[]): void {
           path: `plugins/${plugin}/${harness}/${entry.path}`,
         }));
         copyRuntimeEntries.push(...entries);
-        runtimeEntries.push(...entries);
+        const nativeHarnessRoot = join(REPO_ROOT, "dist-release", "plugins", plugin, harness);
+        runtimeEntries.push(...entriesFor(nativeHarnessRoot).map((entry) => ({
+          ...entry,
+          path: `plugins/${plugin}/${harness}/${entry.path}`,
+        })));
       }
     }
   }
