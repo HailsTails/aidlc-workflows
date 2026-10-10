@@ -76,6 +76,7 @@ const addPrivateRulesAndWorkflows = (f: RetainedRuleFixture): void => {
   put({ root: f.projectDir, path: "aidlc/spaces/default/intents/open/aidlc-state.md",
     text: "# AI-DLC State Tracking\n- **State Version**: 8\n- **Scope**: feature\n- **Status**: Running\n- **Current Stage**: requirements-analysis\n" });
   put({ root: f.projectDir, path: "aidlc/spaces/default/intents/open/audit.md", text: "Existing open audit.\n" });
+  put({ root: f.projectDir, path: "aidlc/spaces/default/intents/open/construction/code-generation/code-generation-questions.md", text: "## Plan Approval\n[Answer]: Approve Plan\nRetained person words.\r\n" });
   put({ root: f.projectDir, path: "aidlc/spaces/other/intents/parked/aidlc-state.md",
     text: "# AI-DLC State Tracking\n- **State Version**: 8\n- **Scope**: feature\n- **Status**: Running\n- **Current Stage**: requirements-analysis\n- **Parked**: independent work\n" });
   put({ root: f.projectDir, path: "aidlc/spaces/other/intents/parked/audit.md", text: "Existing parked audit.\n" });

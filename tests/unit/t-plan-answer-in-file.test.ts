@@ -257,6 +257,7 @@ describe("an answer written in the Plan Approval questions file", () => {
     askFor(proj);
     reply(proj, "1");
     expect(answerLine(proj)).toBe("[Answer]: A. Approve Plan");
+    reply(proj, "review the plan");
     expect(answer(proj, "Review the plan").code).toBe(0);
     expect(next(proj).kind).toBe("ask");
     expect(answerLine(proj)).toBe("[Answer]:");

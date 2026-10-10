@@ -76,6 +76,7 @@ import {
   routeCodeGenerationPlanApproval,
 } from "../../dist/claude/.claude/tools/aidlc-plan-approval-ask.ts";
 import {
+  _resetHarnessDataForTests,
   activeDirectiveStorageDir,
   invalidateActiveDirectiveContext,
   keepPlanApprovalAskOverStateWrite,
@@ -124,7 +125,11 @@ interface Emitted {
 
 const created: string[] = [];
 const worktreeFixtures: string[] = [];
+const inheritedRuntimeRoot = process.env.AIDLC_RUNTIME_HARNESS_ROOT;
 afterEach(() => {
+  if (inheritedRuntimeRoot === undefined) delete process.env.AIDLC_RUNTIME_HARNESS_ROOT;
+  else process.env.AIDLC_RUNTIME_HARNESS_ROOT = inheritedRuntimeRoot;
+  _resetHarnessDataForTests();
   while (created.length > 0) cleanupTestProject(created.pop());
   while (worktreeFixtures.length > 0) cleanupWorktreeFixture(worktreeFixtures.pop()!);
 });
@@ -998,13 +1003,18 @@ describe("the engine asks for Plan Approval", () => {
     expect(build.plan_approval).toEqual({ status: "approved" });
   });
 
-  test("under strict, a note added to the answered questions file is asked about again", () => {
+  test("under strict, a changed answered prompt is preserved for owner repair", () => {
     const proj = project("strict");
     askFor(proj);
     reply(proj, "1");
     const path = join(stageDir(proj), "code-generation-questions.md");
-    writeFileSync(path, `${readFileSync(path, "utf-8")}\nNote: checked with the team.\n`, "utf-8");
-    expect(next(proj).kind).toBe("ask");
+    const changed = `${readFileSync(path, "utf-8")}\nNote: checked with the team.\n`;
+    writeFileSync(path, changed, "utf-8");
+    const repairing = next(proj);
+    expect(repairing.kind).toBe("run-stage");
+    expect(repairing.plan_approval?.status).toBe("repair");
+    expect(readFileSync(path, "utf-8")).toBe(changed);
+    expect(generationStarted(proj)).toBe(false);
   });
 
   test("'review the plan' after approval asks again before anything is built", () => {
@@ -1226,6 +1236,16 @@ describe("the engine asks for Plan Approval", () => {
 // arrives as numbered rule parts the agent fetches one after another. How many
 // parts the rules need must never change what the person is asked.
 function withRulesInParts(proj: string): string {
+  const harnessRoot = join(proj, ".claude");
+  cpSync(AIDLC_SRC, harnessRoot, { recursive: true });
+  const metadata = join(harnessRoot, "tools", "data", "harness.json");
+  writeFileSync(
+    metadata,
+    readFileSync(metadata, "utf-8").replace('"baseRuleDelivery": "ambient"', '"baseRuleDelivery": "explicit"'),
+    "utf-8",
+  );
+  process.env.AIDLC_RUNTIME_HARNESS_ROOT = harnessRoot;
+  _resetHarnessDataForTests();
   appendFileSync(
     join(proj, "aidlc", "spaces", "default", "memory", "org.md"),
     Array.from({ length: 180 }, (_, i) => `\n## Team practice ${i}\n\n${"x".repeat(320)}\n`).join(""),

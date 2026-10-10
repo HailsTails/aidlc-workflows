@@ -458,6 +458,7 @@ import {
   withdrawLatestPlanApprovalReply,
   withdrawPlanApprovalReplies,
   publishPlanApprovalAsk,
+  withPlanApprovalAskPublication,
   publishPlanApprovalSkip,
   routeCodeGenerationPlanApproval,
   saidDone,
@@ -1689,117 +1690,126 @@ function emit(requested: Directive): void {
     !hookRefusalAsk
   ) {
     const projectDir = prepared.projectDir;
+    const marker = prepared.marker;
     try {
-      if (projectDir) {
-        const publication = writeActiveDirectiveMarker(projectDir, prepared.marker, {
-          ...(engineInvocation?.attemptId ? { attemptId: engineInvocation.attemptId } : {}),
-          ...(engineInvocation ? { commandKind: engineInvocation.commandKind } : {}),
-          ...(engineInvocation?.claimedKind ? { claimedKind: engineInvocation.claimedKind } : {}),
-          ...(engineInvocation ? { commandSha256: engineInvocation.commandSha256 } : {}),
-          ...(withLegacyOffer.offer
-            ? { legacyPlanApprovalOffer: withLegacyOffer.offer }
-            : {}),
-          ...(withLegacyOffer.session
-            ? { legacyPlanApprovalSession: withLegacyOffer.session }
-            : {}),
-          resultSha256: prepared.resultSha256,
-        });
-        // An engine question whose marker another step's own machinery kept
-        // (a Copilot resume question, a legacy Kiro IDE approval) is still asked.
-        if (
-          openQuestionMarkers.has(prepared.marker) &&
-          !["copilot-committed", "generic-committed", "stale-attempt"].includes(publication)
-        ) {
-          writePrepared(prepared);
-          return;
-        }
-        if (publication === "legacy-plan-approval-owned") {
-          writePrepared(prepareEmission(errorDirective(
-            "Legacy Kiro Plan Approval is owned by another active IDE window. Continue the pending approval there; this call did not receive or rotate its protected choices.",
-          )));
-          return;
-        }
-        if (publication === "legacy-plan-approval-recovery-required") {
-          writePrepared(
-            prepareEmission(legacyPlanApprovalRecoveryDirective()),
-          );
-          return;
-        }
-        if (
-          publication === "legacy-plan-approval-reissued" ||
-          publication === "legacy-plan-approval-transport"
-        ) {
-          // The marker was PRESERVED to protect an in-flight legacy approval, so
-          // it did not take this part's cursor. Record the cursor beside it, or
-          // the conductor's next `continue` has nothing to match and the
-          // delivery restarts at part one for as long as the window is open.
-          recordSteeringCursor(projectDir, prepared.marker, true);
-          writePrepared(prepared);
-          return;
-        }
-        if (publication === "stale-attempt") {
-          const claimedContinue = engineInvocation?.claimedKind === "continue";
-          recordHookDrop(projectDir, "active-directive", `tracked ${claimedContinue ? "continue" : "fresh next"} attempt was superseded before publication`);
-          // The conductor prints an error verbatim and stops, so a `continue`
-          // (what the person saw it run) is named in their terms.
-          writePrepared(prepareEmission(errorDirective(
-            claimedContinue
-              ? `This \`continue\` was overtaken before it could answer. Run \`${aidlcDispatcherInvocation("orchestrate next")}\` (or just say continue) to get the current step.`
-              : "This tracked `next` attempt is stale or superseded, so its prepared result was not issued. Run a fresh `next` in the current Copilot session.",
-          )));
-          return;
-        }
-        if (publication === "preserved") {
-          // A Copilot chat's resume question is still open, and this `next`
-          // came from outside that answer: retrying repeats the refusal, so
-          // name the answer instead.
-          recordHookDrop(projectDir, "active-directive", "fresh next arrived while the resume question waits");
-          writePrepared(prepareEmission(errorDirective(
-            `The workflow is waiting for an answer to its resume question in the Copilot chat that asked it, so this \`next\` did not run. Answer that question there, or ask there to pick the work up.`,
-          )));
-          return;
-        }
-        if (publication !== "copilot-committed" && publication !== "generic-committed") {
-          recordHookDrop(projectDir, "active-directive", "fresh next did not commit its directive");
-          writePrepared(prepareEmission(errorDirective(
-            `The directive could not be published, so no work directive was issued. Retry the command; if coordination remains busy, run \`${entrySkillInvocation()} --doctor\`.`,
-          )));
-          return;
-        }
-        // The marker took the cursor, so the fallback must not shadow it.
-        recordSteeringCursor(projectDir, prepared.marker, false);
-        if (openQuestionMarkers.has(prepared.marker)) noteOpenEngineQuestion(projectDir, prepared.marker);
-        if (
-          prepared.transported.kind === "ask" &&
-          prepared.transported.ask_type === PLAN_APPROVAL_ASK_TYPE
-        ) {
-          publishPlanApprovalAsk(projectDir, prepared.transported);
-        } else {
-          recordPlanBuiltWithoutAsking(projectDir, prepared.transported);
-        }
-        settleBuiltPlanReviews(projectDir, prepared.transported);
-        // Asked where their words belong, the person said the work in
-        // progress, which waits on its code plan question: the question is
-        // the open step again, and the words it kept as their reply answer it.
-        // Words typed while the work was parked never reached the question
-        // (parked, it was not the open step): now that it is, they are its
-        // reply, kept once, as the latest.
-        if (
-          routingAnsweredAsActiveWork &&
-          prepared.transported.kind === "ask" &&
-          prepared.transported.ask_type === PLAN_APPROVAL_ASK_TYPE &&
-          !prepared.transported.plan_approval.editing
-        ) {
-          if (routingAnsweredWords !== null && !isReadOnlyEngineProbe()) {
-            withdrawPlanApprovalReplies(projectDir, routingAnsweredWords);
-            notePlanApprovalAskReply(projectDir, engineSessionId ?? "", routingAnsweredWords);
+      const publish = (): boolean => {
+        if (projectDir) {
+          const publication = writeActiveDirectiveMarker(projectDir, marker, {
+            ...(engineInvocation?.attemptId ? { attemptId: engineInvocation.attemptId } : {}),
+            ...(engineInvocation ? { commandKind: engineInvocation.commandKind } : {}),
+            ...(engineInvocation?.claimedKind ? { claimedKind: engineInvocation.claimedKind } : {}),
+            ...(engineInvocation ? { commandSha256: engineInvocation.commandSha256 } : {}),
+            ...(withLegacyOffer.offer
+              ? { legacyPlanApprovalOffer: withLegacyOffer.offer }
+              : {}),
+            ...(withLegacyOffer.session
+              ? { legacyPlanApprovalSession: withLegacyOffer.session }
+              : {}),
+            resultSha256: prepared.resultSha256,
+          });
+          // An engine question whose marker another step's own machinery kept
+          // (a Copilot resume question, a legacy Kiro IDE approval) is still asked.
+          if (
+            openQuestionMarkers.has(marker) &&
+            !["copilot-committed", "generic-committed", "stale-attempt"].includes(publication)
+          ) {
+            writePrepared(prepared);
+            return true;
           }
-          if (planApprovalKeptReplyWaits(projectDir)) {
-            writePrepared(prepareEmission(planQuestionAnsweredByWordsDirective()));
-            return;
+          if (publication === "legacy-plan-approval-owned") {
+            writePrepared(prepareEmission(errorDirective(
+              "Legacy Kiro Plan Approval is owned by another active IDE window. Continue the pending approval there; this call did not receive or rotate its protected choices.",
+            )));
+            return true;
+          }
+          if (publication === "legacy-plan-approval-recovery-required") {
+            writePrepared(
+              prepareEmission(legacyPlanApprovalRecoveryDirective()),
+            );
+            return true;
+          }
+          if (
+            publication === "legacy-plan-approval-reissued" ||
+            publication === "legacy-plan-approval-transport"
+          ) {
+            // The marker was PRESERVED to protect an in-flight legacy approval, so
+            // it did not take this part's cursor. Record the cursor beside it, or
+            // the conductor's next `continue` has nothing to match and the
+            // delivery restarts at part one for as long as the window is open.
+            recordSteeringCursor(projectDir, marker, true);
+            writePrepared(prepared);
+            return true;
+          }
+          if (publication === "stale-attempt") {
+            const claimedContinue = engineInvocation?.claimedKind === "continue";
+            recordHookDrop(projectDir, "active-directive", `tracked ${claimedContinue ? "continue" : "fresh next"} attempt was superseded before publication`);
+            // The conductor prints an error verbatim and stops, so a `continue`
+            // (what the person saw it run) is named in their terms.
+            writePrepared(prepareEmission(errorDirective(
+              claimedContinue
+                ? `This \`continue\` was overtaken before it could answer. Run \`${aidlcDispatcherInvocation("orchestrate next")}\` (or just say continue) to get the current step.`
+                : "This tracked `next` attempt is stale or superseded, so its prepared result was not issued. Run a fresh `next` in the current Copilot session.",
+            )));
+            return true;
+          }
+          if (publication === "preserved") {
+            // A Copilot chat's resume question is still open, and this `next`
+            // came from outside that answer: retrying repeats the refusal, so
+            // name the answer instead.
+            recordHookDrop(projectDir, "active-directive", "fresh next arrived while the resume question waits");
+            writePrepared(prepareEmission(errorDirective(
+              `The workflow is waiting for an answer to its resume question in the Copilot chat that asked it, so this \`next\` did not run. Answer that question there, or ask there to pick the work up.`,
+            )));
+            return true;
+          }
+          if (publication !== "copilot-committed" && publication !== "generic-committed") {
+            recordHookDrop(projectDir, "active-directive", "fresh next did not commit its directive");
+            writePrepared(prepareEmission(errorDirective(
+              `The directive could not be published, so no work directive was issued. Retry the command; if coordination remains busy, run \`${entrySkillInvocation()} --doctor\`.`,
+            )));
+            return true;
+          }
+          // The marker took the cursor, so the fallback must not shadow it.
+          recordSteeringCursor(projectDir, marker, false);
+          if (openQuestionMarkers.has(marker)) noteOpenEngineQuestion(projectDir, marker);
+          if (
+            prepared.transported.kind === "ask" &&
+            prepared.transported.ask_type === PLAN_APPROVAL_ASK_TYPE
+          ) {
+            publishPlanApprovalAsk(projectDir, prepared.transported);
+          } else {
+            recordPlanBuiltWithoutAsking(projectDir, prepared.transported);
+          }
+          settleBuiltPlanReviews(projectDir, prepared.transported);
+          // Asked where their words belong, the person said the work in
+          // progress, which waits on its code plan question: the question is
+          // the open step again, and the words it kept as their reply answer it.
+          // Words typed while the work was parked never reached the question
+          // (parked, it was not the open step): now that it is, they are its
+          // reply, kept once, as the latest.
+          if (
+            routingAnsweredAsActiveWork &&
+            prepared.transported.kind === "ask" &&
+            prepared.transported.ask_type === PLAN_APPROVAL_ASK_TYPE &&
+            !prepared.transported.plan_approval.editing
+          ) {
+            if (routingAnsweredWords !== null && !isReadOnlyEngineProbe()) {
+              withdrawPlanApprovalReplies(projectDir, routingAnsweredWords);
+              notePlanApprovalAskReply(projectDir, engineSessionId ?? "", routingAnsweredWords);
+            }
+            if (planApprovalKeptReplyWaits(projectDir)) {
+              writePrepared(prepareEmission(planQuestionAnsweredByWordsDirective()));
+              return true;
+            }
           }
         }
-      }
+        return false;
+      };
+      const stopped = projectDir && prepared.transported.kind === "ask" &&
+        prepared.transported.ask_type === PLAN_APPROVAL_ASK_TYPE
+        ? withPlanApprovalAskPublication({ projectDir, directive: prepared.transported, publish })
+        : publish();
+      if (stopped) return;
     } catch (e) {
       // A barrier violation is an engine defect, not a workflow problem, and must
       // surface as a non-zero exit: both observers fail safe on that (the Stop
@@ -1810,7 +1820,8 @@ function emit(requested: Directive): void {
       if (projectDir) {
         recordHookDrop(projectDir, "active-directive", errorMessage(e));
       }
-      if (prepared.marker !== undefined && openQuestionMarkers.has(prepared.marker)) {
+      if (prepared.marker !== undefined && openQuestionMarkers.has(prepared.marker) &&
+        !(prepared.transported.kind === "ask" && prepared.transported.ask_type === PLAN_APPROVAL_ASK_TYPE)) {
         writePrepared(prepared);
         return;
       }

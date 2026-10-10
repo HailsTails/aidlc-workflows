@@ -4684,6 +4684,29 @@ export function readPlanApprovalChallenge(
   return value?.version === 1 && value.session === session ? value : null;
 }
 
+export function readPlanApprovalChallenges(args: {
+  readonly projectDir: string;
+}): PlanApprovalRuntimeChallenge[] {
+  const dir = planApprovalRuntimeDir(args.projectDir);
+  let names: string[];
+  try { names = readdirSync(dir).sort(); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  return names.filter((name) => /^challenge-.+\.json$/.test(name))
+    .map((name) => readPlanApprovalRuntimeJson<PlanApprovalRuntimeChallenge>(join(dir, name), "Plan Approval challenge"))
+    .map((value) => {
+      if (value?.version !== 1 || typeof value.session !== "string" ||
+        typeof value.targetId !== "string" || typeof value.intentId !== "string" ||
+        typeof value.runFloor !== "string") {
+        throw new Error("Cannot establish retained Plan Approval challenge identity from protected runtime evidence.");
+      }
+      const challenge = readPlanApprovalChallenge(args.projectDir, value.session);
+      if (challenge === null) throw new Error("Cannot establish retained Plan Approval challenge authority from protected runtime evidence.");
+      return challenge;
+    });
+}
+
 export function writePlanApprovalResponse(
   projectDir: string,
   response: PlanApprovalRuntimeResponse,
@@ -5307,26 +5330,44 @@ export function fenceKeyBypassed(projectDir: string, sessionId: string | null): 
 
 // Every receipt on disk, newest-irrelevant (callers filter). Reading the dir is
 // how the store is enumerated; there is no index.
-function readPlanApprovalReceipts(
-  projectDir: string,
-): Array<{ path: string; receipt: PlanApprovalRuntimeReceipt }> {
+function readPlanApprovalReceipts(args: {
+  readonly projectDir: string;
+  readonly strict?: boolean;
+}): Array<{ path: string; receipt: PlanApprovalRuntimeReceipt }> {
   let names: string[];
   try {
-    names = readdirSync(planApprovalRuntimeDir(projectDir))
+    names = readdirSync(planApprovalRuntimeDir(args.projectDir))
       .filter((name) => name.startsWith("receipt-") && name.endsWith(".json"));
-  } catch {
+  } catch (error) {
+    if (args.strict && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return [];
   }
-  const out: Array<{ path: string; receipt: PlanApprovalRuntimeReceipt }> = [];
-  for (const name of names.sort()) {
-    const path = join(planApprovalRuntimeDir(projectDir), name);
+  return names.sort().flatMap((name) => {
+    const path = join(planApprovalRuntimeDir(args.projectDir), name);
     const receipt = readPlanApprovalRuntimeJson<PlanApprovalRuntimeReceipt>(
       path,
       "Plan Approval receipt",
     );
-    if (receipt?.version === 1) out.push({ path, receipt });
-  }
-  return out;
+    if (args.strict && (receipt?.version !== 1 ||
+      typeof receipt.intentId !== "string" || receipt.intentId.length === 0 ||
+      typeof receipt.targetId !== "string" || receipt.targetId.length === 0 ||
+      typeof receipt.runFloor !== "string" || receipt.runFloor.length === 0 ||
+      typeof receipt.fingerprint !== "string" || receipt.fingerprint.length === 0 ||
+      planApprovalReceiptPath(args.projectDir, receipt) !== path)) {
+      throw new Error("Cannot establish retained Plan Approval receipt identity.");
+    }
+    return receipt?.version === 1 ? [{ path, receipt }] : [];
+  });
+}
+
+export function readPlanApprovalReceiptsForTarget(args: {
+  readonly projectDir: string;
+  readonly intentId: string;
+  readonly targetId: string;
+}): PlanApprovalRuntimeReceipt[] {
+  return readPlanApprovalReceipts({ projectDir: args.projectDir, strict: true })
+    .filter((entry) => entry.receipt.intentId === args.intentId && entry.receipt.targetId === args.targetId)
+    .map((entry) => entry.receipt);
 }
 
 // The receipts recorded for this target in an attempt that has since ended. They
@@ -5339,7 +5380,7 @@ export function stalePlanApprovalReceiptsForTarget(
   targetId: string,
   runFloor: string,
 ): PlanApprovalRuntimeReceipt[] {
-  return readPlanApprovalReceipts(projectDir)
+  return readPlanApprovalReceipts({ projectDir })
     .filter(
       (entry) =>
         entry.receipt.intentId === intentId &&
@@ -5361,7 +5402,7 @@ export function collectStalePlanApprovalReceipts(
   runFloor: string,
 ): number {
   let removed = 0;
-  for (const entry of readPlanApprovalReceipts(projectDir)) {
+  for (const entry of readPlanApprovalReceipts({ projectDir })) {
     // The store is per workspace, not per intent, and two intents working the same
     // stage have different run floors. Without the intent match, approving in one
     // intent would sweep the other's live receipt.
@@ -5394,7 +5435,7 @@ export function planApprovalRuntimeHasReceiptForMarker(
     marker.revision;
   const sourceFloor = marker.code_generation_source_sha256;
   if (!Number.isInteger(revision) || !sourceFloor) return false;
-  return readPlanApprovalReceipts(projectDir).some(
+  return readPlanApprovalReceipts({ projectDir }).some(
     (entry) =>
       entry.receipt.markerRevision === revision &&
       entry.receipt.sourceFloor === sourceFloor &&

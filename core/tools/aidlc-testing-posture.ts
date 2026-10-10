@@ -49,6 +49,7 @@ import {
   readAuditShardEvents,
   readBaselineSourceSnapshot,
   readPlanApprovalChallenge,
+  readPlanApprovalChallenges,
   resolveInvokingSessionId,
   readPlanApprovalLegacyOffer,
   readPlanApprovalLegacyWindow,
@@ -2956,6 +2957,54 @@ export interface LegacyPlanApprovalGuardState {
   target: CodeGenerationTarget | null;
 }
 
+export type LegacyPlanApprovalQuestionState =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "pending" | "answered" | "conflict";
+      readonly session: string;
+      readonly questionsFile: string;
+    };
+
+export function legacyPlanApprovalQuestionState(args: {
+  readonly projectDir: string;
+  readonly target: CodeGenerationTarget;
+  readonly issued?: CodeGenerationIssuance;
+}): LegacyPlanApprovalQuestionState {
+  const authority = resolveCodeGenerationAuthority(args.projectDir, args.target, args.issued);
+  const challenges = readPlanApprovalChallenges({ projectDir: args.projectDir }).filter((challenge) =>
+    (challenge.targetId === authority.targetId && challenge.intentId === authority.intentId &&
+      challenge.runFloor === authority.runFloor) ||
+    challenge.batch?.members.some((member) => member.targetId === authority.targetId &&
+      member.intentId === authority.intentId && member.runFloor === authority.runFloor));
+  const artifacts = codeGenerationApprovalArtifacts(args.projectDir, authority);
+  const questionsFile = toPosix(relative(args.projectDir, artifacts.questionsPath));
+  if (challenges.length === 0) {
+    const receipt = artifacts.expectedFingerprint === null ? null : readPlanApprovalReceipt(args.projectDir, {
+      targetId: authority.targetId, runFloor: authority.runFloor, fingerprint: artifacts.expectedFingerprint,
+    });
+    return receipt?.intentId === authority.intentId && artifacts.questions.trim().length === 0
+      ? { kind: "conflict", session: receipt.session, questionsFile }
+      : { kind: "none" };
+  }
+  const states = challenges.map((challenge): Exclude<LegacyPlanApprovalQuestionState, { kind: "none" }> => {
+    const session = challenge.session;
+    const identity = challenge.batch?.members.find((member) =>
+      member.targetId === authority.targetId && member.intentId === authority.intentId &&
+      member.runFloor === authority.runFloor) ?? challenge;
+    const current = artifacts.expectedFingerprint !== null && runtimeIdentityMatches(identity, {
+      targetId: authority.targetId, intentId: authority.intentId, runFloor: authority.runFloor,
+      fingerprint: artifacts.expectedFingerprint, questionsFile,
+      promptSha256: createHash("sha256")
+        .update(`${artifacts.questions.replace(/^\[Answer\]:[ \t]*.*$/gm, "[Answer]:").trimEnd()}\n`, "utf-8").digest("hex"),
+    });
+    if (!current) return { kind: "conflict", session, questionsFile };
+    const response = readPlanApprovalResponse(args.projectDir, session);
+    return { kind: response?.challengeId === challenge.challengeId ? "answered" : "pending", session, questionsFile };
+  });
+  return states.find((state) => state.kind === "conflict") ??
+    states.find((state) => state.kind === "pending") ?? states[0];
+}
+
 /**
  * Legacy Kiro IDE PreToolUse payloads identify the tool but omit its arguments.
  * The adapter therefore cannot distinguish a planning-record write from a
@@ -3354,7 +3403,7 @@ export function recordPlanApprovalBatchChallenge(
   session: string,
   record: (batch: PlanApprovalRuntimeBatch, evidence: PlanApprovalQuestionEvidence[]) => void,
 ): PlanApprovalRuntimeChallenge {
-  return withActiveDirectiveLock(projectDir, () => {
+  return withAuditLock(projectDir, () => withActiveDirectiveLock(projectDir, () => {
     assertBatchSession(projectDir, session);
     const { batch, evidence } = planApprovalBatchEvidence(
       projectDir, planApprovalBatchSelection(projectDir, batchFile), "",
@@ -3378,7 +3427,7 @@ export function recordPlanApprovalBatchChallenge(
       writePlanApprovalChallenge(projectDir, challenge);
     }
     return challenge;
-  });
+  }));
 }
 
 export function recordPlanApprovalBatchReceipts(
@@ -3388,7 +3437,7 @@ export function recordPlanApprovalBatchReceipts(
   choice: "Approve Plan" | "Request Changes",
   record: (batch: PlanApprovalRuntimeBatch, evidence: PlanApprovalQuestionEvidence[]) => void,
 ): PlanApprovalRuntimeReceipt[] {
-  return withActiveDirectiveLock(projectDir, () => {
+  return withAuditLock(projectDir, () => withActiveDirectiveLock(projectDir, () => {
     assertBatchSession(projectDir, session);
     const selection = planApprovalBatchSelection(projectDir, batchFile);
     const { batch, evidence } = planApprovalBatchEvidence(projectDir, selection, choice);
@@ -3432,7 +3481,7 @@ export function recordPlanApprovalBatchReceipts(
     }));
     commitPlanApprovalBatch(projectDir, challenge, receipts, () => record(batch, evidence));
     return receipts;
-  });
+  }));
 }
 
 function assertPlanApprovalBatchCurrent(projectDir: string, receipt: PlanApprovalRuntimeReceipt): void {
@@ -3539,9 +3588,9 @@ export function recordPlanApprovalChallenge(
     }
     return challenge;
   };
-  return useLegacyDirectiveOffer
+  return withAuditLock(projectDir, () => useLegacyDirectiveOffer
     ? withActiveDirectiveLock(projectDir, createChallenge)
-    : createChallenge();
+    : createChallenge());
 }
 
 // The step that follows a refusal to record the conductor's choice.

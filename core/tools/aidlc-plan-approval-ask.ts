@@ -45,6 +45,8 @@ import {
   readActiveDirectiveMarker,
   readAuditShardEvents,
   readPlanApprovalRuntimeRecord,
+  readPlanApprovalChallenges,
+  readPlanApprovalReceiptsForTarget,
   removePlanApprovalRuntimeRecord,
   stalePlanApprovalReceiptsForTarget,
   stateFilePath,
@@ -75,6 +77,8 @@ import {
   codeGenerationTargetId,
   evaluateCodeGenerationApproval,
   keepApprovedPlanCopy,
+  legacyPlanApprovalQuestionState,
+  questionsFileApprovalFingerprint,
   PlanApprovalUnbindableError,
   readTestingContract,
   replaceTestingContractSection,
@@ -83,6 +87,7 @@ import {
   testingContractDefectMessage,
   usableTestingContract,
   type CodeGenerationIssuance,
+  type LegacyPlanApprovalQuestionState,
   type PlanApprovalPickerQuestion,
 } from "./aidlc-testing-posture.ts";
 import { exactOptionPick, isNonAnswer, pickerOffersChoices } from "./aidlc-reply-reader.ts";
@@ -110,6 +115,7 @@ export interface PlanApprovalAskTarget {
   targetId: string;
   /** The fingerprint of the plan, instructions, and contract when asked. */
   fingerprint: string;
+  promptSha256?: string;
 }
 
 export interface PlanApprovalAskResult {
@@ -551,6 +557,29 @@ function promptSha256(questions: string): string {
     .digest("hex");
 }
 
+function personEditingEngineQuestion(args: {
+  readonly projectDir: string;
+  readonly record: PlanApprovalAskRecord;
+  readonly unit: string | null;
+}): boolean {
+  return args.record.mode === "editing" && args.record.intentId === intentIdFor(args.projectDir) &&
+    args.record.targets.some((target) => target.unit === args.unit &&
+      target.targetId === codeGenerationTargetId({ unit: args.unit }) &&
+      target.promptSha256 !== undefined && /^[a-f0-9]{64}$/.test(target.promptSha256));
+}
+
+function bindEngineQuestionPrompt(args: {
+  readonly record: PlanApprovalAskRecord;
+  readonly unit: string | null;
+  readonly fingerprint: string;
+  readonly questions: string;
+}): void {
+  const target = args.record.targets.find((entry) => entry.unit === args.unit);
+  if (target === undefined) throw new Error("Engine Plan Approval question has no protected target.");
+  target.fingerprint = args.fingerprint;
+  target.promptSha256 = promptSha256(args.questions);
+}
+
 // The person's own answer on the `[Answer]:` line, as the file's instructions
 // invite ("write your answer after `[Answer]:` and say done"). Empty when they
 // have written nothing there, and never the engine's own recorded answer.
@@ -701,6 +730,63 @@ function withPlanState<T extends RunStageDirective | InvokeSwarmDirective>(
   return directive;
 }
 
+function retainedPlanApprovalQuestion(args: {
+  readonly projectDir: string;
+  readonly unit: string | null;
+  readonly record: PlanApprovalAskRecord | null;
+  readonly issued?: CodeGenerationIssuance;
+  readonly personEditedPrompt?: boolean;
+}): boolean {
+  const content = readText(join(codeGenerationRecordDir(args.projectDir, args.unit), QUESTIONS_FILE));
+  const targetId = codeGenerationTargetId({ unit: args.unit });
+  const intentId = intentIdFor(args.projectDir);
+  const retainedTarget = args.record?.intentId === intentId &&
+    args.record.targets.some((target) => target.unit === args.unit && target.targetId === targetId);
+  const retainedChallenge = readPlanApprovalChallenges({ projectDir: args.projectDir }).some((challenge) =>
+    (challenge.intentId === intentId && challenge.targetId === targetId) ||
+    challenge.batch?.members.some((member) => member.intentId === intentId && member.targetId === targetId));
+  if (!retainedTarget && !retainedChallenge && content.trim().length === 0) {
+    const state = readText(stateFilePath(args.projectDir));
+    const marker = state.trim().length === 0 ? null : readActiveDirectiveMarker(args.projectDir, state);
+    return marker?.version === 2
+      ? legacyPlanApprovalQuestionState({ projectDir: args.projectDir, target: { unit: args.unit }, issued: args.issued }).kind !== "none"
+      : readPlanApprovalReceiptsForTarget({ projectDir: args.projectDir, intentId, targetId }).length > 0;
+  }
+  const authority = resolveCodeGenerationAuthority(args.projectDir, { unit: args.unit }, args.issued);
+  const engineTarget = args.record?.intentId === authority.intentId
+    ? args.record.targets.find((target) => target.unit === args.unit && target.targetId === authority.targetId)
+    : undefined;
+  const approvedOwnership = engineTarget === undefined && content.trim().length > 0 &&
+    evaluateCodeGenerationApproval(args.projectDir, { unit: args.unit }, args.issued).receiptValid;
+  const owned = approvedOwnership || (engineTarget?.fingerprint === questionsFileApprovalFingerprint(content) &&
+    engineTarget?.promptSha256 !== undefined &&
+    (engineTarget.promptSha256 === promptSha256(content) ||
+      (args.personEditedPrompt === true && args.record !== null &&
+        personEditingEngineQuestion({ projectDir: args.projectDir, unit: args.unit, record: args.record }))));
+  return legacyPlanApprovalQuestionState({ projectDir: args.projectDir, target: { unit: args.unit }, issued: args.issued }).kind !== "none" ||
+    (engineTarget !== undefined && content.trim().length === 0) ||
+    (content.trim().length > 0 && !owned);
+}
+
+export function withPlanApprovalAskPublication<T>(args: {
+  readonly projectDir: string;
+  readonly directive: PlanApprovalAskDirective;
+  readonly publish: () => T extends Promise<unknown> ? never : T;
+}): T extends Promise<unknown> ? never : T {
+  return withAuditLock(args.projectDir, () => {
+    const record = readPlanApprovalAsk(args.projectDir, intentIdFor(args.projectDir));
+    const units = args.directive.plan_approval.targets.map((target) => target.unit);
+    const issued: CodeGenerationIssuance = units.length === 1
+      ? { kind: "run-stage", ...(units[0] === null ? {} : { unit: units[0] }) }
+      : { kind: "invoke-swarm", units: units.filter((unit): unit is string => unit !== null) };
+    if (args.directive.plan_approval.targets.some((target) =>
+      retainedPlanApprovalQuestion({ projectDir: args.projectDir, unit: target.unit, record, issued }))) {
+      throw new Error("Cannot replace a retained Plan Approval question without validating its existing target, prompt, attempt and answer through the Plan Approval owner.");
+    }
+    return args.publish();
+  });
+}
+
 /**
  * The directive `next` emits in place of a code-generation run-stage or
  * invoke-swarm: the same directive marked plan or build, or the engine's Plan
@@ -785,6 +871,34 @@ export function routeCodeGenerationPlanApproval(projectDir: string, directive: D
     });
   }
   const askUnits = asking.map((state) => state.unit);
+  let legacyQuestion: {
+    unit: string | null;
+    state: LegacyPlanApprovalQuestionState;
+  } | undefined;
+  try {
+    const legacyUnit = askUnits.find((unit) => retainedPlanApprovalQuestion({ projectDir, unit, record, issued: directive }));
+    legacyQuestion = legacyUnit === undefined ? undefined : {
+      unit: legacyUnit, state: legacyPlanApprovalQuestionState({ projectDir, target: { unit: legacyUnit }, issued: directive }),
+    };
+  } catch (error) {
+    const note = "Retained Plan Approval evidence cannot be established. Preserve the existing questions and protected records, and repair this target through the existing Plan Approval owner: " + errorMessage(error);
+    return directive.kind === "run-stage"
+      ? withPlanState(directive, { status: "repair", note })
+      : withPlanState(directive, { status: "plan",
+          units: askUnits.filter((unit): unit is string => unit !== null).map((unit) => ({ unit, status: "repair", note })) });
+  }
+  if (legacyQuestion) {
+    const evidence = legacyQuestion.state;
+    const note = evidence.kind === "conflict"
+        ? "This Code Generation target's retained Plan Approval question no longer matches its protected prompt, target, attempt, or plan. Preserve the questions file and use the existing Plan Approval fingerprint/decision/answer path to revalidate this target."
+        : evidence.kind === "pending" || evidence.kind === "answered"
+          ? "This Code Generation target has a retained conductor Plan Approval question. Finish its existing decision/answer in the originating session before publishing a new engine question; the questions file and its recorded authority are preserved."
+          : "This Code Generation target has a retained questions file without a matching engine ask. Preserve its content and validate it through the existing Plan Approval fingerprint/decision/answer path before publishing a new engine question.";
+    return directive.kind === "run-stage"
+      ? withPlanState(directive, { status: "repair", note })
+      : withPlanState(directive, { status: "plan",
+          units: [{ unit: legacyQuestion.unit as string, status: "repair", note }] });
+  }
   const repaired = asking.some((state) => state.repaired);
   const question = planQuestion(askUnits, repaired);
   const reShown = record !== null && record.results === undefined && record.question === question &&
@@ -839,6 +953,11 @@ export function publishPlanApprovalAsk(projectDir: string, directive: PlanApprov
     const intentId = authorities[0].intentId;
     // A review asked for while no plan was named is for these plans now, each
     // until its own answer.
+    if (units.some((unit) => retainedPlanApprovalQuestion({
+      projectDir, unit, record: readPlanApprovalAsk(projectDir, intentId),
+    }))) {
+      throw new Error("Cannot replace a retained Plan Approval question without validating its existing target, prompt, attempt and answer through the Plan Approval owner.");
+    }
     const pendingReview = nextPlanReviewId(intentId);
     if (planApprovalReviewRequested(projectDir, pendingReview, intentId)) {
       requestPlanApprovalReviews(projectDir, authorities.map((authority) => authority.targetId), intentId);
@@ -859,16 +978,21 @@ export function publishPlanApprovalAsk(projectDir: string, directive: PlanApprov
       if (!("contract" in read)) {
         throw new Error(`Plan Approval for ${targetLabel(unit)} needs a valid Testing Contract before it is asked.`);
       }
+      const fingerprint = approvalFingerprint(plan, instructions, read.contract.contract_sha256, authority);
+      const questions = questionsFileContent(directive.question, directive.plan_approval.targets[index],
+        directive.plan_approval.choices, fingerprint, source?.fingerprint ?? "unbindable", "");
       return {
         unit,
         targetId: authority.targetId,
-        fingerprint: approvalFingerprint(plan, instructions, read.contract.contract_sha256, authority),
+        fingerprint,
+        promptSha256: promptSha256(questions),
       };
     });
     const same = existing !== null && existing.results === undefined && existing.mode === "ask" &&
       existing.question === directive.question && existing.targets.length === targets.length &&
       existing.targets.every((target) =>
-        targets.some((current) => current.unit === target.unit && current.fingerprint === target.fingerprint));
+        targets.some((current) => current.unit === target.unit && current.fingerprint === target.fingerprint &&
+          current.promptSha256 === target.promptSha256));
     const record: PlanApprovalAskRecord = same && existing
       ? { ...existing, bound: true }
       : {
@@ -1134,6 +1258,9 @@ function approveTarget(
     notice: `AIDLC Plan Approval: ${note} Nothing was approved for ${targetLabel(unit)}. Run next: repair it, and ` +
       "the engine will ask the person once to build the edited plan.",
   });
+  if (retainedPlanApprovalQuestion({ projectDir, unit, record, personEditedPrompt: true })) {
+    return repair("the retained question's protected target or prompt cannot be established. Preserve its content and repair it through the Plan Approval owner.");
+  }
   if (!plan.trim()) return repair(`${view.plan_path} is empty.`);
   if (!instructions.trim()) return repair(`${view.instructions_path} is empty.`);
   const read = readTestingContract(plan);
@@ -1208,6 +1335,8 @@ function approveTarget(
     // way back, and the fingerprint all describe the plan as it now stands.
     if (rendered !== null) writeFileAtomic(planPath, plan);
     writeFileAtomic(questionsPath, questions);
+    bindEngineQuestionPrompt({ record, unit, fingerprint, questions });
+    writePlanApprovalAsk(projectDir, record);
     writePlanApprovalReceipt(projectDir, receipt);
     keepApprovedPlanCopy(projectDir, authority, fingerprint, questions);
     if (source !== null) writeWorkspaceSourceSnapshot(projectDir, STAGE, source);
@@ -1255,10 +1384,15 @@ function requestChangesFor(
   const existing = readText(questionsPath);
   const fingerprintLine = /^\[Approval Fingerprint\]:[ \t]*(\S+)/m.exec(existing)?.[1] ?? asked?.fingerprint ?? "";
   const sourceLine = /^\[Planned Source\]:[ \t]*(\S+)/m.exec(existing)?.[1] ?? "unbindable";
-  writeFileAtomic(
-    questionsPath,
-    questionsFileContent(record.question, view, record.choices, fingerprintLine, sourceLine, CHANGES_ANSWER),
-  );
+  if (retainedPlanApprovalQuestion({ projectDir, unit, record, personEditedPrompt: true })) {
+    throw new Error("Cannot replace retained Plan Approval prompt content without its protected target and prompt identity.");
+  }
+  const questions = questionsFileContent(record.question, view, record.choices, fingerprintLine, sourceLine, CHANGES_ANSWER);
+  withActiveDirectiveLock(projectDir, () => {
+    writeFileAtomic(questionsPath, questions);
+    bindEngineQuestionPrompt({ record, unit, fingerprint: fingerprintLine, questions });
+    writePlanApprovalAsk(projectDir, record);
+  });
   let targetId = "";
   try {
     targetId = codeGenerationTargetId({ unit });

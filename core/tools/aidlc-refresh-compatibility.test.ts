@@ -26,7 +26,11 @@ const fixture = () => {
   };
   const plan: TransactionPlan = { schemaVersion: 1, root: "/project", operations: [] };
   return {
-    args: { projectDir: "/project", sourceRoot: "/source", harnessDir: ".claude", plan, reader },
+    args: { projectDir: "/project", sourceRoot: "/source", harnessDir: ".claude", plan, reader,
+      compareStages: ({ installed, candidate }: { readonly installed: unknown; readonly candidate: unknown }) =>
+        ({ kind: "comparable" as const, installed: { contract: installed },
+          candidate: { contract: candidate }, revalidation: [] }),
+    },
     set: ({ path, content }: { path: string; content: string }) => { files[path] = content; },
   };
 };
