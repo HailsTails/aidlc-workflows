@@ -15,7 +15,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createTarGz, type ArchiveEntry } from "../core/tools/aidlc-archive.ts";
 import { parseVersion, PREVIEW_CHANNEL, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
-import { projectionFiles, walkFiles } from "../core/tools/aidlc-distribution.ts";
+import { copyChannelOmits, projectionFiles, walkFiles } from "../core/tools/aidlc-distribution.ts";
 import { targetTriple } from "../core/tools/aidlc-install-paths.ts";
 import {
   digest,
@@ -95,7 +95,8 @@ function verifyGeneratedInventory(): {
   plugins: string[];
 } {
   const harnesses = sourceHarnesses();
-  const releaseHarnesses = directoryNames(join(REPO_ROOT, "dist-release"));
+  const releaseHarnesses = directoryNames(join(REPO_ROOT, "dist-release"))
+    .filter((name) => name !== "plugins");
   if (!sameNames(releaseHarnesses, harnesses)) {
     throw new Error(
       `generated release harness inventory differs from source: expected ` +
@@ -114,6 +115,10 @@ function verifyGeneratedInventory(): {
   const plugins = sourcePlugins();
   const pluginsRoot = join(REPO_ROOT, "dist", "plugins");
   const generatedPlugins = directoryNames(pluginsRoot);
+  const generatedNativePlugins = directoryNames(join(REPO_ROOT, "dist-release", "plugins"));
+  if (!sameNames(generatedNativePlugins, plugins)) {
+    throw new Error("generated native plugin inventory differs from source");
+  }
   if (!sameNames(generatedPlugins, plugins)) {
     throw new Error(
       `generated plugin inventory differs from source: expected ` +
@@ -121,6 +126,10 @@ function verifyGeneratedInventory(): {
     );
   }
   for (const plugin of plugins) {
+    const nativePluginHarnesses = directoryNames(join(REPO_ROOT, "dist-release", "plugins", plugin));
+    if (!sameNames(nativePluginHarnesses, harnesses)) {
+      throw new Error(`generated native plugin ${plugin} harness inventory differs from source`);
+    }
     const pluginHarnesses = directoryNames(join(pluginsRoot, plugin));
     if (!sameNames(pluginHarnesses, harnesses)) {
       throw new Error(
@@ -298,7 +307,8 @@ function build(argv: string[]): void {
       name: projection.stamp.distribution,
       productName: projection.descriptor.productName,
     });
-    copyRuntimeEntries.push(...entriesFor(root).map((entry) => ({
+    const omitted = copyChannelOmits(projection.descriptor);
+    copyRuntimeEntries.push(...entriesFor(root).filter((entry) => !omitted.has(entry.path)).map((entry) => ({
       ...entry,
       path: `runtime/${distribution}/${entry.path}`,
     })));
@@ -320,7 +330,11 @@ function build(argv: string[]): void {
           path: `plugins/${plugin}/${harness}/${entry.path}`,
         }));
         copyRuntimeEntries.push(...entries);
-        runtimeEntries.push(...entries);
+        const nativeHarnessRoot = join(REPO_ROOT, "dist-release", "plugins", plugin, harness);
+        runtimeEntries.push(...entriesFor(nativeHarnessRoot).map((entry) => ({
+          ...entry,
+          path: `plugins/${plugin}/${harness}/${entry.path}`,
+        })));
       }
     }
   }

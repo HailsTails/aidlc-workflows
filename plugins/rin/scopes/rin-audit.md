@@ -1,6 +1,7 @@
 ---
 name: rin-audit
 plugin: rin
+guard_policy: strict
 depth: Standard
 keywords:
   - constitution paydown

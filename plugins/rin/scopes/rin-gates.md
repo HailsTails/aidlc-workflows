@@ -1,6 +1,7 @@
 ---
 name: rin-gates
 plugin: rin
+guard_policy: strict
 depth: Standard
 keywords:
   - rin gate

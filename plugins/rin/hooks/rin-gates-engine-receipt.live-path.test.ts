@@ -1,34 +1,19 @@
-// The LIVE-PATH proof for FR-6 (member 01a02cd6).
-//
-// The unit tests beside this file prove the bridge issues the right engine calls.
-// They cannot prove the thing that actually matters: that a receipt recorded by
-// the bridge, at the moment a board converges, SATISFIES the engine's reviewer
-// precondition in a realistic gate sequence. That precondition floors on the
-// latest STAGE_STARTED, resets on GATE_REJECTED, and is invalidated by any later
-// produces[] write — so a bridge that records a technically well-formed receipt
-// at the wrong moment leaves the gate exactly as refused as before, while every
-// unit test still passes.
-//
-// So this test runs the REAL engine against a hermetic temp project (CD-47: its
-// own workspace, its own audit shards, never the real checkout) and drives the
-// real sequence: stage started → artefacts written → board convenes and converges
-// → bridge records the receipt → `approve`. The assertion is the approve's own
-// exit status, and the control is the same sequence with the bridge's receipt
-// withheld, which must still refuse.
-
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test } from "vitest";
+import { z } from "zod";
 import {
   appendReviewSectionToFile,
   type BoardVerdictToken,
@@ -43,7 +28,6 @@ const repoRoot = resolve(
   "..",
 );
 const statePath = join(repoRoot, "core", "tools", "aidlc-state.ts");
-const logPath = join(repoRoot, "core", "tools", "aidlc-log.ts");
 
 const GATE = "probe-gate-bridged";
 const REVIEWER = "aidlc-architecture-reviewer-agent";
@@ -88,6 +72,8 @@ type Fixture = {
 
 const buildFixture = (): Fixture => {
   const projectDir = mkdtempSync(join(tmpdir(), "rin-receipt-live-"));
+  onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
+  cpSync(join(repoRoot, "dist", "opencode", ".aidlc"), join(projectDir, ".aidlc"), { recursive: true });
   const intentsRoot = join(projectDir, "aidlc", "spaces", "default", "intents");
   const intentDir = join(intentsRoot, "probe-intent");
   mkdirSync(join(intentDir, "audit"), { recursive: true });
@@ -172,83 +158,191 @@ const auditText = (fixture: Fixture): string =>
     )
     .join("\n");
 
-// The bridge, invoked exactly as the scribe invokes it at convergence: the real
-// engine writer, the gate's declared reviewer, the aggregate as the verdict.
-const convergeBoardAndBridge = (
-  fixture: Fixture,
-  aggregate: BoardVerdictToken,
-) =>
-  recordEngineReceipt({
-    projectDir: fixture.projectDir,
+
+const requestSchema = z.object({
+  emitted: z.literal("REVIEW_REQUESTED"),
+  requestId: z.string().min(1),
+  reviewFile: z.string().min(1),
+  recordVerdict: z.string().min(1),
+});
+type Request = z.infer<typeof requestSchema>;
+
+const requestReview = (input: { readonly fixture: Fixture; readonly iteration: number }): Request => {
+  const result = spawnEngineReview({ enginePath: join(input.fixture.projectDir, ".aidlc", "tools", "aidlc-log.ts"), engineEnv: input.fixture.env })({
+    projectDir: input.fixture.projectDir,
+    stage: GATE,
+    reviewer: REVIEWER,
+    iteration: input.iteration,
+    verdict: null,
+  });
+  expect(result.ok, result.output).toBe(true);
+  return requestSchema.parse(JSON.parse(result.output));
+};
+
+const reportText = (input: {
+  readonly verdict: BoardVerdictToken;
+  readonly iteration: number;
+  readonly priorRows?: readonly string[];
+  readonly newRows?: readonly string[];
+}): string => [
+  "## Review", "", `**Verdict:** ${input.verdict}`,
+  `**Reviewer:** ${REVIEWER}`, `**Iteration:** ${input.iteration}`,
+  "", "### Findings", "", "**Prior findings**", "",
+  "| ID | Now | Severity | Note |", "|---|---|---|---|",
+  ...(input.priorRows ?? []),
+  "", "**New findings**", "",
+  "| Severity | Location | Finding | Required action |", "|---|---|---|---|",
+  ...(input.newRows ?? []), "",
+].join("\n");
+
+const conductBoardReview = (input: {
+  readonly fixture: Fixture;
+  readonly verdict: BoardVerdictToken;
+  readonly iteration?: number;
+  readonly priorRows?: readonly string[];
+  readonly newRows?: readonly string[];
+}) => {
+  const iteration = input.iteration ?? 1;
+  const request = requestReview({ fixture: input.fixture, iteration });
+  const handoff = recordEngineReceipt({
+    projectDir: input.fixture.projectDir,
     gate: GATE,
     declaredReviewer: REVIEWER,
-    aggregate,
-    invokeEngine: spawnEngineReview({
-      enginePath: logPath,
-      engineEnv: fixture.env,
-    }),
-    // The REAL append seam, not a fake: the engine re-checks the appended bytes
-    // at REVIEW_COMPLETED, so a faked append here would prove nothing about
-    // whether the section this bridge writes actually satisfies the contract.
+    aggregate: input.verdict,
+    invokeEngine: spawnEngineReview({ enginePath: join(input.fixture.projectDir, ".aidlc", "tools", "aidlc-log.ts"), engineEnv: input.fixture.env }),
     appendReviewSection: appendReviewSectionToFile({
-      resolveArtifactPath: () =>
-        join(fixture.intentDir, "inception", GATE, ARTIFACT),
+      resolveArtifactPath: () => join(input.fixture.intentDir, "inception", GATE, ARTIFACT),
     }),
   });
+  const text = reportText({ verdict: input.verdict, iteration, priorRows: input.priorRows, newRows: input.newRows });
+  writeFileSync(join(input.fixture.projectDir, request.reviewFile), text);
+  return { request, handoff, text };
+};
 
-describe("the bridged receipt satisfies the engine's reviewer precondition", () => {
-  // The CONTROL. Without the bridge nothing records a receipt, and the engine
-  // refuses — which is what makes the must-pass case below evidence rather than
-  // a tautology about a gate that would have opened anyway.
-  test("without a receipt the engine refuses to approve the gate", () => {
+const recordConductorVerdict = (input: {
+  readonly fixture: Fixture;
+  readonly request: Request;
+  readonly verdict: BoardVerdictToken;
+  readonly extraArguments?: string;
+}) => {
+  const command = input.request.recordVerdict.replace("<READY|NOT-READY>", input.verdict) + (input.extraArguments ?? "");
+  const shell = process.platform === "win32" ? "powershell" : "/bin/bash";
+  const args = process.platform === "win32" ? ["-NoProfile", "-Command", command] : ["-c", command];
+  const result = spawnSync(shell, args, { cwd: input.fixture.projectDir, encoding: "utf8", env: input.fixture.env });
+  return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+};
+
+const completedSchema = z.object({ emitted: z.literal("REVIEW_COMPLETED"), reviewRecord: z.string() });
+const recordSchema = z.object({
+  request_id: z.string(),
+  verdict: z.enum(["READY", "NOT-READY"]),
+  findings: z.array(z.object({
+    id: z.string(), severity: z.string(), location: z.string(), finding: z.string(),
+    required_action: z.string(), status: z.string(),
+  })),
+  body: z.string(),
+});
+const readRecordedReview = (input: { readonly fixture: Fixture; readonly output: string }) => {
+  const completed = completedSchema.parse(JSON.parse(input.output));
+  return recordSchema.parse(JSON.parse(readFileSync(join(input.fixture.intentDir, completed.reviewRecord), "utf8")));
+};
+const artifactText = (fixture: Fixture): string => readFileSync(join(fixture.intentDir, "inception", GATE, ARTIFACT), "utf8");
+const concernRows = [
+  "| Major | aidlc/spaces/default/intents/probe-intent/inception/probe-gate-bridged/probe-artifact.md > framed scope | The scope omits the excluded case | Describe the excluded case |",
+];
+
+describe("the conductor report closes the engine-owned board review", () => {
+  test("without a receipt the engine refuses approval", () => {
     const fixture = buildFixture();
     const result = approve(fixture);
-
     expect(result.status).not.toBe(0);
-    // Anchored on the engine's machine-readable refusal code, not on the prose
-    // around it. 2.9.0 rewrote that prose wholesale ("declares a reviewer ... no
-    // fresh REVIEW_COMPLETED" became "has not reviewed the current output") while
-    // the refusal itself was unchanged, so a sentence-level assertion broke on a
-    // bump that altered nothing this test exists to guard.
     expect(result.output).toContain("REVIEW_EVIDENCE_MISSING");
   });
 
-  test("a receipt recorded by the bridge at convergence lets the approve through", () => {
+  test("an empty READY report preserves artifact bytes and closes the exact pending request once", () => {
     const fixture = buildFixture();
+    const review = conductBoardReview({ fixture, verdict: "READY" });
+    expect(review.handoff).toEqual({ kind: "conductor-report", reviewer: REVIEWER, verdict: "READY" });
+    expect(artifactText(fixture)).toBe("# probe artifact\n\nframed scope\n");
+    expect(auditText(fixture)).not.toContain("**Event**: REVIEW_COMPLETED");
+    const completed = recordConductorVerdict({ fixture, request: review.request, verdict: "READY" });
+    expect(completed.status, completed.output).toBe(0);
+    const record = readRecordedReview({ fixture, output: completed.output });
+    expect(record.request_id).toBe(review.request.requestId);
+    expect(record.findings).toEqual([]);
+    expect(record.body).toBe(review.text);
+    expect(artifactText(fixture)).toBe("# probe artifact\n\nframed scope\n");
+    expect(approve(fixture).status).toBe(0);
+    expect(auditText(fixture).match(/\*\*Event\*\*: REVIEW_REQUESTED/g)).toHaveLength(1);
+    expect(auditText(fixture).match(/\*\*Event\*\*: REVIEW_COMPLETED/g)).toHaveLength(1);
+  });
 
-    const receipt = convergeBoardAndBridge(fixture, "READY");
-    expect(receipt).toEqual({
-      kind: "recorded",
-      reviewer: REVIEWER,
-      iteration: 1,
+  test("nonempty NOT-READY findings survive in the genuine engine record", () => {
+    const fixture = buildFixture();
+    const review = conductBoardReview({ fixture, verdict: "NOT-READY", newRows: concernRows });
+    const completed = recordConductorVerdict({ fixture, request: review.request, verdict: "NOT-READY" });
+    expect(completed.status, completed.output).toBe(0);
+    const record = readRecordedReview({ fixture, output: completed.output });
+    expect(record.verdict).toBe("NOT-READY");
+    expect(record.request_id).toBe(review.request.requestId);
+    expect(record.findings).toEqual([{
+      id: "R-01", severity: "Major",
+      location: "aidlc/spaces/default/intents/probe-intent/inception/probe-gate-bridged/probe-artifact.md > framed scope",
+      finding: "The scope omits the excluded case", required_action: "Describe the excluded case", status: "New",
+    }]);
+    expect(artifactText(fixture)).toBe("# probe artifact\n\nframed scope\n");
+  });
+
+  test("a prior finding keeps its engine ID and reported state on the next request", () => {
+    const fixture = buildFixture();
+    const first = conductBoardReview({ fixture, verdict: "NOT-READY", newRows: concernRows });
+    const firstCompleted = recordConductorVerdict({ fixture, request: first.request, verdict: "NOT-READY" });
+    expect(firstCompleted.status, firstCompleted.output).toBe(0);
+    const second = conductBoardReview({
+      fixture, verdict: "NOT-READY", iteration: 2,
+      priorRows: ["| R-01 | Still applies | Major | The exclusion remains absent |"],
     });
-
-    const result = approve(fixture);
-    expect(result.output).not.toContain("declares a reviewer");
-    expect(result.status).toBe(0);
+    const secondCompleted = recordConductorVerdict({ fixture, request: second.request, verdict: "NOT-READY" });
+    expect(secondCompleted.status, secondCompleted.output).toBe(0);
+    const record = readRecordedReview({ fixture, output: secondCompleted.output });
+    expect(record.findings).toEqual([{
+      id: "R-01", severity: "Major",
+      location: "aidlc/spaces/default/intents/probe-intent/inception/probe-gate-bridged/probe-artifact.md > framed scope",
+      finding: "The scope omits the excluded case", required_action: "Describe the excluded case", status: "Unresolved",
+    }]);
+    expect(record.request_id).toBe(second.request.requestId);
   });
 
-  test("the receipt the bridge wrote is the engine's own REVIEW_COMPLETED row", () => {
+  test("a different report path cannot close the request", () => {
     const fixture = buildFixture();
-    convergeBoardAndBridge(fixture, "READY");
-
-    const audit = auditText(fixture);
-    expect(audit).toContain("**Event**: REVIEW_REQUESTED");
-    expect(audit).toContain("**Event**: REVIEW_COMPLETED");
-    expect(audit).toContain(`**Reviewer**: ${REVIEWER}`);
-    expect(audit).toContain("**Verdict**: READY");
+    const review = conductBoardReview({ fixture, verdict: "READY" });
+    writeFileSync(join(fixture.intentDir, "unowned-review.md"), review.text);
+    const refused = recordConductorVerdict({ fixture, request: review.request, verdict: "READY", extraArguments: " --review-file aidlc/spaces/default/intents/probe-intent/unowned-review.md" });
+    expect(refused.status).not.toBe(0);
+    expect(refused.output).toContain("is not the review");
+    expect(auditText(fixture)).not.toContain("**Event**: REVIEW_COMPLETED");
+    const accepted = recordConductorVerdict({ fixture, request: review.request, verdict: "READY" });
+    expect(accepted.status, accepted.output).toBe(0);
   });
 
-  // The engine is soft on the verdict and hard on the review having happened, so
-  // a NOT-READY receipt still clears THIS precondition. That is correct and
-  // deliberate: refusing a NOT-READY approve is the autonomy gate's job, which
-  // reads the verdict artefact. Pinned so a later reader does not mistake the
-  // engine's softness for the bridge laundering a refusal.
-  test("a NOT-READY receipt is recorded as NOT-READY", () => {
+  test("an artifact write after dispatch refuses the same genuine report", () => {
     const fixture = buildFixture();
-    const receipt = convergeBoardAndBridge(fixture, "NOT-READY");
+    const review = conductBoardReview({ fixture, verdict: "READY" });
+    writeFileSync(join(fixture.intentDir, "inception", GATE, ARTIFACT), "# changed artifact\n");
+    const completed = recordConductorVerdict({ fixture, request: review.request, verdict: "READY" });
+    expect(completed.status).not.toBe(0);
+    expect(completed.output).toContain("changed");
+    expect(auditText(fixture)).not.toContain("**Event**: REVIEW_COMPLETED");
+  });
 
-    expect(receipt.kind).toBe("recorded");
-    expect(auditText(fixture)).toContain("**Verdict**: NOT-READY");
+  test("a legacy appendix plus a modern report is refused", () => {
+    const fixture = buildFixture();
+    const review = conductBoardReview({ fixture, verdict: "READY" });
+    const append = appendReviewSectionToFile({ resolveArtifactPath: () => join(fixture.intentDir, "inception", GATE, ARTIFACT) });
+    append({ projectDir: fixture.projectDir, stage: GATE, section: review.text });
+    const completed = recordConductorVerdict({ fixture, request: review.request, verdict: "READY" });
+    expect(completed.status).not.toBe(0);
+    expect(completed.output).toContain("a review file was also written");
+    expect(auditText(fixture)).not.toContain("**Event**: REVIEW_COMPLETED");
   });
 });

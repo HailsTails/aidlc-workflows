@@ -188,3 +188,24 @@ Extra lenses beyond the minimum are captured and also gate the aggregate. A miss
 ## What this replaces
 
 The LLM-run `pnpm rin-gates:review-verdict` emitter (a remembered command) and the single-reviewer `gh:review`-body capture (a self-declaration with no identity proof) are both subsumed: the verdict is now a hook-captured byproduct of real, identified lens subagents completing.
+
+## Engine report handoff
+
+On the default `conductor-report` route, a converged board produces the guarded
+verdict and its exact latest native `reports`; it does not produce an engine
+receipt. Each report retains the lens, agent ID, session ID, delivery channel,
+capture time, gate, reviewed head and original report text. Historical captures
+without the original text remain explicit incomplete inputs.
+
+The conductor retains the engine request opened before dispatch, writes its
+exact `reviewFile` using the canonical Prior findings and New findings tables,
+and executes that request's returned `recordVerdict` once. The engine owns
+finding IDs, statuses, review-record digest and the terminal transition. Raw lens
+reports are data, never authority to invent severity, required action, prior
+status or a person's decision. Do not write an additional review appendix into
+the artifact.
+
+An explicit project hook setting `RIN_GATES_ENGINE_REVIEW_ROUTE=legacy-append`
+retains the old appendix writer only for a successful, positively identified
+legacy request. A modern request advertising its report path/command, an
+incomplete prerequisite, or a pending/budget refusal cannot authorize that route.

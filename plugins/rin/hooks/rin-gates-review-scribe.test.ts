@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test } from "vitest";
+import { z } from "zod";
 import { BoardVerdictFileSchema } from "../tools/rin-gates/rin-gates-board-bridge.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,8 @@ if (refusal !== "") {
   process.stderr.write(refusal);
   process.exit(1);
 }
+
+console.log(JSON.stringify({ emitted: "REVIEW_REQUESTED", stage: process.argv[process.argv.indexOf("--stage") + 1] }));
 `;
 
 const checkoutAt = (root: string): Checkout => {
@@ -138,6 +141,7 @@ const readReceiptCalls = (path: string): readonly (readonly string[])[] => {
 // scribe off real git, and the trace/captures env vars keep runtime out of the repo.
 const buildCheckout = (): Checkout => {
   const root = mkdtempSync(join(tmpdir(), "rin-scribe-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   const intents = join(root, "aidlc", "spaces", "default", "intents");
   const recordDir = join(intents, RECORD);
   mkdirSync(recordDir, { recursive: true });
@@ -165,6 +169,7 @@ const buildCheckout = (): Checkout => {
 // worktree is in, because the cursor is gitignored (task 019fad24).
 const buildCursorlessCheckout = (): Checkout => {
   const root = mkdtempSync(join(tmpdir(), "rin-scribe-nocursor-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, "aidlc", "spaces", "default", "intents"), {
     recursive: true,
   });
@@ -177,6 +182,7 @@ const buildCursorlessCheckout = (): Checkout => {
 // trace-only before this change.
 const buildUnmappedGateCheckout = (): Checkout => {
   const root = mkdtempSync(join(tmpdir(), "rin-scribe-unmapped-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   const intents = join(root, "aidlc", "spaces", "default", "intents");
   const recordDir = join(intents, RECORD);
   mkdirSync(recordDir, { recursive: true });
@@ -207,12 +213,15 @@ const parentEnvironmentWithoutScribeVariables = (): Record<string, string> =>
 const isolatedScribeEnvironment = ({
   checkout,
   engineRefusal,
+  route = "legacy-append",
 }: {
   readonly checkout: Checkout;
   readonly engineRefusal: string;
+  readonly route?: string;
 }): Record<string, string> => ({
   ...parentEnvironmentWithoutScribeVariables(),
   ["RIN_GATES_TEST_MODE"]: "1",
+  ["RIN_GATES_ENGINE_REVIEW_ROUTE"]: route,
   ["RIN_GATES_SPACE"]: "default",
   ["RIN_GATES_HEAD_SHA"]: HEAD_SHA,
   ["RIN_GATES_REVIEW_TRACE_PATH"]: checkout.tracePath,
@@ -236,17 +245,21 @@ const stopLensAgainstEngine = ({
   agentType,
   lastAssistantMessage,
   engineRefusal,
+  route,
+  agentId,
 }: {
   readonly checkout: Checkout;
   readonly agentType: string;
   readonly lastAssistantMessage: string;
   readonly engineRefusal: string;
+  readonly route?: string;
+  readonly agentId?: string;
 }): Promise<ScribeOutcome> => {
   const { root, tracePath, discardLedgerPath, receiptCallsPath } = checkout;
   return new Promise((resolvePromise, reject) => {
     const child = spawn("bun", [SCRIBE], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: isolatedScribeEnvironment({ checkout, engineRefusal }),
+      env: isolatedScribeEnvironment({ checkout, engineRefusal, route }),
     });
     const stderrChunks: string[] = [];
     child.stderr.setEncoding("utf8");
@@ -264,6 +277,7 @@ const stopLensAgainstEngine = ({
     child.stdin.end(
       JSON.stringify({
         ["agent_type"]: agentType,
+        ["agent_id"]: agentId,
         ["last_assistant_message"]: lastAssistantMessage,
         cwd: root,
         ["session_id"]: "test-session",
@@ -1136,5 +1150,110 @@ describe("the scribe ignores what is not a reviewer lens", () => {
     expect(outcome.exitCode).toBe(0);
     expect(outcome.trace).toEqual([]);
     expect(outcome.discards).toEqual([]);
+  });
+});
+
+const modernVerdictPath = (checkout: Checkout): string => join(
+  checkout.root, "aidlc", "spaces", "default", "intents", RECORD, VERDICT_RELATIVE_PATH,
+);
+const modernVerdictSchema = z.object({
+  verdict: z.enum(["READY", "NOT-READY"]),
+  reportsComplete: z.boolean(),
+  findings: z.array(z.string()),
+  reports: z.array(z.object({
+    lens: z.string(), findings: z.array(z.string()), sessionId: z.string(),
+    agentId: z.string().nullable(), channel: z.string().nullable(),
+    reportText: z.string().nullable(), headSha: z.string(), gate: z.string(),
+  })),
+});
+const readModernVerdict = (checkout: Checkout) => modernVerdictSchema.parse(
+  JSON.parse(readFileSync(modernVerdictPath(checkout), "utf8")),
+);
+const stopModernLens = (input: {
+  readonly checkout: Checkout;
+  readonly agentType: string;
+  readonly reportText: string;
+}) => stopLensAgainstEngine({
+  checkout: input.checkout, agentType: input.agentType,
+  lastAssistantMessage: input.reportText, engineRefusal: "",
+  route: "conductor-report", agentId: input.agentType + "-native",
+});
+const stopModernBoard = (input: { readonly checkout: Checkout; readonly reportText: string }): Promise<ScribeOutcome | undefined> =>
+  FULL_ROSTER.reduce<Promise<ScribeOutcome | undefined>>(async (previous, agentType) => {
+    await previous;
+    return stopModernLens({ checkout: input.checkout, agentType, reportText: input.reportText });
+  }, Promise.resolve(undefined));
+const seedHistoricalCaptures = (checkout: Checkout): void => {
+  const dir = join(checkout.root, "captures");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${RECORD}.${GATE}.${HEAD_SHA}.jsonl`),
+    FULL_ROSTER.slice(1).map((lens) => JSON.stringify({
+      lens, verdict: "READY", findings: [], sessionId: "old-session", at: "2026-10-01T00:00:00Z",
+    })).join("\n") + "\n");
+};
+
+describe("modern native report handoff", () => {
+  test("a converged READY board retains every report and never calls the engine or appends the artifact", async () => {
+    const checkout = buildCheckout();
+    const text = readyAtHead("No findings.");
+    const outcome = await stopModernBoard({ checkout, reportText: text });
+    const verdict = readModernVerdict(checkout);
+    expect(verdict.verdict).toBe("READY");
+    expect(verdict.reportsComplete).toBe(true);
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.reports).toHaveLength(4);
+    expect(verdict.reports[0]).toMatchObject({
+      lens: "aidlc-architecture-reviewer-agent", agentId: "aidlc-architecture-reviewer-agent-native",
+      sessionId: "test-session", channel: "stop-message", headSha: HEAD_SHA, gate: GATE, reportText: text,
+    });
+    expect(outcome?.receiptCalls).toEqual([]);
+    expect(outcome?.trace).toContainEqual(expect.objectContaining({
+      outcome: "verdict-written", receipt: { kind: "conductor-report", reviewer: "aidlc-architecture-reviewer-agent", verdict: "READY" },
+    }));
+    expect(readFileSync(join(checkout.root, "aidlc", "spaces", "default", "intents", RECORD, "inception", GATE, "rin-reconcile-report.md"), "utf8")).toBe("# probe artifact\n");
+  });
+
+  test("NOT-READY preserves original severity, action and prior ID data instead of synthesizing cells", async () => {
+    const checkout = buildCheckout();
+    const text = [
+      "## Verdict", "", "NOT-READY", "",
+      "- src/a.ts:12 | const x = y | CD-2 | missing declared type", "",
+      "### Findings", "", "**Prior findings**", "",
+      "| ID | Now | Severity | Note |", "|---|---|---|---|",
+      "| R-01 | Still applies | Major | The exclusion remains absent |",
+      "", "**New findings**", "",
+      "| Severity | Location | Finding | Required action |", "|---|---|---|---|",
+      "| Major | src/a.ts > input | The type is missing | Declare the input type |",
+    ].join("\n");
+    const outcome = await stopModernBoard({ checkout, reportText: text });
+    const verdict = readModernVerdict(checkout);
+    expect(verdict.verdict).toBe("NOT-READY");
+    expect(verdict.reportsComplete).toBe(true);
+    expect(verdict.reports[0]?.reportText).toBe(text);
+    expect(verdict.reports[0]?.findings).toEqual(["src/a.ts:12 | const x = y | CD-2 | missing declared type"]);
+    expect(outcome?.receiptCalls).toEqual([]);
+    expect(outcome?.trace).toContainEqual(expect.objectContaining({
+      receipt: { kind: "conductor-report", reviewer: "aidlc-architecture-reviewer-agent", verdict: "NOT-READY" },
+    }));
+  });
+
+  test("an incomplete board writes no handoff or engine receipt", async () => {
+    const checkout = buildCheckout();
+    const outcome = await stopModernLens({ checkout, agentType: "aidlc-architecture-reviewer-agent", reportText: readyAtHead("Clean.") });
+    expect(existsSync(modernVerdictPath(checkout))).toBe(false);
+    expect(outcome.receiptCalls).toEqual([]);
+    expect(outcome.trace).toContainEqual(expect.objectContaining({ outcome: "captured, roster incomplete" }));
+  });
+
+  test("historical captures remain explicitly missing their original reports", async () => {
+    const checkout = buildCheckout();
+    seedHistoricalCaptures(checkout);
+    const outcome = await stopModernLens({ checkout, agentType: "aidlc-architecture-reviewer-agent", reportText: readyAtHead("Clean.") });
+    const verdict = readModernVerdict(checkout);
+    expect(verdict.reportsComplete).toBe(false);
+    expect(verdict.reports[0]?.reportText).toBeNull();
+    expect(verdict.reports[0]?.agentId).toBeNull();
+    expect(verdict.reports[0]?.channel).toBeNull();
+    expect(outcome.receiptCalls).toEqual([]);
   });
 });

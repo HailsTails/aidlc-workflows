@@ -1,11 +1,9 @@
-// t332: the preview publication pipeline. The publisher stages the same draft
-// as a stable release, then binds it to an annotated preview tag whose message
-// records the source commit, and publishes it as a prerelease that never
-// becomes "latest". The planner skips an unchanged main, permits multiple
-// changed sources on one UTC date, allocates the day's build counter from
-// occupied preview ids, and renders notes from the CHANGELOG sections (or
-// commit subjects) added since the previous preview's source commit.
-import { afterEach, describe, expect, test } from "bun:test";
+import {
+  NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
+  NATIVE_STARTUP_TIMEOUT_MS,
+  remainingOperationTimeoutMs,
+} from "../harness/test-budget.ts";
+import { afterEach, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -27,6 +25,8 @@ import {
   readPreviewPlan,
 } from "../../scripts/preview-release.ts";
 import { publishRelease } from "../../scripts/publish-release.ts";
+
+setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
 const REPO_ROOT = join(fileURLToPath(new URL("../..", import.meta.url)));
 
@@ -288,6 +288,7 @@ function servePlanMock(options: PlanMockOptions): string {
 
 function git(cwd: string, args: string[]): string {
   const result = spawnSync("git", args, {
+    timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
     cwd,
     encoding: "utf-8",
     env: {
@@ -901,4 +902,26 @@ describe("t332 preview publication pipeline", () => {
     },
   );
 
+  test("the planner skips a source that a newer published preview has overtaken", async () => {
+    // A retried older run must not publish older code under a newer preview id.
+    const history = sourceHistory();
+    const newest = `v${NEXT_STABLE}-${PREVIEW_CHANNEL}.20260903.1`;
+    const client = githubApiClient(servePlanMock({
+      releases: [{ tag_name: newest, prerelease: true, draft: false }],
+      tags: [newest],
+      annotated: { [newest]: { source: history.second } },
+    }), undefined);
+    const plan = (sourceDigest: string) => planPreviewRelease({
+      client, repository: "owner/repo", sourceRepository: "owner/source",
+      sourceDigest, cwd: history.cwd, date: "20260903",
+    });
+    expect(await plan(history.first)).toEqual({
+      skip: true, reason: "superseded-source", version: null,
+      previousSourceDigest: history.second, plan: null,
+    });
+    // A newer commit still publishes, even though main may be past it.
+    expect(await plan(history.third)).toMatchObject({
+      skip: false, previousSourceDigest: history.second, plan: { sourceDigest: history.third },
+    });
+  });
 });

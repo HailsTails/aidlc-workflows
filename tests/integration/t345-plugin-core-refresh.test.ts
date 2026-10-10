@@ -63,6 +63,23 @@ function navigationTrust(fixture: Fixture): unknown {
   return entries[`${join(fixture.projectDir, ".codex/hooks.json")}:pre_tool_use:${index}:0`];
 }
 
+function claudeConsumerSettingsFixture(): Fixture {
+  const fixture = initializeSelected({ face: { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs" }, label: "edited-claude" });
+  expect(fixture.initialization.status).toBe(0);
+  expect(fixture.composition.status).toBe(0);
+  const file = join(fixture.projectDir, fixture.nativeFile);
+  writeFileSync(file, `${JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), consumerPreference: "retain-me" }, null, 2)}\n`);
+  return fixture;
+}
+
+function claudeOwnershipPreserved({ fixture, priorOwnership }: { fixture: Fixture; priorOwnership: unknown }): boolean {
+  return Bun.deepEquals(ownership(fixture), priorOwnership);
+}
+
+function consumerPreference(fixture: Fixture): unknown {
+  return JSON.parse(readFileSync(join(fixture.projectDir, fixture.nativeFile), "utf8")).consumerPreference;
+}
+
 describe("selected plugin core refresh", () => {
   test.each(faces)("$harness core refresh preserves native Rin registration and its body", (face) => {
     const fixture = initializeSelected({ face, label: `first-${face.harness}` });
@@ -93,7 +110,7 @@ describe("selected plugin core refresh", () => {
     expect(existsSync(join(fixture.projectDir, fixture.leaf, "hooks/guard-navigation.mjs"))).toBe(true);
   }, 120_000);
 
-  test.each(faces)("$harness unrelated native settings edits refuse refresh without partial changes", (face) => {
+  test.each(faces.filter((face) => face.harness === "codex"))("$harness unrelated native settings edits refuse refresh without partial changes", (face) => {
     const fixture = initializeSelected({ face, label: `edited-${face.harness}` });
     expect(fixture.initialization.status).toBe(0);
     expect(fixture.composition.status).toBe(0);
@@ -104,6 +121,18 @@ describe("selected plugin core refresh", () => {
     expect(refreshed.status).not.toBe(0);
     expect(refreshed.stdout + refreshed.stderr).toContain("conflict");
     expect(snapshot(fixture.projectDir)).toEqual(before);
+  }, 120_000);
+
+  test("Claude core refresh preserves unrelated settings and selected native ownership", () => {
+    const fixture = claudeConsumerSettingsFixture();
+    const priorOwnership = ownership(fixture);
+    expect(priorOwnership.kind).toBe("parsed");
+    const refreshed = configProject(fixture);
+    expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(0);
+    expect(consumerPreference(fixture)).toBe("retain-me");
+    expect(claudeOwnershipPreserved({ fixture, priorOwnership })).toBe(true);
+    expect(readFileSync(join(fixture.projectDir, fixture.nativeFile), "utf8")).toContain("guard-navigation.mjs");
+    expect(existsSync(join(fixture.projectDir, fixture.leaf, "hooks/guard-navigation.mjs"))).toBe(true);
   }, 120_000);
 
   test("Codex repeated core refresh binds trust to the final consumer hook indices", () => {

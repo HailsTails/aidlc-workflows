@@ -1,6 +1,7 @@
 ---
 name: rin-ops
 plugin: rin
+guard_policy: strict
 depth: Standard
 keywords:
   - system operations
