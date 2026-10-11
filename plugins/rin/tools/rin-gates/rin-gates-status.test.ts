@@ -49,10 +49,12 @@ const {
   describeMilestone,
   describeNeglect,
   extractTaskArray,
+  laneQueue,
   orderedRecords,
   readRecordImportance,
   readRecordReadiness,
   recordStatusFor,
+  renderLaneQueue,
   selectIntakeCaptures,
 } = await loadStatusAgainstFixture();
 
@@ -507,7 +509,15 @@ describe("orderedRecords", () => {
     ).toEqual(["1:a"]);
   });
 
-  test("emits positions in the ratified tier order — breach outranks a flag, which outranks milestone rank", () => {
+  const atStage = (args: {
+    readonly entry: RankingEntry;
+    readonly currentStage: string;
+  }): RankingEntry => ({
+    ...args.entry,
+    record: { ...args.entry.record, currentStage: args.currentStage },
+  });
+
+  test("emits positions in the ratified tier order — a flag outranks milestone rank, which outranks a breach", () => {
     expect(
       positionsFor([
         entry({
@@ -525,11 +535,33 @@ describe("orderedRecords", () => {
         entry({
           dirName: "breached",
           flagged: "not-flagged",
-          milestone: { kind: "no-milestone" },
+          milestone: { kind: "milestone", identifier: "M2" },
           ageDays: 40,
         }),
       ]),
-    ).toEqual(["1:breached", "2:flagged", "3:m1-bound"]);
+    ).toEqual(["1:flagged", "2:m1-bound", "3:breached"]);
+  });
+
+  test("a record at a later gate outranks a longer-neglected one at an earlier gate", () => {
+    expect(
+      positionsFor([
+        entry({
+          dirName: "old-framing",
+          flagged: "not-flagged",
+          milestone: { kind: "no-milestone" },
+          ageDays: 60,
+        }),
+        atStage({
+          entry: entry({
+            dirName: "recent-implement",
+            flagged: "not-flagged",
+            milestone: { kind: "no-milestone" },
+            ageDays: 3,
+          }),
+          currentStage: "rin-gate-4-implement",
+        }),
+      ]),
+    ).toEqual(["1:recent-implement", "2:old-framing"]);
   });
 
   test("an unbreached older record loses to a flagged newer one — the position must show the flag winning, not the age", () => {
@@ -590,6 +622,72 @@ describe("orderedRecords", () => {
       milestone: "M2",
       neglectBreach: true,
     });
+  });
+});
+
+describe("laneQueue", () => {
+  const owner = (owningLane: string): TransitionOwner => ({
+    gate: "",
+    owningLane,
+    actor: "lane",
+    requiredCapabilities: [],
+  });
+  const laneMap: ReadonlyMap<string, TransitionOwner> = new Map([
+    ["rin-gate-0-reconcile", owner("intake")],
+    ["rin-gate-1-framing", owner("progress")],
+    ["rin-gate-4-implement", owner("progress")],
+  ]);
+  const statusAt = (args: {
+    readonly dirName: string;
+    readonly currentStage: string;
+  }) =>
+    recordStatusFor({
+      record: {
+        dirName: args.dirName,
+        uuid: "",
+        status: "unknown",
+        scope: "rin-gates",
+        currentStage: args.currentStage,
+        workflowStatus: "Running",
+        parkedAt: null,
+        parkedAtStage: null,
+      },
+      owners: laneMap,
+    });
+  const records = [
+    statusAt({ dirName: "a-intake", currentStage: "rin-gate-0-reconcile" }),
+    statusAt({ dirName: "b-implement", currentStage: "rin-gate-4-implement" }),
+    statusAt({ dirName: "c-framing", currentStage: "rin-gate-1-framing" }),
+  ].filter((status) => status !== null);
+
+  test("keeps only the named lane's rows, in the order given", () => {
+    expect(laneQueue({ records, laneMap, lane: "progress" })).toMatchObject({
+      kind: "known-lane",
+      rows: [{ dirName: "b-implement" }, { dirName: "c-framing" }],
+    });
+  });
+
+  test("refuses a lane the ownership map does not name, listing the lanes it does", () => {
+    expect(laneQueue({ records, laneMap, lane: "spec" })).toEqual({
+      kind: "unknown-lane",
+      knownLanes: ["intake", "progress"],
+    });
+  });
+
+  test("caps the queue at five rows", () => {
+    const many = Array.from({ length: 7 }, (_, index) =>
+      statusAt({ dirName: `r${index}`, currentStage: "rin-gate-1-framing" }),
+    ).filter((status) => status !== null);
+    expect(laneQueue({ records: many, laneMap, lane: "progress" })).toEqual({
+      kind: "known-lane",
+      rows: many.slice(0, 5),
+    });
+  });
+
+  test("says plainly when a known lane has nothing eligible", () => {
+    expect(renderLaneQueue({ lane: "progress", rows: [] })).toEqual([
+      "lane progress: no eligible rows",
+    ]);
   });
 });
 

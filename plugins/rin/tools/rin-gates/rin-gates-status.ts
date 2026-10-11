@@ -628,6 +628,7 @@ const describeMilestone = (args: {
 // comparator never learns the config's internals (IF-5).
 const rankedRecordFor = (args: {
   readonly dirName: string;
+  readonly currentStage: string | null;
   readonly facts: RecordRankingFacts;
   readonly config: SelectionConfig;
   readonly now: () => Date;
@@ -641,6 +642,8 @@ const rankedRecordFor = (args: {
       ratifiedMilestones: args.config.ratifiedMilestones,
     }),
     tier: args.facts.tier,
+    gatePosition:
+      args.currentStage === null ? -1 : GATE_SLUGS.indexOf(args.currentStage),
     neglectDays: resolveNeglectDays({ clock: args.facts.clock, now: args.now }),
   };
 };
@@ -802,9 +805,9 @@ const describeNeglect = (args: { readonly rank: RecordRank }): string =>
 const describeSelectionOrder = (args: {
   readonly config: SelectionConfig;
 }): readonly string[] => [
-  `**Rows are in ratified selection order.** Tiers, in order: neglect BREACH (\`>= ${args.config.neglectThresholdDays}d\`), then operator-flagged, then milestone rank (${args.config.ratifiedMilestones.join(" > ")}), then neglect age, then the record directory name as a final tiebreak.`,
+  `**Rows are in ratified selection order.** Tiers, in order: operator-flagged, then milestone rank (${args.config.ratifiedMilestones.join(" > ")}), then furthest along (a later Current Stage first), then neglect age, then the record directory name as a final tiebreak.`,
   "",
-  "Two consequences worth reading off the table rather than re-deriving. A high neglect age does NOT outrank a flag unless it BREACHES, so an unbreached 28d record loses to a flagged 2d one. And the milestone tier decides only between two RATIFIED milestones — a `no-milestone` record does not lose to an `M1` here; it skips the tier and is settled on neglect age instead, which is why unbound records can sit above milestone-bound ones.",
+  `Two consequences worth reading off the table rather than re-deriving. Furthest along outranks neglect age, so work close to delivery is finished before older work is started; the BREACH mark (\`>= ${args.config.neglectThresholdDays}d\`) is information, not a rung. And the milestone tier decides only between two RATIFIED milestones — a \`no-milestone\` record does not lose to an \`M1\` here; it skips the tier and is settled on stage reached and neglect age instead, which is why unbound records can sit above milestone-bound ones.`,
   "",
   "Take the first row eligible for your lane; do NOT re-sort by any key of your own, and cite the `#` you acted on. A run that re-sorts this table has replaced the ratified ordering with one it invented — which is the defect this column set exists to prevent.",
   "",
@@ -890,7 +893,7 @@ const orderedRecords = (args: {
   readonly config: SelectionConfig;
   readonly now: () => Date;
 }): readonly RecordStatus[] => {
-  const compare = selectionOrderComparator({ config: args.config });
+  const compare = selectionOrderComparator;
   const rankByDirName = new Map(
     args.enumerated.map(
       (entry) =>
@@ -898,6 +901,7 @@ const orderedRecords = (args: {
           entry.record.dirName,
           rankedRecordFor({
             dirName: entry.record.dirName,
+            currentStage: entry.record.currentStage,
             facts: entry.facts,
             config: args.config,
             now: args.now,
@@ -1013,6 +1017,58 @@ const writeStatusProjection = (args: {
   );
 };
 
+const LANE_QUEUE_DEPTH = 5;
+
+type LaneQueue =
+  | { readonly kind: "known-lane"; readonly rows: readonly RecordStatus[] }
+  | { readonly kind: "unknown-lane"; readonly knownLanes: readonly string[] };
+
+const laneQueue = (args: {
+  readonly records: readonly RecordStatus[];
+  readonly laneMap: ReadonlyMap<string, TransitionOwner>;
+  readonly lane: string;
+}): LaneQueue => {
+  const knownLanes = [
+    ...new Set([...args.laneMap.values()].map((owner) => owner.owningLane)),
+  ].toSorted();
+  if (!knownLanes.includes(args.lane)) return { kind: "unknown-lane", knownLanes };
+  return {
+    kind: "known-lane",
+    rows: args.records
+      .filter((record) => record.owningLane === args.lane)
+      .slice(0, LANE_QUEUE_DEPTH),
+  };
+};
+
+const renderLaneQueue = (args: {
+  readonly lane: string;
+  readonly rows: readonly RecordStatus[];
+}): readonly string[] =>
+  args.rows.length === 0
+    ? [`lane ${args.lane}: no eligible rows`]
+    : [
+        `lane ${args.lane}: eligible rows in selection order (take the first; skip only on an open PR tagged intent:<record> or an engine park naming a blocker)`,
+        ...args.rows.map(
+          (record) =>
+            `#${record.rank.position} ${record.dirName} ${record.currentStage} ${record.classification} ${describeNeglect({ rank: record.rank })}`,
+        ),
+      ];
+
+const printLaneQueue = (args: {
+  readonly records: readonly RecordStatus[];
+  readonly laneMap: ReadonlyMap<string, TransitionOwner>;
+  readonly lane: string;
+}): void => {
+  const queue = laneQueue(args);
+  const lines =
+    queue.kind === "known-lane"
+      ? renderLaneQueue({ lane: args.lane, rows: queue.rows })
+      : fail(
+          `unknown lane '${args.lane}'; lanes in the ownership map: ${queue.knownLanes.join(", ")}`,
+        );
+  console.log(lines.join("\n"));
+};
+
 const assertOwnershipTotality = (records: readonly RecordStatus[]): void => {
   const totalityGaps = checkTotality(records);
   if (totalityGaps.length > 0) {
@@ -1076,6 +1132,9 @@ const run = (): void => {
     records,
     config,
   });
+
+  const lane = argValue("--lane");
+  if (lane !== null) printLaneQueue({ records, laneMap, lane });
 };
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
@@ -1089,6 +1148,7 @@ export {
   extractTaskArray,
   type IntakeCapture,
   type IntentRecord,
+  laneQueue,
   orderedRecords,
   type RecordRank,
   type RecordRankingFacts,
@@ -1097,6 +1157,7 @@ export {
   readRecordImportance,
   readRecordReadiness,
   recordStatusFor,
+  renderLaneQueue,
   selectIntakeCaptures,
   type TransitionOwner,
 };
