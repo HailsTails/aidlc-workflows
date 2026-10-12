@@ -734,6 +734,7 @@ export interface PrintDirective {
   // a plan change made during the stage is in it. null = the final in-scope
   // stage. Same meaning as run-stage's next_stage.
   next_stage?: string | null;
+  agent_guidance?: "fix-sensor-findings";
 }
 
 // error — stop with an error (unknown scope, mutually-exclusive flags, init
@@ -980,7 +981,7 @@ const ASK_FIELDS = [
   "new_project_command",
   "choices",
 ] as const;
-const PRINT_FIELDS = ["kind", "message", "next_stage"] as const;
+const PRINT_FIELDS = ["kind", "message", "next_stage", "agent_guidance"] as const;
 const ERROR_FIELDS = ["kind", "message"] as const;
 const DONE_FIELDS = ["kind", "reason", "workflow_continues"] as const;
 const PARKED_FIELDS = ["kind", "reason", "stage"] as const;
@@ -1493,6 +1494,8 @@ export function validateDirective(obj: unknown): ValidationResult {
     case "print":
       checkString(o, "message", kind, errors);
       checkOptionalNullableString(o, "next_stage", kind, errors);
+      checkOptionalString(o, "agent_guidance", kind, errors);
+      checkEnum(o, "agent_guidance", ["fix-sensor-findings"], kind, errors);
       break;
     case "error":
       checkString(o, "message", kind, errors);

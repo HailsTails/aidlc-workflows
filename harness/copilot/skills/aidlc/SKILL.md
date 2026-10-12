@@ -119,6 +119,8 @@ or `--details 'Request changes: <what they asked to change>'`; ask **"What shoul
 only when they did not say, and end the turn. Do not
 write artifacts until the Looks correct answer and receipt both exist. When the receipt output carries `say`, tell the person that line once.
 
+**Blocking sensor recovery.** A `print` carrying `agent_guidance: "fix-sensor-findings"` continues the active stage: read the findings, correct them within already authorized scope through the stage's declared topology, refresh any reviewer or verification evidence invalidated by the correction, and retry the same report without an override. Do this before another `next`; no human "Fix findings" selection is needed. Ask only when correction needs new authority, crosses scope, or cannot proceed. The gate remains closed until a verified pass or the existing human-backed override procedure succeeds. Never invent receipts, select an override, or approve for the person. Ordinary `error` directives remain terminal.
+
 ### Acting on a directive
 
 | `kind` | What you do |

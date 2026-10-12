@@ -244,7 +244,7 @@ dispatcher exit/spawn/timeout failures, malformed or mismatched verdicts,
 or `script-error` all stop `gate-start`, `revise`, or approve-time recovered
 revision re-entry before the gate opens.
 
-The operator can fix the findings and retry, or make a separate explicit
+The refused report returns `print` with `agent_guidance: "fix-sensor-findings"` rather than a terminal `error`. The agent fixes findings within already authorized stage scope, refreshes any invalidated review or verification evidence, and retries the same report without an override. The gate remains closed; repair grants no human approval. New authority, a scope change, or an inability to proceed requires the person. Only when the person requests an override does the agent offer a separate explicit
 override decision. The conductor records a `DECISION_RECORDED` offering
 `Fix findings,Override blocking sensors`, waits for a new human turn, records
 the exact `QUESTION_ANSWERED`, then retries the gate report with

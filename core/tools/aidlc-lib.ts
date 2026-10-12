@@ -37433,7 +37433,7 @@ function waitAtErrorEmitSelectionBarrier(selection: WorkflowSelection): void {
 export type EmitErrorMessage = string | {
   message: string;
   auditMessage: string;
-  agentGuidance?: "question-open" | "person-decided";
+  agentGuidance?: "question-open" | "person-decided" | "fix-sensor-findings";
 };
 
 export function emitError(

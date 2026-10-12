@@ -682,6 +682,13 @@ describe("t113 directive-schema — validateDirective (migrated from t113-direct
     }
   });
 
+  test("blocking sensor repair print is valid and keeps terminal errors distinct", () => {
+    expect(validateDirective({ kind: "print", message: "Repair and retry the report.", agent_guidance: "fix-sensor-findings" }).valid).toBe(true);
+    expect(validateDirective({ kind: "print", message: "Repair and retry the report.", agent_guidance: "approve" }).valid).toBe(false);
+    expect(validateDirective({ kind: "print", message: "Repair and retry the report.", agent_guidance: 1 }).valid).toBe(false);
+    expect(validateDirective({ kind: "error", message: "Terminal refusal.", agent_guidance: "fix-sensor-findings" }).valid).toBe(false);
+  });
+
   test("print well-formed -> VALID", () => {
     expect(validateDirective(print()).valid).toBe(true);
   });
