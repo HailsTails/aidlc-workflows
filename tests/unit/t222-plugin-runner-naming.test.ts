@@ -1,4 +1,4 @@
-// covers: function:compileStageGraph, cli:aidlc-runner-gen(write,scopes)
+// covers: function:compileStageGraph, cli:aidlc-runner-gen(write,check,scopes)
 
 import {
   NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
@@ -348,7 +348,7 @@ describe("t222 plugin ownership and runner naming", () => {
     expect(hasGeneratedByMarker(scopeBody)).toBe(true);
   });
 
-  test("unmanaged signature-matching skill survives write and scopes prunes", () => {
+  test("unmanaged signature-matching skill is ignored by check and survives write and scopes prunes", () => {
     const project = setupIntegrationProject({ noAidlcDocs: true });
     tempDirs.push(project);
     const gen = projectRunnerGen(project);
@@ -359,6 +359,10 @@ describe("t222 plugin ownership and runner naming", () => {
     expect(writeRun.status).toBe(0);
     expect(existsSync(playbook)).toBe(true);
     expect(writeRun.stderr).toContain("unmanaged skill, not pruned: team-playbook");
+    const checkRun = runRunnerGen(gen, ["check"]);
+    expect(checkRun.status).toBe(0);
+    expect(checkRun.stdout).toContain("in sync with the compiled stage graph");
+    expect(readFileSync(playbook, "utf-8")).toBe(unmanagedPlaybookBody());
 
     const scopesDir = tempDir("aidlc-t222-no-runner-scopes-");
     writeScope(scopesDir, "doc-only", false);
@@ -367,6 +371,36 @@ describe("t222 plugin ownership and runner naming", () => {
     expect(scopesRun.status).toBe(0);
     expect(existsSync(playbook)).toBe(true);
     expect(scopesRun.stderr).toContain("unmanaged skill, not pruned: team-playbook");
+  });
+
+  test("disabled markerless plugin runner is an orphan until regeneration prunes it", () => {
+    const project = setupIntegrationProject({ noAidlcDocs: true });
+    tempDirs.push(project);
+    const gen = projectRunnerGen(project);
+    const graphPath = join(project, ".claude", "tools", "data", "stage-graph.json");
+    writeFileSync(
+      graphPath,
+      '[{"slug":"test-pro-retired-stage","plugin":"test-pro","phase":"construction","enabled":false}]' + "\n",
+      "utf-8",
+    );
+    const initial = runRunnerGen(gen, ["write"]);
+    expect(initial.status).toBe(0);
+    const legacy = writeSkill(
+      join(project, ".claude", "skills"),
+      "test-pro-retired-stage",
+      legacyStageRunnerBody("test-pro-retired-stage"),
+    );
+
+    const refused = runRunnerGen(gen, ["check"]);
+    expect(refused.status).toBe(1);
+    expect(refused.stdout).toContain("ORPHAN");
+    expect(refused.stdout).toContain("test-pro-retired-stage");
+    const regenerated = runRunnerGen(gen, ["write"]);
+    expect(regenerated.status).toBe(0);
+    expect(existsSync(legacy)).toBe(false);
+    const checked = runRunnerGen(gen, ["check"]);
+    expect(checked.status).toBe(0);
+    expect(checked.stdout).toContain("in sync with the compiled stage graph");
   });
 
   test("legacy markerless generated stage runner is pruned by generated name", () => {

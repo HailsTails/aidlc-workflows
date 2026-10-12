@@ -228,6 +228,67 @@ describe("t129 stage-runner drift guard (migrated from t129-stage-runner-drift.s
     expect(r.out).toContain("(30 runners)");
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
+  test("check ignores entry guidance for a disabled stage after regeneration", () => {
+    const { proj, gen, skills } = newSandbox();
+    const graphPath = join(proj, ".claude", "tools", "data", "stage-graph.json");
+    writeFileSync(
+      graphPath,
+      '[{"slug":"documented-stage","phase":"construction","enabled":false}]' + "\n",
+      "utf-8",
+    );
+    const regenerated = runGen(gen, ["write"]);
+    expect(regenerated.status).toBe(0);
+    const entry = join(skills, "aidlc", "SKILL.md");
+    writeFileSync(
+      entry,
+      [
+        "---",
+        "name: aidlc",
+        "description: Conductor entry guidance",
+        "---",
+        "Documented single-stage command:",
+        "bun .claude/tools/aidlc.ts engine orchestrate next --stage documented-stage --single",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const checked = runGen(gen, ["check"]);
+    expect(checked.status).toBe(0);
+    expect(checked.out).toContain("in sync with the compiled stage graph (0 runners)");
+    expect(existsSync(join(skills, "aidlc-documented-stage", "SKILL.md"))).toBe(false);
+    expect(readFileSync(entry, "utf-8")).toContain("--stage documented-stage --single");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("check catches a marked orphan in a nonlegacy directory and write removes it", () => {
+    const { gen, skills } = newSandbox();
+    const orphanDir = join(skills, "orphan-shortcut");
+    mkdirSync(orphanDir, { recursive: true });
+    writeFileSync(
+      join(orphanDir, "SKILL.md"),
+      [
+        "---",
+        "name: orphan-shortcut",
+        "generated-by: aidlc-runner-gen",
+        "---",
+        "bun .claude/tools/aidlc.ts engine orchestrate next --stage retired-generated-stage --single",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const refused = runGen(gen, ["check"]);
+    expect(refused.status).toBe(1);
+    expect(refused.out).toContain("ORPHAN");
+    expect(refused.out).toContain("retired-generated-stage");
+    const regenerated = runGen(gen, ["write"]);
+    expect(regenerated.status).toBe(0);
+    expect(existsSync(orphanDir)).toBe(false);
+    const checked = runGen(gen, ["check"]);
+    expect(checked.status).toBe(0);
+    expect(checked.out).toContain("in sync with the compiled stage graph");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
   // ===========================================================================
   // Test 4 — §6-E NON-GOLDEN: the guard CATCHES a MISSING runner. In a SANDBOX
   // copy, delete a stage-runner dir, then `check` must FIRE: exit 1 AND name the

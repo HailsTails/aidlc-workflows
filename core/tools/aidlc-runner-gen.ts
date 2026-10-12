@@ -388,15 +388,55 @@ function handleWrite(): string[] {
 
 type RunnerSlugParser = (body: string) => string | null;
 
-function isLegacyGeneratedRunnerDirName(
-  dirName: string,
-  slug: string,
-  legacyBareSlugs: ReadonlySet<string>,
-): boolean {
-  // One-release transition for markerless runners generated before the
-  // provenance marker existed: core-owned generated runners used aidlc-<slug>,
-  // while plugin-owned generated runners used the bare plugin-prefixed slug.
-  return dirName === `aidlc-${slug}` || (legacyBareSlugs.has(slug) && dirName === slug);
+export type RunnerOwnership = "generated" | "unmanaged";
+
+export interface RunnerOwnershipInput {
+  dirName: string;
+  slug: string;
+  marker: "present" | "absent";
+  legacyBareSlugs: ReadonlySet<string>;
+}
+
+export function runnerOwnership({
+  dirName,
+  slug,
+  marker,
+  legacyBareSlugs,
+}: RunnerOwnershipInput): RunnerOwnership {
+  if (marker === "present") return "generated";
+  if (dirName === "aidlc-" + slug) return "generated";
+  if (legacyBareSlugs.has(slug) && dirName === slug) return "generated";
+  return "unmanaged";
+}
+
+type RunnerSkill =
+  | { kind: "not-runner" }
+  | { kind: RunnerOwnership; slug: string };
+
+interface RunnerSkillInput {
+  skillMdPath: string;
+  dirName: string;
+  parseSlug: RunnerSlugParser;
+  legacyBareSlugs: ReadonlySet<string>;
+}
+
+function readRunnerSkill({
+  skillMdPath,
+  dirName,
+  parseSlug,
+  legacyBareSlugs,
+}: RunnerSkillInput): RunnerSkill {
+  if (!existsSync(skillMdPath)) return { kind: "not-runner" };
+  const body = readFileSync(skillMdPath, "utf-8");
+  const slug = parseSlug(body);
+  if (!slug) return { kind: "not-runner" };
+  const kind = runnerOwnership({
+    dirName,
+    slug,
+    marker: hasRunnerGenMarker(body) ? "present" : "absent",
+    legacyBareSlugs,
+  });
+  return { kind, slug };
 }
 
 function generatedRunnerSlugForPrune(
@@ -405,15 +445,13 @@ function generatedRunnerSlugForPrune(
   parseSlug: RunnerSlugParser,
   legacyBareSlugs: ReadonlySet<string>,
 ): string | null {
-  if (!existsSync(skillMdPath)) return null;
-  const body = readFileSync(skillMdPath, "utf-8");
-  const slug = parseSlug(body);
-  if (!slug) return null;
-  if (hasRunnerGenMarker(body) || isLegacyGeneratedRunnerDirName(dirName, slug, legacyBareSlugs)) {
-    return slug;
+  const runner = readRunnerSkill({ skillMdPath, dirName, parseSlug, legacyBareSlugs });
+  if (runner.kind === "not-runner") return null;
+  if (runner.kind === "unmanaged") {
+    console.error("unmanaged skill, not pruned: " + dirName);
+    return null;
   }
-  console.error(`unmanaged skill, not pruned: ${dirName}`);
-  return null;
+  return runner.slug;
 }
 
 function pluginOwnedStageSlugsForLegacy(): ReadonlySet<string> {
@@ -425,14 +463,6 @@ function pluginOwnedScopeSlugsForLegacy(): ReadonlySet<string> {
   return new Set(Object.entries(all).filter(([, front]) => front.plugin).map(([scope]) => scope));
 }
 
-// The on-disk runner SIGNATURE: a stage-runner's SKILL.md drives
-// `aidlc-orchestrate next --stage <slug> --single`. Identifying runners by this
-// body marker — NOT by compiled-set membership — is what lets the drift guard see
-// ORPHANS: a runner skill dir that drives `--single` but whose slug is
-// no longer a compiled stage. Non-runner skills (aidlc, aidlc-replay,
-// aidlc-session-cost, aidlc-outcomes-pack, and the scope-runners, which drive
-// `--scope` not `--stage`) carry no `--stage … --single` marker, so they are
-// never mistaken for stage-runners and never flagged.
 const SINGLE_RUNNER_MARKER = "--stage";
 function stageRunnerSlugFromBody(body: string): string | null {
   if (!body.includes(SINGLE_RUNNER_MARKER) || !body.includes("--single")) return null;
@@ -440,23 +470,6 @@ function stageRunnerSlugFromBody(body: string): string | null {
   return m?.[1] ?? null;
 }
 
-function isRunnerSkill(skillMdPath: string): boolean {
-  if (!existsSync(skillMdPath)) return false;
-  const body = readFileSync(skillMdPath, "utf-8");
-  return stageRunnerSlugFromBody(body) !== null;
-}
-
-function runnerSlugFromSkill(skillMdPath: string): string | null {
-  if (!isRunnerSkill(skillMdPath)) return null;
-  const body = readFileSync(skillMdPath, "utf-8");
-  return stageRunnerSlugFromBody(body);
-}
-
-// The on-disk stage-runner set: every skill dir whose SKILL.md is a stage-runner
-// (carries the `--single` signature). Returns the slugs — compiled or not — so
-// the caller can compute BOTH missing (compiled, no runner) AND orphan (runner,
-// not compiled) divergences. Slugs are parsed from the command body because
-// plugin-owned runner dirs intentionally do not have an `aidlc-` prefix.
 function onDiskRunnerSlugs(): string[] {
   return onDiskRunnerEntries().map((e) => e.slug);
 }
@@ -465,11 +478,17 @@ function onDiskRunnerEntries(): Array<{ slug: string; dir: string }> {
   const skillsDir = defaultSkillsDir();
   if (!existsSync(skillsDir)) return [];
   const found: Array<{ slug: string; dir: string }> = [];
+  const legacyBareSlugs = pluginOwnedStageSlugsForLegacy();
   for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const dir = join(skillsDir, entry.name);
-    const slug = runnerSlugFromSkill(join(dir, "SKILL.md"));
-    if (slug) found.push({ slug, dir });
+    const runner = readRunnerSkill({
+      skillMdPath: join(dir, "SKILL.md"),
+      dirName: entry.name,
+      parseSlug: stageRunnerSlugFromBody,
+      legacyBareSlugs,
+    });
+    if (runner.kind === "generated") found.push({ slug: runner.slug, dir });
   }
   return found;
 }
