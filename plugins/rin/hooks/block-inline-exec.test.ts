@@ -426,3 +426,95 @@ describe("block-inline-exec pass-through path", () => {
     expect(decision.hookSpecificOutput?.permissionDecision).toBeUndefined();
   });
 });
+
+describe("block-inline-exec installed harness tools", () => {
+  const installedDecisionFor = async ({
+    harnessDir,
+    command,
+    metadata,
+  }: {
+    readonly harnessDir: string;
+    readonly command: string;
+    readonly metadata?: string | null;
+  }) => {
+    const projectDir = mkdtempSync(join(tmpdir(), "rin-installed-tools-"));
+    const hooksDir = join(projectDir, harnessDir, "hooks");
+    const dataDir = join(projectDir, harnessDir, "tools", "data");
+    mkdirSync(hooksDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
+    const hookPath = join(hooksDir, HOOK);
+    copyFileSync(join(dirname(fileURLToPath(import.meta.url)), HOOK), hookPath);
+    if (metadata !== null) {
+      writeFileSync(
+        join(dataDir, "harness.json"),
+        metadata ?? JSON.stringify({ harnessDir }),
+      );
+    }
+    try {
+      const outcome = await invokeBashHook({
+        hookFileName: HOOK,
+        hookPath,
+        command,
+        runtime: RUNTIME,
+      });
+      return permissionDecisionFrom({ stdout: outcome.stdout });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  };
+
+  test.each([
+    { harness: "Claude Code", harnessDir: ".claude", command: "bun .claude/tools/aidlc.ts --status" },
+    { harness: "Kiro CLI", harnessDir: ".kiro", command: "bun .kiro/tools/aidlc.ts --status" },
+    { harness: "Kiro IDE", harnessDir: ".kiro", command: "bun .kiro/tools/aidlc.ts --status" },
+    { harness: "Codex", harnessDir: ".codex", command: "bun .codex/tools/aidlc.ts --status" },
+    { harness: "Cursor", harnessDir: ".cursor", command: "bun .cursor/tools/aidlc.ts --status" },
+    { harness: "opencode", harnessDir: ".aidlc", command: "bun .aidlc/tools/aidlc.ts --status" },
+    { harness: "Copilot", harnessDir: ".aidlc", command: "bun .aidlc/tools/aidlc.ts --status" },
+  ])("allows $harness installed Bun tools", async ({ harnessDir, command }) => {
+    const decision = await installedDecisionFor({ harnessDir, command });
+    expect(decision.hookSpecificOutput?.permissionDecision).toBeUndefined();
+  });
+
+  test("allows an installed tool through the generic project-directory binding", async () => {
+    const decision = await installedDecisionFor({ harnessDir: ".cursor", command: "bun $AIDLC_PROJECT_DIR/.cursor/tools/aidlc.ts --status" });
+    expect(decision.hookSpecificOutput?.permissionDecision).toBeUndefined();
+  });
+
+  test.each([
+    "bun .cursor/hooks/arbitrary.ts",
+    "bun .cursor/scratch/arbitrary.ts",
+    "bun .cursor/tools/../scratch/arbitrary.ts",
+    "bun .cursor/tools/../../outside/arbitrary.ts",
+    "bun .cursor/tools-untrusted/arbitrary.ts",
+    "python3 .cursor/tools/arbitrary.py",
+    "bun .cursor/tools/aidlc.ts -e 1",
+    "bun .cursor/tools/aidlc.ts && node -e 1",
+    "bun .cursor/tools/aidlc.ts | node",
+    "bun .cursor/tools/aidlc.ts\nnode outside.ts",
+    "bun .cursor/tools/aidlc.ts\r\nnode outside.ts",
+    "bun .cursor/tools/aidlc.ts $(node outside.ts)",
+    "bun .cursor/tools/aidlc.ts `node outside.ts`",
+    "bun .cursor/tools/aidlc.ts <(node outside.ts)",
+    "AIDLC_PROJECT_DIR=../other; bun $AIDLC_PROJECT_DIR/.cursor/tools/evil.ts",
+    "bun .cursor/tools/aidlc.ts (node outside.ts)",
+    "$aidlc_project_dir = '../other'; bun $AIDLC_PROJECT_DIR/.cursor/tools/evil.ts",
+    "$UP='../scratch'; bun .cursor/tools/$UP/evil.ts",
+    "UP='/../../../outside'; bun .cursor/tools/fake.ts$UP",
+    "bun .cursor/tools/fake.ts/../../../outside",
+    "bun .codex/tools/aidlc.ts --status",
+  ])("still denies %s in a Cursor installation", async (command) => {
+    const decision = await installedDecisionFor({ harnessDir: ".cursor", command });
+    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+
+  test.each([
+    { label: "missing", metadata: null },
+    { label: "malformed", metadata: "invalid JSON" },
+    { label: "wrong shape", metadata: "[]" },
+    { label: "another directory", metadata: '{"harnessDir":".codex"}' },
+  ])("denies with $label harness metadata", async ({ metadata }) => {
+    const decision = await installedDecisionFor({ harnessDir: ".cursor", command: "bun .cursor/tools/aidlc.ts --status", metadata });
+    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
+  });
+});
