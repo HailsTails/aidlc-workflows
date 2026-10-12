@@ -171,7 +171,16 @@ export function emitDefaultRules(
   harnessDir: string,
   invoke: string,
   trustedNamespace: string,
+  toolNames: readonly string[] = ["aidlc.ts"],
 ): string {
+  const toolPaths = [...new Set(toolNames.filter((name) => /^aidlc(?:-[a-z0-9-]+)?\.ts$/.test(name)))]
+    .sort()
+    .flatMap((name) => [
+      `${harnessDir}/tools/${name}`,
+      `./${harnessDir}/tools/${name}`,
+      win32.join(harnessDir, "tools", name),
+      `.\\${win32.join(harnessDir, "tools", name)}`,
+    ]);
   const trustedPattern = ["aidlc", trustedNamespace]
     .map((token) => JSON.stringify(token))
     .join(", ");
@@ -179,7 +188,7 @@ export function emitDefaultRules(
     ? `# Native runtime allowlist: framework commands invoke the self-contained binary.
 prefix_rule(pattern = [${trustedPattern}], decision = "allow")`
     : `# Bun copy-channel allowlist: deterministic framework tools stay under the harness tree.
-prefix_rule(pattern = ["bun", "${harnessDir}/tools/"], decision = "allow")`;
+prefix_rule(pattern = ["bun", ${JSON.stringify(toolPaths)}], decision = "allow")`;
   return `# dist/codex shipped permission rules (Starlark) — ${harnessDir}/rules/ is
 # Codex's NATIVE rules dir (this file), distinct from the AIDLC markdown rule
 # layers at ${harnessDir}/aidlc-rules/ (D-10 rename).
@@ -453,7 +462,7 @@ export default function emit(ctx: EmitContext): void {
   emissions.push({
     path: join(CODEX_ROOT, "rules", "default.rules"),
     content: () =>
-      emitDefaultRules(harnessDir, invoke, trustedRouteNamespace),
+      emitDefaultRules(harnessDir, invoke, trustedRouteNamespace, readdirSync(join(CODEX_ROOT, "tools"))),
   });
   emissions.push({
     path: join(CODEX_ROOT, "trust-seed.toml"),

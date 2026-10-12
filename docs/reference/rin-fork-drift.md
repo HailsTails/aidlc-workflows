@@ -314,3 +314,49 @@ exemptions and content-identical moves remain accepted, without requiring Five
 Whys when R7 is not selected. Decay does not prove selected-rule paydown after
 retirement. Source fixtures use the existing hermetic Git helper; live consumer
 installation and workflow acceptance remain separate proof obligations.
+## Codex copied-tool argv allowlist - upstream candidate (2026-10-13)
+
+Capability ID: `codex-tool-argv-allowlist`. Owner: `harness/codex/emit.ts`
+(`emitDefaultRules`), with focused pure coverage in
+`harness/codex/emit.test.ts` and the existing `t150-codex-packaging` suite.
+Classification: **upstream AIDLC candidate**. Fork baseline
+`01b36ba6a92ca1260518b63043abfe132c3cc0ea` and upstream comparison
+`7a61fa7b2bca5bc701ab0a7e6ca3608df8f4694f` contain the same defective
+`["bun", ".codex/tools/"]` prefix rule. Codex prefix matching compares argv
+items, not directory-string prefixes: the installed CLI 0.162.1 checker
+matches that directory token literally but does not allow the normal
+`bun .codex/tools/aidlc.ts engine orchestrate next` command. The prior packaging
+assertion pinned the defective text rather than its intended command behavior.
+
+This was observed as adoption friction in the ordinary adopter-owned workflow
+trial: a plain Codex launch used manual approvals, and real tool invocations
+did not match the advertised Bun rule. Automatic approval review was a temporary
+trial workaround, not the correction. Hook trust and tool-command approval are
+separate host surfaces; this change does not install or activate trust.
+
+The copy projection now enumerates the currently shipped top-level
+`aidlc.ts`/`aidlc-*.ts` files as exact second-argument alternatives, excluding
+tests, unrelated filenames and path-bearing inventory entries. Equivalent
+forward-slash, dot-prefixed and Windows relative spellings are explicit
+alternatives; subsequent argv items remain ordinary framework arguments.
+Native `aidlc engine` permission rules are unchanged. No arbitrary Bun script,
+unknown filename, directory wildcard, absolute path, Bun execution flag,
+`bun run` variant or shell-wrapper argv is granted by the new rule. This is an
+argv allowlist in a trusted project launched from its root, not filesystem
+containment or file-content authentication; the host still owns shell
+command decomposition and applies its policy to each command.
+
+Adopt after the active session finishes: regenerate from the reviewed producer
+and refresh the installed project's generated `.codex/rules/default.rules`
+through normal project setup, preserving any consumer-owned rules. Check the
+normal direct Bun argv with `codex execpolicy check --rules
+.codex/rules/default.rules -- bun .codex/tools/aidlc.ts engine orchestrate next`.
+Use the ordinary manual approval mode; automatic review is not required for
+these matching commands. Plugin-added scripts require their own reviewed
+permission policy and are not silently added to this core allowlist. The active
+mock checkout is deliberately not refreshed mid-run.
+
+**Removal condition:** retire this drift when an adopted upstream version emits
+an equivalent finite exact-file argv allowlist, preserves the native rule and
+passes the focused positive/negative matcher cases. No upstream publication or
+acceptance is claimed here.
