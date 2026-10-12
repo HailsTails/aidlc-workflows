@@ -233,3 +233,59 @@ registration require separate acceptance evidence.
 The Rin promotion wrapper delegates to upstream V2 `engine hook rebuild-stage-graph` with `tool_input.source: ide-audit-sync`, the existing upstream audit-tail contract. This corrects the extraction's `audit-sync` spelling, which silently skipped rebuilds. Retire this wrapper when upstream recognizes the consumer promotion command directly; no new rebuild engine or approval policy is introduced.
 
 Package-importing core tools use the same repository runtime/declaration companion emitter as plugins. Copy and native projections retain the authored import path and own their generated runtime dependencies; consumer npm installation is unnecessary.
+
+## Consumer lint script — upstream candidate (2026-10-12)
+
+Capability ID: `consumer-lint-script`. Producer owner: public core
+`core/tools/aidlc-sensor-linter.ts`; regression:
+`tests/unit/t-consumer-lint-script.test.ts`. Classification: **upstream AIDLC
+candidate**, not a Rin-only lint policy. Consumer package scripts, manager,
+working directory and ESLint/Biome rule configuration remain consumer-owned.
+
+The producer baseline is merged `158c4eafb027858ebc8d40765cffd449c448f428`,
+with upstream comparison pin `7a61fa7b2bca5bc701ab0a7e6ca3608df8f4694f`.
+Read-only remote verification on 2026-10-12 confirmed fork main at that merged
+pin. The available fork history contains no `scripts.lint` delegation in the
+linter tool. Rin's retained requirement is owned by
+`260816-intent-260816-sensor-lay`, absorbing capture `01a0e685` on 2026-09-28;
+its facts S-8 and the linked `260927-sensor-verdicts-reach-la` S-17 describe the
+ESLint sensor returning unavailable instead of running Biome. The existing
+format sensor is intentionally formatting-only. This correction restores the
+bounded lint delegation; it does not close the broader sensor-layout intent
+or add the requested safe-fix policy.
+
+Current upstream head checked at
+`6ed7b3330c48b4664124cdf2525cea162990aed2` still invokes ESLint directly.
+[Upstream issue #2202](https://github.com/awslabs/aidlc-workflows/issues/2202)
+tracks local ESLint version/config compatibility and unverified-pass audit
+semantics. Its newer local-ESLint repair is a distinct capability: it does not
+invoke an arbitrary consumer lint script. No upstream issue, PR, acceptance
+or publication is claimed for this candidate.
+
+The correction prefers a non-empty `scripts.lint`, chooses npm/pnpm/Yarn/Bun
+from the explicit flag, selected manifest or selected directory's lockfile,
+and runs once in the selected package directory. `--project-dir` selects a
+workspace root; `--runner project` requires its script; `--runner eslint`
+retains explicit legacy selection. Default auto retains the old ESLint path
+only when a script is absent. Script exit status owns the verdict; nonzero,
+signal, timeout and spawn failures produce failed sensor JSON. Missing-script
+and selection errors remain unavailable/script-error outcomes under the
+existing dispatcher, not verified lint results. No formatter, new rules,
+manager installation or filename arguments are added.
+
+Adopt by installing an exact producer build and following
+`core/sensors/aidlc-linter.md` or the sensor chapter's consumer lint instructions.
+For automatic workspace-root lint, launch the harness with process-scoped
+`AIDLC_LINT_PROJECT_DIR=.` and `AIDLC_LINT_RUNNER=project`, plus
+`AIDLC_LINT_PACKAGE_MANAGER` when needed. Direct CLI flags override those
+defaults. Manifest command suffix flags are not forwarded by the existing
+dispatcher.
+Consumer installation and live workflow evidence remain separate from source
+unit checks; the consumer's historical notes and installed files must not be
+rewritten as if they already adopted this producer change.
+
+**Removal condition:** retire this drift after an adopted upstream version
+provides equivalent consumer-script selection, manager/cwd conventions and
+honest failed/unavailable behavior, with these focused regressions passing.
+An upstream local-ESLint resolver alone does not meet that condition. The
+Rin sensor-layout owner retains its broader configuration and safe-fix work.
