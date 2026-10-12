@@ -203,7 +203,7 @@ every declared deliverable. Full behavior is in
 **`default_severity` — signal or enforcement.** `advisory` records outcomes and
 continues. `blocking` stops a gate-fired sensor unless the dispatcher returns a
 verified pass; findings, unavailable evaluation, malformed output, and timeout
-all refuse. The operator may fix the issue or explicitly select
+all refuse. The report returns `print` with `agent_guidance: "fix-sensor-findings"`: the agent repairs within authorized stage scope and retries the same report without an override, preserving required review evidence and the human approval gate. If repair needs new authority or cannot proceed, it asks the person. Only when the person requests an override may they explicitly select
 `Override blocking sensors` from the logged two-choice prompt, then retry with
 the flag and exact `--user-input`. Autonomous mode cannot override. Blocking on
 write-fired sensors is accepted by the schema but remains advisory in this

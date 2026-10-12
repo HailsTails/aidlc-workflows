@@ -12853,6 +12853,9 @@ function stateRefusalDirective(lead: string, question: string, detail: string): 
     );
   }
   if (agentGuidance === "person-decided") return printDirective(text);
+  if (agentGuidance === "fix-sensor-findings") {
+    return { ...printDirective(text), agent_guidance: "fix-sensor-findings" };
+  }
   return errorDirective(
     lead + (text ? `: ${text}` : `. Run ${entrySkillInvocation()} --doctor if the reason is unclear.`),
   );

@@ -765,7 +765,9 @@ class StateGuardRefusalError extends Error {
 // the spot, so the admission functions the router shares with the handlers are
 // ordinary functions: a structural refusal unwinds to main() for the CLI, and
 // the router treats it as "cannot decide" and fails open to the real command.
-class StateCommandError extends Error {}
+class StateCommandError extends Error {
+  agentGuidance?: "fix-sensor-findings";
+}
 
 // The audit transaction could not start or its append already failed. Report
 // the original refusal without waiting again on the same unavailable audit.
@@ -1042,6 +1044,9 @@ export function main(argv: string[]): void {
         auditMessage: e.message,
         agentGuidance: e.personDecided ? "person-decided" : "question-open",
       });
+    }
+    if (e instanceof StateCommandError && e.agentGuidance) {
+      exitWithError({ message: e.message, auditMessage: e.message, agentGuidance: e.agentGuidance });
     }
     exitWithError(errorMessage(e));
   }
@@ -3753,7 +3758,10 @@ function enforceBlockingGateSensors(
   error(
     `Blocking gate sensor evaluation did not pass for "${slug}". Sensors: ` +
       `${sensorIds.join(", ")}. Detail paths: ${detailPaths.join(", ") || "none"}. ` +
-      `Reasons: ${reasons.join("; ")}. Fix the findings and retry, or first run ` +
+      `Reasons: ${reasons.join("; ")}. Fix the findings within the already authorized stage scope, then retry ` +
+      `${aidlcToolInvocation("orchestrate")} report --stage ${slug} --result ${reportResult} ` +
+      `without an override. If correction requires new authority or cannot proceed, explain the blocker and ask the person. ` +
+      `Only if the person requests an override, first run ` +
       `${aidlcToolInvocation("log")} decision --stage ${slug} ` +
       `--decision "${BLOCKING_SENSOR_OVERRIDE_DECISION}" --options ` +
       `"${BLOCKING_SENSOR_OVERRIDE_OPTIONS.join(",")}", present those choices, and ` +
@@ -3761,6 +3769,7 @@ function enforceBlockingGateSensors(
       `${aidlcToolInvocation("log")} answer. Then retry: ${aidlcToolInvocation("orchestrate")} ` +
       `report --stage ${slug} --result ${reportResult} --override-blocking-sensors ` +
       `--user-input "${BLOCKING_SENSOR_OVERRIDE_CHOICE}". Autonomous mode cannot override.`,
+    "fix-sensor-findings",
   );
 }
 
@@ -8630,8 +8639,10 @@ function handleMerge(args: string[]): void {
 // functions below stay callable in-process by the router; main() catches the
 // throw and exits through exitWithError, which is the one place that writes the
 // ERROR_LOGGED row and ends the process.
-function error(msg: string): never {
-  throw new StateCommandError(msg);
+function error(msg: string, agentGuidance?: "fix-sensor-findings"): never {
+  const refusal = new StateCommandError(msg);
+  if (agentGuidance) refusal.agentGuidance = agentGuidance;
+  throw refusal;
 }
 
 function exitWithError(msg: EmitErrorMessage): never {

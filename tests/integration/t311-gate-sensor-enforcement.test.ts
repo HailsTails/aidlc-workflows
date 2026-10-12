@@ -219,6 +219,7 @@ function gate(
 function reportRevised(
   fixture: Fixture,
   extra: string[] = [],
+  reportResult = "revised",
 ): { status: number; out: string } {
   const result = spawnSync(
     BUN,
@@ -228,7 +229,7 @@ function reportRevised(
       "--stage",
       "probe",
       "--result",
-      "revised",
+      reportResult,
       ...extra,
       "--project-dir",
       fixture.project,
@@ -336,6 +337,51 @@ function dispatcherStub(
 }
 
 describe("t311 gate-bound sensor enforcement", () => {
+  test("failed sensor report drives authorized correction and a normal gate retry", () => {
+    const fixture = setupFixture("blocking");
+    writeFileSync(join(fixture.outputDir, "one.md"), "const probe: any = null;\n", "utf-8");
+    writeFileSync(join(fixture.scripts, "aidlc-sensor-gate-probe.ts"), [
+      'import { readFileSync } from "node:fs";',
+      'const output = process.argv[process.argv.indexOf("--output-path") + 1];',
+      'const pass = !readFileSync(output, "utf-8").includes(": any");',
+      'process.stdout.write(JSON.stringify({ pass, findings_count: pass ? 0 : 1 }) + "\\n");',
+    ].join("\n"), "utf-8");
+    const refused = reportRevised(fixture, [], "awaiting-approval");
+    expect(refused.status).toBe(0);
+    expect(JSON.parse(refused.out)).toMatchObject({ kind: "print", agent_guidance: "fix-sensor-findings" });
+    expect(refused.out).toContain("without an override");
+    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [-] probe");
+    expect(eventCount(audit(fixture.project), "STAGE_AWAITING_APPROVAL")).toBe(0);
+    writeFileSync(join(fixture.outputDir, "one.md"), "const probe: unknown = null;\n", "utf-8");
+    const retried = reportRevised(fixture, [], "awaiting-approval");
+    expect(retried.status).toBe(0);
+    expect(JSON.parse(retried.out)).toMatchObject({ kind: "print" });
+    expect(retried.out).not.toContain("fix-sensor-findings");
+    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [?] probe");
+    expect(eventCount(audit(fixture.project), "STAGE_AWAITING_APPROVAL")).toBe(1);
+    expect(eventCount(audit(fixture.project), "GATE_APPROVED")).toBe(0);
+    expect(eventCount(audit(fixture.project), "QUESTION_ANSWERED")).toBe(0);
+    expect(audit(fixture.project)).not.toContain("**Blocking Sensor Override**:");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("revised sensor reports remain recoverable and unauthorized overrides remain terminal", () => {
+    const fixture = setupFixture("blocking");
+    writeFileSync(seededStateFile(fixture.project), readFileSync(seededStateFile(fixture.project), "utf-8").replace("- [-] probe", "- [R] probe"), "utf-8");
+    const refused = reportRevised(fixture);
+    expect(JSON.parse(refused.out)).toMatchObject({ kind: "print", agent_guidance: "fix-sensor-findings" });
+    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [R] probe");
+    const unauthorized = reportRevised(fixture, overrideArgs());
+    expect(JSON.parse(unauthorized.out)).toMatchObject({ kind: "error" });
+    expect(unauthorized.out).toContain("no fresh authorization receipt");
+    writeFileSync(join(fixture.scripts, "aidlc-sensor-gate-probe.ts"), 'process.stdout.write(JSON.stringify({ pass: true, findings_count: 0 }) + "\\n");\n', "utf-8");
+    const retried = reportRevised(fixture);
+    expect(JSON.parse(retried.out)).toMatchObject({ kind: "print" });
+    expect(retried.out).not.toContain("fix-sensor-findings");
+    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [?] probe");
+    expect(eventCount(audit(fixture.project), "GATE_APPROVED")).toBe(0);
+    expect(audit(fixture.project)).not.toContain("**Blocking Sensor Override**:");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
   for (const transition of ["gate-start", "revise", "approve"] as const) {
     test(`an explicit off override skips classic sensors at ${transition}; a resumed intent can opt back in`, () => {
       for (const enabled of [false, true]) {
