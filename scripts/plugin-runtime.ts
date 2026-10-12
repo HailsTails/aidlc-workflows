@@ -224,6 +224,15 @@ function entrySourceForCompanion(input: { readonly source: string; readonly file
   return content;
 }
 
+export function emitEntryDeclaration(program: Pick<ts.Program, "emit" | "getSourceFile">, sourceFile: string) {
+  const entry = program.getSourceFile(sourceFile);
+  let declaration: string | undefined;
+  const emitted = program.emit(undefined, (_path, content, _bom, _error, sources) => {
+    if (entry !== undefined && sources?.some((source) => ts.getOriginalNode(source) === entry)) declaration = content;
+  });
+  return { emitted, declaration };
+}
+
 export function createPluginRuntimePort(input: { readonly projectRoot: string }): PluginRuntimePort {
   const configFile = ts.readConfigFile(join(input.projectRoot, "tsconfig.json"), ts.sys.readFile);
   if (configFile.error !== undefined) throw new Error(ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n"));
@@ -294,10 +303,7 @@ export function createPluginRuntimePort(input: { readonly projectRoot: string })
         `plugin runtime declaration build failed: ${file}: ${diagnostics.map((entry) =>
           ts.flattenDiagnosticMessageText(entry.messageText, "\n")).join("\n")}`,
       );
-      let declaration: string | undefined;
-      const emitted = program.emit(undefined, (_path, content, _bom, _error, sources) => {
-        if (sources?.some((entry) => entry.fileName === sourceFile)) declaration = content;
-      });
+      const { emitted, declaration } = emitEntryDeclaration(program, sourceFile);
       if (emitted.emitSkipped || declaration === undefined) throw new Error(
         `plugin runtime declaration build produced no entry declaration: ${file}`,
       );
