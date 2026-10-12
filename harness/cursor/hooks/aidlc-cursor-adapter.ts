@@ -63,6 +63,14 @@ import {
   takeSessionSelectionNotice,
 } from "../tools/aidlc-lib.ts";
 import { aidlcInvocation, knownActiveSpace } from "../tools/aidlc-runtime-paths.ts";
+import { hookContextOf } from "../tools/aidlc-hook-context.ts";
+
+function emitContext({ outputs, allowPlainText }: { outputs: string[]; allowPlainText: boolean }): void {
+  const additionalContext = outputs.map((stdout) => hookContextOf({ stdout, allowPlainText })).filter(Boolean).join("\n");
+  if (!additionalContext) return;
+  process.stdout.write(`${JSON.stringify({ additional_context: additionalContext })}\n`);
+}
+
 
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -643,7 +651,12 @@ export async function run(
 
   // Cursor's shell tool is "Shell"; the core hooks key on Claude's "Bash".
   // Everything else (Read/Write/Edit/Grep/Glob/Task/...) already matches.
-  const toolName = cursor.tool_name === "Shell" ? "Bash" : (cursor.tool_name ?? "");
+  const toolName = cursor.tool_name === "Shell"
+    ? "Bash"
+    : cursor.tool_name === "StrReplace" ? "Edit" : (cursor.tool_name ?? "");
+  const toolInput = cursor.tool_input && typeof cursor.tool_input.path === "string"
+    ? { ...cursor.tool_input, file_path: cursor.tool_input.file_path ?? cursor.tool_input.path }
+    : cursor.tool_input;
 
   // Cursor is the first harness with a FIRST-CLASS file-deletion tool
   // ("Delete", tool_input.file_path; probe-verified). Every other harness
@@ -710,6 +723,7 @@ export async function run(
       ...cursor,
       hook_event_name: eventName,
       tool_name: nameOverride ?? toolName,
+      tool_input: toolInput,
       cwd: effectiveCwd(),
       ...(agent && agent !== AMBIGUOUS_REVIEWER ? { agent_type: agent } : {}),
     });
@@ -2987,17 +3001,13 @@ export async function run(
         source: cursor.source ?? "startup",
         ...(sessionId ? { session_id: sessionId } : {}),
       });
-      const r = runCore("aidlc-session-start.ts", fwd);
-      // Core prints {"additionalContext"} (Claude's key); Cursor consumes
-      // {"additional_context"} (live-verified injection channel).
-      try {
-        const parsed = JSON.parse(r.stdout) as { additionalContext?: string };
-        if (parsed.additionalContext) {
-          process.stdout.write(`${JSON.stringify({ additional_context: parsed.additionalContext })}\n`);
-        }
-      } catch {
-        // no context payload — silent
-      }
+      emitContext({
+        outputs: [
+          runCore("aidlc-session-start.ts", fwd).stdout,
+          ...pluginHooksFor("SessionStart").map((file) => runCore(file, fwd).stdout),
+        ],
+        allowPlainText: true,
+      });
       return 0;
     }
 
@@ -3225,12 +3235,13 @@ export async function run(
     }
 
     case "audit-and-sensors": {
+      const contextOutputs: string[] = [];
       // postToolUse Write|Edit → audit THEN sensors (Claude registration
       // order); postToolUse Task → subagent completion (log + ledger clear).
       if (toolName === "Write" || toolName === "Edit") {
         const fwd = claudeShaped("PostToolUse");
         runCore("aidlc-write-audit-log.ts", fwd);
-        runCore("aidlc-run-sensors.ts", fwd);
+        contextOutputs.push(runCore("aidlc-run-sensors.ts", fwd).stdout);
       } else if (toolName === "Task") {
         const sub = cursor.tool_input?.subagent_type;
         // cwd travels with the payload: a hook that resolves a record dir or a
@@ -3253,6 +3264,13 @@ export async function run(
         }
         clearSpawn();
       }
+      emitContext({
+        outputs: [
+          ...contextOutputs,
+          ...pluginHooksFor("PostToolUse").map((file) => runCore(file, claudeShaped("PostToolUse")).stdout),
+        ],
+        allowPlainText: false,
+      });
       return 0;
     }
 

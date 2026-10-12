@@ -4587,4 +4587,73 @@ if (import.meta.main) {
       tool_input: { description: "Developer probe", prompt: "Implement the unit.", subagent_type: "aidlc-developer-agent" },
     })).stdout).permission).toBe("allow");
   });
+  test("39: StrReplace forwards its path and sensor notices with contributed PostToolUse context", () => {
+    const proj = installedProject();
+    const hooks = join(proj, ".cursor", "hooks");
+    copyFileSync(join(import.meta.dir, "../../harness/cursor/hooks/aidlc-cursor-adapter.ts"), join(hooks, "aidlc-cursor-adapter.ts"));
+    writeFileSync(join(hooks, "aidlc-write-audit-log.ts"), 'await Bun.write("audit-payload.json", await Bun.stdin.text());');
+    writeFileSync(join(hooks, "aidlc-run-sensors.ts"), 'console.log(JSON.stringify({hookSpecificOutput:{additionalContext:"sensor notice"}}));');
+    writeFileSync(join(hooks, "plugin-context.ts"), 'await Bun.write("plugin-payload.json", await Bun.stdin.text()); console.log(JSON.stringify({hookSpecificOutput:{additionalContext:"plugin notice"}}));');
+    writeFileSync(join(hooks, "plugin-hook-targets.json"), JSON.stringify({ PostToolUse: ["plugin-context.ts"] }));
+    const result = runAdapter(proj, "audit-and-sensors", JSON.stringify({
+      hook_event_name: "postToolUse", conversation_id: "context-session", cwd: proj,
+      tool_name: "StrReplace", tool_input: { path: join(proj, "src.ts"), old_string: "old", new_string: "new" },
+    }));
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ additional_context: "sensor notice\nplugin notice" });
+    expect(JSON.parse(readFileSync(join(proj, "audit-payload.json"), "utf-8"))).toMatchObject({
+      hook_event_name: "PostToolUse", tool_name: "Edit", tool_input: { file_path: join(proj, "src.ts") },
+    });
+    expect(JSON.parse(readFileSync(join(proj, "plugin-payload.json"), "utf-8"))).toMatchObject({ tool_name: "Edit" });
+  });
+
+  test("40: SessionStart preserves core and contributed plain context", () => {
+    const proj = installedProject();
+    const hooks = join(proj, ".cursor", "hooks");
+    copyFileSync(join(import.meta.dir, "../../harness/cursor/hooks/aidlc-cursor-adapter.ts"), join(hooks, "aidlc-cursor-adapter.ts"));
+    writeFileSync(join(hooks, "aidlc-session-start.ts"), 'console.log(JSON.stringify({additionalContext:"core context"}));');
+    writeFileSync(join(hooks, "plugin-session.ts"), 'await Bun.write("session-payload.json", await Bun.stdin.text()); console.log("plugin startup notice");');
+    writeFileSync(join(hooks, "plugin-hook-targets.json"), JSON.stringify({ SessionStart: ["plugin-session.ts"] }));
+    const result = runAdapter(proj, "session-start", JSON.stringify({
+      hook_event_name: "sessionStart", conversation_id: "startup-context", cwd: proj,
+    }));
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ additional_context: "core context\nplugin startup notice" });
+    expect(JSON.parse(readFileSync(join(proj, "session-payload.json"), "utf-8"))).toEqual({
+      hook_event_name: "SessionStart", source: "startup", session_id: "startup-context",
+    });
+  });
+
+  test("41: Shell dispatches contributed PostToolUse without treating malformed output as context", () => {
+    const proj = installedProject();
+    const hooks = join(proj, ".cursor", "hooks");
+    copyFileSync(join(import.meta.dir, "../../harness/cursor/hooks/aidlc-cursor-adapter.ts"), join(hooks, "aidlc-cursor-adapter.ts"));
+    writeFileSync(join(hooks, "plugin-shell.ts"), 'await Bun.write("shell-payload.json", await Bun.stdin.text()); console.log("not a context payload");');
+    writeFileSync(join(hooks, "plugin-hook-targets.json"), JSON.stringify({ PostToolUse: ["plugin-shell.ts"] }));
+    const result = runAdapter(proj, "audit-and-sensors", JSON.stringify({
+      hook_event_name: "postToolUse", conversation_id: "shell-context", cwd: proj,
+      tool_name: "Shell", tool_input: { command: "git status" },
+    }));
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(readFileSync(join(proj, "shell-payload.json"), "utf-8"))).toMatchObject({
+      hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "git status" },
+    });
+  });
+  test("42: standalone copied adapter preserves context with Bun package auto-install disabled", () => {
+    const proj = installedProject();
+    const hooks = join(proj, ".cursor", "hooks");
+    const adapter = join(hooks, "aidlc-cursor-adapter.ts");
+    writeFileSync(join(hooks, "aidlc-session-start.ts"), 'console.log(JSON.stringify({additionalContext:"standalone core context"}));');
+    writeFileSync(join(hooks, "plugin-hook-targets.json"), JSON.stringify({}));
+    const result = spawnSync("bun", ["--no-install", adapter, "session-start"], {
+      cwd: proj, encoding: "utf8", input: JSON.stringify({ conversation_id: "standalone-context", cwd: proj }),
+      timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+      env: { ...process.env, AIDLC_PROJECT_DIR: proj, AIDLC_HARNESS_DIR: ".cursor" },
+    });
+    expect(readFileSync(adapter, "utf8")).not.toContain('from "zod"');
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain("Cannot find package");
+    expect(JSON.parse(result.stdout)).toEqual({ additional_context: "standalone core context" });
+  });
 });
