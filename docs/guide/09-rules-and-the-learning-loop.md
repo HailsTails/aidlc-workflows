@@ -153,7 +153,7 @@ Six sensors ship with the framework:
 | `required-sections` | Any record-dir markdown output, plus reverse-engineering's `codekb/` files | The output contains the required H2 headings (a generic content-shape check). Timestamp run records such as `practices-discovery-timestamp.md` always pass |
 | `upstream-coverage` | Any record-dir markdown output, plus reverse-engineering's `codekb/` files | The stage's deliverables (evaluated as a set) reference each upstream artifact the stage declares it consumes, by slug, wikilink, or the producing stage's directory path |
 | `traceability` | `traceability.json` stage artifacts | Stable upstream IDs are declared and covered, statuses and targets are valid, and deterministic downstream targets exist |
-| `linter` | `.ts` / `.js` code outputs | Wraps your configured linter (ESLint by default) |
+| `linter` | `.ts` / `.js` code outputs | Runs `package.json` lint when present; otherwise pinned ESLint |
 | `type-check` | `.ts` / `.tsx` code outputs | Wraps your configured type-checker (`tsc` by default) |
 
 Each stage declares which sensors fire on its outputs. You can add your own sensors — author a manifest under `.claude/sensors/`, then add its id to the stages that should run it. The learning loop can also install a sensor for you when you confirm one at a gate. The manifest format, the per-stage matrix, and the authoring walkthrough live in [Sensor System](../reference/07-sensor-system.md). For adding one to your own project, see [Customization](13-customization.md).

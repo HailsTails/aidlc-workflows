@@ -64,7 +64,7 @@ Six manifests ship under `.claude/sensors/`, each prefixed `aidlc-`:
 | `aidlc-required-sections.md` | Gate | The output carries the required H2 headings — a generic content-shape check. Timestamp run records (`*-timestamp.md`) always pass |
 | `aidlc-upstream-coverage.md` | Gate | The stage's deliverables (evaluated as a set) reference each upstream artifact the stage declares it consumes, by slug, wikilink, or the producing stage's directory path |
 | `aidlc-traceability.md` | Write: `**/traceability.json` | Validates stable upstream IDs, statuses, deterministic targets, and derived business-rule orphans |
-| `aidlc-linter.md` | Write: `.ts` / `.js` | Wraps your configured linter (ESLint by default) |
+| `aidlc-linter.md` | Write: `.ts` / `.js` | Runs `package.json` lint when present; otherwise pinned ESLint |
 | `aidlc-type-check.md` | Write: `.ts` / `.tsx` | Wraps your configured type-checker (`tsc` by default) |
 
 All six are gated by a `matches:` glob (more on that below): the provenance
@@ -239,3 +239,28 @@ made mid-workflow.
 
 [Team Knowledge](07-team-knowledge.md) — give agents the domain context they
 load before they work, the last data surface a harness engineer shapes.
+
+## Consumer-owned lint command
+
+The linter sensor prefers the selected package's `scripts.lint`, using its
+`packageManager` or lockfile convention (npm otherwise). It runs the script in
+that package directory without forwarding a file path or ESLint flags. A
+nonzero or incomplete execution fails the sensor; arbitrary stdout is not
+parsed as ESLint JSON. No lint rules or auto-fixes are added by the framework.
+Keep write-time lint scripts read-only and account for whole-workspace cost.
+
+For automatic workspace-root lint, launch the harness with process-scoped
+`AIDLC_LINT_PROJECT_DIR=.` and `AIDLC_LINT_RUNNER=project`; set
+`AIDLC_LINT_PACKAGE_MANAGER=pnpm` if necessary. Relative directories resolve
+from the sensor invocation's project cwd. The dispatcher does not forward
+suffix flags from the sensor manifest command. For direct invocation use
+`aidlc engine sensor-linter --stage <stage> --file-path <file>` with
+`--runner project --project-dir . --package-manager pnpm` as needed; flags
+override the process defaults.
+
+Project mode reports missing scripts as unavailable instead of trying ESLint.
+Default `auto` retains the pinned ESLint fallback when a script is absent;
+explicit `eslint` selects that fallback. Conflicting manager hints, malformed
+metadata and failed commands are not verified lint passes. Configure CD
+coverage separately in the consumer's ESLint/Biome rules and discipline
+sensors. Full adoption and failure details: `core/sensors/aidlc-linter.md`.
