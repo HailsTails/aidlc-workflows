@@ -5,7 +5,7 @@ import {
   readFileSync,
   statSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // The wire field names (tool_name / tool_input) are the harness's, and they stop
@@ -46,8 +46,8 @@ const denyReason = [
   "2. IF IT IS GENUINE COMPUTE (aggregation, transform, numeric work with no file-tool",
   "   equivalent), do not smuggle it in as novel inline code — COMMIT IT TO AN AUTHORISED",
   "   LOCATION and invoke the file there. Declared authorised prefixes are listed in",
-  "   .constitution-authorised-locations/inline-exec.json (today: scripts/, .claude/tools/,",
-  "   .claude/rin-gates/, .aidlc/{tools,hooks,rin-gates}/). So the pre-formed next action is:",
+  "   .constitution-authorised-locations/inline-exec.json. Installed AIDLC Bun tools use",
+  "   the harness's tools/ directory declared by tools/data/harness.json. The next action is:",
   "",
   "     write the script to scripts/<area>/<name>.<ext>, then invoke it by that path",
   "     (e.g. `bun scripts/<area>/<name>.ts` or `python3 scripts/<area>/<name>.py`)",
@@ -251,13 +251,56 @@ const segmentTargetsAuthorisedLocation = ({
   );
 };
 
-const segmentIsArbitraryExecution = ({
+const installedHarnessToolPrefix = (): string | null => {
+  try {
+    const metadata: unknown = JSON.parse(
+      readFileSync(join(hooksDirectory, "..", "tools", "data", "harness.json"), "utf8"),
+    );
+    if (typeof metadata !== "object" || metadata === null) return null;
+    if (!("harnessDir" in metadata)) return null;
+    const harnessDir = basename(dirname(hooksDirectory));
+    if (metadata.harnessDir !== harnessDir) return null;
+    return `${harnessDir}/tools/`;
+  } catch {
+    return null;
+  }
+};
+
+const installedBunScriptPathRule = new RegExp(
+  String.raw`${leadingEnvAssignments.source}bun\s+(?:run\s+)?(?![-])([^\s|;&]*\.(?:js|mjs|cjs|ts))(?=\s|$)`,
+  "i",
+);
+
+const segmentRunsInstalledHarnessTool = ({
   segment,
+  command,
 }: {
   readonly segment: string;
+  readonly command: string;
+}): boolean => {
+  if (/[\r\n`()]/.test(segment)) return false;
+  if (/\b(?:AIDLC|CLAUDE)_PROJECT_DIR\s*=/i.test(command)) return false;
+  const match = installedBunScriptPathRule.exec(segment);
+  if (match === null) return false;
+  const captured = match[1];
+  if (captured === undefined) return false;
+  const prefix = installedHarnessToolPrefix();
+  if (prefix === null) return false;
+  const scriptPath = normalisedScriptPath({ scriptPath: captured });
+  if (!/^[a-z0-9._/-]+$/i.test(scriptPath)) return false;
+  return scriptPath.startsWith(prefix) && !escapesAuthorisedRoot({ scriptPath, prefix });
+};
+
+const segmentIsArbitraryExecution = ({
+  segment,
+  command,
+}: {
+  readonly segment: string;
+  readonly command: string;
 }): boolean => {
   if (inlineEvalRule.test(segment)) return true;
   if (allowlistedRunnerPattern.test(segment)) return false;
+  if (segmentRunsInstalledHarnessTool({ segment, command })) return false;
   if (segmentTargetsAuthorisedLocation({ segment })) return false;
   return arbitraryExecutionRules.some((executionRule) =>
     executionRule.test(segment),
@@ -363,7 +406,7 @@ const breachedRuleOf = ({
 }): string | null => {
   if (pipeIntoInterpreterRule.test(command)) return "pipe-into-interpreter";
   const arbitraryInAnySegment = splitTopLevelSegments({ command }).some(
-    (segment) => segmentIsArbitraryExecution({ segment }),
+    (segment) => segmentIsArbitraryExecution({ segment, command }),
   );
   return arbitraryInAnySegment ? "arbitrary-execution" : null;
 };
