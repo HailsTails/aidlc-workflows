@@ -18,9 +18,14 @@
 //       surfaces and the 12a dispatch-record prose, so a wiring or prose sweep
 //       cannot silently drop the enforcement while the hook file survives.
 
-import { describe, expect, test } from "bun:test";
+import {
+  NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS,
+  NATIVE_STARTUP_TIMEOUT_MS,
+  remainingOperationTimeoutMs,
+} from "../harness/test-budget.ts";
+import { describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,7 +36,10 @@ import {
   type ScopeContext,
   type ReviewerDispatch,
 } from "../../dist/claude/.claude/hooks/aidlc-reviewer-scope.ts";
+import { stateDigest, writeActiveDirectiveMarker } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
+
+setDefaultTimeout(NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const AIDLC_SRC = join(REPO_ROOT, "dist", "claude", ".claude");
@@ -513,7 +521,7 @@ describe("t221 piped search options preserve the reviewer boundary", () => {
 // (b) Dispatch-record lifecycle - the SHIPPED hook as a subprocess.
 // ---------------------------------------------------------------------------
 
-// A scratch project: the shipped hook + the two lib/audit tools it imports,
+// A scratch project: the shipped hook, its shell parser, the tools it imports,
 // plus a bare workspace record root the dispatch record lands under (no
 // intent registry -> docsRoot resolves to aidlc/spaces/default/intents/).
 function scratchProject(): string {
@@ -522,6 +530,9 @@ function scratchProject(): string {
   mkdirSync(join(dir, ".claude", "hooks"), { recursive: true });
   mkdirSync(join(dir, ".claude", "tools"), { recursive: true });
   cpSync(join(AIDLC_SRC, "hooks", "aidlc-reviewer-scope.ts"), join(dir, ".claude", "hooks", "aidlc-reviewer-scope.ts"));
+  // The claimed-checkout branch reads a shell call's write targets with the
+  // shared parser that ships beside it.
+  cpSync(join(AIDLC_SRC, "hooks", "review-freeze-command.ts"), join(dir, ".claude", "hooks", "review-freeze-command.ts"));
   for (const t of [
     "aidlc-lib.ts",
     "aidlc-artifact-vocabulary.ts",
@@ -531,6 +542,11 @@ function scratchProject(): string {
     "aidlc-channel.ts",
     "aidlc-version.ts",
     "aidlc-runtime-paths.ts",
+    "aidlc-runtime-budget.ts",
+    "aidlc-guard-fences.ts",
+    "aidlc-guard-switch.ts",
+    "aidlc-guard-operation.ts",
+    "aidlc-reply-reader.ts",
     "aidlc-audit.ts",
   ]) {
     cpSync(join(AIDLC_SRC, "tools", t), join(dir, ".claude", "tools", t));
@@ -557,10 +573,14 @@ function seedRecord(proj: string, overrides: Partial<ReviewerDispatch> = {}): vo
   );
 }
 
-function seedUnitScope(proj: string, unit = "U03-scoring"): void {
+function seedUnitScope(
+  proj: string,
+  unit = "U03-scoring",
+  settings = "",
+): void {
   writeFileSync(
     join(proj, "aidlc", "spaces", "default", "intents", "aidlc-state.md"),
-    "# AI-DLC State Tracking\n\n## Runtime State\n- **Unit Ownership**: team\n",
+    `# AI-DLC State Tracking\n\n## Runtime State\n- **Unit Ownership**: team\n${settings}`,
     "utf-8",
   );
   writeFileSync(
@@ -599,17 +619,69 @@ function seedAuditShard(proj: string): string {
   return shardPath;
 }
 
+function dropsPath(proj: string): string {
+  return join(
+    proj,
+    "aidlc",
+    "spaces",
+    "default",
+    "intents",
+    ".aidlc-engine/hooks-health",
+    "reviewer-scope.drops",
+  );
+}
+
+// The active-directive marker is the hook's authority for "was a per-unit review
+// owed here": `unit` for a per-unit run-stage, `units` for invoke-swarm. Reading
+// it revalidates the state digest, so the state file has to match.
+// A version-1 marker on purpose: it is the minimal accepted shape (stage, an
+// optional unit, and the state digest), so the case under test is the hook's
+// per-unit predicate and not the version-2 identity/attempt envelope, which this
+// predicate never reads.
+function seedActiveDirective(proj: string, marker: { unit?: string }): void {
+  const state = "# AI-DLC State Tracking\n\n## Runtime State\n- **Current Stage**: nfr-requirements\n";
+  writeFileSync(join(proj, "aidlc", "spaces", "default", "intents", "aidlc-state.md"), state, "utf-8");
+  writeFileSync(
+    join(proj, "aidlc", "spaces", "default", "intents", ".aidlc-engine", "active-directive.json"),
+    `${JSON.stringify({
+      version: 1,
+      stage: "nfr-requirements",
+      ...(marker.unit ? { unit: marker.unit } : {}),
+      state_sha256: stateDigest(state),
+    })}\n`,
+    "utf-8",
+  );
+}
+
+// Unlike the deliberately version-1 seed above, publish the version-2 marker
+// that the production writer actually writes.
+function publishActiveDirective(
+  proj: string,
+  marker: { kind: "invoke-swarm" | "run-stage"; stage: string; unit?: string; units?: string[] },
+): void {
+  const state = "# AI-DLC State Tracking\n\n## Runtime State\n- **Current Stage**: nfr-requirements\n";
+  writeFileSync(join(proj, "aidlc", "spaces", "default", "intents", "aidlc-state.md"), state, "utf-8");
+  writeActiveDirectiveMarker(proj, {
+    kind: marker.kind,
+    stage: marker.stage,
+    ...(marker.unit ? { unit: marker.unit } : {}),
+    ...(marker.units ? { units: marker.units } : {}),
+    state_sha256: stateDigest(state),
+  });
+}
+
 function runHook(
   proj: string,
   payload: Record<string, unknown>,
   env: Record<string, string> = {},
-): { code: number; stderr: string } {
+): { code: number; stdout: string; stderr: string } {
   const r = spawnSync(BUN, [join(proj, ".claude", "hooks", "aidlc-reviewer-scope.ts")], {
+    timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
     input: JSON.stringify(payload),
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj, ...env },
     encoding: "utf-8",
   });
-  return { code: r.status ?? -1, stderr: r.stderr ?? "" };
+  return { code: r.status ?? -1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
 
 const SIBLING_SWEEP = {
@@ -637,6 +709,32 @@ describe("t221 (b) dispatch-record lifecycle (shipped hook, subprocess)", () => 
       tool_input: { command: "grep -rn x construction/U03-scoring/" },
     });
     expect(r.code).toBe(0);
+  });
+
+  // The dispatch record lives in the main workspace (§12a), while the swarm
+  // reviewer reads inside its unit worktree. The hook judges construction/<unit>/
+  // tokens in those absolute paths.
+  test("fresh record in the main workspace + swarm reviewer reading inside a unit worktree -> sibling blocks, own unit passes", () => {
+    const proj = scratchProject();
+    seedRecord(proj);
+    const worktree = mkdtempSync(join(tmpdir(), "t221-wt-"));
+    const sibling = runHook(proj, {
+      ...SIBLING_SWEEP,
+      tool_name: "Read",
+      tool_input: {
+        file_path: join(worktree, "aidlc", "spaces", "default", "intents", "construction", "U01-infra", "private.md"),
+      },
+    });
+    expect(sibling.code).toBe(2);
+    expect(sibling.stderr).toContain("This review cannot open");
+    const own = runHook(proj, {
+      ...SIBLING_SWEEP,
+      tool_name: "Read",
+      tool_input: {
+        file_path: join(worktree, "aidlc", "spaces", "default", "intents", "construction", "U03-scoring", "design.md"),
+      },
+    });
+    expect(own.code).toBe(0);
   });
 
   test("piped no-operand grep (reads stdin) -> exit 0 while a first-segment recursive grep blocks", () => {
@@ -676,10 +774,61 @@ describe("t221 (b) dispatch-record lifecycle (shipped hook, subprocess)", () => 
     const proj = scratchProject();
     const r = runHook(proj, SIBLING_SWEEP);
     expect(r.code).toBe(0);
-    // The advisory drop is recorded for --doctor (conductor forgot step 1).
-    const drops = join(proj, "aidlc", "spaces", "default", "intents", ".aidlc-engine/hooks-health", "reviewer-scope.drops");
-    expect(existsSync(drops)).toBe(true);
-    expect(readFileSync(drops, "utf-8")).toContain("no reviewer dispatch record");
+    // No active directive either, so there is no authority to say step 1 was
+    // owed: the advisory stays silent rather than asserting an omission.
+    expect(existsSync(dropsPath(proj))).toBe(false);
+  });
+
+  test("no record + a PER-UNIT active directive -> the missing-record advisory fires", () => {
+    const proj = scratchProject();
+    seedActiveDirective(proj, { unit: "U03-scoring" });
+    const r = runHook(proj, SIBLING_SWEEP);
+    expect(r.code).toBe(0);
+    // Step 1 WAS owed (directive.unit is set), so the advisory is right.
+    expect(existsSync(dropsPath(proj))).toBe(true);
+    expect(readFileSync(dropsPath(proj), "utf-8")).toContain("no reviewer dispatch record");
+  });
+
+  test("no record + a SINGLE-STAGE active directive -> no advisory (the protocol writes no record)", () => {
+    const proj = scratchProject();
+    seedActiveDirective(proj, {});
+    const r = runHook(proj, SIBLING_SWEEP);
+    expect(r.code).toBe(0);
+    // stage-protocol-reviewer.md §12a: "Single-stage reviews (no
+    // `directive.unit`) write no record." Reporting that absence as a skipped
+    // step-1 write is a false advisory, and on a scope that skips
+    // units-generation it would repeat for the whole Construction phase.
+    expect(existsSync(dropsPath(proj))).toBe(false);
+  });
+
+  test("no record + a live v2 INVOKE-SWARM directive -> the advisory fires", () => {
+    const proj = scratchProject();
+    publishActiveDirective(proj, { kind: "invoke-swarm", stage: "code-generation", units: ["U01-infra", "U03-scoring"] });
+    const r = runHook(proj, SIBLING_SWEEP);
+    expect(r.code).toBe(0);
+    expect(existsSync(dropsPath(proj))).toBe(true);
+    expect(readFileSync(dropsPath(proj), "utf-8")).toContain("no reviewer dispatch record");
+  });
+
+  test("no record + a v2 no-unit run-stage published AFTER a swarm -> no advisory (inherited units are not authority)", () => {
+    const proj = scratchProject();
+    publishActiveDirective(proj, { kind: "invoke-swarm", stage: "code-generation", units: ["U01-infra", "U03-scoring"] });
+    // The writer carries `units` forward (core/tools/aidlc-lib.ts:
+    // `requestedUnits = marker.units ?? base.units`); §12a says a no-unit
+    // review writes no record.
+    publishActiveDirective(proj, { kind: "run-stage", stage: "nfr-requirements" });
+    const r = runHook(proj, SIBLING_SWEEP);
+    expect(r.code).toBe(0);
+    expect(existsSync(dropsPath(proj))).toBe(false);
+  });
+
+  test("no record + a v2 PER-UNIT run-stage -> the advisory fires", () => {
+    const proj = scratchProject();
+    publishActiveDirective(proj, { kind: "run-stage", stage: "nfr-requirements", unit: "U03-scoring" });
+    const r = runHook(proj, SIBLING_SWEEP);
+    expect(r.code).toBe(0);
+    expect(existsSync(dropsPath(proj))).toBe(true);
+    expect(readFileSync(dropsPath(proj), "utf-8")).toContain("no reviewer dispatch record");
   });
 
   test("a different agent (or the main session, no agent_type) passes through", () => {
@@ -714,11 +863,42 @@ describe("t221 (b) dispatch-record lifecycle (shipped hook, subprocess)", () => 
     expect(runHook(proj, SIBLING_SWEEP).code).toBe(0);
   });
 
-  test("the deterministic off-switch disables enforcement entirely", () => {
+  test("the deterministic off-switch disables reviewer read-scope enforcement", () => {
     const proj = scratchProject();
     seedRecord(proj);
     const r = runHook(proj, SIBLING_SWEEP, { AIDLC_DISABLE_REVIEWER_SCOPE_HOOK: "1" });
     expect(r.code).toBe(0);
+  });
+
+  test.each([
+    ["strict", "", 2],
+    ["relaxed", "", 2],
+    ["off", "", 0],
+    ["relaxed", "- **Guards Off**: reviewer-scope (set by you)\n", 0],
+  ] as const)("reviewer read scope under %s with switch %s returns %i", (policy, switches, code) => {
+    const proj = scratchProject();
+    seedRecord(proj);
+    const shardPath = seedAuditShard(proj);
+    writeFileSync(
+      join(proj, "aidlc", "spaces", "default", "intents", "aidlc-state.md"),
+      `# AI-DLC State Tracking\n\n## Runtime State\n- **Guard Policy**: ${policy} (set by you)\n${switches}`,
+    );
+    const result = runHook(proj, SIBLING_SWEEP, { AIDLC_DISABLE_REVIEWER_SCOPE_HOOK: "" });
+    expect(result.code, result.stderr).toBe(code);
+    const audit = readFileSync(shardPath, "utf-8");
+    if (code === 0) {
+      expect(audit.match(/\*\*Event\*\*: GUARD_STOOD_ASIDE\b/g)).toHaveLength(1);
+      expect(audit).toContain("**Guard**: reviewer-scope");
+      expect(audit).not.toContain("REVIEWER_SCOPE_BLOCKED");
+      // Guard Policy off records the pass and says nothing; the person's own
+      // switch under relaxed keeps its one line.
+      if (policy === "off") expect(result.stdout).not.toContain("Continuing past");
+      else expect(result.stdout).toContain("Continuing past the reviewer-scope check");
+    } else {
+      expect(result.stderr).toContain("This review cannot open");
+      expect(audit).toContain("REVIEWER_SCOPE_BLOCKED");
+      expect(audit).not.toContain("GUARD_STOOD_ASIDE");
+    }
   });
 
   test("claimed checkout blocks normalized traversal and case-variant writes without a dispatch record", () => {
@@ -768,10 +948,49 @@ describe("t221 (b) dispatch-record lifecycle (shipped hook, subprocess)", () => 
     expect(current.code).toBe(0);
   });
 
+  test("a claimed checkout lets reads and searches through, and its write refusal names where the change can be made", () => {
+    // A search in the person's own checkout was refused as a "cross-unit write",
+    // and the refusal named no way forward.
+    const proj = scratchProject();
+    seedUnitScope(proj);
+    for (const command of ["ls", "rg formatPrice", "find . -name '*.md'", "grep -rn formatPrice .", "cat construction/u05-API/design.md"]) {
+      const r = runHook(proj, { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } });
+      expect(r.code, `${command}: ${r.stderr}`).toBe(0);
+    }
+    const write = { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "touch Construction/u05-API/result.md" } };
+    const refused = runHook(proj, write);
+    expect(refused.code).toBe(2);
+    expect(refused.stderr).toContain("make that change from the project's main checkout");
+    // The named step works: the main checkout carries no Unit stamp, and the write goes through there.
+    rmSync(join(proj, "aidlc", ".aidlc-unit-scope.json"));
+    expect(runHook(proj, write).code).toBe(0);
+  });
+
+  test.each([
+    ["relaxed policy", "- **Guard Policy**: relaxed (set by you)\n", {}],
+    ["off policy", "- **Guard Policy**: off (set by you)\n", {}],
+    ["per-work reviewer switch", "- **Guards Off**: reviewer-scope (set by you)\n", {}],
+    ["reviewer environment escape hatch", "", { AIDLC_DISABLE_REVIEWER_SCOPE_HOOK: "1" }],
+  ])(
+    "claimed checkout ownership remains enforced under %s",
+    (_label, settings, env) => {
+      const proj = scratchProject();
+      seedUnitScope(proj, "U03-scoring", settings);
+      const r = runHook(proj, {
+        hook_event_name: "PreToolUse",
+        tool_name: "Write",
+        tool_input: { file_path: "construction/U05-api/result.md" },
+      }, env);
+      expect(r.code).toBe(2);
+      expect(r.stderr).toContain('scoped to Unit "U03-scoring"');
+    },
+  );
+
   test("garbage stdin fails open", () => {
     const proj = scratchProject();
     seedRecord(proj);
     const r = spawnSync(BUN, [join(proj, ".claude", "hooks", "aidlc-reviewer-scope.ts")], {
+      timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
       input: "not json",
       env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
       encoding: "utf-8",
@@ -858,11 +1077,13 @@ describe("t221 (c) harness registration and protocol prose", () => {
     }
   });
 
-  test("Kiro IDE ships NO reviewer-scope registration (documented gap: toolArgs is always empty)", () => {
-    // The IDE delivers hook context via USER_PROMPT with toolArgs always {}
-    // (docs/reference/kiro-ide-hook-payload.md): a preToolUse hook there can
-    // never see the attempted path or command, so there is nothing to match
-    // on. Per the porting guide, an unenforceable seam ships NO registration
+  test("Kiro IDE ships NO reviewer-scope registration (documented gap: tool inputs are not uniform)", () => {
+    // Tool inputs are not uniformly available across the IDE generations this
+    // harness supports (docs/reference/kiro-ide-hook-payload.md): 0.12 and the
+    // measured 1.x PostToolUse captures carry empty inputs, while later 1.x
+    // builds populate some PreToolUse inputs. A preToolUse hook cannot rely on
+    // seeing the attempted path or command on every supported build, so there
+    // is no stable target to match. Per the porting guide, an unenforceable seam ships NO registration
     // rather than a dead hook - the 12a prose bound governs on that harness.
     // This pins the deliberate absence so a future blanket-registration sweep
     // does not wire an inert (or worse, blindly blocking) entry.
@@ -904,7 +1125,7 @@ describe("t221 (c) harness registration and protocol prose", () => {
     }
   });
 
-  test("Codex hooks.json wires the adapter's reviewer-scope target on PreToolUse", () => {
+  test("Codex hooks.json wires the reviewer-scope bound through the one matcher-free guard-tool-call group", () => {
     const harnesses = HARNESS_MATRIX.filter(
       (harness) => harness.capabilities.reviewerScopeRegistration === "codex-hooks",
     );
@@ -912,16 +1133,22 @@ describe("t221 (c) harness registration and protocol prose", () => {
     for (const harness of harnesses) {
       const wiring = JSON.parse(
         readFileSync(join(harness.engineRoot, "hooks.json"), "utf-8"),
-      ) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+      ) as { hooks: Record<string, Array<{ matcher?: string; hooks: Array<{ command: string }> }>> };
       const pre = wiring.hooks.PreToolUse ?? [];
-      expect(
-        pre.some((g) =>
-          g.hooks.some(
-            (h) => h.command ===
-              `bun ${harness.manifest.harnessDir}/tools/aidlc.ts engine adapter codex reviewer-scope`,
-          ),
+      // One process runs the five PreToolUse checks (#2066); the adapter's
+      // reviewer-scope case is a member of that group, not its own handler.
+      const group = pre.filter((g) =>
+        g.hooks.some(
+          (h) => h.command ===
+            `bun ${harness.manifest.harnessDir}/tools/aidlc.ts engine adapter codex guard-tool-call`,
         ),
-      ).toBe(true);
+      );
+      expect(group, harness.name).toHaveLength(1);
+      expect(group[0]?.matcher, harness.name).toBeUndefined();
+      expect(
+        pre.some((g) => g.hooks.some((h) => h.command.endsWith(" adapter codex reviewer-scope"))),
+        harness.name,
+      ).toBe(false);
     }
   });
 
@@ -965,8 +1192,10 @@ describe("t221 (c) harness registration and protocol prose", () => {
       "utf-8",
     );
     expect(body).toContain(".aidlc-engine/reviewer-dispatch.json");
-    // Step 1: the write, per-unit only, exempt list carries the carve-out.
-    expect(body).toMatch(/Dispatch record \(per-unit stages; enforcement-capable harnesses only\)/);
+    // Step 1: the write, owed per unit under a run-stage AND under a swarm
+    // (the hook's perUnitReviewOwed mirrors both), exempt list carries the carve-out.
+    expect(body).toMatch(/\*\*Dispatch record \([^)]*enforcement-capable harnesses only\)\.\*\*/);
+    expect(body).toMatch(/`directive\.unit` present, or one unit of an `invoke-swarm`/);
     expect(body).toMatch(/append its path to `exempt`/);
     expect(body).toContain("On a harness without reviewer-scope enforcement");
     expect(body).toContain("do not write the record");

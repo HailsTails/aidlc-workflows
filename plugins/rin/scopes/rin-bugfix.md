@@ -1,6 +1,7 @@
 ---
 name: rin-bugfix
 plugin: rin
+guard_policy: strict
 depth: Standard
 keywords:
   - rin defect

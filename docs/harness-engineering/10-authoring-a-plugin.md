@@ -279,6 +279,7 @@ projection remains deferred (doc 18 §9 Status).
   creates the native `.opencode/agents/` subagent twin and denies nested
   `task` delegation. See
   [Adding an Agent](03-adding-an-agent.md).
+  On Kiro CLI, a natively dispatched plugin roster worker's hand-authored agent-v1 JSON must also include `file://aidlc/spaces/<active-space>/memory/**/*.md` in its `resources` array, resolving to at least one existing Markdown file, because plugin workers receive the same active-stage rules as core workers.
 - **Sensors.** Ship the manifest `sensors/aidlc-<id>.md` **and** its script under
   `tools/` (both — a manifest alone is discoverable but its script must live in
   `tools/` to run). The `aidlc-<id>.md` name at the top of `sensors/` is a hard
@@ -322,9 +323,9 @@ runs only while the plugin is enabled. It receives `AIDLC_PROJECT_DIR`,
 without other stdout:
 
 Doctor discovery derives installed plugin identities from owned stage and scope
-metadata. A plugin must therefore own at least one stage or scope for its doctor
-script to be discoverable; a tools-, sensors-, or knowledge-only plugin is not
-enough on its own.
+metadata and from the composition sidecars under `tools/data/`. A plugin whose
+compose merged contributions (sensors, produces, overlays) is discoverable even
+when it owns no stage or scope.
 
 ```typescript
 import { existsSync } from "node:fs";
@@ -362,8 +363,13 @@ bun <tools-dir>/aidlc-plugin-build.ts <plugin-root> <harness> [outDir]
 
 The default output is `<plugin-root>/dist/<harness>/`. Run it once for each
 harness you publish. The repository packager uses the same emitter to build
-first-party `dist/plugins/<name>/<harness>/` trees, so its byte-parity guard also
-guards external builds. Publish the output to a git repo with semver tags and a
+first-party copy-channel `dist/plugins/<name>/<harness>/` trees and native
+`dist-release/plugins/<name>/<harness>/` trees. Core engine invocations in
+native plugin instructions and hook registrations use the same channel-aware
+invocation projection as core; copy-channel instructions retain Bun commands.
+Each runtime archive takes plugins from its own channel tree. Contributed
+script execution remains the host runner contract: runtime companions do not
+make arbitrary plugin hooks native executables. Publish the output to a git repo with semver tags and a
 `marketplace.json`; teams then install through the host's native commands.
 
 The repository packager bundles runtime package dependencies without requiring
@@ -371,7 +377,13 @@ consumer npm installation. For package-importing TypeScript modules, the
 original `.ts` path becomes a static export facade backed by
 `<stem>.runtime.js` and the compiler-generated `<stem>.runtime.d.ts`.
 Direct invocation through the original path retains its entry-point status
-and module URL; unsupported `import.meta` forms refuse packaging.
+and module URL; unsupported `import.meta` forms refuse packaging. Pinned esbuild
+bundles dependencies at the source boundary. CommonJS dependency `__dirname`
+and `__filename` resolve to the emitted runtime companion's location, rather
+than embedding the build checkout's absolute paths. Dependencies that require
+unbundled sibling runtime assets need an explicit packaging contract before use.
+The output-root `--check` guard remains useful; cross-checkout regression tests
+also exercise distinct dependency roots and execution after relocation.
 
 When exported types depend on a package, its exact resolved declaration graph,
 package identity, and license ship under
@@ -409,8 +421,10 @@ there, writes `plugin-compose-<key>.json` and hash-proven
 `plugin-owned-<key>.json`, then commits the staged diff through the shared
 transaction engine. A fault restores all files, modes, stamps, and ownership
 records. `--prune-missing` is intentionally stricter: it requires a proved full
-host inventory, explicit confirmation (`--yes` in automation), and unchanged
-owned hashes; local or unowned bytes are refused.
+host inventory, `--yes` in automation, and unchanged owned hashes; local or
+unowned bytes are refused. At a terminal it asks nothing: it names the plugins
+it prunes and how to get them back (reinstall in the host, then sync), then
+prunes.
 
 ### Project selection
 
@@ -449,10 +463,10 @@ AIDLC_PLUGIN_ROOT="<plugin-root>" AIDLC_PROJECT_DIR="<project>" \
 # open in Kiro IDE or kiro-cli chat → /aidlc
 ```
 
-> **Kiro note.** Use the `kiro-ide` projection for Kiro IDE >= 1.0; its folder-drop
+> **Kiro note.** Use the `kiro-ide` projection for Kiro IDE 1.x or Kiro CLI v3; its folder-drop
 > includes a v2 `.kiro/hooks/aidlc-<plugin>-compose.json` SessionStart registration
 > that runs the cross-platform `hooks/aidlc-plugin-compose.ts` Bun launcher from
-> the workspace root. The `kiro` projection for Kiro CLI emits no hook registration,
+> the workspace root. The `kiro` projection emits no hook registration,
 > so run one of the explicit composer commands above. Neither projection emits the
 > retired `.kiro.hook` plugin registration.
 

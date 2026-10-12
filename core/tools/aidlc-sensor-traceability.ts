@@ -2,9 +2,14 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   errorMessage,
+  getField,
+  parseCheckboxes,
+  parseStateStageSuffixes,
+  readStateFile,
   recordDir,
   resolveBoltDag,
   resolveProjectDir,
+  usesStageLevelPerUnitArtifacts,
 } from "./aidlc-lib.ts";
 
 const VALID_STATUSES = new Set(["OK", "GAP", "ORPHAN", "Deferred", "N/A"]);
@@ -198,6 +203,69 @@ function extractUnitName(outputPath: string): string | null {
   return match?.[1] ?? null;
 }
 
+// When the plan has no Units, the engine writes every per-Unit stage's
+// artifacts directly under construction/<stage>/, with no Unit segment. A path
+// that names the stage's own folder is that location, so any per-Unit stage
+// with a resolver below is covered without a second stage list.
+function isZeroUnitOutput(stage: string, outputPath: string): boolean {
+  return stage !== "" &&
+    normalizePath(outputPath).endsWith(`/construction/${stage}/traceability.json`);
+}
+
+// Per-Unit artifacts live under construction/<unit>/<stage>/; a zero-Unit run
+// keeps the stage-level construction/<stage>/ location.
+function constructionDir(docsDir: string, unit: string, stage: string): string {
+  return unit ? join(docsDir, "construction", unit, stage) : join(docsDir, "construction", stage);
+}
+
+function unitLabel(unit: string): string {
+  return unit ? `unit "${unit}"` : "the zero-Unit run";
+}
+
+function readPlanState(projectDir: string): string | null {
+  try {
+    return readStateFile(projectDir);
+  } catch {
+    return null;
+  }
+}
+
+// The engine places per-Unit artifacts at stage level whenever the approved
+// plan skips Units Generation, and then ignores any Unit DAG left on disk (for
+// example after a scope change). Follow the plan when the state records it.
+function planSkipsUnits(stateContent: string | null): boolean {
+  if (stateContent === null || !parseStateStageSuffixes(stateContent).has("units-generation")) return false;
+  return usesStageLevelPerUnitArtifacts(getField(stateContent, "Scope"), stateContent);
+}
+
+// True when the approved plan (a SKIP suffix) or the run (a skipped [S]
+// checkbox) left the stage out. No readable state, or no Stage Progress line,
+// counts as having run, so that stage's missing files still fail closed.
+function stageDidNotRun(stateContent: string | null, slug: string): boolean {
+  if (stateContent === null) return false;
+  if (parseStateStageSuffixes(stateContent).get(slug) === "SKIP") return true;
+  return parseCheckboxes(stateContent).some((entry) => entry.slug === slug && entry.state === "skipped");
+}
+
+const NFR_REQUIREMENT_FILES = ["performance-requirements.md", "security-requirements.md", "scalability-requirements.md", "reliability-requirements.md"];
+const NFR_DESIGN_FILES = ["performance-design.md", "security-design.md", "scalability-design.md", "reliability-design.md", "logical-components.md"];
+
+// NFRx.y IDs from one NFR stage's artifacts, or null when none of them exists.
+function detailedNfrIds(dir: string, names: string[]): Set<string> | null {
+  let sawFile = false;
+  const ids = new Set<string>();
+  for (const name of names) {
+    const path = join(dir, name);
+    if (!existsSync(path)) continue;
+    sawFile = true;
+    const read = readText(path);
+    if (read.content !== null) {
+      for (const id of extractIds(read.content, [ID_PATTERNS.NFR_DETAIL])) ids.add(id);
+    }
+  }
+  return sawFile ? ids : null;
+}
+
 function markdownCells(line: string): string[] {
   if (!line.trimStart().startsWith("|") || /^\s*\|?[\s:|-]+\|?\s*$/.test(line)) return [];
   return line.split("|").slice(1, -1).map((cell) => cell.trim());
@@ -223,14 +291,16 @@ function tokenPresent(cell: string, token: string): boolean {
   return new RegExp(`(?:^|[\\s,;/])${escaped}(?:$|[\\s,;/])`, "i").test(cell);
 }
 
-function storyAssignments(storyMapPath: string, units: string[], ids: Map<string, string>): { assignments: Map<string, Set<string>>; reason?: string } {
+// `idPatterns` follow the stage's source fallback: US rows when stories.md
+// exists; otherwise FR rows plus any NFR rows the map also carries.
+function storyAssignments(storyMapPath: string, units: string[], ids: Map<string, string>, idPatterns: RegExp[]): { assignments: Map<string, Set<string>>; reason?: string } {
   const read = readText(storyMapPath);
   if (read.content === null) return { assignments: new Map(), reason: read.reason };
   const assignments = new Map<string, Set<string>>();
   for (const line of read.content.split(/\r?\n/)) {
     const cells = markdownCells(line);
     if (cells.length === 0) continue;
-    const stories = extractIds(line, [ID_PATTERNS.US]);
+    const stories = extractIds(line, idPatterns);
     if (stories.size === 0) continue;
     for (const unit of units) {
       const aliases = [unit, ids.get(unit)].filter((value): value is string => value !== undefined);
@@ -247,12 +317,29 @@ function storyAssignments(storyMapPath: string, units: string[], ids: Map<string
     : { assignments };
 }
 
-function resolveUnitContext(projectDir: string, outputPath: string, docsDir: string): { context?: UnitContext; reason?: string } {
+function resolveUnitContext(
+  projectDir: string,
+  outputPath: string,
+  docsDir: string,
+  stage: string,
+  stateContent: string | null,
+): { context?: UnitContext; reason?: string } {
   const unitName = extractUnitName(outputPath);
-  if (!unitName) return { reason: `cannot derive the construction unit from output path: ${outputPath}` };
+  if (!unitName && !isZeroUnitOutput(stage, outputPath)) {
+    return { reason: `cannot derive the construction unit from output path: ${outputPath}` };
+  }
+  if (!unitName && planSkipsUnits(stateContent)) {
+    return { context: { unitName: "", units: [], unitIds: new Map() } };
+  }
   const dag = resolveBoltDag(projectDir);
   if (dag.state === "malformed") {
     return { reason: `unit-of-work-dependency.md is ${dag.reason}: ${dag.detail}` };
+  }
+  if (!unitName) {
+    if (dag.state === "ok") {
+      return { reason: `cannot derive the construction unit from output path while unit-of-work-dependency.md declares Units: ${outputPath}` };
+    }
+    return { context: { unitName: "", units: [], unitIds: new Map() } };
   }
   const units = dag.state === "ok" ? dag.units : [unitName];
   if (dag.state === "ok" && !units.includes(unitName)) {
@@ -271,6 +358,48 @@ function addSource(result: UpstreamResolution, source: { ids: Set<string>; reaso
   if (source.reason) result.reasons.push(source.reason);
   for (const id of source.ids) result.ids.add(id);
   return source.ids;
+}
+
+// NFR Design traces NFR Requirements' NFRx.y IDs; Infrastructure Design traces
+// NFR Design's, or NFR Requirements' when NFR Design did not run. Without NFR
+// Requirements no NFRx.y IDs exist, so both trace the NFRn IDs in
+// requirements.md, as nfr-requirements itself does. A source stage that ran
+// but left no artifacts still fails closed.
+function resolveNfrUpstream(
+  result: UpstreamResolution,
+  stage: "nfr-design" | "infrastructure-design",
+  docsDir: string,
+  unit: string,
+  requirements: string,
+  stateContent: string | null,
+): void {
+  const requirementsDir = constructionDir(docsDir, unit, "nfr-requirements");
+  const requirementIds = detailedNfrIds(requirementsDir, NFR_REQUIREMENT_FILES);
+  const requirementsRan = requirementIds !== null || !stageDidNotRun(stateContent, "nfr-requirements");
+  let source = { label: "NFR requirement", dir: requirementsDir, ids: requirementIds, ran: requirementsRan };
+  if (stage === "infrastructure-design") {
+    const designDir = constructionDir(docsDir, unit, "nfr-design");
+    const designIds = detailedNfrIds(designDir, NFR_DESIGN_FILES);
+    if (designIds !== null || !stageDidNotRun(stateContent, "nfr-design")) {
+      source = { label: "NFR design", dir: designDir, ids: designIds, ran: true };
+    }
+  }
+  if (source.ids === null) {
+    if (source.ran) {
+      result.reasons.push(`required upstream ${source.label} artifacts are missing under ${source.dir}`);
+    } else {
+      addSource(result, idsFromFile(requirements, [ID_PATTERNS.NFR], "requirements.md"));
+    }
+    return;
+  }
+  if (!requirementsRan) {
+    addSource(result, idsFromFile(requirements, [ID_PATTERNS.NFR], "requirements.md"));
+    return;
+  }
+  for (const id of source.ids) result.ids.add(id);
+  if (source.ids.size === 0) {
+    result.reasons.push(`${source.label} artifacts for ${unitLabel(unit)} contain no NFRx.y IDs`);
+  }
 }
 
 function resolveUpstream(stage: string, projectDir: string, outputPath: string): UpstreamResolution {
@@ -298,7 +427,8 @@ function resolveUpstream(stage: string, projectDir: string, outputPath: string):
     return result;
   }
   if (stage === "units-generation") {
-    const source = existsSync(stories)
+    const hasStories = existsSync(stories);
+    const source = hasStories
       ? idsFromFile(stories, [ID_PATTERNS.US], "stories.md")
       : idsFromFile(requirements, [ID_PATTERNS.FR], "requirements.md");
     const sourceIds = addSource(result, source);
@@ -317,7 +447,11 @@ function resolveUpstream(stage: string, projectDir: string, outputPath: string):
       unitIds: unitIdMap(join(docsDir, "inception", "units-generation", "unit-of-work.md"), dag.units),
     };
     result.unitContext = context;
-    const mapped = storyAssignments(storyMap, context.units, context.unitIds);
+    // Without stories the required set is FR-only ("otherwise enumerate every
+    // FR"), but a scope that also traces NFRs must not have its correctly
+    // mapped NFR rows reported as unmapped targets, so the join accepts both.
+    const joinPatterns = hasStories ? [ID_PATTERNS.US] : [ID_PATTERNS.FR, ID_PATTERNS.NFR];
+    const mapped = storyAssignments(storyMap, context.units, context.unitIds, joinPatterns);
     if (mapped.reason) result.reasons.push(mapped.reason);
     result.storyAssignments = mapped.assignments;
     for (const id of sourceIds) {
@@ -326,7 +460,8 @@ function resolveUpstream(stage: string, projectDir: string, outputPath: string):
     return result;
   }
 
-  const resolvedUnit = resolveUnitContext(projectDir, outputPath, docsDir);
+  const stateContent = readPlanState(projectDir);
+  const resolvedUnit = resolveUnitContext(projectDir, outputPath, docsDir, stage, stateContent);
   if (!resolvedUnit.context) {
     result.reasons.push(resolvedUnit.reason ?? "cannot resolve construction unit");
     return result;
@@ -336,7 +471,7 @@ function resolveUpstream(stage: string, projectDir: string, outputPath: string):
 
   if (stage === "functional-design") {
     if (existsSync(stories) && existsSync(storyMap)) {
-      const mapped = storyAssignments(storyMap, resolvedUnit.context.units, resolvedUnit.context.unitIds);
+      const mapped = storyAssignments(storyMap, resolvedUnit.context.units, resolvedUnit.context.unitIds, [ID_PATTERNS.US]);
       if (mapped.reason) result.reasons.push(mapped.reason);
       result.storyAssignments = mapped.assignments;
       const unitStories = new Set(
@@ -367,40 +502,14 @@ function resolveUpstream(stage: string, projectDir: string, outputPath: string):
     addSource(result, idsFromFile(requirements, [ID_PATTERNS.NFR], "requirements.md"));
     return result;
   }
-  if (stage === "nfr-design") {
-    const dir = join(docsDir, "construction", unit, "nfr-requirements");
-    let sawFile = false;
-    for (const name of ["performance-requirements.md", "security-requirements.md", "scalability-requirements.md", "reliability-requirements.md"]) {
-      const path = join(dir, name);
-      if (!existsSync(path)) continue;
-      sawFile = true;
-      const read = readText(path);
-      if (read.content !== null) {
-        for (const id of extractIds(read.content, [ID_PATTERNS.NFR_DETAIL])) result.ids.add(id);
-      }
-    }
-    if (!sawFile) result.reasons.push(`required upstream NFR requirement artifacts are missing under ${dir}`);
-    else if (result.ids.size === 0) result.reasons.push(`NFR requirement artifacts for unit "${unit}" contain no NFRx.y IDs`);
-    return result;
-  }
-  if (stage === "infrastructure-design") {
-    const dir = join(docsDir, "construction", unit, "nfr-design");
-    let sawFile = false;
-    for (const name of ["performance-design.md", "security-design.md", "scalability-design.md", "reliability-design.md", "logical-components.md"]) {
-      const path = join(dir, name);
-      if (!existsSync(path)) continue;
-      sawFile = true;
-      const source = idsFromFile(path, [ID_PATTERNS.NFR_DETAIL], name);
-      for (const id of source.ids) result.ids.add(id);
-    }
-    if (!sawFile) result.reasons.push(`required upstream NFR design artifacts are missing under ${dir}`);
-    else if (result.ids.size === 0) result.reasons.push(`NFR design artifacts for unit "${unit}" contain no NFRx.y IDs`);
+  if (stage === "nfr-design" || stage === "infrastructure-design") {
+    resolveNfrUpstream(result, stage, docsDir, unit, requirements, stateContent);
     return result;
   }
   if (stage === "code-generation") {
     if (existsSync(stories)) {
-      if (existsSync(storyMap)) {
-        const mapped = storyAssignments(storyMap, resolvedUnit.context.units, resolvedUnit.context.unitIds);
+      if (unit && existsSync(storyMap)) {
+        const mapped = storyAssignments(storyMap, resolvedUnit.context.units, resolvedUnit.context.unitIds, [ID_PATTERNS.US]);
         if (mapped.reason) result.reasons.push(mapped.reason);
         result.storyAssignments = mapped.assignments;
         const unitStories = new Set(
@@ -421,7 +530,7 @@ function resolveUpstream(stage: string, projectDir: string, outputPath: string):
     } else {
       addSource(result, idsFromFile(requirements, [ID_PATTERNS.FR, ID_PATTERNS.NFR], "requirements.md"));
     }
-    const nfrDir = join(docsDir, "construction", unit, "nfr-requirements");
+    const nfrDir = constructionDir(docsDir, unit, "nfr-requirements");
     for (const name of ["performance-requirements.md", "security-requirements.md", "scalability-requirements.md", "reliability-requirements.md"]) {
       const path = join(nfrDir, name);
       if (existsSync(path)) {
@@ -431,14 +540,16 @@ function resolveUpstream(stage: string, projectDir: string, outputPath: string):
         }
       }
     }
-    const brPath = join(docsDir, "construction", unit, "functional-design", "rules.md");
+    const brPath = join(constructionDir(docsDir, unit, "functional-design"), "rules.md");
     if (existsSync(brPath)) {
       const read = readText(brPath);
       if (read.content !== null) {
         for (const id of extractIds(read.content, [ID_PATTERNS.BR])) result.ids.add(id);
       }
     }
-    if (result.ids.size === 0) result.reasons.push(`upstream ID set is empty for unit "${unit}"`);
+    if (result.ids.size === 0) {
+      result.reasons.push(unit ? `upstream ID set is empty for unit "${unit}"` : "upstream ID set is empty for the zero-Unit code-generation run");
+    }
     return result;
   }
 
@@ -489,8 +600,8 @@ function verifyTargets(
 
   if (stage === "functional-design" && docsDir) {
     const unit = upstream.unitContext?.unitName ?? extractUnitName(outputPath);
-    if (unit) {
-      const brPath = join(docsDir, "construction", unit, "functional-design", "rules.md");
+    if (unit !== null) {
+      const brPath = join(constructionDir(docsDir, unit, "functional-design"), "rules.md");
       const rules = idsFromFile(brPath, [ID_PATTERNS.BR], "rules.md");
       if (rules.reason) reasons.push(rules.reason);
       const targeted = new Set<string>();

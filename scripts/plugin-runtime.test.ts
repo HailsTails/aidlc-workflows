@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { preparePluginRuntimeArtifacts, type PluginRuntimePort } from "./plugin-runtime.ts";
+import ts from "typescript";
+import { emitEntryDeclaration, preparePluginRuntimeArtifacts, type PluginRuntimePort } from "./plugin-runtime.ts";
 
 const source = { file: "tools/guard.ts", source: "fixture" };
 const packagePort: PluginRuntimePort = {
@@ -92,5 +93,63 @@ describe("typed plugin runtime packaging", () => {
       port: { ...packagePort, declaration: () => { throw new Error("declaration rejected"); } },
     });
     await expect(result).rejects.toThrow("declaration rejected");
+  });
+});
+
+function declarationProgram(files: Readonly<Record<string, string>>, roots: string[], currentDirectory: string) {
+  const options: ts.CompilerOptions = { noLib: true, declaration: true, emitDeclarationOnly: true };
+  const host: ts.CompilerHost = {
+    getSourceFile: (fileName, languageVersion) => files[fileName] === undefined
+      ? undefined : ts.createSourceFile(fileName, files[fileName], languageVersion),
+    getDefaultLibFileName: () => "lib.d.ts",
+    writeFile: () => {},
+    getCurrentDirectory: () => currentDirectory,
+    getDirectories: () => [],
+    fileExists: (fileName) => files[fileName] !== undefined,
+    readFile: (fileName) => files[fileName],
+    getCanonicalFileName: (fileName) => fileName,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => "\n",
+  };
+  return ts.createProgram(roots, options, host);
+}
+
+describe("entry declaration compiler identity", () => {
+  test("matches a Windows entry whose compiler filename uses forward slashes", () => {
+    const path = "H:\\fixture\\entry.ts";
+    const program = declarationProgram({ "H:/fixture/entry.ts": "export const entry = 1;" }, [path], "H:/fixture");
+    expect(program.getSourceFile(path)?.fileName).toBe("H:/fixture/entry.ts");
+    expect(emitEntryDeclaration(program, path).declaration).toContain("entry = 1");
+  });
+
+  test("matches a POSIX absolute entry", () => {
+    const path = "/fixture/entry.ts";
+    const program = declarationProgram({ [path]: "export const entry = 1;" }, [path], "/fixture");
+    expect(emitEntryDeclaration(program, path).declaration).toContain("entry = 1");
+  });
+
+  test("resolves a relative entry through the compiler current directory", () => {
+    const program = declarationProgram({ "entry.ts": "export const entry = 1;" }, ["entry.ts"], "/fixture");
+    expect(emitEntryDeclaration(program, "entry.ts").declaration).toContain("entry = 1");
+  });
+
+  test("does not capture a distinct file emitted after the entry", () => {
+    const files = { "/fixture/entry.ts": "export const entry = 1;", "/fixture/other.ts": "export const other = 2;" };
+    const program = declarationProgram(files, Object.keys(files), "/fixture");
+    const result = emitEntryDeclaration(program, "/fixture/entry.ts");
+    expect(result.declaration).toContain("entry = 1");
+    expect(result.declaration).not.toContain("other");
+  });
+
+  test("preserves distinct case-sensitive compiler identities", () => {
+    const files = { "/fixture/entry.ts": "export const lower = 1;", "/fixture/Entry.ts": "export const upper = 2;" };
+    const program = declarationProgram(files, Object.keys(files), "/fixture");
+    expect(emitEntryDeclaration(program, "/fixture/entry.ts").declaration).toContain("lower = 1");
+    expect(emitEntryDeclaration(program, "/fixture/Entry.ts").declaration).toContain("upper = 2");
+  });
+
+  test("does not borrow a declaration when the requested entry is absent", () => {
+    const program = declarationProgram({ "/fixture/other.ts": "export const other = 2;" }, ["/fixture/other.ts"], "/fixture");
+    expect(emitEntryDeclaration(program, "/fixture/missing.ts").declaration).toBeUndefined();
   });
 });

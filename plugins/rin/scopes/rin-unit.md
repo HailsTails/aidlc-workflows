@@ -1,6 +1,7 @@
 ---
 name: rin-unit
 plugin: rin
+guard_policy: strict
 depth: Standard
 description: Lane for delivering one unit a parent record's approved design marked for separate delivery — enters at Gate 3 and runs Gates 3, 4, 5, 6
 ---

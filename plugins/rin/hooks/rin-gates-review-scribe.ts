@@ -309,13 +309,18 @@ const reportRefusedReceipt = (args: {
   });
 };
 
-type Capture = {
-  readonly lens: string;
-  readonly verdict: string;
-  readonly findings: readonly string[];
-  readonly sessionId: string;
-  readonly at: string;
-};
+const captureSchema = z.object({
+  lens: z.string(),
+  verdict: z.string(),
+  findings: z.array(z.string()),
+  sessionId: z.string(),
+  at: z.string(),
+  agentId: z.string().optional(),
+  channel: z.enum(["handback", "stop-message"]).optional(),
+  reportText: z.string().optional(),
+}).readonly();
+
+type Capture = z.infer<typeof captureSchema>;
 
 const readStdin = (): Promise<string> =>
   new Promise((resolvePromise) => {
@@ -437,7 +442,8 @@ const readCaptures = (path: string): readonly Capture[] => {
     .filter((line) => line.trim() !== "")
     .map((line): Capture | null => {
       try {
-        return JSON.parse(line) as Capture;
+        const capture = captureSchema.safeParse(JSON.parse(line));
+        return capture.success ? capture.data : null;
       } catch {
         return null;
       }
@@ -737,8 +743,11 @@ const captureBoardReview = ({
   appendCapture(path, {
     lens: context.agentType,
     verdict: block.verdict,
-    findings: block.findings,
+    findings: [...block.findings],
     sessionId: report.sessionId,
+    agentId: report.agentId,
+    channel: report.channel,
+    reportText: report.reportText,
     at: nowIso(),
   });
   writeTraceLine({
@@ -815,10 +824,19 @@ const writeAggregateVerdict = ({
     lenses: [...new Set(live.map((capture) => capture.lens))],
     findings: live.flatMap((capture) => capture.findings),
     blockingFindings,
+    reports: live.map((capture) => ({
+      ...capture,
+      gate: context.gate,
+      headSha,
+      reportText: capture.reportText ?? null,
+      agentId: capture.agentId ?? null,
+      channel: capture.channel ?? null,
+    })),
+    reportsComplete: live.every((capture) => typeof capture.reportText === "string" && capture.reportText.trim() !== ""),
     emittedBy: "rin-gates-review-scribe",
     reviewedAt: nowIso(),
     ["$note"]:
-      "Written by the SubagentStop review-scribe when the minimum lens roster was covered. The `taskId` field carries the engine record dir NAME (the intent's identity under repo-SoR — there is no DB Slice binding). `findings` and `lenses` report each lens's LATEST review at this headSha: a lens that re-reviews at the same head supersedes its own earlier round, verdict and findings together, so a fixed round-1 refusal cannot pin the aggregate forever. Supersession is per-lens and never cross-lens — an unrevisited NOT-READY still blocks. `blockingFindings` are the live cited findings no lens disposed; a non-empty list forces NOT-READY however each lens worded its own verdict token. Never hand-written — the verdict guard denies Write/Edit/bash into review-verdict.json.",
+      "Written by the SubagentStop review-scribe when the minimum lens roster was covered. The `taskId` field carries the engine record dir NAME (the intent's identity under repo-SoR — there is no DB Slice binding). `findings` and `lenses` report each lens's LATEST review at this headSha: a lens that re-reviews at the same head supersedes its own earlier round, verdict and findings together, so a fixed round-1 refusal cannot pin the aggregate forever. Supersession is per-lens and never cross-lens — an unrevisited NOT-READY still blocks. `blockingFindings` are the live cited findings no lens disposed; a non-empty list forces NOT-READY however each lens worded its own verdict token. Never hand-written — the verdict guard denies Write/Edit/bash into review-verdict.json. The reports preserve each latest native report and its provenance as data. Missing historical report text is explicit; re-dispatch before synthesizing a modern findings report. The conductor writes its exact pending request.reviewFile and runs the returned recordVerdict; this aggregate is not an engine review record.",
   };
   writeFileSync(
     join(gateDir, "review-verdict.json"),
@@ -840,22 +858,28 @@ const engineReceiptFor = ({
     gate: context.gate,
     graph: stageGraph,
   });
-  const receipt = recordEngineReceipt({
-    projectDir: context.checkoutRoot,
-    gate: context.gate,
-    declaredReviewer,
-    aggregate,
-    invokeEngine: spawnEngineReview({ enginePath: ENGINE_LOG_PATH }),
-    appendReviewSection: appendReviewSectionToFile({
-      resolveArtifactPath: ({ stage }) => {
-        const logical = declaredReviewArtifactPathFor({
-          gate: stage,
-          graph: stageGraph,
-        });
-        return logical === null ? null : join(context.recordDir, logical);
-      },
-    }),
-  });
+  const route = z.enum(["conductor-report", "legacy-append"]).default("conductor-report").safeParse(process.env.RIN_GATES_ENGINE_REVIEW_ROUTE);
+  const receipt: ReceiptOutcome = route.success
+    ? recordEngineReceipt({
+        route: route.data,
+        projectDir: context.checkoutRoot,
+        gate: context.gate,
+        declaredReviewer,
+        aggregate,
+        invokeEngine: spawnEngineReview({ enginePath: ENGINE_LOG_PATH }),
+        appendReviewSection: appendReviewSectionToFile({
+          resolveArtifactPath: ({ stage }) => {
+            const logical = declaredReviewArtifactPathFor({ gate: stage, graph: stageGraph });
+            return logical === null ? null : join(context.recordDir, logical);
+          },
+        }),
+      })
+    : {
+        kind: "refused",
+        step: "requested",
+        reason: "other",
+        detail: "RIN_GATES_ENGINE_REVIEW_ROUTE must be conductor-report or legacy-append.",
+      };
   if (receipt.kind === "refused") {
     reportRefusedReceipt({
       gate: context.gate,

@@ -1,18 +1,12 @@
 import { existsSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
-import { configR7OptIn } from "./rin-harness-config.ts";
+import { configR7OptIn, configStageGraphPath } from "./rin-harness-config.ts";
 import {
   type DocRule,
   type Finding,
   inspectRecordDirectory,
 } from "./rin-harness-doc-discipline.ts";
 
-const STAGE_GRAPH_RELATIVE = join(
-  ".claude",
-  "tools",
-  "data",
-  "stage-graph.json",
-);
 const INTENTS_SEGMENT = `${sep}intents${sep}`;
 
 const UPSTREAM_FINDINGS_COUNT_KEY = "findings_count";
@@ -139,14 +133,12 @@ const runDdSensor = ({
     return;
   }
 
+  const projectDir = flags.projectDir ?? process.cwd();
+  const configuredStageGraph = configStageGraphPath({ projectDir });
   const inspection = inspectRecordDirectory({
     recordDir,
-    stageGraphPath: join(
-      flags.projectDir ?? process.cwd(),
-      STAGE_GRAPH_RELATIVE,
-    ),
+    stageGraphPath: resolve(projectDir, configuredStageGraph),
   });
-
   if (inspection.kind === "unmeasurable") {
     emit({
       result: {
@@ -154,7 +146,7 @@ const runDdSensor = ({
         dd: label,
         findingsCount: 0,
         findings: [],
-        scanned: `UNMEASURED — ${inspection.reason}: ${STAGE_GRAPH_RELATIVE} is absent, so the official-artefact set (DD-4) could not be resolved`,
+        scanned: `UNMEASURED — ${inspection.reason}: ${configuredStageGraph} is absent, so the official-artefact set (DD-4) could not be resolved`,
       },
     });
     return;

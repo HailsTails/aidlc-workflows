@@ -55,6 +55,6 @@ still need to be loaded before running the stage or dispatching collaborators.
 
 ## Maintained tool inventory
 
-`core/tools/` contains 73 aidlc-*.ts engine and authoring tools. Colocated
+`core/tools/` contains 91 aidlc-*.ts engine and authoring tools. Colocated
 `.test.ts` and `.spec.ts` files are maintainer verification sources, excluded
 from installed runtime projections.
