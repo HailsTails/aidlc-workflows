@@ -628,7 +628,7 @@ const describeMilestone = (args: {
 // comparator never learns the config's internals (IF-5).
 const rankedRecordFor = (args: {
   readonly dirName: string;
-  readonly currentStage: string | null;
+  readonly currentStage: string;
   readonly facts: RecordRankingFacts;
   readonly config: SelectionConfig;
   readonly now: () => Date;
@@ -642,8 +642,7 @@ const rankedRecordFor = (args: {
       ratifiedMilestones: args.config.ratifiedMilestones,
     }),
     tier: args.facts.tier,
-    gatePosition:
-      args.currentStage === null ? -1 : GATE_SLUGS.indexOf(args.currentStage),
+    gatePosition: GATE_SLUGS.indexOf(args.currentStage),
     neglectDays: resolveNeglectDays({ clock: args.facts.clock, now: args.now }),
   };
 };
@@ -893,38 +892,37 @@ const orderedRecords = (args: {
   readonly config: SelectionConfig;
   readonly now: () => Date;
 }): readonly RecordStatus[] => {
-  const compare = selectionOrderComparator;
+  const pipelineEntries = args.enumerated.flatMap((entry) => {
+    const status = recordStatusFor({
+      record: entry.record,
+      owners: args.laneMap,
+      facts: entry.facts,
+    });
+    return status === null ? [] : [{ status, facts: entry.facts }];
+  });
   const rankByDirName = new Map(
-    args.enumerated.map(
-      (entry) =>
+    pipelineEntries.map(
+      ({ status, facts }) =>
         [
-          entry.record.dirName,
+          status.dirName,
           rankedRecordFor({
-            dirName: entry.record.dirName,
-            currentStage: entry.record.currentStage,
-            facts: entry.facts,
+            dirName: status.dirName,
+            currentStage: status.currentStage,
+            facts,
             config: args.config,
             now: args.now,
           }),
         ] as const,
     ),
   );
-  return args.enumerated
-    .map((entry) =>
-      recordStatusFor({
-        record: entry.record,
-        owners: args.laneMap,
-        facts: entry.facts,
-      }),
-    )
-    .filter((status): status is RecordStatus => status !== null)
-    .slice()
+  return pipelineEntries
+    .map(({ status }) => status)
     .sort((left, right) => {
       const leftRank = rankByDirName.get(left.dirName);
       const rightRank = rankByDirName.get(right.dirName);
       return leftRank === undefined || rightRank === undefined
         ? left.dirName.localeCompare(right.dirName)
-        : compare(leftRank, rightRank);
+        : selectionOrderComparator(leftRank, rightRank);
     })
     .map((status, index) => {
       const ranked = rankByDirName.get(status.dirName);

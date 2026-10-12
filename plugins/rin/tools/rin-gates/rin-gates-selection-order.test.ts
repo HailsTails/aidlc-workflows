@@ -10,8 +10,6 @@ import {
 
 const RATIFIED_MILESTONES = ["M1", "M2", "M3"];
 
-const compare = selectionOrderComparator;
-
 const record = (overrides: Partial<RankedRecord>): RankedRecord => ({
   dirName: "260101-a-record",
   flagged: "not-flagged",
@@ -23,7 +21,7 @@ const record = (overrides: Partial<RankedRecord>): RankedRecord => ({
 });
 
 const firstOf = (left: RankedRecord, right: RankedRecord): string =>
-  compare(left, right) < 0 ? left.dirName : right.dirName;
+  selectionOrderComparator(left, right) < 0 ? left.dirName : right.dirName;
 
 describe("neglect age alone never outranks a flag or a milestone rank", () => {
   test("a long-neglected record loses to a freshly flagged one", () => {
@@ -219,8 +217,8 @@ describe("rung 6 — dirName terminal tie-break", () => {
   test("records equal on every rung resolve by dirName and never compare equal", () => {
     const left = record({ dirName: "aaa" });
     const right = record({ dirName: "bbb" });
-    expect(compare(left, right)).toBeLessThan(0);
-    expect(compare(right, left)).toBeGreaterThan(0);
+    expect(selectionOrderComparator(left, right)).toBeLessThan(0);
+    expect(selectionOrderComparator(right, left)).toBeGreaterThan(0);
   });
 
   test("the comparator never returns equal for distinct records", () => {
@@ -232,7 +230,7 @@ describe("rung 6 — dirName terminal tie-break", () => {
     const pairs = records.flatMap((left) =>
       records
         .filter((right) => right.dirName !== left.dirName)
-        .map((right) => compare(left, right)),
+        .map((right) => selectionOrderComparator(left, right)),
     );
     expect(pairs.every((verdict) => verdict !== 0)).toBe(true);
   });
@@ -246,10 +244,10 @@ describe("order independence (FR-3)", () => {
       record({ dirName: "260103-gamma", gatePosition: 4, neglectDays: 32 }),
       record({ dirName: "260104-delta", neglectDays: 3 }),
     ];
-    const forward = [...records].sort(compare).map((r) => r.dirName);
+    const forward = [...records].sort(selectionOrderComparator).map((r) => r.dirName);
     const reversed = [...records]
       .reverse()
-      .sort(compare)
+      .sort(selectionOrderComparator)
       .map((r) => r.dirName);
     expect(forward).toEqual(reversed);
   });
@@ -371,11 +369,8 @@ describe("the meta-tier rung — present, executing, and inert until G3-C6", () 
     });
     const absent = record({ dirName: "260101-c-unscored", tier: UNSCORED });
 
-    // These tie on flag, milestone, gate position and neglect age, so the dirName
-    // tiebreak decides — exactly as before the rung existed. A live rung ranking
-    // by tier would have surfaced the T0 record first instead.
     expect(
-      [best, absent, worst].toSorted(compare).map((entry) => entry.dirName),
+      [best, absent, worst].toSorted(selectionOrderComparator).map((entry) => entry.dirName),
     ).toEqual([
       "260101-a-scored-t3",
       "260101-b-scored-t0",

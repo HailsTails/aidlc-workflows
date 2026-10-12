@@ -14,6 +14,7 @@ import type {
   IntentRecord,
   RecordRank,
   RecordRankingFacts,
+  RecordStatus,
   TransitionOwner,
 } from "./rin-gates-status";
 
@@ -509,14 +510,6 @@ describe("orderedRecords", () => {
     ).toEqual(["1:a"]);
   });
 
-  const atStage = (args: {
-    readonly entry: RankingEntry;
-    readonly currentStage: string;
-  }): RankingEntry => ({
-    ...args.entry,
-    record: { ...args.entry.record, currentStage: args.currentStage },
-  });
-
   test("emits positions in the ratified tier order — a flag outranks milestone rank, which outranks a breach", () => {
     expect(
       positionsFor([
@@ -551,15 +544,34 @@ describe("orderedRecords", () => {
           milestone: { kind: "no-milestone" },
           ageDays: 60,
         }),
-        atStage({
-          entry: entry({
+        {
+          record: {
             dirName: "recent-implement",
-            flagged: "not-flagged",
-            milestone: { kind: "no-milestone" },
-            ageDays: 3,
-          }),
-          currentStage: "rin-gate-4-implement",
-        }),
+            uuid: "019f0000-0000-7000-8000-000000000001",
+            status: "unknown",
+            scope: "rin-gates",
+            currentStage: "rin-gate-4-implement",
+            workflowStatus: "Running",
+            parkedAt: null,
+            parkedAtStage: null,
+          },
+          facts: {
+            binding: {
+              flagged: "not-flagged",
+              milestone: { kind: "no-milestone" },
+              boundAt: daysAgo(3),
+              boundBy: "test",
+            },
+            tier: { kind: "unscored" },
+            clock: { source: "stage-advance", at: daysAgo(3) },
+            promotedTaskId: null,
+            readiness: {
+              gateArtefactsPresent: 0,
+              gateArtefactsExpected: 0,
+              storedVerdict: "none",
+            },
+          },
+        },
       ]),
     ).toEqual(["1:recent-implement", "2:old-framing"]);
   });
@@ -626,61 +638,104 @@ describe("orderedRecords", () => {
 });
 
 describe("laneQueue", () => {
-  const owner = (owningLane: string): TransitionOwner => ({
-    gate: "",
-    owningLane,
+  const ownedBy = (args: {
+    readonly gate: string;
+    readonly owningLane: string;
+  }): TransitionOwner => ({
+    gate: args.gate,
+    owningLane: args.owningLane,
     actor: "lane",
     requiredCapabilities: [],
   });
   const laneMap: ReadonlyMap<string, TransitionOwner> = new Map([
-    ["rin-gate-0-reconcile", owner("intake")],
-    ["rin-gate-1-framing", owner("progress")],
-    ["rin-gate-4-implement", owner("progress")],
+    [
+      "rin-gate-0-reconcile",
+      ownedBy({ gate: "rin-gate-0-reconcile", owningLane: "intake" }),
+    ],
+    [
+      "rin-gate-1-framing",
+      ownedBy({ gate: "rin-gate-1-framing", owningLane: "progress" }),
+    ],
+    [
+      "rin-gate-4-implement",
+      ownedBy({ gate: "rin-gate-4-implement", owningLane: "progress" }),
+    ],
   ]);
-  const statusAt = (args: {
+  const statusOwnedBy = (args: {
     readonly dirName: string;
-    readonly currentStage: string;
-  }) =>
-    recordStatusFor({
-      record: {
-        dirName: args.dirName,
-        uuid: "",
-        status: "unknown",
-        scope: "rin-gates",
-        currentStage: args.currentStage,
-        workflowStatus: "Running",
-        parkedAt: null,
-        parkedAtStage: null,
-      },
-      owners: laneMap,
-    });
-  const records = [
-    statusAt({ dirName: "a-intake", currentStage: "rin-gate-0-reconcile" }),
-    statusAt({ dirName: "b-implement", currentStage: "rin-gate-4-implement" }),
-    statusAt({ dirName: "c-framing", currentStage: "rin-gate-1-framing" }),
-  ].filter((status) => status !== null);
+    readonly owningLane: string;
+  }): RecordStatus => ({
+    dirName: args.dirName,
+    uuid: "019f0000-0000-7000-8000-000000000000",
+    scope: "rin-gates",
+    currentStage: "rin-gate-1-framing",
+    classification: "in-pipeline",
+    nextGate: "rin-gate-1-framing",
+    owningLane: args.owningLane,
+    bindingCoverage: "unbound",
+    neglectClockSource: "stage-advance",
+    readiness: {
+      gateArtefactsPresent: 0,
+      gateArtefactsExpected: 0,
+      storedVerdict: "none",
+    },
+    rank: {
+      position: 1,
+      flagged: "not-flagged",
+      milestone: "no-milestone",
+      neglectDays: 1,
+      neglectBreach: false,
+    },
+  });
+  const intakeRecord = statusOwnedBy({
+    dirName: "intake-record",
+    owningLane: "intake",
+  });
+  const implementRecord = statusOwnedBy({
+    dirName: "implement-record",
+    owningLane: "progress",
+  });
+  const framingRecord = statusOwnedBy({
+    dirName: "framing-record",
+    owningLane: "progress",
+  });
 
   test("keeps only the named lane's rows, in the order given", () => {
-    expect(laneQueue({ records, laneMap, lane: "progress" })).toMatchObject({
-      kind: "known-lane",
-      rows: [{ dirName: "b-implement" }, { dirName: "c-framing" }],
-    });
+    expect(
+      laneQueue({
+        records: [intakeRecord, implementRecord, framingRecord],
+        laneMap,
+        lane: "progress",
+      }),
+    ).toEqual({ kind: "known-lane", rows: [implementRecord, framingRecord] });
   });
 
   test("refuses a lane the ownership map does not name, listing the lanes it does", () => {
-    expect(laneQueue({ records, laneMap, lane: "spec" })).toEqual({
-      kind: "unknown-lane",
-      knownLanes: ["intake", "progress"],
-    });
+    expect(
+      laneQueue({
+        records: [intakeRecord, implementRecord, framingRecord],
+        laneMap,
+        lane: "spec",
+      }),
+    ).toEqual({ kind: "unknown-lane", knownLanes: ["intake", "progress"] });
   });
 
   test("caps the queue at five rows", () => {
-    const many = Array.from({ length: 7 }, (_, index) =>
-      statusAt({ dirName: `r${index}`, currentStage: "rin-gate-1-framing" }),
-    ).filter((status) => status !== null);
-    expect(laneQueue({ records: many, laneMap, lane: "progress" })).toEqual({
+    const first = statusOwnedBy({ dirName: "first", owningLane: "progress" });
+    const second = statusOwnedBy({ dirName: "second", owningLane: "progress" });
+    const third = statusOwnedBy({ dirName: "third", owningLane: "progress" });
+    const fourth = statusOwnedBy({ dirName: "fourth", owningLane: "progress" });
+    const fifth = statusOwnedBy({ dirName: "fifth", owningLane: "progress" });
+    const sixth = statusOwnedBy({ dirName: "sixth", owningLane: "progress" });
+    expect(
+      laneQueue({
+        records: [first, second, third, fourth, fifth, sixth],
+        laneMap,
+        lane: "progress",
+      }),
+    ).toEqual({
       kind: "known-lane",
-      rows: many.slice(0, 5),
+      rows: [first, second, third, fourth, fifth],
     });
   });
 
