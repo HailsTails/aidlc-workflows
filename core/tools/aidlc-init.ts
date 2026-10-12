@@ -6218,9 +6218,27 @@ function prepareRefreshSource(input: {
     if (plan.kind === "conflict") throw new Error(`plugin hook contribution conflict: ${plan.error.path}: ${plan.error.reason}`);
     plan.documents.forEach(({ path, text }) => { strippedHooks.set(path, text); });
   });
+  const recordedHookProjection = new Map(hookPaths.filter((path) =>
+    regularFile(join(root, path)) && sha256File(join(root, path)) === prior?.files[path]
+  ).map((path) => [path, readFileSync(join(root, path), "utf-8")]));
+  hookRecords.forEach(({ payload }) => {
+    if (payload.registrations.some((registration) => !recordedHookProjection.has(registration.path))) return;
+    const plan = planPluginHookRegistrations({
+      pluginName: payload.pluginName, harness: payload.harness, selection: { kind: "selected" },
+      previous: [], current: payload.registrations,
+      documents: [...recordedHookProjection].map(([path, text]) => ({ path, text })),
+    });
+    if (plan.kind === "conflict") throw new Error(`plugin hook contribution conflict: ${plan.error.path}: ${plan.error.reason}`);
+    plan.documents.forEach(({ path, text }) => { recordedHookProjection.set(path, text); });
+  });
   const freshHooks = new Map(hookPaths.filter((path) => {
     const hash = prior?.files[path];
-    return hash && regularFile(join(root, path)) && [currentHooks.get(path), strippedHooks.get(path)].some((text) => text !== undefined && sha256Bytes(text) === hash);
+    const recorded = recordedHookProjection.get(path);
+    const current = currentHooks.get(path);
+    return hash && regularFile(join(root, path)) && (
+      [current, strippedHooks.get(path)].some((text) => text !== undefined && sha256Bytes(text) === hash) ||
+      (recorded !== undefined && current !== undefined && sha256Bytes(recorded) === sha256Bytes(current))
+    );
   }).map((path) => [path, readFileSync(join(root, path), "utf-8")]));
   if (distribution === "claude") {
     hookRecords.forEach(({ payload }) => {
@@ -6362,6 +6380,17 @@ function prepareRefreshSource(input: {
       : join(root, ".agents", "skills", "aidlc", "SKILL.md");
     if (existsSync(skillPath)) {
       let generated = readFileSync(skillPath, "utf-8");
+      const skillRelative = relative(root, skillPath).replaceAll("\\", "/");
+      const currentSkill = join(projectDir, skillRelative);
+      const skillBaseline = prior?.files[skillRelative];
+      if (skillBaseline && regularFile(currentSkill)) {
+        const current = readFileSync(currentSkill, "utf-8").replaceAll("\r\n", "\n");
+        const restored = replaceGeneratedRegion(replaceGeneratedRegion(current, generated, "stage"), generated, "scope");
+        if ([current, restored].some((text) => sha256Bytes(text) === skillBaseline)) {
+          regenerated.add(skillRelative);
+          hookCoreHashes.set(skillRelative, sha256Bytes(generated));
+        }
+      }
       generated = replaceGeneratedRegion(
         generated,
         canonicalStageTableRegion(renderStageTable()),
