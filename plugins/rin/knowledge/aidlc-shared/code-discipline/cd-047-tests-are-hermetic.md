@@ -45,7 +45,9 @@ A test qualifying under the closed case above uses the helper's temp-repo mode â
 
 ## Enforcement
 
-`pnpm run audit:hermetic-git` walks every `*.test.{ts,tsx,mjs,js}` / `*.spec.{ts,mjs}` and fails on any git spawn that does not pass an explicit hermetic environment. The judgement is **per call site, not per file**: a file that imports the helper for one fixture while another site still spawns ambiently is the partial-conversion shape this class keeps reappearing as, so a file-level check would pass exactly the regression most likely to happen.
+A consumer may wire `pnpm run audit:hermetic-git` (or its existing package manager equivalent) to the generated `tools/rin-harness-hermetic-git-guard.ts`, run with Bun and `--project-dir <consumer>`. The script binding is not automatically installed by copying knowledge. The CLI defaults to no test-count floor; optional `--minimum-test-files <nonnegative-safe-integer>` is a consumer scan sanity check, not a canonical test-count requirement. Empty clean scans report NOT APPLICABLE without establishing coverage. Invalid floor arguments exit 2; findings/configured-floor failure exit 1; clean scans exit 0. See the [standalone inventory](standalone-cd-inventory.md) for scope and semantic limitations.
+
+The guard walks every `*.test.{ts,tsx,mjs,js}` / `*.spec.{ts,mjs}` and fails on any git spawn that does not pass an explicit hermetic environment. The judgement is **per call site, not per file**: a file that imports the helper for one fixture while another site still spawns ambiently is the partial-conversion shape this class keeps reappearing as, so a file-level check would pass exactly the regression most likely to happen.
 
 It is a standalone walker rather than a constitution-audit rule because that pipeline prunes `.claude/**` by directory name and filters to `.ts`/`.tsx`, so it structurally cannot see the hook and tool tests where this class has actually bitten. Further classes are added to this same walker under this same rule; a recurrence does not spawn a bespoke rule of its own.
 

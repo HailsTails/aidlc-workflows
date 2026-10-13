@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
+import ts from "typescript";
 import { exportSurfaceOf } from "./export-surface.js";
 import { walkSourceFiles } from "./walk-source-files.js";
 
@@ -237,7 +238,7 @@ const checkObjectFromEntries = (
 
 const BARE_TODO_PATTERN = /\/\/\s*TODO\b(?!\s*\()/;
 
-const BARE_BIOME_IGNORE_PATTERN = /\/\/\s*biome-ignore\b(?!.*\(spec-\d+\))/;
+
 
 const BARE_TS_EXPECT_ERROR_PATTERN =
   /\/\/\s*@ts-expect-error\b(?!.*\(spec-\d+\))/;
@@ -256,20 +257,46 @@ const checkBareTodoAnnotation = (
       snippet: line.trim(),
     }));
 
-const checkBareBiomeIgnoreAnnotation = (
+const LINTER_DIRECTIVE_PATTERN =
+  /^(?:\/\/|\/\*)\s*((?:biome-ignore(?:-all|-start|-end)?|(?:eslint|oxlint)-(?:disable(?:-line|-next-line)?|enable)|eslint(?=\s)))\b/;
+
+const commentRangesOf = (content: string): readonly ts.CommentRange[] => {
+  const source = ts.createSourceFile(
+    "directive.tsx",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const collect = (node: ts.Node): readonly ts.CommentRange[] => [
+    ...(ts.getLeadingCommentRanges(content, node.pos) ?? []),
+    ...(ts.getTrailingCommentRanges(content, node.end) ?? []),
+    ...node.getChildren(source).flatMap(collect),
+  ];
+  return [...new Map(collect(source).map((range) => [range.pos, range])).values()];
+};
+
+const checkBareLinterDirectiveAnnotation = (
   filePath: string,
   content: string,
 ): readonly ConstitutionViolation[] =>
-  splitLines(content)
-    .map((line, index) => ({ line, lineNumber: index + 1 }))
-    .filter(({ line }) => BARE_BIOME_IGNORE_PATTERN.test(line))
-    .map(({ line, lineNumber }) => ({
-      rule: "CD-5 (bare `// biome-ignore` — require `(spec-NNN)` tracker reference)",
+  commentRangesOf(content)
+    .map((range) => ({ range, comment: content.slice(range.pos, range.end) }))
+    .map(({ range, comment }) => ({
+      range,
+      comment,
+      directive: LINTER_DIRECTIVE_PATTERN.exec(comment)?.[1],
+    }))
+    .filter(
+      ({ comment, directive }) =>
+        directive !== undefined && !/\(spec-\d+\)/.test(comment),
+    )
+    .map(({ range, comment, directive }) => ({
+      rule: `CD-5 (bare \`// ${directive}\` - require \`(spec-NNN)\` tracker reference)`,
       file: filePath,
-      line: lineNumber,
-      snippet: line.trim(),
+      line: splitLines(content.slice(0, range.pos)).length,
+      snippet: comment.trim(),
     }));
-
 const checkBareTsExpectErrorAnnotation = (
   filePath: string,
   content: string,
@@ -349,7 +376,7 @@ const auditSrcFile = (filePath: string): readonly ConstitutionViolation[] => {
     ...checkNodeStdlibImports(filePath, content),
     ...checkObjectFromEntries(filePath, content),
     ...checkBareTodoAnnotation(filePath, content),
-    ...checkBareBiomeIgnoreAnnotation(filePath, content),
+    ...checkBareLinterDirectiveAnnotation(filePath, content),
     ...checkBareTsExpectErrorAnnotation(filePath, content),
   ];
 };
@@ -364,7 +391,7 @@ const auditScriptFile = (
     ...checkClassDeclarations(filePath, content),
     ...checkObjectFromEntries(filePath, content),
     ...checkBareTodoAnnotation(filePath, content),
-    ...checkBareBiomeIgnoreAnnotation(filePath, content),
+    ...checkBareLinterDirectiveAnnotation(filePath, content),
     ...checkBareTsExpectErrorAnnotation(filePath, content),
   ];
 };

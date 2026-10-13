@@ -6,3 +6,5 @@ It provides pinned manual copy commands, small verified Biome, ESLint and oxlint
 checks, a deliberate fail/correct/pass probe, and explicit coverage limits.
 The guide also ships inside Rin's existing knowledge payload. It uses the existing Bun packager and selective copying; the CDs are projected knowledge, so automatic native rule loading remains a backlog gap. Full Rin plugin
 installation still requires AIDLC core; there is no workflow-free plugin selector.
+
+Use the [complete 45-CD selection inventory](../../plugins/rin/knowledge/aidlc-shared/code-discipline/standalone-cd-inventory.md) for partial-check evidence, manual coverage and progressive strict-flag adoption. No all-CD linter preset or compiler-debt ratchet is installed.

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   MINIMUM_EXPECTED_TEST_FILES,
   runGuard,
+  runCli,
 } from "./rin-harness-hermetic-git-guard.ts";
 
 const runGuardOverFixture = ({ projectDir }: { readonly projectDir: string }) =>
@@ -288,7 +289,55 @@ describe("runGuard", () => {
     expect(outcome.pass).toBe(true);
   });
 
-  test("guards the real repository with a non-zero scan floor", () => {
-    expect(MINIMUM_EXPECTED_TEST_FILES).toBeGreaterThan(0);
+  test("does not impose a producer test count on small consumers", () => {
+    const projectDir = newProject();
+    writeProjectFile({ projectDir, relativePath: "small.test.ts", body: "const value = 1;\n" });
+    expect(MINIMUM_EXPECTED_TEST_FILES).toBe(0);
+    expect(runGuard({ projectDir }).pass).toBe(true);
+    expect(runCli(["--project-dir", projectDir]).exitCode).toBe(0);
+  });
+
+  test("reports the explicitly configured scan floor", () => {
+    const result = runCli(["--project-dir", newProject(), "--minimum-test-files", "3"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.report).toContain("expected at least 3");
+    expect(result.report).not.toContain("400");
+  });
+
+  test("reports no evaluated tests without claiming semantic PASS", () => {
+    const result = runCli(["--project-dir", newProject()]);
+    expect(result.exitCode).toBe(0);
+    expect(result.report).toContain("NOT APPLICABLE");
+    expect(result.report).toContain("coverage has not been established");
+    expect(result.report).not.toContain("PASS");
+  });
+
+  test.each([[], ["-1"], ["1.5"], ["wat"], ["9007199254740992"], ["--project-dir"]].map((values) => ({ values })))(
+    "rejects malformed floor arguments before scanning: %j",
+    ({ values }) => {
+      const result = runCli(["--minimum-test-files", ...values]);
+      expect(result.exitCode).toBe(2);
+      expect(result.report).toContain("invalid arguments");
+      expect(result.report).not.toContain("scanned");
+    },
+  );
+
+  test("rejects duplicate floor flags", () => {
+    const result = runCli(["--minimum-test-files", "0", "--minimum-test-files", "1"]);
+    expect(result.exitCode).toBe(2);
+    expect(result.report).toContain("invalid arguments");
+  });
+
+  test("accepts an explicit zero floor without claiming coverage", () => {
+    const result = runCli(["--project-dir", newProject(), "--minimum-test-files", "0"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.report).toContain("NOT APPLICABLE");
+  });
+  test("CLI still fails per-call hermeticity findings with no count floor", () => {
+    const projectDir = newProject();
+    writeProjectFile({ projectDir, relativePath: "offender.test.ts", body: 'execFileSync("git", ["init"]);\n' });
+    const result = runCli(["--project-dir", projectDir]);
+    expect(result.exitCode).toBe(1);
+    expect(result.report).toContain("[unhermetic-git-spawn]");
   });
 });
