@@ -90,9 +90,9 @@ const fromStructuredBlock = (message: string): LensVerdict | null => {
   return fencedMatch === null ? null : parseJsonPayload(fencedMatch[1]);
 };
 
-// The lens's native contract: a line that DECLARES itself the verdict. Two
-// shapes are accepted because both are what real lenses produce (task 019fe4af,
-// 32 discarded verdicts across four gates, 2026-08-07..09):
+// The lens's native contract: a line that DECLARES itself the verdict. Accepted
+// shapes place the token below a heading, on the heading, or in a bold inline
+// declaration:
 //
 //   ## Verdict            <- heading, token in the body below
 //   ## Verdict: NOT-READY <- heading, token ON the heading line
@@ -107,12 +107,11 @@ const VERDICT_DECLARATION =
 // verdict. The region ends at the next heading of any level.
 const NEXT_HEADING = /^[ \t]*#{1,6}[ \t]+\S/m;
 
-// The region INCLUDES the declaration line itself. The previous reader sliced
-// from the end of that line, so `## Verdict: NOT-READY` had its only token
-// consumed into the heading and the region below was empty or another heading —
-// the shape that lost every one of the 32. Including the line cannot manufacture
-// an approval: NOT-READY is still tested first and matched anywhere in the
-// region, so a declaration naming both tokens resolves to NOT-READY.
+// The region INCLUDES the declaration line itself. Slicing from its end would
+// discard the only token in `## Verdict: NOT-READY`, leaving an empty region
+// or another heading. Including the line cannot manufacture an approval:
+// NOT-READY is tested first and matched anywhere in the region, so a declaration
+// naming both tokens resolves to NOT-READY.
 const verdictRegionOf = (message: string): string | null => {
   const declaration = message.match(VERDICT_DECLARATION);
   if (declaration?.index === undefined) return null;
@@ -134,7 +133,7 @@ const findingsIn = (region: string): readonly string[] =>
 
 // The findings a lens cited and did NOT dispose — re-exported from the single
 // definition beside the CLI emitter, so the scribe door and the emitter door
-// cannot drift about what READY means (task 019f6d3e).
+// cannot drift about what READY means.
 export { blockingFindingsIn } from "../tools/rin-gates/rin-gates-finding-disposition.ts";
 
 const fromVerdictSection = (message: string): LensVerdict | null => {

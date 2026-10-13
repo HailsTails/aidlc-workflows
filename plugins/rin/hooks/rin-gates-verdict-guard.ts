@@ -1,6 +1,6 @@
 // PreToolUse path guard for the rin-gates review-verdict artefact.
 //
-// Root cause addressed (Gate-5 review B1, 2026-07-13): the autonomy backstop
+// Authorization boundary: the autonomy backstop
 // hook (rin-gates-autonomy-gate.ts) refuses an autonomous `report
 // --result approved` unless a `review-verdict.json` with verdict:"READY" exists
 // for the gate. But if that file is freely model-writable, an autonomous lane
@@ -194,7 +194,7 @@ const SINGLE_QUOTED_MESSAGE = /(-m|-am|-F)\s+'(?:[^'\\]|\\.)*'/g;
 // shell treats this as literal data delivered on stdin, not as command syntax.
 const HEREDOC_BODY = /<<-?\s*(['"]?)(\w+)\1[\s\S]*?^\s*\2\s*$/gm;
 
-// CONTEXT-AWARE SUBSTITUTION FALLBACK (task 01a02632). The fallback below used to
+// CONTEXT-AWARE SUBSTITUTION FALLBACK. The fallback below used to
 // test SUBSTITUTION against the WHOLE ORIGINAL command, so a single backtick
 // ANYWHERE — including inside a single-quoted message, where no shell on earth
 // evaluates it — discarded the stripped result and re-enabled full-message

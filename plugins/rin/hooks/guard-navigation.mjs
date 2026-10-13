@@ -22,7 +22,7 @@ const denyCall = ({ reason }) => {
   process.exit(2);
 };
 
-// Guard-relaxation trial (record 260904-guard-relaxation-trial-2). Mirrors
+// Guard-relaxation trial. Mirrors
 // plugins/rin/hooks/guard-trial.ts, which this .mjs file cannot import. The
 // token names guards individually and this guard answers only to its own name,
 // so no value of it reaches a safety-critical guard. Fails closed: the relax

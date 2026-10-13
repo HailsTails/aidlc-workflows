@@ -65,9 +65,6 @@ const MUTATING_SHELL =
 // the only invariant the audit ledger protects. Permitting deletion of a shard
 // without GATE_APPROVED / STAGE_COMPLETED events would assume that removing no
 // approval proof forges none. That theory is FALSE for two independent reasons:
-// GATE_APPROVED / STAGE_COMPLETED event, on the theory that removing no proof
-// forges none. That theory is FALSE for the audit shard, on two independent
-// grounds:
 //
 // 1. THE LEDGER IS READ FOR REFUSALS, NOT ONLY APPROVALS. aidlc-lib.ts's
 //    GATE_RESOLUTION_EVENTS is {GATE_APPROVED, GATE_REJECTED,
