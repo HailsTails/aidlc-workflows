@@ -769,8 +769,8 @@ const checkTotality = (records: readonly RecordStatus[]): readonly string[] =>
 // The gate's own work, stated so a lane does not `ls` the record dir to find out.
 // "0/2" means this gate's pass is OWED, never that the record is empty — a
 // promoted record already carries its intake framing and importance binding, and
-// reading an artefact count as emptiness is how seven fully-framed records were
-// once reported as "never started". "2/2" means the artefacts are written and the
+// missing gate outputs do not make that existing framing disappear. "2/2" means
+// the artefacts are written and the
 // gate's remaining work is its review and completion report. A gate declaring no
 // artefacts renders "—" rather than a misleading "0/0".
 const describeGateWork = (args: {
