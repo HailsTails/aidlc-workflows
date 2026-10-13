@@ -103,12 +103,9 @@ changed-lines policy or exemption-decay checker.
 
 ## 3. Wire ordinary checks
 
-For an existing ESLint repo, keep its lint command and configuration. If its
-installed typescript-eslint plugin supports `@typescript-eslint/no-explicit-any`,
-enable that rule as `error` in the existing TS/TSX scope. It covers explicit `any`,
-not Biome's entire pair or semantic `any`. Use the existing TS compiler for implicit
-`any`; review uncovered cases. No ESLint version/config migration is verified here.
-Do not install a second linter just because a rule file names Biome.
+Use the consumer's existing linter first. The [tested ESLint and oxlint alternatives](standalone-linter-options.md) cover the same bounded explicit-any trial, including parser setup, source/test probes and remaining compiler/manual obligations. Do not install a second linter merely because an atomic rule names Biome.
+
+Preserve the agreed source and test population. Never exclude tests, weaken rules or shrink configured coverage to get green checks. Report existing findings, assess deliberate pre-existing exclusions, and resolve scope explicitly before changing them; do not claim an ignored probe passed. Initial inventory requires no Five Whys, but CD-1 permits no exemptions. This is not permission for blanket baselines or unrelated legacy remediation.
 
 AIDLC/Rin source tools use Bun, as the package command above does. Consumer
 lint/type/test tools remain consumer-owned: keep the existing package manager,
@@ -204,8 +201,10 @@ then create it containing exactly:
 export const rinTypeProbe: any = 'probe';
 ```
 
-Run your lint script (`bun run lint` in a Bun consumer): expect nonzero exit and `lint/suspicious/noExplicitAny` at that
-file. Correct the **same file** without suppressing the rule:
+Run your lint script (`bun run lint` in a Bun consumer): expect nonzero exit and the selected linter's explicit-any diagnostic at that
+file. Biome reports `lint/suspicious/noExplicitAny`; ESLint reports
+`@typescript-eslint/no-explicit-any`; oxlint reports `typescript(no-explicit-any)`.
+Correct the **same file** without suppressing the rule:
 
 ```typescript
 export const rinTypeProbe: unknown = 'probe';
@@ -214,7 +213,7 @@ export const rinTypeProbe: unknown = 'probe';
 Run the same lint script again: expect zero exit. Retain the diagnostic, corrected
 contents, command, tool version and exits in your adoption artifact. Remove only
 the probe you created, then run existing lint/typecheck/test/build commands.
-A skipped/empty scan is not proof. Existing unrelated errors must be reported
+Repeat the same red/green probe in an unused `.test.ts` file within the agreed test population. See the alternative recipes for engine-specific diagnostic names. A skipped/empty or ignored scan is not proof. Existing unrelated errors must be reported
 separately; the deliberate probe's diagnostic must actually disappear.
 
 Verification is deliberately bounded. The original TS API + React trial used
@@ -230,6 +229,7 @@ projected Rin with the existing package command, and copied the three generated
 files into the consumer harness directory. Copied bytes matched the projection. Ordinary consumer lint, three typechecks/builds and all 30 tests also passed through Bun's script runner while preserving the existing pnpm-owned scripts and lockfile. An invalid consumer path stopped the copy block before writes.
 A separate new Bun-managed fixture verified the exact Bun dependency command and
 `bun run lint` failure/correction/success with the displayed Biome configuration.
+Its `.test.ts` probe also failed with explicit `any` and passed with `unknown`.
 Linux/macOS/WSL portability is based on Bash syntax and existing tooling, not an
 execution claim for those platforms. No native automatic loading, live sensor
 feedback, automatic CD-46 or all-discipline enforcement was proved.
