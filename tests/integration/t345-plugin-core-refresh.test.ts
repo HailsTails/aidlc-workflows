@@ -9,12 +9,12 @@ import { runPluginCompose, type PluginComposeRunResult } from "../../dist/claude
 import { projectedPluginHookContributionsSchema } from "../../core/tools/aidlc-plugin-hook-registrations.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 
-type Face = { harness: "claude" | "codex"; leaf: string; nativeFile: string; navigationNeedle: string };
+type Face = { harness: "claude" | "codex"; leaf: string; nativeFile: string; navigationNeedle: string; skillFile: string };
 type Fixture = Face & { projectDir: string; pluginRoot: string; environment: NodeJS.ProcessEnv; initialization: SpawnSyncReturns<string>; composition: PluginComposeRunResult };
 
 const faces: Face[] = [
-  { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs" },
-  { harness: "codex", leaf: ".codex", nativeFile: ".codex/hooks.json", navigationNeedle: "rin-guard-navigation" },
+  { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs", skillFile: ".claude/skills/aidlc/SKILL.md" },
+  { harness: "codex", leaf: ".codex", nativeFile: ".codex/hooks.json", navigationNeedle: "rin-guard-navigation", skillFile: ".agents/skills/aidlc/SKILL.md" },
 ];
 const scratch = mkdtempSync(join(tmpdir(), "aidlc-t345-"));
 const navigationTrustHash = `sha256:${createHash("sha256").update('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"bun .codex/tools/aidlc.ts engine adapter codex rin-guard-navigation","timeout":600,"type":"command"}],"matcher":"Bash"}').digest("hex")}`;
@@ -64,7 +64,7 @@ function navigationTrust(fixture: Fixture): unknown {
 }
 
 function claudeConsumerSettingsFixture(): Fixture {
-  const fixture = initializeSelected({ face: { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs" }, label: "edited-claude" });
+  const fixture = initializeSelected({ face: { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs", skillFile: ".claude/skills/aidlc/SKILL.md" }, label: "edited-claude" });
   expect(fixture.initialization.status).toBe(0);
   expect(fixture.composition.status).toBe(0);
   const file = join(fixture.projectDir, fixture.nativeFile);
@@ -136,7 +136,7 @@ describe("selected plugin core refresh", () => {
   }, 120_000);
 
   test("Codex repeated core refresh binds trust to the final consumer hook indices", () => {
-    const fixture = initializeSelected({ face: { harness: "codex", leaf: ".codex", nativeFile: ".codex/hooks.json", navigationNeedle: "rin-guard-navigation" }, label: "trust-codex" });
+    const fixture = initializeSelected({ face: { harness: "codex", leaf: ".codex", nativeFile: ".codex/hooks.json", navigationNeedle: "rin-guard-navigation", skillFile: ".agents/skills/aidlc/SKILL.md" }, label: "trust-codex" });
     expect(fixture.initialization.status).toBe(0);
     expect(fixture.composition.status).toBe(0);
     const first = configProject(fixture);
@@ -149,7 +149,7 @@ describe("selected plugin core refresh", () => {
   test("core refresh proof remains valid after selected native hook rename and real sync", () => {
     const pluginRoot = join(scratch, "renamed-claude-projection");
     cpSync(join(REPO_ROOT, "dist/plugins/rin/claude"), pluginRoot, { recursive: true });
-    const fixture = initializeSelected({ face: { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs" }, label: "rename-after-refresh", pluginRoot });
+    const fixture = initializeSelected({ face: { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs", skillFile: ".claude/skills/aidlc/SKILL.md" }, label: "rename-after-refresh", pluginRoot });
     expect(fixture.initialization.status).toBe(0);
     expect(fixture.composition.status).toBe(0);
     const first = configProject(fixture);
@@ -172,7 +172,7 @@ describe("selected plugin core refresh", () => {
   }, 120_000);
 
   test("modified proven native hook entries refuse core refresh atomically", () => {
-    const fixture = initializeSelected({ face: { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs" }, label: "modified-owned-native" });
+    const fixture = initializeSelected({ face: { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs", skillFile: ".claude/skills/aidlc/SKILL.md" }, label: "modified-owned-native" });
     expect(fixture.initialization.status).toBe(0);
     expect(fixture.composition.status).toBe(0);
     const file = join(fixture.projectDir, fixture.nativeFile);
@@ -182,5 +182,41 @@ describe("selected plugin core refresh", () => {
     expect(refreshed.status).not.toBe(0);
     expect(refreshed.stdout + refreshed.stderr).toContain("conflict");
     expect(snapshot(fixture.projectDir)).toEqual(before);
+  }, 120_000);
+});
+
+describe("composed root skill ownership baseline", () => {
+  test.each(faces)("$harness refresh binds the final compiled skill tables", (face) => {
+    const fixture = initializeSelected({ face, label: `skill-baseline-${face.harness}` });
+    expect(fixture.initialization.status).toBe(0);
+    expect(fixture.composition.status, fixture.composition.stderr).toBe(0);
+    const refreshed = configProject(fixture);
+    expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(0);
+    const skill = face.skillFile;
+    const baseline = JSON.parse(readFileSync(join(fixture.projectDir, face.leaf, "tools/data/aidlc-manifest.json"), "utf8"));
+    const observed = `sha256:${createHash("sha256").update(readFileSync(join(fixture.projectDir, skill))).digest("hex")}`;
+    expect(baseline.files[skill]).toBe(observed);
+    const repeated = configProject(fixture);
+    expect(repeated.status, repeated.stdout + repeated.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(join(fixture.projectDir, face.leaf, "tools/data/aidlc-manifest.json"), "utf8")).files[skill]).toBe(observed);
+    expect(`sha256:${createHash("sha256").update(readFileSync(join(fixture.projectDir, skill))).digest("hex")}`).toBe(observed);
+  }, 120_000);
+
+  test.each(faces)("$harness prose edits cannot be absorbed into the core baseline", (face) => {
+    const fixture = initializeSelected({ face, label: `skill-prose-${face.harness}` });
+    expect(fixture.initialization.status).toBe(0);
+    expect(fixture.composition.status, fixture.composition.stderr).toBe(0);
+    const refreshed = configProject(fixture);
+    expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(0);
+    const skill = face.skillFile;
+    const manifest = join(fixture.projectDir, face.leaf, "tools/data/aidlc-manifest.json");
+    const priorManifest = readFileSync(manifest, "utf8");
+    const edited = `${readFileSync(join(fixture.projectDir, skill), "utf8")}\nUser-owned orchestration instruction.\n`;
+    writeFileSync(join(fixture.projectDir, skill), edited);
+    const refused = configProject(fixture);
+    expect(refused.status).toBe(4);
+    expect(refused.stdout + refused.stderr).toContain("locally modified or unowned");
+    expect(readFileSync(manifest, "utf8")).toBe(priorManifest);
+    expect(readFileSync(join(fixture.projectDir, skill), "utf8")).toBe(edited);
   }, 120_000);
 });

@@ -6379,18 +6379,11 @@ function prepareRefreshSource(input: {
       ? join(stagedHarness, "skills", "aidlc", "SKILL.md")
       : join(root, ".agents", "skills", "aidlc", "SKILL.md");
     if (existsSync(skillPath)) {
-      let generated = readFileSync(skillPath, "utf-8");
+      const shippedSkill = readFileSync(skillPath, "utf-8");
+      let generated = shippedSkill;
       const skillRelative = relative(root, skillPath).replaceAll("\\", "/");
       const currentSkill = join(projectDir, skillRelative);
       const skillBaseline = prior?.files[skillRelative];
-      if (skillBaseline && regularFile(currentSkill)) {
-        const current = readFileSync(currentSkill, "utf-8").replaceAll("\r\n", "\n");
-        const restored = replaceGeneratedRegion(replaceGeneratedRegion(current, generated, "stage"), generated, "scope");
-        if ([current, restored].some((text) => sha256Bytes(text) === skillBaseline)) {
-          regenerated.add(skillRelative);
-          hookCoreHashes.set(skillRelative, sha256Bytes(generated));
-        }
-      }
       generated = replaceGeneratedRegion(
         generated,
         canonicalStageTableRegion(renderStageTable()),
@@ -6401,6 +6394,14 @@ function prepareRefreshSource(input: {
         canonicalScopeTableRegion(renderScopeTable()),
         "scope",
       );
+      if (skillBaseline && regularFile(currentSkill)) {
+        const current = readFileSync(currentSkill, "utf-8").replaceAll("\r\n", "\n");
+        const restored = replaceGeneratedRegion(replaceGeneratedRegion(current, shippedSkill, "stage"), shippedSkill, "scope");
+        if ([current, restored].some((text) => sha256Bytes(text) === skillBaseline)) {
+          regenerated.add(skillRelative);
+          hookCoreHashes.set(skillRelative, sha256Bytes(generated));
+        }
+      }
       writeFileSync(skillPath, generated);
     }
     regenerated.add(`${descriptor.harnessDir}/tools/data/stage-graph.json`);
