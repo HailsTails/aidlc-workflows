@@ -28,7 +28,7 @@ source pin is a public fork revision, not an upstream release badge.
   read -r -p 'Existing consumer repository directory: ' consumer
   consumer=$(cd "$consumer" && pwd)
   git clone https://github.com/HailsTails/aidlc-workflows.git "$source_checkout"
-  git -C "$source_checkout" checkout --detach e45b1c83d20c4647bd6aabe351b490e6d4f99789
+  git -C "$source_checkout" checkout --detach d4dff7f148fd92bb6452ae830731aa261cca8166
   source_checkout=$(cd "$source_checkout" && pwd)
   cd "$source_checkout"
   bun install --frozen-lockfile
@@ -75,7 +75,7 @@ macOS execution is not claimed. Record the source commit with the copied files.
 
 ## 2. Choose coverage before enabling checks
 
-Use the [complete 45-CD inventory](standalone-cd-inventory.md) to choose additional knowledge/review obligations and tested partial checks. It includes progressive strict-flag adoption, manual gaps and existing Rin tool limitations. All active CDs can be selected without AIDLC stages; selecting prose alone enables no check.
+Use the [complete 45-CD inventory](standalone-cd-inventory.md) to choose additional knowledge/review obligations and tested partial checks. It separates execution evidence from semantic suitability, rejects non-equivalent defaults, and includes progressive strict-flag adoption, manual gaps and existing Rin tool limitations. All active CDs can be selected without AIDLC stages; selecting prose alone enables no check.
 
 
 Read the selected files in full and record scope in your existing project instructions or an adoption record beside the copied files:
