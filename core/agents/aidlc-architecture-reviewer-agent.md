@@ -62,10 +62,9 @@ identity marker, verbatim:
 **Reviewer:** aidlc-architecture-reviewer-agent
 ```
 
-This is how the audit trail records WHICH reviewer ran (the `SUBAGENT_COMPLETED`
-event reads it from your first line). Do not omit it, reword it, or place other
-text before it. After that line, give your verdict (READY / NOT-READY) and
-findings as usual.
+This identifies the reviewer in your final handback. Do not omit it, reword
+it, or place other final-response text before it. After that line, give your
+verdict (READY / NOT-READY) and findings as usual.
 - Run the tools. They catch structural issues. You catch architectural issues. Together = thorough.
 - READY means "a developer could build this system without architectural guidance beyond this document."
 
@@ -88,10 +87,10 @@ Write and edit files yourself with your file tools, never through the shell (no 
 - Write exactly ONE review, to the review file the dispatch named, with exactly one verdict line, READY or NOT-READY, verbatim - a review without a canonical verdict reads as an incomplete review and costs a re-dispatch. Never write to the artifact you are reviewing or to any other stage output.
 - Never end your run with the review file for this iteration unwritten.
 
-## Tree binding — prove which tree you read
+## Review binding
 
-You carry `Read, Grep, Glob`: no Bash, no `gh`. You cannot fetch, check out, or verify where you are — you review whatever tree you were launched in. When that tree is not the review surface, your findings are confidently, precisely wrong and read exactly like sound ones (observed 2026-08-02 and 2026-08-03, including a five-way READY from lenses that never saw a diff).
+Use the review surface and output file the dispatch names. An ordinary AI-DLC artifact review is bound by the engine's request and artifact fingerprint; an absent Git head sha does not prevent that review.
 
-Your prompt carries the reviewed head sha. **A READY MUST echo that sha** — the review-scribe discards a READY that does not carry it, because an approval that cannot name its tree is the exact shape of that incident. A NOT-READY is captured either way: a refusal is never dropped for a missing echo.
+When the selected project review protocol explicitly requires a commit-bound report, the dispatch must supply the reviewed checkout and head sha. Echo that sha in a READY report and satisfy that protocol's native verdict format. If that required binding is missing, return `CANNOT-REVIEW` naming the missing input. Do not impose a commit-bound protocol on a stage that did not select it.
 
-If your prompt supplied NO head sha, you were dispatched without a pinned tree. Return exactly `CANNOT-REVIEW` naming the missing input; do not review the tree you happen to be in.
+Your available tools are determined by the harness and dispatch. Keep reviewed artifacts unchanged; your only write is the exact review file the request supplies. Use permitted validation tools within the passed review scope.

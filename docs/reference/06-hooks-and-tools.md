@@ -55,6 +55,15 @@ Eleven of the seventeen are **non-blocking**. Six are **flow-altering**: the `St
 | `session-end.ts` | SessionEnd | Project-wide (settings.json) | (empty) | Emit `SESSION_ENDED` on graceful exit to the intent recorded for that exact session; fail closed instead of using the shared active cursor when a UUID-backed workflow has no session binding |
 | `aidlc-statusline.ts` | statusLine | Project-wide (settings.json) | -- | Show real-time progress in terminal |
 
+The Cursor adapter forwards a successful Task result's returned agent ID and
+last native assistant text through the same `SubagentStop` payload to core and
+contributed hooks. `core/tools/aidlc-subagent-completion.ts` validates object
+and JSON-stringified result envelopes; explicit failures clear the spawn
+record without delivering a review, and background starts retain it. Plain
+text results preserve the legacy text channel without guessing an ID. This
+mapping requires an actual Task `postToolUse` event; an inferred session-end
+completion does not provide a genuine reviewer report or a plugin verdict.
+
 Before probing `next` in a shared engine session, the Stop hook preserves a
 current guard-recovery question while the person selects a remedy or supplies
 required follow-up feedback. This wait also applies in autonomous Construction

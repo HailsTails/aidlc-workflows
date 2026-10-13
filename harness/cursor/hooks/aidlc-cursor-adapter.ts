@@ -64,6 +64,7 @@ import {
 } from "../tools/aidlc-lib.ts";
 import { aidlcInvocation, knownActiveSpace } from "../tools/aidlc-runtime-paths.ts";
 import { hookContextOf } from "../tools/aidlc-hook-context.ts";
+import { cursorNativeTaskCompletion } from "../tools/aidlc-subagent-completion.ts";
 
 function emitContext({ outputs, allowPlainText }: { outputs: string[]; allowPlainText: boolean }): void {
   const additionalContext = outputs.map((stdout) => hookContextOf({ stdout, allowPlainText })).filter(Boolean).join("\n");
@@ -3247,22 +3248,22 @@ export async function run(
         // cwd travels with the payload: a hook that resolves a record dir or a
         // checkout root from it would otherwise fall back to its own process
         // cwd, which in a worktree is the wrong tree.
-        const fwd = JSON.stringify({
-          hook_event_name: "SubagentStop",
-          cwd: effectiveCwd(),
-          ...(typeof sub === "string" && sub.length > 0 ? { agent_type: sub } : {}),
-          ...(sessionId ? { session_id: sessionId } : {}),
-        });
-        runCore("aidlc-log-subagent.ts", fwd);
-        // Contributed SubagentStop hooks see the SAME payload core's does. This
-        // harness surfaces subagent completion through postToolUse on Task
-        // rather than a subagentStop registration, so the contributed chain
-        // hangs here — registering subagentStop separately would build a second
-        // path to the event core already handles.
-        for (const file of pluginHooksFor("SubagentStop")) {
-          runCore(file, fwd);
+        const completion = cursorNativeTaskCompletion({ toolOutput: cursor.tool_output });
+        if (completion.status === "failed") clearSpawn();
+        if (completion.status === "completed") {
+          const fwd = JSON.stringify({
+            hook_event_name: "SubagentStop",
+            cwd: effectiveCwd(),
+            ...(typeof sub === "string" && sub.length > 0 ? { agent_type: sub } : {}),
+            ...(sessionId ? { session_id: sessionId } : {}),
+            ...completion.fields,
+          });
+          runCore("aidlc-log-subagent.ts", fwd);
+          for (const file of pluginHooksFor("SubagentStop")) {
+            runCore(file, fwd);
+          }
+          clearSpawn();
         }
-        clearSpawn();
       }
       emitContext({
         outputs: [
