@@ -46,12 +46,12 @@ const READY_TOKEN = /\bREADY\b/i;
 // The structured block, kept as the precision channel for a lens that emits it.
 // Delimiters are matched leniently — optional whitespace after the opening token,
 // an optional closing token, and an optional surrounding code fence — because
-// every observed malformation was in the delimiters, never in the JSON payload.
+// supported delimiter variations must not block a well-formed JSON payload.
 const STRUCTURED_BLOCK =
   /<!--\s*rin-gates-lens:v1\s*([\s\S]*?)(?:\s*rin-gates-lens:v1\s*)?-->/;
 
 // A fenced block whose body is the lens JSON, with no HTML comment at all — one of
-// the three observed malformations.
+// the supported fenced input shapes.
 const FENCED_LENS_JSON = /```(?:json)?\s*(\{[\s\S]*?"verdict"[\s\S]*?\})\s*```/;
 
 const parseJsonPayload = (payload: string): LensVerdict | null => {
