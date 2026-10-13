@@ -200,3 +200,22 @@ test("self-exemption does not match a filename merely ending with the excluded b
 test("the exempted basename set is exactly the audit walker's own module", () => {
   expect(SELF_AUDIT_EXCLUDED_FILENAMES).toEqual(["audit-constitution.ts"]);
 });
+
+test("untracked linter directives in line, block, range and file forms fail CD-5", () => {
+  const report = auditConstitution({ service: fixtureService("linter-directives-untracked") });
+  const findings = report.violations.filter((finding) => finding.rule.startsWith("CD-5"));
+  expect(findings).toHaveLength(19);
+  expect(findings.map((finding) => finding.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+});
+
+test("a tracker in each actual directive comment satisfies only CD-5 annotation tracking", () => {
+  const report = auditConstitution({ service: fixtureService("linter-directives-tracked") });
+  expect(report.violations).toEqual([]);
+});
+
+test("strings are not directives and an adjacent comment's tracker cannot authorize one", () => {
+  const report = auditConstitution({ service: fixtureService("linter-directives-lookalikes") });
+  const findings = report.violations.filter((finding) => finding.rule.startsWith("CD-5"));
+  expect(findings).toHaveLength(1);
+  expect(findings[0]?.line).toBe(3);
+});

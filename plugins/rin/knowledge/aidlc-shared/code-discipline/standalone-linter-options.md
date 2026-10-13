@@ -117,3 +117,5 @@ CD-3 governance or CD-46. The broader research presets were not adopted or execu
 No actual CI/Lefthook execution, native rule loading, continuous sensors or macOS/
 Linux execution is claimed. Reuse the adopter's existing validation command in
 agent instructions, CI and existing pre-push configuration, and report manual gaps.
+
+For selected CD-5, read [machine-directive coverage](cd-005-no-comments.md#machine-directives-and-suppression-coverage): ESLint/Biome/oxlint suppression comments need their own tracker and eligible underlying exception. Tracker syntax does not authorize CD-1 exemptions. Native unused-suppression reporting and file/config ignore review remain separate; copying knowledge activates neither.

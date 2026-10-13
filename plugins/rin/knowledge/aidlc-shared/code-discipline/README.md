@@ -60,8 +60,8 @@ Edit the `cd-*.md` file here (and the matching `constitution.md` principle if th
 - **CD-32** — PII strings redact-by-default in structured logs ([cd-032-pii-redact-by-default.md](cd-032-pii-redact-by-default.md)) [manual]
 - **CD-33** — Sensitive types brand-redact unconditionally ([cd-033-sensitive-brand-hard-redact.md](cd-033-sensitive-brand-hard-redact.md)) [manual]
 - **CD-34** — Secrets never enter the repo ([cd-034-secrets-never-in-repo.md](cd-034-secrets-never-in-repo.md)) [manual]
-- **CD-35** — Tailscale Funnel binding count is exactly one ([cd-035-funnel-binding-cap.md](cd-035-funnel-binding-cap.md)) [manual]
-- **CD-36** — Per-service steady-state RAM cap is 200 MB ([cd-036-per-service-ram-cap.md](cd-036-per-service-ram-cap.md)) [manual]
+- **CD-35** — Ingress binding count stays within the configured cap ([cd-035-funnel-binding-cap.md](cd-035-funnel-binding-cap.md)) [manual]
+- **CD-36** — Per-service steady-state RAM stays within the configured cap ([cd-036-per-service-ram-cap.md](cd-036-per-service-ram-cap.md)) [manual]
 
 ## V. Testing Pyramid: Unit Isolation, Integration Minimum
 
