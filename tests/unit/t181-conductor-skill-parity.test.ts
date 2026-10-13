@@ -68,6 +68,8 @@ const BARE_INIT = /(^|[^-\w])--init\b/;
 
 // The workspace-anchor conductor vocabulary every shipped SKILL must define.
 const REQUIRED_TOKENS = [
+  "approval_mode",
+  "**Stage-specific approval policy.**",
   "intent-create", // run-then-continue creation verb (replaced `init`)
   "stage-protocol-swarm.md", // conditional swarm transport + --repo contract
   "offer a second intent", // P4-completion new-work conductor prose
@@ -254,6 +256,17 @@ describe("an approved code plan is built as it is", () => {
 
 describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () => {
   const skills = harnessSkills();
+
+  test.each(skills)("stage approval policy precedes ordinary gate handling in %s", (rel) => {
+    const body = readFileSync(join(REPO_ROOT, rel), "utf-8").replace(/\s+/g, " ");
+    expect(body.indexOf("**Stage-specific approval policy.**")).toBeLessThan(body.indexOf("- **`gate: true`**"));
+    expect(body).toContain("Human is the default, including legacy directives that omit the field.");
+    expect(body).toContain("Run the reviewer, sensors and artifact/freshness verification");
+    expect(body).toContain("only at an actual human gate.");
+    expect(body).toContain("A per-unit directive is different: run its stage-required or genuine operator question flow");
+    expect(body).toContain('When it is `"on"` and the declared stage checkpoint is owed');
+    expect(body).not.toContain("A per-unit directive is different: run its question flow");
+  });
 
   test("the matrix-derived harness-SKILL set covers every shipped tree", () => {
     expect(skills.length).toBe(HARNESS_MATRIX.length);
@@ -1691,7 +1704,7 @@ describe("t181 per-harness conductor-SKILL freshness gate (P11 RESOLVE-2)", () =
       'When a user leaves a choice to you ("up to you", "whatever you think is best", or "choose the recommended answers" for this stage), decide',
       "--on-instruction '<their words that left it to you>'",
       '**SAY:** "You left <the question> to me, so I chose <the choice>. Say if you want something else."',
-      '**SAY:** "Approvals are still yours: I\'ll stop at each stage for you to approve."',
+      '**SAY:** "Stages with human approval still stop for you; an explicitly autonomous stage clears its gate after its required checks."',
       "When the person's request already chose",
       "answers in their own words, those words are their answer",
     ]) {

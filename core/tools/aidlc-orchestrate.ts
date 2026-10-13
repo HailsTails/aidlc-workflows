@@ -384,7 +384,7 @@ import {
   extractMarkdownSection,
   toPosix,
   validateUnitName,
-  resolveStageAnswerMode,
+  stageApprovalDirectiveFields,
 } from "./aidlc-lib.ts";
 import { reviewRecoverySpentMessage } from "./aidlc-log.ts";
 import {
@@ -5958,6 +5958,10 @@ function buildRunStageDirective(
     mode: node.mode as RunStageDirective["mode"],
     inline_context_paths: inlineContext.paths,
     gate: computeGate(node, scope, stateContent),
+    ...stageApprovalDirectiveFields({
+      approvalMode: node.approval_mode,
+      projectDir: singleRun || !stateContent ? null : codekbCtx?.projectDir ?? null,
+    }),
     memory_path: memoryPathFor(node.phase, node.slug, recordPrefix),
     consumes: present,
     produces: resolveProduces(
@@ -5971,11 +5975,6 @@ function buildRunStageDirective(
       ruleEntries?.map((entry) => entry.rel) ??
       (node.rules_in_context ?? []).map((r) => r.path),
     ceremony,
-    // The person's earlier answer to the mode question is reused; an isolated
-    // run never reuses the main workflow's choice.
-    answer_mode: resolveStageAnswerMode(
-      singleRun || !stateContent ? null : codekbCtx?.projectDir ?? null,
-    ),
     sensors_applicable: ceremony.sensors === "off"
       ? []
       : (node.sensors_applicable ?? []).map((s) => s.id),
@@ -6075,7 +6074,7 @@ function buildRunStageDirective(
   // The learnings ritual runs at a gate's first showing, never again for a
   // revision of it (stage-protocol.md, Request Changes).
   const revising = stateContent !== null && checkboxStateOf(parseCheckboxes(stateContent), node.slug) === "revising";
-  if (ceremony.learnings === "on" && !revising) protocolModules.push("learnings");
+  if (ceremony.learnings === "on" && !revising && directive.approval_mode !== "autonomous") protocolModules.push("learnings");
   if (protocolModules.length > 0) {
     directive.protocol_modules = protocolModules;
   }
@@ -8943,7 +8942,7 @@ function applySettledSwarmShape(
   delete directive.review_class;
   delete directive.reviewer_max_iterations;
   directive.protocol_modules = ["construction", "swarm"];
-  if (directive.ceremony.learnings === "on") directive.protocol_modules.push("learnings");
+  if (directive.ceremony.learnings === "on" && directive.approval_mode !== "autonomous") directive.protocol_modules.push("learnings");
   directive.swarm_settled = true;
   if (directive.construction_policy) {
     directive.construction_policy.completion_only = true;

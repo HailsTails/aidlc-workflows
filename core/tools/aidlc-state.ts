@@ -1883,7 +1883,7 @@ function handleRefreshUnitProgress(
         emitAudit(pd, "STAGE_STARTED", {
           Stage: started,
           Agent: next?.lead_agent ?? "",
-          ...answerModeStageStartedFields(pd),
+          ...answerModeStageStartedFields(pd, { approvalMode: next?.approval_mode }),
         });
       }
       if (workflowCompleted && completedFinalStage) {
@@ -5306,7 +5306,7 @@ function handleAdvance(
     emitAudit(pd, "STAGE_STARTED", {
       Stage: nextSlug,
       Agent: nextStage.lead_agent,
-      ...answerModeStageStartedFields(pd),
+      ...answerModeStageStartedFields(pd, { approvalMode: nextStage.approval_mode }),
       ...(nextStage.workspace_requires
         ? sourceBaselineAuditFields(pd, nextSlug)
         : {}),
@@ -6211,7 +6211,9 @@ function verifyApprovalDecision(
   unit?: string,
 ): { approvalInput: string | undefined; autonomousDecision: boolean; together: { first: string } | null } {
   const autonomousDecision =
-    !forceHuman && isAutonomousConstructionGate(content, stage, pd);
+    !forceHuman &&
+    (isAutonomousConstructionGate(content, stage, pd) ||
+      (stage.approval_mode === "autonomous" && !userInput?.trim()));
   let approvalInput = userInput?.trim();
   // A later stage the person's one approval listed stands on that reply.
   const together = autonomousDecision || forceHuman || humanPresenceGuardDisabled()
@@ -6233,7 +6235,6 @@ function verifyApprovalDecision(
   }
   if (
     !autonomousDecision &&
-    (forceHuman || stage.approval_mode !== "autonomous") &&
     !humanPresenceGuardDisabled()
   ) {
     const rawRevisionCount = getField(content, "Revision Count");
@@ -6267,7 +6268,6 @@ function verifyApprovalDecision(
   }
   if (
     !autonomousDecision &&
-    (forceHuman || stage.approval_mode !== "autonomous") &&
     !humanPresenceGuardDisabled() &&
     together === null &&
     !humanRepliedSinceGate(pd)
@@ -6281,7 +6281,7 @@ function verifyApprovalDecision(
   // The conductor reports the choice the person made; a report that names none
   // records nothing. They have replied by now (checked above), so the step is
   // to report the choice their reply makes, not to ask them again.
-  if (!autonomousDecision && (forceHuman || stage.approval_mode !== "autonomous") && !humanPresenceGuardDisabled() && !userInput?.trim()) {
+  if (!autonomousDecision && !humanPresenceGuardDisabled() && !userInput?.trim()) {
     refuseForAgent(
       `Cannot approve "${stage.slug}" because no choice was passed. The person replied after the question ` +
         'was shown: report the choice their reply makes with --user-input (for example "Approve"), or ask ' +
@@ -7444,7 +7444,7 @@ function handleSkip(args: string[]): void {
         emitAudit(pd, "STAGE_STARTED", {
           Stage: nextStage.slug,
           Agent: nextStage.lead_agent,
-          ...answerModeStageStartedFields(pd),
+          ...answerModeStageStartedFields(pd, { approvalMode: nextStage.approval_mode }),
           ...(nextStage.workspace_requires
             ? sourceBaselineAuditFields(pd, nextStage.slug)
             : {}),

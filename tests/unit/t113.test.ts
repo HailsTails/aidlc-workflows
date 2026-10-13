@@ -348,6 +348,22 @@ describe("t113 directive-schema — validateDirective (migrated from t113-direct
     expect(validateDirective(runStage()).valid).toBe(true);
   });
 
+  test("run-stage accepts autonomous policy while retaining a lifecycle gate", () => {
+    expect(validateDirective({ ...runStage(), approval_mode: "autonomous", gate: true }).valid).toBe(true);
+  });
+
+  test("dispatch-subagent carries the same explicit stage policy", () => {
+    expect(validateDirective({ ...dispatchSubagent(), approval_mode: "autonomous" }).valid).toBe(true);
+    expect(validateDirective({ ...dispatchSubagent(), approval_mode: "human" }).valid).toBe(true);
+  });
+
+  test("stage policy rejects unsupported labels and nonstrings", () => {
+    expect(errs({ ...runStage(), approval_mode: "scope-autonomous" }))
+      .toContain("approval_mode must be one of human | autonomous");
+    expect(validateDirective({ ...runStage(), approval_mode: false }).valid).toBe(false);
+    expect(validateDirective({ ...dispatchSubagent(), approval_mode: "scope-autonomous" }).valid).toBe(false);
+  });
+
   test("stage directives accept all-off and independently selected ceremony policies", () => {
     for (const create of [runStage, dispatchSubagent]) {
       expect(validateDirective({
