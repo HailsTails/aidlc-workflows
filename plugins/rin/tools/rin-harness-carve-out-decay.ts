@@ -58,7 +58,10 @@ type GitRun =
   | { readonly result: "success"; readonly stdout: string }
   | { readonly result: "failure"; readonly failure: GitFailure };
 
-const runGit = (projectDir: string, args: readonly string[]): GitRun => {
+const runGit = ({ projectDir, args }: {
+  readonly projectDir: string;
+  readonly args: readonly string[];
+}): GitRun => {
   try {
     return {
       result: "success",
@@ -80,7 +83,7 @@ const changedFiles = (projectDir: string, baseRef: string): ChangedFiles => {
     ["diff", "--name-only", `${baseRef}...HEAD`],
     ["diff", "--name-only", "HEAD"],
     ["ls-files", "--others", "--exclude-standard"],
-  ].map((args) => runGit(projectDir, args));
+  ].map((args) => runGit({ projectDir, args }));
 
   const firstFailure = runs.find(
     (run): run is Extract<GitRun, { result: "failure" }> =>
@@ -105,16 +108,14 @@ const contentExistsInBaseRef = (args: {
   readonly baseRef: string;
   readonly file: string;
 }): boolean => {
-  const hashed = runGit(args.projectDir, ["hash-object", args.file]);
+  const hashed = runGit({ projectDir: args.projectDir, args: ["hash-object", args.file] });
   if (hashed.result !== "success") return false;
   const blob = hashed.stdout.trim();
   if (blob === "") return false;
-  const baseline = runGit(args.projectDir, [
-    "ls-tree",
-    "-r",
-    "--format=%(objectname)",
-    args.baseRef,
-  ]);
+  const baseline = runGit({
+    projectDir: args.projectDir,
+    args: ["ls-tree", "-r", "--format=%(objectname)", args.baseRef],
+  });
   return baseline.result === "success" && baseline.stdout.split("\n").includes(blob);
 };
 
