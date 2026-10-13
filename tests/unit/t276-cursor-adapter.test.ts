@@ -715,6 +715,76 @@ describe("t276 cursor adapter payload conversion", () => {
     expect(shard).toContain("HUMAN_TURN");
   });
 
+  test.each([
+    { representation: "object", toolOutput: { success: PAYLOADS.nativeTaskResult20261013 } },
+    { representation: "serialized", toolOutput: JSON.stringify({ success: PAYLOADS.nativeTaskResult20261013 }) },
+  ])("6a: native Task $representation completion forwards returned identity and the full report to contributed stop hooks", ({ toolOutput }) => {
+    const proj = installedProject();
+    seedStateFile(proj, "state-construction.md");
+    seedAuditFile(proj);
+    const captured = join(proj, "native-stop.json");
+    writeFileSync(join(proj, ".cursor", "hooks", "capture-native-stop.ts"),
+      `await Bun.write(${JSON.stringify(captured)}, await Bun.stdin.text());`);
+    writeFileSync(join(proj, ".cursor", "hooks", "plugin-hook-targets.json"),
+      JSON.stringify({ SubagentStop: ["capture-native-stop.ts"] }));
+    const nativeReport = "I'll load the architecture-reviewer knowledge and Gate 0 artifacts, re-check open findings R-01ÔÇôR-03, then write the iteration-2 review.Prior findings look addressed; I'll verify cross-refs, stage validation tools, and whether a reviewed head sha was supplied for a READY verdict.Confirming R-01ÔÇôR-03 are fixed. Spot-checking remaining coherence claims, then writing the iteration-2 review.All three prior findings are fixed; writing the iteration-2 review as READY.**Reviewer:** aidlc-architecture-reviewer-agent\n\n**Verdict:** READY (iteration 2)\n\nAll three open priors are **Fixed** (G-1 unmeasured, S-1ÔÇôS-5 keyed, Gate 1 unbound). No new findings. Review written to `aidlc/spaces/default/intents/261012-ticket-quality/.aidlc-engine/reviews/rin-gate-0-reconcile/stage/62658c482784769a/2.286b45846de3c863b6d15a8f76e3be3e.review.md`.";
+    const completion = runAdapter(proj, "audit-and-sensors", payload("postToolUseTask", proj, {
+      tool_input: { subagent_type: "aidlc-architecture-reviewer-agent", agentId: "1ad435d2-5c04-4b86-a013-e0aafb6df486" },
+      tool_output: toolOutput,
+    }));
+    expect(completion.code).toBe(0);
+    expect(JSON.parse(readFileSync(captured, "utf-8"))).toEqual({
+      hook_event_name: "SubagentStop",
+      cwd: proj,
+      agent_type: "aidlc-architecture-reviewer-agent",
+      session_id: PAYLOADS.postToolUseTask?.conversation_id,
+      agent_id: "a18284fe-6ea8-436d-9f62-923cf8a1d044",
+      last_assistant_message: nativeReport,
+    });
+    expect(readAllAuditShards(proj)).toContain("**Agent ID**: a18284fe-6ea8-436d-9f62-923cf8a1d044");
+  });
+
+  test("6b: serialized native Task output selects the last assistant message without guessing identity", () => {
+    const proj = installedProject();
+    seedStateFile(proj, "state-construction.md");
+    seedAuditFile(proj);
+    const completion = runAdapter(proj, "audit-and-sensors", payload("postToolUseTask", proj, {
+      tool_output: JSON.stringify({
+        conversationSteps: [
+          { assistantMessage: { text: "Still reviewing." } },
+          { assistantMessage: { text: "**Reviewer:** aidlc-architecture-reviewer-agent\n## Verdict\nREADY" } },
+        ],
+        agentId: "24908fd3-c728-418a-b25b-c4f815d6fbb1",
+        isBackground: false,
+      }),
+    }));
+    expect(completion.code).toBe(0);
+    const audit = readAllAuditShards(proj);
+    expect(audit).toContain("**Agent ID**: 24908fd3-c728-418a-b25b-c4f815d6fbb1");
+    expect(audit).toContain("**Message**: **Reviewer:** aidlc-architecture-reviewer-agent");
+    expect(audit).not.toContain("Still reviewing.");
+  });
+
+  test.each([
+    { name: "explicit failure", expectedLedgerCount: 0, output: { success: false, agentId: "failed-agent", conversationSteps: [{ assistantMessage: { text: "## Verdict\nREADY" } }], isBackground: false } },
+    { name: "error with residual report", expectedLedgerCount: 0, output: { error: "provider refused", agentId: "failed-agent", conversationSteps: [{ assistantMessage: { text: "## Verdict\nREADY" } }], isBackground: false } },
+    { name: "background start", expectedLedgerCount: 1, output: { agentId: "background-agent", isBackground: true, conversationSteps: [{ assistantMessage: { text: "## Verdict\nREADY" } }] } },
+  ])("6c: $name is not delivered as a completed reviewer", ({ output, expectedLedgerCount }) => {
+    const proj = installedProject();
+    seedStateFile(proj, "state-construction.md");
+    seedAuditFile(proj);
+    const captured = join(proj, "native-stop.json");
+    writeFileSync(join(proj, ".cursor", "hooks", "capture-native-stop.ts"),
+      `await Bun.write(${JSON.stringify(captured)}, await Bun.stdin.text());`);
+    writeFileSync(join(proj, ".cursor", "hooks", "plugin-hook-targets.json"),
+      JSON.stringify({ SubagentStop: ["capture-native-stop.ts"] }));
+    expectAllowJson(runAdapter(proj, "guards", payload("preToolUseTask", proj)));
+    const auditBefore = readAllAuditShards(proj);
+    expect(runAdapter(proj, "audit-and-sensors", payload("postToolUseTask", proj, { tool_output: JSON.stringify(output) })).code).toBe(0);
+    expect(readAllAuditShards(proj)).toBe(auditBefore);
+    expect(existsSync(captured)).toBe(false);
+    expect(ledgerFilesFor(proj)).toHaveLength(expectedLedgerCount);
+  });
   test("7: a delegated conversation cannot spawn a nested Task or overwrite the parent ledger", () => {
     const proj = installedProject();
     seedStateFile(proj, "state-construction.md");
