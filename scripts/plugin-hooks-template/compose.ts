@@ -20,6 +20,7 @@
 // prose fragments spliced) into stage SOURCE — durable across recompiles;
 // (3) recompile the graph. Idempotent + short-circuits when nothing changed.
 
+import { createHash } from "node:crypto";
 import {
   existsSync,
   lstatSync,
@@ -1737,6 +1738,29 @@ function frontmatter(content: string): string {
 // `added` (when given) collects the values THIS call actually wrote - the
 // contribution sidecar records actually-added entries, never declared ones, so
 // a later removal can't strip a value core (or another plugin) already had.
+function adoptSensorBindings(input: { content: string; stageFile: string; declared: string[]; recorded: string[] }): { sensors: string[]; baselineHash: string | null } {
+  const baselinePath = join(HARNESS_DIR, "tools", "data", "aidlc-manifest.json");
+  if (!existsSync(baselinePath)) return { sensors: [], baselineHash: null };
+  const baseline: unknown = JSON.parse(readFileSync(baselinePath, "utf-8"));
+  if (baseline === null || typeof baseline !== "object" || !("files" in baseline)) return { sensors: [], baselineHash: null };
+  const files = baseline.files;
+  if (files === null || typeof files !== "object") return { sensors: [], baselineHash: null };
+  const path = relative(PROJECT_DIR, input.stageFile).replaceAll("\\", "/");
+  const baselineHash = Reflect.get(files, path);
+  if (typeof baselineHash !== "string") return { sensors: [], baselineHash: null };
+  const hash = (content: string): string => `sha256:${createHash("sha256").update(content).digest("hex")}`;
+  if (hash(input.content) === baselineHash) return { sensors: [], baselineHash: null };
+  const block = /^sensors:\n((?: {2}- .+\n)*)/m;
+  const match = input.content.match(block);
+  if (!match) return { sensors: [], baselineHash: null };
+  const existing = [...match[1].matchAll(/^ {2}- (.+)$/gm)].map((entry) => yamlScalarValue(entry[1]));
+  const sensors = [...new Set(input.declared)].filter((sensor) => existing.includes(sensor) && !input.recorded.includes(sensor));
+  if (sensors.length === 0) return { sensors: [], baselineHash: null };
+  const kept = match[1].split("\n").filter((line) => !sensors.includes(yamlScalarValue(line.slice(4)) ?? ""));
+  const stripped = input.content.replace(block, `sensors:\n${kept.join("\n")}`);
+  return hash(stripped) === baselineHash ? { sensors, baselineHash } : { sensors: [], baselineHash: null };
+}
+
 function mergeListField(content: string, field: string, items: string[], target: string, added?: string[]): string {
   items = [...new Set(items)];
   if (items.length === 0) return content;
@@ -2125,7 +2149,7 @@ try {
   // fragment records let doctor verify sentinel-marked prose after an engine
   // reinstall. Accumulated across re-runs: structural entries are unioned, while
   // a fragment upgrade replaces the prior hash for its (anchor, order) identity.
-  type StageContribRecord = { produces?: string[]; sensors?: string[]; consumes?: Array<string | ConsumeEntry>; scopes?: string[]; required_sections?: string[]; required_sections_created?: boolean; fragments?: FragmentRecord[]; hook_registrations?: ProjectedPluginHookContributions };
+  type StageContribRecord = { sensor_adoption?: { baselineHash: string; sensors: string[] }; produces?: string[]; sensors?: string[]; consumes?: Array<string | ConsumeEntry>; scopes?: string[]; required_sections?: string[]; required_sections_created?: boolean; fragments?: FragmentRecord[]; hook_registrations?: ProjectedPluginHookContributions };
   type StringContribField = "produces" | "sensors" | "scopes" | "required_sections";
   const contribManifestPath = join(HARNESS_DIR, "tools", "data", `plugin-contrib-${PLUGIN_KEY}.json`);
   let contribManifestLoadError: string | null = null;
@@ -2390,6 +2414,11 @@ try {
         }
         return true;
       });
+      const adoption = adoptSensorBindings({ content: stageContent, stageFile, declared: listOf("sensors"), recorded: contribManifest[target]?.sensors ?? [] });
+      if (adoption.baselineHash !== null) {
+        addedSensors.push(...adoption.sensors);
+        contribRecord(target).sensor_adoption = { baselineHash: adoption.baselineHash, sensors: adoption.sensors };
+      }
       stageContent = mergeListField(stageContent, "produces", listOf("produces"), target, addedProduces);
       stageContent = mergeListField(stageContent, "sensors", listOf("sensors"), target, addedSensors);
       stageContent = mergeListField(stageContent, "scopes", mergeableScopes, target, addedScopes);
