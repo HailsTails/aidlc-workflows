@@ -28,7 +28,7 @@ source pin is a public fork revision, not an upstream release badge.
   read -r -p 'Existing consumer repository directory: ' consumer
   consumer=$(cd "$consumer" && pwd)
   git clone https://github.com/HailsTails/aidlc-workflows.git "$source_checkout"
-  git -C "$source_checkout" checkout --detach fb2908a5a06d51c75e6044b45788b5a70826ad54
+  git -C "$source_checkout" checkout --detach dbc651b1756a31b041b999204c5cc70ae386c604
   source_checkout=$(cd "$source_checkout" && pwd)
   cd "$source_checkout"
   bun install --frozen-lockfile
@@ -48,6 +48,8 @@ The subshell stops on failure and leaves your original shell directory unchanged
 Run the later consumer commands from your consumer repository. `cp -i` asks before
 replacement; decline unless you have reviewed the existing file. Copy only the
 selected knowledge files, not the projection's stages, hooks, scopes or tools.
+Replace the three filenames above with your chosen canonical files after reading the inventory. To copy all atomic artifacts for an explicit review library, the existing shell operation is `cp -i "$projection/knowledge/aidlc-shared/code-discipline"/cd-*.md "$destination/"`; the three collapsed IDs are redirects to their owners, not extra active rules. Also copy `standalone-adoption.md`, `standalone-linter-options.md` and `standalone-cd-inventory.md` from that generated directory if you want these guides beside the library. This does not select checks or activate native discovery.
+
 For Codex or Claude, build `codex` or `claude` instead and use `.codex/knowledge/aidlc-shared/code-discipline`
 or `.claude/knowledge/aidlc-shared/code-discipline` as the destination. This uses the existing harness
 projection/token substitution; it adds no installer, format or runtime.
@@ -72,6 +74,9 @@ PowerShell users may adapt Git/copy syntax. Tested platforms are stated below;
 macOS execution is not claimed. Record the source commit with the copied files.
 
 ## 2. Choose coverage before enabling checks
+
+Use the [complete 45-CD inventory](standalone-cd-inventory.md) to choose additional knowledge/review obligations and tested partial checks. It includes progressive strict-flag adoption, manual gaps and existing Rin tool limitations. All active CDs can be selected without AIDLC stages; selecting prose alone enables no check.
+
 
 Read the selected files in full and record scope in your existing project instructions or an adoption record beside the copied files:
 
@@ -181,7 +186,7 @@ For CD-3 merge these into your shared `compilerOptions` (do not replace the rest
 Check **every** API, browser, shared-contract and build tsconfig using its own
 installed compiler, e.g. `bun run tsc --showConfig -p apps/api/tsconfig.json` in a Bun consumer.
 All seven effective values must be true; review child configs for overrides.
-Then run the existing typecheck. If enabling flags exposes unrelated debt, record
+Review explicit strict-family overrides as well: strict:true does not undo a child noImplicitAny:false or strictNullChecks:false. Then run the existing typecheck. For a progressive path that keeps required checks and exposes pending diagnostics without pretending advisory findings cannot grow, see the [inventory](standalone-cd-inventory.md#initial-debt-and-progressive-cd-3-adoption). If enabling flags exposes unrelated debt, record
 the findings and choose a bounded adoption; do not claim full CD-3 while weakening
 flags or silently repair the whole repository. This recipe does not install Rin's
 compiler-configuration auditor.

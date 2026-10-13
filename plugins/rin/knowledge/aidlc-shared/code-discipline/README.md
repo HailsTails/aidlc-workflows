@@ -8,7 +8,7 @@ Each entry's `[…]` tag lists the enforcement mechanisms that back the rule. `[
 
 ## Standalone adoption
 
-Use the [standalone TS API + React quick start](standalone-adoption.md) to select rule artifacts and configure ordinary checks without AIDLC stages or Rin gates. Enforcement tags below describe mechanisms; copying text does not install them.
+Use the [standalone TS API + React quick start](standalone-adoption.md) to select rule artifacts and configure ordinary checks without AIDLC stages or Rin gates. The [complete standalone inventory](standalone-cd-inventory.md) covers every active CD, tested partial clauses, manual obligations and progressive compiler adoption. Enforcement tags below describe mechanisms; copying text does not install them.
 
 ## Canonical source, rules-as-data, and the lens harness
 
