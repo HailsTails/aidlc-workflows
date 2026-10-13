@@ -350,6 +350,20 @@ Omit `severity` for the default `error` behavior. Use `advisory` for a visible
 finding that must not fail doctor. Keep the script read-only and dependency-free;
 doctor bounds its runtime/output and turns script failures into diagnostic rows.
 
+For copied Codex installs, core rules enumerate packaged tool paths recursively.
+Plugin sync generates `.codex/rules/aidlc-plugin-<name>.rules` from that plugin's
+existing composed-file ownership record, so tools such as
+`rin-gates/rin-gates-review-roster.ts` and `test-pro-doctor.ts` need no filename
+prefix convention. The rule matches the exact Bun/file argv prefix and permits
+trailing tool arguments and flags. Bun script extensions (`.ts`, `.js`, `.mts`,
+`.cts`, `.mjs`, `.cjs`, `.tsx`, `.jsx`) are supported. Tests, specs, declaration files, vendor/cache
+content and unsafe paths receive no grant. A plugin upgrade refreshes its rule;
+deselection or explicit prune removes it with its other owned files. Consumer
+rules are preserved, and a conflicting unowned rule file stops sync. Unregistered
+consumer scripts require their own reviewed consumer policy. Refresh core and
+then run ordinary plugin sync after the active session ends; do not replace
+permission files under a running consumer session.
+
 ## 5. Distribution + install
 
 The shipped builder emits your plugin as **a real host plugin** for one harness

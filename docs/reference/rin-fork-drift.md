@@ -316,8 +316,9 @@ retirement. Source fixtures use the existing hermetic Git helper; live consumer
 installation and workflow acceptance remain separate proof obligations.
 ## Codex copied-tool argv allowlist - upstream candidate (2026-10-13)
 
-Capability ID: `codex-tool-argv-allowlist`. Owner: `harness/codex/emit.ts`
-(`emitDefaultRules`), with focused pure coverage in
+Capability ID: `codex-tool-argv-allowlist`. Owners: shared argv rendering in
+`core/tools/aidlc-command.ts`, core packaging in `harness/codex/emit.ts`, and
+plugin ownership in `core/tools/aidlc-plugin.ts`, with focused pure coverage in
 `harness/codex/emit.test.ts` and the existing `t150-codex-packaging` suite.
 Classification: **upstream AIDLC candidate**. Fork baseline
 `01b36ba6a92ca1260518b63043abfe132c3cc0ea` and upstream comparison
@@ -334,9 +335,17 @@ did not match the advertised Bun rule. Automatic approval review was a temporary
 trial workaround, not the correction. Hook trust and tool-command approval are
 separate host surfaces; this change does not install or activate trust.
 
-The copy projection now enumerates the currently shipped top-level
-`aidlc.ts`/`aidlc-*.ts` files as exact second-argument alternatives, excluding
-tests, unrelated filenames and path-bearing inventory entries. Equivalent
+The initial 94 top-level filenames were insufficient for Rin. Its actual
+installed tools include `rin-gates/rin-gates-review-roster.ts`,
+`constitution-audit/index.ts` and `hermetic-git/index.ts`. The corrected copy
+projection reuses the existing recursive packaging inventory and emits exact
+second-argument alternatives without an `aidlc` filename restriction. Tests,
+specs, declarations, vendor/cache directories, non-scripts and invalid relative
+paths are excluded. Codex plugin sync uses its existing hash-proven primitive
+ownership inventory to generate `.codex/rules/aidlc-plugin-<name>.rules`;
+idempotency detects older records missing the file, and deselection/pruning
+removes it through normal ownership handling. Consumer rules are preserved,
+and an unowned generated-rule collision refuses rather than overwriting. Equivalent
 forward-slash, dot-prefixed and Windows relative spellings are explicit
 alternatives; subsequent argv items remain ordinary framework arguments.
 Native `aidlc engine` permission rules are unchanged. No arbitrary Bun script,
@@ -352,11 +361,14 @@ through normal project setup, preserving any consumer-owned rules. Check the
 normal direct Bun argv with `codex execpolicy check --rules
 .codex/rules/default.rules -- bun .codex/tools/aidlc.ts engine orchestrate next`.
 Use the ordinary manual approval mode; automatic review is not required for
-these matching commands. Plugin-added scripts require their own reviewed
-permission policy and are not silently added to this core allowlist. The active
+these matching commands. Consumer extensions shipped as plugins receive their own generated exact-tool
+policy at sync; unregistered or locally conflicting scripts remain governed
+by consumer-owned rules. New shipped tools enter the next package/sync inventory
+automatically; no filename list is maintained by hand. The active
 mock checkout is deliberately not refreshed mid-run.
 
 **Removal condition:** retire this drift when an adopted upstream version emits
-an equivalent finite exact-file argv allowlist, preserves the native rule and
+an equivalent recursive exact-file argv allowlist plus owned plugin-tool
+composition/removal, preserves the native rule and
 passes the focused positive/negative matcher cases. No upstream publication or
 acceptance is claimed here.

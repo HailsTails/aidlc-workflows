@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { codexHookTrustIdentity } from "./aidlc-command.ts";
+import { codexHookTrustIdentity, codexToolPermissionRule } from "./aidlc-command.ts";
 
 describe("normalized native Codex hook trust identity", () => {
   test("a tool matcher belongs to the canonical single-command identity", () => {
@@ -62,5 +62,17 @@ describe("normalized native Codex hook trust identity", () => {
   test("an explicit compound timeout overrides the event default", () => {
     expect(codexHookTrustIdentity({ eventSnake: "stop", command: "guard", timeout: 3600 }))
       .toBe('{"event_name":"stop","hooks":[{"async":false,"command":"guard","timeout":3600,"type":"command"}]}');
+  });
+});
+
+
+describe("Codex copied tool argv rules", () => {
+  test("a recorded nested tool needs no framework filename prefix", () => {
+    const rule = codexToolPermissionRule({ harnessDir: ".codex", toolFiles: ["rin-gates/rin-gates-review-roster.ts"] });
+    expect(rule).toBe('prefix_rule(pattern = ["bun", [".codex/tools/rin-gates/rin-gates-review-roster.ts","./.codex/tools/rin-gates/rin-gates-review-roster.ts",".codex\\\\tools\\\\rin-gates\\\\rin-gates-review-roster.ts",".\\\\.codex\\\\tools\\\\rin-gates\\\\rin-gates-review-roster.ts"]], decision = "allow")\n');
+  });
+
+  test("unsafe paths, tests, declarations and vendor scripts create no allow rule", () => {
+    expect(codexToolPermissionRule({ harnessDir: ".codex", toolFiles: ["../run.ts", "/outside/run.ts", "C:/outside/run.ts", "nested/../run.ts", "nested//run.ts", "run.spec.ts", "run.d.ts", "node_modules/vendor/run.ts", "data/template.ts", "tests/helper.ts", "test/helper.js", "vendor/helper.mjs", ".cache/helper.ts", `run${String.fromCharCode(127)}.ts`] })).toBe("");
   });
 });

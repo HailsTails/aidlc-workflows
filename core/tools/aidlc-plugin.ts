@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { codexHookTrustHash } from "./aidlc-command.ts";
+import { codexHookTrustHash, codexToolPermissionRule } from "./aidlc-command.ts";
 import { createHash } from "node:crypto";
 import {
   cpSync,
@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
@@ -877,6 +877,7 @@ function writeCompositionRecords(
   harnessDir: string,
   priorOwnedPaths: ReadonlySet<string>,
   claimedPaths: Set<string>,
+  harness: string,
 ): void {
   const dataDir = harnessDataDir(stagedProject, harnessDir);
   mkdirSync(dataDir, { recursive: true });
@@ -898,6 +899,24 @@ function writeCompositionRecords(
       sha256: sha256File(target),
     });
     claimedPaths.add(candidate.path);
+  }
+  if (harness === "codex") {
+    const toolPrefix = `${harnessDir}/tools/`;
+    const ruleText = codexToolPermissionRule({ harnessDir,
+      toolFiles: [...files.keys()].filter((path) => path.startsWith(toolPrefix)).map((path) => path.slice(toolPrefix.length)) });
+    if (ruleText) {
+      const rulePath = `${harnessDir}/rules/aidlc-plugin-${plugin.key}.rules`;
+      const liveRule = join(liveProject, rulePath);
+      refuseLinkOnTheWay(liveProject, liveRule);
+      if (existsSync(liveRule) && !priorOwnedPaths.has(rulePath) && readFileSync(liveRule, "utf-8") !== ruleText) {
+        throw new Error(`plugin sync refused: consumer-owned permission file ${rulePath}`);
+      }
+      const target = join(stagedProject, rulePath);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, ruleText);
+      files.set(rulePath, { path: rulePath, sha256: sha256File(target) });
+      claimedPaths.add(rulePath);
+    }
   }
   const ownership: OwnershipRecord = {
     schemaVersion: 1,
@@ -1383,7 +1402,7 @@ export function projectDiffPlan(
 function compositionIsCurrent(
   plugin: InstalledPlugin,
   evidence: ProjectEvidence,
-  location: { projectDir: string; harnessDir: string },
+  location: { projectDir: string; harnessDir: string; harness: string },
 ): boolean {
   const sidecar = join(harnessDataDir(location.projectDir, location.harnessDir), `plugin-contrib-${plugin.key}.json`);
   if (existsSync(sidecar)) {
@@ -1398,6 +1417,17 @@ function compositionIsCurrent(
   ) return false;
   const ownership = evidence.ownership.get(plugin.key);
   if (!ownership) return false;
+  if (location.harness === "codex") {
+    const toolPrefix = `${location.harnessDir}/tools/`;
+    const ruleText = codexToolPermissionRule({ harnessDir: location.harnessDir,
+      toolFiles: ownership.files.map((file) => file.path).filter((path) => path.startsWith(toolPrefix)).map((path) => path.slice(toolPrefix.length)) });
+    const rulePath = `${location.harnessDir}/rules/aidlc-plugin-${plugin.key}.rules`;
+    const ruleRecord = ownership.files.find((file) => file.path === rulePath);
+    if (ruleRecord) refuseLinkOnTheWay(location.projectDir, join(location.projectDir, rulePath));
+    if (ruleText && (!ruleRecord || !existsSync(join(location.projectDir, rulePath)) ||
+      !lstatSync(join(location.projectDir, rulePath)).isFile() || readFileSync(join(location.projectDir, rulePath), "utf-8") !== ruleText)) return false;
+    if (!ruleText && ruleRecord) return false;
+  }
   return ownership.files.every((file) => {
     const target = assertOwnedPath(location.projectDir, file.path);
     return existsSync(target) &&
@@ -1479,7 +1509,7 @@ export async function syncPlugins(
   announcePrune(argv, pruned);
   if (
     removed.length === 0 &&
-    plugins.every((plugin) => compositionIsCurrent(plugin, evidence, { projectDir, harnessDir }))
+    plugins.every((plugin) => compositionIsCurrent(plugin, evidence, { projectDir, harnessDir, harness: inventory.harness }))
   ) {
     return {
       synced: plugins.map((plugin) => plugin.key).sort(),
@@ -1521,6 +1551,7 @@ export async function syncPlugins(
         harnessDir,
         priorOwnedPaths.get(plugin.key) ?? new Set(),
         claimedPaths,
+        inventory.harness,
       );
     }
     if (removed.length > 0) regenerateAfterPrune(stagedProject, harnessDir);
@@ -1557,7 +1588,7 @@ export async function syncPlugins(
       if (
         removed.length === 0 &&
         plugins.every((plugin) =>
-          compositionIsCurrent(plugin, refreshedEvidence, { projectDir, harnessDir })
+          compositionIsCurrent(plugin, refreshedEvidence, { projectDir, harnessDir, harness: inventory.harness })
         )
       ) {
         return {

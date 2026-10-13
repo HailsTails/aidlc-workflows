@@ -1336,3 +1336,112 @@ describe("t242 transactional sync and ownership-safe prune", () => {
     quiet.destroy();
   });
 });
+
+ describe("Codex plugin tool permissions", () => {
+  test("Codex sync owns nested non-prefixed tool rules and is idempotent", async () => {
+    const project = temp("aidlc-codex-tool-project-");
+    cpSync(join(REPO_ROOT, "dist", "codex"), project, { recursive: true });
+    const root = temp("aidlc-codex-tool-plugin-");
+    cpSync(join(REPO_ROOT, "dist", "plugins", "test-pro", "codex"), root, { recursive: true });
+    mkdirSync(join(root, "tools", "rin-gates"), { recursive: true });
+    writeFileSync(join(root, "tools", "rin-gates", "rin-gates-review-roster.ts"), "export {};\n");
+    writeFileSync(join(root, "tools", "rin-gates", "review.spec.ts"), "export {};\n");
+    mkdirSync(join(project, ".codex", "tools", "unrelated"), { recursive: true });
+    writeFileSync(join(project, ".codex", "tools", "unrelated", "local.ts"), "export {};\n");
+    const consumerRule = join(project, ".codex", "rules", "consumer.rules");
+    writeFileSync(consumerRule, "# consumer-owned\n");
+    const coreRules = readFileSync(join(project, ".codex", "rules", "default.rules"), "utf-8");
+    process.env.AIDLC_PLUGIN_ROOT = root;
+    process.env.AIDLC_HARNESS_DIR = ".codex";
+    process.env.AIDLC_CODEX_HOME = temp("aidlc-tool-fixture-home-");
+    await syncPlugins(project, [], ".codex");
+    const rule = join(project, ".codex", "rules", "aidlc-plugin-test-pro.rules");
+    const text = readFileSync(rule, "utf-8");
+    expect(text).toContain('".codex/tools/rin-gates/rin-gates-review-roster.ts"');
+    expect(text).toContain('".codex/tools/test-pro-doctor.ts"');
+    expect(text).not.toContain("review.spec.ts");
+    expect(text).not.toContain("unrelated/local.ts");
+    expect(readFileSync(consumerRule, "utf-8")).toBe("# consumer-owned\n");
+    expect(readFileSync(join(project, ".codex", "rules", "default.rules"), "utf-8")).toBe(coreRules);
+    const ownership = JSON.parse(readFileSync(join(project, ".codex", "tools", "data", "plugin-owned-test-pro.json"), "utf-8"));
+    expect(ownership.files).toContainEqual(expect.objectContaining({ path: ".codex/rules/aidlc-plugin-test-pro.rules" }));
+    const repeated = await syncPlugins(project, [], ".codex");
+    expect(repeated.operations).toBe(0);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("Codex deselection removes owned tool rules while preserving consumer rules", async () => {
+    const project = temp("aidlc-codex-tool-prune-");
+    cpSync(join(REPO_ROOT, "dist", "codex"), project, { recursive: true });
+    const root = temp("aidlc-codex-tool-plugin-");
+    cpSync(join(REPO_ROOT, "dist", "plugins", "test-pro", "codex"), root, { recursive: true });
+    process.env.AIDLC_PLUGIN_ROOT = root;
+    process.env.AIDLC_HARNESS_DIR = ".codex";
+    process.env.AIDLC_CODEX_HOME = temp("aidlc-tool-fixture-home-");
+    const consumerRule = join(project, ".codex", "rules", "consumer.rules");
+    writeFileSync(consumerRule, "# consumer-owned\n");
+    await syncPlugins(project, [], ".codex");
+    expect(existsSync(join(project, ".codex", "rules", "aidlc-plugin-test-pro.rules"))).toBe(true);
+    const configuration = join(project, ".codex", "tools", "data", "harness.json");
+    const harness = JSON.parse(readFileSync(configuration, "utf-8"));
+    writeFileSync(configuration, JSON.stringify({ ...harness, plugins: ["aidlc"] }));
+    await syncPlugins(project, [], ".codex");
+    expect(existsSync(join(project, ".codex", "rules", "aidlc-plugin-test-pro.rules"))).toBe(false);
+    expect(readFileSync(consumerRule, "utf-8")).toBe("# consumer-owned\n");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+});
+
+describe("Codex plugin permission migration", () => {
+  test("Codex sync upgrades a current legacy ownership record missing tool permissions", async () => {
+    const project = temp("aidlc-codex-rule-migration-");
+    cpSync(join(REPO_ROOT, "dist", "codex"), project, { recursive: true });
+    const root = temp("aidlc-codex-tool-plugin-");
+    cpSync(join(REPO_ROOT, "dist", "plugins", "test-pro", "codex"), root, { recursive: true });
+    process.env.AIDLC_PLUGIN_ROOT = root;
+    process.env.AIDLC_HARNESS_DIR = ".codex";
+    process.env.AIDLC_CODEX_HOME = temp("aidlc-tool-fixture-home-");
+    await syncPlugins(project, [], ".codex");
+    const recordPath = join(project, ".codex", "tools", "data", "plugin-owned-test-pro.json");
+    const record = JSON.parse(readFileSync(recordPath, "utf-8"));
+    writeFileSync(recordPath, JSON.stringify({ ...record, files: record.files.filter((file: { path: string }) => file.path !== ".codex/rules/aidlc-plugin-test-pro.rules") }));
+    const rule = join(project, ".codex", "rules", "aidlc-plugin-test-pro.rules");
+    rmSync(rule);
+    await syncPlugins(project, [], ".codex");
+    expect(readFileSync(rule, "utf-8")).toContain('".codex/tools/test-pro-doctor.ts"');
+    const repeated = await syncPlugins(project, [], ".codex");
+    expect(repeated.operations).toBe(0);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("Codex sync refuses an unowned plugin-rule collision without overwriting it", async () => {
+    const project = temp("aidlc-codex-rule-collision-");
+    cpSync(join(REPO_ROOT, "dist", "codex"), project, { recursive: true });
+    const root = temp("aidlc-codex-tool-plugin-");
+    cpSync(join(REPO_ROOT, "dist", "plugins", "test-pro", "codex"), root, { recursive: true });
+    process.env.AIDLC_PLUGIN_ROOT = root;
+    process.env.AIDLC_HARNESS_DIR = ".codex";
+    process.env.AIDLC_CODEX_HOME = temp("aidlc-tool-fixture-home-");
+    const rule = join(project, ".codex", "rules", "aidlc-plugin-test-pro.rules");
+    writeFileSync(rule, "# narrower consumer policy\n");
+    await expect(syncPlugins(project, [], ".codex")).rejects.toThrow("consumer-owned permission file");
+    expect(readFileSync(rule, "utf-8")).toBe("# narrower consumer policy\n");
+    expect(existsSync(join(project, ".codex", "tools", "data", "plugin-owned-test-pro.json"))).toBe(false);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+});
+
+describe("Codex plugin permission link boundary", () => {
+  test("Codex sync does not write permissions through a linked rules directory", async () => {
+    const project = temp("aidlc-codex-rule-link-");
+    cpSync(join(REPO_ROOT, "dist", "codex"), project, { recursive: true });
+    const root = temp("aidlc-codex-tool-plugin-");
+    cpSync(join(REPO_ROOT, "dist", "plugins", "test-pro", "codex"), root, { recursive: true });
+    process.env.AIDLC_PLUGIN_ROOT = root;
+    process.env.AIDLC_HARNESS_DIR = ".codex";
+    process.env.AIDLC_CODEX_HOME = temp("aidlc-tool-fixture-home-");
+    const outside = temp("aidlc-codex-rule-outside-");
+    writeFileSync(join(outside, "consumer.rules"), "# unchanged outside fixture\n");
+    renameSync(join(project, ".codex", "rules"), join(project, ".codex", "original-rules"));
+    symlinkSync(outside, join(project, ".codex", "rules"), process.platform === "win32" ? "junction" : "dir");
+    await expect(syncPlugins(project, [], ".codex")).rejects.toThrow("link");
+    expect(readFileSync(join(outside, "consumer.rules"), "utf-8")).toBe("# unchanged outside fixture\n");
+    expect(existsSync(join(outside, "aidlc-plugin-test-pro.rules"))).toBe(false);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+});
