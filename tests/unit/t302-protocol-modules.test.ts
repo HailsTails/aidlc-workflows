@@ -9,7 +9,7 @@ import { afterEach, beforeAll, describe, expect, test, setDefaultTimeout } from 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { auditBlockField, readAuditShardEvents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import { auditBlockField, readAuditShardEvents, loadStageGraphAll, setField } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import {
   AIDLC_SRC,
   cleanupTestProject,
@@ -169,7 +169,41 @@ function swarmDirective(): Record<string, unknown> {
   return result.directive as Record<string, unknown>;
 }
 
+function autonomousRequirementsGraph({ projectDir, mainWorkflow }: { projectDir: string; mainWorkflow: boolean }): string {
+  if (mainWorkflow) {
+    seedStateFile(projectDir, "state-mid-inception.md");
+    const statePath = seededStateFile(projectDir);
+    writeFileSync(statePath, setField(readFileSync(statePath, "utf-8"), "Scope", "classic"));
+  }
+  const graphPath = join(projectDir, ".aidlc-autonomous-stage-graph.json");
+  writeFileSync(graphPath, JSON.stringify(loadStageGraphAll().map((stage) =>
+    stage.slug === "requirements-analysis" ? { ...stage, approval_mode: "autonomous" } : stage)));
+  return graphPath;
+}
+
 describe("t302 conditional protocol modules", () => {
+  test.each([
+    { mainWorkflow: false, args: ["--stage", "requirements-analysis", "--single", "--scope", "classic"], gate: false, single: true },
+    { mainWorkflow: true, args: [], gate: true, single: undefined },
+  ])("an autonomous stage retains verification for %j", ({ mainWorkflow, args, gate, single }) => {
+    project = createOrchestrationTestProject();
+    const graphPath = autonomousRequirementsGraph({ projectDir: project, mainWorkflow });
+    const next = runOrchestrateNext(
+      ORCHESTRATE, project, [...args],
+      { cwd: project, env: { ...process.env, AIDLC_STAGE_GRAPH: graphPath } },
+    );
+    expect(next.status, next.out).toBe(0);
+    expect(next.directive).toMatchObject({
+      kind: "run-stage", approval_mode: "autonomous", gate,
+      reviewer: "aidlc-product-lead-agent",
+      ceremony: { sensors: "on" },
+    });
+    expect(next.directive?.single).toBe(single);
+    expect(next.directive?.answer_mode).toBeUndefined();
+    expect(moduleList(next.directive!)).toContain("reviewer");
+    expect(moduleList(next.directive!)).not.toContain("learnings");
+    expect(next.directive?.sensors_applicable).not.toEqual([]);
+  });
   test("conditional module files exist in core and every generated harness tree", () => {
     for (const module of MODULES) {
       expect(

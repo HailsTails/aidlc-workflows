@@ -25,6 +25,7 @@ import {
   type GuardRemedy,
   isPlainObject,
   type StageAnswerMode,
+  type StageApprovalMode,
 } from "./aidlc-lib.ts";
 import {
   guardOperationMatchesCommand,
@@ -274,6 +275,7 @@ export interface RunStageDirective {
   // walking-skeleton gate, which the conductor resolves via report (the
   // classify round-trip — see GATE_UNRESOLVED above).
   gate: GateValue;
+  approval_mode?: StageApprovalMode;
   // Beside the unresolved gate, or a Unit's step with no gate of its own: the
   // agent's next move in one sentence, so the step is taken with no skill loaded.
   gate_note?: string;
@@ -484,6 +486,7 @@ export interface DispatchSubagentDirective {
   inline_context_paths: string[];
   context_warnings?: string[];
   gate: GateValue;
+  approval_mode?: StageApprovalMode;
   memory_path: string;
   consumes: string[];
   produces: string[];
@@ -861,6 +864,7 @@ const RUN_STAGE_FIELDS = [
   "context_warnings",
   "kept_replies",
   "gate",
+  "approval_mode",
   "gate_note",
   "protocol_note",
   "unit_gate",
@@ -1548,6 +1552,10 @@ function checkRunStageShared(
   checkOptionalStringArray(o, "context_warnings", kind, errors);
   checkOptionalKeptReplies(o, kind, errors);
   checkGate(o, "gate", kind, errors);
+  if ("approval_mode" in o) {
+    checkString(o, "approval_mode", kind, errors);
+    checkEnum(o, "approval_mode", ["human", "autonomous"], kind, errors);
+  }
   checkString(o, "memory_path", kind, errors);
   checkStringArray(o, "consumes", kind, errors);
   checkStringArray(o, "produces", kind, errors);

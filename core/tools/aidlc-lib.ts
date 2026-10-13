@@ -38031,6 +38031,24 @@ export function latestRecordedAnswerMode(
   return latest;
 }
 
+export type StageApprovalMode = NonNullable<StageEntry["approval_mode"]>;
+
+export interface StageApprovalDirectiveFields {
+  approval_mode: StageApprovalMode;
+  answer_mode?: StageAnswerMode;
+}
+
+export function stageApprovalDirectiveFields({
+  projectDir,
+  approvalMode,
+}: {
+  projectDir: string | null;
+  approvalMode: StageEntry["approval_mode"];
+}): StageApprovalDirectiveFields {
+  if (approvalMode === "autonomous") return { approval_mode: "autonomous" };
+  return { approval_mode: "human", answer_mode: resolveStageAnswerMode(projectDir) };
+}
+
 export interface StageAnswerMode {
   /** The mode this stage uses without asking; null when it asks. */
   mode: AnswerModeChoice | null;
@@ -38076,8 +38094,9 @@ export function resolveStageAnswerMode(
  */
 export function answerModeStageStartedFields(
   projectDir: string | null,
-  options: { intent?: string; space?: string } = {},
+  options: { intent?: string; space?: string; approvalMode?: StageEntry["approval_mode"] } = {},
 ): Record<string, string> {
+  if (options.approvalMode === "autonomous") return {};
   try {
     const mode = resolveStageAnswerMode(projectDir, options);
     return mode.mode !== null && mode.reused_from !== null

@@ -33,6 +33,7 @@ import {
   answerModeFromReply,
   answerModeStageStartedFields,
   resolveStageAnswerMode,
+  stageApprovalDirectiveFields,
 } from "../../core/tools/aidlc-lib.ts";
 import {
   auditBlockField,
@@ -133,6 +134,33 @@ function modeQuestionCount(proj: string): number {
 }
 
 describe("answer mode reading", () => {
+  test("an autonomous stage emits its policy without a routine interview mode", () => {
+    expect(stageApprovalDirectiveFields({ projectDir: null, approvalMode: "autonomous" }))
+      .toEqual({ approval_mode: "autonomous" });
+    expect(answerModeStageStartedFields(null, { approvalMode: "autonomous" })).toEqual({});
+  });
+
+  test("an omitted stage policy keeps the human interview default", () => {
+    expect(stageApprovalDirectiveFields({ projectDir: null, approvalMode: undefined }))
+      .toEqual({
+        approval_mode: "human",
+        answer_mode: {
+          mode: null,
+          ask: true,
+          reused_from: null,
+          notice: "Later stages will use this way too. Say any time if you'd rather switch.",
+        },
+      });
+  });
+
+  test("an explicit human stage keeps its own choice after an autonomous stage", () => {
+    expect(stageApprovalDirectiveFields({ projectDir: null, approvalMode: "autonomous" }))
+      .toEqual({ approval_mode: "autonomous" });
+    expect(stageApprovalDirectiveFields({ projectDir: null, approvalMode: "human" }).approval_mode)
+      .toBe("human");
+    expect(stageApprovalDirectiveFields({ projectDir: null, approvalMode: "human" }).answer_mode?.ask)
+      .toBe(true);
+  });
   test("only the recorded option label or its number names a mode", () => {
     for (const [reply, mode] of [
       ["Guide me", "guide"], ["guide me", "guide"], ["1. Guide me", "guide"], ["1", "guide"],
@@ -167,6 +195,11 @@ describe("answer mode across a piece of work", () => {
 
     askModeQuestion(proj, first, "I'll edit the file");
     expect(hasPendingDecision(proj, first, "STAGE_STARTED")).toBe(false);
+    expect(stageApprovalDirectiveFields({ projectDir: proj, approvalMode: "autonomous" }))
+      .toEqual({ approval_mode: "autonomous" });
+    expect(answerModeStageStartedFields(proj, { approvalMode: "autonomous" })).toEqual({});
+    expect(stageApprovalDirectiveFields({ projectDir: proj, approvalMode: "human" }).answer_mode?.mode)
+      .toBe("file");
 
     const second = advance(proj, state);
     expect(stageStartedAnswerMode(proj, second)).toBe(`file (reused from ${first})`);
