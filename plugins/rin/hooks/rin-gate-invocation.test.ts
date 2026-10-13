@@ -4,6 +4,20 @@ import { gatedInvocationFrom as constitutionInvocation, runVerdictTool } from ".
 import { gatedInvocationFrom as autonomyInvocation } from "./rin-gates-autonomy-gate.ts";
 
 const completions = [
+  "bun --smol .claude/tools/aidlc-orchestrate.ts report --result approved",
+  "bun --smol run .claude/tools/aidlc-orchestrate.ts report --result completed",
+  "bun run --smol .codex/tools/aidlc.ts engine orchestrate report --result approved",
+  "bun --watch .claude/tools/aidlc-orchestrate.ts report --result approved",
+  "bun run --hot .codex/tools/aidlc.ts engine orchestrate report --result completed",
+  "bun --smol --watch --no-clear-screen run .codex/tools/aidlc.ts engine orchestrate report --result approved",
+  "bun --no-macros .claude/tools/aidlc-orchestrate.ts report --result approved",
+  "bun --preload helper.ts .claude/tools/aidlc-orchestrate.ts report --result approved",
+  "bun run --preload=helper.ts .codex/tools/aidlc.ts engine orchestrate report --result completed",
+  "bun --require .claude/tools/aidlc.ts .codex/tools/aidlc-orchestrate.ts report --result approved",
+  "bun --import .claude/tools/aidlc-orchestrate.ts .codex/tools/aidlc.ts engine orchestrate report --result completed",
+  "bun --title test --cwd /invoking --define NAME:run .claude/tools/aidlc-orchestrate.ts report --result approved",
+  "bun .claude/tools/aidlc-orchestrate.ts report --result approved --artifact .codex/tools/aidlc.ts",
+  'env ROUTE=test "C:\\runtime\\bun.exe" --smol run "C:\\installed path\\.codex\\tools\\aidlc.ts" engine orchestrate report --result completed',
   "true & aidlc engine orchestrate report --result approved",
   "exec -- aidlc engine orchestrate report --result completed",
   "env -- bun .claude/tools/aidlc-orchestrate.ts report --result approved",
@@ -24,6 +38,17 @@ const completions = [
   "OTHER=value bun .codex/tools/aidlc.ts engine orchestrate report --result approved && echo done",
 ];
 const controls = [
+  "bun --smol .claude/tools/aidlc-orchestrate.ts next --result approved",
+  "bun --smol .claude/tools/aidlc-orchestrate.ts report --result rejected",
+  "bun --smol .codex/tools/aidlc.ts engine state show --result completed",
+  "bun --smol other.ts report --result approved",
+  "bun test --smol .claude/tools/aidlc-orchestrate.ts",
+  "bun build .codex/tools/aidlc.ts --outfile report",
+  "bun --smol --eval 'console.log(\".claude/tools/aidlc-orchestrate.ts report --result approved\")'",
+  "bun --smol --print '\".codex/tools/aidlc.ts engine orchestrate report --result completed\"'",
+  "echo 'bun --smol .claude/tools/aidlc-orchestrate.ts report --result approved'",
+  "printf 'bun run --smol .codex/tools/aidlc.ts engine orchestrate report --result completed'",
+  "bun --smol .claude/tools/aidlc-orchestrate.ts report --result rejected; echo --result approved",
   "aidlc engine orchestrate next --result approved",
   "aidlc engine orchestrate report --result in_progress",
   "bun .codex/tools/aidlc.ts engine state show --result approved",

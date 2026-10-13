@@ -7,25 +7,36 @@ const shellTokensOf = (command: string): readonly string[] =>
 const unquoted = (token: string): string =>
   /^["']/.test(token) ? token.slice(1, -1) : token;
 
-const completionSegment = (tokens: readonly string[]): boolean => {
-  const executableIndex = tokens.findIndex((token, index) => !["env", "command", "exec"].includes(token) && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token) && !(token === "--" && tokens.slice(0, index).some((prefix) => ["env", "command", "exec"].includes(prefix))));
-  const invocation = tokens.slice(executableIndex).map(unquoted);
-  const executable = invocation[0]?.replace(/\\/g, "/").split("/").at(-1);
-  const sourceOffset = invocation[1] === "run" ? 2 : 1;
-  const source = executable === "bun" || executable === "bun.exe" ? invocation[sourceOffset] : undefined;
-  const sourceName = source?.replace(/\\/g, "/").split("/").at(-1);
-  const offset = source ? sourceOffset + 1 : 1;
-  const args = invocation.slice(offset).filter((token, index, all) =>
+const completionRoute = (input: {
+  readonly executable: string | undefined;
+  readonly sourceName: string | undefined;
+  readonly args: readonly string[];
+}): boolean => {
+  const args = input.args.filter((token, index, all) =>
     !["--json", "--quiet", "--no-color", "--yes", "--offline", "--verbose", "--project-dir"].includes(token) && all[index - 1] !== "--project-dir" && !token.startsWith("--project-dir="));
-  const route = sourceName === "aidlc-orchestrate.ts"
+  const route = input.sourceName === "aidlc-orchestrate.ts"
     ? ["report"]
-    : executable === "aidlc" || sourceName === "aidlc.ts"
+    : input.executable === "aidlc" || input.sourceName === "aidlc.ts"
       ? ["engine", "orchestrate", "report"]
       : [];
   return route.length > 0 &&
     route.every((token, index) => args[index] === token) &&
     args.slice(route.length).some((token, index, args) =>
       token === "--result" && ["approved", "completed"].includes(args[index + 1] ?? ""));
+};
+
+const completionSegment = (tokens: readonly string[]): boolean => {
+  const executableIndex = tokens.findIndex((token, index) => !["env", "command", "exec"].includes(token) && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token) && !(token === "--" && tokens.slice(0, index).some((prefix) => ["env", "command", "exec"].includes(prefix))));
+  const invocation = tokens.slice(executableIndex).map(unquoted);
+  const executable = invocation[0]?.replace(/\\/g, "/").split("/").at(-1);
+  if (executable !== "bun" && executable !== "bun.exe") {
+    return completionRoute({ executable, sourceName: undefined, args: invocation.slice(1) });
+  }
+  return invocation.some((source, sourceIndex) => {
+    const sourceName = source.replace(/\\/g, "/").split("/").at(-1);
+    return ["aidlc.ts", "aidlc-orchestrate.ts"].includes(sourceName ?? "") &&
+      completionRoute({ executable, sourceName, args: invocation.slice(sourceIndex + 1) });
+  });
 };
 
 export const isCompletionReport = (input: { readonly command: string }): boolean => {
