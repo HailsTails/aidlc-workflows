@@ -1,4 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, renameSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -61,30 +63,100 @@ describe("changedFiles", () => {
   });
 });
 
+const carvedRepo = (): HermeticGitRepository => {
+  const repository = newRepo();
+  repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 1;\n" });
+  mkdirSync(join(repository.path, ".constitution-carve-outs"));
+  repository.writeFile({ relativePath: ".constitution-carve-outs/cd-7.json", body: JSON.stringify([
+    { files: ["legacy.ts"], reason: "Imported historical exception", decision: "legacy-import" },
+  ]) });
+  repository.commitAll({ message: "legacy baseline" });
+  return repository;
+};
+
 describe("carve-out-decay CLI fail-closed", () => {
   const runCli = (
     repository: HermeticGitRepository,
     args: readonly string[],
   ): { status: number; stdout: string } => {
-    try {
-      const stdout = execFileSync(
-        "bun",
-        [TOOL_PATH, "--project-dir", repository.path, ...args],
-        {
-          cwd: repository.path,
-          env: { ...repository.environment },
-          encoding: "utf-8",
-        },
-      );
-      return { status: 0, stdout };
-    } catch (error) {
-      const shaped = error as { status?: number; stdout?: Buffer | string };
-      return {
-        status: shaped.status ?? 1,
-        stdout: shaped.stdout?.toString() ?? "",
-      };
-    }
+    const execution = spawnSync("bun", [TOOL_PATH, "--project-dir", repository.path, ...args], {
+      cwd: repository.path,
+      env: { ...repository.environment },
+      encoding: "utf-8",
+    });
+    return { status: execution.status ?? -1, stdout: execution.stdout ?? "" };
   };
+
+  test("untouched initial legacy carve-outs need no Five Whys", () => {
+    const repository = carvedRepo();
+    const outcome = runCli(repository, ["--json"]);
+    expect(outcome.status).toBe(0);
+    expect(JSON.parse(outcome.stdout)).toMatchObject({ pass: true, findings_count: 0 });
+  });
+
+  test("ordinary CLI JSON keeps blocking on a touched carve-out", () => {
+    const repository = carvedRepo();
+    repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 2;\n" });
+    const outcome = runCli(repository, ["--json"]);
+    expect(outcome.status).toBe(1);
+    expect(JSON.parse(outcome.stdout)).toMatchObject({ pass: false, findings_count: 1 });
+  });
+
+  test("dispatcher arguments produce evaluated JSON findings with exit zero", () => {
+    const repository = carvedRepo();
+    repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 2;\n" });
+    const outcome = runCli(repository, ["--stage", "probe", "--output-path", "legacy.ts"]);
+    expect(outcome.status).toBe(0);
+    expect(JSON.parse(outcome.stdout)).toMatchObject({ pass: false, findings_count: 1, findings: [{ file: "legacy.ts", cdCode: "CD-7" }] });
+  });
+
+  test("sensor git failures remain structured failures rather than a pass", () => {
+    const repository = carvedRepo();
+    const outcome = runCli(repository, ["--base-ref", "missing-base", "--output-path", "legacy.ts"]);
+    expect(outcome.status).toBe(0);
+    expect(JSON.parse(outcome.stdout)).toMatchObject({ pass: false, findings_count: 1 });
+  });
+
+  test("a loose blob absent from the selected base tree cannot exempt changed bytes", () => {
+    const repository = carvedRepo();
+    repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 2;\n" });
+    repository.run(["hash-object", "-w", "legacy.ts"]);
+    const outcome = runCli(repository, ["--json"]);
+    expect(outcome.status).toBe(1);
+    expect(JSON.parse(outcome.stdout)).toMatchObject({ pass: false, findings_count: 1 });
+  });
+
+  test("committed changed bytes outside an older base tree are still a breach", () => {
+    const repository = carvedRepo();
+    repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 2;\n" });
+    repository.commitAll({ message: "touched legacy" });
+    const outcome = runCli(repository, ["--base-ref", "HEAD~1", "--json"]);
+    expect(outcome.status).toBe(1);
+    expect(JSON.parse(outcome.stdout)).toMatchObject({ pass: false, findings_count: 1 });
+  });
+
+  test("an untracked carved file stays new even when its blob is stored", () => {
+    const repository = carvedRepo();
+    repository.writeFile({ relativePath: "added.ts", body: "export const added = 3;\n" });
+    repository.writeFile({ relativePath: ".constitution-carve-outs/cd-7.json", body: JSON.stringify([
+      { files: ["added.ts"], reason: "New exception", decision: "new-entry" },
+    ]) });
+    repository.run(["hash-object", "-w", "added.ts"]);
+    const outcome = runCli(repository, ["--json"]);
+    expect(outcome.status).toBe(1);
+    expect(JSON.parse(outcome.stdout)).toMatchObject({ pass: false, findings_count: 1, findings: [{ file: "added.ts" }] });
+  });
+
+  test("moving unchanged carved bytes preserves the base-tree identity", () => {
+    const repository = carvedRepo();
+    renameSync(join(repository.path, "legacy.ts"), join(repository.path, "moved.ts"));
+    repository.writeFile({ relativePath: ".constitution-carve-outs/cd-7.json", body: JSON.stringify([
+      { files: ["moved.ts"], reason: "Imported historical exception", decision: "legacy-import" },
+    ]) });
+    const outcome = runCli(repository, ["--json"]);
+    expect(outcome.status).toBe(0);
+    expect(JSON.parse(outcome.stdout)).toMatchObject({ pass: true, findings_count: 0 });
+  });
 
   test("exits non-zero and reports pass:false in JSON when the base ref is unresolvable", () => {
     const repository = newRepo();

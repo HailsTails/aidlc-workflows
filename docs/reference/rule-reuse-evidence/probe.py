@@ -2,7 +2,7 @@ import argparse,pathlib,tempfile,subprocess,json
 
 def hermetic_environment(*,tools,config_home,bun,read=subprocess.check_output):
  module=tools/'hermetic-git/hermetic-git-environment.ts'
- code='import {hermeticGitEnvironment} from '+json.dumps(str(module))+'; console.log(JSON.stringify(hermeticGitEnvironment({configHome:'+json.dumps(str(config_home))+'})));'
+ code='import {hermeticGitEnvironment} from '+json.dumps(module.as_posix())+'; console.log(JSON.stringify(hermeticGitEnvironment({configHome:'+json.dumps(config_home.as_posix())+'})));'
  environment=json.loads(read([bun,'-e',code],text=True))
  if not isinstance(environment,dict) or not all(isinstance(key,str) and isinstance(value,str) for key,value in environment.items()):
   raise ValueError('hermetic Git environment must contain string entries')
@@ -57,8 +57,8 @@ def main(arguments=None):
    side.write_text('[]');retired=decay(0) # Filename still violates CD-7; no selected checker ran here.
    side.write_text(json.dumps(entries));f.write_text('export const fixture = 3;\n');blob=git('hash-object','-w','src/utils.ts')
    assert blob!=git('rev-parse',base+':src/utils.ts')
-   known=decay(0) # Existing bug: loose object existence incorrectly exempts these changed bytes.
-   print(json.dumps({'R7':False,'untouched':untouched,'touchedRetained':touched,'retiredWithoutPaydown':retired,'nonbaselineKnownBlob':known,'expectedCompleteContract':'last two cases must not establish CD-46 compliance'},indent=2))
+   known=decay(1) # A loose blob outside the selected base tree must not exempt changed bytes.
+   print(json.dumps({'R7':False,'untouched':untouched,'touchedRetained':touched,'retiredWithoutPaydown':retired,'nonbaselineKnownBlob':known,'expectedCompleteContract':'retiring an entry alone does not establish selected-rule paydown; nonbaseline stored bytes must fail decay'},indent=2))
 
 if __name__ == "__main__":
  main()

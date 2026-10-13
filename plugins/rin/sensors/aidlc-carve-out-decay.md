@@ -25,6 +25,12 @@ touched. Per CD-46, touching a carved file forfeits its carve-out — the change
 must pay down the carved violations and delete the entry in the same change.
 CD-46 itself can never be carved out.
 
+## Invocation contract
+
+The dispatcher supplies `--stage` and `--output-path` (or `--file-path`). In this sensor invocation the checker emits structured JSON and exits zero for evaluated pass/fail outcomes. Ordinary CLI use, including `--json`, retains exit one for findings or Git failures. No manifest suffix flag or core dispatcher exception is required.
+
+Content identity is checked against blobs in the selected base ref's tree, not the repository's global object database. Unchanged legacy carve-outs require no Five Whys unless the consumer explicitly opts into R7; touched or newly introduced carved bytes remain findings even when their blobs already exist elsewhere in Git.
+
 ## Failure mode
 
 Emits `SENSOR_FAILED` with a `findings[]` payload of touched-but-still-carved

@@ -297,3 +297,20 @@ provides equivalent consumer-script selection, manager/cwd conventions and
 honest failed/unavailable behavior, with these focused regressions passing.
 An upstream local-ESLint resolver alone does not meet that condition. The
 Rin sensor-layout owner retains its broader configuration and safe-fix work.
+
+
+## CD-46 sensor transport and baseline membership
+
+The Rin-owned carve-out decay checker recognizes the existing dispatcher's
+`--output-path` / `--file-path` invocation and emits JSON with exit zero for
+evaluated outcomes. Its ordinary CLI, including `--json`, still exits one on
+findings or Git failures; the constitution gate keeps that blocking contract.
+Core sensor dispatch and consumer command configuration are unchanged.
+
+The checker now tests content identity against the selected base ref's tree,
+rather than global object existence. Loose objects and commits outside that
+tree cannot suppress changed/new carved-file findings. Unchanged legacy
+exemptions and content-identical moves remain accepted, without requiring Five
+Whys when R7 is not selected. Decay does not prove selected-rule paydown after
+retirement. Source fixtures use the existing hermetic Git helper; live consumer
+installation and workflow acceptance remain separate proof obligations.

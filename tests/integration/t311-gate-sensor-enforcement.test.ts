@@ -14,6 +14,7 @@ import { setDefaultTimeout, afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  cpSync,
   chmodSync,
   existsSync,
   mkdirSync,
@@ -27,6 +28,7 @@ import {
 import { basename, dirname, join } from "node:path";
 import {
   AIDLC_SRC,
+  REPO_ROOT,
   cleanupTestProject,
   createTestProject,
   seedAuditFile,
@@ -42,6 +44,8 @@ import {
   setField,
 } from "../../core/tools/aidlc-lib.ts";
 
+import { createHermeticGitRepository, type HermeticGitRepository } from "../../plugins/rin/tools/hermetic-git/index.ts";
+
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
 const BUN = process.execPath;
@@ -50,8 +54,10 @@ const ORCHESTRATE = join(AIDLC_SRC, "tools", "aidlc-orchestrate.ts");
 const DISPATCHER = join(AIDLC_SRC, "tools", "aidlc.ts");
 const projects: string[] = [];
 const externalPaths: string[] = [];
+const decayRepositories: HermeticGitRepository[] = [];
 
 afterAll(() => {
+  decayRepositories.splice(0).forEach((repository) => { repository.dispose(); });
   for (const project of projects) cleanupTestProject(project);
   for (const path of externalPaths) {
     rmSync(path, { recursive: true, force: true });
@@ -353,6 +359,44 @@ function autonomousCorrectionFixture({ fixture }: { fixture: Fixture }): Fixture
   return fixture;
 }
 describe("t311 gate-bound sensor enforcement", () => {
+  test("CD46 checker findings survive actual gate dispatch without a JSON suffix flag", () => {
+    const seed = setupFixture("blocking");
+    const repository = createHermeticGitRepository({ namePrefix: "cd46-gate-contract-" });
+    decayRepositories.push(repository);
+    cpSync(seed.project, repository.path, { recursive: true });
+    const fixture: Fixture = {
+      project: repository.path,
+      graph: join(repository.path, "stage-graph.json"),
+      outputDir: join(seededRecordDir(repository.path), "inception", "probe"),
+      sensors: join(repository.path, ".test-sensors"),
+      scripts: join(REPO_ROOT, "plugins", "rin", "tools"),
+    };
+    const manifestPath = join(fixture.sensors, "aidlc-gate-probe.md");
+    writeFileSync(manifestPath, readFileSync(manifestPath, "utf-8").replace(
+      "bun .claude/tools/aidlc-sensor-gate-probe.ts",
+      "bun .claude/tools/rin-harness-carve-out-decay.ts",
+    ), "utf-8");
+    repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 1;\n" });
+    mkdirSync(join(repository.path, ".constitution-carve-outs"));
+    repository.writeFile({ relativePath: ".constitution-carve-outs/cd-7.json", body: JSON.stringify([
+      { files: ["legacy.ts"], reason: "Historical fixture exemption", decision: "legacy-import" },
+    ]) });
+    repository.commitAll({ message: "gate baseline" });
+    repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 2;\n" });
+    const refused = gate(fixture, [], {
+      ...repository.environment,
+      AIDLC_STAGE_GRAPH: fixture.graph,
+      AIDLC_SENSORS_DIR: fixture.sensors,
+      AIDLC_SENSOR_SCRIPT_DIR: fixture.scripts,
+    });
+    expect(refused.status).toBe(1);
+    expect(refused.out).toContain("reported findings");
+    expect(refused.out).not.toContain("script-error");
+    expect(eventCount(audit(fixture.project), "SENSOR_FAILED")).toBe(2);
+    expect(eventCount(audit(fixture.project), "SENSOR_PASSED")).toBe(0);
+    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [-] probe");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
   test("autonomous completion survives sensor repair and its awaiting-approval retry", () => {
     const fixture = autonomousCorrectionFixture({ fixture: setupFixture("blocking") });
     const environment = { AIDLC_SKIP_HUMAN_PRESENCE_GUARD: "0" };
