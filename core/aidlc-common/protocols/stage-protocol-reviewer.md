@@ -368,7 +368,7 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
 
    **On an `advisory` review, both verdicts are terminal here.** Do not
    re-invoke the lead or the reviewer during normal flow; proceed to section
-   13, then present the approval gate using the required Review brief above.
+   13, then clear the lifecycle gate according to directive.approval_mode: present the required Review brief for human approval, or report approved through the engine for an autonomous stage.
    The human triages; a Request Changes at the gate is how an advisory finding
    becomes a revision. If a reviewed output, `source-manifest.json`, or
    claimed source path was written after the terminal receipt and voided it,
@@ -377,7 +377,7 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
    the Review brief with `Why now: Re-check after the artifact changed.`
 
    **On an `adversarial` review**, branch on the verdict:
-   - **READY** → the receipt is terminal (above); run the §13 learnings ritual only when `directive.protocol_modules` lists `learnings`, then present the approval gate using the required Review brief above
+   - **READY** → the receipt is terminal (above); run the §13 learnings ritual only when `directive.protocol_modules` lists `learnings`, then clear the lifecycle gate according to directive.approval_mode: present the required Review brief for human approval, or report approved through the engine for an autonomous stage
    - **NOT-READY** and `reviewIterations < reviewer_max_iterations` (default 2):
      - Increment review iteration counter
      - Re-invoke the stage's lead agent ALONE, dispatched per `directive.mode` (inline in your context, or as a subagent on the dispatched modes). On an ensemble stage (pipeline/mob) the room or chain is NOT re-convened - review findings are artifact defects and the lead owns the artifacts; the repair loop is lead-reviewer ping-pong (`stage-protocol-ensemble.md` §5). The builder addresses the findings and updates the artifact.

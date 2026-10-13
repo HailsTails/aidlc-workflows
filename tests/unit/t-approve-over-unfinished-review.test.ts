@@ -27,7 +27,7 @@ import {
   seededStateFile,
   seedStateFile,
 } from "../harness/fixtures.ts";
-import { auditBlockField, getField, readAuditShardEvents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import { auditBlockField, getField, readAuditShardEvents, loadStageGraphAll, setCheckbox } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 
 setDefaultTimeout(NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
 
@@ -95,7 +95,16 @@ function says(proj: string, prompt: string): void {
 }
 
 // The stage's outputs exist and the agent asked the reviewer, who never answered.
-function reviewAskedNeverFinished(proj: string): void {
+function autonomousStageEnvironment({ projectDir, awaitingApproval = true }: { projectDir: string; awaitingApproval?: boolean }): Record<string, string> {
+  const statePath = seededStateFile(projectDir);
+  writeFileSync(statePath, setCheckbox(readFileSync(statePath, "utf-8"), SLUG, awaitingApproval ? "awaiting-approval" : "in-progress"));
+  const graphPath = join(projectDir, ".aidlc-autonomous-stage-graph.json");
+  writeFileSync(graphPath, JSON.stringify(loadStageGraphAll().map((stage) =>
+    stage.slug === SLUG ? { ...stage, approval_mode: "autonomous" } : stage)));
+  return { AIDLC_STAGE_GRAPH: graphPath };
+}
+
+function reviewAskedNeverFinished(proj: string, extra: Record<string, string> = {}): void {
   const dir = join(seededRecordDir(proj), "inception", SLUG);
   mkdirSync(dir, { recursive: true });
   for (const name of ["requirements.md", "requirements-analysis-questions.md"]) {
@@ -104,7 +113,7 @@ function reviewAskedNeverFinished(proj: string): void {
   }
   const asked = run(LOG, [
     "review", "--stage", SLUG, "--reviewer", REVIEWER, "--iteration", "1", "--project-dir", proj,
-  ]);
+  ], extra);
   expect(asked.rc, asked.out).toBe(0);
 }
 
@@ -171,6 +180,49 @@ describe("the person's approval goes through over a review that never finished",
     seedStateFile(proj, "state-mid-inception.md");
   });
   afterEach(() => cleanupTestProject(proj));
+
+  test("a declared-autonomous completion cannot approve over an unfinished reviewer", () => {
+    const environment = autonomousStageEnvironment({ projectDir: proj });
+    reviewAskedNeverFinished(proj, environment);
+    const before = readFileSync(seededStateFile(proj), "utf-8");
+    const refused = state(proj, ["approve", SLUG], environment);
+    expect(refused.rc).not.toBe(0);
+    expect(refused.out).toContain("REVIEW_EVIDENCE_MISSING");
+    expect(readFileSync(seededStateFile(proj), "utf-8")).toBe(before);
+    expect(events(proj, "GATE_APPROVED")).toHaveLength(0);
+  });
+
+  test("an automatic completion report cannot borrow the person-only unfinished-review exception", () => {
+    const environment = autonomousStageEnvironment({ projectDir: proj });
+    reviewAskedNeverFinished(proj, environment);
+    const before = readFileSync(seededStateFile(proj), "utf-8");
+    const refused = report(proj, ["--stage", SLUG, "--result", "approved"], environment);
+    expect(refused.kind).not.toBe("done");
+    expect(JSON.stringify(refused)).toContain("REVIEW_EVIDENCE_MISSING");
+    expect(readFileSync(seededStateFile(proj), "utf-8")).toBe(before);
+    expect(events(proj, "GATE_APPROVED")).toHaveLength(0);
+  });
+  test("a declared-autonomous stage requires a real reply for an explicit person approval", () => {
+    const environment = autonomousStageEnvironment({ projectDir: proj });
+    reviewAskedNeverFinished(proj, environment);
+    const refused = state(proj, ["approve", SLUG, "--user-input", "Approve"], environment);
+    expect(refused.rc).not.toBe(0);
+    expect(refused.out).toContain("no new human reply");
+    expect(events(proj, "GATE_APPROVED")).toHaveLength(0);
+  });
+
+  test("a declared-autonomous stage retains the real person's unfinished-review override", () => {
+    const environment = autonomousStageEnvironment({ projectDir: proj, awaitingApproval: false });
+    expect(state(proj, ["gate-start", SLUG], { ...environment, AIDLC_SKIP_REVIEWER_GATE_GUARD: "1" }).rc).toBe(0);
+    reviewAskedNeverFinished(proj, environment);
+    says(proj, WORDS);
+    const approved = state(proj, ["approve", SLUG, "--user-input", WORDS], environment);
+    expect(approved.rc, approved.out).toBe(0);
+    expect(completed(proj)).toBe(true);
+    expect(events(proj, "GATE_APPROVED")).toHaveLength(1);
+    expect(auditBlockField(events(proj, "GATE_APPROVED")[0].block, "Review")).toBe("not finished");
+    expect(auditBlockField(events(proj, "GATE_APPROVED")[0].block, "Person Reply")).toBe(WORDS);
+  });
 
   test("from the stage itself: approved, the review shown as not finished, one line", () => {
     reviewAskedNeverFinished(proj);

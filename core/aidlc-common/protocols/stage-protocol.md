@@ -2,6 +2,38 @@
 
 MANDATORY: All stages follow this protocol. Referenced by every stage file.
 
+### Stage-specific approval policy
+
+The engine carries the stage's resolved approval_mode: human or autonomous.
+An absent field retains the human default. This policy is stage-specific; a
+scope, a previous stage or a recorded answer style grants no autonomy to another
+stage. The gate field describes lifecycle verification, not human participation. Answer-mode metadata selects how applicable questions are answered; it does not create an interview.
+
+For an autonomous stage, run the work its stage file declares without adding
+a routine interview or answer-mode choice. Questions remain appropriate when
+the stage needs a genuinely reserved operator decision or an input that
+knowledge and available evidence cannot settle. Record and await that real
+reply through the normal question contract; never invent a person answer,
+human turn, approval or instruction grant.
+
+Summary confirmation is owed only when the stage declares summary_confirmation
+and the engine's checkpoint owner requires it. The ceremony switch being on
+alone does not create a checkpoint. Preserve required checkpoints and
+if-present file-backed checkpoint evidence; an undeclared checkpoint is not
+added merely because a genuine operator question was written to a file.
+
+Keep every declared artifact, reviewer, sensor and freshness requirement.
+Required summary confirmation and existing file-backed checkpoint evidence
+remain required; autonomy does not bypass them. Once verification is settled,
+report approval through the normal engine mechanism without a fabricated human
+choice. The human learnings ritual runs only at an actual human gate.
+Isolated single-run reporting and unfinished per-unit routing retain their existing routes. Construction checkpoint, skeleton and plan-approval metadata takes precedence
+where it requires a real person.
+
+Carry approval_mode unchanged in every delegated worker brief. A worker
+follows the stage's work and returns its evidence or genuine operator question;
+the conductor retains lifecycle reporting and reviewer ownership.
+
 ### The person drives
 
 The person is in charge of their work, and AIDLC enforces their will. You read
@@ -185,14 +217,14 @@ Before and during EVERY stage, verify:
 2. [ ] **Log non-gate questions via `aidlc-log.ts`**: before presenting a structured question that is not an approval gate: `{{INVOKE}} engine log decision --stage <slug> --decision "<summary>" --options "<csv>"`. After response: `{{INVOKE}} engine log answer --stage <slug> --details '<exact choice>'`. Log every question a menu shows before you show the menu, and put all of one reply's answers in a single `log answer` (`--details 'Q1: <choice>; Q2: <choice>'`), even when the reply came before the log. Approval choices go only through `aidlc-orchestrate.ts report`. (§2, §3)
 3. [ ] **Record the choice the person made**: read their reply and record their choice; the human-turn hook keeps their exact words with it. Never choose for them unless they leave the choice to you (§3, `--on-instruction`), and never paraphrase their words in an answer or note. (§1, §2, §3)
 4. [ ] **Task transitions + state sync** — Mark previous task `completed`, then `TaskUpdate({ ..., status: "in_progress", activeForm: "Running [Stage] [slug]" })`. The `[slug]` suffix triggers the PostToolUse hook that syncs the state file. Only when `TaskCreate`/`TaskUpdate`, or the plan or todo tool your skill maps them to, is in your tool list; otherwise skip task transitions silently. `aidlc-orchestrate.ts report --stage <slug> --result approved --user-input '<exact choice>'` auto-advances to the next in-scope stage (or completes the workflow on the final stage) — do NOT call `advance` separately after approval. (§4)
-5. [ ] **Stage ritual is ATOMIC** — once a stage starts, EVERY step in its protocol fires: questions → artifact → reviewer (if declared) → learnings (only when the directive lists the `learnings` protocol module) → gate. No step is skippable based on inferred user intent. "Skip to stage X" means skip INTERMEDIATE stages, NOT shortcut the TARGET stage's ritual. If a user jumps forward from a stage at its gate, the current stage's learnings ritual (§13) MUST fire before the jump executes only when the directive lists the `learnings` protocol module. EXCEPTION: the Build-and-Test failure loop-back in the construction protocol module (`aidlc-common/protocols/stage-protocol-construction.md`) jumps back from a deliberately in-flight failed stage; its §13 learnings ritual defers to the eventual passing run.
-6. [ ] **Autonomy is NEVER inferred** — a user saying "go with recommended" or "pick the best answers" for one stage is a ONE-TIME instruction for THAT stage only. It does NOT create a standing rule. The next stage starts fresh with its declared autonomy mode. The ONLY way to get autonomous mode is: (a) the directive explicitly carries `autonomy: autonomous`, OR (b) the human explicitly says "run this autonomous" for the specific stage being proposed. NEVER carry forward an autonomy inference from a previous stage. NEVER self-answer questions without explicit permission for THIS stage; with it, record each answer with `--on-instruction` (§3).
+5. [ ] **Stage ritual is ATOMIC** — once a stage starts, every applicable step in its protocol fires: stage-required questions → artifact → reviewer (if declared) → learnings (only when the directive lists the `learnings` protocol module) → gate. No step is skippable based on inferred user intent. "Skip to stage X" means skip INTERMEDIATE stages, NOT shortcut the TARGET stage's ritual. If a user jumps forward from a stage at its gate, the current stage's learnings ritual (§13) MUST fire before the jump executes only when the directive lists the `learnings` protocol module. EXCEPTION: the Build-and-Test failure loop-back in the construction protocol module (`aidlc-common/protocols/stage-protocol-construction.md`) jumps back from a deliberately in-flight failed stage; its §13 learnings ritual defers to the eventual passing run.
+6. [ ] **Autonomy is NEVER inferred** — a user saying "go with recommended" or "pick the best answers" for one stage is a ONE-TIME instruction for THAT stage only. It does NOT create a standing rule. The next stage starts fresh with its declared autonomy mode. The ONLY way to get autonomous mode is: (a) the directive explicitly carries this stage's approval_mode: autonomous or `autonomy: autonomous`, OR (b) the human explicitly says "run this autonomous" for the specific stage being proposed. NEVER carry forward an autonomy inference from a previous stage. NEVER self-answer questions without explicit permission for THIS stage; with it, record each answer with `--on-instruction` (§3).
 
 ---
 
 ## 1. Approval Gates
 
-Every stage (except the 3 stages in the Initialization phase: workspace-scaffold, workspace-detection, state-init) requires explicit user approval before proceeding.
+Every non-initialization stage reaches its lifecycle verification boundary. Human approval is the default; a stage whose directive carries approval_mode: autonomous clears that boundary through the normal engine approval mechanism after all required checks.
 
 Code Generation's initial Plan Approval remains required. After it, plan, test
 instruction, and Testing Contract edits for the same target and attempt follow
@@ -502,6 +534,11 @@ Stage files list **topic areas and example questions** — they are guidance, no
 
 **Step 2: Use the person's earlier answer mode, or ask for it.**
 
+An autonomous stage does not infer an interview from an absent answer_mode.
+Present a genuinely reserved operator question directly through the normal
+question-rendering and reply-recording contract; do not add a routine style
+choice. The human-policy flow below retains the existing mode choice and reuse.
+
 The person picks how to answer once per piece of work, at the first stage with
 questions; later stages reuse that choice. The run-stage directive's
 `answer_mode` carries it:
@@ -510,7 +547,7 @@ questions; later stages reuse that choice. The run-stage directive's
   `answer_mode.notice` as one line, then go straight to the step for
   `answer_mode.mode` (`guide` is Step 3a, `file` is Step 3b, `chat` is Step 3c).
   Log nothing for the mode: the stage's `STAGE_STARTED` row already records it.
-- `answer_mode.ask === true` (or no `answer_mode` field): offer the choice
+- `answer_mode.ask === true` (or no `answer_mode` field on a legacy human-policy directive): offer the choice
   below. After the person answers, say `answer_mode.notice` as one line.
 
 Record the mode the person chose as its option label (`Guide me`, `I'll edit
@@ -555,7 +592,7 @@ Record the mode question and the user's mode choice through the log tool, the sa
 - After each batch of answers, IMMEDIATELY write the answers back to the questions file (update each `[Answer]:` tag)
 - Continue until all questions are answered
 - When the `run-stage` directive carries `kept_replies`, the person already replied to these questions in a chat that ended before their answers were written down: do what its `note` says, recording each answer they gave before asking anything, and never ask them again what they already answered
-- **Consolidated summary before generation**: The checkpoint below applies only when `directive.ceremony.summary_confirmation === "on"`. When it is `"off"`, generate directly from the answers with no confirmation prompt, confirmation entry, or receipt. With it on, after all questions have been
+- **Consolidated summary before generation**: The checkpoint below applies only when the declared stage checkpoint is owed and `directive.ceremony.summary_confirmation === "on"`. When it is `"off"`, generate directly from the answers with no confirmation prompt, confirmation entry, or receipt. With it on, after all questions have been
   answered, present a consolidated summary of all answers as unordered bullets (never a numbered list). The person confirms what they can read: the bullets sit in the question itself, or right above it in the same message, as the question-rendering annex shows; never only in a tool's output or a file. Then run
   `bun {{HARNESS_DIR}}/tools/aidlc-review-brief.ts summary --stage "<directive.stage>" --questions-file "<questions-path>"`;
   add `--unit "<directive.unit>"` on a per-unit stage. Print its compact
@@ -636,7 +673,7 @@ Record the mode question and the user's mode choice through the log tool, the sa
 - Do NOT read the file or proceed until the user sends a completion signal
 - After the completion signal, read the answers, present their consolidated
   summary, and run the same persisted **Looks correct / Request changes**
-  checkpoint from Step 3a only when `directive.ceremony.summary_confirmation === "on"`. Editing the source file does not waive an enabled checkpoint; when it is `"off"`, generate directly with no checkpoint or receipt.
+  checkpoint from Step 3a only when the declared stage checkpoint is owed and `directive.ceremony.summary_confirmation === "on"`. Editing the source file does not waive an enabled checkpoint; when it is `"off"`, generate directly with no checkpoint or receipt.
 
 **Step 3c: If "Chat" (freeform mode):**
 - Engage in open-ended conversation about the stage's topic
@@ -644,7 +681,7 @@ Record the mode question and the user's mode choice through the log tool, the sa
 - Extract decisions and answers from the conversation as they emerge
 - To end the conversation, tell the user: "When you're ready to proceed, say **done** and I'll summarize our decisions."
 - After the conversation reaches natural resolution, write all extracted answers back to the questions file (update each `[Answer]:` tag with the decided value, timestamp, and `**Mode:** chat`)
-- Present a summary of extracted decisions, then, only when `directive.ceremony.summary_confirmation === "on"`, persist and use the same **Looks correct / Request changes** structured confirmation from Step 3a before proceeding; when it is `"off"`, generate directly with no checkpoint or receipt
+- Present a summary of extracted decisions, then, only when the declared stage checkpoint is owed and `directive.ceremony.summary_confirmation === "on"`, persist and use the same **Looks correct / Request changes** structured confirmation from Step 3a before proceeding; when it is `"off"`, generate directly with no checkpoint or receipt
 - Best for: exploratory stages, brainstorming, when questions need discussion before answering
 
 Users can switch modes mid-stage. For example, start with "Guide Me" for the first few questions, then say "let me just chat about the rest."
@@ -718,7 +755,7 @@ When contradictions are detected:
   - Answers that dodge the question or change the subject
   - Relaxing, lowering, or disabling a previously defined quality target (e.g.
     a test coverage threshold) instead of meeting it
-- When a user leaves a choice to you ("up to you", "whatever you think is best", or "choose the recommended answers" for this stage), decide: pick the option that best fits what they have said so far and record it with `{{INVOKE}} engine log answer --stage <slug> --details '<your choice>' --on-instruction '<their words that left it to you>'`, each in single quotes as **Their words on a command line** above says (a choice's text can come from the project), so the record shows you chose it as they asked. Then say one line. For one question: **SAY:** "You left <the question> to me, so I chose <the choice>. Say if you want something else." For several: **SAY:** "You left <Stage>'s <N> questions to me, so I chose the recommended answers: <question: choice; ...>. Say if you want any of them changed." The first time in a piece of work, also say once: **SAY:** "Approvals are still yours: I'll stop at each stage for you to approve." A checkpoint or an approval is never left to you: ask the person.
+- When a user leaves a choice to you ("up to you", "whatever you think is best", or "choose the recommended answers" for this stage), decide: pick the option that best fits what they have said so far and record it with `{{INVOKE}} engine log answer --stage <slug> --details '<your choice>' --on-instruction '<their words that left it to you>'`, each in single quotes as **Their words on a command line** above says (a choice's text can come from the project), so the record shows you chose it as they asked. Then say one line. For one question: **SAY:** "You left <the question> to me, so I chose <the choice>. Say if you want something else." For several: **SAY:** "You left <Stage>'s <N> questions to me, so I chose the recommended answers: <question: choice; ...>. Say if you want any of them changed." The first time in a piece of work, also say once: **SAY:** "Stages with human approval still stop for you; an explicitly autonomous stage clears its gate after its required checks." A required human checkpoint or human approval is never left to you: ask the person.
 
 ### Plan and question file location
 Plan files and question files are co-located with their stage artifacts, not in a centralized `plans/` directory. For example, user story plan questions live at `<record>/inception/user-stories/user-stories-questions.md` alongside the user story artifacts. This co-location improves discoverability — all inputs, questions, and outputs for a stage are found in the same directory.
@@ -941,7 +978,7 @@ methodology (2 and 3): read it in the order listed.
    the full active-space memory tree (Kiro CLI `resources`), deliver the rule
    bundle through that preload instead of pasting it; every other harness
    retains the verbatim-paste contract. Every brief still carries
-   `directive.ceremony`, `directive.protocol_modules`, and the diary discipline
+   `directive.approval_mode`, `directive.ceremony`, `directive.protocol_modules`, and the diary discipline
    verbatim. An unloadable required rule blocks dispatch with repair guidance.
    Artifact references stay exact paths; never copy persona or knowledge prose
    into a brief.

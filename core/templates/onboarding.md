@@ -3,10 +3,10 @@ This project uses AI-DLC (AI-Driven Development Life Cycle) for structured devel
 ## What AI-DLC does for you
 
 AI-DLC walks a piece of work from idea to shipped code in ordered steps, and
-stops to ask you for approval at each one. You describe what you want built; it
+stops for approval at the steps configured for human judgement. You describe what you want built; it
 works out how much process the change needs, asks the questions it actually
 needs answered, writes the design and code, and keeps a written record of what
-was decided and why. Nothing advances past a step without your say-so, and you
+was decided and why. Your stage policy decides which approval boundaries need your response, and you
 can change the plan, the depth, or the direction at any approval point.
 
 The sections below describe where it keeps things in this project. You do not

@@ -1,5 +1,12 @@
 # Stage Protocol Reference
 
+Stage participation follows the graph's approval_mode, carried on run-stage
+and dispatch-subagent directives. Missing policy means human approval.
+Autonomous approval retains lifecycle verification, review, sensors, freshness
+and declared summary checkpoints, while adding no routine interview or human
+learnings/approval ritual. Genuine operator decisions still use real replies.
+Construction checkpoint and isolated-run routing keep their existing owners.
+
 Human-readable restructuring of the machine-oriented protocol family authored
 under `core/aidlc-common/protocols/`. Preserves all rules, conditions,
 and behaviors while reorganizing for developer consumption. Section references
