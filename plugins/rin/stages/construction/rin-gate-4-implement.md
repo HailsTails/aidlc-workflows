@@ -123,7 +123,7 @@ skip review.
 Under the run-to-merged model, stopping at Gate 4's completion is a HAND-OFF TO
 GATE 5 **IN THE SAME RUN**, not a stop-and-strand-for-a-later-lane: a pipeline run
 drives the Slice consecutively, so the engine walks straight on to Gate 5, which
-owns the review + merge. (Slice `019f5565`.) The old "end at a pushed PR — leave
+owns the review + merge. The old "end at a pushed PR - leave
 for the next scheduled implement/review lane" framing is retired; the run
 continues.
 

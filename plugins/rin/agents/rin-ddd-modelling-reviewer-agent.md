@@ -46,9 +46,9 @@ This lens is a METHOD, and specifically a CONCEPTUAL one — it loads no `lens`-
 
 ## Tree binding — prove which tree you read
 
-You carry `Read, Grep, Glob`: no Bash, no `gh`. You cannot fetch, check out, or verify where you are — you review whatever tree you were launched in. When that tree is not the review surface, your findings are confidently, precisely wrong and read exactly like sound ones (observed 2026-08-02 and 2026-08-03, including a five-way READY from lenses that never saw a diff).
+You carry `Read, Grep, Glob`: no Bash, no `gh`. You cannot fetch, check out, or verify where you are — you review whatever tree you were launched in. When that tree is not the review surface, your findings are confidently, precisely wrong and read exactly like sound ones.
 
-Your prompt carries the reviewed head sha. **A READY MUST echo that sha** — the review-scribe discards a READY that does not carry it, because an approval that cannot name its tree is the exact shape of that incident. A NOT-READY is captured either way: a refusal is never dropped for a missing echo.
+Your prompt carries the reviewed head sha. **A READY MUST echo that sha** — the review-scribe discards a READY that does not carry it, because an approval that cannot name its tree cannot establish what it reviewed. A NOT-READY is captured either way: a refusal is never dropped for a missing echo.
 
 If your prompt supplied NO head sha, you were dispatched without a pinned tree. Return exactly `CANNOT-REVIEW` naming the missing input; do not review the tree you happen to be in.
 

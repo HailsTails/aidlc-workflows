@@ -1,25 +1,10 @@
 // Verdict extraction for the rin-gates review-scribe — the TOOL owns the verdict.
 //
-// WHY THIS MODULE EXISTS (task 019fd9a5). The scribe previously accepted exactly
-// one serialisation: an HTML comment pair wrapping JSON. Asking a model to
-// reproduce an exact delimiter pair as free text is the unreliable step, and it
-// stays unreliable however well the instruction is written. Measured on
-// `aidlc/rin-gates-review-scribe-trace.jsonl` (887 entries, re-derived 2026-08-07):
-//
-//   399  no rin-gates-lens:v1 block in output   <- this defect
-//   177  no active intent at invoking checkout
-//    66  gate has no phase mapping
-//     3  lens gate mismatch
-//
-// Re-derive:
-//   grep -o '"reject":"[^"]*"' aidlc/rin-gates-review-scribe-trace.jsonl | sort | uniq -c | sort -rn
-//   grep -vc '"reject"' aidlc/rin-gates-review-scribe-trace.jsonl
-//
-// The loss is universal, not lens-specific — all 18 reviewer agents appear in the
-// malformed bucket, the heaviest at 117. An experiment on 2026-08-07 pasted the
-// exact template into all 17 lens definitions; 3 of 4 lenses STILL malformed it,
-// in three different ways (closing token absent / block fenced / no HTML comment
-// at all). Better prose does not fix a prose-to-exact-string step.
+// The scribe derives the verdict from native model output rather than requiring
+// an exact HTML comment pair wrapping JSON. A free-text delimiter contract can
+// fail through absent closing tokens, fenced blocks, or missing comment markers.
+// Repeating a template in reviewer instructions does not enforce its output
+// serialization. Keep that deterministic boundary in the extractor.
 //
 // WHY NOT "GIVE THE LENS A CLI TO CALL". Every lens ships `tools: Read, Grep,
 // Glob` + `disallowedTools: Task`, and that grant IS the reviewer-not-author
@@ -61,12 +46,12 @@ const READY_TOKEN = /\bREADY\b/i;
 // The structured block, kept as the precision channel for a lens that emits it.
 // Delimiters are matched leniently — optional whitespace after the opening token,
 // an optional closing token, and an optional surrounding code fence — because
-// every observed malformation was in the delimiters, never in the JSON payload.
+// supported delimiter variations must not block a well-formed JSON payload.
 const STRUCTURED_BLOCK =
   /<!--\s*rin-gates-lens:v1\s*([\s\S]*?)(?:\s*rin-gates-lens:v1\s*)?-->/;
 
 // A fenced block whose body is the lens JSON, with no HTML comment at all — one of
-// the three observed malformations.
+// the supported fenced input shapes.
 const FENCED_LENS_JSON = /```(?:json)?\s*(\{[\s\S]*?"verdict"[\s\S]*?\})\s*```/;
 
 const parseJsonPayload = (payload: string): LensVerdict | null => {
@@ -105,9 +90,9 @@ const fromStructuredBlock = (message: string): LensVerdict | null => {
   return fencedMatch === null ? null : parseJsonPayload(fencedMatch[1]);
 };
 
-// The lens's native contract: a line that DECLARES itself the verdict. Two
-// shapes are accepted because both are what real lenses produce (task 019fe4af,
-// 32 discarded verdicts across four gates, 2026-08-07..09):
+// The lens's native contract: a line that DECLARES itself the verdict. Accepted
+// shapes place the token below a heading, on the heading, or in a bold inline
+// declaration:
 //
 //   ## Verdict            <- heading, token in the body below
 //   ## Verdict: NOT-READY <- heading, token ON the heading line
@@ -122,12 +107,11 @@ const VERDICT_DECLARATION =
 // verdict. The region ends at the next heading of any level.
 const NEXT_HEADING = /^[ \t]*#{1,6}[ \t]+\S/m;
 
-// The region INCLUDES the declaration line itself. The previous reader sliced
-// from the end of that line, so `## Verdict: NOT-READY` had its only token
-// consumed into the heading and the region below was empty or another heading —
-// the shape that lost every one of the 32. Including the line cannot manufacture
-// an approval: NOT-READY is still tested first and matched anywhere in the
-// region, so a declaration naming both tokens resolves to NOT-READY.
+// The region INCLUDES the declaration line itself. Slicing from its end would
+// discard the only token in `## Verdict: NOT-READY`, leaving an empty region
+// or another heading. Including the line cannot manufacture an approval:
+// NOT-READY is tested first and matched anywhere in the region, so a declaration
+// naming both tokens resolves to NOT-READY.
 const verdictRegionOf = (message: string): string | null => {
   const declaration = message.match(VERDICT_DECLARATION);
   if (declaration?.index === undefined) return null;
@@ -149,7 +133,7 @@ const findingsIn = (region: string): readonly string[] =>
 
 // The findings a lens cited and did NOT dispose — re-exported from the single
 // definition beside the CLI emitter, so the scribe door and the emitter door
-// cannot drift about what READY means (task 019f6d3e).
+// cannot drift about what READY means.
 export { blockingFindingsIn } from "../tools/rin-gates/rin-gates-finding-disposition.ts";
 
 const fromVerdictSection = (message: string): LensVerdict | null => {

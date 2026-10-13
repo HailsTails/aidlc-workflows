@@ -8,14 +8,11 @@
 // sides. The anti-stall rails compound it: they rank a mid-scope steer below
 // finishing the current gate step, exactly as designed.
 //
-// Boundary seam (measured live 2026-09-05, not read off documentation — the
-// evidence is at the record's evidence/hook-event-probe-live-2026-09-05.jsonl):
-// SubagentStop fires on the SUBAGENT's termination, and the parent's own resume
-// is the PostToolUse that follows it 3.2s later carrying tool_name "Agent".
-// Both events deliver the PARENT's `transcript_path`, so both can read the
-// queue. Registering on PostToolUse alone would surface a steer only at the next
-// tool boundary; registering on SubagentStop as well is what closes the
-// seat-return window the operator actually loses messages in.
+// Boundary seam: SubagentStop fires on subagent termination. The parent
+// resumes through the subsequent PostToolUse event carrying tool_name "Agent".
+// Both events deliver the parent's `transcript_path`, so either can read the
+// queue. PostToolUse alone surfaces a steer only at the next tool boundary;
+// registering SubagentStop as well covers the seat-return window.
 //
 // Why an advisory and not a block: the rails are correct and this must not
 // weaken them. A steer is surfaced for ACKNOWLEDGEMENT within one tool call,

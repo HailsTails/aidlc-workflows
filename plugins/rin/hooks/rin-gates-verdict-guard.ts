@@ -1,6 +1,6 @@
 // PreToolUse path guard for the rin-gates review-verdict artefact.
 //
-// Root cause addressed (Gate-5 review B1, 2026-07-13): the autonomy backstop
+// Authorization boundary: the autonomy backstop
 // hook (rin-gates-autonomy-gate.ts) refuses an autonomous `report
 // --result approved` unless a `review-verdict.json` with verdict:"READY" exists
 // for the gate. But if that file is freely model-writable, an autonomous lane
@@ -26,28 +26,24 @@
 // emittedBy + fresh-headSha checks are the third layer that catches anything
 // that still reaches disk unstamped.
 //
-// DELETION IS NOT FABRICATION. The invariant this guard
-// protects is "a READY verdict may only be produced by the emitter" — an
-// authorisation must not be manufacturable by hand. Removing a verdict manufactures
-// nothing: after a delete the gate still demands a real emitted READY, so the lane
-// is strictly worse off, never better. Denying deletion bought no safety and
-// created permanently-unfixable strandage — main's a04de75a slug migration retired
-// the bare `gate-N-*` verdict path, and any verdict authored after that sweep was
-// left at a path no sanctioned tool could clear (task 019fa8ba-11b2). So a pure
-// delete naming ONLY verdict paths is allowed.
+// DELETION IS NOT FABRICATION. The invariant this guard protects is that a
+// READY verdict may only be produced by the emitter. Removing the verdict file
+// creates no authorization: the gate still demands a real emitted READY. A
+// pure delete naming ONLY verdict paths can clear a stale file without writing
+// a replacement verdict.
 //
 // `mv` and `cp` stay DENIED even though they remove from a source: they also WRITE
 // a verdict at a destination, which is exactly the fabrication route (V6 covers the
 // rename evasion). Only genuinely-destructive-with-no-write verbs are permitted.
 //
-// SCOPE OF "STRICTLY WORSE OFF" (PR #384 review B2). That claim holds for the
+// SCOPE OF "STRICTLY WORSE OFF". That claim holds for the
 // verdict FILE only. The scribe's accumulation jsonl is a different matter: it
 // carries the anyNotReady poison, so wiping it WOULD let a lane re-roll a board
 // that already returned NOT-READY at the same headSha. The accumulation is
 // therefore denied to every mutating command, deletion included (V17) — the
 // allowance clears a stale verdict, never a blocking finding.
 //
-// KNOWN GAP (019fa8cf-faf4, pre-existing): both arms below gate on the LITERAL
+// KNOWN GAP: both arms below gate on the LITERAL
 // string `review-verdict.json`, so a glob or directory-destination operand is
 // invisible to this guard entirely. V14 pins the current behaviour so a fix flips
 // it loudly. The inline-exec deny and the autonomy gate's emittedBy + fresh-headSha
@@ -55,14 +51,12 @@
 
 // Deny = exit 2 + stderr (PreToolUse deny convention). Allow = exit 0.
 
-// PATH-SEGMENT ANCHORING (task 01a02ba0). The protected OBJECT is a file NAMED
-// `review-verdict.json` — not any filename that happens to END with that string.
-// An unanchored `…json$` also matched `sample-review-verdict.json` and
-// `fake-review-verdict.json`, so documentation examples and test fixtures were
-// unwritable. An over-block IS the
-// defect; this is the same precision move as the operand quote-stripping and the
-// backslash-removed-from-the-veto precedents (pipeline decisions, 2026-07-28) —
-// a NARROWING that makes the matcher name the object it was always meant to name.
+// PATH-SEGMENT ANCHORING. The protected OBJECT is a file NAMED
+// `review-verdict.json`, not a filename that merely ends with that string.
+// An unanchored `.json$` also matches `sample-review-verdict.json` and
+// `fake-review-verdict.json`, blocking documentation examples and test fixtures.
+// Matcher precision must exclude those larger names without releasing writes
+// to the protected filename.
 // Requiring a separator (or string start) immediately before the filename cannot
 // admit a single new write: every path that previously matched as a whole
 // FILENAME still matches, and only the strictly-larger names it never protected
@@ -76,14 +70,14 @@ const VERDICT_FILE = /(?:^|[\\/])review-verdict\.json$/i;
 const VERDICT_PATH_IN_COMMAND = /(?:^|[^\w.-])review-verdict\.json/i;
 // The scribe's per-{record,gate,headSha} accumulation carries each lens's
 // STANDING refusal at that HEAD. A refusal is retired only by that same lens
-// reporting again at the same HEAD with a sha-echoing READY (task 019fef05) —
+// reporting again at the same HEAD with a sha-echoing READY -
 // a review, never an erasure, and never by another lens. Wiping the file would
 // convert "this commit is blocked by a finding" into "re-roll the board until
 // green at the same commit", so the accumulation is guarded exactly like the
 // verdict — including against the deletion allowance below.
 //
 // Anchored as a whole path SEGMENT for the same reason as the verdict filename
-// (task 01a02ba0): unanchored at both ends it also matched
+// unanchored at both ends, the pattern also matches
 // `docs/.rin-gates-review-captures-notes.md`, a note ABOUT the accumulation
 // rather than the accumulation itself. The directory must be followed by a
 // separator or end the operand, and preceded by a separator or the operand start.
@@ -160,15 +154,11 @@ const isPureVerdictDeletion = (command: string): boolean => {
   return everyOperandIsAVerdict(command);
 };
 
-// OVER-BLOCK FIX (task 019fd9b0). The predicates below scan the WHOLE command
-// string, so a `git commit` whose MESSAGE merely NAMES the guarded file was read
-// as a write — the deny fired on prose describing the guard, with nothing in the
-// tree or the staged diff touching the path. An over-block IS the
-// defect: over-blocking and under-blocking are
-// the same class of matcher defect. The cost compounds, because the one moment a
-// session most needs to explain the verdict mechanism in a commit message is when
-// a gate is blocked on it — exactly when the guard fires — and it teaches sessions
-// to route prose around the matcher, the habit the inline-exec rails suppress.
+// The predicates scan the WHOLE command string, so prose in a `git commit`
+// message can name the guarded file without writing it. Treating that message
+// as a write would block an operation whose tree and staged diff do not touch
+// the protected path and encourage routing prose around the matcher. Both
+// over-blocking and under-blocking are matcher defects.
 //
 // The fix is PRECISION, never weakening: a QUOTED message argument to `git commit`
 // -m/-am/-F, plus a heredoc body, is removed before the write-detection predicates
@@ -204,7 +194,7 @@ const SINGLE_QUOTED_MESSAGE = /(-m|-am|-F)\s+'(?:[^'\\]|\\.)*'/g;
 // shell treats this as literal data delivered on stdin, not as command syntax.
 const HEREDOC_BODY = /<<-?\s*(['"]?)(\w+)\1[\s\S]*?^\s*\2\s*$/gm;
 
-// CONTEXT-AWARE SUBSTITUTION FALLBACK (task 01a02632). The fallback below used to
+// CONTEXT-AWARE SUBSTITUTION FALLBACK. The fallback below used to
 // test SUBSTITUTION against the WHOLE ORIGINAL command, so a single backtick
 // ANYWHERE — including inside a single-quoted message, where no shell on earth
 // evaluates it — discarded the stripped result and re-enabled full-message

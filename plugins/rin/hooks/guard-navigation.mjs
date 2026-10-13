@@ -22,7 +22,7 @@ const denyCall = ({ reason }) => {
   process.exit(2);
 };
 
-// Guard-relaxation trial (record 260904-guard-relaxation-trial-2). Mirrors
+// Guard-relaxation trial. Mirrors
 // plugins/rin/hooks/guard-trial.ts, which this .mjs file cannot import. The
 // token names guards individually and this guard answers only to its own name,
 // so no value of it reaches a safety-critical guard. Fails closed: the relax
@@ -81,14 +81,12 @@ const shadowLogPath = () => {
 // rule's residual value. Recording the split per line is what makes the
 // end-of-trial keep/drop call sharp rather than a single undifferentiated
 // total. Deliberately hedged as "likely": the built-in's predicate is not ours
-// to read, so this is a SHAPE match against observed behaviour (measured
-// 2026-09-04) to be spot-checked in analysis, never treated as ground truth.
-// Complexity means SHELL complexity, not git's position in the command: a
-// chained command was refused on that wording while git appeared only inside a
-// quoted string. An earlier version anchored at `git` and scanned forward, so
-// `cd X && git log` read as not-covered and was credited to this rule as
-// residual value — a one-way bias toward a wrong KEEP, on plausibly the
-// highest-volume rule here. Test for a git mention AND chaining independently.
+// to read, so this is a SHAPE match against refusal behavior, to be spot-checked
+// in analysis and never treated as ground truth. Complexity means SHELL
+// complexity, not git's position: git may appear inside a quoted string in a
+// chained command. Anchoring at `git` and scanning forward would misclassify
+// `cd X && git log` as not-covered and bias the rule's measured residual value.
+// Test for a git mention AND chaining independently.
 const gitDashCForm = /(?:^|&&|\|\||[\n;&|(`])\s*git\s+-C\b/;
 const mentionsGit = /\bgit\b/;
 const carriesShellComplexity = /(?:&&|\|\||[;|`]|\$\(|<<)/;
