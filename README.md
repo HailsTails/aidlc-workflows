@@ -1,6 +1,6 @@
 # AI-DLC - one core, many harnesses
 
-For the Rin fork, see [fork installation and differences](docs/guide/rin-fork-installation.md).
+For the Rin fork, see [fork installation and differences](docs/guide/rin-fork-installation.md). For selected rules with your own workflow, use the [standalone disciplines quick start](docs/guide/rin-standalone-disciplines.md).
 
 AI-DLC (AI-Driven Development Life Cycle) turns AI coding assistants into
 structured, verifiable software-delivery workflows. One harness-neutral core

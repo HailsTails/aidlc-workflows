@@ -5,6 +5,8 @@ The upstream release installer in the main guide installs upstream binaries.
 It does not distribute this fork. The supported fork path currently builds
 from source using the existing repository packager.
 
+For selected disciplines with your own workflow, use the [standalone manual adoption guide](rin-standalone-disciplines.md). It copies rule artifacts and configures ordinary consumer checks without installing this runtime.
+
 ## Provenance
 
 The underlying AI-DLC framework comes from [AWS's awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows). Helen (HailsTails) maintains the Rin-specific contributions and this fork, with AI assistance. Voluntary attribution is appreciated; the [MIT No Attribution licence](../../LICENSE) imposes no attribution requirement.

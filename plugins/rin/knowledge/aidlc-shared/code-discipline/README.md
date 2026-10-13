@@ -6,6 +6,10 @@ Reviews cite by ID — "violates CD-7" — to make remediation precise.
 
 Each entry's `[…]` tag lists the enforcement mechanisms that back the rule. `[manual]` means there is no automated backstop — the rule is reviewer-judgement only and is the agent's hardest case.
 
+## Standalone adoption
+
+Use the [standalone TS API + React quick start](standalone-adoption.md) to select rule artifacts and configure ordinary checks without AIDLC stages or Rin gates. Enforcement tags below describe mechanisms; copying text does not install them.
+
 ## Canonical source, rules-as-data, and the lens harness
 
 The `cd-*.md` files in this directory are the **single source of truth** for the binding rule text. Nothing else holds rule prose — the rules are **data** consumed by two harness layers that hold no copy of their own:
