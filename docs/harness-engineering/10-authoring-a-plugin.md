@@ -247,21 +247,72 @@ body after an engine reinstall. Two authoring rules follow from that:
 
 ### Engine upgrade lifecycle
 
-An engine reinstall copies the stock `dist/<harness>/` graph and core stage
-sources over the effective install. Plugin-namespaced files and contribution
-sidecars can survive that overlay while their graph entries and structural or
-prose contribution merges disappear. Authors should make re-composition part of
-their upgrade instructions: run `/aidlc plugin sync` after every engine
-reinstall or upgrade (or start a new session on a host with the plugin compose
-hook). Composition is idempotent, so this restores the same effective surface
-without duplicating unchanged contributions. `/aidlc --doctor` reports the
-broken state as **Composed plugin surface**. The check fails closed when an
-enabled plugin's sidecar is unreadable or malformed, a recorded target stage no
-longer exists, or a recorded structural or prose contribution is absent or
-changed. Consume records preserve and verify `artifact`, `required`, and optional
-`conditional_on`; artifact-only records from older sidecars remain compatible. An
-invalid sidecar cannot be reconstructed safely from an already-composed stage:
-refresh the stock engine, remove that sidecar, then run `plugin sync`.
+Use the **stock core projection** as `config --from` input, then run ordinary
+plugin sync from the installed plugin inventory or each explicitly bound plugin
+root. Do not pass a projection already composed with plugins to the core
+installer: their payloads and stamps have separate ownership. Core refresh
+preserves unchanged plugin-owned files and recorded contributions while
+compiling the combined graph; plugin sync upgrades plugin payloads through its
+own ownership hashes and transaction. Modified owned files refuse rather than
+being overwritten. Repeat stock core refresh after sync to verify durability.
+
+A normal core install or refresh records ownership of the root orchestrator
+skill's prose outside its two unique generated table regions. Later composition
+and cross-release table changes can regenerate those regions without acquiring
+user-edited prose. Missing or duplicate regions and unrelated prose edits remain
+conflicts. A legacy install without this proof can first refresh from its exact
+previous **stock** package using the current installer, then refresh from the
+candidate stock package. That bridge is a real installer transaction; stop if
+either ordinary plan conflicts. No baseline is reconstructed by hand.
+
+`/aidlc --doctor` reports missing or changed recorded contributions as
+**Composed plugin surface**. It fails closed when an enabled plugin's sidecar is
+unreadable or malformed, a recorded target stage is gone, or a recorded
+structural/prose contribution is absent or changed. Consume records preserve
+`artifact`, `required`, and optional `conditional_on`; older artifact-only
+records remain compatible. Never reconstruct an invalid sidecar from a stage
+that is already composed.
+
+### Adopting existing direct sensor additions
+
+Older guidance recommended editing an installed stock stage's `sensors:` list.
+Keep the existing bindings in place and author a local contribution-only plugin
+with `adds.sensors` declaring exactly the added IDs. Use the existing plugin
+builder to produce its normal host projection; the builder supplies the
+maintained composer, so do not vendor another compose implementation. The
+sensor implementations must already be installed.
+
+1. Bind the installed local plugin root (or use its real host inventory), then
+   run `aidlc engine plugin select aidlc,rin,<local-plugin>` with the complete
+   existing selection plus the new plugin. Selection recognizes validated,
+   enabled installed identities before their first composition.
+2. Run `aidlc engine plugin sync` with that root/inventory. Already-present,
+   unrecorded sensor additions are adopted only when removing exactly those
+   declared IDs reproduces the actual recorded core stage hash. The stage stays
+   intact. The real composer records ordinary `sensors` ownership plus
+   `sensor_adoption` provenance identifying the prior baseline and adopted IDs.
+   This records present adoption, not historical insertion. A declaration that
+   also lists stock IDs, omits a manual addition, or accompanies unrelated stage
+   edits cannot earn that proof; normal refresh still refuses those edits.
+3. Preview normal `config --from <stock-core> --project-dir <project> --dry-run`.
+   With open workflows, add the existing `--refresh-open-workflows` flag and
+   retain its compatibility checks. Review and apply the emitted plan with its
+   `--plan-token`; stop on conflicts or incompatible completion contracts.
+4. Sync candidate Rin and local plugins through their ordinary lifecycle, then
+   preview and apply another stock core refresh. Verify the same ordered sensor
+   bindings and plugin selection, separate core/plugin ownership, and unchanged
+   workflow and approval policy. No force, transient sensor removal, trust
+   change, or handwritten receipt is part of this sequence.
+
+For a Bun copy install, replace `aidlc engine plugin select` with
+`bun <candidate-core>/.codex/tools/aidlc-utility.ts select-plugins` and
+`aidlc engine plugin sync` with
+`bun <candidate-core>/.codex/tools/aidlc-plugin.ts sync --project-dir <project>`.
+Bind `AIDLC_PROJECT_DIR`, `AIDLC_HARNESS_DIR=.codex`, and the plugin root for each
+process; any existing root aliases must name that same projection. Run the
+candidate core's `aidlc-init.ts config` for refresh. Other harnesses use their
+emitted tool directory. Producer checks do not approve a stage gate or establish
+native automatic sensor delivery in a live host.
 
 ## 4. Packaging the other primitives
 

@@ -314,6 +314,7 @@ exemptions and content-identical moves remain accepted, without requiring Five
 Whys when R7 is not selected. Decay does not prove selected-rule paydown after
 retirement. Source fixtures use the existing hermetic Git helper; live consumer
 installation and workflow acceptance remain separate proof obligations.
+
 ## Codex copied-tool argv allowlist - upstream candidate (2026-10-13)
 
 Capability ID: `codex-tool-argv-allowlist`. Owners: shared argv rendering in
@@ -372,3 +373,37 @@ an equivalent recursive exact-file argv allowlist plus owned plugin-tool
 composition/removal, preserves the native rule and
 passes the focused positive/negative matcher cases. No upstream publication or
 acceptance is claimed here.
+
+
+## Sensor customization adoption and stock upgrade ownership
+
+The composer adopts already-present declared sensor additions only when
+removing them reproduces the genuine recorded core stage hash. Its
+`sensor_adoption` record distinguishes present adoption from historical
+insertion. Other user changes remain unowned and block refresh. Selection
+recognizes validated enabled installed identities before first compose, so a
+contribution-only plugin can use ordinary selection.
+
+Core ownership records preserve proof of root skill prose outside its two unique
+generated table regions, allowing cross-release regeneration without accepting
+edited prose. Legacy installs may establish that proof through a normal refresh
+from the exact prior stock package; no ownership is reconstructed by hand.
+Stock core refresh and plugin sync remain separate operations. Focused tests
+cover adoption, refusal, ordered bindings, repeated refresh and cross-release
+prose preservation. Live replay and native acceptance remain separate evidence.
+
+Bounded upstream comparison on 2026-10-13: main
+[`fa149d9adaeb73ca16d13f4d832875bef108cc48`](https://github.com/awslabs/aidlc-workflows/tree/fa149d9adaeb73ca16d13f4d832875bef108cc48).
+The existing composed-plugin identity discovery from
+[PR #1675](https://github.com/awslabs/aidlc-workflows/pull/1675) is reused.
+[PR #2235](https://github.com/awslabs/aidlc-workflows/pull/2235) repairs Copilot
+shared surface roots, and [PR #2241](https://github.com/awslabs/aidlc-workflows/pull/2241)
+repairs Codex runner roots/implicit invocation guards; neither implements this
+bounded already-present sensor adoption or cross-release outside-table ownership
+proof. Source inspection of the composer, selection and refresh owners found no
+equivalent for those remaining generic upstream-candidate corrections. The
+folder-composition refresh concern in [issue #1591](https://github.com/awslabs/aidlc-workflows/issues/1591)
+remains open; this change reuses existing ownership, inventory and transaction
+mechanisms rather than adding another upgrade framework. Open-workflow refresh
+policy remains a separate Rin choice. No broad upstream sync, Copilot repair,
+or live upstream acceptance is claimed by this Codex adoption test.

@@ -312,6 +312,7 @@ type Baseline = {
   harnessDir: string;
   mcpMode: "defaults" | "none";
   files: Record<string, string>;
+  generatedSkillProseHashes?: Record<string, string>;
   // Set once `files` holds only shipped paths. An older manifest may also
   // record the project's own files under the harness dir (#1516).
   shippedOnly?: true;
@@ -4408,6 +4409,14 @@ type StageContribRecord = {
   hook_registrations?: unknown;
 };
 
+function generatedSkillProseHash(input: { content: string }): string | null {
+  const normalized = input.content.replaceAll("\r\n", "\n");
+  const stageRegion = /<!-- BEGIN: compiled stage graph[^\n]* -->[\s\S]*?<!-- END: compiled stage graph -->/g;
+  const scopeRegion = /<!-- BEGIN: compiled scope grid[^\n]* -->[\s\S]*?<!-- END: compiled scope grid -->/g;
+  if ([...normalized.matchAll(stageRegion)].length !== 1 || [...normalized.matchAll(scopeRegion)].length !== 1) return null;
+  return sha256Bytes(normalized.replace(stageRegion, "<!-- compiled stage -->").replace(scopeRegion, "<!-- compiled scope -->"));
+}
+
 function resetProjectionCaches(): void {
   __resetGraphCache();
   _resetHarnessDataForTests();
@@ -6305,7 +6314,10 @@ function prepareRefreshSource(input: {
         if (priorHash && currentHash !== priorHash && strippedHash !== priorHash) continue;
         let fresh = readFileSync(stagedPath, "utf-8");
         fresh = mergeListField(fresh, "produces", record.produces ?? []);
-        fresh = mergeListField(fresh, "sensors", record.sensors ?? []);
+        const recordedSensors = new Set(record.sensors ?? []);
+        const currentSensorBlock = current.match(/^sensors:\n((?: {2}- .+\n)*)/m)?.[1] ?? "";
+        const currentSensors = [...currentSensorBlock.matchAll(/^ {2}- (.+)$/gm)].map((entry) => entry[1].trim().replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1"));
+        fresh = mergeListField(fresh, "sensors", [...new Set([...currentSensors.filter((sensor) => recordedSensors.has(sensor)), ...(record.sensors ?? [])])]);
         fresh = mergeConsumes(
           fresh,
           consumeBlocks(
@@ -6397,7 +6409,10 @@ function prepareRefreshSource(input: {
       if (skillBaseline && regularFile(currentSkill)) {
         const current = readFileSync(currentSkill, "utf-8").replaceAll("\r\n", "\n");
         const restored = replaceGeneratedRegion(replaceGeneratedRegion(current, shippedSkill, "stage"), shippedSkill, "scope");
-        if ([current, restored].some((text) => sha256Bytes(text) === skillBaseline)) {
+        const priorProseHash = prior?.generatedSkillProseHashes?.[skillRelative];
+        const currentProseHash = generatedSkillProseHash({ content: current });
+        if ([current, restored].some((text) => sha256Bytes(text) === skillBaseline) ||
+          (priorProseHash !== undefined && currentProseHash !== null && currentProseHash === priorProseHash)) {
           regenerated.add(skillRelative);
           hookCoreHashes.set(skillRelative, sha256Bytes(generated));
         }
@@ -12052,6 +12067,7 @@ export async function main(
       options.mode === "quiet" && quietWarnings.length > 0
         ? `${message}${quietWarnings.map((warning) => `\nWarning: ${warning}`).join("")}`
         : message;
+    const baselineSourceRoot = prepared.root;
     const baseline: Baseline = {
       schemaVersion: 1,
       frameworkVersion: stamp.frameworkVersion,
@@ -12059,6 +12075,13 @@ export async function main(
       harnessDir: stamp.harnessDir,
       mcpMode,
       files,
+      generatedSkillProseHashes: Object.fromEntries(Object.entries(files).flatMap(([path, hash]) => {
+        if (!path.endsWith("/skills/aidlc/SKILL.md")) return [];
+        const source = join(baselineSourceRoot, path);
+        if (!regularFile(source) || sha256File(source) !== hash) return [];
+        const proseHash = generatedSkillProseHash({ content: readFileSync(source, "utf-8") });
+        return proseHash === null ? [] : [[path, proseHash]];
+      })),
       ...(!selected.projectProjection || prior?.shippedOnly ? { shippedOnly: true as const } : {}),
       entries: prepared.entries,
       rootContributions,

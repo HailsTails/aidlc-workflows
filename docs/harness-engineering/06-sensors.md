@@ -157,13 +157,18 @@ For the complete schema — `input_schema`, `output_schema`, `timeout_seconds`,
 and the forward-compat policy for unknown keys — see
 [Sensor Manifest Schema](../reference/07-sensor-system.md#sensor-manifest-schema).
 
-**2. Bind it by adding the id to a stage's `sensors:` list.** A manifest sitting
-in the directory does nothing until a stage imports it. Open the stage you want
-the check to fire on, add the bare id to its frontmatter `sensors:` list, and
-the binding takes effect at the next compile. To run a sensor on several stages,
-add the id to each one — strict-additive, no override layer to reason about. To
-stop a sensor firing on a stage, remove the id from that stage. The manifest
-never changes; only the import lists do.
+**2. Bind it through a stage's `sensors:` list.** A manifest sitting in the
+directory does nothing until a stage imports it. For a stage you own, add the
+bare id to its authored frontmatter and rebuild. For an installed stock stage,
+declare `adds.sensors` in a [plugin contribution](10-authoring-a-plugin.md#3-modify-an-existing-core-stage-a-contribution),
+select the installed plugin, and run normal plugin sync. Compilation resolves
+the resulting imports. The contribution survives stock engine refresh without
+claiming the sensor implementation as core-owned. Direct edits to installer-owned
+stage bytes otherwise block normal refresh; [existing direct additions can be
+adopted](10-authoring-a-plugin.md#adopting-existing-direct-sensor-additions) only
+when the declaration accounts for the complete stage difference. To bind a
+sensor on several stages, declare it for each one. Remove a binding from its
+owned source or contribution rather than editing the installed stock file.
 
 The `aidlc-` filename prefix is mandatory for every sensor, custom ones
 included — the compile resolver (`loadSensors` in `aidlc-graph.ts`) discovers

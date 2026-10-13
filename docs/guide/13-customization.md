@@ -511,7 +511,7 @@ Each stage is a self-contained `.md` file in `.claude/aidlc-common/stages/[phase
 - **Outputs** — Artifacts to produce
 - **Completion** — Approval gate pattern
 
-To modify a stage's behavior, edit its stage file directly. All stages reference the stage protocol for shared patterns (approval gates, question format, state tracking).
+Edit a stage you own in its authored producer or plugin source, then rebuild and install it. For additive changes to an installed stock stage, such as extra sensor bindings, use a [plugin contribution](../harness-engineering/10-authoring-a-plugin.md#3-modify-an-existing-core-stage-a-contribution) rather than editing installer-owned bytes. Normal refresh preserves recorded contributions and refuses unrelated local edits. Existing direct sensor additions can be migrated through the [sensor adoption sequence](../harness-engineering/10-authoring-a-plugin.md#adopting-existing-direct-sensor-additions) without removing the selected checks. All stages reference the stage protocol for shared patterns (approval gates, question format, state tracking).
 
 ### Depth levels
 
