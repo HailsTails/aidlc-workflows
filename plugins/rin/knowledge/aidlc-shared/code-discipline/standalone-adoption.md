@@ -18,7 +18,7 @@ its automatic feedback must not be inferred from an ordinary command result.
 Prerequisites: Git and Bun for the source packager; an existing TS API + React
 repo with its own working package-manager and check scripts. Run this Bash example
 from outside the consumer repo, choosing your own new source directory and existing
-consumer directory. Paths may contain spaces. The example targets Cursor; the
+consumer directory. Paths may contain spaces; the trial branch name must be unused. The example targets Cursor; the
 source pin is a public fork revision, not an upstream release badge.
 
 ```bash
@@ -28,7 +28,7 @@ source pin is a public fork revision, not an upstream release badge.
   read -r -p 'Existing consumer repository directory: ' consumer
   consumer=$(cd "$consumer" && pwd)
   git clone https://github.com/HailsTails/aidlc-workflows.git "$source_checkout"
-  git -C "$source_checkout" checkout --detach dbc651b1756a31b041b999204c5cc70ae386c604
+  git -C "$source_checkout" checkout --detach e45b1c83d20c4647bd6aabe351b490e6d4f99789
   source_checkout=$(cd "$source_checkout" && pwd)
   cd "$source_checkout"
   bun install --frozen-lockfile
@@ -48,7 +48,7 @@ The subshell stops on failure and leaves your original shell directory unchanged
 Run the later consumer commands from your consumer repository. `cp -i` asks before
 replacement; decline unless you have reviewed the existing file. Copy only the
 selected knowledge files, not the projection's stages, hooks, scopes or tools.
-Replace the three filenames above with your chosen canonical files after reading the inventory. To copy all atomic artifacts for an explicit review library, the existing shell operation is `cp -i "$projection/knowledge/aidlc-shared/code-discipline"/cd-*.md "$destination/"`; the three collapsed IDs are redirects to their owners, not extra active rules. Also copy `standalone-adoption.md`, `standalone-linter-options.md` and `standalone-cd-inventory.md` from that generated directory if you want these guides beside the library. This does not select checks or activate native discovery.
+Replace the three filenames in the cp command inside the subshell with your chosen canonical files after reading the inventory. The projection/destination variables are local to that subshell. To copy all atomic artifacts for an explicit review library, the existing shell operation is `cp -i "$projection/knowledge/aidlc-shared/code-discipline"/cd-*.md "$destination/"`; the three collapsed IDs are redirects to their owners, not extra active rules. Also copy `standalone-adoption.md`, `standalone-linter-options.md` and `standalone-cd-inventory.md` from that generated directory if you want these guides beside the library. This does not select checks or activate native discovery.
 
 For Codex or Claude, build `codex` or `claude` instead and use `.codex/knowledge/aidlc-shared/code-discipline`
 or `.claude/knowledge/aidlc-shared/code-discipline` as the destination. This uses the existing harness
