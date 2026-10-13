@@ -189,7 +189,7 @@ describe("t302 conditional protocol modules", () => {
     project = createOrchestrationTestProject();
     const graphPath = autonomousRequirementsGraph({ projectDir: project, mainWorkflow });
     const next = runOrchestrateNext(
-      ORCHESTRATE, project, args,
+      ORCHESTRATE, project, [...args],
       { cwd: project, env: { ...process.env, AIDLC_STAGE_GRAPH: graphPath } },
     );
     expect(next.status, next.out).toBe(0);
