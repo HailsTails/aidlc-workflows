@@ -17,17 +17,15 @@
 //                             payload or a task array). Used ONLY to compute the
 //                             intake queue (unpromoted systems captures). Absent →
 //                             the intake queue reports UNMEASURED, never 0: a
-//                             structural zero read as a measurement silently
-//                             no-op'd Gate 0's promotion duty on every run before
-//                             2026-07-29 (019fa1fe-5e8c). Records still enumerate
+//                             structural zero can be mistaken for a measured
+//                             empty queue and skip promotion. Records enumerate
 //                             fully from the engine, so the ownership-totality
 //                             gate runs with or without a snapshot.
 //   --out <dir>               optional; defaults to <checkout>/aidlc — the INVOKING
 //                             checkout (worktree or primary).
 //
 // Outputs: rin-gates-status.json + rin-gates-status.md under --out. GITIGNORED
-// derived state — never committed (019f643e: committing it conflicts every pair of
-// concurrent lanes). Regenerate with:
+// derived state - never committed: concurrent lanes regenerate it independently.
 //   pnpm run rin-gates:status -- --tasks-snapshot <file>
 //
 // Classification per Slice (closed set):
@@ -483,8 +481,7 @@ type SliceClassification = "in-pipeline" | "terminal-operate" | "parked";
 // gate's work already written, and is there stored review evidence. Both are
 // filesystem facts the enumerator's existing single pass already has in hand, so
 // computing them here costs no extra traversal and removes a per-record `ls`
-// round-trip from every lane. Measured 2026-09-01: re-deriving these by hand is
-// what turned "what is the state of this record" into several turns apiece.
+// round-trip from every lane and keeps status discovery mechanical.
 //
 // The EXPECTED artefact set comes from the compiled stage graph's `produces:`,
 // never from a list restated here — the stage file is the engine's authority and
@@ -733,10 +730,9 @@ const selectIntakeCaptures = (args: {
     })
     .filter((capture): capture is IntakeCapture => capture !== null);
 
-// The intake queue is either MEASURED from a live snapshot or UNMEASURED — never
-// silently zero. Collapsing "no snapshot" to an empty list is what let Gate 0 read
-// a structural guarantee as a measurement and no-op its promotion duty for every
-// run before 2026-07-29 (019fa1fe-5e8c).
+// The intake queue is either MEASURED from a live snapshot or UNMEASURED - never
+// silently zero. Collapsing an absent snapshot to an empty list would let Gate 0
+// mistake an unread queue for resolved intake and skip promotion.
 type IntakeQueue =
   | { readonly kind: "measured"; readonly captures: readonly IntakeCapture[] }
   | { readonly kind: "unmeasured" };
@@ -852,7 +848,7 @@ const renderMarkdown = (args: {
       : [
           "**UNMEASURED — this run passed no `--tasks-snapshot`.** The queue is not",
           "empty; it was not read. Regenerate with a live snapshot before treating",
-          "intake as resolved (019fa1fe-5e8c).",
+          "intake as resolved.",
         ];
   return [
     "# rin-gates pipeline status",

@@ -14,13 +14,12 @@
 // PostToolUse fired on the lens's own `SubagentHandback` call carries it too,
 // with the report as the tool input and the harness's delivery result.
 //
-// Claude Code now delivers a subagent's report through that hand-back call and
-// ends the subagent on a filler turn ("Delivered."), so on that face the report
-// is no longer in `last_assistant_message` (measured live 2026-09-28, record
-// 260928-lens-verdict-channel-los). Only the FIRST hand-back per invocation is
-// delivered; a later call returns `success: false` and is never a report. A
-// resumed agent gets a fresh delivery, and the capture supersession below
-// already makes its later word replace its earlier one.
+// A subagent can deliver its report through a hand-back call and finish on a
+// filler turn ("Delivered."), so that face must capture the report from the tool
+// input rather than `last_assistant_message`. Only the FIRST hand-back per
+// invocation is delivered; a later call returns `success: false` and is never
+// a report. A resumed agent gets a fresh delivery, and capture supersession
+// makes its later word replace its earlier one.
 //
 // The mechanism is read in review-scribe-lens-report.ts, which turns either
 // event into one LensReport. Everything below that seam is harness-neutral: a
@@ -133,12 +132,10 @@ const space = process.env.RIN_GATES_SPACE ?? "default";
 
 // Test isolation, fail-closed. Every path below that the scribe WRITES to or
 // EXECUTES falls back to the real checkout when its variable is unset. That
-// fallback is right for a live hook and wrong for a test: a spawner that
-// forgets one variable silently writes into the real ledgers and runs the real
-// engine, and nothing in a green suite shows it (measured 2026-09-28: every
-// findings-gate run appended 24 "engine receipt refused" rows to the real
-// discard ledger). Under RIN_GATES_TEST_MODE=1 an unset one is a refusal, so a
-// leak fails the test that caused it instead of landing in the checkout.
+// fallback is right for a live hook and wrong for a test: an omitted variable
+// can write real ledgers or execute the real engine without failing an assertion.
+// Under RIN_GATES_TEST_MODE=1 an unset variable is a refusal, so a leak fails
+// the test that caused it instead of landing in the checkout.
 const IS_TEST_MODE = process.env["RIN_GATES_TEST_MODE"] === "1";
 
 const refuseTestIsolationBreach = (reason: string): never => {
@@ -188,12 +185,10 @@ const CAPTURES_DIR = runtimePathFrom({
   livePath: join(WORKSPACE_ROOT, "aidlc", ".rin-gates-review-captures"),
 });
 
-// The discard ledger. The trace is an append-only diagnostic of EVERY invocation
-// (captures included) and had grown past a thousand entries — a session that
-// wanted to know "did this board lose anything?" had to filter it, which is
-// exactly what nobody did while 32 verdicts were discarded over three days
-// (task 019fe4af). The ledger holds discards ONLY, so reading it is the answer
-// to that question rather than the start of an investigation.
+// The discard ledger contains discards ONLY. The trace diagnoses EVERY
+// invocation, including successful captures, so answering whether a board lost
+// reports requires filtering it. Reading this ledger answers that question
+// directly instead of depending on a session remembering to filter the trace.
 const DISCARD_LEDGER_PATH = runtimePathFrom({
   variable: "RIN_GATES_REVIEW_DISCARD_LEDGER_PATH",
   livePath: join(WORKSPACE_ROOT, "aidlc", "rin-gates-review-discards.jsonl"),
@@ -401,24 +396,21 @@ const echoesHeadSha = (
 // recorded as a discard (so the roster stays uncovered and the gate refuses)
 // and it is loud, so the convening session re-dispatches with a pinned cwd.
 //
-// An abstention is a DECLARATION, matched at line start (optionally behind a
-// heading, bold, or bullet marker) — the same principle the extractor already
-// ratifies for the verdict token itself. Keyword-sniffing the whole message
-// discarded 62 ledger rows whose lenses merely NAMED the token while delivering
-// a well-formed verdict ("this is not a CANNOT-REVIEW case").
+// An abstention is a DECLARATION matched at line start, optionally behind a
+// heading, bold, or bullet marker, as for the verdict token itself. Sniffing the
+// whole message would reject a well-formed verdict that merely mentions the
+// token, such as "this is not a CANNOT-REVIEW case".
 const ABSTENTION_DECLARATION =
   /^[ \t]*(?:#{1,6}[ \t]*|\*\*[ \t]*|[-*][ \t]+)?CANNOT[\s_-]?REVIEW\b/im;
 
 const reviewRosterFor = (gate: string): RosterResolution =>
   resolveReviewRoster({ configPath: ROSTER_CONFIG_PATH, gate });
 
-// Extraction is owned by rin-gates-lens-verdict.ts (task 019fd9a5): the TOOL
-// derives the verdict from what the lens natively produces, rather than the lens
-// being asked to reproduce an exact delimiter pair as free text. That step was
-// losing 399 of 887 captures — every lens, in three different malformations, even
-// with the exact template pasted into the agent definition. Extraction is
-// fail-safe toward NOT-READY, so widening the accepted shapes cannot manufacture
-// an approval.
+// Extraction is owned by rin-gates-lens-verdict.ts: the TOOL derives the
+// verdict from native lens output rather than requiring a free-text delimiter
+// pair. Missing delimiters or fenced templates must not prevent capture of a
+// native verdict. Extraction is fail-safe toward NOT-READY, so accepting more
+// output shapes cannot manufacture an approval.
 
 const capturesPath = ({
   recordName,
@@ -451,20 +443,14 @@ const readCaptures = (path: string): readonly Capture[] => {
     .filter((capture): capture is Capture => capture !== null);
 };
 
-// A board re-reviews at the same head (task 019fef05). The captures file is
-// already partitioned by headSha, so a round at a NEW commit lands in a new file
-// and cannot reach this. What had no supersession was a re-review at the SAME
-// head — a lens re-reporting after a fix it could verify without a new commit.
+// A board can re-review at the same head. Captures are partitioned by headSha,
+// so a new commit lands in a separate file. Within one file, a capture is
+// SUPERSEDED only by that same lens's later report. Another lens's READY cannot
+// retire a standing refusal.
 //
-// A capture is SUPERSEDED when the same lens has spoken again later in this same
-// file. Supersession is per-lens and strictly by that lens's own later word: a
-// lens that refused and never revisited is never superseded by anyone else's
-// READY, which is what keeps a single genuine refusal blocking.
-//
-// This returns the whole capture rather than a verdict token because the verdict
-// and its findings must retire TOGETHER. Retiring the token alone was the second
-// half of the same defect: the findings gate re-harvested a superseded round's
-// citations, so the aggregate stayed blocked on a finding no live verdict made.
+// Return the whole capture so its verdict and findings retire TOGETHER. Keeping
+// superseded citations would block the aggregate on findings no live verdict
+// makes.
 const liveCaptures = (captures: readonly Capture[]): readonly Capture[] => [
   ...new Map(captures.map((capture) => [capture.lens, capture])).values(),
 ];
@@ -480,18 +466,14 @@ const latestVerdictForLens = (
 // The aggregate the board's captures add up to, lifted out of `main` so the
 // orchestrator composes named steps rather than deriving this inline.
 //
-// Every clause reads the LIVE captures — each lens's latest word at this head.
-// `anyNotReady` previously scanned the raw file, so a round-1 refusal outvoted
-// the same lens's own round-2 READY forever and the aggregate could never return
-// to READY without a new commit (task 019fef05).
+// Every clause reads the LIVE captures: each lens's latest word at this head.
+// Scanning raw captures would let an earlier refusal outvote that lens's later
+// READY forever.
 //
-// The findings gate (task 019f6d3e): a lens's verdict TOKEN was once the only
-// input, so a lens writing READY above its own cited violations aggregated to
-// READY — the laundering Step 5 forbids but nothing checked. Fail-safe in one
-// direction only: an undisposed finding can move the aggregate to NOT-READY and
-// can never move it to READY. Read from the live captures for the same reason a
-// verdict is — a finding belongs to the round that cited it, so a superseded
-// round's findings retire with its verdict.
+// The findings gate also reads live captures. A READY token beside an
+// undisposed cited violation cannot authorize approval. An undisposed finding
+// can move the aggregate only to NOT-READY; a superseded round's findings retire
+// together with its verdict.
 const aggregateVerdictOf = ({
   captures,
   roster,

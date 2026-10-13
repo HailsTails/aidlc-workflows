@@ -249,7 +249,7 @@ const space = env.RIN_GATES_SPACE ?? "default";
 // once every roster lens has reported in; this gate re-verifies coverage from
 // the verdict's own lenses list against the gate's roster, so a scribe stamp
 // cannot stand in for an under-covered review. One config, two consumers — they
-// cannot drift (the drift between them was task 019f8be9's sibling failure mode).
+// cannot drift.
 const ROSTER_CONFIG_PATH =
   env.RIN_GATES_ROSTER_CONFIG ?? join(hookDir, "review-rosters.json");
 
@@ -738,7 +738,7 @@ const assertReviewConverged = ({
       `review verdict for '${gate}' is '${verdict.verdict ?? "absent"}', not READY — the review has not converged.`,
     );
   }
-  // The findings gate, re-checked at the authorising boundary (task 019f6d3e).
+  // The findings gate is re-checked at the authorizing boundary.
   // Both producers refuse to emit a READY over an undisposed finding, but the
   // producers are not what authorises the approve — this hook is. Trusting them
   // alone would mean the guarantee holds only for verdicts written by a

@@ -79,9 +79,9 @@ Each lens returns a `## Review` verdict: READY / NOT-READY with cited findings
 **Do not ask a lens to reproduce an exact delimiter block.** Its native `## Verdict`
 section IS the capture channel: the `SubagentStop` review-scribe extracts the
 verdict from it deterministically (`rin-gates-lens-verdict.ts`). Asking a model to
-emit an exact string was measured losing 399 of 887 captures across every lens,
-and pasting the template into every agent definition did not fix it (task
-019fd9a5). A lens that ends with a plain `## Verdict` section stating READY or
+emit an exact delimiter string makes capture depend on free-text serialization;
+pasting a template into agent definitions does not enforce that serialization.
+A lens that ends with a plain `## Verdict` section stating READY or
 NOT-READY is captured correctly.
 
 ### Step 3 — Collate

@@ -1,25 +1,10 @@
 // Verdict extraction for the rin-gates review-scribe — the TOOL owns the verdict.
 //
-// WHY THIS MODULE EXISTS (task 019fd9a5). The scribe previously accepted exactly
-// one serialisation: an HTML comment pair wrapping JSON. Asking a model to
-// reproduce an exact delimiter pair as free text is the unreliable step, and it
-// stays unreliable however well the instruction is written. Measured on
-// `aidlc/rin-gates-review-scribe-trace.jsonl` (887 entries, re-derived 2026-08-07):
-//
-//   399  no rin-gates-lens:v1 block in output   <- this defect
-//   177  no active intent at invoking checkout
-//    66  gate has no phase mapping
-//     3  lens gate mismatch
-//
-// Re-derive:
-//   grep -o '"reject":"[^"]*"' aidlc/rin-gates-review-scribe-trace.jsonl | sort | uniq -c | sort -rn
-//   grep -vc '"reject"' aidlc/rin-gates-review-scribe-trace.jsonl
-//
-// The loss is universal, not lens-specific — all 18 reviewer agents appear in the
-// malformed bucket, the heaviest at 117. An experiment on 2026-08-07 pasted the
-// exact template into all 17 lens definitions; 3 of 4 lenses STILL malformed it,
-// in three different ways (closing token absent / block fenced / no HTML comment
-// at all). Better prose does not fix a prose-to-exact-string step.
+// The scribe derives the verdict from native model output rather than requiring
+// an exact HTML comment pair wrapping JSON. A free-text delimiter contract can
+// fail through absent closing tokens, fenced blocks, or missing comment markers.
+// Repeating a template in reviewer instructions does not enforce its output
+// serialization. Keep that deterministic boundary in the extractor.
 //
 // WHY NOT "GIVE THE LENS A CLI TO CALL". Every lens ships `tools: Read, Grep,
 // Glob` + `disallowedTools: Task`, and that grant IS the reviewer-not-author

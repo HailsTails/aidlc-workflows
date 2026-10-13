@@ -60,13 +60,11 @@ const FD_ONLY_REDIRECT = /\d*>>?\s*(?:\/dev\/null|nul)\b|\d*>&\d+/gi;
 const MUTATING_SHELL =
   /(>>?|\btee\b|\bcp\b|\bmv\b|\binstall\b|\btruncate\b|\brm\b|\bsed\b\s+[^\n|;&]*-i|\bdd\b)/i;
 
-// NO DELETION ALLOWANCE HERE — and the reason is worth keeping, because the
-// obvious analogy to the verdict guard is WRONG (decorrelated security review
-// of PR #389, 2026-07-30).
-//
-// The tempting move is to mirror PR #384's verdict-guard allowance (ruling
-// 019fa8ba: "write-prevention over-covers when the real invariant is 'only
-// tool T may produce this'") and permit deleting a shard that carries no
+// NO DELETION ALLOWANCE HERE. A verdict-file deletion allowance cannot be
+// transferred to an audit shard: preventing unauthorized proof creation is not
+// the only invariant the audit ledger protects. Permitting deletion of a shard
+// without GATE_APPROVED / STAGE_COMPLETED events would assume that removing no
+// approval proof forges none. That theory is FALSE for two independent reasons:
 // GATE_APPROVED / STAGE_COMPLETED event, on the theory that removing no proof
 // forges none. That theory is FALSE for the audit shard, on two independent
 // grounds:
@@ -91,9 +89,9 @@ const MUTATING_SHELL =
 //    routine `report --result approved` landing between the read and the
 //    unlink deletes proof the guard just certified absent.
 //
-// Whatever the strandage tasks (019faaed, 019faaf0) need, a racy hook-side
-// content check is not it: shard removal belongs behind a sanctioned engine
-// subcommand that does the check and the unlink under the writer's own lock.
+// Shard removal belongs behind a sanctioned engine subcommand that checks and
+// unlinks under the writer's own lock; a racy hook-side content check cannot
+// establish that the deletion is safe.
 // With no deletion allowance there is no operand-level decision to make here:
 // every mutating command naming an audit path is denied outright, so the
 // quote-normalisation and metacharacter veto the verdict guard needs have no
