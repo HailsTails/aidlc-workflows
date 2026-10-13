@@ -70,6 +70,30 @@ export function codexHookTrustHash(input: CodexHookTrustIdentityInput): string {
   return `sha256:${createHash("sha256").update(codexHookTrustIdentity(input), "utf-8").digest("hex")}`;
 }
 
+export function codexToolPermissionRule(input: {
+  readonly harnessDir: string;
+  readonly toolFiles: readonly string[];
+}): string {
+  const scriptFiles = [...new Set(input.toolFiles.map((file) => file.replaceAll("\\", "/")))]
+    .filter((file) => {
+      const segments = file.split("/");
+      const filename = segments.at(-1) ?? "";
+      return /\.(?:[cm]?[jt]s|[jt]sx)$/.test(filename) &&
+        !/\.(?:test|spec)\.|\.d\.(?:ts|mts|cts)$/.test(filename) &&
+        segments.every((segment) => segment !== "" && segment !== "." && segment !== ".." &&
+          !segment.includes(":") && [...segment].every((character) => character.charCodeAt(0) > 31 && character.charCodeAt(0) !== 127) &&
+          !["node_modules", "core-runtime-types", "data", "fixtures", "test-fixtures", "__tests__", "tests", "test", "vendor", ".cache"].includes(segment));
+    })
+    .sort();
+  if (scriptFiles.length === 0) return "";
+  const toolPaths = scriptFiles.flatMap((file) => {
+    const path = `${input.harnessDir}/tools/${file}`;
+    const windowsPath = path.replaceAll("/", "\\");
+    return [path, `./${path}`, windowsPath, `.\\${windowsPath}`];
+  });
+  return `prefix_rule(pattern = ["bun", ${JSON.stringify(toolPaths)}], decision = "allow")\n`;
+}
+
 // The Cursor CLI permission for the trusted prefix. Cursor reads only the
 // first token as a Shell entry's command base, and the rest after a colon as
 // an argument glob, so `Shell(aidlc engine *)` would name no command at all.

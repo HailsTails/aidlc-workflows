@@ -18,13 +18,14 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, win32 } from "node:path";
 import { stringify } from "smol-toml";
+import { walkFiles } from "../../core/tools/aidlc-distribution.ts";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
 import {
   absorbReviewerKnowledge,
   injectDelegatedKnowledgePreflight,
 } from "../../scripts/agent-knowledge.ts";
 import { CODEX_DISPATCH_MATCHER } from "./hooks/aidlc-codex-dispatch-tool.ts";
-import { codexHookTrustHash } from "../../core/tools/aidlc-command.ts";
+import { codexHookTrustHash, codexToolPermissionRule } from "../../core/tools/aidlc-command.ts";
 import type { Tier } from "../../core/tools/aidlc-tiers.ts";
 import { EXTENDED_SUBPROCESS_TIMEOUT_MS } from "../../core/tools/aidlc-runtime-budget.ts";
 import {
@@ -171,6 +172,7 @@ export function emitDefaultRules(
   harnessDir: string,
   invoke: string,
   trustedNamespace: string,
+  toolNames: readonly string[] = ["aidlc.ts"],
 ): string {
   const trustedPattern = ["aidlc", trustedNamespace]
     .map((token) => JSON.stringify(token))
@@ -179,7 +181,7 @@ export function emitDefaultRules(
     ? `# Native runtime allowlist: framework commands invoke the self-contained binary.
 prefix_rule(pattern = [${trustedPattern}], decision = "allow")`
     : `# Bun copy-channel allowlist: deterministic framework tools stay under the harness tree.
-prefix_rule(pattern = ["bun", "${harnessDir}/tools/"], decision = "allow")`;
+${codexToolPermissionRule({ harnessDir, toolFiles: toolNames }).trimEnd()}`;
   return `# dist/codex shipped permission rules (Starlark) — ${harnessDir}/rules/ is
 # Codex's NATIVE rules dir (this file), distinct from the AIDLC markdown rule
 # layers at ${harnessDir}/aidlc-rules/ (D-10 rename).
@@ -453,7 +455,7 @@ export default function emit(ctx: EmitContext): void {
   emissions.push({
     path: join(CODEX_ROOT, "rules", "default.rules"),
     content: () =>
-      emitDefaultRules(harnessDir, invoke, trustedRouteNamespace),
+      emitDefaultRules(harnessDir, invoke, trustedRouteNamespace, walkFiles(join(CODEX_ROOT, "tools"))),
   });
   emissions.push({
     path: join(CODEX_ROOT, "trust-seed.toml"),

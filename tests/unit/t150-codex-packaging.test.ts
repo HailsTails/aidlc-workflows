@@ -1,3 +1,4 @@
+import "../../harness/codex/emit.test.ts";
 import "../../core/tools/aidlc-command.test.ts";
 // t150-codex-packaging: dist/codex determinism + trust-seed recipe.
 //
@@ -444,7 +445,7 @@ describe("t150 dist/codex packaging determinism + trust", () => {
     expect(nativeRules).toEqual(["default.rules"]);
     const defaultRules = readFileSync(join(CODEX_DST, "rules", "default.rules"), "utf-8");
     expect(defaultRules).toContain(
-      'prefix_rule(pattern = ["bun", ".codex/tools/"], decision = "allow")',
+      '".codex/tools/aidlc.ts"',
     );
     expect(defaultRules).not.toContain('prefix_rule(pattern = ["aidlc"]');
     // The resolver seam re-points at the relocated method (relative to the
