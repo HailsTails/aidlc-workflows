@@ -18,12 +18,12 @@ Evidence: **V** = executed violation/correction for the named clause, not comple
 | [7a No owned ReturnType typeof](cd-007a-no-returntype-typeof.md) | **V** E TSTypeReference/TSTypeQuery selector | Also rejects permitted external origins. Provenance manual; Rin regex has same gap. |
 | [8 Closed-union switch](cd-008-no-default-on-closed-union.md) | **V** typed E switch-exhaustiveness-check | Project service/included files required; open string default passed. Rin text heuristic has no type proof. |
 | [9 Result failures](cd-009-result-shaped-failures.md) | **M** API/call-site review | Prove expected failures flow as data; no custom binding. |
-| [10 Closed throw list](cd-010-throws-closed-list.md) | **V** E ThrowStatement ban in forbidden locations | Approved startup invariants need narrow scope; blanket ban rejects them too. Rin principally checks test throws. |
+| [10 Closed throw list](cd-010-throws-closed-list.md) | **M** review the two closed allowed contexts; no generic throw-ban recipe recommended | Startup-invariant failure at boot and a branch unreachable by exhaustive type narrowing are permitted. Defensive throws are not; library throws become results at the boundary; tests have no exemption. A blanket ThrowStatement ban rejects compliant cases. Rin principally checks test throws. |
 | [11 Error data](cd-011-error-shapes-are-data.md) | **M** shape/startup review | Startup Error-class allowance conflicts with CD-14's class ban in that case: resolve explicitly; no custom binding. |
 | [12 Storage repositories](cd-012-repositories-as-storage-abstraction.md) | **M** import/abstraction review | Responsibility is not a generic lint check; no custom binding. |
 | [13 Inward layers](cd-013-kernel-layer-boundaries.md) | **R** consumer restricted imports/architecture checks | Configure actual graph, dynamic imports/re-exports; no custom binding. |
 | [14 No authored classes](cd-014-no-class-authoring.md) | **V** E ClassDeclaration/ClassExpression ban | External construction passed; wrapper placement manual. Rin line regex misses shapes. |
-| [15 Functional transformation](cd-015-no-for-of.md) | **V** E ForStatement/ForOfStatement[await=false] ban | forEach/async drain passed; authorize async location and review functional body. Rin broad async allowance can hide sync loops. |
+| [15 Functional transformation](cd-015-no-for-of.md) | **M** transformation and authorized async-drain review; no blanket loop-ban recipe recommended | Functional sync traversal and void-returning forEach side effects remain distinct. Authorized AsyncIterable drains may use for-await or manual await iterator.next(), including a counted/manual-next loop; review functional bodies and whole-value accumulator replacements. ForStatement bans reject an allowed shape; broad Rin async allowances can also hide forbidden sync loops. |
 | [16 Redirect](cd-016-no-counted-for.md) | CD-15 | Not an additional active CD. |
 | [17 Clock port](cd-017-clock-only-time-source.md) | **V** E restricted Date.now/performance.now and zero-arg new Date | Fixed-input Date passed: clarify atomic interpretation. Other clock APIs/provenance remain; Rin app/script exceptions. |
 | [18 SignalSink](cd-018-process-through-signalsink.md) | **V** E restricted process.exit/kill/on/once/hrtime | Destructured exit detected; full process surface/adapter ownership unproved; no custom binding. |
@@ -48,11 +48,11 @@ Evidence: **V** = executed violation/correction for the named clause, not comple
 | [37 Task coverage](cd-037-spec-coverage.md) | **M** task/change traceability | Select artifact obligation without AIDLC stages; no custom binding. |
 | [38 Constitution gate](cd-038-constitution-check-gate.md) | **M** explicit receipt/checklist | Lint is not this review; agree reviewer; no custom binding. |
 | [39 Cite IDs](cd-039-cite-by-id.md) | **M** review finding format | Agent guidance/review, not lint; no custom binding. |
-| [40 Named-object argument](cd-040-single-object-arg.md) | **V** E FunctionDeclaration[params.length>1], weak proxy | Scalar and multi-arg arrows passed. Callback/zero-arg/external applicability needs decision; no custom binding. |
-| [41 Orchestrate only](cd-041-orchestrators-only-orchestrate.md) | **V** B complexity/function-length, proxy | Tiny fixture thresholds are not recommended budgets. Small calculation can pass but violate; no custom binding. |
+| [40 Named-object argument](cd-040-single-object-arg.md) | **M** named-field object contract review | Max-arity is an insufficient signal, not named-object enforcement: a scalar argument passes while violating the contract, and the tested declaration selector misses multi-argument arrows. Review argument shape and call-site labels; no custom binding. |
+| [41 Orchestrate only](cd-041-orchestrators-only-orchestrate.md) | **M** identify orchestrators and review coordination-only bodies | Frontmatter names complexity/length bindings, but prose requires coordination-only bodies. Those thresholds are rejected as equivalent CD-41 checks: small computation can pass and pure coordination can exceed them. This is a binding/intent mismatch, not permission to redefine orchestration; no custom binding. |
 | [42 Unhappy early return](cd-042-unhappy-path-early-return.md) | **V** E no-else-return; B noUselessElse | Else-after-return caught; happy-first body can pass; no custom binding. |
-| [43 Evaluative booleans](cd-043-booleans-are-evaluative.md) | **V** E TSBooleanKeyword, unsuitable blanket policy | Rejects legitimate predicates/misses inferred state. State/mode meaning manual; Rin explicit annotations partial. |
-| [44 No parameter field mutation](cd-044-no-parameter-field-mutation.md) | **V** E no-param-reassign props:true | Assignment caught, push/sort passed. Typed functional policy broader, below; Rin compound/alias/Map gaps. |
+| [43 Evaluative booleans](cd-043-booleans-are-evaluative.md) | **M** review predicate meaning versus hidden state/mode | A blanket TSBooleanKeyword ban is rejected as equivalent: annotations do not identify state/mode meaning and inferred booleans escape it. The prose criticizes boolean parameters/fields/returns and prefers meaningful unions; predicate applicability is unresolved, not a settled canonical exception. Rin explicit annotations are partial. |
+| [44 No parameter field mutation](cd-044-no-parameter-field-mutation.md) | **V** E no-param-reassign props:true catches direct/indexed input assignment only | Input array push/sort pass this clause; aliases and other mutation need review. Broader immutability is not a CD-44 substitute and may reject permitted local mutation. Rin compound/alias/Map gaps remain. |
 | [45 Zod once](cd-045-zod-once-at-boundary.md) | **M** boundary/internal-flow review | CD-4 pairing does not collapse this ID; no custom binding. |
 | [46 Decarve on touch](cd-046-decarve-on-touch.md) | **R** existing decay CLI, sidecar-specific | Whole-file paydown/checker rerun required; not lint-disable/compiler baseline conversion; never exempt itself. |
 | [47 Hermetic tests](cd-047-tests-are-hermetic.md) | **V** focused guard tests; **R** consumer CLI integration | Git text guard partial; subsystem qualification/network/HOME/environment/filesystem/time manual. No universal 400-test floor. |
@@ -63,7 +63,6 @@ The linter-options page supplies explicit parser/plugin setup and CD-1 probes. M
 
 Additional syntax clauses were executed with ESLint 10.11.0, typescript-eslint 8.71.2, TypeScript 6.0.3 and Node 22.22.2 on Windows. Append selected selectors with messages to the existing no-restricted-syntax list:
 - CD-14: ClassDeclaration and ClassExpression.
-- CD-15: ForStatement and ForOfStatement[await=false].
 - CD-26: CallExpression[callee.object.name=/^(vi|jest)$/][callee.property.name=/^(mock|doMock)$/], only in the actual test population.
 - CD-27: IfStatement, ConditionalExpression, TryStatement, SwitchStatement, ForStatement, ForInStatement, ForOfStatement, WhileStatement, DoWhileStatement, only in selected test files.
 
@@ -80,9 +79,20 @@ For CD-8, a compatible existing typescript-eslint setup needs parserOptions.proj
 
 Closed-union default and missing case failed; exhaustive union without default and open string default passed, in source and tests. Do not exclude tests outside project service to obtain green. Typed oxlint is research only here: current typed-mode documentation requires TS7+ and oxlint-tsgolint. Do not migrate the compiler or assume alpha JS plugins receive type information.
 
-Typed eslint-plugin-functional@10.0.1 was tested as an optional **broader immutability policy**, not a CD-44 drop-in. Default immutable-data catches parameter push/sort/Object.assign/Map.set but rejects permitted fresh local accumulators. ignoreNonConstDeclarations:{treatParametersAsConst:true} permits fresh let accumulators, rejects fresh const ones and misses Object.assign on a parameter. Neither is exact CD-44 coverage.
+## Tested approaches rejected as CD enforcement
 
-Other Biome/Unicorn/functional/custom/GritQL mappings remain candidates unless marked V. No all-CD preset is supplied. Prove each selected clause with a deliberate violation, actual command/diagnostic/nonzero exit, correction, then that same command passing. Repeat in the actual test population; retain evidence in the adoption artifact.
+The following experiments are negative evidence, not selections to merge into consumer lint:
+- **CD-10:** a global ThrowStatement ban rejects both permitted boot-invariant failures and exhaustive-unreachable branches. This inventory recommends review of the closed contexts rather than that ban.
+- **CD-15:** a ForStatement ban rejects a compliant manual await iterator.next() AsyncIterable drain at an authorized location. Six source/test controls for canonical boot-invariant, exhaustive-unreachable and authorized manual-next drain shapes reproduced the rejected proxies' false positives; the three source shapes also passed strict TypeScript compilation. The previous for-await green probe did not establish that every authorized drain shape passed. No blanket loop-ban recipe is recommended here.
+- **CD-40:** maximum arity does not require a named-field object. The scalar-argument and arrow counterexamples show why it cannot enforce the contract.
+- **CD-41:** frontmatter names cognitive complexity/function length, while prose requires orchestration-only bodies. These bindings do not identify responsibility: small computation can pass and lengthy pure coordination can fail. Record that mismatch; select a separate size budget only as a different consumer policy.
+- **CD-43:** TSBooleanKeyword bans are non-equivalent: they classify annotations rather than state/mode meaning and miss inferred booleans. The canonical prose does not enumerate a predicate exception; resolve applicability explicitly instead of inventing one. Naming prefixes alone do not establish semantics.
+- **CD-44:** typed eslint-plugin-functional@10.0.1 immutable-data is broader than input-field mutation. Default settings reject permitted fresh local accumulators; ignoreNonConstDeclarations:{treatParametersAsConst:true} still rejects fresh const accumulators and misses Object.assign on a parameter. These are counterexamples to equivalence, not an optional CD-44 recipe. Choosing general immutability would be a separate policy.
+
+For CD-44, retain the exact boundary: direct/indexed assignment to an input is prohibited, and the tested no-param-reassign props:true clause detects it. That rule's failure to detect input push/sort does not make those operations allowed. Local mutation is outside this input-only prohibition; do not use a general immutability ban to redefine it.
+
+
+Untested Biome/Unicorn/functional/custom/GritQL mappings remain research only. Rejected approaches above are not candidates merely because their fixture behavior was measured. No all-CD preset is supplied. Prove each selected clause with a deliberate violation, actual command/diagnostic/nonzero exit, correction, then that same command passing. Repeat in the actual test population; retain evidence in the adoption artifact.
 
 ## Initial debt and progressive CD-3 adoption
 
