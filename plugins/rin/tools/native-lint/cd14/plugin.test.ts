@@ -1,5 +1,6 @@
+import tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "eslint";
-import { expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import {
 	classDisposition,
 	containerMode,
@@ -8,6 +9,9 @@ import {
 	type ClassDiagnosticPort,
 	noClassAuthoring,
 } from "./plugin.ts";
+
+RuleTester.describe = describe;
+RuleTester.it = test;
 
 test("runtime class declarations are reported", () => {
 	expect(
@@ -149,3 +153,40 @@ tester.run("rin-discipline/no-class-authoring", noClassAuthoring, {
 		},
 	],
 });
+
+const typescriptTester = new RuleTester({
+	languageOptions: {
+		parser: tsParser,
+		ecmaVersion: "latest",
+		sourceType: "module",
+	},
+});
+typescriptTester.run(
+	"rin-discipline/no-class-authoring TypeScript",
+	noClassAuthoring,
+	{
+		valid: [
+			{ code: "declare class Ambient {}", filename: "ambient.ts" },
+			{
+				code: "declare namespace Ambient { class Internal {} }",
+				filename: "ambient.ts",
+			},
+			{
+				code: 'declare module "external" { class Internal {} }',
+				filename: "ambient.ts",
+			},
+			{
+				code: "export {}; declare global { class Internal {} }",
+				filename: "ambient.ts",
+			},
+			{ code: "class Declaration {}", filename: "external.d.ts" },
+		],
+		invalid: [
+			{
+				code: "namespace Runtime { export class Internal {} }",
+				filename: "runtime.ts",
+				errors: [{ messageId: "noClass" }],
+			},
+		],
+	},
+);

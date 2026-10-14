@@ -16,10 +16,10 @@ files. Oxlint resolves the plugin path against the extended fragment.
 
 ## Add to the existing config
 
-For ESLint, import the flat-config entries in the existing `eslint.config.ts`
+For ESLint, import the flat-config entries in the existing `eslint.config.mjs`
 and scope them to the consumer's actual source and test population:
 
-```ts
+```js
 import cd14 from "./.rin/native-lint/cd14.eslint.ts";
 
 export default [
@@ -31,9 +31,11 @@ export default [
 ];
 ```
 
-Keep the existing TypeScript parser and lint command. Under the current Bun
-policy, `bun --bun run lint:eslint` loads the typed config and plugin. Normal
-Node ESLint TypeScript-config loading requires its supported loader setup.
+Keep the existing TypeScript parser and lint command. An ordinary
+`eslint.config.mjs` imports this erasable TypeScript fragment on plain Node
+22.18 or later through native type stripping; Oxlint loads `plugin.ts` the
+same way. A separate TypeScript-config loader is needed only if the consumer's
+own ESLint config is `eslint.config.ts`.
 The producer does not ship a TypeScript parser dependency to consumers.
 
 For Oxlint, append `./.rin/native-lint/cd14.oxlint.json` to the existing root
@@ -65,7 +67,7 @@ covers CD14, CD42 and CD44; extend it when adding further native fragments.
 Append the generated ESLint carve array after the selected native entries using
 an ordinary JSON import:
 
-```ts
+```js
 import carve from "./.rin/native-lint/carve.eslint.json" with { type: "json" };
 
 export default [...existingHostEntries, ...selectedNativeEntries, ...carve];
