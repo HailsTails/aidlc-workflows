@@ -29,7 +29,7 @@ Semantic suitability is separate: **aligned partial guard** enforces a stated pa
 | [16 Redirect](cd-016-no-counted-for.md) | CD-15 | Redirect | Not an additional active CD. |
 | [17 Clock port](cd-017-clock-only-time-source.md) | **V** E restricted Date.now/performance.now and zero-arg new Date | Aligned partial guard | Fixed-input Date passed: clarify atomic interpretation. Other clock APIs/provenance remain; Rin app/script exceptions. |
 | [18 SignalSink](cd-018-process-through-signalsink.md) | **V** E restricted process.exit/kill/on/once/hrtime | Aligned partial guard | Destructured exit detected; full process surface/adapter ownership unproved. Inject the lifecycle capability; SignalSink is not a required identifier. No custom binding. |
-| [19 Unowned dependency ports](cd-019-third-party-wrapping-factories.md) | **V** E restricted static imports for explicit dependency list | Aligned partial guard | Dynamic import passed. Review one approved wrapping port per dependency, runtime/type confinement, no vendor-type leakage and recorded new sites, including require/re-exports/browser globals. React/test dependencies have no automatic exemption. Rin fixed vendor/node list. |
+| [19 Unowned dependency ports](cd-019-third-party-wrapping-factories.md) | **V** E restricted static imports and Node-prefix rule; **R** Rin import audit | Aligned partial guard | Rin detects literal `node:` specifiers in imports, re-exports, `require` and dynamic imports, and 14 exact vendor specifiers in static `from` clauses. Bare builtins require the separate ESLint rule below; computed specifiers, aliases, `process.getBuiltinModule`, other vendors and port ownership remain review work. React/test dependencies have no automatic exemption. |
 | [20 Redirect](cd-020-node-stdlib-through-ports.md) | CD-19 | Redirect | Not an additional active CD. |
 | [21 Default factory](cd-021-ports-ship-default-factory.md) | **M** port/factory inventory | Manual | Verify shipped implementation/overrides; no custom binding. |
 | [22 Middleware context](cd-022-middleware-context-constraint.md) | **M** shape/capability review | Manual | Consumer architecture matters; no custom binding. |
@@ -80,6 +80,60 @@ For CD-8, a compatible existing typescript-eslint setup needs parserOptions.proj
 
 Closed-union default and missing case failed; exhaustive union without default and open string default passed, in source and tests. Do not exclude tests outside project service to obtain green. Typed oxlint is research only here: current typed-mode documentation requires TS7+ and oxlint-tsgolint. Do not migrate the compiler or assume alpha JS plugins receive type information.
 
+### CD-19: make Node builtin imports explicit
+
+The Rin CD-19 sensor selects both CD-19 vendor findings and the CD-20 stdlib
+redirect. Its source audit recognizes literal `node:` specifiers in static and
+side-effect imports, type imports and import-type queries, re-exports, TypeScript `import = require`,
+`require()` and dynamic `import()` in the configured TS/TSX source, script and
+test population. It does not rewrite bare imports such as `from "fs"` or
+`require("child_process")`. If you select this partial guard, add the maintained
+[`n/prefer-node-protocol` rule](https://github.com/eslint-community/eslint-plugin-n/blob/master/docs/rules/prefer-node-protocol.md)
+to the consumer's existing ESLint run so those literal Node builtins must carry
+`node:`. The rule is not enabled merely by copying the discipline or by ESLint's
+default configuration.
+
+The verified isolated setup used ESLint 10.11.0, `eslint-plugin-n` 18.4.1,
+`typescript-eslint` 8.71.2, TypeScript 6.0.3 and Node 22.22.2. For an existing
+compatible ESLint setup, add the plugin with your consumer's package manager,
+preserving its lockfile and scripts. For a Bun-managed consumer only:
+
+```bash
+bun add --dev --exact eslint-plugin-n@18.4.1 --ignore-scripts
+```
+
+Merge the plugin and rule into the **existing** flat-config block for the
+selected TS/TSX source, script and test files. This self-contained block is an
+example for a new compatible ESLint config; change the globs to your actual
+population and keep an existing config's other plugins, parser, rules and
+ignores:
+
+~~~js
+import n from 'eslint-plugin-n';
+import tseslint from 'typescript-eslint';
+export default [{
+  files: ['src/**/*.{ts,tsx}', 'scripts/**/*.{ts,tsx}', 'tests/**/*.{ts,tsx}'],
+  languageOptions: { parser: tseslint.parser },
+  plugins: { n },
+  rules: { 'n/prefer-node-protocol': 'error' },
+}];
+~~~
+
+Keep the configured Node target truthful; the rule can skip a target range that
+predates `node:` support. Its prefix fix preserves the import's shape and layout;
+it does not force every module use into a static `from` clause. The executed
+three-file probe reported errors for `from "fs"`, `require("child_process")` and
+`import("worker_threads")` in source, scripts and tests, then passed with
+`node:fs`, `node:child_process` and `node:worker_threads` using the same command.
+
+Rin's detector still cannot prove one approved wrapping port, confined vendor
+types or an absence of computed/aliased module loading. Its third-party check
+lists only 14 exact static `from` specifiers; side-effect, dynamic and `require`
+forms of those packages are not covered. `process.getBuiltinModule` is checked
+by the ESLint prefix rule but not the Rin audit. Review those gaps, actual lint
+file coverage, authorized wrapping locations and pre-existing debt explicitly.
+Do not ban legitimate import forms merely to make a line scan appear complete.
+
 ## Tested approaches rejected as CD enforcement
 
 The following experiments are negative evidence, not selections to merge into consumer lint:
@@ -125,7 +179,7 @@ These source-inspected capabilities are not extra installation commands:
 - Per-CD sensors accept --project-dir and optional --file-path/--output-path. Findings/clean/not-evaluated generally exit 0; malformed sidecars can exit 1. Chaining with && is not a failing CI gate. Missing/out-of-scope files can pass.
 - rin-harness-carve-out-decay.ts --project-dir <consumer> --base-ref <resolvable-base> [--json] has ordinary 0/1 status. Default HEAD concerns uncommitted changes, not prior branch commits; choose a fetched/resolvable review base. Sensor switches change status semantics. It reads Rin sidecars, not lint disables/config overrides/tsc baselines. Removing an entry alone does not prove whole-file paydown; rerun the governing check/review.
 - rin-harness-audit-debt-inventory.ts clusters recorded sidecars; it does not discover or initialize initial debt. No supported initial exporter/importer is installed. Manual sidecar review must enforce eligibility: the generic loader does not protect CD-1 for you. R7/Five Whys is not selected.
-- Default scopes principally cover src/scripts/root TS/TSX, not arbitrary apps/packages. Directories/suffixes are pruned. A partial constitution-only harness config may fail required schema; empty arrays may restore defaults. A passing result does not prove scope.
+- Default scopes principally cover src/scripts/test/tests/root TS/TSX, not arbitrary apps/packages. Directories/suffixes are pruned. A partial constitution-only harness config may fail required schema; empty arrays may restore defaults. A passing result does not prove scope.
 - Full plugin core dependency is distinct from builtin-only source tools. Copying one generated sensor does not prove dependency closure. Hook protocols/mutating format sensors are not standalone lint commands; no automatic dispatch is installed.
 
 ## CD-47 optional guard

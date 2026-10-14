@@ -211,16 +211,51 @@ const checkBannedImports = (
 const checkNodeStdlibImports = (
   filePath: string,
   content: string,
-): readonly ConstitutionViolation[] =>
-  splitLines(content)
-    .map((line, index) => ({ line, lineNumber: index + 1 }))
-    .filter(({ line }) => /from\s+["']node:[a-z/]+["']/.test(line))
-    .map(({ line, lineNumber }) => ({
+): readonly ConstitutionViolation[] => {
+  const source = ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const findings: ConstitutionViolation[] = [];
+  const record = (specifier: ts.Expression | undefined): void => {
+    if (
+      specifier === undefined ||
+      !ts.isStringLiteralLike(specifier) ||
+      !specifier.text.startsWith("node:")
+    ) return;
+    const line = source.getLineAndCharacterOfPosition(specifier.getStart(source)).line + 1;
+    findings.push({
       rule: "CD-20",
       file: filePath,
-      line: lineNumber,
-      snippet: `bare node: stdlib import — use the kernel port package: ${line.trim()}`,
-    }));
+      line,
+      snippet: `bare node: stdlib import - use the kernel port package: ${specifier.text}`,
+    });
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      record(node.moduleSpecifier);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      record(node.argument.literal);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference)
+    ) {
+      record(node.moduleReference.expression);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+    ) {
+      record(node.arguments[0]);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return findings;
+};
 
 const checkObjectFromEntries = (
   filePath: string,
@@ -389,6 +424,8 @@ const auditScriptFile = (
     ...checkCategoricalFilenames(filePath),
     ...checkCategoricalFolders(filePath),
     ...checkClassDeclarations(filePath, content),
+    ...checkBannedImports(filePath, content),
+    ...checkNodeStdlibImports(filePath, content),
     ...checkObjectFromEntries(filePath, content),
     ...checkBareTodoAnnotation(filePath, content),
     ...checkBareLinterDirectiveAnnotation(filePath, content),
@@ -399,8 +436,11 @@ const auditScriptFile = (
 const auditConstitution = ({
   service,
 }: AuditConstitutionArgs): AuditConstitutionReport => {
-  const srcFiles = enumerateSourceFiles(service.srcRoot);
   const scriptFiles = enumerateSourceFiles(service.scriptsRoot);
+  const scriptFileSet = new Set(scriptFiles);
+  const srcFiles = enumerateSourceFiles(service.srcRoot).filter(
+    (filePath) => !scriptFileSet.has(filePath),
+  );
   const uiFiles = enumerateTsxFiles(service.uiSrcRoot);
   const srcViolations = srcFiles.flatMap(auditSrcFile);
   const scriptViolations = scriptFiles.flatMap(auditScriptFile);
