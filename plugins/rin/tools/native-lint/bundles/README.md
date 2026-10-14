@@ -97,11 +97,23 @@ the `eslint` plugin for these core rule IDs:
 ]
 ```
 
+If `.oxlintrc.json` does not exist, create it as a JSON object with only the
+selected fragments (this example selects both):
+
+```json
+{
+  "extends": [
+    "./.cursor/tools/native-lint/bundles/cd42.oxlint.json",
+    "./.cursor/tools/native-lint/bundles/cd44.oxlint.json"
+  ]
+}
+```
+
 The Oxlint `extends` excerpt is a property to merge into an existing config,
 not a whole replacement file. Use the consumer's existing package manager and
 validation scripts. If neither engine is installed, add pinned Oxlint alongside
-the existing linter. For the tested pnpm workspace, run
-`pnpm add -Dw oxlint@1.87.0 --ignore-scripts` and include
+the existing linter. For the tested pnpm consumer workspace, run
+`pnpm add -Dw --save-exact oxlint@1.87.0 --ignore-scripts` and include
 `pnpm exec oxlint apps packages` in its existing validation command. Adjust
 paths to include source, tests, TSX and applicable JS; keep other lint checks. Existing findings require an explicit
 scope/debt decision before requiring a new rule; initial inventory needs no Five
