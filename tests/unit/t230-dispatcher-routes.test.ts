@@ -286,6 +286,10 @@ function expectSameRun(actual: RunResult, expected: RunResult, label: string): v
   expect(actual.stderr.equals(expected.stderr), `${label} stderr\nactual:\n${actual.stderr}\nexpected:\n${expected.stderr}`).toBe(true);
 }
 
+function withoutRequestId(result: RunResult): RunResult {
+  return { ...result, stdout: Buffer.from(result.stdout.toString().replace(/--request [0-9a-f]{8}\b/g, "--request <id>")) };
+}
+
 function entriesUnder(root: string): string[] {
   if (!existsSync(root)) return [];
   const out: string[] = [];
@@ -360,12 +364,15 @@ describe("t230 dispatcher route parity", () => {
     toolArgs: string[];
     fixture?: boolean;
     env?: NodeJS.ProcessEnv;
+    mintsRequestId?: boolean;
   }> = [
     {
       name: "compose translates to orchestrate next compose",
       routerArgs: ["engine", "orchestrate", "next", "compose"],
       tool: "aidlc-orchestrate.ts",
       toolArgs: ["next", "compose"],
+      fixture: true,
+      mintsRequestId: true,
     },
     {
       name: "continue passes through to orchestrate",
@@ -690,7 +697,8 @@ describe("t230 dispatcher route parity", () => {
       const projectDir = item.fixture ? makeProject() : REPO_ROOT;
       const routed = viaDispatcher(item.routerArgs, projectDir, item.env);
       const old = direct(item.tool, item.toolArgs, projectDir, item.env);
-      expectSameRun(routed, old, item.name);
+      // Each compose call mints its own request id; parity is the route, not the id.
+      expectSameRun(item.mintsRequestId ? withoutRequestId(routed) : routed, item.mintsRequestId ? withoutRequestId(old) : old, item.name);
     });
   }
 

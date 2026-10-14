@@ -31,6 +31,9 @@ type ReviewProcessPort = {
   readonly run: (input: CommandInput) => Promise<CommandOutput>;
 };
 
+const childStoppedReadingInput = (error: Error): boolean =>
+  "code" in error && error.code === "EPIPE";
+
 const processOperation = <Value>(operation: () => Value): Value => {
   try { return operation(); }
   catch (error) { throw new Error(error instanceof Error ? error.message : String(error)); }
@@ -64,6 +67,10 @@ const defaultReviewProcessPort = (): ReviewProcessPort => ({
     child.stderr.on("data", (chunk: string) => { stderr += chunk; });
     child.on("error", (error) => reject(new Error(error.message)));
     child.on("close", (status) => resolveOutput({ status, stdout, stderr }));
+    child.stdin.on("error", (error) => {
+      if (childStoppedReadingInput(error)) return;
+      reject(new Error(error.message));
+    });
     child.stdin.end(input ?? "");
   }),
 });
