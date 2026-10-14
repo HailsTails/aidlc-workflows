@@ -149,10 +149,6 @@ beforeAll(() => {
   }`;
 });
 
-function configFailureEnvelope(run: { stdout: string }): unknown {
-  return JSON.parse(run.stdout);
-}
-
 function projectSnapshotMatches({ project, before }: { project: string; before: string }): boolean {
   return transactionSourceHash(project) === before;
 }
@@ -1341,7 +1337,7 @@ describe("t243 project initialization", () => {
   test.each([
     { from: "kiro", to: "kiro-ide", source: KIRO_RELEASES[0], target: KIRO_IDE_RELEASE },
     { from: "kiro-ide", to: "kiro", source: KIRO_IDE_RELEASE, target: KIRO_RELEASES[0] },
-  ])("$from to $to while work is open refuses ordinary refresh without changing the installed row", ({ from, to, source, target }) => {
+  ])("$from to $to while work is open refuses --mcp outside the open-work check without changing the installed row", ({ from, to, source, target }) => {
     const project = temp("aidlc-t243-kiro-switch-active-");
     mkdirSync(join(project, ".git"));
     const initialized = run(INIT, [
@@ -1371,7 +1367,8 @@ describe("t243 project initialization", () => {
       "config", "--project-dir", project, "--from", target, "--harness", to, "--mcp", "none",
     ], project);
     expect(switched.status, switched.stdout + switched.stderr).toBe(4);
-    expect(switched.stdout + switched.stderr).toContain("refusing to refresh while");
+    expect(switched.stdout + switched.stderr).toContain("--mcp cannot be checked against open work");
+    expect(switched.stdout + switched.stderr).toContain("--allow-breaking-refresh");
     expect(projectSnapshotMatches({ project, before })).toBe(true);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -3626,7 +3623,7 @@ describe("t243 project initialization", () => {
     }));
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("ordinary and forced refresh refuse an active workflow without changing project files", () => {
+  test("an ordinary refresh carries open work on, and a forced one asks for --allow-breaking-refresh", () => {
     const project = temp("aidlc-t243-active-refresh-");
     mkdirSync(join(project, ".git"));
     const installed = run(INIT, [
@@ -3661,18 +3658,20 @@ describe("t243 project initialization", () => {
     cpSync(CLAUDE_RELEASE, newer, { recursive: true });
     const rel = join(".claude", "tools", "aidlc-command.ts");
     writeFileSync(join(newer, rel), `${readFileSync(join(newer, rel), "utf-8")}\n// active refresh marker\n`);
-    const before = transactionSourceHash(project);
-    const refreshed = run(INIT, ["config", "--project-dir", project, "--from", newer], project);
-    expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(4);
-    expect(refreshed.stdout + refreshed.stderr).toContain("refusing to refresh while");
-    expect(projectSnapshotMatches({ project, before })).toBe(true);
+    const workflowState = readFileSync(state, "utf-8");
+    const forcedBefore = transactionSourceHash(project);
     const forced = run(INIT, ["config", "--project-dir", project, "--from", newer, "--force", "--yes"], project);
     expect(forced.status, forced.stdout + forced.stderr).toBe(4);
-    expect(forced.stdout + forced.stderr).toContain("refusing to refresh while");
-    expect(projectSnapshotMatches({ project, before })).toBe(true);
+    expect(forced.stdout + forced.stderr).toContain("--allow-breaking-refresh");
+    expect(projectSnapshotMatches({ project, before: forcedBefore })).toBe(true);
+    const refreshed = run(INIT, ["config", "--project-dir", project, "--from", newer], project);
+    expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(0);
+    expect(refreshed.stdout).toContain("carries on");
+    expect(readFileSync(join(project, rel), "utf-8")).toContain("// active refresh marker");
+    expect(readFileSync(state, "utf-8")).toBe(workflowState);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("ordinary dry-run refresh refuses active work without issuing an applicable plan", () => {
+  test("a dry-run refresh over active work issues a checked plan and changes nothing", () => {
     const project = temp("aidlc-t243-active-dry-run-");
     mkdirSync(join(project, ".git"));
     const installed = run(INIT, [
@@ -3713,10 +3712,10 @@ describe("t243 project initialization", () => {
     writeFileSync(join(newer, rel), `${readFileSync(join(newer, rel), "utf-8")}\n// dry-run marker\n`);
     const before = transactionSourceHash(project);
     const previewed = run(INIT, ["config", "--project-dir", project, "--from", newer, "--dry-run", "--json"], project);
-    expect(previewed.status, previewed.stdout + previewed.stderr).toBe(4);
-    expect(previewed.stdout + previewed.stderr).toContain("refusing to refresh while");
-    expect(configFailureEnvelope(previewed)).toMatchObject({ schemaVersion: 1, ok: false, code: 4, status: "failed" });
-    expect(configFailureEnvelope(previewed)).not.toHaveProperty("data.planToken");
+    expect(previewed.status, previewed.stdout + previewed.stderr).toBe(0);
+    const preview = JSON.parse(previewed.stdout) as { ok: boolean; data: { planToken?: string; refreshCompatibility?: unknown } };
+    expect(preview.ok).toBe(true);
+    expect(preview.data.planToken).toBeString();
     expect(projectSnapshotMatches({ project, before })).toBe(true);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -3779,7 +3778,7 @@ describe("t243 project initialization", () => {
       "config", "--project-dir", project, "--from", later, "--harness", "claude", "--force", "--yes",
     ], project);
     expect(moved.status, moved.stdout + moved.stderr).toBe(4);
-    expect(moved.stdout + moved.stderr).toContain("refusing to refresh while");
+    expect(moved.stdout + moved.stderr).toContain("--allow-breaking-refresh");
     expect(projectSnapshotMatches({ project, before })).toBe(true);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 

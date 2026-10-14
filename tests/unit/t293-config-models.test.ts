@@ -32,7 +32,6 @@ import {
   writeMarkdownAgentSurface,
   type ModelPolicyRecord,
 } from "../../core/tools/aidlc-model-policy.ts";
-import { transactionSourceHash } from "../../core/tools/aidlc-transaction.ts";
 import { modelsPolicyCheck } from "../../core/tools/aidlc-doctor.ts";
 import {
   invalidateSettingsCache,
@@ -65,10 +64,6 @@ const OWN_PICKER_LINES = {
 afterAll(() => {
   for (const path of temporary) rmSync(path, { recursive: true, force: true });
 });
-
-function modelsProjectUnchanged({ project, before }: { project: string; before: string }): boolean {
-  return transactionSourceHash(project) === before;
-}
 
 function temp(prefix: string): string {
   const path = mkdtempSync(join(tmpdir(), prefix));
@@ -158,6 +153,14 @@ function projectSettings(project: string): Record<string, unknown> {
 function resolvedPolicy(project: string, harness: "claude" | "kiro") {
   invalidateSettingsCache();
   return modelPolicyForHarness(resolveAidlcSettings(project).models, harness);
+}
+
+// Every open workflow's registry row and state, which a config change must leave as they were.
+function openWorkBytes(project: string): string {
+  const intents = join(project, "aidlc", "spaces", "default", "intents");
+  const registry = readFileSync(join(intents, "intents.json"), "utf-8");
+  const rows = JSON.parse(registry) as { dirName: string }[];
+  return registry + rows.map((row) => readFileSync(join(intents, row.dirName, "aidlc-state.md"), "utf-8")).join("");
 }
 
 describe("t293 model policy resolution", () => {
@@ -792,7 +795,7 @@ describe("t293 config models CLI", () => {
     expect(`${result.stdout}${result.stderr}`).toContain("unknown config section");
   });
 
-  test("a Claude project model change refuses active work and restores its settings", () => {
+  test("a Claude project model change is not blocked by active work and leaves it as it was", () => {
     const project = install("claude");
     const dirName = "active-model-policy";
     const intents = join(project, "aidlc", "spaces", "default", "intents");
@@ -811,11 +814,11 @@ describe("t293 config models CLI", () => {
       join(intents, dirName, "aidlc-state.md"),
       "# AI-DLC State Tracking\n\n## Current Status\n- **Status**: Running\n",
     );
-    const before = transactionSourceHash(project);
+    const priorOpenWork = openWorkBytes(project);
     const refused = run(["config", "models", "--project-dir", project, "--project", "--reviewing-effort", "xhigh", "--yes"], project, runtimeEnv());
-    expect(refused.status, refused.stdout + refused.stderr).toBe(4);
-    expect(refused.stdout + refused.stderr).toContain("refusing to refresh while");
-    expect(modelsProjectUnchanged({ project, before })).toBe(true);
+    expect(refused.status, refused.stdout + refused.stderr).toBe(0);
+    expect(refused.stdout + refused.stderr).not.toContain("refusing to refresh");
+    expect(openWorkBytes(project)).toBe(priorOpenWork);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
   test("a model change ends with what changed and its undo, and names a setup step only when one is left", () => {
@@ -956,7 +959,7 @@ describe("t293 config models CLI", () => {
     expect(named.stdout).toContain("developer effort: not set -> high in aidlc.settings.json.");
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("a Copilot project model change refuses active work and restores its settings", () => {
+  test("a Copilot project model change is not blocked by active work and leaves it as it was", () => {
     const project = install("copilot");
     const dirName = "active-copilot-policy";
     const intents = join(project, "aidlc", "spaces", "default", "intents");
@@ -975,14 +978,14 @@ describe("t293 config models CLI", () => {
       join(intents, dirName, "aidlc-state.md"),
       "# AI-DLC State Tracking\n\n## Current Status\n- **Status**: Running\n",
     );
-    const before = transactionSourceHash(project);
+    const priorOpenWork = openWorkBytes(project);
     const refused = run(["config", "models", "--project-dir", project, "--project", "--agent", "developer", "--effort", "high", "--yes"], project, runtimeEnv());
-    expect(refused.status, refused.stdout + refused.stderr).toBe(4);
-    expect(refused.stdout + refused.stderr).toContain("refusing to refresh while");
-    expect(modelsProjectUnchanged({ project, before })).toBe(true);
+    expect(refused.status, refused.stdout + refused.stderr).toBe(0);
+    expect(refused.stdout + refused.stderr).not.toContain("refusing to refresh");
+    expect(openWorkBytes(project)).toBe(priorOpenWork);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("an OpenCode project model change refuses both active workflows and restores its settings", () => {
+  test("an OpenCode project model change is not blocked by both active workflows and leaves them as they were", () => {
     const project = install("opencode");
     const intents = join(project, "aidlc", "spaces", "default", "intents");
     const open = ["opencode-policy-one", "opencode-policy-two"];
@@ -1004,14 +1007,14 @@ describe("t293 config models CLI", () => {
         "# AI-DLC State Tracking\n\n## Current Status\n- **Status**: Running\n",
       );
     }
-    const before = transactionSourceHash(project);
+    const priorOpenWork = openWorkBytes(project);
     const refused = run(["config", "models", "--project-dir", project, "--project", "--agent", "developer", "--effort", "high", "--yes"], project, runtimeEnv());
-    expect(refused.status, refused.stdout + refused.stderr).toBe(4);
-    expect(refused.stdout + refused.stderr).toContain("refusing to refresh while");
-    expect(modelsProjectUnchanged({ project, before })).toBe(true);
+    expect(refused.status, refused.stdout + refused.stderr).toBe(0);
+    expect(refused.stdout + refused.stderr).not.toContain("refusing to refresh");
+    expect(openWorkBytes(project)).toBe(priorOpenWork);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("a Kiro project model or effort change refuses active work and restores its settings", () => {
+  test("a Kiro project model or effort change is not blocked by active work and leaves it as it was", () => {
     const project = install("kiro");
     const intents = join(project, "aidlc", "spaces", "default", "intents");
     const open = ["kiro-policy-one", "kiro-policy-two"];
@@ -1033,15 +1036,15 @@ describe("t293 config models CLI", () => {
         "# AI-DLC State Tracking\n\n## Current Status\n- **Status**: Running\n",
       );
     }
-    const before = transactionSourceHash(project);
+    const priorOpenWork = openWorkBytes(project);
     const refused = run(["config", "models", "--project-dir", project, "--project", "--agent", "architect", "--model", "vendor/kiro-model", "--effort", "low", "--yes"], project, runtimeEnv());
-    expect(refused.status, refused.stdout + refused.stderr).toBe(4);
-    expect(refused.stdout + refused.stderr).toContain("refusing to refresh while");
-    expect(modelsProjectUnchanged({ project, before })).toBe(true);
+    expect(refused.status, refused.stdout + refused.stderr).toBe(0);
+    expect(refused.stdout + refused.stderr).not.toContain("refusing to refresh");
+    expect(openWorkBytes(project)).toBe(priorOpenWork);
     const effort = run(["config", "models", "--project-dir", project, "--project", "--agent", "architect", "--model", "vendor/kiro-model", "--effort", "high", "--yes"], project, runtimeEnv());
-    expect(effort.status, effort.stdout + effort.stderr).toBe(4);
-    expect(effort.stdout + effort.stderr).toContain("refusing to refresh while");
-    expect(modelsProjectUnchanged({ project, before })).toBe(true);
+    expect(effort.status, effort.stdout + effort.stderr).toBe(0);
+    expect(effort.stdout + effort.stderr).not.toContain("refusing to refresh");
+    expect(openWorkBytes(project)).toBe(priorOpenWork);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
   test("on Cursor, Kiro IDE and Kiro CLI a model request they cannot apply is kept and names their own picker", () => {

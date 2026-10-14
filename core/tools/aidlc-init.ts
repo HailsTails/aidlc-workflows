@@ -462,6 +462,7 @@ const CHOICE_VALUE_FLAGS = new Set([
 ]);
 
 const CHOICE_BARE_FLAGS = new Set([
+  "--allow-breaking-refresh",
   "--check",
   "--dry-run",
   "--help",
@@ -489,6 +490,7 @@ const DIAGNOSTIC_VALUE_FLAGS = new Set([
 ]);
 
 const DIAGNOSTIC_BARE_FLAGS = new Set([
+  "--allow-breaking-refresh",
   "--check",
   "--dry-run",
   "--help",
@@ -518,6 +520,7 @@ const MODELS_VALUE_FLAGS = new Set([
 ]);
 
 const MODELS_BARE_FLAGS = new Set([
+  "--allow-breaking-refresh",
   "--check",
   "--dry-run",
   "--help",
@@ -1195,6 +1198,7 @@ function modelsPipelineArgv(argv: readonly string[]): string[] {
   const out: string[] = [];
   const keptValues = new Set(["--harness", "--plan-token", "--project-dir", ...DOWNLOAD_VALUE_FLAGS]);
   const keptBare = new Set([
+    "--allow-breaking-refresh",
     "--download",
     "--dry-run",
     "--json",
@@ -1620,6 +1624,7 @@ function diagnosticPipelineArgv(argv: readonly string[]): string[] {
   const out: string[] = [];
   const keptValues = new Set(["--harness", "--plan-token", "--project-dir", ...DOWNLOAD_VALUE_FLAGS]);
   const keptBare = new Set([
+    "--allow-breaking-refresh",
     "--download",
     "--dry-run",
     "--json",
@@ -3080,6 +3085,7 @@ function choicePipelineArgv(argv: readonly string[]): string[] {
   const out: string[] = [];
   const keptValues = new Set(["--from", "--harness", "--plan-token", "--project-dir", ...DOWNLOAD_VALUE_FLAGS]);
   const keptBare = new Set([
+    "--allow-breaking-refresh",
     "--download",
     "--dry-run",
     "--json",
