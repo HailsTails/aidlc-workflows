@@ -1,6 +1,6 @@
 import tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "eslint";
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, vi, test } from "vitest";
 import {
 	classDisposition,
 	containerMode,
@@ -87,7 +87,7 @@ test("an unrelated declared node does not provide an ambient exemption", () => {
 });
 
 test("the rule publishes the original runtime class through its injected diagnostic port", () => {
-	const publish = mock<ClassDiagnosticPort<ClassAncestor>["publish"]>();
+	const publish = vi.fn<ClassDiagnosticPort<ClassAncestor>["publish"]>();
 	const reporter = createClassReporter({
 		port: { filename: "src/runtime.ts", publish },
 	});
@@ -101,7 +101,7 @@ test("the rule publishes the original runtime class through its injected diagnos
 	});
 });
 test("the rule does not publish an ambient class", () => {
-	const publish = mock<ClassDiagnosticPort<ClassAncestor>["publish"]>();
+	const publish = vi.fn<ClassDiagnosticPort<ClassAncestor>["publish"]>();
 	const reporter = createClassReporter({
 		port: { filename: "src/ambient.ts", publish },
 	});
@@ -112,7 +112,7 @@ test("the rule does not publish an ambient class", () => {
 	expect(publish).not.toHaveBeenCalled();
 });
 test("the rule publishes runtime class expressions", () => {
-	const publish = mock<ClassDiagnosticPort<ClassAncestor>["publish"]>();
+	const publish = vi.fn<ClassDiagnosticPort<ClassAncestor>["publish"]>();
 	const reporter = createClassReporter({
 		port: { filename: "src/runtime.ts", publish },
 	});

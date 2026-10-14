@@ -21,6 +21,6 @@
     "files": [
       "plugins/rin/tools/native-lint/carve-files.ts"
     ],
-    "reason": "Structural CD19 location: the generic native carve file port alone owns Node filesystem/path access and Zod validation of consumed sidecar file arrays. Pure projection receives owned values; eligibility and why-chain governance remain canonical. This is a deliberate boundary, not inherited debt."
+    "reason": "Structural CD19 location: the generic native carve boundary owns Node filesystem/path/entry-URL access and Zod validation of consumed sidecar file arrays. File IO and process-lifecycle effects remain behind their co-located ports; pure projection receives owned values. Eligibility and why-chain governance remain canonical. This is a deliberate boundary, not inherited debt."
   }
 ]

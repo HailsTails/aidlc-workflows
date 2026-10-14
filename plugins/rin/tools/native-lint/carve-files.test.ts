@@ -1,4 +1,4 @@
-import { expect, mock, test } from "bun:test";
+import { expect, vi, test } from "vitest";
 import {
 	parseCarveCommand,
 	parseProjectionSidecar,
@@ -10,7 +10,14 @@ import {
 const command: CarveCommand = {
 	projectDir: "/fixture",
 	mode: "generate",
-	owners: [{ cd: "CD-14", eslint: ["class-rule"], oxlint: ["class-rule"] }],
+	owners: [
+		{
+			cd: "CD-14",
+			sidecar: "cd-14.json",
+			eslint: ["class-rule"],
+			oxlint: ["class-rule"],
+		},
+	],
 };
 const fakePort: CarveFilePort = {
 	readSidecars: () => ({ kind: "accepted", content: [] }),
@@ -40,9 +47,9 @@ test("malformed consumed file data is rejected", () => {
 	});
 });
 test("generation writes the canonical serialized fragments", () => {
-	const writeDocuments = mock<
-		CarveFilePort["writeDocuments"]
-	>().mockReturnValue({ kind: "accepted", content: undefined });
+	const writeDocuments = vi
+		.fn<CarveFilePort["writeDocuments"]>()
+		.mockReturnValue({ kind: "accepted", content: undefined });
 	expect(
 		runCarveProjection({ command, port: { ...fakePort, writeDocuments } }),
 	).toEqual({ kind: "accepted", content: undefined });
@@ -52,7 +59,7 @@ test("generation writes the canonical serialized fragments", () => {
 	});
 });
 test("check mode compares without writing", () => {
-	const writeDocuments = mock<CarveFilePort["writeDocuments"]>();
+	const writeDocuments = vi.fn<CarveFilePort["writeDocuments"]>();
 	expect(
 		runCarveProjection({
 			command: { ...command, mode: "check" },
@@ -62,8 +69,8 @@ test("check mode compares without writing", () => {
 	expect(writeDocuments).not.toHaveBeenCalled();
 });
 test("a sidecar read failure prevents writing", () => {
-	const writeDocuments = mock<CarveFilePort["writeDocuments"]>();
-	const readSidecars = mock<CarveFilePort["readSidecars"]>().mockReturnValue({
+	const writeDocuments = vi.fn<CarveFilePort["writeDocuments"]>();
+	const readSidecars = vi.fn<CarveFilePort["readSidecars"]>().mockReturnValue({
 		kind: "rejected",
 		failure: { message: "Fixture unreadable" },
 	});
@@ -89,6 +96,7 @@ test("command selection names only adopted CDs", () => {
 			owners: [
 				{
 					cd: "CD-14",
+					sidecar: "cd-14.json",
 					eslint: ["rin-discipline/no-class-authoring"],
 					oxlint: ["rin-discipline/no-class-authoring"],
 				},

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import { cd14EslintEntries } from "./cd14.eslint.ts";
 
 test("the fragment owns only the dedicated CD14 rule", () => {

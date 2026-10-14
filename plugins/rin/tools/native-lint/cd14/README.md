@@ -3,16 +3,19 @@
 This opt-in slice supplies one dedicated ESLint/Oxlint rule. Consumers add native
 fragments to their existing config. There is no composer or generated host config.
 
-Build with the producer's pinned Bun dependencies:
+Fetch the source directory from a reviewed commit, independently of any harness:
 
 ```bash
-bun install --frozen-lockfile
-bun scripts/package.ts plugin build rin cursor "$PWD/dist/plugins/rin/cursor"
+mkdir -p .rin/native-lint
+curl -fsSL "https://codeload.github.com/HailsTails/aidlc-workflows/tar.gz/<reviewed-commit-sha>" \
+  | tar -xz -C .rin/native-lint --strip-components=5 --wildcards --exclude='*.test.ts' '*/plugins/rin/tools/native-lint/*'
 ```
 
-Copy the generated `tools/native-lint/cd14/` directory and `cd14.eslint.ts` and
-`cd14.oxlint.json` into the consumer's `.rin/native-lint/`. Commit these local
-files. Oxlint resolves the plugin path against the extended fragment.
+Replace `<reviewed-commit-sha>` with the full pinned commit ID. Commit
+`.rin/native-lint/` and record that ID in the commit message. Update by fetching a
+new reviewed pin and reviewing the diff. This fetch excludes producer tests and
+requires no consumer build step. Oxlint resolves its plugin path against the
+extended fragment. The consumer path is always `.rin/native-lint/`.
 
 ## Add to the existing config
 
@@ -48,13 +51,14 @@ using another linter can run Oxlint alongside it.
 
 ## Separate canonical carve projection
 
-Copy generated `carve-files.ts`, its generated runtime companions, and
-`carve-projection.ts` beside the fragments. Generate overrides for exactly the
+The fetched source includes the separate carve tool. Add `zod` 4.4.3 as a
+consumer dev dependency only when using this projection (for example,
+`npm install --save-dev zod@4.4.3`). Generate overrides for exactly the
 CDs adopted by the consumer:
 
 ```bash
-bun .rin/native-lint/carve-files.ts --cd CD-14 --cd CD-42 --cd CD-44
-bun .rin/native-lint/carve-files.ts --cd CD-14 --cd CD-42 --cd CD-44 --check
+node .rin/native-lint/carve-files.ts --cd CD-14 --cd CD-42 --cd CD-44
+node .rin/native-lint/carve-files.ts --cd CD-14 --cd CD-42 --cd CD-44 --check
 ```
 
 Use the same explicit selection in generation and CI. `--project-dir` selects a
@@ -100,8 +104,7 @@ removal restore green. Native lint alone does not run the Git gate.
 The native rule export is the engine boundary used by RuleTester; the diagnostic
 port exposes owned contracts to the classification logic. The rule has no runtime
 package dependency. `carve-files.ts` owns filesystem and consumed-JSON validation;
-`carve-projection.ts` has no external dependency. The existing packager bundles
-Zod into the generated file boundary, without a new build mechanism.
+`carve-projection.ts` has no external dependency. The source tool consumes the optional consumer Zod dependency directly.
 
 The dedicated ID is `rin-discipline/no-class-authoring`. Runtime class
 declarations and expressions are rejected, including nested, non-exported and

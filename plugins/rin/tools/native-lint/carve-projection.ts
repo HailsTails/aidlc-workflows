@@ -1,4 +1,5 @@
 export type CarveRuleOwner = {
+	readonly sidecar: string;
 	readonly cd: string;
 	readonly eslint: readonly string[];
 	readonly oxlint: readonly string[];
@@ -22,11 +23,22 @@ export type CarveOutcome<Content> =
 export const nativeCarveOwners: readonly CarveRuleOwner[] = [
 	{
 		cd: "CD-14",
+		sidecar: "cd-14.json",
 		eslint: ["rin-discipline/no-class-authoring"],
 		oxlint: ["rin-discipline/no-class-authoring"],
 	},
-	{ cd: "CD-42", eslint: ["no-else-return"], oxlint: ["no-else-return"] },
-	{ cd: "CD-44", eslint: ["no-param-reassign"], oxlint: ["no-param-reassign"] },
+	{
+		cd: "CD-42",
+		sidecar: "cd-42.json",
+		eslint: ["no-else-return"],
+		oxlint: ["no-else-return"],
+	},
+	{
+		cd: "CD-44",
+		sidecar: "cd-44.json",
+		eslint: ["no-param-reassign"],
+		oxlint: ["no-param-reassign"],
+	},
 ];
 const canonicalRuleId = ({
 	engine,
@@ -167,3 +179,18 @@ export const verifyCarveDocuments = ({
 		};
 	return { kind: "accepted", content: undefined };
 };
+
+export type CanonicalSidecarFile = {
+	readonly cd: string;
+	readonly filename: string;
+};
+export const selectCanonicalSidecars = ({
+	owners,
+	filenames,
+}: {
+	readonly owners: readonly CarveRuleOwner[];
+	readonly filenames: readonly string[];
+}): readonly CanonicalSidecarFile[] =>
+	owners
+		.filter((owner) => filenames.includes(owner.sidecar))
+		.map((owner) => ({ cd: owner.cd, filename: owner.sidecar }));

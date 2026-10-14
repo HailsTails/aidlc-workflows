@@ -6,9 +6,11 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
 	nativeCarveOwners,
+	selectCanonicalSidecars,
 	projectCarveFragments,
 	serializeCarveFragments,
 	verifyCarveDocuments,
@@ -70,22 +72,15 @@ export const defaultCarveFilePort = (): CarveFilePort => ({
 				".constitution-carve-outs",
 			);
 			if (!existsSync(directory)) return { kind: "accepted", content: [] };
-			const sidecars = readdirSync(directory)
-				.filter((filename) => /^cd-\d+\.json$/u.test(filename))
-				.map((filename) => ({
-					filename,
-					cd: `CD-${Number(filename.slice(3, -5))}`,
-				}))
-				.filter((sidecar) =>
-					command.owners.some((owner) => owner.cd === sidecar.cd),
-				)
-				.sort((left, right) => left.filename.localeCompare(right.filename))
-				.map((sidecar) =>
-					parseProjectionSidecar({
-						cd: sidecar.cd,
-						source: readFileSync(join(directory, sidecar.filename), "utf8"),
-					}),
-				);
+			const sidecars = selectCanonicalSidecars({
+				owners: command.owners,
+				filenames: readdirSync(directory),
+			}).map((sidecar) =>
+				parseProjectionSidecar({
+					cd: sidecar.cd,
+					source: readFileSync(join(directory, sidecar.filename), "utf8"),
+				}),
+			);
 			const rejected = sidecars.find((sidecar) => sidecar.kind === "rejected");
 			if (rejected?.kind === "rejected") return rejected;
 			return {
@@ -227,7 +222,11 @@ export const defaultCarveProcessPort = (): CarveProcessPort => ({
 		process.stdout.write("Native carve fragments match canonical sidecars.\n");
 	},
 });
-if (import.meta.main) {
+if (
+	import.meta.main ||
+	(process.argv[1] !== undefined &&
+		resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+) {
 	const processPort = defaultCarveProcessPort();
 	const command = parseCarveCommand(processPort.startup());
 	const outcome =
