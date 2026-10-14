@@ -17,7 +17,7 @@ type ConstitutionScopeConfig = {
 const SENTINEL_ABSENT_ROOT = "__aidlc_constitution_absent_root__";
 
 const DEFAULT_SCOPE: ConstitutionScopeConfig = {
-  include: ["src/**", "scripts/**", "*.ts", "*.tsx"],
+  include: ["src/**", "scripts/**", "test/**", "tests/**", "*.ts", "*.tsx"],
   exclude: [
     "**/node_modules/**",
     "**/dist/**",
@@ -168,6 +168,7 @@ const SCRIPT_RULE_PREFIXES: readonly string[] = [
   "CD-15",
   "CD-16",
   "CD-19",
+  "CD-20",
   "Amendment 2.8.0",
 ];
 
