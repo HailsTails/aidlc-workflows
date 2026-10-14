@@ -123,6 +123,11 @@ CD or a host restriction, an adapter must refuse a per-CD `off` override until
 the owners are separated; it cannot switch that shared rule off for one CD.
 This CD-14 slice disables only its dedicated ID.
 
+Biome exclusions use exact absolute file paths so an uncarved nested file with
+the same path suffix stays checked. Regenerate the composed config after moving
+the project. Carved projects whose root contains glob characters fail composition
+rather than risk broadening an exclusion.
+
 The rule rejects runtime `ClassDeclaration` and `ClassExpression` syntax,
 including nested, non-exported and default-export classes. It permits ambient
 `declare class`, classes nested in `declare namespace`/`declare module`/`declare

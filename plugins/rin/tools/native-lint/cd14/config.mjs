@@ -80,6 +80,11 @@ export function biomeCd14({ projectDir, hostPath, host, pluginPath, includes }) 
       (host.plugins ?? []).some((item) => (typeof item === "string" ? item : item.path) === pluginPath)) {
     throw new Error("Biome needs a separate host config and one new CD-14 Grit plugin");
   }
+  const carvedFiles = cd14CarvedFiles(projectDir);
+  const root = resolve(projectDir).split(sep).join("/");
+  if (carvedFiles.length > 0 && /[*?![\]{}]/u.test(root)) {
+    throw new Error("Biome exact-file carve-outs need a project path without glob characters");
+  }
   return {
     $schema: "https://biomejs.dev/schemas/2.5.15/schema.json",
     extends: [hostPath],
@@ -87,7 +92,7 @@ export function biomeCd14({ projectDir, hostPath, host, pluginPath, includes }) 
       path: pluginPath,
       includes: [
         ...scope(includes),
-        ...cd14CarvedFiles(projectDir).map((file) => `!**/${file}`),
+        ...carvedFiles.map((file) => `!${root}/${file}`),
       ],
     }],
   };
