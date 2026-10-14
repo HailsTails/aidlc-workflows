@@ -14,11 +14,13 @@ export type ModuleLoaderPort = {
   >;
 };
 
-export const createModuleLoaderPort = (
-  _options: Record<string, never>,
-): ModuleLoaderPort => ({
+export type ImportModule = (request: { readonly path: string }) => Promise<unknown>;
+
+export const createModuleLoaderPort = (options: {
+  readonly importModule: ImportModule;
+}): ModuleLoaderPort => ({
   load: (request) =>
-    import(pathToFileURL(request.path).href).then(
+    options.importModule({ path: request.path }).then(
       (namespace: unknown) => ({ outcome: "ok", value: namespace }),
       (thrown: unknown) => ({
         outcome: "failed",
@@ -30,3 +32,10 @@ export const createModuleLoaderPort = (
       }),
     ),
 });
+
+export const defaultImportModule: ImportModule = (request) =>
+  import(pathToFileURL(request.path).href);
+
+export const createDefaultModuleLoaderPort = (
+  _options: Record<string, never>,
+): ModuleLoaderPort => createModuleLoaderPort({ importModule: defaultImportModule });

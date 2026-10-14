@@ -64,14 +64,14 @@ describe("clauseAddressText", () => {
 
 describe("sameClauseAddress", () => {
   it.each(["CD-14#no-class-syntax", "probe/PD-1#no-tmp-files"])(
-    "holds for two separately read addresses of %j",
+    "is same for two separately read addresses of %j",
     (text) => {
       expect(
         sameClauseAddress({
           left: clauseAddressSchema.parse(text),
           right: clauseAddressSchema.parse(text),
         }),
-      ).toBe(true);
+      ).toBe("same");
     },
   );
 
@@ -80,12 +80,12 @@ describe("sameClauseAddress", () => {
     ["rule-set name", "probe/CD-14#no-class-syntax", "team/CD-14#no-class-syntax"],
     ["discipline", "CD-14#no-class-syntax", "CD-15#no-class-syntax"],
     ["clause", "CD-14#no-class-syntax", "CD-14#no-class-keyword"],
-  ])("does not hold when the %s differs", (_part, left, right) => {
+  ])("is different when the %s differs", (_part, left, right) => {
     expect(
       sameClauseAddress({
         left: clauseAddressSchema.parse(left),
         right: clauseAddressSchema.parse(right),
       }),
-    ).toBe(false);
+    ).toBe("different");
   });
 });

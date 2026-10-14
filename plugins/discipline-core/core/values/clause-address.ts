@@ -18,7 +18,7 @@ const SHARED_RULE_SET = "shared";
 
 const CLAUSE_ADDRESS_TEXT = /^(?:(?<ruleSet>[^/#]+)\/)?(?<discipline>[^/#]+)#(?<clause>[^/#]+)$/;
 
-const clauseAddressPartsSchema = z.object({
+export const clauseAddressObjectSchema = z.object({
   ruleSet: z.union([
     z.literal(SHARED_RULE_SET),
     z.object({
@@ -49,7 +49,7 @@ export const clauseAddressSchema = z
       clause: parts.clause,
     };
   })
-  .pipe(clauseAddressPartsSchema);
+  .pipe(clauseAddressObjectSchema);
 
 export const clauseAddressText = (request: {
   readonly address: ClauseAddress;
@@ -61,6 +61,7 @@ export const clauseAddressText = (request: {
 export const sameClauseAddress = (request: {
   readonly left: ClauseAddress;
   readonly right: ClauseAddress;
-}): boolean =>
-  clauseAddressText({ address: request.left }) ===
-  clauseAddressText({ address: request.right });
+}): "same" | "different" =>
+  clauseAddressText({ address: request.left }) === clauseAddressText({ address: request.right })
+    ? "same"
+    : "different";

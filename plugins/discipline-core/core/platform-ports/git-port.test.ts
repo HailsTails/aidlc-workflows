@@ -1,269 +1,241 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createHermeticGitRepository,
-  type HermeticGitRepository,
-} from "../../../rin/tools/hermetic-git/index.ts";
+import { describe, expect, it, vi } from "vitest";
 import { absolutePathSchema } from "../values/absolute-path.ts";
-import { createGitPort } from "./git-port.ts";
+import { createGitPort, type GitRun, type GitSpawn } from "./git-port.ts";
 
-const repositories: HermeticGitRepository[] = [];
-const directories: string[] = [];
+const REPO_ROOT = absolutePathSchema.parse("/repo");
 
-const newRepository = (): HermeticGitRepository => {
-  const repository = createHermeticGitRepository({
-    namePrefix: "discipline-core-git-port-",
-  });
-  repositories.push(repository);
-  return repository;
+const AMBIENT_ENVIRONMENT = {
+  GIT_DIR: "/elsewhere/.git",
+  GIT_WORK_TREE: "/elsewhere",
+  GIT_INDEX_FILE: "/elsewhere/.git/index",
+  GIT_OBJECT_DIRECTORY: "/elsewhere/.git/objects",
+  GIT_ALTERNATE_OBJECT_DIRECTORIES: "/elsewhere/alternates",
+  GIT_COMMON_DIR: "/elsewhere/.git",
+  GIT_NAMESPACE: "elsewhere",
+  GIT_PREFIX: "sub/",
+  GIT_IMPLICIT_WORK_TREE: "0",
+  GIT_SHALLOW_FILE: "/elsewhere/.git/shallow",
+  GIT_GRAFT_FILE: "/elsewhere/.git/info/grafts",
+  PATH: "/usr/bin",
+  HOME: "/home/someone",
 };
 
-const newDirectory = (): string => {
-  const directory = mkdtempSync(join(tmpdir(), "discipline-core-not-a-repo-"));
-  directories.push(directory);
-  return directory;
-};
+const EXITED_WITH_LISTING = {
+  outcome: "exited",
+  status: 0,
+  stdout: "é.ts\0src/a.ts\0",
+  stderr: "",
+} satisfies GitRun;
 
-const repositoryWithModifiedAccentedFile = (): {
-  readonly repository: HermeticGitRepository;
-  readonly base: string;
-} => {
-  const repository = newRepository();
-  repository.writeFile({ relativePath: "é.ts", body: "export const a = 1;\n" });
-  repository.commitAll({ message: "first" });
-  const base = repository.run(["rev-parse", "HEAD"]).trim();
-  repository.writeFile({ relativePath: "é.ts", body: "export const a = 2;\n" });
-  return { repository, base };
-};
+const EXITED_EMPTY = { outcome: "exited", status: 0, stdout: "", stderr: "" } satisfies GitRun;
 
-const DEEP_DIRECTORY = Array.from(
-  { length: 14 },
-  (_, depth) => `${String(depth).padStart(2, "0")}${"d".repeat(200)}`,
-).join("/");
+const EXITED_NOT_A_REPOSITORY = {
+  outcome: "exited",
+  status: 128,
+  stdout: "",
+  stderr: "fatal: not a git repository",
+} satisfies GitRun;
 
-const LARGE_LISTING_FILE_COUNT = 360;
+const ERRORED_ON_BUFFER = { outcome: "errored", detail: "spawnSync git ENOBUFS" } satisfies GitRun;
 
-const largeListingPath = (request: { readonly index: number }): string =>
-  `${DEEP_DIRECTORY}/${String(request.index).padStart(3, "0")}${"f".repeat(200)}.ts`;
+const gitOver = (spawn: GitSpawn) =>
+  createGitPort({ spawn, ambientEnvironment: AMBIENT_ENVIRONMENT });
 
-const FIRST_LARGE_LISTING_PATH = largeListingPath({ index: 0 });
-const LAST_LARGE_LISTING_PATH = largeListingPath({ index: 359 });
+describe("createGitPort trackedPaths", () => {
+  it("runs git ls-files -z under the request's root", () => {
+    const spawn = vi.fn<GitSpawn>().mockReturnValue(EXITED_EMPTY);
 
-const writeLargeListing = (request: {
-  readonly repository: HermeticGitRepository;
-}): void => {
-  mkdirSync(join(request.repository.path, DEEP_DIRECTORY), { recursive: true });
-  Array.from({ length: LARGE_LISTING_FILE_COUNT }, (_, index) =>
-    largeListingPath({ index }),
-  ).forEach((relativePath) => {
-    request.repository.writeFile({ relativePath, body: "export {};\n" });
+    gitOver(spawn).trackedPaths({ repoRoot: REPO_ROOT });
+
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({ file: "git", arguments: ["-C", "/repo", "ls-files", "-z"] }),
+    );
   });
-};
 
-const repositoryWithLargeTrackedListing = (): HermeticGitRepository => {
-  const repository = newRepository();
-  writeLargeListing({ repository });
-  repository.commitAll({ message: "large listing" });
-  return repository;
-};
+  it("gives git a 256 MiB output buffer", () => {
+    const spawn = vi.fn<GitSpawn>().mockReturnValue(EXITED_EMPTY);
 
-const repositoryWithLargeListingAfterBase = (): {
-  readonly repository: HermeticGitRepository;
-  readonly base: string;
-} => {
-  const repository = newRepository();
-  repository.writeFile({ relativePath: "seed.ts", body: "export {};\n" });
-  repository.commitAll({ message: "seed" });
-  const base = repository.run(["rev-parse", "HEAD"]).trim();
-  writeLargeListing({ repository });
-  repository.commitAll({ message: "large listing" });
-  return { repository, base };
-};
+    gitOver(spawn).trackedPaths({ repoRoot: REPO_ROOT });
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-  repositories.splice(0).forEach((repository) => {
-    repository.dispose();
+    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ maxBuffer: 268435456 }));
   });
-  directories.splice(0).forEach((directory) => {
-    rmSync(directory, { recursive: true, force: true });
+
+  it("hands git the ambient environment without any repository location variable", () => {
+    const spawn = vi.fn<GitSpawn>().mockReturnValue(EXITED_EMPTY);
+
+    gitOver(spawn).trackedPaths({ repoRoot: REPO_ROOT });
+
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({ environment: { PATH: "/usr/bin", HOME: "/home/someone" } }),
+    );
   });
-});
 
-describe("createGitPort", () => {
-  it("lists a tracked non-ASCII path unquoted from trackedPaths", () => {
-    const { repository } = repositoryWithModifiedAccentedFile();
-    const git = createGitPort({});
+  it("splits NUL-separated output, with its trailing NUL, into unquoted paths", () => {
+    const trackedListing = gitOver(
+      vi.fn<GitSpawn>().mockReturnValue(EXITED_WITH_LISTING),
+    ).trackedPaths({ repoRoot: REPO_ROOT });
 
-    const result = git.trackedPaths({
-      repoRoot: absolutePathSchema.parse(repository.path),
+    expect(trackedListing).toEqual({ outcome: "ok", value: ["é.ts", "src/a.ts"] });
+  });
+
+  it("lists no paths for empty output", () => {
+    const trackedListing = gitOver(vi.fn<GitSpawn>().mockReturnValue(EXITED_EMPTY)).trackedPaths({
+      repoRoot: REPO_ROOT,
     });
 
-    expect(result).toEqual({ outcome: "ok", value: ["é.ts"] });
+    expect(trackedListing).toEqual({ outcome: "ok", value: [] });
   });
 
-  it("lists a worktree-modified non-ASCII path unquoted from changedSince", () => {
-    const { repository, base } = repositoryWithModifiedAccentedFile();
-    const git = createGitPort({});
+  it("returns git-failed with the path in detail when a listed path is not a RepoPath", () => {
+    const trackedListing = gitOver(
+      vi.fn<GitSpawn>().mockReturnValue({ ...EXITED_EMPTY, stdout: "a.ts\0a\\b.ts\0" }),
+    ).trackedPaths({ repoRoot: REPO_ROOT });
 
-    const result = git.changedSince({
-      repoRoot: absolutePathSchema.parse(repository.path),
-      baseRevision: base,
-    });
-
-    expect(result).toEqual({ outcome: "ok", value: ["é.ts"] });
-  });
-
-  it("includes paths committed after the base in changedSince", () => {
-    const { repository, base } = repositoryWithModifiedAccentedFile();
-    repository.writeFile({ relativePath: "b.ts", body: "export const b = 1;\n" });
-    repository.run(["add", "b.ts"]);
-    repository.run(["commit", "-q", "-m", "second"]);
-    const git = createGitPort({});
-
-    const result = git.changedSince({
-      repoRoot: absolutePathSchema.parse(repository.path),
-      baseRevision: base,
-    });
-
-    expect(result).toEqual({
-      outcome: "ok",
-      value: expect.arrayContaining(["b.ts", "é.ts"]),
-    });
-  });
-
-  it("lists the request's repository, not the one an inherited GIT_DIR names", () => {
-    const { repository } = repositoryWithModifiedAccentedFile();
-    const other = newRepository();
-    other.writeFile({ relativePath: "other.ts", body: "export {};\n" });
-    other.commitAll({ message: "other" });
-    vi.stubEnv("GIT_DIR", join(other.path, ".git"));
-
-    const result = createGitPort({}).trackedPaths({
-      repoRoot: absolutePathSchema.parse(repository.path),
-    });
-
-    expect(result).toEqual({ outcome: "ok", value: ["é.ts"] });
-  });
-
-  it("returns git-failed with the path in detail when a tracked path is not a RepoPath", () => {
-    const repository = newRepository();
-    repository.writeFile({ relativePath: "a\\b.ts", body: "export {};\n" });
-    repository.commitAll({ message: "backslash" });
-    const git = createGitPort({});
-
-    const result = git.trackedPaths({
-      repoRoot: absolutePathSchema.parse(repository.path),
-    });
-
-    expect(result).toMatchObject({
+    expect(trackedListing).toMatchObject({
       outcome: "failed",
       error: { kind: "git-failed", detail: expect.stringContaining("a\\b.ts") },
     });
   });
 
-  it("returns git-failed from trackedPaths outside a repository", () => {
-    const git = createGitPort({});
+  it("returns git-failed carrying stderr when git exits non-zero", () => {
+    const trackedListing = gitOver(
+      vi.fn<GitSpawn>().mockReturnValue(EXITED_NOT_A_REPOSITORY),
+    ).trackedPaths({ repoRoot: REPO_ROOT });
 
-    const result = git.trackedPaths({
-      repoRoot: absolutePathSchema.parse(newDirectory()),
-    });
-
-    expect(result).toMatchObject({
+    expect(trackedListing).toEqual({
       outcome: "failed",
-      error: { kind: "git-failed", command: expect.stringMatching(/git/) },
+      error: {
+        kind: "git-failed",
+        command: "git -C /repo ls-files -z",
+        detail: "fatal: not a git repository",
+      },
     });
   });
 
-  it("returns git-failed from changedSince for an unknown base revision", () => {
-    const { repository } = repositoryWithModifiedAccentedFile();
-    const git = createGitPort({});
+  it("returns git-failed carrying the error when git could not run to completion", () => {
+    const trackedListing = gitOver(
+      vi.fn<GitSpawn>().mockReturnValue(ERRORED_ON_BUFFER),
+    ).trackedPaths({ repoRoot: REPO_ROOT });
 
-    const result = git.changedSince({
-      repoRoot: absolutePathSchema.parse(repository.path),
-      baseRevision: "no-such-revision",
-    });
-
-    expect(result).toMatchObject({
+    expect(trackedListing).toEqual({
       outcome: "failed",
-      error: { kind: "git-failed" },
+      error: {
+        kind: "git-failed",
+        command: "git -C /repo ls-files -z",
+        detail: "spawnSync git ENOBUFS",
+      },
     });
   });
+});
 
-  it("lists every tracked path when the listing exceeds one mebibyte", () => {
-    const repository = repositoryWithLargeTrackedListing();
+describe("createGitPort changedSince", () => {
+  it("diffs the base range with --end-of-options before it", () => {
+    const spawn = vi.fn<GitSpawn>().mockReturnValue(EXITED_EMPTY);
 
-    const result = createGitPort({}).trackedPaths({
-      repoRoot: absolutePathSchema.parse(repository.path),
-    });
+    gitOver(spawn).changedSince({ repoRoot: REPO_ROOT, baseRevision: "base" });
 
-    expect(result).toEqual({
+    expect(spawn).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        arguments: ["-C", "/repo", "diff", "--name-only", "-z", "--end-of-options", "base...HEAD"],
+      }),
+    );
+  });
+
+  it("diffs the worktree against HEAD second", () => {
+    const spawn = vi.fn<GitSpawn>().mockReturnValue(EXITED_EMPTY);
+
+    gitOver(spawn).changedSince({ repoRoot: REPO_ROOT, baseRevision: "base" });
+
+    expect(spawn).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ arguments: ["-C", "/repo", "diff", "--name-only", "-z", "HEAD"] }),
+    );
+  });
+
+  it("keeps a dash-led base revision after --end-of-options", () => {
+    const spawn = vi.fn<GitSpawn>().mockReturnValue(EXITED_EMPTY);
+
+    gitOver(spawn).changedSince({ repoRoot: REPO_ROOT, baseRevision: "--output=x" });
+
+    expect(spawn).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        arguments: ["-C", "/repo", "diff", "--name-only", "-z", "--end-of-options", "--output=x...HEAD"],
+      }),
+    );
+  });
+
+  it("hands both diffs the environment without repository location variables", () => {
+    const spawn = vi.fn<GitSpawn>().mockReturnValue(EXITED_EMPTY);
+
+    gitOver(spawn).changedSince({ repoRoot: REPO_ROOT, baseRevision: "base" });
+
+    expect(spawn).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ environment: { PATH: "/usr/bin", HOME: "/home/someone" } }),
+    );
+  });
+
+  it("unites the committed and uncommitted paths", () => {
+    const spawn = vi
+      .fn<GitSpawn>()
+      .mockReturnValueOnce({ ...EXITED_EMPTY, stdout: "a.ts\0é.ts\0" })
+      .mockReturnValueOnce({ ...EXITED_EMPTY, stdout: "é.ts\0b.ts\0" });
+
+    const changedListing = gitOver(spawn).changedSince({ repoRoot: REPO_ROOT, baseRevision: "base" });
+
+    expect(changedListing).toEqual({
       outcome: "ok",
-      value: expect.arrayContaining([FIRST_LARGE_LISTING_PATH, LAST_LARGE_LISTING_PATH]),
+      value: expect.arrayContaining(["a.ts", "é.ts", "b.ts"]),
     });
   });
 
-  it("counts every tracked path when the listing exceeds one mebibyte", () => {
-    const repository = repositoryWithLargeTrackedListing();
+  it("lists a path in both diffs once", () => {
+    const spawn = vi
+      .fn<GitSpawn>()
+      .mockReturnValueOnce({ ...EXITED_EMPTY, stdout: "a.ts\0é.ts\0" })
+      .mockReturnValueOnce({ ...EXITED_EMPTY, stdout: "é.ts\0b.ts\0" });
 
-    const result = createGitPort({}).trackedPaths({
-      repoRoot: absolutePathSchema.parse(repository.path),
-    });
+    const changedListing = gitOver(spawn).changedSince({ repoRoot: REPO_ROOT, baseRevision: "base" });
 
-    expect(result).toHaveProperty("value.length", 360);
+    expect(changedListing).toHaveProperty("value.length", 3);
   });
 
-  it("lists every path committed after the base when the listing exceeds one mebibyte", () => {
-    const { repository, base } = repositoryWithLargeListingAfterBase();
+  it("returns git-failed when the committed diff fails", () => {
+    const changedListing = gitOver(
+      vi.fn<GitSpawn>().mockReturnValueOnce(EXITED_NOT_A_REPOSITORY).mockReturnValueOnce(EXITED_EMPTY),
+    ).changedSince({ repoRoot: REPO_ROOT, baseRevision: "no-such-revision" });
 
-    const result = createGitPort({}).changedSince({
-      repoRoot: absolutePathSchema.parse(repository.path),
-      baseRevision: base,
-    });
-
-    expect(result).toEqual({
-      outcome: "ok",
-      value: expect.arrayContaining([FIRST_LARGE_LISTING_PATH, LAST_LARGE_LISTING_PATH]),
-    });
-  });
-
-  it("counts every path committed after the base when the listing exceeds one mebibyte", () => {
-    const { repository, base } = repositoryWithLargeListingAfterBase();
-
-    const result = createGitPort({}).changedSince({
-      repoRoot: absolutePathSchema.parse(repository.path),
-      baseRevision: base,
-    });
-
-    expect(result).toHaveProperty("value.length", 360);
-  });
-
-  it("returns git-failed for a base revision that begins with a dash", () => {
-    const { repository } = repositoryWithModifiedAccentedFile();
-    const outputDirectory = newDirectory();
-
-    const result = createGitPort({}).changedSince({
-      repoRoot: absolutePathSchema.parse(repository.path),
-      baseRevision: `--output=${outputDirectory}/x`,
-    });
-
-    expect(result).toMatchObject({
+    expect(changedListing).toMatchObject({
       outcome: "failed",
-      error: { kind: "git-failed" },
+      error: { kind: "git-failed", detail: "fatal: not a git repository" },
     });
   });
 
-  it("writes no file when the base revision begins with a dash", () => {
-    const { repository } = repositoryWithModifiedAccentedFile();
-    const outputDirectory = newDirectory();
+  it("does not run the worktree diff after the committed diff fails", () => {
+    const spawn = vi
+      .fn<GitSpawn>()
+      .mockReturnValueOnce(EXITED_NOT_A_REPOSITORY)
+      .mockReturnValueOnce(EXITED_EMPTY);
 
-    createGitPort({}).changedSince({
-      repoRoot: absolutePathSchema.parse(repository.path),
-      baseRevision: `--output=${outputDirectory}/x`,
+    gitOver(spawn).changedSince({ repoRoot: REPO_ROOT, baseRevision: "no-such-revision" });
+
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns git-failed when the worktree diff fails", () => {
+    const changedListing = gitOver(
+      vi.fn<GitSpawn>().mockReturnValueOnce(EXITED_EMPTY).mockReturnValueOnce(ERRORED_ON_BUFFER),
+    ).changedSince({ repoRoot: REPO_ROOT, baseRevision: "base" });
+
+    expect(changedListing).toEqual({
+      outcome: "failed",
+      error: {
+        kind: "git-failed",
+        command: "git -C /repo diff --name-only -z HEAD",
+        detail: "spawnSync git ENOBUFS",
+      },
     });
-
-    expect(readdirSync(outputDirectory)).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import { posix, resolve } from "node:path";
+import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
 import type { Result } from "../values/result.ts";
@@ -54,13 +54,33 @@ const absolutePathOfFileUrl = (request: {
   }
 };
 
-export const createPathPort = (_options: Record<string, never>): PathPort => ({
+export type WorkingDirectory = (request: Record<string, never>) => string;
+
+const absoluteFormOf = (request: {
+  readonly path: string;
+  readonly workingDirectory: WorkingDirectory;
+}): string =>
+  posix.isAbsolute(request.path)
+    ? posix.normalize(request.path)
+    : posix.resolve(request.workingDirectory({}), request.path);
+
+export const createPathPort = (options: {
+  readonly workingDirectory: WorkingDirectory;
+}): PathPort => ({
   join: (request) => posix.join(...request.segments),
   relative: (request) => posix.relative(request.from, request.to),
   directoryOf: (request) => posix.dirname(request.path),
-  resolve: (request) => absolutePathSchema.parse(resolve(request.path)),
+  resolve: (request) =>
+    absolutePathSchema.parse(
+      absoluteFormOf({ path: request.path, workingDirectory: options.workingDirectory }),
+    ),
   fromFileUrl: (request) =>
     URL.canParse(request.url) && new URL(request.url).protocol === "file:"
       ? absolutePathOfFileUrl({ url: request.url })
       : notAFileUrl({ url: request.url, detail: "the text is not a file: URL" }),
 });
+
+export const defaultWorkingDirectory: WorkingDirectory = () => process.cwd();
+
+export const createDefaultPathPort = (_options: Record<string, never>): PathPort =>
+  createPathPort({ workingDirectory: defaultWorkingDirectory });

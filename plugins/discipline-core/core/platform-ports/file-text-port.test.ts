@@ -1,92 +1,119 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { createFileTextPort } from "./file-text-port.ts";
+import { describe, expect, it, vi } from "vitest";
+import { createFileTextPort, type FileSystemSurface } from "./file-text-port.ts";
 
-const created: string[] = [];
+const PATH = "/repo/a.ts";
 
-const newDirectory = (): string => {
-  const directory = mkdtempSync(join(tmpdir(), "discipline-core-file-text-"));
-  created.push(directory);
-  return directory;
-};
+const fileSystemOver = (surface: Partial<FileSystemSurface>): FileSystemSurface => ({
+  readText: vi.fn(),
+  writeText: vi.fn(),
+  access: vi.fn(),
+  ...surface,
+});
 
-afterEach(() => {
-  created.splice(0).forEach((directory) => {
-    rmSync(directory, { recursive: true, force: true });
+describe("createFileTextPort read", () => {
+  it("reads a file's text as ok", () => {
+    const readOutcome = createFileTextPort({
+      fileSystem: fileSystemOver({
+        readText: vi.fn<FileSystemSurface["readText"]>().mockReturnValue("export const a = 1;\n"),
+      }),
+    }).read({ path: PATH });
+
+    expect(readOutcome).toEqual({ outcome: "ok", value: "export const a = 1;\n" });
+  });
+
+  it("reads the requested path", () => {
+    const readText = vi.fn<FileSystemSurface["readText"]>().mockReturnValue("");
+
+    createFileTextPort({ fileSystem: fileSystemOver({ readText }) }).read({ path: PATH });
+
+    expect(readText).toHaveBeenCalledWith({ path: "/repo/a.ts" });
+  });
+
+  it("reads as unreadable with the path and the thrown message when reading throws", () => {
+    const readOutcome = createFileTextPort({
+      fileSystem: fileSystemOver({
+        readText: vi
+          .fn<FileSystemSurface["readText"]>()
+          .mockThrow(new Error("ENOENT: no such file or directory")),
+      }),
+    }).read({ path: PATH });
+
+    expect(readOutcome).toEqual({
+      outcome: "failed",
+      error: { kind: "unreadable", path: "/repo/a.ts", detail: "ENOENT: no such file or directory" },
+    });
+  });
+
+  it("reads as unreadable with the thrown value's text when a non-Error is thrown", () => {
+    const readOutcome = createFileTextPort({
+      fileSystem: fileSystemOver({
+        readText: vi.fn<FileSystemSurface["readText"]>().mockThrow("EACCES"),
+      }),
+    }).read({ path: PATH });
+
+    expect(readOutcome).toMatchObject({ outcome: "failed", error: { detail: "EACCES" } });
   });
 });
 
-describe("createFileTextPort", () => {
-  it("reads a file's text as ok", () => {
-    const path = join(newDirectory(), "a.ts");
-    writeFileSync(path, "export const a = 1;\n");
-
-    const result = createFileTextPort({}).read({ path });
-
-    expect(result).toEqual({ outcome: "ok", value: "export const a = 1;\n" });
+describe("createFileTextPort exists", () => {
+  it("reports a path the file system can access as present", () => {
+    expect(
+      createFileTextPort({ fileSystem: fileSystemOver({}) }).exists({ path: PATH }),
+    ).toBe("present");
   });
 
-  it("reads a missing file as unreadable with its path", () => {
-    const path = join(newDirectory(), "missing.ts");
+  it("checks access to the requested path", () => {
+    const access = vi.fn<FileSystemSurface["access"]>();
 
-    const result = createFileTextPort({}).read({ path });
+    createFileTextPort({ fileSystem: fileSystemOver({ access }) }).exists({ path: PATH });
 
-    expect(result).toMatchObject({
-      outcome: "failed",
-      error: { kind: "unreadable", path },
+    expect(access).toHaveBeenCalledWith({ path: "/repo/a.ts" });
+  });
+
+  it("reports a path whose access throws as absent", () => {
+    expect(
+      createFileTextPort({
+        fileSystem: fileSystemOver({
+          access: vi.fn<FileSystemSurface["access"]>().mockThrow(new Error("ENOENT")),
+        }),
+      }).exists({ path: PATH }),
+    ).toBe("absent");
+  });
+});
+
+describe("createFileTextPort write", () => {
+  it("writes the text to the requested path", () => {
+    const writeText = vi.fn<FileSystemSurface["writeText"]>();
+
+    createFileTextPort({ fileSystem: fileSystemOver({ writeText }) }).write({
+      path: PATH,
+      text: "written\n",
     });
-  });
 
-  it("reads a missing file with a non-empty detail", () => {
-    const path = join(newDirectory(), "missing.ts");
-
-    const result = createFileTextPort({}).read({ path });
-
-    expect(result).toMatchObject({
-      outcome: "failed",
-      error: { detail: expect.stringMatching(/.+/) },
-    });
-  });
-
-  it("reports an existing file as existing", () => {
-    const path = join(newDirectory(), "a.ts");
-    writeFileSync(path, "");
-
-    expect(createFileTextPort({}).exists({ path })).toBe(true);
-  });
-
-  it("reports a missing file as not existing", () => {
-    const path = join(newDirectory(), "missing.ts");
-
-    expect(createFileTextPort({}).exists({ path })).toBe(false);
-  });
-
-  it("writes text that is then on disk", () => {
-    const path = join(newDirectory(), "written.ts");
-
-    createFileTextPort({}).write({ path, text: "written\n" });
-
-    expect(readFileSync(path, "utf8")).toBe("written\n");
+    expect(writeText).toHaveBeenCalledWith({ path: "/repo/a.ts", text: "written\n" });
   });
 
   it("returns ok from a successful write", () => {
-    const path = join(newDirectory(), "written.ts");
+    const writeOutcome = createFileTextPort({ fileSystem: fileSystemOver({}) }).write({
+      path: PATH,
+      text: "written\n",
+    });
 
-    const result = createFileTextPort({}).write({ path, text: "written\n" });
-
-    expect(result).toEqual({ outcome: "ok", value: undefined });
+    expect(writeOutcome).toEqual({ outcome: "ok", value: undefined });
   });
 
-  it("writes into a missing directory as unwritable with its path", () => {
-    const path = join(newDirectory(), "absent", "written.ts");
+  it("writes as unwritable with the path and the thrown message when writing throws", () => {
+    const writeOutcome = createFileTextPort({
+      fileSystem: fileSystemOver({
+        writeText: vi
+          .fn<FileSystemSurface["writeText"]>()
+          .mockThrow(new Error("ENOENT: no such file or directory")),
+      }),
+    }).write({ path: PATH, text: "written\n" });
 
-    const result = createFileTextPort({}).write({ path, text: "written\n" });
-
-    expect(result).toMatchObject({
+    expect(writeOutcome).toEqual({
       outcome: "failed",
-      error: { kind: "unwritable", path, detail: expect.stringMatching(/.+/) },
+      error: { kind: "unwritable", path: "/repo/a.ts", detail: "ENOENT: no such file or directory" },
     });
   });
 });

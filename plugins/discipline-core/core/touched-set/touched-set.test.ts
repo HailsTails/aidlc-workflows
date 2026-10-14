@@ -52,7 +52,7 @@ describe("computeTouchedSet", () => {
   });
 
   it("asks git for the changes since the given base under the given root", () => {
-    const changedSince = vi.fn(okPaths);
+    const changedSince = vi.fn<GitPort["changedSince"]>().mockReturnValue(okPaths());
 
     computeTouchedSet({
       repoRoot: REPO_ROOT,
@@ -80,7 +80,7 @@ describe("computeTouchedSet", () => {
   });
 
   it("does not run git when no base revision is given", () => {
-    const changedSince = vi.fn(okPaths);
+    const changedSince = vi.fn<GitPort["changedSince"]>().mockReturnValue(okPaths());
 
     computeTouchedSet({
       repoRoot: REPO_ROOT,

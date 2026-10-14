@@ -33,12 +33,12 @@ const REFUSED = [
 ];
 
 describe("isRepoPathText", () => {
-  it.each(ACCEPTED)("holds for %j", (text) => {
-    expect(isRepoPathText({ text })).toBe(true);
+  it.each(ACCEPTED)("is repo-path for %j", (text) => {
+    expect(isRepoPathText({ text })).toBe("repo-path");
   });
 
-  it.each(REFUSED)("does not hold for %j", (text) => {
-    expect(isRepoPathText({ text })).toBe(false);
+  it.each(REFUSED)("is not-repo-path for %j", (text) => {
+    expect(isRepoPathText({ text })).toBe("not-repo-path");
   });
 });
 

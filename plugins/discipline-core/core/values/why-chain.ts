@@ -31,18 +31,27 @@ const MINIMUM_ANSWER_CHARACTERS = 12;
 const MINIMUM_OWNER_CHARACTERS = 2;
 const ONE_REPEATED_CHARACTER = /^(.)\1+$/;
 
-const restatesTheException = (request: {
+const rootCauseReading = (request: {
   readonly rootCause: string;
-}): boolean => RESTATEMENT_OPENING.test(request.rootCause.trim());
+}): "restates-the-exception" | "names-a-cause" =>
+  RESTATEMENT_OPENING.test(request.rootCause.trim())
+    ? "restates-the-exception"
+    : "names-a-cause";
 
-const isSubstantive = (request: { readonly answer: string }): boolean =>
+const answerSubstance = (request: {
+  readonly answer: string;
+}): "substantive" | "placeholder" =>
   request.answer.trim().length >= MINIMUM_ANSWER_CHARACTERS &&
-  !ONE_REPEATED_CHARACTER.test(request.answer.trim());
+  !ONE_REPEATED_CHARACTER.test(request.answer.trim())
+    ? "substantive"
+    : "placeholder";
 
 const substantiveTextSchema = (request: { readonly refusal: string }) =>
   z
     .string({ error: request.refusal })
-    .refine((answer) => isSubstantive({ answer }), { error: request.refusal });
+    .refine((answer) => answerSubstance({ answer }) === "substantive", {
+      error: request.refusal,
+    });
 
 const WHY_QUESTION_MISSING = "is missing its `why` question";
 const ROOT_CAUSE_REQUIRED =
@@ -76,11 +85,11 @@ export const whyChainSchema: z.ZodType<WhyChain> = z.object(
     }),
     rootCause: z
       .string({ error: ROOT_CAUSE_REQUIRED })
-      .refine((answer) => isSubstantive({ answer }), {
+      .refine((answer) => answerSubstance({ answer }) === "substantive", {
         error: ROOT_CAUSE_REQUIRED,
         abort: true,
       })
-      .refine((rootCause) => !restatesTheException({ rootCause }), {
+      .refine((rootCause) => rootCauseReading({ rootCause }) === "names-a-cause", {
         error: "`whyChain.rootCause` restates the exception rather than naming its cause",
       }),
     owner: z

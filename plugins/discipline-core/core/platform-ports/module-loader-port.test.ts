@@ -1,60 +1,45 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { createModuleLoaderPort } from "./module-loader-port.ts";
+import { describe, expect, it, vi } from "vitest";
+import { createModuleLoaderPort, type ImportModule } from "./module-loader-port.ts";
 
-const created: string[] = [];
-
-const newDirectory = (): string => {
-  const directory = mkdtempSync(join(tmpdir(), "discipline-core-module-"));
-  created.push(directory);
-  return directory;
-};
-
-afterEach(() => {
-  created.splice(0).forEach((directory) => {
-    rmSync(directory, { recursive: true, force: true });
-  });
-});
+const PATH = "/install/mechanisms/walker/runner/runner.ts";
 
 describe("createModuleLoaderPort", () => {
-  it("loads a TypeScript module and returns its namespace", async () => {
-    const path = join(newDirectory(), "probe-module.ts");
-    writeFileSync(path, 'export const marker: string = "loaded";\n');
+  it("returns the imported namespace as ok", async () => {
+    const loadOutcome = await createModuleLoaderPort({
+      importModule: vi.fn<ImportModule>().mockResolvedValue({ marker: "loaded" }),
+    }).load({ path: PATH });
 
-    const result = await createModuleLoaderPort({}).load({ path });
-
-    expect(result).toMatchObject({
-      outcome: "ok",
-      value: { marker: "loaded" },
-    });
+    expect(loadOutcome).toEqual({ outcome: "ok", value: { marker: "loaded" } });
   });
 
-  it("loads a missing file as module-unloadable with its path", async () => {
-    const path = join(newDirectory(), "missing-module.ts");
+  it("imports the requested path", async () => {
+    const importModule = vi.fn<ImportModule>().mockResolvedValue({});
 
-    const result = await createModuleLoaderPort({}).load({ path });
+    await createModuleLoaderPort({ importModule }).load({ path: PATH });
 
-    expect(result).toMatchObject({
+    expect(importModule).toHaveBeenCalledWith({ path: "/install/mechanisms/walker/runner/runner.ts" });
+  });
+
+  it("loads as module-unloadable with the path and message when the import rejects", async () => {
+    const loadOutcome = await createModuleLoaderPort({
+      importModule: vi.fn<ImportModule>().mockRejectedValue(new Error("evaluation failed")),
+    }).load({ path: PATH });
+
+    expect(loadOutcome).toEqual({
       outcome: "failed",
       error: {
         kind: "module-unloadable",
-        path,
-        detail: expect.stringMatching(/.+/),
+        path: "/install/mechanisms/walker/runner/runner.ts",
+        detail: "evaluation failed",
       },
     });
   });
 
-  it("loads a module that throws on evaluation as module-unloadable", async () => {
-    const path = join(newDirectory(), "throwing-module.ts");
-    writeFileSync(path, 'throw new Error("evaluation failed");\n');
+  it("loads as module-unloadable with the rejected value's text when a non-Error rejects", async () => {
+    const loadOutcome = await createModuleLoaderPort({
+      importModule: vi.fn<ImportModule>().mockRejectedValue("cannot find module"),
+    }).load({ path: PATH });
 
-    const result = await createModuleLoaderPort({}).load({ path });
-
-    expect(result).toMatchObject({
-      outcome: "failed",
-      error: { kind: "module-unloadable", path },
-    });
+    expect(loadOutcome).toMatchObject({ outcome: "failed", error: { detail: "cannot find module" } });
   });
 });
