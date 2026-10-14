@@ -29,6 +29,9 @@ if (hostFile === outputFile || !existsSync(hostFile)) {
 if (!pluginPath || !existsSync(resolve(dirname(outputFile), pluginPath))) {
   throw new Error("the local CD-14 plugin path must resolve beside the output config");
 }
+if (engine === "biome" && dirname(hostFile) !== dirname(outputFile)) {
+  throw new Error("keep the Biome host and output in the same directory to preserve relative config paths");
+}
 const host = JSON.parse(readFileSync(hostFile, "utf8"));
 const composed = engine === "oxlint"
   ? oxlintCd14({ projectDir, host, pluginPath })

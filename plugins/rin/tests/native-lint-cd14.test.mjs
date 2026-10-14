@@ -76,3 +76,17 @@ test("Biome carve excludes the exact file but retains a nested suffix match", ()
     rmSync(temporary, { recursive: true, force: true });
   }
 });
+
+test("Biome keeps selected host extends at the composed root", () => {
+  const host = { extends: ["./cd42.biome.json", "./cd44.biome.json"] };
+  const config = biomeCd14({
+    projectDir: process.cwd(), hostPath: "./biome.host.json", host,
+    pluginPath: "./no-class-authoring.grit", includes: ["**/*.ts"],
+  });
+  expect(config.extends).toEqual(["./cd42.biome.json", "./cd44.biome.json", "./biome.host.json"]);
+  expect(host.extends).toEqual(["./cd42.biome.json", "./cd44.biome.json"]);
+  expect(() => biomeCd14({
+    projectDir: process.cwd(), hostPath: "./biome.host.json", host: { extends: "//" },
+    pluginPath: "./no-class-authoring.grit", includes: ["**/*.ts"],
+  })).toThrow("array of explicit config paths");
+});

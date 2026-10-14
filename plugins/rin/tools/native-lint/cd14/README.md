@@ -82,6 +82,10 @@ overrides to host data. Biome extends the host and scopes its one CD-14 Grit fil
 with `plugins[].includes`, including negative globs for carved files. The host's
 built-in lint rules still run on carved files. Do not put the same CD-14 Grit
 plugin in the host config: Biome concatenates plugin arrays under `extends`.
+Biome does not follow an extended host's own `extends` recursively. The composer
+copies that explicit path array to the generated root before the host, retaining
+the host's final overrides. Keep host and output in the same directory so relative
+paths retain their meaning; `extends: "//"` is unsupported by this composer.
 
 ## Governance and composition boundary
 

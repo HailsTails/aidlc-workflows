@@ -80,6 +80,10 @@ export function biomeCd14({ projectDir, hostPath, host, pluginPath, includes }) 
       (host.plugins ?? []).some((item) => (typeof item === "string" ? item : item.path) === pluginPath)) {
     throw new Error("Biome needs a separate host config and one new CD-14 Grit plugin");
   }
+  const hostExtends = host.extends ?? [];
+  if (!Array.isArray(hostExtends) || !hostExtends.every((entry) => nonempty(entry) && entry !== "//")) {
+    throw new Error("Biome host extends must be an array of explicit config paths");
+  }
   const carvedFiles = cd14CarvedFiles(projectDir);
   const root = resolve(projectDir).split(sep).join("/");
   if (carvedFiles.length > 0 && /[*?![\]{}]/u.test(root)) {
@@ -87,7 +91,8 @@ export function biomeCd14({ projectDir, hostPath, host, pluginPath, includes }) 
   }
   return {
     $schema: "https://biomejs.dev/schemas/2.5.15/schema.json",
-    extends: [hostPath],
+    // Biome does not recursively follow extends in an extended host config.
+    extends: [...hostExtends, hostPath],
     plugins: [{
       path: pluginPath,
       includes: [
