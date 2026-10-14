@@ -4,8 +4,11 @@ Trial selected Rin code disciplines using generated artifacts and your normal li
 typecheck and test commands. This is a **manual copy recipe**, not a plugin-selector
 mode. The Rin plugin declares a dependency on AIDLC core; its full installer is
 [documented separately](https://github.com/HailsTails/aidlc-workflows/blob/main/docs/guide/rin-fork-installation.md).
-This recipe installs no AIDLC stages, scopes, hooks, Rin gates, private services,
-MCP servers or workflow runtime. Copying prose does not activate enforcement.
+The basic knowledge-copy recipe installs no AIDLC stages, scopes, hooks, Rin gates,
+private services, MCP servers or workflow runtime. The optional direct-tool recipe
+below copies an entire generated tools tree, including inert files outside the CD
+walkers; it does not register or run those files. Copying prose does not activate
+enforcement.
 
 The layers are separate: copied knowledge requires an explicit agent read;
 consumer lint/type checks enforce only when invoked; automatic edit-triggered
@@ -28,7 +31,7 @@ source pin is a public fork revision, not an upstream release badge.
   read -r -p 'Existing consumer repository directory: ' consumer
   consumer=$(cd "$consumer" && pwd)
   git clone https://github.com/HailsTails/aidlc-workflows.git "$source_checkout"
-  git -C "$source_checkout" checkout --detach d4dff7f148fd92bb6452ae830731aa261cca8166
+  git -C "$source_checkout" checkout --detach 3e90a545b081a4633060bec86c9379252e10b43c
   source_checkout=$(cd "$source_checkout" && pwd)
   cd "$source_checkout"
   bun install --frozen-lockfile
@@ -46,8 +49,9 @@ source pin is a public fork revision, not an upstream release badge.
 
 The subshell stops on failure and leaves your original shell directory unchanged.
 Run the later consumer commands from your consumer repository. `cp -i` asks before
-replacement; decline unless you have reviewed the existing file. Copy only the
-selected knowledge files, not the projection's stages, hooks, scopes or tools.
+replacement; decline unless you have reviewed the existing file. The basic path
+copies only selected knowledge files, not stages, hooks, scopes or tools. The
+optional direct-tool path is below.
 Replace the three filenames in the cp command inside the subshell with your chosen canonical files after reading the inventory. The projection/destination variables are local to that subshell. To copy all atomic artifacts for an explicit review library, the existing shell operation is `cp -i "$projection/knowledge/aidlc-shared/code-discipline"/cd-*.md "$destination/"`; the three collapsed IDs are redirects to their owners, not extra active rules. Also copy `standalone-adoption.md`, `standalone-linter-options.md` and `standalone-cd-inventory.md` from that generated directory if you want these guides beside the library. This does not select checks or activate native discovery.
 
 For Codex or Claude, build `codex` or `claude` instead and use `.codex/knowledge/aidlc-shared/code-discipline`
@@ -84,7 +88,7 @@ Read the selected files in full and record scope in your existing project instru
 | --- | --- | --- |
 | CD-1 | Biome 2.4.16 `noExplicitAny` and `noImplicitAnyLet`, errors on configured TS/TSX files | Not proof against all semantic propagation of `any`; CD-1 permits no carve-outs |
 | CD-3 | Existing TypeScript compilation with seven flags below | Review effective inheritance and future config edits; ordinary compilation does not prevent weakening flags |
-| CD-46, optional | None installed here | Whole touched exempt file must comply with its exempted rule and retire its exemption in the same change; never exempt CD-46 itself |
+| CD-46, optional | Manual in the basic path; optional direct decay CLI below | Whole touched exempt file must comply with its exempted rule and retire its exemption in the same change; never exempt CD-46 itself |
 
 For an API, boundary validation (CD-4/45), result-shaped failures (CD-9/10/11) and
 inward dependency direction (CD-12/13) may be useful next **manual** selections.
@@ -196,6 +200,127 @@ property/array mutation; `noStaticOnlyClass` does not ban all authored classes;
 complexity limits do not prove orchestration-only bodies. Passing ordinary tests
 also does not prove test isolation, boundary placement or all-discipline compliance.
 
+### Optional: run the existing Rin inventory tools directly
+
+Choose this only if you want Rin's **fixed aggregate CD walker**, carve-out decay
+check and hermetic-test guard alongside your consumer-owned lint/type/test tools.
+The aggregate walker cannot select individual CD IDs and is not an all-CD or CD-1
+checker. It can surface findings for disciplines outside your selected reading
+set. Inventory those findings before making this a required check. There is no
+supported slim CD-tools package yet: the existing TypeScript walker imports a
+sensor-named helper, so manually pruning the generated tree is not a supported
+install. This is a manual full-tools copy, not the full Rin/AIDLC install. It
+does not register stages, hooks, scopes or sensors, and it does not run the other
+copied gate/sensor files. Bun is needed to invoke these tools; the consumer keeps
+its own package manager and scripts.
+
+After completing step 1, run this Bash block from outside the consumer repo.
+Enter the **same pinned** producer checkout and an existing consumer checkout.
+It stops if a tools directory already exists; compare and plan ownership before
+replacing an existing installation. The example targets Cursor; for another
+harness, use its matching projection and destination directory.
+
+```bash
+(
+  set -e
+  read -r -p 'Pinned source checkout directory: ' source_checkout
+  read -r -p 'Existing consumer repository directory: ' consumer
+  source_checkout=$(cd "$source_checkout" && pwd)
+  consumer=$(cd "$consumer" && pwd)
+  test "$(git -C "$source_checkout" rev-parse HEAD)" = '3e90a545b081a4633060bec86c9379252e10b43c'
+  projection="$source_checkout/dist/plugins/rin/cursor"
+  test -f "$projection/tools/rin-harness-constitution-audit.ts"
+  test -f "$projection/tools/rin-harness-sensor-cd-extras.ts"
+  test ! -e "$consumer/.cursor/tools"
+  test ! -L "$consumer/.cursor/tools"
+  mkdir -p "$consumer/.cursor"
+  cp -R "$projection/tools" "$consumer/.cursor/tools"
+)
+```
+
+To scan the intended paths in this example monorepo, add a consumer-owned
+`harness.config.json` at the repo root. The CLIs also run without one, but fall
+back to a narrower default scope. Review an existing config rather than
+replacing it. For the example workspace,
+adapt this valid skeleton to the **actual** API, browser, shared and test paths:
+
+```json
+{
+  "projectName": "example-api-and-react",
+  "defaultScope": "standalone-cd",
+  "rulesetRoot": ".cursor/knowledge/aidlc-shared",
+  "stageGraph": "not-installed-in-standalone-trial",
+  "packageManager": { "primary": "pnpm", "runnerAllowlist": ["pnpm"] },
+  "constitution": {
+    "include": ["apps/api/src/**", "apps/web/src/**", "packages/shared/src/**", "scripts/**"],
+    "exclude": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/coverage/**", "**/.git/**", "**/.cursor/**"],
+    "scriptGlobs": ["scripts/**"]
+  },
+  "rinGates": { "exceptionWhyChains": false }
+}
+```
+
+`stageGraph` is a required config field, not an installed stage in this direct
+tool trial. Change `packageManager` and paths to match the consumer. Keep test
+files in the included paths. The walker's `scriptGlobs` treatment relaxes most
+non-script CD checks under `scripts/**`; keep consumer lint and manual review for
+that population, and do not count it as full aggregate coverage. Run
+`bun .cursor/tools/rin-harness-config.ts print`
+and inspect the resolved scope: a missing/malformed config can fall back to a
+narrow root/default scan. In the synthetic API + React trial, that default scan
+found one root TS file while the explicit config scanned 16. A zero-findings
+result from an empty or wrong scan is not adoption evidence.
+
+From the consumer root, run its **existing** lint command and the direct tools
+sequentially. This local trial uses `HEAD` only while changes are uncommitted:
+
+```bash
+pnpm lint && \
+bun .cursor/tools/rin-harness-constitution-audit.ts --project-dir . && \
+bun .cursor/tools/rin-harness-carve-out-decay.ts --project-dir . --base-ref HEAD && \
+bun .cursor/tools/rin-harness-hermetic-git-guard.ts --project-dir . --minimum-test-files 1
+```
+
+Use the consumer's real package-manager command in place of `pnpm lint`. If a
+repo has no hermetic-test population yet, omit the optional floor and record that
+the guard's default floor is **zero**; a pass with zero scanned tests does not
+establish test coverage. For committed branch changes or CI, use the fetched,
+resolvable PR base, such as `--base-ref origin/main`, instead of `HEAD`; otherwise
+the decay check can miss already-committed touches. Append these three `bun`
+commands with `&&` to the consumer's existing `lint:ci`/validation chain (or its
+equivalent CI step), after its existing lint/type/test commands as appropriate.
+Preserve its existing lint engine, scripts and failure status. The CLI exit codes
+are the gate here; copying tools or prose alone runs nothing. The aggregate audit
+and decay checks return nonzero on findings; the hermetic guard returns nonzero on
+findings or a chosen positive floor failure.
+
+For inherited aggregate findings, add only reviewed, rule-specific initial-debt
+records under `.constitution-carve-outs/cd-<id>.json`. Each file is a JSON array,
+for example:
+
+```json
+[
+  {
+    "files": ["apps/api/src/legacy-handler.ts"],
+    "reason": "Inherited finding recorded during standalone adoption",
+    "decision": "Initial adoption inventory accepted by API owner on YYYY-MM-DD; retire on touch"
+  }
+]
+```
+
+Replace the owner/date example with the actual reviewer and decision provenance.
+Initial adoption debt does **not** require Five Whys. The example config keeps
+the optional exception-why-chain gate off. Do not carve out CD-1 or CD-46, and
+do not put an unrelated file in an exemption just to turn the audit green.
+`.constitution-authorised-locations/cd-<id>.json` is a separate structural
+authorization mechanism, not an initial-debt shortcut. CD-46's direct decay
+check fails if an exempt file is touched; correct the **whole file** against its
+recorded rule and remove that file from the sidecar in the same change. Review
+the aggregate findings manually: neither a clean walker nor a carve-out proves
+every selected discipline. Update/remove copied tools only after comparing
+source revisions, consumer config and sidecar ownership; there is no selective
+installer ownership or automatic upgrade/removal for this copy path.
+
 ## 4. Prove one failure and correction
 
 In your isolated trial branch choose an unused file inside the selected scope.
@@ -237,7 +362,25 @@ A separate new Bun-managed fixture verified the exact Bun dependency command and
 Its `.test.ts` probe also failed with explicit `any` and passed with `unknown`.
 Linux/macOS/WSL portability is based on Bash syntax and existing tooling, not an
 execution claim for those platforms. No native automatic loading, live sensor
-feedback, automatic CD-46 or all-discipline enforcement was proved.
+feedback or all-discipline enforcement was proved by that basic copy trial.
+
+The optional direct-tool trial used the exact producer revision
+`3e90a545b081a4633060bec86c9379252e10b43c` and a separate ordinary
+synthetic TS API + React clone on Windows. The existing packager generated the
+Cursor Rin projection; copying its entire `tools/` tree supplied the aggregate
+walker's imported helper. An explicit config scanned 16 existing TS files and
+initially reported 19 inherited findings. Seven reviewed, rule-specific debt
+sidecars made the initial inventory pass without Five Whys. A deliberate CD-15
+`for...of` violation failed the aggregate audit; correcting it made the same
+audit pass. Touching a carved CD-44 file failed the CD-46 decay check; paying
+down that whole file and removing its sidecar made it pass. The hermetic guard
+scanned eight test files. The aggregate walker did **not** detect a deliberate
+explicit `any`; the consumer's existing Biome lint failed on it, then passed
+after `unknown` replaced it. Finally, the consumer's existing `pnpm check`
+passed lint, three package typechecks/builds and 31 tests. This proves direct
+CLI behavior in that fixture, not a slim tools install, native rule loading or
+complete discipline enforcement.
+
 ## 5. Fresh-chat use; update/remove safely
 
 Commit the copied projected files, source pin, explicit scope/coverage, initial
@@ -247,9 +390,10 @@ can name the chosen IDs and scope; this is manually prompted use, not automatic
 native loading. The rule text does not activate a linter or compiler check.
 
 Update on a separate branch: build from the new pinned producer, compare selected
-projected files, review configuration/scope, repeat the probe and ordinary checks.
-These selective copies have no installer ownership hashes or automatic upgrades.
-Remove only this trial's copies and chosen config/script/dependency edits after
-review; preserve tools/rules used elsewhere and the consumer's lockfile history.
+projected files and any optional full tools tree, review configuration/scope and
+sidecars, then repeat the probes and ordinary checks. These copies have no
+installer ownership hashes or automatic upgrades. Remove only this trial's
+copies and chosen config/script/dependency edits after review; preserve tools
+or rules used elsewhere and the consumer's lockfile history.
 No core/plugin uninstall command applies to these copies. Native rule projection
 and a true rules-only install/update/removal selection remain backlog gaps.
