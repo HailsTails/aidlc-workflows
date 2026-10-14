@@ -26,6 +26,7 @@ import {
   collectPluginStatus,
   comparePluginState,
   discoverPluginInventory,
+  discoverPluginOperationInventory,
   main as pluginMain,
   normalizeInstalledPlugin,
   pluginSourceHash,
@@ -204,6 +205,47 @@ describe("t242 plugin manifest and hash contract", () => {
 });
 
 describe("t242 fixture-proved host inventories", () => {
+  test("explicit roots remain selectable beside an existing Codex config without a full inventory claim", () => {
+    const root = pluginRoot("codex");
+    const codexHome = temp("aidlc-codex-existing-config-");
+    writeFileSync(join(codexHome, "config.toml"), "# ordinary host configuration\n");
+    process.env.AIDLC_CODEX_HOME = codexHome;
+    process.env.AIDLC_PLUGIN_ROOT = root;
+    delete process.env.PLUGIN_ROOT;
+    delete process.env.CLAUDE_PLUGIN_ROOT;
+    expect(discoverPluginInventory(".codex").installed).toEqual([]);
+    expect(discoverPluginOperationInventory(".codex")).toEqual(expect.objectContaining({
+      capability: "current-root-only", invalid: [],
+      installed: [expect.objectContaining({ key: "test-pro", root, enabled: true })],
+    }));
+  });
+
+  test("conflicting explicit roots cannot make an ambiguous identity selectable", () => {
+    process.env.AIDLC_PLUGIN_ROOT = pluginRoot("codex");
+    process.env.PLUGIN_ROOT = pluginRoot("codex");
+    delete process.env.CLAUDE_PLUGIN_ROOT;
+    const result = discoverPluginOperationInventory(".codex");
+    expect(result.installed).toEqual([]);
+    expect(result.invalid.some((entry) => entry.message.includes("ambiguous"))).toBe(true);
+    expect(result.capability).toBe("current-root-only");
+  });
+
+  test("an explicit root retains a host-disabled identity", () => {
+    const root = pluginRoot("codex");
+    const codexHome = temp("aidlc-codex-disabled-explicit-");
+    const cached = join(codexHome, "plugins/cache/fixture-marketplace/aidlc-test-pro/local");
+    mkdirSync(join(cached, ".."), { recursive: true });
+    cpSync(root, cached, { recursive: true });
+    writeFileSync(join(codexHome, "config.toml"), '[plugins."aidlc-test-pro@fixture-marketplace"]\nenabled = false\n');
+    process.env.AIDLC_CODEX_HOME = codexHome;
+    process.env.AIDLC_PLUGIN_ROOT = root;
+    delete process.env.PLUGIN_ROOT;
+    delete process.env.CLAUDE_PLUGIN_ROOT;
+    expect(discoverPluginOperationInventory(".codex").installed).toEqual([
+      expect.objectContaining({ key: "test-pro", root, enabled: false }),
+    ]);
+  });
+
   test("Claude reads registry v2, exact installPath, and enabledPlugins", () => {
     const root = pluginRoot();
     withClaudeFixture(root);

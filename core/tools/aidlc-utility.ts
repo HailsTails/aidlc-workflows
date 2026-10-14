@@ -403,7 +403,7 @@ import {
 import { AIDLC_VERSION } from "./aidlc-version.ts";
 import {
   copyProjectSurfaces,
-  discoverPluginInventory,
+  discoverPluginOperationInventory,
   projectDiffPlan,
 } from "./aidlc-plugin.ts";
 import { executePlan } from "./aidlc-transaction.ts";
@@ -821,7 +821,7 @@ function knownPluginNames(): string[] {
   for (const name of composedPluginNames(resolveHarnessPath(["tools", "data"]))) {
     names.add(name);
   }
-  for (const plugin of discoverPluginInventory(harnessDir(), resolveProjectDir()).installed) {
+  for (const plugin of discoverPluginOperationInventory(harnessDir(), resolveProjectDir()).installed) {
     if (plugin.enabled) names.add(plugin.key);
   }
   return [...names].sort();
