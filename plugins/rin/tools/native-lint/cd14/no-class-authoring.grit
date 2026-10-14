@@ -1,0 +1,26 @@
+or {
+  JsClassDeclaration() as $class where {
+    ! $program <: contains TsDeclareStatement() as $decl where {
+      $decl <: contains $class
+    },
+    ! $program <: contains `export declare class $name { $body }` as $decl where {
+      $decl <: contains $class
+    },
+    register_diagnostic(
+      span = $class,
+      message = "CD-14: use functions and closure-backed factories instead of authoring a class."
+    )
+  },
+  JsClassExpression() as $class where {
+    register_diagnostic(
+      span = $class,
+      message = "CD-14: use functions and closure-backed factories instead of authoring a class."
+    )
+  },
+  JsClassExportDefaultDeclaration() as $class where {
+    register_diagnostic(
+      span = $class,
+      message = "CD-14: use functions and closure-backed factories instead of authoring a class."
+    )
+  }
+}
