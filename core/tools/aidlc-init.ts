@@ -553,6 +553,7 @@ const ROOT_CONFIG_FLAGS = new Set([
   "--project-dir",
   "--quiet",
   "--release-base-url",
+  "--allow-breaking-refresh",
   "--refresh-open-workflows",
   "--unpin",
   "--verbose",
@@ -900,6 +901,9 @@ function validateRootConfigArgs(argv: readonly string[]): string | null {
   if (argv.includes("--refresh-open-workflows") && argv.some((flag) => ["--force", "--mcp"].includes(flag))) {
     return "--refresh-open-workflows cannot be combined with --force or --mcp";
   }
+  if (argv.includes("--refresh-open-workflows") && argv.includes("--allow-breaking-refresh")) {
+    return "--refresh-open-workflows cannot be combined with --allow-breaking-refresh";
+  }
   if (argv.includes("--show")) return validateRootShowArgs(argv);
   const hasPin = argv.includes("--pin");
   const hasUnpin = argv.includes("--unpin");
@@ -944,7 +948,7 @@ function validateRootConfigArgs(argv: readonly string[]): string | null {
       ? [...commonBare, "--offline"]
       : hasUnpin
       ? [...commonBare, "--unpin"]
-      : [...commonBare, "--force", "--refresh-open-workflows"],
+      : [...commonBare, "--force", "--refresh-open-workflows", "--allow-breaking-refresh"],
   );
   if (!hasPin && !hasUnpin) {
     const download = validateDownloadArgs(argv, true);
@@ -8582,13 +8586,14 @@ function ownedFileHash(path: string, known: readonly (string | undefined)[]): { 
   return known.includes(asShipped) ? { hash: asShipped, switched: true } : { hash, switched: false };
 }
 
-function assertRefreshSafe(projectDir: string): void {
+// A refresh planned with no open work skipped the compatibility check, so a
+// workflow opened before it lands would be refreshed unchecked.
+function assertNoWorkflowOpenedSincePlan(projectDir: string): void {
   const activeWorkflows = activeWorkflowDescriptions(projectDir);
   if (activeWorkflows.length === 0) return;
   throw new Error(
-    `refusing to refresh while ${activeWorkflows.length} workflow(s) are active: ${
-      activeWorkflows.join(", ")
-    }. Complete the workflow before rerunning aidlc config; update and use do not modify project files.`,
+    `a workflow opened after this refresh was planned: ${activeWorkflows.join(", ")}. ` +
+      "Run aidlc config again so the refresh is checked against open work, or add --allow-breaking-refresh.",
   );
 }
 
@@ -11336,6 +11341,7 @@ export async function main(
         "--plan-token",
         "--quiet",
         "--refresh-open-workflows",
+        "--allow-breaking-refresh",
         "--unpin",
         "--yes",
       ].includes(token)
@@ -11358,6 +11364,7 @@ export async function main(
         "--plan-token",
         "--quiet",
         "--refresh-open-workflows",
+        "--allow-breaking-refresh",
         "--unpin",
         "--yes",
       ].includes(token)
@@ -11399,6 +11406,7 @@ export async function main(
   let selected: ConfigSource | null = null;
   let prepared: PreparedRefreshSource | null = null;
   const refreshOpenWorkflows = argv.includes("--refresh-open-workflows");
+  const allowBreakingRefresh = argv.includes("--allow-breaking-refresh");
   // The release this run found missing, the download it fetched, and what it
   // tells the user about where the source came from.
   let activeNeed: ReleaseNeed | null = null;
@@ -11700,7 +11708,21 @@ export async function main(
       }
     }
     const refreshing = Boolean(existing.distribution || switchingFrom);
-    if (refreshing && !refreshOpenWorkflows) assertRefreshSafe(projectDir);
+    // Open work never blocks a refresh. It selects the compatibility check,
+    // which keeps aidlc/ read-only and refuses only a state-schema or
+    // workflow-contract change; --allow-breaking-refresh lets those through.
+    const compatibleRefreshRequired = refreshOpenWorkflows ||
+      (refreshing && !allowBreakingRefresh && activeWorkflowDescriptions(projectDir).length > 0);
+    if (compatibleRefreshRequired && !refreshOpenWorkflows) {
+      const bypass = ["--force", "--mcp"].filter((flag) => argv.includes(flag));
+      if (bypass.length > 0) {
+        throw new Error(
+          `${bypass.join(" and ")} cannot be checked against open work (${
+            activeWorkflowDescriptions(projectDir).join(", ")
+          }). Rerun without ${bypass.join(" or ")}, or add --allow-breaking-refresh to refresh unchecked.`,
+        );
+      }
+    }
     const switchedRows = switchingFrom ? { from: switchingFrom.distribution, to: stamp.distribution } : undefined;
     for (const sibling of installed) {
       if (sibling.harnessDir === descriptor.harnessDir) continue;
@@ -11784,7 +11806,7 @@ export async function main(
       projectedSettings.models,
       modelHarness(stamp.distribution),
     );
-    const workspaceMode = refreshOpenWorkflows ? "read-only" : "seed";
+    const workspaceMode = compatibleRefreshRequired ? "read-only" : "seed";
     prepared = prepareRefreshSource({
       projectDir, sourceRoot: selected.root, descriptor, prior, modelPolicy: projectedPolicy,
       projectFlags: projectedSettings.flags, recordOnly,
@@ -12108,7 +12130,7 @@ export async function main(
       emitResult(failure(ruleInputValidation.message, EXIT.integrity, configCommand("--dry-run --json")), options);
       return;
     }
-    const compatibleRefresh = refreshOpenWorkflows
+    const compatibleRefresh = compatibleRefreshRequired
       ? planCompatibleRefresh({ projectDir, sourceRoot: prepared.root, harnessDir: descriptor.harnessDir, plan })
       : null;
     if (compatibleRefresh?.kind === "refused") {
@@ -12321,7 +12343,7 @@ export async function main(
       ? withAuditLock(
           projectDir,
           () => {
-            if (!refreshOpenWorkflows) assertRefreshSafe(projectDir);
+            if (!compatibleRefreshRequired && !allowBreakingRefresh) assertNoWorkflowOpenedSincePlan(projectDir);
             return executeSettingsAndProjectMutation(settingsMutation, plan, projectChecks);
           },
           undefined,

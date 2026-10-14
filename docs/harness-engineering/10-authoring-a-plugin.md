@@ -295,8 +295,8 @@ sensor implementations must already be installed.
    also lists stock IDs, omits a manual addition, or accompanies unrelated stage
    edits cannot earn that proof; normal refresh still refuses those edits.
 3. Preview normal `config --from <stock-core> --project-dir <project> --dry-run`.
-   With open workflows, add the existing `--refresh-open-workflows` flag and
-   retain its compatibility checks. Review and apply the emitted plan with its
+   With open workflows, config applies its compatibility checks by default;
+   do not add `--allow-breaking-refresh`. Review and apply the emitted plan with its
    `--plan-token`; stop on conflicts or incompatible completion contracts.
 4. Sync candidate Rin and local plugins through their ordinary lifecycle, then
    preview and apply another stock core refresh. Verify the same ordered sensor
