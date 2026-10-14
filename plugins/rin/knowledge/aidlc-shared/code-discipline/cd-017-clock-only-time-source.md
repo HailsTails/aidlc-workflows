@@ -7,6 +7,8 @@ pairs-with: [cd-022]
 amended: [v2.6.0]
 enforced-by:
   - audit:auditConstitution
+  - eslint:no-restricted-syntax
+enforcement-note: "Configured ESLint selectors can flag direct Date.now, performance.now and zero-argument new Date calls; other time sources and clock-port ownership need review."
 status: active
 applies-to: typescript-runtime
 portability: portable

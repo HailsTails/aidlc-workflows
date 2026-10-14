@@ -8,6 +8,9 @@ amended: []
 enforced-by:
   - biome:noExplicitAny
   - biome:noImplicitAnyLet
+  - eslint:@typescript-eslint/no-explicit-any
+  - oxlint:typescript/no-explicit-any
+enforcement-note: "Available ESLint and oxlint rules catch explicit any; TypeScript noImplicitAny and review cover other forms. Copying this file configures none of these checks."
 status: active
 applies-to: typescript
 portability: portable

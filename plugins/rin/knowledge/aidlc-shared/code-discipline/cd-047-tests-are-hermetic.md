@@ -9,6 +9,7 @@ applies-to: universal
 portability: portable
 enforced-by:
   - script:audit:hermetic-git
+enforcement-note: "The Git text guard is a partial check only. Hermeticity across network, filesystem, environment, clocks and other real side effects still needs review."
 aidlc-enforced-by:
   - script:audit:hermetic-git
   - lefthook:audit-hermetic-git

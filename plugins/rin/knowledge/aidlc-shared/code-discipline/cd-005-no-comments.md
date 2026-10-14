@@ -7,6 +7,7 @@ pairs-with: []
 amended: [v2.2.0]
 enforced-by:
   - audit:auditConstitution
+enforcement-note: "The Rin audit recognizes selected directive/comment forms; comment policy, suppression eligibility and decay still need review. Unused-disable lint does not replace that review."
 status: active
 applies-to: universal
 portability: portable

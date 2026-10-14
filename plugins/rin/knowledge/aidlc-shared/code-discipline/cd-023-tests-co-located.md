@@ -8,6 +8,7 @@ collapses: [cd-024]
 amended: []
 enforced-by:
   - audit:auditConstitution
+enforcement-note: "Rin's companion-test check is a presence signal, not proof of substantive unit coverage; review file applicability and actual tested behavior."
 status: active
 applies-to: universal
 portability: portable

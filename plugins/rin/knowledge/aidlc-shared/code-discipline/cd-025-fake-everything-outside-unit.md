@@ -7,6 +7,8 @@ pairs-with: [cd-026]
 amended: []
 enforced-by:
   - audit:auditTestDiscipline
+  - eslint:no-restricted-imports
+enforcement-note: "Test-scoped ESLint restrictions can flag selected direct I/O imports, not transitive effects or whether each collaborator is faked."
 status: active
 applies-to: universal
 portability: portable
