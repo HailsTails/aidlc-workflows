@@ -112,6 +112,7 @@ import {
   personMayApproveOverUnfinishedReview,
   humanTurnMintAllowed,
   hookActivation,
+  hookChildEnv,
   personRepliedSincePresentation,
   personSpokeSinceGate,
   fenceSwitchSentence,
@@ -2689,14 +2690,10 @@ function readEngineUnitDirective(
     const result = spawnSync(command[0], command.slice(1), {
       cwd: pd,
       encoding: "utf-8",
-        env: {
-          ...process.env,
+        env: hookChildEnv(pd, stateSessionOverride, {
           AIDLC_PROJECT_DIR: pd,
           [ROUTE_CHECK_ENV]: "1",
-          ...(stateSessionOverride
-            ? { AIDLC_SESSION_OVERRIDE: stateSessionOverride }
-            : {}),
-      },
+        }),
       timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS,
     });
     if (result.status !== 0) {
@@ -2776,14 +2773,10 @@ function requireEngineRoutedWaveUnit(
     const result = spawnSync(command[0], command.slice(1), {
       cwd: pd,
       encoding: "utf-8",
-        env: {
-          ...process.env,
+        env: hookChildEnv(pd, stateSessionOverride, {
           AIDLC_PROJECT_DIR: pd,
           [ROUTE_CHECK_ENV]: "1",
-          ...(stateSessionOverride
-            ? { AIDLC_SESSION_OVERRIDE: stateSessionOverride }
-            : {}),
-      },
+        }),
       timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS,
     });
     if (result.status !== 0) {

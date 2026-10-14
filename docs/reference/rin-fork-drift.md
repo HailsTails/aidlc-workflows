@@ -407,3 +407,9 @@ remains open; this change reuses existing ownership, inventory and transaction
 mechanisms rather than adding another upgrade framework. Open-workflow refresh
 policy remains a separate Rin choice. No broad upstream sync, Copilot repair,
 or live upstream acceptance is claimed by this Codex adoption test.
+
+## Validated session transport backport
+
+The fork backports upstream [PR #2279](https://github.com/awslabs/aidlc-workflows/pull/2279), merge commit `4f815ffed560cf7b4a6f646c0229dbc3c43d464d`, for [issue #2266](https://github.com/awslabs/aidlc-workflows/issues/2266). The observed Windows preserved-intent failure is the same provenance loss: the orchestrator resolves the real Codex thread, then its state child receives a bare override and interprets it as a stale exported session when process ancestry names another chat. A successful same-intent switch cannot fix that child environment.
+
+Internal orchestrator/state children reuse the existing `hookChildEnv` owner for an already-resolved session. Session resolution and its stale unmarked-override refusal remain unchanged. This transports existing identity; it creates no session ID, person decision, review receipt or security permission. Regression coverage includes reverse unit routing, forward change-request reporting and refusal of an unmarked stale export without a state transition. This is an established upstream fix rather than a new session-transfer framework. The backend's inability to reopen an old placement-format conversation remains a separate host limitation.

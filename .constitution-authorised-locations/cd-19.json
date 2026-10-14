@@ -3,13 +3,19 @@
     "files": [
       "plugins/rin/tools/rin-harness-path-operations.ts"
     ],
-    "reason": "Structural CD19 location: the only Node path import in this module is the boundary adapter that provides pathOperationsFor/defaultPathOperations. The touched constitution scope now consumes this port instead of importing node:path. Review later additions to this file for port confinement; this is not inherited debt."
+    "reason": "Structural CD19 location: defaultPathOperations/pathOperationsFor confines Node path and file-URL conversion behind named string-only PathOperations. Reviewer consumers use this existing adapter; no platform types are exported. The additional module-location capability is a deliberate reviewer-port paydown boundary decision."
   },
   {
     "files": [
       "plugins/rin/tools/rin-harness-sidecar-file-reader.ts"
     ],
-    "reason": "Structural CD19 location: this module owns the Node filesystem import for defaultSidecarFileReader and defaultFileKindPort. The touched constitution scope now consumes the file-kind port instead of importing node:fs. Review later additions to this file for port confinement; this is not inherited debt."
+    "reason": "Structural CD19 location: defaultSidecarFileReader/defaultFileKindPort/defaultFileTextPort confines filesystem and temporary-directory runtime access. Review scripts and hermetic fixtures consume named text/file capabilities with production factories; no Node file/stat types are exported. Adding writes and temporary scratch lifecycle here reuses the existing filesystem boundary instead of opening a second Node fs wrapping site."
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/review-process-port.ts"
+    ],
+    "reason": "Structural CD19 location: defaultReviewProcessPort is the deliberate process boundary for reviewer entrypoints and hermetic subprocess fixtures. It confines Node child execution, environment, standard streams and termination; consumers receive string/status data and named capabilities, never ChildProcess or stream types."
   },
   {
     "files": [
