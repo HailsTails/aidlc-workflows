@@ -7,7 +7,7 @@ pairs-with: [cd-010, cd-011]
 amended: []
 enforced-by:
   - biome:noStaticOnlyClass
-  - eslint:no-restricted-syntax
+  - eslint:rin-discipline/no-class-authoring
   - audit:auditConstitution
   - audit:auditPublicSurface
 enforcement-note: "The opt-in tools/native-lint/cd14 local TypeScript plugin checks authored class syntax in ESLint/Oxlint. Review external construction and wrapper placement."

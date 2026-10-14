@@ -55,7 +55,6 @@ The fragments don't read `.constitution-carve-outs`; exceptions are out of scope
 
 ## Rule ownership and limits
 
-`cd14/plugin.ts` is the recorded CD19 owner of the ESLint callback/type adapter.
 The native rule export is the engine boundary used by RuleTester; the diagnostic
 port exposes owned contracts to the classification logic. The rule has no runtime
 package dependency.
