@@ -35,18 +35,10 @@
 // signal, the autonomy gate + verdict guard do the blocking). Every invocation
 // appends one trace line so a silent no-write is diagnosable from disk.
 
-import { spawnSync } from "node:child_process";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { z } from "zod";
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
+import { defaultFileKindPort, defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
+import { defaultReviewProcessPort, type ReviewProcessPort } from "../tools/rin-gates/review-process-port.ts";
+import { defaultReviewDecodersPort, type Capture } from "../tools/rin-gates/review-decoders-port.ts";
 import { gateDirSegments } from "../tools/rin-gates/rin-gate-namespace.ts";
 import { blockingFindingsWithPolicy } from "../tools/rin-gates/rin-gates-finding-disposition.ts";
 import {
@@ -80,7 +72,18 @@ import {
   resolveReviewRoster,
 } from "./shared-review-roster.ts";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const fileKind = defaultFileKindPort();
+const runtime: ReviewProcessPort = defaultReviewProcessPort();
+const decoders = defaultReviewDecodersPort();
+const join = (...segments: string[]): string => paths.join({ segments });
+const resolve = (...segments: string[]): string => paths.resolve({ segments });
+const dirname = (path: string): string => paths.dirname({ path });
+const basename = (path: string): string => paths.basename({ path });
+const isAbsolute = (path: string): boolean => paths.isAbsolute({ path });
+const { exists: existsSync, read: readFileSync, write: writeFileSync, append: appendFileSync, mkdir: mkdirSync } = files;
+const HERE = dirname(paths.fromFileUrl({ url: import.meta.url }));
 // Walk up to the enclosing checkout rather than counting directory levels: this
 // file is projected into a harness dir whose depth differs per face, so a fixed
 // `../..` binds to whatever happens to sit two levels up.
@@ -99,7 +102,7 @@ const PROJECT_DIR = ((): string => {
 const workspaceRootFrom = (checkoutRoot: string): string => {
   const gitPath = join(checkoutRoot, ".git");
   try {
-    if (statSync(gitPath).isDirectory()) return checkoutRoot;
+    if (fileKind.isDirectory(gitPath)) return checkoutRoot;
     const gitdirLine = readFileSync(gitPath, "utf-8").match(
       /^gitdir:\s*(.+?)\s*$/m,
     );
@@ -129,7 +132,7 @@ const nearestCheckoutAt = (dir: string): string | undefined => {
 const checkoutRootFromCwd = (cwd: string | undefined): string | undefined =>
   cwd === undefined || cwd === "" ? undefined : nearestCheckoutAt(resolve(cwd));
 
-const space = process.env.RIN_GATES_SPACE ?? "default";
+const space = runtime.environment.RIN_GATES_SPACE ?? "default";
 
 // Test isolation, fail-closed. Every path below that the scribe WRITES to or
 // EXECUTES falls back to the real checkout when its variable is unset. That
@@ -137,13 +140,13 @@ const space = process.env.RIN_GATES_SPACE ?? "default";
 // can write real ledgers or execute the real engine without failing an assertion.
 // Under RIN_GATES_TEST_MODE=1 an unset variable is a refusal, so a leak fails
 // the test that caused it instead of landing in the checkout.
-const IS_TEST_MODE = process.env["RIN_GATES_TEST_MODE"] === "1";
+const IS_TEST_MODE = runtime.environment["RIN_GATES_TEST_MODE"] === "1";
 
 const refuseTestIsolationBreach = (reason: string): never => {
-  process.stderr.write(
+  runtime.diagnose(
     `rin-gates review-scribe: TEST ISOLATION BREACH — ${reason}. Under RIN_GATES_TEST_MODE=1 the scribe never falls back to the real checkout; inject it from the test.\n`,
   );
-  return process.exit(2);
+  return runtime.exit(2);
 };
 
 const runtimePathFrom = ({
@@ -153,7 +156,7 @@ const runtimePathFrom = ({
   readonly variable: string;
   readonly livePath: string;
 }): string => {
-  const injected = process.env[variable];
+  const injected = runtime.environment[variable];
   if (injected !== undefined && injected !== "") return injected;
   return IS_TEST_MODE
     ? refuseTestIsolationBreach(`${variable} is not injected`)
@@ -167,7 +170,7 @@ const runtimePathFrom = ({
 // config lives beside this hook (both are .claude-native) so the two consumers
 // cannot drift.
 const ROSTER_CONFIG_PATH =
-  process.env.RIN_GATES_ROSTER_CONFIG ?? join(HERE, "review-rosters.json");
+  runtime.environment.RIN_GATES_ROSTER_CONFIG ?? join(HERE, "review-rosters.json");
 
 const isReviewerLens = (agentType: string): boolean =>
   /-reviewer-agent$/.test(agentType);
@@ -220,7 +223,7 @@ const ENGINE_LOG_PATH = runtimePathFrom({
   livePath: join(engineLogHarnessRoot(), "tools", "aidlc-log.ts"),
 });
 
-const nowIso = (): string => new Date().toISOString();
+const nowIso = (): string => runtime.timestamp();
 
 const appendJsonLine = (path: string, entry: Record<string, unknown>): void => {
   try {
@@ -238,7 +241,7 @@ const writeTraceLine = (entry: Record<string, unknown>): void => {
 
 const exitTraced = (entry: Record<string, unknown>): never => {
   writeTraceLine(entry);
-  process.exit(0);
+  runtime.exit(0);
 };
 
 // EVERY discard exits through here — there is no silent path left. A discarded
@@ -255,7 +258,7 @@ const exitDiscarded: (input: {
 }) => never = ({ reason, remedy, entry }) => {
   const agentType =
     typeof entry.agentType === "string" ? entry.agentType : "a reviewer lens";
-  process.stderr.write(
+  runtime.diagnose(
     `rin-gates review-scribe: DISCARDED ${agentType}'s review — ${reason}. ` +
       `Its verdict CANNOT be counted toward the roster, so the gate will refuse the approve. ${remedy} ` +
       `Ledger: ${DISCARD_LEDGER_PATH}\n`,
@@ -266,7 +269,7 @@ const exitDiscarded: (input: {
     ...entry,
   });
   writeTraceLine({ reject: reason, ...entry });
-  process.exit(0);
+  runtime.exit(0);
 };
 
 // A refused engine receipt is the same class of loss as a discarded lens and gets
@@ -287,7 +290,7 @@ const reportRefusedReceipt = (args: {
   };
 }): void => {
   const reviewer = args.reviewer ?? "the gate's declared reviewer";
-  process.stderr.write(
+  runtime.diagnose(
     `rin-gates review-scribe: the engine REFUSED the ${args.gate} receipt for ${reviewer} ` +
       `at the ${args.receipt.step} step (${args.receipt.reason}). ` +
       "Engine receipt NOT recorded — the engine's reviewer floor may rest on a stale receipt; " +
@@ -305,28 +308,7 @@ const reportRefusedReceipt = (args: {
   });
 };
 
-const captureSchema = z.object({
-  lens: z.string(),
-  verdict: z.string(),
-  findings: z.array(z.string()),
-  sessionId: z.string(),
-  at: z.string(),
-  agentId: z.string().optional(),
-  channel: z.enum(["handback", "stop-message"]).optional(),
-  reportText: z.string().optional(),
-}).readonly();
-
-type Capture = z.infer<typeof captureSchema>;
-
-const readStdin = (): Promise<string> =>
-  new Promise((resolvePromise) => {
-    let raw = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => {
-      raw += chunk;
-    });
-    process.stdin.on("end", () => resolvePromise(raw));
-  });
+const readStdin = runtime.readInput;
 
 const intentsRoot = (checkoutRoot: string): string =>
   join(checkoutRoot, "aidlc", "spaces", space, "intents");
@@ -362,15 +344,11 @@ const currentGate = (recordDir: string): string | null => {
 };
 
 const headShaOf = (checkoutRoot: string): string | null => {
-  if (process.env.RIN_GATES_TEST_MODE === "1") {
-    const injected = process.env.RIN_GATES_HEAD_SHA;
+  if (runtime.environment.RIN_GATES_TEST_MODE === "1") {
+    const injected = runtime.environment.RIN_GATES_HEAD_SHA;
     if (injected !== undefined) return injected === "" ? null : injected;
   }
-  const result = spawnSync("git", ["rev-parse", "HEAD"], {
-    cwd: checkoutRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  const result = runtime.runSync({ program: "git", args: ["rev-parse", "HEAD"], cwd: checkoutRoot });
   const sha = result.stdout?.trim();
   return result.status === 0 && sha ? sha : null;
 };
@@ -435,7 +413,7 @@ const readCaptures = (path: string): readonly Capture[] => {
     .filter((line) => line.trim() !== "")
     .map((line): Capture | null => {
       try {
-        const capture = captureSchema.safeParse(JSON.parse(line));
+        const capture = decoders.capture(JSON.parse(line));
         return capture.success ? capture.data : null;
       } catch {
         return null;
@@ -525,14 +503,14 @@ const parsedStdinPayload = (raw: string): unknown => {
   try {
     return JSON.parse(raw);
   } catch {
-    return process.exit(0);
+    return runtime.exit(0);
   }
 };
 
 const lensReportFromStdin = async (): Promise<LensReport> => {
-  if (process.stdin.isTTY) process.exit(0);
+  if (runtime.inputIsTerminal) runtime.exit(0);
   const raw = await readStdin();
-  if (raw.trim() === "") process.exit(0);
+  if (raw.trim() === "") runtime.exit(0);
   const intake = lensReportFromHookPayload({
     payload: parsedStdinPayload(raw),
   });
@@ -540,22 +518,20 @@ const lensReportFromStdin = async (): Promise<LensReport> => {
     case "report":
       return intake.report;
     case "undelivered-handback":
-      if (!isReviewerLens(intake.agentType)) process.exit(0);
+      if (!isReviewerLens(intake.agentType)) runtime.exit(0);
       return exitTraced({
         outcome:
           "hand-back not delivered; the lens's first hand-back is its report",
         agentType: intake.agentType,
       });
     case "not-a-lens-report":
-      return process.exit(0);
+      return runtime.exit(0);
   }
 };
 
-const handbackLedgerRowSchema = z.object({ agentId: z.string() });
-
 const ledgerRowAgentId = (line: string): string | null => {
   try {
-    const row = handbackLedgerRowSchema.safeParse(JSON.parse(line));
+    const row = decoders.handback(JSON.parse(line));
     return row.success ? row.data.agentId : null;
   } catch {
     return null;
@@ -584,7 +560,7 @@ const reviewContextFor = ({
   readonly report: LensReport;
 }): ReviewContext => {
   const agentType = report.agentType;
-  if (!isReviewerLens(agentType)) process.exit(0);
+  if (!isReviewerLens(agentType)) runtime.exit(0);
   const checkoutRoot = checkoutRootFromCwd(report.cwd) ?? WORKSPACE_ROOT;
   if (
     IS_TEST_MODE &&
@@ -862,7 +838,7 @@ const engineReceiptFor = ({
     gate: context.gate,
     graph: stageGraph,
   });
-  const route = z.enum(["conductor-report", "legacy-append"]).default("conductor-report").safeParse(process.env.RIN_GATES_ENGINE_REVIEW_ROUTE);
+  const route = decoders.route(runtime.environment.RIN_GATES_ENGINE_REVIEW_ROUTE);
   const receipt: ReceiptOutcome = route.success
     ? recordEngineReceipt({
         route: route.data,
@@ -928,4 +904,4 @@ const main = async (): Promise<void> => {
   });
 };
 
-main().catch(() => process.exit(0));
+main().catch(() => runtime.exit(0));

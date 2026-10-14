@@ -1,13 +1,17 @@
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, onTestFinished, test } from "vitest";
-import { z } from "zod";
-import { BoardVerdictFileSchema } from "../tools/rin-gates/rin-gates-board-bridge.ts";
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
+import { defaultReviewProcessPort } from "../tools/rin-gates/review-process-port.ts";
+import { defaultReviewDecodersPort } from "../tools/rin-gates/review-decoders-port.ts";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const runtime = defaultReviewProcessPort();
+const decoders = defaultReviewDecodersPort();
+const join = (...segments: string[]): string => paths.join({ segments });
+const dirname = (path: string): string => paths.dirname({ path });
+const { exists: existsSync, read: readFileSync, write: writeFileSync, mkdir: mkdirSync, remove: rmSync, makeTemporaryDirectory: mkdtempSync, temporaryRoot: tmpdir } = files;
+const HERE = dirname(paths.fromFileUrl({ url: import.meta.url }));
 const SCRIBE = join(HERE, "rin-gates-review-scribe.ts");
 
 const GATE = "rin-gate-0-reconcile";
@@ -63,15 +67,17 @@ const readyAtHead = (note: string): string =>
 // message instead, so the REFUSED face of the bridge is reachable from here too;
 // a fake that could only succeed left the refusal path untested.
 const FAKE_ENGINE_SOURCE = `
-import { appendFileSync } from "node:fs";
-appendFileSync(process.env.RIN_GATES_TEST_RECEIPT_CALLS, JSON.stringify(process.argv.slice(2)) + "\\n", "utf-8");
-const refusal = process.env.RIN_GATES_TEST_ENGINE_REFUSAL ?? "";
+import { defaultFileTextPort } from ${JSON.stringify(join(dirname(HERE), "tools", "rin-harness-sidecar-file-reader.ts").replace(/\\/g, "/"))};
+import { defaultReviewProcessPort } from ${JSON.stringify(join(dirname(HERE), "tools", "rin-gates", "review-process-port.ts").replace(/\\/g, "/"))};
+const files = defaultFileTextPort();
+const runtime = defaultReviewProcessPort();
+files.append(runtime.environment.RIN_GATES_TEST_RECEIPT_CALLS, JSON.stringify(runtime.arguments.slice(2)) + "\\n");
+const refusal = runtime.environment.RIN_GATES_TEST_ENGINE_REFUSAL ?? "";
 if (refusal !== "") {
-  process.stderr.write(refusal);
-  process.exit(1);
+  runtime.diagnose(refusal);
+  runtime.exit(1);
 }
-
-console.log(JSON.stringify({ emitted: "REVIEW_REQUESTED", stage: process.argv[process.argv.indexOf("--stage") + 1] }));
+runtime.publish(JSON.stringify({ emitted: "REVIEW_REQUESTED", stage: runtime.arguments[runtime.arguments.indexOf("--stage") + 1] }) + "\\n");
 `;
 
 const checkoutAt = (root: string): Checkout => {
@@ -200,7 +206,7 @@ const buildUnmappedGateCheckout = (): Checkout => {
 // the shell that runs the suite would otherwise override the checkout's paths.
 const parentEnvironmentWithoutScribeVariables = (): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(process.env).flatMap(([name, setting]) =>
+    Object.entries(runtime.environment).flatMap(([name, setting]) =>
       setting === undefined || name.startsWith("RIN_GATES_")
         ? []
         : [[name, setting]],
@@ -256,34 +262,14 @@ const stopLensAgainstEngine = ({
   readonly agentId?: string;
 }): Promise<ScribeOutcome> => {
   const { root, tracePath, discardLedgerPath, receiptCallsPath } = checkout;
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn("bun", [SCRIBE], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: isolatedScribeEnvironment({ checkout, engineRefusal, route }),
-    });
-    const stderrChunks: string[] = [];
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => stderrChunks.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code: number | null) => {
-      resolvePromise({
-        exitCode: code ?? 0,
-        stderr: stderrChunks.join(""),
-        trace: readJsonLines(tracePath),
-        discards: readJsonLines(discardLedgerPath),
-        receiptCalls: readReceiptCalls(receiptCallsPath),
-      });
-    });
-    child.stdin.end(
-      JSON.stringify({
-        ["agent_type"]: agentType,
-        ["agent_id"]: agentId,
-        ["last_assistant_message"]: lastAssistantMessage,
-        cwd: root,
-        ["session_id"]: "test-session",
-      }),
-    );
-  });
+  return runtime.run({
+    program: "bun", args: [SCRIBE],
+    environment: isolatedScribeEnvironment({ checkout, engineRefusal, route }),
+    input: JSON.stringify({ agent_type: agentType, agent_id: agentId, last_assistant_message: lastAssistantMessage, cwd: root, session_id: "test-session" }),
+  }).then((result) => ({
+    exitCode: result.status ?? 0, stderr: result.stderr,
+    trace: readJsonLines(tracePath), discards: readJsonLines(discardLedgerPath), receiptCalls: readReceiptCalls(receiptCallsPath),
+  }));
 };
 
 const stopLens = ({
@@ -333,20 +319,8 @@ const spawnScribeForGuard = ({
   readonly environment: Record<string, string>;
   readonly payload: Record<string, string>;
 }): Promise<GuardOutcome> =>
-  new Promise((resolvePromise, reject) => {
-    const child = spawn("bun", [SCRIBE], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: environment,
-    });
-    const stderrChunks: string[] = [];
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => stderrChunks.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code: number | null) =>
-      resolvePromise({ exitCode: code ?? -1, stderr: stderrChunks.join("") }),
-    );
-    child.stdin.end(JSON.stringify(payload));
-  });
+  runtime.run({ program: "bun", args: [SCRIBE], environment, input: JSON.stringify(payload) })
+    .then((result) => ({ exitCode: result.status ?? -1, stderr: result.stderr }));
 
 const environmentWithout = ({
   checkout,
@@ -440,7 +414,7 @@ describe("a covered roster writes the aggregate verdict artefact", () => {
     expect(verdict["emittedBy"]).toBe("rin-gates-review-scribe");
     expect(verdict["headSha"]).toBe(HEAD_SHA);
     expect(verdict["taskId"]).toBe(RECORD);
-    const decoded = BoardVerdictFileSchema.safeParse(verdict);
+    const decoded = decoders.board(verdict);
     expect(decoded.success).toBe(true);
     expect(decoded.success && decoded.data.binding).toBeUndefined();
     expect(decoded.success && decoded.data.headSha).toBe(HEAD_SHA);
@@ -1156,19 +1130,11 @@ describe("the scribe ignores what is not a reviewer lens", () => {
 const modernVerdictPath = (checkout: Checkout): string => join(
   checkout.root, "aidlc", "spaces", "default", "intents", RECORD, VERDICT_RELATIVE_PATH,
 );
-const modernVerdictSchema = z.object({
-  verdict: z.enum(["READY", "NOT-READY"]),
-  reportsComplete: z.boolean(),
-  findings: z.array(z.string()),
-  reports: z.array(z.object({
-    lens: z.string(), findings: z.array(z.string()), sessionId: z.string(),
-    agentId: z.string().nullable(), channel: z.string().nullable(),
-    reportText: z.string().nullable(), headSha: z.string(), gate: z.string(),
-  })),
-});
-const readModernVerdict = (checkout: Checkout) => modernVerdictSchema.parse(
-  JSON.parse(readFileSync(modernVerdictPath(checkout), "utf8")),
-);
+const readModernVerdict = (checkout: Checkout) => {
+  const decoded = decoders.modernBoard(JSON.parse(readFileSync(modernVerdictPath(checkout), "utf8")));
+  if (!decoded.success) throw new Error("Invalid modern board verdict in test fixture");
+  return decoded.data;
+};
 const stopModernLens = (input: {
   readonly checkout: Checkout;
   readonly agentType: string;

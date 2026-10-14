@@ -1,8 +1,14 @@
-import { readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { defaultPathOperations } from "../rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "../rin-harness-sidecar-file-reader.ts";
+import { defaultReviewProcessPort } from "./review-process-port.ts";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const runtime = defaultReviewProcessPort();
+const dirname = (path: string): string => paths.dirname({ path });
+const basename = (path: string): string => paths.basename({ path });
+const join = (...segments: string[]): string => paths.join({ segments });
+const HERE = dirname(paths.fromFileUrl({ url: import.meta.url }));
 
 type GraphNode = {
   readonly slug?: unknown;
@@ -65,12 +71,12 @@ export const rinGateReviewersIn = (graph: unknown): readonly GateReviewer[] => {
 };
 
 export const stageGraphPath = (): string =>
-  process.env["AIDLC_STAGE_GRAPH"] ??
+  runtime.environment["AIDLC_STAGE_GRAPH"] ??
   join(stageGraphHarnessRoot(), "tools", "data", "stage-graph.json");
 
 export const loadStageGraphNodes = (path: string): unknown => {
   try {
-    return JSON.parse(readFileSync(path, "utf-8")) as unknown;
+    return JSON.parse(files.read(path)) as unknown;
   } catch {
     return null;
   }
