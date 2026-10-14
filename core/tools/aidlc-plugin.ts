@@ -578,6 +578,24 @@ export function discoverPluginInventory(
   return currentRootInventory(harness);
 }
 
+export function discoverPluginOperationInventory(
+  harnessDir = runtimeHarnessDir(),
+  projectDir = resolveProjectDir(),
+): PluginInventory {
+  const host = discoverPluginInventory(harnessDir, projectDir);
+  if (currentRoots().length === 0) return host;
+  const explicit = currentRootInventory(harnessKind(harnessDir));
+  const disabled = new Set(host.installed.filter((plugin) => !plugin.enabled).map((plugin) => plugin.key));
+  const ambiguous = new Set(host.invalid.flatMap((plugin) => plugin.key ? [plugin.key] : []));
+  return {
+    ...explicit,
+    installed: explicit.installed.filter((plugin) => !ambiguous.has(plugin.key))
+      .map((plugin) => disabled.has(plugin.key) ? { ...plugin, enabled: false } : plugin),
+    invalid: [...explicit.invalid, ...host.invalid.filter((plugin) =>
+      plugin.key !== undefined && explicit.installed.some((entry) => entry.key === plugin.key))],
+  };
+}
+
 function harnessDataDir(projectDir: string, harnessDir: string): string {
   return join(projectDir, harnessDir, "tools", "data");
 }
@@ -1465,9 +1483,7 @@ export async function syncPlugins(
   lockRetry = 0,
 ): Promise<{ synced: string[]; pruned: string[]; operations: number }> {
   const harness = harnessKind(harnessDir);
-  const inventory = currentRoots().length > 0
-    ? currentRootInventory(harness)
-    : discoverPluginInventory(harnessDir, projectDir);
+  const inventory = discoverPluginOperationInventory(harnessDir, projectDir);
   const evidence = projectEvidence(projectDir, harnessDir);
   const selection = selectedPlugins(projectDir, harnessDir);
   const prune = argv.includes("--prune-missing");
