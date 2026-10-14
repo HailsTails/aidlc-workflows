@@ -29,11 +29,11 @@ directory or copying through a harness-directory symlink:
   test "${#expected_source_commit}" -eq 40
   test "$(git rev-parse HEAD)" = "$expected_source_commit"
   test -z "$(git status --porcelain)"
-  git cat-file -e 'HEAD:plugins/rin/tools/native-lint/bundles/cd42.mjs'
+  git cat-file -e 'HEAD:plugins/rin/tools/native-lint/bundles/cd42.eslint.json'
   bun install --frozen-lockfile
   projection="$source_checkout/dist/plugins/rin/cursor"
   bun scripts/package.ts plugin build rin cursor "$projection"
-  for asset in cd42.mjs cd44.mjs cd42.biome.json cd44.biome.json cd42.oxlint.json cd44.oxlint.json README.md; do
+  for asset in cd42.eslint.json cd44.eslint.json cd42.biome.json cd44.biome.json cd42.oxlint.json cd44.oxlint.json README.md; do
     test -f "$projection/tools/native-lint/bundles/$asset"
   done
   test ! -L "$consumer/.cursor"
@@ -50,21 +50,31 @@ Run this from the pinned producer root, not the consumer. For Codex or Claude,
 change the harness argument and both `cursor`/`.cursor` path segments together.
 Record the source commit and compare assets before a later update. Remove only
 copies and config entries this adoption owns; there is no selective uninstall.
+If updating a prior `.mjs` bundle copy, replace its imports with the JSON reads
+below and remove only the old owned files after the lint check passes.
 
 ## Enable only selected checks in the consumer
 
-For **ESLint**, import one or both generated `.mjs` exports into the existing
+For **ESLint**, read one or both generated JSON rule maps in the existing
 flat config. Spread the selected rule maps into the existing TypeScript/TSX
 `rules` block, keeping its parser, plugins, other rules, file patterns and lint
-script. These exports add no parser or plugin and do not select file scope. Add
-the selected imports at the top of the existing config:
+script. These maps add no parser or plugin and do not select file scope. Add
+the selected reads at the top of an existing ESM flat config:
 
 ```js
-import { cd42EslintRules } from './.cursor/tools/native-lint/bundles/cd42.mjs';
-import { cd44EslintRules } from './.cursor/tools/native-lint/bundles/cd44.mjs';
+import { readFileSync } from 'node:fs';
+
+const cd42EslintRules = JSON.parse(readFileSync(
+  new URL('./.cursor/tools/native-lint/bundles/cd42.eslint.json', import.meta.url), 'utf8',
+));
+const cd44EslintRules = JSON.parse(readFileSync(
+  new URL('./.cursor/tools/native-lint/bundles/cd44.eslint.json', import.meta.url), 'utf8',
+));
 ```
 
-Then add these spreads inside its existing applicable `rules` object, retaining
+These are plain data files; the consumer ESLint config loads them with Node and
+does not need Bun or generated executable bundle code. Then add these spreads
+inside its existing applicable `rules` object, retaining
 all current entries:
 
 ```js
