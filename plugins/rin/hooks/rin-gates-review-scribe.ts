@@ -50,6 +50,7 @@ import { z } from "zod";
 import { gateDirSegments } from "../tools/rin-gates/rin-gate-namespace.ts";
 import { blockingFindingsWithPolicy } from "../tools/rin-gates/rin-gates-finding-disposition.ts";
 import {
+  declaredBoardStageSegmentsFor,
   declaredReviewArtifactPathFor,
   declaredReviewerFor,
   loadStageGraphNodes,
@@ -492,6 +493,11 @@ const aggregateVerdictOf = ({
     (lens) => latestVerdictForLens(captures, lens) === "READY",
   );
   const anyNotReady = live.some((capture) => capture.verdict === "NOT-READY");
+  const synthesisLens = "rin-intent-defense-reviewer-agent";
+  const synthesisIndex = captures.findLastIndex((capture) => capture.lens === synthesisLens);
+  const synthesisCurrent = !roster.includes(synthesisLens) ||
+    (synthesisIndex >= 0 && captures.every((capture, index) =>
+      capture.lens === synthesisLens || index < synthesisIndex));
   const blockingFindings = blockingFindingsWithPolicy({
     findings: live.flatMap((capture) => capture.findings),
     exceptionWhyChainsEnabled,
@@ -499,7 +505,7 @@ const aggregateVerdictOf = ({
   return {
     live,
     aggregate:
-      rosterAllReady && !anyNotReady && blockingFindings.length === 0
+      rosterAllReady && !anyNotReady && synthesisCurrent && blockingFindings.length === 0
         ? "READY"
         : "NOT-READY",
     blockingFindings,
@@ -611,13 +617,29 @@ const reviewContextFor = ({
       entry: { agentType, recordName, gate },
     });
   }
-  const gateSegments = gateDirSegments(gate);
+  const rinSegments = gateDirSegments(gate);
+  const gateSegments = rinSegments ?? declaredBoardStageSegmentsFor({
+    gate,
+    graph: loadStageGraphNodes(stageGraphPath()),
+  });
   if (gateSegments === null) {
     return exitDiscarded({
       reason: "gate has no phase mapping",
       remedy: `The record's Current Stage (\`${gate}\`) maps to no phase dir, so there is nowhere to write the verdict. Fix the stage slug in aidlc-state.md, then re-dispatch.`,
       entry: { agentType, gate },
     });
+  }
+  if (rinSegments === null) {
+    const resolution = reviewRosterFor(gate);
+    if (resolution.kind === "unreadable" || resolution.source !== "byGate" ||
+      !resolution.roster.includes("rin-intent-defense-reviewer-agent") ||
+      !resolution.roster.some((lens) => lens !== "rin-intent-defense-reviewer-agent")) {
+      return exitDiscarded({
+        reason: "adopted stage has no explicit decorrelated roster",
+        remedy: `Declare ${gate} in review-rosters.json byGate with its producing lenses and rin-intent-defense-reviewer-agent, then re-dispatch.`,
+        entry: { agentType, gate },
+      });
+    }
   }
   return { agentType, checkoutRoot, recordDir, recordName, gate, gateSegments };
 };

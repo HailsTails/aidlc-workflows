@@ -1257,3 +1257,53 @@ describe("modern native report handoff", () => {
     expect(outcome.receiptCalls).toEqual([]);
   });
 });
+
+
+describe("core stage board adoption", () => {
+  const stage = "code-generation";
+  const lenses = ["rin-errors-as-data-reviewer-agent", "rin-intent-defense-reviewer-agent"] as const;
+  const coreCheckout = (): Checkout => {
+    const checkout = buildCheckout();
+    writeFileSync(join(checkout.root, "aidlc", "spaces", "default", "intents", RECORD, "aidlc-state.md"), `**Current Stage**: ${stage}\n`);
+    writeFileSync(checkout.stageGraphPath, JSON.stringify([{ slug: stage, phase: "construction", scopes: ["bugfix"], reviewer: "rin-decorrelated-review-agent", review_artifact: "code-generation-plan" }]));
+    writeFileSync(checkout.rosterConfigPath, JSON.stringify({ defaultRoster: FULL_ROSTER, byGate: { [stage]: lenses } }));
+    return checkout;
+  };
+  const verdictPath = (checkout: Checkout): string => join(checkout.root, "aidlc", "spaces", "default", "intents", RECORD, "construction", stage, "review-verdict.json");
+
+  test("captures findings, requires synthesis, and retains normal conductor handoff", async () => {
+    const checkout = coreCheckout();
+    await stopLensAgainstEngine({ checkout, agentType: lenses[0], lastAssistantMessage: "## Verdict\n\nNOT-READY\n\napps/web/src/ticket-client.ts:12 | ok([]) | CD-9 | failure is hidden", engineRefusal: "", route: "conductor-report" });
+    expect(existsSync(verdictPath(checkout))).toBe(false);
+    const refused = await stopLensAgainstEngine({ checkout, agentType: lenses[1], lastAssistantMessage: readyAtHead("Intent checked."), engineRefusal: "", route: "conductor-report" });
+    expect(JSON.parse(readFileSync(verdictPath(checkout), "utf8")).verdict).toBe("NOT-READY");
+    expect(refused.receiptCalls).toEqual([]);
+    const repaired = await stopLensAgainstEngine({ checkout, agentType: lenses[0], lastAssistantMessage: readyAtHead("Prior failure finding fixed; no surviving findings."), engineRefusal: "", route: "conductor-report" });
+    expect(JSON.parse(readFileSync(verdictPath(checkout), "utf8")).verdict).toBe("NOT-READY");
+    await stopLensAgainstEngine({ checkout, agentType: lenses[1], lastAssistantMessage: readyAtHead("Re-tested repaired PASS bundle."), engineRefusal: "", route: "conductor-report" });
+    const verdict = JSON.parse(readFileSync(verdictPath(checkout), "utf8"));
+    expect(verdict.verdict).toBe("READY");
+    expect(verdict.gate).toBe(stage);
+    expect(verdict.headSha).toBe(HEAD_SHA);
+    expect(verdict.reportsComplete).toBe(true);
+    expect(repaired.receiptCalls).toEqual([]);
+    expect(repaired.discards).toEqual([]);
+  });
+
+  test("does not adopt the default roster when core has no explicit selection", async () => {
+    const checkout = coreCheckout();
+    writeFileSync(checkout.rosterConfigPath, JSON.stringify({ defaultRoster: FULL_ROSTER, byGate: {} }));
+    const outcome = await stopLensAgainstEngine({ checkout, agentType: lenses[0], lastAssistantMessage: readyAtHead("Clean."), engineRefusal: "", route: "conductor-report" });
+    expect(outcome.discards).toContainEqual(expect.objectContaining({ reject: "adopted stage has no explicit decorrelated roster" }));
+    expect(existsSync(verdictPath(checkout))).toBe(false);
+    expect(outcome.receiptCalls).toEqual([]);
+  });
+
+  test("refuses a producing-only roster without intent defense", async () => {
+    const checkout = coreCheckout();
+    writeFileSync(checkout.rosterConfigPath, JSON.stringify({ defaultRoster: [], byGate: { [stage]: [lenses[0]] } }));
+    const outcome = await stopLensAgainstEngine({ checkout, agentType: lenses[0], lastAssistantMessage: readyAtHead("Clean."), engineRefusal: "", route: "conductor-report" });
+    expect(outcome.discards).toContainEqual(expect.objectContaining({ reject: "adopted stage has no explicit decorrelated roster" }));
+    expect(existsSync(verdictPath(checkout))).toBe(false);
+  });
+});
