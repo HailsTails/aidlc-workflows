@@ -10,5 +10,11 @@
       "plugins/rin/tools/rin-harness-sidecar-file-reader.ts"
     ],
     "reason": "Structural CD19 location: this module owns the Node filesystem import for defaultSidecarFileReader and defaultFileKindPort. The touched constitution scope now consumes the file-kind port instead of importing node:fs. Review later additions to this file for port confinement; this is not inherited debt."
+  },
+  {
+    "files": [
+      "plugins/rin/tools/native-lint/carve-files.ts"
+    ],
+    "reason": "Structural CD19 location: the generic native carve file port alone owns Node filesystem/path access and Zod validation of consumed sidecar file arrays. Pure projection receives owned values; eligibility and why-chain governance remain canonical. This is a deliberate boundary, not inherited debt."
   }
 ]
