@@ -3,19 +3,21 @@
 This opt-in slice supplies one dedicated ESLint/Oxlint rule. Consumers add native
 fragments to their existing config. There is no composer or generated host config.
 
-Fetch the source directory from a reviewed commit, independently of any harness:
+Fetch a reviewed source pin into the replaceable managed directory. This requires
+curl and GNU tar; run from the consumer's project root. Keep host configurations,
+canonical carve sidecars and custom work outside `.rin/native-lint/`. Move any
+existing custom work out before adopting this refresh route.
 
 ```bash
-mkdir -p .rin/native-lint
-curl -fsSL "https://codeload.github.com/HailsTails/aidlc-workflows/tar.gz/<reviewed-commit-sha>" \
+RIN_SOURCE_SHA=<full 40-character commit SHA>
+rm -rf .rin/native-lint && mkdir -p .rin/native-lint
+curl -fsSL "https://codeload.github.com/HailsTails/aidlc-workflows/tar.gz/$RIN_SOURCE_SHA" \
   | tar -xz -C .rin/native-lint --strip-components=5 --wildcards --exclude='*.test.ts' '*/plugins/rin/tools/native-lint/*'
 ```
 
-Replace `<reviewed-commit-sha>` with the full pinned commit ID. Commit
-`.rin/native-lint/` and record that ID in the commit message. Update by fetching a
-new reviewed pin and reviewing the diff. This fetch excludes producer tests and
-requires no consumer build step. Oxlint resolves its plugin path against the
-extended fragment. The consumer path is always `.rin/native-lint/`.
+Review `git diff .rin/native-lint`, commit the directory, and put the SHA in the
+commit message. Extraction excludes producer tests and requires no consumer
+build step. Oxlint resolves its plugin path against the extended fragment.
 
 ## Add to the existing config
 
@@ -44,7 +46,7 @@ The producer does not ship a TypeScript parser dependency to consumers.
 For Oxlint, append `./.rin/native-lint/cd14.oxlint.json` to the existing root
 config's `extends`. Keep existing rules, includes, and lint scripts.
 
-The previously exercised native versions are Bun 1.3.14, ESLint 10.12.0,
+The exercised native versions are Node 22.22.2, ESLint 10.12.0,
 `@typescript-eslint/parser` 8.71.2, and Oxlint 1.88.0. A consumer needs only its
 selected engine and existing parser. Oxlint JS plugins are alpha. Repositories
 using another linter can run Oxlint alongside it.
@@ -61,6 +63,7 @@ node .rin/native-lint/carve-files.ts --cd CD-14 --cd CD-42 --cd CD-44
 node .rin/native-lint/carve-files.ts --cd CD-14 --cd CD-42 --cd CD-44 --check
 ```
 
+Regenerate carve fragments after refreshing the managed source directory.
 Use the same explicit selection in generation and CI. `--project-dir` selects a
 consumer root; the default is the current directory. The command reads matching
 canonical `.constitution-carve-outs/cd-*.json` files and writes
