@@ -16,11 +16,5 @@
       "plugins/rin/tools/rin-gates/review-process-port.ts"
     ],
     "reason": "Structural CD19 location: defaultReviewProcessPort is the deliberate process boundary for reviewer entrypoints and hermetic subprocess fixtures. It confines Node child execution, environment, standard streams and termination; consumers receive string/status data and named capabilities, never ChildProcess or stream types."
-  },
-  {
-    "files": [
-      "plugins/rin/tools/native-lint/carve-files.ts"
-    ],
-    "reason": "Structural CD19 location: the generic native carve boundary owns Node filesystem/path/entry-URL access and Zod validation of consumed sidecar file arrays. File IO and process-lifecycle effects remain behind their co-located ports; pure projection receives owned values. Eligibility and why-chain governance remain canonical. This is a deliberate boundary, not inherited debt."
   }
 ]

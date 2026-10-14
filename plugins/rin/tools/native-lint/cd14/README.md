@@ -51,63 +51,14 @@ The exercised native versions are Node 22.22.2, ESLint 10.12.0,
 selected engine and existing parser. Oxlint JS plugins are alpha. Repositories
 using another linter can run Oxlint alongside it.
 
-## Separate canonical carve projection
-
-The fetched source includes the separate carve tool. Add `zod` 4.4.3 as a
-consumer dev dependency only when using this projection (for example,
-`npm install --save-dev zod@4.4.3`). Generate overrides for exactly the
-CDs adopted by the consumer:
-
-```bash
-node .rin/native-lint/carve-files.ts --cd CD-14 --cd CD-42 --cd CD-44
-node .rin/native-lint/carve-files.ts --cd CD-14 --cd CD-42 --cd CD-44 --check
-```
-
-Regenerate carve fragments after refreshing the managed source directory.
-Use the same explicit selection in generation and CI. `--project-dir` selects a
-consumer root; the default is the current directory. The command reads matching
-canonical `.constitution-carve-outs/cd-*.json` files and writes
-`.rin/native-lint/carve.eslint.json` and `carve.oxlint.json`. Sidecars for
-unselected CDs do not suppress anything. The small rule ownership map currently
-covers CD14, CD42 and CD44; extend it when adding further native fragments.
-
-Append the generated ESLint carve array after the selected native entries using
-an ordinary JSON import:
-
-```js
-import carve from "./.rin/native-lint/carve.eslint.json" with { type: "json" };
-
-export default [...existingHostEntries, ...selectedNativeEntries, ...carve];
-```
-
-Append `./.rin/native-lint/carve.oxlint.json` after the selected native fragments
-in the Oxlint root config's `extends`. Commit both generated carve files. Run
-`--check` before lint in CI: it regenerates expected bytes in memory and fails
-on missing or edited files without writing. A shared rule ID claimed by two
-selected CDs is refused rather than switched off for one CD. The projection
-preserves host rules with other IDs. Keep independently required restrictions
-under separate IDs; a host restriction using the same carved ID would also be
-disabled by that native override.
-
-The projector consumes file arrays only. It does not grant exemptions, validate
-why-chains, or check touched files. Keep canonical sidecar eligibility and CD46
-decay checks in review/CI. A concrete decay gate from a pinned producer checkout:
-
-```bash
-bun plugins/rin/tools/rin-harness-carve-out-decay.ts --project-dir "$consumer" --base-ref "$review_base" --json
-```
-
-Use an actual resolvable Git review base. The existing synthetic adopter verified
-committed and uncommitted carve touches fail this gate; remediation and sidecar
-removal restore green. Native lint alone does not run the Git gate.
+The fragments don't read `.constitution-carve-outs`; exceptions are out of scope for this slice.
 
 ## Rule ownership and limits
 
 `cd14/plugin.ts` is the recorded CD19 owner of the ESLint callback/type adapter.
 The native rule export is the engine boundary used by RuleTester; the diagnostic
 port exposes owned contracts to the classification logic. The rule has no runtime
-package dependency. `carve-files.ts` owns filesystem and consumed-JSON validation;
-`carve-projection.ts` has no external dependency. The source tool consumes the optional consumer Zod dependency directly.
+package dependency.
 
 The dedicated ID is `rin-discipline/no-class-authoring`. Runtime class
 declarations and expressions are rejected, including nested, non-exported and
