@@ -1,7 +1,7 @@
 # Opt-in CD-42 and CD-44 lint bundles
 
 These are **partial, per-discipline** checks using built-in linter rules. Choose
-the CDs and the lint engine your repository already uses; copying a bundle does
+the CDs and ESLint or Oxlint; copying a bundle does
 not enable it. No AIDLC stage, hook, Rin gate, plugin selector or carve-out
 adapter is installed. Read the full [CD-42](../../../knowledge/aidlc-shared/code-discipline/cd-042-unhappy-path-early-return.md)
 and [CD-44](../../../knowledge/aidlc-shared/code-discipline/cd-044-no-parameter-field-mutation.md)
@@ -33,7 +33,7 @@ directory or copying through a harness-directory symlink:
   bun install --frozen-lockfile
   projection="$source_checkout/dist/plugins/rin/cursor"
   bun scripts/package.ts plugin build rin cursor "$projection"
-  for asset in cd42.eslint.json cd44.eslint.json cd42.biome.json cd44.biome.json cd42.oxlint.json cd44.oxlint.json README.md; do
+  for asset in cd42.eslint.json cd44.eslint.json cd42.oxlint.json cd44.oxlint.json README.md; do
     test -f "$projection/tools/native-lint/bundles/$asset"
   done
   test ! -L "$consumer/.cursor"
@@ -52,6 +52,8 @@ Record the source commit and compare assets before a later update. Remove only
 copies and config entries this adoption owns; there is no selective uninstall.
 If updating a prior `.mjs` bundle copy, replace its imports with the JSON reads
 below and remove only the old owned files after the lint check passes.
+Retired fragments from an earlier bundle copy also require deliberate removal of
+the owned files and their config references; this copy command never overwrites them.
 
 ## Enable only selected checks in the consumer
 
@@ -82,17 +84,6 @@ all current entries:
 ...cd44EslintRules,
 ```
 
-For **Biome 2.4.16**, append only the selected paths to the consumer's existing
-`biome.json` `extends` array; keep its other settings and rule overrides. The
-current file is applied last, so check that it does not turn a selected rule off:
-
-```json
-"extends": [
-  "./.cursor/tools/native-lint/bundles/cd42.biome.json",
-  "./.cursor/tools/native-lint/bundles/cd44.biome.json"
-]
-```
-
 For **Oxlint 1.87.0**, append only selected paths to an existing
 `.oxlintrc.json` `extends` array. These fragments contain rules only; preserve
 the consumer's `plugins`, categories, other rules, ignores and lint command.
@@ -106,23 +97,24 @@ the `eslint` plugin for these core rule IDs:
 ]
 ```
 
-The JSON excerpts are properties to merge into an existing config, not whole
-replacement files. Use the consumer's existing package manager and lint script;
-do not install another linter merely to adopt these examples. Include intended
-source, test, TSX and applicable JS paths. Existing findings require an explicit
+The Oxlint `extends` excerpt is a property to merge into an existing config,
+not a whole replacement file. Use the consumer's existing package manager and
+validation scripts. If neither engine is installed, add pinned Oxlint alongside
+the existing linter. For the tested pnpm workspace, run
+`pnpm add -Dw oxlint@1.87.0 --ignore-scripts` and include
+`pnpm exec oxlint apps packages` in its existing validation command. Adjust
+paths to include source, tests, TSX and applicable JS; keep other lint checks. Existing findings require an explicit
 scope/debt decision before requiring a new rule; initial inventory needs no Five
 Whys. These bundles do not read `.constitution-carve-outs` or enforce CD-46.
 
-CD-42 uses ESLint/Oxlint `no-else-return` with `allowElseIf: false`, or Biome
-`noUselessElse`. Each catches an `else`/`else if` after an early `return`.
-Biome also flags redundant `else` after other control-flow exits. A happy-first
-body without `else` still passes all three; review guard ordering and the final
-happy return manually.
+CD-42 uses ESLint/Oxlint `no-else-return` with `allowElseIf: false`. Both
+catch an `else`/`else if` after an early `return`. A happy-first body without
+`else` still passes both; review guard ordering and the final happy return
+manually.
 
-CD-44 uses ESLint/Oxlint `no-param-reassign` with `props: true`, or Biome
-`noParameterAssign` with `propertyAssignment: "deny"`. Each catches direct
-parameter property writes. Each also bans **parameter rebinding**, beyond the
-CD-44 field-only prohibition. Input `push`/`sort`, aliases, shared nested children
+CD-44 uses ESLint/Oxlint `no-param-reassign` with `props: true`. Both catch
+direct parameter property writes. Each also bans **parameter rebinding**, beyond
+the CD-44 field-only prohibition. Input `push`/`sort`, aliases, shared nested children
 after a shallow copy, and effects inside callees can pass; review those manually.
 No blanket immutable-data policy or automatic CD-44 compliance is claimed.
 
