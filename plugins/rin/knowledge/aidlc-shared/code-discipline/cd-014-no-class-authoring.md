@@ -8,6 +8,7 @@ amended: []
 enforced-by:
   - biome:noStaticOnlyClass
   - eslint:rin-discipline/no-class-authoring
+  - oxlint:rin-discipline/no-class-authoring
   - audit:auditConstitution
   - audit:auditPublicSurface
 enforcement-note: "The opt-in tools/native-lint/cd14 local TypeScript plugin checks authored class syntax in ESLint/Oxlint. Review external construction and wrapper placement."

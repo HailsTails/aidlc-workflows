@@ -1,6 +1,6 @@
 # CD-14 native lint fragments
 
-This opt-in slice supplies separate dedicated ESLint and Oxlint rules. Consumers add native
+This opt-in slice supplies one dedicated rule for ESLint and Oxlint. Consumers add native
 fragments to their existing config. There is no composer or generated host config.
 
 Fetch a reviewed source pin into the replaceable managed directory. This requires
@@ -38,7 +38,7 @@ export default [
 
 Keep the existing TypeScript parser and lint command. An ordinary
 `eslint.config.mjs` imports this erasable TypeScript fragment on plain Node
-22.18 or later through native type stripping; Oxlint loads `cd14/cd14.oxlint-plugin.ts` the
+22.18 or later through native type stripping; Oxlint loads `cd14/cd14.eslint-plugin.ts` the
 same way. A separate TypeScript-config loader is needed only if the consumer's
 own ESLint config is `eslint.config.ts`.
 The producer does not ship a TypeScript parser dependency to consumers.
@@ -55,7 +55,7 @@ The fragments don't read `.constitution-carve-outs`; exceptions are out of scope
 
 ## Rule ownership and limits
 
-Each tool owns its CD14 implementation without importing CD14 code from another tool.
+ESLint and Oxlint load one CD14 rule source; the fragments select the same dedicated rule.
 Oxlint uses its supported ESLint-compatible plugin protocol. Each native rule
 export is the engine boundary used by RuleTester; the diagnostic
 port exposes owned contracts to the classification logic. The rule has no runtime
