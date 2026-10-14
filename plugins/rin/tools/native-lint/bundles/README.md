@@ -11,40 +11,20 @@ This lint-only fetch does not install the canonical knowledge files.
 
 ## Install pinned native-lint sources
 
-Run this Bash command from the root of an existing consumer repository. It
-requires Git, curl and GNU tar (Git Bash on Windows). Enter a full, public Rin
-source commit SHA containing these bundles; the older standalone-guide pin
-predates them. The command fetches the authored source directory into the fixed
-`.rin/native-lint/` path without Bun or a harness build. It refuses to overwrite
-an existing install, refuses a symlinked `.rin` path, excludes source tests and
-checks the four selected-engine assets plus this README:
+From the root of an existing consumer repository, use curl and GNU tar (Git
+Bash on Windows). Replace the placeholder with a full public Rin source commit
+SHA containing these bundles. This noninteractive command replaces the
+`.rin/native-lint/` source directory; it needs no Bun or harness build:
 
 ```bash
-(
-  set -euo pipefail
-  test -e .git
-  read -r -p 'Full pinned Rin source commit SHA: ' rin_source_sha
-  [[ "$rin_source_sha" =~ ^[0-9a-f]{40}$ ]]
-  test ! -L .rin
-  test ! -e .rin/native-lint
-  test ! -L .rin/native-lint
-  mkdir -p .rin/native-lint
-  curl -fsSL "https://codeload.github.com/HailsTails/aidlc-workflows/tar.gz/$rin_source_sha" \
-    | tar -xz -C .rin/native-lint --strip-components=5 --wildcards \
-      --exclude='*.test.ts' '*/plugins/rin/tools/native-lint/*'
-  for asset in cd42.eslint.json cd44.eslint.json cd42.oxlint.json cd44.oxlint.json README.md; do
-    test -f ".rin/native-lint/bundles/$asset"
-  done
-)
+RIN_SOURCE_SHA='PASTE_FULL_40_CHARACTER_COMMIT_SHA'
+rm -rf .rin/native-lint && mkdir -p .rin/native-lint
+curl -fsSL "https://codeload.github.com/HailsTails/aidlc-workflows/tar.gz/$RIN_SOURCE_SHA" \
+  | tar -xz -C .rin/native-lint --strip-components=5 --wildcards --exclude='*.test.ts' '*/plugins/rin/tools/native-lint/*'
 ```
 
-Commit `.rin/native-lint/` to the consumer and record the full source SHA in
-that commit message. For an update, review the new source revision and compare
-it with the installed files. This command refuses overwrite: replace only
-`.rin/native-lint/` files owned by this adoption, rerun with the new SHA, review
-the diff and commit the updated pin. If migrating from an earlier harness-path
-copy, update config references to the paths below, verify lint, then remove only
-the old owned files and references. There is no selective uninstall.
+Review `git diff .rin/native-lint`, commit the fetched directory and record the
+full source SHA in the consumer commit message.
 
 ## Enable only selected checks in the consumer
 
@@ -52,17 +32,11 @@ For **ESLint**, read one or both fetched JSON rule maps in the existing
 flat config. Spread the selected rule maps into the existing TypeScript/TSX
 `rules` block, keeping its parser, plugins, other rules, file patterns and lint
 script. These maps add no parser or plugin and do not select file scope. Add
-the selected reads at the top of an existing ESM flat config:
+the selected native JSON imports at the top of an existing ESM flat config:
 
 ```js
-import { readFileSync } from 'node:fs';
-
-const cd42EslintRules = JSON.parse(readFileSync(
-  new URL('./.rin/native-lint/bundles/cd42.eslint.json', import.meta.url), 'utf8',
-));
-const cd44EslintRules = JSON.parse(readFileSync(
-  new URL('./.rin/native-lint/bundles/cd44.eslint.json', import.meta.url), 'utf8',
-));
+import cd42EslintRules from './.rin/native-lint/bundles/cd42.eslint.json' with { type: 'json' };
+import cd44EslintRules from './.rin/native-lint/bundles/cd44.eslint.json' with { type: 'json' };
 ```
 
 These are plain data files; the consumer ESLint config loads them with Node and
@@ -102,12 +76,10 @@ selected fragments (this example selects both):
 
 The Oxlint `extends` excerpt is a property to merge into an existing config,
 not a whole replacement file. Use the consumer's existing package manager and
-validation scripts. If neither engine is installed, add pinned Oxlint alongside
-the existing linter. For the tested pnpm consumer workspace, run
-`pnpm add -Dw --save-exact oxlint@1.87.0 --ignore-scripts` and include
-`pnpm exec oxlint apps packages` in its existing validation command. Adjust
-paths to include source, tests, TSX and applicable JS; keep other lint checks.
-Existing findings require an explicit
+validation scripts. If neither engine is installed, add pinned Oxlint as a dev
+dependency with the consumer's package manager and include it in the existing
+validation command. Keep other lint checks and include source, test, TSX and
+applicable JS paths. Existing findings require an explicit
 scope/debt decision before requiring a new rule; initial inventory needs no Five
 Whys. These bundles do not read `.constitution-carve-outs` or enforce CD-46.
 
