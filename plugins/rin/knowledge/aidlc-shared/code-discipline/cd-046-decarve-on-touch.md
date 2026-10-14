@@ -8,6 +8,7 @@ amended: [v2.22.0]
 enforced-by:
   - script:check-carve-out-decay
   - manual
+enforcement-note: "The decay script applies to Rin sidecars at a resolvable review base; it does not prove whole-file paydown or lint/config baseline decay. Review the governing check after touching an exempt file."
 status: active
 applies-to: process
 portability: portable

@@ -8,6 +8,7 @@ amended: [v2.1.1, v2.4.0]
 enforced-by:
   - biome:useNamingConvention
   - audit:auditIdentifierNames
+enforcement-note: "Biome naming convention and Rin identifier audit catch syntax and selected names, not whether a name communicates its role; meaning needs review."
 status: active
 applies-to: universal
 portability: portable

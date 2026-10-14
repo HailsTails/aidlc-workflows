@@ -7,7 +7,8 @@ pairs-with: [cd-021]
 amended: [v2.6.0]
 enforced-by:
   - manual
-enforcement-note: "Bare process-lifecycle calls outside the injected port are a reviewer judgement; no deterministic sensor covers them yet."
+  - eslint:no-restricted-syntax
+enforcement-note: "Optional consumer ESLint selectors can flag selected process lifecycle calls; Rin installs no such standalone rule. Injected-port ownership and other process APIs need review."
 status: active
 applies-to: typescript-runtime
 portability: portable

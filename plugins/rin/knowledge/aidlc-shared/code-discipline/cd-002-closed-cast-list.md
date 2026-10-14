@@ -7,6 +7,7 @@ pairs-with: [cd-015, cd-045]
 amended: [v2.2.0, v2.8.0]
 enforced-by:
   - audit:auditCastExpressions
+enforcement-note: "The Rin cast audit is partial; each permitted site still needs a closed-list authorization and boundary justification. No blanket as-const exception follows from the tag."
 status: active
 applies-to: typescript
 portability: portable

@@ -8,6 +8,9 @@ amended: [v2.13.0]
 enforced-by:
   - audit:auditInputMutation
   - biome:noParameterAssign
+  - eslint:no-param-reassign
+  - oxlint:eslint/no-param-reassign
+enforcement-note: "Rin's Biome preset omits propertyAssignment:deny, so its default allows direct field writes; the option is available but unconfigured. Optional ESLint/Oxlint require props:true, also ban rebinding and miss aliases and mutators. Rin's input audit is partial."
 status: active
 applies-to: typescript-runtime
 portability: portable

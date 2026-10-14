@@ -7,6 +7,9 @@ pairs-with: [cd-025]
 amended: []
 enforced-by:
   - audit:auditTestDiscipline
+  - eslint:no-restricted-syntax
+  - oxlint:vitest/no-restricted-vi-methods
+enforcement-note: "ESLint needs vi/jest mock and doMock selectors; oxlint's Vitest rule needs explicit mock and doMock options. Scope to tests; aliases and other APIs remain review work."
 status: active
 applies-to: typescript-runtime
 portability: portable

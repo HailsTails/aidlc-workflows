@@ -7,6 +7,7 @@ pairs-with: [cd-040]
 amended: [v2.13.0, v2.15.0]
 enforced-by:
   - audit:auditBooleanParameters
+enforcement-note: "Rin's boolean-annotation audit is a partial signal; whether a value is evaluative or a mode/state choice still needs semantic review."
 status: active
 applies-to: typescript
 portability: portable

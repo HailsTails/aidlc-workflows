@@ -8,6 +8,8 @@ amended: [v2.9.0]
 enforced-by:
   - biome:noExcessiveCognitiveComplexity
   - biome:noExcessiveLinesPerFunction
+  - manual
+enforcement-note: "Rin configures complexity and line-count heuristics, but they cannot decide whether a function only orchestrates; small computation can pass and pure coordination can exceed limits."
 status: active
 applies-to: universal
 portability: portable

@@ -14,6 +14,7 @@ enforced-by:
   - tsconfig:noPropertyAccessFromIndexSignature
   - tsconfig:useUnknownInCatchVariables
   - audit:auditTsconfigStrict
+enforcement-note: "The seven compiler flags require effective TS config and project-graph checks; Rin's text audit is partial and does not establish inherited values or source/test coverage."
 status: active
 applies-to: typescript
 portability: portable

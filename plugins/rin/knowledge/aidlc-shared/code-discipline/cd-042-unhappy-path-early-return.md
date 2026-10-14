@@ -7,6 +7,9 @@ pairs-with: []
 amended: [v2.9.0]
 enforced-by:
   - biome:noUselessElse
+  - eslint:no-else-return
+  - oxlint:eslint/no-else-return
+enforcement-note: "Biome and optional ESLint/Oxlint no-else-return (allowElseIf:false) catch an else after return, not every unhappy-path or final-happy-path ordering error; review the full body."
 status: active
 applies-to: universal
 portability: portable
