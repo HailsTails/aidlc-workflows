@@ -86,10 +86,10 @@ plugin in the host config: Biome concatenates plugin arrays under `extends`.
 ## Governance and composition boundary
 
 A sidecar entry needs `files`, `reason` and `decision`; the adapter checks this
-mechanical subset and does **not** grant a carve-out. Keep Rin's canonical CD
-sensor, sidecar eligibility/why-chain review and CD-46 decay gate in the adopter's
-review/CI path. From a pinned producer checkout with its frozen Bun dependencies,
-one concrete gate invocation is:
+mechanical subset and does **not** grant a carve-out. Keep sidecar eligibility and
+why-chain review plus the canonical CD-46 decay gate in the adopter's review/CI
+path. From a pinned producer checkout with its frozen Bun dependencies, one
+concrete CD-46 gate invocation is:
 
 ```bash
 bun plugins/rin/tools/rin-harness-carve-out-decay.ts --project-dir "$consumer" --base-ref "$review_base" --json
@@ -101,6 +101,17 @@ uncommitted and committed edits; whole-file remediation and sidecar removal
 restored green checks. Native lint alone does not run this Git gate. Do not use
 inline linter comments as an assumed CD-14 exemption. CD-14 has no authored-class
 authorised location.
+
+The current canonical CD-14 sensor is a separate, narrower line-based audit. In
+the synthetic adopter it accepted a carved class declaration, but missed a
+carved class expression and marked that sidecar path stale; it also reported
+classes inside ambient namespace/module/global declarations that the native
+rule correctly treats as type-only. Its direct CLI emits a JSON `pass` field and
+normally exits 0, so calling it directly is not an exit-code gate. If using the
+Rin harness, keep its sensor/gate interpretation and inventory this mismatch.
+Do not claim that a native-only class-expression carve satisfies the current
+sensor; aligning the auditor is separate work. The CD-46 checker itself did
+reject committed and uncommitted touches to that carved expression file.
 
 This directory is independently copyable. Other opt-in per-CD bundles can live
 beside it under `tools/native-lint/` and contribute their own config fragments

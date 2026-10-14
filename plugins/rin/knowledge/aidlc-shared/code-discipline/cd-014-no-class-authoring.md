@@ -26,3 +26,5 @@ The optional `tools/native-lint/cd14/` asset adds a dedicated
 `rin-discipline/no-class-authoring` rule for ordinary ESLint/Oxlint runs and a
 separate Biome Grit check. It can sit beside a consumer's existing lint rules;
 its syntax result does not establish the external-library/wrapper conditions.
+The current line-based audit and native parser do not have identical TS ambient
+or class-expression coverage; review their findings separately during adoption.
