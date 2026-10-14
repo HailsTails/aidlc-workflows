@@ -84,20 +84,20 @@ const exceptionsFileSchema = z.object({
   version: z.literal(1),
   exceptions: z.array(
     z.discriminatedUnion("kind", [
-      z.object({
+      z.strictObject({
         kind: z.literal("authorised-location"),
         clause: z.string(),
         file: z.string(),
         reason: z.string(),
       }),
-      z.object({
+      z.strictObject({
         kind: z.literal("file-carve-out"),
         clause: z.string(),
         file: z.string(),
         reason: z.string(),
         whyChain: z.unknown(),
       }),
-      z.object({
+      z.strictObject({
         kind: z.literal("clause-wide-carve-out"),
         clause: z.string(),
         reason: z.string(),

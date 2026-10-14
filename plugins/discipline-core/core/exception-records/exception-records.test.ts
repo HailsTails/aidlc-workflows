@@ -241,6 +241,15 @@ describe("parseExceptionEntries invalid records", () => {
     ]);
   });
 
+  it("reports file-not-repo-path before why-chain-refused for a file carve-out with both", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...FILE_CARVE_OUT, file: "../legacy.ts", whyChain: SHORT_CHAIN }],
+        selection: SELECTION,
+      }).invalid,
+    ).toEqual([{ index: 0, problem: { kind: "file-not-repo-path", file: "../legacy.ts" } }]);
+  });
+
   it("gives each invalid entry its position in the entries", () => {
     expect(
       parseExceptionEntries({
@@ -308,6 +317,28 @@ describe("readExceptionEntries", () => {
     expect(
       readEntriesOf({
         text: JSON.stringify({ version: 1, exceptions: [{ ...LOCATION, kind: "blanket-waiver" }] }),
+      }),
+    ).toMatchObject({
+      outcome: "failed",
+      error: { kind: "file-malformed", path: EXCEPTIONS_PATH },
+    });
+  });
+
+  it("is file-malformed for a clause-wide carve-out carrying a file", () => {
+    expect(
+      readEntriesOf({
+        text: JSON.stringify({ version: 1, exceptions: [{ ...CLAUSE_WIDE, file: "src/legacy.ts" }] }),
+      }),
+    ).toMatchObject({
+      outcome: "failed",
+      error: { kind: "file-malformed", path: EXCEPTIONS_PATH },
+    });
+  });
+
+  it("is file-malformed for an authorised location carrying an unknown key", () => {
+    expect(
+      readEntriesOf({
+        text: JSON.stringify({ version: 1, exceptions: [{ ...LOCATION, expires: "2027-01-01" }] }),
       }),
     ).toMatchObject({
       outcome: "failed",

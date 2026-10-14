@@ -112,3 +112,29 @@ describe("createPathPort resolve", () => {
     );
   });
 });
+
+describe("createPathPort relative", () => {
+  it("absolutises relative arguments against the injected working directory", () => {
+    expect(pathPortIn({ directory: "/work/sub" }).relative({ from: "..", to: "x" })).toBe("sub/x");
+  });
+
+  it("asks the injected working directory for relative arguments", () => {
+    const workingDirectory = workingDirectoryAt({ directory: "/work/sub" });
+
+    createPathPort({ workingDirectory }).relative({ from: "..", to: "x" });
+
+    expect(workingDirectory).toHaveBeenCalledWith({});
+  });
+
+  it("gives the relative path between two absolute arguments", () => {
+    expect(pathPortIn({ directory: "/work/sub" }).relative({ from: "/a", to: "/a/b" })).toBe("b");
+  });
+
+  it("does not ask the working directory when both arguments are absolute", () => {
+    const workingDirectory = workingDirectoryAt({ directory: "/work/sub" });
+
+    createPathPort({ workingDirectory }).relative({ from: "/a", to: "/a/b" });
+
+    expect(workingDirectory).not.toHaveBeenCalled();
+  });
+});

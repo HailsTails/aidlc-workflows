@@ -76,6 +76,17 @@ const CD_14 = JSON.stringify({
   ],
 });
 
+const CD_14_WITH_THREE_MECHANICAL = JSON.stringify({
+  version: 1,
+  id: "CD-14",
+  clauses: [
+    mechanical("class-syntax"),
+    mechanical("abstract-syntax"),
+    mechanical("decorator-syntax"),
+    { kind: "judgement", id: "library-construction", summary: "wrap libraries", enforcedBy: "review" },
+  ],
+});
+
 const CD_14_PIECE = JSON.stringify({
   version: 1,
   discipline: "CD-14",
@@ -165,6 +176,25 @@ describe("readSelection", () => {
         ],
         uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }],
       },
+    });
+  });
+
+  it("lists an unlisted mechanical clause once when two clauses of its discipline are selected", () => {
+    expect(
+      select({
+        ...INSTALL,
+        "/install/rules/CD-14/discipline.json": presentFile({ text: CD_14_WITH_THREE_MECHANICAL }),
+        [SELECTION_PATH]: presentFile({
+          text: JSON.stringify({
+            version: 1,
+            ruleSets: {},
+            clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "walker" },
+          }),
+        }),
+      }),
+    ).toMatchObject({
+      outcome: "ok",
+      value: { uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "decorator-syntax" }] },
     });
   });
 

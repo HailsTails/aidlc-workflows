@@ -68,7 +68,11 @@ export const createPathPort = (options: {
   readonly workingDirectory: WorkingDirectory;
 }): PathPort => ({
   join: (request) => posix.join(...request.segments),
-  relative: (request) => posix.relative(request.from, request.to),
+  relative: (request) =>
+    posix.relative(
+      absoluteFormOf({ path: request.from, workingDirectory: options.workingDirectory }),
+      absoluteFormOf({ path: request.to, workingDirectory: options.workingDirectory }),
+    ),
   directoryOf: (request) => posix.dirname(request.path),
   resolve: (request) =>
     absolutePathSchema.parse(

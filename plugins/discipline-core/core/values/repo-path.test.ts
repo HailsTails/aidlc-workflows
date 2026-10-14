@@ -30,6 +30,10 @@ const REFUSED = [
   "c:/x",
   "C:x",
   "C:",
+  "a\nb.ts",
+  "a\rb.ts",
+  "a\u0000b.ts",
+  "src/a.ts\n",
 ];
 
 describe("isRepoPathText", () => {

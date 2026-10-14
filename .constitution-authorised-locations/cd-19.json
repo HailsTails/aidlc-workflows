@@ -132,13 +132,13 @@
     "files": [
       "plugins/discipline-core/core/platform-ports/path-port.ts"
     ],
-    "reason": "Structural CD19 location: createPathPort performs pure POSIX path arithmetic and file-URL conversion with node:path posix and node:url fileURLToPath, computing from its arguments alone; the only ambient read, the working directory used by a relative resolve, arrives through the injected WorkingDirectory, which createDefaultPathPort binds to process.cwd(). Consumers receive strings, AbsolutePath values and Result data, never Node types. path-port.test.ts fakes WorkingDirectory with vi.fn. This is the single wrapping site for path arithmetic and file-URL conversion in the discipline-core plugin.",
+    "reason": "Structural CD19 location: createPathPort computes join, directoryOf, relative and resolve with node:path posix, and fromFileUrl with the URL global and node:url fileURLToPath (whose decoding follows the host platform's rules). resolve and relative turn each relative argument absolute by calling the injected WorkingDirectory and passing its result first to posix.resolve, so posix.resolve itself would read process.cwd() only if that injected directory were relative; an absolute argument is normalised without calling it. join, directoryOf and fromFileUrl read no ambient state. defaultWorkingDirectory binds process.cwd() to WorkingDirectory and createDefaultPathPort wires it into createPathPort. Consumers receive strings, AbsolutePath values and Result data, never Node types. path-port.test.ts fakes WorkingDirectory with vi.fn. This is the single wrapping site for path arithmetic and file-URL conversion in the discipline-core plugin.",
     "whyChain": {
       "whys": [
         {
           "why": "Why does plugins/discipline-core/core/platform-ports/path-port.ts import or touch a platform runtime surface at all?",
           "because": "Discipline-core's checker needs path arithmetic, resolution against the working directory and file-URL conversion, which the runtime provides through node:path posix, node:url fileURLToPath and process.cwd().",
-          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on defines PathPort and says resolve reads the working directory only through its default factory; plugins/discipline-core/core/platform-ports/path-port.ts createDefaultPathPort."
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on defines PathPort and says resolve reads the working directory only through its default factory; plugins/discipline-core/core/platform-ports/path-port.ts defaultWorkingDirectory and createDefaultPathPort."
         },
         {
           "why": "Why is that runtime access not confined somewhere else, away from core logic?",
@@ -152,8 +152,8 @@
         },
         {
           "why": "Why can the port's logic still be unit-tested without real I/O?",
-          "because": "Path arithmetic is pure POSIX computation from node:path and node:url with no ambient state, so the tests assert it directly; the only ambient read, the working directory for a relative resolve, arrives through the injected WorkingDirectory, which the tests fake with vi.fn, and only createDefaultPathPort binds process.cwd(), which CD-47 keeps out of unit tests.",
-          "evidence": "plugins/discipline-core/core/platform-ports/path-port.test.ts (workingDirectoryAt builds vi.fn<(request: Record<string, never>) => string>() and asserts it is called only for a relative resolve); rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3) (CD-47 and CD-19/CD-20 in tests)."
+          "because": "join, directoryOf and fromFileUrl compute from their arguments alone, so the tests assert them directly; resolve and relative obtain the working directory only by calling the injected WorkingDirectory, and only for a relative argument, so the tests fake it with vi.fn; the real process.cwd() is bound only by defaultWorkingDirectory, which CD-47 keeps out of unit tests.",
+          "evidence": "plugins/discipline-core/core/platform-ports/path-port.test.ts (workingDirectoryAt builds vi.fn<(request: Record<string, never>) => string>(); the resolve and relative tests assert it is called with {} for a relative argument and not called for absolute ones); rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3) (CD-47 and CD-19/CD-20 in tests)."
         },
         {
           "why": "Why is the binding recorded as an authorised location rather than rewritten?",

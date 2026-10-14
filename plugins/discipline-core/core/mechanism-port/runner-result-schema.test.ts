@@ -71,6 +71,10 @@ describe("hitSchema", () => {
     expect(hitSchema.safeParse({ ...hit, anchor: { line: 3, column: -1 } }).success).toBe(false);
   });
 
+  it("refuses a hit anchored at a fractional column", () => {
+    expect(hitSchema.safeParse({ ...hit, anchor: { line: 3, column: 2.5 } }).success).toBe(false);
+  });
+
   it("refuses a hit anchored at a fractional line", () => {
     expect(hitSchema.safeParse({ ...hit, anchor: { line: 2.5, column: 5 } }).success).toBe(false);
   });

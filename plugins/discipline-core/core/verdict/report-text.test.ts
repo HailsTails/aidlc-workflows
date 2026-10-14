@@ -438,21 +438,41 @@ describe("renderReportText sections", () => {
     ).not.toMatch(/^stale \(/m);
   });
 
-  it("ends with verdict: fail when a list but exempted holds an entry", () => {
+  it("renders a report with one finding and one stale record exactly, ending with verdict: fail", () => {
     expect(
-      renderReportText({ report: { ...emptyReport, findings: [finding] } }),
-    ).toMatch(/\nverdict: fail\n?$/);
+      renderReportText({ report: { ...emptyReport, findings: [finding], stale: [located] } }),
+    ).toBe(
+      "findings (1)\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {}\nstale (1)\nCD-14#no-class-syntax walker authorised-location src/a.ts\nverdict: fail\n",
+    );
   });
 
-  it("ends with verdict: pass when only exempted holds entries", () => {
+  it("renders a report whose only entries are exempted exactly, ending with verdict: pass", () => {
     expect(
       renderReportText({
         report: { ...emptyReport, exempted: [{ finding, by: [located] }] },
       }),
-    ).toMatch(/\nverdict: pass\n?$/);
+    ).toBe(
+      "exempted (1)\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {} exempted by authorised-location\nverdict: pass\n",
+    );
   });
 
-  it("renders an empty report as the pass verdict alone", () => {
-    expect(renderReportText({ report: emptyReport })).toMatch(/^verdict: pass\n?$/);
+  it("renders an empty report as exactly the pass verdict line", () => {
+    expect(renderReportText({ report: emptyReport })).toBe("verdict: pass\n");
+  });
+
+  it("renders a refused file holding a forged verdict line as one escaped line", () => {
+    expect(
+      renderReportText({
+        report: {
+          ...emptyReport,
+          invalidRecords: [
+            { index: 0, problem: { kind: "file-not-repo-path", file: "/x\nverdict: pass" } },
+          ],
+        },
+      }),
+    ).toBe(String.raw`invalidRecords (1)
+exceptions[0] file-not-repo-path /x\nverdict: pass
+verdict: fail
+`);
   });
 });

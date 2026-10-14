@@ -54,7 +54,7 @@ const invalidDetail = (request: { readonly problem: InvalidRecord["problem"] }):
     case "clause-not-selected":
       return clauseAddressText({ address: request.problem.clause });
     case "file-not-repo-path":
-      return request.problem.file;
+      return escapedLineBreaks({ text: request.problem.file });
     case "duplicate":
       return `of ${request.problem.ofIndex}`;
   }

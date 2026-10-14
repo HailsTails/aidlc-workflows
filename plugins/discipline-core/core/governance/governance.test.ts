@@ -591,6 +591,31 @@ describe("applyGovernance rule 5, unrecorded", () => {
   });
 });
 
+describe("applyGovernance rule 5, doubly held", () => {
+  it("records a native exception whose clause and file a doubly-held pair names", () => {
+    expect(
+      applyGovernance({
+        findings: [],
+        records: [
+          { ...locatedNoClassInA, mechanism: eslint },
+          { ...carvedNoClassInA, mechanism: eslint },
+        ],
+        touched: nothingTouched,
+        runs: [
+          {
+            mechanism: eslint,
+            nativeExceptions: [{ kind: "config-override", clause: noClass, file: fileA }],
+            projectedKinds: ["config-override"],
+          },
+        ],
+      }),
+    ).toEqual({
+      ...nothingGoverned,
+      doublyHeld: [{ clause: noClass, file: fileA, mechanism: eslint }],
+    });
+  });
+});
+
 describe("applyGovernance rule 5, mechanism", () => {
   it("lists a native exception whose only matching clause and file record belongs to another mechanism", () => {
     expect(
