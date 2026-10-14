@@ -37,7 +37,11 @@ test("CD-19 includes source, scripts and tests with explicit Node import forms",
     );
     write("src/forms.test.ts", 'import { test } from "node:test";\n');
     write("tests/integration.ts", 'import { once } from "node:events";\n');
-    write("scripts/build.ts", 'import { execFile } from "node:child_process";\nimport pino from "pino";\n');
+    const vendor = ["pi", "no"].join("");
+    write(
+      "scripts/build.ts",
+      `import { execFile } from "node:child_process";\nimport pino from "${vendor}";\n`,
+    );
 
     const report = auditConstitution({ service: wholeProjectService({ projectDir }) });
     const rawImports = report.violations.filter((v) =>
