@@ -1,6 +1,6 @@
 import classAuthoringPlugin, {
 	type ClassAuthoringPlugin,
-} from "./cd14/plugin.ts";
+} from "./cd14/cd14.eslint-plugin.ts";
 
 export type Cd14EslintEntry = {
 	readonly plugins: { readonly "rin-discipline": ClassAuthoringPlugin };

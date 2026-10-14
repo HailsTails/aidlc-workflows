@@ -8,7 +8,7 @@ import {
 	type ClassAncestor,
 	type ClassDiagnosticPort,
 	noClassAuthoring,
-} from "./plugin.ts";
+} from "./cd14.eslint-plugin.ts";
 
 RuleTester.describe = describe;
 RuleTester.it = test;

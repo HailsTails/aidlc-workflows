@@ -1,4 +1,4 @@
 {
-  "jsPlugins": ["./cd14/plugin.ts"],
+  "jsPlugins": ["./cd14/cd14.oxlint-plugin.ts"],
   "rules": { "rin-discipline/no-class-authoring": "error" }
 }
