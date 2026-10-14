@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: '1.4.2'
@@ -32,3 +34,5 @@ jobs:
         run: bun run lint
       - name: Audit reusable Rin plugin
         run: bun run audit:rin
+      - name: Verify inherited Rin debt decays on touch
+        run: bun plugins/rin/tools/rin-harness-carve-out-decay.ts --project-dir . --base-ref "${{ github.event.pull_request.base.sha || 'origin/main' }}"

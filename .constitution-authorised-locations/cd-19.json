@@ -1,0 +1,14 @@
+[
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-path-operations.ts"
+    ],
+    "reason": "Structural CD19 location: the only Node path import in this module is the boundary adapter that provides pathOperationsFor/defaultPathOperations. The touched constitution scope now consumes this port instead of importing node:path. Review later additions to this file for port confinement; this is not inherited debt."
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-sidecar-file-reader.ts"
+    ],
+    "reason": "Structural CD19 location: this module owns the Node filesystem import for defaultSidecarFileReader and defaultFileKindPort. The touched constitution scope now consumes the file-kind port instead of importing node:fs. Review later additions to this file for port confinement; this is not inherited debt."
+  }
+]

@@ -4,6 +4,8 @@ type PathFlavour = "win32" | "posix";
 
 type PathOperations = {
   readonly flavour: PathFlavour;
+  readonly basename: (input: { readonly path: string }) => string;
+  readonly join: (input: { readonly segments: readonly string[] }) => string;
   readonly resolve: (input: { readonly segments: readonly string[] }) => string;
   readonly relative: (input: {
     readonly from: string;
@@ -25,11 +27,16 @@ const pathOperationsFor = ({
   const platformPath = PLATFORM_PATHS[flavour];
   return {
     flavour,
+    basename: ({ path }) => platformPath.basename(path),
+    join: ({ segments }) => platformPath.join(...segments),
     resolve: ({ segments }) => platformPath.resolve(...segments),
     relative: ({ from, to }) => platformPath.relative(from, to),
     isAbsolute: ({ path }) => platformPath.isAbsolute(path),
   };
 };
 
+const defaultPathOperations = (): PathOperations =>
+  pathOperationsFor({ flavour: process.platform === "win32" ? "win32" : "posix" });
+
 export type { PathFlavour, PathOperations };
-export { pathOperationsFor };
+export { defaultPathOperations, pathOperationsFor };

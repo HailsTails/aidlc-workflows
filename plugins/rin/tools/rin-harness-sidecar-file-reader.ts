@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 
 type SidecarFileReader = {
   readonly fileExists: (path: string) => boolean;
@@ -29,5 +29,25 @@ const defaultSidecarFileReader = (): SidecarFileReader => ({
   },
 });
 
-export type { SidecarFileReader };
-export { defaultSidecarFileReader, entriesAfterDirectoryFailure };
+type FileKindPort = {
+  readonly isFile: (path: string) => boolean;
+  readonly isDirectory: (path: string) => boolean;
+};
+
+const defaultFileKindPort = (): FileKindPort => {
+  const isKind = (path: string, kind: "file" | "directory"): boolean => {
+    try {
+      const stat = statSync(path);
+      return kind === "file" ? stat.isFile() : stat.isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  return {
+    isFile: (path) => isKind(path, "file"),
+    isDirectory: (path) => isKind(path, "directory"),
+  };
+};
+
+export type { FileKindPort, SidecarFileReader };
+export { defaultFileKindPort, defaultSidecarFileReader, entriesAfterDirectoryFailure };

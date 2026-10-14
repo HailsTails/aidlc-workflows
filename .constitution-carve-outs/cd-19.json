@@ -1,0 +1,814 @@
+[
+  {
+    "files": [
+      "plugins/rin/hooks/block-inline-exec.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/block-inline-exec.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/guard-manifest.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/guard-primary-commit.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:process x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/guard-trial-relaxation.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/guard-trial-scope.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/guard-trial.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/guard-trial.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/guard-vault-write.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/mutant-detection.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/plugin-hook-coverage.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/provision-worktree.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/prune-worktree-husks.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/review-scribe-checkout-files.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:os x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-constitution-gate-measured-time.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-constitution-gate-root-resolution.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:process x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-constitution-gate.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:process x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-constitution-gate.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:path x1, node:process x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-core-bare-sensor.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gate-invocation.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-audit-guard.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-autonomy-gate.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-autonomy-gate.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 7 existing Node imports (node:child_process x1, node:crypto x1, node:fs x1, node:os x1, node:path x1, node:process x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-engine-receipt.live-path.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 6 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:process x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-engine-receipt.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:child_process x1, node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-findings-gate.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-lens-defence.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-review-scribe.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-review-scribe.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-runtime-compile.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:child_process x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-verdict-guard.overblock.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:child_process x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-gates-verdict-guard.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:child_process x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-operator-steer-detect.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:crypto x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-operator-steer.live-path.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-operator-steer.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/rin-operator-steer.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/run-hook-process.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/run-hook-process.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/settings-parse.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/settings-registration.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/shared-core-bare.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:child_process x1, node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/shared-review-roster.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/shared-review-roster.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/hooks/stamp-preview-target.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-boolean-parameters.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-boolean-parameters.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-cast-expressions.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-cast-expressions.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-constitution.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-identifier-names.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-identifier-names.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-input-mutation.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-input-mutation.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-test-discipline.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-test-discipline.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-tsconfig-strict.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/audit-tsconfig-strict.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/walk-source-files.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/constitution-audit/walk-source-files.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/hermetic-git/hermetic-git-repository.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/hermetic-git/hermetic-git-repository.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-board-bridge-cli.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-board-bridge-cli.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-derivation-selftest.spec.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 6 existing Node imports (node:child_process x1, node:crypto x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-merge-drivers.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:child_process x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-promote.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-promote.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-record-store.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-record-store.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-registry-merge.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-resolve-addadd.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-resolve-addadd.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-retire.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-review-roster.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-review-verdict.landed.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:crypto x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-review-verdict.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-review-verdict.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 6 existing Node imports (node:child_process x1, node:crypto x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-review-worktree.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-reviewer-identity.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-selection-config.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-selection-config.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-sensor-file-reader.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-shard-merge.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-shard-merge.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:child_process x1, node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-status.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 5 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-status.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-tier-migration-cli.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-tier-migration-cli.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-workflow-selection.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/rin-gates-workflow-selection.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:child_process x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-audit-debt-inventory.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-carve-out-decay.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-carve-out-decay.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:child_process x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-cd-authorised-locations.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-cd-authorised-locations.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-cd-carve-outs.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-cd-carve-outs.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-cd-enforcement.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:fs x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-config.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:fs x1, node:os x1, node:path x1, node:util x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-config.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-constitution-audit.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-dd-enforcement.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-dd-enforcement.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-doc-discipline.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-exception-baseline.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-exception-baseline.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:crypto x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-gate-runs.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-git.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 4 existing Node imports (node:child_process x1, node:crypto x1, node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-hermetic-git-guard.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-hermetic-git-guard.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-legacy-exception-pass.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-legacy-exception-pass.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 1 existing Node imports (node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-registry-r7-door.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-review-attempt-floor.test.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:fs x1, node:os x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-sensor-cd-extras.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-sensor-format.ts"
+    ],
+    "reason": "Initial inherited CD19/CD20 debt: 3 existing Node imports (node:child_process x1, node:fs x1, node:path x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
+    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
+  }
+]

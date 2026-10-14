@@ -55,3 +55,15 @@ describe("pathOperationsFor under the posix flavour", () => {
     expect(posixOperations.isAbsolute({ path: "C:\\repo" })).toBe(false);
   });
 });
+
+describe("path boundary operations used by constitution scope", () => {
+  test("joins and names Windows paths without using the host flavour", () => {
+    expect(win32Operations.join({ segments: ["C:\\repo", "scripts", "run.ts"] })).toBe("C:\\repo\\scripts\\run.ts");
+    expect(win32Operations.basename({ path: "C:\\repo\\scripts\\run.ts" })).toBe("run.ts");
+  });
+
+  test("joins and names POSIX paths without using the host flavour", () => {
+    expect(posixOperations.join({ segments: ["/repo", "scripts", "run.ts"] })).toBe("/repo/scripts/run.ts");
+    expect(posixOperations.basename({ path: "/repo/scripts/run.ts" })).toBe("run.ts");
+  });
+});
