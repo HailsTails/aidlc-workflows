@@ -19,6 +19,11 @@ describe("review process boundary", () => {
     expect(Object.keys(result).sort()).toEqual(["status", "stderr", "stdout"]);
   });
 
+  test("a child that exits without reading its input still reports its status", async () => {
+    const result = await runtime.run({ program: "bun", args: ["-e", "process.exit(3)"], input: "x".repeat(8_000_000) });
+    expect(result.status).toBe(3);
+  });
+
   test("startup failures do not expose Node error properties", async () => {
     await expect(runtime.run({ program: "__rin_review_missing_executable__", args: [] })).rejects.not.toHaveProperty("code");
   });
