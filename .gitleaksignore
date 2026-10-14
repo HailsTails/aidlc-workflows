@@ -2,3 +2,8 @@
 # Older synthetic findings are covered by .gitleaks-baseline.json (the CI scan's --baseline-path).
 # Fingerprint: commit:file:rule:line
 f0dde775a107f7cec89ce7e43c5ec0b762f813ed:tests/unit/t-ci-sanitize-logs.test.ts:generic-api-key:61
+
+# Rin fork false positives (generic-api-key), verified by reading each line:
+# an environment-variable name assigned to a constant, and a SHA-256 content hash.
+b0540b48e041e46912042d975a828f8411115785:plugins/rin/hooks/rin-constitution-gate.ts:generic-api-key:45
+d35b215b7f397082471232d2ea16aeb539a07f6b:docs/reference/rule-reuse-evidence/results.json:generic-api-key:56
