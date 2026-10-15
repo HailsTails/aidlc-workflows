@@ -28,6 +28,9 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Check discipline core
         run: bun run --cwd plugins/discipline-core check
+      - name: Prove a discipline core install
+        shell: bash
+        run: bun run --cwd plugins/discipline-core install-proof
 
   source-checks:
     name: Source checks

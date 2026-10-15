@@ -5,8 +5,9 @@
 set -euo pipefail
 
 PACKAGE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MODULES="$(git -C "$PACKAGE" rev-parse --show-toplevel)/node_modules"
-WORK="$(mktemp -d)"
+# Inside the package, so Node resolves dependencies by walking up to the
+# repository's node_modules on every platform, with no symlink.
+WORK="$(mktemp -d "$PACKAGE/.install-proof.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 expect() {
@@ -24,7 +25,7 @@ expect() {
 }
 
 consumer() {
-  local mechanism="$1" repo="$WORK/$1"
+  local mechanism="$1" repo="$WORK/${2:-$1}"
   mkdir -p "$repo"
   cp -r "$PACKAGE/tests/test-fixtures/consumer-proof/$mechanism/." "$repo/"
   printf '{ "type": "commonjs" }\n' >"$repo/package.json"
@@ -35,8 +36,6 @@ consumer() {
   cp -r "$PACKAGE/rules/CD-14" "$install/rules/"
   cp -r "$PACKAGE/mechanisms/$mechanism/runner" "$PACKAGE/mechanisms/$mechanism/CD-14" "$install/mechanisms/$mechanism/"
   find "$install" \( -name '*.test.ts' -o -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
-  ln -s "$MODULES" "$install/node_modules"
-  ln -s "$MODULES" "$repo/node_modules"
   git -C "$repo" init -q
   git -C "$repo" add -A
   git -C "$repo" -c user.name=proof -c user.email=proof@invalid commit -qm consumer
@@ -64,5 +63,9 @@ expect 1 "verdict: fail" check "$WORK/eslint"
 rm "$WORK/eslint/src/kept.ts"
 commit_all "$WORK/eslint" clean
 expect 0 "verdict: pass" check "$WORK/eslint"
+
+consumer walker no-package-json
+rm "$WORK/no-package-json/.rin/dc/package.json"
+expect 1 "Cannot use import statement outside a module" check "$WORK/no-package-json"
 
 echo "install proof: pass"
