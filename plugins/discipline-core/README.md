@@ -101,6 +101,10 @@ Fetch these paths from a pinned commit of this repository into one install direc
 
 Leave out test files (`*.test.ts`) and `tests/` folders. The install must not sit under a `node_modules` path, because Node does not strip types there. Nothing core reads or writes is under a harness directory.
 
+`core/` is fetched whole, so it also carries three modules used only by core's own tests of piece imports and install naming: `core/check/piece-import-rules.ts`, `core/check/install-naming.ts` and `core/mechanism-port/piece-type-packages-schema.ts`; nothing loads them at runtime.
+
+With the ESLint mechanism selected, the install must sit at the same path relative to the repository root on every teammate's machine and every CI runner, for example a fixed `.rin/<name>/` inside the repository. The projection `disciplines.eslint.mjs` embeds the relative path from the repository root to each piece's plugin module, and core compares the committed file byte for byte with what `project-command` would write now. An install at a different relative path makes the check report `eslint out-of-date`, and the team's own ESLint run may fail to resolve the plugin import.
+
 Core ships no helper that derives this list from `disciplines.json`; whether it should is an open design decision. For now the list is applied by hand or by the adopter's own script.
 
 ## Runtime
