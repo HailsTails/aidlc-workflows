@@ -68,5 +68,7 @@ const defaultReviewProcessPort = (): ReviewProcessPort => ({
   }),
 });
 
+const defaultWorkingDirectory = (): string => process.cwd();
+
 export type { CommandInput, CommandOutput, ReviewProcessPort };
-export { defaultReviewProcessPort };
+export { defaultReviewProcessPort, defaultWorkingDirectory };

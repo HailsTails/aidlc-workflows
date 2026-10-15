@@ -50,6 +50,7 @@ Dispatch one subagent per producing lens resolved in Step 1, concurrently to the
   `CANNOT-REVIEW`; the conductor treats this as NOT-READY;
 - passes ONLY: the stage definition path, the artifact/code file paths, and the
   Q&A file path — never memory.md, never plan.md, never another lens's findings;
+- in addition to those paths, tells the lens, in one sentence, that `PD-1` (`{{HARNESS_DIR}}/knowledge/aidlc-shared/process-discipline/pd-001-obligations-are-weighed-against-ordinary-use.md`) applies, and that a finding whose only demand is an addition `PD-1` does not owe is non-blocking. This sentence is the whole of it; it is not a summary of `PD-1` and never replaces the lens reading the rule;
 - lets the agent load its own persona + the project's `cd-*`/method rules for its
   lane.
 

@@ -1,217 +1,324 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve, sep } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
-import { recordDirectoryFor } from "./rin-harness-dd-enforcement.ts";
+import { describe, expect, test, vi } from "vitest";
+import type { R7OptIn } from "./rin-harness-config.ts";
+import { recordDirectoryFor, runDdSensor } from "./rin-harness-dd-enforcement.ts";
+import type { Finding, RecordPorts } from "./rin-harness-doc-discipline.ts";
+import {
+  defaultPathOperations,
+  type PathFlavour,
+  pathOperationsFor,
+} from "./rin-harness-path-operations.ts";
+import { defaultReviewProcessPort } from "./rin-gates/review-process-port.ts";
 
-const INTENT_ARTEFACT = join(
-  "aidlc",
-  "spaces",
-  "default",
-  "intents",
-  "260906-example-record",
-  "rin-requirements.md",
-);
+const paths = defaultPathOperations();
+
+const SEPARATOR: Readonly<Record<PathFlavour, string>> = {
+  win32: "\\",
+  posix: "/",
+};
+
+const INTENT_ARTEFACT = paths.join({
+  segments: [
+    "aidlc",
+    "spaces",
+    "default",
+    "intents",
+    "260906-example-record",
+    "rin-requirements.md",
+  ],
+});
+
+const EXAMPLE_RECORD = paths.resolve({
+  segments: [
+    paths.join({
+      segments: ["aidlc", "spaces", "default", "intents", "260906-example-record"],
+    }),
+  ],
+});
 
 describe("record resolution — the paths that decide corpus-wide safety", () => {
   test("an artefact inside a record resolves to that record's directory", () => {
     const resolved = recordDirectoryFor({ outputPath: INTENT_ARTEFACT });
-    expect(resolved).toBe(
-      resolve(
-        join("aidlc", "spaces", "default", "intents", "260906-example-record"),
-      ),
-    );
+    expect(resolved).toBe(EXAMPLE_RECORD);
   });
 
   test("an artefact nested under a phase directory resolves to the RECORD, not the phase", () => {
-    const nested = join(
-      "aidlc",
-      "spaces",
-      "default",
-      "intents",
-      "260906-example-record",
-      "inception",
-      "rin-gate-1-framing",
-      "rin-requirements.md",
-    );
-    expect(recordDirectoryFor({ outputPath: nested })).toBe(
-      resolve(
-        join("aidlc", "spaces", "default", "intents", "260906-example-record"),
-      ),
-    );
+    const nested = paths.join({
+      segments: [
+        "aidlc",
+        "spaces",
+        "default",
+        "intents",
+        "260906-example-record",
+        "inception",
+        "rin-gate-1-framing",
+        "rin-requirements.md",
+      ],
+    });
+    expect(recordDirectoryFor({ outputPath: nested })).toBe(EXAMPLE_RECORD);
   });
 
   test("a path outside any intent record resolves to nothing", () => {
     expect(
       recordDirectoryFor({
-        outputPath: join("packages", "kernel", "src", "index.ts"),
+        outputPath: paths.join({ segments: ["packages", "kernel", "src", "index.ts"] }),
       }),
     ).toBeUndefined();
   });
 
   test("a path whose only 'intents' mention is a filename does not resolve", () => {
     expect(
-      recordDirectoryFor({ outputPath: join("docs", "intents.md") }),
+      recordDirectoryFor({ outputPath: paths.join({ segments: ["docs", "intents.md"] }) }),
     ).toBeUndefined();
   });
 
   test("the resolved directory is the segment immediately after intents", () => {
     const resolved = recordDirectoryFor({ outputPath: INTENT_ARTEFACT });
-    expect(resolved?.split(sep).pop()).toBe("260906-example-record");
+    expect(resolved?.split(SEPARATOR[paths.flavour]).pop()).toBe("260906-example-record");
   });
 });
 
-test("DD-7 sensor reports not adopted without the project opt-in", () => {
-  const root = mkdtempSync(join(tmpdir(), "rin-dd7-sensor-"));
-  const sensor = join(import.meta.dirname, "rin-harness-sensor-dd-7.ts");
-  const outputPath = join(
-    root,
-    "aidlc",
-    "spaces",
-    "default",
-    "intents",
-    "example",
-    "result.md",
-  );
-  const result = spawnSync(
-    "bun",
-    [sensor, "--project-dir", root, "--output-path", outputPath],
-    { encoding: "utf8" },
-  );
-  rmSync(root, { recursive: true, force: true });
-  expect(result.status).toBe(0);
-  expect(result.stdout).toContain('"scanned":"(DD-7 not adopted)"');
+const posixPaths = pathOperationsFor({ flavour: "posix" });
+
+const WORK = "/work";
+const ELSEWHERE = "/elsewhere";
+const RECORD = "/work/aidlc/spaces/default/intents/260906-example-record";
+const RECORD_ARTEFACT = `${RECORD}/rin-requirements.md`;
+const CURSOR_GRAPH = ".cursor/tools/data/stage-graph.json";
+const CLAUDE_GRAPH = ".claude/tools/data/stage-graph.json";
+
+const fakeRecordPorts = (): RecordPorts => ({
+  reader: {
+    fileExists: (path) => path === RECORD,
+    readFile: () => undefined,
+    listDirectory: () => undefined,
+  },
+  kinds: {
+    isFile: () => false,
+    isDirectory: (path) => path === RECORD,
+  },
+  paths: posixPaths,
 });
 
-test("DD-7 sensor measures an opted-in project", () => {
-  const root = mkdtempSync(join(tmpdir(), "rin-dd7-sensor-"));
-  writeFileSync(
-    join(root, "harness.config.json"),
-    JSON.stringify({
-      projectName: "sensor-fixture",
-      defaultScope: "rin-gates",
-      rulesetRoot: "aidlc/spaces/default/memory",
-      stageGraph: ".claude/tools/data/stage-graph.json",
-      packageManager: { primary: "bun", runnerAllowlist: ["pnpm"] },
-      rinGates: { exceptionWhyChains: true },
-    }),
-  );
-  const sensor = join(import.meta.dirname, "rin-harness-sensor-dd-7.ts");
-  const outputPath = join(
-    root,
-    "aidlc",
-    "spaces",
-    "default",
-    "intents",
-    "example",
-    "result.md",
-  );
-  const result = spawnSync(
-    "bun",
-    [sensor, "--project-dir", root, "--output-path", outputPath],
-    { encoding: "utf8" },
-  );
-  rmSync(root, { recursive: true, force: true });
-  expect(result.status).toBe(0);
-  expect(result.stdout).toContain('"scanned":"(not an intent record)"');
+const fakeConfig = ({ optIn, stageGraph }: { readonly optIn: R7OptIn; readonly stageGraph: string }) => ({
+  r7OptIn: ({ projectDir }: { readonly projectDir: string }): R7OptIn =>
+    projectDir === WORK ? optIn : { kind: "invalid", reason: `config asked about ${projectDir}` },
+  stageGraphPath: ({ projectDir }: { readonly projectDir: string }): string =>
+    projectDir === WORK ? stageGraph : "config-asked-about-another-directory.json",
 });
 
-test("DD-7 sensor reports UNMEASURED and fails when the opt-in is malformed", () => {
-  const root = mkdtempSync(join(tmpdir(), "rin-dd7-sensor-"));
-  writeFileSync(
-    join(root, "harness.config.json"),
-    JSON.stringify({
-      projectName: "sensor-fixture",
-      defaultScope: "rin-gates",
-      rulesetRoot: "aidlc/spaces/default/memory",
-      stageGraph: ".claude/tools/data/stage-graph.json",
-      packageManager: { primary: "bun", runnerAllowlist: ["pnpm"] },
-      rinGates: { exceptionWhyChains: "true" },
-    }),
-  );
-  const sensor = join(import.meta.dirname, "rin-harness-sensor-dd-7.ts");
-  const outputPath = join(
-    root,
-    "aidlc",
-    "spaces",
-    "default",
-    "intents",
-    "example",
-    "result.md",
-  );
-  const result = spawnSync(
-    "bun",
-    [sensor, "--project-dir", root, "--output-path", outputPath],
-    { encoding: "utf8" },
-  );
-  rmSync(root, { recursive: true, force: true });
-  expect(result.stdout).toContain('"pass":false');
-  expect(result.stdout).toContain(
-    "UNMEASURED — harness.config.json is invalid",
-  );
+const fakeProcess = ({
+  argv,
+  publish,
+  workingDirectory = ELSEWHERE,
+}: {
+  readonly argv: readonly string[];
+  readonly publish: (text: string) => void;
+  readonly workingDirectory?: string;
+}) => ({
+  arguments: ["bun", "rin-harness-sensor.ts", ...argv],
+  publish,
+  workingDirectory: () => workingDirectory,
 });
 
-const configuredGraphFixtures: string[] = [];
+const REQUESTED_FINDING: Finding = {
+  rule: "DD-1",
+  artefact: "rin-requirements.md",
+  line: 3,
+  subject: "O-9",
+  remedy: "pinned DD-1 remedy",
+};
 
-afterEach(() => {
-  configuredGraphFixtures.splice(0).forEach((root) => {
-    rmSync(root, { recursive: true, force: true });
+const UNREQUESTED_FINDING: Finding = {
+  rule: "DD-2",
+  artefact: "rin-requirements.md",
+  line: 5,
+  subject: "a bare figure",
+  remedy: "pinned DD-2 remedy",
+};
+
+describe("runDdSensor — in-process through its ports", () => {
+  test("(a) DD-7 without the opt-in publishes one not-adopted line", () => {
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-7"],
+      ports: fakeRecordPorts(),
+      config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
+    });
+    expect(publish.mock.calls).toEqual([
+      ['{"pass":true,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"(DD-7 not adopted)"}\n'],
+    ]);
+  });
+
+  test("(b) DD-7 opted in reports a path outside any intent record as not a record", () => {
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-7"],
+      ports: fakeRecordPorts(),
+      config: fakeConfig({ optIn: { kind: "enabled" }, stageGraph: CURSOR_GRAPH }),
+      process: fakeProcess({
+        argv: ["--project-dir", WORK, "--output-path", "/work/packages/kernel/src/index.ts"],
+        publish,
+      }),
+    });
+    expect(publish.mock.calls).toEqual([
+      ['{"pass":true,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"(not an intent record)"}\n'],
+    ]);
+  });
+
+  test("(c) a malformed DD-7 opt-in fails as UNMEASURED with the config's reason", () => {
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-7"],
+      ports: fakeRecordPorts(),
+      config: fakeConfig({
+        optIn: { kind: "invalid", reason: "rinGates.exceptionWhyChains must be a boolean" },
+        stageGraph: CURSOR_GRAPH,
+      }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
+    });
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":false,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"UNMEASURED — harness.config.json is invalid: rinGates.exceptionWhyChains must be a boolean"}\n',
+      ],
+    ]);
+  });
+
+  test.each([
+    { configured: CURSOR_GRAPH, measured: "/work/.cursor/tools/data/stage-graph.json" },
+    { configured: CLAUDE_GRAPH, measured: "/work/.claude/tools/data/stage-graph.json" },
+  ])("(d) the configured $configured is the only graph inspected, and no findings pass", ({ configured, measured }) => {
+    const ports = fakeRecordPorts();
+    const inspect = vi.fn().mockReturnValue({ kind: "inspected", findings: [] });
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-1", "DD-3"],
+      ports,
+      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
+      config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: configured }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
+    });
+    expect(inspect.mock.calls).toEqual([[{ recordDir: RECORD, stageGraphPath: measured, ports }]]);
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":true,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"record 260906-example-record, official artefacts only (DD-4)"}\n',
+      ],
+    ]);
+  });
+
+  test("(e) an absent configured graph publishes UNMEASURED with the inspection's own description", () => {
+    const ports = fakeRecordPorts();
+    const unmeasurable = {
+      kind: "unmeasurable",
+      reason: "no-stage-graph",
+      path: "/work/.cursor/tools/data/stage-graph.json",
+    };
+    const inspect = vi.fn().mockReturnValue(unmeasurable);
+    const describeInspection = vi.fn().mockReturnValue("pinned description of an absent graph");
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-1", "DD-3"],
+      ports,
+      inspection: { inspect, describe: describeInspection },
+      config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
+    });
+    expect(inspect.mock.calls).toEqual([
+      [{ recordDir: RECORD, stageGraphPath: "/work/.cursor/tools/data/stage-graph.json", ports }],
+    ]);
+    expect(describeInspection.mock.calls).toEqual([[unmeasurable]]);
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":false,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"UNMEASURED — pinned description of an absent graph"}\n',
+      ],
+    ]);
+  });
+
+  test("(f) an invalid configured graph publishes UNMEASURED, never success", () => {
+    const ports = fakeRecordPorts();
+    const unmeasurable = {
+      kind: "unmeasurable",
+      reason: "stage-graph-malformed",
+      path: "/work/.cursor/tools/data/stage-graph.json",
+    };
+    const inspect = vi.fn().mockReturnValue(unmeasurable);
+    const describeInspection = vi.fn().mockReturnValue("pinned description of a malformed graph");
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-1", "DD-3"],
+      ports,
+      inspection: { inspect, describe: describeInspection },
+      config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
+    });
+    expect(inspect.mock.calls).toEqual([
+      [{ recordDir: RECORD, stageGraphPath: "/work/.cursor/tools/data/stage-graph.json", ports }],
+    ]);
+    expect(describeInspection.mock.calls).toEqual([[unmeasurable]]);
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":false,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"UNMEASURED — pinned description of a malformed graph"}\n',
+      ],
+    ]);
+  });
+
+  test("(g) without --project-dir the graph is inspected under the process port's working directory", () => {
+    const ports = fakeRecordPorts();
+    const inspect = vi.fn().mockReturnValue({ kind: "inspected", findings: [] });
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-1", "DD-3"],
+      ports,
+      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
+      config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
+      process: fakeProcess({ argv: ["--output-path", RECORD_ARTEFACT], publish, workingDirectory: WORK }),
+    });
+    expect(inspect.mock.calls).toEqual([
+      [{ recordDir: RECORD, stageGraphPath: "/work/.cursor/tools/data/stage-graph.json", ports }],
+    ]);
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":true,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"record 260906-example-record, official artefacts only (DD-4)"}\n',
+      ],
+    ]);
+  });
+
+  test("(h) only the requested rules' findings are published, failing with their count", () => {
+    const inspect = vi.fn().mockReturnValue({
+      kind: "inspected",
+      findings: [REQUESTED_FINDING, UNREQUESTED_FINDING],
+    });
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-1", "DD-3"],
+      ports: fakeRecordPorts(),
+      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
+      config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
+    });
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":false,"dd":"DD-1+DD-3","findings_count":1,"findings":[{"rule":"DD-1","artefact":"rin-requirements.md","line":3,"subject":"O-9","remedy":"pinned DD-1 remedy"}],"scanned":"record 260906-example-record, official artefacts only (DD-4)"}\n',
+      ],
+    ]);
   });
 });
 
-function configuredGraphFixture({ stageGraph }: { readonly stageGraph: string }) {
-  const root = mkdtempSync(join(tmpdir(), "rin-dd-configured-graph-"));
-  configuredGraphFixtures.push(root);
-  const outputPath = join(root, INTENT_ARTEFACT);
-  const graphPath = resolve(root, stageGraph);
-  mkdirSync(dirname(outputPath), { recursive: true });
-  mkdirSync(dirname(graphPath), { recursive: true });
-  writeFileSync(outputPath, "# Requirements\n\nA standalone requirement.\n");
-  writeFileSync(join(root, "harness.config.json"), JSON.stringify({
-    projectName: "configured-graph-fixture", defaultScope: "rin-gates",
-    rulesetRoot: "aidlc/spaces/default/memory", stageGraph,
-    packageManager: { primary: "bun", runnerAllowlist: ["pnpm"] },
-  }));
-  return { root, outputPath, graphPath };
-}
+const processes = defaultReviewProcessPort();
 
-function configuredGraphSensor({ root, outputPath }: { readonly root: string; readonly outputPath: string }) {
-  return spawnSync("bun", [
-    join(import.meta.dirname, "rin-harness-sensor-dd-1.ts"),
-    "--project-dir", root, "--output-path", outputPath,
-  ], { encoding: "utf8", cwd: root });
-}
-
-test.each([
-  { stageGraph: ".cursor/tools/data/stage-graph.json", otherHarness: ".claude" },
-  { stageGraph: ".claude/tools/data/stage-graph.json", otherHarness: ".cursor" },
-])("DD sensors measure only the configured $stageGraph", ({ stageGraph, otherHarness }) => {
-  const fixture = configuredGraphFixture({ stageGraph });
-  writeFileSync(fixture.graphPath, JSON.stringify([{ produces: ["rin-requirements"] }]));
-  const result = configuredGraphSensor(fixture);
+test("the real DD-7 entry process exits 0 and writes exactly one JSON line to stdout", () => {
+  const result = processes.runSync({
+    program: "bun",
+    args: [
+      paths.join({ segments: [import.meta.dirname, "rin-harness-sensor-dd-7.ts"] }),
+      "--project-dir",
+      paths.join({ segments: [import.meta.dirname, "no-such-project-for-the-dd-7-entry"] }),
+      "--output-path",
+      INTENT_ARTEFACT,
+    ],
+  });
   expect(result.status).toBe(0);
-  expect(JSON.parse(result.stdout)).toMatchObject({ pass: true, findings_count: 0 });
-  expect(result.stdout).toContain("official artefacts only");
-  expect(existsSync(join(fixture.root, otherHarness))).toBe(false);
-});
-
-test("DD sensors refuse a missing configured Cursor graph even when a Claude graph exists", () => {
-  const fixture = configuredGraphFixture({ stageGraph: ".cursor/tools/data/stage-graph.json" });
-  const legacyGraph = join(fixture.root, ".claude/tools/data/stage-graph.json");
-  mkdirSync(dirname(legacyGraph), { recursive: true });
-  writeFileSync(legacyGraph, JSON.stringify([{ produces: ["rin-requirements"] }]));
-  const result = configuredGraphSensor(fixture);
-  expect(result.status).toBe(0);
-  expect(JSON.parse(result.stdout)).toMatchObject({ pass: false, findings_count: 0 });
-  expect(result.stdout).toContain("UNMEASURED");
-  expect(result.stdout).toContain(".cursor/tools/data/stage-graph.json is absent");
-});
-
-test("DD sensors do not report success for an invalid configured Cursor graph", () => {
-  const fixture = configuredGraphFixture({ stageGraph: ".cursor/tools/data/stage-graph.json" });
-  writeFileSync(fixture.graphPath, "{invalid graph");
-  const result = configuredGraphSensor(fixture);
-  expect(result.status).not.toBe(0);
-  expect(result.stdout).not.toContain('"pass":true');
+  expect(result.stdout).toBe(
+    '{"pass":true,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"(DD-7 not adopted)"}\n',
+  );
 });

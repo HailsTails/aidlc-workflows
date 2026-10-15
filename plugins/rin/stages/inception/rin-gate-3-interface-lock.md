@@ -114,6 +114,8 @@ Each contract element is a heading `### <element>` carrying a state line in exac
 
 There is no third state. An element that cannot be specified for any other reason is a finding to specify here, or a route-back to Gate 2 if the chosen solution cannot support it. A deferred contract is one construction would invent. The completeness lens judges every element's state.
 
+The developer seat weighs the draft lock under `PD-1` (`{{HARNESS_DIR}}/knowledge/aidlc-shared/process-discipline/pd-001-obligations-are-weighed-against-ordinary-use.md`): it names each lock clause `PD-1` does not owe, and lists in its contribution every clause it weighed. The lead applies `PD-1` to every clause before the lock goes to review; a clause the seat named unowed that the lead keeps carries its reason in the lock, for the board to judge.
+
 ### Step 5: The External reality section
 
 The lock carries a `## External reality` section listing every fact the design relies on, one entry each: `- <key> — <what was measured>`, keyed by its `facts.md` key. The measured value lives in `facts.md`. A design with no external surface writes a single entry, `- none — <reason>`.

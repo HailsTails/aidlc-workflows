@@ -40,6 +40,9 @@ The code-discipline rules are binding and cited by id; their text lives in `{{HA
 - A decision the lock does not settle goes straight to the lead. Do not settle it in code.
 - If the row itself is wrong against the code (for example, it asks for something another component already does), tell the lead with the evidence. The lead corrects the plan.
 
+<!-- pd-authority:begin -->
+> **PD authority.** You apply `PD-1` (`{{HARNESS_DIR}}/knowledge/aidlc-shared/process-discipline/pd-001-obligations-are-weighed-against-ordinary-use.md`) as your own rule: read it in full before you act. Never add, request or report as owed a code path, test, fixture, check or kept artefact that `PD-1` does not owe.
+<!-- pd-authority:end -->
 ## Your contribution file
 
 Keep `contributions/rin-build-seat-agent.md` in the stage directory, in the ensemble contract's shape: the identity line `**Collaborator:** rin-build-seat-agent` first, then `## What I did`, `## What that showed` and `## Positions`. Append one entry per round under `## What I did`: the row, the code written, the checks run and their result.

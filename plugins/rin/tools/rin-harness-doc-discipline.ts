@@ -1,11 +1,20 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { z } from "zod";
+import {
+  defaultPathOperations,
+  type PathOperations,
+} from "./rin-harness-path-operations.ts";
+import {
+  defaultFileKindPort,
+  defaultSidecarFileReader,
+  type FileKindPort,
+  type SidecarFileReader,
+} from "./rin-harness-sidecar-file-reader.ts";
 import { CHAIN_LABEL } from "./rin-harness-why-chain.ts";
 
 const FACT_ROW = /^\|\s*\*\*([A-Z]+-\d+)\*\*\s*\|/;
 const KEY_REFERENCE = /\b([A-Z]+-\d+)\b/g;
 
-const RESERVED_PREFIXES = new Set(["DD", "CD", "IF", "G3", "FR", "AC", "NFR"]);
+const RESERVED_PREFIXES = new Set(["DD", "CD", "PD", "IF", "G3", "FR", "AC", "NFR"]);
 
 const SELF_NUMBERED_HEADINGS: Readonly<Record<string, RegExp>> = {
   "rin-framing-questions.md": /^#{2,6}\s+([QD]-\d+)\b/gm,
@@ -60,10 +69,6 @@ type ProseDocument = { readonly name: string; readonly body: string };
 type RecordSources = {
   readonly factsBody: string;
   readonly proseDocuments: readonly ProseDocument[];
-};
-
-type StageNode = {
-  readonly produces?: readonly string[];
 };
 
 const collectDefinedKeys = ({
@@ -332,71 +337,287 @@ const findUnchainedExceptionFindings = ({
     }),
   );
 
-const officialArtefactStems = ({
-  stageGraphPath,
+type RecordPorts = {
+  readonly reader: SidecarFileReader;
+  readonly kinds: FileKindPort;
+  readonly paths: PathOperations;
+};
+
+const defaultRecordPorts = (): RecordPorts => ({
+  reader: defaultSidecarFileReader(),
+  kinds: defaultFileKindPort(),
+  paths: defaultPathOperations(),
+});
+
+type UnmeasurableReason =
+  | "no-stage-graph"
+  | "stage-graph-unreadable"
+  | "stage-graph-malformed"
+  | "record-file-unreadable"
+  | "record-directory-unreadable";
+
+type Unmeasurable = {
+  readonly kind: "unmeasurable";
+  readonly reason: UnmeasurableReason;
+  readonly path: string;
+};
+
+const stageNodeSchema = z.object({
+  produces: z.array(z.string()).optional(),
+});
+
+const stageGraphSchema = z.union([
+  z.array(stageNodeSchema),
+  z.object({ stages: z.array(stageNodeSchema).optional() }),
+]);
+
+type StageGraph = z.infer<typeof stageGraphSchema>;
+
+const parseStageGraph = ({
+  raw,
 }: {
-  readonly stageGraphPath: string;
-}): ReadonlySet<string> | undefined => {
-  if (!existsSync(stageGraphPath)) {
+  readonly raw: string;
+}): StageGraph | undefined => {
+  try {
+    const parsed = stageGraphSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
     return undefined;
   }
-  const parsed: unknown = JSON.parse(readFileSync(stageGraphPath, "utf8"));
-  const nodes = Array.isArray(parsed)
-    ? (parsed as readonly StageNode[])
-    : ((parsed as { readonly stages?: readonly StageNode[] }).stages ?? []);
-  return new Set(nodes.flatMap((node) => node.produces ?? []));
 };
+
+type StemsRead =
+  | { readonly kind: "resolved"; readonly stems: ReadonlySet<string> }
+  | Unmeasurable;
+
+const officialArtefactStems = ({
+  stageGraphPath,
+  reader,
+}: {
+  readonly stageGraphPath: string;
+  readonly reader: SidecarFileReader;
+}): StemsRead => {
+  if (!reader.fileExists(stageGraphPath)) {
+    return {
+      kind: "unmeasurable",
+      reason: "no-stage-graph",
+      path: stageGraphPath,
+    };
+  }
+  const raw = reader.readFile(stageGraphPath);
+  if (raw === undefined) {
+    return {
+      kind: "unmeasurable",
+      reason: "stage-graph-unreadable",
+      path: stageGraphPath,
+    };
+  }
+  const graph = parseStageGraph({ raw });
+  if (graph === undefined) {
+    return {
+      kind: "unmeasurable",
+      reason: "stage-graph-malformed",
+      path: stageGraphPath,
+    };
+  }
+  const nodes = Array.isArray(graph) ? graph : (graph.stages ?? []);
+  return {
+    kind: "resolved",
+    stems: new Set(nodes.flatMap((node) => node.produces ?? [])),
+  };
+};
+
+type ProsePathsListed =
+  | { readonly kind: "listed"; readonly paths: readonly string[] }
+  | Unmeasurable;
 
 const officialProseIn = ({
   recordDir,
   stems,
+  ports,
 }: {
   readonly recordDir: string;
   readonly stems: ReadonlySet<string>;
-}): readonly string[] => {
-  const walk = (directory: string): readonly string[] =>
-    readdirSync(directory).flatMap((entry) => {
-      const path = join(directory, entry);
-      if (statSync(path).isDirectory()) {
-        return entry.startsWith(".") || entry === "audit" ? [] : walk(path);
+  readonly ports: RecordPorts;
+}): ProsePathsListed => {
+  const walk = (directory: string): ProsePathsListed => {
+    const entries = ports.reader.listDirectory(directory);
+    if (entries === undefined) {
+      return {
+        kind: "unmeasurable",
+        reason: "record-directory-unreadable",
+        path: directory,
+      };
+    }
+    const listings = entries.map((entry): ProsePathsListed => {
+      const path = ports.paths.join({ segments: [directory, entry] });
+      if (ports.kinds.isDirectory(path)) {
+        return entry.startsWith(".") || entry === "audit"
+          ? { kind: "listed", paths: [] }
+          : walk(path);
       }
-      return entry.endsWith(".md") && stems.has(entry.replace(/\.md$/, ""))
-        ? [path]
-        : [];
+      return {
+        kind: "listed",
+        paths:
+          entry.endsWith(".md") && stems.has(entry.replace(/\.md$/, ""))
+            ? [path]
+            : [],
+      };
     });
+    const unlistable = listings.find(
+      (listing): listing is Unmeasurable => listing.kind === "unmeasurable",
+    );
+    if (unlistable !== undefined) {
+      return unlistable;
+    }
+    return {
+      kind: "listed",
+      paths: listings.flatMap((listing) =>
+        listing.kind === "listed" ? listing.paths : [],
+      ),
+    };
+  };
   return walk(recordDir);
+};
+
+type ProseRead =
+  | { readonly kind: "read"; readonly document: ProseDocument }
+  | Unmeasurable;
+
+const readProseDocument = ({
+  path,
+  ports,
+}: {
+  readonly path: string;
+  readonly ports: RecordPorts;
+}): ProseRead => {
+  const body = ports.reader.readFile(path);
+  if (body === undefined) {
+    return { kind: "unmeasurable", reason: "record-file-unreadable", path };
+  }
+  return {
+    kind: "read",
+    document: { name: ports.paths.basename({ path }), body },
+  };
+};
+
+type ProseDocumentsRead =
+  | { readonly kind: "read"; readonly documents: readonly ProseDocument[] }
+  | Unmeasurable;
+
+const readProseDocuments = ({
+  paths,
+  ports,
+}: {
+  readonly paths: readonly string[];
+  readonly ports: RecordPorts;
+}): ProseDocumentsRead => {
+  const reads = paths.map((path) => readProseDocument({ path, ports }));
+  const unreadable = reads.find(
+    (read): read is Unmeasurable => read.kind === "unmeasurable",
+  );
+  if (unreadable !== undefined) {
+    return unreadable;
+  }
+  return {
+    kind: "read",
+    documents: reads.flatMap((read) =>
+      read.kind === "read" ? [read.document] : [],
+    ),
+  };
+};
+
+type FactsRead =
+  | { readonly kind: "absent" }
+  | { readonly kind: "read"; readonly body: string }
+  | Unmeasurable;
+
+const readFacts = ({
+  recordDir,
+  ports,
+}: {
+  readonly recordDir: string;
+  readonly ports: RecordPorts;
+}): FactsRead => {
+  const path = ports.paths.join({ segments: [recordDir, FACTS_FILENAME] });
+  if (!ports.reader.fileExists(path)) {
+    return { kind: "absent" };
+  }
+  const body = ports.reader.readFile(path);
+  if (body === undefined) {
+    return { kind: "unmeasurable", reason: "record-file-unreadable", path };
+  }
+  return { kind: "read", body };
 };
 
 type RecordInspection =
   | { readonly kind: "inspected"; readonly findings: readonly Finding[] }
-  | { readonly kind: "unmeasurable"; readonly reason: "no-stage-graph" };
+  | Unmeasurable;
+
+const describeUnmeasurable = ({
+  reason,
+  path,
+}: {
+  readonly reason: UnmeasurableReason;
+  readonly path: string;
+}): string => {
+  switch (reason) {
+    case "no-stage-graph":
+      return `${reason}: ${path} is absent, so the official-artefact set (DD-4) could not be resolved`;
+    case "stage-graph-unreadable":
+      return `${reason}: ${path} exists but could not be read, so the official-artefact set (DD-4) could not be resolved`;
+    case "stage-graph-malformed":
+      return `${reason}: ${path} is not a valid stage graph, so the official-artefact set (DD-4) could not be resolved`;
+    case "record-file-unreadable":
+      return `${reason}: ${path} exists but could not be read, so its findings could not be measured`;
+    case "record-directory-unreadable":
+      return `${reason}: ${path} exists but could not be listed, so its findings could not be measured`;
+  }
+};
 
 const inspectRecordDirectory = ({
   recordDir,
   stageGraphPath,
+  ports = defaultRecordPorts(),
 }: {
   readonly recordDir: string;
   readonly stageGraphPath: string;
+  readonly ports?: RecordPorts;
 }): RecordInspection => {
-  const stems = officialArtefactStems({ stageGraphPath });
-  if (stems === undefined) {
-    return { kind: "unmeasurable", reason: "no-stage-graph" };
+  const stemsRead = officialArtefactStems({
+    stageGraphPath,
+    reader: ports.reader,
+  });
+  if (stemsRead.kind === "unmeasurable") {
+    return stemsRead;
   }
-  const proseDocuments = officialProseIn({ recordDir, stems }).map((path) => ({
-    name: basename(path),
-    body: readFileSync(path, "utf8"),
-  }));
+  const prosePaths = officialProseIn({
+    recordDir,
+    stems: stemsRead.stems,
+    ports,
+  });
+  if (prosePaths.kind === "unmeasurable") {
+    return prosePaths;
+  }
+  const proseRead = readProseDocuments({ paths: prosePaths.paths, ports });
+  if (proseRead.kind === "unmeasurable") {
+    return proseRead;
+  }
+  const proseDocuments = proseRead.documents;
 
   const unchainedExceptions = findUnchainedExceptionFindings({
     proseDocuments,
   });
 
-  const factsPath = join(recordDir, FACTS_FILENAME);
-  if (!existsSync(factsPath)) {
+  const factsRead = readFacts({ recordDir, ports });
+  if (factsRead.kind === "unmeasurable") {
+    return factsRead;
+  }
+  if (factsRead.kind === "absent") {
     return { kind: "inspected", findings: unchainedExceptions };
   }
   const sources = {
-    factsBody: readFileSync(factsPath, "utf8"),
+    factsBody: factsRead.body,
     proseDocuments,
   };
   return {
@@ -412,6 +633,8 @@ const inspectRecordDirectory = ({
 export {
   collectDefinedKeys,
   collectReferences,
+  defaultRecordPorts,
+  describeUnmeasurable,
   type DocRule,
   type Finding,
   findBareFigureFindings,
@@ -422,5 +645,7 @@ export {
   officialProseIn,
   type ProseDocument,
   type RecordInspection,
+  type RecordPorts,
   type RecordSources,
+  type Unmeasurable,
 };
