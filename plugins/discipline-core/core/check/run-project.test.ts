@@ -15,6 +15,8 @@ const EXCEPTIONS_PATH = "/repo/discipline-exceptions.json";
 const DISCIPLINE_PATH = "/install/rules/CD-14/discipline.json";
 const PIECE_PATH = "/install/mechanisms/walker/CD-14/piece.json";
 const RUNNER_PATH = "/install/mechanisms/walker/runner/runner.ts";
+const LINT_PIECE_PATH = "/install/mechanisms/lint/CD-14/piece.json";
+const LINT_RUNNER_PATH = "/install/mechanisms/lint/runner/runner.ts";
 
 type FakeFile = {
   readonly read: Result<string, { readonly kind: "unreadable"; readonly path: string; readonly detail: string }>;
@@ -44,12 +46,17 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/install","mechanisms","walker","CD-14","piece.json"]': PIECE_PATH,
   '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
   '["/install","mechanisms","walker","runner","runner.ts"]': RUNNER_PATH,
+  '["/install","mechanisms","lint","CD-14","piece.json"]': LINT_PIECE_PATH,
+  '["/install","mechanisms","lint","CD-14"]': "/install/mechanisms/lint/CD-14",
+  '["/install","mechanisms","lint","runner","runner.ts"]': LINT_RUNNER_PATH,
 };
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
   [PIECE_PATH]: "/install/mechanisms/walker/CD-14",
   [DISCIPLINE_PATH]: "/install/rules/CD-14",
   [RUNNER_PATH]: "/install/mechanisms/walker/runner",
+  [LINT_PIECE_PATH]: "/install/mechanisms/lint/CD-14",
+  [LINT_RUNNER_PATH]: "/install/mechanisms/lint/runner",
 };
 
 const TABLE_PATH: PathPort = {
@@ -96,6 +103,78 @@ const INSTALL: Readonly<Record<string, FakeFile>> = {
   [PIECE_PATH]: presentFile({ text: PIECE }),
   [RUNNER_PATH]: presentFile({ text: "export const runner = {};\n" }),
 };
+
+const TWO_MECHANISM_DISCIPLINE = JSON.stringify({
+  version: 1,
+  id: "CD-14",
+  clauses: [
+    {
+      kind: "mechanical",
+      id: "class-syntax",
+      summary: "no class syntax",
+      mechanisms: ["walker"],
+      anchor: { kind: "keyword", keyword: "class" },
+      cases: {
+        flag: [{ name: "flagged", fileName: "src/a.ts", source: "class A {}\n", expectedLines: [1] }],
+        allow: [{ name: "allowed", fileName: "src/b.ts", source: "const b = 1;\n", expectedLines: [] }],
+      },
+    },
+    {
+      kind: "mechanical",
+      id: "abstract-syntax",
+      summary: "no abstract syntax",
+      mechanisms: ["lint"],
+      anchor: { kind: "keyword", keyword: "abstract" },
+      cases: {
+        flag: [{ name: "flagged", fileName: "src/a.ts", source: "abstract class A {}\n", expectedLines: [1] }],
+        allow: [{ name: "allowed", fileName: "src/b.ts", source: "const b = 1;\n", expectedLines: [] }],
+      },
+    },
+  ],
+});
+
+const LINT_PIECE = JSON.stringify({
+  version: 1,
+  discipline: "CD-14",
+  mechanism: "lint",
+  clauses: [{ clause: "abstract-syntax", settings: { module: "abstract-syntax.ts" } }],
+});
+
+const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
+  [SELECTION_PATH]: presentFile({
+    text: JSON.stringify({
+      version: 1,
+      ruleSets: {},
+      clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "lint" },
+    }),
+  }),
+  [EXCEPTIONS_PATH]: presentFile({
+    text: JSON.stringify({
+      version: 1,
+      exceptions: [
+        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "walker location" },
+        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location" },
+      ],
+    }),
+  }),
+  [DISCIPLINE_PATH]: presentFile({ text: TWO_MECHANISM_DISCIPLINE }),
+  [PIECE_PATH]: presentFile({ text: PIECE }),
+  [LINT_PIECE_PATH]: presentFile({ text: LINT_PIECE }),
+  [RUNNER_PATH]: presentFile({ text: "export const runner = {};\n" }),
+  [LINT_RUNNER_PATH]: presentFile({ text: "export const runner = {};\n" }),
+};
+
+const WALKER_RECORD = {
+  kind: "authorised-location",
+  clause: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
+  mechanism: "walker",
+  file: "src/walker.ts",
+  reason: "walker location",
+};
+
+const modulesByPath = (modules: Readonly<Record<string, unknown>>): ModuleLoaderPort => ({
+  load: ({ path }) => Promise.resolve({ outcome: "ok", value: modules[path] }),
+});
 
 const standaloneRunner = (): LoadedRunner => ({
   exceptionPath: "standalone",
@@ -195,5 +274,46 @@ describe("runProject", () => {
     await expect(
       runProject(projectRequest({ modules: modulesLoading({ runner: { ...standaloneRunner(), exceptionPath: "unknown-path" } }) })),
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid", mechanism: "walker" } });
+  });
+});
+
+describe("runProject with an embedded runner", () => {
+  it("returns the runner's projection write without running the check", async () => {
+    const runner = {
+      exceptionPath: "embedded",
+      projectedKinds: ["config-override"],
+      run: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+      conform: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+      project: vi
+        .fn<(request: unknown) => Promise<unknown>>()
+        .mockResolvedValue({ outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } }),
+    };
+    const writes = await runProject(projectRequest({ modules: modulesLoading({ runner }) }));
+    expect({ writes, runCalls: runner.run.mock.calls }).toEqual({
+      writes: { outcome: "ok", value: [{ path: "disciplines.eslint.mjs", effect: "written" }] },
+      runCalls: [],
+    });
+  });
+
+  it("hands the runner's projection only the records of its own mechanism", async () => {
+    const runner = {
+      exceptionPath: "embedded",
+      projectedKinds: ["config-override"],
+      run: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+      conform: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+      project: vi
+        .fn<(request: unknown) => Promise<unknown>>()
+        .mockResolvedValue({ outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } }),
+    };
+    const writes = await runProject(
+      projectRequest({
+        fileText: fileTextOver(TWO_MECHANISM_INSTALL),
+        modules: modulesByPath({ [RUNNER_PATH]: { runner }, [LINT_RUNNER_PATH]: { runner: standaloneRunner() } }),
+      }),
+    );
+    expect({ writes, projectCalls: runner.project.mock.calls }).toEqual({
+      writes: { outcome: "ok", value: [{ path: "disciplines.eslint.mjs", effect: "written" }] },
+      projectCalls: [[expect.objectContaining({ records: [WALKER_RECORD] })]],
+    });
   });
 });

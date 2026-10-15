@@ -9,6 +9,7 @@ import {
 } from "../values/identifiers.ts";
 import {
   type DisciplineFile,
+  parsedJson,
   readDisciplineFile,
   readPieceFile,
 } from "./rule-set-reader.ts";
@@ -369,6 +370,22 @@ describe("readPieceFile", () => {
     ).toMatchObject({
       outcome: "failed",
       error: { kind: "rule-set-invalid", path: PIECE_PATH },
+    });
+  });
+});
+
+describe("parsedJson", () => {
+  it("returns the parsed value of JSON text", () => {
+    expect(parsedJson({ text: `{ "scripts": { "lint": "eslint ." } }` })).toEqual({
+      outcome: "ok",
+      value: { scripts: { lint: "eslint ." } },
+    });
+  });
+
+  it("is failed with the parser's message when the text is not JSON", () => {
+    expect(parsedJson({ text: `{ "scripts": ` })).toEqual({
+      outcome: "failed",
+      error: expect.stringMatching(/.+/),
     });
   });
 });

@@ -1,0 +1,14 @@
+{
+  "linter": {
+    "rules": {
+      "style": {
+        "noParameterAssign": {
+          "level": "error",
+          "options": {
+            "propertyAssignment": "deny"
+          }
+        }
+      }
+    }
+  }
+}

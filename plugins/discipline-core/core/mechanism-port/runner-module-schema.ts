@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { SourceCase } from "../rule-set-reader/rule-set-reader.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
 import type { AnchorKind } from "../values/anchor.ts";
@@ -13,6 +14,7 @@ import type {
   NativeException,
   nativeExceptionKindSchema,
 } from "./runner-result-schema.ts";
+import { nativeExceptionKindSchema as projectedKindSchema } from "./runner-result-schema.ts";
 
 export type RunnerClause = {
   readonly address: ClauseAddress;
@@ -27,6 +29,13 @@ export type RunRequest = {
   readonly files: readonly RepoPath[];
   readonly trackedPaths: readonly RepoPath[];
   readonly clauses: readonly RunnerClause[];
+};
+
+export type ProjectionRequest = {
+  readonly repoRoot: AbsolutePath;
+  readonly installRoot: AbsolutePath;
+  readonly clauses: readonly RunnerClause[];
+  readonly records: readonly ExceptionRecord[];
 };
 
 export type StandaloneRunner = {
@@ -49,8 +58,17 @@ export const standaloneRunnerModuleSchema = z.object({
   conform: runnerCallSchema,
 });
 
+export const embeddedRunnerModuleSchema = z.object({
+  exceptionPath: z.literal("embedded"),
+  projectedKinds: z.array(projectedKindSchema),
+  run: runnerCallSchema,
+  conform: runnerCallSchema,
+  project: runnerCallSchema,
+});
+
 export const runnerModuleSchema = z.discriminatedUnion("exceptionPath", [
   standaloneRunnerModuleSchema,
+  embeddedRunnerModuleSchema,
 ]);
 
 export type LoadedRunner = z.infer<typeof runnerModuleSchema>;
