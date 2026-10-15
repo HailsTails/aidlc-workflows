@@ -111,6 +111,7 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 
 ## Runtime
 
+- Windows, Linux, macOS or WSL. Core keeps absolute paths in the platform's own form and repository paths in POSIX form, as git reports them.
 - Node 22.18.0 or later, which runs `.ts` source by stripping types (`engines.node` in `package.json`). The team's own ESLint run needs it too, since the projection imports each piece's `.ts` plugin module.
 - git 2.24 or later. Older git rejects `--end-of-options`, so the changed-file query fails and forfeiture is reported unmeasured.
 - `zod`, for core.
