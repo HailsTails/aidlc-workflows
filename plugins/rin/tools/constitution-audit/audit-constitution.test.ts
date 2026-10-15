@@ -1,5 +1,4 @@
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { defaultPathOperations } from "../rin-harness-path-operations.ts";
 import { expect, test } from "vitest";
 import {
   auditConstitution,
@@ -9,12 +8,14 @@ import {
   selfAuditExemptionOf,
 } from "./audit-constitution.js";
 
-const here = (): string => resolve(fileURLToPath(import.meta.url), "..");
+const paths = defaultPathOperations();
+const here = (): string =>
+  paths.dirname({ path: paths.fromFileUrl({ url: import.meta.url }) });
 
 const fixturePath = (subdir: string): string =>
-  resolve(here(), "..", "test-fixtures", "audit", subdir);
+  paths.resolve({ segments: [here(), "..", "test-fixtures", "audit", subdir] });
 
-const NO_DIR = resolve(here(), "this-path-does-not-exist");
+const NO_DIR = paths.resolve({ segments: [here(), "this-path-does-not-exist"] });
 
 const fixtureService = (subdir: string): ServiceAuditConfig => ({
   name: "@rin/test-fixture",
@@ -73,10 +74,9 @@ test("a module whose export list leads with a type specifier but names a runtime
   expect(report.violations).toEqual([
     {
       rule: "CD-23/24",
-      file: resolve(
-        fixturePath("orphan-mixed-export-list"),
-        "mixed-export-list.ts",
-      ),
+      file: paths.resolve({
+        segments: [fixturePath("orphan-mixed-export-list"), "mixed-export-list.ts"],
+      }),
       line: 0,
       snippet: "missing co-located *.test.ts(x) sibling",
     },

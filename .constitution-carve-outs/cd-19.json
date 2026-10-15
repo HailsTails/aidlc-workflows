@@ -323,13 +323,6 @@
   },
   {
     "files": [
-      "plugins/rin/tools/constitution-audit/audit-constitution.test.ts"
-    ],
-    "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",
-    "decision": "Helen approved PR22 inherited-debt baseline and CD46 touch decay on 2026-10-14"
-  },
-  {
-    "files": [
       "plugins/rin/tools/constitution-audit/audit-identifier-names.test.ts"
     ],
     "reason": "Initial inherited CD19/CD20 debt: 2 existing Node imports (node:path x1, node:url x1). This file is not claimed compliant; its entire CD19 exemption expires on touch under CD46.",

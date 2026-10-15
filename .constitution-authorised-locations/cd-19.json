@@ -200,7 +200,7 @@
         }
       ],
       "rootCause": "Native lint engines own the plugin protocol, so this slice needs an explicit protocol boundary and a real-engine contract-test boundary to avoid distributing vendor coupling through its consumers.",
-      "owner": "Codex PR34 (codex/native-cd14-lint); Helen retains diagnostic-port judgment"
+      "owner": "Helen"
     }
   },
   {
