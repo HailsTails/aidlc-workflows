@@ -3,6 +3,7 @@ name: Rin CI
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -15,6 +16,7 @@ concurrency:
 jobs:
   source-checks:
     name: Source checks
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
