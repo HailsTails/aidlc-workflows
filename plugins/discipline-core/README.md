@@ -122,7 +122,7 @@ The packages must resolve from the install directory.
 
 ## Known limits
 
-This is the first release. It covers each supported platform's ordinary paths and drives, and a committed ESLint projection checked out with either LF or CRLF line endings. These are not covered yet and will be added when a consumer needs them:
+This is the first release. Its tests cover each supported platform's ordinary paths and drives, and a committed ESLint projection checked out with either LF or CRLF line endings. The cases below are not covered by tests. Some may already work, but none is supported until a consumer needs it and a test is added:
 
 - File and folder names outside ASCII.
 - Windows device paths (`\\?\C:\...`).

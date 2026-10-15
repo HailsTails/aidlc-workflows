@@ -132,7 +132,7 @@ To let a clause use the new mechanism, add the mechanism id to that clause's `me
 
 ## Import boundaries (FR-8)
 
-These hold for every discipline and mechanism. Tests under `core/check/` check them over every file in the install and the probe rule set, so a new file is covered with no change.
+These hold for every discipline and mechanism. Tests under `core/check/` check them over every file in the install and the probe rule set, so a new file is covered with no change, with one exception: a new mechanism's wrapping file, the one runner file allowed to import its tool, must be added by name to the lists in `core/check/vendor-imports.test.ts`, which name each mechanism's wrapping files and vendors.
 
 - **Core names no discipline and no mechanism.** No file under `core/` may contain a discipline id or mechanism id found in the install, or import anything under `mechanisms/` or `rules/` (`core/check/core-names-no-mechanism.test.ts`). Core reaches a runner only by loading its `runner.ts` at run time.
 - **A runner names no discipline.** No file in a `mechanisms/<MechanismId>/runner/` folder may contain a discipline id.
