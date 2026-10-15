@@ -670,3 +670,125 @@ describe("runCheck load failures", () => {
     });
   });
 });
+
+const embeddedRunnerReporting = (request: { readonly report: unknown }) => ({
+  exceptionPath: "embedded",
+  projectedKinds: ["config-override"],
+  run: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: request.report }),
+  conform: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+  project: vi
+    .fn<(request: unknown) => Promise<unknown>>()
+    .mockResolvedValue({ outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "unchanged" } }),
+});
+
+describe("runCheck with an embedded runner", () => {
+  it("lists mechanism-not-run for a not-included projection", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          modules: modulesLoading({
+            runner: embeddedRunnerReporting({ report: { hits: [], nativeExceptions: [], projection: "not-included" } }),
+          }),
+        }),
+      ),
+    ).resolves.toEqual({
+      outcome: "ok",
+      value: { ...EMPTY_REPORT, unmeasured: [{ kind: "mechanism-not-run", mechanism: "walker", projection: "not-included" }] },
+    });
+  });
+
+  it("lists mechanism-not-run for a missing projection", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          modules: modulesLoading({
+            runner: embeddedRunnerReporting({ report: { hits: [], nativeExceptions: [], projection: "missing" } }),
+          }),
+        }),
+      ),
+    ).resolves.toEqual({
+      outcome: "ok",
+      value: { ...EMPTY_REPORT, unmeasured: [{ kind: "mechanism-not-run", mechanism: "walker", projection: "missing" }] },
+    });
+  });
+
+  it("lists an out-of-date projection as a projection problem beside the run's findings", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          modules: modulesLoading({
+            runner: embeddedRunnerReporting({ report: { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" } }),
+          }),
+        }),
+      ),
+    ).resolves.toEqual({
+      outcome: "ok",
+      value: {
+        ...EMPTY_REPORT,
+        findings: [{ ...HIT_IN_A, mechanism: "walker" }],
+        projectionProblems: [{ mechanism: "walker", state: "out-of-date" }],
+      },
+    });
+  });
+
+  it("lists a native exception of a kind its projection does not write as unrecorded", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          modules: modulesLoading({
+            runner: embeddedRunnerReporting({
+              report: {
+                hits: [],
+                nativeExceptions: [{ kind: "ignore", clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts" }],
+                projection: "current",
+              },
+            }),
+          }),
+        }),
+      ),
+    ).resolves.toEqual({
+      outcome: "ok",
+      value: {
+        ...EMPTY_REPORT,
+        unrecorded: [{ kind: "ignore", clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", mechanism: "walker" }],
+      },
+    });
+  });
+
+  it("records a config override an authorised location names, since its projection writes that kind", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_AUTHORISED_LOCATION }) }),
+          modules: modulesLoading({
+            runner: embeddedRunnerReporting({
+              report: {
+                hits: [],
+                nativeExceptions: [{ kind: "config-override", clause: CLASS_SYNTAX_OBJECT, file: "src/factory.ts" }],
+                projection: "current",
+              },
+            }),
+          }),
+          git: gitReporting({
+            trackedPaths: { outcome: "ok", value: z.array(repoPathSchema).parse(["src/factory.ts"]) },
+            changedSince: { outcome: "ok", value: [] },
+          }),
+        }),
+      ),
+    ).resolves.toEqual({
+      outcome: "ok",
+      value: {
+        ...EMPTY_REPORT,
+        stale: [
+          {
+            kind: "authorised-location",
+            clause: CLASS_SYNTAX_OBJECT,
+            mechanism: "walker",
+            file: "src/factory.ts",
+            reason: "the wrapping factory for the library",
+          },
+        ],
+      },
+    });
+  });
+});

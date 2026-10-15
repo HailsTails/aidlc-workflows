@@ -647,6 +647,65 @@ describe("lintSourceCases", () => {
     expect(verdicts).toMatchObject({ outcome: "failed", error: { kind: "tool-failed" } });
   });
 
+  it("reports a case holding a fatal message as runner-invalid-output naming that case", async () => {
+    const verdicts = await createEslintPort({
+      createEslint: vi.fn<CreateEslint>().mockReturnValue({
+        ...idleSurface,
+        lintText: vi.fn<EslintSurface["lintText"]>().mockResolvedValue([
+          {
+            filePath: "/install/mechanisms/eslint/CD-14/cases/class.ts",
+            messages: [
+              { ruleId: null, line: 1, column: 7, message: "Parsing error: '{' expected.", fatal: true },
+            ],
+          },
+        ]),
+      }),
+    }).lintSourceCases({
+      cwd: conformanceRoot,
+      plugin: classAndFunctionPlugin,
+      pluginNamespace: "cd",
+      rule: "no-class",
+      cases: [classCase],
+    });
+
+    expect(verdicts).toEqual({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("class") },
+    });
+  });
+
+  it("reports a case holding a message with no rule as runner-invalid-output naming that case", async () => {
+    const verdicts = await createEslintPort({
+      createEslint: vi.fn<CreateEslint>().mockReturnValue({
+        ...idleSurface,
+        lintText: vi.fn<EslintSurface["lintText"]>().mockResolvedValue([
+          {
+            filePath: "/install/mechanisms/eslint/CD-14/cases/no-class.ts",
+            messages: [
+              {
+                ruleId: null,
+                line: 0,
+                column: 0,
+                message: "File ignored because no matching configuration was supplied.",
+              },
+            ],
+          },
+        ]),
+      }),
+    }).lintSourceCases({
+      cwd: conformanceRoot,
+      plugin: classAndFunctionPlugin,
+      pluginNamespace: "cd",
+      rule: "no-class",
+      cases: [noClassCase],
+    });
+
+    expect(verdicts).toEqual({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("no-class") },
+    });
+  });
+
   it("builds ESLint in the caller's working directory", async () => {
     const createEslint = vi.fn<CreateEslint>().mockReturnValue(idleSurface);
 

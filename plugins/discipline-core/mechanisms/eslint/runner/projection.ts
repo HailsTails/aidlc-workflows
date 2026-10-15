@@ -37,7 +37,7 @@ type ClauseWideRecord = Extract<ExceptionRecord, { readonly kind: "clause-wide-c
 
 const PROJECTED_MECHANISM = "eslint";
 
-const PROJECTION_PATH: RepoPath = repoPathSchema.parse("disciplines.eslint.mjs");
+export const PROJECTION_PATH: RepoPath = repoPathSchema.parse("disciplines.eslint.mjs");
 
 const SOURCE_FILES = "**/*.{ts,tsx,mts,cts}";
 

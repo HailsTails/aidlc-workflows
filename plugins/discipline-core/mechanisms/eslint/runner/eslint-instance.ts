@@ -366,6 +366,21 @@ export const createEslintPort = (options: { readonly createEslint: CreateEslint 
             },
           };
         }
+        const ruleLessCase = lintedCases.value.find((lintedCase) =>
+          lintedCase.messages.some((message) => message.ruleId === null),
+        );
+        if (ruleLessCase !== undefined) {
+          return {
+            outcome: "failed",
+            error: {
+              kind: "runner-invalid-output",
+              detail: `case ${ruleLessCase.caseName} was not linted as a rule source: ${ruleLessCase.messages
+                .filter((message) => message.ruleId === null)
+                .map((message) => message.message)
+                .join("; ")}`,
+            },
+          };
+        }
         return {
           outcome: "ok",
           value: lintedCases.value.map((lintedCase) => ({
