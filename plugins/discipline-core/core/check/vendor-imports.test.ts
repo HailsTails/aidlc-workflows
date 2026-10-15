@@ -24,7 +24,7 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./tests/test-fixtures/**",
     "!./mechanisms/**",
     "!./vitest.config.ts",
-    "!./scripts/install-proof.ts",
+    "!./scripts/install-proof-ports.ts",
     "!./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./tests/probe-rule-set/mechanisms/walker/**",
     "!./tests/probe-rule-set/mechanisms/eslint/**",
@@ -70,7 +70,7 @@ const moduleLoaderPortSources = import.meta.glob(["./core/platform-ports/module-
   eager: true,
 });
 
-const installProofShellSources = import.meta.glob(["./scripts/install-proof.ts"], {
+const installProofPortSources = import.meta.glob(["./scripts/install-proof-ports.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -183,15 +183,19 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       runnerSources,
       platformPortSources,
       coreSources,
-      installProofShellSources,
+      installProofPortSources,
       walkerPieceSources,
       eslintPieceSources,
     }).toEqual({
-      sourcesOutsideMechanisms: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
+      sourcesOutsideMechanisms: expect.objectContaining({
+        "./core/check/run-check.ts": expect.any(String),
+        "./scripts/install-proof.ts": expect.any(String),
+        "./scripts/run-install-proof.ts": expect.any(String),
+      }),
       runnerSources: expect.objectContaining({ "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String) }),
       platformPortSources: expect.objectContaining({ "./core/platform-ports/file-text-port.ts": expect.any(String) }),
       coreSources: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
-      installProofShellSources: { "./scripts/install-proof.ts": expect.any(String) },
+      installProofPortSources: { "./scripts/install-proof-ports.ts": expect.any(String) },
       walkerPieceSources: expect.objectContaining({
         "./mechanisms/walker/CD-14/class-syntax.ts": expect.any(String),
         "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": expect.any(String),
@@ -232,8 +236,8 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     ).toBeUndefined();
   });
 
-  it("finds scripts/install-proof.ts, the install proof's composition root, importing only relative paths and node builtins", () => {
-    expect(importsOnly([relativeImport, nodeBuiltinImport]).safeParse(installProofShellSources).error).toBeUndefined();
+  it("finds scripts/install-proof-ports.ts, the install proof's wrapping ports, importing only relative paths and node builtins", () => {
+    expect(importsOnly([relativeImport, nodeBuiltinImport]).safeParse(installProofPortSources).error).toBeUndefined();
   });
 
   it("finds typescript-parse.ts the only file importing typescript by value", () => {
