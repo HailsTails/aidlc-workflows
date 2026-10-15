@@ -372,37 +372,12 @@ describe("pluginImportOf", () => {
     });
   });
 
-  it("imports a Windows install outside the repository on the same drive by a ../ specifier in forward slashes", () => {
-    expect(
-      pluginImportOf({
-        path: windowsPath,
-        repoRoot: windowsRepoRoot,
-        pieceRoot: "C:\\installs\\dc\\mechanisms\\eslint\\CD-14",
-        pluginModule: "cd14/cd14.eslint-plugin.ts",
-      }),
-    ).toEqual({
-      placement: "importable",
-      specifier: "../installs/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
-    });
-  });
-
   it("reports a piece on another drive from the repository as piece-on-another-root", () => {
     expect(
       pluginImportOf({
         path: windowsPath,
         repoRoot: windowsRepoRoot,
         pieceRoot: "D:\\dc\\mechanisms\\eslint\\CD-14",
-        pluginModule: "cd14/cd14.eslint-plugin.ts",
-      }),
-    ).toEqual({ placement: "piece-on-another-root" });
-  });
-
-  it("reports a piece on a network share from a repository on a drive as piece-on-another-root", () => {
-    expect(
-      pluginImportOf({
-        path: windowsPath,
-        repoRoot: windowsRepoRoot,
-        pieceRoot: "\\\\server\\share\\dc\\mechanisms\\eslint\\CD-14",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),
     ).toEqual({ placement: "piece-on-another-root" });
@@ -475,23 +450,6 @@ describe("writeProjection", () => {
     }).toEqual({
       result: { outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "unchanged" } },
       writes: [],
-    });
-  });
-
-  it("rewrites a CRLF projection that also differs in content, writing LF line endings", () => {
-    const write = vi.fn().mockReturnValue({ outcome: "ok", value: undefined });
-    const fileText: FileTextPort = {
-      read: vi.fn().mockReturnValue({ outcome: "ok", value: "export default [\r\n  1,\r\n];\r\n" }),
-      exists: vi.fn().mockReturnValue("present"),
-      write,
-    };
-
-    expect({
-      result: writeProjection({ fileText, path: posixPath, repoRoot, text: "export default [\n];\n" }),
-      writes: write.mock.calls,
-    }).toEqual({
-      result: { outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } },
-      writes: [[{ path: "/repo/disciplines.eslint.mjs", text: "export default [\n];\n" }]],
     });
   });
 

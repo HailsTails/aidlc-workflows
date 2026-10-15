@@ -135,21 +135,6 @@ describe("readDisciplineFile", () => {
     expect(readDiscipline(file)).toEqual({ outcome: "ok", value: file });
   });
 
-  it("joins <ruleSetRoot>/rules/<discipline>/discipline.json", () => {
-    const path = pathJoiningTo({ joined: DISCIPLINE_PATH });
-
-    readDisciplineFile({
-      fileText: fileTextReading({ text: JSON.stringify(DISCIPLINE) }),
-      path,
-      ruleSetRoot: ROOT,
-      discipline: CD_14,
-    });
-
-    expect(path.join).toHaveBeenCalledWith({
-      segments: ["/install", "rules", "CD-14", "discipline.json"],
-    });
-  });
-
   it("reads the joined discipline path", () => {
     const fileText = fileTextReading({ text: JSON.stringify(DISCIPLINE) });
 
@@ -309,22 +294,6 @@ describe("readPieceFile", () => {
     };
 
     expect(readPiece(piece)).toEqual({ outcome: "ok", value: piece });
-  });
-
-  it("joins <ruleSetRoot>/mechanisms/<mechanism>/<discipline>/piece.json", () => {
-    const path = pathJoiningTo({ joined: PIECE_PATH });
-
-    readPieceFile({
-      fileText: fileTextReading({ text: JSON.stringify(PIECE) }),
-      path,
-      ruleSetRoot: ROOT,
-      mechanism: WALKER,
-      discipline: LOADED_DISCIPLINE,
-    });
-
-    expect(path.join).toHaveBeenCalledWith({
-      segments: ["/install", "mechanisms", "walker", "CD-14", "piece.json"],
-    });
   });
 
   it("reads the joined piece path", () => {

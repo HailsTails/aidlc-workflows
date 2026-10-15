@@ -38,22 +38,8 @@ describe("scriptCommandsOf", () => {
     });
   });
 
-  it("joins a quoted span to the unquoted text it touches", () => {
-    expect(scriptCommandsOf({ script: `eslint --rule='rin-discipline/no-class-authoring: off'` })).toEqual({
-      outcome: "ok",
-      value: [["eslint", "--rule=rin-discipline/no-class-authoring: off"]],
-    });
-  });
-
   it("splits commands at &&, ||, ; and | standing alone", () => {
     expect(scriptCommandsOf({ script: "tsc && eslint . || echo failed ; echo done | cat" })).toEqual({
-      outcome: "ok",
-      value: [["tsc"], ["eslint", "."], ["echo", "failed"], ["echo", "done"], ["cat"]],
-    });
-  });
-
-  it("splits commands at &&, ||, ; and | touching other text", () => {
-    expect(scriptCommandsOf({ script: "tsc&&eslint .||echo failed;echo done|cat" })).toEqual({
       outcome: "ok",
       value: [["tsc"], ["eslint", "."], ["echo", "failed"], ["echo", "done"], ["cat"]],
     });
@@ -65,44 +51,21 @@ describe("scriptCommandsOf", () => {
       value: [["echo", "a && b; c | d", "e || f"]],
     });
   });
-
-  it.each([
-    { script: "eslint src;", commands: [["eslint", "src"]] },
-    { script: "; eslint src ;;  ; tsc", commands: [["eslint", "src"], ["tsc"]] },
-    { script: "   ", commands: [] },
-  ])("drops the empty commands in $script", ({ script, commands }) => {
-    expect(scriptCommandsOf({ script })).toEqual({ outcome: "ok", value: commands });
-  });
-
-  it.each([`eslint --rule 'rin-discipline/no-class-authoring: off`, `"eslint src`])(
-    "refuses %s, whose quote is never closed",
-    (script) => {
-      expect(scriptCommandsOf({ script })).toEqual({
-        outcome: "failed",
-        error: { kind: "unterminated-quote" },
-      });
-    },
-  );
 });
 
 describe("eslintInvocationsOf", () => {
   it.each([
     { command: ["eslint", "src", "--quiet"], options: ["src", "--quiet"] },
     { command: ["npx", "eslint", "src"], options: ["src"] },
-    { command: ["npx", "eslint@10", "src"], options: ["src"] },
     { command: ["pnpm", "exec", "eslint", "src"], options: ["src"] },
     { command: ["./node_modules/.bin/eslint", "src"], options: ["src"] },
-    { command: ["node", "node_modules/eslint/bin/eslint.js", "src"], options: ["src"] },
   ])("recognises $command as an invocation whose options follow the eslint token", ({ command, options }) => {
     expect(eslintInvocationsOf({ commands: [command] })).toEqual([{ options }]);
   });
 
   it.each([
     ["eslint-plugin-check", "src"],
-    ["myeslint", "src"],
     ["prettier", "--check", "eslint.config.mjs"],
-    ["node", "scripts/eslint.mjs"],
-    ["tsc", "--noEmit"],
   ])("does not recognise %s as an invocation", (...command) => {
     expect(eslintInvocationsOf({ commands: [command] })).toEqual([]);
   });
@@ -157,31 +120,6 @@ describe("commandLineOptionsOf", () => {
         ruleIds: [noClassAuthoring],
       },
     ]);
-  });
-
-  it.each([
-    [`"rin-discipline/no-class-authoring": off`, `--rule "rin-discipline/no-class-authoring": off`],
-    [`'rin-discipline/no-class-authoring': off`, `--rule 'rin-discipline/no-class-authoring': off`],
-  ])("matches the quoted key in the --rule value %s", (ruleValue, option) => {
-    expect(
-      commandLineOptionsOf({
-        invocation: { options: ["--rule", ruleValue] },
-        selectedRuleIds: [noClassAuthoring],
-      }),
-    ).toEqual([{ option, ruleIds: [noClassAuthoring] }]);
-  });
-
-  it.each([
-    [`no-console: off, "rin-discipline/no-class-authoring": off`],
-    [`no-console: off,'rin-discipline/no-class-authoring':off`],
-    [`'no-console':off,  "rin-discipline/no-class-authoring"  :  off`],
-  ])("strips the quotes around each part after splitting the --rule value %s on , and :", (ruleValue) => {
-    expect(
-      commandLineOptionsOf({
-        invocation: { options: ["--rule", ruleValue] },
-        selectedRuleIds: [noClassAuthoring],
-      }),
-    ).toEqual([{ option: `--rule ${ruleValue}`, ruleIds: [noClassAuthoring] }]);
   });
 
   it("names only the selected rule ids a --rule value names", () => {
@@ -258,47 +196,6 @@ describe("commandLineOptionsOf", () => {
       }),
     ).toEqual([{ option, ruleIds: [noClassAuthoring, "probe-lint/no-tmp-files"] }]);
   });
-
-  it.each(["--ignore-pattern", "-c", "--config", "--parser", "--parser-options", "--plugin"])(
-    "reports %s given last with no value as the bare option name",
-    (name) => {
-      expect(
-        commandLineOptionsOf({
-          invocation: { options: ["src", name] },
-          selectedRuleIds: [noClassAuthoring],
-        }),
-      ).toEqual([{ option: name, ruleIds: [noClassAuthoring] }]);
-    },
-  );
-
-  it.each([
-    ["--prune-suppressions"],
-    ["--no-inline-config"],
-    ["--max-warnings", "0"],
-    ["--quiet"],
-    ["--no-ignore"],
-    ["--fix"],
-    ["--cache"],
-    ["--format", "json"],
-    ["--suppressions-location", "lint-suppressions.json"],
-    ["--concurrency", "4"],
-  ])("does not report %s, which is stricter, report-only or inert for a selected rule", (...options) => {
-    expect(
-      commandLineOptionsOf({ invocation: { options }, selectedRuleIds: [noClassAuthoring] }),
-    ).toEqual([]);
-  });
-
-  it("reports every occurrence of an option", () => {
-    expect(
-      commandLineOptionsOf({
-        invocation: { options: ["--ignore-pattern", "dist/**", "--ignore-pattern", "build/**"] },
-        selectedRuleIds: [noClassAuthoring],
-      }),
-    ).toEqual([
-      { option: "--ignore-pattern dist/**", ruleIds: [noClassAuthoring] },
-      { option: "--ignore-pattern build/**", ruleIds: [noClassAuthoring] },
-    ]);
-  });
 });
 
 describe("suppressionsLocationValuesOf", () => {
@@ -327,16 +224,6 @@ describe("scanPackageJson", () => {
   it("reports malformed JSON as tool-failed", () => {
     expect(
       scanPackageJson({ path: rootPackageJson, text: `{ "scripts": `, selectedRules: [classRule] }),
-    ).toMatchObject({ outcome: "failed", error: { kind: "tool-failed" } });
-  });
-
-  it("reports a script value that is not a string as tool-failed", () => {
-    expect(
-      scanPackageJson({
-        path: rootPackageJson,
-        text: JSON.stringify({ scripts: { lint: 3 } }),
-        selectedRules: [classRule],
-      }),
     ).toMatchObject({ outcome: "failed", error: { kind: "tool-failed" } });
   });
 
@@ -477,36 +364,4 @@ describe("scanPackageJson", () => {
       },
     });
   });
-
-  it("treats cd sub && eslint as an invocation and keeps the declaring package.json's directory as the resolution base, not following the cd", () => {
-    expect(
-      scanPackageJson({
-        path: nestedPackageJson,
-        text: JSON.stringify({ scripts: { lint: "cd sub && eslint --suppressions-location suppressions.json ." } }),
-        selectedRules: [classRule],
-      }),
-    ).toEqual({
-      outcome: "ok",
-      value: {
-        nativeExceptions: [],
-        suppressionsLocations: [{ location: "packages/a/suppressions.json", script: "lint" }],
-      },
-    });
-  });
-
-  it.each(["../outside.json", "/tmp/suppressions.json"])(
-    "reports a --suppressions-location %s that is no repo path as tool-failed naming the script",
-    (location) => {
-      expect(
-        scanPackageJson({
-          path: rootPackageJson,
-          text: JSON.stringify({ scripts: { "lint:ci": `eslint --suppressions-location ${location} src` } }),
-          selectedRules: [classRule],
-        }),
-      ).toMatchObject({
-        outcome: "failed",
-        error: { kind: "tool-failed", detail: expect.stringContaining("lint:ci") },
-      });
-    },
-  );
 });

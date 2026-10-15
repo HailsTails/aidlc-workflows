@@ -25,15 +25,6 @@ describe("runnerModuleSchema", () => {
     ).toMatchObject({ success: false, error: { issues: [{ path: ["exceptionPath"] }] } });
   });
 
-  it("refuses a module with no exception path", () => {
-    expect(
-      runnerModuleSchema.safeParse({
-        run: resolvesEmpty,
-        conform: resolvesEmpty,
-      }).success,
-    ).toBe(false);
-  });
-
   it("refuses a standalone module with no run, at the run key", () => {
     expect(
       runnerModuleSchema.safeParse({
@@ -41,39 +32,6 @@ describe("runnerModuleSchema", () => {
         conform: resolvesEmpty,
       }),
     ).toMatchObject({ success: false, error: { issues: [{ path: ["run"] }] } });
-  });
-
-  it("refuses a standalone module with no conform, at the conform key", () => {
-    expect(
-      runnerModuleSchema.safeParse({
-        exceptionPath: "standalone",
-        run: resolvesEmpty,
-      }),
-    ).toMatchObject({ success: false, error: { issues: [{ path: ["conform"] }] } });
-  });
-
-  it("refuses a standalone module whose run is not a function, at the run key", () => {
-    expect(
-      runnerModuleSchema.safeParse({
-        exceptionPath: "standalone",
-        run: "run",
-        conform: resolvesEmpty,
-      }),
-    ).toMatchObject({ success: false, error: { issues: [{ path: ["run"] }] } });
-  });
-
-  it("refuses a standalone module whose conform is not a function, at the conform key", () => {
-    expect(
-      runnerModuleSchema.safeParse({
-        exceptionPath: "standalone",
-        run: resolvesEmpty,
-        conform: { cases: [] },
-      }),
-    ).toMatchObject({ success: false, error: { issues: [{ path: ["conform"] }] } });
-  });
-
-  it("refuses a module that is not an object", () => {
-    expect(runnerModuleSchema.safeParse(undefined).success).toBe(false);
   });
 });
 

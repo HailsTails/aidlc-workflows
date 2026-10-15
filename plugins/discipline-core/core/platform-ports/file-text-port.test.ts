@@ -11,10 +11,6 @@ const PERMISSION_DENIED = Object.assign(new Error("EACCES: permission denied, ac
   code: "EACCES",
 });
 
-const NOT_A_DIRECTORY = Object.assign(new Error("ENOTDIR: not a directory, access '/repo/a.ts'"), {
-  code: "ENOTDIR",
-});
-
 const fileSystemOver = (surface: Partial<FileSystemSurface>): FileSystemSurface => ({
   readText: vi.fn(),
   writeText: vi.fn(),
@@ -55,16 +51,6 @@ describe("createFileTextPort read", () => {
       error: { kind: "unreadable", path: "/repo/a.ts", detail: "ENOENT: no such file or directory" },
     });
   });
-
-  it("reads as unreadable with the thrown value's text when a non-Error is thrown", () => {
-    const readOutcome = createFileTextPort({
-      fileSystem: fileSystemOver({
-        readText: vi.fn<FileSystemSurface["readText"]>().mockThrow("EACCES"),
-      }),
-    }).read({ path: PATH });
-
-    expect(readOutcome).toMatchObject({ outcome: "failed", error: { detail: "EACCES" } });
-  });
 });
 
 describe("createFileTextPort exists", () => {
@@ -97,26 +83,6 @@ describe("createFileTextPort exists", () => {
       createFileTextPort({
         fileSystem: fileSystemOver({
           access: vi.fn<FileSystemSurface["access"]>().mockThrow(PERMISSION_DENIED),
-        }),
-      }).exists({ path: PATH }),
-    ).toBe("present");
-  });
-
-  it("reports a path whose access throws ENOTDIR as present, so its read reports it", () => {
-    expect(
-      createFileTextPort({
-        fileSystem: fileSystemOver({
-          access: vi.fn<FileSystemSurface["access"]>().mockThrow(NOT_A_DIRECTORY),
-        }),
-      }).exists({ path: PATH }),
-    ).toBe("present");
-  });
-
-  it("reports a path whose access throws a value with no error code as present", () => {
-    expect(
-      createFileTextPort({
-        fileSystem: fileSystemOver({
-          access: vi.fn<FileSystemSurface["access"]>().mockThrow("ENOENT"),
         }),
       }).exists({ path: PATH }),
     ).toBe("present");

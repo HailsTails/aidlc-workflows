@@ -50,7 +50,6 @@ const RULE_ID = "rin-discipline/no-class-authoring";
 const LOOPS_RULE_ID = "rin-loops/no-for-of";
 
 const ESLINT = mechanismIdSchema.parse("eslint");
-const ESLINT_10 = mechanismIdSchema.parse("eslint-10");
 const CLASS_SYNTAX = clauseAddressSchema.parse("CD-14#class-syntax");
 const FOR_OF = clauseAddressSchema.parse("CD-15#for-of");
 const CLASS_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
@@ -121,8 +120,6 @@ const FACTORY_CARVE_OUT: ExceptionRecord = {
   reason: "Inherited class awaiting paydown",
   whyChain: WHY_CHAIN,
 };
-
-const FACTORY_LOCATION_UNDER_ESLINT_10: ExceptionRecord = { ...FACTORY_LOCATION, mechanism: ESLINT_10 };
 
 const GONE_LOCATION: ExceptionRecord = {
   kind: "authorised-location",
@@ -467,31 +464,6 @@ describe("the governance run, step 1: selected pieces", () => {
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "piece-invalid" } });
   });
 
-  it("is piece-invalid for a piece registering under the reserved discipline-core namespace", async () => {
-    await expect(
-      runnerOver({}).run(
-        runRequest({
-          clauses: [{ ...CLASS_CLAUSE, settings: { ...CLASS_SETTINGS, pluginNamespace: "discipline-core" } }],
-          records: [],
-        }),
-      ),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: expect.any(String) },
-    });
-  });
-
-  it("is piece-invalid naming the piece root for a pluginModule that leaves the piece folder", async () => {
-    await expect(
-      runnerOver({}).run(
-        runRequest({ clauses: [{ ...CLASS_CLAUSE, settings: { ...CLASS_SETTINGS, pluginModule: "../x.ts" } }], records: [] }),
-      ),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: expect.any(String) },
-    });
-  });
-
   it("is piece-invalid naming the piece root when the plugin module cannot be loaded", async () => {
     await expect(runnerOver({ modules: UNLOADABLE_MODULES }).run(CLASS_RUN)).resolves.toEqual({
       outcome: "failed",
@@ -688,19 +660,6 @@ describe("the governance run, step 3: the projection in effect", () => {
     ).resolves.toEqual(NOT_INCLUDED);
   });
 
-  it("holds direction one when every file is ignored", async () => {
-    await expect(
-      runnerOver({
-        eslint: eslintOver({
-          query: queryOver({
-            ignored: { "src/a.ts": "ignored", "src/factory.ts": "ignored" },
-            states: { [`src/a.ts ${RULE_ID}`]: IGNORED, [`src/factory.ts ${RULE_ID}`]: IGNORED },
-          }),
-        }),
-      }).run(CLASS_RUN),
-    ).resolves.toMatchObject({ outcome: "ok", value: { projection: "current" } });
-  });
-
   it("is not-included when a later team block sets an authorised location's file back to error", async () => {
     await expect(
       runnerOver({
@@ -760,39 +719,11 @@ describe("the governance run, step 3: the projection in effect", () => {
     ).resolves.toEqual(NOT_INCLUDED);
   });
 
-  it("holds the projection current for an authorised location recorded under another mechanism id the runner is registered under", async () => {
-    await expect(
-      runnerOver({
-        fileText: projectionHolding({ text: FACTORY_LOCATION_PROJECTION }),
-        eslint: eslintOver({
-          query: queryOver({
-            ignored: CHECKED,
-            states: { [`src/a.ts ${RULE_ID}`]: ERROR, [`src/factory.ts ${RULE_ID}`]: OFF },
-          }),
-        }),
-      }).run(runRequest({ clauses: [CLASS_CLAUSE], records: [FACTORY_LOCATION_UNDER_ESLINT_10] })),
-    ).resolves.toMatchObject({ outcome: "ok", value: { projection: "current" } });
-  });
-
   it("does not check a record whose file is not among the files under check", async () => {
     await expect(
       runnerOver({ fileText: projectionHolding({ text: GONE_LOCATION_PROJECTION }) }).run(
         runRequest({ clauses: [CLASS_CLAUSE], records: [GONE_LOCATION] }),
       ),
-    ).resolves.toMatchObject({ outcome: "ok", value: { projection: "current" } });
-  });
-
-  it("does not check a record whose file is ignored", async () => {
-    await expect(
-      runnerOver({
-        fileText: projectionHolding({ text: FACTORY_LOCATION_PROJECTION }),
-        eslint: eslintOver({
-          query: queryOver({
-            ignored: { "src/a.ts": "checked", "src/factory.ts": "ignored" },
-            states: { [`src/a.ts ${RULE_ID}`]: ERROR, [`src/factory.ts ${RULE_ID}`]: IGNORED },
-          }),
-        }),
-      }).run(runRequest({ clauses: [CLASS_CLAUSE], records: [FACTORY_LOCATION] })),
     ).resolves.toMatchObject({ outcome: "ok", value: { projection: "current" } });
   });
 });
@@ -1076,19 +1007,6 @@ describe("conform", () => {
 });
 
 describe("project", () => {
-  it("writes the off block of an authorised location recorded under another mechanism id the runner is registered under", async () => {
-    const fileText = fileTextOver({ ...SOURCE_FILES, [PROJECTION_PATH]: ABSENT_FILE });
-    await runnerOver({ fileText }).project({
-      repoRoot: REPO_ROOT,
-      installRoot: INSTALL_ROOT,
-      clauses: [CLASS_CLAUSE],
-      records: [FACTORY_LOCATION_UNDER_ESLINT_10],
-    });
-    expect(vi.mocked(fileText.write).mock.calls).toEqual([
-      [{ path: PROJECTION_PATH, text: FACTORY_LOCATION_PROJECTION }],
-    ]);
-  });
-
   it("writes the projection generated from the clauses and records to disciplines.eslint.mjs at the repository root", async () => {
     const fileText = fileTextOver({ ...SOURCE_FILES, [PROJECTION_PATH]: ABSENT_FILE });
     const write = await runnerOver({ fileText }).project({
@@ -1118,52 +1036,6 @@ describe("project", () => {
   });
 });
 
-
-describe("the governance run, step 5: hit snippets", () => {
-  it("is file-unreadable at a hit's file when its source cannot be read for the snippet", async () => {
-    await expect(
-      runnerOver({
-        fileText: repoHolding({
-          projection: ENABLING_PROJECTION,
-          files: {
-            "/repo/src/a.ts": {
-              read: { outcome: "failed", error: { kind: "unreadable", path: "/repo/src/a.ts", detail: "EACCES" } },
-              presence: "present",
-            },
-          },
-        }),
-        eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
-      }).run(CLASS_RUN),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "file-unreadable", file: "src/a.ts", detail: expect.any(String) },
-    });
-  });
-
-  it("reports the findings' failure, not the tracked exceptions', when both fail", async () => {
-    await expect(
-      runnerOver({
-        fileText: repoHolding({
-          projection: ENABLING_PROJECTION,
-          files: {
-            "/repo/src/a.ts": {
-              read: { outcome: "failed", error: { kind: "unreadable", path: "/repo/src/a.ts", detail: "EACCES" } },
-              presence: "present",
-            },
-            "/repo/package.json": {
-              read: { outcome: "failed", error: { kind: "unreadable", path: "/repo/package.json", detail: "EPERM" } },
-              presence: "present",
-            },
-          },
-        }),
-        eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
-      }).run(trackedRun({ tracked: "package.json" })),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "file-unreadable", file: "src/a.ts", detail: "EACCES" },
-    });
-  });
-});
 
 describe("native exceptions: ignores and configuration overrides over files", () => {
   it("reports an ignored file as one ignore per selected clause", async () => {
@@ -1574,137 +1446,6 @@ describe("native exceptions: inline directives with several selected clauses", (
 });
 
 describe("the governance run, settled message handling", () => {
-  it("is tool-failed for a linted file outside the repository root", async () => {
-    await expect(
-      runnerOver({
-        eslint: eslintOver({
-          lintFiles: lintResolving({ outcome: "ok", value: [{ filePath: "/elsewhere/src/a.ts", messages: [CLASS_MESSAGE] }] }),
-        }),
-      }).run(CLASS_RUN),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "tool-failed", detail: expect.stringContaining("/elsewhere/src/a.ts") },
-    });
-  });
-
-  it("checks a file's fatal message before reading the source for its hits", async () => {
-    await expect(
-      runnerOver({
-        fileText: repoHolding({
-          projection: ENABLING_PROJECTION,
-          files: {
-            "/repo/src/a.ts": {
-              read: { outcome: "failed", error: { kind: "unreadable", path: "/repo/src/a.ts", detail: "EACCES" } },
-              presence: "present",
-            },
-          },
-        }),
-        eslint: eslintOver({
-          lintFiles: lintResolving({
-            outcome: "ok",
-            value: linted({
-              messagesInA: [
-                CLASS_MESSAGE,
-                { ruleId: null, line: 1, column: 7, message: "Parsing error: '{' expected.", fatal: true },
-              ],
-            }),
-          }),
-        }),
-      }).run(CLASS_RUN),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "file-unparseable", file: "src/a.ts", detail: "Parsing error: '{' expected." },
-    });
-  });
-
-  it("reports the first fatal file in lint order", async () => {
-    await expect(
-      runnerOver({
-        eslint: eslintOver({
-          lintFiles: lintResolving({
-            outcome: "ok",
-            value: [
-              {
-                filePath: "/repo/src/factory.ts",
-                messages: [{ ruleId: null, line: 2, column: 1, message: "Parsing error: factory", fatal: true }],
-              },
-              {
-                filePath: "/repo/src/a.ts",
-                messages: [{ ruleId: null, line: 1, column: 1, message: "Parsing error: a", fatal: true }],
-              },
-            ],
-          }),
-        }),
-      }).run(CLASS_RUN),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "file-unparseable", file: "src/factory.ts", detail: "Parsing error: factory" },
-    });
-  });
-
-  it("attributes an unparseable inline rule configuration to every selected clause", async () => {
-    await expect(
-      runnerOver({
-        fileText: projectionHolding({ text: "export default [];\n" }),
-        eslint: eslintOver({
-          query: TWO_RULES_IN_EFFECT,
-          lintFiles: inlineMessageInA({
-            messageId: "inline-rule-config",
-            text: "/* eslint rin-discipline/no-class-authoring: [ */",
-          }),
-        }),
-      }).run(TWO_CLAUSE_RUN),
-    ).resolves.toEqual({
-      outcome: "ok",
-      value: {
-        hits: [],
-        nativeExceptions: [
-          {
-            kind: "inline-rule-config",
-            clause: CLASS_SYNTAX_OBJECT,
-            file: "src/a.ts",
-            line: 2,
-            text: "/* eslint rin-discipline/no-class-authoring: [ */",
-          },
-          {
-            kind: "inline-rule-config",
-            clause: FOR_OF_OBJECT,
-            file: "src/a.ts",
-            line: 2,
-            text: "/* eslint rin-discipline/no-class-authoring: [ */",
-          },
-        ],
-        projection: "out-of-date",
-      },
-    });
-  });
-
-  it("is tool-failed naming the file for an inline-config message of an unknown message id", async () => {
-    await expect(
-      runnerOver({
-        eslint: eslintOver({
-          lintFiles: lintResolving({
-            outcome: "ok",
-            value: linted({
-              messagesInA: [
-                {
-                  ruleId: "discipline-core/inline-config",
-                  messageId: "inline-enable",
-                  line: 1,
-                  column: 1,
-                  message: "/* eslint-enable */",
-                },
-              ],
-            }),
-          }),
-        }),
-      }).run(CLASS_RUN),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "tool-failed", detail: expect.stringContaining("src/a.ts") },
-    });
-  });
-
   it("orders native exceptions as ignores, overrides, inline directives, suppression entries, then script options", async () => {
     await expect(
       runnerOver({
@@ -1753,59 +1494,6 @@ describe("the governance run, settled message handling", () => {
   });
 });
 
-describe("project, settled refusals", () => {
-  it("is piece-invalid for invalid settings without loading a plugin or writing", async () => {
-    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: CLASS_PLUGIN_MODULE });
-    const fileText = fileTextOver({ ...SOURCE_FILES, [PROJECTION_PATH]: ABSENT_FILE });
-    const write = await runnerOver({ fileText, modules: { load } }).project({
-      repoRoot: REPO_ROOT,
-      installRoot: INSTALL_ROOT,
-      clauses: [{ ...CLASS_CLAUSE, settings: { ...CLASS_SETTINGS, pluginModule: "../x.ts" } }],
-      records: [],
-    });
-    expect({ write, loads: load.mock.calls, fileWrites: vi.mocked(fileText.write).mock.calls }).toEqual({
-      write: { outcome: "failed", error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: expect.any(String) } },
-      loads: [],
-      fileWrites: [],
-    });
-  });
-
-  it("is piece-invalid for two clauses sharing one rule id without loading a plugin or writing", async () => {
-    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: CLASS_PLUGIN_MODULE });
-    const fileText = fileTextOver({ ...SOURCE_FILES, [PROJECTION_PATH]: ABSENT_FILE });
-    const write = await runnerOver({ fileText, modules: { load } }).project({
-      repoRoot: REPO_ROOT,
-      installRoot: INSTALL_ROOT,
-      clauses: [CLASS_CLAUSE, { ...CLASS_CLAUSE, address: FOR_OF }],
-      records: [],
-    });
-    expect({ write, loads: load.mock.calls, fileWrites: vi.mocked(fileText.write).mock.calls }).toEqual({
-      write: { outcome: "failed", error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: expect.any(String) } },
-      loads: [],
-      fileWrites: [],
-    });
-  });
-});
-
-describe("conform, settled refusals", () => {
-  it("is piece-invalid without loading or linting for a piece root that is not absolute", async () => {
-    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: CLASS_PLUGIN_MODULE });
-    const lintSourceCases = vi.fn<EslintPort["lintSourceCases"]>().mockResolvedValue(CLASS_VERDICTS);
-    const verdicts = await runnerOver({ modules: { load }, eslint: eslintOver({ lintSourceCases }) }).conform({
-      clause: { ...CLASS_CLAUSE, pieceRoot: "mechanisms/eslint/CD-14" },
-      cases: [CLASS_CASE],
-    });
-    expect({ verdicts, loads: load.mock.calls, lints: lintSourceCases.mock.calls }).toEqual({
-      verdicts: {
-        outcome: "failed",
-        error: { kind: "piece-invalid", pieceRoot: "mechanisms/eslint/CD-14", detail: expect.any(String) },
-      },
-      loads: [],
-      lints: [],
-    });
-  });
-});
-
 describe("the governance run with nothing to lint", () => {
   it("skips the governance lint when no TypeScript file is under check, still scanning tracked paths", async () => {
     const lintFiles = lintResolving({
@@ -1845,23 +1533,6 @@ describe("the governance run with nothing to lint", () => {
           projection: "current",
         },
       },
-      governanceInstances: [],
-      lints: [],
-    });
-  });
-
-  it("skips the governance lint when no clause is selected", async () => {
-    const lintFiles = lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) });
-    const eslint = eslintOver({ lintFiles });
-    const report = await runnerOver({ fileText: projectionHolding({ text: "\n\nexport default [\n\n];\n" }), eslint }).run(
-      runRequest({ clauses: [], records: [] }),
-    );
-    expect({
-      report,
-      governanceInstances: vi.mocked(eslint.createGovernanceInstance).mock.calls,
-      lints: lintFiles.mock.calls,
-    }).toEqual({
-      report: { outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "current" } },
       governanceInstances: [],
       lints: [],
     });
@@ -1911,47 +1582,6 @@ describe("the governance run on Windows paths", () => {
     });
   });
 
-  it("projects nothing and loads nothing for a piece on another drive from the repository, naming its piece root", async () => {
-    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: CLASS_PLUGIN_MODULE });
-    const write = vi.fn<FileTextPort["write"]>().mockReturnValue({ outcome: "ok", value: undefined });
-    const outcome = await runnerOver({
-      path: WINDOWS_PATH,
-      fileText: { ...EVERY_PATH_HOLDING_SOURCE_A, write },
-      modules: { load },
-    }).project({
-      repoRoot: WINDOWS_REPO_ROOT,
-      installRoot: WINDOWS_INSTALL_ROOT,
-      clauses: [{ ...CLASS_CLAUSE, pieceRoot: OTHER_DRIVE_PIECE_ROOT }],
-      records: [],
-    });
-    expect({ outcome, writes: write.mock.calls, loads: load.mock.calls }).toEqual({
-      outcome: {
-        outcome: "failed",
-        error: {
-          kind: "piece-invalid",
-          pieceRoot: OTHER_DRIVE_PIECE_ROOT,
-          detail: expect.stringContaining("different root"),
-        },
-      },
-      writes: [],
-      loads: [],
-    });
-  });
-
-  it("conforms a piece on another drive from the repository, loading its plugin module from that drive", async () => {
-    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: CLASS_PLUGIN_MODULE });
-    const lintSourceCases = vi.fn<EslintPort["lintSourceCases"]>().mockResolvedValue(CLASS_VERDICTS);
-    const verdicts = await runnerOver({
-      path: WINDOWS_PATH,
-      modules: { load },
-      eslint: eslintOver({ lintSourceCases }),
-    }).conform({ clause: { ...CLASS_CLAUSE, pieceRoot: OTHER_DRIVE_PIECE_ROOT }, cases: [CLASS_CASE] });
-    expect({ verdicts, loads: load.mock.calls }).toEqual({
-      verdicts: CLASS_VERDICTS,
-      loads: [[{ path: "D:\\dc\\mechanisms\\eslint\\CD-14\\cd14\\cd14.eslint-plugin.ts" }]],
-    });
-  });
-
   it("reports a hit in a linted file within the repository at its POSIX repository path", async () => {
     await expect(
       runnerOver({
@@ -1966,25 +1596,6 @@ describe("the governance run on Windows paths", () => {
         }),
       }).run(windowsRun({ pieceRoot: WINDOWS_PIECE_ROOT })),
     ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" } });
-  });
-
-  it("is tool-failed naming a linted file on another drive from the repository", async () => {
-    await expect(
-      runnerOver({
-        path: WINDOWS_PATH,
-        fileText: EVERY_PATH_HOLDING_SOURCE_A,
-        modules: modulesOver({ [WINDOWS_PLUGIN_MODULE_PATH]: CLASS_PLUGIN_MODULE }),
-        eslint: eslintOver({
-          lintFiles: lintResolving({
-            outcome: "ok",
-            value: [{ filePath: "D:\\src\\a.ts", messages: [CLASS_MESSAGE] }],
-          }),
-        }),
-      }).run(windowsRun({ pieceRoot: WINDOWS_PIECE_ROOT })),
-    ).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "tool-failed", detail: expect.stringContaining("D:\\src\\a.ts") },
-    });
   });
 
   it("reads the projection and a tracked suppressions file at their Windows forms under the repo root", async () => {

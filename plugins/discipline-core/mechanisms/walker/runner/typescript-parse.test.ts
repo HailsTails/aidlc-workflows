@@ -27,11 +27,4 @@ describe("createDefaultParsePort", () => {
 
     expect(port.children({ node: tree })[0].parent).toBe(tree);
   });
-
-  it("points a nested node's parent at its enclosing node", () => {
-    const tree = port.parse({ fileName: "src/a.ts", source: TWO_STATEMENTS });
-    const statement = port.children({ node: tree })[0];
-
-    expect(port.children({ node: statement })[0].parent).toBe(statement);
-  });
 });

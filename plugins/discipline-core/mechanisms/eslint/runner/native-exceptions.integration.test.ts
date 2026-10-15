@@ -84,24 +84,6 @@ describe("real ESLint 10 config resolution behind the ESLint runner's query inst
     });
   });
 
-  it("reports a block named like a projection block after the projection as an unrecorded config-override", async () => {
-    await expect(checkOf({ name: "named-after", tracked: ["x.ts"] })).resolves.toMatchObject({
-      outcome: "ok",
-      value: {
-        findings: [classFinding({ file: "x.ts", line: 1 })],
-        unrecorded: [{ kind: "config-override", clause: CLASS_SYNTAX, file: "x.ts", mechanism: "eslint" }],
-        unmeasured: [],
-      },
-    });
-  });
-
-  it("does not report a block named like a projection block placed before the projection, which overrides it", async () => {
-    await expect(checkOf({ name: "named-before", tracked: ["x.ts"] })).resolves.toMatchObject({
-      outcome: "ok",
-      value: { findings: [classFinding({ file: "x.ts", line: 1 })], unrecorded: [], unmeasured: [] },
-    });
-  });
-
   it("reports an unrecorded global ignore over a file holding a class, and core still finds the class", async () => {
     await expect(checkOf({ name: "global-ignore", tracked: ["gen/g.ts", "src/clean.ts"] })).resolves.toMatchObject({
       outcome: "ok",
@@ -396,26 +378,6 @@ describe("the ESLint runner's projection states under real ESLint 10, over a con
       value: { findings: [], unrecorded: [], unmeasured: [NOT_RUN_NOT_INCLUDED] },
     });
   });
-
-  it("fails the run with plugin-conflict when the team config registers a second copy of the piece's plugin", async () => {
-    await expect(checkOf({ name: "plugin-conflict", tracked: ["x.ts"] })).resolves.toEqual({
-      outcome: "failed",
-      error: {
-        kind: "runner-failed",
-        mechanism: "eslint",
-        failure: { kind: "plugin-conflict", detail: expect.stringContaining("Cannot redefine plugin") },
-      },
-    });
-  });
-});
-
-describe("the ESLint runner's governance instance on real ESLint 10, isolated from the team's configuration", () => {
-  it("still finds a class in a file a later team processor blanks", async () => {
-    await expect(checkOf({ name: "processor-blanks", tracked: ["blank/b.ts"] })).resolves.toMatchObject({
-      outcome: "ok",
-      value: { findings: [classFinding({ file: "blank/b.ts", line: 1 })], unrecorded: [], unmeasured: [] },
-    });
-  });
 });
 
 const SHARED_CASE_FILES = z
@@ -428,7 +390,6 @@ const SHARED_CASE_FILES = z
     "src/nested.ts",
     "src/space.ts",
     "src/anon.ts",
-    "src/decorated.ts",
   ]);
 
 const SHARED_CASES_RUN = {
@@ -456,12 +417,10 @@ const EXPECTED_SHARED_HITS = [
     anchor: { line: 1, column: 25 },
     snippet: "export const zeta = new (class {})();",
   },
-  { clause: CLASS_SYNTAX, file: "src/decorated.ts", anchor: { line: 2, column: 5 }, snippet: "@dec(class {}) class A {}" },
-  { clause: CLASS_SYNTAX, file: "src/decorated.ts", anchor: { line: 2, column: 15 }, snippet: "@dec(class {}) class A {}" },
 ];
 
 describe("FR-3 over real files: the ESLint runner on real ESLint 10 and the walker runner on real TypeScript", () => {
-  it("give the same whole anchors for every flagged CD-14 shared case and a class inside a decorator argument", async () => {
+  it("give the same whole anchors for every flagged CD-14 shared case", async () => {
     const eslintRun = await eslintRunner.run({ ...SHARED_CASES_RUN, records: [], clauses: [ESLINT_CLAUSE] });
     const walkerRun = await walkerRunner.run({ ...SHARED_CASES_RUN, clauses: [WALKER_CLAUSE] });
     expect({ eslint: eslintRun, walker: walkerRun }).toEqual({

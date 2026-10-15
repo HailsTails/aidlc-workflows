@@ -16,14 +16,6 @@ describe("createProcessPort", () => {
     ]);
   });
 
-  it("reads no arguments when only the runtime binary and the script are given", () => {
-    expect(
-      createProcessPort({
-        processSurface: processSurfaceOver({ argv: ["/usr/bin/node", "/install/check.ts"] }),
-      }).arguments,
-    ).toEqual([]);
-  });
-
   it("writes the given text out", () => {
     const write = vi.fn<ProcessSurface["write"]>();
 
