@@ -13,6 +13,7 @@ import {
   readVersionOneJson,
 } from "../rule-set-reader/rule-set-reader.ts";
 import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
+import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import {
   type ClauseAddress,
   clauseAddressSchema,
@@ -55,12 +56,29 @@ type ResolvedClause = {
 
 const SHARED_RULE_SET = "shared";
 
+export type RuleSetLocation =
+  | { readonly location: "repo-root" }
+  | { readonly location: "folder"; readonly path: RepoPath };
+
+const LEADING_CURRENT_DIRECTORY = "./";
+
+const ruleSetLocationSchema = z.union([
+  z.enum([".", LEADING_CURRENT_DIRECTORY]).transform((): RuleSetLocation => ({ location: "repo-root" })),
+  z
+    .string()
+    .transform((text) =>
+      text.startsWith(LEADING_CURRENT_DIRECTORY) ? text.slice(LEADING_CURRENT_DIRECTORY.length) : text,
+    )
+    .pipe(repoPathSchema)
+    .transform((path): RuleSetLocation => ({ location: "folder", path })),
+]);
+
 const consumerSelectionFileSchema = z.strictObject({
   version: z.literal(1),
   ruleSets: z
     .record(ruleSetNameSchema, z.string())
     .transform((ruleSets) => Object.entries(ruleSets))
-    .pipe(z.array(z.tuple([ruleSetNameSchema, z.string()]))),
+    .pipe(z.array(z.tuple([ruleSetNameSchema, ruleSetLocationSchema]))),
   clauses: z
     .record(z.string(), z.string())
     .transform((clauses) => Object.entries(clauses))
@@ -76,7 +94,7 @@ const failed = (error: LoadFailure): { readonly outcome: "failed"; readonly erro
 
 export const ruleSetRootOf = (request: {
   readonly ruleSet: ClauseAddress["ruleSet"];
-  readonly ruleSets: Readonly<Record<string, string>>;
+  readonly ruleSets: Readonly<Record<string, RuleSetLocation>>;
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
   readonly path: PathPort;
@@ -89,7 +107,11 @@ export const ruleSetRootOf = (request: {
   if (declared === undefined) {
     return failed({ kind: "unknown-rule-set", name: ruleSet.name });
   }
-  const directory = request.path.join({ segments: [request.repoRoot, declared[1]] });
+  const location = declared[1];
+  if (location.location === "repo-root") {
+    return { outcome: "ok", value: request.repoRoot };
+  }
+  const directory = request.path.join({ segments: [request.repoRoot, location.path] });
   const parsed = absolutePathSchema.safeParse(request.path.resolve({ path: directory }));
   if (!parsed.success) {
     return failed({
