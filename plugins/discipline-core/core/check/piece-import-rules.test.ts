@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFlavouredPathPort, createPathPort, windowsPathFlavour } from "../platform-ports/path-port.ts";
+import { createPathPort, windowsPathFlavour, posixPathFlavour } from "../platform-ports/path-port.ts";
 import {
   type PieceLocation,
   pieceFilesOf,
@@ -10,7 +10,7 @@ import {
 const INSTALL_ROOT = "plugins/discipline-core";
 const PROBE_ROOT = "plugins/discipline-core/tests/probe-rule-set";
 
-const path = createPathPort({ workingDirectory: () => "/fork" });
+const path = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/fork" });
 
 const WALKER_PIECE: PieceLocation = {
   file: "plugins/discipline-core/mechanisms/walker/CD-14/class-syntax.ts",
@@ -381,7 +381,7 @@ describe("pieceImportFindings over sources keyed from the install root", () => {
   });
 });
 
-const windowsPath = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\fork" });
+const windowsPath = createPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\fork" });
 
 const WINDOWS_KEYED_PIECE: PieceLocation = {
   file: "mechanisms/walker/CD-14/a.ts",

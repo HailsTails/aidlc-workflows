@@ -233,7 +233,7 @@ export const currentProjection = (request: {
       error: { kind: "file-unreadable", file: PROJECTION_PATH, detail: text.error.detail },
     };
   }
-  return { outcome: "ok", value: { presence: "present", text: text.value } };
+  return { outcome: "ok", value: { presence: "present", text: text.value.replaceAll("\r\n", "\n") } };
 };
 
 const writtenProjection = (request: {

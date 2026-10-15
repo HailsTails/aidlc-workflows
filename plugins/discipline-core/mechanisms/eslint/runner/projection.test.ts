@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExceptionRecord } from "../../../core/exception-records/exception-records.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import {
-  createFlavouredPathPort,
+  createPathPort,
   type PathPort,
   posixPathFlavour,
   windowsPathFlavour,
@@ -28,8 +28,8 @@ const eslint = mechanismIdSchema.parse("eslint");
 const eslint10 = mechanismIdSchema.parse("eslint-10");
 const repoRoot = absolutePathSchema.parse("/repo");
 const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
-const posixPath = createFlavouredPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
-const windowsPath = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
+const posixPath = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
+const windowsPath = createPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
 
 const why = {
   why: "Why does this file declare a class?",
@@ -435,15 +435,6 @@ describe("projectionState", () => {
     ).toBe("out-of-date");
   });
 
-  it("is out-of-date when the file differs only by CRLF line endings", () => {
-    expect(
-      projectionState({
-        current: { presence: "present", text: "export default [\r\n];\r\n" },
-        generated: "export default [\n];\n",
-      }),
-    ).toBe("out-of-date");
-  });
-
   it("is out-of-date when the file is hand-edited", () => {
     expect(
       projectionState({
@@ -454,7 +445,56 @@ describe("projectionState", () => {
   });
 });
 
+describe("currentProjection", () => {
+  it("reads a projection with CRLF line endings as the same text with LF line endings", () => {
+    const fileText: FileTextPort = {
+      read: vi.fn().mockReturnValue({ outcome: "ok", value: "export default [\r\n];\r\n" }),
+      exists: vi.fn().mockReturnValue("present"),
+      write: vi.fn(),
+    };
+
+    expect(currentProjection({ fileText, path: posixPath, repoRoot })).toEqual({
+      outcome: "ok",
+      value: { presence: "present", text: "export default [\n];\n" },
+    });
+  });
+});
+
 describe("writeProjection", () => {
+  it("leaves a projection that differs only by CRLF line endings alone, and reports it unchanged", () => {
+    const write = vi.fn().mockReturnValue({ outcome: "ok", value: undefined });
+    const fileText: FileTextPort = {
+      read: vi.fn().mockReturnValue({ outcome: "ok", value: "export default [\r\n];\r\n" }),
+      exists: vi.fn().mockReturnValue("present"),
+      write,
+    };
+
+    expect({
+      result: writeProjection({ fileText, path: posixPath, repoRoot, text: "export default [\n];\n" }),
+      writes: write.mock.calls,
+    }).toEqual({
+      result: { outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "unchanged" } },
+      writes: [],
+    });
+  });
+
+  it("rewrites a CRLF projection that also differs in content, writing LF line endings", () => {
+    const write = vi.fn().mockReturnValue({ outcome: "ok", value: undefined });
+    const fileText: FileTextPort = {
+      read: vi.fn().mockReturnValue({ outcome: "ok", value: "export default [\r\n  1,\r\n];\r\n" }),
+      exists: vi.fn().mockReturnValue("present"),
+      write,
+    };
+
+    expect({
+      result: writeProjection({ fileText, path: posixPath, repoRoot, text: "export default [\n];\n" }),
+      writes: write.mock.calls,
+    }).toEqual({
+      result: { outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } },
+      writes: [[{ path: "/repo/disciplines.eslint.mjs", text: "export default [\n];\n" }]],
+    });
+  });
+
   it("writes disciplines.eslint.mjs at the repo root when no projection exists, and reports it written", () => {
     const write = vi.fn().mockReturnValue({ outcome: "ok", value: undefined });
     const fileText: FileTextPort = {
