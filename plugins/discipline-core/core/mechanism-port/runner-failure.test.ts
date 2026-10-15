@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runnerFailureSchema } from "./runner-failure.ts";
+import { rejectedCall, runnerFailureSchema, runnerInvalidOutput } from "./runner-failure.ts";
 
 describe("runnerFailureSchema", () => {
   it.each([
@@ -49,5 +49,30 @@ describe("runnerFailureSchema", () => {
       runnerFailureSchema.safeParse({ kind: "file-unparseable", detail: "unexpected token" })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("runnerInvalidOutput", () => {
+  it("is a failed runner-invalid-output carrying the detail it is given", () => {
+    expect(runnerInvalidOutput({ detail: "x" })).toEqual({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: "x" },
+    });
+  });
+});
+
+describe("rejectedCall", () => {
+  it("is runner-invalid-output naming the message of a thrown Error", () => {
+    expect(rejectedCall({ thrown: new Error("boom") })).toEqual({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: "the runner call threw or rejected: boom" },
+    });
+  });
+
+  it("is runner-invalid-output naming the text of a thrown value that is not an Error", () => {
+    expect(rejectedCall({ thrown: 7 })).toEqual({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: "the runner call threw or rejected: 7" },
+    });
   });
 });

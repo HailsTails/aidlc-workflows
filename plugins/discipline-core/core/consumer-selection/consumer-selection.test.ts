@@ -45,6 +45,12 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo/team-rules","mechanisms","walker","TM-1","piece.json"]': "/repo/team-rules/mechanisms/walker/TM-1/piece.json",
   '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
   '["/repo/team-rules","mechanisms","walker","TM-1"]': "/repo/team-rules/mechanisms/walker/TM-1",
+  '["/install","mechanisms","oxlint","runner","runner.ts"]': "/install/mechanisms/oxlint/runner/runner.ts",
+  '["/install","mechanisms","oxlint","CD-14","piece.json"]': "/install/mechanisms/oxlint/CD-14/piece.json",
+  '["/install","mechanisms","oxlint","CD-14"]': "/install/mechanisms/oxlint/CD-14",
+  '["/repo/team-rules","rules","CD-14","discipline.json"]': "/repo/team-rules/rules/CD-14/discipline.json",
+  '["/repo/team-rules","mechanisms","walker","CD-14","piece.json"]': "/repo/team-rules/mechanisms/walker/CD-14/piece.json",
+  '["/repo/team-rules","mechanisms","walker","CD-14"]': "/repo/team-rules/mechanisms/walker/CD-14",
 };
 
 const TABLE_PATH: PathPort = {
@@ -98,6 +104,44 @@ const CD_14_PIECE = JSON.stringify({
     { clause: "class-syntax", settings: { module: "class-syntax.ts" } },
     { clause: "abstract-syntax", settings: { module: "abstract-syntax.ts" } },
   ],
+});
+
+const CD_14_ON_TWO_MECHANISMS = JSON.stringify({
+  version: 1,
+  id: "CD-14",
+  clauses: [
+    { ...mechanical("class-syntax"), mechanisms: ["walker", "oxlint"] },
+    { ...mechanical("abstract-syntax"), mechanisms: ["walker", "oxlint"] },
+  ],
+});
+
+const CD_14_OXLINT_PIECE = JSON.stringify({
+  version: 1,
+  discipline: "CD-14",
+  mechanism: "oxlint",
+  clauses: [{ clause: "abstract-syntax", settings: { rule: "no-abstract" } }],
+});
+
+const TEAM_CD_14 = JSON.stringify({
+  version: 1,
+  id: "CD-14",
+  clauses: [
+    {
+      kind: "mechanical",
+      id: "class-syntax",
+      summary: "the team's own class clause",
+      mechanisms: ["walker"],
+      anchor: { kind: "keyword", keyword: "enum" },
+      cases: CASES,
+    },
+  ],
+});
+
+const TEAM_CD_14_PIECE = JSON.stringify({
+  version: 1,
+  discipline: "CD-14",
+  mechanism: "walker",
+  clauses: [{ clause: "class-syntax", settings: { module: "team-class-syntax.ts" } }],
 });
 
 const TM_1 = JSON.stringify({ version: 1, id: "TM-1", clauses: [mechanical("no-tmp-files")] });
@@ -236,6 +280,122 @@ describe("readSelection", () => {
     ).toMatchObject({
       outcome: "ok",
       value: { selection: { uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "decorator-syntax" }] } },
+    });
+  });
+
+  it("reads a discipline's discipline.json and piece.json once each when two of its clauses are selected", () => {
+    const read = vi
+      .fn<FileTextPort["read"]>()
+      .mockReturnValueOnce({
+        outcome: "ok",
+        value: JSON.stringify({
+          version: 1,
+          ruleSets: {},
+          clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "walker" },
+        }),
+      })
+      .mockReturnValueOnce({ outcome: "ok", value: CD_14 })
+      .mockReturnValue({ outcome: "ok", value: CD_14_PIECE });
+    readSelection({
+      fileText: { ...fileTextOver(INSTALL), read },
+      path: TABLE_PATH,
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+    });
+    expect(read.mock.calls).toEqual([
+      [{ path: SELECTION_PATH }],
+      [{ path: "/install/rules/CD-14/discipline.json" }],
+      [{ path: "/install/mechanisms/walker/CD-14/piece.json" }],
+    ]);
+  });
+
+  it("reads each mechanism's own piece when two clauses of one discipline select different mechanisms", () => {
+    expect(
+      select({
+        ...INSTALL,
+        "/install/rules/CD-14/discipline.json": presentFile({ text: CD_14_ON_TWO_MECHANISMS }),
+        "/install/mechanisms/oxlint/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
+        "/install/mechanisms/oxlint/CD-14/piece.json": presentFile({ text: CD_14_OXLINT_PIECE }),
+        [SELECTION_PATH]: presentFile({
+          text: JSON.stringify({
+            version: 1,
+            ruleSets: {},
+            clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "oxlint" },
+          }),
+        }),
+      }),
+    ).toMatchObject({
+      outcome: "ok",
+      value: {
+        bindings: [
+          { mechanism: "walker", clause: { settings: { module: "class-syntax.ts" } } },
+          {
+            mechanism: "oxlint",
+            clause: { pieceRoot: "/install/mechanisms/oxlint/CD-14", settings: { rule: "no-abstract" } },
+          },
+        ],
+      },
+    });
+  });
+
+  it("is piece-missing for the second mechanism of a discipline whose first mechanism's piece covers the clause", () => {
+    expect(
+      select({
+        ...INSTALL,
+        "/install/rules/CD-14/discipline.json": presentFile({ text: CD_14_ON_TWO_MECHANISMS }),
+        "/install/mechanisms/oxlint/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
+        "/install/mechanisms/oxlint/CD-14/piece.json": ABSENT_FILE,
+        [SELECTION_PATH]: presentFile({
+          text: JSON.stringify({
+            version: 1,
+            ruleSets: {},
+            clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "oxlint" },
+          }),
+        }),
+      }),
+    ).toEqual({
+      outcome: "failed",
+      error: { kind: "piece-missing", address: "CD-14#abstract-syntax", mechanism: "oxlint" },
+    });
+  });
+
+  it("reads a named rule set's own discipline and piece for a discipline id the shared rule set also holds", () => {
+    expect(
+      select({
+        ...INSTALL,
+        "/repo/team-rules/rules/CD-14/discipline.json": presentFile({ text: TEAM_CD_14 }),
+        "/repo/team-rules/mechanisms/walker/CD-14/piece.json": presentFile({ text: TEAM_CD_14_PIECE }),
+        [SELECTION_PATH]: presentFile({
+          text: JSON.stringify({
+            version: 1,
+            ruleSets: { team: "team-rules" },
+            clauses: { "CD-14#class-syntax": "walker", "team/CD-14#class-syntax": "walker" },
+          }),
+        }),
+      }),
+    ).toMatchObject({
+      outcome: "ok",
+      value: {
+        bindings: [
+          {
+            mechanism: "walker",
+            clause: {
+              address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
+              anchor: { kind: "keyword", keyword: "class" },
+              settings: { module: "class-syntax.ts" },
+            },
+          },
+          {
+            mechanism: "walker",
+            clause: {
+              address: { ruleSet: { name: "team" }, discipline: "CD-14", clause: "class-syntax" },
+              anchor: { kind: "keyword", keyword: "enum" },
+              pieceRoot: "/repo/team-rules/mechanisms/walker/CD-14",
+              settings: { module: "team-class-syntax.ts" },
+            },
+          },
+        ],
+      },
     });
   });
 

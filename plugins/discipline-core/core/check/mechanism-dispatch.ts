@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
-import type { RunnerFailure } from "../mechanism-port/runner-failure.ts";
+import {
+  type RunnerFailure,
+  rejectedCall,
+  runnerInvalidOutput,
+} from "../mechanism-port/runner-failure.ts";
 import type {
   LoadedRunner,
   RunnerClause,
@@ -47,20 +51,6 @@ export type MechanismProjectionRequest = {
 };
 
 const hitsResultSchema = runnerResultSchema({ value: z.array(hitSchema).readonly() });
-
-export const runnerInvalidOutput = (request: {
-  readonly detail: string;
-}): { readonly outcome: "failed"; readonly error: RunnerFailure } => ({
-  outcome: "failed",
-  error: { kind: "runner-invalid-output", detail: request.detail },
-});
-
-export const rejectedCall = (request: {
-  readonly thrown: unknown;
-}): { readonly outcome: "failed"; readonly error: RunnerFailure } =>
-  runnerInvalidOutput({
-    detail: `the runner call threw or rejected: ${request.thrown instanceof Error ? request.thrown.message : String(request.thrown)}`,
-  });
 
 const unrequestedHit = (request: {
   readonly hits: readonly Hit[];

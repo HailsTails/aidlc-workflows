@@ -6,6 +6,7 @@ import type { PathPort } from "../platform-ports/path-port.ts";
 import {
   type DisciplineFile,
   disciplineFilePath,
+  type PieceFile,
   pieceFilePath,
   readDisciplineFile,
   readPieceFile,
@@ -46,7 +47,9 @@ export type SelectionReading = {
 };
 
 type ResolvedClause = {
+  readonly ruleSetRoot: AbsolutePath;
   readonly discipline: DisciplineFile;
+  readonly piece: PieceFile;
   readonly binding: ClauseBinding;
 };
 
@@ -105,6 +108,7 @@ type ClauseRequest = {
   readonly ruleSetRoot: AbsolutePath;
   readonly address: ClauseAddress;
   readonly mechanism: MechanismId;
+  readonly earlier: readonly ResolvedClause[];
 };
 
 type MechanicalDefinition = Extract<DisciplineFile["clauses"][number], { readonly kind: "mechanical" }>;
@@ -114,13 +118,24 @@ type DefinedClause = {
   readonly definition: MechanicalDefinition;
 };
 
-const definedClause = (request: ClauseRequest): Result<DefinedClause, LoadFailure> => {
-  const address = clauseAddressText({ address: request.address });
+const disciplineOf = (request: ClauseRequest): Result<DisciplineFile, LoadFailure> => {
+  const loaded = request.earlier.find(
+    (earlier) =>
+      earlier.ruleSetRoot === request.ruleSetRoot && earlier.discipline.id === request.address.discipline,
+  );
+  if (loaded !== undefined) {
+    return { outcome: "ok", value: loaded.discipline };
+  }
   const location = { path: request.path, ruleSetRoot: request.ruleSetRoot, discipline: request.address.discipline };
   if (request.fileText.exists({ path: disciplineFilePath(location) }) === "absent") {
-    return failed({ kind: "unknown-discipline", address });
+    return failed({ kind: "unknown-discipline", address: clauseAddressText({ address: request.address }) });
   }
-  const discipline = readDisciplineFile({ ...location, fileText: request.fileText });
+  return readDisciplineFile({ ...location, fileText: request.fileText });
+};
+
+const definedClause = (request: ClauseRequest): Result<DefinedClause, LoadFailure> => {
+  const address = clauseAddressText({ address: request.address });
+  const discipline = disciplineOf(request);
   if (discipline.outcome === "failed") {
     return discipline;
   }
@@ -137,13 +152,17 @@ const definedClause = (request: ClauseRequest): Result<DefinedClause, LoadFailur
   return { outcome: "ok", value: { discipline: discipline.value, definition } };
 };
 
-const pieceSettings = (request: ClauseRequest & { readonly discipline: DisciplineFile }): Result<unknown, LoadFailure> => {
-  const address = clauseAddressText({ address: request.address });
-  const runnerPath = request.path.join({
-    segments: [request.installRoot, "mechanisms", request.mechanism, "runner", "runner.ts"],
-  });
-  if (request.fileText.exists({ path: runnerPath }) === "absent") {
-    return failed({ kind: "runner-missing", mechanism: request.mechanism });
+type PieceRequest = ClauseRequest & { readonly discipline: DisciplineFile };
+
+const pieceOf = (request: PieceRequest): Result<PieceFile, LoadFailure> => {
+  const loaded = request.earlier.find(
+    (earlier) =>
+      earlier.ruleSetRoot === request.ruleSetRoot &&
+      earlier.discipline.id === request.address.discipline &&
+      earlier.binding.mechanism === request.mechanism,
+  );
+  if (loaded !== undefined) {
+    return { outcome: "ok", value: loaded.piece };
   }
   const location = {
     path: request.path,
@@ -152,17 +171,61 @@ const pieceSettings = (request: ClauseRequest & { readonly discipline: Disciplin
     mechanism: request.mechanism,
   };
   if (request.fileText.exists({ path: pieceFilePath(location) }) === "absent") {
-    return failed({ kind: "piece-missing", address, mechanism: request.mechanism });
+    return failed({
+      kind: "piece-missing",
+      address: clauseAddressText({ address: request.address }),
+      mechanism: request.mechanism,
+    });
   }
-  const piece = readPieceFile({ ...location, fileText: request.fileText, discipline: request.discipline });
+  return readPieceFile({ ...location, fileText: request.fileText, discipline: request.discipline });
+};
+
+type PieceEntry = { readonly piece: PieceFile; readonly settings: unknown };
+
+const pieceEntry = (request: PieceRequest): Result<PieceEntry, LoadFailure> => {
+  const runnerPath = request.path.join({
+    segments: [request.installRoot, "mechanisms", request.mechanism, "runner", "runner.ts"],
+  });
+  if (request.fileText.exists({ path: runnerPath }) === "absent") {
+    return failed({ kind: "runner-missing", mechanism: request.mechanism });
+  }
+  const piece = pieceOf(request);
   if (piece.outcome === "failed") {
     return piece;
   }
   const entry = piece.value.clauses.find((candidate) => candidate.clause === request.address.clause);
   if (entry === undefined) {
-    return failed({ kind: "piece-missing", address, mechanism: request.mechanism });
+    return failed({
+      kind: "piece-missing",
+      address: clauseAddressText({ address: request.address }),
+      mechanism: request.mechanism,
+    });
   }
-  return { outcome: "ok", value: entry.settings };
+  return { outcome: "ok", value: { piece: piece.value, settings: entry.settings } };
+};
+
+const resolvedClauseOf = (request: {
+  readonly clauseRequest: ClauseRequest;
+  readonly defined: DefinedClause;
+  readonly entry: PieceEntry;
+}): ResolvedClause => {
+  const { clauseRequest, defined, entry } = request;
+  return {
+    ruleSetRoot: clauseRequest.ruleSetRoot,
+    discipline: defined.discipline,
+    piece: entry.piece,
+    binding: {
+      mechanism: clauseRequest.mechanism,
+      clause: {
+        address: clauseRequest.address,
+        anchor: defined.definition.anchor,
+        pieceRoot: clauseRequest.path.join({
+          segments: [clauseRequest.ruleSetRoot, "mechanisms", clauseRequest.mechanism, clauseRequest.address.discipline],
+        }),
+        settings: entry.settings,
+      },
+    },
+  };
 };
 
 const resolveClause = (request: {
@@ -173,6 +236,7 @@ const resolveClause = (request: {
   readonly ruleSets: ConsumerSelectionFile["ruleSets"];
   readonly address: ClauseAddress;
   readonly mechanism: MechanismId;
+  readonly earlier: readonly ResolvedClause[];
 }): Result<ResolvedClause, LoadFailure> => {
   const root = ruleSetRootOf({ ...request, ruleSet: request.address.ruleSet, ruleSets: Object.fromEntries(request.ruleSets) });
   if (root.outcome === "failed") {
@@ -183,27 +247,11 @@ const resolveClause = (request: {
   if (defined.outcome === "failed") {
     return defined;
   }
-  const settings = pieceSettings({ ...clauseRequest, discipline: defined.value.discipline });
-  if (settings.outcome === "failed") {
-    return settings;
+  const entry = pieceEntry({ ...clauseRequest, discipline: defined.value.discipline });
+  if (entry.outcome === "failed") {
+    return entry;
   }
-  return {
-    outcome: "ok",
-    value: {
-      discipline: defined.value.discipline,
-      binding: {
-        mechanism: request.mechanism,
-        clause: {
-          address: request.address,
-          anchor: defined.value.definition.anchor,
-          pieceRoot: request.path.join({
-            segments: [root.value, "mechanisms", request.mechanism, request.address.discipline],
-          }),
-          settings: settings.value,
-        },
-      },
-    },
-  };
+  return { outcome: "ok", value: resolvedClauseOf({ clauseRequest, defined: defined.value, entry: entry.value }) };
 };
 
 const addressOf = (request: { readonly resolved: ResolvedClause }): ClauseAddress =>
@@ -260,19 +308,20 @@ const resolvedClauses = (request: {
     (sofar, [address, mechanism]) =>
       appendedClause({
         sofar,
-        resolve: () => resolveClause({ ...request, ruleSets: request.file.ruleSets, address, mechanism }),
+        resolve: ({ earlier }) =>
+          resolveClause({ ...request, ruleSets: request.file.ruleSets, address, mechanism, earlier }),
       }),
     { outcome: "ok", value: [] },
   );
 
 const appendedClause = (request: {
   readonly sofar: Result<readonly ResolvedClause[], LoadFailure>;
-  readonly resolve: () => Result<ResolvedClause, LoadFailure>;
+  readonly resolve: (resolution: { readonly earlier: readonly ResolvedClause[] }) => Result<ResolvedClause, LoadFailure>;
 }): Result<readonly ResolvedClause[], LoadFailure> => {
   if (request.sofar.outcome === "failed") {
     return request.sofar;
   }
-  const clause = request.resolve();
+  const clause = request.resolve({ earlier: request.sofar.value });
   if (clause.outcome === "failed") {
     return clause;
   }
