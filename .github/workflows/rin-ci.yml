@@ -16,6 +16,7 @@ concurrency:
 jobs:
   discipline-core-windows:
     name: Discipline core on Windows
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
