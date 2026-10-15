@@ -9,5 +9,7 @@ test("the fragment owns only the dedicated CD14 rule", () => {
 			rules: { "rin-discipline/no-class-authoring": "error" },
 		},
 	]);
-	expect(Object.keys(classAuthoringPlugin.rules)).toEqual(["no-class-authoring"]);
+	expect(classAuthoringPlugin.rules).toEqual({
+		"no-class-authoring": expect.objectContaining({ create: expect.any(Function) }),
+	});
 });
