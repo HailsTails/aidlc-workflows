@@ -647,4 +647,5 @@ export {
   type RecordInspection,
   type RecordPorts,
   type RecordSources,
+  type Unmeasurable,
 };

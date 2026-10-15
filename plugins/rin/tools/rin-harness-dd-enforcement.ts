@@ -14,7 +14,9 @@ import {
   describeUnmeasurable,
   type Finding,
   inspectRecordDirectory,
+  type RecordInspection,
   type RecordPorts,
+  type Unmeasurable,
 } from "./rin-harness-doc-discipline.ts";
 import {
   defaultPathOperations,
@@ -46,6 +48,15 @@ type SensorConfig = {
   readonly stageGraphPath: (input: { readonly projectDir: string }) => string;
 };
 
+type RecordInspector = {
+  readonly inspect: (input: {
+    readonly recordDir: string;
+    readonly stageGraphPath: string;
+    readonly ports: RecordPorts;
+  }) => RecordInspection;
+  readonly describe: (unmeasurable: Unmeasurable) => string;
+};
+
 const defaultSensorProcess = (): SensorProcess => {
   const reviewProcess = defaultReviewProcessPort();
   return {
@@ -58,6 +69,11 @@ const defaultSensorProcess = (): SensorProcess => {
 const defaultSensorConfig = (): SensorConfig => ({
   r7OptIn: configR7OptIn,
   stageGraphPath: configStageGraphPath,
+});
+
+const defaultRecordInspector = (): RecordInspector => ({
+  inspect: inspectRecordDirectory,
+  describe: describeUnmeasurable,
 });
 
 const emit = ({
@@ -167,11 +183,13 @@ const runDdSensor = ({
   ddIds,
   ports = defaultRecordPorts(),
   config = defaultSensorConfig(),
+  inspection: inspector = defaultRecordInspector(),
   process: runtime = defaultSensorProcess(),
 }: {
   readonly ddIds: readonly DocRule[];
   readonly ports?: RecordPorts;
   readonly config?: SensorConfig;
+  readonly inspection?: RecordInspector;
   readonly process?: SensorProcess;
 }): void => {
   const flags = parseFlags({ argv: runtime.arguments.slice(2) });
@@ -199,7 +217,7 @@ const runDdSensor = ({
   }
 
   const configuredStageGraph = config.stageGraphPath({ projectDir });
-  const inspection = inspectRecordDirectory({
+  const inspection = inspector.inspect({
     recordDir,
     stageGraphPath: ports.paths.resolve({
       segments: [projectDir, configuredStageGraph],
@@ -213,7 +231,7 @@ const runDdSensor = ({
         dd: label,
         findingsCount: 0,
         findings: [],
-        scanned: `UNMEASURED — ${describeUnmeasurable(inspection)}`,
+        scanned: `UNMEASURED — ${inspector.describe(inspection)}`,
       },
       publish: runtime.publish,
     });

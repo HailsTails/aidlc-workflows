@@ -1,7 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { R7OptIn } from "./rin-harness-config.ts";
 import { recordDirectoryFor, runDdSensor } from "./rin-harness-dd-enforcement.ts";
-import type { RecordPorts } from "./rin-harness-doc-discipline.ts";
+import type { Finding, RecordPorts } from "./rin-harness-doc-discipline.ts";
 import {
   defaultPathOperations,
   type PathFlavour,
@@ -85,29 +85,18 @@ const RECORD = "/work/aidlc/spaces/default/intents/260906-example-record";
 const RECORD_ARTEFACT = `${RECORD}/rin-requirements.md`;
 const CURSOR_GRAPH = ".cursor/tools/data/stage-graph.json";
 const CLAUDE_GRAPH = ".claude/tools/data/stage-graph.json";
-const REQUIREMENTS_GRAPH = JSON.stringify([{ produces: ["rin-requirements"] }]);
 
-type FakeTree = {
-  readonly files: Readonly<Record<string, string>>;
-  readonly directories: Readonly<Record<string, readonly string[]>>;
-};
-
-const fakeRecordPorts = ({ files: texts, directories }: FakeTree): RecordPorts => ({
+const fakeRecordPorts = (): RecordPorts => ({
   reader: {
-    fileExists: (path) => path in texts || path in directories,
-    readFile: (path) => texts[path],
-    listDirectory: (path) => directories[path],
+    fileExists: (path) => path === RECORD,
+    readFile: () => undefined,
+    listDirectory: () => undefined,
   },
   kinds: {
-    isFile: (path) => path in texts,
-    isDirectory: (path) => path in directories,
+    isFile: () => false,
+    isDirectory: (path) => path === RECORD,
   },
   paths: posixPaths,
-});
-
-const recordTree = ({ graphs }: { readonly graphs: Readonly<Record<string, string>> }): FakeTree => ({
-  files: { ...graphs, [RECORD_ARTEFACT]: "# Requirements\n\nA standalone requirement.\n" },
-  directories: { [RECORD]: ["rin-requirements.md"] },
 });
 
 const fakeConfig = ({ optIn, stageGraph }: { readonly optIn: R7OptIn; readonly stageGraph: string }) => ({
@@ -117,122 +106,200 @@ const fakeConfig = ({ optIn, stageGraph }: { readonly optIn: R7OptIn; readonly s
     projectDir === WORK ? stageGraph : "config-asked-about-another-directory.json",
 });
 
-const capturingProcess = ({
+const fakeProcess = ({
   argv,
-  published,
+  publish,
   workingDirectory = ELSEWHERE,
 }: {
   readonly argv: readonly string[];
-  readonly published: string[];
+  readonly publish: (text: string) => void;
   readonly workingDirectory?: string;
 }) => ({
   arguments: ["bun", "rin-harness-sensor.ts", ...argv],
-  publish: (text: string) => {
-    published.push(text);
-  },
+  publish,
   workingDirectory: () => workingDirectory,
 });
 
+const REQUESTED_FINDING: Finding = {
+  rule: "DD-1",
+  artefact: "rin-requirements.md",
+  line: 3,
+  subject: "O-9",
+  remedy: "pinned DD-1 remedy",
+};
+
+const UNREQUESTED_FINDING: Finding = {
+  rule: "DD-2",
+  artefact: "rin-requirements.md",
+  line: 5,
+  subject: "a bare figure",
+  remedy: "pinned DD-2 remedy",
+};
+
 describe("runDdSensor — in-process through its ports", () => {
   test("(a) DD-7 without the opt-in publishes one not-adopted line", () => {
-    const published: string[] = [];
+    const publish = vi.fn();
     runDdSensor({
       ddIds: ["DD-7"],
-      ports: fakeRecordPorts(recordTree({ graphs: {} })),
+      ports: fakeRecordPorts(),
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
-      process: capturingProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], published }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });
-    expect(published).toEqual([
-      '{"pass":true,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"(DD-7 not adopted)"}\n',
+    expect(publish.mock.calls).toEqual([
+      ['{"pass":true,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"(DD-7 not adopted)"}\n'],
     ]);
   });
 
   test("(b) DD-7 opted in reports a path outside any intent record as not a record", () => {
-    const published: string[] = [];
+    const publish = vi.fn();
     runDdSensor({
       ddIds: ["DD-7"],
-      ports: fakeRecordPorts(recordTree({ graphs: {} })),
+      ports: fakeRecordPorts(),
       config: fakeConfig({ optIn: { kind: "enabled" }, stageGraph: CURSOR_GRAPH }),
-      process: capturingProcess({
+      process: fakeProcess({
         argv: ["--project-dir", WORK, "--output-path", "/work/packages/kernel/src/index.ts"],
-        published,
+        publish,
       }),
     });
-    expect(published).toEqual([
-      '{"pass":true,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"(not an intent record)"}\n',
+    expect(publish.mock.calls).toEqual([
+      ['{"pass":true,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"(not an intent record)"}\n'],
     ]);
   });
 
   test("(c) a malformed DD-7 opt-in fails as UNMEASURED with the config's reason", () => {
-    const published: string[] = [];
+    const publish = vi.fn();
     runDdSensor({
       ddIds: ["DD-7"],
-      ports: fakeRecordPorts(recordTree({ graphs: {} })),
+      ports: fakeRecordPorts(),
       config: fakeConfig({
         optIn: { kind: "invalid", reason: "rinGates.exceptionWhyChains must be a boolean" },
         stageGraph: CURSOR_GRAPH,
       }),
-      process: capturingProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], published }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });
-    expect(published).toEqual([
-      '{"pass":false,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"UNMEASURED — harness.config.json is invalid: rinGates.exceptionWhyChains must be a boolean"}\n',
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":false,"dd":"DD-7","findings_count":0,"findings":[],"scanned":"UNMEASURED — harness.config.json is invalid: rinGates.exceptionWhyChains must be a boolean"}\n',
+      ],
     ]);
   });
 
   test.each([
-    { configured: CURSOR_GRAPH, other: CLAUDE_GRAPH },
-    { configured: CLAUDE_GRAPH, other: CURSOR_GRAPH },
-  ])("(d) the configured $configured is the only graph measured", ({ configured, other }) => {
-    const published: string[] = [];
+    { configured: CURSOR_GRAPH, measured: "/work/.cursor/tools/data/stage-graph.json" },
+    { configured: CLAUDE_GRAPH, measured: "/work/.claude/tools/data/stage-graph.json" },
+  ])("(d) the configured $configured is the only graph inspected, and no findings pass", ({ configured, measured }) => {
+    const ports = fakeRecordPorts();
+    const inspect = vi.fn().mockReturnValue({ kind: "inspected", findings: [] });
+    const publish = vi.fn();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
-      ports: fakeRecordPorts(
-        recordTree({ graphs: { [`${WORK}/${configured}`]: REQUIREMENTS_GRAPH, [`${WORK}/${other}`]: "{invalid graph" } }),
-      ),
+      ports,
+      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: configured }),
-      process: capturingProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], published }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });
-    expect(published).toEqual([
-      '{"pass":true,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"record 260906-example-record, official artefacts only (DD-4)"}\n',
+    expect(inspect.mock.calls).toEqual([[{ recordDir: RECORD, stageGraphPath: measured, ports }]]);
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":true,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"record 260906-example-record, official artefacts only (DD-4)"}\n',
+      ],
     ]);
   });
 
-  test("(e) an absent configured graph fails as UNMEASURED even when another harness's graph exists", () => {
-    const published: string[] = [];
+  test("(e) an absent configured graph publishes UNMEASURED with the inspection's own description", () => {
+    const ports = fakeRecordPorts();
+    const unmeasurable = {
+      kind: "unmeasurable",
+      reason: "no-stage-graph",
+      path: "/work/.cursor/tools/data/stage-graph.json",
+    };
+    const inspect = vi.fn().mockReturnValue(unmeasurable);
+    const describeInspection = vi.fn().mockReturnValue("pinned description of an absent graph");
+    const publish = vi.fn();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
-      ports: fakeRecordPorts(recordTree({ graphs: { [`${WORK}/${CLAUDE_GRAPH}`]: REQUIREMENTS_GRAPH } })),
+      ports,
+      inspection: { inspect, describe: describeInspection },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
-      process: capturingProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], published }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });
-    expect(published).toEqual([
-      '{"pass":false,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"UNMEASURED — no-stage-graph: /work/.cursor/tools/data/stage-graph.json is absent, so the official-artefact set (DD-4) could not be resolved"}\n',
+    expect(inspect.mock.calls).toEqual([
+      [{ recordDir: RECORD, stageGraphPath: "/work/.cursor/tools/data/stage-graph.json", ports }],
+    ]);
+    expect(describeInspection.mock.calls).toEqual([[unmeasurable]]);
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":false,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"UNMEASURED — pinned description of an absent graph"}\n',
+      ],
     ]);
   });
 
-  test("(f) an invalid configured graph fails as UNMEASURED, never success", () => {
-    const published: string[] = [];
+  test("(f) an invalid configured graph publishes UNMEASURED, never success", () => {
+    const ports = fakeRecordPorts();
+    const unmeasurable = {
+      kind: "unmeasurable",
+      reason: "stage-graph-malformed",
+      path: "/work/.cursor/tools/data/stage-graph.json",
+    };
+    const inspect = vi.fn().mockReturnValue(unmeasurable);
+    const describeInspection = vi.fn().mockReturnValue("pinned description of a malformed graph");
+    const publish = vi.fn();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
-      ports: fakeRecordPorts(recordTree({ graphs: { [`${WORK}/${CURSOR_GRAPH}`]: "{invalid graph" } })),
+      ports,
+      inspection: { inspect, describe: describeInspection },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
-      process: capturingProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], published }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });
-    expect(published).toEqual([
-      '{"pass":false,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"UNMEASURED — stage-graph-malformed: /work/.cursor/tools/data/stage-graph.json is not a valid stage graph, so the official-artefact set (DD-4) could not be resolved"}\n',
+    expect(inspect.mock.calls).toEqual([
+      [{ recordDir: RECORD, stageGraphPath: "/work/.cursor/tools/data/stage-graph.json", ports }],
+    ]);
+    expect(describeInspection.mock.calls).toEqual([[unmeasurable]]);
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":false,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"UNMEASURED — pinned description of a malformed graph"}\n',
+      ],
     ]);
   });
 
-  test("(g) without --project-dir the process port's working directory is the project", () => {
-    const published: string[] = [];
+  test("(g) without --project-dir the graph is inspected under the process port's working directory", () => {
+    const ports = fakeRecordPorts();
+    const inspect = vi.fn().mockReturnValue({ kind: "inspected", findings: [] });
+    const publish = vi.fn();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
-      ports: fakeRecordPorts(recordTree({ graphs: { [`${WORK}/${CURSOR_GRAPH}`]: REQUIREMENTS_GRAPH } })),
+      ports,
+      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
-      process: capturingProcess({ argv: ["--output-path", RECORD_ARTEFACT], published, workingDirectory: WORK }),
+      process: fakeProcess({ argv: ["--output-path", RECORD_ARTEFACT], publish, workingDirectory: WORK }),
     });
-    expect(published).toEqual([
-      '{"pass":true,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"record 260906-example-record, official artefacts only (DD-4)"}\n',
+    expect(inspect.mock.calls).toEqual([
+      [{ recordDir: RECORD, stageGraphPath: "/work/.cursor/tools/data/stage-graph.json", ports }],
+    ]);
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":true,"dd":"DD-1+DD-3","findings_count":0,"findings":[],"scanned":"record 260906-example-record, official artefacts only (DD-4)"}\n',
+      ],
+    ]);
+  });
+
+  test("(h) only the requested rules' findings are published, failing with their count", () => {
+    const inspect = vi.fn().mockReturnValue({
+      kind: "inspected",
+      findings: [REQUESTED_FINDING, UNREQUESTED_FINDING],
+    });
+    const publish = vi.fn();
+    runDdSensor({
+      ddIds: ["DD-1", "DD-3"],
+      ports: fakeRecordPorts(),
+      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
+      config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
+      process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
+    });
+    expect(publish.mock.calls).toEqual([
+      [
+        '{"pass":false,"dd":"DD-1+DD-3","findings_count":1,"findings":[{"rule":"DD-1","artefact":"rin-requirements.md","line":3,"subject":"O-9","remedy":"pinned DD-1 remedy"}],"scanned":"record 260906-example-record, official artefacts only (DD-4)"}\n',
+      ],
     ]);
   });
 });
