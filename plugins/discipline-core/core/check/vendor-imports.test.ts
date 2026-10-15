@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { createPathPort } from "../platform-ports/path-port.ts";
 import { importsIn, type ModuleImport } from "./piece-import-rules.ts";
 
 declare global {
@@ -13,13 +14,13 @@ declare global {
 
 const sourcesOutsideMechanisms = import.meta.glob(
   [
-    "./**/*.ts",
+    "./**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!**/node_modules/**",
-    "!**/*.test.ts",
+    "!**/*.test.*",
     "!**/test-fixtures/**",
     "!./mechanisms/**",
     "!./vitest.config.ts",
-    "!./core/platform-ports/*-port.ts",
+    "!./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./tests/probe-rule-set/mechanisms/walker/**",
     "!./tests/probe-rule-set/mechanisms/eslint/**",
   ],
@@ -28,8 +29,8 @@ const sourcesOutsideMechanisms = import.meta.glob(
 
 const runnerSources = import.meta.glob(
   [
-    "./mechanisms/*/runner/**/*.ts",
-    "!**/*.test.ts",
+    "./mechanisms/*/runner/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
+    "!**/*.test.*",
     "!**/test-fixtures/**",
     "!./mechanisms/walker/runner/typescript-parse.ts",
     "!./mechanisms/eslint/runner/eslint-instance.ts",
@@ -40,17 +41,34 @@ const runnerSources = import.meta.glob(
 
 const unlistedMechanismSources = import.meta.glob(
   [
-    "./mechanisms/**/*.ts",
-    "!**/*.test.ts",
+    "./mechanisms/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
+    "!**/*.test.*",
     "!**/test-fixtures/**",
     "!./mechanisms/*/runner/**",
-    "!./mechanisms/walker/**",
-    "!./mechanisms/eslint/**",
+    "!./mechanisms/walker/*/**",
+    "!./mechanisms/eslint/*/**",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
 
-const platformPortSources = import.meta.glob(["./core/platform-ports/*-port.ts"], {
+const platformPortSources = import.meta.glob(
+  ["./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}", "!**/*.test.*", "!./core/platform-ports/module-loader-port.ts"],
+  { base: "../../", query: "?raw", import: "default", eager: true },
+);
+
+const moduleLoaderPortSources = import.meta.glob(["./core/platform-ports/module-loader-port.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const coreSourcesOffFolderDepth = import.meta.glob(
+  ["./core/*.{ts,mts,cts,tsx,js,mjs,cjs}", "./core/*/*/**/*.{ts,mts,cts,tsx,js,mjs,cjs}", "!**/*.test.*", "!**/test-fixtures/**"],
+  { base: "../../", query: "?raw", import: "default", eager: true },
+);
+
+const coreSources = import.meta.glob(["./core/**/*.{ts,mts,cts,tsx,js,mjs,cjs}", "!**/*.test.*", "!**/test-fixtures/**"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -80,10 +98,10 @@ const pluginKitWrapperSources = import.meta.glob(["./mechanisms/eslint/runner/in
 
 const walkerPieceSources = import.meta.glob(
   [
-    "./mechanisms/walker/*/**/*.ts",
-    "./tests/probe-rule-set/mechanisms/walker/**/*.ts",
+    "./mechanisms/walker/*/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
+    "./tests/probe-rule-set/mechanisms/walker/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./mechanisms/walker/runner/**",
-    "!**/*.test.ts",
+    "!**/*.test.*",
     "!**/test-fixtures/**",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
@@ -91,10 +109,10 @@ const walkerPieceSources = import.meta.glob(
 
 const eslintPieceSources = import.meta.glob(
   [
-    "./mechanisms/eslint/*/**/*.ts",
-    "./tests/probe-rule-set/mechanisms/eslint/**/*.ts",
+    "./mechanisms/eslint/*/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
+    "./tests/probe-rule-set/mechanisms/eslint/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./mechanisms/eslint/runner/**",
-    "!**/*.test.ts",
+    "!**/*.test.*",
     "!**/test-fixtures/**",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
@@ -121,6 +139,30 @@ const packageImport = (packageName: string) =>
 const packageTypeImport = (packageName: string) =>
   z.object({ specifier: z.literal(packageName), form: z.literal("type-only") });
 
+const coreFolderPath = createPathPort({ workingDirectory: () => "/install/core/folder" });
+
+const relativeImportUnderCore = z.object({
+  specifier: z
+    .string()
+    .regex(/^\.\.?\//)
+    .transform((specifier) => coreFolderPath.resolve({ path: specifier }))
+    .pipe(z.string().regex(/^\/install\/core\//, "resolves outside core/")),
+  form: z.enum(["value", "type-only", "dynamic"]),
+});
+
+const packageOrComputedImport = z.object({
+  specifier: z.string().regex(/^[^.]/),
+  form: z.enum(["value", "type-only", "dynamic"]),
+});
+
+const relativeTargetsUnderCore = z.record(
+  z.string(),
+  z
+    .string()
+    .transform((text) => importsIn({ text }))
+    .pipe(z.array(z.union([relativeImportUnderCore, packageOrComputedImport]))),
+);
+
 const importsOnly = (allowed: readonly [z.ZodType<unknown, ModuleImport>, ...z.ZodType<unknown, ModuleImport>[]]) =>
   z.record(
     z.string(),
@@ -143,12 +185,28 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     expect(runnerSources).not.toHaveProperty(["./mechanisms/walker/runner/typescript-parse.ts"]);
   });
 
-  it("finds no mechanism directory beside the walker and ESLint ones", () => {
+  it("finds no mechanism source outside a runner folder or a walker or ESLint piece folder", () => {
     expect(unlistedMechanismSources).toEqual({});
   });
 
   it("reads the file-text port among the platform ports", () => {
     expect(platformPortSources).toEqual(expect.objectContaining({ "./core/platform-ports/file-text-port.ts": expect.any(String) }));
+  });
+
+  it("leaves the module-loader port out of the platform ports", () => {
+    expect(platformPortSources).not.toHaveProperty(["./core/platform-ports/module-loader-port.ts"]);
+  });
+
+  it("reads core's check dispatch among the core files", () => {
+    expect(coreSources).toEqual(expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }));
+  });
+
+  it("finds every core source file directly in a folder of core", () => {
+    expect(coreSourcesOffFolderDepth).toEqual({});
+  });
+
+  it("finds every relative import in a core file resolving under core/", () => {
+    expect(relativeTargetsUnderCore.safeParse(coreSources).error).toBeUndefined();
   });
 
   it("reads the CD-14 walker piece and the probe's walker piece among the walker pieces", () => {
@@ -174,10 +232,16 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     expect(importsOnly([relativeImport, zodImport]).safeParse(runnerSources).error).toBeUndefined();
   });
 
-  it("finds the platform ports importing only relative paths, zod, node builtins and computed module loads", () => {
+  it("finds the platform ports other than the module loader importing only relative paths, zod and node builtins", () => {
+    expect(
+      importsOnly([relativeImport, zodImport, nodeBuiltinImport]).safeParse(platformPortSources).error,
+    ).toBeUndefined();
+  });
+
+  it("finds the module-loader port importing only relative paths, zod, node builtins and computed module loads", () => {
     expect(
       importsOnly([relativeImport, zodImport, nodeBuiltinImport, computedModuleLoad]).safeParse(
-        platformPortSources,
+        moduleLoaderPortSources,
       ).error,
     ).toBeUndefined();
   });

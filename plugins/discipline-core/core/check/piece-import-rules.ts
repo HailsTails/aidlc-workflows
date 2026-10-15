@@ -32,7 +32,7 @@ export type ModuleImport = { readonly specifier: string; readonly form: ImportFo
 
 const IMPORT_STATEMENT = /^\s*(?:import|export)\s+(type\s+)?(?:[^;"']*?\s+from\s+)?["']([^"']+)["']/gm;
 
-const DYNAMIC_IMPORT = /\bimport\s*\(\s*([^)]*?)\s*\)/g;
+const DYNAMIC_MODULE_LOAD = /\b(?:import|require)\s*\(\s*([^)]*?)\s*\)/g;
 
 const QUOTED = /^(["'])(.*)\1$/;
 
@@ -47,7 +47,7 @@ export const importsIn = (request: { readonly text: string }): readonly ModuleIm
         position: match.index,
       }),
     ),
-    ...[...request.text.matchAll(DYNAMIC_IMPORT)].map(
+    ...[...request.text.matchAll(DYNAMIC_MODULE_LOAD)].map(
       (match): PlacedImport => ({
         specifier: match[1].replace(QUOTED, "$2"),
         form: "dynamic",

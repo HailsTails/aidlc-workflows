@@ -95,9 +95,11 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 
 Fetch these paths from a pinned commit of this repository into one install directory, keeping their layout:
 
-- `core/`
+- always: `package.json` and `core/`
 - for each selected clause in the shared rule set: `rules/<DisciplineId>/`, `mechanisms/<MechanismId>/runner/` and `mechanisms/<MechanismId>/<DisciplineId>/`
 - for each selected clause in the repository's own rule set: `mechanisms/<MechanismId>/runner/` only, since the discipline and its piece live in that rule set
+
+`package.json` is fetched for its `"type": "module"`. Every runtime file is an ES module, and Node takes a file's module type from the nearest `package.json` above it; without this one, that is the consumer's own, and under `"type": "commonjs"` the check crashes.
 
 Leave out test files (`*.test.ts`) and `tests/` folders. The install must not sit under a `node_modules` path, because Node does not strip types there. Nothing core reads or writes is under a harness directory.
 

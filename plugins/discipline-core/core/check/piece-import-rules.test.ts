@@ -246,6 +246,18 @@ describe("pieceImportRefusals refuses", () => {
     ).toEqual([{ specifier: "modulePath", reason: "dynamic-import" }]);
   });
 
+  it("a require call of a package its runner lists, as a dynamic import", () => {
+    expect(refusalsOf({ piece: WALKER_PIECE, source: 'const ts = require("typescript");\n' })).toEqual([
+      { specifier: "typescript", reason: "dynamic-import" },
+    ]);
+  });
+
+  it("a require call inside the piece's own folder, as a dynamic import", () => {
+    expect(
+      refusalsOf({ piece: WALKER_PIECE, source: "export const load = () => require ( './nested/helper.ts' );\n" }),
+    ).toEqual([{ specifier: "./nested/helper.ts", reason: "dynamic-import" }]);
+  });
+
   it("a value import of a package its runner lists", () => {
     expect(refusalsOf({ piece: WALKER_PIECE, source: 'import ts from "typescript";\n' })).toEqual([
       { specifier: "typescript", reason: "value-import-of-package" },
