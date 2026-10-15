@@ -109,8 +109,8 @@ describe("pieceImportRefusals refuses", () => {
   });
 
   it("a type import of a package its runner does not list", () => {
-    expect(refusalsOf({ piece: WALKER_PIECE, source: 'import type { Rule } from "eslint";\n' })).toEqual([
-      { specifier: "eslint", reason: "package-not-listed" },
+    expect(refusalsOf({ piece: WALKER_PIECE, source: 'import type { Program } from "acorn";\n' })).toEqual([
+      { specifier: "acorn", reason: "package-not-listed" },
     ]);
   });
 });
@@ -121,7 +121,7 @@ const PROBE_KEY = "../../tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-file
 const TYPE_PACKAGES_KEY = "../../mechanisms/walker/runner/piece-type-packages.json";
 
 const SOURCES: Readonly<Record<string, string>> = {
-  [CLASS_SYNTAX_KEY]: 'import type { Rule } from "eslint";\n',
+  [CLASS_SYNTAX_KEY]: 'import type { Program } from "acorn";\n',
   [HELPER_KEY]: 'import type { Node } from "typescript";\n',
   [PROBE_KEY]: 'import type { WalkerCheck } from "../../../../../mechanisms/walker/runner/walker-check.ts";\n',
 };
@@ -145,7 +145,7 @@ describe("pieceImportFindings", () => {
           { file: HELPER_KEY, ruleSetRoot: "../..", mechanism: "walker", discipline: "CD-14" },
           { file: PROBE_KEY, ruleSetRoot: "../../tests/probe-rule-set", mechanism: "walker", discipline: "PD-1" },
         ],
-        refusals: [{ file: CLASS_SYNTAX_KEY, specifier: "eslint", reason: "package-not-listed" }],
+        refusals: [{ file: CLASS_SYNTAX_KEY, specifier: "acorn", reason: "package-not-listed" }],
       },
     });
   });

@@ -11,7 +11,7 @@ enforced-by:
   - oxlint:rin-discipline/no-class-authoring
   - audit:auditConstitution
   - audit:auditPublicSurface
-enforcement-note: "The opt-in tools/native-lint/cd14 local TypeScript plugin checks authored class syntax in ESLint/Oxlint. Review external construction and wrapper placement."
+enforcement-note: "The opt-in tools/native-lint/cd14 local TypeScript plugin checks authored class syntax in ESLint/Oxlint. Biome noStaticOnlyClass covers static-only classes only. Review external construction and wrapper placement."
 status: active
 applies-to: typescript-runtime
 portability: portable

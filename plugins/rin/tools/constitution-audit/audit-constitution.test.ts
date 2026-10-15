@@ -48,6 +48,14 @@ test("violating-banned-import fixture reports CD-19 winston import violation", (
   expect(cd19Violations.length).toBe(1);
 });
 
+test("an unrecorded type-only ESLint boundary reports CD-19", () => {
+  const report = auditConstitution({
+    service: fixtureService("violating-eslint-type-import"),
+  });
+  expect(report.violations.filter((violation) => violation.rule === "CD-19"))
+    .toHaveLength(1);
+});
+
 test("orphan-no-test fixture reports CD-23/24 missing-sibling violation", () => {
   const report = auditConstitution({
     service: fixtureService("orphan-no-test"),
