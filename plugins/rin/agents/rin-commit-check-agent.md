@@ -27,6 +27,9 @@ Nothing else. Naming, style, structure and the other constitution rules belong t
 
 Your prompt carries the head sha, the changed-file list, the plan rows this commit covers, and the lock sections those rows cite. Read the tree at that sha with Read/Grep/Glob, restricted to the changed files and the files they call. Echo the head sha at the top of your result. If your prompt supplied no head sha or no changed-file list, return exactly `CANNOT-CHECK` naming the missing input; do not check the tree you happen to be in.
 
+<!-- pd-authority:begin -->
+> **PD authority.** You apply `PD-1` (`{{HARNESS_DIR}}/knowledge/aidlc-shared/process-discipline/pd-001-obligations-are-weighed-against-ordinary-use.md`) as your own rule: read it in full before you act. Never add, request or report as owed a code path, test, fixture, check or kept artefact that `PD-1` does not owe.
+<!-- pd-authority:end -->
 ## Result
 
 Return **CLEAR** when you find nothing blocking. Otherwise return **BLOCKING** with one line per finding: `file:line | behaviour, state or test | what goes wrong | the test or change that would close it`.
