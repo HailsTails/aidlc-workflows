@@ -64,7 +64,7 @@ const TABLE_PATH: PathPort = {
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn(),
   repositoryDirectoryOf: vi.fn(),
-  resolve: ({ path }) => absolutePathSchema.parse(path),
+  resolve: ({ path }) => ({ outcome: "ok", value: absolutePathSchema.parse(path) }),
   fromFileUrl: vi.fn(),
 };
 
@@ -646,7 +646,7 @@ const RESOLVING_PATH: PathPort = {
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn(),
   repositoryDirectoryOf: vi.fn(),
-  resolve: vi.fn<PathPort["resolve"]>().mockReturnValue(absolutePathSchema.parse("/repo/rules/team")),
+  resolve: vi.fn<PathPort["resolve"]>().mockReturnValue({ outcome: "ok", value: absolutePathSchema.parse("/repo/rules/team") }),
   fromFileUrl: vi.fn(),
 };
 
@@ -671,7 +671,7 @@ describe("ruleSetRootOf", () => {
     const path: PathPort = {
       ...RESOLVING_PATH,
       join: vi.fn<PathPort["join"]>().mockReturnValue("/repo/./rules/team"),
-      resolve: vi.fn<PathPort["resolve"]>().mockReturnValue(absolutePathSchema.parse("/repo/rules/team")),
+      resolve: vi.fn<PathPort["resolve"]>().mockReturnValue({ outcome: "ok", value: absolutePathSchema.parse("/repo/rules/team") }),
     };
     const root = ruleSetRootOf({
       ruleSet: { name: ruleSetNameSchema.parse("team") },

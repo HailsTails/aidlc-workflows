@@ -58,7 +58,7 @@ const TABLE_PATH: PathPort = {
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
   repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
-  resolve: ({ path }) => absolutePathSchema.parse(path),
+  resolve: ({ path }) => ({ outcome: "ok", value: absolutePathSchema.parse(path) }),
   fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
 };
 

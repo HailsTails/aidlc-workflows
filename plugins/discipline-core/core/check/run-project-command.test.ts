@@ -4,7 +4,9 @@ import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
-import { createPathPort, type PathPort } from "../platform-ports/path-port.ts";
+import { createPathPort, type PathPort, type UnresolvablePath } from "../platform-ports/path-port.ts";
+import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
+import type { Result } from "../values/result.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import type { CommandRequest } from "./run-check-command.ts";
@@ -12,7 +14,6 @@ import { runProjectCommand } from "./run-project-command.ts";
 
 const ENTRY_URL = "file:///install/core/check/project-command.ts";
 const NOT_A_FILE_URL = "https://example.invalid/core/check/project-command.ts";
-const UNC_LIKE = "\\\\server\\share";
 
 type FakeFile = {
   readonly read: ReturnType<FileTextPort["read"]>;
@@ -80,15 +81,15 @@ const WORKING_DIRECTORY_GONE: PathPort = createPathPort({
     .mockThrow(new Error("ENOENT: process.cwd failed, no such file or directory")),
 });
 
-const RESOLVED: Readonly<Record<string, string>> = {
-  "/install": "/install",
-  "/repo": "/repo",
-  "relative-repo": UNC_LIKE,
+const RESOLVED: Readonly<Record<string, Result<AbsolutePath, UnresolvablePath>>> = {
+  "/install": { outcome: "ok", value: absolutePathSchema.parse("/install") },
+  "/repo": { outcome: "ok", value: absolutePathSchema.parse("/repo") },
+  "relative-repo": { outcome: "failed", error: { kind: "working-directory-unusable", path: "relative-repo" } },
 };
 
 const REPO_RESOLVING_TO_NO_ABSOLUTE_PATH: PathPort = {
   ...POSIX_PATH,
-  resolve: ({ path }) => z.string().parse(RESOLVED[path]),
+  resolve: ({ path }) => RESOLVED[path],
 };
 
 const standaloneRunner = (request: { readonly runReturns: unknown }): LoadedRunner => ({
