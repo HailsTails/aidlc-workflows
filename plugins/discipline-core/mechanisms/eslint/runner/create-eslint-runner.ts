@@ -16,7 +16,7 @@ import type {
 } from "../../../core/mechanism-port/runner-result-schema.ts";
 import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
-import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
+import type { ModuleLoad, ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import type { PathPort } from "../../../core/platform-ports/path-port.ts";
 import { type AbsolutePath, absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { sameClauseAddress } from "../../../core/values/clause-address.ts";
@@ -78,11 +78,13 @@ type ProjectionEffect = "in-effect" | "not-in-effect";
 
 type RecordedRunRequest = RunRequest & { readonly records: readonly ExceptionRecord[] };
 
-type QueriedFile = {
-  readonly file: RepoPath;
-  readonly ignored: IgnoredState;
-  readonly states: CheckedFile["states"];
-};
+type QueriedFile =
+  | { readonly file: RepoPath; readonly ignored: "ignored" }
+  | { readonly file: RepoPath; readonly ignored: "checked"; readonly states: CheckedFile["states"] };
+
+type ParsedPlugin = Result<LoadedEslintPlugin, { readonly detail: string }>;
+
+type SharedPlugin = { readonly configured: ConfiguredClause; readonly parsed: Promise<ParsedPlugin> };
 
 const SUPPRESSIONS_FILE_NAME = "eslint-suppressions.json";
 
@@ -202,40 +204,77 @@ const configuredSelection = (request: {
   return configured;
 };
 
-const pluginOf = (request: {
-  readonly loaded: Result<unknown, { readonly detail: string }>;
-  readonly configured: ConfiguredClause;
-}): Outcome<SelectedClause> => {
-  const pieceRoot = request.configured.clause.pieceRoot;
+const parsedPluginOf = (request: { readonly loaded: ModuleLoad }): ParsedPlugin => {
   if (request.loaded.outcome === "failed") {
-    return pieceInvalid({ pieceRoot, detail: request.loaded.error.detail });
+    return { outcome: "failed", error: { detail: request.loaded.error.detail } };
   }
   const parsed = eslintPluginModuleSchema.safeParse(request.loaded.value);
   if (!parsed.success) {
-    return pieceInvalid({ pieceRoot, detail: z.prettifyError(parsed.error) });
+    return { outcome: "failed", error: { detail: z.prettifyError(parsed.error) } };
   }
-  if (!Object.hasOwn(parsed.data.default.rules, request.configured.settings.rule)) {
+  return { outcome: "ok", value: parsed.data.default };
+};
+
+const parsedPlugin = (request: {
+  readonly modulePath: string;
+  readonly modules: ModuleLoaderPort;
+}): Promise<ParsedPlugin> =>
+  request.modules.load({ path: request.modulePath }).then((loaded) => parsedPluginOf({ loaded }));
+
+const pluginOf = (request: {
+  readonly parsed: ParsedPlugin;
+  readonly configured: ConfiguredClause;
+}): Outcome<SelectedClause> => {
+  const pieceRoot = request.configured.clause.pieceRoot;
+  if (request.parsed.outcome === "failed") {
+    return pieceInvalid({ pieceRoot, detail: request.parsed.error.detail });
+  }
+  if (!Object.hasOwn(request.parsed.value.rules, request.configured.settings.rule)) {
     return pieceInvalid({
       pieceRoot,
       detail: `the plugin has no rule named ${request.configured.settings.rule}`,
     });
   }
-  return { outcome: "ok", value: { ...request.configured, plugin: parsed.data.default } };
+  return { outcome: "ok", value: { ...request.configured, plugin: request.parsed.value } };
 };
 
 const loadedPlugin = (request: {
   readonly configured: ConfiguredClause;
   readonly modules: ModuleLoaderPort;
 }): Promise<Outcome<SelectedClause>> =>
-  request.modules
-    .load({ path: request.configured.modulePath })
-    .then((loaded) => pluginOf({ loaded, configured: request.configured }));
+  parsedPlugin({ modulePath: request.configured.modulePath, modules: request.modules }).then((parsed) =>
+    pluginOf({ parsed, configured: request.configured }),
+  );
 
-const listedSelection = (request: {
-  readonly configured: ConfiguredClause;
+const distinctModules = (request: {
+  readonly configured: readonly ConfiguredClause[];
   readonly modules: ModuleLoaderPort;
-}): Promise<Outcome<readonly SelectedClause[]>> =>
-  loadedPlugin(request).then((selected) => listedOutcome({ outcome: selected }));
+}): readonly { readonly modulePath: string; readonly parsed: Promise<ParsedPlugin> }[] =>
+  [...new Set(request.configured.map((entry) => entry.modulePath))].map((modulePath) => ({
+    modulePath,
+    parsed: parsedPlugin({ modulePath, modules: request.modules }),
+  }));
+
+const sharedPluginsOf = (request: {
+  readonly entry: ConfiguredClause;
+  readonly loaded: readonly { readonly modulePath: string; readonly parsed: Promise<ParsedPlugin> }[];
+}): readonly SharedPlugin[] =>
+  request.loaded
+    .filter((module) => module.modulePath === request.entry.modulePath)
+    .map((module) => ({ configured: request.entry, parsed: module.parsed }));
+
+const sharedPlugins = (request: {
+  readonly configured: readonly ConfiguredClause[];
+  readonly modules: ModuleLoaderPort;
+}): readonly SharedPlugin[] => {
+  const loaded = distinctModules(request);
+  return request.configured.flatMap((entry) => sharedPluginsOf({ entry, loaded }));
+};
+
+const listedSelection = (request: { readonly shared: SharedPlugin }): Promise<Outcome<readonly SelectedClause[]>> =>
+  request.shared.parsed.then((parsed) =>
+    listedOutcome({ outcome: pluginOf({ parsed, configured: request.shared.configured }) }),
+  );
 
 const selectedClauses = (request: {
   readonly clauses: readonly RunnerClause[];
@@ -247,7 +286,9 @@ const selectedClauses = (request: {
     return Promise.resolve(configured);
   }
   return Promise.all(
-    configured.value.map((entry) => listedSelection({ configured: entry, modules: request.modules })),
+    sharedPlugins({ configured: configured.value, modules: request.modules }).map((shared) =>
+      listedSelection({ shared }),
+    ),
   ).then((outcomes) => collectOutcomes({ outcomes }));
 };
 
@@ -333,7 +374,7 @@ const queriedFileOf = (request: {
     return Promise.resolve(request.ignoredState);
   }
   if (request.ignoredState.value === "ignored") {
-    return Promise.resolve({ outcome: "ok", value: [{ file: request.file, ignored: "ignored", states: [] }] });
+    return Promise.resolve({ outcome: "ok", value: [{ file: request.file, ignored: "ignored" }] });
   }
   return checkedQueriedFile({ query: request.query, file: request.file, ruleIds: request.ruleIds });
 };
@@ -347,11 +388,12 @@ const queriedFile = (request: {
     .ignoredState({ file: request.file })
     .then((ignoredState) => queriedFileOf({ ...request, ignoredState }));
 
+const checkedFileOf = (request: { readonly entry: QueriedFile }): readonly CheckedFile[] =>
+  request.entry.ignored === "checked" ? [{ file: request.entry.file, states: request.entry.states }] : [];
+
 const partitionedFiles = (request: { readonly queried: readonly QueriedFile[] }): QueriedFiles => ({
   ignored: request.queried.filter((entry) => entry.ignored === "ignored").map((entry) => entry.file),
-  checked: request.queried
-    .filter((entry) => entry.ignored === "checked")
-    .map((entry) => ({ file: entry.file, states: entry.states })),
+  checked: request.queried.flatMap((entry) => checkedFileOf({ entry })),
 });
 
 const queriedFiles = (request: {

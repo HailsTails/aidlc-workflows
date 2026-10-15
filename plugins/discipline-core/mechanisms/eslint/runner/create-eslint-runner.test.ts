@@ -346,6 +346,48 @@ const TWO_RULES_IN_EFFECT = queryOver({
   },
 });
 
+const SHARED_FOR_OF_RULE_ID = "rin-discipline/no-for-of";
+
+const SHARED_MODULE_FOR_OF_CLAUSE: RunnerClause = {
+  address: FOR_OF,
+  anchor: { kind: "keyword", keyword: "for" },
+  pieceRoot: PIECE_ROOT,
+  settings: { ...CLASS_SETTINGS, rule: "no-for-of" },
+};
+
+const SHARED_PLUGIN_MODULE = {
+  default: {
+    rules: {
+      "no-class-authoring": { meta: { type: "problem" }, create: () => ({}) },
+      "no-for-of": { meta: { type: "problem" }, create: () => ({}) },
+    },
+  },
+};
+
+const SHARED_MODULE_RUN = runRequest({ clauses: [CLASS_CLAUSE, SHARED_MODULE_FOR_OF_CLAUSE], records: [] });
+
+const SHARED_MODULE_PROJECTION = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
+
+export default [
+  {
+    name: "discipline-core/piece/rin-discipline",
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    plugins: { "rin-discipline": piece0 },
+    rules: { "rin-discipline/no-class-authoring": "error", "rin-discipline/no-for-of": "error" },
+  },
+];
+`;
+
+const SHARED_MODULE_RULES_IN_EFFECT = queryOver({
+  ignored: CHECKED,
+  states: {
+    [`src/a.ts ${RULE_ID}`]: ERROR,
+    [`src/factory.ts ${RULE_ID}`]: ERROR,
+    [`src/a.ts ${SHARED_FOR_OF_RULE_ID}`]: ERROR,
+    [`src/factory.ts ${SHARED_FOR_OF_RULE_ID}`]: ERROR,
+  },
+});
+
 const inlineMessageInA = (request: {
   readonly messageId: "inline-disable" | "inline-rule-config";
   readonly text: string;
@@ -468,6 +510,31 @@ describe("the governance run, step 1: selected pieces", () => {
     ).resolves.toEqual({
       outcome: "failed",
       error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: expect.any(String) },
+    });
+  });
+
+  it("loads and parses a plugin module shared by two selected clauses once, selecting both clauses", async () => {
+    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: SHARED_PLUGIN_MODULE });
+    const report = await runnerOver({
+      fileText: projectionHolding({ text: SHARED_MODULE_PROJECTION }),
+      modules: { load },
+      eslint: eslintOver({
+        query: SHARED_MODULE_RULES_IN_EFFECT,
+        lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }),
+      }),
+    }).run(SHARED_MODULE_RUN);
+    expect({ loads: load.mock.calls, report }).toEqual({
+      loads: [[{ path: PLUGIN_MODULE_PATH }]],
+      report: { outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "current" } },
+    });
+  });
+
+  it("is piece-invalid naming the piece root of the clause whose rule a shared plugin module lacks", async () => {
+    await expect(
+      runnerOver({ modules: modulesOver({ [PLUGIN_MODULE_PATH]: CLASS_PLUGIN_MODULE }) }).run(SHARED_MODULE_RUN),
+    ).resolves.toEqual({
+      outcome: "failed",
+      error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: "the plugin has no rule named no-for-of" },
     });
   });
 });
