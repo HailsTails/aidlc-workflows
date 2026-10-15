@@ -138,7 +138,7 @@
         {
           "why": "Why does plugins/discipline-core/core/platform-ports/path-port.ts import or touch a platform runtime surface at all?",
           "because": "Discipline-core's checker needs path arithmetic, resolution against the working directory and file-URL conversion, which the runtime provides through node:path (its posix, win32 and host-default flavours), node:url fileURLToPath and process.cwd().",
-          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on defines PathPort and says resolve reads the working directory only through its default factory; plugins/discipline-core/core/platform-ports/path-port.ts defaultWorkingDirectory and createDefaultPathPort."
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on, as amended by § Amendments at Gate 5, A4, defines PathPort and says resolve reads the working directory only through its default factory; plugins/discipline-core/core/platform-ports/path-port.ts defaultWorkingDirectory and createDefaultPathPort."
         },
         {
           "why": "Why is that runtime access not confined somewhere else, away from core logic?",
