@@ -12,7 +12,7 @@ const harnessConfigSchema = z.object({ constitution: z.object({ include: z.array
 describe("the fork's CI and audit wiring for discipline core (CD-47: what this repository's own CI workflow and harness config say is the assertion's subject, and no fake can stand in for it, so the test reads those two tracked files read-only)", () => {
   it("runs discipline core's tests in CI straight after installing dependencies", () => {
     expect(readOkSchema.parse(fileText.read({ path: `${forkRoot}/.github/workflows/rin-ci.yml` })).value).toContain(
-      "      - name: Install dependencies\n        run: bun install --frozen-lockfile\n      - name: Test discipline core\n        run: bunx vitest run --root plugins/discipline-core\n",
+      "      - name: Install dependencies\n        run: bun install --frozen-lockfile\n      - name: Check discipline core\n        run: bun run --cwd plugins/discipline-core check\n",
     );
   });
 

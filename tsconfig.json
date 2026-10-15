@@ -20,6 +20,7 @@
   ],
   "exclude": [
     "harness/*/hooks/*-adapter.ts",
-    "plugins/*/tools/test-fixtures/**"
+    "plugins/*/tools/test-fixtures/**",
+    "plugins/discipline-core/**"
   ]
 }
