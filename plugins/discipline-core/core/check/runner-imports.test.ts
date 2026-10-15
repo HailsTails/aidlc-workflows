@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createPathPort } from "../platform-ports/path-port.ts";
+import { createPathPort, posixPathFlavour } from "../platform-ports/path-port.ts";
 import { importsIn } from "./piece-import-rules.ts";
 
 declare global {
@@ -48,7 +48,7 @@ const unlistedRunnerSources = import.meta.glob(
 const NAMED_CORE_FOLDERS = "core/(?:mechanism-port|values|platform-ports|rule-set-reader|exception-records)/";
 
 const relativeTargetsWithin = (request: { readonly runnerFolder: string }) => {
-  const runnerPath = createPathPort({ workingDirectory: () => `/install/${request.runnerFolder}` });
+  const runnerPath = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => `/install/${request.runnerFolder}` });
   const relativeImport = z.object({
     specifier: z
       .string()

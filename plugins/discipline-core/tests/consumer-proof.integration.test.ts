@@ -18,45 +18,45 @@ const path = createDefaultPathPort({});
 
 const INSTALL_ROOT = absolutePathSchema.parse(path.resolve({ path: `${import.meta.dirname}/..` }));
 
-const WALKER_CONSUMER = absolutePathSchema.parse(`${INSTALL_ROOT}/tests/test-fixtures/consumer-proof/walker`);
+const WALKER_CONSUMER = absolutePathSchema.parse(
+  path.resolve({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/walker` }),
+);
 
-const ESLINT_CONSUMER = absolutePathSchema.parse(`${INSTALL_ROOT}/tests/test-fixtures/consumer-proof/eslint`);
+const ESLINT_CONSUMER = absolutePathSchema.parse(
+  path.resolve({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/eslint` }),
+);
 
 const INSTALLED_SOURCE = z.string().regex(/^(?!(?:[^/]*\/)*tests\/)(?!.*\.test\.ts$).*$/);
 
-const CORE_PATHS = z.templateLiteral([`${INSTALL_ROOT}/core/`, INSTALLED_SOURCE]);
+const CORE_PATHS = z.templateLiteral(["core/", INSTALLED_SOURCE]);
 
-const CD14_RULE_PATHS = z.templateLiteral([`${INSTALL_ROOT}/rules/CD-14/`, INSTALLED_SOURCE]);
+const CD14_RULE_PATHS = z.templateLiteral(["rules/CD-14/", INSTALLED_SOURCE]);
 
 const WALKER_INSTALL_LIST = z.union([
   CORE_PATHS,
   CD14_RULE_PATHS,
-  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/walker/runner/`, INSTALLED_SOURCE]),
-  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/walker/CD-14/`, INSTALLED_SOURCE]),
+  z.templateLiteral(["mechanisms/walker/runner/", INSTALLED_SOURCE]),
+  z.templateLiteral(["mechanisms/walker/CD-14/", INSTALLED_SOURCE]),
 ]);
 
 const ESLINT_INSTALL_LIST = z.union([
   CORE_PATHS,
   CD14_RULE_PATHS,
-  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/eslint/runner/`, INSTALLED_SOURCE]),
-  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/eslint/CD-14/`, INSTALLED_SOURCE]),
+  z.templateLiteral(["mechanisms/eslint/runner/", INSTALLED_SOURCE]),
+  z.templateLiteral(["mechanisms/eslint/CD-14/", INSTALLED_SOURCE]),
 ]);
 
-const WALKER_READABLE = z.union([WALKER_INSTALL_LIST, z.templateLiteral([`${WALKER_CONSUMER}/`, z.string()])]);
-
-const ESLINT_READABLE = z.union([ESLINT_INSTALL_LIST, z.templateLiteral([`${ESLINT_CONSUMER}/`, z.string()])]);
-
-const HARNESS_FREE = z.string().regex(/^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/);
-
-const harnessFreeBelow = (request: { readonly root: string }) => z.templateLiteral([`${request.root}/`, HARNESS_FREE]);
-
-const NO_HARNESS_SEGMENT = z.union([
-  harnessFreeBelow({ root: INSTALL_ROOT }),
-  harnessFreeBelow({ root: WALKER_CONSUMER }),
-  harnessFreeBelow({ root: ESLINT_CONSUMER }),
+const WALKER_READABLE = z.union([
+  WALKER_INSTALL_LIST,
+  z.templateLiteral(["tests/test-fixtures/consumer-proof/walker/", z.string()]),
 ]);
 
-const CHECKOUT_UNDER_HARNESS = "/home/dev/.claude/worktrees/w/plugins/discipline-core";
+const ESLINT_READABLE = z.union([
+  ESLINT_INSTALL_LIST,
+  z.templateLiteral(["tests/test-fixtures/consumer-proof/eslint/", z.string()]),
+]);
+
+const NO_HARNESS_SEGMENT = z.string().regex(/^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/);
 
 const NODE_22_18_OR_LATER = z
   .string()
@@ -64,8 +64,25 @@ const NODE_22_18_OR_LATER = z
 
 const NODE_REQUIREMENT = "discipline core needs Node 22.18.0 or later";
 
-const pathCallsWithin = (request: { readonly paths: z.ZodType<string> }) =>
-  expect.schemaMatching(z.array(z.tuple([z.object({ path: request.paths })])).min(1));
+const installRelative = (request: { readonly observed: string }) =>
+  path.relative({ from: INSTALL_ROOT, to: request.observed });
+
+const pathCallsWithin = (request: { readonly paths: z.ZodType<string, string> }) =>
+  expect.schemaMatching(
+    z
+      .array(
+        z.tuple([
+          z.object({
+            path: z
+              .string()
+              .transform((observed) => installRelative({ observed }))
+              .pipe(z.object({ relation: z.literal("within-root"), path: request.paths })),
+          }),
+        ]),
+      )
+      .min(1),
+  );
+
 
 type ObservedPorts = {
   readonly fileText: FileTextPort;
@@ -85,10 +102,10 @@ const observedPorts = (): ObservedPorts => {
   };
   const pieceModules: ModuleLoaderPort = { load: createDefaultModuleLoaderPort({}).load };
   const runners: Readonly<Record<string, unknown>> = {
-    [`${INSTALL_ROOT}/mechanisms/walker/runner/runner.ts`]: {
+    [path.resolve({ path: `${INSTALL_ROOT}/mechanisms/walker/runner/runner.ts` })]: {
       runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: createDefaultParsePort({}) }),
     },
-    [`${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts`]: {
+    [path.resolve({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })]: {
       runner: createEslintRunner({ fileText, modules: pieceModules, path, eslint: createDefaultEslintPort({}) }),
     },
   };
@@ -254,29 +271,6 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
     expect(ports.probes.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
     expect(ports.pieceLoads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
     expect(ports.runnerLoads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
-  });
-});
-
-describe("the harness-segment check over observed paths", () => {
-  it("accepts a path in an install whose own checkout sits under a harness directory", () => {
-    expect(
-      harnessFreeBelow({ root: CHECKOUT_UNDER_HARNESS }).safeParse(`${CHECKOUT_UNDER_HARNESS}/core/check/run-check.ts`)
-        .success,
-    ).toBe(true);
-  });
-
-  it("refuses a harness directory below the consumer root", () => {
-    expect(
-      harnessFreeBelow({ root: `${CHECKOUT_UNDER_HARNESS}/tests/consumer` }).safeParse(
-        `${CHECKOUT_UNDER_HARNESS}/tests/consumer/.claude/x`,
-      ).success,
-    ).toBe(false);
-  });
-
-  it("refuses a .github file directly below the install root", () => {
-    expect(harnessFreeBelow({ root: CHECKOUT_UNDER_HARNESS }).safeParse(`${CHECKOUT_UNDER_HARNESS}/.github`).success).toBe(
-      false,
-    );
   });
 });
 

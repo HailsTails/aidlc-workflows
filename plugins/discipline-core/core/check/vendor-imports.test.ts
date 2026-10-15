@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createPathPort } from "../platform-ports/path-port.ts";
+import { createPathPort, posixPathFlavour } from "../platform-ports/path-port.ts";
 import { importsIn, type ModuleImport } from "./piece-import-rules.ts";
 
 declare global {
@@ -45,8 +45,10 @@ const unlistedMechanismSources = import.meta.glob(
     "!**/*.test.*",
     "!**/test-fixtures/**",
     "!./mechanisms/*/runner/**",
-    "!./mechanisms/walker/*/**",
-    "!./mechanisms/eslint/*/**",
+    "!./mechanisms/walker/*/*",
+    "!./mechanisms/walker/*/*/**",
+    "!./mechanisms/eslint/*/*",
+    "!./mechanisms/eslint/*/*/**",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
@@ -139,7 +141,7 @@ const packageImport = (packageName: string) =>
 const packageTypeImport = (packageName: string) =>
   z.object({ specifier: z.literal(packageName), form: z.literal("type-only") });
 
-const coreFolderPath = createPathPort({ workingDirectory: () => "/install/core/folder" });
+const coreFolderPath = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/install/core/folder" });
 
 const relativeImportUnderCore = z.object({
   specifier: z

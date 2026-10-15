@@ -120,6 +120,15 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 
 The packages must resolve from the install directory.
 
+## Known limits
+
+This is the first release. It covers each supported platform's ordinary paths and drives, and a committed ESLint projection checked out with either LF or CRLF line endings. These are not covered yet and will be added when a consumer needs them:
+
+- File and folder names outside ASCII.
+- Windows device paths (`\\?\C:\...`) and network shares given without a trailing separator (`\\server\share`).
+- A path rooted without a drive (`\repo`) when the working directory can't be read.
+- A byte-order mark at the start of `disciplines.json` or `discipline-exceptions.json`; save them without one.
+
 ## Developing core
 
 This directory builds and tests on its own, using only its own configuration: `package.json` declares the packages the code imports, `tsconfig.json` typechecks it under `strict`, `lint.biome.json` configures the linter, and `vitest.config.ts` runs its tests. Run a script from this directory, or from the repository root with `bun run --cwd plugins/discipline-core <script>`:
