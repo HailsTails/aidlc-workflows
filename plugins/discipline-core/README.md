@@ -148,7 +148,8 @@ This directory builds and tests on its own, using only its own configuration: `p
 | `lint` | Biome with `lint.biome.json` |
 | `test` | Vitest with `vitest.config.ts` |
 | `check` | all three in that order |
+| `install-proof` | copies exactly the install path list into a temporary CommonJS consumer and runs both commands under both mechanisms, expecting a fail on a class and a pass once it is removed |
 
-CI runs `check` and then the fork's constitution audit, `bun run audit:rin`, from the repository root; the audit covers this package.
+CI runs `check`, then `install-proof`, and then the fork's constitution audit, `bun run audit:rin`, from the repository root; the audit covers this package.
 
 `fork-wiring.test.ts` reads this repository's CI workflow and harness configuration, so it passes only inside this repository.

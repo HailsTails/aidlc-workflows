@@ -45,6 +45,8 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Check discipline core
         run: bun run --cwd plugins/discipline-core check
+      - name: Prove a discipline core install
+        run: bun run --cwd plugins/discipline-core install-proof
       - name: Generate distributions imported by source and test checks
         run: bun scripts/package.ts
       - name: Type check authored source and tests
