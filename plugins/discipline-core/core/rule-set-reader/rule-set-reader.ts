@@ -59,7 +59,7 @@ export type PieceFile = {
 
 const SUPPORTED_VERSION = 1;
 
-const parsedJson = (request: {
+export const parsedJson = (request: {
   readonly text: string;
 }): Result<unknown, string> => {
   try {
