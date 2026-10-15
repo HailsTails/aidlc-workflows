@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "id": "CD-14",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "class-syntax",
+      "summary": "no authored class syntax outside ambient declarations",
+      "mechanisms": ["walker", "eslint"],
+      "anchor": { "kind": "keyword", "keyword": "class" },
+      "cases": {
+        "flag": [
+          { "name": "class declaration", "fileName": "decl.ts", "source": "export class Alpha {}\n", "expectedLines": [1] },
+          { "name": "class expression", "fileName": "expr.ts", "source": "export const Beta = class {};\n", "expectedLines": [1] },
+          { "name": "export default class across two lines", "fileName": "default.ts", "source": "export default\nclass {}\n", "expectedLines": [2] },
+          { "name": "abstract class", "fileName": "abstract.ts", "source": "export abstract class Gamma {}\n", "expectedLines": [1] },
+          { "name": "nested class", "fileName": "nested.ts", "source": "export function make() {\n  class Delta {}\n  return Delta;\n}\n", "expectedLines": [2] },
+          { "name": "runtime namespace class", "fileName": "space.ts", "source": "export namespace Space {\n  export class Epsilon {}\n}\n", "expectedLines": [2] },
+          { "name": "new anonymous class", "fileName": "anon.ts", "source": "export const zeta = new (class {})();\n", "expectedLines": [1] }
+        ],
+        "allow": [
+          { "name": "declare class", "fileName": "ambient.ts", "source": "declare class Eta {}\n", "expectedLines": [] },
+          { "name": "declare module", "fileName": "module.ts", "source": "declare module \"lib\" {\n  class Theta {}\n}\n", "expectedLines": [] },
+          { "name": "declare global", "fileName": "global.ts", "source": "export {};\ndeclare global {\n  class Iota {}\n}\n", "expectedLines": [] },
+          { "name": "nested declare namespace", "fileName": "outer.ts", "source": "declare namespace Outer {\n  namespace Inner {\n    class Kappa {}\n  }\n}\n", "expectedLines": [] },
+          { "name": "declaration file", "fileName": "x.d.ts", "source": "export class Lambda {}\n", "expectedLines": [] },
+          { "name": "library construction", "fileName": "client.ts", "source": "import { Client } from \"lib\";\nexport const client = new Client();\n", "expectedLines": [] }
+        ]
+      }
+    },
+    { "kind": "judgement", "id": "library-construction", "summary": "library classes are constructed only in wrapping factories and never re-exported", "enforcedBy": "review" }
+  ]
+}
