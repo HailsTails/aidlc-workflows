@@ -4,7 +4,7 @@ import { runCheck } from "../core/check/run-check.ts";
 import type { FileTextPort } from "../core/platform-ports/file-text-port.ts";
 import type { GitPort } from "../core/platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../core/platform-ports/module-loader-port.ts";
-import { createPathPort, posixPathFlavour } from "../core/platform-ports/path-port.ts";
+import { createPathPort } from "../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../core/values/absolute-path.ts";
 import { repoPathSchema } from "../core/values/repo-path.ts";
 import * as classSyntax from "../mechanisms/walker/CD-14/class-syntax.ts";
@@ -61,7 +61,7 @@ const fileText: FileTextPort = {
   write: vi.fn<FileTextPort["write"]>(),
 };
 
-const path = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
+const path = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
 
 const PIECE_MODULES: Readonly<Record<string, unknown>> = {
   "/install/mechanisms/walker/CD-14/class-syntax.ts": classSyntax,

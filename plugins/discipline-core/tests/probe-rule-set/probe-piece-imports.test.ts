@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { pieceImportFindings } from "../../core/check/piece-import-rules.ts";
-import { createPathPort, posixPathFlavour } from "../../core/platform-ports/path-port.ts";
+import { createPathPort } from "../../core/platform-ports/path-port.ts";
 
 declare global {
   interface ImportMeta {
@@ -25,7 +25,7 @@ const typePackageTexts = import.meta.glob(["./mechanisms/*/runner/piece-type-pac
 });
 
 const outcome = pieceImportFindings({
-  path: createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/install/tests/probe-rule-set" }),
+  path: createPathPort({ flavour: "posix", workingDirectory: () => "/install/tests/probe-rule-set" }),
   installRoot: ".",
   ruleSetRoots: ["./tests/probe-rule-set"],
   sources,
