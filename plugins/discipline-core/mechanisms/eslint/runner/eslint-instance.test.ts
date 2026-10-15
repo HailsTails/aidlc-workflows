@@ -1,6 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
-import { createDefaultPathPort } from "../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import {
@@ -45,13 +43,9 @@ const tmpFilePlugin = eslintPluginModuleSchema.parse({
 }).default;
 
 const repoRoot = absolutePathSchema.parse("/repo");
-const inlineConfigCwd = z
-  .object({ outcome: z.literal("ok"), value: absolutePathSchema })
-  .parse(createDefaultPathPort({}).resolve({ path: "/conformance" })).value;
+const inlineConfigCwd = absolutePathSchema.parse(import.meta.dirname);
 
-const conformanceRoot = z
-  .object({ outcome: z.literal("ok"), value: absolutePathSchema })
-  .parse(createDefaultPathPort({}).resolve({ path: "/install/mechanisms/eslint/CD-14" })).value;
+const conformanceRoot = absolutePathSchema.parse(`${import.meta.dirname}/../CD-14`);
 const fileA = repoPathSchema.parse("src/a.ts");
 const fileB = repoPathSchema.parse("src/b.ts");
 
@@ -533,6 +527,7 @@ describe("lintSourceCases", () => {
 
     expect(createEslint).toHaveBeenCalledWith({
       options: expect.objectContaining({
+        cwd: conformanceRoot,
         overrideConfigFile: true,
         allowInlineConfig: false,
         overrideConfig: expect.objectContaining({

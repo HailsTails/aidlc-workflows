@@ -11,6 +11,7 @@ import {
 } from "../../../core/values/clause-address.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
+import { reservedNamespace } from "./eslint-instance.ts";
 
 export type ProjectedClause = {
   readonly address: ClauseAddress;
@@ -95,7 +96,7 @@ const pieceBlock = (request: {
 }): string =>
   blockText({
     lines: [
-      `    name: ${quoted({ text: `discipline-core/piece/${request.piece.pluginNamespace}` })},`,
+      `    name: ${quoted({ text: `${reservedNamespace}/piece/${request.piece.pluginNamespace}` })},`,
       `    files: [${quoted({ text: SOURCE_FILES })}],`,
       `    plugins: { ${quoted({ text: request.piece.pluginNamespace })}: ${request.importName} },`,
       rulesLine({
@@ -126,7 +127,7 @@ const fileRecordBlock = (request: {
   blockText({
     lines: [
       `    name: ${quoted({
-        text: `discipline-core/${request.record.kind}/${clauseAddressText({ address: request.record.clause })}/${request.record.file}`,
+        text: `${reservedNamespace}/${request.record.kind}/${clauseAddressText({ address: request.record.clause })}/${request.record.file}`,
       })},`,
       `    files: [${quoted({ text: escapedGlobPath({ path: request.record.file }) })}],`,
       rulesLine({
@@ -143,7 +144,7 @@ const clauseWideBlock = (request: {
   blockText({
     lines: [
       `    name: ${quoted({
-        text: `discipline-core/${request.record.kind}/${clauseAddressText({ address: request.record.clause })}`,
+        text: `${reservedNamespace}/${request.record.kind}/${clauseAddressText({ address: request.record.clause })}`,
       })},`,
       rulesLine({
         ruleIds: ruleIdsOfClause({ pieces: request.pieces, address: request.record.clause }),

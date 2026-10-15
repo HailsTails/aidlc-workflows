@@ -264,8 +264,8 @@
         },
         {
           "why": "Why not route the types through a project-owned port instead?",
-          "because": "Whether the rule's diagnostics go through a project-owned port is Helen's open decision on PR #34 (review 5530609166); the piece keeps the protocol types until that is decided.",
-          "evidence": "HailsTails/aidlc-workflows#34 review 5530609166 and the author's reply at bb7a11e."
+          "because": "ESLint loads the piece file itself and calls the exported rule module by its own protocol, so the module's shape is ESLint's contract; a project-owned type in front of it could only restate ESLint's types, not replace them. Where the rule's diagnostics are reported is a separate question (PR #34 review 5530609166) and does not change the exported shape.",
+          "evidence": "rin-interface-lock.md § Piece files as vendor plugins; mechanisms/eslint/runner/eslint-instance.ts loads the piece as an ESLint plugin; HailsTails/aidlc-workflows#34 review 5530609166."
         },
         {
           "why": "Why record it rather than change it?",

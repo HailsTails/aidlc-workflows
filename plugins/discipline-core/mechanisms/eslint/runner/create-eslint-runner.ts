@@ -25,6 +25,7 @@ import type { Result } from "../../../core/values/result.ts";
 import type { RuleState } from "./eslint-config-schema.ts";
 import {
   type EslintPort,
+  INLINE_CONFIG_RULE_ID,
   type IgnoredState,
   type LintedFile,
   type LintedMessage,
@@ -93,8 +94,6 @@ type SharedPlugin = { readonly configured: PlacedClause; readonly parsed: Promis
 const SUPPRESSIONS_FILE_NAME = "eslint-suppressions.json";
 
 const PACKAGE_JSON_NAME = "package.json";
-
-const INLINE_CONFIG_RULE_ID = `${reservedNamespace}/inline-config`;
 
 const INLINE_DISABLE = "inline-disable";
 
