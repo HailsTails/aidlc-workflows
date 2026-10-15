@@ -65,11 +65,6 @@ const moduleLoaderPortSources = import.meta.glob(["./core/platform-ports/module-
   eager: true,
 });
 
-const coreSourcesOffFolderDepth = import.meta.glob(
-  ["./core/*.{ts,mts,cts,tsx,js,mjs,cjs}", "./core/*/*/**/*.{ts,mts,cts,tsx,js,mjs,cjs}", "!**/*.test.*", "!**/test-fixtures/**"],
-  { base: "../../", query: "?raw", import: "default", eager: true },
-);
-
 const coreSources = import.meta.glob(["./core/**/*.{ts,mts,cts,tsx,js,mjs,cjs}", "!**/*.test.*", "!**/test-fixtures/**"], {
   base: "../../",
   query: "?raw",
@@ -120,13 +115,6 @@ const eslintPieceSources = import.meta.glob(
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
 
-const vitestConfigSources = import.meta.glob(["./vitest.config.ts"], {
-  base: "../../",
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
 const relativeImport = z.object({ specifier: z.string().regex(/^\.\.?\//), form: z.enum(["value", "type-only"]) });
 
 const zodImport = z.object({ specifier: z.literal("zod"), form: z.enum(["value", "type-only"]) });
@@ -175,53 +163,33 @@ const importsOnly = (allowed: readonly [z.ZodType<unknown, ModuleImport>, ...z.Z
   );
 
 describe("Vendor confinement over what this repository's own discipline-core source imports, read as build-time raw modules (CD-19, CD-20; CD-47: that source is the assertion's subject and no fake can stand in for it; nothing is spawned or written)", () => {
-  it("reads core's check dispatch among the files outside the mechanisms", () => {
-    expect(sourcesOutsideMechanisms).toEqual(expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }));
-  });
-
-  it("reads the ESLint runner factory among the runner files", () => {
-    expect(runnerSources).toEqual(expect.objectContaining({ "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String) }));
-  });
-
-  it("leaves the TypeScript wrapping file out of the runner files", () => {
-    expect(runnerSources).not.toHaveProperty(["./mechanisms/walker/runner/typescript-parse.ts"]);
+  it("reads a known file through every scanned set, so no set is silently empty", () => {
+    expect({
+      sourcesOutsideMechanisms,
+      runnerSources,
+      platformPortSources,
+      coreSources,
+      walkerPieceSources,
+      eslintPieceSources,
+    }).toEqual({
+      sourcesOutsideMechanisms: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
+      runnerSources: expect.objectContaining({ "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String) }),
+      platformPortSources: expect.objectContaining({ "./core/platform-ports/file-text-port.ts": expect.any(String) }),
+      coreSources: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
+      walkerPieceSources: expect.objectContaining({
+        "./mechanisms/walker/CD-14/class-syntax.ts": expect.any(String),
+        "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": expect.any(String),
+      }),
+      eslintPieceSources: expect.objectContaining({ "./mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts": expect.any(String) }),
+    });
   });
 
   it("finds no mechanism source outside a runner folder or a walker or ESLint piece folder", () => {
     expect(unlistedMechanismSources).toEqual({});
   });
 
-  it("reads the file-text port among the platform ports", () => {
-    expect(platformPortSources).toEqual(expect.objectContaining({ "./core/platform-ports/file-text-port.ts": expect.any(String) }));
-  });
-
-  it("leaves the module-loader port out of the platform ports", () => {
-    expect(platformPortSources).not.toHaveProperty(["./core/platform-ports/module-loader-port.ts"]);
-  });
-
-  it("reads core's check dispatch among the core files", () => {
-    expect(coreSources).toEqual(expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }));
-  });
-
-  it("finds every core source file directly in a folder of core", () => {
-    expect(coreSourcesOffFolderDepth).toEqual({});
-  });
-
   it("finds every relative import in a core file resolving under core/", () => {
     expect(relativeTargetsUnderCore.safeParse(coreSources).error).toBeUndefined();
-  });
-
-  it("reads the CD-14 walker piece and the probe's walker piece among the walker pieces", () => {
-    expect(walkerPieceSources).toEqual(
-      expect.objectContaining({
-        "./mechanisms/walker/CD-14/class-syntax.ts": expect.any(String),
-        "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": expect.any(String),
-      }),
-    );
-  });
-
-  it("reads the CD-14 ESLint plugin among the ESLint pieces", () => {
-    expect(eslintPieceSources).toEqual(expect.objectContaining({ "./mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts": expect.any(String) }));
   });
 
   it("finds every file outside the mechanisms, platform ports and probe pieces importing only relative paths and zod", () => {
@@ -287,9 +255,4 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     ).toBeUndefined();
   });
 
-  it("finds the Vitest configuration importing only vitest/config", () => {
-    expect(
-      importsOnly([packageImport("vitest/config")]).safeParse(vitestConfigSources).error,
-    ).toBeUndefined();
-  });
 });

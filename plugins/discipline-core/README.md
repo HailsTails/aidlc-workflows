@@ -125,8 +125,17 @@ The packages must resolve from the install directory.
 This is the first release. It covers each supported platform's ordinary paths and drives, and a committed ESLint projection checked out with either LF or CRLF line endings. These are not covered yet and will be added when a consumer needs them:
 
 - File and folder names outside ASCII.
-- Windows device paths (`\\?\C:\...`) and network shares given without a trailing separator (`\\server\share`).
-- A path rooted without a drive (`\repo`) when the working directory can't be read.
+- Windows device paths (`\\?\C:\...`).
+- Repositories or installs on a network share (`\\server\share\...`).
+- Paths rooted without a drive (`\repo`).
+- Drive-relative paths (`D:file`).
+- A working directory that is deleted or can't be read.
+- File names containing a backslash.
+- A lone carriage return as a line ending.
+- `.d.mts` and `.d.cts` declaration files are not handled separately from other sources.
+- Columns reported on lines holding non-ASCII text.
+- Lint scripts are read with a simple shell tokenizer, so unusual quoting or a `cd` before `eslint` is not interpreted.
+- Team ESLint configs that imitate projection block names, register a second copy of the plugin, or use processors are not exercised.
 - A byte-order mark at the start of `disciplines.json` or `discipline-exceptions.json`; save them without one.
 
 ## Developing core
