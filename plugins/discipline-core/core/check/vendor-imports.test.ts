@@ -98,8 +98,9 @@ const walkerPieceSources = import.meta.glob(
     "./mechanisms/walker/*/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "./tests/probe-rule-set/mechanisms/walker/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./mechanisms/walker/runner/**",
-    "!**/*.test.*",
-    "!**/test-fixtures/**",
+    "!./mechanisms/walker/**/*.test.*",
+    "!./tests/probe-rule-set/mechanisms/walker/**/*.test.*",
+    "!./mechanisms/walker/**/test-fixtures/**",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
@@ -109,8 +110,9 @@ const eslintPieceSources = import.meta.glob(
     "./mechanisms/eslint/*/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "./tests/probe-rule-set/mechanisms/eslint/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./mechanisms/eslint/runner/**",
-    "!**/*.test.*",
-    "!**/test-fixtures/**",
+    "!./mechanisms/eslint/**/*.test.*",
+    "!./tests/probe-rule-set/mechanisms/eslint/**/*.test.*",
+    "!./mechanisms/eslint/**/test-fixtures/**",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
