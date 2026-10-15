@@ -14,6 +14,7 @@ import type {
   IntentRecord,
   RecordRank,
   RecordRankingFacts,
+  RecordStatus,
   TransitionOwner,
 } from "./rin-gates-status";
 
@@ -49,10 +50,12 @@ const {
   describeMilestone,
   describeNeglect,
   extractTaskArray,
+  laneQueue,
   orderedRecords,
   readRecordImportance,
   readRecordReadiness,
   recordStatusFor,
+  renderLaneQueue,
   selectIntakeCaptures,
 } = await loadStatusAgainstFixture();
 
@@ -507,7 +510,7 @@ describe("orderedRecords", () => {
     ).toEqual(["1:a"]);
   });
 
-  test("emits positions in the ratified tier order — breach outranks a flag, which outranks milestone rank", () => {
+  test("emits positions in the ratified tier order — a flag outranks milestone rank, which outranks a breach", () => {
     expect(
       positionsFor([
         entry({
@@ -525,11 +528,52 @@ describe("orderedRecords", () => {
         entry({
           dirName: "breached",
           flagged: "not-flagged",
-          milestone: { kind: "no-milestone" },
+          milestone: { kind: "milestone", identifier: "M2" },
           ageDays: 40,
         }),
       ]),
-    ).toEqual(["1:breached", "2:flagged", "3:m1-bound"]);
+    ).toEqual(["1:flagged", "2:m1-bound", "3:breached"]);
+  });
+
+  test("a record at a later gate outranks a longer-neglected one at an earlier gate", () => {
+    expect(
+      positionsFor([
+        entry({
+          dirName: "old-framing",
+          flagged: "not-flagged",
+          milestone: { kind: "no-milestone" },
+          ageDays: 60,
+        }),
+        {
+          record: {
+            dirName: "recent-implement",
+            uuid: "019f0000-0000-7000-8000-000000000001",
+            status: "unknown",
+            scope: "rin-gates",
+            currentStage: "rin-gate-4-implement",
+            workflowStatus: "Running",
+            parkedAt: null,
+            parkedAtStage: null,
+          },
+          facts: {
+            binding: {
+              flagged: "not-flagged",
+              milestone: { kind: "no-milestone" },
+              boundAt: daysAgo(3),
+              boundBy: "test",
+            },
+            tier: { kind: "unscored" },
+            clock: { source: "stage-advance", at: daysAgo(3) },
+            promotedTaskId: null,
+            readiness: {
+              gateArtefactsPresent: 0,
+              gateArtefactsExpected: 0,
+              storedVerdict: "none",
+            },
+          },
+        },
+      ]),
+    ).toEqual(["1:recent-implement", "2:old-framing"]);
   });
 
   test("an unbreached older record loses to a flagged newer one — the position must show the flag winning, not the age", () => {
@@ -590,6 +634,115 @@ describe("orderedRecords", () => {
       milestone: "M2",
       neglectBreach: true,
     });
+  });
+});
+
+describe("laneQueue", () => {
+  const ownedBy = (args: {
+    readonly gate: string;
+    readonly owningLane: string;
+  }): TransitionOwner => ({
+    gate: args.gate,
+    owningLane: args.owningLane,
+    actor: "lane",
+    requiredCapabilities: [],
+  });
+  const laneMap: ReadonlyMap<string, TransitionOwner> = new Map([
+    [
+      "rin-gate-0-reconcile",
+      ownedBy({ gate: "rin-gate-0-reconcile", owningLane: "intake" }),
+    ],
+    [
+      "rin-gate-1-framing",
+      ownedBy({ gate: "rin-gate-1-framing", owningLane: "progress" }),
+    ],
+    [
+      "rin-gate-4-implement",
+      ownedBy({ gate: "rin-gate-4-implement", owningLane: "progress" }),
+    ],
+  ]);
+  const statusOwnedBy = (args: {
+    readonly dirName: string;
+    readonly owningLane: string;
+  }): RecordStatus => ({
+    dirName: args.dirName,
+    uuid: "019f0000-0000-7000-8000-000000000000",
+    scope: "rin-gates",
+    currentStage: "rin-gate-1-framing",
+    classification: "in-pipeline",
+    nextGate: "rin-gate-1-framing",
+    owningLane: args.owningLane,
+    bindingCoverage: "unbound",
+    neglectClockSource: "stage-advance",
+    readiness: {
+      gateArtefactsPresent: 0,
+      gateArtefactsExpected: 0,
+      storedVerdict: "none",
+    },
+    rank: {
+      position: 1,
+      flagged: "not-flagged",
+      milestone: "no-milestone",
+      neglectDays: 1,
+      neglectBreach: false,
+    },
+  });
+  const intakeRecord = statusOwnedBy({
+    dirName: "intake-record",
+    owningLane: "intake",
+  });
+  const implementRecord = statusOwnedBy({
+    dirName: "implement-record",
+    owningLane: "progress",
+  });
+  const framingRecord = statusOwnedBy({
+    dirName: "framing-record",
+    owningLane: "progress",
+  });
+
+  test("keeps only the named lane's rows, in the order given", () => {
+    expect(
+      laneQueue({
+        records: [intakeRecord, implementRecord, framingRecord],
+        laneMap,
+        lane: "progress",
+      }),
+    ).toEqual({ kind: "known-lane", rows: [implementRecord, framingRecord] });
+  });
+
+  test("refuses a lane the ownership map does not name, listing the lanes it does", () => {
+    expect(
+      laneQueue({
+        records: [intakeRecord, implementRecord, framingRecord],
+        laneMap,
+        lane: "spec",
+      }),
+    ).toEqual({ kind: "unknown-lane", knownLanes: ["intake", "progress"] });
+  });
+
+  test("caps the queue at five rows", () => {
+    const first = statusOwnedBy({ dirName: "first", owningLane: "progress" });
+    const second = statusOwnedBy({ dirName: "second", owningLane: "progress" });
+    const third = statusOwnedBy({ dirName: "third", owningLane: "progress" });
+    const fourth = statusOwnedBy({ dirName: "fourth", owningLane: "progress" });
+    const fifth = statusOwnedBy({ dirName: "fifth", owningLane: "progress" });
+    const sixth = statusOwnedBy({ dirName: "sixth", owningLane: "progress" });
+    expect(
+      laneQueue({
+        records: [first, second, third, fourth, fifth, sixth],
+        laneMap,
+        lane: "progress",
+      }),
+    ).toEqual({
+      kind: "known-lane",
+      rows: [first, second, third, fourth, fifth],
+    });
+  });
+
+  test("says plainly when a known lane has nothing eligible", () => {
+    expect(renderLaneQueue({ lane: "progress", rows: [] })).toEqual([
+      "lane progress: no eligible rows",
+    ]);
   });
 });
 

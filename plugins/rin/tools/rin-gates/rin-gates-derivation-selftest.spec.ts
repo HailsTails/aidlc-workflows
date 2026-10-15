@@ -376,7 +376,7 @@ const snapshotFile = (
   record(
     "T3c in-pipeline record names its Current Stage as next gate + a lane owner",
     midPipeline?.nextGate === "rin-gate-2-plan-review" &&
-      midPipeline?.owningLane === "spec",
+      midPipeline?.owningLane === "progress",
     `nextGate=${midPipeline?.nextGate} lane=${midPipeline?.owningLane}`,
   );
 }

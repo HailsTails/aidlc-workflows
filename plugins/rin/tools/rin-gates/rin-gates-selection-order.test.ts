@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import type { MetaTier, TierValue } from "./rin-gates-importance-binding.ts";
-import type { SelectionConfig } from "./rin-gates-selection-config.ts";
 import {
   decideByMetaTier,
   META_TIER_DEPTH,
@@ -9,65 +8,43 @@ import {
   selectionOrderComparator,
 } from "./rin-gates-selection-order.ts";
 
-const THRESHOLD_DAYS = 30;
-
-const config: SelectionConfig = {
-  ratifiedMilestones: ["M1", "M2", "M3"],
-  neglectThresholdDays: THRESHOLD_DAYS,
-};
-
-const compare = selectionOrderComparator({ config });
+const RATIFIED_MILESTONES = ["M1", "M2", "M3"];
 
 const record = (overrides: Partial<RankedRecord>): RankedRecord => ({
   dirName: "260101-a-record",
   flagged: "not-flagged",
   milestone: { kind: "unbound" },
   tier: { kind: "unscored" },
+  gatePosition: 1,
   neglectDays: 1,
   ...overrides,
 });
 
 const firstOf = (left: RankedRecord, right: RankedRecord): string =>
-  compare(left, right) < 0 ? left.dirName : right.dirName;
+  selectionOrderComparator(left, right) < 0 ? left.dirName : right.dirName;
 
-describe("rung 1 — age-alarm override", () => {
-  test("the sole breaching record ranks first even against a operator-flagged one", () => {
-    const aged = record({ dirName: "aged", neglectDays: THRESHOLD_DAYS + 5 });
+describe("neglect age alone never outranks a flag or a milestone rank", () => {
+  test("a long-neglected record loses to a freshly flagged one", () => {
+    const aged = record({ dirName: "aged", neglectDays: 365 });
     const flagged = record({ dirName: "flagged", flagged: "operator-flagged" });
-    expect(firstOf(aged, flagged)).toBe("aged");
+    expect(firstOf(aged, flagged)).toBe("flagged");
   });
 
-  test("the threshold boundary is INCLUSIVE — exactly at threshold breaches", () => {
-    const atBoundary = record({ dirName: "at", neglectDays: THRESHOLD_DAYS });
-    const fresh = record({ dirName: "fresh", neglectDays: 1 });
-    expect(firstOf(atBoundary, fresh)).toBe("at");
-  });
-
-  test("one day below the threshold does not breach", () => {
-    const below = record({
-      dirName: "below",
-      neglectDays: THRESHOLD_DAYS - 1,
-      flagged: "not-flagged",
+  test("a long-neglected record loses to a higher-ranked ratified milestone", () => {
+    const aged = record({
+      dirName: "aged",
+      neglectDays: 365,
+      milestone: { kind: "ratified", rank: 1 },
     });
-    const flagged = record({ dirName: "flagged", flagged: "operator-flagged" });
-    expect(firstOf(below, flagged)).toBe("flagged");
-  });
-
-  test("BOTH breaching defers to the rungs below rather than resolving", () => {
-    const plainAged = record({
-      dirName: "plain",
-      neglectDays: THRESHOLD_DAYS + 1,
+    const milestone = record({
+      dirName: "milestone",
+      milestone: { kind: "ratified", rank: 0 },
     });
-    const flaggedAged = record({
-      dirName: "flagged",
-      neglectDays: THRESHOLD_DAYS + 1,
-      flagged: "operator-flagged",
-    });
-    expect(firstOf(plainAged, flaggedAged)).toBe("flagged");
+    expect(firstOf(aged, milestone)).toBe("milestone");
   });
 });
 
-describe("rung 2 — operator-flagged", () => {
+describe("rung 1 — operator-flagged", () => {
   test("operator-flagged ranks above not-flagged", () => {
     expect(
       firstOf(
@@ -99,7 +76,7 @@ describe("rung 2 — operator-flagged", () => {
   });
 });
 
-describe("rung 4 — milestone rank", () => {
+describe("rung 2 — milestone rank", () => {
   test("a lower ratified position ranks first", () => {
     expect(
       firstOf(
@@ -166,6 +143,65 @@ describe("rung 4 — milestone rank", () => {
   });
 });
 
+describe("rung 3 — furthest along first", () => {
+  test("a later gate ranks first", () => {
+    expect(
+      firstOf(
+        record({ dirName: "framing", gatePosition: 1 }),
+        record({ dirName: "implement", gatePosition: 4 }),
+      ),
+    ).toBe("implement");
+  });
+
+  test("a later gate outranks a longer-neglected earlier one", () => {
+    expect(
+      firstOf(
+        record({ dirName: "old-framing", gatePosition: 1, neglectDays: 90 }),
+        record({ dirName: "fresh-implement", gatePosition: 4, neglectDays: 1 }),
+      ),
+    ).toBe("fresh-implement");
+  });
+
+  test("a higher-ranked ratified milestone outranks a later gate", () => {
+    expect(
+      firstOf(
+        record({
+          dirName: "implement",
+          gatePosition: 4,
+          milestone: { kind: "ratified", rank: 1 },
+        }),
+        record({
+          dirName: "milestone-framing",
+          gatePosition: 1,
+          milestone: { kind: "ratified", rank: 0 },
+        }),
+      ),
+    ).toBe("milestone-framing");
+  });
+
+  test("an operator flag outranks a later gate", () => {
+    expect(
+      firstOf(
+        record({ dirName: "implement", gatePosition: 4 }),
+        record({
+          dirName: "flagged-framing",
+          gatePosition: 1,
+          flagged: "operator-flagged",
+        }),
+      ),
+    ).toBe("flagged-framing");
+  });
+
+  test("the same gate defers to neglect age", () => {
+    expect(
+      firstOf(
+        record({ dirName: "fresh", gatePosition: 2, neglectDays: 2 }),
+        record({ dirName: "stale", gatePosition: 2, neglectDays: 20 }),
+      ),
+    ).toBe("stale");
+  });
+});
+
 describe("rung 5 — neglect age is DESCENDING", () => {
   test("more neglect ranks first", () => {
     expect(
@@ -181,8 +217,8 @@ describe("rung 6 — dirName terminal tie-break", () => {
   test("records equal on every rung resolve by dirName and never compare equal", () => {
     const left = record({ dirName: "aaa" });
     const right = record({ dirName: "bbb" });
-    expect(compare(left, right)).toBeLessThan(0);
-    expect(compare(right, left)).toBeGreaterThan(0);
+    expect(selectionOrderComparator(left, right)).toBeLessThan(0);
+    expect(selectionOrderComparator(right, left)).toBeGreaterThan(0);
   });
 
   test("the comparator never returns equal for distinct records", () => {
@@ -194,7 +230,7 @@ describe("rung 6 — dirName terminal tie-break", () => {
     const pairs = records.flatMap((left) =>
       records
         .filter((right) => right.dirName !== left.dirName)
-        .map((right) => compare(left, right)),
+        .map((right) => selectionOrderComparator(left, right)),
     );
     expect(pairs.every((verdict) => verdict !== 0)).toBe(true);
   });
@@ -205,13 +241,13 @@ describe("order independence (FR-3)", () => {
     const records = [
       record({ dirName: "260101-alpha", neglectDays: 3 }),
       record({ dirName: "260102-beta", flagged: "operator-flagged" }),
-      record({ dirName: "260103-gamma", neglectDays: THRESHOLD_DAYS + 2 }),
+      record({ dirName: "260103-gamma", gatePosition: 4, neglectDays: 32 }),
       record({ dirName: "260104-delta", neglectDays: 3 }),
     ];
-    const forward = [...records].sort(compare).map((r) => r.dirName);
+    const forward = [...records].sort(selectionOrderComparator).map((r) => r.dirName);
     const reversed = [...records]
       .reverse()
-      .sort(compare)
+      .sort(selectionOrderComparator)
       .map((r) => r.dirName);
     expect(forward).toEqual(reversed);
   });
@@ -230,7 +266,7 @@ describe("the fail-closed bottom (IF-6 x rung 5, asserted together)", () => {
   test("a no-clock record still ranks first against a genuinely aged one", () => {
     expect(
       firstOf(
-        record({ dirName: "aged", neglectDays: THRESHOLD_DAYS + 100 }),
+        record({ dirName: "aged", neglectDays: 130 }),
         record({ dirName: "unknown", neglectDays: Number.POSITIVE_INFINITY }),
       ),
     ).toBe("unknown");
@@ -242,7 +278,7 @@ describe("rankMilestone (adapter resolves identifier to position)", () => {
     expect(
       rankMilestone({
         milestone: { kind: "milestone", identifier: "M2" },
-        ratifiedMilestones: config.ratifiedMilestones,
+        ratifiedMilestones: RATIFIED_MILESTONES,
       }),
     ).toEqual({ kind: "ratified", rank: 1 });
   });
@@ -251,7 +287,7 @@ describe("rankMilestone (adapter resolves identifier to position)", () => {
     expect(
       rankMilestone({
         milestone: { kind: "milestone", identifier: "M9" },
-        ratifiedMilestones: config.ratifiedMilestones,
+        ratifiedMilestones: RATIFIED_MILESTONES,
       }),
     ).toEqual({ kind: "unratified" });
   });
@@ -269,7 +305,7 @@ describe("rankMilestone (adapter resolves identifier to position)", () => {
     expect(
       rankMilestone({
         milestone: { kind: "no-milestone" },
-        ratifiedMilestones: config.ratifiedMilestones,
+        ratifiedMilestones: RATIFIED_MILESTONES,
       }),
     ).toEqual({ kind: "no-milestone" });
   });
@@ -278,7 +314,7 @@ describe("rankMilestone (adapter resolves identifier to position)", () => {
     expect(
       rankMilestone({
         milestone: "unbound",
-        ratifiedMilestones: config.ratifiedMilestones,
+        ratifiedMilestones: RATIFIED_MILESTONES,
       }),
     ).toEqual({ kind: "unbound" });
   });
@@ -333,11 +369,8 @@ describe("the meta-tier rung — present, executing, and inert until G3-C6", () 
     });
     const absent = record({ dirName: "260101-c-unscored", tier: UNSCORED });
 
-    // These tie on breach, flag, milestone and neglect age, so the dirName
-    // tiebreak decides — exactly as before the rung existed. A live rung ranking
-    // by tier would have surfaced the T0 record first instead.
     expect(
-      [best, absent, worst].toSorted(compare).map((entry) => entry.dirName),
+      [best, absent, worst].toSorted(selectionOrderComparator).map((entry) => entry.dirName),
     ).toEqual([
       "260101-a-scored-t3",
       "260101-b-scored-t0",

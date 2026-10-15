@@ -10,25 +10,25 @@
     },
     "answered": {
       "gate": "rin-gate-1-framing",
-      "owningLane": "spec",
+      "owningLane": "progress",
       "actor": "autonomous gate lane; the operator answers a framed question only when the frame forks on the goal",
       "requiredCapabilities": ["record-dir write + commit"]
     },
     "planned": {
       "gate": "rin-gate-2-plan-review",
-      "owningLane": "spec",
+      "owningLane": "progress",
       "actor": "autonomous gate lane",
       "requiredCapabilities": ["record-dir write + commit"]
     },
     "approved": {
       "gate": "rin-gate-3-interface-lock",
-      "owningLane": "spec",
+      "owningLane": "progress",
       "actor": "autonomous gate lane; the lock is the approval artefact",
       "requiredCapabilities": ["record-dir write + commit"]
     },
     "implemented": {
       "gate": "rin-gate-4-implement",
-      "owningLane": "implement",
+      "owningLane": "progress",
       "actor": "gate-4 team in a worktree, committing under the authoring identity",
       "requiredCapabilities": [
         "worktree + branch push under the authoring identity",
