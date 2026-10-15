@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import type { AbsolutePath } from "../values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
@@ -30,12 +30,14 @@ export type GitRun =
     }
   | { readonly outcome: "errored"; readonly detail: string };
 
-export type GitSpawn = (request: {
+export type GitSpawnRequest = {
   readonly file: string;
   readonly arguments: readonly string[];
   readonly maxBuffer: number;
   readonly environment: GitEnvironment;
-}) => GitRun;
+};
+
+export type GitSpawn = (request: GitSpawnRequest) => GitRun;
 
 const REPOSITORY_LOCATION_VARIABLES: readonly string[] = [
   "GIT_DIR",
@@ -73,9 +75,10 @@ const parsedRepoPaths = (request: {
         return parsedSoFar;
       }
       const parsed = repoPathSchema.safeParse(text);
-      return parsed.success
-        ? { outcome: "ok", value: [...parsedSoFar.value, parsed.data] }
-        : { outcome: "failed", error: text };
+      if (!parsed.success) {
+        return { outcome: "failed", error: text };
+      }
+      return { outcome: "ok", value: [...parsedSoFar.value, parsed.data] };
     },
     { outcome: "ok", value: [] },
   );
@@ -122,6 +125,29 @@ const gitPaths = (request: {
   return parsedPaths;
 };
 
+type GitContext = {
+  readonly spawn: GitSpawn;
+  readonly environment: GitEnvironment;
+  readonly repoRoot: AbsolutePath;
+};
+
+const changedPaths = (
+  request: GitContext & { readonly baseRevision: string },
+): Result<readonly RepoPath[], GitFailure> => {
+  const committed = gitPaths({
+    ...request,
+    gitArguments: ["diff", "--name-only", "-z", "--end-of-options", `${request.baseRevision}...HEAD`],
+  });
+  if (committed.outcome === "failed") {
+    return committed;
+  }
+  const uncommitted = gitPaths({ ...request, gitArguments: ["diff", "--name-only", "-z", "HEAD"] });
+  if (uncommitted.outcome === "failed") {
+    return uncommitted;
+  }
+  return { outcome: "ok", value: [...new Set([...committed.value, ...uncommitted.value])] };
+};
+
 export const createGitPort = (options: {
   readonly spawn: GitSpawn;
   readonly ambientEnvironment: GitEnvironment;
@@ -129,49 +155,35 @@ export const createGitPort = (options: {
   const environment = environmentWithoutRepositoryLocation({
     ambientEnvironment: options.ambientEnvironment,
   });
-  const pathsFrom = (request: {
-    readonly repoRoot: AbsolutePath;
-    readonly gitArguments: readonly string[];
-  }): Result<readonly RepoPath[], GitFailure> =>
-    gitPaths({ spawn: options.spawn, environment, ...request });
   return {
     trackedPaths: (request) =>
-      pathsFrom({ repoRoot: request.repoRoot, gitArguments: ["ls-files", "-z"] }),
-    changedSince: (request) => {
-      const committed = pathsFrom({
+      gitPaths({ spawn: options.spawn, environment, repoRoot: request.repoRoot, gitArguments: ["ls-files", "-z"] }),
+    changedSince: (request) =>
+      changedPaths({
+        spawn: options.spawn,
+        environment,
         repoRoot: request.repoRoot,
-        gitArguments: [
-          "diff",
-          "--name-only",
-          "-z",
-          "--end-of-options",
-          `${request.baseRevision}...HEAD`,
-        ],
-      });
-      if (committed.outcome === "failed") {
-        return committed;
-      }
-      const uncommitted = pathsFrom({
-        repoRoot: request.repoRoot,
-        gitArguments: ["diff", "--name-only", "-z", "HEAD"],
-      });
-      if (uncommitted.outcome === "failed") {
-        return uncommitted;
-      }
-      return {
-        outcome: "ok",
-        value: [...new Set([...committed.value, ...uncommitted.value])],
-      };
-    },
+        baseRevision: request.baseRevision,
+      }),
   };
 };
 
-export const defaultGitSpawn: GitSpawn = (request) => {
-  const run = spawnSync(request.file, request.arguments, {
-    encoding: "utf8",
-    maxBuffer: request.maxBuffer,
-    env: request.environment,
-  });
+const spawnedRun = (request: GitSpawnRequest): GitRun => {
+  try {
+    return exitedRun({
+      run: spawnSync(request.file, request.arguments, {
+        encoding: "utf8",
+        maxBuffer: request.maxBuffer,
+        env: request.environment,
+      }),
+    });
+  } catch (thrown) {
+    return { outcome: "errored", detail: thrown instanceof Error ? thrown.message : String(thrown) };
+  }
+};
+
+const exitedRun = (request: { readonly run: SpawnSyncReturns<string> }): GitRun => {
+  const run = request.run;
   if (run.error !== undefined) {
     return { outcome: "errored", detail: run.error.message };
   }
@@ -180,6 +192,8 @@ export const defaultGitSpawn: GitSpawn = (request) => {
   }
   return { outcome: "exited", status: run.status, stdout: run.stdout, stderr: run.stderr };
 };
+
+export const defaultGitSpawn: GitSpawn = spawnedRun;
 
 export const createDefaultGitPort = (_options: Record<string, never>): GitPort =>
   createGitPort({ spawn: defaultGitSpawn, ambientEnvironment: process.env });

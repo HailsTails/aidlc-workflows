@@ -108,45 +108,85 @@ const doublyHeldPairs = (request: {
   );
 };
 
+const recordKeysOf = (request: {
+  readonly records: readonly ExceptionRecord[];
+  readonly mechanism: MechanismId;
+}): ReadonlySet<string> =>
+  new Set(
+    request.records.flatMap((record) =>
+      record.mechanism === request.mechanism ? [coverageKeyOf({ record })] : [],
+    ),
+  );
+
+const recordingOf = (request: {
+  readonly run: GovernedRun;
+  readonly recordKeys: ReadonlySet<string>;
+  readonly exception: NativeException;
+}): "recorded" | "unrecorded" =>
+  request.run.projectedKinds.includes(request.exception.kind) &&
+  nativeCoverageKeys({ exception: request.exception }).some((key) => request.recordKeys.has(key))
+    ? "recorded"
+    : "unrecorded";
+
+const unrecordedInRun = (request: {
+  readonly run: GovernedRun;
+  readonly records: readonly ExceptionRecord[];
+}): readonly AttributedNativeException[] => {
+  const recordKeys = recordKeysOf({ records: request.records, mechanism: request.run.mechanism });
+  return request.run.nativeExceptions.flatMap((exception) =>
+    recordingOf({ run: request.run, recordKeys, exception }) === "recorded"
+      ? []
+      : [{ ...exception, mechanism: request.run.mechanism }],
+  );
+};
+
 const unrecordedExceptions = (request: {
   readonly runs: readonly GovernedRun[];
   readonly records: readonly ExceptionRecord[];
 }): readonly AttributedNativeException[] =>
-  request.runs.flatMap((run) => {
-    const recordKeys = new Set(
-      request.records.flatMap((record) =>
-        record.mechanism === run.mechanism ? [coverageKeyOf({ record })] : [],
-      ),
-    );
-    return run.nativeExceptions.flatMap((exception) =>
-      run.projectedKinds.includes(exception.kind) &&
-      nativeCoverageKeys({ exception }).some((key) => recordKeys.has(key))
-        ? []
-        : [{ ...exception, mechanism: run.mechanism }],
-    );
-  });
+  request.runs.flatMap((run) => unrecordedInRun({ run, records: request.records }));
+
+const exemptingRecords = (request: {
+  readonly inForce: readonly ExceptionRecord[];
+  readonly doublyHeld: readonly DoublyHeld[];
+}): readonly ExceptionRecord[] => {
+  const heldKeys = new Set(request.doublyHeld.map((pair) => clauseFileKey(pair)));
+  return request.inForce.filter(
+    (record) => record.kind === "clause-wide-carve-out" || !heldKeys.has(coverageKeyOf({ record })),
+  );
+};
+
+const judgedFinding = (request: {
+  readonly finding: Finding;
+  readonly exempting: readonly ExceptionRecord[];
+}): ExemptedFinding => {
+  const findingKeys = [clauseKey(request.finding), clauseFileKey(request.finding)];
+  return {
+    finding: request.finding,
+    by: request.exempting.filter((record) => findingKeys.includes(coverageKeyOf({ record }))),
+  };
+};
+
+const governedFindings = (request: {
+  readonly judged: readonly ExemptedFinding[];
+  readonly exempting: readonly ExceptionRecord[];
+}): Pick<GovernanceResult, "findings" | "exempted" | "stale"> => {
+  const credited = new Set(request.judged.flatMap((entry) => entry.by));
+  return {
+    findings: request.judged.flatMap((entry) => (entry.by.length === 0 ? [entry.finding] : [])),
+    exempted: request.judged.filter((entry) => entry.by.length > 0),
+    stale: request.exempting.filter((record) => !credited.has(record)),
+  };
+};
 
 export const applyGovernance = (request: GovernanceRequest): GovernanceResult => {
   const forfeited = forfeitedRecords({ records: request.records, touched: request.touched });
   const inForce = request.records.filter((record) => !forfeited.includes(record));
   const doublyHeld = doublyHeldPairs({ inForce });
-  const heldKeys = new Set(doublyHeld.map((pair) => clauseFileKey(pair)));
-  const exempting = inForce.filter(
-    (record) =>
-      record.kind === "clause-wide-carve-out" || !heldKeys.has(coverageKeyOf({ record })),
-  );
-  const judged = request.findings.map((finding) => {
-    const findingKeys = [clauseKey(finding), clauseFileKey(finding)];
-    return {
-      finding,
-      by: exempting.filter((record) => findingKeys.includes(coverageKeyOf({ record }))),
-    };
-  });
-  const credited = new Set(judged.flatMap((entry) => entry.by));
+  const exempting = exemptingRecords({ inForce, doublyHeld });
+  const judged = request.findings.map((finding) => judgedFinding({ finding, exempting }));
   return {
-    findings: judged.flatMap((entry) => (entry.by.length === 0 ? [entry.finding] : [])),
-    exempted: judged.filter((entry) => entry.by.length > 0),
-    stale: exempting.filter((record) => !credited.has(record)),
+    ...governedFindings({ judged, exempting }),
     forfeited,
     doublyHeld,
     unrecorded: unrecordedExceptions({ runs: request.runs, records: request.records }),

@@ -22,6 +22,7 @@ type FakeTree = { readonly label: "root"; readonly children: readonly FakeNode[]
 type FakeCheck = WalkerCheck<"fake-api", FakeTree, FakeNode>;
 type FakeSyntaxInspect = Extract<FakeCheck, { readonly kind: "syntax" }>["inspect"];
 type FakeParse = ParsePort<"fake-api", FakeTree, FakeNode>["parse"];
+type FakeChildren = ParsePort<"fake-api", FakeTree, FakeNode>["children"];
 
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
@@ -126,6 +127,23 @@ const walkerRunner = (request: {
       parse: request.parse,
       children: (childRequest) => childRequest.node.children,
     },
+  });
+
+const walkerRunnerWithChildren = (request: {
+  readonly read: FileTextPort["read"];
+  readonly load: ModuleLoaderPort["load"];
+  readonly parse: FakeParse;
+  readonly children: FakeChildren;
+}) =>
+  createWalkerRunner<"fake-api", FakeTree, FakeNode>({
+    fileText: {
+      read: request.read,
+      exists: () => "present",
+      write: () => ({ outcome: "ok", value: undefined }),
+    },
+    modules: { load: request.load },
+    path: createPathPort({ workingDirectory: () => "/elsewhere" }),
+    parse: { syntaxApi: "fake-api", parse: request.parse, children: request.children },
   });
 
 const runRequest = (request: {
@@ -515,6 +533,33 @@ describe("createWalkerRunner run", () => {
     expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual({
       outcome: "failed",
       error: { kind: "file-unreadable", file: "src/alpha.ts", detail: "EACCES" },
+    });
+  });
+
+  it("is file-unparseable with the file and the thrown message when the parse port throws", async () => {
+    const runner = walkerRunner({
+      read: readingText({ text: CLASS_ON_LINE_THREE }),
+      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
+      parse: vi.fn<FakeParse>().mockThrow(new Error("parser crashed")),
+    });
+
+    await expect(runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).resolves.toEqual({
+      outcome: "failed",
+      error: { kind: "file-unparseable", file: "src/alpha.ts", detail: "parser crashed" },
+    });
+  });
+
+  it("is file-unparseable with the file and the thrown message when the children port throws", async () => {
+    const runner = walkerRunnerWithChildren({
+      read: readingText({ text: CLASS_ON_LINE_THREE }),
+      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
+      parse: parsingTo({ nodes: [LEAF] }),
+      children: vi.fn<FakeChildren>().mockThrow(new Error("child walk crashed")),
+    });
+
+    await expect(runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).resolves.toEqual({
+      outcome: "failed",
+      error: { kind: "file-unparseable", file: "src/alpha.ts", detail: "child walk crashed" },
     });
   });
 });
