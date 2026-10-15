@@ -1043,6 +1043,30 @@ describe("the governance run, step 5: hit snippets", () => {
       error: { kind: "file-unreadable", file: "src/a.ts", detail: expect.any(String) },
     });
   });
+
+  it("reports the findings' failure, not the tracked exceptions', when both fail", async () => {
+    await expect(
+      runnerOver({
+        fileText: repoHolding({
+          projection: ENABLING_PROJECTION,
+          files: {
+            "/repo/src/a.ts": {
+              read: { outcome: "failed", error: { kind: "unreadable", path: "/repo/src/a.ts", detail: "EACCES" } },
+              presence: "present",
+            },
+            "/repo/package.json": {
+              read: { outcome: "failed", error: { kind: "unreadable", path: "/repo/package.json", detail: "EPERM" } },
+              presence: "present",
+            },
+          },
+        }),
+        eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
+      }).run(trackedRun({ tracked: "package.json" })),
+    ).resolves.toEqual({
+      outcome: "failed",
+      error: { kind: "file-unreadable", file: "src/a.ts", detail: "EACCES" },
+    });
+  });
 });
 
 describe("native exceptions: ignores and configuration overrides over files", () => {
