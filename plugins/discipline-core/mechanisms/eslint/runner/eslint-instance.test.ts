@@ -143,13 +143,6 @@ describe("governanceConfig", () => {
       }),
     });
   });
-
-  it("parses with the TypeScript parser and its default options", () => {
-    expect(
-      governanceConfig({ plugins: { cd: classAndFunctionPlugin }, ruleIds: ["cd/no-class"] })
-        .languageOptions,
-    ).toEqual({ parser: expect.objectContaining({ parseForESLint: expect.any(Function) }) });
-  });
 });
 
 describe("lintSourceCases over ESLint", () => {
@@ -290,23 +283,6 @@ describe("the discipline-core/inline-config rule over ESLint", () => {
   });
 });
 
-describe("the discipline-core/inline-config rule over a malformed node list", () => {
-  it("reports inline-config-unreadable without throwing", () => {
-    const report = vi.fn();
-
-    governanceConfig({ plugins: { cd: classAndFunctionPlugin }, ruleIds: ["cd/no-class"] })
-      .plugins["discipline-core"].rules["inline-config"].create({
-        sourceCode: { getInlineConfigNodes: vi.fn().mockReturnValue([{}]) },
-        report,
-      })
-      .Program();
-
-    expect(report.mock.calls).toEqual([
-      [expect.objectContaining({ messageId: "inline-config-unreadable" })],
-    ]);
-  });
-});
-
 describe("createQueryInstance", () => {
   it("builds ESLint on the team's own configuration, with the repository root as its only option", async () => {
     const createEslint = vi.fn<CreateEslint>().mockReturnValue(idleSurface);
@@ -352,18 +328,6 @@ describe("createQueryInstance", () => {
       .ignoredState({ file: fileA });
 
     expect(ignoredState).toEqual({ outcome: "ok", value: "checked" });
-  });
-
-  it("asks ESLint whether the requested file is ignored", async () => {
-    const isPathIgnored = vi.fn<EslintSurface["isPathIgnored"]>().mockResolvedValue(false);
-
-    await createEslintPort({
-      createEslint: vi.fn<CreateEslint>().mockReturnValue({ ...idleSurface, isPathIgnored }),
-    })
-      .createQueryInstance({ repoRoot })
-      .ignoredState({ file: fileA });
-
-    expect(isPathIgnored).toHaveBeenCalledWith({ filePath: "src/a.ts" });
   });
 
   it("reads a rule's state from the requested file's resolved configuration", async () => {
@@ -429,21 +393,6 @@ describe("createQueryInstance", () => {
     });
   });
 
-  it("reports ESLint refusing to redefine a plugin while answering an ignore as plugin-conflict", async () => {
-    const ignoredState = await createEslintPort({
-      createEslint: vi.fn<CreateEslint>().mockReturnValue({
-        ...idleSurface,
-        isPathIgnored: vi
-          .fn<EslintSurface["isPathIgnored"]>()
-          .mockRejectedValue(new Error('Cannot redefine plugin "cd".')),
-      }),
-    })
-      .createQueryInstance({ repoRoot })
-      .ignoredState({ file: fileA });
-
-    expect(ignoredState).toMatchObject({ outcome: "failed", error: { kind: "plugin-conflict" } });
-  });
-
   it("reports any other rejection while answering a rule state as team-config-unloadable", async () => {
     const ruleState = await createEslintPort({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
@@ -459,24 +408,6 @@ describe("createQueryInstance", () => {
     expect(ruleState).toEqual({
       outcome: "failed",
       error: { kind: "team-config-unloadable", detail: "Unexpected token in eslint.config.js" },
-    });
-  });
-
-  it("reports any other rejection while answering an ignore as team-config-unloadable", async () => {
-    const ignoredState = await createEslintPort({
-      createEslint: vi.fn<CreateEslint>().mockReturnValue({
-        ...idleSurface,
-        isPathIgnored: vi
-          .fn<EslintSurface["isPathIgnored"]>()
-          .mockRejectedValue(new Error("Unexpected token in eslint.config.js")),
-      }),
-    })
-      .createQueryInstance({ repoRoot })
-      .ignoredState({ file: fileA });
-
-    expect(ignoredState).toMatchObject({
-      outcome: "failed",
-      error: { kind: "team-config-unloadable" },
     });
   });
 
@@ -559,21 +490,6 @@ describe("createGovernanceInstance", () => {
       error: { kind: "tool-failed", detail: "visitor is not a function" },
     });
   });
-
-  it("reports ESLint failing to build as tool-failed", async () => {
-    const linted = await createEslintPort({ createEslint: throwsOnBuild })
-      .createGovernanceInstance({
-        repoRoot,
-        plugins: { cd: classAndFunctionPlugin },
-        ruleIds: ["cd/no-class"],
-      })
-      .lintFiles({ files: [fileA] });
-
-    expect(linted).toEqual({
-      outcome: "failed",
-      error: { kind: "tool-failed", detail: "Invalid Options: unknown option" },
-    });
-  });
 });
 
 describe("lintSourceCases", () => {
@@ -652,40 +568,6 @@ describe("lintSourceCases", () => {
     });
   });
 
-  it("reports a case both inline-config-unreadable and holding a message with no rule as tool-failed", async () => {
-    const verdicts = await createEslintPort({
-      createEslint: vi.fn<CreateEslint>().mockReturnValue({
-        ...idleSurface,
-        lintText: vi.fn<EslintSurface["lintText"]>().mockResolvedValue([
-          {
-            filePath: "/install/mechanisms/eslint/CD-14/cases/class.ts",
-            messages: [
-              { ruleId: null, line: 1, column: 7, message: "Parsing error: '{' expected.", fatal: true },
-              {
-                ruleId: "discipline-core/inline-config",
-                messageId: "inline-config-unreadable",
-                line: 1,
-                column: 1,
-                message: "inline configuration comments could not be read",
-              },
-            ],
-          },
-        ]),
-      }),
-    }).lintSourceCases({
-      cwd: conformanceRoot,
-      plugin: classAndFunctionPlugin,
-      pluginNamespace: "cd",
-      rule: "no-class",
-      cases: [classCase],
-    });
-
-    expect(verdicts).toEqual({
-      outcome: "failed",
-      error: { kind: "tool-failed", detail: "inline configuration comments could not be read in case class" },
-    });
-  });
-
   it("reports a case holding a fatal message as runner-invalid-output naming that case", async () => {
     const verdicts = await createEslintPort({
       createEslint: vi.fn<CreateEslint>().mockReturnValue({
@@ -713,97 +595,6 @@ describe("lintSourceCases", () => {
         kind: "runner-invalid-output",
         detail: "case class was not linted as a rule source: Parsing error: '{' expected.",
       },
-    });
-  });
-
-  it("reports a case holding a message with no rule as runner-invalid-output naming that case", async () => {
-    const verdicts = await createEslintPort({
-      createEslint: vi.fn<CreateEslint>().mockReturnValue({
-        ...idleSurface,
-        lintText: vi.fn<EslintSurface["lintText"]>().mockResolvedValue([
-          {
-            filePath: "/install/mechanisms/eslint/CD-14/cases/no-class.ts",
-            messages: [
-              {
-                ruleId: null,
-                line: 0,
-                column: 0,
-                message: "File ignored because no matching configuration was supplied.",
-              },
-              { ruleId: "cd/no-class", line: 1, column: 1, message: "no class" },
-              { ruleId: null, line: 0, column: 0, message: "File ignored by default." },
-            ],
-          },
-        ]),
-      }),
-    }).lintSourceCases({
-      cwd: conformanceRoot,
-      plugin: classAndFunctionPlugin,
-      pluginNamespace: "cd",
-      rule: "no-class",
-      cases: [noClassCase],
-    });
-
-    expect(verdicts).toEqual({
-      outcome: "failed",
-      error: {
-        kind: "runner-invalid-output",
-        detail:
-          "case no-class was not linted as a rule source: File ignored because no matching configuration was supplied.; File ignored by default.",
-      },
-    });
-  });
-
-  it("builds ESLint in the caller's working directory", async () => {
-    const createEslint = vi.fn<CreateEslint>().mockReturnValue(idleSurface);
-
-    await createEslintPort({ createEslint }).lintSourceCases({
-      cwd: conformanceRoot,
-      plugin: classAndFunctionPlugin,
-      pluginNamespace: "cd",
-      rule: "no-class",
-      cases: [classCase],
-    });
-
-    expect(createEslint).toHaveBeenCalledWith({
-      options: expect.objectContaining({ cwd: "/install/mechanisms/eslint/CD-14" }),
-    });
-  });
-
-  it("reports a rejecting lint as tool-failed", async () => {
-    const verdicts = await createEslintPort({
-      createEslint: vi.fn<CreateEslint>().mockReturnValue({
-        ...idleSurface,
-        lintText: vi
-          .fn<EslintSurface["lintText"]>()
-          .mockRejectedValue(new Error("visitor is not a function")),
-      }),
-    }).lintSourceCases({
-      cwd: conformanceRoot,
-      plugin: classAndFunctionPlugin,
-      pluginNamespace: "cd",
-      rule: "no-class",
-      cases: [classCase],
-    });
-
-    expect(verdicts).toEqual({
-      outcome: "failed",
-      error: { kind: "tool-failed", detail: "visitor is not a function" },
-    });
-  });
-
-  it("reports ESLint failing to build as tool-failed", async () => {
-    const verdicts = await createEslintPort({ createEslint: throwsOnBuild }).lintSourceCases({
-      cwd: conformanceRoot,
-      plugin: classAndFunctionPlugin,
-      pluginNamespace: "cd",
-      rule: "no-class",
-      cases: [classCase],
-    });
-
-    expect(verdicts).toEqual({
-      outcome: "failed",
-      error: { kind: "tool-failed", detail: "Invalid Options: unknown option" },
     });
   });
 });

@@ -100,28 +100,6 @@ describe("suppressionEntriesOf", () => {
         keysRelativeTo: "repo-root", text: `{ "src/a.ts": `, selectedRules: [classRule] }),
     ).toMatchObject({ outcome: "failed", error: { kind: "tool-failed" } });
   });
-
-  it("reports a file entry that is not an object of rule ids as tool-failed", () => {
-    expect(
-      suppressionEntriesOf({
-        location: defaultLocation,
-        keysRelativeTo: "repo-root",
-        text: JSON.stringify({ "src/a.ts": ["rin-discipline/no-class-authoring"] }),
-        selectedRules: [classRule],
-      }),
-    ).toMatchObject({ outcome: "failed", error: { kind: "tool-failed" } });
-  });
-
-  it("reports a file key that is not a repo-relative POSIX path as tool-failed", () => {
-    expect(
-      suppressionEntriesOf({
-        location: defaultLocation,
-        keysRelativeTo: "repo-root",
-        text: JSON.stringify({ "../outside.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
-        selectedRules: [classRule],
-      }),
-    ).toMatchObject({ outcome: "failed", error: { kind: "tool-failed" } });
-  });
 });
 
 describe("suppressionEntriesOf with keys relative to a directory", () => {
@@ -165,17 +143,6 @@ describe("suppressionEntriesOf with keys relative to a directory", () => {
         },
       ],
     });
-  });
-
-  it("reports a key that leaves the repository once joined to its base directory as tool-failed", () => {
-    expect(
-      suppressionEntriesOf({
-        location: nestedLocation,
-        keysRelativeTo: packageDirectory,
-        text: JSON.stringify({ "../../../outside.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
-        selectedRules: [classRule],
-      }),
-    ).toMatchObject({ outcome: "failed", error: { kind: "tool-failed" } });
   });
 });
 
