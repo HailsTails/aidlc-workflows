@@ -3,8 +3,9 @@ import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
 import { ruleSetNameSchema } from "../values/identifiers.ts";
+import { repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
-import { readSelection, ruleSetRootOf } from "./consumer-selection.ts";
+import { type RuleSetLocation, readSelection, ruleSetRootOf } from "./consumer-selection.ts";
 
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
@@ -37,6 +38,10 @@ const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort =
 const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","disciplines.json"]': "/repo/disciplines.json",
   '["/repo","team-rules"]': "/repo/team-rules",
+  '["/repo","."]': "/repo",
+  '["/repo","rules","TM-1","discipline.json"]': "/repo/rules/TM-1/discipline.json",
+  '["/repo","mechanisms","walker","TM-1","piece.json"]': "/repo/mechanisms/walker/TM-1/piece.json",
+  '["/repo","mechanisms","walker","TM-1"]': "/repo/mechanisms/walker/TM-1",
   '["/install","rules","CD-14","discipline.json"]': "/install/rules/CD-14/discipline.json",
   '["/install","rules","CD-99","discipline.json"]': "/install/rules/CD-99/discipline.json",
   '["/install","mechanisms","walker","CD-14","piece.json"]': "/install/mechanisms/walker/CD-14/piece.json",
@@ -468,6 +473,40 @@ describe("readSelection", () => {
     });
   });
 
+  it("refuses a ruleSets value written with a backslash as file-malformed", () => {
+    expect(
+      selecting({ version: 1, ruleSets: { team: "tools\\disciplines" }, clauses: {} }),
+    ).toMatchObject({
+      outcome: "failed",
+      error: { kind: "file-malformed", path: SELECTION_PATH },
+    });
+  });
+
+  it("refuses an absolute ruleSets value as file-malformed", () => {
+    expect(
+      selecting({ version: 1, ruleSets: { team: "/abs" }, clauses: {} }),
+    ).toMatchObject({
+      outcome: "failed",
+      error: { kind: "file-malformed", path: SELECTION_PATH },
+    });
+  });
+
+  it("roots a named rule set declared as . at the repo root", () => {
+    expect(
+      select({
+        ...INSTALL,
+        [SELECTION_PATH]: presentFile({
+          text: JSON.stringify({ version: 1, ruleSets: { team: "." }, clauses: { "team/TM-1#no-tmp-files": "walker" } }),
+        }),
+        "/repo/rules/TM-1/discipline.json": presentFile({ text: TM_1 }),
+        "/repo/mechanisms/walker/TM-1/piece.json": presentFile({ text: TM_1_PIECE }),
+      }),
+    ).toMatchObject({
+      outcome: "ok",
+      value: { bindings: [{ clause: { pieceRoot: "/repo/mechanisms/walker/TM-1" } }] },
+    });
+  });
+
   it("refuses a clauses value that is not a mechanism id as file-malformed", () => {
     expect(
       selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "Walker" } }),
@@ -644,12 +683,16 @@ const RESOLVING_PATH: PathPort = {
   fromFileUrl: vi.fn(),
 };
 
+const TEAM_RULE_SETS: Readonly<Record<string, RuleSetLocation>> = {
+  team: { location: "folder", path: repoPathSchema.parse("rules/team") },
+};
+
 describe("ruleSetRootOf", () => {
   it("roots the shared rule set at the install root", () => {
     expect(
       ruleSetRootOf({
         ruleSet: "shared",
-        ruleSets: { team: "./rules/team" },
+        ruleSets: TEAM_RULE_SETS,
         repoRoot: REPO_ROOT,
         installRoot: INSTALL_ROOT,
         path: RESOLVING_PATH,
@@ -665,7 +708,7 @@ describe("ruleSetRootOf", () => {
     };
     const root = ruleSetRootOf({
       ruleSet: { name: ruleSetNameSchema.parse("team") },
-      ruleSets: { team: "./rules/team" },
+      ruleSets: TEAM_RULE_SETS,
       repoRoot: REPO_ROOT,
       installRoot: INSTALL_ROOT,
       path,
@@ -676,7 +719,7 @@ describe("ruleSetRootOf", () => {
       resolves: vi.mocked(path.resolve).mock.calls,
     }).toEqual({
       root: { outcome: "ok", value: "/repo/rules/team" },
-      joins: [[{ segments: ["/repo", "./rules/team"] }]],
+      joins: [[{ segments: ["/repo", "rules/team"] }]],
       resolves: [[{ path: "/repo/./rules/team" }]],
     });
   });
@@ -685,7 +728,7 @@ describe("ruleSetRootOf", () => {
     expect(
       ruleSetRootOf({
         ruleSet: { name: ruleSetNameSchema.parse("team") },
-        ruleSets: { team: "./rules/team" },
+        ruleSets: TEAM_RULE_SETS,
         repoRoot: REPO_ROOT,
         installRoot: INSTALL_ROOT,
         path: { ...RESOLVING_PATH, resolve: () => "\\\\server\\share" },
@@ -697,7 +740,7 @@ describe("ruleSetRootOf", () => {
     expect(
       ruleSetRootOf({
         ruleSet: { name: ruleSetNameSchema.parse("ghost") },
-        ruleSets: { team: "./rules/team" },
+        ruleSets: TEAM_RULE_SETS,
         repoRoot: REPO_ROOT,
         installRoot: INSTALL_ROOT,
         path: RESOLVING_PATH,
