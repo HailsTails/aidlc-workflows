@@ -30,6 +30,8 @@ const typePackageTexts = import.meta.glob(["./mechanisms/*/runner/piece-type-pac
 });
 
 const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
+  '[".","mechanisms","eslint","runner","piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
+  '["./mechanisms/eslint/runner/piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '[".","mechanisms","walker","CD-14"]': "mechanisms/walker/CD-14",
   '[".","rules","CD-14"]': "rules/CD-14",
   '["./mechanisms/walker/CD-14","../runner/typescript-parse.ts"]': "mechanisms/walker/runner/typescript-parse.ts",
