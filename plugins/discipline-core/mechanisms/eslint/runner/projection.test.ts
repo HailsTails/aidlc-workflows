@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExceptionRecord } from "../../../core/exception-records/exception-records.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
-import type { PathPort } from "../../../core/platform-ports/path-port.ts";
+import {
+  createFlavouredPathPort,
+  type PathPort,
+  posixPathFlavour,
+  windowsPathFlavour,
+} from "../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { mechanismIdSchema } from "../../../core/values/identifiers.ts";
@@ -9,6 +14,7 @@ import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { WhyChain } from "../../../core/values/why-chain.ts";
 import {
   escapedGlobPath,
+  currentProjection,
   type ProjectedPiece,
   pluginImportOf,
   projectionState,
@@ -21,6 +27,9 @@ const noTmpFiles = clauseAddressSchema.parse("probe/PD-1#no-tmp-files");
 const eslint = mechanismIdSchema.parse("eslint");
 const eslint10 = mechanismIdSchema.parse("eslint-10");
 const repoRoot = absolutePathSchema.parse("/repo");
+const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
+const posixPath = createFlavouredPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
+const windowsPath = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
 
 const why = {
   why: "Why does this file declare a class?",
@@ -271,11 +280,16 @@ export default [
 describe("pluginImportOf", () => {
   it("joins the piece root and plugin module and makes the result relative to the repo root", () => {
     const join = vi.fn().mockReturnValue("/repo/node_modules/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts");
-    const relative = vi.fn().mockReturnValue("node_modules/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts");
+    const relative = vi.fn().mockReturnValue({
+      relation: "within-root",
+      path: "node_modules/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
+    });
     const path: PathPort = {
       join,
+      joinRepository: vi.fn(),
       relative,
       directoryOf: vi.fn(),
+      repositoryDirectoryOf: vi.fn(),
       resolve: vi.fn(),
       fromFileUrl: vi.fn(),
     };
@@ -299,8 +313,13 @@ describe("pluginImportOf", () => {
   it("prefixes ./ to a module inside the repository", () => {
     const path: PathPort = {
       join: vi.fn().mockReturnValue("/repo/node_modules/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts"),
-      relative: vi.fn().mockReturnValue("node_modules/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts"),
+      joinRepository: vi.fn(),
+      relative: vi.fn().mockReturnValue({
+        relation: "within-root",
+        path: "node_modules/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
+      }),
       directoryOf: vi.fn(),
+      repositoryDirectoryOf: vi.fn(),
       resolve: vi.fn(),
       fromFileUrl: vi.fn(),
     };
@@ -312,14 +331,19 @@ describe("pluginImportOf", () => {
         pieceRoot: "/repo/node_modules/dc/mechanisms/eslint/CD-14",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),
-    ).toBe("./node_modules/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts");
+    ).toEqual({
+      placement: "importable",
+      specifier: "./node_modules/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
+    });
   });
 
   it("keeps a module outside the repository as its ../ path", () => {
     const path: PathPort = {
       join: vi.fn().mockReturnValue("/team-rules/mechanisms/eslint/PD-1/plugin.ts"),
-      relative: vi.fn().mockReturnValue("../team-rules/mechanisms/eslint/PD-1/plugin.ts"),
+      joinRepository: vi.fn(),
+      relative: vi.fn().mockReturnValue({ relation: "within-root", path: "../team-rules/mechanisms/eslint/PD-1/plugin.ts" }),
       directoryOf: vi.fn(),
+      repositoryDirectoryOf: vi.fn(),
       resolve: vi.fn(),
       fromFileUrl: vi.fn(),
     };
@@ -331,9 +355,60 @@ describe("pluginImportOf", () => {
         pieceRoot: "/team-rules/mechanisms/eslint/PD-1",
         pluginModule: "plugin.ts",
       }),
-    ).toBe("../team-rules/mechanisms/eslint/PD-1/plugin.ts");
+    ).toEqual({ placement: "importable", specifier: "../team-rules/mechanisms/eslint/PD-1/plugin.ts" });
+  });
+
+  it("imports a Windows piece inside the repository by a ./ specifier in forward slashes", () => {
+    expect(
+      pluginImportOf({
+        path: windowsPath,
+        repoRoot: windowsRepoRoot,
+        pieceRoot: "C:\\repo\\tools\\discipline\\mechanisms\\eslint\\CD-14",
+        pluginModule: "cd14/cd14.eslint-plugin.ts",
+      }),
+    ).toEqual({
+      placement: "importable",
+      specifier: "./tools/discipline/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
+    });
+  });
+
+  it("imports a Windows install outside the repository on the same drive by a ../ specifier in forward slashes", () => {
+    expect(
+      pluginImportOf({
+        path: windowsPath,
+        repoRoot: windowsRepoRoot,
+        pieceRoot: "C:\\installs\\dc\\mechanisms\\eslint\\CD-14",
+        pluginModule: "cd14/cd14.eslint-plugin.ts",
+      }),
+    ).toEqual({
+      placement: "importable",
+      specifier: "../installs/dc/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
+    });
+  });
+
+  it("reports a piece on another drive from the repository as piece-on-another-root", () => {
+    expect(
+      pluginImportOf({
+        path: windowsPath,
+        repoRoot: windowsRepoRoot,
+        pieceRoot: "D:\\dc\\mechanisms\\eslint\\CD-14",
+        pluginModule: "cd14/cd14.eslint-plugin.ts",
+      }),
+    ).toEqual({ placement: "piece-on-another-root" });
+  });
+
+  it("reports a piece on a network share from a repository on a drive as piece-on-another-root", () => {
+    expect(
+      pluginImportOf({
+        path: windowsPath,
+        repoRoot: windowsRepoRoot,
+        pieceRoot: "\\\\server\\share\\dc\\mechanisms\\eslint\\CD-14",
+        pluginModule: "cd14/cd14.eslint-plugin.ts",
+      }),
+    ).toEqual({ placement: "piece-on-another-root" });
   });
 });
+
 
 describe("projectionState", () => {
   it("is missing when there is no projection file", () => {
@@ -388,7 +463,7 @@ describe("writeProjection", () => {
       write,
     };
 
-    expect(writeProjection({ fileText, repoRoot, text: enablingOnlyProjection })).toEqual({
+    expect(writeProjection({ fileText, path: posixPath, repoRoot, text: enablingOnlyProjection })).toEqual({
       outcome: "ok",
       value: { path: "disciplines.eslint.mjs", effect: "written" },
     });
@@ -406,7 +481,7 @@ describe("writeProjection", () => {
       write,
     };
 
-    expect(writeProjection({ fileText, repoRoot, text: enablingOnlyProjection })).toEqual({
+    expect(writeProjection({ fileText, path: posixPath, repoRoot, text: enablingOnlyProjection })).toEqual({
       outcome: "ok",
       value: { path: "disciplines.eslint.mjs", effect: "written" },
     });
@@ -424,7 +499,7 @@ describe("writeProjection", () => {
       write,
     };
 
-    expect(writeProjection({ fileText, repoRoot, text: enablingOnlyProjection })).toEqual({
+    expect(writeProjection({ fileText, path: posixPath, repoRoot, text: enablingOnlyProjection })).toEqual({
       outcome: "ok",
       value: { path: "disciplines.eslint.mjs", effect: "unchanged" },
     });
@@ -441,7 +516,7 @@ describe("writeProjection", () => {
       write: vi.fn(),
     };
 
-    expect(writeProjection({ fileText, repoRoot, text: enablingOnlyProjection })).toEqual({
+    expect(writeProjection({ fileText, path: posixPath, repoRoot, text: enablingOnlyProjection })).toEqual({
       outcome: "failed",
       error: { kind: "file-unreadable", file: "disciplines.eslint.mjs", detail: "EACCES" },
     });
@@ -457,9 +532,33 @@ describe("writeProjection", () => {
       }),
     };
 
-    expect(writeProjection({ fileText, repoRoot, text: enablingOnlyProjection })).toEqual({
+    expect(writeProjection({ fileText, path: posixPath, repoRoot, text: enablingOnlyProjection })).toEqual({
       outcome: "failed",
       error: { kind: "tool-failed", detail: "EROFS" },
     });
+  });
+});
+
+describe("projection file location on Windows", () => {
+  it("asks the file port whether the projection exists, and reads it, at its Windows form under the repo root", () => {
+    const exists = vi.fn().mockReturnValue("present");
+    const read = vi.fn().mockReturnValue({ outcome: "ok", value: enablingOnlyProjection });
+    const fileText: FileTextPort = { read, exists, write: vi.fn() };
+
+    currentProjection({ fileText, path: windowsPath, repoRoot: windowsRepoRoot });
+
+    expect({ exists: exists.mock.calls, read: read.mock.calls }).toEqual({
+      exists: [[{ path: "C:\\repo\\disciplines.eslint.mjs" }]],
+      read: [[{ path: "C:\\repo\\disciplines.eslint.mjs" }]],
+    });
+  });
+
+  it("writes the projection at its Windows form under the repo root", () => {
+    const write = vi.fn().mockReturnValue({ outcome: "ok", value: undefined });
+    const fileText: FileTextPort = { read: vi.fn(), exists: vi.fn().mockReturnValue("absent"), write };
+
+    writeProjection({ fileText, path: windowsPath, repoRoot: windowsRepoRoot, text: enablingOnlyProjection });
+
+    expect(write.mock.calls).toEqual([[{ path: "C:\\repo\\disciplines.eslint.mjs", text: enablingOnlyProjection }]]);
   });
 });

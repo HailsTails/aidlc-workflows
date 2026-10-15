@@ -17,6 +17,10 @@ export type ProjectedClause = {
   readonly ruleId: string;
 };
 
+export type PluginImport =
+  | { readonly placement: "importable"; readonly specifier: string }
+  | { readonly placement: "piece-on-another-root" };
+
 export type ProjectedPiece = {
   readonly pluginNamespace: string;
   readonly pluginImport: string;
@@ -60,12 +64,18 @@ export const pluginImportOf = (request: {
   readonly repoRoot: AbsolutePath;
   readonly pieceRoot: string;
   readonly pluginModule: string;
-}): string => {
-  const relativeImport = request.path.relative({
+}): PluginImport => {
+  const location = request.path.relative({
     from: request.repoRoot,
     to: request.path.join({ segments: [request.pieceRoot, request.pluginModule] }),
   });
-  return relativeImport.startsWith(PARENT_PREFIX) ? relativeImport : `./${relativeImport}`;
+  if (location.relation === "different-root") {
+    return { placement: "piece-on-another-root" };
+  }
+  return {
+    placement: "importable",
+    specifier: location.path.startsWith(PARENT_PREFIX) ? location.path : `./${location.path}`,
+  };
 };
 
 const rulesLine = (request: {
@@ -209,9 +219,10 @@ export const projectionState = (request: {
 
 export const currentProjection = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
 }): Result<CurrentProjection, RunnerFailure> => {
-  const projectionFile = `${request.repoRoot}/${PROJECTION_PATH}`;
+  const projectionFile = request.path.join({ segments: [request.repoRoot, PROJECTION_PATH] });
   if (request.fileText.exists({ path: projectionFile }) === "absent") {
     return { outcome: "ok", value: { presence: "absent" } };
   }
@@ -227,10 +238,14 @@ export const currentProjection = (request: {
 
 const writtenProjection = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly text: string;
 }): Result<ProjectionWrite, RunnerFailure> => {
-  const written = request.fileText.write({ path: `${request.repoRoot}/${PROJECTION_PATH}`, text: request.text });
+  const written = request.fileText.write({
+    path: request.path.join({ segments: [request.repoRoot, PROJECTION_PATH] }),
+    text: request.text,
+  });
   if (written.outcome === "failed") {
     return { outcome: "failed", error: { kind: "tool-failed", detail: written.error.detail } };
   }
@@ -239,10 +254,11 @@ const writtenProjection = (request: {
 
 export const writeProjection = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly text: string;
 }): Result<ProjectionWrite, RunnerFailure> => {
-  const current = currentProjection({ fileText: request.fileText, repoRoot: request.repoRoot });
+  const current = currentProjection({ fileText: request.fileText, path: request.path, repoRoot: request.repoRoot });
   if (current.outcome === "failed") {
     return current;
   }

@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
+import {
+  createFlavouredPathPort,
+  posixPathFlavour,
+  windowsPathFlavour,
+} from "../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
@@ -11,6 +16,9 @@ const noTmpFiles = clauseAddressSchema.parse("probe/PD-1#no-tmp-files");
 const defaultLocation = repoPathSchema.parse("eslint-suppressions.json");
 const scriptLocation = repoPathSchema.parse("ci/lint-suppressions.json");
 const repoRoot = absolutePathSchema.parse("/repo");
+const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
+const posixPath = createFlavouredPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
+const windowsPath = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
 const nestedLocation = repoPathSchema.parse("packages/a/eslint-suppressions.json");
 const packageDirectory = repoPathSchema.parse("packages/a");
 
@@ -185,6 +193,7 @@ describe("scriptSuppressionEntries", () => {
     expect(
       scriptSuppressionEntries({
         fileText,
+        path: posixPath,
         repoRoot,
         location: scriptLocation,
         keysRelativeTo: packageDirectory,
@@ -206,7 +215,7 @@ describe("scriptSuppressionEntries", () => {
     const fileText: FileTextPort = { read, exists: vi.fn().mockReturnValue("present"), write: vi.fn() };
 
     expect(
-      scriptSuppressionEntries({ fileText, repoRoot, location: scriptLocation, keysRelativeTo: "repo-root", selectedRules: [classRule] }),
+      scriptSuppressionEntries({ fileText, path: posixPath, repoRoot, location: scriptLocation, keysRelativeTo: "repo-root", selectedRules: [classRule] }),
     ).toEqual({
       outcome: "ok",
       value: [
@@ -227,10 +236,28 @@ describe("scriptSuppressionEntries", () => {
     };
 
     expect(
-      scriptSuppressionEntries({ fileText, repoRoot, location: scriptLocation, keysRelativeTo: "repo-root", selectedRules: [classRule] }),
+      scriptSuppressionEntries({ fileText, path: posixPath, repoRoot, location: scriptLocation, keysRelativeTo: "repo-root", selectedRules: [classRule] }),
     ).toEqual({
       outcome: "failed",
       error: { kind: "file-unreadable", file: "ci/lint-suppressions.json", detail: "ENOENT" },
     });
+  });
+});
+
+describe("scriptSuppressionEntries on Windows", () => {
+  it("reads the script-named suppressions file at its Windows form under the repo root", () => {
+    const read = vi.fn().mockReturnValue({ outcome: "ok", value: "{}" });
+    const fileText: FileTextPort = { read, exists: vi.fn().mockReturnValue("present"), write: vi.fn() };
+
+    scriptSuppressionEntries({
+      fileText,
+      path: windowsPath,
+      repoRoot: windowsRepoRoot,
+      location: scriptLocation,
+      keysRelativeTo: "repo-root",
+      selectedRules: [classRule],
+    });
+
+    expect(read.mock.calls).toEqual([[{ path: "C:\\repo\\ci\\lint-suppressions.json" }]]);
   });
 });

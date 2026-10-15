@@ -62,7 +62,11 @@ type ConfiguredClause = {
   readonly modulePath: string;
 };
 
-type SelectedClause = ConfiguredClause & { readonly plugin: LoadedEslintPlugin };
+type PlacedClause = ConfiguredClause & { readonly pluginImport: string };
+
+type LoadedClause<Clause extends ConfiguredClause> = Clause & { readonly plugin: LoadedEslintPlugin };
+
+type SelectedClause = LoadedClause<PlacedClause>;
 
 type CheckedFile = {
   readonly file: RepoPath;
@@ -84,7 +88,7 @@ type QueriedFile =
 
 type ParsedPlugin = Result<LoadedEslintPlugin, { readonly detail: string }>;
 
-type SharedPlugin = { readonly configured: ConfiguredClause; readonly parsed: Promise<ParsedPlugin> };
+type SharedPlugin = { readonly configured: PlacedClause; readonly parsed: Promise<ParsedPlugin> };
 
 const SUPPRESSIONS_FILE_NAME = "eslint-suppressions.json";
 
@@ -165,6 +169,39 @@ const configuredClause = (request: {
   };
 };
 
+const placedClause = (request: {
+  readonly configured: ConfiguredClause;
+  readonly path: PathPort;
+  readonly repoRoot: AbsolutePath;
+}): Outcome<PlacedClause> => {
+  const pluginImport = pluginImportOf({
+    path: request.path,
+    repoRoot: request.repoRoot,
+    pieceRoot: request.configured.clause.pieceRoot,
+    pluginModule: request.configured.settings.pluginModule,
+  });
+  if (pluginImport.placement === "piece-on-another-root") {
+    return pieceInvalid({
+      pieceRoot: request.configured.clause.pieceRoot,
+      detail:
+        "the piece is on a different root from the repository, so the committed projection cannot import it by a relative path",
+    });
+  }
+  return { outcome: "ok", value: { ...request.configured, pluginImport: pluginImport.specifier } };
+};
+
+const placedConfiguredClause = (request: {
+  readonly clause: RunnerClause;
+  readonly path: PathPort;
+  readonly repoRoot: AbsolutePath;
+}): Outcome<PlacedClause> => {
+  const configured = configuredClause({ clause: request.clause, path: request.path });
+  if (configured.outcome === "failed") {
+    return configured;
+  }
+  return placedClause({ configured: configured.value, path: request.path, repoRoot: request.repoRoot });
+};
+
 const clashOf = (request: {
   readonly earlier: ConfiguredClause;
   readonly entry: ConfiguredClause;
@@ -176,8 +213,8 @@ const clashOf = (request: {
     : "distinct";
 
 const clashingClause = (request: {
-  readonly configured: readonly ConfiguredClause[];
-}): ConfiguredClause | undefined =>
+  readonly configured: readonly PlacedClause[];
+}): PlacedClause | undefined =>
   request.configured.find((entry, index) =>
     request.configured.slice(0, index).some((earlier) => clashOf({ earlier, entry }) === "clashing"),
   );
@@ -185,10 +222,11 @@ const clashingClause = (request: {
 const configuredSelection = (request: {
   readonly clauses: readonly RunnerClause[];
   readonly path: PathPort;
-}): Outcome<readonly ConfiguredClause[]> => {
+  readonly repoRoot: AbsolutePath;
+}): Outcome<readonly PlacedClause[]> => {
   const configured = collectOutcomes({
     outcomes: request.clauses.map((clause) =>
-      listedOutcome({ outcome: configuredClause({ clause, path: request.path }) }),
+      listedOutcome({ outcome: placedConfiguredClause({ clause, path: request.path, repoRoot: request.repoRoot }) }),
     ),
   });
   if (configured.outcome === "failed") {
@@ -221,10 +259,10 @@ const parsedPlugin = (request: {
 }): Promise<ParsedPlugin> =>
   request.modules.load({ path: request.modulePath }).then((loaded) => parsedPluginOf({ loaded }));
 
-const pluginOf = (request: {
+const pluginOf = <Clause extends ConfiguredClause>(request: {
   readonly parsed: ParsedPlugin;
-  readonly configured: ConfiguredClause;
-}): Outcome<SelectedClause> => {
+  readonly configured: Clause;
+}): Outcome<LoadedClause<Clause>> => {
   const pieceRoot = request.configured.clause.pieceRoot;
   if (request.parsed.outcome === "failed") {
     return pieceInvalid({ pieceRoot, detail: request.parsed.error.detail });
@@ -241,13 +279,13 @@ const pluginOf = (request: {
 const loadedPlugin = (request: {
   readonly configured: ConfiguredClause;
   readonly modules: ModuleLoaderPort;
-}): Promise<Outcome<SelectedClause>> =>
+}): Promise<Outcome<LoadedClause<ConfiguredClause>>> =>
   parsedPlugin({ modulePath: request.configured.modulePath, modules: request.modules }).then((parsed) =>
     pluginOf({ parsed, configured: request.configured }),
   );
 
 const distinctModules = (request: {
-  readonly configured: readonly ConfiguredClause[];
+  readonly configured: readonly PlacedClause[];
   readonly modules: ModuleLoaderPort;
 }): readonly { readonly modulePath: string; readonly parsed: Promise<ParsedPlugin> }[] =>
   [...new Set(request.configured.map((entry) => entry.modulePath))].map((modulePath) => ({
@@ -256,7 +294,7 @@ const distinctModules = (request: {
   }));
 
 const sharedPluginsOf = (request: {
-  readonly entry: ConfiguredClause;
+  readonly entry: PlacedClause;
   readonly loaded: readonly { readonly modulePath: string; readonly parsed: Promise<ParsedPlugin> }[];
 }): readonly SharedPlugin[] =>
   request.loaded
@@ -264,7 +302,7 @@ const sharedPluginsOf = (request: {
     .map((module) => ({ configured: request.entry, parsed: module.parsed }));
 
 const sharedPlugins = (request: {
-  readonly configured: readonly ConfiguredClause[];
+  readonly configured: readonly PlacedClause[];
   readonly modules: ModuleLoaderPort;
 }): readonly SharedPlugin[] => {
   const loaded = distinctModules(request);
@@ -279,9 +317,10 @@ const listedSelection = (request: { readonly shared: SharedPlugin }): Promise<Ou
 const selectedClauses = (request: {
   readonly clauses: readonly RunnerClause[];
   readonly path: PathPort;
+  readonly repoRoot: AbsolutePath;
   readonly modules: ModuleLoaderPort;
 }): Promise<Outcome<readonly SelectedClause[]>> => {
-  const configured = configuredSelection({ clauses: request.clauses, path: request.path });
+  const configured = configuredSelection({ clauses: request.clauses, path: request.path, repoRoot: request.repoRoot });
   if (configured.outcome === "failed") {
     return Promise.resolve(configured);
   }
@@ -293,8 +332,8 @@ const selectedClauses = (request: {
 };
 
 const namespaceLeaders = (request: {
-  readonly configured: readonly ConfiguredClause[];
-}): readonly ConfiguredClause[] =>
+  readonly configured: readonly PlacedClause[];
+}): readonly PlacedClause[] =>
   request.configured.filter(
     (entry, index) =>
       request.configured.findIndex((other) => other.settings.pluginNamespace === entry.settings.pluginNamespace) ===
@@ -302,42 +341,27 @@ const namespaceLeaders = (request: {
   );
 
 const projectedPieceOf = (request: {
-  readonly first: ConfiguredClause;
-  readonly configured: readonly ConfiguredClause[];
-  readonly path: PathPort;
-  readonly repoRoot: AbsolutePath;
+  readonly first: PlacedClause;
+  readonly configured: readonly PlacedClause[];
 }): ProjectedPiece => ({
   pluginNamespace: request.first.settings.pluginNamespace,
-  pluginImport: pluginImportOf({
-    path: request.path,
-    repoRoot: request.repoRoot,
-    pieceRoot: request.first.clause.pieceRoot,
-    pluginModule: request.first.settings.pluginModule,
-  }),
+  pluginImport: request.first.pluginImport,
   clauses: request.configured
     .filter((entry) => entry.settings.pluginNamespace === request.first.settings.pluginNamespace)
     .map((entry) => ({ address: entry.clause.address, ruleId: entry.ruleId })),
 });
 
 const projectedPieces = (request: {
-  readonly configured: readonly ConfiguredClause[];
-  readonly path: PathPort;
-  readonly repoRoot: AbsolutePath;
+  readonly configured: readonly PlacedClause[];
 }): readonly ProjectedPiece[] =>
   namespaceLeaders({ configured: request.configured }).map((first) => projectedPieceOf({ ...request, first }));
 
 const generatedProjection = (request: {
-  readonly configured: readonly ConfiguredClause[];
+  readonly configured: readonly PlacedClause[];
   readonly records: readonly ExceptionRecord[];
-  readonly path: PathPort;
-  readonly repoRoot: AbsolutePath;
 }): string =>
   projectionText({
-    selectedPieces: projectedPieces({
-      configured: request.configured,
-      path: request.path,
-      repoRoot: request.repoRoot,
-    }),
+    selectedPieces: projectedPieces({ configured: request.configured }),
     records: request.records,
   });
 
@@ -627,31 +651,44 @@ const sourceLineOf = (request: {
 
 type LintFindings = { readonly hits: readonly Hit[]; readonly nativeExceptions: readonly NativeException[] };
 
+const outsideRepository = (request: { readonly linted: LintedFile }): Outcome<RepoPath> => ({
+  outcome: "failed",
+  error: {
+    kind: "tool-failed",
+    detail: `ESLint linted ${request.linted.filePath}, which is outside the repository`,
+  },
+});
+
+const lintedRepoPath = (request: {
+  readonly linted: LintedFile;
+  readonly path: PathPort;
+  readonly repoRoot: AbsolutePath;
+}): Outcome<RepoPath> => {
+  const location = request.path.relative({ from: request.repoRoot, to: request.linted.filePath });
+  if (location.relation === "different-root") {
+    return outsideRepository(request);
+  }
+  const file = repoPathSchema.safeParse(location.path);
+  return file.success ? { outcome: "ok", value: file.data } : outsideRepository(request);
+};
+
 const parseableFile = (request: {
   readonly linted: LintedFile;
   readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
 }): Outcome<RepoPath> => {
-  const file = repoPathSchema.safeParse(
-    request.path.relative({ from: request.repoRoot, to: request.linted.filePath }),
-  );
-  if (!file.success) {
-    return {
-      outcome: "failed",
-      error: {
-        kind: "tool-failed",
-        detail: `ESLint linted ${request.linted.filePath}, which is outside the repository`,
-      },
-    };
+  const file = lintedRepoPath(request);
+  if (file.outcome === "failed") {
+    return file;
   }
   const fatal = request.linted.messages.find((message) => message.fatal === true);
   if (fatal !== undefined) {
     return {
       outcome: "failed",
-      error: { kind: "file-unparseable", file: file.data, detail: fatal.message },
+      error: { kind: "file-unparseable", file: file.value, detail: fatal.message },
     };
   }
-  return { outcome: "ok", value: file.data };
+  return file;
 };
 
 const ruleFindings = (request: {
@@ -737,12 +774,15 @@ const fileNameOf = (request: { readonly path: RepoPath }): string | undefined =>
 
 const trackedText = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
-  readonly path: RepoPath;
+  readonly repoPath: RepoPath;
 }): Outcome<string> => {
-  const text = request.fileText.read({ path: `${request.repoRoot}/${request.path}` });
+  const text = request.fileText.read({
+    path: request.path.join({ segments: [request.repoRoot, request.repoPath] }),
+  });
   return text.outcome === "failed"
-    ? { outcome: "failed", error: { kind: "file-unreadable", file: request.path, detail: text.error.detail } }
+    ? { outcome: "failed", error: { kind: "file-unreadable", file: request.repoPath, detail: text.error.detail } }
     : text;
 };
 
@@ -753,11 +793,17 @@ const filesNamed = (request: {
 
 const suppressionsFileExceptions = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly location: RepoPath;
   readonly selectedRules: readonly SelectedRule[];
 }): Outcome<readonly NativeException[]> => {
-  const text = trackedText({ fileText: request.fileText, repoRoot: request.repoRoot, path: request.location });
+  const text = trackedText({
+    fileText: request.fileText,
+    path: request.path,
+    repoRoot: request.repoRoot,
+    repoPath: request.location,
+  });
   if (text.outcome === "failed") {
     return text;
   }
@@ -771,6 +817,7 @@ const suppressionsFileExceptions = (request: {
 
 const scannedPackageExceptions = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly packagePath: RepoPath;
   readonly scan: PackageJsonScan;
@@ -782,6 +829,7 @@ const scannedPackageExceptions = (request: {
       ...request.scan.suppressionsLocations.map((scripted) =>
         scriptSuppressionEntries({
           fileText: request.fileText,
+          path: request.path,
           repoRoot: request.repoRoot,
           location: scripted.location,
           keysRelativeTo: directoryOf({ path: request.packagePath }),
@@ -793,11 +841,17 @@ const scannedPackageExceptions = (request: {
 
 const packageJsonExceptions = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly packagePath: RepoPath;
   readonly selectedRules: readonly SelectedRule[];
 }): Outcome<readonly NativeException[]> => {
-  const text = trackedText({ fileText: request.fileText, repoRoot: request.repoRoot, path: request.packagePath });
+  const text = trackedText({
+    fileText: request.fileText,
+    path: request.path,
+    repoRoot: request.repoRoot,
+    repoPath: request.packagePath,
+  });
   if (text.outcome === "failed") {
     return text;
   }
@@ -814,6 +868,7 @@ const packageJsonExceptions = (request: {
 
 const trackedExceptions = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly trackedPaths: readonly RepoPath[];
   readonly selectedRules: readonly SelectedRule[];
@@ -892,6 +947,7 @@ const governedReport = (request: {
   }
   const tracked = trackedExceptions({
     fileText: request.ports.fileText,
+    path: request.ports.path,
     repoRoot: request.run.repoRoot,
     trackedPaths: request.run.trackedPaths,
     selectedRules: selectedRulesOf({ selected: request.selected }),
@@ -959,17 +1015,10 @@ const presentProjectionState = (request: {
   readonly current: CurrentProjection;
   readonly selected: readonly SelectedClause[];
   readonly records: readonly ExceptionRecord[];
-  readonly path: PathPort;
-  readonly repoRoot: AbsolutePath;
 }): "current" | "out-of-date" =>
   projectionState({
     current: request.current,
-    generated: generatedProjection({
-      configured: request.selected,
-      records: request.records,
-      path: request.path,
-      repoRoot: request.repoRoot,
-    }),
+    generated: generatedProjection({ configured: request.selected, records: request.records }),
   }) === "current"
     ? "current"
     : "out-of-date";
@@ -979,7 +1028,11 @@ const selectedRun = (request: {
   readonly selected: readonly SelectedClause[];
   readonly ports: EslintRunnerPorts;
 }): Promise<Outcome<EmbeddedRunReport>> => {
-  const current = currentProjection({ fileText: request.ports.fileText, repoRoot: request.run.repoRoot });
+  const current = currentProjection({
+    fileText: request.ports.fileText,
+    path: request.ports.path,
+    repoRoot: request.run.repoRoot,
+  });
   if (current.outcome === "failed") {
     return Promise.resolve(current);
   }
@@ -992,14 +1045,12 @@ const selectedRun = (request: {
       current: current.value,
       selected: request.selected,
       records: request.run.records,
-      path: request.ports.path,
-      repoRoot: request.run.repoRoot,
     }),
   });
 };
 
 const lintedSourceCases = (request: {
-  readonly selected: Outcome<SelectedClause>;
+  readonly selected: Outcome<LoadedClause<ConfiguredClause>>;
   readonly cwd: AbsolutePath;
   readonly cases: readonly SourceCase[];
   readonly eslint: EslintPort;
@@ -1038,20 +1089,20 @@ const projectedWrite = (request: {
   readonly request: ProjectionRequest;
   readonly ports: EslintRunnerPorts;
 }): Promise<Outcome<ProjectionWrite>> => {
-  const configured = configuredSelection({ clauses: request.request.clauses, path: request.ports.path });
+  const configured = configuredSelection({
+    clauses: request.request.clauses,
+    path: request.ports.path,
+    repoRoot: request.request.repoRoot,
+  });
   if (configured.outcome === "failed") {
     return Promise.resolve(configured);
   }
   return Promise.resolve(
     writeProjection({
       fileText: request.ports.fileText,
+      path: request.ports.path,
       repoRoot: request.request.repoRoot,
-      text: generatedProjection({
-        configured: configured.value,
-        records: request.request.records,
-        path: request.ports.path,
-        repoRoot: request.request.repoRoot,
-      }),
+      text: generatedProjection({ configured: configured.value, records: request.request.records }),
     }),
   );
 };
@@ -1060,7 +1111,7 @@ export const createEslintRunner = (ports: EslintRunnerPorts): EmbeddedRunner => 
   exceptionPath: "embedded",
   projectedKinds: ["config-override"],
   run: (request) =>
-    selectedClauses({ clauses: request.clauses, path: ports.path, modules: ports.modules }).then((selected) =>
+    selectedClauses({ clauses: request.clauses, path: ports.path, repoRoot: request.repoRoot, modules: ports.modules }).then((selected) =>
       selected.outcome === "failed" ? selected : selectedRun({ run: request, selected: selected.value, ports }),
     ),
   conform: (request) => conformedCases({ clause: request.clause, cases: request.cases, ports }),
