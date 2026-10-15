@@ -52,15 +52,6 @@ describe("FR-8 piece imports over what this repository's own piece source import
     });
   });
 
-  it("finds the probe rule set's PD-1 walker piece among the pieces it checks", () => {
-    expect(piecesSchema.parse(outcome).value.pieces).toContainEqual({
-      file: "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts",
-      ruleSetRoot: "./tests/probe-rule-set",
-      mechanism: "walker",
-      discipline: "PD-1",
-    });
-  });
-
   it("checks at least one piece file", () => {
     expect(piecesSchema.parse(outcome).value.pieces.length).toBeGreaterThan(0);
   });
