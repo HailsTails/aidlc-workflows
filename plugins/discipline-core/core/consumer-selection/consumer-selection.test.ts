@@ -56,7 +56,9 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
 const TABLE_PATH: PathPort = {
   join: ({ segments }) => JOINED_PATHS[JSON.stringify(segments)],
   relative: vi.fn(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn(),
+  repositoryDirectoryOf: vi.fn(),
   resolve: ({ path }) => absolutePathSchema.parse(path),
   fromFileUrl: vi.fn(),
 };
@@ -635,7 +637,9 @@ describe("readSelection", () => {
 const RESOLVING_PATH: PathPort = {
   join: vi.fn<PathPort["join"]>().mockReturnValue("/repo/./rules/team"),
   relative: vi.fn(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn(),
+  repositoryDirectoryOf: vi.fn(),
   resolve: vi.fn<PathPort["resolve"]>().mockReturnValue(absolutePathSchema.parse("/repo/rules/team")),
   fromFileUrl: vi.fn(),
 };

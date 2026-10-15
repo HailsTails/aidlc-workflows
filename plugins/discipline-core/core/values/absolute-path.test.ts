@@ -14,3 +14,13 @@ describe("absolutePathSchema", () => {
     expect(absolutePathSchema.parse("/home/user/repo")).toBe("/home/user/repo");
   });
 });
+
+describe("absolutePathSchema over UNC paths", () => {
+  it.each(["\\\\server\\share\\", "\\\\server\\share\\repo\\x.ts"])("accepts the UNC path %j", (text) => {
+    expect(absolutePathSchema.safeParse(text).success).toBe(true);
+  });
+
+  it.each(["\\\\server\\share", "\\\\server", "\\\\"])("refuses the incomplete UNC prefix %j", (text) => {
+    expect(absolutePathSchema.safeParse(text).success).toBe(false);
+  });
+});
