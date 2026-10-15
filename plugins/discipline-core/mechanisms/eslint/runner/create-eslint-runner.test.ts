@@ -6,8 +6,8 @@ import type { CaseVerdict } from "../../../core/mechanism-port/runner-result-sch
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import {
-  createFlavouredPathPort,
   createPathPort,
+  posixPathFlavour,
   windowsPathFlavour,
 } from "../../../core/platform-ports/path-port.ts";
 import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
@@ -316,7 +316,7 @@ const runnerOver = (overrides: Partial<EslintRunnerPorts>) =>
   createEslintRunner({
     fileText: projectionHolding({ text: ENABLING_PROJECTION }),
     modules: modulesOver(PLUGIN_MODULES),
-    path: createPathPort({ workingDirectory: () => "/elsewhere" }),
+    path: createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/elsewhere" }),
     eslint: eslintOver({}),
     ...overrides,
   });
@@ -1875,7 +1875,7 @@ const WINDOWS_PLUGIN_MODULE_PATH =
   "C:\\repo\\node_modules\\discipline-core\\mechanisms\\eslint\\CD-14\\cd14\\cd14.eslint-plugin.ts";
 const OTHER_DRIVE_PIECE_ROOT = "D:\\dc\\mechanisms\\eslint\\CD-14";
 
-const WINDOWS_PATH = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
+const WINDOWS_PATH = createPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
 
 const EVERY_PATH_HOLDING_SOURCE_A: FileTextPort = {
   read: () => ({ outcome: "ok", value: "const a = 1;\n\n  class A {}\n" }),

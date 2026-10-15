@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExceptionRecord } from "../../../core/exception-records/exception-records.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import {
-  createFlavouredPathPort,
+  createPathPort,
   type PathPort,
   posixPathFlavour,
   windowsPathFlavour,
@@ -28,8 +28,8 @@ const eslint = mechanismIdSchema.parse("eslint");
 const eslint10 = mechanismIdSchema.parse("eslint-10");
 const repoRoot = absolutePathSchema.parse("/repo");
 const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
-const posixPath = createFlavouredPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
-const windowsPath = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
+const posixPath = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
+const windowsPath = createPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
 
 const why = {
   why: "Why does this file declare a class?",
