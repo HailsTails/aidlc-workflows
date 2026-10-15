@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createPathPort, posixPathFlavour } from "../platform-ports/path-port.ts";
+import { createPathPort } from "../platform-ports/path-port.ts";
 import { importsIn, type ModuleImport } from "./piece-import-rules.ts";
 
 declare global {
@@ -129,7 +129,7 @@ const packageImport = (packageName: string) =>
 const packageTypeImport = (packageName: string) =>
   z.object({ specifier: z.literal(packageName), form: z.literal("type-only") });
 
-const coreFolderPath = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/install/core/folder" });
+const coreFolderPath = createPathPort({ flavour: "posix", workingDirectory: () => "/install/core/folder" });
 
 const relativeImportUnderCore = z.object({
   specifier: z
