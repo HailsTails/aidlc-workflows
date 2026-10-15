@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createFlavouredPathPort,
-  type PathPort,
-  posixPathFlavour,
-  windowsPathFlavour,
-} from "../platform-ports/path-port.ts";
+import { createPathPort, type PathPort, posixPathFlavour, windowsPathFlavour } from "../platform-ports/path-port.ts";
 import { installRootOf } from "./install-root.ts";
 
 const ENTRY_URL = "file:///install/core/check/check-command.ts";
@@ -15,9 +10,9 @@ const WINDOWS_ENTRY_URL = "file:///C:/repo/plugins/discipline-core/core/check/ch
 
 const WINDOWS_UNC_ENTRY_URL = "file://server/share/repo/plugins/discipline-core/core/check/check-command.ts";
 
-const POSIX_PATH = createFlavouredPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/work" });
+const POSIX_PATH = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/work" });
 
-const WINDOWS_PATH = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\work" });
+const WINDOWS_PATH = createPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\work" });
 
 const NON_ABSOLUTE_PATH: PathPort = {
   ...POSIX_PATH,

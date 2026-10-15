@@ -229,7 +229,9 @@ export const posixPathFlavour: PathFlavour = posix;
 
 export const windowsPathFlavour: PathFlavour = win32;
 
-export const createFlavouredPathPort = (options: {
+export const platformPathFlavour: PathFlavour = platformPath;
+
+export const createPathPort = (options: {
   readonly flavour: PathFlavour;
   readonly workingDirectory: WorkingDirectory;
 }): PathPort => ({
@@ -251,11 +253,7 @@ export const createFlavouredPathPort = (options: {
       : absolutePathOfFileUrl({ url: request.url, flavour: options.flavour }),
 });
 
-export const createPathPort = (options: {
-  readonly workingDirectory: WorkingDirectory;
-}): PathPort => createFlavouredPathPort({ flavour: platformPath, workingDirectory: options.workingDirectory });
-
 export const defaultWorkingDirectory: WorkingDirectory = () => process.cwd();
 
 export const createDefaultPathPort = (_options: Record<string, never>): PathPort =>
-  createPathPort({ workingDirectory: defaultWorkingDirectory });
+  createPathPort({ flavour: platformPathFlavour, workingDirectory: defaultWorkingDirectory });
