@@ -73,15 +73,35 @@ export const createClassReporter = <Node extends ClassAncestor>({
 		port.publish({ node, messageId: "noClass" });
 	},
 });
+const classKeywordToken = ({
+	context,
+	node,
+}: {
+	readonly context: Rule.RuleContext;
+	readonly node: Rule.Node;
+}) =>
+	context.sourceCode.getFirstToken(node, {
+		filter: (token) =>
+			token.type === "Keyword" &&
+			token.value === "class" &&
+			context.sourceCode.getNodeByRangeIndex(token.range[0]) === node,
+	});
 const defaultClassDiagnosticPort = ({
 	context,
 }: {
 	readonly context: Rule.RuleContext;
 }): ClassDiagnosticPort<Rule.Node> => ({
 	filename: context.filename,
-	publish: (finding) => context.report(finding),
+	publish: ({ node, messageId }) => {
+		const keyword = classKeywordToken({ context, node });
+		if (keyword === null) {
+			context.report({ node, messageId });
+			return;
+		}
+		context.report({ loc: keyword.loc, messageId });
+	},
 });
-export const noClassAuthoring: Rule.RuleModule = {
+const noClassAuthoring: Rule.RuleModule = {
 	meta: {
 		type: "problem",
 		docs: { description: "Disallow authored runtime classes (CD-14)" },
