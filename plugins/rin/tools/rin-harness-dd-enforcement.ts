@@ -1,4 +1,13 @@
-import { configR7OptIn, configStageGraphPath } from "./rin-harness-config.ts";
+import {
+  defaultReviewProcessPort,
+  defaultWorkingDirectory,
+  type ReviewProcessPort,
+} from "./rin-gates/review-process-port.ts";
+import {
+  configR7OptIn,
+  configStageGraphPath,
+  type R7OptIn,
+} from "./rin-harness-config.ts";
 import {
   type DocRule,
   defaultRecordPorts,
@@ -28,8 +37,37 @@ type DdSensorResult = {
   readonly scanned: string;
 };
 
-const emit = ({ result }: { readonly result: DdSensorResult }): void => {
-  process.stdout.write(
+type SensorProcess = Pick<ReviewProcessPort, "arguments" | "publish"> & {
+  readonly workingDirectory: () => string;
+};
+
+type SensorConfig = {
+  readonly r7OptIn: (input: { readonly projectDir: string }) => R7OptIn;
+  readonly stageGraphPath: (input: { readonly projectDir: string }) => string;
+};
+
+const defaultSensorProcess = (): SensorProcess => {
+  const reviewProcess = defaultReviewProcessPort();
+  return {
+    arguments: reviewProcess.arguments,
+    publish: reviewProcess.publish,
+    workingDirectory: defaultWorkingDirectory,
+  };
+};
+
+const defaultSensorConfig = (): SensorConfig => ({
+  r7OptIn: configR7OptIn,
+  stageGraphPath: configStageGraphPath,
+});
+
+const emit = ({
+  result,
+  publish,
+}: {
+  readonly result: DdSensorResult;
+  readonly publish: (text: string) => void;
+}): void => {
+  publish(
     `${JSON.stringify({
       pass: result.pass,
       dd: result.dd,
@@ -100,13 +138,15 @@ const r7SensorGate = ({
   ddIds,
   label,
   projectDir,
+  config,
 }: {
   readonly ddIds: readonly DocRule[];
   readonly label: string;
   readonly projectDir: string;
+  readonly config: SensorConfig;
 }): DdSensorResult | undefined => {
   if (!ddIds.includes("DD-7")) return undefined;
-  const optIn = configR7OptIn({ projectDir });
+  const optIn = config.r7OptIn({ projectDir });
   switch (optIn.kind) {
     case "invalid":
       return {
@@ -126,19 +166,20 @@ const r7SensorGate = ({
 const runDdSensor = ({
   ddIds,
   ports = defaultRecordPorts(),
+  config = defaultSensorConfig(),
+  process: runtime = defaultSensorProcess(),
 }: {
   readonly ddIds: readonly DocRule[];
   readonly ports?: RecordPorts;
+  readonly config?: SensorConfig;
+  readonly process?: SensorProcess;
 }): void => {
-  const flags = parseFlags({ argv: process.argv.slice(2) });
+  const flags = parseFlags({ argv: runtime.arguments.slice(2) });
   const label = ddIds.join("+");
-  const r7Result = r7SensorGate({
-    ddIds,
-    label,
-    projectDir: flags.projectDir ?? process.cwd(),
-  });
+  const projectDir = flags.projectDir ?? runtime.workingDirectory();
+  const r7Result = r7SensorGate({ ddIds, label, projectDir, config });
   if (r7Result !== undefined) {
-    emit({ result: r7Result });
+    emit({ result: r7Result, publish: runtime.publish });
     return;
   }
   const recordDir =
@@ -152,12 +193,12 @@ const runDdSensor = ({
   if (recordDir === undefined || !ports.reader.fileExists(recordDir)) {
     emit({
       result: cleanResult({ ddId: label, scanned: "(not an intent record)" }),
+      publish: runtime.publish,
     });
     return;
   }
 
-  const projectDir = flags.projectDir ?? process.cwd();
-  const configuredStageGraph = configStageGraphPath({ projectDir });
+  const configuredStageGraph = config.stageGraphPath({ projectDir });
   const inspection = inspectRecordDirectory({
     recordDir,
     stageGraphPath: ports.paths.resolve({
@@ -174,6 +215,7 @@ const runDdSensor = ({
         findings: [],
         scanned: `UNMEASURED — ${describeUnmeasurable(inspection)}`,
       },
+      publish: runtime.publish,
     });
     return;
   }
@@ -190,6 +232,7 @@ const runDdSensor = ({
       findings,
       scanned: `record ${ports.paths.basename({ path: recordDir })}, official artefacts only (DD-4)`,
     },
+    publish: runtime.publish,
   });
 };
 
