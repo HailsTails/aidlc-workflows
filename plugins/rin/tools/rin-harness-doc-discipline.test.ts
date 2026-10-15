@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  describeUnmeasurable,
   findBareFigureFindings,
   findKeyIntegrityFindings,
   findUnchainedExceptionFindings,
@@ -527,27 +528,32 @@ describe("DD-7 exception chains — the path it must REFUSE", () => {
   });
 });
 
+type FakeTree = {
+  readonly files: Readonly<Record<string, string>>;
+  readonly unreadable: readonly string[];
+  readonly unlistable: readonly string[];
+  readonly directories: Readonly<Record<string, readonly string[]>>;
+};
+
 const fakeReader = ({
   files,
+  unreadable,
   directories,
-}: {
-  readonly files: Readonly<Record<string, string>>;
-  readonly directories: Readonly<Record<string, readonly string[]>>;
-}): SidecarFileReader => ({
-  fileExists: (path) => Object.hasOwn(files, path),
+}: FakeTree): SidecarFileReader => ({
+  fileExists: (path) => Object.hasOwn(files, path) || unreadable.includes(path),
   readFile: (path) => files[path],
   listDirectory: (path) => directories[path],
 });
 
 const fakeKinds = ({
   files,
+  unreadable,
+  unlistable,
   directories,
-}: {
-  readonly files: Readonly<Record<string, string>>;
-  readonly directories: Readonly<Record<string, readonly string[]>>;
-}): FileKindPort => ({
-  isFile: (path) => Object.hasOwn(files, path),
-  isDirectory: (path) => Object.hasOwn(directories, path),
+}: FakeTree): FileKindPort => ({
+  isFile: (path) => Object.hasOwn(files, path) || unreadable.includes(path),
+  isDirectory: (path) =>
+    Object.hasOwn(directories, path) || unlistable.includes(path),
 });
 
 const fakePaths: PathOperations = {
@@ -561,27 +567,97 @@ const fakePaths: PathOperations = {
   isAbsolute: ({ path }) => path.startsWith("/"),
 };
 
-const portsOver = (tree: {
-  readonly files: Readonly<Record<string, string>>;
-  readonly directories: Readonly<Record<string, readonly string[]>>;
-}) => ({
+const portsOver = (tree: FakeTree) => ({
   reader: fakeReader(tree),
   kinds: fakeKinds(tree),
   paths: fakePaths,
 });
 
+const STAGE_GRAPH_PATH = "/graph/stage-graph.json";
+const ONE_PRODUCED_STEM = '{"stages":[{"produces":["rin-requirements"]}]}';
+
 const noStageGraph = portsOver({
   files: {},
+  unreadable: [],
+  unlistable: [],
   directories: { "/record": [] },
 });
 
 const recordCitingAnUndefinedKey = portsOver({
   files: {
-    "/graph/stage-graph.json": '{"stages":[{"produces":["rin-requirements"]}]}',
+    [STAGE_GRAPH_PATH]: ONE_PRODUCED_STEM,
     "/record/rin-requirements.md": "Facts Q-1 Q-2 R-1; owed per Q-9.",
     "/record/facts.md": FACTS,
   },
+  unreadable: [],
+  unlistable: [],
   directories: { "/record": ["rin-requirements.md", "facts.md"] },
+});
+
+const unreadableStageGraph = portsOver({
+  files: {},
+  unreadable: [STAGE_GRAPH_PATH],
+  unlistable: [],
+  directories: { "/record": [] },
+});
+
+const stageGraphNotJson = portsOver({
+  files: { [STAGE_GRAPH_PATH]: "{ not json" },
+  unreadable: [],
+  unlistable: [],
+  directories: { "/record": [] },
+});
+
+const stageGraphBareNumber = portsOver({
+  files: { [STAGE_GRAPH_PATH]: "42" },
+  unreadable: [],
+  unlistable: [],
+  directories: { "/record": [] },
+});
+
+const stageGraphStagesNotAList = portsOver({
+  files: { [STAGE_GRAPH_PATH]: '{"stages":"x"}' },
+  unreadable: [],
+  unlistable: [],
+  directories: { "/record": [] },
+});
+
+const unreadableFacts = portsOver({
+  files: {
+    [STAGE_GRAPH_PATH]: ONE_PRODUCED_STEM,
+    "/record/rin-requirements.md": "Facts Q-1 Q-2 R-1.",
+  },
+  unreadable: ["/record/facts.md"],
+  unlistable: [],
+  directories: { "/record": ["rin-requirements.md", "facts.md"] },
+});
+
+const unreadableProse = portsOver({
+  files: {
+    [STAGE_GRAPH_PATH]: ONE_PRODUCED_STEM,
+    "/record/facts.md": FACTS,
+  },
+  unreadable: ["/record/rin-requirements.md"],
+  unlistable: [],
+  directories: { "/record": ["rin-requirements.md", "facts.md"] },
+});
+
+const unlistableRecord = portsOver({
+  files: { [STAGE_GRAPH_PATH]: ONE_PRODUCED_STEM },
+  unreadable: [],
+  unlistable: ["/record"],
+  directories: {},
+});
+
+const unlistableSubdirectory = portsOver({
+  files: {
+    [STAGE_GRAPH_PATH]: ONE_PRODUCED_STEM,
+    "/record/rin-requirements.md": "Facts Q-1 Q-2 R-1.",
+    "/record/facts.md": FACTS,
+  },
+  unreadable: [],
+  unlistable: ["/record/inception"],
+  directories: { "/record": ["rin-requirements.md", "facts.md", "inception"] },
 });
 
 describe("inspectRecordDirectory reads the record through its injected ports", () => {
@@ -589,7 +665,7 @@ describe("inspectRecordDirectory reads the record through its injected ports", (
     expect(
       inspectRecordDirectory({
         recordDir: "/record",
-        stageGraphPath: "/graph/stage-graph.json",
+        stageGraphPath: STAGE_GRAPH_PATH,
         ports: recordCitingAnUndefinedKey,
       }),
     ).toEqual({
@@ -613,20 +689,183 @@ describe("inspectRecordDirectory reports an unmeasurable input", () => {
     expect(
       inspectRecordDirectory({
         recordDir: "/record",
-        stageGraphPath: "/graph/stage-graph.json",
+        stageGraphPath: STAGE_GRAPH_PATH,
         ports: noStageGraph,
       }),
-    ).toEqual({ kind: "unmeasurable", reason: "no-stage-graph" });
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "no-stage-graph",
+      path: STAGE_GRAPH_PATH,
+    });
   });
 
   test("the unmeasurable arm is distinguishable from an empty finding list", () => {
     expect(
       inspectRecordDirectory({
         recordDir: "/record",
-        stageGraphPath: "/graph/stage-graph.json",
+        stageGraphPath: STAGE_GRAPH_PATH,
         ports: noStageGraph,
       }).kind,
     ).not.toBe("inspected");
+  });
+
+  test("a stage graph that exists but reads no text is unreadable, not absent", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: unreadableStageGraph,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "stage-graph-unreadable",
+      path: STAGE_GRAPH_PATH,
+    });
+  });
+
+  test("a stage graph that is not JSON is malformed, never a throw", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: stageGraphNotJson,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "stage-graph-malformed",
+      path: STAGE_GRAPH_PATH,
+    });
+  });
+
+  test("a stage graph that is a bare JSON number is malformed", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: stageGraphBareNumber,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "stage-graph-malformed",
+      path: STAGE_GRAPH_PATH,
+    });
+  });
+
+  test("a stage graph whose stages is not a list is malformed", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: stageGraphStagesNotAList,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "stage-graph-malformed",
+      path: STAGE_GRAPH_PATH,
+    });
+  });
+
+  test("a facts.md that exists but reads no text is unmeasurable, never a clean pass", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: unreadableFacts,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "record-file-unreadable",
+      path: "/record/facts.md",
+    });
+  });
+
+  test("an official prose document that exists but reads no text is unmeasurable", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: unreadableProse,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "record-file-unreadable",
+      path: "/record/rin-requirements.md",
+    });
+  });
+
+  test("a record directory that cannot be listed is unmeasurable, never a clean pass", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: unlistableRecord,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "record-directory-unreadable",
+      path: "/record",
+    });
+  });
+
+  test("a record subdirectory that cannot be listed is unmeasurable with its own path", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: unlistableSubdirectory,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "record-directory-unreadable",
+      path: "/record/inception",
+    });
+  });
+});
+
+describe("describeUnmeasurable names the failed input and its cause", () => {
+  test("an absent stage graph is described with its path as absent", () => {
+    const text = describeUnmeasurable({
+      reason: "no-stage-graph",
+      path: STAGE_GRAPH_PATH,
+    });
+    expect(text).toContain(STAGE_GRAPH_PATH);
+    expect(text).toContain("is absent");
+  });
+
+  test("an unreadable stage graph is described with its path as unreadable", () => {
+    const text = describeUnmeasurable({
+      reason: "stage-graph-unreadable",
+      path: STAGE_GRAPH_PATH,
+    });
+    expect(text).toContain(STAGE_GRAPH_PATH);
+    expect(text).toContain("could not be read");
+  });
+
+  test("a malformed stage graph is described with its path as not a valid stage graph", () => {
+    const text = describeUnmeasurable({
+      reason: "stage-graph-malformed",
+      path: STAGE_GRAPH_PATH,
+    });
+    expect(text).toContain(STAGE_GRAPH_PATH);
+    expect(text).toContain("is not a valid stage graph");
+  });
+
+  test("an unreadable record file is described with its path as unreadable", () => {
+    const text = describeUnmeasurable({
+      reason: "record-file-unreadable",
+      path: "/record/facts.md",
+    });
+    expect(text).toContain("/record/facts.md");
+    expect(text).toContain("could not be read");
+  });
+
+  test("an unlistable record directory is described with its path as not listable", () => {
+    const text = describeUnmeasurable({
+      reason: "record-directory-unreadable",
+      path: "/record/inception",
+    });
+    expect(text).toContain("/record/inception");
+    expect(text).toContain("could not be listed");
   });
 });
 

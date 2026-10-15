@@ -1,13 +1,22 @@
-import { existsSync } from "node:fs";
-import { basename, join, resolve, sep } from "node:path";
 import { configR7OptIn, configStageGraphPath } from "./rin-harness-config.ts";
 import {
   type DocRule,
+  defaultRecordPorts,
+  describeUnmeasurable,
   type Finding,
   inspectRecordDirectory,
+  type RecordPorts,
 } from "./rin-harness-doc-discipline.ts";
+import {
+  defaultPathOperations,
+  type PathFlavour,
+  type PathOperations,
+} from "./rin-harness-path-operations.ts";
 
-const INTENTS_SEGMENT = `${sep}intents${sep}`;
+const SEPARATORS: Readonly<Record<PathFlavour, string>> = {
+  win32: "\\",
+  posix: "/",
+};
 
 const UPSTREAM_FINDINGS_COUNT_KEY = "findings_count";
 
@@ -49,19 +58,28 @@ const parseFlags = ({ argv }: { readonly argv: readonly string[] }): Flags => {
 
 const recordDirectoryFor = ({
   outputPath,
+  paths = defaultPathOperations(),
 }: {
   readonly outputPath: string;
+  readonly paths?: PathOperations;
 }): string | undefined => {
-  const absolute = resolve(outputPath);
-  const marker = absolute.indexOf(INTENTS_SEGMENT);
+  const separator = SEPARATORS[paths.flavour];
+  const intentsSegment = `${separator}intents${separator}`;
+  const absolute = paths.resolve({ segments: [outputPath] });
+  const marker = absolute.indexOf(intentsSegment);
   if (marker === -1) {
     return undefined;
   }
-  const afterIntents = absolute.slice(marker + INTENTS_SEGMENT.length);
-  const [recordName] = afterIntents.split(sep);
+  const afterIntents = absolute.slice(marker + intentsSegment.length);
+  const [recordName] = afterIntents.split(separator);
   return recordName === undefined
     ? undefined
-    : join(absolute.slice(0, marker + INTENTS_SEGMENT.length), recordName);
+    : paths.join({
+        segments: [
+          absolute.slice(0, marker + intentsSegment.length),
+          recordName,
+        ],
+      });
 };
 
 const cleanResult = ({
@@ -107,8 +125,10 @@ const r7SensorGate = ({
 
 const runDdSensor = ({
   ddIds,
+  ports = defaultRecordPorts(),
 }: {
   readonly ddIds: readonly DocRule[];
+  readonly ports?: RecordPorts;
 }): void => {
   const flags = parseFlags({ argv: process.argv.slice(2) });
   const label = ddIds.join("+");
@@ -124,9 +144,12 @@ const runDdSensor = ({
   const recordDir =
     flags.outputPath === undefined
       ? undefined
-      : recordDirectoryFor({ outputPath: flags.outputPath });
+      : recordDirectoryFor({
+          outputPath: flags.outputPath,
+          paths: ports.paths,
+        });
 
-  if (recordDir === undefined || !existsSync(recordDir)) {
+  if (recordDir === undefined || !ports.reader.fileExists(recordDir)) {
     emit({
       result: cleanResult({ ddId: label, scanned: "(not an intent record)" }),
     });
@@ -137,7 +160,10 @@ const runDdSensor = ({
   const configuredStageGraph = configStageGraphPath({ projectDir });
   const inspection = inspectRecordDirectory({
     recordDir,
-    stageGraphPath: resolve(projectDir, configuredStageGraph),
+    stageGraphPath: ports.paths.resolve({
+      segments: [projectDir, configuredStageGraph],
+    }),
+    ports,
   });
   if (inspection.kind === "unmeasurable") {
     emit({
@@ -146,7 +172,7 @@ const runDdSensor = ({
         dd: label,
         findingsCount: 0,
         findings: [],
-        scanned: `UNMEASURED — ${inspection.reason}: ${configuredStageGraph} is absent, so the official-artefact set (DD-4) could not be resolved`,
+        scanned: `UNMEASURED — ${describeUnmeasurable(inspection)}`,
       },
     });
     return;
@@ -162,7 +188,7 @@ const runDdSensor = ({
       dd: label,
       findingsCount: findings.length,
       findings,
-      scanned: `record ${basename(recordDir)}, official artefacts only (DD-4)`,
+      scanned: `record ${ports.paths.basename({ path: recordDir })}, official artefacts only (DD-4)`,
     },
   });
 };
