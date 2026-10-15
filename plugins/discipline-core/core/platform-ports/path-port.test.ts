@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createFlavouredPathPort,
+  createDefaultPathPort,
   createPathPort,
+  platformPathFlavour,
   posixPathFlavour,
   windowsPathFlavour,
 } from "./path-port.ts";
@@ -14,18 +15,37 @@ const UNREADABLE_WORKING_DIRECTORY = vi
   .mockThrow(new Error("ENOENT: process.cwd failed, no such file or directory"));
 
 const pathPortIn = (request: { readonly directory: string }) =>
-  createFlavouredPathPort({
+  createPathPort({
     flavour: posixPathFlavour,
     workingDirectory: workingDirectoryAt({ directory: request.directory }),
   });
 
 const windowsPathPortIn = (request: { readonly directory: string }) =>
-  createFlavouredPathPort({
+  createPathPort({
     flavour: windowsPathFlavour,
     workingDirectory: workingDirectoryAt({ directory: request.directory }),
   });
 
 const WINDOWS_ENTRY_URL = "file:///C:/repo/plugins/discipline-core/core/check/check-command.ts";
+
+describe("createDefaultPathPort", () => {
+  it("joins and splits paths with the host platform's path flavour", () => {
+    const platformPort = createPathPort({
+      flavour: platformPathFlavour,
+      workingDirectory: workingDirectoryAt({ directory: "/work" }),
+    });
+    const { join: joinDefault, directoryOf: directoryOfDefault } = createDefaultPathPort({});
+    const { join: joinPlatform, directoryOf: directoryOfPlatform } = platformPort;
+
+    expect({
+      joined: joinDefault({ segments: ["a", "b", "c.ts"] }),
+      directory: directoryOfDefault({ path: "a\\b" }),
+    }).toEqual({
+      joined: joinPlatform({ segments: ["a", "b", "c.ts"] }),
+      directory: directoryOfPlatform({ path: "a\\b" }),
+    });
+  });
+});
 
 describe("createPathPort", () => {
   it("joins segments with POSIX separators", () => {
@@ -103,7 +123,7 @@ describe("createPathPort resolve", () => {
   it("asks the injected working directory for a relative path", () => {
     const workingDirectory = workingDirectoryAt({ directory: "/work" });
 
-    createPathPort({ workingDirectory }).resolve({ path: "a/b.ts" });
+    createPathPort({ flavour: posixPathFlavour, workingDirectory }).resolve({ path: "a/b.ts" });
 
     expect(workingDirectory).toHaveBeenCalledWith({});
   });
@@ -115,7 +135,7 @@ describe("createPathPort resolve", () => {
   it("does not ask the working directory for an absolute path", () => {
     const workingDirectory = workingDirectoryAt({ directory: "/work" });
 
-    createPathPort({ workingDirectory }).resolve({ path: "/abs/x.ts" });
+    createPathPort({ flavour: posixPathFlavour, workingDirectory }).resolve({ path: "/abs/x.ts" });
 
     expect(workingDirectory).not.toHaveBeenCalled();
   });
@@ -127,7 +147,7 @@ describe("createPathPort resolve", () => {
   });
 
   it("returns the normalised, still relative path rather than throwing when the working directory cannot be read", () => {
-    const { resolve } = createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY });
+    const { resolve } = createPathPort({ flavour: posixPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY });
 
     expect(resolve({ path: "./a/../b.ts" })).toBe("b.ts");
   });
@@ -147,7 +167,7 @@ describe("createPathPort relative", () => {
   it("asks the injected working directory for relative arguments", () => {
     const workingDirectory = workingDirectoryAt({ directory: "/work/sub" });
 
-    createPathPort({ workingDirectory }).relative({ from: "..", to: "x" });
+    createPathPort({ flavour: posixPathFlavour, workingDirectory }).relative({ from: "..", to: "x" });
 
     expect(workingDirectory).toHaveBeenCalledWith({});
   });
@@ -159,25 +179,25 @@ describe("createPathPort relative", () => {
   it("does not ask the working directory when both arguments are absolute", () => {
     const workingDirectory = workingDirectoryAt({ directory: "/work/sub" });
 
-    createPathPort({ workingDirectory }).relative({ from: "/a", to: "/a/b" });
+    createPathPort({ flavour: posixPathFlavour, workingDirectory }).relative({ from: "/a", to: "/a/b" });
 
     expect(workingDirectory).not.toHaveBeenCalled();
   });
 
   it("gives the relative path into a subdirectory without throwing when the working directory cannot be read", () => {
     expect(
-      createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({ from: "a", to: "a/b" }),
+      createPathPort({ flavour: posixPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({ from: "a", to: "a/b" }),
     ).toEqual({ relation: "within-root", path: "b" });
   });
 
   it("gives the relative path to a sibling without throwing when the working directory cannot be read", () => {
     expect(
-      createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({ from: "a", to: "c" }),
+      createPathPort({ flavour: posixPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({ from: "a", to: "c" }),
     ).toEqual({ relation: "within-root", path: "../c" });
   });
 });
 
-describe("createFlavouredPathPort with the win32 flavour", () => {
+describe("createPathPort with the win32 flavour", () => {
   it("converts a drive-rooted file URL to its backslashed drive path", () => {
     expect(windowsPathPortIn({ directory: "C:\\work" }).fromFileUrl({ url: WINDOWS_ENTRY_URL })).toEqual({
       outcome: "ok",
@@ -216,7 +236,7 @@ describe("createFlavouredPathPort with the win32 flavour", () => {
   it("does not ask the working directory for a drive-rooted path", () => {
     const workingDirectory = workingDirectoryAt({ directory: "C:\\work" });
 
-    createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory }).resolve({ path: "D:\\other" });
+    createPathPort({ flavour: windowsPathFlavour, workingDirectory }).resolve({ path: "D:\\other" });
 
     expect(workingDirectory).not.toHaveBeenCalled();
   });
@@ -240,14 +260,14 @@ describe("createFlavouredPathPort with the win32 flavour", () => {
   });
 
   it("returns the normalised, still relative path rather than throwing when the working directory cannot be read", () => {
-    const { resolve } = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY });
+    const { resolve } = createPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY });
 
     expect(resolve({ path: ".\\a\\..\\b.ts" })).toBe("b.ts");
   });
 
   it("gives the relative path into a subdirectory without throwing when the working directory cannot be read", () => {
     expect(
-      createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
+      createPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
         from: "a",
         to: "a\\b",
       }),
@@ -256,7 +276,7 @@ describe("createFlavouredPathPort with the win32 flavour", () => {
 
   it("gives the relative path to a sibling without throwing when the working directory cannot be read", () => {
     expect(
-      createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
+      createPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
         from: "a\\x",
         to: "c\\y",
       }),
@@ -264,7 +284,7 @@ describe("createFlavouredPathPort with the win32 flavour", () => {
   });
 });
 
-describe("createFlavouredPathPort with the win32 flavour, drive-relative paths", () => {
+describe("createPathPort with the win32 flavour, drive-relative paths", () => {
   it("resolves a drive-relative path on another drive against that drive's root", () => {
     expect(windowsPathPortIn({ directory: "C:\\work" }).resolve({ path: "D:x" })).toBe("D:\\x");
   });
@@ -278,7 +298,7 @@ describe("createFlavouredPathPort with the win32 flavour, drive-relative paths",
 
   it("anchors a drive-relative argument of relative on its drive's root when the working directory cannot be read", () => {
     expect(
-      createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
+      createPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
         from: "D:\\",
         to: "D:x",
       }),
@@ -301,7 +321,7 @@ describe("createFlavouredPathPort with the win32 flavour, drive-relative paths",
   });
 });
 
-describe("createFlavouredPathPort with the win32 flavour, paths on different roots", () => {
+describe("createPathPort with the win32 flavour, paths on different roots", () => {
   it("gives different-root for the relative path between two drives", () => {
     expect(windowsPathPortIn({ directory: "C:\\work" }).relative({ from: "C:\\repo", to: "D:\\x" })).toEqual({
       relation: "different-root",
@@ -327,7 +347,7 @@ describe("createFlavouredPathPort with the win32 flavour, paths on different roo
   });
 });
 
-describe("createFlavouredPathPort with the win32 flavour, file URLs", () => {
+describe("createPathPort with the win32 flavour, file URLs", () => {
   it("converts a UNC file URL to its backslashed share path", () => {
     expect(
       windowsPathPortIn({ directory: "C:\\work" }).fromFileUrl({ url: "file://server/share/repo/x.ts" }),
@@ -342,7 +362,7 @@ describe("createFlavouredPathPort with the win32 flavour, file URLs", () => {
   });
 });
 
-describe("createFlavouredPathPort joinRepository", () => {
+describe("createPathPort joinRepository", () => {
   it("joins repository segments with forward slashes under the POSIX flavour", () => {
     expect(pathPortIn({ directory: "/work" }).joinRepository({ segments: ["mechanisms", "walker", "runner"] })).toBe(
       "mechanisms/walker/runner",
@@ -374,7 +394,7 @@ describe("createFlavouredPathPort joinRepository", () => {
   });
 });
 
-describe("createFlavouredPathPort with the win32 flavour, working directories without a drive or UNC root", () => {
+describe("createPathPort with the win32 flavour, working directories without a drive or UNC root", () => {
   it("treats a rooted working directory with no drive as unreadable when resolving a relative path", () => {
     expect(windowsPathPortIn({ directory: "\\work" }).resolve({ path: "x" })).toBe("x");
   });
@@ -395,7 +415,7 @@ describe("createFlavouredPathPort with the win32 flavour, working directories wi
   });
 });
 
-describe("createFlavouredPathPort with the win32 flavour, rooted paths with no drive", () => {
+describe("createPathPort with the win32 flavour, rooted paths with no drive", () => {
   it("resolves a backslash-rooted path onto the drive of the working directory", () => {
     expect(windowsPathPortIn({ directory: "D:\\work" }).resolve({ path: "\\x" })).toBe("D:\\x");
   });
@@ -419,7 +439,7 @@ describe("createFlavouredPathPort with the win32 flavour, rooted paths with no d
 
   it("leaves a backslash-rooted path as given when the working directory cannot be read", () => {
     expect(
-      createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).resolve({
+      createPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).resolve({
         path: "\\x",
       }),
     ).toBe("\\x");
@@ -427,7 +447,7 @@ describe("createFlavouredPathPort with the win32 flavour, rooted paths with no d
 
   it("gives different-root for a rooted argument with no drive and a drive-rooted argument when the working directory cannot be read", () => {
     expect(
-      createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
+      createPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
         from: "\\repo",
         to: "C:\\repo\\a",
       }),
@@ -436,7 +456,7 @@ describe("createFlavouredPathPort with the win32 flavour, rooted paths with no d
 
   it("gives the within-root relative path between two rooted arguments with no drive when the working directory cannot be read", () => {
     expect(
-      createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
+      createPathPort({ flavour: windowsPathFlavour, workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({
         from: "\\repo",
         to: "\\repo\\a",
       }),
@@ -444,7 +464,7 @@ describe("createFlavouredPathPort with the win32 flavour, rooted paths with no d
   });
 });
 
-describe("createFlavouredPathPort repositoryDirectoryOf", () => {
+describe("createPathPort repositoryDirectoryOf", () => {
   it("gives the forward-slashed directory of a repository path under the POSIX flavour", () => {
     expect(pathPortIn({ directory: "/work" }).repositoryDirectoryOf({ path: "mechanisms/walker/CD-14/a.ts" })).toBe(
       "mechanisms/walker/CD-14",

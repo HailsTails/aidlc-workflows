@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
-import { createPathPort } from "../../../core/platform-ports/path-port.ts";
+import { createPathPort, posixPathFlavour } from "../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
@@ -53,7 +53,7 @@ const loadingThisPiece: ModuleLoaderPort = {
 const walkerRunner = createWalkerRunner({
   fileText: sourceOnLineThree,
   modules: loadingThisPiece,
-  path: createPathPort({ workingDirectory: () => "/install" }),
+  path: createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/install" }),
   parse: createDefaultParsePort({}),
 });
 

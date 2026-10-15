@@ -4,7 +4,7 @@ import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
-import { createPathPort, type PathPort } from "../platform-ports/path-port.ts";
+import { createPathPort, type PathPort, posixPathFlavour } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import { type CommandRequest, runCheckCommand } from "./run-check-command.ts";
@@ -71,10 +71,10 @@ const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort =
   write: vi.fn<FileTextPort["write"]>(),
 });
 
-const POSIX_PATH = createPathPort({ workingDirectory: () => "/work" });
+const POSIX_PATH = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/work" });
 
 const WORKING_DIRECTORY_GONE: PathPort = createPathPort({
-  workingDirectory: vi
+  flavour: posixPathFlavour, workingDirectory: vi
     .fn<(request: Record<string, never>) => string>()
     .mockThrow(new Error("ENOENT: process.cwd failed, no such file or directory")),
 });
