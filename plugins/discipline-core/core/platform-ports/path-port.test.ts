@@ -86,18 +86,23 @@ describe("createPathPort", () => {
 });
 
 describe("createPathPort resolve", () => {
+  it("refuses a relative path when the working directory has no root", () => {
+    expect(pathPortIn({ directory: "work" }).resolve({ path: "a.ts" })).toEqual({
+      outcome: "failed",
+      error: { kind: "working-directory-unusable", path: "a.ts" },
+    });
+  });
+
   it("resolves a relative path against the injected working directory", () => {
-    expect(pathPortIn({ directory: "/work" }).resolve({ path: "a/b.ts" })).toBe("/work/a/b.ts");
+    expect(pathPortIn({ directory: "/work" }).resolve({ path: "a/b.ts" })).toEqual({ outcome: "ok", value: "/work/a/b.ts" });
   });
 
   it("resolves an absolute path to itself", () => {
-    expect(pathPortIn({ directory: "/work" }).resolve({ path: "/abs/x.ts" })).toBe("/abs/x.ts");
+    expect(pathPortIn({ directory: "/work" }).resolve({ path: "/abs/x.ts" })).toEqual({ outcome: "ok", value: "/abs/x.ts" });
   });
 
   it("normalises a .. segment that climbs out of the working directory", () => {
-    expect(pathPortIn({ directory: "/work/sub" }).resolve({ path: "../a.ts" })).toBe(
-      "/work/a.ts",
-    );
+    expect(pathPortIn({ directory: "/work/sub" }).resolve({ path: "../a.ts" })).toEqual({ outcome: "ok", value: "/work/a.ts" });
   });
 });
 
@@ -134,17 +139,15 @@ describe("createPathPort with the win32 flavour", () => {
   });
 
   it("resolves a relative path against a drive-rooted working directory", () => {
-    expect(windowsPathPortIn({ directory: "C:\\work" }).resolve({ path: "x" })).toBe("C:\\work\\x");
+    expect(windowsPathPortIn({ directory: "C:\\work" }).resolve({ path: "x" })).toEqual({ outcome: "ok", value: "C:\\work\\x" });
   });
 
   it("resolves a path on another drive to itself", () => {
-    expect(windowsPathPortIn({ directory: "C:\\work" }).resolve({ path: "D:\\other" })).toBe("D:\\other");
+    expect(windowsPathPortIn({ directory: "C:\\work" }).resolve({ path: "D:\\other" })).toEqual({ outcome: "ok", value: "D:\\other" });
   });
 
   it("normalises . and .. segments of a drive-rooted path", () => {
-    expect(windowsPathPortIn({ directory: "C:\\work" }).resolve({ path: "D:\\other\\.\\a\\..\\b" })).toBe(
-      "D:\\other\\b",
-    );
+    expect(windowsPathPortIn({ directory: "C:\\work" }).resolve({ path: "D:\\other\\.\\a\\..\\b" })).toEqual({ outcome: "ok", value: "D:\\other\\b" });
   });
 
   it("joins a drive-rooted path and a repository path into the backslashed OS form", () => {
