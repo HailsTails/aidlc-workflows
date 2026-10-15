@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
-import { createPathPort } from "../../../core/platform-ports/path-port.ts";
+import type { PathPort } from "../../../core/platform-ports/path-port.ts";
 import {
   type DisciplineFile,
   readPieceFile,
@@ -18,6 +19,21 @@ const fileText: FileTextPort = {
   read: () => ({ outcome: "ok", value: JSON.stringify(piece) }),
   exists: () => "present",
   write: () => ({ outcome: "ok", value: undefined }),
+};
+
+const JOINED_PATHS: Readonly<Record<string, string>> = {
+  '["/install","mechanisms","walker","CD-14","piece.json"]':
+    "/install/mechanisms/walker/CD-14/piece.json",
+};
+
+const TABLE_PATH: PathPort = {
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  relative: vi.fn<PathPort["relative"]>(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
+  directoryOf: vi.fn<PathPort["directoryOf"]>(),
+  repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
+  resolve: vi.fn<PathPort["resolve"]>(),
+  fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
 };
 
 const CD14: DisciplineFile = {
@@ -38,7 +54,7 @@ describe("CD-14 walker piece.json", () => {
     expect(
       readPieceFile({
         fileText,
-        path: createPathPort({ flavour: "posix", workingDirectory: () => "/install" }),
+        path: TABLE_PATH,
         ruleSetRoot: absolutePathSchema.parse("/install"),
         mechanism: mechanismIdSchema.parse("walker"),
         discipline: CD14,

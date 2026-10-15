@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
-import { createPathPort } from "../../../core/platform-ports/path-port.ts";
+import type { PathPort } from "../../../core/platform-ports/path-port.ts";
 import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import type { AnchorKind } from "../../../core/values/anchor.ts";
@@ -101,6 +102,23 @@ const clauseFor = (request: {
 const FIRST_CLAUSE = clauseFor({ address: FIRST_ADDRESS, settings: { module: "first.ts" } });
 const SECOND_CLAUSE = clauseFor({ address: SECOND_ADDRESS, settings: { module: "second.ts" } });
 
+const JOINED_PATHS: Readonly<Record<string, string>> = {
+  '["/repo","src/alpha.ts"]': "/repo/src/alpha.ts",
+  '["/repo","src/beta.ts"]': "/repo/src/beta.ts",
+  '["/install/mechanisms/walker/XX-1","first.ts"]': FIRST_MODULE,
+  '["/install/mechanisms/walker/XX-1","second.ts"]': SECOND_MODULE,
+};
+
+const TABLE_PATH: PathPort = {
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  relative: vi.fn<PathPort["relative"]>(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
+  directoryOf: vi.fn<PathPort["directoryOf"]>(),
+  repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
+  resolve: vi.fn<PathPort["resolve"]>(),
+  fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
+};
+
 const walkerRunner = (request: {
   readonly read: FileTextPort["read"];
   readonly load: ModuleLoaderPort["load"];
@@ -113,7 +131,7 @@ const walkerRunner = (request: {
       write: () => ({ outcome: "ok", value: undefined }),
     },
     modules: { load: request.load },
-    path: createPathPort({ flavour: "posix", workingDirectory: () => "/elsewhere" }),
+    path: TABLE_PATH,
     parse: {
       syntaxApi: "fake-api",
       parse: request.parse,

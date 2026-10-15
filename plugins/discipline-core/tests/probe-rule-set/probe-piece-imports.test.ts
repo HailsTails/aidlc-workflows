@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { pieceImportFindings } from "../../core/check/piece-import-rules.ts";
-import { createPathPort } from "../../core/platform-ports/path-port.ts";
+import type { PathPort } from "../../core/platform-ports/path-port.ts";
 
 declare global {
   interface ImportMeta {
@@ -24,8 +24,33 @@ const typePackageTexts = import.meta.glob(["./mechanisms/*/runner/piece-type-pac
   eager: true,
 });
 
+const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
+  '[".","mechanisms","walker","runner","piece-type-packages.json"]': "mechanisms/walker/runner/piece-type-packages.json",
+  '["./mechanisms/walker/runner/piece-type-packages.json"]': "mechanisms/walker/runner/piece-type-packages.json",
+  '["./tests/probe-rule-set","mechanisms","walker","PD-1"]': "tests/probe-rule-set/mechanisms/walker/PD-1",
+  '["./tests/probe-rule-set","rules","PD-1"]': "tests/probe-rule-set/rules/PD-1",
+  '[".","mechanisms","walker","runner"]': "mechanisms/walker/runner",
+  '[".","core"]': "core",
+  '["./tests/probe-rule-set/mechanisms/walker/PD-1","../../../../../mechanisms/walker/runner/walker-check.ts"]':
+    "mechanisms/walker/runner/walker-check.ts",
+};
+
+const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
+  "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": "./tests/probe-rule-set/mechanisms/walker/PD-1",
+};
+
+const TABLE_PATH: PathPort = {
+  join: vi.fn<PathPort["join"]>(),
+  relative: vi.fn<PathPort["relative"]>(),
+  joinRepository: ({ segments }) => z.string().parse(JOINED_REPOSITORY_PATHS[JSON.stringify(segments)]),
+  directoryOf: vi.fn<PathPort["directoryOf"]>(),
+  repositoryDirectoryOf: ({ path }) => z.string().parse(REPOSITORY_DIRECTORIES[path]),
+  resolve: vi.fn<PathPort["resolve"]>(),
+  fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
+};
+
 const outcome = pieceImportFindings({
-  path: createPathPort({ flavour: "posix", workingDirectory: () => "/install/tests/probe-rule-set" }),
+  path: TABLE_PATH,
   installRoot: ".",
   ruleSetRoots: ["./tests/probe-rule-set"],
   sources,

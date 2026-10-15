@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { createPathPort } from "../platform-ports/path-port.ts";
+import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import type { PathPort } from "../platform-ports/path-port.ts";
 import {
   type PieceLocation,
   pieceFilesOf,
@@ -10,7 +11,50 @@ import {
 const INSTALL_ROOT = "plugins/discipline-core";
 const PROBE_ROOT = "plugins/discipline-core/tests/probe-rule-set";
 
-const path = createPathPort({ flavour: "posix", workingDirectory: () => "/fork" });
+const PIECE_FOLDER = "plugins/discipline-core/mechanisms/walker/CD-14";
+const CLASS_SYNTAX_KEY = "../../mechanisms/walker/CD-14/class-syntax.ts";
+const HELPER_KEY = "../../mechanisms/walker/CD-14/helper.ts";
+const PROBE_KEY = "../../tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts";
+const PROBE_FOLDER = "../../tests/probe-rule-set/mechanisms/walker/PD-1";
+const TYPE_PACKAGES_KEY = "../../mechanisms/walker/runner/piece-type-packages.json";
+
+const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
+  '["plugins/discipline-core","mechanisms","walker","CD-14"]': PIECE_FOLDER,
+  '["plugins/discipline-core","rules","CD-14"]': "plugins/discipline-core/rules/CD-14",
+  '["plugins/discipline-core","mechanisms","walker","runner"]': "plugins/discipline-core/mechanisms/walker/runner",
+  '["plugins/discipline-core","core"]': "plugins/discipline-core/core",
+  [`["${PIECE_FOLDER}","./nested/helper.ts"]`]: `${PIECE_FOLDER}/nested/helper.ts`,
+  [`["${PIECE_FOLDER}","../runner/walker-check.ts"]`]: "plugins/discipline-core/mechanisms/walker/runner/walker-check.ts",
+  [`["${PIECE_FOLDER}","../../../core/values/result.ts"]`]: "plugins/discipline-core/core/values/result.ts",
+  [`["${PIECE_FOLDER}","../../../rules/CD-14/discipline.json"]`]: "plugins/discipline-core/rules/CD-14/discipline.json",
+  [`["${PIECE_FOLDER}","../../eslint/CD-14/cd14.ts"]`]: "plugins/discipline-core/mechanisms/eslint/CD-14/cd14.ts",
+  [`["${PIECE_FOLDER}","../CD-15/no-for-of.ts"]`]: "plugins/discipline-core/mechanisms/walker/CD-15/no-for-of.ts",
+  [`["${PIECE_FOLDER}","../../eslint/runner/eslint-instance.ts"]`]:
+    "plugins/discipline-core/mechanisms/eslint/runner/eslint-instance.ts",
+  '["../..","mechanisms","walker","runner","piece-type-packages.json"]': TYPE_PACKAGES_KEY,
+  [`["${TYPE_PACKAGES_KEY}"]`]: TYPE_PACKAGES_KEY,
+  '["../../tests/probe-rule-set","mechanisms","walker","PD-1"]': PROBE_FOLDER,
+  '["../../tests/probe-rule-set","rules","PD-1"]': "../../tests/probe-rule-set/rules/PD-1",
+  '["../..","mechanisms","walker","runner"]': "../../mechanisms/walker/runner",
+  '["../..","core"]': "../../core",
+  [`["${PROBE_FOLDER}","../../../../../mechanisms/walker/runner/walker-check.ts"]`]:
+    "../../mechanisms/walker/runner/walker-check.ts",
+};
+
+const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
+  "plugins/discipline-core/mechanisms/walker/CD-14/class-syntax.ts": PIECE_FOLDER,
+  [PROBE_KEY]: PROBE_FOLDER,
+};
+
+const path: PathPort = {
+  join: vi.fn<PathPort["join"]>(),
+  relative: vi.fn<PathPort["relative"]>(),
+  joinRepository: ({ segments }) => z.string().parse(JOINED_REPOSITORY_PATHS[JSON.stringify(segments)]),
+  directoryOf: vi.fn<PathPort["directoryOf"]>(),
+  repositoryDirectoryOf: ({ path: filePath }) => z.string().parse(REPOSITORY_DIRECTORIES[filePath]),
+  resolve: vi.fn<PathPort["resolve"]>(),
+  fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
+};
 
 const WALKER_PIECE: PieceLocation = {
   file: "plugins/discipline-core/mechanisms/walker/CD-14/class-syntax.ts",
@@ -114,11 +158,6 @@ describe("pieceImportRefusals refuses", () => {
     ]);
   });
 });
-
-const CLASS_SYNTAX_KEY = "../../mechanisms/walker/CD-14/class-syntax.ts";
-const HELPER_KEY = "../../mechanisms/walker/CD-14/helper.ts";
-const PROBE_KEY = "../../tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts";
-const TYPE_PACKAGES_KEY = "../../mechanisms/walker/runner/piece-type-packages.json";
 
 const SOURCES: Readonly<Record<string, string>> = {
   [CLASS_SYNTAX_KEY]: 'import type { Rule } from "eslint";\n',

@@ -4,9 +4,8 @@ import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
-import { createPathPort, type PathPort, type UnresolvablePath } from "../platform-ports/path-port.ts";
-import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
-import type { Result } from "../values/result.ts";
+import type { PathPort } from "../platform-ports/path-port.ts";
+import { absolutePathSchema } from "../values/absolute-path.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import type { CommandRequest } from "./run-check-command.ts";
@@ -73,23 +72,50 @@ const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort =
   write: vi.fn<FileTextPort["write"]>(),
 });
 
-const POSIX_PATH = createPathPort({ flavour: "posix", workingDirectory: () => "/work" });
+const JOINED_PATHS: Readonly<Record<string, string>> = {
+  '["/repo","disciplines.json"]': "/repo/disciplines.json",
+  '["/repo","discipline-exceptions.json"]': "/repo/discipline-exceptions.json",
+  '["/install","rules","CD-14","discipline.json"]': "/install/rules/CD-14/discipline.json",
+  '["/install","mechanisms","walker","CD-14","piece.json"]': "/install/mechanisms/walker/CD-14/piece.json",
+  '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
+  '["/install","mechanisms","walker","runner","runner.ts"]': "/install/mechanisms/walker/runner/runner.ts",
+};
 
-const WORKING_DIRECTORY_GONE: PathPort = createPathPort({
-  flavour: "posix", workingDirectory: vi
-    .fn<(request: Record<string, never>) => string>()
-    .mockThrow(new Error("ENOENT: process.cwd failed, no such file or directory")),
-});
+const DIRECTORIES: Readonly<Record<string, string>> = {
+  "/install/core/check/project-command.ts": "/install/core/check",
+  "/install/core/check": "/install/core",
+  "/install/core": "/install",
+};
 
-const RESOLVED: Readonly<Record<string, Result<AbsolutePath, UnresolvablePath>>> = {
-  "/install": { outcome: "ok", value: absolutePathSchema.parse("/install") },
-  "/repo": { outcome: "ok", value: absolutePathSchema.parse("/repo") },
-  "relative-repo": { outcome: "failed", error: { kind: "working-directory-unusable", path: "relative-repo" } },
+const fileUrlResultSchema = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("ok"), value: absolutePathSchema }),
+  z.object({
+    outcome: z.literal("failed"),
+    error: z.object({ kind: z.literal("not-a-file-url"), url: z.string(), detail: z.string() }),
+  }),
+]);
+
+const FILE_URLS: Readonly<Record<string, unknown>> = {
+  [ENTRY_URL]: { outcome: "ok", value: "/install/core/check/project-command.ts" },
+  [NOT_A_FILE_URL]: {
+    outcome: "failed",
+    error: { kind: "not-a-file-url", url: NOT_A_FILE_URL, detail: "the text is not a file: URL" },
+  },
+};
+
+const TABLE_PATH: PathPort = {
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  relative: vi.fn<PathPort["relative"]>(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
+  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
+  repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
+  resolve: ({ path }) => ({ outcome: "ok", value: absolutePathSchema.parse(path) }),
+  fromFileUrl: ({ url }) => fileUrlResultSchema.parse(FILE_URLS[url]),
 };
 
 const REPO_RESOLVING_TO_NO_ABSOLUTE_PATH: PathPort = {
-  ...POSIX_PATH,
-  resolve: ({ path }) => RESOLVED[path],
+  ...TABLE_PATH,
+  resolve: ({ path }) => ({ outcome: "failed", error: { kind: "working-directory-unusable", path } }),
 };
 
 const standaloneRunner = (request: { readonly runReturns: unknown }): LoadedRunner => ({
@@ -117,7 +143,7 @@ const processWith = (request: { readonly arguments: readonly string[] }): Proces
 
 const commandRequest = (overrides: Partial<CommandRequest>): CommandRequest => ({
   process: processWith({ arguments: ["--repo", "/repo"] }),
-  path: POSIX_PATH,
+  path: TABLE_PATH,
   fileText: fileTextOver(NOTHING_SELECTED),
   modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) }),
   git: gitTracking([]),
@@ -151,17 +177,6 @@ describe("runProjectCommand", () => {
       writes: [
         [{ text: expect.stringMatching(/^load failure: install-root-unresolvable https:\/\/example\.invalid\//) }],
       ],
-      exits: [[{ code: 2 }]],
-    });
-  });
-
-  it("exits 2 with the arguments-invalid line when the working directory cannot be read to resolve --repo", async () => {
-    const processPort = processWith({ arguments: ["--repo", "relative-repo"] });
-
-    await runProjectCommand(commandRequest({ process: processPort, path: WORKING_DIRECTORY_GONE }));
-
-    expect(outputOf({ process: processPort })).toEqual({
-      writes: [[{ text: expect.stringMatching(/^load failure: arguments-invalid /) }]],
       exits: [[{ code: 2 }]],
     });
   });
