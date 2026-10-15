@@ -164,5 +164,86 @@
       "rootCause": "Discipline-core needs path arithmetic and file-URL conversion from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
       "owner": "rin record 261014-discipline-core-foundati"
     }
+  },
+  {
+    "files": [
+      "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.ts",
+      "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.test.ts"
+    ],
+    "reason": "Deliberate CD19 wrapping site for the ESLint-compatible CD14 plugin protocol, used by ESLint and Oxlint. ESLint and Rule types stay at the callback/registration boundary; configuration consumers receive the owned ClassAuthoringPlugin model. The co-located test is the explicit native-protocol test boundary: its RuleTester import exercises that RuleModule with real JS and TypeScript ASTs, as required by the approved review scope. Why-chain: 1. Native class-syntax enforcement needs the engines' plugin protocol. 2. That protocol supplies AST callbacks and diagnostic reporting. 3. Typing those callbacks requires the external eslint types, including type-only imports. 4. Keeping the translation and registration in this single file confines that dependency instead of spreading vendor types into consumers. 5. Root decision: retain one explicit native-engine boundary for the approved CD14 fragment slice; the diagnostic-port design remains Helen's separate open judgment (PR34 review5530609166)."
+  },
+  {
+    "files": [
+      "plugins/discipline-core/mechanisms/eslint/runner/eslint-instance.ts"
+    ],
+    "reason": "Structural CD19 location: eslint-instance.ts is the ESLint mechanism runner's single wrapping factory for the eslint package and @typescript-eslint/parser. It constructs the query and governance ESLint instances, runs lintFiles, lintText and calculateConfigForFile, and maps results into the runner's own types (EslintPort, QueryInstance, GovernanceInstance, LintedFile, LintedMessage) and Zod-parsed resolved-config and plugin schemas. Core and pieces receive RepoPath values, runner hit data and Result failures, never ESLint classes or types. create-eslint-runner.ts depends on the EslintPort it exports, and the unit tests fake the injected CreateEslint surface. This is the one place the discipline-core plugin binds the eslint runtime.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does eslint-instance.ts import eslint at all?",
+          "because": "The ESLint mechanism checks a clause by running it as an ESLint rule inside the team's own ESLint setup, which needs the eslint runtime and its TypeScript parser.",
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § ESLint runner (ESLint instance port); plugins/discipline-core/mechanisms/eslint/runner/eslint-instance.ts:2-3."
+        },
+        {
+          "why": "Why is that runtime import not spread across the runner?",
+          "because": "CD-19 requires a third-party dependency to sit in one wrapping factory at the boundary; this file is that factory and the rest of the runner depends on its EslintPort.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/discipline-core/mechanisms/eslint/runner/create-eslint-runner.ts imports only port types from ./eslint-instance.ts."
+        },
+        {
+          "why": "Why does the audit now flag it when it did not before?",
+          "because": "PR #34 (bb7a11e) added eslint to the audit's banned-import list, so a sanctioned wrapping site needs a recorded entry to be told apart from a scattered import.",
+          "evidence": "plugins/rin/tools/constitution-audit/audit-constitution.ts BANNED_THIRD_PARTY_IMPORTS gains \"eslint\" in bb7a11e; bun run audit:rin reported CD-19 on this file after the merge."
+        },
+        {
+          "why": "Why is the runner's logic still unit-tested without the real ESLint?",
+          "because": "create-eslint-runner.ts takes the EslintPort and eslint-instance.ts takes an injected CreateEslint, both faked in unit tests; real ESLint runs only in the integration suite, where ESLint's own behaviour is the subject (CD-47).",
+          "evidence": "plugins/discipline-core/mechanisms/eslint/runner/create-eslint-runner.test.ts; plugins/discipline-core/mechanisms/eslint/runner/eslint-instance.test.ts; plugins/discipline-core/mechanisms/eslint/runner/native-exceptions.integration.test.ts."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
+          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; only the audit's specifier list cannot tell it apart without this entry.",
+          "evidence": "bun run audit:rin on chunk 2 after merging bb7a11e."
+        }
+      ],
+      "rootCause": "The ESLint mechanism needs the eslint runtime, and CD-19 places it in one wrapping factory that the audit's specifier list cannot distinguish from an unconfined import.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
+  },
+  {
+    "files": [
+      "plugins/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts"
+    ],
+    "reason": "Structural CD19 location for the CD-14 ESLint piece: the file imports only types (import type { ESLint, Rule }) from eslint to declare its rule module in ESLint's plugin protocol, which the runner loads. It has no runtime eslint import. FR-8 lets a piece type-import only the packages its runner lists, and mechanisms/eslint/runner/piece-type-packages.json lists exactly [\"eslint\"]; core's piece-import check enforces that. The piece's tests run cases through the runner's lintSourceCases, never through eslint or RuleTester directly.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does the CD-14 ESLint piece import from eslint?",
+          "because": "A piece is a vendor plugin: the rule must be typed in ESLint's own rule-module protocol to be loaded by ESLint.",
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Piece files as vendor plugins; cd14.eslint-plugin.ts:1."
+        },
+        {
+          "why": "Why is a type-only import allowed here?",
+          "because": "FR-8 permits a piece type-only imports of packages its runner lists, and the ESLint runner lists eslint.",
+          "evidence": "plugins/discipline-core/mechanisms/eslint/runner/piece-type-packages.json; plugins/discipline-core/core/check/piece-import-rules.ts."
+        },
+        {
+          "why": "Why was no entry needed before?",
+          "because": "The audit's banned list did not include eslint until PR #34 added it, so the type-only import passed unflagged (G4C-44).",
+          "evidence": "plugins/rin/tools/constitution-audit/audit-constitution.ts in bb7a11e."
+        },
+        {
+          "why": "Why not route the types through a project-owned port instead?",
+          "because": "Whether the rule's diagnostics go through a project-owned port is Helen's open decision on PR #34 (review 5530609166); the piece keeps the protocol types until that is decided.",
+          "evidence": "HailsTails/aidlc-workflows#34 review 5530609166 and the author's reply at bb7a11e."
+        },
+        {
+          "why": "Why record it rather than change it?",
+          "because": "The type-only import is the sanctioned shape under FR-8, so the file is not in debt; the entry lets the audit tell it apart.",
+          "evidence": "bun run audit:rin on chunk 2 after merging bb7a11e."
+        }
+      ],
+      "rootCause": "A piece must be typed in its tool's plugin protocol, and the audit's specifier list cannot see that the import is type-only and FR-8-sanctioned.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
   }
 ]
