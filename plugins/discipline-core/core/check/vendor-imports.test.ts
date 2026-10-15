@@ -135,8 +135,8 @@ const relativeImportUnderCore = z.object({
   specifier: z
     .string()
     .regex(/^\.\.?\//)
-    .transform((specifier) => coreFolderPath.join({ segments: ["/install/core/folder", specifier] }))
-    .pipe(z.string().regex(/^\/install\/core\//, "resolves outside core/")),
+    .transform((specifier) => coreFolderPath.relative({ from: "/install", to: specifier }))
+    .pipe(z.object({ relation: z.literal("within-root"), path: z.string().regex(/^core\//, "resolves outside core/") })),
   form: z.enum(["value", "type-only", "dynamic"]),
 });
 
