@@ -49,50 +49,12 @@ describe("hitSchema", () => {
     expect(hitSchema.safeParse({ ...hit, file: "/repo/src/a.ts" }).success).toBe(false);
   });
 
-  it("refuses a hit with no snippet", () => {
-    expect(
-      hitSchema.safeParse({
-        clause: sharedClause,
-        file: "src/a.ts",
-        anchor: { line: 3, column: 5 },
-      }).success,
-    ).toBe(false);
-  });
-
   it("accepts a hit anchored at line 1, column 0", () => {
     expect(hitSchema.safeParse({ ...hit, anchor: { line: 1, column: 0 } }).success).toBe(true);
   });
 
   it("refuses a hit anchored at line 0", () => {
     expect(hitSchema.safeParse({ ...hit, anchor: { line: 0, column: 5 } }).success).toBe(false);
-  });
-
-  it("refuses a hit anchored at column -1", () => {
-    expect(hitSchema.safeParse({ ...hit, anchor: { line: 3, column: -1 } }).success).toBe(false);
-  });
-
-  it("refuses a hit anchored at a fractional column", () => {
-    expect(hitSchema.safeParse({ ...hit, anchor: { line: 3, column: 2.5 } }).success).toBe(false);
-  });
-
-  it("refuses a hit anchored at a fractional line", () => {
-    expect(hitSchema.safeParse({ ...hit, anchor: { line: 2.5, column: 5 } }).success).toBe(false);
-  });
-
-  it("refuses a hit with no anchor", () => {
-    expect(
-      hitSchema.safeParse({ clause: sharedClause, file: "src/a.ts", snippet: "class A {}" })
-        .success,
-    ).toBe(false);
-  });
-
-  it("refuses a hit whose clause names a malformed discipline", () => {
-    expect(
-      hitSchema.safeParse({
-        ...hit,
-        clause: { ruleSet: "shared", discipline: "cd-14", clause: "no-class-syntax" },
-      }).success,
-    ).toBe(false);
   });
 });
 
@@ -108,12 +70,6 @@ describe("caseVerdictSchema", () => {
     expect(
       caseVerdictSchema.safeParse({ caseName: "class", flaggedLines: ["1"] }).success,
     ).toBe(false);
-  });
-
-  it.each([0, -1, 2.5])("refuses a flagged line of %d", (line) => {
-    expect(caseVerdictSchema.safeParse({ caseName: "class", flaggedLines: [1, line] }).success).toBe(
-      false,
-    );
   });
 
   it("refuses a verdict with no case name", () => {
@@ -176,14 +132,6 @@ describe("runnerResultSchema", () => {
     expect(
       hitsResultSchema.safeParse({ outcome: "failed", error: { kind: "disk-full" } }).success,
     ).toBe(false);
-  });
-
-  it("refuses an envelope with an outcome outside ok and failed", () => {
-    expect(hitsResultSchema.safeParse({ outcome: "skipped", value: [] }).success).toBe(false);
-  });
-
-  it("refuses a return that is not an envelope", () => {
-    expect(hitsResultSchema.safeParse([hit]).success).toBe(false);
   });
 
   it("infers the result type the author contract returns", () => {

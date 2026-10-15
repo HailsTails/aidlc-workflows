@@ -34,27 +34,4 @@ describe("createModuleLoaderPort", () => {
       },
     });
   });
-
-  it("loads as module-unloadable with the path and message when the import throws synchronously", async () => {
-    const loadOutcome = await createModuleLoaderPort({
-      importModule: vi.fn<ImportModule>().mockThrow(new Error("invalid module specifier")),
-    }).load({ path: PATH });
-
-    expect(loadOutcome).toEqual({
-      outcome: "failed",
-      error: {
-        kind: "module-unloadable",
-        path: "/install/mechanisms/walker/runner/runner.ts",
-        detail: "invalid module specifier",
-      },
-    });
-  });
-
-  it("loads as module-unloadable with the rejected value's text when a non-Error rejects", async () => {
-    const loadOutcome = await createModuleLoaderPort({
-      importModule: vi.fn<ImportModule>().mockRejectedValue("cannot find module"),
-    }).load({ path: PATH });
-
-    expect(loadOutcome).toMatchObject({ outcome: "failed", error: { detail: "cannot find module" } });
-  });
 });

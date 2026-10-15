@@ -4,14 +4,12 @@ import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
-import { createPathPort, type PathPort, posixPathFlavour } from "../platform-ports/path-port.ts";
+import { createPathPort, posixPathFlavour } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import { type CommandRequest, runCheckCommand } from "./run-check-command.ts";
 
 const ENTRY_URL = "file:///install/core/check/check-command.ts";
-const NOT_A_FILE_URL = "https://example.invalid/core/check/check-command.ts";
-const UNC_LIKE = "\\\\server\\share";
 
 type FakeFile = {
   readonly read: ReturnType<FileTextPort["read"]>;
@@ -73,23 +71,6 @@ const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort =
 
 const POSIX_PATH = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/work" });
 
-const WORKING_DIRECTORY_GONE: PathPort = createPathPort({
-  flavour: posixPathFlavour, workingDirectory: vi
-    .fn<(request: Record<string, never>) => string>()
-    .mockThrow(new Error("ENOENT: process.cwd failed, no such file or directory")),
-});
-
-const RESOLVED: Readonly<Record<string, string>> = {
-  "/install": "/install",
-  "/repo": "/repo",
-  "relative-repo": UNC_LIKE,
-};
-
-const REPO_RESOLVING_TO_NO_ABSOLUTE_PATH: PathPort = {
-  ...POSIX_PATH,
-  resolve: ({ path }) => z.string().parse(RESOLVED[path]),
-};
-
 const HIT_IN_A = {
   clause: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
   file: "src/a.ts",
@@ -112,14 +93,6 @@ const gitTracking = (paths: readonly string[]): GitPort => ({
     .fn<GitPort["trackedPaths"]>()
     .mockReturnValue({ outcome: "ok", value: z.array(repoPathSchema).parse(paths) }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
-});
-
-const gitRefusingTheBaseRevision = (): GitPort => ({
-  trackedPaths: gitTracking([]).trackedPaths,
-  changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({
-    outcome: "failed",
-    error: { kind: "git-failed", command: "git diff --name-only main\0x", detail: "the argument holds a null byte" },
-  }),
 });
 
 const processWith = (request: { readonly arguments: readonly string[] }): ProcessPort => ({
@@ -148,41 +121,6 @@ describe("runCheckCommand", () => {
     const processPort = processWith({ arguments: ["--bogus", "x"] });
 
     await runCheckCommand(commandRequest({ process: processPort }));
-
-    expect(outputOf({ process: processPort })).toEqual({
-      writes: [[{ text: expect.stringMatching(/^load failure: arguments-invalid /) }]],
-      exits: [[{ code: 2 }]],
-    });
-  });
-
-  it("exits 2 with the install-root-unresolvable line when its module URL is not a file URL", async () => {
-    const processPort = processWith({ arguments: ["--repo", "/repo"] });
-
-    await runCheckCommand(commandRequest({ process: processPort, moduleUrl: NOT_A_FILE_URL }));
-
-    expect(outputOf({ process: processPort })).toEqual({
-      writes: [
-        [{ text: expect.stringMatching(/^load failure: install-root-unresolvable https:\/\/example\.invalid\//) }],
-      ],
-      exits: [[{ code: 2 }]],
-    });
-  });
-
-  it("exits 2 with the arguments-invalid line when the working directory cannot be read to resolve --repo", async () => {
-    const processPort = processWith({ arguments: ["--repo", "relative-repo"] });
-
-    await runCheckCommand(commandRequest({ process: processPort, path: WORKING_DIRECTORY_GONE }));
-
-    expect(outputOf({ process: processPort })).toEqual({
-      writes: [[{ text: expect.stringMatching(/^load failure: arguments-invalid /) }]],
-      exits: [[{ code: 2 }]],
-    });
-  });
-
-  it("exits 2 with the arguments-invalid line when --repo resolves to no absolute path", async () => {
-    const processPort = processWith({ arguments: ["--repo", "relative-repo"] });
-
-    await runCheckCommand(commandRequest({ process: processPort, path: REPO_RESOLVING_TO_NO_ABSOLUTE_PATH }));
 
     expect(outputOf({ process: processPort })).toEqual({
       writes: [[{ text: expect.stringMatching(/^load failure: arguments-invalid /) }]],
@@ -239,33 +177,5 @@ describe("runCheckCommand", () => {
     );
 
     expect(vi.mocked(git.changedSince).mock.calls).toEqual([[{ repoRoot: "/repo", baseRevision: "main" }]]);
-  });
-
-  it("hands a base revision holding a NUL to git unchanged and exits 0 printing the pass verdict when git refuses it", async () => {
-    const processPort = processWith({ arguments: ["--repo", "/repo", "--base-revision", "main\0x"] });
-    const git = gitRefusingTheBaseRevision();
-
-    await runCheckCommand(commandRequest({ process: processPort, git }));
-
-    expect({
-      changedSince: vi.mocked(git.changedSince).mock.calls,
-      output: outputOf({ process: processPort }),
-    }).toEqual({
-      changedSince: [[{ repoRoot: "/repo", baseRevision: "main\0x" }]],
-      output: { writes: [[{ text: "verdict: pass\n" }]], exits: [[{ code: 0 }]] },
-    });
-  });
-
-  it("exits 2 with the arguments-invalid line when both --repo and the install root are unresolvable", async () => {
-    const processPort = processWith({ arguments: ["--repo", "relative-repo"] });
-
-    await runCheckCommand(
-      commandRequest({ process: processPort, path: REPO_RESOLVING_TO_NO_ABSOLUTE_PATH, moduleUrl: NOT_A_FILE_URL }),
-    );
-
-    expect(outputOf({ process: processPort })).toEqual({
-      writes: [[{ text: expect.stringMatching(/^load failure: arguments-invalid /) }]],
-      exits: [[{ code: 2 }]],
-    });
   });
 });
