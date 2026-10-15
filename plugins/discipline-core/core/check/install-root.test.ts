@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { createPathPort, posixPathFlavour, windowsPathFlavour } from "../platform-ports/path-port.ts";
+import { createPathPort } from "../platform-ports/path-port.ts";
 import { installRootOf } from "./install-root.ts";
 
 const ENTRY_URL = "file:///install/core/check/check-command.ts";
 const NOT_A_FILE_URL = "https://example.invalid/core/check/check-command.ts";
 const WINDOWS_ENTRY_URL = "file:///C:/repo/plugins/discipline-core/core/check/check-command.ts";
 
-const POSIX_PATH = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/work" });
+const POSIX_PATH = createPathPort({ flavour: "posix", workingDirectory: () => "/work" });
 
-const WINDOWS_PATH = createPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\work" });
+const WINDOWS_PATH = createPathPort({ flavour: "windows", workingDirectory: () => "C:\\work" });
 
 describe("installRootOf", () => {
   it("is the directory three levels above the entry file", () => {

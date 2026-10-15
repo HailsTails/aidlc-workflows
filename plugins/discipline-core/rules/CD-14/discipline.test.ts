@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FileTextPort } from "../../core/platform-ports/file-text-port.ts";
-import { createPathPort, posixPathFlavour } from "../../core/platform-ports/path-port.ts";
+import { createPathPort } from "../../core/platform-ports/path-port.ts";
 import { readDisciplineFile } from "../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../core/values/absolute-path.ts";
 import { disciplineIdSchema } from "../../core/values/identifiers.ts";
@@ -15,7 +15,7 @@ const fileText: FileTextPort = {
 const loaded = () =>
   readDisciplineFile({
     fileText,
-    path: createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/install" }),
+    path: createPathPort({ flavour: "posix", workingDirectory: () => "/install" }),
     ruleSetRoot: absolutePathSchema.parse("/install"),
     discipline: disciplineIdSchema.parse("CD-14"),
   });

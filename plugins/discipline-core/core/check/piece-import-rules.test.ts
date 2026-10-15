@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPathPort, posixPathFlavour } from "../platform-ports/path-port.ts";
+import { createPathPort } from "../platform-ports/path-port.ts";
 import {
   type PieceLocation,
   pieceFilesOf,
@@ -10,7 +10,7 @@ import {
 const INSTALL_ROOT = "plugins/discipline-core";
 const PROBE_ROOT = "plugins/discipline-core/tests/probe-rule-set";
 
-const path = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/fork" });
+const path = createPathPort({ flavour: "posix", workingDirectory: () => "/fork" });
 
 const WALKER_PIECE: PieceLocation = {
   file: "plugins/discipline-core/mechanisms/walker/CD-14/class-syntax.ts",
