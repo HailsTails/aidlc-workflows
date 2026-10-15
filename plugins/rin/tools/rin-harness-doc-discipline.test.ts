@@ -5,6 +5,11 @@ import {
   findUnchainedExceptionFindings,
   inspectRecordDirectory,
 } from "./rin-harness-doc-discipline.ts";
+import type { PathOperations } from "./rin-harness-path-operations.ts";
+import type {
+  FileKindPort,
+  SidecarFileReader,
+} from "./rin-harness-sidecar-file-reader.ts";
 
 const FACTS = [
   "| key | claim | value | re-derive | status | corrected-by |",
@@ -49,6 +54,16 @@ describe("DD-1/DD-3 key integrity — the path it must ALLOW", () => {
     const citing = {
       name: "rin-requirements.md",
       body: "Population per DD-4; throws per CD-19; the lock is IF-7. Facts Q-1 Q-2 R-1.",
+    };
+    expect(
+      findKeyIntegrityFindings({ factsBody: FACTS, proseDocuments: [citing] }),
+    ).toEqual([]);
+  });
+
+  test("a process-rule citation is not a fact reference (PD-1)", () => {
+    const citing = {
+      name: "rin-requirements.md",
+      body: "Owed only under PD-1. Facts Q-1 Q-2 R-1.",
     };
     expect(
       findKeyIntegrityFindings({ factsBody: FACTS, proseDocuments: [citing] }),
@@ -512,12 +527,94 @@ describe("DD-7 exception chains — the path it must REFUSE", () => {
   });
 });
 
+const fakeReader = ({
+  files,
+  directories,
+}: {
+  readonly files: Readonly<Record<string, string>>;
+  readonly directories: Readonly<Record<string, readonly string[]>>;
+}): SidecarFileReader => ({
+  fileExists: (path) => Object.hasOwn(files, path),
+  readFile: (path) => files[path],
+  listDirectory: (path) => directories[path],
+});
+
+const fakeKinds = ({
+  files,
+  directories,
+}: {
+  readonly files: Readonly<Record<string, string>>;
+  readonly directories: Readonly<Record<string, readonly string[]>>;
+}): FileKindPort => ({
+  isFile: (path) => Object.hasOwn(files, path),
+  isDirectory: (path) => Object.hasOwn(directories, path),
+});
+
+const fakePaths: PathOperations = {
+  flavour: "posix",
+  dirname: ({ path }) => path,
+  fromFileUrl: ({ url }) => url,
+  basename: ({ path }) => path.slice(path.lastIndexOf("/") + 1),
+  join: ({ segments }) => segments.join("/"),
+  resolve: ({ segments }) => segments.join("/"),
+  relative: ({ to }) => to,
+  isAbsolute: ({ path }) => path.startsWith("/"),
+};
+
+const portsOver = (tree: {
+  readonly files: Readonly<Record<string, string>>;
+  readonly directories: Readonly<Record<string, readonly string[]>>;
+}) => ({
+  reader: fakeReader(tree),
+  kinds: fakeKinds(tree),
+  paths: fakePaths,
+});
+
+const noStageGraph = portsOver({
+  files: {},
+  directories: { "/record": [] },
+});
+
+const recordCitingAnUndefinedKey = portsOver({
+  files: {
+    "/graph/stage-graph.json": '{"stages":[{"produces":["rin-requirements"]}]}',
+    "/record/rin-requirements.md": "Facts Q-1 Q-2 R-1; owed per Q-9.",
+    "/record/facts.md": FACTS,
+  },
+  directories: { "/record": ["rin-requirements.md", "facts.md"] },
+});
+
+describe("inspectRecordDirectory reads the record through its injected ports", () => {
+  test("an official artefact citing a key with no facts row yields that DD-1 finding", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: "/graph/stage-graph.json",
+        ports: recordCitingAnUndefinedKey,
+      }),
+    ).toEqual({
+      kind: "inspected",
+      findings: [
+        {
+          rule: "DD-1",
+          artefact: "rin-requirements.md",
+          line: 1,
+          subject: "Q-9",
+          remedy:
+            "Q-9 is referenced but has no row in facts.md. Add a row for Q-9 with its value and re-derive command, or correct the reference.",
+        },
+      ],
+    });
+  });
+});
+
 describe("inspectRecordDirectory reports an unmeasurable input", () => {
   test("an absent stage graph is unmeasurable, never a clean pass", () => {
     expect(
       inspectRecordDirectory({
-        recordDir: "/nonexistent/record",
-        stageGraphPath: "/nonexistent/stage-graph.json",
+        recordDir: "/record",
+        stageGraphPath: "/graph/stage-graph.json",
+        ports: noStageGraph,
       }),
     ).toEqual({ kind: "unmeasurable", reason: "no-stage-graph" });
   });
@@ -525,8 +622,9 @@ describe("inspectRecordDirectory reports an unmeasurable input", () => {
   test("the unmeasurable arm is distinguishable from an empty finding list", () => {
     expect(
       inspectRecordDirectory({
-        recordDir: "/nonexistent/record",
-        stageGraphPath: "/nonexistent/stage-graph.json",
+        recordDir: "/record",
+        stageGraphPath: "/graph/stage-graph.json",
+        ports: noStageGraph,
       }).kind,
     ).not.toBe("inspected");
   });

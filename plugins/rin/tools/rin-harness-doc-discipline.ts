@@ -1,11 +1,19 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import {
+  defaultPathOperations,
+  type PathOperations,
+} from "./rin-harness-path-operations.ts";
+import {
+  defaultFileKindPort,
+  defaultSidecarFileReader,
+  type FileKindPort,
+  type SidecarFileReader,
+} from "./rin-harness-sidecar-file-reader.ts";
 import { CHAIN_LABEL } from "./rin-harness-why-chain.ts";
 
 const FACT_ROW = /^\|\s*\*\*([A-Z]+-\d+)\*\*\s*\|/;
 const KEY_REFERENCE = /\b([A-Z]+-\d+)\b/g;
 
-const RESERVED_PREFIXES = new Set(["DD", "CD", "IF", "G3", "FR", "AC", "NFR"]);
+const RESERVED_PREFIXES = new Set(["DD", "CD", "PD", "IF", "G3", "FR", "AC", "NFR"]);
 
 const SELF_NUMBERED_HEADINGS: Readonly<Record<string, RegExp>> = {
   "rin-framing-questions.md": /^#{2,6}\s+([QD]-\d+)\b/gm,
@@ -332,15 +340,30 @@ const findUnchainedExceptionFindings = ({
     }),
   );
 
+type RecordPorts = {
+  readonly reader: SidecarFileReader;
+  readonly kinds: FileKindPort;
+  readonly paths: PathOperations;
+};
+
+const defaultRecordPorts = (): RecordPorts => ({
+  reader: defaultSidecarFileReader(),
+  kinds: defaultFileKindPort(),
+  paths: defaultPathOperations(),
+});
+
 const officialArtefactStems = ({
   stageGraphPath,
+  reader,
 }: {
   readonly stageGraphPath: string;
+  readonly reader: SidecarFileReader;
 }): ReadonlySet<string> | undefined => {
-  if (!existsSync(stageGraphPath)) {
+  const graphText = reader.readFile(stageGraphPath);
+  if (graphText === undefined) {
     return undefined;
   }
-  const parsed: unknown = JSON.parse(readFileSync(stageGraphPath, "utf8"));
+  const parsed: unknown = JSON.parse(graphText);
   const nodes = Array.isArray(parsed)
     ? (parsed as readonly StageNode[])
     : ((parsed as { readonly stages?: readonly StageNode[] }).stages ?? []);
@@ -350,20 +373,27 @@ const officialArtefactStems = ({
 const officialProseIn = ({
   recordDir,
   stems,
+  ports,
 }: {
   readonly recordDir: string;
   readonly stems: ReadonlySet<string>;
+  readonly ports: RecordPorts;
 }): readonly string[] => {
-  const walk = (directory: string): readonly string[] =>
-    readdirSync(directory).flatMap((entry) => {
-      const path = join(directory, entry);
-      if (statSync(path).isDirectory()) {
+  const walk = (directory: string): readonly string[] => {
+    const entries = ports.reader.listDirectory(directory);
+    if (entries === undefined) {
+      return [];
+    }
+    return entries.flatMap((entry) => {
+      const path = ports.paths.join({ segments: [directory, entry] });
+      if (ports.kinds.isDirectory(path)) {
         return entry.startsWith(".") || entry === "audit" ? [] : walk(path);
       }
       return entry.endsWith(".md") && stems.has(entry.replace(/\.md$/, ""))
         ? [path]
         : [];
     });
+  };
   return walk(recordDir);
 };
 
@@ -374,29 +404,41 @@ type RecordInspection =
 const inspectRecordDirectory = ({
   recordDir,
   stageGraphPath,
+  ports = defaultRecordPorts(),
 }: {
   readonly recordDir: string;
   readonly stageGraphPath: string;
+  readonly ports?: RecordPorts;
 }): RecordInspection => {
-  const stems = officialArtefactStems({ stageGraphPath });
+  const stems = officialArtefactStems({
+    stageGraphPath,
+    reader: ports.reader,
+  });
   if (stems === undefined) {
     return { kind: "unmeasurable", reason: "no-stage-graph" };
   }
-  const proseDocuments = officialProseIn({ recordDir, stems }).map((path) => ({
-    name: basename(path),
-    body: readFileSync(path, "utf8"),
-  }));
+  const proseDocuments = officialProseIn({ recordDir, stems, ports }).flatMap(
+    (path) => {
+      const body = ports.reader.readFile(path);
+      if (body === undefined) {
+        return [];
+      }
+      return [{ name: ports.paths.basename({ path }), body }];
+    },
+  );
 
   const unchainedExceptions = findUnchainedExceptionFindings({
     proseDocuments,
   });
 
-  const factsPath = join(recordDir, FACTS_FILENAME);
-  if (!existsSync(factsPath)) {
+  const factsBody = ports.reader.readFile(
+    ports.paths.join({ segments: [recordDir, FACTS_FILENAME] }),
+  );
+  if (factsBody === undefined) {
     return { kind: "inspected", findings: unchainedExceptions };
   }
   const sources = {
-    factsBody: readFileSync(factsPath, "utf8"),
+    factsBody,
     proseDocuments,
   };
   return {
