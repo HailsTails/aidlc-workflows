@@ -1658,12 +1658,11 @@ describe("conform, settled refusals", () => {
 
 describe("the governance run with nothing to lint", () => {
   it("skips the governance lint when no TypeScript file is under check, still scanning tracked paths", async () => {
-    const eslint = eslintOver({
-      lintFiles: lintResolving({
-        outcome: "failed",
-        error: { kind: "tool-failed", detail: 'No files matching the pattern "." were found.' },
-      }),
+    const lintFiles = lintResolving({
+      outcome: "failed",
+      error: { kind: "tool-failed", detail: 'No files matching the pattern "." were found.' },
     });
+    const eslint = eslintOver({ lintFiles });
     const report = await runnerOver({
       fileText: repoHolding({
         projection: ENABLING_PROJECTION,
@@ -1675,7 +1674,11 @@ describe("the governance run with nothing to lint", () => {
       }),
       eslint,
     }).run({ ...CLASS_RUN, files: [], trackedPaths: [repoPathSchema.parse("package.json")] });
-    expect({ report, governanceInstances: vi.mocked(eslint.createGovernanceInstance).mock.calls }).toEqual({
+    expect({
+      report,
+      governanceInstances: vi.mocked(eslint.createGovernanceInstance).mock.calls,
+      lints: lintFiles.mock.calls,
+    }).toEqual({
       report: {
         outcome: "ok",
         value: {
@@ -1693,6 +1696,7 @@ describe("the governance run with nothing to lint", () => {
         },
       },
       governanceInstances: [],
+      lints: [],
     });
   });
 

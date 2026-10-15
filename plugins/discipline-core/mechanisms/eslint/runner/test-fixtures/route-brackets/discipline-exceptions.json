@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "kind": "authorised-location",
+      "clause": "CD-14#class-syntax",
+      "file": "route/[id].ts",
+      "reason": "wrapping factory for a library construction"
+    }
+  ]
+}
