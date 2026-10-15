@@ -5,7 +5,11 @@ import type { RunnerClause } from "../../../core/mechanism-port/runner-module-sc
 import type { CaseVerdict } from "../../../core/mechanism-port/runner-result-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
-import { createPathPort } from "../../../core/platform-ports/path-port.ts";
+import {
+  createFlavouredPathPort,
+  createPathPort,
+  windowsPathFlavour,
+} from "../../../core/platform-ports/path-port.ts";
 import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
@@ -346,6 +350,48 @@ const TWO_RULES_IN_EFFECT = queryOver({
   },
 });
 
+const SHARED_FOR_OF_RULE_ID = "rin-discipline/no-for-of";
+
+const SHARED_MODULE_FOR_OF_CLAUSE: RunnerClause = {
+  address: FOR_OF,
+  anchor: { kind: "keyword", keyword: "for" },
+  pieceRoot: PIECE_ROOT,
+  settings: { ...CLASS_SETTINGS, rule: "no-for-of" },
+};
+
+const SHARED_PLUGIN_MODULE = {
+  default: {
+    rules: {
+      "no-class-authoring": { meta: { type: "problem" }, create: () => ({}) },
+      "no-for-of": { meta: { type: "problem" }, create: () => ({}) },
+    },
+  },
+};
+
+const SHARED_MODULE_RUN = runRequest({ clauses: [CLASS_CLAUSE, SHARED_MODULE_FOR_OF_CLAUSE], records: [] });
+
+const SHARED_MODULE_PROJECTION = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
+
+export default [
+  {
+    name: "discipline-core/piece/rin-discipline",
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    plugins: { "rin-discipline": piece0 },
+    rules: { "rin-discipline/no-class-authoring": "error", "rin-discipline/no-for-of": "error" },
+  },
+];
+`;
+
+const SHARED_MODULE_RULES_IN_EFFECT = queryOver({
+  ignored: CHECKED,
+  states: {
+    [`src/a.ts ${RULE_ID}`]: ERROR,
+    [`src/factory.ts ${RULE_ID}`]: ERROR,
+    [`src/a.ts ${SHARED_FOR_OF_RULE_ID}`]: ERROR,
+    [`src/factory.ts ${SHARED_FOR_OF_RULE_ID}`]: ERROR,
+  },
+});
+
 const inlineMessageInA = (request: {
   readonly messageId: "inline-disable" | "inline-rule-config";
   readonly text: string;
@@ -468,6 +514,31 @@ describe("the governance run, step 1: selected pieces", () => {
     ).resolves.toEqual({
       outcome: "failed",
       error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: expect.any(String) },
+    });
+  });
+
+  it("loads and parses a plugin module shared by two selected clauses once, selecting both clauses", async () => {
+    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: SHARED_PLUGIN_MODULE });
+    const report = await runnerOver({
+      fileText: projectionHolding({ text: SHARED_MODULE_PROJECTION }),
+      modules: { load },
+      eslint: eslintOver({
+        query: SHARED_MODULE_RULES_IN_EFFECT,
+        lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }),
+      }),
+    }).run(SHARED_MODULE_RUN);
+    expect({ loads: load.mock.calls, report }).toEqual({
+      loads: [[{ path: PLUGIN_MODULE_PATH }]],
+      report: { outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "current" } },
+    });
+  });
+
+  it("is piece-invalid naming the piece root of the clause whose rule a shared plugin module lacks", async () => {
+    await expect(
+      runnerOver({ modules: modulesOver({ [PLUGIN_MODULE_PATH]: CLASS_PLUGIN_MODULE }) }).run(SHARED_MODULE_RUN),
+    ).resolves.toEqual({
+      outcome: "failed",
+      error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: "the plugin has no rule named no-for-of" },
     });
   });
 });
@@ -1769,5 +1840,142 @@ describe("the governance run with nothing to lint", () => {
       governanceInstances: [],
       lints: [],
     });
+  });
+});
+
+const WINDOWS_REPO_ROOT = absolutePathSchema.parse("C:\\repo");
+const WINDOWS_INSTALL_ROOT = absolutePathSchema.parse("C:\\repo\\node_modules\\discipline-core");
+const WINDOWS_PIECE_ROOT = "C:\\repo\\node_modules\\discipline-core\\mechanisms\\eslint\\CD-14";
+const WINDOWS_PLUGIN_MODULE_PATH =
+  "C:\\repo\\node_modules\\discipline-core\\mechanisms\\eslint\\CD-14\\cd14\\cd14.eslint-plugin.ts";
+const OTHER_DRIVE_PIECE_ROOT = "D:\\dc\\mechanisms\\eslint\\CD-14";
+
+const WINDOWS_PATH = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
+
+const EVERY_PATH_HOLDING_SOURCE_A: FileTextPort = {
+  read: () => ({ outcome: "ok", value: "const a = 1;\n\n  class A {}\n" }),
+  exists: () => "present",
+  write: vi.fn<FileTextPort["write"]>().mockReturnValue({ outcome: "ok", value: undefined }),
+};
+
+const windowsRun = (request: { readonly pieceRoot: string }) => ({
+  repoRoot: WINDOWS_REPO_ROOT,
+  installRoot: WINDOWS_INSTALL_ROOT,
+  files: FILES,
+  trackedPaths: [],
+  clauses: [{ ...CLASS_CLAUSE, pieceRoot: request.pieceRoot }],
+  records: [],
+});
+
+describe("the governance run on Windows paths", () => {
+  it("is piece-invalid without loading for a piece on another drive from the repository, naming its piece root", async () => {
+    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: CLASS_PLUGIN_MODULE });
+    const report = await runnerOver({ path: WINDOWS_PATH, fileText: EVERY_PATH_HOLDING_SOURCE_A, modules: { load } }).run(
+      windowsRun({ pieceRoot: OTHER_DRIVE_PIECE_ROOT }),
+    );
+    expect({ report, loads: load.mock.calls }).toEqual({
+      report: {
+        outcome: "failed",
+        error: {
+          kind: "piece-invalid",
+          pieceRoot: OTHER_DRIVE_PIECE_ROOT,
+          detail: expect.stringContaining("different root"),
+        },
+      },
+      loads: [],
+    });
+  });
+
+  it("projects nothing and loads nothing for a piece on another drive from the repository, naming its piece root", async () => {
+    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: CLASS_PLUGIN_MODULE });
+    const write = vi.fn<FileTextPort["write"]>().mockReturnValue({ outcome: "ok", value: undefined });
+    const outcome = await runnerOver({
+      path: WINDOWS_PATH,
+      fileText: { ...EVERY_PATH_HOLDING_SOURCE_A, write },
+      modules: { load },
+    }).project({
+      repoRoot: WINDOWS_REPO_ROOT,
+      installRoot: WINDOWS_INSTALL_ROOT,
+      clauses: [{ ...CLASS_CLAUSE, pieceRoot: OTHER_DRIVE_PIECE_ROOT }],
+      records: [],
+    });
+    expect({ outcome, writes: write.mock.calls, loads: load.mock.calls }).toEqual({
+      outcome: {
+        outcome: "failed",
+        error: {
+          kind: "piece-invalid",
+          pieceRoot: OTHER_DRIVE_PIECE_ROOT,
+          detail: expect.stringContaining("different root"),
+        },
+      },
+      writes: [],
+      loads: [],
+    });
+  });
+
+  it("conforms a piece on another drive from the repository, loading its plugin module from that drive", async () => {
+    const load = vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: CLASS_PLUGIN_MODULE });
+    const lintSourceCases = vi.fn<EslintPort["lintSourceCases"]>().mockResolvedValue(CLASS_VERDICTS);
+    const verdicts = await runnerOver({
+      path: WINDOWS_PATH,
+      modules: { load },
+      eslint: eslintOver({ lintSourceCases }),
+    }).conform({ clause: { ...CLASS_CLAUSE, pieceRoot: OTHER_DRIVE_PIECE_ROOT }, cases: [CLASS_CASE] });
+    expect({ verdicts, loads: load.mock.calls }).toEqual({
+      verdicts: CLASS_VERDICTS,
+      loads: [[{ path: "D:\\dc\\mechanisms\\eslint\\CD-14\\cd14\\cd14.eslint-plugin.ts" }]],
+    });
+  });
+
+  it("reports a hit in a linted file within the repository at its POSIX repository path", async () => {
+    await expect(
+      runnerOver({
+        path: WINDOWS_PATH,
+        fileText: EVERY_PATH_HOLDING_SOURCE_A,
+        modules: modulesOver({ [WINDOWS_PLUGIN_MODULE_PATH]: CLASS_PLUGIN_MODULE }),
+        eslint: eslintOver({
+          lintFiles: lintResolving({
+            outcome: "ok",
+            value: [{ filePath: "C:\\repo\\src\\a.ts", messages: [CLASS_MESSAGE] }],
+          }),
+        }),
+      }).run(windowsRun({ pieceRoot: WINDOWS_PIECE_ROOT })),
+    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" } });
+  });
+
+  it("is tool-failed naming a linted file on another drive from the repository", async () => {
+    await expect(
+      runnerOver({
+        path: WINDOWS_PATH,
+        fileText: EVERY_PATH_HOLDING_SOURCE_A,
+        modules: modulesOver({ [WINDOWS_PLUGIN_MODULE_PATH]: CLASS_PLUGIN_MODULE }),
+        eslint: eslintOver({
+          lintFiles: lintResolving({
+            outcome: "ok",
+            value: [{ filePath: "D:\\src\\a.ts", messages: [CLASS_MESSAGE] }],
+          }),
+        }),
+      }).run(windowsRun({ pieceRoot: WINDOWS_PIECE_ROOT })),
+    ).resolves.toEqual({
+      outcome: "failed",
+      error: { kind: "tool-failed", detail: expect.stringContaining("D:\\src\\a.ts") },
+    });
+  });
+
+  it("reads the projection and a tracked suppressions file at their Windows forms under the repo root", async () => {
+    const read = vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: "{}" });
+    await runnerOver({
+      path: WINDOWS_PATH,
+      fileText: { read, exists: () => "present", write: vi.fn<FileTextPort["write"]>() },
+      modules: modulesOver({ [WINDOWS_PLUGIN_MODULE_PATH]: CLASS_PLUGIN_MODULE }),
+      eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: [] }) }),
+    }).run({
+      ...windowsRun({ pieceRoot: WINDOWS_PIECE_ROOT }),
+      trackedPaths: [repoPathSchema.parse("src/eslint-suppressions.json")],
+    });
+    expect(read.mock.calls).toEqual([
+      [{ path: "C:\\repo\\disciplines.eslint.mjs" }],
+      [{ path: "C:\\repo\\src\\eslint-suppressions.json" }],
+    ]);
   });
 });

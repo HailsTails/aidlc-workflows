@@ -76,7 +76,9 @@ const absentFileText = (): FileTextPort => ({
 const pathJoiningTo = (request: { readonly joined: string }): PathPort => ({
   join: vi.fn<PathPort["join"]>().mockReturnValue(request.joined),
   relative: vi.fn(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn(),
+  repositoryDirectoryOf: vi.fn(),
   resolve: vi.fn(),
   fromFileUrl: vi.fn(),
 });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { NativeException } from "../../../core/mechanism-port/runner-result-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
+import type { PathPort } from "../../../core/platform-ports/path-port.ts";
 import { parsedJson } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import type { AbsolutePath } from "../../../core/values/absolute-path.ts";
 import type { RepoPath } from "../../../core/values/repo-path.ts";
@@ -105,12 +106,15 @@ export const suppressionEntriesOf = (request: {
 
 export const scriptSuppressionEntries = (request: {
   readonly fileText: FileTextPort;
+  readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly location: RepoPath;
   readonly keysRelativeTo: RepoPath | "repo-root";
   readonly selectedRules: readonly SelectedRule[];
 }): Result<readonly NativeException[], RunnerFailure> => {
-  const text = request.fileText.read({ path: `${request.repoRoot}/${request.location}` });
+  const text = request.fileText.read({
+    path: request.path.join({ segments: [request.repoRoot, request.location] }),
+  });
   if (text.outcome === "failed") {
     return {
       outcome: "failed",

@@ -1,6 +1,9 @@
 import { z } from "zod";
-import { rejectedCall, runnerInvalidOutput } from "../check/mechanism-dispatch.ts";
-import type { RunnerFailure } from "../mechanism-port/runner-failure.ts";
+import {
+  type RunnerFailure,
+  rejectedCall,
+  runnerInvalidOutput,
+} from "../mechanism-port/runner-failure.ts";
 import type { LoadedRunner, RunnerClause } from "../mechanism-port/runner-module-schema.ts";
 import {
   type CaseVerdict,
@@ -47,6 +50,24 @@ const unmatchedVerdict = (request: {
   return unknown === undefined ? undefined : `a verdict names the unknown case ${unknown.caseName}`;
 };
 
+const caseConformance = (request: {
+  readonly sourceCase: SourceCase;
+  readonly verdicts: readonly CaseVerdict[];
+  readonly clause: RunnerClause;
+}): readonly ConformanceFailure[] => {
+  const { sourceCase } = request;
+  const expectedLines = lineSet({ lines: sourceCase.expectedLines });
+  const flaggedLines = lineSet({
+    lines: verdictsNaming({ verdicts: request.verdicts, caseName: sourceCase.name }).flatMap(
+      (verdict) => verdict.flaggedLines,
+    ),
+  });
+  if (expectedLines.join(" ") === flaggedLines.join(" ")) {
+    return [];
+  }
+  return [{ clause: request.clause.address, caseName: sourceCase.name, expectedLines, flaggedLines }];
+};
+
 const conformanceOf = (request: {
   readonly returned: unknown;
   readonly clause: RunnerClause;
@@ -66,15 +87,7 @@ const conformanceOf = (request: {
   }
   return {
     outcome: "ok",
-    value: request.cases.flatMap((sourceCase): readonly ConformanceFailure[] => {
-      const expectedLines = lineSet({ lines: sourceCase.expectedLines });
-      const flaggedLines = lineSet({
-        lines: verdictsNaming({ verdicts, caseName: sourceCase.name }).flatMap((verdict) => verdict.flaggedLines),
-      });
-      return expectedLines.join(" ") === flaggedLines.join(" ")
-        ? []
-        : [{ clause: request.clause.address, caseName: sourceCase.name, expectedLines, flaggedLines }];
-    }),
+    value: request.cases.flatMap((sourceCase) => caseConformance({ sourceCase, verdicts, clause: request.clause })),
   };
 };
 

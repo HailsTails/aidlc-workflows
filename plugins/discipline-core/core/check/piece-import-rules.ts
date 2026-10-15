@@ -101,15 +101,15 @@ const relativeRefusal = (request: {
   readonly piece: PieceLocation;
   readonly specifier: string;
 }): readonly PieceImportRefusal[] => {
-  const target = request.path.join({
-    segments: [request.path.directoryOf({ path: request.piece.file }), request.specifier],
+  const target = request.path.joinRepository({
+    segments: [request.path.repositoryDirectoryOf({ path: request.piece.file }), request.specifier],
   });
   const reach = [
     [request.piece.ruleSetRoot, "mechanisms", request.piece.mechanism, request.piece.discipline],
     [request.piece.ruleSetRoot, "rules", request.piece.discipline],
     [request.installRoot, "mechanisms", request.piece.mechanism, "runner"],
     [request.installRoot, "core"],
-  ].map((segments) => `${request.path.join({ segments })}/`);
+  ].map((segments) => `${request.path.joinRepository({ segments })}/`);
   return reach.some((folder) => target.startsWith(folder))
     ? []
     : [{ specifier: request.specifier, reason: "outside-piece-reach" }];
@@ -165,11 +165,11 @@ const typePackagesOf = (request: {
   readonly mechanism: string;
   readonly typePackageTexts: Readonly<Record<string, string>>;
 }): Result<readonly string[], PieceImportFindingsFailure> => {
-  const listPath = request.path.join({
+  const listPath = request.path.joinRepository({
     segments: [request.installRoot, "mechanisms", request.mechanism, "runner", "piece-type-packages.json"],
   });
   const text = Object.entries(request.typePackageTexts).find(
-    ([key]) => request.path.join({ segments: [key] }) === listPath,
+    ([key]) => request.path.joinRepository({ segments: [key] }) === listPath,
   );
   if (text === undefined) {
     return { outcome: "failed", error: { kind: "type-packages-missing", path: listPath } };

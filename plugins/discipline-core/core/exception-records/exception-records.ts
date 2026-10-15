@@ -128,12 +128,13 @@ const recordedWhyChain = (request: {
       };
 };
 
-const parsedRecord = (request: {
+type ClauseSelection = { readonly clause: ClauseAddress; readonly mechanism: MechanismId };
+
+const selectedClauseOf = (request: {
   readonly entry: ExceptionEntry;
   readonly selection: Selection;
-}): Result<ExceptionRecord, EntryProblem> => {
-  const { entry } = request;
-  const address = clauseAddressSchema.safeParse(entry.clause);
+}): Result<ClauseSelection, EntryProblem> => {
+  const address = clauseAddressSchema.safeParse(request.entry.clause);
   if (!address.success) {
     return {
       outcome: "failed",
@@ -147,7 +148,19 @@ const parsedRecord = (request: {
   if (selected === undefined) {
     return { outcome: "failed", error: { kind: "clause-not-selected", clause } };
   }
-  const { mechanism } = selected;
+  return { outcome: "ok", value: { clause, mechanism: selected.mechanism } };
+};
+
+const parsedRecord = (request: {
+  readonly entry: ExceptionEntry;
+  readonly selection: Selection;
+}): Result<ExceptionRecord, EntryProblem> => {
+  const { entry } = request;
+  const selected = selectedClauseOf(request);
+  if (selected.outcome === "failed") {
+    return selected;
+  }
+  const { clause, mechanism } = selected.value;
   switch (entry.kind) {
     case "authorised-location": {
       const file = recordedFile({ file: entry.file });
@@ -214,6 +227,49 @@ const identityComparison = (request: {
   }
 };
 
+const originalRecordOf = (request: {
+  readonly valid: readonly IndexedRecord[];
+  readonly candidate: IndexedRecord;
+}): IndexedRecord | undefined =>
+  request.valid.find(
+    (earlier) =>
+      earlier.index < request.candidate.index &&
+      identityComparison({ left: earlier.record, right: request.candidate.record }) === "same-identity",
+  );
+
+type ParsedEntry = { readonly index: number; readonly record: Result<ExceptionRecord, EntryProblem> };
+
+const validRecordsOf = (request: { readonly parsed: readonly ParsedEntry[] }): readonly IndexedRecord[] =>
+  request.parsed.flatMap(({ index, record }): readonly IndexedRecord[] =>
+    record.outcome === "ok" ? [{ index, record: record.value }] : [],
+  );
+
+const invalidRecordOf = (request: {
+  readonly entry: ParsedEntry;
+  readonly valid: readonly IndexedRecord[];
+}): readonly InvalidRecord[] => {
+  const { index, record } = request.entry;
+  if (record.outcome === "failed") {
+    return [{ index, problem: record.error }];
+  }
+  const original = originalRecordOf({ valid: request.valid, candidate: { index, record: record.value } });
+  if (original === undefined) {
+    return [];
+  }
+  return [{ index, problem: { kind: "duplicate", ofIndex: original.index } }];
+};
+
+const invalidRecordsOf = (request: {
+  readonly parsed: readonly ParsedEntry[];
+  readonly valid: readonly IndexedRecord[];
+}): readonly InvalidRecord[] =>
+  request.parsed.flatMap((entry) => invalidRecordOf({ entry, valid: request.valid }));
+
+const firstRecordsOf = (request: { readonly valid: readonly IndexedRecord[] }): readonly ExceptionRecord[] =>
+  request.valid
+    .filter((candidate) => originalRecordOf({ valid: request.valid, candidate }) === undefined)
+    .map(({ record }) => record);
+
 export const parseExceptionEntries = (request: {
   readonly entries: ExceptionsFile["exceptions"];
   readonly selection: Selection;
@@ -221,33 +277,11 @@ export const parseExceptionEntries = (request: {
   readonly records: readonly ExceptionRecord[];
   readonly invalid: readonly InvalidRecord[];
 } => {
-  const parsed = request.entries.map((entry, index) => ({
-    index,
-    record: parsedRecord({ entry, selection: request.selection }),
-  }));
-  const valid = parsed.flatMap(({ index, record }): readonly IndexedRecord[] =>
-    record.outcome === "ok" ? [{ index, record: record.value }] : [],
+  const parsed = request.entries.map(
+    (entry, index): ParsedEntry => ({ index, record: parsedRecord({ entry, selection: request.selection }) }),
   );
-  const originalOf = (lookup: { readonly candidate: IndexedRecord }): IndexedRecord | undefined =>
-    valid.find(
-      (earlier) =>
-        earlier.index < lookup.candidate.index &&
-        identityComparison({ left: earlier.record, right: lookup.candidate.record }) ===
-          "same-identity",
-    );
-  const problems = parsed.flatMap(({ index, record }): readonly InvalidRecord[] => {
-    if (record.outcome === "failed") {
-      return [{ index, problem: record.error }];
-    }
-    const original = originalOf({ candidate: { index, record: record.value } });
-    return original === undefined ? [] : [{ index, problem: { kind: "duplicate", ofIndex: original.index } }];
-  });
-  return {
-    records: valid
-      .filter((candidate) => originalOf({ candidate }) === undefined)
-      .map(({ record }) => record),
-    invalid: problems,
-  };
+  const valid = validRecordsOf({ parsed });
+  return { records: firstRecordsOf({ valid }), invalid: invalidRecordsOf({ parsed, valid }) };
 };
 
 export const readExceptionEntries = (request: {

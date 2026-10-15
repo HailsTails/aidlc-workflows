@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPathPort } from "../platform-ports/path-port.ts";
+import { createFlavouredPathPort, createPathPort, windowsPathFlavour } from "../platform-ports/path-port.ts";
 import {
   type PieceLocation,
   pieceFilesOf,
@@ -378,5 +378,86 @@ describe("pieceImportFindings over sources keyed from the install root", () => {
         refusals: [{ file: "./mechanisms/walker/CD-14/class-syntax.ts", specifier: "eslint", reason: "package-not-listed" }],
       },
     });
+  });
+});
+
+const windowsPath = createFlavouredPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\fork" });
+
+const WINDOWS_KEYED_PIECE: PieceLocation = {
+  file: "mechanisms/walker/CD-14/a.ts",
+  ruleSetRoot: ".",
+  mechanism: "walker",
+  discipline: "CD-14",
+};
+
+const WINDOWS_TYPE_PACKAGES_KEY = "mechanisms/walker/runner/piece-type-packages.json";
+
+const windowsFindingsOver = (request: { readonly typePackageTexts: Readonly<Record<string, string>> }) =>
+  pieceImportFindings({
+    path: windowsPath,
+    installRoot: ".",
+    ruleSetRoots: ["."],
+    sources: { [WINDOWS_KEYED_PIECE.file]: 'import type { WalkerCheck } from "../runner/x.ts";\n' },
+    typePackageTexts: request.typePackageTexts,
+  });
+
+describe("piece import rules with a win32-flavoured path port", () => {
+  it("allows a relative import of the piece's own mechanism runner", () => {
+    expect(
+      pieceImportRefusals({
+        path: windowsPath,
+        installRoot: ".",
+        piece: WINDOWS_KEYED_PIECE,
+        source: 'import type { WalkerCheck } from "../runner/x.ts";\n',
+        typePackages: ["typescript"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("names the missing piece type packages file by its forward-slashed repository path", () => {
+    expect(windowsFindingsOver({ typePackageTexts: {} })).toEqual({
+      outcome: "failed",
+      error: { kind: "type-packages-missing", path: WINDOWS_TYPE_PACKAGES_KEY },
+    });
+  });
+
+  it("names the malformed piece type packages file by its forward-slashed repository path", () => {
+    expect(windowsFindingsOver({ typePackageTexts: { [WINDOWS_TYPE_PACKAGES_KEY]: "[]" } })).toMatchObject({
+      outcome: "failed",
+      error: { kind: "type-packages-malformed", path: WINDOWS_TYPE_PACKAGES_KEY },
+    });
+  });
+});
+
+const BACKSLASH_NAMED_PIECE: PieceLocation = {
+  file: "mechanisms/walker/CD-14/a\\b.ts",
+  ruleSetRoot: ".",
+  mechanism: "walker",
+  discipline: "CD-14",
+};
+
+describe("piece import rules with a win32-flavoured path port, a tracked name holding a backslash", () => {
+  it("refuses a relative import of another discipline's piece from a piece whose file name holds a backslash", () => {
+    expect(
+      pieceImportRefusals({
+        path: windowsPath,
+        installRoot: ".",
+        piece: BACKSLASH_NAMED_PIECE,
+        source: 'import { check } from "../CD-15/no-for-of.ts";\n',
+        typePackages: ["typescript"],
+      }),
+    ).toEqual([{ specifier: "../CD-15/no-for-of.ts", reason: "outside-piece-reach" }]);
+  });
+
+  it("allows a relative import of core from a piece whose file name holds a backslash", () => {
+    expect(
+      pieceImportRefusals({
+        path: windowsPath,
+        installRoot: ".",
+        piece: BACKSLASH_NAMED_PIECE,
+        source: 'import type { Result } from "../../../core/values/result.ts";\n',
+        typePackages: ["typescript"],
+      }),
+    ).toEqual([]);
   });
 });
