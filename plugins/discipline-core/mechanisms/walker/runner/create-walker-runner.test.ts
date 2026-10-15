@@ -822,4 +822,22 @@ describe("createWalkerRunner conform", () => {
       }),
     ).toEqual(pieceInvalid);
   });
+
+  it("is file-unparseable naming the case's file name when the parse port throws", async () => {
+    const runner = walkerRunner({
+      read: readingText({ text: CLASS_ON_LINE_THREE }),
+      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
+      parse: vi.fn<FakeParse>().mockThrow(new Error("parser crashed")),
+    });
+
+    await expect(
+      runner.conform({
+        clause: FIRST_CLAUSE,
+        cases: [sourceCase({ name: "one line", fileName: BETA, source: "class Beta {}\n" })],
+      }),
+    ).resolves.toEqual({
+      outcome: "failed",
+      error: { kind: "file-unparseable", file: "src/beta.ts", detail: "parser crashed" },
+    });
+  });
 });

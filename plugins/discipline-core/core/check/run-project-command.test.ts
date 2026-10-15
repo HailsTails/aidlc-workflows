@@ -214,4 +214,17 @@ describe("runProjectCommand", () => {
       [{ path: "/install/mechanisms/walker/runner/runner.ts" }],
     ]);
   });
+
+  it("exits 2 with the arguments-invalid line when both --repo and the install root are unresolvable", async () => {
+    const processPort = processWith({ arguments: ["--repo", "relative-repo"] });
+
+    await runProjectCommand(
+      commandRequest({ process: processPort, path: REPO_RESOLVING_TO_NO_ABSOLUTE_PATH, moduleUrl: NOT_A_FILE_URL }),
+    );
+
+    expect(outputOf({ process: processPort })).toEqual({
+      writes: [[{ text: expect.stringMatching(/^load failure: arguments-invalid /) }]],
+      exits: [[{ code: 2 }]],
+    });
+  });
 });
