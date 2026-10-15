@@ -1,5 +1,6 @@
 import { describe, expect, it, test, vi } from "vitest";
 import { z } from "zod";
+import { createDefaultPathPort } from "../../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../../core/values/absolute-path.ts";
 import { repoPathSchema } from "../../../../core/values/repo-path.ts";
 import discipline from "../../../../rules/CD-14/discipline.json" with { type: "json" };
@@ -13,7 +14,9 @@ import classAuthoringPlugin, {
   createClassReporter,
 } from "./cd14.eslint-plugin.ts";
 
-const PIECE_ROOT = absolutePathSchema.parse("/install/mechanisms/eslint/CD-14");
+const PIECE_ROOT = z
+  .object({ outcome: z.literal("ok"), value: absolutePathSchema })
+  .parse(createDefaultPathPort({}).resolve({ path: "/install/mechanisms/eslint/CD-14" })).value;
 
 const sourceCaseSchema = z.object({
   name: z.string(),
