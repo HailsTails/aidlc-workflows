@@ -110,10 +110,10 @@ describe("createPathPort resolve", () => {
     );
   });
 
-  it("returns rather than throws when the working directory cannot be read", () => {
+  it("returns the normalised, still relative path rather than throwing when the working directory cannot be read", () => {
     const { resolve } = createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY });
 
-    expect(() => resolve({ path: "a/b.ts" })).not.toThrow();
+    expect(resolve({ path: "./a/../b.ts" })).toBe("b.ts");
   });
 
   it("normalises a .. segment that climbs out of the working directory", () => {
@@ -146,5 +146,17 @@ describe("createPathPort relative", () => {
     createPathPort({ workingDirectory }).relative({ from: "/a", to: "/a/b" });
 
     expect(workingDirectory).not.toHaveBeenCalled();
+  });
+
+  it("gives the relative path into a subdirectory without throwing when the working directory cannot be read", () => {
+    expect(
+      createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({ from: "a", to: "a/b" }),
+    ).toBe("b");
+  });
+
+  it("gives the relative path to a sibling without throwing when the working directory cannot be read", () => {
+    expect(
+      createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({ from: "a", to: "c" }),
+    ).toBe("../c");
   });
 });

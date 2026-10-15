@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
-import type { GitPort } from "../platform-ports/git-port.ts";
+import { createGitPort, defaultGitSpawn, type GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import { createPathPort, type PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
@@ -113,6 +113,11 @@ const gitTracking = (paths: readonly string[]): GitPort => ({
     .mockReturnValue({ outcome: "ok", value: z.array(repoPathSchema).parse(paths) }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
 });
+
+const GIT_REFUSING_THE_BASE_REVISION_BEFORE_SPAWNING: GitPort = {
+  trackedPaths: gitTracking([]).trackedPaths,
+  changedSince: createGitPort({ spawn: defaultGitSpawn, ambientEnvironment: {} }).changedSince,
+};
 
 const processWith = (request: { readonly arguments: readonly string[] }): ProcessPort => ({
   arguments: request.arguments,
@@ -231,5 +236,29 @@ describe("runCheckCommand", () => {
     );
 
     expect(vi.mocked(git.changedSince).mock.calls).toEqual([[{ repoRoot: "/repo", baseRevision: "main" }]]);
+  });
+
+  it("exits 0 printing the pass verdict when the base revision holds a NUL that Node refuses before spawning git", async () => {
+    const processPort = processWith({ arguments: ["--repo", "/repo", "--base-revision", "main\0x"] });
+
+    await runCheckCommand(commandRequest({ process: processPort, git: GIT_REFUSING_THE_BASE_REVISION_BEFORE_SPAWNING }));
+
+    expect(outputOf({ process: processPort })).toEqual({
+      writes: [[{ text: "verdict: pass\n" }]],
+      exits: [[{ code: 0 }]],
+    });
+  });
+
+  it("exits 2 with the arguments-invalid line when both --repo and the install root are unresolvable", async () => {
+    const processPort = processWith({ arguments: ["--repo", "relative-repo"] });
+
+    await runCheckCommand(
+      commandRequest({ process: processPort, path: REPO_RESOLVING_TO_NO_ABSOLUTE_PATH, moduleUrl: NOT_A_FILE_URL }),
+    );
+
+    expect(outputOf({ process: processPort })).toEqual({
+      writes: [[{ text: expect.stringMatching(/^load failure: arguments-invalid /) }]],
+      exits: [[{ code: 2 }]],
+    });
   });
 });

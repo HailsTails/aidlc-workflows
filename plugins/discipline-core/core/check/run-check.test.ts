@@ -171,6 +171,19 @@ const EXCEPTIONS_WITH_FILE_CARVE_OUT = JSON.stringify({
   ],
 });
 
+const EXCEPTIONS_WITH_FILE_CARVE_OUT_ON_GONE = JSON.stringify({
+  version: 1,
+  exceptions: [
+    {
+      kind: "file-carve-out",
+      clause: "CD-14#class-syntax",
+      file: "src/gone.ts",
+      reason: "legacy class awaiting paydown",
+      whyChain: CHAIN,
+    },
+  ],
+});
+
 const EXCEPTIONS_WITH_AUTHORISED_LOCATION = JSON.stringify({
   version: 1,
   exceptions: [
@@ -523,6 +536,26 @@ describe("runCheck runner dispatch", () => {
     expect(vi.mocked(runner.run).mock.calls).toEqual([
       [expect.objectContaining({ files: ["src/a.ts"], trackedPaths: ["README.md", "src/a.ts"] })],
     ]);
+  });
+
+  it("still forfeits a carve-out on a tracked path absent from the working tree that the change set touched", async () => {
+    const runner = standaloneRunner({ runReturns: { outcome: "ok", value: [] } });
+
+    const checked = await runCheck(
+      checkRequest({
+        fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_FILE_CARVE_OUT_ON_GONE }) }),
+        modules: modulesLoading({ runner }),
+        git: gitReporting({
+          trackedPaths: { outcome: "ok", value: z.array(repoPathSchema).parse(["src/a.ts", "src/gone.ts"]) },
+          changedSince: { outcome: "ok", value: z.array(repoPathSchema).parse(["src/gone.ts"]) },
+        }),
+      }),
+    );
+
+    expect({ checked, runs: vi.mocked(runner.run).mock.calls }).toMatchObject({
+      checked: { outcome: "ok", value: { forfeited: [{ kind: "file-carve-out", file: "src/gone.ts" }] } },
+      runs: [[{ files: ["src/a.ts"], trackedPaths: ["src/a.ts"] }]],
+    });
   });
 
   it("touches only the consumer files and the install, none under a harness directory, and writes nothing", async () => {
