@@ -16,7 +16,7 @@ import { createDefaultParsePort } from "../mechanisms/walker/runner/typescript-p
 
 const path = createDefaultPathPort({});
 
-const INSTALL_ROOT = path.resolve({ path: `${import.meta.dirname}/..` });
+const INSTALL_ROOT = absolutePathSchema.parse(path.resolve({ path: `${import.meta.dirname}/..` }));
 
 const WALKER_CONSUMER = absolutePathSchema.parse(`${INSTALL_ROOT}/tests/test-fixtures/consumer-proof/walker`);
 
