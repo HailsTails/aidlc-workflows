@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import {
   createPathPort,
-  posixPathFlavour,
-  windowsPathFlavour,
 } from "../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
@@ -17,8 +15,8 @@ const defaultLocation = repoPathSchema.parse("eslint-suppressions.json");
 const scriptLocation = repoPathSchema.parse("ci/lint-suppressions.json");
 const repoRoot = absolutePathSchema.parse("/repo");
 const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
-const posixPath = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
-const windowsPath = createPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
+const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
+const windowsPath = createPathPort({ flavour: "windows", workingDirectory: () => "C:\\repo" });
 const nestedLocation = repoPathSchema.parse("packages/a/eslint-suppressions.json");
 const packageDirectory = repoPathSchema.parse("packages/a");
 

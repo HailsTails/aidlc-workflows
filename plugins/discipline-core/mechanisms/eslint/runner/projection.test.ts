@@ -4,8 +4,6 @@ import type { FileTextPort } from "../../../core/platform-ports/file-text-port.t
 import {
   createPathPort,
   type PathPort,
-  posixPathFlavour,
-  windowsPathFlavour,
 } from "../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
@@ -28,8 +26,8 @@ const eslint = mechanismIdSchema.parse("eslint");
 const eslint10 = mechanismIdSchema.parse("eslint-10");
 const repoRoot = absolutePathSchema.parse("/repo");
 const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
-const posixPath = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/repo" });
-const windowsPath = createPathPort({ flavour: windowsPathFlavour, workingDirectory: () => "C:\\repo" });
+const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
+const windowsPath = createPathPort({ flavour: "windows", workingDirectory: () => "C:\\repo" });
 
 const why = {
   why: "Why does this file declare a class?",
