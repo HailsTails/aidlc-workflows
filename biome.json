@@ -21,7 +21,8 @@
       "!tests/fixtures/v05-mr9-sensor-fire/failing-linter/**",
       "!plugins/*/tools/test-fixtures/**",
       "!tests/fixtures/markdown-goldens/**",
-      "!dist/**"
+      "!dist/**",
+      "!plugins/discipline-core/**"
     ]
   },
   "overrides": [
