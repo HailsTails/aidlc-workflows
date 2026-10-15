@@ -152,6 +152,8 @@ export default [
 ];
 `;
 
+const ENABLING_PROJECTION_CRLF = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";\r\n\r\nexport default [\r\n  {\r\n    name: "discipline-core/piece/rin-discipline",\r\n    files: ["**/*.{ts,tsx,mts,cts}"],\r\n    plugins: { "rin-discipline": piece0 },\r\n    rules: { "rin-discipline/no-class-authoring": "error" },\r\n  },\r\n];\r\n`;
+
 const FACTORY_LOCATION_PROJECTION = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
 
 export default [
@@ -565,6 +567,15 @@ describe("the governance run, step 2: the projection's presence and bytes", () =
         eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
       }).run(CLASS_RUN),
     ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" } });
+  });
+
+  it("is current for a committed projection that differs from the generation only by CRLF line endings", async () => {
+    await expect(
+      runnerOver({
+        fileText: projectionHolding({ text: ENABLING_PROJECTION_CRLF }),
+        eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
+      }).run(CLASS_RUN),
+    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "current" } });
   });
 
   it("is out-of-date when the projection lacks the block of a record the run was given", async () => {
@@ -1089,6 +1100,20 @@ describe("project", () => {
     expect({ write, fileWrites: vi.mocked(fileText.write).mock.calls }).toEqual({
       write: { outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } },
       fileWrites: [[{ path: PROJECTION_PATH, text: FACTORY_LOCATION_PROJECTION }]],
+    });
+  });
+
+  it("reports unchanged and writes nothing when the committed projection differs only by CRLF line endings", async () => {
+    const fileText = projectionHolding({ text: ENABLING_PROJECTION_CRLF });
+    const write = await runnerOver({ fileText }).project({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      clauses: [CLASS_CLAUSE],
+      records: [],
+    });
+    expect({ write, fileWrites: vi.mocked(fileText.write).mock.calls }).toEqual({
+      write: { outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "unchanged" } },
+      fileWrites: [],
     });
   });
 });
