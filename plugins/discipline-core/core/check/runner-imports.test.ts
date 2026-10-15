@@ -41,7 +41,7 @@ const relativeTargetsWithin = (request: { readonly runnerFolder: string }) => {
     specifier: z
       .string()
       .regex(/^\.\.?\//)
-      .transform((specifier) => runnerPath.resolve({ path: specifier }))
+      .transform((specifier) => runnerPath.join({ segments: [`/install/${request.runnerFolder}`, specifier] }))
       .pipe(z.string().regex(new RegExp(`^/install/(?:${request.runnerFolder}/|${NAMED_CORE_FOLDERS})`))),
     form: z.enum(["value", "type-only", "dynamic"]),
   });

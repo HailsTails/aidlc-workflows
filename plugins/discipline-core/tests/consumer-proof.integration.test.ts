@@ -16,15 +16,13 @@ import { createDefaultParsePort } from "../mechanisms/walker/runner/typescript-p
 
 const path = createDefaultPathPort({});
 
-const INSTALL_ROOT = absolutePathSchema.parse(path.resolve({ path: `${import.meta.dirname}/..` }));
+const resolvedSchema = z.object({ outcome: z.literal("ok"), value: absolutePathSchema });
 
-const WALKER_CONSUMER = absolutePathSchema.parse(
-  path.resolve({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/walker` }),
-);
+const INSTALL_ROOT = resolvedSchema.parse(path.resolve({ path: `${import.meta.dirname}/..` })).value;
 
-const ESLINT_CONSUMER = absolutePathSchema.parse(
-  path.resolve({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/eslint` }),
-);
+const WALKER_CONSUMER = resolvedSchema.parse(path.resolve({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/walker` })).value;
+
+const ESLINT_CONSUMER = resolvedSchema.parse(path.resolve({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/eslint` })).value;
 
 const INSTALLED_SOURCE = z.string().regex(/^(?!(?:[^/]*\/)*tests\/)(?!.*\.test\.ts$).*$/);
 
@@ -102,10 +100,10 @@ const observedPorts = (): ObservedPorts => {
   };
   const pieceModules: ModuleLoaderPort = { load: createDefaultModuleLoaderPort({}).load };
   const runners: Readonly<Record<string, unknown>> = {
-    [path.resolve({ path: `${INSTALL_ROOT}/mechanisms/walker/runner/runner.ts` })]: {
+    [resolvedSchema.parse(path.resolve({ path: `${INSTALL_ROOT}/mechanisms/walker/runner/runner.ts` })).value]: {
       runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: createDefaultParsePort({}) }),
     },
-    [path.resolve({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })]: {
+    [resolvedSchema.parse(path.resolve({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })).value]: {
       runner: createEslintRunner({ fileText, modules: pieceModules, path, eslint: createDefaultEslintPort({}) }),
     },
   };
