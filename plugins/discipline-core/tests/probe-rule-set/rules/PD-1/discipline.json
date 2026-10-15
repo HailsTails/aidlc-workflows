@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "PD-1",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "no-tmp-files",
+      "summary": "no tracked TypeScript file named as a temporary file",
+      "mechanisms": ["walker"],
+      "anchor": { "kind": "file" },
+      "cases": {
+        "flag": [
+          { "name": "temporary file", "fileName": "src/scratch.tmp.ts", "source": "export const scratch = 1;\n", "expectedLines": [1] }
+        ],
+        "allow": [
+          { "name": "ordinary file", "fileName": "src/kept.ts", "source": "export const kept = 1;\n", "expectedLines": [] }
+        ]
+      }
+    }
+  ]
+}

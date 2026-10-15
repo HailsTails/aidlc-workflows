@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
+import { ruleSetNameSchema } from "../values/identifiers.ts";
 import type { Result } from "../values/result.ts";
-import { readSelection } from "./consumer-selection.ts";
+import { readSelection, ruleSetRootOf } from "./consumer-selection.ts";
 
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
@@ -428,5 +429,63 @@ describe("readSelection", () => {
       outcome: "failed",
       error: { kind: "rule-set-invalid", path: "/install/rules/CD-14/discipline.json" },
     });
+  });
+});
+
+const RESOLVING_PATH: PathPort = {
+  join: vi.fn<PathPort["join"]>().mockReturnValue("/repo/./rules/team"),
+  relative: vi.fn(),
+  directoryOf: vi.fn(),
+  resolve: vi.fn<PathPort["resolve"]>().mockReturnValue(absolutePathSchema.parse("/repo/rules/team")),
+  fromFileUrl: vi.fn(),
+};
+
+describe("ruleSetRootOf", () => {
+  it("roots the shared rule set at the install root", () => {
+    expect(
+      ruleSetRootOf({
+        ruleSet: "shared",
+        ruleSets: { team: "./rules/team" },
+        repoRoot: REPO_ROOT,
+        installRoot: INSTALL_ROOT,
+        path: RESOLVING_PATH,
+      }),
+    ).toEqual({ outcome: "ok", value: "/install" });
+  });
+
+  it("roots a named rule set at the resolved join of the repo root and its declared directory", () => {
+    const path: PathPort = {
+      ...RESOLVING_PATH,
+      join: vi.fn<PathPort["join"]>().mockReturnValue("/repo/./rules/team"),
+      resolve: vi.fn<PathPort["resolve"]>().mockReturnValue(absolutePathSchema.parse("/repo/rules/team")),
+    };
+    const root = ruleSetRootOf({
+      ruleSet: { name: ruleSetNameSchema.parse("team") },
+      ruleSets: { team: "./rules/team" },
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      path,
+    });
+    expect({
+      root,
+      joins: vi.mocked(path.join).mock.calls,
+      resolves: vi.mocked(path.resolve).mock.calls,
+    }).toEqual({
+      root: { outcome: "ok", value: "/repo/rules/team" },
+      joins: [[{ segments: ["/repo", "./rules/team"] }]],
+      resolves: [[{ path: "/repo/./rules/team" }]],
+    });
+  });
+
+  it("is unknown-rule-set for a named rule set the consumer file does not declare", () => {
+    expect(
+      ruleSetRootOf({
+        ruleSet: { name: ruleSetNameSchema.parse("ghost") },
+        ruleSets: { team: "./rules/team" },
+        repoRoot: REPO_ROOT,
+        installRoot: INSTALL_ROOT,
+        path: RESOLVING_PATH,
+      }),
+    ).toEqual({ outcome: "failed", error: { kind: "unknown-rule-set", name: "ghost" } });
   });
 });
