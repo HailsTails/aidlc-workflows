@@ -17,6 +17,9 @@ const EXCEPTIONS_PATH = "/repo/discipline-exceptions.json";
 const DISCIPLINE_PATH = "/install/rules/CD-14/discipline.json";
 const PIECE_PATH = "/install/mechanisms/walker/CD-14/piece.json";
 const RUNNER_PATH = "/install/mechanisms/walker/runner/runner.ts";
+const TEAM_ROOT = "/repo/rules/team";
+const TEAM_DISCIPLINE_PATH = "/repo/rules/team/rules/CD-14/discipline.json";
+const TEAM_PIECE_PATH = "/repo/rules/team/mechanisms/walker/CD-14/piece.json";
 const HARNESS_SEGMENT = /(?:^|\/)\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)/;
 
 const CLASS_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
@@ -55,18 +58,24 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/install","mechanisms","walker","CD-14","piece.json"]': PIECE_PATH,
   '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
   '["/install","mechanisms","walker","runner","runner.ts"]': RUNNER_PATH,
+  '["/repo","rules/team"]': TEAM_ROOT,
+  '["/repo/rules/team","rules","CD-14","discipline.json"]': TEAM_DISCIPLINE_PATH,
+  '["/repo/rules/team","mechanisms","walker","CD-14","piece.json"]': TEAM_PIECE_PATH,
+  '["/repo/rules/team","mechanisms","walker","CD-14"]': "/repo/rules/team/mechanisms/walker/CD-14",
 };
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
   [PIECE_PATH]: "/install/mechanisms/walker/CD-14",
   [DISCIPLINE_PATH]: "/install/rules/CD-14",
   [RUNNER_PATH]: "/install/mechanisms/walker/runner",
+  [TEAM_PIECE_PATH]: "/repo/rules/team/mechanisms/walker/CD-14",
+  [TEAM_DISCIPLINE_PATH]: "/repo/rules/team/rules/CD-14",
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => JOINED_PATHS[JSON.stringify(segments)],
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
   relative: vi.fn<PathPort["relative"]>(),
-  directoryOf: ({ path }) => DIRECTORIES[path],
+  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
   resolve: ({ path }) => absolutePathSchema.parse(path),
   fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
 };
@@ -169,6 +178,16 @@ const INSTALL: Readonly<Record<string, FakeFile>> = {
   [EXCEPTIONS_PATH]: ABSENT_FILE,
   [DISCIPLINE_PATH]: presentFile({ text: DISCIPLINE }),
   [PIECE_PATH]: presentFile({ text: PIECE }),
+  [RUNNER_PATH]: presentFile({ text: "export const runner = {};\n" }),
+};
+
+const TEAM_INSTALL: Readonly<Record<string, FakeFile>> = {
+  [SELECTION_PATH]: presentFile({
+    text: JSON.stringify({ version: 1, ruleSets: { team: "rules/team" }, clauses: { "team/CD-14#class-syntax": "walker" } }),
+  }),
+  [EXCEPTIONS_PATH]: ABSENT_FILE,
+  [TEAM_DISCIPLINE_PATH]: presentFile({ text: DISCIPLINE }),
+  [TEAM_PIECE_PATH]: presentFile({ text: PIECE }),
   [RUNNER_PATH]: presentFile({ text: "export const runner = {};\n" }),
 };
 
@@ -457,16 +476,54 @@ describe("runCheck runner dispatch", () => {
 
   it("touches only the consumer files and the install, none under a harness directory, and writes nothing", async () => {
     const fileText = fileTextOver(INSTALL);
+    const reads = vi.spyOn(fileText, "read");
+    const existenceChecks = vi.spyOn(fileText, "exists");
     const modules = modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) });
     const report = await runCheck(checkRequest({ fileText, modules }));
     expect({
       report,
+      readsWithoutHarness: reads.mock.calls,
+      readsOfTheConsumerFile: reads.mock.calls,
+      existenceChecksWithoutHarness: existenceChecks.mock.calls,
+      existenceChecksOfTheRunner: existenceChecks.mock.calls,
       writes: vi.mocked(fileText.write).mock.calls,
       loads: vi.mocked(modules.load).mock.calls,
     }).toEqual({
       report: { outcome: "ok", value: EMPTY_REPORT },
+      readsWithoutHarness: expect.not.arrayContaining([[{ path: expect.stringMatching(HARNESS_SEGMENT) }]]),
+      readsOfTheConsumerFile: expect.arrayContaining([[{ path: SELECTION_PATH }]]),
+      existenceChecksWithoutHarness: expect.not.arrayContaining([[{ path: expect.stringMatching(HARNESS_SEGMENT) }]]),
+      existenceChecksOfTheRunner: expect.arrayContaining([[{ path: RUNNER_PATH }]]),
       writes: [],
       loads: expect.not.arrayContaining([[{ path: expect.stringMatching(HARNESS_SEGMENT) }]]),
+    });
+  });
+
+  it("roots a named rule set's piece under the consumer's rule-set directory and still loads the install's runner", async () => {
+    const runner = standaloneRunner({ runReturns: { outcome: "ok", value: [] } });
+    const modules = modulesLoading({ runner });
+    const report = await runCheck(checkRequest({ fileText: fileTextOver(TEAM_INSTALL), modules }));
+    expect({
+      report,
+      runCalls: vi.mocked(runner.run).mock.calls,
+      loads: vi.mocked(modules.load).mock.calls,
+    }).toEqual({
+      report: { outcome: "ok", value: EMPTY_REPORT },
+      runCalls: [
+        [
+          expect.objectContaining({
+            clauses: [
+              {
+                address: { ruleSet: { name: "team" }, discipline: "CD-14", clause: "class-syntax" },
+                anchor: { kind: "keyword", keyword: "class" },
+                pieceRoot: "/repo/rules/team/mechanisms/walker/CD-14",
+                settings: { module: "class-syntax.ts" },
+              },
+            ],
+          }),
+        ],
+      ],
+      loads: [[{ path: RUNNER_PATH }]],
     });
   });
 });

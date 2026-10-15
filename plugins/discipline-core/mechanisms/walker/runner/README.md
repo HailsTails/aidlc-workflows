@@ -21,8 +21,8 @@ The walker runner is discipline-core's standalone mechanism for checks that read
 
 A walker piece lives at `mechanisms/walker/<DisciplineId>/` beside its `piece.json`, whose clause settings name the module, for example `{ "module": "class-syntax.ts" }`. The module exports `check`, typed with `import type { TypeScriptWalkerCheck }` from `typescript-parse.ts`.
 
-A syntax check is offered every node of every file that does not end `.d.ts`, never the tree's root. It receives the node, the tree, TypeScript's own API as `syntaxApi`, the clause's anchor kind as `anchorKind`, and `anchorAt`, which turns a source position into a 1-based line, a 0-based column and the trimmed line text. It returns the anchored snippets it finds. A piece never imports `typescript` at runtime: it calls the API it is handed, so the nodes it inspects and the functions it calls come from one TypeScript instance.
+A syntax check is offered every node of every file that is not a declaration file (ending `.d.ts`, `.d.mts` or `.d.cts`), never the tree's root. It receives the node, the tree, TypeScript's own API as `syntaxApi`, the clause's anchor kind as `anchorKind`, and `anchorAt`, which turns a source position into a 1-based line, a 0-based column and the trimmed line text. It returns the anchored snippets it finds. A piece never imports `typescript` at runtime: it calls the API it is handed, so the nodes it inspects and the functions it calls come from one TypeScript instance.
 
-A path check is offered every file path, `.d.ts` files included, without reading the file, and returns `"violates"` or `"conforms"`. A violating path is reported at line 1, column 0, with the path as its snippet.
+A path check is offered every file path, declaration files included, without reading the file, and returns `"violates"` or `"conforms"`. A violating path is reported at line 1, column 0, with the path as its snippet.
 
 A check that throws, rejects or returns a value outside its schema makes the run fail as `piece-invalid`.

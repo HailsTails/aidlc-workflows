@@ -33,6 +33,8 @@ const ALPHA = repoPathSchema.parse("src/alpha.ts");
 const BETA = repoPathSchema.parse("src/beta.ts");
 const DECLARATIONS = repoPathSchema.parse("src/types.d.ts");
 const TRACKED_ONLY = repoPathSchema.parse("src/tracked-only.ts");
+const MODULE_DECLARATIONS = repoPathSchema.parse("src/types.d.mts");
+const COMMONJS_DECLARATIONS = repoPathSchema.parse("src/types.d.cts");
 
 const FIRST_ADDRESS = clauseAddressSchema.parse("XX-1#first-check");
 const SECOND_ADDRESS = clauseAddressSchema.parse("XX-1#second-check");
@@ -44,6 +46,10 @@ const CLASS_KEYWORD_ON_LINE_THREE = 16;
 const LEAF: FakeNode = { label: "leaf", position: 0, children: [] };
 const INNER: FakeNode = { label: "inner", position: 0, children: [] };
 const OUTER: FakeNode = { label: "outer", position: 0, children: [INNER] };
+
+const TWO_CLASSES = "class Abc {}\n\n  class Def {}\n";
+const FIRST_CLASS_NODE: FakeNode = { label: "first class", position: 0, children: [] };
+const SECOND_CLASS_NODE: FakeNode = { label: "second class", position: 16, children: [] };
 
 const readingText = (request: { readonly text: string }) =>
   vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: request.text });
@@ -74,7 +80,12 @@ const anchorAtPosition =
   (request: { readonly position: number }): FakeSyntaxInspect =>
   (inspectRequest) => [inspectRequest.anchorAt({ position: request.position })];
 
-const recordingInspect = () => vi.fn<FakeSyntaxInspect>().mockReturnValue([]);
+const anchorSecondClassThenFirst: FakeSyntaxInspect = (inspectRequest) => [
+  inspectRequest.anchorAt({ position: 16 }),
+  inspectRequest.anchorAt({ position: 0 }),
+];
+
+const recordingInspect =() => vi.fn<FakeSyntaxInspect>().mockReturnValue([]);
 
 const syntaxCheck = (request: { readonly inspect: FakeSyntaxInspect }): FakeCheck => ({
   kind: "syntax",
@@ -256,6 +267,96 @@ describe("createWalkerRunner run", () => {
     expect({ reads: read.mock.calls, parses: parse.mock.calls }).toEqual({
       reads: [[{ path: "/repo/src/alpha.ts" }]],
       parses: [[{ fileName: "src/alpha.ts", source: CLASS_ON_LINE_THREE }]],
+    });
+  });
+
+  it("neither reads nor parses a .d.mts or a .d.cts declaration file", async () => {
+    const read = readingText({ text: CLASS_ON_LINE_THREE });
+    const parse = parsingTo({ nodes: [LEAF] });
+    const runner = walkerRunner({
+      read,
+      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
+      parse,
+    });
+
+    await runner.run(
+      runRequest({
+        files: [MODULE_DECLARATIONS, ALPHA, COMMONJS_DECLARATIONS],
+        clauses: [FIRST_CLAUSE],
+      }),
+    );
+
+    expect({ reads: read.mock.calls, parses: parse.mock.calls }).toEqual({
+      reads: [[{ path: "/repo/src/alpha.ts" }]],
+      parses: [[{ fileName: "src/alpha.ts", source: CLASS_ON_LINE_THREE }]],
+    });
+  });
+
+  it("orders a file's hits by position, then by clause order at the same position", async () => {
+    const runner = walkerRunner({
+      read: readingText({ text: TWO_CLASSES }),
+      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
+      parse: parsingTo({ nodes: [FIRST_CLASS_NODE, SECOND_CLASS_NODE] }),
+    });
+
+    expect(
+      await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE, SECOND_CLAUSE] })),
+    ).toEqual({
+      outcome: "ok",
+      value: [
+        {
+          clause: FIRST_ADDRESS,
+          file: "src/alpha.ts",
+          anchor: { line: 1, column: 0 },
+          snippet: "class Abc {}",
+        },
+        {
+          clause: SECOND_ADDRESS,
+          file: "src/alpha.ts",
+          anchor: { line: 1, column: 0 },
+          snippet: "class Abc {}",
+        },
+        {
+          clause: FIRST_ADDRESS,
+          file: "src/alpha.ts",
+          anchor: { line: 3, column: 2 },
+          snippet: "class Def {}",
+        },
+        {
+          clause: SECOND_ADDRESS,
+          file: "src/alpha.ts",
+          anchor: { line: 3, column: 2 },
+          snippet: "class Def {}",
+        },
+      ],
+    });
+  });
+
+  it("orders one check's hits by position when the check returns them out of order", async () => {
+    const runner = walkerRunner({
+      read: readingText({ text: TWO_CLASSES }),
+      load: loadingNamespace({
+        namespace: { check: syntaxCheck({ inspect: anchorSecondClassThenFirst }) },
+      }),
+      parse: parsingTo({ nodes: [LEAF] }),
+    });
+
+    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual({
+      outcome: "ok",
+      value: [
+        {
+          clause: FIRST_ADDRESS,
+          file: "src/alpha.ts",
+          anchor: { line: 1, column: 0 },
+          snippet: "class Abc {}",
+        },
+        {
+          clause: FIRST_ADDRESS,
+          file: "src/alpha.ts",
+          anchor: { line: 3, column: 2 },
+          snippet: "class Def {}",
+        },
+      ],
     });
   });
 

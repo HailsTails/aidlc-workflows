@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
+import type { Equal } from "../../../core/values/type-equality.ts";
+import type { WalkerCheck } from "./walker-check.ts";
 import {
   isWalkerCheckKeySetEqual,
+  type LoadedWalkerCheck,
   walkerCheckModuleSchema,
   walkerPieceSettingsSchema,
 } from "./walker-check-schema.ts";
+
+type AnyWalkerCheck = WalkerCheck<unknown, unknown, unknown>;
+
+const syntaxVariantKeysMatch: Equal<
+  keyof Extract<AnyWalkerCheck, { readonly kind: "syntax" }>,
+  keyof Extract<LoadedWalkerCheck, { readonly kind: "syntax" }>
+> = true;
+
+const pathVariantKeysMatch: Equal<
+  keyof Extract<AnyWalkerCheck, { readonly kind: "path" }>,
+  keyof Extract<LoadedWalkerCheck, { readonly kind: "path" }>
+> = true;
 
 const inspectNothing = () => [];
 
@@ -86,5 +101,13 @@ describe("walkerCheckModuleSchema", () => {
 
   it("holds the same keys as the generic walker check", () => {
     expect(isWalkerCheckKeySetEqual).toBe(true);
+  });
+
+  it("holds the same keys as the generic walker check's syntax variant", () => {
+    expect(syntaxVariantKeysMatch).toBe(true);
+  });
+
+  it("holds the same keys as the generic walker check's path variant", () => {
+    expect(pathVariantKeysMatch).toBe(true);
   });
 });

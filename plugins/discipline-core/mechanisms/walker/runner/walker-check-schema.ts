@@ -34,7 +34,16 @@ export const anchoredSnippetsSchema = z.array(
 
 export const pathVerdictSchema = z.enum(["violates", "conforms"]);
 
-export const isWalkerCheckKeySetEqual: Equal<
-  keyof WalkerCheck<unknown, unknown, unknown>,
-  keyof z.output<typeof walkerCheckModuleSchema>
+type GenericWalkerCheck = WalkerCheck<unknown, unknown, unknown>;
+
+export const isSyntaxVariantKeySetEqual: Equal<
+  keyof Extract<GenericWalkerCheck, { readonly kind: "syntax" }>,
+  keyof Extract<LoadedWalkerCheck, { readonly kind: "syntax" }>
 > = true;
+
+export const isPathVariantKeySetEqual: Equal<
+  keyof Extract<GenericWalkerCheck, { readonly kind: "path" }>,
+  keyof Extract<LoadedWalkerCheck, { readonly kind: "path" }>
+> = true;
+
+export const isWalkerCheckKeySetEqual = isSyntaxVariantKeySetEqual && isPathVariantKeySetEqual;

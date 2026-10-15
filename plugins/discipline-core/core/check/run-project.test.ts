@@ -53,9 +53,9 @@ const DIRECTORIES: Readonly<Record<string, string>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => JOINED_PATHS[JSON.stringify(segments)],
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
   relative: vi.fn<PathPort["relative"]>(),
-  directoryOf: ({ path }) => DIRECTORIES[path],
+  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
   resolve: ({ path }) => absolutePathSchema.parse(path),
   fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
 };

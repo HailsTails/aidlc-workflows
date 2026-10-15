@@ -3,6 +3,7 @@ import {
   type SelectedClause,
   type Selection,
   readSelection,
+  ruleSetRootOf,
 } from "../consumer-selection/consumer-selection.ts";
 import {
   type ExceptionRecord,
@@ -68,8 +69,6 @@ type SelectedRunnerClause = {
   readonly clause: RunnerClause;
 };
 
-const SHARED_RULE_SET = "shared";
-
 const TYPESCRIPT_FILE = /\.(?:ts|tsx|mts|cts)$/;
 
 const ruleSetDirectoriesSchema = z.object({ ruleSets: z.record(ruleSetNameSchema, z.string()) });
@@ -118,26 +117,6 @@ const ruleSetDirectories = (
     : failed({ kind: "file-malformed", path, detail: z.prettifyError(parsed.error) });
 };
 
-const ruleSetRootOf = (
-  request: LoadRequest & {
-    readonly directories: Readonly<Record<string, string>>;
-    readonly selected: SelectedClause;
-  },
-): Result<AbsolutePath, LoadFailure> => {
-  const ruleSet = request.selected.address.ruleSet;
-  if (ruleSet === SHARED_RULE_SET) {
-    return { outcome: "ok", value: request.installRoot };
-  }
-  const directory = request.directories[ruleSet.name];
-  if (directory === undefined) {
-    return failed({ kind: "unknown-rule-set", name: ruleSet.name });
-  }
-  return {
-    outcome: "ok",
-    value: request.path.resolve({ path: request.path.join({ segments: [request.repoRoot, directory] }) }),
-  };
-};
-
 const runnerClauseOf = (
   request: LoadRequest & {
     readonly directories: Readonly<Record<string, string>>;
@@ -145,7 +124,13 @@ const runnerClauseOf = (
   },
 ): Result<SelectedRunnerClause, LoadFailure> => {
   const { address, mechanism } = request.selected;
-  const ruleSetRoot = ruleSetRootOf(request);
+  const ruleSetRoot = ruleSetRootOf({
+    ruleSet: address.ruleSet,
+    ruleSets: request.directories,
+    repoRoot: request.repoRoot,
+    installRoot: request.installRoot,
+    path: request.path,
+  });
   if (ruleSetRoot.outcome === "failed") {
     return ruleSetRoot;
   }

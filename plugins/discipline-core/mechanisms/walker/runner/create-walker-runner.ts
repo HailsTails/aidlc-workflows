@@ -47,6 +47,8 @@ type WalkerPorts<Api, Tree, Node> = {
 
 type SourceRequest = () => Outcome<string>;
 
+const DECLARATION_FILE_ENDINGS: readonly string[] = [".d.ts", ".d.mts", ".d.cts"];
+
 const pieceInvalid = (request: {
   readonly pieceRoot: string;
   readonly detail: string;
@@ -227,7 +229,7 @@ const syntaxHits = <Api, Tree, Node>(request: {
   readonly checks: readonly SelectedCheck[];
   readonly parse: ParsePort<Api, Tree, Node>;
 }): Promise<Outcome<readonly OrderedHit[]>> => {
-  if (request.checks.length === 0 || request.file.endsWith(".d.ts")) {
+  if (request.checks.length === 0 || DECLARATION_FILE_ENDINGS.some((ending) => request.file.endsWith(ending))) {
     return Promise.resolve({ outcome: "ok", value: [] });
   }
   const source = request.source();

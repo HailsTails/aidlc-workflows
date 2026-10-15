@@ -57,18 +57,18 @@ const failed = (error: LoadFailure): { readonly outcome: "failed"; readonly erro
   error,
 });
 
-const ruleSetRoot = (request: {
-  readonly path: PathPort;
+export const ruleSetRootOf = (request: {
+  readonly ruleSet: ClauseAddress["ruleSet"];
+  readonly ruleSets: Readonly<Record<string, string>>;
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
-  readonly ruleSets: ConsumerSelectionFile["ruleSets"];
-  readonly address: ClauseAddress;
+  readonly path: PathPort;
 }): Result<AbsolutePath, LoadFailure> => {
-  const ruleSet = request.address.ruleSet;
+  const ruleSet = request.ruleSet;
   if (ruleSet === SHARED_RULE_SET) {
     return { outcome: "ok", value: request.installRoot };
   }
-  const declared = request.ruleSets.find(([name]) => name === ruleSet.name);
+  const declared = Object.entries(request.ruleSets).find(([name]) => name === ruleSet.name);
   if (declared === undefined) {
     return failed({ kind: "unknown-rule-set", name: ruleSet.name });
   }
@@ -91,7 +91,13 @@ const resolveClause = (request: {
 }): Result<ResolvedClause, LoadFailure> => {
   const { address, mechanism } = request;
   const addressText = clauseAddressText({ address });
-  const root = ruleSetRoot(request);
+  const root = ruleSetRootOf({
+    ruleSet: address.ruleSet,
+    ruleSets: Object.fromEntries(request.ruleSets),
+    repoRoot: request.repoRoot,
+    installRoot: request.installRoot,
+    path: request.path,
+  });
   if (root.outcome === "failed") {
     return root;
   }
@@ -140,6 +146,7 @@ const resolveClause = (request: {
   }
   return { outcome: "ok", value: { address, mechanism, discipline: discipline.value } };
 };
+
 
 const uncoveredClauses = (request: {
   readonly resolved: readonly ResolvedClause[];
