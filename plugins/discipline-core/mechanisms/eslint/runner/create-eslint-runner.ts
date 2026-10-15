@@ -649,14 +649,19 @@ const governedRun = (request: {
     ) {
       return reportWith({ projection: "not-included" });
     }
-    const governance = request.ports.eslint.createGovernanceInstance({
-      repoRoot: request.run.repoRoot,
-      plugins: Object.fromEntries(
-        request.selected.map((entry) => [entry.settings.pluginNamespace, entry.plugin]),
-      ),
-      ruleIds,
-    });
-    return governance.lintFiles({ files: request.run.files }).then((lintedFiles): Outcome<EmbeddedRunReport> => {
+    const governedLint: Promise<Outcome<readonly LintedFile[]>> =
+      request.run.files.length === 0 || request.selected.length === 0
+        ? Promise.resolve({ outcome: "ok", value: [] })
+        : request.ports.eslint
+            .createGovernanceInstance({
+              repoRoot: request.run.repoRoot,
+              plugins: Object.fromEntries(
+                request.selected.map((entry) => [entry.settings.pluginNamespace, entry.plugin]),
+              ),
+              ruleIds,
+            })
+            .lintFiles({ files: request.run.files });
+    return governedLint.then((lintedFiles): Outcome<EmbeddedRunReport> => {
       if (lintedFiles.outcome === "failed") {
         return lintedFiles;
       }

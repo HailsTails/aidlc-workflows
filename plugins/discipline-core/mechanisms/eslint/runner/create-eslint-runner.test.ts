@@ -1655,3 +1655,61 @@ describe("conform, settled refusals", () => {
     });
   });
 });
+
+describe("the governance run with nothing to lint", () => {
+  it("skips the governance lint when no TypeScript file is under check, still scanning tracked paths", async () => {
+    const eslint = eslintOver({
+      lintFiles: lintResolving({
+        outcome: "failed",
+        error: { kind: "tool-failed", detail: 'No files matching the pattern "." were found.' },
+      }),
+    });
+    const report = await runnerOver({
+      fileText: repoHolding({
+        projection: ENABLING_PROJECTION,
+        files: {
+          "/repo/package.json": presentFile({
+            text: JSON.stringify({ scripts: { lint: "eslint --rule 'rin-discipline/no-class-authoring: off' src" } }),
+          }),
+        },
+      }),
+      eslint,
+    }).run({ ...CLASS_RUN, files: [], trackedPaths: [repoPathSchema.parse("package.json")] });
+    expect({ report, governanceInstances: vi.mocked(eslint.createGovernanceInstance).mock.calls }).toEqual({
+      report: {
+        outcome: "ok",
+        value: {
+          hits: [],
+          nativeExceptions: [
+            {
+              kind: "command-line-option",
+              clause: CLASS_SYNTAX_OBJECT,
+              location: "package.json",
+              script: "lint",
+              option: "--rule rin-discipline/no-class-authoring: off",
+            },
+          ],
+          projection: "current",
+        },
+      },
+      governanceInstances: [],
+    });
+  });
+
+  it("skips the governance lint when no clause is selected", async () => {
+    const lintFiles = lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) });
+    const eslint = eslintOver({ lintFiles });
+    const report = await runnerOver({ fileText: projectionHolding({ text: "\n\nexport default [\n\n];\n" }), eslint }).run(
+      runRequest({ clauses: [], records: [] }),
+    );
+    expect({
+      report,
+      governanceInstances: vi.mocked(eslint.createGovernanceInstance).mock.calls,
+      lints: lintFiles.mock.calls,
+    }).toEqual({
+      report: { outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "current" } },
+      governanceInstances: [],
+      lints: [],
+    });
+  });
+});
