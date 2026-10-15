@@ -147,26 +147,71 @@ const commentText = (request: { readonly comment: InlineConfigNode }): string =>
   }
 };
 
+const selectionReach = (request: {
+  readonly named: readonly string[];
+  readonly ruleIds: readonly string[];
+}): "names-selected-rule" | "names-no-selected-rule" =>
+  request.named.some((ruleId) => request.ruleIds.includes(ruleId))
+    ? "names-selected-rule"
+    : "names-no-selected-rule";
+
 const inlineConfigMessageId = (request: {
   readonly text: string;
   readonly ruleIds: readonly string[];
 }): InlineConfigMessageId | "not-reported" => {
   const parsed = parseInlineConfigComment({ text: request.text });
   switch (parsed.kind) {
-    case "disable":
-      return parsed.ruleIds.length === 0 ||
-        parsed.ruleIds.some((ruleId) => request.ruleIds.includes(ruleId))
-        ? "inline-disable"
-        : "not-reported";
-    case "rule-config":
-      return parsed.ruleIds.some((ruleId) => request.ruleIds.includes(ruleId))
-        ? "inline-rule-config"
-        : "not-reported";
+    case "disable": {
+      if (
+        parsed.ruleIds.length > 0 &&
+        selectionReach({ named: parsed.ruleIds, ruleIds: request.ruleIds }) === "names-no-selected-rule"
+      ) {
+        return "not-reported";
+      }
+      return "inline-disable";
+    }
+    case "rule-config": {
+      if (selectionReach({ named: parsed.ruleIds, ruleIds: request.ruleIds }) === "names-no-selected-rule") {
+        return "not-reported";
+      }
+      return "inline-rule-config";
+    }
     case "unparseable-rule-config":
       return "inline-rule-config";
     case "not-an-exception":
       return "not-reported";
   }
+};
+
+const reportedComment = (request: {
+  readonly context: InlineConfigContext;
+  readonly comment: InlineConfigNode;
+  readonly ruleIds: readonly string[];
+}): void => {
+  const messageId = inlineConfigMessageId({ text: request.comment.value, ruleIds: request.ruleIds });
+  if (messageId === "not-reported") {
+    return;
+  }
+  request.context.report({
+    node: request.comment,
+    messageId,
+    data: { text: commentText({ comment: request.comment }) },
+  });
+};
+
+const reportedProgram = (request: {
+  readonly context: InlineConfigContext;
+  readonly programNode: unknown;
+  readonly ruleIds: readonly string[];
+}): void => {
+  const configNodes = inlineConfigNodesSchema.safeParse(request.context.sourceCode.getInlineConfigNodes?.());
+  if (!configNodes.success) {
+    request.context.report({ node: request.programNode, messageId: INLINE_CONFIG_UNREADABLE });
+    return;
+  }
+  configNodes.data.forEach((comment) => {
+    reportedComment({ context: request.context, comment, ruleIds: request.ruleIds });
+  });
 };
 
 const inlineConfigPlugin = (request: { readonly ruleIds: readonly string[] }): InlineConfigPlugin => ({
@@ -182,25 +227,7 @@ const inlineConfigPlugin = (request: { readonly ruleIds: readonly string[] }): I
         },
       },
       create: (context) => ({
-        Program: (programNode) => {
-          const configNodes = inlineConfigNodesSchema.safeParse(
-            context.sourceCode.getInlineConfigNodes?.(),
-          );
-          if (!configNodes.success) {
-            context.report({ node: programNode, messageId: INLINE_CONFIG_UNREADABLE });
-            return;
-          }
-          configNodes.data.forEach((comment) => {
-            const messageId = inlineConfigMessageId({
-              text: comment.value,
-              ruleIds: request.ruleIds,
-            });
-            if (messageId === "not-reported") {
-              return;
-            }
-            context.report({ node: comment, messageId, data: { text: commentText({ comment }) } });
-          });
-        },
+        Program: (programNode) => reportedProgram({ context, programNode, ruleIds: request.ruleIds }),
       }),
     },
   },
@@ -252,170 +279,214 @@ const queryFailed = (thrown: unknown): Result<never, RunnerFailure> => {
   };
 };
 
-export const createEslintPort = (options: { readonly createEslint: CreateEslint }): EslintPort => {
-  const built = (request: {
-    readonly options: EslintSurfaceOptions;
-  }): Promise<Result<EslintSurface, RunnerFailure>> =>
-    Promise.resolve()
-      .then(() => options.createEslint({ options: request.options }))
-      .then((surface): Result<EslintSurface, RunnerFailure> => ({ outcome: "ok", value: surface }), toolFailed);
+type LintedCase = {
+  readonly caseName: string;
+  readonly messages: readonly LintedMessage[];
+};
 
-  const onSurface = <T>(request: {
-    readonly surface: Promise<Result<EslintSurface, RunnerFailure>>;
-    readonly act: (surface: EslintSurface) => Promise<T>;
-    readonly onRejected: (thrown: unknown) => Result<never, RunnerFailure>;
-  }): Promise<Result<T, RunnerFailure>> =>
-    request.surface.then((builtSurface) => {
-      if (builtSurface.outcome === "failed") {
-        return builtSurface;
-      }
-      return Promise.resolve()
-        .then(() => request.act(builtSurface.value))
-        .then((acted): Result<T, RunnerFailure> => ({ outcome: "ok", value: acted }), request.onRejected);
-    });
+const builtSurface = (request: {
+  readonly createEslint: CreateEslint;
+  readonly options: EslintSurfaceOptions;
+}): Promise<Result<EslintSurface, RunnerFailure>> =>
+  Promise.resolve()
+    .then(() => request.createEslint({ options: request.options }))
+    .then((surface): Result<EslintSurface, RunnerFailure> => ({ outcome: "ok", value: surface }), toolFailed);
 
+const actedOn = <T>(request: {
+  readonly surface: EslintSurface;
+  readonly act: (surface: EslintSurface) => Promise<T>;
+  readonly onRejected: (thrown: unknown) => Result<never, RunnerFailure>;
+}): Promise<Result<T, RunnerFailure>> =>
+  Promise.resolve()
+    .then(() => request.act(request.surface))
+    .then((acted): Result<T, RunnerFailure> => ({ outcome: "ok", value: acted }), request.onRejected);
+
+const onSurface = <T>(request: {
+  readonly surface: Promise<Result<EslintSurface, RunnerFailure>>;
+  readonly act: (surface: EslintSurface) => Promise<T>;
+  readonly onRejected: (thrown: unknown) => Result<never, RunnerFailure>;
+}): Promise<Result<T, RunnerFailure>> =>
+  request.surface.then((built) =>
+    built.outcome === "failed"
+      ? built
+      : actedOn({ surface: built.value, act: request.act, onRejected: request.onRejected }),
+  );
+
+const ignoredStateOf = (request: { readonly eslint: EslintSurface; readonly file: RepoPath }): Promise<IgnoredState> =>
+  request.eslint
+    .isPathIgnored({ filePath: request.file })
+    .then((ignored): IgnoredState => (ignored ? "ignored" : "checked"));
+
+const resolvedRuleState = (request: {
+  readonly resolved: Result<unknown, RunnerFailure>;
+  readonly ruleId: string;
+}): Result<RuleState, RunnerFailure> => {
+  if (request.resolved.outcome === "failed") {
+    return request.resolved;
+  }
+  const parsed = resolvedConfigSchema.safeParse(request.resolved.value);
+  if (!parsed.success) {
+    return {
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: parsed.error.message },
+    };
+  }
+  return { outcome: "ok", value: ruleStateOf({ resolved: parsed.data, ruleId: request.ruleId }) };
+};
+
+const queryInstanceOf = (request: {
+  readonly surface: Promise<Result<EslintSurface, RunnerFailure>>;
+}): QueryInstance => ({
+  ignoredState: (query) =>
+    onSurface({
+      surface: request.surface,
+      act: (eslint) => ignoredStateOf({ eslint, file: query.file }),
+      onRejected: queryFailed,
+    }),
+  ruleState: (query) =>
+    onSurface({
+      surface: request.surface,
+      act: (eslint) => eslint.calculateConfigForFile({ filePath: query.file }),
+      onRejected: queryFailed,
+    }).then((resolved) => resolvedRuleState({ resolved, ruleId: query.ruleId })),
+});
+
+const lintedCaseOf = (request: {
+  readonly eslint: EslintSurface;
+  readonly sourceCase: SourceCase;
+}): Promise<LintedCase> =>
+  request.eslint
+    .lintText({ code: request.sourceCase.source, filePath: request.sourceCase.fileName })
+    .then((linted) => ({
+      caseName: request.sourceCase.name,
+      messages: linted.flatMap((file) => file.messages),
+    }));
+
+const lintedCasesOf = (request: {
+  readonly eslint: EslintSurface;
+  readonly cases: readonly SourceCase[];
+}): Promise<readonly LintedCase[]> =>
+  Promise.all(request.cases.map((sourceCase) => lintedCaseOf({ eslint: request.eslint, sourceCase })));
+
+const unreadableCaseOf = (request: { readonly lintedCases: readonly LintedCase[] }): LintedCase | undefined =>
+  request.lintedCases.find((lintedCase) =>
+    lintedCase.messages.some(
+      (message) => message.ruleId === INLINE_CONFIG_RULE_ID && message.messageId === INLINE_CONFIG_UNREADABLE,
+    ),
+  );
+
+const ruleLessCaseOf = (request: { readonly lintedCases: readonly LintedCase[] }): LintedCase | undefined =>
+  request.lintedCases.find((lintedCase) => lintedCase.messages.some((message) => message.ruleId === null));
+
+const ruleLessDetail = (request: { readonly lintedCase: LintedCase }): string =>
+  `case ${request.lintedCase.caseName} was not linted as a rule source: ${request.lintedCase.messages
+    .filter((message) => message.ruleId === null)
+    .map((message) => message.message)
+    .join("; ")}`;
+
+const caseVerdictOf = (request: { readonly lintedCase: LintedCase; readonly ruleId: string }): CaseVerdict => ({
+  caseName: request.lintedCase.caseName,
+  flaggedLines: request.lintedCase.messages
+    .filter((message) => message.ruleId === request.ruleId)
+    .map((message) => message.line),
+});
+
+const caseVerdicts = (request: {
+  readonly lintedCases: Result<readonly LintedCase[], RunnerFailure>;
+  readonly ruleId: string;
+}): Result<readonly CaseVerdict[], RunnerFailure> => {
+  if (request.lintedCases.outcome === "failed") {
+    return request.lintedCases;
+  }
+  const lintedCases = request.lintedCases.value;
+  const unreadableCase = unreadableCaseOf({ lintedCases });
+  if (unreadableCase !== undefined) {
+    return {
+      outcome: "failed",
+      error: {
+        kind: "tool-failed",
+        detail: `inline configuration comments could not be read in case ${unreadableCase.caseName}`,
+      },
+    };
+  }
+  const ruleLessCase = ruleLessCaseOf({ lintedCases });
+  if (ruleLessCase !== undefined) {
+    return {
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: ruleLessDetail({ lintedCase: ruleLessCase }) },
+    };
+  }
   return {
-    createQueryInstance: (request) => {
-      const surface = built({ options: { cwd: request.repoRoot } });
-      return {
-        ignoredState: (query) =>
-          onSurface({
-            surface,
-            act: (eslint) =>
-              eslint
-                .isPathIgnored({ filePath: query.file })
-                .then((ignored): IgnoredState => (ignored ? "ignored" : "checked")),
-            onRejected: queryFailed,
-          }),
-        ruleState: (query) =>
-          onSurface({
-            surface,
-            act: (eslint) => eslint.calculateConfigForFile({ filePath: query.file }),
-            onRejected: queryFailed,
-          }).then((resolved): Result<RuleState, RunnerFailure> => {
-            if (resolved.outcome === "failed") {
-              return resolved;
-            }
-            const parsed = resolvedConfigSchema.safeParse(resolved.value);
-            if (!parsed.success) {
-              return {
-                outcome: "failed",
-                error: { kind: "runner-invalid-output", detail: parsed.error.message },
-              };
-            }
-            return { outcome: "ok", value: ruleStateOf({ resolved: parsed.data, ruleId: query.ruleId }) };
-          }),
-      };
-    },
-    createGovernanceInstance: (request) => {
-      const surface = built({
-        options: governanceOptions({
-          cwd: request.repoRoot,
-          plugins: request.plugins,
-          ruleIds: request.ruleIds,
-        }),
-      });
-      return {
-        lintFiles: (lint) =>
-          onSurface({
-            surface,
-            act: (eslint) => eslint.lintFiles({ filePaths: lint.files }),
-            onRejected: toolFailed,
-          }),
-      };
-    },
-    lintSourceCases: (request) => {
-      const ruleId = `${request.pluginNamespace}/${request.rule}`;
-      return onSurface({
-        surface: built({
-          options: governanceOptions({
-            cwd: request.cwd,
-            plugins: { [request.pluginNamespace]: request.plugin },
-            ruleIds: [ruleId],
-          }),
-        }),
-        act: (eslint) =>
-          Promise.all(
-            request.cases.map((sourceCase) =>
-              eslint
-                .lintText({ code: sourceCase.source, filePath: sourceCase.fileName })
-                .then((linted) => ({
-                  caseName: sourceCase.name,
-                  messages: linted.flatMap((file) => file.messages),
-                })),
-            ),
-          ),
-        onRejected: toolFailed,
-      }).then((lintedCases): Result<readonly CaseVerdict[], RunnerFailure> => {
-        if (lintedCases.outcome === "failed") {
-          return lintedCases;
-        }
-        const unreadableCase = lintedCases.value.find((lintedCase) =>
-          lintedCase.messages.some(
-            (message) =>
-              message.ruleId === INLINE_CONFIG_RULE_ID &&
-              message.messageId === INLINE_CONFIG_UNREADABLE,
-          ),
-        );
-        if (unreadableCase !== undefined) {
-          return {
-            outcome: "failed",
-            error: {
-              kind: "tool-failed",
-              detail: `inline configuration comments could not be read in case ${unreadableCase.caseName}`,
-            },
-          };
-        }
-        const ruleLessCase = lintedCases.value.find((lintedCase) =>
-          lintedCase.messages.some((message) => message.ruleId === null),
-        );
-        if (ruleLessCase !== undefined) {
-          return {
-            outcome: "failed",
-            error: {
-              kind: "runner-invalid-output",
-              detail: `case ${ruleLessCase.caseName} was not linted as a rule source: ${ruleLessCase.messages
-                .filter((message) => message.ruleId === null)
-                .map((message) => message.message)
-                .join("; ")}`,
-            },
-          };
-        }
-        return {
-          outcome: "ok",
-          value: lintedCases.value.map((lintedCase) => ({
-            caseName: lintedCase.caseName,
-            flaggedLines: lintedCase.messages
-              .filter((message) => message.ruleId === ruleId)
-              .map((message) => message.line),
-          })),
-        };
-      });
-    },
+    outcome: "ok",
+    value: lintedCases.map((lintedCase) => caseVerdictOf({ lintedCase, ruleId: request.ruleId })),
   };
 };
 
-const lintedFileOf = (lintResult: ESLint.LintResult): LintedFile => ({
-  filePath: lintResult.filePath,
-  messages: lintResult.messages.map(
-    (message): LintedMessage => ({
-      ruleId: message.ruleId,
-      ...(message.messageId === undefined ? {} : { messageId: message.messageId }),
-      line: message.line,
-      column: message.column,
-      message: message.message,
-      ...(message.fatal === true ? { fatal: true } : {}),
+const sourceCaseVerdicts = (request: {
+  readonly createEslint: CreateEslint;
+  readonly cwd: AbsolutePath;
+  readonly plugin: LoadedEslintPlugin;
+  readonly pluginNamespace: string;
+  readonly rule: string;
+  readonly cases: readonly SourceCase[];
+}): Promise<Result<readonly CaseVerdict[], RunnerFailure>> => {
+  const ruleId = `${request.pluginNamespace}/${request.rule}`;
+  return onSurface({
+    surface: builtSurface({
+      createEslint: request.createEslint,
+      options: governanceOptions({
+        cwd: request.cwd,
+        plugins: { [request.pluginNamespace]: request.plugin },
+        ruleIds: [ruleId],
+      }),
     }),
-  ),
+    act: (eslint) => lintedCasesOf({ eslint, cases: request.cases }),
+    onRejected: toolFailed,
+  }).then((lintedCases) => caseVerdicts({ lintedCases, ruleId }));
+};
+
+export const createEslintPort = (options: { readonly createEslint: CreateEslint }): EslintPort => ({
+  createQueryInstance: (request) =>
+    queryInstanceOf({
+      surface: builtSurface({ createEslint: options.createEslint, options: { cwd: request.repoRoot } }),
+    }),
+  createGovernanceInstance: (request) => {
+    const surface = builtSurface({
+      createEslint: options.createEslint,
+      options: governanceOptions({ cwd: request.repoRoot, plugins: request.plugins, ruleIds: request.ruleIds }),
+    });
+    return {
+      lintFiles: (lint) =>
+        onSurface({ surface, act: (eslint) => eslint.lintFiles({ filePaths: lint.files }), onRejected: toolFailed }),
+    };
+  },
+  lintSourceCases: (request) => sourceCaseVerdicts({ ...request, createEslint: options.createEslint }),
 });
 
-export const defaultCreateEslint: CreateEslint = (request) => {
+const lintedMessageOf = (message: ESLint.LintResult["messages"][number]): LintedMessage => ({
+  ruleId: message.ruleId,
+  ...(message.messageId === undefined ? {} : { messageId: message.messageId }),
+  line: message.line,
+  column: message.column,
+  message: message.message,
+  ...(message.fatal === true ? { fatal: true } : {}),
+});
+
+const lintedFileOf = (lintResult: ESLint.LintResult): LintedFile => ({
+  filePath: lintResult.filePath,
+  messages: lintResult.messages.map(lintedMessageOf),
+});
+
+const eslintOptionsOf = (request: { readonly options: EslintSurfaceOptions }): ESLint.Options => {
   const { overrideConfig, ...surfaceOptions } = request.options;
-  const eslint = new ESLint(
-    overrideConfig === undefined
-      ? surfaceOptions
-      : { ...surfaceOptions, overrideConfig: { ...overrideConfig, files: [...overrideConfig.files] } },
-  );
+  if (overrideConfig === undefined) {
+    return surfaceOptions;
+  }
+  return { ...surfaceOptions, overrideConfig: { ...overrideConfig, files: [...overrideConfig.files] } };
+};
+
+export const defaultCreateEslint: CreateEslint = (request) => {
+  const eslint = new ESLint(eslintOptionsOf({ options: request.options }));
   return {
     isPathIgnored: (query) => eslint.isPathIgnored(query.filePath),
     calculateConfigForFile: (query) => eslint.calculateConfigForFile(query.filePath),

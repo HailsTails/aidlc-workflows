@@ -46,6 +46,7 @@ const RULE_ID = "rin-discipline/no-class-authoring";
 const LOOPS_RULE_ID = "rin-loops/no-for-of";
 
 const ESLINT = mechanismIdSchema.parse("eslint");
+const ESLINT_10 = mechanismIdSchema.parse("eslint-10");
 const CLASS_SYNTAX = clauseAddressSchema.parse("CD-14#class-syntax");
 const FOR_OF = clauseAddressSchema.parse("CD-15#for-of");
 const CLASS_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
@@ -116,6 +117,8 @@ const FACTORY_CARVE_OUT: ExceptionRecord = {
   reason: "Inherited class awaiting paydown",
   whyChain: WHY_CHAIN,
 };
+
+const FACTORY_LOCATION_UNDER_ESLINT_10: ExceptionRecord = { ...FACTORY_LOCATION, mechanism: ESLINT_10 };
 
 const GONE_LOCATION: ExceptionRecord = {
   kind: "authorised-location",
@@ -675,6 +678,20 @@ describe("the governance run, step 3: the projection in effect", () => {
     ).resolves.toEqual(NOT_INCLUDED);
   });
 
+  it("holds the projection current for an authorised location recorded under another mechanism id the runner is registered under", async () => {
+    await expect(
+      runnerOver({
+        fileText: projectionHolding({ text: FACTORY_LOCATION_PROJECTION }),
+        eslint: eslintOver({
+          query: queryOver({
+            ignored: CHECKED,
+            states: { [`src/a.ts ${RULE_ID}`]: ERROR, [`src/factory.ts ${RULE_ID}`]: OFF },
+          }),
+        }),
+      }).run(runRequest({ clauses: [CLASS_CLAUSE], records: [FACTORY_LOCATION_UNDER_ESLINT_10] })),
+    ).resolves.toMatchObject({ outcome: "ok", value: { projection: "current" } });
+  });
+
   it("does not check a record whose file is not among the files under check", async () => {
     await expect(
       runnerOver({ fileText: projectionHolding({ text: GONE_LOCATION_PROJECTION }) }).run(
@@ -977,6 +994,19 @@ describe("conform", () => {
 });
 
 describe("project", () => {
+  it("writes the off block of an authorised location recorded under another mechanism id the runner is registered under", async () => {
+    const fileText = fileTextOver({ ...SOURCE_FILES, [PROJECTION_PATH]: ABSENT_FILE });
+    await runnerOver({ fileText }).project({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      clauses: [CLASS_CLAUSE],
+      records: [FACTORY_LOCATION_UNDER_ESLINT_10],
+    });
+    expect(vi.mocked(fileText.write).mock.calls).toEqual([
+      [{ path: PROJECTION_PATH, text: FACTORY_LOCATION_PROJECTION }],
+    ]);
+  });
+
   it("writes the projection generated from the clauses and records to disciplines.eslint.mjs at the repository root", async () => {
     const fileText = fileTextOver({ ...SOURCE_FILES, [PROJECTION_PATH]: ABSENT_FILE });
     const write = await runnerOver({ fileText }).project({

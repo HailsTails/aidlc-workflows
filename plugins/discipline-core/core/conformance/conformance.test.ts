@@ -154,7 +154,7 @@ describe("checkConformance", () => {
       conformanceOf({
         runner: conformingWith({ outcome: "ok", value: [{ caseName: "two classes", flaggedLines: [1, 3] }] }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("case no class has no single verdict") } });
   });
 
   it("is runner-invalid-output when two verdicts name the same case", async () => {
@@ -169,7 +169,7 @@ describe("checkConformance", () => {
           ],
         }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("case two classes has no single verdict") } });
   });
 
   it("is runner-invalid-output when a verdict names an unknown case", async () => {
@@ -184,7 +184,7 @@ describe("checkConformance", () => {
           ],
         }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a verdict names the unknown case three classes") } });
   });
 
   it("is runner-invalid-output when a verdict flags line 0", async () => {
@@ -198,7 +198,7 @@ describe("checkConformance", () => {
           ],
         }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("→ at value[0].flaggedLines[0]") } });
   });
 
   it("is runner-invalid-output when conform throws synchronously", async () => {
@@ -208,7 +208,7 @@ describe("checkConformance", () => {
     };
     await expect(conformanceOf({ runner })).resolves.toMatchObject({
       outcome: "failed",
-      error: { kind: "runner-invalid-output" },
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("the runner call threw or rejected: the runner threw") },
     });
   });
 
@@ -219,7 +219,7 @@ describe("checkConformance", () => {
     };
     await expect(conformanceOf({ runner })).resolves.toMatchObject({
       outcome: "failed",
-      error: { kind: "runner-invalid-output" },
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("the runner call threw or rejected: the runner rejected") },
     });
   });
 

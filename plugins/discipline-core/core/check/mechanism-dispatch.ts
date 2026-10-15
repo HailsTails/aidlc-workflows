@@ -4,7 +4,7 @@ import type { ExceptionRecord } from "../exception-records/exception-records.ts"
 import type { RunnerFailure } from "../mechanism-port/runner-failure.ts";
 import type {
   LoadedRunner,
-  RunnerClause,
+  ProjectionRequest,
   RunRequest,
 } from "../mechanism-port/runner-module-schema.ts";
 import {
@@ -16,7 +16,6 @@ import {
   runnerResultSchema,
 } from "../mechanism-port/runner-result-schema.ts";
 import { projectionWriteSchema } from "../mechanism-port/runner-result-schema.ts";
-import type { AbsolutePath } from "../values/absolute-path.ts";
 import { clauseAddressText, sameClauseAddress } from "../values/clause-address.ts";
 import type { MechanismId } from "../values/identifiers.ts";
 import type { Result } from "../values/result.ts";
@@ -27,13 +26,6 @@ export type MechanismRun = {
   readonly nativeExceptions: readonly NativeException[];
   readonly projectedKinds: readonly NativeException["kind"][];
   readonly projection: "none" | ProjectionState;
-};
-
-export type ProjectionRequest = {
-  readonly repoRoot: AbsolutePath;
-  readonly installRoot: AbsolutePath;
-  readonly clauses: readonly RunnerClause[];
-  readonly records: readonly ExceptionRecord[];
 };
 
 export type MechanismRequest = {

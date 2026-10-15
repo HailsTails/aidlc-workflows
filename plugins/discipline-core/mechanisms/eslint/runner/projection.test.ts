@@ -19,7 +19,7 @@ import {
 const classSyntax = clauseAddressSchema.parse("CD-14#class-syntax");
 const noTmpFiles = clauseAddressSchema.parse("probe/PD-1#no-tmp-files");
 const eslint = mechanismIdSchema.parse("eslint");
-const walker = mechanismIdSchema.parse("walker");
+const eslint10 = mechanismIdSchema.parse("eslint-10");
 const repoRoot = absolutePathSchema.parse("/repo");
 
 const why = {
@@ -87,13 +87,7 @@ const clauseWideClassSyntax: ExceptionRecord = {
   whyChain,
 };
 
-const walkerRecord: ExceptionRecord = {
-  kind: "authorised-location",
-  clause: classSyntax,
-  mechanism: walker,
-  file: repoPathSchema.parse("src/c.ts"),
-  reason: "Walker-only location",
-};
+const authorisedInBUnderEslint10: ExceptionRecord = { ...authorisedInB, mechanism: eslint10 };
 
 const fullProjection = `import piece0 from "../team-rules/mechanisms/eslint/PD-1/plugin.ts";
 import piece1 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
@@ -166,6 +160,23 @@ export default [
 ];
 `;
 
+const authorisedInBOnlyProjection = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
+
+export default [
+  {
+    name: "discipline-core/piece/rin-discipline",
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    plugins: { "rin-discipline": piece0 },
+    rules: { "rin-discipline/no-class-authoring": "error" },
+  },
+  {
+    name: "discipline-core/authorised-location/CD-14#class-syntax/src/b.ts",
+    files: ["src/b.ts"],
+    rules: { "rin-discipline/no-class-authoring": "off" },
+  },
+];
+`;
+
 describe("escapedGlobPath", () => {
   it("backslash-escapes each of \\ * ? [ ] { } ( ) ! + @ so the path matches only itself", () => {
     expect(escapedGlobPath({ path: String.raw`a\b*c?d[e]f{g}h(i)j!k+l@m.ts` })).toBe(
@@ -221,9 +232,9 @@ describe("projectionText", () => {
     );
   });
 
-  it("leaves out records whose mechanism is not eslint", () => {
-    expect(projectionText({ selectedPieces: [cd14Piece], records: [walkerRecord] })).toBe(
-      enablingOnlyProjection,
+  it("emits the off block of a record carrying whatever mechanism id the runner is registered under", () => {
+    expect(projectionText({ selectedPieces: [cd14Piece], records: [authorisedInBUnderEslint10] })).toBe(
+      authorisedInBOnlyProjection,
     );
   });
 
