@@ -1,3 +1,4 @@
+import { z } from "zod";
 import * as typescriptParser from "@typescript-eslint/parser";
 import { ESLint } from "eslint";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
@@ -328,7 +329,7 @@ const resolvedRuleState = (request: {
   if (!parsed.success) {
     return {
       outcome: "failed",
-      error: { kind: "runner-invalid-output", detail: parsed.error.message },
+      error: { kind: "runner-invalid-output", detail: z.prettifyError(parsed.error) },
     };
   }
   return { outcome: "ok", value: ruleStateOf({ resolved: parsed.data, ruleId: request.ruleId }) };

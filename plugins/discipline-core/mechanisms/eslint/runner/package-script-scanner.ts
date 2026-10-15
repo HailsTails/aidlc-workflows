@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { NativeException } from "../../../core/mechanism-port/runner-result-schema.ts";
 import { parsedJson } from "../../../core/rule-set-reader/rule-set-reader.ts";
@@ -507,7 +508,7 @@ export const scanPackageJson = (request: {
   if (!packageJson.success) {
     return {
       outcome: "failed",
-      error: { kind: "tool-failed", detail: `${request.path}: ${packageJson.error.message}` },
+      error: { kind: "tool-failed", detail: `${request.path}: ${z.prettifyError(packageJson.error)}` },
     };
   }
   return Object.entries(packageJson.data.scripts ?? {}).reduce<Result<PackageJsonScan, RunnerFailure>>(

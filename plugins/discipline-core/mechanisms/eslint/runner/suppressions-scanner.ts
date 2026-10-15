@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { NativeException } from "../../../core/mechanism-port/runner-result-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
@@ -84,7 +85,7 @@ export const suppressionEntriesOf = (request: {
   if (!suppressions.success) {
     return {
       outcome: "failed",
-      error: { kind: "tool-failed", detail: `${request.location}: ${suppressions.error.message}` },
+      error: { kind: "tool-failed", detail: `${request.location}: ${z.prettifyError(suppressions.error)}` },
     };
   }
   const baseSegments = baseSegmentsOf({ keysRelativeTo: request.keysRelativeTo });

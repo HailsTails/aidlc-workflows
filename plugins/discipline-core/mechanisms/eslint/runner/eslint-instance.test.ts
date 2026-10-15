@@ -68,8 +68,7 @@ const disabledClassCase = {
   expectedLines: [2],
 };
 
-const REFUSED_CONFIG_DETAIL =
-  "[\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [\n      [\n        {\n          \"expected\": \"undefined\",\n          \"code\": \"invalid_type\",\n          \"path\": [],\n          \"message\": \"Invalid input: expected undefined, received object\"\n        }\n      ],\n      [\n        {\n          \"code\": \"invalid_union\",\n          \"errors\": [\n            [\n              {\n                \"code\": \"invalid_value\",\n                \"values\": [\n                  0\n                ],\n                \"path\": [],\n                \"message\": \"Invalid input: expected 0\"\n              }\n            ],\n            [\n              {\n                \"code\": \"invalid_value\",\n                \"values\": [\n                  1\n                ],\n                \"path\": [],\n                \"message\": \"Invalid input: expected 1\"\n              }\n            ],\n            [\n              {\n                \"code\": \"invalid_value\",\n                \"values\": [\n                  2\n                ],\n                \"path\": [],\n                \"message\": \"Invalid input: expected 2\"\n              }\n            ]\n          ],\n          \"path\": [\n            \"rules\",\n            \"cd/no-class\",\n            0\n          ],\n          \"message\": \"Invalid input\"\n        }\n      ]\n    ],\n    \"path\": [],\n    \"message\": \"Invalid input\"\n  }\n]";
+const REFUSED_CONFIG_DETAIL = "✖ Invalid input";
 
 const noClassCase = {
   name: "no-class",

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { ExceptionRecord } from "../../../core/exception-records/exception-records.ts";
 import type { EmbeddedRunReport } from "../../../core/mechanism-port/embedded-run-report-schema.ts";
 import type { EmbeddedRunner } from "../../../core/mechanism-port/embedded-runner-module-schema.ts";
@@ -141,7 +142,7 @@ const configuredClause = (request: {
 }): Outcome<ConfiguredClause> => {
   const settings = eslintPieceSettingsSchema.safeParse(request.clause.settings);
   if (!settings.success) {
-    return pieceInvalid({ pieceRoot: request.clause.pieceRoot, detail: settings.error.message });
+    return pieceInvalid({ pieceRoot: request.clause.pieceRoot, detail: z.prettifyError(settings.error) });
   }
   if (settings.data.pluginNamespace === reservedNamespace) {
     return pieceInvalid({
@@ -211,7 +212,7 @@ const pluginOf = (request: {
   }
   const parsed = eslintPluginModuleSchema.safeParse(request.loaded.value);
   if (!parsed.success) {
-    return pieceInvalid({ pieceRoot, detail: parsed.error.message });
+    return pieceInvalid({ pieceRoot, detail: z.prettifyError(parsed.error) });
   }
   if (!Object.hasOwn(parsed.data.default.rules, request.configured.settings.rule)) {
     return pieceInvalid({
@@ -984,7 +985,7 @@ const conformedCases = (request: {
   }
   const cwd = absolutePathSchema.safeParse(request.clause.pieceRoot);
   if (!cwd.success) {
-    return Promise.resolve(pieceInvalid({ pieceRoot: request.clause.pieceRoot, detail: cwd.error.message }));
+    return Promise.resolve(pieceInvalid({ pieceRoot: request.clause.pieceRoot, detail: z.prettifyError(cwd.error) }));
   }
   return loadedPlugin({ configured: configured.value, modules: request.ports.modules }).then((selected) =>
     lintedSourceCases({ selected, cwd: cwd.data, cases: request.cases, eslint: request.ports.eslint }),
