@@ -31,6 +31,14 @@ const folderNamesUnder = (request: {
   ),
 ];
 
+const sourceFilesUnder = (request: {
+  readonly trackedPaths: readonly string[];
+  readonly folders: readonly string[];
+}): readonly string[] =>
+  request.trackedPaths.filter(
+    (file) => request.folders.some((folder) => file.startsWith(folder)) && !file.endsWith(".test.ts"),
+  );
+
 export const namingScopeOf = (request: {
   readonly trackedPaths: readonly string[];
   readonly installRoot: string;
@@ -42,10 +50,8 @@ export const namingScopeOf = (request: {
   return {
     mechanisms,
     disciplines: folderNamesUnder({ trackedPaths: request.trackedPaths, folder: `${request.installRoot}/rules/` }),
-    coreFiles: request.trackedPaths.filter((file) => file.startsWith(coreFolder) && !file.endsWith(".test.ts")),
-    runnerFiles: request.trackedPaths.filter(
-      (file) => runnerFolders.some((folder) => file.startsWith(folder)) && !file.endsWith(".test.ts"),
-    ),
+    coreFiles: sourceFilesUnder({ trackedPaths: request.trackedPaths, folders: [coreFolder] }),
+    runnerFiles: sourceFilesUnder({ trackedPaths: request.trackedPaths, folders: runnerFolders }),
   };
 };
 
@@ -72,6 +78,15 @@ const namingIn = (request: {
     .map(([file, text]) => ({ file, named: identifiersNamedIn({ text, identifiers: request.identifiers }) }))
     .filter((naming) => naming.named.length > 0);
 
+const reachIn = (request: {
+  readonly files: readonly string[];
+  readonly sources: Readonly<Record<string, string>>;
+}): readonly FileReach[] =>
+  Object.entries(request.sources)
+    .filter(([file]) => request.files.includes(file))
+    .map(([file, text]) => ({ file, specifiers: reachingSpecifiersIn({ text }) }))
+    .filter((reach) => reach.specifiers.length > 0);
+
 export const installNamingFindings = (request: {
   readonly installRoot: string;
   readonly sources: Readonly<Record<string, string>>;
@@ -89,9 +104,6 @@ export const installNamingFindings = (request: {
       identifiers: [...scope.mechanisms, ...scope.disciplines],
     }),
     runnerNaming: namingIn({ files: scope.runnerFiles, sources: request.sources, identifiers: scope.disciplines }),
-    coreReach: Object.entries(request.sources)
-      .filter(([file]) => scope.coreFiles.includes(file))
-      .map(([file, text]) => ({ file, specifiers: reachingSpecifiersIn({ text }) }))
-      .filter((reach) => reach.specifiers.length > 0),
+    coreReach: reachIn({ files: scope.coreFiles, sources: request.sources }),
   };
 };

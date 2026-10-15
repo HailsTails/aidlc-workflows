@@ -4,7 +4,11 @@ import { createPathPort } from "./path-port.ts";
 const workingDirectoryAt = (request: { readonly directory: string }) =>
   vi.fn<(request: Record<string, never>) => string>().mockReturnValue(request.directory);
 
-const pathPortIn = (request: { readonly directory: string }) =>
+const UNREADABLE_WORKING_DIRECTORY = vi
+  .fn<(request: Record<string, never>) => string>()
+  .mockThrow(new Error("ENOENT: process.cwd failed, no such file or directory"));
+
+const pathPortIn =(request: { readonly directory: string }) =>
   createPathPort({ workingDirectory: workingDirectoryAt({ directory: request.directory }) });
 
 describe("createPathPort", () => {
@@ -104,6 +108,12 @@ describe("createPathPort resolve", () => {
     expect(pathPortIn({ directory: "/work" }).resolve({ path: "/repo/./src/../a.ts" })).toBe(
       "/repo/a.ts",
     );
+  });
+
+  it("returns rather than throws when the working directory cannot be read", () => {
+    const { resolve } = createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY });
+
+    expect(() => resolve({ path: "a/b.ts" })).not.toThrow();
   });
 
   it("normalises a .. segment that climbs out of the working directory", () => {

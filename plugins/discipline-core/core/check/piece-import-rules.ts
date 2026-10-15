@@ -131,6 +131,23 @@ const dynamicRefusal = (request: { readonly specifier: string }): readonly Piece
   { specifier: request.specifier, reason: "dynamic-import" },
 ];
 
+const importRefusal = (request: {
+  readonly path: PathPort;
+  readonly installRoot: string;
+  readonly piece: PieceLocation;
+  readonly moduleImport: ModuleImport;
+  readonly typePackages: readonly string[];
+}): readonly PieceImportRefusal[] => {
+  const specifier = request.moduleImport.specifier;
+  if (request.moduleImport.form === "dynamic") {
+    return dynamicRefusal({ specifier });
+  }
+  if (specifierKindOf({ specifier }) === "relative") {
+    return relativeRefusal({ path: request.path, installRoot: request.installRoot, piece: request.piece, specifier });
+  }
+  return packageRefusal({ moduleImport: request.moduleImport, typePackages: request.typePackages });
+};
+
 export const pieceImportRefusals = (request: {
   readonly path: PathPort;
   readonly installRoot: string;
@@ -138,18 +155,7 @@ export const pieceImportRefusals = (request: {
   readonly source: string;
   readonly typePackages: readonly string[];
 }): readonly PieceImportRefusal[] =>
-  importsIn({ text: request.source }).flatMap((moduleImport) =>
-    moduleImport.form === "dynamic"
-      ? dynamicRefusal({ specifier: moduleImport.specifier })
-      : specifierKindOf({ specifier: moduleImport.specifier }) === "relative"
-      ? relativeRefusal({
-          path: request.path,
-          installRoot: request.installRoot,
-          piece: request.piece,
-          specifier: moduleImport.specifier,
-        })
-      : packageRefusal({ moduleImport, typePackages: request.typePackages }),
-  );
+  importsIn({ text: request.source }).flatMap((moduleImport) => importRefusal({ ...request, moduleImport }));
 
 type TypePackagesByMechanism = Readonly<Record<string, readonly string[]>>;
 
@@ -173,10 +179,55 @@ const typePackagesOf = (request: {
     return { outcome: "failed", error: { kind: "type-packages-malformed", path: listPath, detail: json.error } };
   }
   const parsed = pieceTypePackagesSchema.safeParse(json.value);
-  return parsed.success
-    ? { outcome: "ok", value: parsed.data }
-    : { outcome: "failed", error: { kind: "type-packages-malformed", path: listPath, detail: parsed.error.message } };
+  if (!parsed.success) {
+    return { outcome: "failed", error: { kind: "type-packages-malformed", path: listPath, detail: parsed.error.message } };
+  }
+  return { outcome: "ok", value: parsed.data };
 };
+
+const typePackagesByMechanism = (request: {
+  readonly path: PathPort;
+  readonly installRoot: string;
+  readonly pieces: readonly PieceLocation[];
+  readonly typePackageTexts: Readonly<Record<string, string>>;
+}): Result<TypePackagesByMechanism, PieceImportFindingsFailure> =>
+  [...new Set(request.pieces.map((piece) => piece.mechanism))].reduce<
+    Result<TypePackagesByMechanism, PieceImportFindingsFailure>
+  >((collected, mechanism) => withTypePackages({ ...request, collected, mechanism }), { outcome: "ok", value: {} });
+
+const withTypePackages = (request: {
+  readonly path: PathPort;
+  readonly installRoot: string;
+  readonly typePackageTexts: Readonly<Record<string, string>>;
+  readonly collected: Result<TypePackagesByMechanism, PieceImportFindingsFailure>;
+  readonly mechanism: string;
+}): Result<TypePackagesByMechanism, PieceImportFindingsFailure> => {
+  if (request.collected.outcome === "failed") {
+    return request.collected;
+  }
+  const listed = typePackagesOf(request);
+  if (listed.outcome === "failed") {
+    return listed;
+  }
+  return { outcome: "ok", value: { ...request.collected.value, [request.mechanism]: listed.value } };
+};
+
+const refusalsIn = (request: {
+  readonly path: PathPort;
+  readonly installRoot: string;
+  readonly pieces: readonly PieceLocation[];
+  readonly file: string;
+  readonly source: string;
+  readonly packages: TypePackagesByMechanism;
+}): readonly FileImportRefusal[] =>
+  request.pieces
+    .filter((piece) => piece.file === request.file)
+    .flatMap((piece) =>
+      pieceImportRefusals({ ...request, piece, typePackages: request.packages[piece.mechanism] }).map((refusal) => ({
+        file: request.file,
+        ...refusal,
+      })),
+    );
 
 export const pieceImportFindings = (request: {
   readonly path: PathPort;
@@ -186,22 +237,7 @@ export const pieceImportFindings = (request: {
   readonly typePackageTexts: Readonly<Record<string, string>>;
 }): Result<PieceImportFindings, PieceImportFindingsFailure> => {
   const pieces = pieceFilesOf({ trackedPaths: Object.keys(request.sources), ruleSetRoots: request.ruleSetRoots });
-  const packages = [...new Set(pieces.map((piece) => piece.mechanism))].reduce<
-    Result<TypePackagesByMechanism, PieceImportFindingsFailure>
-  >((collected, mechanism) => {
-    if (collected.outcome === "failed") {
-      return collected;
-    }
-    const listed = typePackagesOf({
-      path: request.path,
-      installRoot: request.installRoot,
-      mechanism,
-      typePackageTexts: request.typePackageTexts,
-    });
-    return listed.outcome === "failed"
-      ? listed
-      : { outcome: "ok", value: { ...collected.value, [mechanism]: listed.value } };
-  }, { outcome: "ok", value: {} });
+  const packages = typePackagesByMechanism({ ...request, pieces });
   if (packages.outcome === "failed") {
     return packages;
   }
@@ -210,17 +246,7 @@ export const pieceImportFindings = (request: {
     value: {
       pieces,
       refusals: Object.entries(request.sources).flatMap(([file, source]) =>
-        pieces
-          .filter((piece) => piece.file === file)
-          .flatMap((piece) =>
-            pieceImportRefusals({
-              path: request.path,
-              installRoot: request.installRoot,
-              piece,
-              source,
-              typePackages: packages.value[piece.mechanism],
-            }).map((refusal) => ({ file, ...refusal })),
-          ),
+        refusalsIn({ ...request, pieces, file, source, packages: packages.value }),
       ),
     },
   };

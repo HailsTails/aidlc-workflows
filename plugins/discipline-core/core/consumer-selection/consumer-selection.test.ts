@@ -43,6 +43,8 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/install","mechanisms","walker","runner","runner.ts"]': "/install/mechanisms/walker/runner/runner.ts",
   '["/repo/team-rules","rules","TM-1","discipline.json"]': "/repo/team-rules/rules/TM-1/discipline.json",
   '["/repo/team-rules","mechanisms","walker","TM-1","piece.json"]': "/repo/team-rules/mechanisms/walker/TM-1/piece.json",
+  '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
+  '["/repo/team-rules","mechanisms","walker","TM-1"]': "/repo/team-rules/mechanisms/walker/TM-1",
 };
 
 const TABLE_PATH: PathPort = {
@@ -139,11 +141,33 @@ describe("readSelection", () => {
     ).toEqual({
       outcome: "ok",
       value: {
-        selected: [
-          { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker" },
-          { address: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }, mechanism: "walker" },
+        selection: {
+          selected: [
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }, mechanism: "walker" },
+          ],
+          uncovered: [],
+        },
+        bindings: [
+          {
+            mechanism: "walker",
+            clause: {
+              address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
+              anchor: { kind: "keyword", keyword: "class" },
+              pieceRoot: "/install/mechanisms/walker/CD-14",
+              settings: { module: "class-syntax.ts" },
+            },
+          },
+          {
+            mechanism: "walker",
+            clause: {
+              address: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" },
+              anchor: { kind: "keyword", keyword: "class" },
+              pieceRoot: "/install/mechanisms/walker/CD-14",
+              settings: { module: "abstract-syntax.ts" },
+            },
+          },
         ],
-        uncovered: [],
       },
     });
   });
@@ -158,10 +182,23 @@ describe("readSelection", () => {
     ).toEqual({
       outcome: "ok",
       value: {
-        selected: [
-          { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker" },
+        selection: {
+          selected: [
+            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker" },
+          ],
+          uncovered: [],
+        },
+        bindings: [
+          {
+            mechanism: "walker",
+            clause: {
+              address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" },
+              anchor: { kind: "keyword", keyword: "class" },
+              pieceRoot: "/repo/team-rules/mechanisms/walker/TM-1",
+              settings: { module: "no-tmp-files.ts" },
+            },
+          },
         ],
-        uncovered: [],
       },
     });
   });
@@ -172,10 +209,13 @@ describe("readSelection", () => {
     ).toEqual({
       outcome: "ok",
       value: {
-        selected: [
-          { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker" },
-        ],
-        uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }],
+        selection: {
+          selected: [
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker" },
+          ],
+          uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }],
+        },
+        bindings: [expect.objectContaining({ mechanism: "walker" })],
       },
     });
   });
@@ -195,7 +235,7 @@ describe("readSelection", () => {
       }),
     ).toMatchObject({
       outcome: "ok",
-      value: { uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "decorator-syntax" }] },
+      value: { selection: { uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "decorator-syntax" }] } },
     });
   });
 
@@ -206,7 +246,7 @@ describe("readSelection", () => {
         ruleSets: { team: "team-rules" },
         clauses: { "team/TM-1#no-tmp-files": "walker" },
       }),
-    ).toMatchObject({ outcome: "ok", value: { uncovered: [] } });
+    ).toMatchObject({ outcome: "ok", value: { selection: { uncovered: [] } } });
   });
 
   it("is file-unreadable when disciplines.json cannot be read", () => {
@@ -475,6 +515,18 @@ describe("ruleSetRootOf", () => {
       joins: [[{ segments: ["/repo", "./rules/team"] }]],
       resolves: [[{ path: "/repo/./rules/team" }]],
     });
+  });
+
+  it("is rule-set-invalid when a named rule set's directory resolves to no absolute path", () => {
+    expect(
+      ruleSetRootOf({
+        ruleSet: { name: ruleSetNameSchema.parse("team") },
+        ruleSets: { team: "./rules/team" },
+        repoRoot: REPO_ROOT,
+        installRoot: INSTALL_ROOT,
+        path: { ...RESOLVING_PATH, resolve: () => "\\\\server\\share" },
+      }),
+    ).toMatchObject({ outcome: "failed", error: { kind: "rule-set-invalid", detail: expect.stringMatching(/.+/) } });
   });
 
   it("is unknown-rule-set for a named rule set the consumer file does not declare", () => {

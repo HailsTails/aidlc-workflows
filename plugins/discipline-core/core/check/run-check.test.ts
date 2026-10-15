@@ -62,6 +62,16 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo/rules/team","rules","CD-14","discipline.json"]': TEAM_DISCIPLINE_PATH,
   '["/repo/rules/team","mechanisms","walker","CD-14","piece.json"]': TEAM_PIECE_PATH,
   '["/repo/rules/team","mechanisms","walker","CD-14"]': "/repo/rules/team/mechanisms/walker/CD-14",
+  '["/repo","README.md"]': "/repo/README.md",
+  '["/repo","package.json"]': "/repo/package.json",
+  '["/repo","src/a.ts"]': "/repo/src/a.ts",
+  '["/repo","src/b.tsx"]': "/repo/src/b.tsx",
+  '["/repo","src/c.mts"]': "/repo/src/c.mts",
+  '["/repo","src/d.cts"]': "/repo/src/d.cts",
+  '["/repo","src/e.js"]': "/repo/src/e.js",
+  '["/repo","src/f.json"]': "/repo/src/f.json",
+  '["/repo","src/factory.ts"]': "/repo/src/factory.ts",
+  '["/repo","src/gone.ts"]': "/repo/src/gone.ts",
 };
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
@@ -173,7 +183,21 @@ const EXCEPTIONS_WITH_AUTHORISED_LOCATION = JSON.stringify({
   ],
 });
 
+const WORKING_TREE: Readonly<Record<string, FakeFile>> = {
+  "/repo/README.md": presentFile({ text: "" }),
+  "/repo/package.json": presentFile({ text: "" }),
+  "/repo/src/a.ts": presentFile({ text: "" }),
+  "/repo/src/b.tsx": presentFile({ text: "" }),
+  "/repo/src/c.mts": presentFile({ text: "" }),
+  "/repo/src/d.cts": presentFile({ text: "" }),
+  "/repo/src/e.js": presentFile({ text: "" }),
+  "/repo/src/f.json": presentFile({ text: "" }),
+  "/repo/src/factory.ts": presentFile({ text: "" }),
+  "/repo/src/gone.ts": ABSENT_FILE,
+};
+
 const INSTALL: Readonly<Record<string, FakeFile>> = {
+  ...WORKING_TREE,
   [SELECTION_PATH]: presentFile({ text: SELECTION }),
   [EXCEPTIONS_PATH]: ABSENT_FILE,
   [DISCIPLINE_PATH]: presentFile({ text: DISCIPLINE }),
@@ -182,6 +206,7 @@ const INSTALL: Readonly<Record<string, FakeFile>> = {
 };
 
 const TEAM_INSTALL: Readonly<Record<string, FakeFile>> = {
+  ...WORKING_TREE,
   [SELECTION_PATH]: presentFile({
     text: JSON.stringify({ version: 1, ruleSets: { team: "rules/team" }, clauses: { "team/CD-14#class-syntax": "walker" } }),
   }),
@@ -471,6 +496,32 @@ describe("runCheck runner dispatch", () => {
           ],
         },
       ],
+    ]);
+  });
+
+  it("reads disciplines.json, the discipline file and the piece file exactly once each", async () => {
+    const fileText = fileTextOver(INSTALL);
+    const reads = vi.spyOn(fileText, "read");
+    await runCheck(checkRequest({ fileText }));
+    expect({ count: reads.mock.calls.length, calls: reads.mock.calls }).toEqual({
+      count: 3,
+      calls: expect.arrayContaining([[{ path: SELECTION_PATH }], [{ path: DISCIPLINE_PATH }], [{ path: PIECE_PATH }]]),
+    });
+  });
+
+  it("drops a tracked path absent from the working tree from both the files and the tracked paths it runs on", async () => {
+    const runner = standaloneRunner({ runReturns: { outcome: "ok", value: [] } });
+    await runCheck(
+      checkRequest({
+        modules: modulesLoading({ runner }),
+        git: gitReporting({
+          trackedPaths: { outcome: "ok", value: z.array(repoPathSchema).parse(["README.md", "src/a.ts", "src/gone.ts"]) },
+          changedSince: { outcome: "ok", value: [] },
+        }),
+      }),
+    );
+    expect(vi.mocked(runner.run).mock.calls).toEqual([
+      [expect.objectContaining({ files: ["src/a.ts"], trackedPaths: ["README.md", "src/a.ts"] })],
     ]);
   });
 
