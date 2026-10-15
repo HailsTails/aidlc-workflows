@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
-import { createPathPort } from "../../../core/platform-ports/path-port.ts";
+import type { PathPort } from "../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
@@ -50,10 +50,26 @@ const loadingThisPiece: ModuleLoaderPort = {
   load: () => Promise.resolve({ outcome: "ok", value: { check } }),
 };
 
+const JOINED_PATHS: Readonly<Record<string, string>> = {
+  '["/repo","src/alpha.ts"]': "/repo/src/alpha.ts",
+  '["/install/mechanisms/walker/CD-14","class-syntax.ts"]':
+    "/install/mechanisms/walker/CD-14/class-syntax.ts",
+};
+
+const TABLE_PATH: PathPort = {
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  relative: vi.fn<PathPort["relative"]>(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
+  directoryOf: vi.fn<PathPort["directoryOf"]>(),
+  repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
+  resolve: vi.fn<PathPort["resolve"]>(),
+  fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
+};
+
 const walkerRunner = createWalkerRunner({
   fileText: sourceOnLineThree,
   modules: loadingThisPiece,
-  path: createPathPort({ flavour: "posix", workingDirectory: () => "/install" }),
+  path: TABLE_PATH,
   parse: createDefaultParsePort({}),
 });
 

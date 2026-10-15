@@ -4,8 +4,9 @@ import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
-import { createPathPort } from "../platform-ports/path-port.ts";
+import type { PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
+import { absolutePathSchema } from "../values/absolute-path.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import { type CommandRequest, runCheckCommand } from "./run-check-command.ts";
 
@@ -69,7 +70,35 @@ const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort =
   write: vi.fn<FileTextPort["write"]>(),
 });
 
-const POSIX_PATH = createPathPort({ flavour: "posix", workingDirectory: () => "/work" });
+const JOINED_PATHS: Readonly<Record<string, string>> = {
+  '["/repo","disciplines.json"]': "/repo/disciplines.json",
+  '["/repo","discipline-exceptions.json"]': "/repo/discipline-exceptions.json",
+  '["/repo","src/a.ts"]': "/repo/src/a.ts",
+  '["/install","rules","CD-14","discipline.json"]': "/install/rules/CD-14/discipline.json",
+  '["/install","mechanisms","walker","CD-14","piece.json"]': "/install/mechanisms/walker/CD-14/piece.json",
+  '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
+  '["/install","mechanisms","walker","runner","runner.ts"]': "/install/mechanisms/walker/runner/runner.ts",
+};
+
+const FILE_PATHS: Readonly<Record<string, string>> = {
+  [ENTRY_URL]: "/install/core/check/check-command.ts",
+};
+
+const DIRECTORIES: Readonly<Record<string, string>> = {
+  "/install/core/check/check-command.ts": "/install/core/check",
+  "/install/core/check": "/install/core",
+  "/install/core": "/install",
+};
+
+const TABLE_PATH: PathPort = {
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  relative: vi.fn<PathPort["relative"]>(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
+  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
+  repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
+  resolve: ({ path }) => ({ outcome: "ok", value: absolutePathSchema.parse(path) }),
+  fromFileUrl: ({ url }) => ({ outcome: "ok", value: absolutePathSchema.parse(FILE_PATHS[url]) }),
+};
 
 const HIT_IN_A = {
   clause: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
@@ -103,7 +132,7 @@ const processWith = (request: { readonly arguments: readonly string[] }): Proces
 
 const commandRequest = (overrides: Partial<CommandRequest>): CommandRequest => ({
   process: processWith({ arguments: ["--repo", "/repo"] }),
-  path: POSIX_PATH,
+  path: TABLE_PATH,
   fileText: fileTextOver(NOTHING_SELECTED),
   modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) }),
   git: gitTracking([]),
