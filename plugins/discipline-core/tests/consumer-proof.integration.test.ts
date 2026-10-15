@@ -22,22 +22,24 @@ const WALKER_CONSUMER = absolutePathSchema.parse(`${INSTALL_ROOT}/tests/test-fix
 
 const ESLINT_CONSUMER = absolutePathSchema.parse(`${INSTALL_ROOT}/tests/test-fixtures/consumer-proof/eslint`);
 
-const CORE_PATHS = z.templateLiteral([`${INSTALL_ROOT}/core/`, z.string()]);
+const INSTALLED_SOURCE = z.string().regex(/^(?!(?:[^/]*\/)*tests\/)(?!.*\.test\.ts$).*$/);
 
-const CD14_RULE_PATHS = z.templateLiteral([`${INSTALL_ROOT}/rules/CD-14/`, z.string()]);
+const CORE_PATHS = z.templateLiteral([`${INSTALL_ROOT}/core/`, INSTALLED_SOURCE]);
+
+const CD14_RULE_PATHS = z.templateLiteral([`${INSTALL_ROOT}/rules/CD-14/`, INSTALLED_SOURCE]);
 
 const WALKER_INSTALL_LIST = z.union([
   CORE_PATHS,
   CD14_RULE_PATHS,
-  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/walker/runner/`, z.string()]),
-  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/walker/CD-14/`, z.string()]),
+  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/walker/runner/`, INSTALLED_SOURCE]),
+  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/walker/CD-14/`, INSTALLED_SOURCE]),
 ]);
 
 const ESLINT_INSTALL_LIST = z.union([
   CORE_PATHS,
   CD14_RULE_PATHS,
-  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/eslint/runner/`, z.string()]),
-  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/eslint/CD-14/`, z.string()]),
+  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/eslint/runner/`, INSTALLED_SOURCE]),
+  z.templateLiteral([`${INSTALL_ROOT}/mechanisms/eslint/CD-14/`, INSTALLED_SOURCE]),
 ]);
 
 const WALKER_READABLE = z.union([WALKER_INSTALL_LIST, z.templateLiteral([`${WALKER_CONSUMER}/`, z.string()])]);
@@ -53,7 +55,7 @@ const NODE_22_18_OR_LATER = z
 const NODE_REQUIREMENT = "discipline core needs Node 22.18.0 or later";
 
 const pathCallsWithin = (request: { readonly paths: z.ZodType<string> }) =>
-  expect.schemaMatching(z.array(z.tuple([z.object({ path: request.paths })])));
+  expect.schemaMatching(z.array(z.tuple([z.object({ path: request.paths })])).min(1));
 
 type ObservedPorts = {
   readonly fileText: FileTextPort;
