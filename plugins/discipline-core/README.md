@@ -1,8 +1,10 @@
 # Discipline core
 
-Discipline core checks a repository against the coding disciplines it has chosen to adopt. It is a tool, not a framework: it reads what the repository selected, hands each selected clause to the mechanism that checks it, applies the repository's recorded exceptions, and prints one verdict. Core itself enforces nothing and names no discipline and no mechanism. A discipline (for example CD-14, no authored classes) is data under `rules/`, and a mechanism (for example the TypeScript walker) is a runner under `mechanisms/`; core reaches both only through files and one module contract.
+Discipline core checks a repository against the coding disciplines it has chosen to adopt. It is a tool, not a framework: it reads what the repository selected, hands each selected clause to the mechanism that checks it, applies the repository's recorded exceptions, and prints one verdict. Core itself enforces nothing and names no discipline and no mechanism. A discipline (for example CD-14, no authored classes) is data under `rules/`, and a mechanism is a runner under `mechanisms/`; core reaches both only through files and one module contract.
 
-Adding a discipline or a mechanism is covered in [docs/adding-a-discipline-or-mechanism.md](docs/adding-a-discipline-or-mechanism.md).
+Two mechanisms ship: `walker`, a standalone TypeScript syntax walker, and `eslint`, which runs the clause as an ESLint rule inside the team's own ESLint setup. CD-14's `class-syntax` clause has a piece for each.
+
+Adding a discipline or a mechanism, and the full list of ESLint native channels, are covered in [docs/adding-a-discipline-or-mechanism.md](docs/adding-a-discipline-or-mechanism.md).
 
 ## Commands
 
@@ -13,7 +15,7 @@ node <install>/core/check/check-command.ts --repo <dir> [--base-revision <rev>]
 node <install>/core/check/project-command.ts --repo <dir>
 ```
 
-`check-command` loads the repository's selection, exceptions, rule sets and pieces; works out which files changed since `--base-revision`; runs each selected mechanism once over the repository's tracked TypeScript files; applies the exceptions; and prints a plain-text report ending in `verdict: pass` or `verdict: fail`.
+`check-command` loads the repository's selection, exceptions, rule sets and pieces; works out which files changed since `--base-revision`; runs each selected mechanism once over the repository's tracked `.ts`, `.tsx`, `.mts` and `.cts` files; applies the exceptions; and prints a plain-text report ending in `verdict: pass` or `verdict: fail`.
 
 | Exit | `check-command` | `project-command` |
 | --- | --- | --- |
@@ -25,9 +27,28 @@ A load failure prints one line, `load failure: <kind> <fields>`.
 
 The report lists findings, exempted findings, uncovered clauses, stale, forfeited, unrecorded and doubly-held exceptions, invalid exception records, unmeasured checks and projection problems, each with its count. The verdict is `pass` only when every list except exempted findings is empty.
 
-`project-command` writes the native configuration an embedded mechanism needs so the team's own tool honours the recorded exceptions, and prints `<path> <effect>` per file (`written` or `unchanged`). The walker is standalone and writes nothing, so with only the walker installed the command prints nothing and exits `0`.
-
 Without `--base-revision`, core cannot tell which files were touched, so a file carve-out cannot be forfeited; if any file carve-out exists the report lists `forfeiture-unmeasured` and the run fails.
+
+`project-command` writes the native configuration each embedded mechanism needs, and prints `<path> <effect>` per file (`written` or `unchanged`). The walker is standalone and writes nothing, so with only the walker selected the command prints nothing and exits `0`.
+
+## Adopting the ESLint mechanism
+
+With any clause selected for `eslint`, run `project-command`. It writes `disciplines.eslint.mjs` at the repository root: one block per piece enabling its selected rules at `"error"` on `**/*.{ts,tsx,mts,cts}`, then one block per exception record turning the rule `"off"` for that record's file, or everywhere for a clause-wide carve-out. Commit it, and spread its default export last in the repository's flat config:
+
+```js
+import disciplines from "./disciplines.eslint.mjs";
+
+export default [
+  // the team's own blocks
+  ...disciplines,
+];
+```
+
+This is the only supported way to adopt the rules. On every check, core reads the team's resolved configuration for each checked file and fails the run if the projection is missing (`mechanism-not-run eslint missing`), not in effect (`mechanism-not-run eslint not-included`), or differs from what `project-command` would write now (`eslint out-of-date`). Re-run `project-command` after changing the selection or the exceptions.
+
+A file carve-out stays in the projection after it is forfeited, so the team's own ESLint run keeps ignoring that file; core's check is what fails it, as `forfeited`.
+
+Core's own ESLint run uses only the runner's configuration, with ignores, suppressions and inline configuration off, so nothing in the team's setup can change a finding. Every way the team's setup can weaken a selected rule (a native channel) is reported instead, and only an override that matches an exception record is accepted. The guide has the table.
 
 ## disciplines.json
 
@@ -38,20 +59,20 @@ At the repository root. It selects clauses and the mechanism that checks each on
   "version": 1,
   "ruleSets": { "team": "tools/disciplines" },
   "clauses": {
-    "CD-14#class-syntax": "walker",
+    "CD-14#class-syntax": "eslint",
     "team/TD-1#some-clause": "walker"
   }
 }
 ```
 
 - `ruleSets` names the repository's own rule sets, each a directory relative to the repository root. The name `shared` is reserved for the rule set shipped with core.
-- `clauses` maps a clause address to a mechanism id. An address is `[<ruleSet>/]<DisciplineId>#<clauseId>`; no prefix means the shared rule set.
+- `clauses` maps a clause address to a mechanism id. An address is `[<ruleSet>/]<DisciplineId>#<clauseId>`; no prefix means the shared rule set. The mechanism must be one the clause lists.
 - Selecting a clause adopts its discipline. Mechanical clauses of an adopted discipline that are not selected are reported as uncovered, and fail the run.
 - A judgement clause cannot be selected; it is enforced by review.
 
 ## discipline-exceptions.json
 
-At the repository root; absent means no exceptions. Each entry names a selected clause.
+At the repository root; absent means no exceptions. Each entry names a selected clause, and applies to the mechanism that clause is selected for.
 
 ```json
 {
@@ -80,12 +101,17 @@ Fetch these paths from a pinned commit of this repository into one install direc
 
 Leave out test files (`*.test.ts`) and `tests/` folders. The install must not sit under a `node_modules` path, because Node does not strip types there. Nothing core reads or writes is under a harness directory.
 
+Core ships no helper that derives this list from `disciplines.json`; whether it should is an open design decision. For now the list is applied by hand or by the adopter's own script.
+
 ## Runtime
 
-- Node 22.18.0 or later, which runs `.ts` source by stripping types.
+- Node 22.18.0 or later, which runs `.ts` source by stripping types (`engines.node` in `package.json`). The team's own ESLint run needs it too, since the projection imports each piece's `.ts` plugin module.
 - git 2.24 or later. Older git rejects `--end-of-options`, so the changed-file query fails and forfeiture is reported unmeasured.
 - `zod`, for core.
-- Each mechanism adds its own packages, listed in its runner's README. The walker needs `typescript`.
+- The walker adds `typescript`.
+- The ESLint mechanism adds the team's `eslint` 10.x, an ESLint-10-compatible `@typescript-eslint/parser`, and `@eslint/plugin-kit`.
+
+The packages must resolve from the install directory.
 
 ## Developing core
 
@@ -97,5 +123,7 @@ This directory builds and tests on its own, using only its own configuration: `p
 | `lint` | Biome with `lint.biome.json` |
 | `test` | Vitest with `vitest.config.ts` |
 | `check` | all three in that order |
+
+CI runs `check` and then the fork's constitution audit, `bun run audit:rin`, from the repository root; the audit covers this package.
 
 `fork-wiring.test.ts` reads this repository's CI workflow and harness configuration, so it passes only inside this repository.
