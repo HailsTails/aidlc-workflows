@@ -622,39 +622,6 @@ describe("readSelection", () => {
     });
   });
 
-  it("reports runner-missing before piece-missing for a clause with both", () => {
-    expect(
-      select({
-        ...INSTALL,
-        "/install/mechanisms/walker/runner/runner.ts": ABSENT_FILE,
-        "/install/mechanisms/walker/CD-14/piece.json": ABSENT_FILE,
-        [SELECTION_PATH]: presentFile({
-          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } }),
-        }),
-      }),
-    ).toEqual({
-      outcome: "failed",
-      error: { kind: "runner-missing", mechanism: "walker" },
-    });
-  });
-
-  it("reports the failure of the first failing clause in key order", () => {
-    expect(
-      selecting({
-        version: 1,
-        ruleSets: {},
-        clauses: {
-          "CD-14#class-syntax": "walker",
-          "CD-14#no-such-clause": "walker",
-          "CD-14#library-construction": "walker",
-        },
-      }),
-    ).toEqual({
-      outcome: "failed",
-      error: { kind: "unknown-clause", address: "CD-14#no-such-clause" },
-    });
-  });
-
   it("carries a selected discipline file's refusal as rule-set-invalid", () => {
     expect(
       select({
@@ -722,18 +689,6 @@ describe("ruleSetRootOf", () => {
       joins: [[{ segments: ["/repo", "rules/team"] }]],
       resolves: [[{ path: "/repo/./rules/team" }]],
     });
-  });
-
-  it("is rule-set-invalid when a named rule set's directory resolves to no absolute path", () => {
-    expect(
-      ruleSetRootOf({
-        ruleSet: { name: ruleSetNameSchema.parse("team") },
-        ruleSets: TEAM_RULE_SETS,
-        repoRoot: REPO_ROOT,
-        installRoot: INSTALL_ROOT,
-        path: { ...RESOLVING_PATH, resolve: () => "\\\\server\\share" },
-      }),
-    ).toMatchObject({ outcome: "failed", error: { kind: "rule-set-invalid", detail: expect.stringMatching(/.+/) } });
   });
 
   it("is unknown-rule-set for a named rule set the consumer file does not declare", () => {

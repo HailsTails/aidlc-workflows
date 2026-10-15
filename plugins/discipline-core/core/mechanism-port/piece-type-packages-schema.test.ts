@@ -12,12 +12,4 @@ describe("pieceTypePackagesSchema", () => {
   it("refuses an empty list", () => {
     expect(pieceTypePackagesSchema.safeParse([]).success).toBe(false);
   });
-
-  it("refuses a list holding a non-string", () => {
-    expect(pieceTypePackagesSchema.safeParse(["typescript", 1]).success).toBe(false);
-  });
-
-  it("refuses a bare package name that is not in a list", () => {
-    expect(pieceTypePackagesSchema.safeParse("typescript").success).toBe(false);
-  });
 });

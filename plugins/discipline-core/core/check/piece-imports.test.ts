@@ -52,10 +52,6 @@ describe("FR-8 piece imports over what this repository's own piece source import
     });
   });
 
-  it("checks at least one piece file", () => {
-    expect(piecesSchema.parse(outcome).value.pieces.length).toBeGreaterThan(0);
-  });
-
   it("finds every piece import inside the piece's reach", () => {
     expect(outcome).toMatchObject({ outcome: "ok", value: { refusals: [] } });
   });

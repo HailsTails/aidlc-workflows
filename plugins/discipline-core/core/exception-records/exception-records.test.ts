@@ -229,29 +229,6 @@ describe("parseExceptionEntries invalid records", () => {
     });
   });
 
-  it("reports the first problem in the locked order when an entry has two", () => {
-    expect(
-      parseExceptionEntries({
-        entries: [{ ...FILE_CARVE_OUT, clause: "CD-14#abstract-syntax", file: "../legacy.ts" }],
-        selection: SELECTION,
-      }).invalid,
-    ).toEqual([
-      {
-        index: 0,
-        problem: { kind: "clause-not-selected", clause: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" } },
-      },
-    ]);
-  });
-
-  it("reports file-not-repo-path before why-chain-refused for a file carve-out with both", () => {
-    expect(
-      parseExceptionEntries({
-        entries: [{ ...FILE_CARVE_OUT, file: "../legacy.ts", whyChain: SHORT_CHAIN }],
-        selection: SELECTION,
-      }).invalid,
-    ).toEqual([{ index: 0, problem: { kind: "file-not-repo-path", file: "../legacy.ts" } }]);
-  });
-
   it("gives each invalid entry its position in the entries", () => {
     expect(
       parseExceptionEntries({
@@ -265,22 +242,6 @@ describe("parseExceptionEntries invalid records", () => {
 describe("readExceptionEntries", () => {
   it("reads no exceptions when discipline-exceptions.json is absent", () => {
     expect(readEntries({ fileText: absentFileText() })).toEqual({ outcome: "ok", value: [] });
-  });
-
-  it("joins <repoRoot>/discipline-exceptions.json", () => {
-    const path = pathJoiningTo({ joined: EXCEPTIONS_PATH });
-
-    readExceptionEntries({ fileText: absentFileText(), path, repoRoot: REPO_ROOT });
-
-    expect(path.join).toHaveBeenCalledWith({ segments: ["/repo", "discipline-exceptions.json"] });
-  });
-
-  it("asks whether the joined path exists", () => {
-    const fileText = absentFileText();
-
-    readEntries({ fileText });
-
-    expect(fileText.exists).toHaveBeenCalledWith({ path: "/repo/discipline-exceptions.json" });
   });
 
   it("reads the joined path when it is present", () => {

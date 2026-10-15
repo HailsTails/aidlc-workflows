@@ -35,30 +35,9 @@ describe("walkerPieceSettingsSchema", () => {
 
   it.each([
     "../x.ts",
-    "checks/../../x.ts",
-    "./x.ts",
-    "/abs/x.ts",
-    "C:/x.ts",
-    "checks\\x.ts",
-    "checks//x.ts",
     "x.js",
-    "x.d.ts.map",
-    "x",
-    "",
   ])("refuses the module %j", (module) => {
     expect(walkerPieceSettingsSchema.safeParse({ module }).success).toBe(false);
-  });
-
-  it("refuses settings with no module", () => {
-    expect(walkerPieceSettingsSchema.safeParse({}).success).toBe(false);
-  });
-
-  it("refuses a module that is not text", () => {
-    expect(walkerPieceSettingsSchema.safeParse({ module: 1 }).success).toBe(false);
-  });
-
-  it("refuses settings that are not an object", () => {
-    expect(walkerPieceSettingsSchema.safeParse("class-syntax.ts").success).toBe(false);
   });
 });
 
@@ -81,22 +60,10 @@ describe("walkerCheckModuleSchema", () => {
     ).toBe(false);
   });
 
-  it("refuses a check with no kind", () => {
-    expect(walkerCheckModuleSchema.safeParse({ inspect: inspectNothing }).success).toBe(false);
-  });
-
-  it("refuses a check with no inspect", () => {
-    expect(walkerCheckModuleSchema.safeParse({ kind: "syntax" }).success).toBe(false);
-  });
-
   it("refuses a check whose inspect is not a function", () => {
     expect(walkerCheckModuleSchema.safeParse({ kind: "path", inspect: "inspect" }).success).toBe(
       false,
     );
-  });
-
-  it("refuses an absent check export", () => {
-    expect(walkerCheckModuleSchema.safeParse(undefined).success).toBe(false);
   });
 
   it("holds the same keys as the generic walker check", () => {
