@@ -53,6 +53,7 @@ const FORBIDDEN_FOLDERS: readonly string[] = [
 ];
 
 const BANNED_THIRD_PARTY_IMPORTS: readonly string[] = [
+  "eslint",
   "winston",
   "winston-transport",
   "better-sqlite3",
@@ -203,7 +204,7 @@ const checkBannedImports = (
           rule: "CD-19",
           file: filePath,
           line: lineNumber,
-          snippet: `banned third-party import: ${bannedSpecifier} — use the kernel port package`,
+          snippet: `banned third-party import: ${bannedSpecifier} — use its recorded wrapping boundary`,
         }),
       ),
     );
