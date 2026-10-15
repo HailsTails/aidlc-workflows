@@ -204,7 +204,7 @@ const checkBannedImports = (
           rule: "CD-19",
           file: filePath,
           line: lineNumber,
-          snippet: `banned third-party import: ${bannedSpecifier} — use the kernel port package`,
+          snippet: `banned third-party import: ${bannedSpecifier} — use its recorded wrapping boundary`,
         }),
       ),
     );
