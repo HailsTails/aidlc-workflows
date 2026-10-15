@@ -53,7 +53,7 @@ test("an unrecorded type-only ESLint boundary reports CD-19", () => {
     service: fixtureService("violating-eslint-type-import"),
   });
   expect(report.violations.filter((violation) => violation.rule === "CD-19"))
-    .toHaveLength(1);
+    .toEqual([expect.objectContaining({ snippet: expect.stringContaining("use its recorded wrapping boundary") })]);
 });
 
 test("orphan-no-test fixture reports CD-23/24 missing-sibling violation", () => {
