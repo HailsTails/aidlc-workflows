@@ -3,7 +3,8 @@ import { z } from "zod";
 import { createDefaultFileTextPort } from "./core/platform-ports/file-text-port.ts";
 import { createDefaultPathPort } from "./core/platform-ports/path-port.ts";
 
-const forkRoot = createDefaultPathPort({}).resolve({ path: `${import.meta.dirname}/../..` });
+const resolvedSchema = z.object({ outcome: z.literal("ok"), value: z.string() });
+const forkRoot = resolvedSchema.parse(createDefaultPathPort({}).resolve({ path: `${import.meta.dirname}/../..` })).value;
 const fileText = createDefaultFileTextPort({});
 
 const readOkSchema = z.object({ outcome: z.literal("ok"), value: z.string() });

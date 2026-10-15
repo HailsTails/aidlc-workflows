@@ -12,7 +12,7 @@ import {
   readPieceFile,
   readVersionOneJson,
 } from "../rule-set-reader/rule-set-reader.ts";
-import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
+import type { AbsolutePath } from "../values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import {
   type ClauseAddress,
@@ -112,15 +112,15 @@ export const ruleSetRootOf = (request: {
     return { outcome: "ok", value: request.repoRoot };
   }
   const directory = request.path.join({ segments: [request.repoRoot, location.path] });
-  const parsed = absolutePathSchema.safeParse(request.path.resolve({ path: directory }));
-  if (!parsed.success) {
+  const resolved = request.path.resolve({ path: directory });
+  if (resolved.outcome === "failed") {
     return failed({
       kind: "rule-set-invalid",
       path: directory,
       detail: `the directory of rule set ${ruleSet.name} resolves to no absolute path`,
     });
   }
-  return { outcome: "ok", value: parsed.data };
+  return { outcome: "ok", value: resolved.value };
 };
 
 type ClauseRequest = {

@@ -1,5 +1,5 @@
 import type { PathPort } from "../platform-ports/path-port.ts";
-import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
+import type { AbsolutePath } from "../values/absolute-path.ts";
 import type { Result } from "../values/result.ts";
 import type { LoadFailure } from "./load-failure.ts";
 
@@ -24,14 +24,12 @@ export const installRootOf = (request: {
   if (entry.outcome === "failed") {
     return installRootUnresolvable({ url: entry.error.url, detail: entry.error.detail });
   }
-  const parsed = absolutePathSchema.safeParse(
-    request.path.resolve({ path: threeLevelsAbove({ path: request.path, entry: entry.value }) }),
-  );
-  if (!parsed.success) {
+  const resolved = request.path.resolve({ path: threeLevelsAbove({ path: request.path, entry: entry.value }) });
+  if (resolved.outcome === "failed") {
     return installRootUnresolvable({
       url: request.moduleUrl,
       detail: "the install root three directories above the entry file is not an absolute path",
     });
   }
-  return { outcome: "ok", value: parsed.data };
+  return resolved;
 };

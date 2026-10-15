@@ -7,6 +7,8 @@ export type RelativeLocation =
   | { readonly relation: "within-root"; readonly path: string }
   | { readonly relation: "different-root" };
 
+export type UnresolvablePath = { readonly kind: "working-directory-unusable"; readonly path: string };
+
 export type PathPort = {
   readonly join: (request: { readonly segments: readonly string[] }) => string;
   readonly joinRepository: (request: { readonly segments: readonly string[] }) => string;
@@ -16,7 +18,7 @@ export type PathPort = {
   }) => RelativeLocation;
   readonly directoryOf: (request: { readonly path: string }) => string;
   readonly repositoryDirectoryOf: (request: { readonly path: string }) => string;
-  readonly resolve: (request: { readonly path: string }) => string;
+  readonly resolve: (request: { readonly path: string }) => Result<AbsolutePath, UnresolvablePath>;
   readonly fromFileUrl: (request: { readonly url: string }) => Result<
     AbsolutePath,
     {
@@ -62,6 +64,14 @@ const absolutePathOfFileUrl = (request: {
       detail: thrown instanceof Error ? thrown.message : String(thrown),
     });
   }
+};
+
+const absolutePathOf = (request: { readonly path: string; readonly resolved: string }): Result<AbsolutePath, UnresolvablePath> => {
+  const parsed = absolutePathSchema.safeParse(request.resolved);
+  if (!parsed.success) {
+    return { outcome: "failed", error: { kind: "working-directory-unusable", path: request.path } };
+  }
+  return { outcome: "ok", value: parsed.data };
 };
 
 const fileUrlForm = (request: { readonly url: string }): "file-url" | "not-a-file-url" =>
@@ -253,7 +263,10 @@ const portOver = (options: {
   directoryOf: (request) => options.surface.dirname(request.path),
   repositoryDirectoryOf: (request) => posix.dirname(request.path),
   resolve: (request) =>
-    absoluteFormOf({ path: request.path, surface: options.surface, workingDirectory: options.workingDirectory }),
+    absolutePathOf({
+      path: request.path,
+      resolved: absoluteFormOf({ path: request.path, surface: options.surface, workingDirectory: options.workingDirectory }),
+    }),
   fromFileUrl: (request) =>
     fileUrlForm({ url: request.url }) === "not-a-file-url"
       ? notAFileUrl({ url: request.url, detail: "the text is not a file: URL" })

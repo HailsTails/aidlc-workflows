@@ -3,7 +3,7 @@ import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
-import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
+import type { AbsolutePath } from "../values/absolute-path.ts";
 import type { Result } from "../values/result.ts";
 import type { CheckReport } from "../verdict/check-report.ts";
 import { parseCheckArguments } from "./command-arguments-schema.ts";
@@ -25,14 +25,14 @@ export const repoRootOf = (request: {
   readonly path: PathPort;
   readonly repo: string;
 }): Result<AbsolutePath, LoadFailure> => {
-  const parsed = absolutePathSchema.safeParse(request.path.resolve({ path: request.repo }));
-  if (!parsed.success) {
+  const resolved = request.path.resolve({ path: request.repo });
+  if (resolved.outcome === "failed") {
     return {
       outcome: "failed",
       error: { kind: "arguments-invalid", detail: `--repo ${request.repo} resolves to no absolute path` },
     };
   }
-  return { outcome: "ok", value: parsed.data };
+  return resolved;
 };
 
 export const printOutcome = (request: {
