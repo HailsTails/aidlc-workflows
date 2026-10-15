@@ -12,3 +12,5 @@ The projection is the only supported way to adopt this rule. Run core's project 
 ## Relation to the native-lint fragments
 
 `plugins/rin/tools/native-lint/` keeps its own copy of this rule for its ESLint and Oxlint fragments. Following design ruling D14, each tool keeps its own piece, and the copies are allowed to diverge as each tool's support changes, with no drift tests. Changing this piece does not change the native-lint fragments.
+
+Use one ESLint route per repository: either this piece through the projection `disciplines.eslint.mjs`, or native-lint's ESLint fragment. Both register the plugin namespace `rin-discipline` from different modules, so a config that spreads both stops ESLint with `Cannot redefine plugin "rin-discipline"`. The failure is loud, so no rule is silently weakened. The Oxlint fragment does not conflict with the projection.
