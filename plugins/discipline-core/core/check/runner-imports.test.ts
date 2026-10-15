@@ -19,14 +19,14 @@ const runnerSources = import.meta.glob(["./mechanisms/*/runner/**/*.ts", "!./mec
   eager: true,
 });
 
-const walkerRunnerSources = import.meta.glob(["./mechanisms/walker/runner/*.ts", "!**/*.test.ts"], {
+const walkerRunnerSources = import.meta.glob(["./mechanisms/walker/runner/*.ts", "!./mechanisms/walker/runner/*.test.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
   eager: true,
 });
 
-const eslintRunnerSources = import.meta.glob(["./mechanisms/eslint/runner/*.ts", "!**/*.test.ts"], {
+const eslintRunnerSources = import.meta.glob(["./mechanisms/eslint/runner/*.ts", "!./mechanisms/eslint/runner/*.test.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",

@@ -15,9 +15,12 @@ declare global {
 const sourcesOutsideMechanisms = import.meta.glob(
   [
     "./**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
-    "!**/node_modules/**",
-    "!**/*.test.*",
-    "!**/test-fixtures/**",
+    "!./node_modules/**",
+    "!./*.test.*",
+    "!./core/**/*.test.*",
+    "!./rules/**/*.test.*",
+    "!./tests/**/*.test.*",
+    "!./tests/test-fixtures/**",
     "!./mechanisms/**",
     "!./vitest.config.ts",
     "!./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}",
@@ -30,8 +33,8 @@ const sourcesOutsideMechanisms = import.meta.glob(
 const runnerSources = import.meta.glob(
   [
     "./mechanisms/*/runner/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
-    "!**/*.test.*",
-    "!**/test-fixtures/**",
+    "!./mechanisms/*/runner/**/*.test.*",
+    "!./mechanisms/*/runner/test-fixtures/**",
     "!./mechanisms/walker/runner/typescript-parse.ts",
     "!./mechanisms/eslint/runner/eslint-instance.ts",
     "!./mechanisms/eslint/runner/inline-config-parser.ts",
@@ -42,8 +45,8 @@ const runnerSources = import.meta.glob(
 const unlistedMechanismSources = import.meta.glob(
   [
     "./mechanisms/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
-    "!**/*.test.*",
-    "!**/test-fixtures/**",
+    "!./mechanisms/**/*.test.*",
+    "!./mechanisms/**/test-fixtures/**",
     "!./mechanisms/*/runner/**",
     "!./mechanisms/walker/*/*",
     "!./mechanisms/walker/*/*/**",
@@ -54,7 +57,7 @@ const unlistedMechanismSources = import.meta.glob(
 );
 
 const platformPortSources = import.meta.glob(
-  ["./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}", "!**/*.test.*", "!./core/platform-ports/module-loader-port.ts"],
+  ["./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}", "!./core/platform-ports/*.test.*", "!./core/platform-ports/module-loader-port.ts"],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
 
@@ -65,7 +68,7 @@ const moduleLoaderPortSources = import.meta.glob(["./core/platform-ports/module-
   eager: true,
 });
 
-const coreSources = import.meta.glob(["./core/**/*.{ts,mts,cts,tsx,js,mjs,cjs}", "!**/*.test.*", "!**/test-fixtures/**"], {
+const coreSources = import.meta.glob(["./core/**/*.{ts,mts,cts,tsx,js,mjs,cjs}", "!./core/**/*.test.*", "!./core/**/test-fixtures/**"], {
   base: "../../",
   query: "?raw",
   import: "default",
