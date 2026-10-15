@@ -31,4 +31,4 @@ An ESLint piece lives at `mechanisms/eslint/<DisciplineId>/` beside its `piece.j
 
 The namespace `discipline-core` is reserved. Two selected clauses may not share a rule id, or a namespace with different plugin modules. A bad setting, a module that fails to load or does not match its schema, or a missing rule makes the run fail as `piece-invalid`.
 
-The rule imports only types from `eslint` and gets everything else from ESLint's rule context. CD-14's piece is the example: `mechanisms/eslint/CD-14/piece.json` and `cd14/cd14.eslint-plugin.ts`.
+The rule imports only types from `eslint` and gets everything else from ESLint's rule context. The guide (`docs/adding-a-discipline-or-mechanism.md`) walks through a shipped piece as the example.
