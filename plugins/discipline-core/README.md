@@ -101,7 +101,7 @@ Fetch these paths from a pinned commit of this repository into one install direc
 
 `package.json` is fetched for its `"type": "module"`. Every runtime file is an ES module, and Node takes a file's module type from the nearest `package.json` above it; without this one, that is the consumer's own, and under `"type": "commonjs"` the check crashes.
 
-Leave out test files (`*.test.ts`) and `tests/` folders. The install must not sit under a `node_modules` path, because Node does not strip types there. Nothing core reads or writes is under a harness directory.
+Leave out test files (`*.test.ts`), `tests/` folders and `test-fixtures/` folders. The install must not sit under a `node_modules` path, because Node does not strip types there. Nothing core reads or writes is under a harness directory.
 
 `core/` is fetched whole, so it also carries three modules used only by core's own tests of piece imports and install naming: `core/check/piece-import-rules.ts`, `core/check/install-naming.ts` and `core/mechanism-port/piece-type-packages-schema.ts`; nothing loads them at runtime.
 
@@ -148,7 +148,7 @@ This directory builds and tests on its own, using only its own configuration: `p
 | `lint` | Biome with `lint.biome.json` |
 | `test` | Vitest with `vitest.config.ts` |
 | `check` | all three in that order |
-| `install-proof` | copies exactly the install path list into a temporary CommonJS consumer and runs both commands under both mechanisms, expecting a fail on a class, a pass once it is removed, and a crash when the installed `package.json` is missing |
+| `install-proof` | `node scripts/install-proof.ts`: reads the install path list from § Installing in this README, builds CommonJS consumers in an OS temporary directory outside the working tree, installs the `dependencies` from this package's `package.json` there with `npm`, copies the listed paths into each consumer, and runs both commands under both mechanisms, expecting a fail on a class, a pass once it is removed, and a crash when the installed `package.json` is missing; the temporary directory is removed afterwards |
 
 CI runs `check`, then `install-proof`, and then the fork's constitution audit, `bun run audit:rin`, from the repository root; the audit covers this package.
 

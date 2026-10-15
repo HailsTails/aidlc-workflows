@@ -276,5 +276,42 @@
       "rootCause": "A piece must be typed in its tool's plugin protocol, and the audit's specifier list cannot see that the import is type-only and FR-8-sanctioned.",
       "owner": "rin record 261014-discipline-core-foundati"
     }
+  },
+  {
+    "files": [
+      "plugins/discipline-core/scripts/install-proof.ts"
+    ],
+    "reason": "Structural CD19 location: install-proof.ts is the composition root of a one-command check, run by `node scripts/install-proof.ts` outside vitest, that must create a real CommonJS consumer: it binds node:fs (mkdtemp, cpSync, writeFileSync, rmSync), node:os tmpdir, node:path and node:child_process spawnSync to real node, git and npm processes and a real OS temporary directory. Every decision it makes (the README install list, placeholder substitution, the exclusion predicate, the step verdict, the consumer root package.json and the GIT_-free environment) lives in the pure scripts/install-proof-plan.ts, which install-proof-plan.test.ts covers without touching the filesystem. core/check/vendor-imports.test.ts pins this file to relative and node: imports only. No unit test imports this file, so no test touches the filesystem through it.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does plugins/discipline-core/scripts/install-proof.ts import node:fs, node:os, node:path and node:child_process at all?",
+          "because": "The install proof's subject is a real install: it must write a real consumer into an OS temporary directory, install the package's dependencies with a real npm, initialise and commit with a real git, and run the installed commands with a real node, and only those runtime modules provide that.",
+          "evidence": "plugins/discipline-core/README.md § Developing core, install-proof row; plugins/discipline-core/scripts/install-proof.ts spawnedRun, copiedInstall and proof; bun run --cwd plugins/discipline-core install-proof printed seven ok lines and `install proof: pass` with exit 0."
+        },
+        {
+          "why": "Why are those modules not reached through discipline-core's existing platform ports instead?",
+          "because": "The ports in core/platform-ports/ serve the runtime check and expose only what core needs (file text, git tracked and changed paths, module loading, paths, process I/O); none creates a temporary directory, copies a tree, or spawns npm or node, and widening core's ports for a proof script would put install-only capabilities into the shipped runtime.",
+          "evidence": "plugins/discipline-core/core/platform-ports/git-port.ts (GitPort: trackedPaths, changedSince only); plugins/discipline-core/core/platform-ports/file-text-port.ts; README.md § Installing ships core/ to consumers whole."
+        },
+        {
+          "why": "Why is the effect code confined to this one file rather than spread across the proof?",
+          "because": "The proof is split so the pure decisions live in scripts/install-proof-plan.ts, which imports only zod and relative modules, and this file alone holds the effects and composes the plan; CD-19 places a runtime dependency at exactly one boundary site.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/discipline-core/core/check/vendor-imports.test.ts (installProofShellSources pinned to relative and node: imports; scripts/install-proof-plan.ts scanned with sourcesOutsideMechanisms, relative and zod only)."
+        },
+        {
+          "why": "Why can this file not be unit-tested the way the platform ports are, through an injected fake?",
+          "because": "It is the composition root of a process-level check that runs outside vitest, not a port other code consumes; its only behaviour beyond the tested plan is performing real effects, and CD-47 forbids a unit test from touching the filesystem or spawning git, so the logic was moved into the pure plan that is tested, and the shell is exercised by running it.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-047-tests-are-hermetic.md; plugins/discipline-core/scripts/install-proof-plan.test.ts; the negative control (one expectation changed to exit 0) made the proof exit 1 with `FAIL: walker check: expected exit 0 and \"verdict: fail\", got exit 1` and the captured report."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten or carved out?",
+          "because": "This file is where CD-19 says the runtime dependency belongs for a one-command proof, so it is not debt to pay down; the audit's bare-import detector cannot tell a sanctioned composition root from a scattered import without this registry entry.",
+          "evidence": "bun run audit:rin reported CD-20 bare node: stdlib imports (node:child_process, node:fs, node:os, node:path) at plugins/discipline-core/scripts/install-proof.ts:1-4 before this entry; the Gate-5 review of rin record 261014-discipline-core-foundati required the install proof in native TypeScript in place of scripts/install-proof.sh."
+        }
+      ],
+      "rootCause": "A one-command install proof must create a real consumer, spawn real node, git and npm and write a real temporary directory, and CD-19 places that runtime binding in one composition root whose imports the static audit cannot distinguish from an unconfined import.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
   }
 ]

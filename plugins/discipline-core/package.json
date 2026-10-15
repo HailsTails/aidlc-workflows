@@ -12,7 +12,7 @@
     "lint": "biome check --error-on-warnings --config-path=lint.biome.json .",
     "test": "vitest run --config vitest.config.ts",
     "check": "tsc --noEmit -p tsconfig.json && biome check --error-on-warnings --config-path=lint.biome.json . && vitest run --config vitest.config.ts",
-    "install-proof": "bash scripts/install-proof.sh"
+    "install-proof": "node scripts/install-proof.ts"
   },
   "dependencies": {
     "@eslint/plugin-kit": "0.7.3",

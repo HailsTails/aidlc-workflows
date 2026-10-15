@@ -20,9 +20,11 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./core/**/*.test.*",
     "!./rules/**/*.test.*",
     "!./tests/**/*.test.*",
+    "!./scripts/**/*.test.*",
     "!./tests/test-fixtures/**",
     "!./mechanisms/**",
     "!./vitest.config.ts",
+    "!./scripts/install-proof.ts",
     "!./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./tests/probe-rule-set/mechanisms/walker/**",
     "!./tests/probe-rule-set/mechanisms/eslint/**",
@@ -62,6 +64,13 @@ const platformPortSources = import.meta.glob(
 );
 
 const moduleLoaderPortSources = import.meta.glob(["./core/platform-ports/module-loader-port.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const installProofShellSources = import.meta.glob(["./scripts/install-proof.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -174,6 +183,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       runnerSources,
       platformPortSources,
       coreSources,
+      installProofShellSources,
       walkerPieceSources,
       eslintPieceSources,
     }).toEqual({
@@ -181,6 +191,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       runnerSources: expect.objectContaining({ "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String) }),
       platformPortSources: expect.objectContaining({ "./core/platform-ports/file-text-port.ts": expect.any(String) }),
       coreSources: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
+      installProofShellSources: { "./scripts/install-proof.ts": expect.any(String) },
       walkerPieceSources: expect.objectContaining({
         "./mechanisms/walker/CD-14/class-syntax.ts": expect.any(String),
         "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": expect.any(String),
@@ -219,6 +230,10 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         moduleLoaderPortSources,
       ).error,
     ).toBeUndefined();
+  });
+
+  it("finds scripts/install-proof.ts, the install proof's composition root, importing only relative paths and node builtins", () => {
+    expect(importsOnly([relativeImport, nodeBuiltinImport]).safeParse(installProofShellSources).error).toBeUndefined();
   });
 
   it("finds typescript-parse.ts the only file importing typescript by value", () => {

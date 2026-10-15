@@ -17,7 +17,7 @@ The projection imports each piece's plugin module by its path relative to the re
 ## Files
 
 - `create-eslint-runner.ts` builds the runner from its ports: file text, module loading, paths and ESLint. It implements `run`, `conform` and `project`.
-- `eslint-instance.ts` is the wrapping factory for ESLint and `@typescript-eslint/parser`, the only file that imports them. It builds a query instance on the team's own configuration, a governance instance on the runner's configuration only, and `lintSourceCases` for conformance. It also defines the reserved rule `discipline-core/inline-config`.
+- `eslint-instance.ts` is the wrapping factory for ESLint and `@typescript-eslint/parser`, the only file that imports them. It builds a query instance on the team's own configuration, a governance instance on the runner's configuration only, and `lintSourceCases` for conformance. It also defines the reserved rule `<reservedNamespace>/inline-config`. `reservedNamespace` is the one constant naming core's ESLint namespace, currently `discipline-core` while the tooling's name is provisional; the reserved rule, the governance configuration and the projection's block names all take it from there, so a rename is one edit.
 - `inline-config-parser.ts` is the wrapping factory for `@eslint/plugin-kit`, the only file that imports it.
 - `projection.ts` writes `disciplines.eslint.mjs` and compares it with the file on disk.
 - `package-script-scanner.ts` finds ESLint invocations in tracked `package.json` scripts, and the options and `--suppressions-location` values they carry.
@@ -31,6 +31,6 @@ The projection imports each piece's plugin module by its path relative to the re
 
 An ESLint piece lives at `mechanisms/eslint/<DisciplineId>/` beside its `piece.json`. Each clause's settings are `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` path inside the piece folder whose default export is an ESLint plugin, and `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`.
 
-The namespace `discipline-core` is reserved. Two selected clauses may not share a rule id, or a namespace with different plugin modules. A bad setting, a module that fails to load or does not match its schema, or a missing rule makes the run fail as `piece-invalid`.
+The namespace `reservedNamespace` names (currently `discipline-core`) is reserved. Two selected clauses may not share a rule id, or a namespace with different plugin modules. A bad setting, a module that fails to load or does not match its schema, or a missing rule makes the run fail as `piece-invalid`.
 
 The rule imports only types from `eslint` and gets everything else from ESLint's rule context. The guide (`docs/adding-a-discipline-or-mechanism.md`) walks through a shipped piece as the example.

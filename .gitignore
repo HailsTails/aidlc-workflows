@@ -55,5 +55,3 @@ CLAUDE.local.md
 **/.pi-lens/
 .pi-lens/
 
-# discipline-core install proof scratch consumers (removed on exit)
-plugins/discipline-core/.install-proof.*/

@@ -56,11 +56,6 @@ const ESLINT_READABLE = z.union([
 
 const NO_HARNESS_SEGMENT = z.string().regex(/^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/);
 
-const NODE_22_18_OR_LATER = z
-  .string()
-  .regex(/^(?:22\.(?:1[89]|[2-9]\d|[1-9]\d{2,})|2[3-9]\.\d+|[3-9]\d\.\d+|[1-9]\d{2,}\.\d+)\.\d+$/);
-
-const NODE_REQUIREMENT = "discipline core needs Node 22.18.0 or later";
 
 const installRelative = (request: { readonly observed: string }) =>
   path.relative({ from: INSTALL_ROOT, to: request.observed });
@@ -269,11 +264,5 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
     expect(ports.probes.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
     expect(ports.pieceLoads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
     expect(ports.runnerLoads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
-  });
-});
-
-describe("the Node running the consumer proof", () => {
-  it("is Node 22.18.0 or later, which runs the install's .ts source with no build step", () => {
-    expect(process.versions.node, NODE_REQUIREMENT).toEqual(expect.schemaMatching(NODE_22_18_OR_LATER));
   });
 });
