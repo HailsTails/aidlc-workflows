@@ -46,7 +46,8 @@ The producer does not ship a TypeScript parser dependency to consumers.
 For Oxlint, append `./.rin/native-lint/cd14.oxlint.json` to the existing root
 config's `extends`. Keep existing rules, includes, and lint scripts.
 
-The exercised native versions are Node 22.22.2, ESLint 10.12.0,
+Producer RuleTester tests use the pinned ESLint 10.11.0. Separate native-loader
+checks exercised Node 22.22.2, ESLint 10.12.0,
 `@typescript-eslint/parser` 8.71.2, and Oxlint 1.88.0. A consumer needs only its
 selected engine and existing parser. Oxlint JS plugins are alpha. Repositories
 using another linter can run Oxlint alongside it.
@@ -56,9 +57,9 @@ The fragments don't read `.constitution-carve-outs`; exceptions are out of scope
 ## Rule ownership and limits
 
 ESLint and Oxlint load one CD14 rule source; the fragments select the same dedicated rule.
-Oxlint uses its supported ESLint-compatible plugin protocol. Each native rule
-export is the engine boundary used by RuleTester; the diagnostic
-port exposes owned contracts to the classification logic. The rule has no runtime
+Oxlint uses its supported ESLint-compatible plugin protocol. The implementation
+currently includes a diagnostic port; whether to retain that layer remains
+Helen's open decision. This slice leaves it unchanged. The rule has no runtime
 package dependency.
 
 The dedicated ID is `rin-discipline/no-class-authoring`. Runtime class

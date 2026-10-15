@@ -16,5 +16,12 @@
       "plugins/rin/tools/rin-gates/review-process-port.ts"
     ],
     "reason": "Structural CD19 location: defaultReviewProcessPort is the deliberate process boundary for reviewer entrypoints and hermetic subprocess fixtures. It confines Node child execution, environment, standard streams and termination; consumers receive string/status data and named capabilities, never ChildProcess or stream types."
+  },
+  {
+    "files": [
+      "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.ts",
+      "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.test.ts"
+    ],
+    "reason": "Deliberate CD19 wrapping site for the ESLint-compatible CD14 plugin protocol, used by ESLint and Oxlint. ESLint and Rule types stay at the callback/registration boundary; configuration consumers receive the owned ClassAuthoringPlugin model. The co-located test is the explicit native-protocol test boundary: its RuleTester import exercises that RuleModule with real JS and TypeScript ASTs, as required by the approved review scope. Why-chain: 1. Native class-syntax enforcement needs the engines' plugin protocol. 2. That protocol supplies AST callbacks and diagnostic reporting. 3. Typing those callbacks requires the external eslint types, including type-only imports. 4. Keeping the translation and registration in this single file confines that dependency instead of spreading vendor types into consumers. 5. Root decision: retain one explicit native-engine boundary for the approved CD14 fragment slice; the diagnostic-port design remains Helen's separate open judgment (PR34 review5530609166)."
   }
 ]

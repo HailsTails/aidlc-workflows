@@ -53,6 +53,7 @@ const FORBIDDEN_FOLDERS: readonly string[] = [
 ];
 
 const BANNED_THIRD_PARTY_IMPORTS: readonly string[] = [
+  "eslint",
   "winston",
   "winston-transport",
   "better-sqlite3",

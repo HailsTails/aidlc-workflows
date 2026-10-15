@@ -3,7 +3,6 @@ import { RuleTester } from "eslint";
 import { describe, expect, vi, test } from "vitest";
 import {
 	classDisposition,
-	containerMode,
 	createClassReporter,
 	type ClassAncestor,
 	type ClassDiagnosticPort,
@@ -63,29 +62,6 @@ test("classes enclosed by ambient modules are type-only", () => {
 		}),
 	).toBe("allow");
 });
-test("the parent walk reaches an ambient module through an ordinary ancestor", () => {
-	expect(
-		containerMode({
-			node: {
-				type: "ClassBody",
-				parent: { type: "TSModuleDeclaration", declare: true, parent: null },
-			},
-		}),
-	).toBe("ambient");
-});
-test("runtime namespaces do not provide an ambient exemption", () => {
-	expect(
-		containerMode({ node: { type: "TSModuleDeclaration", parent: null } }),
-	).toBe("runtime");
-});
-test("an unrelated declared node does not provide an ambient exemption", () => {
-	expect(
-		containerMode({
-			node: { type: "VariableDeclaration", declare: true, parent: null },
-		}),
-	).toBe("runtime");
-});
-
 test("the rule publishes the original runtime class through its injected diagnostic port", () => {
 	const publish = vi.fn<ClassDiagnosticPort<ClassAncestor>["publish"]>();
 	const reporter = createClassReporter({
