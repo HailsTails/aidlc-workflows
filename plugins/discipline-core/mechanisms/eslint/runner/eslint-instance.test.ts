@@ -45,6 +45,10 @@ const tmpFilePlugin = eslintPluginModuleSchema.parse({
 }).default;
 
 const repoRoot = absolutePathSchema.parse("/repo");
+const inlineConfigCwd = z
+  .object({ outcome: z.literal("ok"), value: absolutePathSchema })
+  .parse(createDefaultPathPort({}).resolve({ path: "/conformance" })).value;
+
 const conformanceRoot = z
   .object({ outcome: z.literal("ok"), value: absolutePathSchema })
   .parse(createDefaultPathPort({}).resolve({ path: "/install/mechanisms/eslint/CD-14" })).value;
@@ -102,7 +106,7 @@ const throwsOnBuild = vi
 const lintsGovernanceText = (request: { readonly code: string }) =>
   defaultCreateEslint({
     options: {
-      cwd: absolutePathSchema.parse("/conformance"),
+      cwd: inlineConfigCwd,
       overrideConfigFile: true,
       ignore: false,
       allowInlineConfig: false,
