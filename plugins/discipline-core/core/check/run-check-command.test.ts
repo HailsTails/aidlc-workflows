@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
-import { createGitPort, defaultGitSpawn, type GitPort } from "../platform-ports/git-port.ts";
+import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import { createPathPort, type PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
@@ -114,10 +114,13 @@ const gitTracking = (paths: readonly string[]): GitPort => ({
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
 });
 
-const GIT_REFUSING_THE_BASE_REVISION_BEFORE_SPAWNING: GitPort = {
+const gitRefusingTheBaseRevision = (): GitPort => ({
   trackedPaths: gitTracking([]).trackedPaths,
-  changedSince: createGitPort({ spawn: defaultGitSpawn, ambientEnvironment: {} }).changedSince,
-};
+  changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({
+    outcome: "failed",
+    error: { kind: "git-failed", command: "git diff --name-only main\0x", detail: "the argument holds a null byte" },
+  }),
+});
 
 const processWith = (request: { readonly arguments: readonly string[] }): ProcessPort => ({
   arguments: request.arguments,
@@ -238,14 +241,18 @@ describe("runCheckCommand", () => {
     expect(vi.mocked(git.changedSince).mock.calls).toEqual([[{ repoRoot: "/repo", baseRevision: "main" }]]);
   });
 
-  it("exits 0 printing the pass verdict when the base revision holds a NUL that Node refuses before spawning git", async () => {
+  it("hands a base revision holding a NUL to git unchanged and exits 0 printing the pass verdict when git refuses it", async () => {
     const processPort = processWith({ arguments: ["--repo", "/repo", "--base-revision", "main\0x"] });
+    const git = gitRefusingTheBaseRevision();
 
-    await runCheckCommand(commandRequest({ process: processPort, git: GIT_REFUSING_THE_BASE_REVISION_BEFORE_SPAWNING }));
+    await runCheckCommand(commandRequest({ process: processPort, git }));
 
-    expect(outputOf({ process: processPort })).toEqual({
-      writes: [[{ text: "verdict: pass\n" }]],
-      exits: [[{ code: 0 }]],
+    expect({
+      changedSince: vi.mocked(git.changedSince).mock.calls,
+      output: outputOf({ process: processPort }),
+    }).toEqual({
+      changedSince: [[{ repoRoot: "/repo", baseRevision: "main\0x" }]],
+      output: { writes: [[{ text: "verdict: pass\n" }]], exits: [[{ code: 0 }]] },
     });
   });
 
