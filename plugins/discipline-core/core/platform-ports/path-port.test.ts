@@ -86,6 +86,20 @@ describe("createPathPort", () => {
 });
 
 describe("createPathPort resolve", () => {
+  it("refuses a relative path when the working directory cannot be read", () => {
+    expect(
+      createPathPort({
+        flavour: "posix",
+        workingDirectory: vi
+          .fn<(request: Record<string, never>) => string>()
+          .mockThrow(new Error("ENOENT: process.cwd failed, no such file or directory")),
+      }).resolve({ path: "a.ts" }),
+    ).toEqual({
+      outcome: "failed",
+      error: { kind: "working-directory-unusable", path: "a.ts" },
+    });
+  });
+
   it("refuses a relative path when the working directory has no root", () => {
     expect(pathPortIn({ directory: "work" }).resolve({ path: "a.ts" })).toEqual({
       outcome: "failed",

@@ -19,7 +19,7 @@ export const reservedNamespace = "discipline-core";
 
 const INLINE_CONFIG_RULE = "inline-config";
 
-const INLINE_CONFIG_RULE_ID = `${reservedNamespace}/${INLINE_CONFIG_RULE}`;
+export const INLINE_CONFIG_RULE_ID = `${reservedNamespace}/${INLINE_CONFIG_RULE}`;
 
 const GOVERNED_FILES: readonly string[] = ["**/*.{ts,tsx,mts,cts}"];
 

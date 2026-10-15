@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
@@ -59,7 +60,7 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => JOINED_PATHS[JSON.stringify(segments)],
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
   relative: vi.fn(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn(),
@@ -650,6 +651,19 @@ const RESOLVING_PATH: PathPort = {
   fromFileUrl: vi.fn(),
 };
 
+const UNRESOLVABLE_PATH: PathPort = {
+  join: vi.fn<PathPort["join"]>().mockReturnValue("/repo/rules/team"),
+  relative: vi.fn(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
+  directoryOf: vi.fn(),
+  repositoryDirectoryOf: vi.fn(),
+  resolve: vi.fn<PathPort["resolve"]>().mockReturnValue({
+    outcome: "failed",
+    error: { kind: "working-directory-unusable", path: "/repo/rules/team" },
+  }),
+  fromFileUrl: vi.fn(),
+};
+
 const TEAM_RULE_SETS: Readonly<Record<string, RuleSetLocation>> = {
   team: { location: "folder", path: repoPathSchema.parse("rules/team") },
 };
@@ -701,5 +715,24 @@ describe("ruleSetRootOf", () => {
         path: RESOLVING_PATH,
       }),
     ).toEqual({ outcome: "failed", error: { kind: "unknown-rule-set", name: "ghost" } });
+  });
+
+  it("is rule-set-invalid at the joined directory when a named rule set's directory resolves to no absolute path", () => {
+    expect(
+      ruleSetRootOf({
+        ruleSet: { name: ruleSetNameSchema.parse("team") },
+        ruleSets: TEAM_RULE_SETS,
+        repoRoot: REPO_ROOT,
+        installRoot: INSTALL_ROOT,
+        path: UNRESOLVABLE_PATH,
+      }),
+    ).toEqual({
+      outcome: "failed",
+      error: {
+        kind: "rule-set-invalid",
+        path: "/repo/rules/team",
+        detail: "the directory of rule set team resolves to no absolute path",
+      },
+    });
   });
 });

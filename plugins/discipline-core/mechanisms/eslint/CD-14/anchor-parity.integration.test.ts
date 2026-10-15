@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
-import { createDefaultPathPort, createPathPort } from "../../../core/platform-ports/path-port.ts";
+import { createPathPort } from "../../../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
@@ -14,9 +14,7 @@ import { createDefaultEslintPort } from "../runner/eslint-instance.ts";
 import { eslintPluginModuleSchema } from "../runner/eslint-plugin-schema.ts";
 import classAuthoringPlugin from "./cd14/cd14.eslint-plugin.ts";
 
-const PIECE_ROOT = z
-  .object({ outcome: z.literal("ok"), value: absolutePathSchema })
-  .parse(createDefaultPathPort({}).resolve({ path: "/install/mechanisms/eslint/CD-14" })).value;
+const PIECE_ROOT = absolutePathSchema.parse(import.meta.dirname);
 
 const keywordAfterNodeStartCases = z
   .array(

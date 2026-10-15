@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { FileTextPort } from "../../core/platform-ports/file-text-port.ts";
-import { createPathPort } from "../../core/platform-ports/path-port.ts";
+import type { PathPort } from "../../core/platform-ports/path-port.ts";
 import { readDisciplineFile } from "../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../core/values/absolute-path.ts";
 import { disciplineIdSchema } from "../../core/values/identifiers.ts";
@@ -12,10 +13,24 @@ const fileText: FileTextPort = {
   write: () => ({ outcome: "ok", value: undefined }),
 };
 
+const JOINED_PATHS: Readonly<Record<string, string>> = {
+  '["/install","rules","CD-14","discipline.json"]': "/install/rules/CD-14/discipline.json",
+};
+
+const TABLE_PATH: PathPort = {
+  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  relative: vi.fn<PathPort["relative"]>(),
+  joinRepository: vi.fn<PathPort["joinRepository"]>(),
+  directoryOf: vi.fn<PathPort["directoryOf"]>(),
+  repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
+  resolve: vi.fn<PathPort["resolve"]>(),
+  fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
+};
+
 const loaded = () =>
   readDisciplineFile({
     fileText,
-    path: createPathPort({ flavour: "posix", workingDirectory: () => "/install" }),
+    path: TABLE_PATH,
     ruleSetRoot: absolutePathSchema.parse("/install"),
     discipline: disciplineIdSchema.parse("CD-14"),
   });
