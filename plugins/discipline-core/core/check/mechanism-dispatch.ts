@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { embeddedRunReportSchema } from "../mechanism-port/embedded-run-report-schema.ts";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { RunnerFailure } from "../mechanism-port/runner-failure.ts";
 import type {
@@ -14,6 +15,7 @@ import {
   type ProjectionWrite,
   runnerResultSchema,
 } from "../mechanism-port/runner-result-schema.ts";
+import { projectionWriteSchema } from "../mechanism-port/runner-result-schema.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
 import { clauseAddressText, sameClauseAddress } from "../values/clause-address.ts";
 import type { MechanismId } from "../values/identifiers.ts";
@@ -104,6 +106,76 @@ const standaloneRun = (request: {
   };
 };
 
+const reportResultSchema = runnerResultSchema({ value: embeddedRunReportSchema });
+
+const projectionWriteResultSchema = runnerResultSchema({ value: projectionWriteSchema });
+
+const unrequestedNativeException = (request: {
+  readonly nativeExceptions: readonly NativeException[];
+  readonly run: RunRequest;
+}): NativeException | undefined =>
+  request.nativeExceptions.find(
+    (nativeException) =>
+      !request.run.clauses.some(
+        (clause) =>
+          sameClauseAddress({ left: clause.address, right: nativeException.clause }) === "same",
+      ),
+  );
+
+const embeddedRun = (request: {
+  readonly returned: unknown;
+  readonly mechanism: MechanismId;
+  readonly projectedKinds: readonly NativeException["kind"][];
+  readonly run: RunRequest;
+}): Result<MechanismRun, RunnerFailure> => {
+  const parsed = reportResultSchema.safeParse(request.returned);
+  if (!parsed.success) {
+    return runnerInvalidOutput({ detail: z.prettifyError(parsed.error) });
+  }
+  if (parsed.data.outcome === "failed") {
+    return parsed.data;
+  }
+  const report = parsed.data.value;
+  const unrequested = unrequestedHit({ hits: report.hits, run: request.run });
+  if (unrequested !== undefined) {
+    return runnerInvalidOutput({
+      detail: `a hit names ${clauseAddressText({ address: unrequested.clause })} in ${unrequested.file}, which the request did not hold`,
+    });
+  }
+  const unrequestedNative = unrequestedNativeException({
+    nativeExceptions: report.nativeExceptions,
+    run: request.run,
+  });
+  if (unrequestedNative !== undefined) {
+    return runnerInvalidOutput({
+      detail: `a native exception names ${clauseAddressText({ address: unrequestedNative.clause })}, which the request did not hold`,
+    });
+  }
+  return {
+    outcome: "ok",
+    value: {
+      mechanism: request.mechanism,
+      hits: report.hits,
+      nativeExceptions: report.nativeExceptions,
+      projectedKinds: request.projectedKinds,
+      projection: report.projection,
+    },
+  };
+};
+
+const embeddedProjection = (request: {
+  readonly returned: unknown;
+}): Result<readonly ProjectionWrite[], RunnerFailure> => {
+  const parsed = projectionWriteResultSchema.safeParse(request.returned);
+  if (!parsed.success) {
+    return runnerInvalidOutput({ detail: z.prettifyError(parsed.error) });
+  }
+  if (parsed.data.outcome === "failed") {
+    return parsed.data;
+  }
+  return { outcome: "ok", value: [parsed.data.value] };
+};
+
 export const runMechanism = (
   request: MechanismRequest,
 ): Promise<Result<MechanismRun, RunnerFailure>> => {
@@ -117,6 +189,21 @@ export const runMechanism = (
           (thrown: unknown) => rejectedCall({ thrown }),
         );
     }
+    case "embedded": {
+      const runner = request.runner;
+      return Promise.resolve()
+        .then(() => runner.run({ ...request.run, records: request.records }))
+        .then(
+          (returned) =>
+            embeddedRun({
+              returned,
+              mechanism: request.mechanism,
+              projectedKinds: runner.projectedKinds,
+              run: request.run,
+            }),
+          (thrown: unknown) => rejectedCall({ thrown }),
+        );
+    }
   }
 };
 
@@ -126,6 +213,15 @@ export const projectMechanism = (
   switch (request.runner.exceptionPath) {
     case "standalone": {
       return Promise.resolve({ outcome: "ok", value: [] });
+    }
+    case "embedded": {
+      const runner = request.runner;
+      return Promise.resolve()
+        .then(() => runner.project(request.request))
+        .then(
+          (returned) => embeddedProjection({ returned }),
+          (thrown: unknown) => rejectedCall({ thrown }),
+        );
     }
   }
 };

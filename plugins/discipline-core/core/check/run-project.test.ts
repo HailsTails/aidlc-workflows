@@ -195,3 +195,22 @@ describe("runProject", () => {
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid", mechanism: "walker" } });
   });
 });
+
+describe("runProject with an embedded runner", () => {
+  it("returns the runner's projection write without running the check", async () => {
+    const runner = {
+      exceptionPath: "embedded",
+      projectedKinds: ["config-override"],
+      run: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+      conform: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+      project: vi
+        .fn<(request: unknown) => Promise<unknown>>()
+        .mockResolvedValue({ outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } }),
+    };
+    const writes = await runProject(projectRequest({ modules: modulesLoading({ runner }) }));
+    expect({ writes, runCalls: runner.run.mock.calls }).toEqual({
+      writes: { outcome: "ok", value: [{ path: "disciplines.eslint.mjs", effect: "written" }] },
+      runCalls: [],
+    });
+  });
+});

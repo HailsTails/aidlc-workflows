@@ -13,6 +13,7 @@ import type {
   NativeException,
   nativeExceptionKindSchema,
 } from "./runner-result-schema.ts";
+import { nativeExceptionKindSchema as projectedKindSchema } from "./runner-result-schema.ts";
 
 export type RunnerClause = {
   readonly address: ClauseAddress;
@@ -49,8 +50,17 @@ export const standaloneRunnerModuleSchema = z.object({
   conform: runnerCallSchema,
 });
 
+export const embeddedRunnerModuleSchema = z.object({
+  exceptionPath: z.literal("embedded"),
+  projectedKinds: z.array(projectedKindSchema),
+  run: runnerCallSchema,
+  conform: runnerCallSchema,
+  project: runnerCallSchema,
+});
+
 export const runnerModuleSchema = z.discriminatedUnion("exceptionPath", [
   standaloneRunnerModuleSchema,
+  embeddedRunnerModuleSchema,
 ]);
 
 export type LoadedRunner = z.infer<typeof runnerModuleSchema>;
