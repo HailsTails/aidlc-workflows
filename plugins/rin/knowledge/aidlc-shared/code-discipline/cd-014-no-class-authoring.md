@@ -7,10 +7,10 @@ pairs-with: [cd-010, cd-011]
 amended: []
 enforced-by:
   - biome:noStaticOnlyClass
-  - eslint:no-restricted-syntax
+  - eslint:rin-discipline/no-class-authoring
+  - oxlint:rin-discipline/no-class-authoring
   - audit:auditConstitution
   - audit:auditPublicSurface
-enforcement-note: "Biome catches static-only classes only. ESLint needs ClassDeclaration and ClassExpression selectors; review external construction and approved wrapper placement."
 status: active
 applies-to: typescript-runtime
 portability: portable

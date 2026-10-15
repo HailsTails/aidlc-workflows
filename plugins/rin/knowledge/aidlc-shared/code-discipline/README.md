@@ -78,7 +78,7 @@ Edit the `cd-*.md` file here (and the matching `constitution.md` principle if th
 
 ## VI. Function-First Composition
 
-- **CD-14** — Zero class authoring; classes only at external-library call sites ([cd-014-no-class-authoring.md](cd-014-no-class-authoring.md)) [biome:noStaticOnlyClass, eslint:no-restricted-syntax, audit:auditConstitution, audit:auditPublicSurface]
+- **CD-14** — Zero class authoring; classes only at external-library call sites ([cd-014-no-class-authoring.md](cd-014-no-class-authoring.md)) [biome:noStaticOnlyClass (static-only classes only), eslint:rin-discipline/no-class-authoring, oxlint:rin-discipline/no-class-authoring, audit:auditConstitution, audit:auditPublicSurface]
 - **CD-15** — No `for…of`; functional iteration only ([cd-015-no-for-of.md](cd-015-no-for-of.md)) [manual]
 - **CD-16** — No counted `for` loops ([cd-016-no-counted-for.md](cd-016-no-counted-for.md)) [redirect]
 - **CD-17** — Clock is the only time source ([cd-017-clock-only-time-source.md](cd-017-clock-only-time-source.md)) [audit:auditConstitution, eslint:no-restricted-syntax]
