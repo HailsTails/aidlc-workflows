@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { SourceCase } from "../rule-set-reader/rule-set-reader.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
 import type { AnchorKind } from "../values/anchor.ts";
@@ -28,6 +29,13 @@ export type RunRequest = {
   readonly files: readonly RepoPath[];
   readonly trackedPaths: readonly RepoPath[];
   readonly clauses: readonly RunnerClause[];
+};
+
+export type ProjectionRequest = {
+  readonly repoRoot: AbsolutePath;
+  readonly installRoot: AbsolutePath;
+  readonly clauses: readonly RunnerClause[];
+  readonly records: readonly ExceptionRecord[];
 };
 
 export type StandaloneRunner = {

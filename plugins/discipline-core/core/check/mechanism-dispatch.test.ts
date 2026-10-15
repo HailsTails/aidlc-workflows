@@ -103,7 +103,7 @@ describe("runMechanism with a standalone runner", () => {
     const run = vi.fn<LoadedRunner["run"]>().mockThrow(new Error("the runner threw"));
     await expect(dispatchRun({ runner: standaloneRunner({ run }) })).resolves.toMatchObject({
       outcome: "failed",
-      error: { kind: "runner-invalid-output" },
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("the runner call threw or rejected: the runner threw") },
     });
   });
 
@@ -111,14 +111,14 @@ describe("runMechanism with a standalone runner", () => {
     const run = vi.fn<LoadedRunner["run"]>().mockRejectedValue(new Error("the runner rejected"));
     await expect(dispatchRun({ runner: standaloneRunner({ run }) })).resolves.toMatchObject({
       outcome: "failed",
-      error: { kind: "runner-invalid-output" },
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("the runner call threw or rejected: the runner rejected") },
     });
   });
 
   it("is runner-invalid-output when run returns a value that is not a result", async () => {
     await expect(
       dispatchRun({ runner: standaloneRunner({ run: runResolving([HIT_IN_A]) }) }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("Invalid input") } });
   });
 
   it("is runner-invalid-output when a hit's file is not a repo path", async () => {
@@ -126,7 +126,7 @@ describe("runMechanism with a standalone runner", () => {
       dispatchRun({
         runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, file: "/repo/src/a.ts" }] }) }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("→ at value[0].file") } });
   });
 
   it("is runner-invalid-output when the runner returns a failure of an unknown kind", async () => {
@@ -134,7 +134,7 @@ describe("runMechanism with a standalone runner", () => {
       dispatchRun({
         runner: standaloneRunner({ run: runResolving({ outcome: "failed", error: { kind: "gave-up", detail: "no" } }) }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("Invalid input") } });
   });
 
   it("is runner-invalid-output when a hit names a clause the request did not hold", async () => {
@@ -144,7 +144,7 @@ describe("runMechanism with a standalone runner", () => {
           run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, clause: ABSTRACT_SYNTAX_OBJECT }] }),
         }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#abstract-syntax in src/a.ts, which the request did not hold") } });
   });
 
   it("is runner-invalid-output when a hit names a tracked file that is not in files", async () => {
@@ -152,7 +152,7 @@ describe("runMechanism with a standalone runner", () => {
       dispatchRun({
         runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, file: "README.md" }] }) }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in README.md, which the request did not hold") } });
   });
 });
 
@@ -307,19 +307,19 @@ describe("runMechanism with an embedded runner", () => {
   it("is runner-invalid-output when run throws synchronously", async () => {
     await expect(
       dispatchEmbeddedRun({ run: vi.fn<EmbeddedCall>().mockThrow(new Error("the runner threw")) }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("the runner call threw or rejected: the runner threw") } });
   });
 
   it("is runner-invalid-output when run rejects", async () => {
     await expect(
       dispatchEmbeddedRun({ run: vi.fn<EmbeddedCall>().mockRejectedValue(new Error("the runner rejected")) }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("the runner call threw or rejected: the runner rejected") } });
   });
 
   it("is runner-invalid-output when run returns a standalone hit list instead of a report", async () => {
     await expect(
       dispatchEmbeddedRun({ run: embeddedResolving({ outcome: "ok", value: [HIT_IN_A] }) }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("Invalid input") } });
   });
 
   it("is runner-invalid-output when the report's projection is the standalone none", async () => {
@@ -327,7 +327,7 @@ describe("runMechanism with an embedded runner", () => {
       dispatchEmbeddedRun({
         run: embeddedResolving({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "none" } }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("Invalid input") } });
   });
 
   it("is runner-invalid-output when a native exception has an unknown kind", async () => {
@@ -342,7 +342,7 @@ describe("runMechanism with an embedded runner", () => {
           },
         }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("Invalid input") } });
   });
 
   it("is runner-invalid-output when a hit names a clause the request did not hold", async () => {
@@ -353,7 +353,7 @@ describe("runMechanism with an embedded runner", () => {
           value: { hits: [{ ...HIT_IN_A, clause: ABSTRACT_SYNTAX_OBJECT }], nativeExceptions: [], projection: "current" },
         }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#abstract-syntax in src/a.ts, which the request did not hold") } });
   });
 
   it("is runner-invalid-output when a hit names a tracked file that is not in files", async () => {
@@ -364,7 +364,7 @@ describe("runMechanism with an embedded runner", () => {
           value: { hits: [{ ...HIT_IN_A, file: "README.md" }], nativeExceptions: [], projection: "current" },
         }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in README.md, which the request did not hold") } });
   });
 });
 
@@ -404,13 +404,13 @@ describe("projectMechanism with an embedded runner", () => {
   it("is runner-invalid-output when project throws synchronously", async () => {
     await expect(
       dispatchEmbeddedProject({ project: vi.fn<EmbeddedCall>().mockThrow(new Error("the projection threw")) }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("the runner call threw or rejected: the projection threw") } });
   });
 
   it("is runner-invalid-output when project rejects", async () => {
     await expect(
       dispatchEmbeddedProject({ project: vi.fn<EmbeddedCall>().mockRejectedValue(new Error("the projection rejected")) }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("the runner call threw or rejected: the projection rejected") } });
   });
 
   it("is runner-invalid-output when the write's path is not a repo path", async () => {
@@ -418,7 +418,7 @@ describe("projectMechanism with an embedded runner", () => {
       dispatchEmbeddedProject({
         project: embeddedResolving({ outcome: "ok", value: { path: "/repo/disciplines.eslint.mjs", effect: "written" } }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("→ at value.path") } });
   });
 
   it("is runner-invalid-output when project returns a list of writes instead of one", async () => {
@@ -426,7 +426,7 @@ describe("projectMechanism with an embedded runner", () => {
       dispatchEmbeddedProject({
         project: embeddedResolving({ outcome: "ok", value: [{ path: "disciplines.eslint.mjs", effect: "written" }] }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("Invalid input") } });
   });
 });
 
@@ -443,7 +443,7 @@ describe("runMechanism with an embedded runner, native exceptions against the re
           },
         }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a native exception names CD-14#abstract-syntax, which the request did not hold") } });
   });
 
   it("returns a native exception whose file is not among the files under check", async () => {

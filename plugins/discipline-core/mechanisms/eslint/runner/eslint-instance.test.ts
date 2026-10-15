@@ -68,6 +68,8 @@ const disabledClassCase = {
   expectedLines: [2],
 };
 
+const REFUSED_CONFIG_DETAIL = "✖ Invalid input";
+
 const noClassCase = {
   name: "no-class",
   fileName: repoPathSchema.parse("cases/no-class.ts"),
@@ -403,7 +405,7 @@ describe("createQueryInstance", () => {
       .createQueryInstance({ repoRoot })
       .ruleState({ file: fileA, ruleId: "cd/no-class" });
 
-    expect(ruleState).toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output" } });
+    expect(ruleState).toEqual({ outcome: "failed", error: { kind: "runner-invalid-output", detail: REFUSED_CONFIG_DETAIL } });
   });
 
   it("reports ESLint refusing to redefine a plugin while answering a rule state as plugin-conflict", async () => {
@@ -644,7 +646,44 @@ describe("lintSourceCases", () => {
       cases: [classCase],
     });
 
-    expect(verdicts).toMatchObject({ outcome: "failed", error: { kind: "tool-failed" } });
+    expect(verdicts).toEqual({
+      outcome: "failed",
+      error: { kind: "tool-failed", detail: "inline configuration comments could not be read in case class" },
+    });
+  });
+
+  it("reports a case both inline-config-unreadable and holding a message with no rule as tool-failed", async () => {
+    const verdicts = await createEslintPort({
+      createEslint: vi.fn<CreateEslint>().mockReturnValue({
+        ...idleSurface,
+        lintText: vi.fn<EslintSurface["lintText"]>().mockResolvedValue([
+          {
+            filePath: "/install/mechanisms/eslint/CD-14/cases/class.ts",
+            messages: [
+              { ruleId: null, line: 1, column: 7, message: "Parsing error: '{' expected.", fatal: true },
+              {
+                ruleId: "discipline-core/inline-config",
+                messageId: "inline-config-unreadable",
+                line: 1,
+                column: 1,
+                message: "inline configuration comments could not be read",
+              },
+            ],
+          },
+        ]),
+      }),
+    }).lintSourceCases({
+      cwd: conformanceRoot,
+      plugin: classAndFunctionPlugin,
+      pluginNamespace: "cd",
+      rule: "no-class",
+      cases: [classCase],
+    });
+
+    expect(verdicts).toEqual({
+      outcome: "failed",
+      error: { kind: "tool-failed", detail: "inline configuration comments could not be read in case class" },
+    });
   });
 
   it("reports a case holding a fatal message as runner-invalid-output naming that case", async () => {
@@ -670,7 +709,10 @@ describe("lintSourceCases", () => {
 
     expect(verdicts).toEqual({
       outcome: "failed",
-      error: { kind: "runner-invalid-output", detail: expect.stringContaining("class") },
+      error: {
+        kind: "runner-invalid-output",
+        detail: "case class was not linted as a rule source: Parsing error: '{' expected.",
+      },
     });
   });
 
@@ -688,6 +730,8 @@ describe("lintSourceCases", () => {
                 column: 0,
                 message: "File ignored because no matching configuration was supplied.",
               },
+              { ruleId: "cd/no-class", line: 1, column: 1, message: "no class" },
+              { ruleId: null, line: 0, column: 0, message: "File ignored by default." },
             ],
           },
         ]),
@@ -702,7 +746,11 @@ describe("lintSourceCases", () => {
 
     expect(verdicts).toEqual({
       outcome: "failed",
-      error: { kind: "runner-invalid-output", detail: expect.stringContaining("no-class") },
+      error: {
+        kind: "runner-invalid-output",
+        detail:
+          "case no-class was not linted as a rule source: File ignored because no matching configuration was supplied.; File ignored by default.",
+      },
     });
   });
 

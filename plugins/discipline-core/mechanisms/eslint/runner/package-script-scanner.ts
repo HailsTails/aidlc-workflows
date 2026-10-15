@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { NativeException } from "../../../core/mechanism-port/runner-result-schema.ts";
 import { parsedJson } from "../../../core/rule-set-reader/rule-set-reader.ts";
@@ -197,21 +198,34 @@ const eslintNamingOf = (request: { readonly token: string }): EslintNaming =>
     ? "names-eslint"
     : "names-other";
 
+const invocationOf = (request: { readonly command: ScriptCommand }): readonly EslintInvocation[] => {
+  const eslintIndex = request.command.findIndex((token) => eslintNamingOf({ token }) === "names-eslint");
+  if (eslintIndex === -1) {
+    return [];
+  }
+  return [
+    {
+      options: request.command
+        .slice(eslintIndex + 1)
+        .filter((token) => token !== FORWARDED_OPTIONS_SEPARATOR),
+    },
+  ];
+};
+
 export const eslintInvocationsOf = (request: {
   readonly commands: readonly ScriptCommand[];
-}): readonly EslintInvocation[] =>
-  request.commands.flatMap((command) => {
-    const eslintIndex = command.findIndex((token) => eslintNamingOf({ token }) === "names-eslint");
-    return eslintIndex === -1
-      ? []
-      : [
-          {
-            options: command
-              .slice(eslintIndex + 1)
-              .filter((token) => token !== FORWARDED_OPTIONS_SEPARATOR),
-          },
-        ];
-  });
+}): readonly EslintInvocation[] => request.commands.flatMap((command) => invocationOf({ command }));
+
+const occurrenceFormOf = (request: {
+  readonly token: string;
+  readonly name: string;
+  readonly arity: OptionArity;
+}): "joined-value" | "separate" | "not-this-option" => {
+  if (request.arity === "takes-value" && request.token.startsWith(`${request.name}=`)) {
+    return "joined-value";
+  }
+  return request.token === request.name ? "separate" : "not-this-option";
+};
 
 const occurrenceAt = (request: {
   readonly token: string;
@@ -219,13 +233,12 @@ const occurrenceAt = (request: {
   readonly name: string;
   readonly arity: OptionArity;
 }): readonly OptionOccurrence[] => {
-  if (request.arity === "takes-value" && request.token.startsWith(`${request.name}=`)) {
-    return [
-      { option: request.token, optionValue: request.token.slice(request.name.length + 1) },
-    ];
-  }
-  if (request.token !== request.name) {
+  const form = occurrenceFormOf({ token: request.token, name: request.name, arity: request.arity });
+  if (form === "not-this-option") {
     return [];
+  }
+  if (form === "joined-value") {
+    return [{ option: request.token, optionValue: request.token.slice(request.name.length + 1) }];
   }
   const optionValue = request.arity === "takes-value" ? request.next : "";
   return [
@@ -247,57 +260,90 @@ const ruleIdsNamedBy = (request: {
   return request.selectedRuleIds.filter((ruleId) => named.includes(ruleId));
 };
 
+const reachedRuleIds = (request: {
+  readonly spec: WeakeningSpec;
+  readonly optionValue: string;
+  readonly selectedRuleIds: readonly string[];
+}): readonly string[] =>
+  request.spec.reach === "every-clause"
+    ? request.selectedRuleIds
+    : ruleIdsNamedBy({ value: request.optionValue, selectedRuleIds: request.selectedRuleIds });
+
+const specWeakenings = (request: {
+  readonly spec: WeakeningSpec;
+  readonly token: string;
+  readonly next: string;
+  readonly selectedRuleIds: readonly string[];
+}): readonly WeakeningOption[] =>
+  occurrenceAt({
+    token: request.token,
+    next: request.next,
+    name: request.spec.name,
+    arity: request.spec.arity,
+  }).map((occurrence) => ({
+    option: occurrence.option,
+    ruleIds: reachedRuleIds({
+      spec: request.spec,
+      optionValue: occurrence.optionValue,
+      selectedRuleIds: request.selectedRuleIds,
+    }),
+  }));
+
+const tokenWeakenings = (request: {
+  readonly token: string;
+  readonly next: string;
+  readonly selectedRuleIds: readonly string[];
+}): readonly WeakeningOption[] => WEAKENING_OPTIONS.flatMap((spec) => specWeakenings({ ...request, spec }));
+
 export const commandLineOptionsOf = (request: {
   readonly invocation: EslintInvocation;
   readonly selectedRuleIds: readonly string[];
 }): readonly WeakeningOption[] =>
   request.invocation.options
     .flatMap((token, index) =>
-      WEAKENING_OPTIONS.flatMap((spec) =>
-        occurrenceAt({
-          token,
-          next: request.invocation.options[index + 1] ?? "",
-          name: spec.name,
-          arity: spec.arity,
-        }).map((occurrence) => ({
-          option: occurrence.option,
-          ruleIds:
-            spec.reach === "every-clause"
-              ? request.selectedRuleIds
-              : ruleIdsNamedBy({ value: occurrence.optionValue, selectedRuleIds: request.selectedRuleIds }),
-        })),
-      ),
+      tokenWeakenings({
+        token,
+        next: request.invocation.options[index + 1] ?? "",
+        selectedRuleIds: request.selectedRuleIds,
+      }),
     )
     .filter((weakening) => weakening.ruleIds.length > 0);
+
+const suppressionsLocationsAt = (request: { readonly token: string; readonly next: string }): readonly string[] =>
+  occurrenceAt({
+    token: request.token,
+    next: request.next,
+    name: SUPPRESSIONS_LOCATION_OPTION,
+    arity: "takes-value",
+  }).map((occurrence) => occurrence.optionValue);
 
 export const suppressionsLocationValuesOf = (request: {
   readonly invocation: EslintInvocation;
 }): readonly string[] =>
   request.invocation.options.flatMap((token, index) =>
-    occurrenceAt({
-      token,
-      next: request.invocation.options[index + 1] ?? "",
-      name: SUPPRESSIONS_LOCATION_OPTION,
-      arity: "takes-value",
-    }).map((occurrence) => occurrence.optionValue),
+    suppressionsLocationsAt({ token, next: request.invocation.options[index + 1] ?? "" }),
   );
+
+const nextWalk = (request: { readonly walk: SegmentWalk; readonly segment: string }): SegmentWalk => {
+  const walk = request.walk;
+  if (walk.position === "outside" || request.segment === "" || request.segment === ".") {
+    return walk;
+  }
+  if (request.segment === ".." && walk.segments.length === 0) {
+    return { position: "outside" };
+  }
+  if (request.segment === "..") {
+    return { position: "inside", segments: walk.segments.slice(0, -1) };
+  }
+  return { position: "inside", segments: [...walk.segments, request.segment] };
+};
 
 const walkedSegments = (request: {
   readonly baseSegments: readonly string[];
   readonly path: string;
 }): SegmentWalk =>
   [...request.baseSegments, ...request.path.split("/")].reduce<SegmentWalk>(
-    (walk, segment) => {
-      if (walk.position === "outside" || segment === "" || segment === ".") {
-        return walk;
-      }
-      if (segment === "..") {
-        return walk.segments.length === 0
-          ? { position: "outside" }
-          : { position: "inside", segments: walk.segments.slice(0, -1) };
-      }
-      return { position: "inside", segments: [...walk.segments, segment] };
-    },
+    (walk, segment) => nextWalk({ walk, segment }),
     { position: "inside", segments: [] },
   );
 
@@ -317,7 +363,72 @@ export const repoPathResolved = (request: {
     return refused;
   }
   const parsed = repoPathSchema.safeParse(walk.segments.join("/"));
-  return parsed.success ? { outcome: "ok", value: parsed.data } : refused;
+  if (!parsed.success) {
+    return refused;
+  }
+  return { outcome: "ok", value: parsed.data };
+};
+
+const weakeningExceptions = (request: {
+  readonly weakening: WeakeningOption;
+  readonly path: RepoPath;
+  readonly script: string;
+  readonly selectedRules: readonly SelectedRule[];
+}): readonly NativeException[] =>
+  request.selectedRules
+    .filter((rule) => request.weakening.ruleIds.includes(rule.ruleId))
+    .map(
+      (rule): NativeException => ({
+        kind: "command-line-option",
+        clause: rule.clause,
+        location: request.path,
+        script: request.script,
+        option: request.weakening.option,
+      }),
+    );
+
+const commandLineExceptions = (request: {
+  readonly invocations: readonly EslintInvocation[];
+  readonly path: RepoPath;
+  readonly script: string;
+  readonly selectedRules: readonly SelectedRule[];
+}): readonly NativeException[] => {
+  const selectedRuleIds = request.selectedRules.map((rule) => rule.ruleId);
+  return request.invocations
+    .flatMap((invocation) => commandLineOptionsOf({ invocation, selectedRuleIds }))
+    .flatMap((weakening) => weakeningExceptions({ ...request, weakening }));
+};
+
+const locatedScan = (request: {
+  readonly scan: Result<PackageJsonScan, RunnerFailure>;
+  readonly locationText: string;
+  readonly baseSegments: readonly string[];
+  readonly path: RepoPath;
+  readonly script: string;
+}): Result<PackageJsonScan, RunnerFailure> => {
+  if (request.scan.outcome === "failed") {
+    return request.scan;
+  }
+  const location = repoPathResolved({ baseSegments: request.baseSegments, path: request.locationText });
+  if (location.outcome === "failed") {
+    return {
+      outcome: "failed",
+      error: {
+        kind: "tool-failed",
+        detail: `script "${request.script}" in ${request.path} names --suppressions-location ${request.locationText}, which is not a repo path`,
+      },
+    };
+  }
+  return {
+    outcome: "ok",
+    value: {
+      nativeExceptions: request.scan.value.nativeExceptions,
+      suppressionsLocations: [
+        ...request.scan.value.suppressionsLocations,
+        { location: location.value, script: request.script },
+      ],
+    },
+  };
 };
 
 const scriptScan = (request: {
@@ -337,53 +448,51 @@ const scriptScan = (request: {
     };
   }
   const invocations = eslintInvocationsOf({ commands: commands.value });
-  const selectedRuleIds = request.selectedRules.map((rule) => rule.ruleId);
-  const nativeExceptions = invocations
-    .flatMap((invocation) => commandLineOptionsOf({ invocation, selectedRuleIds }))
-    .flatMap((weakening) =>
-      request.selectedRules
-        .filter((rule) => weakening.ruleIds.includes(rule.ruleId))
-        .map(
-          (rule): NativeException => ({
-            kind: "command-line-option",
-            clause: rule.clause,
-            location: request.path,
-            script: request.script,
-            option: weakening.option,
-          }),
-        ),
-    );
   const baseSegments = request.path.split("/").slice(0, -1);
   return invocations
     .flatMap((invocation) => suppressionsLocationValuesOf({ invocation }))
     .reduce<Result<PackageJsonScan, RunnerFailure>>(
-      (scan, locationText) => {
-        if (scan.outcome === "failed") {
-          return scan;
-        }
-        const location = repoPathResolved({ baseSegments, path: locationText });
-        if (location.outcome === "failed") {
-          return {
-            outcome: "failed",
-            error: {
-              kind: "tool-failed",
-              detail: `script "${request.script}" in ${request.path} names --suppressions-location ${locationText}, which is not a repo path`,
-            },
-          };
-        }
-        return {
-          outcome: "ok",
-          value: {
-            nativeExceptions: scan.value.nativeExceptions,
-            suppressionsLocations: [
-              ...scan.value.suppressionsLocations,
-              { location: location.value, script: request.script },
-            ],
-          },
-        };
+      (scan, locationText) =>
+        locatedScan({ scan, locationText, baseSegments, path: request.path, script: request.script }),
+      {
+        outcome: "ok",
+        value: {
+          nativeExceptions: commandLineExceptions({ ...request, invocations }),
+          suppressionsLocations: [],
+        },
       },
-      { outcome: "ok", value: { nativeExceptions, suppressionsLocations: [] } },
     );
+};
+
+const mergedScriptScan = (request: {
+  readonly scan: Result<PackageJsonScan, RunnerFailure>;
+  readonly script: string;
+  readonly scriptText: string;
+  readonly path: RepoPath;
+  readonly selectedRules: readonly SelectedRule[];
+}): Result<PackageJsonScan, RunnerFailure> => {
+  if (request.scan.outcome === "failed") {
+    return request.scan;
+  }
+  const scanned = scriptScan({
+    path: request.path,
+    script: request.script,
+    scriptText: request.scriptText,
+    selectedRules: request.selectedRules,
+  });
+  if (scanned.outcome === "failed") {
+    return scanned;
+  }
+  return {
+    outcome: "ok",
+    value: {
+      nativeExceptions: [...request.scan.value.nativeExceptions, ...scanned.value.nativeExceptions],
+      suppressionsLocations: [
+        ...request.scan.value.suppressionsLocations,
+        ...scanned.value.suppressionsLocations,
+      ],
+    },
+  };
 };
 
 export const scanPackageJson = (request: {
@@ -399,34 +508,12 @@ export const scanPackageJson = (request: {
   if (!packageJson.success) {
     return {
       outcome: "failed",
-      error: { kind: "tool-failed", detail: `${request.path}: ${packageJson.error.message}` },
+      error: { kind: "tool-failed", detail: `${request.path}: ${z.prettifyError(packageJson.error)}` },
     };
   }
   return Object.entries(packageJson.data.scripts ?? {}).reduce<Result<PackageJsonScan, RunnerFailure>>(
-    (scan, [script, scriptText]) => {
-      if (scan.outcome === "failed") {
-        return scan;
-      }
-      const scanned = scriptScan({
-        path: request.path,
-        script,
-        scriptText,
-        selectedRules: request.selectedRules,
-      });
-      if (scanned.outcome === "failed") {
-        return scanned;
-      }
-      return {
-        outcome: "ok",
-        value: {
-          nativeExceptions: [...scan.value.nativeExceptions, ...scanned.value.nativeExceptions],
-          suppressionsLocations: [
-            ...scan.value.suppressionsLocations,
-            ...scanned.value.suppressionsLocations,
-          ],
-        },
-      };
-    },
+    (scan, [script, scriptText]) =>
+      mergedScriptScan({ scan, script, scriptText, path: request.path, selectedRules: request.selectedRules }),
     { outcome: "ok", value: { nativeExceptions: [], suppressionsLocations: [] } },
   );
 };

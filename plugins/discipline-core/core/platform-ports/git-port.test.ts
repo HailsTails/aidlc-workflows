@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { absolutePathSchema } from "../values/absolute-path.ts";
-import { createGitPort, type GitRun, type GitSpawn } from "./git-port.ts";
+import { createGitPort, defaultGitSpawn, type GitRun, type GitSpawn } from "./git-port.ts";
 
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 
@@ -237,5 +237,13 @@ describe("createGitPort changedSince", () => {
         detail: "spawnSync git ENOBUFS",
       },
     });
+  });
+});
+
+describe("defaultGitSpawn with an argument Node refuses before spawning, so no process is spawned", () => {
+  it("returns errored with the refusal's detail rather than throwing", () => {
+    expect(
+      defaultGitSpawn({ file: "git", arguments: ["diff", "a\0b"], maxBuffer: 1, environment: {} }),
+    ).toEqual({ outcome: "errored", detail: expect.stringMatching(/.+/) });
   });
 });

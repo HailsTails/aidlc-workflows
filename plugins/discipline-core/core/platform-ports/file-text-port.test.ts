@@ -3,6 +3,18 @@ import { createFileTextPort, type FileSystemSurface } from "./file-text-port.ts"
 
 const PATH = "/repo/a.ts";
 
+const NO_SUCH_FILE = Object.assign(new Error("ENOENT: no such file or directory, access '/repo/a.ts'"), {
+  code: "ENOENT",
+});
+
+const PERMISSION_DENIED = Object.assign(new Error("EACCES: permission denied, access '/repo/a.ts'"), {
+  code: "EACCES",
+});
+
+const NOT_A_DIRECTORY = Object.assign(new Error("ENOTDIR: not a directory, access '/repo/a.ts'"), {
+  code: "ENOTDIR",
+});
+
 const fileSystemOver = (surface: Partial<FileSystemSurface>): FileSystemSurface => ({
   readText: vi.fn(),
   writeText: vi.fn(),
@@ -70,14 +82,44 @@ describe("createFileTextPort exists", () => {
     expect(access).toHaveBeenCalledWith({ path: "/repo/a.ts" });
   });
 
-  it("reports a path whose access throws as absent", () => {
+  it("reports a path whose access throws ENOENT as absent", () => {
     expect(
       createFileTextPort({
         fileSystem: fileSystemOver({
-          access: vi.fn<FileSystemSurface["access"]>().mockThrow(new Error("ENOENT")),
+          access: vi.fn<FileSystemSurface["access"]>().mockThrow(NO_SUCH_FILE),
         }),
       }).exists({ path: PATH }),
     ).toBe("absent");
+  });
+
+  it("reports a path whose access throws another error as present, so its read reports it", () => {
+    expect(
+      createFileTextPort({
+        fileSystem: fileSystemOver({
+          access: vi.fn<FileSystemSurface["access"]>().mockThrow(PERMISSION_DENIED),
+        }),
+      }).exists({ path: PATH }),
+    ).toBe("present");
+  });
+
+  it("reports a path whose access throws ENOTDIR as present, so its read reports it", () => {
+    expect(
+      createFileTextPort({
+        fileSystem: fileSystemOver({
+          access: vi.fn<FileSystemSurface["access"]>().mockThrow(NOT_A_DIRECTORY),
+        }),
+      }).exists({ path: PATH }),
+    ).toBe("present");
+  });
+
+  it("reports a path whose access throws a value with no error code as present", () => {
+    expect(
+      createFileTextPort({
+        fileSystem: fileSystemOver({
+          access: vi.fn<FileSystemSurface["access"]>().mockThrow("ENOENT"),
+        }),
+      }).exists({ path: PATH }),
+    ).toBe("present");
   });
 });
 

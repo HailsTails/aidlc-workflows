@@ -17,6 +17,8 @@ const EXCEPTIONS_PATH = "/repo/discipline-exceptions.json";
 const DISCIPLINE_PATH = "/install/rules/CD-14/discipline.json";
 const PIECE_PATH = "/install/mechanisms/walker/CD-14/piece.json";
 const RUNNER_PATH = "/install/mechanisms/walker/runner/runner.ts";
+const LINT_PIECE_PATH = "/install/mechanisms/lint/CD-14/piece.json";
+const LINT_RUNNER_PATH = "/install/mechanisms/lint/runner/runner.ts";
 const TEAM_ROOT = "/repo/rules/team";
 const TEAM_DISCIPLINE_PATH = "/repo/rules/team/rules/CD-14/discipline.json";
 const TEAM_PIECE_PATH = "/repo/rules/team/mechanisms/walker/CD-14/piece.json";
@@ -58,16 +60,31 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/install","mechanisms","walker","CD-14","piece.json"]': PIECE_PATH,
   '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
   '["/install","mechanisms","walker","runner","runner.ts"]': RUNNER_PATH,
+  '["/install","mechanisms","lint","CD-14","piece.json"]': LINT_PIECE_PATH,
+  '["/install","mechanisms","lint","CD-14"]': "/install/mechanisms/lint/CD-14",
+  '["/install","mechanisms","lint","runner","runner.ts"]': LINT_RUNNER_PATH,
   '["/repo","rules/team"]': TEAM_ROOT,
   '["/repo/rules/team","rules","CD-14","discipline.json"]': TEAM_DISCIPLINE_PATH,
   '["/repo/rules/team","mechanisms","walker","CD-14","piece.json"]': TEAM_PIECE_PATH,
   '["/repo/rules/team","mechanisms","walker","CD-14"]': "/repo/rules/team/mechanisms/walker/CD-14",
+  '["/repo","README.md"]': "/repo/README.md",
+  '["/repo","package.json"]': "/repo/package.json",
+  '["/repo","src/a.ts"]': "/repo/src/a.ts",
+  '["/repo","src/b.tsx"]': "/repo/src/b.tsx",
+  '["/repo","src/c.mts"]': "/repo/src/c.mts",
+  '["/repo","src/d.cts"]': "/repo/src/d.cts",
+  '["/repo","src/e.js"]': "/repo/src/e.js",
+  '["/repo","src/f.json"]': "/repo/src/f.json",
+  '["/repo","src/factory.ts"]': "/repo/src/factory.ts",
+  '["/repo","src/gone.ts"]': "/repo/src/gone.ts",
 };
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
   [PIECE_PATH]: "/install/mechanisms/walker/CD-14",
   [DISCIPLINE_PATH]: "/install/rules/CD-14",
   [RUNNER_PATH]: "/install/mechanisms/walker/runner",
+  [LINT_PIECE_PATH]: "/install/mechanisms/lint/CD-14",
+  [LINT_RUNNER_PATH]: "/install/mechanisms/lint/runner",
   [TEAM_PIECE_PATH]: "/repo/rules/team/mechanisms/walker/CD-14",
   [TEAM_DISCIPLINE_PATH]: "/repo/rules/team/rules/CD-14",
 };
@@ -161,6 +178,19 @@ const EXCEPTIONS_WITH_FILE_CARVE_OUT = JSON.stringify({
   ],
 });
 
+const EXCEPTIONS_WITH_FILE_CARVE_OUT_ON_GONE = JSON.stringify({
+  version: 1,
+  exceptions: [
+    {
+      kind: "file-carve-out",
+      clause: "CD-14#class-syntax",
+      file: "src/gone.ts",
+      reason: "legacy class awaiting paydown",
+      whyChain: CHAIN,
+    },
+  ],
+});
+
 const EXCEPTIONS_WITH_AUTHORISED_LOCATION = JSON.stringify({
   version: 1,
   exceptions: [
@@ -173,7 +203,21 @@ const EXCEPTIONS_WITH_AUTHORISED_LOCATION = JSON.stringify({
   ],
 });
 
+const WORKING_TREE: Readonly<Record<string, FakeFile>> = {
+  "/repo/README.md": presentFile({ text: "" }),
+  "/repo/package.json": presentFile({ text: "" }),
+  "/repo/src/a.ts": presentFile({ text: "" }),
+  "/repo/src/b.tsx": presentFile({ text: "" }),
+  "/repo/src/c.mts": presentFile({ text: "" }),
+  "/repo/src/d.cts": presentFile({ text: "" }),
+  "/repo/src/e.js": presentFile({ text: "" }),
+  "/repo/src/f.json": presentFile({ text: "" }),
+  "/repo/src/factory.ts": presentFile({ text: "" }),
+  "/repo/src/gone.ts": ABSENT_FILE,
+};
+
 const INSTALL: Readonly<Record<string, FakeFile>> = {
+  ...WORKING_TREE,
   [SELECTION_PATH]: presentFile({ text: SELECTION }),
   [EXCEPTIONS_PATH]: ABSENT_FILE,
   [DISCIPLINE_PATH]: presentFile({ text: DISCIPLINE }),
@@ -182,6 +226,7 @@ const INSTALL: Readonly<Record<string, FakeFile>> = {
 };
 
 const TEAM_INSTALL: Readonly<Record<string, FakeFile>> = {
+  ...WORKING_TREE,
   [SELECTION_PATH]: presentFile({
     text: JSON.stringify({ version: 1, ruleSets: { team: "rules/team" }, clauses: { "team/CD-14#class-syntax": "walker" } }),
   }),
@@ -474,6 +519,52 @@ describe("runCheck runner dispatch", () => {
     ]);
   });
 
+  it("reads disciplines.json, the discipline file and the piece file exactly once each", async () => {
+    const fileText = fileTextOver(INSTALL);
+    const reads = vi.spyOn(fileText, "read");
+    await runCheck(checkRequest({ fileText }));
+    expect({ count: reads.mock.calls.length, calls: reads.mock.calls }).toEqual({
+      count: 3,
+      calls: expect.arrayContaining([[{ path: SELECTION_PATH }], [{ path: DISCIPLINE_PATH }], [{ path: PIECE_PATH }]]),
+    });
+  });
+
+  it("drops a tracked path absent from the working tree from both the files and the tracked paths it runs on", async () => {
+    const runner = standaloneRunner({ runReturns: { outcome: "ok", value: [] } });
+    await runCheck(
+      checkRequest({
+        modules: modulesLoading({ runner }),
+        git: gitReporting({
+          trackedPaths: { outcome: "ok", value: z.array(repoPathSchema).parse(["README.md", "src/a.ts", "src/gone.ts"]) },
+          changedSince: { outcome: "ok", value: [] },
+        }),
+      }),
+    );
+    expect(vi.mocked(runner.run).mock.calls).toEqual([
+      [expect.objectContaining({ files: ["src/a.ts"], trackedPaths: ["README.md", "src/a.ts"] })],
+    ]);
+  });
+
+  it("still forfeits a carve-out on a tracked path absent from the working tree that the change set touched", async () => {
+    const runner = standaloneRunner({ runReturns: { outcome: "ok", value: [] } });
+
+    const checked = await runCheck(
+      checkRequest({
+        fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_FILE_CARVE_OUT_ON_GONE }) }),
+        modules: modulesLoading({ runner }),
+        git: gitReporting({
+          trackedPaths: { outcome: "ok", value: z.array(repoPathSchema).parse(["src/a.ts", "src/gone.ts"]) },
+          changedSince: { outcome: "ok", value: z.array(repoPathSchema).parse(["src/gone.ts"]) },
+        }),
+      }),
+    );
+
+    expect({ checked, runs: vi.mocked(runner.run).mock.calls }).toMatchObject({
+      checked: { outcome: "ok", value: { forfeited: [{ kind: "file-carve-out", file: "src/gone.ts" }] } },
+      runs: [[{ files: ["src/a.ts"], trackedPaths: ["src/a.ts"] }]],
+    });
+  });
+
   it("touches only the consumer files and the install, none under a harness directory, and writes nothing", async () => {
     const fileText = fileTextOver(INSTALL);
     const reads = vi.spyOn(fileText, "read");
@@ -681,6 +772,54 @@ const embeddedRunnerReporting = (request: { readonly report: unknown }) => ({
     .mockResolvedValue({ outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "unchanged" } }),
 });
 
+const TWO_MECHANISM_DISCIPLINE = JSON.stringify({
+  version: 1,
+  id: "CD-14",
+  clauses: [CLASS_SYNTAX_DEFINITION, { ...ABSTRACT_SYNTAX_DEFINITION, mechanisms: ["lint"] }],
+});
+
+const LINT_PIECE = JSON.stringify({
+  version: 1,
+  discipline: "CD-14",
+  mechanism: "lint",
+  clauses: [{ clause: "abstract-syntax", settings: { module: "abstract-syntax.ts" } }],
+});
+
+const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
+  ...INSTALL,
+  [SELECTION_PATH]: presentFile({
+    text: JSON.stringify({
+      version: 1,
+      ruleSets: {},
+      clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "lint" },
+    }),
+  }),
+  [EXCEPTIONS_PATH]: presentFile({
+    text: JSON.stringify({
+      version: 1,
+      exceptions: [
+        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "walker location" },
+        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location" },
+      ],
+    }),
+  }),
+  [DISCIPLINE_PATH]: presentFile({ text: TWO_MECHANISM_DISCIPLINE }),
+  [LINT_PIECE_PATH]: presentFile({ text: LINT_PIECE }),
+  [LINT_RUNNER_PATH]: presentFile({ text: "export const runner = {};\n" }),
+};
+
+const WALKER_RECORD = {
+  kind: "authorised-location",
+  clause: CLASS_SYNTAX_OBJECT,
+  mechanism: "walker",
+  file: "src/walker.ts",
+  reason: "walker location",
+};
+
+const modulesByPath = (modules: Readonly<Record<string, unknown>>): ModuleLoaderPort => ({
+  load: ({ path }) => Promise.resolve({ outcome: "ok", value: modules[path] }),
+});
+
 describe("runCheck with an embedded runner", () => {
   it("lists mechanism-not-run for a not-included projection", async () => {
     await expect(
@@ -789,6 +928,23 @@ describe("runCheck with an embedded runner", () => {
           },
         ],
       },
+    });
+  });
+
+  it("hands the runner's run only the records of its own mechanism", async () => {
+    const runner = embeddedRunnerReporting({ report: { hits: [], nativeExceptions: [], projection: "current" } });
+    const report = await runCheck(
+      checkRequest({
+        fileText: fileTextOver(TWO_MECHANISM_INSTALL),
+        modules: modulesByPath({
+          [RUNNER_PATH]: { runner },
+          [LINT_RUNNER_PATH]: { runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) },
+        }),
+      }),
+    );
+    expect({ outcome: report.outcome, runCalls: runner.run.mock.calls }).toEqual({
+      outcome: "ok",
+      runCalls: [[expect.objectContaining({ records: [WALKER_RECORD] })]],
     });
   });
 });

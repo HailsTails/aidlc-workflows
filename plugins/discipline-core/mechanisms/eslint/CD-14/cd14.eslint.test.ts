@@ -8,4 +8,7 @@ test("the fragment owns only the dedicated CD14 rule", () => {
 			rules: { "rin-discipline/no-class-authoring": "error" },
 		},
 	]);
+	expect(cd14EslintEntries[0].rules).toEqual({
+		"rin-discipline/no-class-authoring": "error",
+	});
 });

@@ -46,9 +46,10 @@ const parsedArguments = <Parsed>(request: {
   readonly arguments: readonly string[];
 }): Result<Parsed, LoadFailure> => {
   const parsed = request.schema.safeParse(optionPairs(request));
-  return parsed.success
-    ? { outcome: "ok", value: parsed.data }
-    : { outcome: "failed", error: { kind: "arguments-invalid", detail: z.prettifyError(parsed.error) } };
+  if (!parsed.success) {
+    return { outcome: "failed", error: { kind: "arguments-invalid", detail: z.prettifyError(parsed.error) } };
+  }
+  return { outcome: "ok", value: parsed.data };
 };
 
 export const parseCheckArguments = (request: {

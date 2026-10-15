@@ -4,7 +4,11 @@ import { createPathPort } from "./path-port.ts";
 const workingDirectoryAt = (request: { readonly directory: string }) =>
   vi.fn<(request: Record<string, never>) => string>().mockReturnValue(request.directory);
 
-const pathPortIn = (request: { readonly directory: string }) =>
+const UNREADABLE_WORKING_DIRECTORY = vi
+  .fn<(request: Record<string, never>) => string>()
+  .mockThrow(new Error("ENOENT: process.cwd failed, no such file or directory"));
+
+const pathPortIn =(request: { readonly directory: string }) =>
   createPathPort({ workingDirectory: workingDirectoryAt({ directory: request.directory }) });
 
 describe("createPathPort", () => {
@@ -106,6 +110,12 @@ describe("createPathPort resolve", () => {
     );
   });
 
+  it("returns the normalised, still relative path rather than throwing when the working directory cannot be read", () => {
+    const { resolve } = createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY });
+
+    expect(resolve({ path: "./a/../b.ts" })).toBe("b.ts");
+  });
+
   it("normalises a .. segment that climbs out of the working directory", () => {
     expect(pathPortIn({ directory: "/work/sub" }).resolve({ path: "../a.ts" })).toBe(
       "/work/a.ts",
@@ -136,5 +146,17 @@ describe("createPathPort relative", () => {
     createPathPort({ workingDirectory }).relative({ from: "/a", to: "/a/b" });
 
     expect(workingDirectory).not.toHaveBeenCalled();
+  });
+
+  it("gives the relative path into a subdirectory without throwing when the working directory cannot be read", () => {
+    expect(
+      createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({ from: "a", to: "a/b" }),
+    ).toBe("b");
+  });
+
+  it("gives the relative path to a sibling without throwing when the working directory cannot be read", () => {
+    expect(
+      createPathPort({ workingDirectory: UNREADABLE_WORKING_DIRECTORY }).relative({ from: "a", to: "c" }),
+    ).toBe("../c");
   });
 });

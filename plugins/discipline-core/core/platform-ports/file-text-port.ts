@@ -37,6 +37,13 @@ export type FileSystemSurface = {
   readonly access: (request: { readonly path: string }) => void;
 };
 
+const NO_SUCH_FILE_CODE = "ENOENT";
+
+const presenceAfterAccessFailure = (request: { readonly thrown: unknown }): FilePresence =>
+  request.thrown instanceof Error && "code" in request.thrown && request.thrown.code === NO_SUCH_FILE_CODE
+    ? "absent"
+    : "present";
+
 const failureDetail = (request: { readonly thrown: unknown }): string =>
   request.thrown instanceof Error ? request.thrown.message : String(request.thrown);
 
@@ -61,8 +68,8 @@ export const createFileTextPort = (options: {
     try {
       options.fileSystem.access({ path: request.path });
       return "present";
-    } catch {
-      return "absent";
+    } catch (thrown) {
+      return presenceAfterAccessFailure({ thrown });
     }
   },
   write: (request) => {

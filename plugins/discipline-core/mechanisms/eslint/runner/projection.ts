@@ -35,8 +35,6 @@ type FileRecord = Exclude<ExceptionRecord, { readonly kind: "clause-wide-carve-o
 
 type ClauseWideRecord = Extract<ExceptionRecord, { readonly kind: "clause-wide-carve-out" }>;
 
-const PROJECTED_MECHANISM = "eslint";
-
 export const PROJECTION_PATH: RepoPath = repoPathSchema.parse("disciplines.eslint.mjs");
 
 const SOURCE_FILES = "**/*.{ts,tsx,mts,cts}";
@@ -144,41 +142,58 @@ const clauseWideBlock = (request: {
     ],
   });
 
+const fileRecordOrder = (request: { readonly left: FileRecord; readonly right: FileRecord }): number =>
+  codeUnitOrder({
+    left: clauseAddressText({ address: request.left.clause }),
+    right: clauseAddressText({ address: request.right.clause }),
+  }) || codeUnitOrder({ left: request.left.file, right: request.right.file });
+
+const clauseWideOrder = (request: { readonly left: ClauseWideRecord; readonly right: ClauseWideRecord }): number =>
+  codeUnitOrder({
+    left: clauseAddressText({ address: request.left.clause }),
+    right: clauseAddressText({ address: request.right.clause }),
+  });
+
+const sortedFileRecords = (request: { readonly records: readonly ExceptionRecord[] }): readonly FileRecord[] =>
+  request.records
+    .flatMap((record) => (record.kind === "clause-wide-carve-out" ? [] : [record]))
+    .sort((left, right) => fileRecordOrder({ left, right }));
+
+const sortedClauseWideRecords = (request: {
+  readonly records: readonly ExceptionRecord[];
+}): readonly ClauseWideRecord[] =>
+  request.records
+    .flatMap((record) => (record.kind === "clause-wide-carve-out" ? [record] : []))
+    .sort((left, right) => clauseWideOrder({ left, right }));
+
+const sortedPieces = (request: { readonly pieces: readonly ProjectedPiece[] }): readonly ProjectedPiece[] =>
+  [...request.pieces].sort((left, right) =>
+    codeUnitOrder({ left: left.pluginNamespace, right: right.pluginNamespace }),
+  );
+
+const importLines = (request: { readonly pieces: readonly ProjectedPiece[] }): readonly string[] =>
+  request.pieces.map((piece, index) => `import piece${index} from ${quoted({ text: piece.pluginImport })};`);
+
+const configBlocks = (request: {
+  readonly pieces: readonly ProjectedPiece[];
+  readonly records: readonly ExceptionRecord[];
+}): readonly string[] => [
+  ...request.pieces.map((piece, index) => pieceBlock({ piece, importName: `piece${index}` })),
+  ...sortedFileRecords({ records: request.records }).map((record) =>
+    fileRecordBlock({ record, pieces: request.pieces }),
+  ),
+  ...sortedClauseWideRecords({ records: request.records }).map((record) =>
+    clauseWideBlock({ record, pieces: request.pieces }),
+  ),
+];
+
 export const projectionText = (request: {
   readonly selectedPieces: readonly ProjectedPiece[];
   readonly records: readonly ExceptionRecord[];
 }): string => {
-  const pieces = [...request.selectedPieces].sort((left, right) =>
-    codeUnitOrder({ left: left.pluginNamespace, right: right.pluginNamespace }),
-  );
-  const projectedRecords = request.records.filter(
-    (record) => record.mechanism === PROJECTED_MECHANISM,
-  );
-  const fileRecords = projectedRecords
-    .flatMap((record) => (record.kind === "clause-wide-carve-out" ? [] : [record]))
-    .sort(
-      (left, right) =>
-        codeUnitOrder({
-          left: clauseAddressText({ address: left.clause }),
-          right: clauseAddressText({ address: right.clause }),
-        }) || codeUnitOrder({ left: left.file, right: right.file }),
-    );
-  const clauseWideRecords = projectedRecords
-    .flatMap((record) => (record.kind === "clause-wide-carve-out" ? [record] : []))
-    .sort((left, right) =>
-      codeUnitOrder({
-        left: clauseAddressText({ address: left.clause }),
-        right: clauseAddressText({ address: right.clause }),
-      }),
-    );
-  const imports = pieces.map(
-    (piece, index) => `import piece${index} from ${quoted({ text: piece.pluginImport })};`,
-  );
-  const blocks = [
-    ...pieces.map((piece, index) => pieceBlock({ piece, importName: `piece${index}` })),
-    ...fileRecords.map((record) => fileRecordBlock({ record, pieces })),
-    ...clauseWideRecords.map((record) => clauseWideBlock({ record, pieces })),
-  ];
+  const pieces = sortedPieces({ pieces: request.selectedPieces });
+  const imports = importLines({ pieces });
+  const blocks = configBlocks({ pieces, records: request.records });
   return `${imports.join("\n")}\n\nexport default [\n${blocks.join("\n")}\n];\n`;
 };
 
@@ -192,27 +207,47 @@ export const projectionState = (request: {
   return request.current.text === request.generated ? "current" : "out-of-date";
 };
 
+export const currentProjection = (request: {
+  readonly fileText: FileTextPort;
+  readonly repoRoot: AbsolutePath;
+}): Result<CurrentProjection, RunnerFailure> => {
+  const projectionFile = `${request.repoRoot}/${PROJECTION_PATH}`;
+  if (request.fileText.exists({ path: projectionFile }) === "absent") {
+    return { outcome: "ok", value: { presence: "absent" } };
+  }
+  const text = request.fileText.read({ path: projectionFile });
+  if (text.outcome === "failed") {
+    return {
+      outcome: "failed",
+      error: { kind: "file-unreadable", file: PROJECTION_PATH, detail: text.error.detail },
+    };
+  }
+  return { outcome: "ok", value: { presence: "present", text: text.value } };
+};
+
+const writtenProjection = (request: {
+  readonly fileText: FileTextPort;
+  readonly repoRoot: AbsolutePath;
+  readonly text: string;
+}): Result<ProjectionWrite, RunnerFailure> => {
+  const written = request.fileText.write({ path: `${request.repoRoot}/${PROJECTION_PATH}`, text: request.text });
+  if (written.outcome === "failed") {
+    return { outcome: "failed", error: { kind: "tool-failed", detail: written.error.detail } };
+  }
+  return { outcome: "ok", value: { path: PROJECTION_PATH, effect: "written" } };
+};
+
 export const writeProjection = (request: {
   readonly fileText: FileTextPort;
   readonly repoRoot: AbsolutePath;
   readonly text: string;
 }): Result<ProjectionWrite, RunnerFailure> => {
-  const absolutePath = `${request.repoRoot}/${PROJECTION_PATH}`;
-  if (request.fileText.exists({ path: absolutePath }) === "present") {
-    const current = request.fileText.read({ path: absolutePath });
-    if (current.outcome === "failed") {
-      return {
-        outcome: "failed",
-        error: { kind: "file-unreadable", file: PROJECTION_PATH, detail: current.error.detail },
-      };
-    }
-    if (current.value === request.text) {
-      return { outcome: "ok", value: { path: PROJECTION_PATH, effect: "unchanged" } };
-    }
+  const current = currentProjection({ fileText: request.fileText, repoRoot: request.repoRoot });
+  if (current.outcome === "failed") {
+    return current;
   }
-  const written = request.fileText.write({ path: absolutePath, text: request.text });
-  if (written.outcome === "failed") {
-    return { outcome: "failed", error: { kind: "tool-failed", detail: written.error.detail } };
+  if (projectionState({ current: current.value, generated: request.text }) === "current") {
+    return { outcome: "ok", value: { path: PROJECTION_PATH, effect: "unchanged" } };
   }
-  return { outcome: "ok", value: { path: PROJECTION_PATH, effect: "written" } };
+  return writtenProjection(request);
 };

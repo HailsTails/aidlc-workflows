@@ -52,6 +52,7 @@ const FILES: Readonly<Record<string, FakeFile>> = {
   "/repo/src/scratch.tmp.ts": presentFile({ text: TEMPORARY_SOURCE }),
   "/repo/src/kept.ts": presentFile({ text: CLASS_SOURCE }),
   "/repo/src/plain.ts": presentFile({ text: PLAIN_SOURCE }),
+  "/repo/README.md": presentFile({ text: "# probe\n" }),
 };
 
 const fileText: FileTextPort = {
@@ -62,10 +63,6 @@ const fileText: FileTextPort = {
 
 const path = createPathPort({ workingDirectory: () => "/repo" });
 
-const realParse = createDefaultParsePort({});
-
-const countingParse = vi.spyOn(realParse, "parse");
-
 const PIECE_MODULES: Readonly<Record<string, unknown>> = {
   "/install/mechanisms/walker/CD-14/class-syntax.ts": classSyntax,
   "/repo/probe/mechanisms/walker/PD-1/no-tmp-files.ts": noTmpFiles,
@@ -74,14 +71,6 @@ const PIECE_MODULES: Readonly<Record<string, unknown>> = {
 const pieceModules: ModuleLoaderPort = {
   load: ({ path: modulePath }) =>
     Promise.resolve({ outcome: "ok", value: PIECE_MODULES[modulePath] }),
-};
-
-const runnerModule = {
-  runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: realParse }),
-};
-
-const modules: ModuleLoaderPort = {
-  load: vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: runnerModule }),
 };
 
 const git: GitPort = {
@@ -97,20 +86,27 @@ const git: GitPort = {
 const PROBE_ADDRESS = { ruleSet: { name: "probe" }, discipline: "PD-1", clause: "no-tmp-files" };
 const CLASS_SYNTAX_ADDRESS = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
 
-const report = () =>
-  runCheck({
+const probeCheck = () => {
+  const parse = createDefaultParsePort({});
+  const parseCalls = vi.spyOn(parse, "parse");
+  const runnerModule = { runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse }) };
+  const report = runCheck({
     repoRoot: absolutePathSchema.parse("/repo"),
     installRoot: absolutePathSchema.parse("/install"),
     baseRevision: undefined,
     fileText,
-    modules,
+    modules: {
+      load: vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: runnerModule }),
+    },
     path,
     git,
   });
+  return { report, parseCalls };
+};
 
 describe("a check selecting the probe rule set's PD-1 beside CD-14 through the walker", () => {
   it("flags the temporary file through the probe and the class through CD-14 in one run", async () => {
-    await expect(report()).resolves.toEqual({
+    await expect(probeCheck().report).resolves.toEqual({
       outcome: "ok",
       value: {
         findings: [
@@ -143,9 +139,9 @@ describe("a check selecting the probe rule set's PD-1 beside CD-14 through the w
   });
 
   it("parses each tracked TypeScript file exactly once", async () => {
-    countingParse.mockClear();
-    await report();
-    expect(countingParse.mock.calls).toEqual([
+    const { report, parseCalls } = probeCheck();
+    await report;
+    expect(parseCalls.mock.calls).toEqual([
       [{ fileName: "src/scratch.tmp.ts", source: TEMPORARY_SOURCE }],
       [{ fileName: "src/kept.ts", source: CLASS_SOURCE }],
       [{ fileName: "src/plain.ts", source: PLAIN_SOURCE }],

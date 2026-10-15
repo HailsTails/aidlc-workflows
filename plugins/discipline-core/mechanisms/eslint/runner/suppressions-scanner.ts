@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { NativeException } from "../../../core/mechanism-port/runner-result-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
@@ -9,6 +10,63 @@ import { suppressionsFileSchema } from "./eslint-file-schemas.ts";
 import { repoPathResolved, type SelectedRule } from "./package-script-scanner.ts";
 
 const REPO_ROOT = "repo-root";
+
+const ruleExceptions = (request: {
+  readonly ruleIds: readonly string[];
+  readonly file: RepoPath;
+  readonly location: RepoPath;
+  readonly selectedRules: readonly SelectedRule[];
+}): readonly NativeException[] =>
+  request.ruleIds.flatMap((ruleId) =>
+    request.selectedRules
+      .filter((rule) => rule.ruleId === ruleId)
+      .map(
+        (rule): NativeException => ({
+          kind: "suppression-entry",
+          clause: rule.clause,
+          file: request.file,
+          location: request.location,
+        }),
+      ),
+  );
+
+const appendedEntry = (request: {
+  readonly entries: Result<readonly NativeException[], RunnerFailure>;
+  readonly key: string;
+  readonly ruleIds: readonly string[];
+  readonly baseSegments: readonly string[];
+  readonly location: RepoPath;
+  readonly selectedRules: readonly SelectedRule[];
+}): Result<readonly NativeException[], RunnerFailure> => {
+  if (request.entries.outcome === "failed") {
+    return request.entries;
+  }
+  const file = repoPathResolved({ baseSegments: request.baseSegments, path: request.key });
+  if (file.outcome === "failed") {
+    return {
+      outcome: "failed",
+      error: {
+        kind: "tool-failed",
+        detail: `${request.location}: key ${request.key} names no file inside the repository`,
+      },
+    };
+  }
+  return {
+    outcome: "ok",
+    value: [
+      ...request.entries.value,
+      ...ruleExceptions({
+        ruleIds: request.ruleIds,
+        file: file.value,
+        location: request.location,
+        selectedRules: request.selectedRules,
+      }),
+    ],
+  };
+};
+
+const baseSegmentsOf = (request: { readonly keysRelativeTo: RepoPath | "repo-root" }): readonly string[] =>
+  request.keysRelativeTo === REPO_ROOT ? [] : request.keysRelativeTo.split("/");
 
 export const suppressionEntriesOf = (request: {
   readonly location: RepoPath;
@@ -27,44 +85,20 @@ export const suppressionEntriesOf = (request: {
   if (!suppressions.success) {
     return {
       outcome: "failed",
-      error: { kind: "tool-failed", detail: `${request.location}: ${suppressions.error.message}` },
+      error: { kind: "tool-failed", detail: `${request.location}: ${z.prettifyError(suppressions.error)}` },
     };
   }
-  const baseSegments = request.keysRelativeTo === REPO_ROOT ? [] : request.keysRelativeTo.split("/");
+  const baseSegments = baseSegmentsOf({ keysRelativeTo: request.keysRelativeTo });
   return Object.entries(suppressions.data).reduce<Result<readonly NativeException[], RunnerFailure>>(
-    (entries, [key, rules]) => {
-      if (entries.outcome === "failed") {
-        return entries;
-      }
-      const file = repoPathResolved({ baseSegments, path: key });
-      if (file.outcome === "failed") {
-        return {
-          outcome: "failed",
-          error: {
-            kind: "tool-failed",
-            detail: `${request.location}: key ${key} names no file inside the repository`,
-          },
-        };
-      }
-      return {
-        outcome: "ok",
-        value: [
-          ...entries.value,
-          ...Object.keys(rules).flatMap((ruleId) =>
-            request.selectedRules
-              .filter((rule) => rule.ruleId === ruleId)
-              .map(
-                (rule): NativeException => ({
-                  kind: "suppression-entry",
-                  clause: rule.clause,
-                  file: file.value,
-                  location: request.location,
-                }),
-              ),
-          ),
-        ],
-      };
-    },
+    (entries, [key, rules]) =>
+      appendedEntry({
+        entries,
+        key,
+        ruleIds: Object.keys(rules),
+        baseSegments,
+        location: request.location,
+        selectedRules: request.selectedRules,
+      }),
     { outcome: "ok", value: [] },
   );
 };

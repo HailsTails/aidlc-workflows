@@ -1,5 +1,4 @@
 import type { z } from "zod";
-import type { ProjectionRequest } from "../check/mechanism-dispatch.ts";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { Result } from "../values/result.ts";
 import type { Equal } from "../values/type-equality.ts";
@@ -7,6 +6,7 @@ import type { EmbeddedRunReport } from "./embedded-run-report-schema.ts";
 import type { RunnerFailure } from "./runner-failure.ts";
 import type {
   embeddedRunnerModuleSchema,
+  ProjectionRequest,
   RunRequest,
   StandaloneRunner,
 } from "./runner-module-schema.ts";
