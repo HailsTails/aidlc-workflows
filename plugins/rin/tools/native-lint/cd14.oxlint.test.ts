@@ -4,16 +4,13 @@ import loadedPlugin, { classAuthoringPlugin } from "./cd14/cd14.eslint-plugin.ts
 
 test("the Oxlint fragment resolves the typed CD14 plugin with the enabled rule", () => {
 	expect(loadedPlugin).toBe(classAuthoringPlugin);
-	const pluginUrl = new URL(fragment.jsPlugins[0], import.meta.url);
-	expect(pluginUrl.href).toBe(
-		new URL("./cd14/cd14.eslint-plugin.ts", import.meta.url).href,
-	);
+	expect(fragment.jsPlugins).toEqual(["./cd14/cd14.eslint-plugin.ts"]);
 	expect(classAuthoringPlugin.meta.name).toBe("rin-discipline");
 	expect(classAuthoringPlugin.rules["no-class-authoring"]).toMatchObject({
 		meta: { messages: { noClass: expect.stringContaining("CD-14") } },
 		create: expect.any(Function),
 	});
 	expect(fragment.rules).toEqual({
-		[`${classAuthoringPlugin.meta.name}/no-class-authoring`]: "error",
+		"rin-discipline/no-class-authoring": "error",
 	});
 });
