@@ -22,6 +22,37 @@
       "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.ts",
       "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.test.ts"
     ],
-    "reason": "Deliberate CD19 wrapping site for the ESLint-compatible CD14 plugin protocol, used by ESLint and Oxlint. ESLint and Rule types stay at the callback/registration boundary; configuration consumers receive the owned ClassAuthoringPlugin model. The co-located test is the explicit native-protocol test boundary: its RuleTester import exercises that RuleModule with real JS and TypeScript ASTs, as required by the approved review scope. Why-chain: 1. Native class-syntax enforcement needs the engines' plugin protocol. 2. That protocol supplies AST callbacks and diagnostic reporting. 3. Typing those callbacks requires the external eslint types, including type-only imports. 4. Keeping the translation and registration in this single file confines that dependency instead of spreading vendor types into consumers. 5. Root decision: retain one explicit native-engine boundary for the approved CD14 fragment slice; the diagnostic-port design remains Helen's separate open judgment (PR34 review5530609166)."
+    "reason": "Deliberate CD19 wrapping site for the ESLint-compatible CD14 plugin protocol used by ESLint and Oxlint. ESLint and Rule types stay at callback/registration boundaries; configuration consumers receive the owned ClassAuthoringPlugin model. The co-located RuleTester boundary exercises real JS and TypeScript ASTs under operator steer6164120778 item3 (2026-10-14 08:23), not an approval of this draft. The diagnostic-port decision remains Helen's separate open judgment.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does this slice depend on the native plugin protocol?",
+          "because": "CD14 syntax findings must be produced inside the consumer's existing ESLint or Oxlint run.",
+          "evidence": "PR34 operator steer6163746811: native fragments and dedicated rule."
+        },
+        {
+          "why": "Why must the rule consume external callback and registration types?",
+          "because": "The engine supplies AST events and diagnostic reporting through its plugin protocol.",
+          "evidence": "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.ts: noClassAuthoring and checkedPlugin."
+        },
+        {
+          "why": "Why confine those types in this file?",
+          "because": "Consumers can use the owned ClassAuthoringPlugin model without acquiring external ESLint types.",
+          "evidence": "plugins/rin/tools/native-lint/cd14.eslint.ts imports ClassAuthoringPlugin from the boundary."
+        },
+        {
+          "why": "Why permit a vendor import in the co-located contract test?",
+          "because": "Real parser-backed RuleTester cases verify ambient AST behavior instead of trusting hand-built nodes.",
+          "evidence": "https://github.com/HailsTails/aidlc-workflows/pull/34#issuecomment-6164120778 item3."
+        },
+        {
+          "why": "Why retain this explicit boundary instead of changing the port design here?",
+          "because": "The native engine integration needs one protocol boundary while the operator separately holds the diagnostic-port judgment.",
+          "evidence": "PR34 operator steer6166266007 and review5531451837: keep one source; port remains Helen's."
+        }
+      ],
+      "rootCause": "Native lint engines own the plugin protocol, so this slice needs an explicit protocol boundary and a real-engine contract-test boundary to avoid distributing vendor coupling through its consumers.",
+      "owner": "Codex PR34 (codex/native-cd14-lint); Helen retains diagnostic-port judgment"
+    }
   }
 ]
