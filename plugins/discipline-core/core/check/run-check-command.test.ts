@@ -4,7 +4,7 @@ import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
-import { createPathPort, posixPathFlavour } from "../platform-ports/path-port.ts";
+import { createPathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import { type CommandRequest, runCheckCommand } from "./run-check-command.ts";
@@ -69,7 +69,7 @@ const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort =
   write: vi.fn<FileTextPort["write"]>(),
 });
 
-const POSIX_PATH = createPathPort({ flavour: posixPathFlavour, workingDirectory: () => "/work" });
+const POSIX_PATH = createPathPort({ flavour: "posix", workingDirectory: () => "/work" });
 
 const HIT_IN_A = {
   clause: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },

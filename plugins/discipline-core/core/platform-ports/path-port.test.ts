@@ -2,9 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createDefaultPathPort,
   createPathPort,
-  platformPathFlavour,
-  posixPathFlavour,
-  windowsPathFlavour,
 } from "./path-port.ts";
 
 const workingDirectoryAt = (request: { readonly directory: string }) =>
@@ -12,13 +9,13 @@ const workingDirectoryAt = (request: { readonly directory: string }) =>
 
 const pathPortIn = (request: { readonly directory: string }) =>
   createPathPort({
-    flavour: posixPathFlavour,
+    flavour: "posix",
     workingDirectory: workingDirectoryAt({ directory: request.directory }),
   });
 
 const windowsPathPortIn = (request: { readonly directory: string }) =>
   createPathPort({
-    flavour: windowsPathFlavour,
+    flavour: "windows",
     workingDirectory: workingDirectoryAt({ directory: request.directory }),
   });
 
@@ -27,7 +24,7 @@ const WINDOWS_ENTRY_URL = "file:///C:/repo/plugins/discipline-core/core/check/ch
 describe("createDefaultPathPort", () => {
   it("joins and splits paths with the host platform's path flavour", () => {
     const platformPort = createPathPort({
-      flavour: platformPathFlavour,
+      flavour: "platform",
       workingDirectory: workingDirectoryAt({ directory: "/work" }),
     });
     const { join: joinDefault, directoryOf: directoryOfDefault } = createDefaultPathPort({});

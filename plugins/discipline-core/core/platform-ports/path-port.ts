@@ -46,11 +46,11 @@ const notAFileUrl = (request: {
 
 const absolutePathOfFileUrl = (request: {
   readonly url: string;
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
 }): Result<AbsolutePath, FileUrlFailure["error"]> => {
   try {
     const parsed = absolutePathSchema.safeParse(
-      fileURLToPath(request.url, { windows: request.flavour === win32 }),
+      fileURLToPath(request.url, { windows: request.surface === win32 }),
     );
     if (!parsed.success) {
       return notAFileUrl({ url: request.url, detail: "the file URL names no absolute path" });
@@ -75,8 +75,8 @@ const REPOSITORY_SEPARATOR = "/";
 
 const WINDOWS_ANCHOR_ROOT = "C:\\";
 
-const anchorRootOf = (request: { readonly flavour: PathFlavour }): string =>
-  request.flavour === win32 ? WINDOWS_ANCHOR_ROOT : request.flavour.sep;
+const anchorRootOf = (request: { readonly surface: PathSurface }): string =>
+  request.surface === win32 ? WINDOWS_ANCHOR_ROOT : request.surface.sep;
 
 const workingDirectoryText = (request: { readonly workingDirectory: WorkingDirectory }): string => {
   try {
@@ -86,22 +86,22 @@ const workingDirectoryText = (request: { readonly workingDirectory: WorkingDirec
   }
 };
 
-const rootOf = (request: { readonly path: string; readonly flavour: PathFlavour }): string =>
-  request.flavour.parse(request.path).root.toLowerCase();
+const rootOf = (request: { readonly path: string; readonly surface: PathSurface }): string =>
+  request.surface.parse(request.path).root.toLowerCase();
 
 type RootForm = "fully-rooted" | "rooted-without-drive" | "drive-relative" | "relative";
 
 const DRIVE_LESS_ROOTS: readonly string[] = ["\\", "/"];
 
-const rootFormOf = (request: { readonly path: string; readonly flavour: PathFlavour }): RootForm => {
-  const root = request.flavour.parse(request.path).root;
+const rootFormOf = (request: { readonly path: string; readonly surface: PathSurface }): RootForm => {
+  const root = request.surface.parse(request.path).root;
   if (root === "") {
     return "relative";
   }
-  if (request.flavour === win32 && DRIVE_LESS_ROOTS.includes(root)) {
+  if (request.surface === win32 && DRIVE_LESS_ROOTS.includes(root)) {
     return "rooted-without-drive";
   }
-  return request.flavour.isAbsolute(request.path) ? "fully-rooted" : "drive-relative";
+  return request.surface.isAbsolute(request.path) ? "fully-rooted" : "drive-relative";
 };
 
 type WorkingDirectoryReading =
@@ -109,11 +109,11 @@ type WorkingDirectoryReading =
   | { readonly usability: "unusable" };
 
 const workingDirectoryReadingOf = (request: {
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
   readonly workingDirectory: WorkingDirectory;
 }): WorkingDirectoryReading => {
   const directory = workingDirectoryText(request);
-  return rootFormOf({ path: directory, flavour: request.flavour }) === "fully-rooted"
+  return rootFormOf({ path: directory, surface: request.surface }) === "fully-rooted"
     ? { usability: "usable", directory }
     : { usability: "unusable" };
 };
@@ -121,59 +121,59 @@ const workingDirectoryReadingOf = (request: {
 const driveRelationOf = (request: {
   readonly driveRoot: string;
   readonly reading: WorkingDirectoryReading;
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
 }): "same-drive" | "another-drive" =>
   request.reading.usability === "usable" &&
-  rootOf({ path: request.reading.directory, flavour: request.flavour }).startsWith(request.driveRoot.toLowerCase())
+  rootOf({ path: request.reading.directory, surface: request.surface }).startsWith(request.driveRoot.toLowerCase())
     ? "same-drive"
     : "another-drive";
 
 const driveRelativeFormOf = (request: {
   readonly path: string;
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
   readonly workingDirectory: WorkingDirectory;
 }): string => {
-  const driveRoot = request.flavour.parse(request.path).root;
+  const driveRoot = request.surface.parse(request.path).root;
   const reading = workingDirectoryReadingOf(request);
-  if (reading.usability === "unusable" || driveRelationOf({ driveRoot, reading, flavour: request.flavour }) === "another-drive") {
-    return request.flavour.resolve(`${driveRoot}${request.flavour.sep}`, request.path);
+  if (reading.usability === "unusable" || driveRelationOf({ driveRoot, reading, surface: request.surface }) === "another-drive") {
+    return request.surface.resolve(`${driveRoot}${request.surface.sep}`, request.path);
   }
-  return request.flavour.resolve(reading.directory, request.path);
+  return request.surface.resolve(reading.directory, request.path);
 };
 
 const rootedWithoutDriveFormOf = (request: {
   readonly path: string;
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
   readonly workingDirectory: WorkingDirectory;
 }): string => {
   const reading = workingDirectoryReadingOf(request);
   if (reading.usability === "unusable") {
-    return request.flavour.normalize(request.path);
+    return request.surface.normalize(request.path);
   }
-  return request.flavour.resolve(request.flavour.parse(reading.directory).root, request.path);
+  return request.surface.resolve(request.surface.parse(reading.directory).root, request.path);
 };
 
 const relativeFormOf = (request: {
   readonly path: string;
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
   readonly workingDirectory: WorkingDirectory;
 }): string => {
   const reading = workingDirectoryReadingOf(request);
   if (reading.usability === "unusable") {
-    return request.flavour.normalize(request.path);
+    return request.surface.normalize(request.path);
   }
-  return request.flavour.resolve(reading.directory, request.path);
+  return request.surface.resolve(reading.directory, request.path);
 };
 
 const absoluteFormOf = (request: {
   readonly path: string;
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
   readonly workingDirectory: WorkingDirectory;
 }): string => {
   const rootForm = rootFormOf(request);
   switch (rootForm) {
     case "fully-rooted":
-      return request.flavour.normalize(request.path);
+      return request.surface.normalize(request.path);
     case "rooted-without-drive":
       return rootedWithoutDriveFormOf(request);
     case "drive-relative":
@@ -185,16 +185,16 @@ const absoluteFormOf = (request: {
 
 type DriveForm = "drive-carrying" | "drive-less";
 
-const driveFormOf = (request: { readonly path: string; readonly flavour: PathFlavour }): DriveForm =>
-  request.flavour === win32 && rootFormOf(request) === "fully-rooted" ? "drive-carrying" : "drive-less";
+const driveFormOf = (request: { readonly path: string; readonly surface: PathSurface }): DriveForm =>
+  request.surface === win32 && rootFormOf(request) === "fully-rooted" ? "drive-carrying" : "drive-less";
 
 const relativeLocationBetween = (request: {
   readonly from: string;
   readonly to: string;
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
 }): RelativeLocation => {
-  const fromDriveForm = driveFormOf({ path: request.from, flavour: request.flavour });
-  if (fromDriveForm !== driveFormOf({ path: request.to, flavour: request.flavour })) {
+  const fromDriveForm = driveFormOf({ path: request.from, surface: request.surface });
+  if (fromDriveForm !== driveFormOf({ path: request.to, surface: request.surface })) {
     return { relation: "different-root" };
   }
   if (fromDriveForm === "drive-carrying") {
@@ -202,58 +202,70 @@ const relativeLocationBetween = (request: {
   }
   const anchorRoot = anchorRootOf(request);
   return relativeLocationOf({
-    flavour: request.flavour,
-    from: request.flavour.resolve(anchorRoot, request.from),
-    to: request.flavour.resolve(anchorRoot, request.to),
+    surface: request.surface,
+    from: request.surface.resolve(anchorRoot, request.from),
+    to: request.surface.resolve(anchorRoot, request.to),
   });
 };
 
 const relativeLocationOf = (request: {
   readonly from: string;
   readonly to: string;
-  readonly flavour: PathFlavour;
+  readonly surface: PathSurface;
 }): RelativeLocation =>
-  rootOf({ path: request.from, flavour: request.flavour }) === rootOf({ path: request.to, flavour: request.flavour })
+  rootOf({ path: request.from, surface: request.surface }) === rootOf({ path: request.to, surface: request.surface })
     ? {
         relation: "within-root",
-        path: repositoryFormOf({ flavour: request.flavour, path: request.flavour.relative(request.from, request.to) }),
+        path: repositoryFormOf({ surface: request.surface, path: request.surface.relative(request.from, request.to) }),
       }
     : { relation: "different-root" };
 
-const repositoryFormOf = (request: { readonly path: string; readonly flavour: PathFlavour }): string =>
-  request.path.split(request.flavour.sep).join(REPOSITORY_SEPARATOR);
+const repositoryFormOf = (request: { readonly path: string; readonly surface: PathSurface }): string =>
+  request.path.split(request.surface.sep).join(REPOSITORY_SEPARATOR);
 
-export type PathFlavour = typeof posix;
+type PathSurface = typeof posix;
 
-export const posixPathFlavour: PathFlavour = posix;
+export type PathFlavour = "posix" | "windows" | "platform";
 
-export const windowsPathFlavour: PathFlavour = win32;
+const surfaceOf = (request: { readonly flavour: PathFlavour }): PathSurface => {
+  switch (request.flavour) {
+    case "posix":
+      return posix;
+    case "windows":
+      return win32;
+    case "platform":
+      return platformPath;
+  }
+};
 
-export const platformPathFlavour: PathFlavour = platformPath;
+const portOver = (options: {
+  readonly surface: PathSurface;
+  readonly workingDirectory: WorkingDirectory;
+}): PathPort => ({
+  join: (request) => options.surface.join(...request.segments),
+  joinRepository: (request) => posix.join(...request.segments),
+  relative: (request) =>
+    relativeLocationBetween({
+      surface: options.surface,
+      from: absoluteFormOf({ path: request.from, surface: options.surface, workingDirectory: options.workingDirectory }),
+      to: absoluteFormOf({ path: request.to, surface: options.surface, workingDirectory: options.workingDirectory }),
+    }),
+  directoryOf: (request) => options.surface.dirname(request.path),
+  repositoryDirectoryOf: (request) => posix.dirname(request.path),
+  resolve: (request) =>
+    absoluteFormOf({ path: request.path, surface: options.surface, workingDirectory: options.workingDirectory }),
+  fromFileUrl: (request) =>
+    fileUrlForm({ url: request.url }) === "not-a-file-url"
+      ? notAFileUrl({ url: request.url, detail: "the text is not a file: URL" })
+      : absolutePathOfFileUrl({ url: request.url, surface: options.surface }),
+});
 
 export const createPathPort = (options: {
   readonly flavour: PathFlavour;
   readonly workingDirectory: WorkingDirectory;
-}): PathPort => ({
-  join: (request) => options.flavour.join(...request.segments),
-  joinRepository: (request) => posix.join(...request.segments),
-  relative: (request) =>
-    relativeLocationBetween({
-      flavour: options.flavour,
-      from: absoluteFormOf({ path: request.from, flavour: options.flavour, workingDirectory: options.workingDirectory }),
-      to: absoluteFormOf({ path: request.to, flavour: options.flavour, workingDirectory: options.workingDirectory }),
-    }),
-  directoryOf: (request) => options.flavour.dirname(request.path),
-  repositoryDirectoryOf: (request) => posix.dirname(request.path),
-  resolve: (request) =>
-    absoluteFormOf({ path: request.path, flavour: options.flavour, workingDirectory: options.workingDirectory }),
-  fromFileUrl: (request) =>
-    fileUrlForm({ url: request.url }) === "not-a-file-url"
-      ? notAFileUrl({ url: request.url, detail: "the text is not a file: URL" })
-      : absolutePathOfFileUrl({ url: request.url, flavour: options.flavour }),
-});
+}): PathPort => portOver({ surface: surfaceOf({ flavour: options.flavour }), workingDirectory: options.workingDirectory });
 
 export const defaultWorkingDirectory: WorkingDirectory = () => process.cwd();
 
 export const createDefaultPathPort = (_options: Record<string, never>): PathPort =>
-  createPathPort({ flavour: platformPathFlavour, workingDirectory: defaultWorkingDirectory });
+  createPathPort({ flavour: "platform", workingDirectory: defaultWorkingDirectory });
