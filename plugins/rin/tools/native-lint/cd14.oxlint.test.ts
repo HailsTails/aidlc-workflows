@@ -1,8 +1,9 @@
 import { expect, test } from "vitest";
 import fragment from "./cd14.oxlint.json";
-import { classAuthoringPlugin } from "./cd14/cd14.eslint-plugin.ts";
+import loadedPlugin, { classAuthoringPlugin } from "./cd14/cd14.eslint-plugin.ts";
 
 test("the Oxlint fragment resolves the typed CD14 plugin with the enabled rule", () => {
+	expect(loadedPlugin).toBe(classAuthoringPlugin);
 	const pluginUrl = new URL(fragment.jsPlugins[0], import.meta.url);
 	expect(pluginUrl.href).toBe(
 		new URL("./cd14/cd14.eslint-plugin.ts", import.meta.url).href,
