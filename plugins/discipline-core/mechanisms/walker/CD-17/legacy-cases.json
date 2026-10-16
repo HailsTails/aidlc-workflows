@@ -1,0 +1,54 @@
+[
+  {
+    "name": "passing",
+    "files": {
+      "a-thing.test.ts": "export const aThingFixtureTestPlaceholder = true;\n",
+      "a-thing.ts": "export const aThing = (): string => \"thing\";\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-bare-date",
+    "files": {
+      "reads-wall-clock.test.ts": "import { expect, test } from \"vitest\";\nimport { stampNow } from \"./reads-wall-clock.js\";\n\ntest(\"stampNow returns a number\", () => {\n  expect(typeof stampNow()).toBe(\"number\");\n});\n",
+      "reads-wall-clock.ts": "export const stampNow = (): number => new Date().getTime();\n"
+    },
+    "expected": [
+      {
+        "file": "reads-wall-clock.ts",
+        "line": 1,
+        "snippet": "export const stampNow = (): number => new Date().getTime();"
+      }
+    ]
+  },
+  {
+    "name": "text-patterns-and-ui-composition-allowance",
+    "files": {
+      "sample.ts": "export const stamp = Date.now();\nexport const instant = new Date();\nconst text = 'new Date';\n// Date.now() remains matched by the legacy line detector.\n",
+      "feature/App.tsx": "export const stamp = Date.now();\n",
+      "feature/main.tsx": "export const stamp = new Date();\n"
+    },
+    "expected": [
+      {
+        "file": "sample.ts",
+        "line": 1,
+        "snippet": "export const stamp = Date.now();"
+      },
+      {
+        "file": "sample.ts",
+        "line": 2,
+        "snippet": "export const instant = new Date();"
+      },
+      {
+        "file": "sample.ts",
+        "line": 3,
+        "snippet": "const text = 'new Date';"
+      },
+      {
+        "file": "sample.ts",
+        "line": 4,
+        "snippet": "// Date.now() remains matched by the legacy line detector."
+      }
+    ]
+  }
+]

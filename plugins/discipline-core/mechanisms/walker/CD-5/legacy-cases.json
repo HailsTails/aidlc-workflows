@@ -1,0 +1,197 @@
+[
+  {
+    "name": "linter-directives-lookalikes",
+    "files": {
+      "directives.ts": "export type DirectiveFixture = \"// eslint-disable no-alert\" | \"/* oxlint-disable no-alert */\";\n/* unrelated tracker (spec-099) */\n// eslint-disable-next-line no-alert\nexport type OtherDirectiveFixture = string;\n"
+    },
+    "expected": [
+      {
+        "file": "directives.ts",
+        "line": 3,
+        "snippet": "// eslint-disable-next-line no-alert"
+      }
+    ]
+  },
+  {
+    "name": "linter-directives-tracked",
+    "files": {
+      "directives.ts": "// eslint-disable-line no-alert -- reason (spec-099)\n/* eslint-disable-line no-alert  -- reason (spec-099) */\n// eslint-disable-next-line no-alert -- reason (spec-099)\n/* eslint-disable-next-line no-alert  -- reason (spec-099) */\n/* eslint-disable no-alert  -- reason (spec-099) */\n/* eslint-enable no-alert  -- reason (spec-099) */\n// oxlint-disable-line no-alert -- reason (spec-099)\n/* oxlint-disable-line no-alert  -- reason (spec-099) */\n// oxlint-disable-next-line no-alert -- reason (spec-099)\n/* oxlint-disable-next-line no-alert  -- reason (spec-099) */\n/* oxlint-disable no-alert  -- reason (spec-099) */\n/* oxlint-enable no-alert  -- reason (spec-099) */\n// biome-ignore lint/suspicious/noDebugger: reason -- reason (spec-099)\n// biome-ignore-all lint/suspicious/noDebugger: reason -- reason (spec-099)\n// biome-ignore-start lint/suspicious/noDebugger: reason -- reason (spec-099)\n// biome-ignore-end lint/suspicious/noDebugger: reason -- reason (spec-099)\n/* biome-ignore lint/suspicious/noDebugger: reason  -- reason (spec-099) */\n/* eslint no-alert: \"off\"  -- reason (spec-099) */\n/* eslint-disable\n no-alert -- reason\n  -- reason (spec-099) */\nexport type DirectiveFixture = string;\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "linter-directives-untracked",
+    "files": {
+      "directives.ts": "// eslint-disable-line no-alert\n/* eslint-disable-line no-alert */\n// eslint-disable-next-line no-alert\n/* eslint-disable-next-line no-alert */\n/* eslint-disable no-alert */\n/* eslint-enable no-alert */\n// oxlint-disable-line no-alert\n/* oxlint-disable-line no-alert */\n// oxlint-disable-next-line no-alert\n/* oxlint-disable-next-line no-alert */\n/* oxlint-disable no-alert */\n/* oxlint-enable no-alert */\n// biome-ignore lint/suspicious/noDebugger: reason\n// biome-ignore-all lint/suspicious/noDebugger: reason\n// biome-ignore-start lint/suspicious/noDebugger: reason\n// biome-ignore-end lint/suspicious/noDebugger: reason\n/* biome-ignore lint/suspicious/noDebugger: reason */\n/* eslint no-alert: \"off\" */\n/* eslint-disable\n no-alert -- reason\n */\nexport type DirectiveFixture = string;\n"
+    },
+    "expected": [
+      {
+        "file": "directives.ts",
+        "line": 1,
+        "snippet": "// eslint-disable-line no-alert"
+      },
+      {
+        "file": "directives.ts",
+        "line": 2,
+        "snippet": "/* eslint-disable-line no-alert */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 3,
+        "snippet": "// eslint-disable-next-line no-alert"
+      },
+      {
+        "file": "directives.ts",
+        "line": 4,
+        "snippet": "/* eslint-disable-next-line no-alert */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 5,
+        "snippet": "/* eslint-disable no-alert */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 6,
+        "snippet": "/* eslint-enable no-alert */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 7,
+        "snippet": "// oxlint-disable-line no-alert"
+      },
+      {
+        "file": "directives.ts",
+        "line": 8,
+        "snippet": "/* oxlint-disable-line no-alert */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 9,
+        "snippet": "// oxlint-disable-next-line no-alert"
+      },
+      {
+        "file": "directives.ts",
+        "line": 10,
+        "snippet": "/* oxlint-disable-next-line no-alert */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 11,
+        "snippet": "/* oxlint-disable no-alert */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 12,
+        "snippet": "/* oxlint-enable no-alert */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 13,
+        "snippet": "// biome-ignore lint/suspicious/noDebugger: reason"
+      },
+      {
+        "file": "directives.ts",
+        "line": 14,
+        "snippet": "// biome-ignore-all lint/suspicious/noDebugger: reason"
+      },
+      {
+        "file": "directives.ts",
+        "line": 15,
+        "snippet": "// biome-ignore-start lint/suspicious/noDebugger: reason"
+      },
+      {
+        "file": "directives.ts",
+        "line": 16,
+        "snippet": "// biome-ignore-end lint/suspicious/noDebugger: reason"
+      },
+      {
+        "file": "directives.ts",
+        "line": 17,
+        "snippet": "/* biome-ignore lint/suspicious/noDebugger: reason */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 18,
+        "snippet": "/* eslint no-alert: \"off\" */"
+      },
+      {
+        "file": "directives.ts",
+        "line": 19,
+        "snippet": "/* eslint-disable\n no-alert -- reason\n */"
+      }
+    ]
+  },
+  {
+    "name": "passing",
+    "files": {
+      "a-thing.test.ts": "export const aThingFixtureTestPlaceholder = true;\n",
+      "a-thing.ts": "export const aThing = (): string => \"thing\";\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "passing-with-tracked-annotations",
+    "files": {
+      "a-thing.test.ts": "export const passingWithTrackedAnnotationsFixtureTestPlaceholder = true;\n",
+      "a-thing.ts": "// TODO(spec-099): rename this for clarity\nconst trackedToDoExample = (someValue: number): number => {\n  // biome-ignore lint/style/noMagicNumbers: literal port number is the API surface (spec-099)\n  const portNumber = 8080;\n  return someValue + portNumber;\n};\n\nexport { trackedToDoExample };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-bare-biome-ignore",
+    "files": {
+      "bare-biome-ignore.test.ts": "export const violatingBareBiomeIgnoreFixtureTestPlaceholder = true;\n",
+      "bare-biome-ignore.ts": "const portNumberWithUntrackedIgnore = (multiplier: number): number => {\n  // biome-ignore lint/style/noMagicNumbers: literal port number is the API surface\n  const portNumber = 8080;\n  return portNumber * multiplier;\n};\n\nexport { portNumberWithUntrackedIgnore };\n"
+    },
+    "expected": [
+      {
+        "file": "bare-biome-ignore.ts",
+        "line": 2,
+        "snippet": "// biome-ignore lint/style/noMagicNumbers: literal port number is the API surface"
+      }
+    ]
+  },
+  {
+    "name": "violating-bare-todo",
+    "files": {
+      "bare-todo.test.ts": "export const violatingBareTodoFixtureTestPlaceholder = true;\n",
+      "bare-todo.ts": "// TODO: rename this for clarity but with no spec tracker\nconst bareToDoExample = (someValue: number): number => {\n  return someValue;\n};\n\nexport { bareToDoExample };\n"
+    },
+    "expected": [
+      {
+        "file": "bare-todo.ts",
+        "line": 1,
+        "snippet": "// TODO: rename this for clarity but with no spec tracker"
+      }
+    ]
+  },
+  {
+    "name": "violating-bare-ts-expect-error",
+    "files": {
+      "bare-ts-expect-error.test.ts": "export const violatingBareTsExpectErrorFixtureTestPlaceholder = true;\n",
+      "bare-ts-expect-error.ts": "const callerWithUntrackedExpectError = (untypedInput: unknown): string => {\n  // @ts-expect-error untyped boundary\n  return untypedInput.toString();\n};\n\nexport { callerWithUntrackedExpectError };\n"
+    },
+    "expected": [
+      {
+        "file": "bare-ts-expect-error.ts",
+        "line": 2,
+        "snippet": "// @ts-expect-error untyped boundary"
+      }
+    ]
+  },
+  {
+    "name": "plain-comments-remain-judgement-only",
+    "files": {
+      "sample.ts": "// Ordinary prose remains outside this annotation detector.\n/* The portable rule still requires judgement for ordinary comments. */\nexport type ProfileName = string;\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "self-excluded-legacy-auditor",
+    "files": {
+      "audit-constitution.ts": "// TODO: legacy self exclusion\n"
+    },
+    "expected": []
+  }
+]
