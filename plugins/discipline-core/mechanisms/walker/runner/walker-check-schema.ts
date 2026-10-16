@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { runnerFailureSchema } from "../../../core/mechanism-port/runner-failure.ts";
+import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import { anchorSchema } from "../../../core/values/anchor.ts";
 import { isRepoPathText } from "../../../core/values/repo-path.ts";
 import type { Equal } from "../../../core/values/type-equality.ts";
@@ -34,6 +36,11 @@ export const anchoredSnippetsSchema = z.array(
 );
 
 export const pathVerdictSchema = z.enum(["violates", "conforms"]);
+
+export const repositoryFindingsSchema = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("ok"), value: z.array(z.object({ file: repoPathSchema, anchor: anchorSchema, snippet: z.string() })) }),
+  z.object({ outcome: z.literal("failed"), error: runnerFailureSchema }),
+]);
 
 type GenericWalkerCheck = WalkerCheck<unknown, unknown, unknown>;
 

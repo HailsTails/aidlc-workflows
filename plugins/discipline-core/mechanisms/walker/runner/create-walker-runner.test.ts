@@ -655,3 +655,45 @@ describe("createWalkerRunner conform", () => {
     ).toEqual({ outcome: "ok", value: [{ caseName: "declaration file", flaggedLines: [1] }] });
   });
 });
+
+describe("repository checks", () => {
+  it("shares one parse across selected checks and exposes repository candidates", async () => {
+    const parse = parsingTo({ nodes: [LEAF] });
+    const check: FakeCheck = {
+      kind: "repository",
+      inspect: ({ repository }) => {
+        expect(repository.trackedPaths).toEqual([TRACKED_ONLY]);
+        const first = repository.parseFile({ file: ALPHA });
+        const second = repository.parseFile({ file: ALPHA });
+        expect(second).toBe(first);
+        return first.outcome === "failed" ? first : {
+          outcome: "ok", value: [{ file: ALPHA, anchor: { line: 1, column: 0 }, snippet: "legacy finding" }],
+        };
+      },
+    };
+    const runner = walkerRunner({
+      read: readingText({ text: "const alpha = 1;" }),
+      load: loadingNamespace({ namespace: { check } }), parse,
+    });
+    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE, SECOND_CLAUSE] }))).toMatchObject({
+      outcome: "ok", value: [
+        { clause: FIRST_ADDRESS, file: ALPHA },
+        { clause: SECOND_ADDRESS, file: ALPHA },
+      ],
+    });
+    expect(parse).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a repository check's read failure", async () => {
+    const check: FakeCheck = {
+      kind: "repository", inspect: ({ repository }) => {
+        const source = repository.parseFile({ file: ALPHA });
+        return source.outcome === "failed" ? source : { outcome: "ok", value: [] };
+      },
+    };
+    const runner = walkerRunner({ read: unreadable(), load: loadingNamespace({ namespace: { check } }), parse: parsingTo({ nodes: [] }) });
+    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual({
+      outcome: "failed", error: { kind: "file-unreadable", file: ALPHA, detail: "EACCES" },
+    });
+  });
+});

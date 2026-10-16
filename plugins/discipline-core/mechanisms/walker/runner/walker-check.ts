@@ -19,6 +19,7 @@ export type WalkerRepository<Api, Tree, Node> = {
   readonly syntaxApi: Api;
   readonly files: readonly RepoPath[];
   readonly trackedPaths: readonly RepoPath[];
+  readonly exists: (request: { readonly file: RepoPath }) => "present" | "absent";
   readonly readText: (request: { readonly file: RepoPath }) => Result<string, RunnerFailure>;
   readonly parseFile: (request: { readonly file: RepoPath }) => Result<ParsedSource<Tree, Node>, RunnerFailure>;
 };
@@ -28,6 +29,7 @@ export type WalkerCheck<Api, Tree, Node> =
       readonly kind: "repository";
       readonly inspect: (request: {
         readonly repository: WalkerRepository<Api, Tree, Node>;
+        readonly settings: unknown;
       }) => Result<readonly LocatedSnippet[], RunnerFailure>;
     }
   | {

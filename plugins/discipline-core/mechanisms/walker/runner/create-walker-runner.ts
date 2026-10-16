@@ -17,10 +17,13 @@ import {
   anchoredSnippetsSchema,
   type LoadedWalkerCheck,
   pathVerdictSchema,
+  repositoryFindingsSchema,
   walkerPieceModuleSchema,
   walkerPieceSettingsSchema,
 } from "./walker-check-schema.ts";
 import type { AnchoredSnippet, ParsePort } from "./walker-check.ts";
+import { cachedParsePort, createRepositoryContext } from "./repository-context.ts";
+import type { WalkerRepository } from "./walker-check.ts";
 
 type SelectedCheck = {
   readonly address: ClauseAddress;
@@ -28,6 +31,7 @@ type SelectedCheck = {
   readonly pieceRoot: string;
   readonly order: number;
   readonly check: LoadedWalkerCheck;
+  readonly settings: unknown;
 };
 
 type SelectedModule = {
@@ -155,6 +159,7 @@ const checksSharingModule = (request: {
         pieceRoot: entry.clause.pieceRoot,
         order: entry.order,
         check,
+        settings: entry.clause.settings,
       })),
   };
 };
@@ -540,11 +545,39 @@ const runOverFiles = <Api, Tree, Node>(request: {
     return Promise.resolve(request.loaded);
   }
   const checks = request.loaded.value;
+  const parse = cachedParsePort(request.options.parse);
+  const repository = createRepositoryContext({ ...request.options, parse, ...request.run });
   return inSequence({
     sequence: request.run.files,
-    step: (file) => repoFileHits({ options: request.options, checks, repoRoot: request.run.repoRoot, file }),
+    step: (file) => repoFileHits({ options: { ...request.options, parse }, checks, repoRoot: request.run.repoRoot, file }),
+  }).then(async (fileHits) => {
+    if (fileHits.outcome === "failed") {
+      return fileHits;
+    }
+    const contextHits = await repositoryHits({ checks, repository });
+    return collectOutcomes({ outcomes: [fileHits, contextHits] });
   });
 };
+
+const repositoryHits = <Api, Tree, Node>(request: {
+  readonly checks: readonly SelectedCheck[];
+  readonly repository: WalkerRepository<Api, Tree, Node>;
+}): Promise<Outcome<readonly Hit[]>> => inSequence({
+  sequence: request.checks.filter((selected) => selected.check.kind === "repository"),
+  step: (selected) => settleCheck({
+    pieceRoot: selected.pieceRoot,
+    call: () => selected.check.inspect({ repository: request.repository, settings: selected.settings }),
+    accept: (returned) => {
+      const parsed = repositoryFindingsSchema.safeParse(returned);
+      if (!parsed.success) {
+        return pieceInvalid({ pieceRoot: selected.pieceRoot, detail: parsed.error.message });
+      }
+      return parsed.data.outcome === "failed" ? parsed.data : {
+        outcome: "ok", value: parsed.data.value.map((finding) => ({ ...finding, clause: selected.address })),
+      };
+    },
+  }),
+});
 
 const conformCase = <Api, Tree, Node>(request: {
   readonly options: WalkerPorts<Api, Tree, Node>;
@@ -556,7 +589,23 @@ const conformCase = <Api, Tree, Node>(request: {
     source: () => ({ outcome: "ok", value: request.sourceCase.source }),
     checks: request.checks,
     parse: request.options.parse,
-  }).then((hits) => caseVerdict({ caseName: request.sourceCase.name, hits }));
+  }).then(async (hits) => {
+    if (hits.outcome === "failed") {
+      return hits;
+    }
+    const file = request.sourceCase.fileName;
+    const repository = createRepositoryContext({
+      ...request.options,
+      repoRoot: "",
+      files: [file], trackedPaths: [file],
+      fileText: {
+        read: () => ({ outcome: "ok", value: request.sourceCase.source }),
+        exists: ({ path }) => path === file ? "present" : "absent",
+      },
+    });
+    const contextHits = await repositoryHits({ checks: request.checks, repository });
+    return caseVerdict({ caseName: request.sourceCase.name, hits: collectOutcomes({ outcomes: [hits, contextHits] }) });
+  });
 
 const conformCases = <Api, Tree, Node>(request: {
   readonly options: WalkerPorts<Api, Tree, Node>;

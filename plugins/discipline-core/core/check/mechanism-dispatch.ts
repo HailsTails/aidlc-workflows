@@ -52,7 +52,7 @@ const unrequestedHit = (request: {
 }): Hit | undefined =>
   request.hits.find(
     (hit) =>
-      !request.run.files.includes(hit.file) ||
+      !(request.run.files.includes(hit.file) || request.run.trackedPaths.includes(hit.file)) ||
       !request.run.clauses.some(
         (clause) => sameClauseAddress({ left: clause.address, right: hit.clause }) === "same",
       ),
