@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "discipline": "CD-15",
+  "mechanism": "walker",
+  "clauses": [{ "clause": "existing-check", "settings": { "module": "check.ts" } }]
+}
