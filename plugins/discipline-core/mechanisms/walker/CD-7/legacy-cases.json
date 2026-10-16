@@ -1,0 +1,37 @@
+[
+  {
+    "name": "passing",
+    "files": {
+      "a-thing.test.ts": "export const aThingFixtureTestPlaceholder = true;\n",
+      "a-thing.ts": "export const aThing = (): string => \"thing\";\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "categorical-filenames-and-first-folder",
+    "files": {
+      "utils.ts": "export type ProfileName = string;\n",
+      "feature/shared/record.ts": "export type ProfileName = string;\n",
+      "feature/utils/helpers/record.ts": "export type ProfileName = string;\n",
+      "utils.js": "export const profileName = 'Ada';\n",
+      "profile.ts": "export type ProfileName = string;\n"
+    },
+    "expected": [
+      {
+        "file": "feature/shared/record.ts",
+        "line": 1,
+        "snippet": "forbidden categorical folder: shared"
+      },
+      {
+        "file": "feature/utils/helpers/record.ts",
+        "line": 1,
+        "snippet": "forbidden categorical folder: utils"
+      },
+      {
+        "file": "utils.ts",
+        "line": 1,
+        "snippet": "forbidden categorical filename: utils.ts"
+      }
+    ]
+  }
+]

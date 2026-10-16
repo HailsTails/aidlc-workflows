@@ -1,0 +1,80 @@
+[
+  {
+    "name": "passing",
+    "files": {
+      "a-thing.test.ts": "export const aThingFixtureTestPlaceholder = true;\n",
+      "a-thing.ts": "export const aThing = (): string => \"thing\";\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-banned-import",
+    "files": {
+      "imports-winston.test.ts": "export const importsWinstonFixtureTestPlaceholder = true;\n",
+      "imports-winston.ts": "import winston from \"winston\";\n\nexport const useWinston = (): unknown => winston;\n"
+    },
+    "expected": [
+      {
+        "file": "imports-winston.ts",
+        "line": 1,
+        "snippet": "banned third-party import: winston — use its recorded wrapping boundary"
+      }
+    ]
+  },
+  {
+    "name": "violating-eslint-type-import",
+    "files": {
+      "native-rule.ts": "import type { Rule } from \"eslint\";\nexport type NativeRule = Rule.RuleModule;\n"
+    },
+    "expected": [
+      {
+        "file": "native-rule.ts",
+        "line": 1,
+        "snippet": "banned third-party import: eslint — use its recorded wrapping boundary"
+      }
+    ]
+  },
+  {
+    "name": "node-import-forms-and-known-string-false-positive",
+    "files": {
+      "sample.ts": "import { readFile } from 'node:fs';\nexport { basename } from 'node:path';\ntype NodeModule = typeof import('node:fs');\nimport fileSystem = require('node:fs');\nconst lazy = import('node:fs');\nconst loaded = require('node:path');\nconst text = \"from 'winston'\";\n"
+    },
+    "expected": [
+      {
+        "file": "sample.ts",
+        "line": 7,
+        "snippet": "banned third-party import: winston — use its recorded wrapping boundary"
+      },
+      {
+        "file": "sample.ts",
+        "line": 1,
+        "snippet": "bare node: stdlib import - use the kernel port package: node:fs"
+      },
+      {
+        "file": "sample.ts",
+        "line": 2,
+        "snippet": "bare node: stdlib import - use the kernel port package: node:path"
+      },
+      {
+        "file": "sample.ts",
+        "line": 3,
+        "snippet": "bare node: stdlib import - use the kernel port package: node:fs"
+      },
+      {
+        "file": "sample.ts",
+        "line": 4,
+        "snippet": "bare node: stdlib import - use the kernel port package: node:fs"
+      },
+      {
+        "file": "sample.ts",
+        "line": 5,
+        "snippet": "bare node: stdlib import - use the kernel port package: node:fs"
+      },
+      {
+        "file": "sample.ts",
+        "line": 6,
+        "snippet": "bare node: stdlib import - use the kernel port package: node:path"
+      }
+    ]
+  }
+]
