@@ -1,0 +1,119 @@
+[
+  {
+    "name": "passing",
+    "files": {
+      "local-mutation-then-return.ts": "type RowShape = { readonly name: string; readonly extra: string };\n\nconst buildRow = (rowName: string): RowShape => {\n  const built: { name: string; extra: string } = { name: \"\", extra: \"\" };\n  built.name = rowName;\n  built.extra = `${rowName}-derived`;\n  return built;\n};\n\nexport { buildRow };\n",
+      "return-fresh-object.ts": "type Profile = { readonly name: string; readonly age: number };\n\nconst renameProfile = (\n  existingProfile: Profile,\n  newName: string,\n): Profile => ({\n  name: newName,\n  age: existingProfile.age,\n});\n\nexport { renameProfile };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-delete",
+    "files": {
+      "has-delete-field.ts": "type MutableProfile = { name: string; nickname?: string };\n\nconst dropNickname = (profile: MutableProfile): void => {\n  delete profile.nickname;\n};\n\nexport { dropNickname };\n"
+    },
+    "expected": [
+      {
+        "file": "has-delete-field.ts",
+        "line": 4,
+        "snippet": "delete profile.nickname; };  export { dropNickname }; "
+      }
+    ]
+  },
+  {
+    "name": "violating-destructured",
+    "files": {
+      "has-destructured-mutation.ts": "type Wrapper = { inner: { name: string } };\n\nconst renameDestructured = ({ inner }: Wrapper, newName: string): void => {\n  inner.name = newName;\n};\n\nexport { renameDestructured };\n"
+    },
+    "expected": [
+      {
+        "file": "has-destructured-mutation.ts",
+        "line": 4,
+        "snippet": "inner.name = newName; };  export { renameDestructured }; "
+      }
+    ]
+  },
+  {
+    "name": "violating-element-access",
+    "files": {
+      "has-element-mutation.ts": "type MutableArray = number[];\n\nconst setFirstElement = (numbers: MutableArray, replacement: number): void => {\n  numbers[0] = replacement;\n};\n\nexport { setFirstElement };\n"
+    },
+    "expected": [
+      {
+        "file": "has-element-mutation.ts",
+        "line": 4,
+        "snippet": "numbers[0] = replacement; };  export { setFirstElement }; "
+      }
+    ]
+  },
+  {
+    "name": "violating-field-assignment",
+    "files": {
+      "has-field-mutation.ts": "type MutableProfile = { name: string; age: number };\n\nconst renameInPlace = (profile: MutableProfile, newName: string): void => {\n  profile.name = newName;\n};\n\nexport { renameInPlace };\n"
+    },
+    "expected": [
+      {
+        "file": "has-field-mutation.ts",
+        "line": 4,
+        "snippet": "profile.name = newName; };  export { renameInPlace }; "
+      }
+    ]
+  },
+  {
+    "name": "violating-method-push",
+    "files": {
+      "has-method-push.ts": "type MutableList = number[];\n\nconst appendToList = (existingList: MutableList, value: number): void => {\n  existingList.push(value);\n};\n\nexport { appendToList };\n"
+    },
+    "expected": [
+      {
+        "file": "has-method-push.ts",
+        "line": 4,
+        "snippet": "existingList.push(value); };  export { appendToList }; "
+      }
+    ]
+  },
+  {
+    "name": "violating-method-sort",
+    "files": {
+      "has-method-sort.ts": "type MutableList = readonly number[];\n\nconst sortInPlace = (existingList: MutableList): void => {\n  (existingList as number[]).sort();\n};\n\nconst sortDestructively = (mutableList: number[]): void => {\n  mutableList.sort();\n};\n\nexport { sortDestructively, sortInPlace };\n"
+    },
+    "expected": [
+      {
+        "file": "has-method-sort.ts",
+        "line": 8,
+        "snippet": "mutableList.sort(); };  export { sortDestructively, sortInPlace }; "
+      }
+    ]
+  },
+  {
+    "name": "violating-method-splice",
+    "files": {
+      "has-method-splice.ts": "type MutableList = number[];\n\nconst removeRange = (\n  existingList: MutableList,\n  startIndex: number,\n  removeCount: number,\n): void => {\n  existingList.splice(startIndex, removeCount);\n};\n\nexport { removeRange };\n"
+    },
+    "expected": [
+      {
+        "file": "has-method-splice.ts",
+        "line": 8,
+        "snippet": "existingList.splice(startIndex, removeCount); };  export { removeRange }; "
+      }
+    ]
+  },
+  {
+    "name": "nested-capture-shadowing-and-unsupported-mutations",
+    "files": {
+      "sample.ts": "const update = (profile: Profile) => {\n  const nested = () => { profile.name = 'Ada'; };\n  const shadow = () => { const profile = {}; profile.name = 'Ada'; };\n  profile.count += 1;\n  profile.count++;\n  return { nested, shadow };\n};\n"
+    },
+    "expected": [
+      {
+        "file": "sample.ts",
+        "line": 2,
+        "snippet": "profile.name = 'Ada'; };   const shadow = () => { const profile = {}; profile.na…"
+      },
+      {
+        "file": "sample.ts",
+        "line": 3,
+        "snippet": "profile.name = 'Ada'; };   profile.count += 1;   profile.count++;   return { nes…"
+      }
+    ]
+  }
+]

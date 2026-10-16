@@ -1,0 +1,70 @@
+[
+  {
+    "name": "passing",
+    "files": {
+      "discriminated-union.ts": "type ForceMode = { readonly kind: \"force\" } | { readonly kind: \"lenient\" };\n\nconst performAction = (mode: ForceMode): string => {\n  if (mode.kind === \"force\") {\n    return \"forced\";\n  }\n  return \"lenient\";\n};\n\nexport { performAction };\n",
+      "local-inferred-boolean.ts": "type VisibilityState = \"shown\" | \"hidden\";\n\nconst summariseVisibility = (visibility: VisibilityState): string => {\n  const isShown = visibility === \"shown\";\n  if (isShown) {\n    return \"visible\";\n  }\n  return \"hidden\";\n};\n\nexport { summariseVisibility };\n",
+      "type-predicate-return.ts": "type Sentinel = { readonly kind: \"sentinel\"; readonly id: string };\n\nconst isSentinel = (candidate: unknown): candidate is Sentinel => {\n  return (\n    typeof candidate === \"object\" &&\n    candidate !== null &&\n    \"kind\" in candidate &&\n    (candidate as { readonly kind: unknown }).kind === \"sentinel\"\n  );\n};\n\nexport { isSentinel };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-direct",
+    "files": {
+      "has-bare-boolean.ts": "const performAction = (shouldForce: boolean): string => {\n  if (shouldForce) {\n    return \"forced\";\n  }\n  return \"lenient\";\n};\n\nexport { performAction };\n"
+    },
+    "expected": [
+      {
+        "file": "has-bare-boolean.ts",
+        "line": 1,
+        "snippet": "shouldForce: boolean): string => {   if (shouldForce) {     return \"forced\";   }…"
+      }
+    ]
+  },
+  {
+    "name": "violating-optional",
+    "files": {
+      "has-optional-boolean.ts": "const performAction = (shouldForce: boolean | undefined): string => {\n  if (shouldForce === true) {\n    return \"forced\";\n  }\n  return \"lenient\";\n};\n\nexport { performAction };\n"
+    },
+    "expected": [
+      {
+        "file": "has-optional-boolean.ts",
+        "line": 1,
+        "snippet": "shouldForce: boolean | undefined): string => {   if (shouldForce === true) {    …"
+      }
+    ]
+  },
+  {
+    "name": "violating-return-type",
+    "files": {
+      "has-boolean-return.ts": "const isPositiveNumber = (candidateNumber: number): boolean => candidateNumber > 0;\n\nexport { isPositiveNumber };\n"
+    },
+    "expected": [
+      {
+        "file": "has-boolean-return.ts",
+        "line": 1,
+        "snippet": "(candidateNumber: number): boolean => candidateNumber > 0;  export { isPositiveN…"
+      }
+    ]
+  },
+  {
+    "name": "violating-type-field",
+    "files": {
+      "has-boolean-field.ts": "type SearchOptions = {\n  readonly searchTerm: string;\n  readonly shouldIncludeArchived: boolean;\n};\n\nconst searchTasks = (searchOptions: SearchOptions): readonly string[] => {\n  if (searchOptions.shouldIncludeArchived) {\n    return [searchOptions.searchTerm, \"archived\"];\n  }\n  return [searchOptions.searchTerm];\n};\n\nexport { searchTasks };\n"
+    },
+    "expected": [
+      {
+        "file": "has-boolean-field.ts",
+        "line": 3,
+        "snippet": "readonly shouldIncludeArchived: boolean; };  const searchTasks = (searchOptions:…"
+      }
+    ]
+  },
+  {
+    "name": "unsupported-boolean-shapes-remain-undetected",
+    "files": {
+      "sample.ts": "type Choices = { union: boolean | string; literal: true; wrapped: Promise<boolean> };\nconst predicate = (candidate: unknown): candidate is string => typeof candidate === 'string';\nconst inferred = () => true;\n"
+    },
+    "expected": []
+  }
+]

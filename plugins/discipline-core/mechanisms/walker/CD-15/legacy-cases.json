@@ -1,0 +1,57 @@
+[
+  {
+    "name": "loops-and-type",
+    "files": {
+      "sample.ts": "for (const entry of entries) run(entry);\nfor await (const entry of entries) run(entry);\nfor (let index = 0; index < 2; index++) run(index);\nwhile (queue.length) drain();\ntype Product = ReturnType<typeof createProduct>;\n"
+    },
+    "expected": [
+      {
+        "file": "sample.ts",
+        "line": 1,
+        "snippet": "for (const entry of entries) run(entry);"
+      },
+      {
+        "file": "sample.ts",
+        "line": 2,
+        "snippet": "for await (const entry of entries) run(entry);"
+      },
+      {
+        "file": "sample.ts",
+        "line": 3,
+        "snippet": "for (let index = 0; index < 2; index++) run(index);"
+      },
+      {
+        "file": "sample.ts",
+        "line": 4,
+        "snippet": "while (queue.length) drain();"
+      }
+    ]
+  },
+  {
+    "name": "ignored-comment-lines",
+    "files": {
+      "sample.ts": "// while (queue.length) drain();\n/* for (const entry of entries) run(entry); */\n* type Product = ReturnType<typeof createProduct>;\nconst message = 'while (queue.length)';\n"
+    },
+    "expected": [
+      {
+        "file": "sample.ts",
+        "line": 4,
+        "snippet": "const message = 'while (queue.length)';"
+      }
+    ]
+  },
+  {
+    "name": "switch-depth",
+    "files": {
+      "sample.ts": "switch (command.kind) {\ncase 'run': { run(); }\ndefault: stop();\n}\nswitch (command.kind) {\ndefault: stop();\n}\nconst object = { default: 'literal' };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "same-line-and-multiline",
+    "files": {
+      "sample.ts": "switch (command.kind) { default: stop(); }\nfor (const entry\n of entries) run(entry);\nwhile\n(queue.length) drain();\ntype Product = ReturnType<\n typeof createProduct>;\n"
+    },
+    "expected": []
+  }
+]
