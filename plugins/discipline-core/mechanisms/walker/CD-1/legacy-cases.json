@@ -1,0 +1,58 @@
+[
+  {
+    "name": "passing",
+    "files": {
+      "const-assertion.ts": "const PERMITTED_LITERAL = \"permitted\" as const;\n\nexport { PERMITTED_LITERAL };\n",
+      "sqlite-row-narrow.ts": "type RowShape = { readonly name: string };\ntype AllResult = { readonly value: unknown };\n\nconst narrowSqliteRows = (allResult: AllResult): ReadonlyArray<RowShape> => {\n  return allResult.value as ReadonlyArray<RowShape>;\n};\n\nexport { narrowSqliteRows };\n",
+      "tool-input-schema.ts": "type Tool = { readonly inputSchema: { readonly type: string } };\n\nconst adaptToToolInputSchema = (jsonSchema: unknown): Tool[\"inputSchema\"] => {\n  return jsonSchema as Tool[\"inputSchema\"];\n};\n\nexport { adaptToToolInputSchema };\n",
+      "zod-introspection.ts": "import type { ZodObject } from \"zod\";\n\nconst introspectZod = (schema: unknown): ZodObject => schema as ZodObject;\n\nexport { introspectZod };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-arbitrary-cast",
+    "files": {
+      "bad-cast.ts": "type Category = \"inbox\" | \"today\";\n\nconst forceCategory = (rawText: string): Category => {\n  return rawText as Category;\n};\n\nexport { forceCategory };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-error-narrowing",
+    "files": {
+      "bad-error-cast.ts": "const errorCode = (caught: unknown): string => {\n  return (caught as NodeJS.ErrnoException).code ?? \"unknown\";\n};\n\nexport { errorCode };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-json-cast",
+    "files": {
+      "bad-json-cast.ts": "const parseResponseUnsafely = async <T>(response: Response): Promise<T> => {\n  const parsed = await response.json();\n  return parsed as T;\n};\n\nexport { parseResponseUnsafely };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-local-zod-name",
+    "files": {
+      "local-zod-name.ts": "type ZodInternalCarrier = { readonly _zod: { readonly def: unknown } };\n\nconst asCarrier = (schema: unknown): ZodInternalCarrier =>\n  schema as ZodInternalCarrier;\n\nexport { asCarrier };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "any-casts-and-undetected-direct-any",
+    "files": {
+      "sample.ts": "declare const candidate: unknown;\nconst narrowed = candidate as any;\nconst bracketed = <any>candidate;\nconst direct: any = candidate;\nconst escaped = candidate as unknown;\n"
+    },
+    "expected": [
+      {
+        "file": "sample.ts",
+        "line": 2,
+        "snippet": "candidate as any; const bracketed = <any>candidate; const direct: any = candidat…"
+      },
+      {
+        "file": "sample.ts",
+        "line": 3,
+        "snippet": "<any>candidate; const direct: any = candidate; const escaped = candidate as unkn…"
+      }
+    ]
+  }
+]
