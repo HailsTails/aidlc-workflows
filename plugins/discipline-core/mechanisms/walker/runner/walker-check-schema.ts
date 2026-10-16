@@ -9,6 +9,7 @@ const inspectCallSchema = z.function({ input: [z.unknown()], output: z.unknown()
 export const walkerCheckModuleSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("syntax"), inspect: inspectCallSchema }),
   z.object({ kind: z.literal("path"), inspect: inspectCallSchema }),
+  z.object({ kind: z.literal("repository"), inspect: inspectCallSchema }),
 ]);
 
 export type LoadedWalkerCheck = z.infer<typeof walkerCheckModuleSchema>;
@@ -46,4 +47,9 @@ export const isPathVariantKeySetEqual: Equal<
   keyof Extract<LoadedWalkerCheck, { readonly kind: "path" }>
 > = true;
 
-export const isWalkerCheckKeySetEqual = isSyntaxVariantKeySetEqual && isPathVariantKeySetEqual;
+export const isRepositoryVariantKeySetEqual: Equal<
+  keyof Extract<GenericWalkerCheck, { readonly kind: "repository" }>,
+  keyof Extract<LoadedWalkerCheck, { readonly kind: "repository" }>
+> = true;
+
+export const isWalkerCheckKeySetEqual = isSyntaxVariantKeySetEqual && isPathVariantKeySetEqual && isRepositoryVariantKeySetEqual;
