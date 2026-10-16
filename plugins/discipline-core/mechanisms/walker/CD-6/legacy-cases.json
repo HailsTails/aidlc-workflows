@@ -1,0 +1,54 @@
+[
+  {
+    "name": "passing",
+    "files": {
+      "domain-compound-names.ts": "const parseResult = \"ok\" as const;\nconst userValue = 42;\nconst httpBody = { greeting: \"hello\" };\nconst retryOptions = { attempts: 3 };\n\nconst renderGreeting = (incomingRequest: { readonly userName: string }): string => {\n  return `Hello, ${incomingRequest.userName}`;\n};\n\nexport { httpBody, parseResult, renderGreeting, retryOptions, userValue };\n",
+      "underscore-unused.ts": "const indexEach = (entries: readonly string[]): readonly number[] => {\n  return entries.map((_entry, indexPosition) => indexPosition);\n};\n\nconst ignoreErrorContent = (_caughtError: unknown): void => {\n  return;\n};\n\nexport { ignoreErrorContent, indexEach };\n"
+    },
+    "expected": []
+  },
+  {
+    "name": "violating-destructured-filler",
+    "files": {
+      "bad-destructure.ts": "const summariseIncident = (report: { readonly body: string }): string => {\n  const { body } = report;\n  return body;\n};\n\nexport { summariseIncident };\n"
+    },
+    "expected": [
+      {
+        "file": "bad-destructure.ts",
+        "line": 2,
+        "snippet": "body } = report;   return body; };  export { summariseIncident }; "
+      }
+    ]
+  },
+  {
+    "name": "violating-filler",
+    "files": {
+      "bad-filler.ts": "const processUserRequest = (data: { readonly name: string }): string => {\n  const result = data.name.toUpperCase();\n  return result;\n};\n\nexport { processUserRequest };\n"
+    },
+    "expected": [
+      {
+        "file": "bad-filler.ts",
+        "line": 1,
+        "snippet": "data: { readonly name: string }): string => {   const result = data.name.toUpper…"
+      },
+      {
+        "file": "bad-filler.ts",
+        "line": 2,
+        "snippet": "result = data.name.toUpperCase();   return result; };  export { processUserReque…"
+      }
+    ]
+  },
+  {
+    "name": "violating-shorthand",
+    "files": {
+      "bad-shorthand.ts": "const handleRequest = (c: { readonly path: string }): string => {\n  return c.path;\n};\n\nexport { handleRequest };\n"
+    },
+    "expected": [
+      {
+        "file": "bad-shorthand.ts",
+        "line": 1,
+        "snippet": "c: { readonly path: string }): string => {   return c.path; };  export { handleR…"
+      }
+    ]
+  }
+]
