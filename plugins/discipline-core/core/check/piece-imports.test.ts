@@ -38,6 +38,12 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
   '[".","rules","CD-2"]': "rules/CD-2",
   '["./mechanisms/walker/CD-2","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
   '["./mechanisms/walker/CD-2","../runner/typescript-parse.ts"]': "mechanisms/walker/runner/typescript-parse.ts",
+  '[".","mechanisms","walker","CD-5"]': "mechanisms/walker/CD-5",
+  '[".","rules","CD-5"]': "rules/CD-5",
+  '["./mechanisms/walker/CD-5","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
+  '[".","mechanisms","walker","CD-6"]': "mechanisms/walker/CD-6",
+  '[".","rules","CD-6"]': "rules/CD-6",
+  '["./mechanisms/walker/CD-6","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
   '[".","mechanisms","eslint","runner","piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '["./mechanisms/eslint/runner/piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '[".","mechanisms","walker","CD-14"]': "mechanisms/walker/CD-14",
@@ -56,6 +62,8 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
 const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
   "./mechanisms/walker/CD-1/any-cast.ts": "./mechanisms/walker/CD-1",
   "./mechanisms/walker/CD-2/cast-expressions.ts": "./mechanisms/walker/CD-2",
+  "./mechanisms/walker/CD-5/comments-directives.ts": "./mechanisms/walker/CD-5",
+  "./mechanisms/walker/CD-6/identifier-names.ts": "./mechanisms/walker/CD-6",
   "./mechanisms/walker/CD-14/class-syntax.ts": "./mechanisms/walker/CD-14",
   "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": "./tests/probe-rule-set/mechanisms/walker/PD-1",
 };
