@@ -14,13 +14,12 @@
 // PostToolUse fired on the lens's own `SubagentHandback` call carries it too,
 // with the report as the tool input and the harness's delivery result.
 //
-// Claude Code now delivers a subagent's report through that hand-back call and
-// ends the subagent on a filler turn ("Delivered."), so on that face the report
-// is no longer in `last_assistant_message` (measured live 2026-09-28, record
-// 260928-lens-verdict-channel-los). Only the FIRST hand-back per invocation is
-// delivered; a later call returns `success: false` and is never a report. A
-// resumed agent gets a fresh delivery, and the capture supersession below
-// already makes its later word replace its earlier one.
+// A subagent can deliver its report through a hand-back call and finish on a
+// filler turn ("Delivered."), so that face must capture the report from the tool
+// input rather than `last_assistant_message`. Only the FIRST hand-back per
+// invocation is delivered; a later call returns `success: false` and is never
+// a report. A resumed agent gets a fresh delivery, and capture supersession
+// makes its later word replace its earlier one.
 //
 // The mechanism is read in review-scribe-lens-report.ts, which turns either
 // event into one LensReport. Everything below that seam is harness-neutral: a
@@ -36,21 +35,14 @@
 // signal, the autonomy gate + verdict guard do the blocking). Every invocation
 // appends one trace line so a silent no-write is diagnosable from disk.
 
-import { spawnSync } from "node:child_process";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { z } from "zod";
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
+import { defaultFileKindPort, defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
+import { defaultReviewProcessPort, type ReviewProcessPort } from "../tools/rin-gates/review-process-port.ts";
+import { defaultReviewDecodersPort, type Capture } from "../tools/rin-gates/review-decoders-port.ts";
 import { gateDirSegments } from "../tools/rin-gates/rin-gate-namespace.ts";
 import { blockingFindingsWithPolicy } from "../tools/rin-gates/rin-gates-finding-disposition.ts";
 import {
+  declaredBoardStageSegmentsFor,
   declaredReviewArtifactPathFor,
   declaredReviewerFor,
   loadStageGraphNodes,
@@ -80,7 +72,18 @@ import {
   resolveReviewRoster,
 } from "./shared-review-roster.ts";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const fileKind = defaultFileKindPort();
+const runtime: ReviewProcessPort = defaultReviewProcessPort();
+const decoders = defaultReviewDecodersPort();
+const join = (...segments: string[]): string => paths.join({ segments });
+const resolve = (...segments: string[]): string => paths.resolve({ segments });
+const dirname = (path: string): string => paths.dirname({ path });
+const basename = (path: string): string => paths.basename({ path });
+const isAbsolute = (path: string): boolean => paths.isAbsolute({ path });
+const { exists: existsSync, read: readFileSync, write: writeFileSync, append: appendFileSync, mkdir: mkdirSync } = files;
+const HERE = dirname(paths.fromFileUrl({ url: import.meta.url }));
 // Walk up to the enclosing checkout rather than counting directory levels: this
 // file is projected into a harness dir whose depth differs per face, so a fixed
 // `../..` binds to whatever happens to sit two levels up.
@@ -99,7 +102,7 @@ const PROJECT_DIR = ((): string => {
 const workspaceRootFrom = (checkoutRoot: string): string => {
   const gitPath = join(checkoutRoot, ".git");
   try {
-    if (statSync(gitPath).isDirectory()) return checkoutRoot;
+    if (fileKind.isDirectory(gitPath)) return checkoutRoot;
     const gitdirLine = readFileSync(gitPath, "utf-8").match(
       /^gitdir:\s*(.+?)\s*$/m,
     );
@@ -129,23 +132,21 @@ const nearestCheckoutAt = (dir: string): string | undefined => {
 const checkoutRootFromCwd = (cwd: string | undefined): string | undefined =>
   cwd === undefined || cwd === "" ? undefined : nearestCheckoutAt(resolve(cwd));
 
-const space = process.env.RIN_GATES_SPACE ?? "default";
+const space = runtime.environment.RIN_GATES_SPACE ?? "default";
 
 // Test isolation, fail-closed. Every path below that the scribe WRITES to or
 // EXECUTES falls back to the real checkout when its variable is unset. That
-// fallback is right for a live hook and wrong for a test: a spawner that
-// forgets one variable silently writes into the real ledgers and runs the real
-// engine, and nothing in a green suite shows it (measured 2026-09-28: every
-// findings-gate run appended 24 "engine receipt refused" rows to the real
-// discard ledger). Under RIN_GATES_TEST_MODE=1 an unset one is a refusal, so a
-// leak fails the test that caused it instead of landing in the checkout.
-const IS_TEST_MODE = process.env["RIN_GATES_TEST_MODE"] === "1";
+// fallback is right for a live hook and wrong for a test: an omitted variable
+// can write real ledgers or execute the real engine without failing an assertion.
+// Under RIN_GATES_TEST_MODE=1 an unset variable is a refusal, so a leak fails
+// the test that caused it instead of landing in the checkout.
+const IS_TEST_MODE = runtime.environment["RIN_GATES_TEST_MODE"] === "1";
 
 const refuseTestIsolationBreach = (reason: string): never => {
-  process.stderr.write(
+  runtime.diagnose(
     `rin-gates review-scribe: TEST ISOLATION BREACH — ${reason}. Under RIN_GATES_TEST_MODE=1 the scribe never falls back to the real checkout; inject it from the test.\n`,
   );
-  return process.exit(2);
+  return runtime.exit(2);
 };
 
 const runtimePathFrom = ({
@@ -155,7 +156,7 @@ const runtimePathFrom = ({
   readonly variable: string;
   readonly livePath: string;
 }): string => {
-  const injected = process.env[variable];
+  const injected = runtime.environment[variable];
   if (injected !== undefined && injected !== "") return injected;
   return IS_TEST_MODE
     ? refuseTestIsolationBreach(`${variable} is not injected`)
@@ -169,7 +170,7 @@ const runtimePathFrom = ({
 // config lives beside this hook (both are .claude-native) so the two consumers
 // cannot drift.
 const ROSTER_CONFIG_PATH =
-  process.env.RIN_GATES_ROSTER_CONFIG ?? join(HERE, "review-rosters.json");
+  runtime.environment.RIN_GATES_ROSTER_CONFIG ?? join(HERE, "review-rosters.json");
 
 const isReviewerLens = (agentType: string): boolean =>
   /-reviewer-agent$/.test(agentType);
@@ -188,12 +189,10 @@ const CAPTURES_DIR = runtimePathFrom({
   livePath: join(WORKSPACE_ROOT, "aidlc", ".rin-gates-review-captures"),
 });
 
-// The discard ledger. The trace is an append-only diagnostic of EVERY invocation
-// (captures included) and had grown past a thousand entries — a session that
-// wanted to know "did this board lose anything?" had to filter it, which is
-// exactly what nobody did while 32 verdicts were discarded over three days
-// (task 019fe4af). The ledger holds discards ONLY, so reading it is the answer
-// to that question rather than the start of an investigation.
+// The discard ledger contains discards ONLY. The trace diagnoses EVERY
+// invocation, including successful captures, so answering whether a board lost
+// reports requires filtering it. Reading this ledger answers that question
+// directly instead of depending on a session remembering to filter the trace.
 const DISCARD_LEDGER_PATH = runtimePathFrom({
   variable: "RIN_GATES_REVIEW_DISCARD_LEDGER_PATH",
   livePath: join(WORKSPACE_ROOT, "aidlc", "rin-gates-review-discards.jsonl"),
@@ -224,7 +223,7 @@ const ENGINE_LOG_PATH = runtimePathFrom({
   livePath: join(engineLogHarnessRoot(), "tools", "aidlc-log.ts"),
 });
 
-const nowIso = (): string => new Date().toISOString();
+const nowIso = (): string => runtime.timestamp();
 
 const appendJsonLine = (path: string, entry: Record<string, unknown>): void => {
   try {
@@ -242,7 +241,7 @@ const writeTraceLine = (entry: Record<string, unknown>): void => {
 
 const exitTraced = (entry: Record<string, unknown>): never => {
   writeTraceLine(entry);
-  process.exit(0);
+  runtime.exit(0);
 };
 
 // EVERY discard exits through here — there is no silent path left. A discarded
@@ -259,7 +258,7 @@ const exitDiscarded: (input: {
 }) => never = ({ reason, remedy, entry }) => {
   const agentType =
     typeof entry.agentType === "string" ? entry.agentType : "a reviewer lens";
-  process.stderr.write(
+  runtime.diagnose(
     `rin-gates review-scribe: DISCARDED ${agentType}'s review — ${reason}. ` +
       `Its verdict CANNOT be counted toward the roster, so the gate will refuse the approve. ${remedy} ` +
       `Ledger: ${DISCARD_LEDGER_PATH}\n`,
@@ -270,7 +269,7 @@ const exitDiscarded: (input: {
     ...entry,
   });
   writeTraceLine({ reject: reason, ...entry });
-  process.exit(0);
+  runtime.exit(0);
 };
 
 // A refused engine receipt is the same class of loss as a discarded lens and gets
@@ -291,7 +290,7 @@ const reportRefusedReceipt = (args: {
   };
 }): void => {
   const reviewer = args.reviewer ?? "the gate's declared reviewer";
-  process.stderr.write(
+  runtime.diagnose(
     `rin-gates review-scribe: the engine REFUSED the ${args.gate} receipt for ${reviewer} ` +
       `at the ${args.receipt.step} step (${args.receipt.reason}). ` +
       "Engine receipt NOT recorded — the engine's reviewer floor may rest on a stale receipt; " +
@@ -309,23 +308,7 @@ const reportRefusedReceipt = (args: {
   });
 };
 
-type Capture = {
-  readonly lens: string;
-  readonly verdict: string;
-  readonly findings: readonly string[];
-  readonly sessionId: string;
-  readonly at: string;
-};
-
-const readStdin = (): Promise<string> =>
-  new Promise((resolvePromise) => {
-    let raw = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => {
-      raw += chunk;
-    });
-    process.stdin.on("end", () => resolvePromise(raw));
-  });
+const readStdin = runtime.readInput;
 
 const intentsRoot = (checkoutRoot: string): string =>
   join(checkoutRoot, "aidlc", "spaces", space, "intents");
@@ -361,15 +344,11 @@ const currentGate = (recordDir: string): string | null => {
 };
 
 const headShaOf = (checkoutRoot: string): string | null => {
-  if (process.env.RIN_GATES_TEST_MODE === "1") {
-    const injected = process.env.RIN_GATES_HEAD_SHA;
+  if (runtime.environment.RIN_GATES_TEST_MODE === "1") {
+    const injected = runtime.environment.RIN_GATES_HEAD_SHA;
     if (injected !== undefined) return injected === "" ? null : injected;
   }
-  const result = spawnSync("git", ["rev-parse", "HEAD"], {
-    cwd: checkoutRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  const result = runtime.runSync({ program: "git", args: ["rev-parse", "HEAD"], cwd: checkoutRoot });
   const sha = result.stdout?.trim();
   return result.status === 0 && sha ? sha : null;
 };
@@ -396,24 +375,21 @@ const echoesHeadSha = (
 // recorded as a discard (so the roster stays uncovered and the gate refuses)
 // and it is loud, so the convening session re-dispatches with a pinned cwd.
 //
-// An abstention is a DECLARATION, matched at line start (optionally behind a
-// heading, bold, or bullet marker) — the same principle the extractor already
-// ratifies for the verdict token itself. Keyword-sniffing the whole message
-// discarded 62 ledger rows whose lenses merely NAMED the token while delivering
-// a well-formed verdict ("this is not a CANNOT-REVIEW case").
+// An abstention is a DECLARATION matched at line start, optionally behind a
+// heading, bold, or bullet marker, as for the verdict token itself. Sniffing the
+// whole message would reject a well-formed verdict that merely mentions the
+// token, such as "this is not a CANNOT-REVIEW case".
 const ABSTENTION_DECLARATION =
   /^[ \t]*(?:#{1,6}[ \t]*|\*\*[ \t]*|[-*][ \t]+)?CANNOT[\s_-]?REVIEW\b/im;
 
 const reviewRosterFor = (gate: string): RosterResolution =>
   resolveReviewRoster({ configPath: ROSTER_CONFIG_PATH, gate });
 
-// Extraction is owned by rin-gates-lens-verdict.ts (task 019fd9a5): the TOOL
-// derives the verdict from what the lens natively produces, rather than the lens
-// being asked to reproduce an exact delimiter pair as free text. That step was
-// losing 399 of 887 captures — every lens, in three different malformations, even
-// with the exact template pasted into the agent definition. Extraction is
-// fail-safe toward NOT-READY, so widening the accepted shapes cannot manufacture
-// an approval.
+// Extraction is owned by rin-gates-lens-verdict.ts: the TOOL derives the
+// verdict from native lens output rather than requiring a free-text delimiter
+// pair. Missing delimiters or fenced templates must not prevent capture of a
+// native verdict. Extraction is fail-safe toward NOT-READY, so accepting more
+// output shapes cannot manufacture an approval.
 
 const capturesPath = ({
   recordName,
@@ -437,7 +413,8 @@ const readCaptures = (path: string): readonly Capture[] => {
     .filter((line) => line.trim() !== "")
     .map((line): Capture | null => {
       try {
-        return JSON.parse(line) as Capture;
+        const capture = decoders.capture(JSON.parse(line));
+        return capture.success ? capture.data : null;
       } catch {
         return null;
       }
@@ -445,20 +422,14 @@ const readCaptures = (path: string): readonly Capture[] => {
     .filter((capture): capture is Capture => capture !== null);
 };
 
-// A board re-reviews at the same head (task 019fef05). The captures file is
-// already partitioned by headSha, so a round at a NEW commit lands in a new file
-// and cannot reach this. What had no supersession was a re-review at the SAME
-// head — a lens re-reporting after a fix it could verify without a new commit.
+// A board can re-review at the same head. Captures are partitioned by headSha,
+// so a new commit lands in a separate file. Within one file, a capture is
+// SUPERSEDED only by that same lens's later report. Another lens's READY cannot
+// retire a standing refusal.
 //
-// A capture is SUPERSEDED when the same lens has spoken again later in this same
-// file. Supersession is per-lens and strictly by that lens's own later word: a
-// lens that refused and never revisited is never superseded by anyone else's
-// READY, which is what keeps a single genuine refusal blocking.
-//
-// This returns the whole capture rather than a verdict token because the verdict
-// and its findings must retire TOGETHER. Retiring the token alone was the second
-// half of the same defect: the findings gate re-harvested a superseded round's
-// citations, so the aggregate stayed blocked on a finding no live verdict made.
+// Return the whole capture so its verdict and findings retire TOGETHER. Keeping
+// superseded citations would block the aggregate on findings no live verdict
+// makes.
 const liveCaptures = (captures: readonly Capture[]): readonly Capture[] => [
   ...new Map(captures.map((capture) => [capture.lens, capture])).values(),
 ];
@@ -474,18 +445,14 @@ const latestVerdictForLens = (
 // The aggregate the board's captures add up to, lifted out of `main` so the
 // orchestrator composes named steps rather than deriving this inline.
 //
-// Every clause reads the LIVE captures — each lens's latest word at this head.
-// `anyNotReady` previously scanned the raw file, so a round-1 refusal outvoted
-// the same lens's own round-2 READY forever and the aggregate could never return
-// to READY without a new commit (task 019fef05).
+// Every clause reads the LIVE captures: each lens's latest word at this head.
+// Scanning raw captures would let an earlier refusal outvote that lens's later
+// READY forever.
 //
-// The findings gate (task 019f6d3e): a lens's verdict TOKEN was once the only
-// input, so a lens writing READY above its own cited violations aggregated to
-// READY — the laundering Step 5 forbids but nothing checked. Fail-safe in one
-// direction only: an undisposed finding can move the aggregate to NOT-READY and
-// can never move it to READY. Read from the live captures for the same reason a
-// verdict is — a finding belongs to the round that cited it, so a superseded
-// round's findings retire with its verdict.
+// The findings gate also reads live captures. A READY token beside an
+// undisposed cited violation cannot authorize approval. An undisposed finding
+// can move the aggregate only to NOT-READY; a superseded round's findings retire
+// together with its verdict.
 const aggregateVerdictOf = ({
   captures,
   roster,
@@ -504,6 +471,11 @@ const aggregateVerdictOf = ({
     (lens) => latestVerdictForLens(captures, lens) === "READY",
   );
   const anyNotReady = live.some((capture) => capture.verdict === "NOT-READY");
+  const synthesisLens = "rin-intent-defense-reviewer-agent";
+  const synthesisIndex = captures.findLastIndex((capture) => capture.lens === synthesisLens);
+  const synthesisCurrent = !roster.includes(synthesisLens) ||
+    (synthesisIndex >= 0 && captures.every((capture, index) =>
+      capture.lens === synthesisLens || index < synthesisIndex));
   const blockingFindings = blockingFindingsWithPolicy({
     findings: live.flatMap((capture) => capture.findings),
     exceptionWhyChainsEnabled,
@@ -511,7 +483,7 @@ const aggregateVerdictOf = ({
   return {
     live,
     aggregate:
-      rosterAllReady && !anyNotReady && blockingFindings.length === 0
+      rosterAllReady && !anyNotReady && synthesisCurrent && blockingFindings.length === 0
         ? "READY"
         : "NOT-READY",
     blockingFindings,
@@ -531,14 +503,14 @@ const parsedStdinPayload = (raw: string): unknown => {
   try {
     return JSON.parse(raw);
   } catch {
-    return process.exit(0);
+    return runtime.exit(0);
   }
 };
 
 const lensReportFromStdin = async (): Promise<LensReport> => {
-  if (process.stdin.isTTY) process.exit(0);
+  if (runtime.inputIsTerminal) runtime.exit(0);
   const raw = await readStdin();
-  if (raw.trim() === "") process.exit(0);
+  if (raw.trim() === "") runtime.exit(0);
   const intake = lensReportFromHookPayload({
     payload: parsedStdinPayload(raw),
   });
@@ -546,22 +518,20 @@ const lensReportFromStdin = async (): Promise<LensReport> => {
     case "report":
       return intake.report;
     case "undelivered-handback":
-      if (!isReviewerLens(intake.agentType)) process.exit(0);
+      if (!isReviewerLens(intake.agentType)) runtime.exit(0);
       return exitTraced({
         outcome:
           "hand-back not delivered; the lens's first hand-back is its report",
         agentType: intake.agentType,
       });
     case "not-a-lens-report":
-      return process.exit(0);
+      return runtime.exit(0);
   }
 };
 
-const handbackLedgerRowSchema = z.object({ agentId: z.string() });
-
 const ledgerRowAgentId = (line: string): string | null => {
   try {
-    const row = handbackLedgerRowSchema.safeParse(JSON.parse(line));
+    const row = decoders.handback(JSON.parse(line));
     return row.success ? row.data.agentId : null;
   } catch {
     return null;
@@ -590,7 +560,7 @@ const reviewContextFor = ({
   readonly report: LensReport;
 }): ReviewContext => {
   const agentType = report.agentType;
-  if (!isReviewerLens(agentType)) process.exit(0);
+  if (!isReviewerLens(agentType)) runtime.exit(0);
   const checkoutRoot = checkoutRootFromCwd(report.cwd) ?? WORKSPACE_ROOT;
   if (
     IS_TEST_MODE &&
@@ -623,13 +593,29 @@ const reviewContextFor = ({
       entry: { agentType, recordName, gate },
     });
   }
-  const gateSegments = gateDirSegments(gate);
+  const rinSegments = gateDirSegments(gate);
+  const gateSegments = rinSegments ?? declaredBoardStageSegmentsFor({
+    gate,
+    graph: loadStageGraphNodes(stageGraphPath()),
+  });
   if (gateSegments === null) {
     return exitDiscarded({
       reason: "gate has no phase mapping",
       remedy: `The record's Current Stage (\`${gate}\`) maps to no phase dir, so there is nowhere to write the verdict. Fix the stage slug in aidlc-state.md, then re-dispatch.`,
       entry: { agentType, gate },
     });
+  }
+  if (rinSegments === null) {
+    const resolution = reviewRosterFor(gate);
+    if (resolution.kind === "unreadable" || resolution.source !== "byGate" ||
+      !resolution.roster.includes("rin-intent-defense-reviewer-agent") ||
+      !resolution.roster.some((lens) => lens !== "rin-intent-defense-reviewer-agent")) {
+      return exitDiscarded({
+        reason: "adopted stage has no explicit decorrelated roster",
+        remedy: `Declare ${gate} in review-rosters.json byGate with its producing lenses and rin-intent-defense-reviewer-agent, then re-dispatch.`,
+        entry: { agentType, gate },
+      });
+    }
   }
   return { agentType, checkoutRoot, recordDir, recordName, gate, gateSegments };
 };
@@ -737,8 +723,11 @@ const captureBoardReview = ({
   appendCapture(path, {
     lens: context.agentType,
     verdict: block.verdict,
-    findings: block.findings,
+    findings: [...block.findings],
     sessionId: report.sessionId,
+    agentId: report.agentId,
+    channel: report.channel,
+    reportText: report.reportText,
     at: nowIso(),
   });
   writeTraceLine({
@@ -815,10 +804,19 @@ const writeAggregateVerdict = ({
     lenses: [...new Set(live.map((capture) => capture.lens))],
     findings: live.flatMap((capture) => capture.findings),
     blockingFindings,
+    reports: live.map((capture) => ({
+      ...capture,
+      gate: context.gate,
+      headSha,
+      reportText: capture.reportText ?? null,
+      agentId: capture.agentId ?? null,
+      channel: capture.channel ?? null,
+    })),
+    reportsComplete: live.every((capture) => typeof capture.reportText === "string" && capture.reportText.trim() !== ""),
     emittedBy: "rin-gates-review-scribe",
     reviewedAt: nowIso(),
     ["$note"]:
-      "Written by the SubagentStop review-scribe when the minimum lens roster was covered. The `taskId` field carries the engine record dir NAME (the intent's identity under repo-SoR — there is no DB Slice binding). `findings` and `lenses` report each lens's LATEST review at this headSha: a lens that re-reviews at the same head supersedes its own earlier round, verdict and findings together, so a fixed round-1 refusal cannot pin the aggregate forever. Supersession is per-lens and never cross-lens — an unrevisited NOT-READY still blocks. `blockingFindings` are the live cited findings no lens disposed; a non-empty list forces NOT-READY however each lens worded its own verdict token. Never hand-written — the verdict guard denies Write/Edit/bash into review-verdict.json.",
+      "Written by the SubagentStop review-scribe when the minimum lens roster was covered. The `taskId` field carries the engine record dir NAME (the intent's identity under repo-SoR — there is no DB Slice binding). `findings` and `lenses` report each lens's LATEST review at this headSha: a lens that re-reviews at the same head supersedes its own earlier round, verdict and findings together, so a fixed round-1 refusal cannot pin the aggregate forever. Supersession is per-lens and never cross-lens — an unrevisited NOT-READY still blocks. `blockingFindings` are the live cited findings no lens disposed; a non-empty list forces NOT-READY however each lens worded its own verdict token. Never hand-written — the verdict guard denies Write/Edit/bash into review-verdict.json. The reports preserve each latest native report and its provenance as data. Missing historical report text is explicit; re-dispatch before synthesizing a modern findings report. The conductor writes its exact pending request.reviewFile and runs the returned recordVerdict; this aggregate is not an engine review record.",
   };
   writeFileSync(
     join(gateDir, "review-verdict.json"),
@@ -840,22 +838,28 @@ const engineReceiptFor = ({
     gate: context.gate,
     graph: stageGraph,
   });
-  const receipt = recordEngineReceipt({
-    projectDir: context.checkoutRoot,
-    gate: context.gate,
-    declaredReviewer,
-    aggregate,
-    invokeEngine: spawnEngineReview({ enginePath: ENGINE_LOG_PATH }),
-    appendReviewSection: appendReviewSectionToFile({
-      resolveArtifactPath: ({ stage }) => {
-        const logical = declaredReviewArtifactPathFor({
-          gate: stage,
-          graph: stageGraph,
-        });
-        return logical === null ? null : join(context.recordDir, logical);
-      },
-    }),
-  });
+  const route = decoders.route(runtime.environment.RIN_GATES_ENGINE_REVIEW_ROUTE);
+  const receipt: ReceiptOutcome = route.success
+    ? recordEngineReceipt({
+        route: route.data,
+        projectDir: context.checkoutRoot,
+        gate: context.gate,
+        declaredReviewer,
+        aggregate,
+        invokeEngine: spawnEngineReview({ enginePath: ENGINE_LOG_PATH }),
+        appendReviewSection: appendReviewSectionToFile({
+          resolveArtifactPath: ({ stage }) => {
+            const logical = declaredReviewArtifactPathFor({ gate: stage, graph: stageGraph });
+            return logical === null ? null : join(context.recordDir, logical);
+          },
+        }),
+      })
+    : {
+        kind: "refused",
+        step: "requested",
+        reason: "other",
+        detail: "RIN_GATES_ENGINE_REVIEW_ROUTE must be conductor-report or legacy-append.",
+      };
   if (receipt.kind === "refused") {
     reportRefusedReceipt({
       gate: context.gate,
@@ -900,4 +904,4 @@ const main = async (): Promise<void> => {
   });
 };
 
-main().catch(() => process.exit(0));
+main().catch(() => runtime.exit(0));

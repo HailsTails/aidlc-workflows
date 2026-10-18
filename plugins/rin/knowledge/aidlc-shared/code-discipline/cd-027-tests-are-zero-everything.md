@@ -9,6 +9,8 @@ enforced-by:
   - audit:auditTestDiscipline
   - biome:noFocusedTests
   - biome:noSkippedTests
+  - manual
+enforcement-note: "Biome catches focused and skipped tests only. Rin's audit is partial and cannot prove straight-line test bodies, helpers or predictable expectations."
 status: active
 applies-to: universal
 portability: portable

@@ -27,6 +27,7 @@ When a stage directive names `reviewer: rin-decorrelated-review-agent`, run the 
 - Read `{{HARNESS_DIR}}/tools/data/review-board.json` and resolve the producing lenses to dispatch:
   - **For a gate listed in `roster_dispatch_gates`**, read that gate's roster from `{{HARNESS_DIR}}/hooks/review-rosters.json`, dispatch its producing lenses, then the synthesis lens last. The synthesis lens is never a producing lens, whether or not the roster names it. The roster is the required set. A lens the gate's roster comment names as optional is dispatched when the comment's condition holds, and its verdict then gates the aggregate like any roster lens.
   - **Gate 5** has its own board file and follows its own stage's dispatch. Its roster in `review-rosters.json` is the same set.
+  - **An adopted core or other-plugin stage** explicitly names `rin-decorrelated-review-agent` in its stage frontmatter and declares its roster under that exact stage slug in `review-rosters.json` `byGate`. Dispatch those producing lenses and the required `rin-intent-defense-reviewer-agent` synthesis last. The scribe reads its phase from the compiled graph; no Rin stage alias or Rin scope membership is required. The default roster is not an adoption selection.
 - The review surface is the stage's produced artifacts + the code/interfaces under review (for Gate 2: the options ledger and questions; for the Gate-3 detailed solution design: the components and the interface lock, whose fenced signatures each lens reads as code — say so in the dispatch brief, and tell the completeness lens that it judges four Gate-3 invariants no sensor checks: every contract element's state is `specified` or `escalated`; every external fact a contract names is listed under the lock's `## External reality`; every key listed there that is not a chosen premise, and every premise of a record with no options ledger, has a facts.md row whose status is `live` or `corrected`; and a chosen premise whose facts.md status is `corrected` still supports its point's choice or routes back to Gate 2; for Gate 4: the generated code diff for the Slice, with its code-generation plan).
 - **Pin the tree the lenses will read, and know its commit.** Lenses carry
   `tools: Read, Grep, Glob` — no Bash, no `gh` — so they cannot fetch, check
@@ -79,9 +80,9 @@ Each lens returns a `## Review` verdict: READY / NOT-READY with cited findings
 **Do not ask a lens to reproduce an exact delimiter block.** Its native `## Verdict`
 section IS the capture channel: the `SubagentStop` review-scribe extracts the
 verdict from it deterministically (`rin-gates-lens-verdict.ts`). Asking a model to
-emit an exact string was measured losing 399 of 887 captures across every lens,
-and pasting the template into every agent definition did not fix it (task
-019fd9a5). A lens that ends with a plain `## Verdict` section stating READY or
+emit an exact delimiter string makes capture depend on free-text serialization;
+pasting a template into agent definitions does not enforce that serialization.
+A lens that ends with a plain `## Verdict` section stating READY or
 NOT-READY is captured correctly.
 
 ### Step 3 — Collate
@@ -109,6 +110,28 @@ letter-level PASS to a VIOLATION on the owning lens.
 ### Step 6 — Write the review and emit the rin-gates verdict
 
 The conductor writes exactly one review file at the path supplied in the reviewer request.
+
+The scribe defaults to the producer's conductor report route. Its guarded
+verdict includes each latest lens's exact report text, findings and native
+agent/session/channel/head provenance under `reports`. Read these as review
+data, together with the prior findings retained from the engine brief. Preserve
+the reported severity, workspace-relative location, finding and required action;
+do not infer missing fields from a citation string. If a lens omitted a required
+severity, location, action or prior response, request that lens's own supplement
+before recording the report. Preserve the engine's prior
+IDs and reported `Fixed`/`Still applies` responses without inventing a decision.
+If `reportsComplete` is false, re-dispatch the missing report before recording
+a verdict. The scribe does not request or complete an engine review and never
+appends to the reviewed artifact on this route. Use the already-open request's
+exact `reviewFile` and returned `recordVerdict` once.
+
+`RIN_GATES_ENGINE_REVIEW_ROUTE=conductor-report` explicitly selects this default
+for a project hook invocation. `legacy-append` is compatibility for an old engine
+whose successful request does not advertise `reviewFile` or `recordVerdict`.
+It cannot select the legacy writer for a modern request, a prerequisite response,
+or a pending/exhausted request refusal. Never use it as a remedy for a modern
+report failure.
+
 Use the stage reviewer template: one rendered `**Verdict:** READY|NOT-READY`,
 `**Reviewer:** rin-decorrelated-review-agent`, and `**Iteration:** <n>` line,
 with cited findings in its `### Findings` table. Include the reviewed head sha,
@@ -158,3 +181,19 @@ harness-specific model projection. The roster carries no per-lens model.
 ## Where it fires in the lifecycle
 
 The stages naming `rin-decorrelated-review-agent` as their reviewer are read from the compiled stage graph, and the lenses each one dispatches are its roster in `review-rosters.json`. Neither is listed here, so neither can drift from its source. Gate 5 dispatches its own board file, as its stage defines. A gate that names a single reviewer (Gates 0, 1 and 6) runs that reviewer alone, and its roster is that one reviewer.
+
+
+## Adopting review while retaining another stage graph
+
+Keep the selected core or other-plugin stages and their approval settings. In each stage selected for Rin review, set `reviewer: rin-decorrelated-review-agent` through the existing project stage configuration and compile the graph. Declare that stage's producing lenses and `rin-intent-defense-reviewer-agent` in the existing `review-rosters.json` `byGate` map. Additive plugin contributions cannot replace a reviewer or review class; do not put those fields in `adds:` and assume they took effect.
+
+Select the review policy explicitly through the engine's existing `--review adversarial` per-intent setting when adopting the repair-and-retry process. A scope whose cap remains advisory still has one terminal decision-support pass; naming the board does not silently change that policy. Plan approval and human stage approval remain separate decisions and retain the selected workflow's settings. The Rin autonomy backstop remains specific to scopes selecting Rin Gate 5; on retained core stages, the normal engine request, findings report, adversarial review receipt and human gate own the review handoff. The guarded board aggregate is evidence for that handoff, never a substitute for its receipt or an automatic stage approval.
+
+Read the compiled directive to verify the reviewer, effective review class and iteration budget before dispatch. Preserve its exact request, `reviewFile` and returned `recordVerdict`. Verify the native scribe output at the original stage path, repair in-scope findings, and repeat the actual lenses within the effective budget. An incomplete roster, stale tree binding or unresolved finding cannot be treated as successful adoption.
+
+The scribe withholds READY when any producing lens reports after the latest intent-defense capture. Re-run synthesis last over the changed PASS bundle; a prior synthesis at the same HEAD cannot authorize repaired reports.
+
+
+## Review dependency boundaries
+
+The review scribe, its hermetic subprocess specification, and reviewer-identity reader consume the existing `tools/rin-harness-path-operations.ts` and `tools/rin-harness-sidecar-file-reader.ts` boundary factories. Module URL conversion joins the existing path boundary; text writes and temporary scratch lifecycle join the existing file boundary. `tools/rin-gates/review-process-port.ts` owns child execution, process input/output, environment and termination through named data-only capabilities. `tools/rin-gates/review-decoders-port.ts` owns Zod use and returns only project-owned capture/verdict data; the existing board schema remains the validation owner. Their production factories are co-located with their interfaces. The Node wrapping sites are recorded in `.constitution-authorised-locations/cd-19.json`; the Zod confinement decision is recorded here because the current partial CD19 audit does not flag that vendor and a registry entry would be stale. The test file remains the native testing-framework entrypoint; no testing DSL or replacement validator is introduced. Removing inherited consumer carve-outs requires whole-file CD19 checks and review after rewiring, not merely these adapter declarations.

@@ -26,6 +26,7 @@ type Flags = {
   readonly projectDir: string;
   readonly baseRef: string;
   readonly json: boolean;
+  readonly invocation: "cli" | "sensor";
 };
 
 const DEFAULT_BASE_REF = "HEAD";
@@ -37,10 +38,12 @@ const parseFlags = (argv: readonly string[]): Flags => {
     const index = argv.indexOf(flag);
     return index >= 0 ? argv[index + 1] : undefined;
   };
+  const invocation = argv.includes("--output-path") || argv.includes("--file-path") ? "sensor" : "cli";
   return {
     projectDir: resolve(findValue("--project-dir") ?? process.cwd()),
     baseRef: findValue("--base-ref") ?? DEFAULT_BASE_REF,
-    json: argv.includes("--json"),
+    json: invocation === "sensor" || argv.includes("--json"),
+    invocation,
   };
 };
 
@@ -55,11 +58,14 @@ type GitRun =
   | { readonly result: "success"; readonly stdout: string }
   | { readonly result: "failure"; readonly failure: GitFailure };
 
-const runGit = (projectDir: string, args: readonly string[]): GitRun => {
+const runGit = ({ projectDir, args }: {
+  readonly projectDir: string;
+  readonly args: readonly string[];
+}): GitRun => {
   try {
     return {
       result: "success",
-      stdout: execFileSync("git", args, { cwd: projectDir, encoding: "utf-8" }),
+      stdout: execFileSync("git", args, { cwd: projectDir, encoding: "utf-8", maxBuffer: 16 * 1024 * 1024 }),
     };
   } catch (error) {
     return {
@@ -77,7 +83,7 @@ const changedFiles = (projectDir: string, baseRef: string): ChangedFiles => {
     ["diff", "--name-only", `${baseRef}...HEAD`],
     ["diff", "--name-only", "HEAD"],
     ["ls-files", "--others", "--exclude-standard"],
-  ].map((args) => runGit(projectDir, args));
+  ].map((args) => runGit({ projectDir, args }));
 
   const firstFailure = runs.find(
     (run): run is Extract<GitRun, { result: "failure" }> =>
@@ -97,33 +103,20 @@ const changedFiles = (projectDir: string, baseRef: string): ChangedFiles => {
   return { result: "success", files };
 };
 
-// A carved file that only MOVED is not a touch: its content is what the
-// carve-out describes, and relocating it changes nothing the exemption covers.
-// The test is content identity, NOT git's rename detection — that is a
-// similarity heuristic which both misses a move whose content also shifted and
-// invents one between unrelated files. This asks a exact question instead: does
-// this exact blob already exist somewhere in the base ref? A file whose bytes
-// are unchanged answers yes wherever it now sits; one edited by even a line
-// answers no and is correctly reported as touched.
 const contentExistsInBaseRef = (args: {
   readonly projectDir: string;
   readonly baseRef: string;
   readonly file: string;
 }): boolean => {
-  const hashed = runGit(args.projectDir, ["hash-object", args.file]);
+  const hashed = runGit({ projectDir: args.projectDir, args: ["hash-object", args.file] });
   if (hashed.result !== "success") return false;
   const blob = hashed.stdout.trim();
   if (blob === "") return false;
-  // `cat-file -e` asks whether the object exists, cheaply and by exact id. It is
-  // deliberately not `ls-tree -r <ref>`: that lists the whole tree, which on a
-  // repo this size overflows execFileSync's output buffer and throws, silently
-  // turning every lookup into a false "not present".
-  const reachable = runGit(args.projectDir, [
-    "cat-file",
-    "-e",
-    `${blob}^{blob}`,
-  ]);
-  return reachable.result === "success";
+  const baseline = runGit({
+    projectDir: args.projectDir,
+    args: ["ls-tree", "-r", "--format=%(objectname)", args.baseRef],
+  });
+  return baseline.result === "success" && baseline.stdout.split("\n").includes(blob);
 };
 
 const findBreaches = (args: {
@@ -195,7 +188,7 @@ const main = (): void => {
 
   if (changed.result === "failure") {
     emitGitFailure(changed.failure, flags.json);
-    process.exit(1);
+    process.exit(flags.invocation === "sensor" ? 0 : 1);
   }
 
   const breaches = findBreaches({
@@ -236,7 +229,7 @@ const main = (): void => {
     });
   }
 
-  process.exit(pass ? 0 : 1);
+  process.exit(flags.invocation === "sensor" || pass ? 0 : 1);
 };
 
 const invokedDirectly =

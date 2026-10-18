@@ -8,7 +8,7 @@ collapses: [cd-016]
 amended: [v2.8.0, v2.9.0]
 enforced-by:
   - manual
-enforcement-note: "Biome has no for-of ban; reviewer judgement."
+enforcement-note: "Rin's Biome preset does not enforce this loop policy. Manual review must preserve authorized for-await and manual-next AsyncIterable drains, including counted or while forms; a blanket loop ban is not equivalent."
 status: active
 applies-to: typescript-runtime
 portability: portable

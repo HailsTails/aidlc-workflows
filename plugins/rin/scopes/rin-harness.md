@@ -1,6 +1,7 @@
 ---
 name: rin-harness
 plugin: rin
+guard_policy: strict
 depth: Standard
 keywords:
   - harness change

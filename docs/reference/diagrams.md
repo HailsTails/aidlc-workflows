@@ -40,7 +40,7 @@ graph LR
     subgraph CONSTRUCTION["CONSTRUCTION (3.1-3.7)"]
         C1["Functional Design"]
         C7["CI Pipeline"]
-        C1 -.->|"3.1–3.5 stage-major per Unit; 3.6–3.7 once after all Units"| C7
+        C1 -.->|"3.1–3.5 per Unit in the recorded order; 3.6–3.7 once after all Units"| C7
     end
 
     subgraph OPERATION["OPERATION (4.1-4.7)"]
@@ -109,9 +109,7 @@ The Inception phase analyzes the codebase (for brownfield projects), discovers t
 
 ```mermaid
 flowchart TD
-    S21{{"`**2.1 Reverse Engineering**
-    (aidlc-developer-agent + aidlc-architect-agent)
-    pipeline: 2-link`"}}
+    S21{{"`**2.1 Reverse Engineering**<br/>    (aidlc-developer-agent + aidlc-architect-agent)<br/>    pipeline: 2-link`"}}
     S22a["2.2 Practices Discovery\n(aidlc-pipeline-deploy-agent)"]
     S22["2.3 Requirements Analysis\n(aidlc-product-agent)"]
     S23["2.4 User Stories\n(aidlc-product-agent)"]
@@ -165,47 +163,55 @@ flowchart TD
 
 ## 4. Construction Flow
 
-The Construction phase's **default walk is stage-major**: one in-scope stage runs for every Unit, then the next stage. Runtime batches come from `unit-of-work-dependency.md` (2.7). `bolt-plan.md` is the 2.9 planning artifact — not the walk source. The walking-skeleton gate is the first in-scope Construction EXECUTE stage; later Units may run in parallel batches as the DAG allows. After every per-unit stage settles, stages 3.6 (Build and Test) and 3.7 (CI Pipeline) run once. Stage 3.5 (Code Generation) runs as a subagent and is shown in a hexagonal shape.
+The following diagram shows the default for a **new source-producing solo Unit
+workflow**: unit-major, serial execution with verified checkpoints. The first
+DAG Unit, when skeleton-on, must form a working integrated slice and pass a real
+end-to-end check plus human approval before later Units. This is different from
+the legacy first Construction-stage review. Design-only, no-Unit, existing, and
+team-owned paths retain their recorded policies; an explicit stage-major choice
+remains valid. Runtime order comes from `unit-of-work-dependency.md`, while
+`bolt-plan.md` is planning content.
+
+Eligible skeleton-off workflows offer **Continue automatically** / **Review each
+checkpoint** at Construction entry; skeleton-on offers it after the real skeleton
+checkpoint, unless a choice already exists. This approval preference does not
+choose swarm execution. Plan Approval and enabled summary confirmation remain
+human stops; summary confirmation applies only when
+`directive.ceremony.summary_confirmation === "on"`. Build and Test and optional
+CI Pipeline run once across the result.
 
 ```mermaid
 flowchart TD
-    START(["Begin Construction"])
-
-    subgraph PER_STAGE["Stage-major walk (a stage for every Unit, then the next stage)"]
-        S31["3.1 Functional Design\n(aidlc-architect-agent)\nCONDITIONAL — every Unit"]
-        S32["3.2 NFR Requirements\n(aidlc-architect-agent)\nCONDITIONAL — every Unit"]
-        S33["3.3 NFR Design\n(aidlc-architect-agent)\nCONDITIONAL — every Unit"]
-        S34["3.4 Infrastructure Design\n(aidlc-aws-platform-agent)\nCONDITIONAL — every Unit"]
-        S35{{"3.5 Code Generation\n(aidlc-developer-agent)\nsubagent: aidlc-developer-agent\nALWAYS per Unit"}}
-
+    START(["Eligible source-producing solo Unit workflow"])
+    NEXT["First or next Unit in DAG order"]
+    subgraph PER_UNIT["Applicable work for this Unit"]
+        S31["3.1 Functional Design — conditional"]
+        S32["3.2 NFR Requirements — conditional"]
+        S33["3.3 NFR Design — conditional"]
+        S34["3.4 Infrastructure Design — conditional"]
+        PLAN{{"Human Plan Approval before generation"}}
+        S35{{"3.5 Code Generation<br/>Subagent work for this Unit"}}
         S31 -.-> S32
         S32 -.-> S33
         S33 -.-> S34
-        S34 -.-> S35
-        S31 -.->|"skip if not\nin plan"| S35
+        S34 --> PLAN --> S35
+        S31 -.->|Design stages skipped| PLAN
     end
-
-    START --> PER_STAGE
-    PER_STAGE --> S36
-
-    S36["3.6 Build and Test\n(aidlc-quality-agent)\nALWAYS"]
-    S37["3.7 CI Pipeline\n(aidlc-pipeline-deploy-agent)\nCONDITIONAL"]
-    VG3{{"Verification Gate:\nConstruction --> Operation"}}
-
-    S36 ==> S37
-    S36 -.->|"skip CI if\nnot in scope"| VG3
-    S37 -.-> VG3
-
-    style PER_STAGE fill:#fff3e0,stroke:#e65100,color:#000
-    style S35 fill:#bbdefb,stroke:#1565c0,color:#000
-    style S31 fill:#fff9c4,stroke:#f9a825,color:#000
-    style S32 fill:#fff9c4,stroke:#f9a825,color:#000
-    style S33 fill:#fff9c4,stroke:#f9a825,color:#000
-    style S34 fill:#fff9c4,stroke:#f9a825,color:#000
-    style S36 fill:#c8e6c9,stroke:#388e3c,color:#000
-    style S37 fill:#fff9c4,stroke:#f9a825,color:#000
-    style VG3 fill:#ef9a9a,stroke:#c62828,color:#000
+    VERIFY["Real project check<br/>End-to-end for the skeleton"]
+    CHECKPOINT{{"Verified checkpoint<br/>Skeleton: human approval<br/>Ordinary Unit: recorded completion policy"}}
+    MORE{"More Units?"}
+    BOOK["Completion-only stage bookkeeping"]
+    S36["3.6 Build and Test — once"]
+    S37["3.7 CI Pipeline — conditional, once"]
+    VG3{{"Construction-to-Operation verification"}}
+    START --> NEXT --> PER_UNIT --> VERIFY --> CHECKPOINT --> MORE
+    MORE -->|Yes| NEXT
+    MORE -->|No| BOOK --> S36
+    S36 --> S37 --> VG3
+    S36 -.->|CI skipped| VG3
 ```
+
+<!-- Text fallback: For an eligible new solo workflow, complete each Unit's applicable design and Code Generation stages in DAG order, preserving human Plan Approval and any enabled summary confirmation. Verify the working result and approve its checkpoint: always human for the skeleton, according to recorded policy for ordinary Units. After all Units, settle bookkeeping and run Build and Test plus optional CI Pipeline. Other workflow paths retain their existing policy. -->
 
 ---
 
@@ -375,7 +381,7 @@ flowchart LR
 
 ## 8. Session Resume Flow
 
-When the user invokes `/aidlc`, the orchestrator checks for an active intent's `aidlc-state.md`. If found, it offers four resume options. If not found, it creates the first intent. The orchestrator also checks for `.aidlc-engine/recovery.md` to detect possible state corruption from context compaction.
+When the user invokes `/aidlc`, the orchestrator checks for an active intent's `aidlc-state.md`. If found, it carries on from the checkpoint (the first call is `next --resume`), and the person can ask to redo, jump to a stage, or start fresh at any time. If not found, it creates the first intent. The orchestrator also checks for `.aidlc-engine/recovery.md` to detect possible state corruption from context compaction.
 
 ```mermaid
 flowchart TD
@@ -387,11 +393,8 @@ flowchart TD
     CORRUPTION{"State matches\nrecovery file?"}
     WARN["Warn user about\npossible corruption"]
 
-    RESUME_MENU["AskUserQuestion:\nResume Options"]
-    OPT_RESUME["Resume from\nlast checkpoint"]
-    OPT_REDO["Redo\ncurrent stage"]
-    OPT_JUMP["Jump to\nspecific stage"]
-    OPT_FRESH["Start fresh\n(archive existing)"]
+    CONTINUE["Carry on from the\ncheckpoint:\nnext --resume"]
+    OTHER["Person asks to redo,\njump, or start fresh:\nreport --result resumed"]
 
     STATUS_DISPLAY["Display read-only\nstatus summary"]
     SCOPE_DETECT{"Known scope\nor freeform text?"}
@@ -411,23 +414,20 @@ flowchart TD
     STATE_EXISTS -->|No| SCOPE_DETECT
 
     RECOVERY_CHECK -->|Yes| CORRUPTION
-    RECOVERY_CHECK -->|No| RESUME_MENU
-    CORRUPTION -->|Mismatch| WARN --> RESUME_MENU
-    CORRUPTION -->|Match| RESUME_MENU
+    RECOVERY_CHECK -->|No| CONTINUE
+    CORRUPTION -->|Mismatch| WARN --> CONTINUE
+    CORRUPTION -->|Match| CONTINUE
 
-    RESUME_MENU --> OPT_RESUME
-    RESUME_MENU --> OPT_REDO
-    RESUME_MENU --> OPT_JUMP
-    RESUME_MENU --> OPT_FRESH
-
-    OPT_FRESH -->|"archive + confirm"| CREATE
+    CONTINUE -.->|"any time"| OTHER
+    OTHER -->|"start fresh: confirm"| CREATE
 
     SCOPE_DETECT -->|"Known scope"| KNOWN_SCOPE --> CONFIRM_SCOPE
     SCOPE_DETECT -->|"Freeform text"| FREEFORM --> CONFIRM_SCOPE
     CONFIRM_SCOPE --> CREATE
 
     style START fill:#e1bee7,stroke:#7b1fa2,color:#000
-    style RESUME_MENU fill:#bbdefb,stroke:#1565c0,color:#000
+    style OTHER fill:#bbdefb,stroke:#1565c0,color:#000
+    style CONTINUE fill:#c8e6c9,stroke:#388e3c,color:#000
     style CREATE fill:#c8e6c9,stroke:#388e3c,color:#000
     style WARN fill:#ffcdd2,stroke:#c62828,color:#000
 ```
@@ -444,7 +444,7 @@ flowchart TD
 
 Each stage loads knowledge in a strict 6-step order. This ensures guardrails take precedence, followed by shared methodology, then agent-specific knowledge, then team customizations, and finally prior stage artifacts. The sequence diagram below shows the loading order for any stage activation.
 
-> **Note:** Steps 1-5 are agent knowledge loading defined by `stage-protocol.md` Section 5; Step 6 (prior stage artifacts) is context added by the orchestrator at runtime, not a file-loading step.
+> **Note:** Steps 1-5 are agent knowledge loading defined by `stage-protocol.md` Section 5; Step 6 (prior stage artifacts) is context added by the orchestrator at runtime, not a file-loading step. On inline stages and for the inline lead of a mob, `inline_context_paths` lists the team knowledge (steps 4-5) right after the personas and before the shared and agent methodology (steps 2-3), and the size cap trims methodology first; dispatched agents load in the order below.
 
 ```mermaid
 sequenceDiagram
@@ -503,7 +503,7 @@ flowchart TD
     REVISION_COUNT{"Revision\ncycle >= 3?"}
     NOTE_2ND["After 2nd revision:\nnote that escape hatch\nactivates next cycle"]
 
-    REPORT_APPROVED["Report approved with exact choice:\nengine emits GATE_APPROVED,\ncompletes + routes"]
+    REPORT_APPROVED["Report approved with the reply:\nengine emits GATE_APPROVED,\ncompletes + routes"]
     REPORT_REJECTED["Report rejected with feedback:\nengine emits GATE_REJECTED,\nrecords revising state"]
     REPORT_REVISED["Report revised:\nengine re-opens gate"]
     PROGRESS["Display progress line:\nN/total overall"]

@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 import { composePluginFixture } from "../harness/plugin-kit.ts";
+import { NATIVE_FIXTURE_SETUP_TIMEOUT_MS } from "../harness/test-budget.ts";
+import { hermeticGitEnvironment } from "../../plugins/rin/tools/hermetic-git/index.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "aidlc-t343-"));
 
@@ -122,3 +124,81 @@ describe("selected plugin hook composition", () => {
     expect(result.stderr).toContain("rin-gates-board-bridge: --record-dir is required (a bare record name)");
   }, 60_000);
 });
+
+function configuredCursorProject({ name }: { readonly name: string }): string {
+  const fixture = composePluginFixture({
+    plugin: "rin", harness: "cursor", copyInstall: false, projectDir: join(scratch, name),
+    env: hermeticGitEnvironment({ configHome: join(scratch, name, ".fixture-home") }),
+    pluginBuilt: join(REPO_ROOT, "dist", "plugins", "rin", "cursor"),
+    beforeCompose: ({ projectDir }) => {
+      mkdirSync(join(projectDir, ".git"), { recursive: true });
+      mkdirSync(join(projectDir, ".fixture-home"), { recursive: true });
+      const configured = cursorConfiguration({ projectDir });
+      expect(configured.status, configured.stdout + configured.stderr).toBe(0);
+    },
+  });
+  return fixture.projectDir;
+}
+
+function cursorConfiguration({ projectDir, section = "root", arguments: extraArguments = [] }: {
+  readonly projectDir: string;
+  readonly arguments?: readonly string[];
+  readonly section?: "root" | "project";
+}) {
+  const home = join(projectDir, ".fixture-home");
+  return spawnSync(process.execPath, [
+    join(REPO_ROOT, "core", "tools", "aidlc-init.ts"), ...{ root: ["config"], project: ["config", "project"] }[section],
+    "--project-dir", projectDir, "--from", join(REPO_ROOT, "dist", "cursor"),
+    "--harness", "cursor", "--yes", "--json", ...extraArguments,
+  ], {
+    cwd: projectDir, encoding: "utf8", timeout: NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
+    env: { ...hermeticGitEnvironment({ configHome: home }),
+      XDG_CONFIG_HOME: home, AIDLC_PROJECT_DIR: projectDir, AIDLC_HARNESS_DIR: ".cursor",
+    },
+  });
+}
+
+test("Cursor core refresh and explicit Rin selection retain verified plugin-owned projections", () => {
+  const projectDir = configuredCursorProject({ name: "cursor-owned-refresh" });
+  const refreshed = cursorConfiguration({ projectDir });
+  expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(0);
+  const selected = cursorConfiguration({ projectDir, section: "project", arguments: ["--plugins", "aidlc,rin"] });
+  expect(selected.status, selected.stdout + selected.stderr).toBe(0);
+  const repeated = cursorConfiguration({ projectDir });
+  expect(repeated.status, repeated.stdout + repeated.stderr).toBe(0);
+  expect(JSON.parse(readFileSync(join(projectDir, ".cursor/hooks/plugin-hook-targets.json"), "utf8")))
+    .toMatchObject({ PreToolUse: expect.arrayContaining(["guard-navigation.mjs"]) });
+}, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+test("Cursor core refresh refuses unrelated edits to a plugin-composed hook registry", () => {
+  const projectDir = configuredCursorProject({ name: "cursor-edited-registry-refresh" });
+  const path = join(projectDir, ".cursor/hooks/plugin-hook-targets.json");
+  const edited = `${JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), UserEvent: ["user-hook.ts"] }, null, 2)}\n`;
+  writeFileSync(path, edited);
+  const refreshed = cursorConfiguration({ projectDir, arguments: ["--dry-run"] });
+  expect(refreshed.status).toBe(4);
+  expect(refreshed.stdout).toContain(".cursor/hooks/plugin-hook-targets.json (locally modified or unowned)");
+  expect(readFileSync(path, "utf8")).toBe(edited);
+}, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+test("Cursor selection refuses prose edits outside the generated skill tables", () => {
+  const projectDir = configuredCursorProject({ name: "cursor-edited-skill-refresh" });
+  const path = join(projectDir, ".cursor/skills/aidlc/SKILL.md");
+  const edited = `${readFileSync(path, "utf8")}\nUser-owned orchestration instruction.\n`;
+  writeFileSync(path, edited);
+  const selected = cursorConfiguration({ projectDir, section: "project", arguments: ["--plugins", "aidlc,rin", "--dry-run"] });
+  expect(selected.status).toBe(4);
+  expect(selected.stdout).toContain(".cursor/skills/aidlc/SKILL.md (locally modified or unowned)");
+  expect(readFileSync(path, "utf8")).toBe(edited);
+}, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+test("Cursor core refresh refuses an edited Rin-owned hook entry", () => {
+  const projectDir = configuredCursorProject({ name: "cursor-edited-owned-hook-refresh" });
+  const path = join(projectDir, ".cursor/hooks/plugin-hook-targets.json");
+  const edited = readFileSync(path, "utf8").replace('"guard-navigation.mjs"', '"user-navigation.mjs"');
+  writeFileSync(path, edited);
+  const refreshed = cursorConfiguration({ projectDir, arguments: ["--dry-run"] });
+  expect(refreshed.status).toBe(4);
+  expect(JSON.parse(refreshed.stdout).message).toContain("plugin hook contribution conflict");
+  expect(readFileSync(path, "utf8")).toBe(edited);
+}, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);

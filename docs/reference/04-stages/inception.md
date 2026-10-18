@@ -31,7 +31,13 @@ off to Construction.
 
 The phase contains three dispatched topologies: the two-link Reverse
 Engineering pipeline at Stage 2.1, the Practices Discovery hub-and-spoke at
-Stage 2.2, and the User Stories mob at Stage 2.4.
+Stage 2.2, and the User Stories mob at Stage 2.4. Their support agents take part
+when collaborators are on (the `collaborators` setting, shipped on only for `enterprise`; `/aidlc --collaborators on` turns it on for one piece of work).
+With collaborators off, the engine hands each stage an empty `support_agents`
+list and the lead runs alone: the developer is the pipeline's only link and
+writes the 9 artifacts itself, Practices Discovery skips the spokes, User Stories
+skips the mob round, and no contribution files are owed. The steps below
+describe the full roster.
 
 **Key characteristics of the Inception phase:**
 
@@ -106,20 +112,22 @@ Stage 2.2, and the User Stories mob at Stage 2.4.
 | Condition        | CONDITIONAL -- brownfield; verified-current stores may be reused        |
 | Lead Agent       | aidlc-developer-agent                                                        |
 | Support Agents   | aidlc-architect-agent                                                        |
-| Mode             | pipeline (2-link chain: aidlc-developer-agent scans, aidlc-architect-agent synthesizes and writes) |
+| Mode             | pipeline (2-link chain: aidlc-developer-agent scans, aidlc-architect-agent synthesizes and writes; the developer alone when collaborators are off) |
 | Completion Emoji | (uses stage-protocol.md completion template)                           |
 
 ### Purpose
 
 Reverse Engineering performs a comprehensive analysis of the existing codebase
 for brownfield projects. It runs as a two-link pipeline (`mode: pipeline`):
-first, the aidlc-developer-agent scans the entire codebase; then, the aidlc-architect-agent
-synthesizes the scan results into 9 structured artifacts and writes them. These artifacts
-provide the technical foundation that all subsequent Inception and Construction
-stages build upon.
+first, the aidlc-developer-agent scans the entire codebase, leaving out AI-DLC's
+own install; then, the aidlc-architect-agent synthesizes the scan results into 9
+structured artifacts and writes them. These artifacts provide the technical
+foundation that all subsequent Inception and Construction stages build upon.
 
 **Rerun guard:** Reverse Engineering checks each repository's recorded scope
-and working-tree fingerprint before scanning. The human may reuse a
+and working-tree fingerprint before scanning. The fingerprint leaves out
+AI-DLC's own install, settings, and the root files it writes into, so an AI-DLC
+update or setting change does not make a store stale. The human may reuse a
 verified-current store whose coverage fits the intent; stale, unverified,
 legacy, or mismatched stores require a full or focused rescan. Full rescans
 replace the store; focused rescans merge newly analyzed areas into it while
@@ -239,7 +247,7 @@ Standard 2-option gate: **Approve** (continue to Requirements Analysis) /
 | Condition        | CONDITIONAL -- always rerun for freshness on EXECUTE scopes            |
 | Lead Agent       | aidlc-pipeline-deploy-agent                                                  |
 | Support Agents   | aidlc-quality-agent, aidlc-developer-agent, aidlc-devsecops-agent                        |
-| Mode             | subagent (lead draft → three mutually blind spokes → human interview → lead integration) |
+| Mode             | subagent (lead draft → three mutually blind spokes → human interview → lead integration; no spokes when collaborators are off) |
 | Completion Emoji | (uses stage-protocol.md completion template)                           |
 
 ### Purpose
@@ -275,13 +283,20 @@ Four lead artifacts plus three spoke contributions are written to
   `team.md` headings: Way of Working, Walking Skeleton, Testing Posture,
   Deployment, Code Style. Testing Posture carries structured
   `Methodology: tdd|bdd|atdd|test-after|custom` and `Ordering: ...` bullets;
-  coverage/tooling/scope notes remain additional prose.
+  coverage/tooling/scope notes remain additional prose. The Methodology value
+  is one of those five and nothing else, with its reasons in a separate
+  `Methodology evidence:` bullet: the gate does not open on a value Code
+  Generation could not read, and `practices-promote` splits a value given with
+  its reasons ("test-after (because ...)") into the bare value and that bullet
+  before it writes `team.md`. Reasons that name a second methodology describe a
+  mix, which is `custom`, so that value is never split.
 - `discovered-rules.md` -- corrective, agent-facing. Two sections: Mandated
   (`ALWAYS …` rules) and Forbidden (`NEVER …` rules).
 - `evidence.md` -- per-agent finding summary; freshness trail for re-runs.
 - `practices-discovery-timestamp.md` -- run timestamp + commit hash.
 - `contributions/aidlc-{quality,developer,devsecops}-agent.md` -- one
-  identity-marked contribution from each mutually blind spoke; these files are
+  identity-marked contribution from each mutually blind spoke (none when
+  collaborators are off); these files are
   engine-checked completion evidence.
 
 On affirmation, content is promoted to:
@@ -331,7 +346,7 @@ On affirmation, content is promoted to:
    receipt. Then call
    `aidlc-orchestrate.ts report --stage practices-discovery --result
    approved --user-input "Approve"`. The engine verifies all three
-   contribution files and the current-attempt receipt before completing and
+   contribution files (none when collaborators are off) and the current-attempt receipt before completing and
    routing.
 
 ### Approval Gate
@@ -339,7 +354,7 @@ On affirmation, content is promoted to:
 Standard 2-option gate: **Approve** / **Request Changes**. Approve is held
 open while promotion runs; only after promotion and the affirmed timestamp
 succeed may the conductor report
-`--result approved --user-input "<exact choice>"`. Promotion failure leaves the
+`--result approved --user-input "Approve"`. Promotion failure leaves the
 gate open and the stage incomplete.
 
 ### Notes
@@ -431,7 +446,15 @@ large scope with significant unknowns.
    6. Quality attributes -- maintainability, testability, accessibility,
       usability
 
-   Identify gaps in each dimension.
+   Identify gaps in each dimension. At Standard and Comprehensive depth, the
+   User scenarios dimension is swept with the product agent's
+   `corner-checklist.md`: each component the request names is crossed with
+   the edge conditions it touches (empty, missing, partial failure, two copies
+   of one fact, and so on), and every condition that applies lands in
+   `requirements.md` as a requirement, an assumption with its reason, or an
+   out-of-scope item. A corner becomes a question only when it depends on a
+   fact about the user's world the agent cannot know. Minimal depth does not
+   load the checklist.
 
 6. **Generate Clarifying Questions** -- PROACTIVE: always generate clarifying
    questions unless requirements are exceptionally clear and complete across
@@ -528,7 +551,7 @@ Conditional gate format:
 | Condition        | CONDITIONAL -- execute for user-facing features, multiple personas, complex business logic, or cross-team work |
 | Lead Agent       | aidlc-product-agent                                                          |
 | Support Agents   | aidlc-design-agent, aidlc-developer-agent, aidlc-quality-agent               |
-| Mode             | mob (the 2.5.0 mob-elaboration showcase)                               |
+| Mode             | mob (the 2.5.0 mob-elaboration showcase; lead only when collaborators are off) |
 | Completion Emoji | :books:                                                                |
 
 ### Purpose
@@ -679,8 +702,9 @@ Changes**.
   The formal MVP boundary is set during Delivery Planning (Stage 2.9).
 - The `user-stories-assessment.md` artifact is always produced, even when the
   stage is skipped, to document the rationale.
-- The three identity-marked contribution files are mandatory ensemble evidence;
-  approval is refused until the lead has integrated all three.
+- With collaborators on, the three identity-marked contribution files are
+  mandatory ensemble evidence; approval is refused until the lead has
+  integrated all three. A lead-only run owes none.
 - Stories produced here are consumed by Refined Mockups (2.5), Domain
   Design (2.6), Units Generation (2.7), and Delivery Planning (2.9).
 - The aidlc-design-agent support is a deliberate addition for UX-informed
@@ -923,8 +947,8 @@ Unit represents an independently implementable piece of the system (a
 service, module, or deployable component). The stage produces the
 `unit-of-work.md` file that Construction uses to determine what to build,
 the dependency DAG (`unit-of-work-dependency.md`) that Stage 2.9 consumes
-for Bolt sequencing, and the story map that ensures every user story is
-assigned to a Unit.
+for Bolt sequencing, and the story map that ensures every user story (or every
+functional requirement, when no stories are produced) is assigned to a Unit.
 
 **Stage 2.7 produces the dependency DAG (topology). Stage 2.9 chooses the
 economic path through it (the Bolt sequence).** 2.7 MUST NOT recommend an
@@ -1003,8 +1027,8 @@ All 4 artifacts written to `<record>/inception/units-generation/`:
 |---------------------------------|-------------------------------------------------------------|
 | `unit-of-work.md`               | Unit definitions (name, description, boundaries), responsibilities, deployment model per Unit (standalone/shared/embedded), relative complexity estimate (S/M/L/XL), unit kind (`service`/`spec`/`ui`/`packaging`/`library`, drives which construction design artifacts apply), implementation notes and constraints |
 | `unit-of-work-dependency.md`    | Dependency DAG between Units (directed edges, cycle-free), integration points (APIs/shared data/events), parallel development opportunities (sets of Units with no dependency between them). Topology only, economic path-choice (recommended order, critical path) is 2.9's job. The fenced `yaml` edge block mirrors the DAG and may tag each unit with an optional `kind:` (see [Runtime graph](../13-runtime-graph.md) `bolt_dag.units[].kind`) |
-| `unit-of-work-story-map.md`     | Each user story mapped to implementing Unit(s), cross-cutting stories spanning multiple Units, story implementation order within each Unit, coverage verification (every story assigned, every Unit has stories) |
-| `traceability.json`             | Coverage table deriving the Unit set from the generated Unit artifacts and verifying every story maps to its declared target Unit; validated by the `traceability` sensor |
+| `unit-of-work-story-map.md`     | One row per upstream item mapped to implementing Unit(s), keyed as the traceability enumeration is keyed (`USx.y` when `stories.md` is produced, and only `USx.y` rows are read; otherwise `FR`, plus optional `NFR` rows for any NFR the scope traces), cross-cutting rows spanning multiple Units, implementation order within each Unit, coverage verification (every enumerated ID assigned, every Unit has rows) |
+| `traceability.json`             | Coverage table deriving the Unit set from the generated Unit artifacts and verifying every enumerated ID maps to its declared target Unit; validated by the `traceability` sensor |
 
 Additionally, a questions file is created as input:
 
@@ -1021,10 +1045,11 @@ Standard 2-option gate: **Approve** (continue to Construction phase) /
 
 - **This stage's output drives Construction.** The `unit-of-work.md` file
   defines the Units; `unit-of-work-dependency.md` is the DAG the Construction
-  engine walks. The default walk is stage-major: one in-scope Construction
-  stage runs for every Unit, then the next stage. Opt-in
-  `Construction Iteration: unit-major` is the walk that finishes one Unit's
-  per-unit stages before the next Unit begins.
+  engine walks. New source-producing solo Unit workflows default to unit-major,
+  serial execution with verified Unit checkpoints. When skeleton-on applies,
+  the first resolved DAG Unit must form the smallest working integrated slice.
+  Explicit stage-major choices and legacy, design-only, and team-owned paths
+  remain valid; the Bolt plan cannot reorder the actual DAG.
 - **2.7 is ALWAYS when in scope.** In the compiled scope grid, 2.7 and 2.9 travel
   together (both EXECUTE or both SKIP per scope). There is no single-unit
   skip condition at this stage — single-Unit flows still produce a trivial
@@ -1035,8 +1060,9 @@ Standard 2-option gate: **Approve** (continue to Construction phase) /
   completion gate.
 - The dependency DAG feeds 2.9's economic Bolt sequencing. 2.9 chooses a
   path through the DAG weighted by risk, value, and learning.
-- The story map provides traceability: every user story must be assigned to at
-  least one Unit, and every Unit must have at least one story.
+- The story map provides traceability: every user story (or every functional
+  requirement, when no stories are produced) must be assigned to at least one
+  Unit, and every Unit must have at least one row.
 - The aidlc-delivery-agent provides feasibility validation and prioritization input,
   ensuring the decomposition is practical from a delivery perspective.
 
@@ -1161,8 +1187,9 @@ All Inception phase artifacts:
    - Sequencing heuristic: risk-first, value-first, walking-skeleton-first,
      or hybrid
    - WSJF (Weighted Shortest Job First) scoring model and weightings if used
-   - The first Bolt: walking skeleton (Cockburn) or confidence-building
-     slice that proves the approach before scaling
+   - For eligible source-producing solo work with skeleton-on, the first DAG
+     Unit as the smallest working integrated slice, its expected demo, and the
+     real project check that will prove it
    - Bundling of Units of Work into Bolts
    - Definition of Done for each Bolt
    - Confidence hypothesis per Bolt — what will shipping it prove
@@ -1200,11 +1227,35 @@ All Inception phase artifacts:
 
 6. **Prepare Completion** -- Verify the delivery and boundary-verification
    artifacts. Do not write the phase or stage state; the approval report owns
-   the atomic Inception-to-Construction transition. Classify the approved
-   Bolt plan's Construction iteration. A unit-first plan may record
-   `set-construction-iteration unit-major`. Then ask whether one session or
-   several teams own Units; team ownership records `set-unit-ownership team`
-   (unit-major required) and asks whether approvals happen after every stage
+   the atomic Inception-to-Construction transition. Preserve a recorded
+   iteration choice. Eligible new source-producing solo Unit workflows start
+   unit-major and serial; an explicit swarm choice requires stage-major first,
+   then `state set-construction-execution swarm`. Approval mode is a separate
+   decision. Confirm the first integrated Unit when skeleton-on applies. For
+   checkpoint-enabled work, propose a real project check from the scan and show
+   **Use this command to verify each completed Unit?** with the exact command
+   and **Approve** / **Request Changes**. Before presenting the command, write it
+   to `<record>/verification-command.txt` using the harness's file-write
+   tool (Write/edit), never a shell `echo` or heredoc. Repo-derived command text
+   must never be interpolated into a shell line, where substitutions could run
+   before approval. Both `log decision` and `log answer` take
+   `--checkpoint verification-command --command-file verification-command.txt`
+   and find the session they run in.
+   Record the decision before asking and wait for the human's **Approve** /
+   **Request Changes** reply in that session. Record the answer with the same
+   stage/checkpoint/command/session; only **Approve** authorizes the receipt.
+   An unrelated reply, **Request Changes**, or a reply from another session does
+   not. Never write `--details "Approve"` unless the human chose it; only then run
+   `state set-construction-verification-command --command-file verification-command.txt`. **Request Changes** means
+   propose another command. The receipt must precede the state field; never use
+   generic `state set` or auto-approve. This command is reused for all Unit/batch
+   checkpoints and changes require a new receipt.
+   If no runnable check exists yet (greenfield), the human may defer; the first
+   checkpoint then asks before verification. See the
+   [exact recording commands](../../guide/12-cli-commands.md#construction-verification-command-record-human-authorization).
+   Then ask whether one session or several teams own Units;
+   team ownership records `set-unit-ownership team` (unit-major and serial
+   required) and asks whether approvals happen after every stage
    (`set-unit-gate-rhythm per-stage`, default) or once after the Unit chain
    (`unit-end`). The user-facing questions explain those choices without
    exposing field/enum names.
@@ -1245,9 +1296,10 @@ Changes**. The user can override stage inclusion/exclusion at this gate.
 - **Economic vs topological sequencing.** Stage 2.7 produces the dependency
   DAG (topological order falls out as descriptive geometry). Stage 2.9
   chooses a path through that DAG weighted by human value judgment.
-  Bolt order may deviate from topological order when risk-first or
-  walking-skeleton-first arguments justify it — the deviation is captured
-  in `risk-and-sequencing-rationale.md`.
+  The planning rationale may propose delivery groupings, but execution still
+  respects the actual DAG. When the first Unit cannot deliver the required
+  integrated skeleton, revisit the decomposition before Construction; moving a
+  marker in `bolt-plan.md` does not change which Unit the engine runs first.
 - **Bolt ≠ sprint ≠ MMF.** Per the canonical Glossary, a Bolt is the
   planned Construction delivery slice from 2.9: one or more Units with a
   Definition of Done, a confidence hypothesis, and ownership. Stages 3.6
@@ -1316,22 +1368,33 @@ hypothesis, and ownership. The engine does **not** consume it for Unit
 grouping or walk order. Runtime batches are computed from
 `unit-of-work-dependency.md` (2.7).
 
-The shipped default walk is **stage-major**: one in-scope Construction
-stage runs for every Unit, then the next stage, with Code Generation last.
-The walking-skeleton gate is the first in-scope Construction EXECUTE stage.
-After that gate, the ladder prompt records `Construction Autonomy Mode`.
-Opt-in `Construction Iteration: unit-major` walks one Unit through every
-per-unit stage before the next Unit; it suppresses swarm and keeps the
-per-stage gate cascade.
+For new source-producing solo Unit workflows, the default is **unit-major,
+serial execution with verified checkpoints**. Each Unit finishes its applicable
+per-unit stages before the next. With skeleton-on, the first DAG Unit must
+produce a working integrated slice, pass the recorded, human-authorized
+end-to-end verification command, and receive human skeleton approval before
+later Units start, even with stage-major chosen.
+The legacy first-stage gate is a stage review, not proof of that result.
+The verifier records a tool-owned `CHECKPOINT_VERIFICATION_RECORDED` receipt
+alongside the proof file, and approval requires that receipt; a hand-written
+proof file cannot verify a Unit. On a checkout with no proof file at all (a
+fresh clone, another machine), that receipt stands in for the proof of a Unit
+already approved whose evidence is unchanged, so nothing runs again.
 
-1. **3.1 Functional Design** (conditional per scope / execution plan) — every Unit
-2. **3.2 NFR Requirements** (conditional) — every Unit
-3. **3.3 NFR Design** (conditional) — every Unit
-4. **3.4 Infrastructure Design** (conditional) — every Unit
-5. **3.5 Code Generation** (always) — every Unit; under an autonomous swarm,
-   one stage gate after the final DAG batch
-6. **3.6 Build and Test** (always) — once at the end
-7. **3.7 CI Pipeline** (conditional) — once at the end
+Eligible skeleton-off flows offer **Continue automatically** / **Review each
+checkpoint** at Construction entry; skeleton-on offers after the real skeleton
+checkpoint. Known choices are not repeated. Plan Approval, verification command
+selection, and enabled summary confirmation remain human-required under either
+choice; summary confirmation applies only when
+`directive.ceremony.summary_confirmation === "on"`. Explicit
+stage-major/swarm selection controls parallel execution independently of
+completion approval.
+
+Existing workflows without checkpoints, design-only work, no-Unit flows, and
+team-owned gates retain their existing behavior. Preserve explicit iteration
+choices. After all applicable Unit work, Build and Test and optional CI Pipeline
+run once across the solution. See the Construction protocol for metadata routing
+and completion-only bookkeeping.
 
 See `docs/guide/04-phases-and-stages.md` for the current Construction walk.
 
@@ -1346,8 +1409,9 @@ See `docs/guide/04-phases-and-stages.md` for the current Construction walk.
   `stage-protocol-governance.md` §13.
 - **Ideation Phase**: `docs/reference/04-stages/ideation.md` -- Previous phase
   documentation
-- **Construction Phase**: `docs/reference/04-stages/construction.md` — default
-  walk is stage-major; `bolt-plan.md` is planning, not the walk source
+- **Construction Phase**: `docs/reference/04-stages/construction.md` — conditional
+  checkpoint default, explicit execution choices, and preserved legacy paths;
+  `bolt-plan.md` is planning, not the runtime walk source
 - **Deliberate Deviations**: SKILL.md documents intentional differences from
   the upstream reference, including the RE scope/fingerprint rerun guard,
   aidlc-design-agent support additions, ADR artifacts, and the Delivery

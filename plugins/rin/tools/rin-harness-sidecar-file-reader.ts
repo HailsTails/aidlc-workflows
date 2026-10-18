@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 type SidecarFileReader = {
   readonly fileExists: (path: string) => boolean;
@@ -29,5 +30,59 @@ const defaultSidecarFileReader = (): SidecarFileReader => ({
   },
 });
 
-export type { SidecarFileReader };
-export { defaultSidecarFileReader, entriesAfterDirectoryFailure };
+type FileKindPort = {
+  readonly isFile: (path: string) => boolean;
+  readonly isDirectory: (path: string) => boolean;
+};
+
+const defaultFileKindPort = (): FileKindPort => {
+  const isKind = (path: string, kind: "file" | "directory"): boolean => {
+    try {
+      const stat = statSync(path);
+      return kind === "file" ? stat.isFile() : stat.isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  return {
+    isFile: (path) => isKind(path, "file"),
+    isDirectory: (path) => isKind(path, "directory"),
+  };
+};
+
+export type { FileKindPort, SidecarFileReader };
+export { defaultFileKindPort, defaultSidecarFileReader, entriesAfterDirectoryFailure };
+
+
+type TextEncoding = "utf8" | "utf-8";
+type DirectoryOptions = { readonly recursive?: boolean };
+type RemovalOptions = { readonly recursive?: boolean; readonly force?: boolean };
+type FileTextPort = {
+  readonly exists: (path: string) => boolean;
+  readonly read: (path: string, encoding?: TextEncoding) => string;
+  readonly write: (path: string, text: string, encoding?: TextEncoding) => void;
+  readonly append: (path: string, text: string, encoding?: TextEncoding) => void;
+  readonly mkdir: (path: string, options?: DirectoryOptions) => void;
+  readonly remove: (path: string, options?: RemovalOptions) => void;
+  readonly makeTemporaryDirectory: (prefix: string) => string;
+  readonly temporaryRoot: () => string;
+};
+
+const fileOperation = <Value>(operation: () => Value): Value => {
+  try { return operation(); }
+  catch (error) { throw new Error(error instanceof Error ? error.message : String(error)); }
+};
+
+const defaultFileTextPort = (): FileTextPort => ({
+  exists: (path) => existsSync(path),
+  read: (path, encoding = "utf8") => fileOperation(() => readFileSync(path, encoding)),
+  write: (path, text, encoding = "utf8") => fileOperation(() => writeFileSync(path, text, encoding)),
+  append: (path, text, encoding = "utf8") => fileOperation(() => appendFileSync(path, text, encoding)),
+  mkdir: (path, options) => { fileOperation(() => mkdirSync(path, options)); },
+  remove: (path, options) => fileOperation(() => rmSync(path, options)),
+  makeTemporaryDirectory: (prefix) => fileOperation(() => mkdtempSync(prefix)),
+  temporaryRoot: () => tmpdir(),
+});
+
+export type { FileTextPort };
+export { defaultFileTextPort };

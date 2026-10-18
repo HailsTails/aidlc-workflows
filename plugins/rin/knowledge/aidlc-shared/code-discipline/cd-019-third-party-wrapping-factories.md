@@ -8,6 +8,8 @@ collapses: [cd-020]
 amended: [v2.9.0, v2.16.0, v2.18.0, v2.19.0, v2.20.0]
 enforced-by:
   - audit:auditConstitution
+  - eslint:n/prefer-node-protocol
+enforcement-note: "Rin's audit is partial: its Node detector handles literal node: forms, while vendor detection uses a fixed list and static patterns. Optional ESLint n/prefer-node-protocol exposes bare literal builtins but does not prove authorized ports, type-only dependency ownership or aliases."
 status: active
 applies-to: typescript-runtime
 portability: portable

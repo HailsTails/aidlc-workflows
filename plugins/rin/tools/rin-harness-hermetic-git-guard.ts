@@ -29,7 +29,8 @@ const GIT_SPAWN_OPTIONS_SPAN = 8;
 
 const ALLOWANCE_FILE = ".hermetic-git-allowances.json";
 
-const MINIMUM_EXPECTED_TEST_FILES = 400;
+// Consumers opt into a scan-integrity floor; CD-47 requires no universal test count.
+const MINIMUM_EXPECTED_TEST_FILES = 0;
 
 type GuardFinding = {
   readonly file: string;
@@ -40,6 +41,7 @@ type GuardFinding = {
 type GuardOutcome = {
   readonly pass: boolean;
   readonly scannedCount: number;
+  readonly minimumExpectedTestFiles: number;
   readonly breachesScanFloor: boolean;
   readonly findings: readonly GuardFinding[];
   readonly staleAllowances: readonly string[];
@@ -150,10 +152,10 @@ const HERMETIC_CLASSES: readonly HermeticClass[] = [
 
 const runGuard = ({
   projectDir,
-  minimumExpectedTestFiles,
+  minimumExpectedTestFiles = MINIMUM_EXPECTED_TEST_FILES,
 }: {
   readonly projectDir: string;
-  readonly minimumExpectedTestFiles: number;
+  readonly minimumExpectedTestFiles?: number;
 }): GuardOutcome => {
   const allowances = readAllowances({ projectDir });
   const candidates = walkCandidateFiles({ rootDir: projectDir });
@@ -178,6 +180,7 @@ const runGuard = ({
       staleAllowances.length === 0 &&
       !breachesScanFloor,
     scannedCount: candidates.length,
+    minimumExpectedTestFiles,
     breachesScanFloor,
     findings,
     staleAllowances,
@@ -192,7 +195,7 @@ const parseProjectDir = (argv: readonly string[]): string => {
 
 const scanFloorReport = (outcome: GuardOutcome): string =>
   [
-    `Hermetic-git guard: FAIL — scanned ${outcome.scannedCount} test file(s), expected at least ${MINIMUM_EXPECTED_TEST_FILES}.`,
+    `Hermetic-git guard: FAIL — scanned ${outcome.scannedCount} test file(s), expected at least ${outcome.minimumExpectedTestFiles}.`,
     "The walk no longer reaches the tree it governs, so a PASS here would report over a collapsed set.",
     "Check PRUNED_DIRECTORY_NAMES and --project-dir before trusting any result above.",
     "",
@@ -201,6 +204,9 @@ const scanFloorReport = (outcome: GuardOutcome): string =>
 const reportOf = (outcome: GuardOutcome): string => {
   if (outcome.breachesScanFloor) {
     return scanFloorReport(outcome);
+  }
+  if (outcome.pass && outcome.scannedCount === 0) {
+    return "Hermetic-git guard: NOT APPLICABLE - no eligible test files evaluated; hermeticity coverage has not been established.\n";
   }
   if (outcome.pass) {
     return `Hermetic-git guard: PASS — ${outcome.scannedCount} test file(s) scanned, 0 unhermetic git spawns.\n`;
@@ -229,14 +235,44 @@ const reportOf = (outcome: GuardOutcome): string => {
   ].join("\n");
 };
 
-const main = (): void => {
-  const projectDir = parseProjectDir(process.argv.slice(2));
+const parseMinimumTestFiles = (argv: readonly string[]): number => {
+  const indexes = argv.flatMap((value, index) =>
+    value === "--minimum-test-files" ? [index] : [],
+  );
+  if (indexes.length === 0) return MINIMUM_EXPECTED_TEST_FILES;
+  const value = argv[(indexes[0] ?? 0) + 1];
+  if (
+    indexes.length !== 1 ||
+    value === undefined ||
+    !/^\d+$/.test(value) ||
+    !Number.isSafeInteger(Number(value))
+  ) {
+    throw new Error("--minimum-test-files requires one non-negative safe integer");
+  }
+  return Number(value);
+};
+
+const runCli = (argv: readonly string[]): { readonly exitCode: number; readonly report: string } => {
+  let minimumExpectedTestFiles: number;
+  try {
+    minimumExpectedTestFiles = parseMinimumTestFiles(argv);
+  } catch (error) {
+    return {
+      exitCode: 2,
+      report: `Hermetic-git guard: invalid arguments - ${error instanceof Error ? error.message : String(error)}\n`,
+    };
+  }
   const outcome = runGuard({
-    projectDir,
-    minimumExpectedTestFiles: MINIMUM_EXPECTED_TEST_FILES,
+    projectDir: parseProjectDir(argv),
+    minimumExpectedTestFiles,
   });
-  process.stdout.write(reportOf(outcome));
-  process.exit(outcome.pass ? 0 : 1);
+  return { exitCode: outcome.pass ? 0 : 1, report: reportOf(outcome) };
+};
+
+const main = (): void => {
+  const result = runCli(process.argv.slice(2));
+  process.stdout.write(result.report);
+  process.exit(result.exitCode);
 };
 
 const invokedDirectly =
@@ -252,5 +288,6 @@ export {
   type GuardOutcome,
   MINIMUM_EXPECTED_TEST_FILES,
   runGuard,
+  runCli,
   walkCandidateFiles,
 };

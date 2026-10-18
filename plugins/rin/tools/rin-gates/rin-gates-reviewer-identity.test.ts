@@ -4,6 +4,7 @@ import {
   BOARD_COORDINATOR,
   checkReviewerTotality,
   declaredReviewerFor,
+  declaredBoardStageSegmentsFor,
   rinGateReviewersIn,
 } from "./rin-gates-reviewer-identity";
 
@@ -112,5 +113,25 @@ describe("checkReviewerTotality", () => {
         rosterFor: () => ["lens-a"],
       }),
     ).toEqual({ kind: "total", gatesChecked: 2 });
+  });
+});
+
+
+describe("explicit board adoption on core stages", () => {
+  const node = { slug: "code-generation", scopes: ["bugfix"], phase: "construction", reviewer: BOARD_COORDINATOR };
+
+  test("selects an opted-in core reviewer without selecting rin-gates", () => {
+    expect(declaredReviewerFor({ gate: "code-generation", graph: [node] })).toBe(BOARD_COORDINATOR);
+    expect(declaredBoardStageSegmentsFor({ gate: "code-generation", graph: [node] })).toEqual(["construction", "code-generation"]);
+  });
+
+  test("leaves stock core reviewers outside the Rin board", () => {
+    expect(declaredBoardStageSegmentsFor({ gate: "code-generation", graph: [{ ...node, reviewer: "aidlc-architecture-reviewer-agent" }] })).toBeNull();
+  });
+
+  test("refuses unknown or unsafe graph paths", () => {
+    expect(declaredBoardStageSegmentsFor({ gate: "code-generation", graph: [{ ...node, phase: "../outside" }] })).toBeNull();
+    expect(declaredBoardStageSegmentsFor({ gate: "../outside", graph: [{ ...node, slug: "../outside" }] })).toBeNull();
+    expect(declaredBoardStageSegmentsFor({ gate: "code-generation", graph: null })).toBeNull();
   });
 });

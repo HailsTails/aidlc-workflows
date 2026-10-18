@@ -7,6 +7,8 @@ pairs-with: [cd-010, cd-011]
 amended: []
 enforced-by:
   - biome:noStaticOnlyClass
+  - eslint:rin-discipline/no-class-authoring
+  - oxlint:rin-discipline/no-class-authoring
   - audit:auditConstitution
   - audit:auditPublicSurface
 status: active

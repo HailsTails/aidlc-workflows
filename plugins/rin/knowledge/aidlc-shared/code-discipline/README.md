@@ -4,7 +4,11 @@ Index of code disciplines. The spirit lives in [constitution.md](../constitution
 
 Reviews cite by ID — "violates CD-7" — to make remediation precise.
 
-Each entry's `[…]` tag lists the enforcement mechanisms that back the rule. `[manual]` means there is no automated backstop — the rule is reviewer-judgement only and is the agent's hardest case.
+For active entries, the […] tag mirrors portable `enforced-by` frontmatter: available partial checks, Rin audits and manual review. Where present, `enforcement-note` explains the limits. A named linter rule is not necessarily configured in Rin or installed by copying the file. `[manual]` means the discipline still needs reviewer judgement. `aidlc-enforced-by` separately records Rin's configured bindings, which may also be partial. Redirect entries point to their owning CD.
+
+## Standalone adoption
+
+Use the [standalone TS API + React quick start](standalone-adoption.md) to select rule artifacts and configure ordinary checks without AIDLC stages or Rin gates. The [complete standalone inventory](standalone-cd-inventory.md) covers every active CD, tested partial clauses, manual obligations and progressive compiler adoption. Enforcement tags below describe mechanisms; copying text does not install them.
 
 ## Canonical source, rules-as-data, and the lens harness
 
@@ -30,7 +34,7 @@ Edit the `cd-*.md` file here (and the matching `constitution.md` principle if th
 
 ## II. TypeScript-First, Zero Casting, Self-Documenting Names
 
-- **CD-1** — No `any`, ever ([cd-001-no-any.md](cd-001-no-any.md)) [biome:noExplicitAny, biome:noImplicitAnyLet]
+- **CD-1** — No `any`, ever ([cd-001-no-any.md](cd-001-no-any.md)) [biome:noExplicitAny, biome:noImplicitAnyLet, eslint:@typescript-eslint/no-explicit-any, oxlint:typescript/no-explicit-any]
 - **CD-2** — Closed enumerated list of permitted cast sites ([cd-002-closed-cast-list.md](cd-002-closed-cast-list.md)) [audit:auditCastExpressions]
 - **CD-3** — Strict mode flags inherited, never overridden ([cd-003-strict-mode-flags.md](cd-003-strict-mode-flags.md)) [tsconfig:strict, tsconfig:noUncheckedIndexedAccess, tsconfig:exactOptionalPropertyTypes, tsconfig:noImplicitOverride, tsconfig:noFallthroughCasesInSwitch, tsconfig:noPropertyAccessFromIndexSignature, tsconfig:useUnknownInCatchVariables, audit:auditTsconfigStrict]
 - **CD-4** — Zod at every external boundary ([cd-004-zod-at-boundaries.md](cd-004-zod-at-boundaries.md)) [manual]
@@ -38,15 +42,15 @@ Edit the `cd-*.md` file here (and the matching `constitution.md` principle if th
 - **CD-6** — Meaningful names always — no shorthand, no filler words ([cd-006-meaningful-names.md](cd-006-meaningful-names.md)) [biome:useNamingConvention, audit:auditIdentifierNames]
 - **CD-7** — No categorical filenames or folder names ([cd-007-no-categorical-filenames.md](cd-007-no-categorical-filenames.md)) [biome:useFilenamingConvention, audit:auditConstitution]
 - **CD-7a** — No `ReturnType<typeof X>` for our own codebase ([cd-007a-no-returntype-typeof.md](cd-007a-no-returntype-typeof.md)) [manual]
-- **CD-8** — No `default:` on switch over a closed discriminated union ([cd-008-no-default-on-closed-union.md](cd-008-no-default-on-closed-union.md)) [biome:useExhaustiveSwitchCases]
-- **CD-40** — Single-object-argument functions ([cd-040-single-object-arg.md](cd-040-single-object-arg.md)) [biome:useMaxParams]
+- **CD-8** — No `default:` on switch over a closed discriminated union ([cd-008-no-default-on-closed-union.md](cd-008-no-default-on-closed-union.md)) [biome:useExhaustiveSwitchCases, eslint:@typescript-eslint/switch-exhaustiveness-check, oxlint:typescript/switch-exhaustiveness-check]
+- **CD-40** — Single-object-argument functions ([cd-040-single-object-arg.md](cd-040-single-object-arg.md)) [biome:useMaxParams, manual]
 - **CD-43** — Booleans are evaluative, not declarative ([cd-043-booleans-are-evaluative.md](cd-043-booleans-are-evaluative.md)) [audit:auditBooleanParameters]
 - **CD-45** — Zod runs exactly once per external-boundary crossing ([cd-045-zod-once-at-boundary.md](cd-045-zod-once-at-boundary.md)) [manual]
 
 ## III. Clean Architecture, Errors-As-Data (Total)
 
 - **CD-9** — All operational failures return `Result<T, E>` ([cd-009-result-shaped-failures.md](cd-009-result-shaped-failures.md)) [manual]
-- **CD-10** — Throws permitted in exactly two contexts ([cd-010-throws-closed-list.md](cd-010-throws-closed-list.md)) [biome:useThrowOnlyError, audit:auditTestDiscipline]
+- **CD-10** — Throws permitted in exactly two contexts ([cd-010-throws-closed-list.md](cd-010-throws-closed-list.md)) [biome:useThrowOnlyError, audit:auditTestDiscipline, manual]
 - **CD-11** — Operational error envelopes are plain data, not classes ([cd-011-error-shapes-are-data.md](cd-011-error-shapes-are-data.md)) [manual]
 - **CD-12** — Repositories are the primary storage abstraction ([cd-012-repositories-as-storage-abstraction.md](cd-012-repositories-as-storage-abstraction.md)) [manual]
 - **CD-13** — Kernel layer boundaries are non-negotiable ([cd-013-kernel-layer-boundaries.md](cd-013-kernel-layer-boundaries.md)) [manual]
@@ -56,16 +60,16 @@ Edit the `cd-*.md` file here (and the matching `constitution.md` principle if th
 - **CD-32** — PII strings redact-by-default in structured logs ([cd-032-pii-redact-by-default.md](cd-032-pii-redact-by-default.md)) [manual]
 - **CD-33** — Sensitive types brand-redact unconditionally ([cd-033-sensitive-brand-hard-redact.md](cd-033-sensitive-brand-hard-redact.md)) [manual]
 - **CD-34** — Secrets never enter the repo ([cd-034-secrets-never-in-repo.md](cd-034-secrets-never-in-repo.md)) [manual]
-- **CD-35** — Tailscale Funnel binding count is exactly one ([cd-035-funnel-binding-cap.md](cd-035-funnel-binding-cap.md)) [manual]
-- **CD-36** — Per-service steady-state RAM cap is 200 MB ([cd-036-per-service-ram-cap.md](cd-036-per-service-ram-cap.md)) [manual]
+- **CD-35** — Ingress binding count stays within the configured cap ([cd-035-funnel-binding-cap.md](cd-035-funnel-binding-cap.md)) [manual]
+- **CD-36** — Per-service steady-state RAM stays within the configured cap ([cd-036-per-service-ram-cap.md](cd-036-per-service-ram-cap.md)) [manual]
 
 ## V. Testing Pyramid: Unit Isolation, Integration Minimum
 
 - **CD-23** — Tests co-located with the unit they cover ([cd-023-tests-co-located.md](cd-023-tests-co-located.md)) [audit:auditConstitution]
-- **CD-24** — Every file is unit-tested ([cd-024-every-file-unit-tested.md](cd-024-every-file-unit-tested.md)) [audit:auditConstitution]
-- **CD-25** — Unit tests fake everything outside the unit ([cd-025-fake-everything-outside-unit.md](cd-025-fake-everything-outside-unit.md)) [audit:auditTestDiscipline]
-- **CD-26** — No module-mocking — module-mock means DI is wrong ([cd-026-no-module-mocking.md](cd-026-no-module-mocking.md)) [audit:auditTestDiscipline]
-- **CD-27** — Tests are zero-everything — zero logic, zero branches, zero unpredictability ([cd-027-tests-are-zero-everything.md](cd-027-tests-are-zero-everything.md)) [audit:auditTestDiscipline, biome:noFocusedTests, biome:noSkippedTests]
+- **CD-24** — Every file is unit-tested ([cd-024-every-file-unit-tested.md](cd-024-every-file-unit-tested.md)) [redirect]
+- **CD-25** — Unit tests fake everything outside the unit ([cd-025-fake-everything-outside-unit.md](cd-025-fake-everything-outside-unit.md)) [audit:auditTestDiscipline, eslint:no-restricted-imports]
+- **CD-26** — No module-mocking — module-mock means DI is wrong ([cd-026-no-module-mocking.md](cd-026-no-module-mocking.md)) [audit:auditTestDiscipline, eslint:no-restricted-syntax, oxlint:vitest/no-restricted-vi-methods]
+- **CD-27** — Tests are zero-everything — zero logic, zero branches, zero unpredictability ([cd-027-tests-are-zero-everything.md](cd-027-tests-are-zero-everything.md)) [audit:auditTestDiscipline, biome:noFocusedTests, biome:noSkippedTests, manual]
 - **CD-28** — Tests assert only what the unit is directly responsible for ([cd-028-assert-only-unit-responsibility.md](cd-028-assert-only-unit-responsibility.md)) [manual]
 - **CD-29** — Component/integration tests are the minimum, not the bulk ([cd-029-integration-is-minimum.md](cd-029-integration-is-minimum.md)) [manual]
 - **CD-30** — Integration tests catch composition bugs only ([cd-030-integration-catches-composition-only.md](cd-030-integration-catches-composition-only.md)) [manual]
@@ -74,15 +78,15 @@ Edit the `cd-*.md` file here (and the matching `constitution.md` principle if th
 
 ## VI. Function-First Composition
 
-- **CD-14** — Zero class authoring; classes only at external-library call sites ([cd-014-no-class-authoring.md](cd-014-no-class-authoring.md)) [biome:noStaticOnlyClass, audit:auditConstitution, audit:auditPublicSurface]
+- **CD-14** — Zero class authoring; classes only at external-library call sites ([cd-014-no-class-authoring.md](cd-014-no-class-authoring.md)) [biome:noStaticOnlyClass (static-only classes only), eslint:rin-discipline/no-class-authoring, oxlint:rin-discipline/no-class-authoring, audit:auditConstitution, audit:auditPublicSurface]
 - **CD-15** — No `for…of`; functional iteration only ([cd-015-no-for-of.md](cd-015-no-for-of.md)) [manual]
-- **CD-16** — No counted `for` loops ([cd-016-no-counted-for.md](cd-016-no-counted-for.md)) [manual]
-- **CD-17** — Clock is the only time source ([cd-017-clock-only-time-source.md](cd-017-clock-only-time-source.md)) [audit:auditConstitution]
-- **CD-18** — Process operations through `SignalSink` DI port ([cd-018-process-through-signalsink.md](cd-018-process-through-signalsink.md)) [manual]
-- **CD-19** — Third-party library imports confined to wrapping-factory files ([cd-019-third-party-wrapping-factories.md](cd-019-third-party-wrapping-factories.md)) [audit:auditConstitution]
-- **CD-20** — All `node:` stdlib imports through kernel-supplied DI ports ([cd-020-node-stdlib-through-ports.md](cd-020-node-stdlib-through-ports.md)) [audit:auditConstitution]
+- **CD-16** — No counted `for` loops ([cd-016-no-counted-for.md](cd-016-no-counted-for.md)) [redirect]
+- **CD-17** — Clock is the only time source ([cd-017-clock-only-time-source.md](cd-017-clock-only-time-source.md)) [audit:auditConstitution, eslint:no-restricted-syntax]
+- **CD-18** — Process operations through `SignalSink` DI port ([cd-018-process-through-signalsink.md](cd-018-process-through-signalsink.md)) [manual, eslint:no-restricted-syntax]
+- **CD-19** - Third-party and Node stdlib dependencies confined to approved wrapping ports ([cd-019-third-party-wrapping-factories.md](cd-019-third-party-wrapping-factories.md)) [audit:auditConstitution, eslint:n/prefer-node-protocol]
+- **CD-20** - Redirect to CD-19 for Node stdlib dependencies ([cd-020-node-stdlib-through-ports.md](cd-020-node-stdlib-through-ports.md)) [redirect]
 - **CD-21** — Every kernel-supplied port ships a default factory ([cd-021-ports-ship-default-factory.md](cd-021-ports-ship-default-factory.md)) [manual]
 - **CD-22** — Middleware generic context constraint ([cd-022-middleware-context-constraint.md](cd-022-middleware-context-constraint.md)) [manual]
-- **CD-41** — Orchestrators contain only orchestration ([cd-041-orchestrators-only-orchestrate.md](cd-041-orchestrators-only-orchestrate.md)) [biome:noExcessiveCognitiveComplexity, biome:noExcessiveLinesPerFunction]
-- **CD-42** — Unhappy paths are early returns; happy path is the final return ([cd-042-unhappy-path-early-return.md](cd-042-unhappy-path-early-return.md)) [biome:noUselessElse]
-- **CD-44** — Functions must not mutate fields of parameters they receive ([cd-044-no-parameter-field-mutation.md](cd-044-no-parameter-field-mutation.md)) [audit:auditInputMutation, biome:noParameterAssign]
+- **CD-41** — Orchestrators contain only orchestration ([cd-041-orchestrators-only-orchestrate.md](cd-041-orchestrators-only-orchestrate.md)) [biome:noExcessiveCognitiveComplexity, biome:noExcessiveLinesPerFunction, manual]
+- **CD-42** — Unhappy paths are early returns; happy path is the final return ([cd-042-unhappy-path-early-return.md](cd-042-unhappy-path-early-return.md)) [biome:noUselessElse, eslint:no-else-return, oxlint:eslint/no-else-return]
+- **CD-44** — Functions must not mutate fields of parameters they receive ([cd-044-no-parameter-field-mutation.md](cd-044-no-parameter-field-mutation.md)) [audit:auditInputMutation, biome:noParameterAssign, eslint:no-param-reassign, oxlint:eslint/no-param-reassign]

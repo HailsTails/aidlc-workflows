@@ -61,10 +61,10 @@ Six manifests ship under `.claude/sensors/`, each prefixed `aidlc-`:
 | Manifest | Dispatch | Checks |
 |----------|----------|--------|
 | `aidlc-claim-sources.md` | Gate | Every Intent Capture claim carries a resolvable source tag; registered description, scope, and memory values match authoritative inputs; retained assumptions exactly match explicit human confirmation |
-| `aidlc-required-sections.md` | Gate | The output carries the required H2 headings — a generic content-shape check |
+| `aidlc-required-sections.md` | Gate | The output carries the required H2 headings — a generic content-shape check. Timestamp run records (`*-timestamp.md`) always pass |
 | `aidlc-upstream-coverage.md` | Gate | The stage's deliverables (evaluated as a set) reference each upstream artifact the stage declares it consumes, by slug, wikilink, or the producing stage's directory path |
 | `aidlc-traceability.md` | Write: `**/traceability.json` | Validates stable upstream IDs, statuses, deterministic targets, and derived business-rule orphans |
-| `aidlc-linter.md` | Write: `.ts` / `.js` | Wraps your configured linter (ESLint by default) |
+| `aidlc-linter.md` | Write: `.ts` / `.js` | Runs `package.json` lint when present; otherwise pinned ESLint |
 | `aidlc-type-check.md` | Write: `.ts` / `.tsx` | Wraps your configured type-checker (`tsc` by default) |
 
 All six are gated by a `matches:` glob (more on that below): the provenance
@@ -72,7 +72,9 @@ check and two document-shape checks scope to the artifact tree (the shipped mani
 `**/{aidlc-docs,intents}/**` — the per-intent record tree, with the legacy
 `aidlc-docs/` arm kept for a pre-migration project), traceability scopes to
 `**/traceability.json`, and the two code-quality checks to their language globs
-(`**/*.{ts,js}`, `**/*.{ts,tsx}`).
+(`**/*.{ts,js}`, `**/*.{ts,tsx}`). The two document-shape checks add a third
+`codekb` arm so they also reach the space-level CodeKB that reverse-engineering
+writes.
 Read `aidlc-required-sections.md` end to end before authoring your own — it is
 the smallest of the six and shows the whole shape, frontmatter plus prose body.
 
@@ -85,14 +87,15 @@ the framework deliberately removed it. A stage decides what fires on its
 outputs by naming the sensor in its own frontmatter:
 
 ```yaml
-# core/aidlc-common/stages/construction/code-generation.md
+# core/aidlc-common/stages/construction/ci-pipeline.md
 ---
-slug: code-generation
+slug: ci-pipeline
 phase: construction
 sensors:
+  - required-sections
+  - upstream-coverage
   - linter
   - type-check
-  - traceability
 ---
 ```
 
@@ -141,23 +144,31 @@ short — five required fields and a handful of optional ones:
 | `matches` | no | write-path filter; for gate dispatch, an omitted glob accepts every declared deliverable |
 
 The `command:` is a **prefix**, not the full argv. The dispatcher appends the
-runtime context at fire time — always `--stage <slug>`, then the file flag that
-matches the sensor's input shape: `--output-path <path>` for document sensors,
-`--file-path <path>` for the code sensors (`linter`, `type-check`). So the
-manifest stays a pure capability descriptor and never encodes per-fire flags.
+runtime context at fire time: always `--stage <slug>`, then the file flag the
+manifest's `input_schema` declares. A sensor that declares a `file_path` key
+gets `--file-path <path>` (the code sensors, such as `linter` and
+`type-check`); one that declares other keys gets `--output-path <path>` (the
+document sensors). A code sensor you add must declare `file_path` under
+`input_schema:`, or its script receives `--output-path`. So the manifest stays
+a pure capability descriptor and never encodes per-fire flags.
 The exact invocation the dispatcher assembles is documented in the
 [`command:` invocation contract](../reference/07-sensor-system.md#command-invocation-contract).
 For the complete schema — `input_schema`, `output_schema`, `timeout_seconds`,
 and the forward-compat policy for unknown keys — see
 [Sensor Manifest Schema](../reference/07-sensor-system.md#sensor-manifest-schema).
 
-**2. Bind it by adding the id to a stage's `sensors:` list.** A manifest sitting
-in the directory does nothing until a stage imports it. Open the stage you want
-the check to fire on, add the bare id to its frontmatter `sensors:` list, and
-the binding takes effect at the next compile. To run a sensor on several stages,
-add the id to each one — strict-additive, no override layer to reason about. To
-stop a sensor firing on a stage, remove the id from that stage. The manifest
-never changes; only the import lists do.
+**2. Bind it through a stage's `sensors:` list.** A manifest sitting in the
+directory does nothing until a stage imports it. For a stage you own, add the
+bare id to its authored frontmatter and rebuild. For an installed stock stage,
+declare `adds.sensors` in a [plugin contribution](10-authoring-a-plugin.md#3-modify-an-existing-core-stage-a-contribution),
+select the installed plugin, and run normal plugin sync. Compilation resolves
+the resulting imports. The contribution survives stock engine refresh without
+claiming the sensor implementation as core-owned. Direct edits to installer-owned
+stage bytes otherwise block normal refresh; [existing direct additions can be
+adopted](10-authoring-a-plugin.md#adopting-existing-direct-sensor-additions) only
+when the declaration accounts for the complete stage difference. To bind a
+sensor on several stages, declare it for each one. Remove a binding from its
+owned source or contribution rather than editing the installed stock file.
 
 The `aidlc-` filename prefix is mandatory for every sensor, custom ones
 included — the compile resolver (`loadSensors` in `aidlc-graph.ts`) discovers
@@ -197,7 +208,7 @@ every declared deliverable. Full behavior is in
 **`default_severity` — signal or enforcement.** `advisory` records outcomes and
 continues. `blocking` stops a gate-fired sensor unless the dispatcher returns a
 verified pass; findings, unavailable evaluation, malformed output, and timeout
-all refuse. The operator may fix the issue or explicitly select
+all refuse. The report returns `print` with `agent_guidance: "fix-sensor-findings"`: the agent repairs within authorized stage scope and retries the same report without an override, preserving required review evidence and the human approval gate. If repair needs new authority or cannot proceed, it asks the person. Only when the person requests an override may they explicitly select
 `Override blocking sensors` from the logged two-choice prompt, then retry with
 the flag and exact `--user-input`. Autonomous mode cannot override. Blocking on
 write-fired sensors is accepted by the schema but remains advisory in this
@@ -233,3 +244,28 @@ made mid-workflow.
 
 [Team Knowledge](07-team-knowledge.md) — give agents the domain context they
 load before they work, the last data surface a harness engineer shapes.
+
+## Consumer-owned lint command
+
+The linter sensor prefers the selected package's `scripts.lint`, using its
+`packageManager` or lockfile convention (npm otherwise). It runs the script in
+that package directory without forwarding a file path or ESLint flags. A
+nonzero or incomplete execution fails the sensor; arbitrary stdout is not
+parsed as ESLint JSON. No lint rules or auto-fixes are added by the framework.
+Keep write-time lint scripts read-only and account for whole-workspace cost.
+
+For automatic workspace-root lint, launch the harness with process-scoped
+`AIDLC_LINT_PROJECT_DIR=.` and `AIDLC_LINT_RUNNER=project`; set
+`AIDLC_LINT_PACKAGE_MANAGER=pnpm` if necessary. Relative directories resolve
+from the sensor invocation's project cwd. The dispatcher does not forward
+suffix flags from the sensor manifest command. For direct invocation use
+`aidlc engine sensor-linter --stage <stage> --file-path <file>` with
+`--runner project --project-dir . --package-manager pnpm` as needed; flags
+override the process defaults.
+
+Project mode reports missing scripts as unavailable instead of trying ESLint.
+Default `auto` retains the pinned ESLint fallback when a script is absent;
+explicit `eslint` selects that fallback. Conflicting manager hints, malformed
+metadata and failed commands are not verified lint passes. Configure CD
+coverage separately in the consumer's ESLint/Biome rules and discipline
+sensors. Full adoption and failure details: `core/sensors/aidlc-linter.md`.

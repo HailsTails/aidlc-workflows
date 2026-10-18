@@ -28,7 +28,7 @@ This is why the sensor always passes. `reformatted: true` is a record of work do
 
 ## Relationship to the shipped `linter` sensor
 
-The framework's `linter` sensor wraps eslint. This project uses biome, so that sensor finds no eslint config, exits 127, and is reclassified to a quiet PASS — it is inert here rather than wrong. This sensor covers the formatting half against the formatter this project actually configures; `pnpm lint` covers the lint half.
+The framework's `linter` sensor prefers the consumer's `package.json` lint script. A Biome consumer can therefore run its own lint command without an ESLint configuration. Select the workspace root explicitly when that is where the script lives. This sensor covers formatting; the consumer lint script covers the lint rules the consumer configures. Older producer builds wrap ESLint only and may report an unavailable check instead of running Biome.
 
 ## Failure mode
 

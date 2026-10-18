@@ -29,7 +29,7 @@
 // slice-binding.json to consult. The verdict is work-bound (record dir + headSha)
 // so a stale-commit verdict from an earlier run at the same gate path cannot pass.
 //
-// TWO BINDING MODES (Slice 260816-verdict-landed-binding). The verdict now
+// TWO BINDING MODES. The verdict
 // carries an explicit `binding` naming what the review covered, and this hook
 // verifies it per mode:
 //
@@ -139,12 +139,11 @@ const describeSpawnedOutputFailure = (failure: SpawnedOutputFailure): string =>
     ? `the reading process was killed by ${failure.signal} after ${failure.bytesWritten} byte(s), so its output is truncated rather than absent — this is a reader fault, not a fault in the commit`
     : `git exited ${failure.exitCode}`;
 
-// Declared locally rather than imported, per IF-14 of the
-// 260816-verdict-landed-binding lock: the emitter is a synced twin and this hook
-// is an orphan, so a shared module would need a topology this Slice would be
-// inventing. The two definitions are held identical in BEHAVIOUR by lock, and
-// selftest case E7 is the mechanical detector that they still agree — it runs
-// both production paths over one real commit in one minted repository.
+// Declared locally rather than imported: the emitter is a synced twin and this
+// hook is an orphan, so an import would require an additional shared-module
+// topology. Selftest case E7 verifies that both definitions remain identical
+// in BEHAVIOUR by exercising the production paths over the same commit in an
+// isolated repository.
 //
 // Byte-for-byte the same read as the emitter's: stdout to a FILE DESCRIPTOR, so
 // spawnSync's pipe-only `maxBuffer` has no ceiling to impose and the read cannot
@@ -249,7 +248,7 @@ const space = env.RIN_GATES_SPACE ?? "default";
 // once every roster lens has reported in; this gate re-verifies coverage from
 // the verdict's own lenses list against the gate's roster, so a scribe stamp
 // cannot stand in for an under-covered review. One config, two consumers — they
-// cannot drift (the drift between them was task 019f8be9's sibling failure mode).
+// cannot drift.
 const ROSTER_CONFIG_PATH =
   env.RIN_GATES_ROSTER_CONFIG ?? join(hookDir, "review-rosters.json");
 
@@ -738,7 +737,7 @@ const assertReviewConverged = ({
       `review verdict for '${gate}' is '${verdict.verdict ?? "absent"}', not READY — the review has not converged.`,
     );
   }
-  // The findings gate, re-checked at the authorising boundary (task 019f6d3e).
+  // The findings gate is re-checked at the authorizing boundary.
   // Both producers refuse to emit a READY over an undisposed finding, but the
   // producers are not what authorises the approve — this hook is. Trusting them
   // alone would mean the guarantee holds only for verdicts written by a

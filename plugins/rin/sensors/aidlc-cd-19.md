@@ -23,18 +23,24 @@ timeout_seconds: 20
 
 # cd-19 sensor — CD-19
 
-Isolated per-CD enforcement for **CD-19** (External dependencies confined to wrapping ports at the boundary). Runs the vendored
-`constitution` walker and filters its output to CD-19 findings only, so this
-sensor enforces exactly one code-discipline rule and nothing else. The vendored
-walker logic is reused byte-for-byte; the isolation is a filter at the sensor
-boundary, and AIDLC joins the per-CD sensors via the stage graph's
-`sensors_applicable` — there is no custom composition layer.
+Isolated partial check for **CD-19** (external dependencies confined to wrapping
+ports). The source walker reports CD-19's listed third-party imports and CD-20's
+explicit `node:` imports; CD-20 is a redirect into CD-19, not a separate active
+rule. The sensor selects both finding prefixes and AIDLC joins per-CD sensors
+through the stage graph's `sensors_applicable`.
+
+The Node check handles literal specifiers in imports, re-exports, `require`,
+dynamic imports and import-type queries. Bare Node names need an ESLint
+`n/prefer-node-protocol` rule in the consumer's own lint command. The vendor
+check covers only its exact static `from` list. Neither check proves approved
+wrapping-port ownership; see the standalone CD inventory for setup and gaps.
 
 ## Scope (config-driven)
 
-Files are resolved by `aidlc-constitution-scope.ts` from the `constitution`
+Files are resolved by `rin-harness-constitution-scope.ts` from the `constitution`
 block of `harness.config.json` (`include`/`exclude` globs), falling back to a
-portable default. Out-of-scope files pass with an `(out of scope)` note.
+portable default covering root, `src/`, `scripts/`, `test/` and `tests/` TS/TSX.
+Out-of-scope files pass with an `(out of scope)` note.
 
 ## Failure mode
 

@@ -7,6 +7,8 @@ pairs-with: [cd-043]
 amended: [v2.4.0]
 enforced-by:
   - biome:useMaxParams
+  - manual
+enforcement-note: "Rin configures useMaxParams with max:2; arity is only a review signal. Even max:1 allows an unlabeled scalar, so named-object contracts and call sites need review."
 status: active
 applies-to: typescript-runtime
 portability: portable

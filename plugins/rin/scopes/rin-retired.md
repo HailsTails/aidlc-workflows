@@ -1,6 +1,7 @@
 ---
 name: rin-retired
 plugin: rin
+guard_policy: strict
 depth: Standard
 keywords:
   - retire intent

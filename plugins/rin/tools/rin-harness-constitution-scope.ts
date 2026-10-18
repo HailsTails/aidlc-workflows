@@ -1,5 +1,5 @@
-import { existsSync, statSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { defaultPathOperations } from "./rin-harness-path-operations.ts";
+import { defaultFileKindPort } from "./rin-harness-sidecar-file-reader.ts";
 import type {
   AuditConstitutionReport,
   ConstitutionViolation,
@@ -15,9 +15,11 @@ type ConstitutionScopeConfig = {
 };
 
 const SENTINEL_ABSENT_ROOT = "__aidlc_constitution_absent_root__";
+const paths = defaultPathOperations();
+const fileKind = defaultFileKindPort();
 
 const DEFAULT_SCOPE: ConstitutionScopeConfig = {
-  include: ["src/**", "scripts/**", "*.ts", "*.tsx"],
+  include: ["src/**", "scripts/**", "test/**", "tests/**", "*.ts", "*.tsx"],
   exclude: [
     "**/node_modules/**",
     "**/dist/**",
@@ -86,10 +88,12 @@ const relativeFromRoot = ({
   readonly projectDir: string;
 }): string =>
   normalizeRelative(
-    relative(
-      projectDir,
-      isAbsolute(filePath) ? filePath : resolve(projectDir, filePath),
-    ),
+    paths.relative({
+      from: projectDir,
+      to: paths.isAbsolute({ path: filePath })
+        ? filePath
+        : paths.resolve({ segments: [projectDir, filePath] }),
+    }),
   );
 
 const matchesAnyGlob = ({
@@ -138,25 +142,19 @@ const filePathIsInScope = ({
     scope: resolveConstitutionScope({ projectDir }),
   });
 
-const safeIsDir = (path: string): boolean => {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-};
+const safeIsDir = (path: string): boolean => fileKind.isDirectory(path);
 
 const wholeProjectService = ({
   projectDir,
 }: {
   readonly projectDir: string;
 }): ServiceAuditConfig => ({
-  name: basename(projectDir),
+  name: paths.basename({ path: projectDir }),
   srcRoot: projectDir,
-  scriptsRoot: safeIsDir(join(projectDir, "scripts"))
-    ? join(projectDir, "scripts")
-    : join(projectDir, SENTINEL_ABSENT_ROOT),
-  uiSrcRoot: join(projectDir, SENTINEL_ABSENT_ROOT),
+  scriptsRoot: safeIsDir(paths.join({ segments: [projectDir, "scripts"] }))
+    ? paths.join({ segments: [projectDir, "scripts"] })
+    : paths.join({ segments: [projectDir, SENTINEL_ABSENT_ROOT] }),
+  uiSrcRoot: paths.join({ segments: [projectDir, SENTINEL_ABSENT_ROOT] }),
 });
 
 const SCRIPT_RULE_PREFIXES: readonly string[] = [
@@ -168,6 +166,7 @@ const SCRIPT_RULE_PREFIXES: readonly string[] = [
   "CD-15",
   "CD-16",
   "CD-19",
+  "CD-20",
   "Amendment 2.8.0",
 ];
 
@@ -238,13 +237,7 @@ const filterReportToScope = ({
   return { service: report.service, violations, scannedFiles };
 };
 
-const existsAsFile = (path: string): boolean => {
-  try {
-    return existsSync(path) && statSync(path).isFile();
-  } catch {
-    return false;
-  }
-};
+const existsAsFile = (path: string): boolean => fileKind.isFile(path);
 
 export type { ConstitutionScopeConfig };
 export {

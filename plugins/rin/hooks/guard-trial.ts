@@ -1,8 +1,7 @@
 // Guard-relaxation trial: the enumerative relax token and its deny-shadow log.
 //
-// Record 260904-guard-relaxation-trial-2. Two guards may be relaxed for a
-// time-boxed measurement -- block-inline-exec and guard-navigation -- so that
-// what they actually catch can be counted instead of assumed.
+// Two guards may be relaxed for a time-boxed measurement - block-inline-exec
+// and guard-navigation - so their actual coverage can be counted.
 //
 // THIS MODULE IS THE TESTED SPECIFICATION, NOT THE IMPORTED IMPLEMENTATION.
 // Both guards INLINE these semantics rather than importing them, because each
@@ -157,19 +156,14 @@ const guardIsRelaxed = ({
 
 // The log is per-clone RUNTIME and must never land inside the composed tree.
 //
-// The previous fallback was `join(CLAUDE_PROJECT_DIR ?? process.cwd(), ".claude/
-// guard-trial-shadow.jsonl")`, and a hook spawned from `.claude/hooks/` has THAT
-// as its cwd — so the log was written to `.claude/hooks/.claude/
-// guard-trial-shadow.jsonl`, inside the projected plugin. `harness:refresh-check`
-// then reported a composed copy diverging from its source and refused pushes
-// intermittently, worsening as the log grew. Measured 2026-09-05: Lane C lost two
-// pushes to it.
+// A cwd-rooted fallback can place the log inside a projected plugin when a
+// hook starts from its hooks directory. That changes generated content and can
+// make refresh-check refuse a push.
 //
-// Resolving through the git common dir puts it beside the token it pairs with:
-// one file per clone, inside `.git`, so it is untracked by construction and no
-// refresh-check, orphan sweep or diff can ever see it. It also means every
-// worktree appends to ONE log, which is what the trial's corpus wants — a
-// per-worktree log would fragment the measurement across 238 checkouts.
+// Resolving through the git common dir puts the log beside its paired token:
+// one file per clone, inside `.git`, untracked by construction. Refresh-check,
+// orphan sweeps and diffs cannot see it, and all worktrees append to ONE log
+// rather than fragmenting the measurement across per-worktree files.
 //
 // The env override still wins, and the pre-common-dir fallback is kept for a
 // non-git context (a spawned copy at an arbitrary path, which mutant-detection
@@ -202,22 +196,15 @@ const shadowLogPath = ({
 // per line precisely so a later reader can re-derive it if the built-in changes.
 type BuiltInCoverage = "likely-covered" | "not-covered" | "not-applicable";
 
-// Observed refusals, measured 2026-09-04 in a worktree-isolated session:
+// Classify two possible refusal shapes independently:
 //
-//   1. `git -C <path>` — refused by name.
-//   2. ANY command mentioning git in a form the isolation checker calls "too
-//      complex to verify that it stays inside the worktree" — and complexity
-//      here means SHELL COMPLEXITY, not git's position. A chained command was
-//      refused on that wording while git appeared only inside a quoted string.
+//   1. `git -C <path>` names worktree navigation directly.
+//   2. A git mention combined with shell chaining can be too complex for the
+//      isolation checker, even when git appears only inside a quoted string.
 //
-// Point 2 is the correction to a defect this classifier shipped with. The first
-// version anchored the pattern at `git` and scanned FORWARD, so `cd X && git
-// log` — git in the tail — read as not-covered and was credited to the repo
-// rule as residual value. The bias ran one way only, toward a wrong KEEP, and
-// hit `cd-then-chain`, plausibly the highest-volume navigation rule. Caught in
-// review before any data was collected. Test the whole command for a git
-// mention AND a chaining metacharacter independently, never one relative to the
-// other.
+// Anchoring at `git` and scanning forward would misclassify `cd X && git log`
+// as not-covered and bias measured residual value. Test the whole command for
+// a git mention AND a chaining metacharacter independently.
 const gitDashCForm = /(?:^|&&|\|\||[\n;&|(`])\s*git\s+-C\b/;
 const mentionsGit = /\bgit\b/;
 const carriesShellComplexity = /(?:&&|\|\||[;|`]|\$\(|<<)/;

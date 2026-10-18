@@ -1,10 +1,15 @@
 // covers: file:aidlc-common/protocols/stage-protocol-reviewer.md, file:aidlc-common/protocols/stage-protocol-swarm.md, file:aidlc-common/protocols/stage-protocol-ensemble.md, file:aidlc-common/protocols/stage-protocol-construction.md, file:aidlc-common/protocols/stage-protocol-learnings.md, subcommand:aidlc-orchestrate:next, subcommand:aidlc-orchestrate:report
 
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import {
+  NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
+  NATIVE_STARTUP_TIMEOUT_MS,
+  remainingOperationTimeoutMs,
+} from "../harness/test-budget.ts";
+import { afterEach, beforeAll, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { auditBlockField, readAuditShardEvents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import { auditBlockField, readAuditShardEvents, loadStageGraphAll, setField } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import {
   AIDLC_SRC,
   cleanupTestProject,
@@ -18,6 +23,8 @@ import {
   seedStateFile,
 } from "../harness/fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
+
+setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
 const ORCHESTRATE = join(AIDLC_SRC, "tools", "aidlc-orchestrate.ts");
 const MODULES = [
@@ -103,6 +110,7 @@ function reportSingleRequirements(): Record<string, unknown> {
       "--result", "approved",
     ],
     {
+      timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
       cwd: project,
       encoding: "utf-8",
       env: {
@@ -161,7 +169,41 @@ function swarmDirective(): Record<string, unknown> {
   return result.directive as Record<string, unknown>;
 }
 
+function autonomousRequirementsGraph({ projectDir, mainWorkflow }: { projectDir: string; mainWorkflow: boolean }): string {
+  if (mainWorkflow) {
+    seedStateFile(projectDir, "state-mid-inception.md");
+    const statePath = seededStateFile(projectDir);
+    writeFileSync(statePath, setField(readFileSync(statePath, "utf-8"), "Scope", "classic"));
+  }
+  const graphPath = join(projectDir, ".aidlc-autonomous-stage-graph.json");
+  writeFileSync(graphPath, JSON.stringify(loadStageGraphAll().map((stage) =>
+    stage.slug === "requirements-analysis" ? { ...stage, approval_mode: "autonomous" } : stage)));
+  return graphPath;
+}
+
 describe("t302 conditional protocol modules", () => {
+  test.each([
+    { mainWorkflow: false, args: ["--stage", "requirements-analysis", "--single", "--scope", "classic"], gate: false, single: true },
+    { mainWorkflow: true, args: [], gate: true, single: undefined },
+  ])("an autonomous stage retains verification for %j", ({ mainWorkflow, args, gate, single }) => {
+    project = createOrchestrationTestProject();
+    const graphPath = autonomousRequirementsGraph({ projectDir: project, mainWorkflow });
+    const next = runOrchestrateNext(
+      ORCHESTRATE, project, [...args],
+      { cwd: project, env: { ...process.env, AIDLC_STAGE_GRAPH: graphPath } },
+    );
+    expect(next.status, next.out).toBe(0);
+    expect(next.directive).toMatchObject({
+      kind: "run-stage", approval_mode: "autonomous", gate,
+      reviewer: "aidlc-product-lead-agent",
+      ceremony: { sensors: "on" },
+    });
+    expect(next.directive?.single).toBe(single);
+    expect(next.directive?.answer_mode).toBeUndefined();
+    expect(moduleList(next.directive!)).toContain("reviewer");
+    expect(moduleList(next.directive!)).not.toContain("learnings");
+    expect(next.directive?.sensors_applicable).not.toEqual([]);
+  });
   test("conditional module files exist in core and every generated harness tree", () => {
     for (const module of MODULES) {
       expect(
@@ -200,6 +242,21 @@ describe("t302 conditional protocol modules", () => {
       sensors: "on",
       learnings: "on",
       summary_confirmation: "off",
+      plan_approval: "on",
+      collaborators: "off",
+    });
+  });
+
+  // bugfix declares learnings and summary confirmation off in its own
+  // frontmatter: no "Anything to add for next time?" ritual and no summary to
+  // confirm, while sensors, the advisory reviewer, and plan approval stay.
+  test("bugfix requirements-analysis keeps the advisory reviewer and sensors, without learnings", () => {
+    const directive = directiveFor("requirements-analysis", "bugfix");
+    expect(moduleList(directive)).toEqual(["reviewer"]);
+    expect(directive.review_class).toBe("advisory");
+    expect(directive.sensors_applicable).toEqual(["required-sections", "upstream-coverage"]);
+    expect(directive.ceremony).toEqual({
+      sensors: "on", learnings: "off", summary_confirmation: "off", plan_approval: "on", collaborators: "off",
     });
   });
 
@@ -213,7 +270,7 @@ describe("t302 conditional protocol modules", () => {
     expect(directive.review_class).toBe("advisory");
     expect(directive.sensors_applicable).toEqual([]);
     expect(directive.ceremony).toEqual({
-      sensors: "off", learnings: "off", summary_confirmation: "off",
+      sensors: "off", learnings: "off", summary_confirmation: "off", plan_approval: "on", collaborators: "off",
     });
   });
 
@@ -306,10 +363,15 @@ describe("t302 conditional protocol modules", () => {
     expect(readFileSync(seededStateFile(project), "utf-8")).toBe(state);
   });
 
-  test("express code-generation omits reviewer under review_cap none", () => {
+  // Express declares every ceremony off in its own frontmatter, so the learnings
+  // module is absent here as well as the reviewer: review_cap none drops the
+  // reviewer, `learnings: off` drops the ritual. Classic still carries it, which
+  // the next test pins, so this is the scope's own word rather than a global.
+  test("express code-generation omits reviewer and the learnings ritual", () => {
     const modules = moduleList(directiveFor("code-generation", "express"));
-    expect(modules).toEqual(["ensemble", "construction", "learnings"]);
+    expect(modules).toEqual(["ensemble", "construction"]);
     expect(modules).not.toContain("reviewer");
+    expect(modules).not.toContain("learnings");
   });
 
   test("user-stories mob lists the reviewer, ensemble, and learnings", () => {
@@ -332,6 +394,8 @@ describe("t302 conditional protocol modules", () => {
       sensors: "on",
       learnings: "on",
       summary_confirmation: "on",
+      plan_approval: "on",
+      collaborators: "off",
     });
   });
 
@@ -341,5 +405,24 @@ describe("t302 conditional protocol modules", () => {
       "construction",
       "swarm",
     ]);
+  });
+});
+
+// A multi-select with nothing ticked read as unanswered: Claude Code's review
+// screen warned "You have not answered all questions" when the person kept no
+// note (a live run). Keeping none is a choice of its own, first in the list.
+describe("t302 learnings: keeping no note is a pick", () => {
+  const learnings = readFileSync(
+    join(import.meta.dir, "../../core/aidlc-common/protocols/stage-protocol-learnings.md"),
+    "utf8",
+  );
+
+  test("the notes question starts with Keep none of these", () => {
+    expect(learnings).toContain(
+      "Put **Keep none of these** first in every call of this question, so keeping no note is a pick of its own " +
+        "(some tools read a multi-select with nothing ticked as unanswered); picked alone it keeps no note, and " +
+        "beside other picks the notes picked are kept.",
+    );
+    expect(learnings).not.toMatch(/[Ll]eave (them )?all unticked/);
   });
 });

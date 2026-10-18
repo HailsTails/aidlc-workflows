@@ -1,0 +1,317 @@
+[
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-path-operations.ts"
+    ],
+    "reason": "Structural CD19 location: defaultPathOperations/pathOperationsFor confines Node path and file-URL conversion behind named string-only PathOperations. Reviewer consumers use this existing adapter; no platform types are exported. The additional module-location capability is a deliberate reviewer-port paydown boundary decision."
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-harness-sidecar-file-reader.ts"
+    ],
+    "reason": "Structural CD19 location: defaultSidecarFileReader/defaultFileKindPort/defaultFileTextPort confines filesystem and temporary-directory runtime access. Review scripts and hermetic fixtures consume named text/file capabilities with production factories; no Node file/stat types are exported. Adding writes and temporary scratch lifecycle here reuses the existing filesystem boundary instead of opening a second Node fs wrapping site."
+  },
+  {
+    "files": [
+      "plugins/rin/tools/rin-gates/review-process-port.ts"
+    ],
+    "reason": "Structural CD19 location: defaultReviewProcessPort is the deliberate process boundary for reviewer entrypoints and hermetic subprocess fixtures. It confines Node child execution, environment, standard streams and termination; consumers receive string/status data and named capabilities, never ChildProcess or stream types."
+  },
+  {
+    "files": [
+      "plugins/discipline-core/core/platform-ports/git-port.ts"
+    ],
+    "reason": "Structural CD19 location: createGitPort holds the git argv, environment stripping, NUL splitting and failure mapping over an injected GitSpawn and ambient environment; defaultGitSpawn binds node:child_process spawnSync to that surface and createDefaultGitPort passes process.env as the ambient environment. Consumers receive RepoPath lists and GitFailure data in a Result, never Node types. git-port.test.ts fakes GitSpawn with vi.fn and passes a literal environment object. This is the single wrapping site for git subprocess execution in the discipline-core plugin.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does plugins/discipline-core/core/platform-ports/git-port.ts import or touch a platform runtime surface at all?",
+          "because": "Discipline-core's checker needs git subprocess execution, which only the runtime's node:child_process spawnSync and process.env provides.",
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Touched set defines GitPort and § Ports core depends on places it in core/platform-ports/; plugins/discipline-core/core/platform-ports/git-port.ts defaultGitSpawn."
+        },
+        {
+          "why": "Why is that runtime access not confined somewhere else, away from core logic?",
+          "because": "CD-19 requires every stdlib dependency to sit in exactly one wrapping port at the boundary, and this file is that port: the rest of core imports the port type, never the runtime.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/rin/knowledge/aidlc-shared/code-discipline/cd-020-node-stdlib-through-ports.md (collapsed into CD-19)."
+        },
+        {
+          "why": "Why does the default binding live in the same file as the port's logic?",
+          "because": "CD-21 requires each port to ship its default production factory co-located in its own module, so one canonical construction site exists per capability.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-021-ports-ship-default-factory.md; the lead's design ruling in rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3)."
+        },
+        {
+          "why": "Why can the port's logic still be unit-tested without real I/O?",
+          "because": "The logic is createGitPort over the injected GitSpawn and ambient environment; the tests inject a vi.fn GitSpawn returning literal GitRun objects and a literal environment, and only defaultGitSpawn and createDefaultGitPort touch node:child_process and process.env, which CD-47 keeps out of unit tests.",
+          "evidence": "plugins/discipline-core/core/platform-ports/git-port.test.ts (vi.fn<GitSpawn>() with literal GitRun values and AMBIENT_ENVIRONMENT); rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3) (CD-47 and CD-19/CD-20 in tests)."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
+          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; the audit's bare-import detector cannot tell a sanctioned wrapping site from a scattered import without this registry entry.",
+          "evidence": "bun run audit:rin reported CD-19/CD-20 on plugins/discipline-core/core/platform-ports/git-port.ts before this entry; rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on."
+        }
+      ],
+      "rootCause": "Discipline-core needs git subprocess execution from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
+  },
+  {
+    "files": [
+      "plugins/discipline-core/core/platform-ports/file-text-port.ts"
+    ],
+    "reason": "Structural CD19 location: createFileTextPort maps an injected FileSystemSurface's throws to unreadable/unwritable Result data and to a present/absent FilePresence; defaultFileSystemSurface binds node:fs readFileSync, writeFileSync and accessSync to that surface and createDefaultFileTextPort wires it. Consumers receive strings, FilePresence values and Result data, never Node types. file-text-port.test.ts fakes the surface with an object of vi.fn functions. This is the single wrapping site for file text reading, writing and presence in the discipline-core plugin.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does plugins/discipline-core/core/platform-ports/file-text-port.ts import or touch a platform runtime surface at all?",
+          "because": "Discipline-core's checker needs file text reading, writing and presence, which only the runtime's node:fs readFileSync, writeFileSync and accessSync provides.",
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on defines FileTextPort; plugins/discipline-core/core/platform-ports/file-text-port.ts defaultFileSystemSurface."
+        },
+        {
+          "why": "Why is that runtime access not confined somewhere else, away from core logic?",
+          "because": "CD-19 requires every stdlib dependency to sit in exactly one wrapping port at the boundary, and this file is that port: the rest of core imports the port type, never the runtime.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/rin/knowledge/aidlc-shared/code-discipline/cd-020-node-stdlib-through-ports.md (collapsed into CD-19)."
+        },
+        {
+          "why": "Why does the default binding live in the same file as the port's logic?",
+          "because": "CD-21 requires each port to ship its default production factory co-located in its own module, so one canonical construction site exists per capability.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-021-ports-ship-default-factory.md; the lead's design ruling in rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3)."
+        },
+        {
+          "why": "Why can the port's logic still be unit-tested without real I/O?",
+          "because": "The logic is createFileTextPort over the injected FileSystemSurface; the tests inject an object of vi.fn readText, writeText and access functions, and only defaultFileSystemSurface touches node:fs, which CD-47 keeps out of unit tests.",
+          "evidence": "plugins/discipline-core/core/platform-ports/file-text-port.test.ts (fileSystemOver builds the surface from vi.fn functions); rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3) (CD-47 and CD-19/CD-20 in tests)."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
+          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; the audit's bare-import detector cannot tell a sanctioned wrapping site from a scattered import without this registry entry.",
+          "evidence": "bun run audit:rin reported CD-19/CD-20 on plugins/discipline-core/core/platform-ports/file-text-port.ts before this entry; rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on."
+        }
+      ],
+      "rootCause": "Discipline-core needs file text reading, writing and presence from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
+  },
+  {
+    "files": [
+      "plugins/discipline-core/core/platform-ports/module-loader-port.ts"
+    ],
+    "reason": "Structural CD19 location: createModuleLoaderPort maps an injected ImportModule's resolution or rejection to module-unloadable Result data; defaultImportModule binds node:url pathToFileURL and dynamic import() to that surface and createDefaultModuleLoaderPort wires it. Consumers receive the loaded namespace as unknown inside a Result, never Node types. module-loader-port.test.ts fakes ImportModule with vi.fn. This is the single wrapping site for runner module loading in the discipline-core plugin.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does plugins/discipline-core/core/platform-ports/module-loader-port.ts import or touch a platform runtime surface at all?",
+          "because": "Discipline-core's checker needs runner module loading, which only the runtime's node:url pathToFileURL and dynamic import() provides.",
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on defines ModuleLoaderPort; plugins/discipline-core/core/platform-ports/module-loader-port.ts defaultImportModule."
+        },
+        {
+          "why": "Why is that runtime access not confined somewhere else, away from core logic?",
+          "because": "CD-19 requires every stdlib dependency to sit in exactly one wrapping port at the boundary, and this file is that port: the rest of core imports the port type, never the runtime.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/rin/knowledge/aidlc-shared/code-discipline/cd-020-node-stdlib-through-ports.md (collapsed into CD-19)."
+        },
+        {
+          "why": "Why does the default binding live in the same file as the port's logic?",
+          "because": "CD-21 requires each port to ship its default production factory co-located in its own module, so one canonical construction site exists per capability.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-021-ports-ship-default-factory.md; the lead's design ruling in rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3)."
+        },
+        {
+          "why": "Why can the port's logic still be unit-tested without real I/O?",
+          "because": "The logic is createModuleLoaderPort over the injected ImportModule; the tests inject a vi.fn ImportModule that resolves or rejects, and only defaultImportModule touches node:url and dynamic import(), which CD-47 keeps out of unit tests.",
+          "evidence": "plugins/discipline-core/core/platform-ports/module-loader-port.test.ts (vi.fn<ImportModule>() with mockResolvedValue and mockRejectedValue); rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3) (CD-47 and CD-19/CD-20 in tests)."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
+          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; the audit's bare-import detector cannot tell a sanctioned wrapping site from a scattered import without this registry entry.",
+          "evidence": "bun run audit:rin reported CD-19/CD-20 on plugins/discipline-core/core/platform-ports/module-loader-port.ts before this entry; rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on."
+        }
+      ],
+      "rootCause": "Discipline-core needs runner module loading from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
+  },
+  {
+    "files": [
+      "plugins/discipline-core/core/platform-ports/path-port.ts"
+    ],
+    "reason": "Structural CD19 location: createPathPort takes a required path flavour named by the project-owned union PathFlavour (\"posix\", \"windows\" or \"platform\"), maps it inside the module to node:path posix, win32 or the host default, and computes join, directoryOf, relative and resolve with that surface, joinRepository and repositoryDirectoryOf with node:path posix, and fromFileUrl with the URL global and node:url fileURLToPath, whose windows option follows the flavour. resolve and relative turn each relative argument absolute by calling the injected WorkingDirectory and passing its result first to the flavour's resolve, so that resolve itself would read process.cwd() only if the injected directory were relative; an absolute argument is normalised without calling it. join, directoryOf and fromFileUrl read no ambient state. defaultWorkingDirectory binds process.cwd() to WorkingDirectory, and createDefaultPathPort alone wires it and the \"platform\" flavour into createPathPort; every other caller names its flavour. The module exports no node:path value or type: consumers pass a flavour name and receive strings, AbsolutePath values, RelativeLocation and Result data, never Node types. path-port.test.ts fakes WorkingDirectory with vi.fn. This is the single wrapping site for path arithmetic and file-URL conversion in the discipline-core plugin.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does plugins/discipline-core/core/platform-ports/path-port.ts import or touch a platform runtime surface at all?",
+          "because": "Discipline-core's checker needs path arithmetic, resolution against the working directory and file-URL conversion, which the runtime provides through node:path (its posix, win32 and host-default flavours), node:url fileURLToPath and process.cwd().",
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on, as amended by § Amendments at Gate 5, A4, defines PathPort and says resolve reads the working directory only through its default factory; plugins/discipline-core/core/platform-ports/path-port.ts defaultWorkingDirectory and createDefaultPathPort."
+        },
+        {
+          "why": "Why is that runtime access not confined somewhere else, away from core logic?",
+          "because": "CD-19 requires every stdlib dependency to sit in exactly one wrapping port at the boundary, and this file is that port: the rest of core imports the port type, never the runtime.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/rin/knowledge/aidlc-shared/code-discipline/cd-020-node-stdlib-through-ports.md (collapsed into CD-19)."
+        },
+        {
+          "why": "Why does the default binding live in the same file as the port's logic?",
+          "because": "CD-21 requires each port to ship its default production factory co-located in its own module, so one canonical construction site exists per capability.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-021-ports-ship-default-factory.md; the lead's design ruling in rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3)."
+        },
+        {
+          "why": "Why can the port's logic still be unit-tested without real I/O?",
+          "because": "join, directoryOf and fromFileUrl compute from their arguments alone, so the tests assert them directly; resolve and relative obtain the working directory only by calling the injected WorkingDirectory, and only for a relative argument, so the tests fake it with vi.fn; the real process.cwd() is bound only by defaultWorkingDirectory, which CD-47 keeps out of unit tests.",
+          "evidence": "plugins/discipline-core/core/platform-ports/path-port.test.ts (workingDirectoryAt builds vi.fn<(request: Record<string, never>) => string>(); the resolve and relative tests assert it is called with {} for a relative argument and not called for absolute ones); rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3) (CD-47 and CD-19/CD-20 in tests)."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
+          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; the audit's bare-import detector cannot tell a sanctioned wrapping site from a scattered import without this registry entry.",
+          "evidence": "bun run audit:rin reported CD-19/CD-20 on plugins/discipline-core/core/platform-ports/path-port.ts before this entry; rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on."
+        }
+      ],
+      "rootCause": "Discipline-core needs path arithmetic and file-URL conversion from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
+  },
+  {
+    "files": [
+      "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.ts",
+      "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.test.ts"
+    ],
+    "reason": "Deliberate CD19 wrapping site for the ESLint-compatible CD14 plugin protocol used by ESLint and Oxlint. ESLint and Rule types stay at callback/registration boundaries; configuration consumers receive the owned ClassAuthoringPlugin model. The co-located RuleTester boundary exercises real JS and TypeScript ASTs under operator steer6164120778 item3 (2026-10-14 08:23), not an approval of this draft.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does this slice depend on the native plugin protocol?",
+          "because": "CD14 syntax findings must be produced inside the consumer's existing ESLint or Oxlint run.",
+          "evidence": "PR34 operator steer6163746811: native fragments and dedicated rule."
+        },
+        {
+          "why": "Why must the rule consume external callback and registration types?",
+          "because": "The engine supplies AST events and diagnostic reporting through its plugin protocol.",
+          "evidence": "plugins/rin/tools/native-lint/cd14/cd14.eslint-plugin.ts: noClassAuthoring and checkedPlugin."
+        },
+        {
+          "why": "Why confine those types in this file?",
+          "because": "Consumers can use the owned ClassAuthoringPlugin model without acquiring external ESLint types.",
+          "evidence": "plugins/rin/tools/native-lint/cd14.eslint.ts imports ClassAuthoringPlugin from the boundary."
+        },
+        {
+          "why": "Why permit a vendor import in the co-located contract test?",
+          "because": "Real parser-backed RuleTester cases verify ambient AST behavior instead of trusting hand-built nodes.",
+          "evidence": "https://github.com/HailsTails/aidlc-workflows/pull/34#issuecomment-6164120778 item3."
+        },
+        {
+          "why": "Why is the rule module's create(context) the one protocol boundary, with no inner diagnostic port?",
+          "because": "create(context) already receives the engine's filename and report callback, so the rule computes the pure classDisposition and calls context.report directly; an inner port would wrap the same boundary twice and was removed.",
+          "evidence": "https://github.com/HailsTails/aidlc-workflows/pull/34#issuecomment-6164191841 and its clause-by-clause answer: the port is removed; PR34 operator steer6166266007: keep one source."
+        }
+      ],
+      "rootCause": "Native lint engines own the plugin protocol, so this slice needs an explicit protocol boundary and a real-engine contract-test boundary to avoid distributing vendor coupling through its consumers.",
+      "owner": "Helen"
+    }
+  },
+  {
+    "files": [
+      "plugins/discipline-core/mechanisms/eslint/runner/eslint-instance.ts"
+    ],
+    "reason": "Structural CD19 location: eslint-instance.ts is the ESLint mechanism runner's single wrapping factory for the eslint package and @typescript-eslint/parser. It constructs the query and governance ESLint instances, runs lintFiles, lintText and calculateConfigForFile, and maps results into the runner's own types (EslintPort, QueryInstance, GovernanceInstance, LintedFile, LintedMessage) and Zod-parsed resolved-config and plugin schemas. Core and pieces receive RepoPath values, runner hit data and Result failures, never ESLint classes or types. create-eslint-runner.ts depends on the EslintPort it exports, and the unit tests fake the injected CreateEslint surface. This is the one place the discipline-core plugin binds the eslint runtime.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does eslint-instance.ts import eslint at all?",
+          "because": "The ESLint mechanism checks a clause by running it as an ESLint rule inside the team's own ESLint setup, which needs the eslint runtime and its TypeScript parser.",
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § ESLint runner (ESLint instance port); plugins/discipline-core/mechanisms/eslint/runner/eslint-instance.ts:2-3."
+        },
+        {
+          "why": "Why is that runtime import not spread across the runner?",
+          "because": "CD-19 requires a third-party dependency to sit in one wrapping factory at the boundary; this file is that factory and the rest of the runner depends on its EslintPort.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/discipline-core/mechanisms/eslint/runner/create-eslint-runner.ts imports only port types from ./eslint-instance.ts."
+        },
+        {
+          "why": "Why does the audit now flag it when it did not before?",
+          "because": "PR #34 (bb7a11e) added eslint to the audit's banned-import list, so a sanctioned wrapping site needs a recorded entry to be told apart from a scattered import.",
+          "evidence": "plugins/rin/tools/constitution-audit/audit-constitution.ts BANNED_THIRD_PARTY_IMPORTS gains \"eslint\" in bb7a11e; bun run audit:rin reported CD-19 on this file after the merge."
+        },
+        {
+          "why": "Why is the runner's logic still unit-tested without the real ESLint?",
+          "because": "create-eslint-runner.ts takes the EslintPort and eslint-instance.ts takes an injected CreateEslint, both faked in unit tests; real ESLint runs only in the integration suite, where ESLint's own behaviour is the subject (CD-47).",
+          "evidence": "plugins/discipline-core/mechanisms/eslint/runner/create-eslint-runner.test.ts; plugins/discipline-core/mechanisms/eslint/runner/eslint-instance.test.ts; plugins/discipline-core/mechanisms/eslint/runner/native-exceptions.integration.test.ts."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
+          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; only the audit's specifier list cannot tell it apart without this entry.",
+          "evidence": "bun run audit:rin on chunk 2 after merging bb7a11e."
+        }
+      ],
+      "rootCause": "The ESLint mechanism needs the eslint runtime, and CD-19 places it in one wrapping factory that the audit's specifier list cannot distinguish from an unconfined import.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
+  },
+  {
+    "files": [
+      "plugins/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts"
+    ],
+    "reason": "Structural CD19 location for the CD-14 ESLint piece: the file imports only types (import type { ESLint, Rule }) from eslint to declare its rule module in ESLint's plugin protocol, which the runner loads. It has no runtime eslint import. FR-8 lets a piece type-import only the packages its runner lists, and mechanisms/eslint/runner/piece-type-packages.json lists exactly [\"eslint\"]; core's piece-import check enforces that. The piece's tests run cases through the runner's lintSourceCases, never through eslint or RuleTester directly.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does the CD-14 ESLint piece import from eslint?",
+          "because": "A piece is a vendor plugin: the rule must be typed in ESLint's own rule-module protocol to be loaded by ESLint.",
+          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Piece files as vendor plugins; cd14.eslint-plugin.ts:1."
+        },
+        {
+          "why": "Why is a type-only import allowed here?",
+          "because": "FR-8 permits a piece type-only imports of packages its runner lists, and the ESLint runner lists eslint.",
+          "evidence": "plugins/discipline-core/mechanisms/eslint/runner/piece-type-packages.json; plugins/discipline-core/core/check/piece-import-rules.ts."
+        },
+        {
+          "why": "Why was no entry needed before?",
+          "because": "The audit's banned list did not include eslint until PR #34 added it, so the type-only import passed unflagged (G4C-44).",
+          "evidence": "plugins/rin/tools/constitution-audit/audit-constitution.ts in bb7a11e."
+        },
+        {
+          "why": "Why not route the types through a project-owned port instead?",
+          "because": "ESLint loads the piece file itself and calls the exported rule module by its own protocol, so the module's shape is ESLint's contract; a project-owned type in front of it could only restate ESLint's types, not replace them. Where the rule's diagnostics are reported is a separate question (PR #34 review 5530609166) and does not change the exported shape.",
+          "evidence": "rin-interface-lock.md § Piece files as vendor plugins; mechanisms/eslint/runner/eslint-instance.ts loads the piece as an ESLint plugin; HailsTails/aidlc-workflows#34 review 5530609166."
+        },
+        {
+          "why": "Why record it rather than change it?",
+          "because": "The type-only import is the sanctioned shape under FR-8, so the file is not in debt; the entry lets the audit tell it apart.",
+          "evidence": "bun run audit:rin on chunk 2 after merging bb7a11e."
+        }
+      ],
+      "rootCause": "A piece must be typed in its tool's plugin protocol, and the audit's specifier list cannot see that the import is type-only and FR-8-sanctioned.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
+  },
+  {
+    "files": [
+      "plugins/discipline-core/scripts/install-proof-ports.ts"
+    ],
+    "reason": "Structural CD19 location: createScratchFilesPort holds temporary-directory creation and removal, filtered tree copy, file removal and tree listing over an injected ScratchFilesSurface, and createCommandRunPort holds the git/npm/node command mapping, the GIT_-free child environment and the win32 npm shell launch over an injected CommandSpawn, platform, executable path and ambient environment; defaultScratchFilesSurface binds node:fs, node:os and node:path to that surface, defaultCommandSpawn binds node:child_process spawnSync, and createDefaultCommandRunPort passes process.platform, process.execPath and process.env. Consumers receive EffectFailure data in a Result and StepRun values, never Node types. install-proof-ports.test.ts fakes both surfaces with vi.fn and literal values. This is the single wrapping site for the install proof's filesystem and subprocess effects; scripts/install-proof.ts only wires default factories into scripts/run-install-proof.ts.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does plugins/discipline-core/scripts/install-proof-ports.ts import or touch a platform runtime surface at all?",
+          "because": "The install proof's subject is a real install: it must create and remove an OS temporary directory, copy the listed paths with the README's exclusions, list the copied install, and spawn real git, npm and node with a GIT_-free environment, which only node:fs, node:os, node:path, node:child_process and process.platform, process.execPath and process.env provide.",
+          "evidence": "plugins/discipline-core/README.md § Developing core, install-proof row; plugins/discipline-core/scripts/install-proof-ports.ts defaultScratchFilesSurface, defaultCommandSpawn and createDefaultCommandRunPort; bun run --cwd plugins/discipline-core install-proof printed ten ok lines and `install proof: pass` with exit 0."
+        },
+        {
+          "why": "Why is that runtime access not confined somewhere else, away from the proof's logic?",
+          "because": "CD-19 requires every stdlib dependency to sit in exactly one wrapping port at the boundary, and this file is that port: scripts/run-install-proof.ts and scripts/install-proof.ts import its port types and default factories, never the runtime; core's platform ports are not widened because they ship to consumers whole and none creates a temporary directory, copies a tree or spawns npm or node.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/discipline-core/core/check/vendor-imports.test.ts (installProofPortSources pinned to relative and node: imports; scripts/install-proof.ts and scripts/run-install-proof.ts scanned with sourcesOutsideMechanisms, relative and zod only); plugins/discipline-core/core/platform-ports/git-port.ts (GitPort: trackedPaths, changedSince only)."
+        },
+        {
+          "why": "Why does the default binding live in the same file as the port's logic?",
+          "because": "CD-21 requires each port to ship its default production factory co-located in its own module, so one canonical construction site exists per capability, as core's createDefaultGitPort and createDefaultFileTextPort do.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-021-ports-ship-default-factory.md; plugins/discipline-core/core/platform-ports/git-port.ts createDefaultGitPort; plugins/discipline-core/core/platform-ports/file-text-port.ts createDefaultFileTextPort."
+        },
+        {
+          "why": "Why can the port's logic and the proof's orchestration still be unit-tested without real I/O?",
+          "because": "The logic is createScratchFilesPort and createCommandRunPort over injected surfaces, and the orchestration is runInstallProof over injected ports; install-proof-ports.test.ts injects vi.fn surfaces with a literal platform, executable path and environment, run-install-proof.test.ts fakes every port, and only the default surface, spawn and factories touch node: modules and process, which CD-47 keeps out of unit tests.",
+          "evidence": "plugins/discipline-core/scripts/install-proof-ports.test.ts; plugins/discipline-core/scripts/run-install-proof.test.ts; plugins/discipline-core/scripts/install-proof.test.ts (entry source pinned as raw wiring text); plugins/rin/knowledge/aidlc-shared/code-discipline/cd-047-tests-are-hermetic.md."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
+          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; the audit's bare-import detector cannot tell a sanctioned wrapping site from a scattered import without this registry entry.",
+          "evidence": "bun run audit:rin reports CD-20 bare node: stdlib imports (node:child_process, node:fs, node:os, node:path) at plugins/discipline-core/scripts/install-proof-ports.ts:1-4 without this entry; the Gate-5 review of rin record 261014-discipline-core-foundati required the install proof's process and filesystem effects behind injected ports (CD-18) with co-located tests (CD-23)."
+        }
+      ],
+      "rootCause": "The install proof needs real filesystem and subprocess effects from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
+      "owner": "rin record 261014-discipline-core-foundati"
+    }
+  }
+]

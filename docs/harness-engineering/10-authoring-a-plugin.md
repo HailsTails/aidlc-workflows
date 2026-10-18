@@ -247,21 +247,72 @@ body after an engine reinstall. Two authoring rules follow from that:
 
 ### Engine upgrade lifecycle
 
-An engine reinstall copies the stock `dist/<harness>/` graph and core stage
-sources over the effective install. Plugin-namespaced files and contribution
-sidecars can survive that overlay while their graph entries and structural or
-prose contribution merges disappear. Authors should make re-composition part of
-their upgrade instructions: run `/aidlc plugin sync` after every engine
-reinstall or upgrade (or start a new session on a host with the plugin compose
-hook). Composition is idempotent, so this restores the same effective surface
-without duplicating unchanged contributions. `/aidlc --doctor` reports the
-broken state as **Composed plugin surface**. The check fails closed when an
-enabled plugin's sidecar is unreadable or malformed, a recorded target stage no
-longer exists, or a recorded structural or prose contribution is absent or
-changed. Consume records preserve and verify `artifact`, `required`, and optional
-`conditional_on`; artifact-only records from older sidecars remain compatible. An
-invalid sidecar cannot be reconstructed safely from an already-composed stage:
-refresh the stock engine, remove that sidecar, then run `plugin sync`.
+Use the **stock core projection** as `config --from` input, then run ordinary
+plugin sync from the installed plugin inventory or each explicitly bound plugin
+root. Do not pass a projection already composed with plugins to the core
+installer: their payloads and stamps have separate ownership. Core refresh
+preserves unchanged plugin-owned files and recorded contributions while
+compiling the combined graph; plugin sync upgrades plugin payloads through its
+own ownership hashes and transaction. Modified owned files refuse rather than
+being overwritten. Repeat stock core refresh after sync to verify durability.
+
+A normal core install or refresh records ownership of the root orchestrator
+skill's prose outside its two unique generated table regions. Later composition
+and cross-release table changes can regenerate those regions without acquiring
+user-edited prose. Missing or duplicate regions and unrelated prose edits remain
+conflicts. A legacy install without this proof can first refresh from its exact
+previous **stock** package using the current installer, then refresh from the
+candidate stock package. That bridge is a real installer transaction; stop if
+either ordinary plan conflicts. No baseline is reconstructed by hand.
+
+`/aidlc --doctor` reports missing or changed recorded contributions as
+**Composed plugin surface**. It fails closed when an enabled plugin's sidecar is
+unreadable or malformed, a recorded target stage is gone, or a recorded
+structural/prose contribution is absent or changed. Consume records preserve
+`artifact`, `required`, and optional `conditional_on`; older artifact-only
+records remain compatible. Never reconstruct an invalid sidecar from a stage
+that is already composed.
+
+### Adopting existing direct sensor additions
+
+Older guidance recommended editing an installed stock stage's `sensors:` list.
+Keep the existing bindings in place and author a local contribution-only plugin
+with `adds.sensors` declaring exactly the added IDs. Use the existing plugin
+builder to produce its normal host projection; the builder supplies the
+maintained composer, so do not vendor another compose implementation. The
+sensor implementations must already be installed.
+
+1. Bind the installed local plugin root (or use its real host inventory), then
+   run `aidlc engine plugin select aidlc,rin,<local-plugin>` with the complete
+   existing selection plus the new plugin. Selection recognizes validated,
+   enabled installed identities before their first composition.
+2. Run `aidlc engine plugin sync` with that root/inventory. Already-present,
+   unrecorded sensor additions are adopted only when removing exactly those
+   declared IDs reproduces the actual recorded core stage hash. The stage stays
+   intact. The real composer records ordinary `sensors` ownership plus
+   `sensor_adoption` provenance identifying the prior baseline and adopted IDs.
+   This records present adoption, not historical insertion. A declaration that
+   also lists stock IDs, omits a manual addition, or accompanies unrelated stage
+   edits cannot earn that proof; normal refresh still refuses those edits.
+3. Preview normal `config --from <stock-core> --project-dir <project> --dry-run`.
+   With open workflows, add the existing `--refresh-open-workflows` flag and
+   retain its compatibility checks. Review and apply the emitted plan with its
+   `--plan-token`; stop on conflicts or incompatible completion contracts.
+4. Sync candidate Rin and local plugins through their ordinary lifecycle, then
+   preview and apply another stock core refresh. Verify the same ordered sensor
+   bindings and plugin selection, separate core/plugin ownership, and unchanged
+   workflow and approval policy. No force, transient sensor removal, trust
+   change, or handwritten receipt is part of this sequence.
+
+For a Bun copy install, replace `aidlc engine plugin select` with
+`bun <candidate-core>/.codex/tools/aidlc-utility.ts select-plugins` and
+`aidlc engine plugin sync` with
+`bun <candidate-core>/.codex/tools/aidlc-plugin.ts sync --project-dir <project>`.
+Bind `AIDLC_PROJECT_DIR`, `AIDLC_HARNESS_DIR=.codex`, and the plugin root for each
+process; any existing root aliases must name that same projection. Run the
+candidate core's `aidlc-init.ts config` for refresh. Other harnesses use their
+emitted tool directory. Producer checks do not approve a stage gate or establish
+native automatic sensor delivery in a live host.
 
 ## 4. Packaging the other primitives
 
@@ -279,6 +330,7 @@ projection remains deferred (doc 18 §9 Status).
   creates the native `.opencode/agents/` subagent twin and denies nested
   `task` delegation. See
   [Adding an Agent](03-adding-an-agent.md).
+  On Kiro CLI, a natively dispatched plugin roster worker's hand-authored agent-v1 JSON must also include `file://aidlc/spaces/<active-space>/memory/**/*.md` in its `resources` array, resolving to at least one existing Markdown file, because plugin workers receive the same active-stage rules as core workers.
 - **Sensors.** Ship the manifest `sensors/aidlc-<id>.md` **and** its script under
   `tools/` (both — a manifest alone is discoverable but its script must live in
   `tools/` to run). The `aidlc-<id>.md` name at the top of `sensors/` is a hard
@@ -322,9 +374,9 @@ runs only while the plugin is enabled. It receives `AIDLC_PROJECT_DIR`,
 without other stdout:
 
 Doctor discovery derives installed plugin identities from owned stage and scope
-metadata. A plugin must therefore own at least one stage or scope for its doctor
-script to be discoverable; a tools-, sensors-, or knowledge-only plugin is not
-enough on its own.
+metadata and from the composition sidecars under `tools/data/`. A plugin whose
+compose merged contributions (sensors, produces, overlays) is discoverable even
+when it owns no stage or scope.
 
 ```typescript
 import { existsSync } from "node:fs";
@@ -349,6 +401,20 @@ Omit `severity` for the default `error` behavior. Use `advisory` for a visible
 finding that must not fail doctor. Keep the script read-only and dependency-free;
 doctor bounds its runtime/output and turns script failures into diagnostic rows.
 
+For copied Codex installs, core rules enumerate packaged tool paths recursively.
+Plugin sync generates `.codex/rules/aidlc-plugin-<name>.rules` from that plugin's
+existing composed-file ownership record, so tools such as
+`rin-gates/rin-gates-review-roster.ts` and `test-pro-doctor.ts` need no filename
+prefix convention. The rule matches the exact Bun/file argv prefix and permits
+trailing tool arguments and flags. Bun script extensions (`.ts`, `.js`, `.mts`,
+`.cts`, `.mjs`, `.cjs`, `.tsx`, `.jsx`) are supported. Tests, specs, declaration files, vendor/cache
+content and unsafe paths receive no grant. A plugin upgrade refreshes its rule;
+deselection or explicit prune removes it with its other owned files. Consumer
+rules are preserved, and a conflicting unowned rule file stops sync. Unregistered
+consumer scripts require their own reviewed consumer policy. Refresh core and
+then run ordinary plugin sync after the active session ends; do not replace
+permission files under a running consumer session.
+
 ## 5. Distribution + install
 
 The shipped builder emits your plugin as **a real host plugin** for one harness
@@ -362,8 +428,13 @@ bun <tools-dir>/aidlc-plugin-build.ts <plugin-root> <harness> [outDir]
 
 The default output is `<plugin-root>/dist/<harness>/`. Run it once for each
 harness you publish. The repository packager uses the same emitter to build
-first-party `dist/plugins/<name>/<harness>/` trees, so its byte-parity guard also
-guards external builds. Publish the output to a git repo with semver tags and a
+first-party copy-channel `dist/plugins/<name>/<harness>/` trees and native
+`dist-release/plugins/<name>/<harness>/` trees. Core engine invocations in
+native plugin instructions and hook registrations use the same channel-aware
+invocation projection as core; copy-channel instructions retain Bun commands.
+Each runtime archive takes plugins from its own channel tree. Contributed
+script execution remains the host runner contract: runtime companions do not
+make arbitrary plugin hooks native executables. Publish the output to a git repo with semver tags and a
 `marketplace.json`; teams then install through the host's native commands.
 
 The repository packager bundles runtime package dependencies without requiring
@@ -371,7 +442,13 @@ consumer npm installation. For package-importing TypeScript modules, the
 original `.ts` path becomes a static export facade backed by
 `<stem>.runtime.js` and the compiler-generated `<stem>.runtime.d.ts`.
 Direct invocation through the original path retains its entry-point status
-and module URL; unsupported `import.meta` forms refuse packaging.
+and module URL; unsupported `import.meta` forms refuse packaging. Pinned esbuild
+bundles dependencies at the source boundary. CommonJS dependency `__dirname`
+and `__filename` resolve to the emitted runtime companion's location, rather
+than embedding the build checkout's absolute paths. Dependencies that require
+unbundled sibling runtime assets need an explicit packaging contract before use.
+The output-root `--check` guard remains useful; cross-checkout regression tests
+also exercise distinct dependency roots and execution after relocation.
 
 When exported types depend on a package, its exact resolved declaration graph,
 package identity, and license ship under
@@ -409,8 +486,10 @@ there, writes `plugin-compose-<key>.json` and hash-proven
 `plugin-owned-<key>.json`, then commits the staged diff through the shared
 transaction engine. A fault restores all files, modes, stamps, and ownership
 records. `--prune-missing` is intentionally stricter: it requires a proved full
-host inventory, explicit confirmation (`--yes` in automation), and unchanged
-owned hashes; local or unowned bytes are refused.
+host inventory, `--yes` in automation, and unchanged owned hashes; local or
+unowned bytes are refused. At a terminal it asks nothing: it names the plugins
+it prunes and how to get them back (reinstall in the host, then sync), then
+prunes.
 
 ### Project selection
 
@@ -449,10 +528,10 @@ AIDLC_PLUGIN_ROOT="<plugin-root>" AIDLC_PROJECT_DIR="<project>" \
 # open in Kiro IDE or kiro-cli chat → /aidlc
 ```
 
-> **Kiro note.** Use the `kiro-ide` projection for Kiro IDE >= 1.0; its folder-drop
+> **Kiro note.** Use the `kiro-ide` projection for Kiro IDE 1.x or Kiro CLI v3; its folder-drop
 > includes a v2 `.kiro/hooks/aidlc-<plugin>-compose.json` SessionStart registration
 > that runs the cross-platform `hooks/aidlc-plugin-compose.ts` Bun launcher from
-> the workspace root. The `kiro` projection for Kiro CLI emits no hook registration,
+> the workspace root. The `kiro` projection emits no hook registration,
 > so run one of the explicit composer commands above. Neither projection emits the
 > retired `.kiro.hook` plugin registration.
 

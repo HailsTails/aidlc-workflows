@@ -6,11 +6,15 @@
     "plugins/*/tests/**/*.ts"
   ],
   "exclude": [
+    // Debug evidence can contain complete isolated worker checkouts and retained fixtures.
+    "tests/logs/**",
     // Standalone React/Vite fixture dependencies are not installed at the repository root.
     "tests/fixtures/brownfield-todo/**",
     // This fixture must produce a real compiler diagnostic for the sensor test.
     "tests/fixtures/v05-mr9-sensor-fire/failing-type-check/**",
     // Byte-exact 2.8.0 release adapter (imports siblings it does not ship with); exercised by execution, not typecheck.
-    "tests/fixtures/copilot-adapter-2.8.0/**"
+    "tests/fixtures/copilot-adapter-2.8.0/**",
+    // Checked by its own package scripts (`bun run --cwd plugins/discipline-core check`) with its own tsconfig.
+    "plugins/discipline-core/**"
   ]
 }

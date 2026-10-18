@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
+import ts from "typescript";
 import { exportSurfaceOf } from "./export-surface.js";
 import { walkSourceFiles } from "./walk-source-files.js";
 
@@ -52,6 +53,7 @@ const FORBIDDEN_FOLDERS: readonly string[] = [
 ];
 
 const BANNED_THIRD_PARTY_IMPORTS: readonly string[] = [
+  "eslint",
   "winston",
   "winston-transport",
   "better-sqlite3",
@@ -202,7 +204,7 @@ const checkBannedImports = (
           rule: "CD-19",
           file: filePath,
           line: lineNumber,
-          snippet: `banned third-party import: ${bannedSpecifier} — use the kernel port package`,
+          snippet: `banned third-party import: ${bannedSpecifier} — use its recorded wrapping boundary`,
         }),
       ),
     );
@@ -210,16 +212,51 @@ const checkBannedImports = (
 const checkNodeStdlibImports = (
   filePath: string,
   content: string,
-): readonly ConstitutionViolation[] =>
-  splitLines(content)
-    .map((line, index) => ({ line, lineNumber: index + 1 }))
-    .filter(({ line }) => /from\s+["']node:[a-z/]+["']/.test(line))
-    .map(({ line, lineNumber }) => ({
+): readonly ConstitutionViolation[] => {
+  const source = ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const findings: ConstitutionViolation[] = [];
+  const record = (specifier: ts.Expression | undefined): void => {
+    if (
+      specifier === undefined ||
+      !ts.isStringLiteralLike(specifier) ||
+      !specifier.text.startsWith("node:")
+    ) return;
+    const line = source.getLineAndCharacterOfPosition(specifier.getStart(source)).line + 1;
+    findings.push({
       rule: "CD-20",
       file: filePath,
-      line: lineNumber,
-      snippet: `bare node: stdlib import — use the kernel port package: ${line.trim()}`,
-    }));
+      line,
+      snippet: `bare node: stdlib import - use the kernel port package: ${specifier.text}`,
+    });
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      record(node.moduleSpecifier);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      record(node.argument.literal);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference)
+    ) {
+      record(node.moduleReference.expression);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+    ) {
+      record(node.arguments[0]);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return findings;
+};
 
 const checkObjectFromEntries = (
   filePath: string,
@@ -237,7 +274,7 @@ const checkObjectFromEntries = (
 
 const BARE_TODO_PATTERN = /\/\/\s*TODO\b(?!\s*\()/;
 
-const BARE_BIOME_IGNORE_PATTERN = /\/\/\s*biome-ignore\b(?!.*\(spec-\d+\))/;
+
 
 const BARE_TS_EXPECT_ERROR_PATTERN =
   /\/\/\s*@ts-expect-error\b(?!.*\(spec-\d+\))/;
@@ -256,20 +293,46 @@ const checkBareTodoAnnotation = (
       snippet: line.trim(),
     }));
 
-const checkBareBiomeIgnoreAnnotation = (
+const LINTER_DIRECTIVE_PATTERN =
+  /^(?:\/\/|\/\*)\s*((?:biome-ignore(?:-all|-start|-end)?|(?:eslint|oxlint)-(?:disable(?:-line|-next-line)?|enable)|eslint(?=\s)))\b/;
+
+const commentRangesOf = (content: string): readonly ts.CommentRange[] => {
+  const source = ts.createSourceFile(
+    "directive.tsx",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const collect = (node: ts.Node): readonly ts.CommentRange[] => [
+    ...(ts.getLeadingCommentRanges(content, node.pos) ?? []),
+    ...(ts.getTrailingCommentRanges(content, node.end) ?? []),
+    ...node.getChildren(source).flatMap(collect),
+  ];
+  return [...new Map(collect(source).map((range) => [range.pos, range])).values()];
+};
+
+const checkBareLinterDirectiveAnnotation = (
   filePath: string,
   content: string,
 ): readonly ConstitutionViolation[] =>
-  splitLines(content)
-    .map((line, index) => ({ line, lineNumber: index + 1 }))
-    .filter(({ line }) => BARE_BIOME_IGNORE_PATTERN.test(line))
-    .map(({ line, lineNumber }) => ({
-      rule: "CD-5 (bare `// biome-ignore` — require `(spec-NNN)` tracker reference)",
+  commentRangesOf(content)
+    .map((range) => ({ range, comment: content.slice(range.pos, range.end) }))
+    .map(({ range, comment }) => ({
+      range,
+      comment,
+      directive: LINTER_DIRECTIVE_PATTERN.exec(comment)?.[1],
+    }))
+    .filter(
+      ({ comment, directive }) =>
+        directive !== undefined && !/\(spec-\d+\)/.test(comment),
+    )
+    .map(({ range, comment, directive }) => ({
+      rule: `CD-5 (bare \`// ${directive}\` - require \`(spec-NNN)\` tracker reference)`,
       file: filePath,
-      line: lineNumber,
-      snippet: line.trim(),
+      line: splitLines(content.slice(0, range.pos)).length,
+      snippet: comment.trim(),
     }));
-
 const checkBareTsExpectErrorAnnotation = (
   filePath: string,
   content: string,
@@ -349,7 +412,7 @@ const auditSrcFile = (filePath: string): readonly ConstitutionViolation[] => {
     ...checkNodeStdlibImports(filePath, content),
     ...checkObjectFromEntries(filePath, content),
     ...checkBareTodoAnnotation(filePath, content),
-    ...checkBareBiomeIgnoreAnnotation(filePath, content),
+    ...checkBareLinterDirectiveAnnotation(filePath, content),
     ...checkBareTsExpectErrorAnnotation(filePath, content),
   ];
 };
@@ -362,9 +425,11 @@ const auditScriptFile = (
     ...checkCategoricalFilenames(filePath),
     ...checkCategoricalFolders(filePath),
     ...checkClassDeclarations(filePath, content),
+    ...checkBannedImports(filePath, content),
+    ...checkNodeStdlibImports(filePath, content),
     ...checkObjectFromEntries(filePath, content),
     ...checkBareTodoAnnotation(filePath, content),
-    ...checkBareBiomeIgnoreAnnotation(filePath, content),
+    ...checkBareLinterDirectiveAnnotation(filePath, content),
     ...checkBareTsExpectErrorAnnotation(filePath, content),
   ];
 };
@@ -372,8 +437,11 @@ const auditScriptFile = (
 const auditConstitution = ({
   service,
 }: AuditConstitutionArgs): AuditConstitutionReport => {
-  const srcFiles = enumerateSourceFiles(service.srcRoot);
   const scriptFiles = enumerateSourceFiles(service.scriptsRoot);
+  const scriptFileSet = new Set(scriptFiles);
+  const srcFiles = enumerateSourceFiles(service.srcRoot).filter(
+    (filePath) => !scriptFileSet.has(filePath),
+  );
   const uiFiles = enumerateTsxFiles(service.uiSrcRoot);
   const srcViolations = srcFiles.flatMap(auditSrcFile);
   const scriptViolations = scriptFiles.flatMap(auditScriptFile);

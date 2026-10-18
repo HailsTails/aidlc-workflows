@@ -20,6 +20,7 @@
 // prose fragments spliced) into stage SOURCE — durable across recompiles;
 // (3) recompile the graph. Idempotent + short-circuits when nothing changed.
 
+import { createHash } from "node:crypto";
 import {
   existsSync,
   lstatSync,
@@ -34,7 +35,6 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ProjectedPluginHookContributions } from "../../core/tools/aidlc-plugin-hook-registrations.ts";
-import { createHash } from "node:crypto";
 
 const PLUGIN_ROOT =
   process.env.CLAUDE_PLUGIN_ROOT ||
@@ -67,6 +67,28 @@ const HARNESS_NAME = (() => {
   }
   return HARNESS_LEAF.replace(/^\./, "");
 })();
+// Whether the .kiro tree is the KAS layout (Markdown agents, standalone hook
+// JSON) rather than the agent-v1 JSON layout. Same reading as the runtime's
+// kiroTreeLayout (core/tools/aidlc-runtime-paths.ts), which this template ships
+// without: harness.json's kiroLayout, else the row name trees carried before it,
+// else the conductor file. `kiro-ide` names only the KAS adapter.
+const KIRO_KAS_LAYOUT = (() => {
+  if (HARNESS_LEAF !== ".kiro") return false;
+  if (process.env.AIDLC_HARNESS_NAME?.trim() === "kiro-ide") return true;
+  try {
+    const parsed = JSON.parse(
+      readFileSync(join(HARNESS_DIR, "tools", "data", "harness.json"), "utf-8"),
+    ) as { kiroLayout?: unknown; name?: unknown; distribution?: unknown };
+    if (parsed.kiroLayout === "kas" || parsed.kiroLayout === "agent-v1") {
+      return parsed.kiroLayout === "kas";
+    }
+    const row = typeof parsed.name === "string" ? parsed.name : parsed.distribution;
+    if (row === "kiro-ide" || row === "kiro") return row === "kiro-ide";
+  } catch {
+    // A tree without readable metadata still has its conductor file.
+  }
+  return existsSync(join(HARNESS_DIR, "agents", "aidlc.md"));
+})();
 const IS_COPILOT = HARNESS_NAME === "copilot";
 const IS_OPENCODE = HARNESS_NAME === "opencode";
 const STAGES_DIR = join(HARNESS_DIR, "aidlc-common", "stages");
@@ -76,13 +98,14 @@ const SKILLS_DIR = HARNESS_NAME === "codex"
     ? join(PROJECT_DIR, ".github", "skills")
     : join(HARNESS_DIR, "skills");
 const PHASES = ["initialization", "ideation", "inception", "construction", "operation"];
-const COMPOSE_LOCK_RETRIES = 600;
 const NATIVE_RUNTIME = Boolean(process.env.AIDLC_COMPILED_EXECUTABLE?.trim());
 const SCOPE_TABLE_END = "<!-- END: compiled scope grid -->";
 const STAGE_TABLE_END = "<!-- END: compiled stage graph -->";
 type ParseStageFrontmatter = (raw: string) => Record<string, unknown>;
 interface InstalledAidlcLib {
   hooksHealthDir?: (projectDir: string) => string;
+  writeHookStatusFile?: (healthDir: string, fileName: string, data: string) => boolean;
+  removeHookStatusFile?: (healthDir: string, fileName: string) => boolean;
   parseStageFrontmatter?: ParseStageFrontmatter;
   acquireAuditLock?: (
     projectDir: string,
@@ -106,6 +129,19 @@ function installedAidlcLib(): Promise<InstalledAidlcLib | null> {
     .then((module) => module as InstalledAidlcLib)
     .catch(() => null);
   return installedLibPromise;
+}
+
+async function composeLockRetries(): Promise<number> {
+  // Resolve from the installed engine: this template is copied into plugins,
+  // so repository-relative imports would break emitted hooks.
+  try {
+    const budget = await import(join(HARNESS_DIR, "tools", "aidlc-runtime-budget.ts"));
+    if (Number.isSafeInteger(budget.LONG_SUBPROCESS_TIMEOUT_MS) &&
+      budget.LONG_SUBPROCESS_TIMEOUT_MS > 0) {
+      return Math.ceil(budget.LONG_SUBPROCESS_TIMEOUT_MS / 100);
+    }
+  } catch { /* Older source installs do not contain the shared policy module. */ }
+  return 9000; // Fifteen-minute compatibility backstop, at the existing 100ms cadence.
 }
 
 function installedStageSchema(): Promise<InstalledStageSchema | null> {
@@ -244,15 +280,37 @@ function recordInstalledToolPayloadDrop(reason: string): void {
 // — a clean plugin's compose (or an early-exit guard) deleted another plugin's
 // live degraded drop, so doctor went green (round-6). Per-plugin files isolate
 // each plugin's signal; doctor globs `*.drops` and aggregates them all.
+// The file goes through the installed engine's hook status writer and
+// remover, which go through no link inside the record; an engine from before
+// them keeps the plain write and removal until it is upgraded.
+async function writeDropFile(healthDir: string, fileName: string, data: string): Promise<void> {
+  const lib = await installedAidlcLib();
+  if (typeof lib?.writeHookStatusFile === "function") {
+    lib.writeHookStatusFile(healthDir, fileName, data);
+    return;
+  }
+  mkdirSync(healthDir, { recursive: true });
+  writeFileSync(join(healthDir, fileName), data, { flag: "w" });
+}
+
+async function removeDropFile(healthDir: string, fileName: string): Promise<void> {
+  const lib = await installedAidlcLib();
+  if (typeof lib?.removeHookStatusFile === "function") {
+    lib.removeHookStatusFile(healthDir, fileName);
+    return;
+  }
+  const dropFile = join(healthDir, fileName);
+  if (existsSync(dropFile)) rmSync(dropFile, { force: true });
+}
+
 async function flushDrops(): Promise<void> {
   try {
     const healthDir = await resolveHealthDir();
-    const dropFile = join(healthDir, `plugin-compose-${PLUGIN_KEY}.drops`);
+    const dropName = `plugin-compose-${PLUGIN_KEY}.drops`;
     if (_drops.length === 0) {
-      if (existsSync(dropFile)) rmSync(dropFile, { force: true });
+      await removeDropFile(healthDir, dropName);
     } else {
-      mkdirSync(healthDir, { recursive: true });
-      writeFileSync(dropFile, _drops.map((l) => l + "\n").join(""), { flag: "w" });
+      await writeDropFile(healthDir, dropName, _drops.map((l) => l + "\n").join(""));
     }
   } catch { /* truly non-fatal */ }
   _drops.length = 0;
@@ -263,19 +321,11 @@ async function flushInstalledToolPayloadDrops(): Promise<void> {
   if (!installedToolPayloadAuditRan) return;
   try {
     const healthDir = await resolveHealthDir();
-    const dropFile = join(
-      healthDir,
-      `plugin-compose-installed-tool-payloads-${HARNESS_KEY}.drops`,
-    );
+    const dropName = `plugin-compose-installed-tool-payloads-${HARNESS_KEY}.drops`;
     if (_installedToolPayloadDrops.length === 0) {
-      if (existsSync(dropFile)) rmSync(dropFile, { force: true });
+      await removeDropFile(healthDir, dropName);
     } else {
-      mkdirSync(healthDir, { recursive: true });
-      writeFileSync(
-        dropFile,
-        _installedToolPayloadDrops.map((line) => line + "\n").join(""),
-        { flag: "w" },
-      );
+      await writeDropFile(healthDir, dropName, _installedToolPayloadDrops.map((line) => line + "\n").join(""));
     }
   } catch { /* truly non-fatal */ }
   _installedToolPayloadDrops.length = 0;
@@ -475,9 +525,9 @@ if (
   await flushDrops();
   return;
 }
-// A sibling compose can legitimately hold the lock for compile + runner
-// regeneration, so queue for ~60s rather than skipping after the default ~5s.
-if (!lockLib.acquireAuditLock(PROJECT_DIR, COMPOSE_LOCK_RETRIES)) {
+// A sibling compose can hold the lock across compilation and runner generation.
+// Use the installed compound-work backstop without changing owner/reaper rules.
+if (!lockLib.acquireAuditLock(PROJECT_DIR, await composeLockRetries())) {
   recordDrop("plugin compose skipped: could not acquire the shared workspace lock");
   await flushDrops();
   return;
@@ -1314,7 +1364,7 @@ async function kiroPluginAgentPrechecks(): Promise<KiroPluginAgentPrechecks | nu
   ) {
     return null;
   }
-  const isKiroIde = HARNESS_NAME === "kiro-ide";
+  const isKiroIde = KIRO_KAS_LAYOUT;
   const isKiroCli = HARNESS_LEAF === ".kiro" && !isKiroIde;
   const surfaceExt = isKiroIde
     ? ".md"
@@ -1688,6 +1738,29 @@ function frontmatter(content: string): string {
 // `added` (when given) collects the values THIS call actually wrote - the
 // contribution sidecar records actually-added entries, never declared ones, so
 // a later removal can't strip a value core (or another plugin) already had.
+function adoptSensorBindings(input: { content: string; stageFile: string; declared: string[]; recorded: string[] }): { sensors: string[]; baselineHash: string | null } {
+  const baselinePath = join(HARNESS_DIR, "tools", "data", "aidlc-manifest.json");
+  if (!existsSync(baselinePath)) return { sensors: [], baselineHash: null };
+  const baseline: unknown = JSON.parse(readFileSync(baselinePath, "utf-8"));
+  if (baseline === null || typeof baseline !== "object" || !("files" in baseline)) return { sensors: [], baselineHash: null };
+  const files = baseline.files;
+  if (files === null || typeof files !== "object") return { sensors: [], baselineHash: null };
+  const path = relative(PROJECT_DIR, input.stageFile).replaceAll("\\", "/");
+  const baselineHash = Reflect.get(files, path);
+  if (typeof baselineHash !== "string") return { sensors: [], baselineHash: null };
+  const hash = (content: string): string => `sha256:${createHash("sha256").update(content).digest("hex")}`;
+  if (hash(input.content) === baselineHash) return { sensors: [], baselineHash: null };
+  const block = /^sensors:\n((?: {2}- .+\n)*)/m;
+  const match = input.content.match(block);
+  if (!match) return { sensors: [], baselineHash: null };
+  const existing = [...match[1].matchAll(/^ {2}- (.+)$/gm)].map((entry) => yamlScalarValue(entry[1]));
+  const sensors = [...new Set(input.declared)].filter((sensor) => existing.includes(sensor) && !input.recorded.includes(sensor));
+  if (sensors.length === 0) return { sensors: [], baselineHash: null };
+  const kept = match[1].split("\n").filter((line) => !sensors.includes(yamlScalarValue(line.slice(4)) ?? ""));
+  const stripped = input.content.replace(block, `sensors:\n${kept.join("\n")}`);
+  return hash(stripped) === baselineHash ? { sensors, baselineHash } : { sensors: [], baselineHash: null };
+}
+
 function mergeListField(content: string, field: string, items: string[], target: string, added?: string[]): string {
   items = [...new Set(items)];
   if (items.length === 0) return content;
@@ -2076,7 +2149,7 @@ try {
   // fragment records let doctor verify sentinel-marked prose after an engine
   // reinstall. Accumulated across re-runs: structural entries are unioned, while
   // a fragment upgrade replaces the prior hash for its (anchor, order) identity.
-  type StageContribRecord = { produces?: string[]; sensors?: string[]; consumes?: Array<string | ConsumeEntry>; scopes?: string[]; required_sections?: string[]; required_sections_created?: boolean; fragments?: FragmentRecord[]; hook_registrations?: ProjectedPluginHookContributions };
+  type StageContribRecord = { sensor_adoption?: { baselineHash: string; sensors: string[] }; produces?: string[]; sensors?: string[]; consumes?: Array<string | ConsumeEntry>; scopes?: string[]; required_sections?: string[]; required_sections_created?: boolean; fragments?: FragmentRecord[]; hook_registrations?: ProjectedPluginHookContributions };
   type StringContribField = "produces" | "sensors" | "scopes" | "required_sections";
   const contribManifestPath = join(HARNESS_DIR, "tools", "data", `plugin-contrib-${PLUGIN_KEY}.json`);
   let contribManifestLoadError: string | null = null;
@@ -2341,6 +2414,11 @@ try {
         }
         return true;
       });
+      const adoption = adoptSensorBindings({ content: stageContent, stageFile, declared: listOf("sensors"), recorded: contribManifest[target]?.sensors ?? [] });
+      if (adoption.baselineHash !== null) {
+        addedSensors.push(...adoption.sensors);
+        contribRecord(target).sensor_adoption = { baselineHash: adoption.baselineHash, sensors: adoption.sensors };
+      }
       stageContent = mergeListField(stageContent, "produces", listOf("produces"), target, addedProduces);
       stageContent = mergeListField(stageContent, "sensors", listOf("sensors"), target, addedSensors);
       stageContent = mergeListField(stageContent, "scopes", mergeableScopes, target, addedScopes);
@@ -2470,7 +2548,7 @@ try {
     if (payload.value.harness === "codex") {
       const seed = runtime.planCodexHookTrustSeed({ document: JSON.parse(readFileSync(join(HARNESS_DIR, "hooks.json"), "utf-8")),
         hooksPath: join(PROJECT_DIR, HARNESS_LEAF, "hooks.json"),
-        hashIdentity: ({ identity }) => `sha256:${createHash("sha256").update(identity, "utf-8").digest("hex")}` });
+        hashHook: runtime.codexHookTrustHash });
       if (seed.kind === "invalid-document") throw new Error("Codex hook trust refused: invalid hooks.json");
       const seedPath = join(HARNESS_DIR, "trust-seed.toml");
       if (!existsSync(seedPath) || readFileSync(seedPath, "utf-8") !== seed.text) writeComposeFile(seedPath, seed.text);

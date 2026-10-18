@@ -4,10 +4,8 @@
 // They cannot fetch or check out anything. The Gate-5 sweep session, meanwhile,
 // is required by the rails to `git merge --ff-only origin/main`, so ITS worktree
 // is main — never a PR head. A lens dispatched without a pinned cwd inherits
-// that tree and reads already-merged code as though it were the diff. Observed
-// twice (2026-08-02, 2026-08-03): confident, precise, factually inverted
-// findings indistinguishable from sound ones, and a five-way READY from agents
-// that never saw a diff.
+// that tree and can mistake already-merged code for the PR diff, producing
+// unsupported findings or READY verdicts without reading the proposed change.
 //
 // Prose telling the lead to pre-fetch does not remove that failure; it only asks
 // the lead to remember. This tool removes it structurally — it prepares a

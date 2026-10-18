@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import { z } from "zod";
 import { assertProjectionPathHasNoSymlinks, sha256Bytes } from "./aidlc-distribution.ts";
-import { stageRefreshContract } from "./aidlc-stage-refresh-contract.ts";
+import { stageRefreshComparison, type StageRefreshComparisonPort, type StageRefreshEffect } from "./aidlc-stage-refresh-contract.ts";
 import type { TransactionPlan } from "./aidlc-transaction.ts";
 
 type RefreshRefusalReason =
@@ -120,14 +120,14 @@ function retainedContractRefusal(args: {
   kind: "stage" | "scope";
   installed: ReadonlyMap<string, unknown>;
   candidate: ReadonlyMap<string, unknown>;
-  equivalent: (args: { installed: unknown; candidate: unknown }) => boolean;
+  equivalent: (args: { name: string; installed: unknown; candidate: unknown }) => boolean;
 }): RefreshRefusal | undefined {
-  const changed = [...args.installed].find(([name, contract]) => !args.candidate.has(name) || !args.equivalent({ installed: contract, candidate: args.candidate.get(name) }));
+  const changed = [...args.installed].find(([name, contract]) => !args.candidate.has(name) || !args.equivalent({ name, installed: contract, candidate: args.candidate.get(name) }));
   if (changed === undefined) return undefined;
   return {
     kind: "refused",
     reason: args.kind === "stage" ? "stage-contract-changed" : "scope-contract-changed",
-    message: `open-workflow refresh refused: ${args.kind} ${JSON.stringify(changed[0])} changes or disappears; use a separately reviewed workflow migration`,
+    message: `open-workflow refresh refused: ${args.kind} ${JSON.stringify(changed[0])} changes or disappears in a way this refresh cannot establish as compatible; inspect the reported contract difference`,
   };
 }
 
@@ -141,6 +141,7 @@ export type CompatibleRefreshValidation =
         readonly scopes: number;
         readonly installed: Record<string, string>;
         readonly candidate: Record<string, string>;
+        readonly stageRevalidation: Readonly<Record<string, readonly StageRefreshEffect[]>>;
       };
       readonly validateLocked: () => { readonly kind: "validated" } | RefreshRefusal;
     };
@@ -151,6 +152,7 @@ export function planCompatibleRefresh(args: {
   harnessDir: string;
   plan: TransactionPlan;
   reader?: RefreshMetadataReader;
+  compareStages?: StageRefreshComparisonPort;
 }): CompatibleRefreshValidation {
   if (resolve(args.plan.root) !== resolve(args.projectDir)) {
     return { kind: "refused", reason: "transaction-root-invalid", message: "open-workflow refresh requires a project-rooted transaction" };
@@ -165,12 +167,14 @@ export function planCompatibleRefresh(args: {
   if (candidate.stateVersion !== installed.stateVersion) {
     return { kind: "refused", reason: "state-schema-changed", message: "open-workflow refresh refused: installed and candidate state schemas must agree" };
   }
+  const compareStages = args.compareStages ?? stageRefreshComparison;
+  const comparisons = new Map([...installed.stages].map(([name, contract]) =>
+    [name, compareStages({ installed: contract, candidate: candidate.stages.get(name) })]));
   const stages = retainedContractRefusal({
     kind: "stage", installed: installed.stages, candidate: candidate.stages,
-    equivalent: ({ installed, candidate }) => {
-      const before = stageRefreshContract({ stage: installed });
-      const after = stageRefreshContract({ stage: candidate });
-      return before.kind === "comparable" && after.kind === "comparable" && canonical(before.value) === canonical(after.value);
+    equivalent: ({ name }) => {
+      const comparison = comparisons.get(name);
+      return comparison?.kind === "comparable" && canonical(comparison.installed) === canonical(comparison.candidate);
     },
   });
   if (stages) return stages;
@@ -179,6 +183,8 @@ export function planCompatibleRefresh(args: {
     equivalent: ({ installed, candidate }) => canonical(installed) === canonical(candidate),
   });
   if (scopes) return scopes;
+  const stageRevalidation = Object.fromEntries([...comparisons].flatMap(([name, comparison]) =>
+    comparison.kind === "comparable" && comparison.revalidation.length > 0 ? [[name, comparison.revalidation]] : []));
   const validateLocked = (): { kind: "validated" } | RefreshRefusal => {
     const workspace = workspaceRefusal({ plan: args.plan });
     if (workspace) return workspace;
@@ -195,7 +201,7 @@ export function planCompatibleRefresh(args: {
   if (locked.kind === "refused") return locked;
   return {
     kind: "planned",
-    evidence: { stateVersion: installed.stateVersion, stages: installed.stages.size, scopes: installed.scopes.size, installed: installed.hashes, candidate: candidate.hashes },
+    evidence: { stateVersion: installed.stateVersion, stages: installed.stages.size, scopes: installed.scopes.size, installed: installed.hashes, candidate: candidate.hashes, stageRevalidation },
     validateLocked,
   };
 }

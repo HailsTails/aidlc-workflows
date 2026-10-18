@@ -1,6 +1,7 @@
 ---
 name: rin-dep-bump
 plugin: rin
+guard_policy: strict
 depth: Standard
 keywords:
   - dependency bump

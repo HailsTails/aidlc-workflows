@@ -8,6 +8,8 @@ amended: [v2.2.0]
 enforced-by:
   - biome:useThrowOnlyError
   - audit:auditTestDiscipline
+  - manual
+enforcement-note: "Biome checks the thrown value's type, not CD-10's two authorized throw contexts. Rin's test audit is partial; review all throw sites."
 status: active
 applies-to: architecture
 portability: portable

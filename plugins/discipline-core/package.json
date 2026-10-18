@@ -1,0 +1,29 @@
+{
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runs a project's selected disciplines against its own files. Self-contained so it builds and tests from this directory alone.",
+  "license": "MIT-0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check --error-on-warnings --config-path=lint.biome.json .",
+    "test": "vitest run --config vitest.config.ts",
+    "check": "tsc --noEmit -p tsconfig.json && biome check --error-on-warnings --config-path=lint.biome.json . && vitest run --config vitest.config.ts",
+    "install-proof": "node scripts/install-proof.ts"
+  },
+  "dependencies": {
+    "@eslint/plugin-kit": "0.7.3",
+    "@typescript-eslint/parser": "8.71.2",
+    "eslint": "10.11.0",
+    "typescript": "6.0.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.16",
+    "@types/node": "25.9.1",
+    "vitest": "4.1.11"
+  }
+}

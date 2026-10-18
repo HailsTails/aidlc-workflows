@@ -8,6 +8,7 @@ amended: [v2.3.0]
 enforced-by:
   - biome:useFilenamingConvention
   - audit:auditConstitution
+enforcement-note: "Biome filename convention and Rin path checks are partial signals; whether a path names a concept rather than a category needs review."
 status: active
 applies-to: universal
 portability: portable

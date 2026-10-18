@@ -2,8 +2,10 @@
 //
 // Owns the linter check itself; the dispatcher (aidlc-sensor.ts) routes a
 // SENSOR fire to this script via the manifest's `command:` field. Self-
-// contained: no imports from sibling tools. Wraps `bunx eslint --format
-// json --max-warnings -1 <path>` and prints the locked stdout JSON shape:
+// contained apart from the import-safe runtime budget policy. Wraps
+// project package.json scripts.lint when present, otherwise the pinned ESLint
+// fallback, and prints the
+// locked stdout JSON shape:
 //
 //   {"pass": <bool>, "errorCount": <n>, "warningCount": <n>,
 //    "violations": [{file, line, column, rule, severity, message}, ...]}
@@ -37,14 +39,19 @@
 //   --max-warnings -1 disables eslint's own warning-exit override so
 //   this script's errorCount test is the sole pass/fail decider.
 //
+// Package-script stdout is not parsed as ESLint JSON; its exit status owns
+// the verdict. No filename or ESLint-specific flags are appended.
+//
 // Exit codes:
 //   0   pass or fail (the JSON pass field carries the verdict)
-//   127 eslint unresolvable OR no eslint config found
-//   1   stdout JSON parse failed (dispatcher reclassifies via branch f)
+//   127 required project lint script absent OR ESLint/config unavailable
+//   1   invalid project lint metadata OR ESLint execution/output error
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
+import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 
 interface ESLintMessage {
 	ruleId: string | null;
@@ -70,7 +77,7 @@ interface Violation {
 	message: string;
 }
 
-interface SensorOutput {
+export interface SensorOutput {
 	pass: boolean;
 	errorCount: number;
 	warningCount: number;
@@ -83,17 +90,35 @@ interface SensorOutput {
 interface Args {
 	stage: string;
 	filePath: string;
+	projectDir?: string;
+	packageManager?: string;
+	runner: "auto" | "project" | "eslint";
 }
 
-function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[], environment: Record<string, string | undefined> = process.env): Args {
 	let stage = "";
 	let filePath = "";
+	let projectDir = environment.AIDLC_LINT_PROJECT_DIR;
+	let packageManager = environment.AIDLC_LINT_PACKAGE_MANAGER;
+	let runner = environment.AIDLC_LINT_RUNNER ?? "auto";
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === "--stage") {
 			stage = argv[++i] ?? "";
 		} else if (a === "--file-path") {
 			filePath = argv[++i] ?? "";
+		} else if (a === "--project-dir") {
+			projectDir = argv[++i];
+			if (!projectDir) { process.stderr.write("missing --project-dir value\n"); process.exit(1); }
+		} else if (a === "--package-manager") {
+			packageManager = argv[++i];
+			if (!packageManager) { process.stderr.write("missing --package-manager value\n"); process.exit(1); }
+		} else if (a === "--runner") {
+			const requested = argv[++i];
+			if (requested !== "auto" && requested !== "project" && requested !== "eslint") {
+				process.stderr.write("--runner must be auto, project, or eslint\n"); process.exit(1);
+			}
+			runner = requested;
 		} else if (a === "--help" || a === "-h") {
 			printHelp();
 			process.exit(0);
@@ -110,13 +135,17 @@ function parseArgs(argv: string[]): Args {
 		process.stderr.write("missing required flag: --file-path\n");
 		process.exit(1);
 	}
-	return { stage, filePath };
+	if (runner !== "auto" && runner !== "project" && runner !== "eslint") {
+		process.stderr.write("AIDLC_LINT_RUNNER must be auto, project, or eslint\n"); process.exit(1);
+	}
+	return { stage, filePath: resolve(filePath), projectDir, packageManager, runner };
 }
 
 function printHelp(): void {
 	process.stdout.write(
 		`Usage: aidlc-sensor-linter --stage <slug> --file-path <path>\n\n` +
-			`Wraps \`bunx eslint --format json --max-warnings -1 <path>\` and\n` +
+			`Prefers package.json scripts.lint; otherwise uses the pinned ESLint fallback.\n` +
+			`Options: --runner auto|project|eslint --project-dir <path> --package-manager npm|pnpm|yarn|bun\n` +
 			`prints {pass, errorCount, warningCount, violations[]} JSON to stdout.\n`,
 	);
 }
@@ -148,11 +177,33 @@ function findProjectRoot(filePath: string): string | null {
 // the sensor quietly degrades every fire to a tool-unavailable PASS -
 // masking real lint findings. Pinning the major makes resolution
 // deterministic: bunx fetches/caches this spec and ignores PATH
-// shadowing. Intentionally NOT applied to a project-local eslint - bunx
-// with a version spec bypasses node_modules too, which is the price of
-// determinism; projects needing their exact local eslint can override
-// the sensor manifest's command.
+// shadowing. A version spec also bypasses local node_modules, so first resolve
+// a local install of the SAME major and run its absolute CLI path. It is already
+// provisioned and never needs the bunx download cache. Older local versions
+// still take the pinned fallback instead of silently missing flat configs.
 const ESLINT_SPEC = "eslint@10";
+
+export function localEslintPath(cwd: string): string | null {
+	try {
+		const manifestPath = createRequire(join(cwd, "package.json")).resolve("eslint/package.json");
+		const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+		if (manifest.name !== "eslint" || typeof manifest.version !== "string" ||
+			manifest.version.split(".")[0] !== ESLINT_SPEC.split("@")[1]) return null;
+		const cli = join(dirname(manifestPath), "bin", "eslint.js");
+		return existsSync(cli) ? cli : null;
+	} catch {
+		return null;
+	}
+}
+
+function invokeEslint(args: string[], cwd: string) {
+	const local = localEslintPath(cwd);
+	const options = { encoding: "utf-8" as const, timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS, cwd };
+	// ESLint's published executable uses Node too. Naming its installed file
+	// avoids both PATH-shadowed eslint binaries and per-TMPDIR bunx installs.
+	if (local) return spawnSync("node", [local, ...args], options);
+	return spawnSync("bunx", [ESLINT_SPEC, ...args], options);
+}
 
 // Probe `bunx eslint --version` at startup. `bunx <tool>` returns non-127
 // codes for several failure modes (network-fetch failure, package-
@@ -160,11 +211,7 @@ const ESLINT_SPEC = "eslint@10";
 // (status === 127) won't catch those — so we propagate by exiting 127
 // ourselves on any non-zero exit from this probe.
 function probeEslintAvailable(cwd: string): void {
-	const result = spawnSync("bunx", [ESLINT_SPEC, "--version"], {
-		encoding: "utf-8",
-		timeout: 30_000,
-		cwd,
-	});
+	const result = invokeEslint(["--version"], cwd);
 	if (result.status !== 0) {
 		process.stderr.write("eslint-unavailable\n");
 		process.exit(127);
@@ -186,11 +233,7 @@ function probeEslintAvailable(cwd: string): void {
 // branch e then emits SENSOR_PASSED with Note=script-error: exit-2,
 // keeping the audit pair closed while flagging the breakage in stderr.
 function probeEslintConfig(filePath: string, cwd: string): void {
-	const result = spawnSync("bunx", [ESLINT_SPEC, "--print-config", filePath], {
-		encoding: "utf-8",
-		timeout: 30_000,
-		cwd,
-	});
+	const result = invokeEslint(["--print-config", filePath], cwd);
 	if (result.status === 0) return; // config resolved
 	const stderr = result.stderr ?? "";
 	// Cover both legacy (.eslintrc.*) and flat-config (eslint.config.js)
@@ -282,11 +325,13 @@ function runEslint(
 	// with `-` ("No -NUM option defined."). The plan-mandated
 	// "--max-warnings -1" requires the equals form to actually reach
 	// eslint as a numeric value.
-	const result = spawnSync(
-		"bunx",
-		[ESLINT_SPEC, "--format", "json", "--max-warnings=-1", filePath],
-		{ encoding: "utf-8", timeout: 30_000, cwd },
-	);
+	const result = invokeEslint(["--format", "json", "--max-warnings=-1", filePath], cwd);
+	// A killed/spawn-failed run cannot establish a verdict, even if it wrote
+	// a complete-looking JSON prefix before stopping.
+	if (result.error || result.signal || result.status === null) {
+		process.stderr.write("eslint-execution-incomplete\n");
+		process.exit(1);
+	}
 	return { stdout: result.stdout ?? "", status: result.status };
 }
 
@@ -321,6 +366,127 @@ function buildViolations(results: ESLintResult[]): Violation[] {
 	return out;
 }
 
+export type ProjectLintPlan =
+	| { kind: "eslint" }
+	| { kind: "error"; reason: string }
+	| { kind: "script"; executable: string; args: string[] };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function selectProjectLint(input: {
+	manifest: unknown;
+	packageManager?: string;
+	lockfiles?: string[];
+	runner?: "auto" | "project" | "eslint";
+	platform?: string;
+}): ProjectLintPlan {
+	if (input.runner === "eslint") return { kind: "eslint" };
+	if (!isRecord(input.manifest)) return { kind: "error", reason: "invalid-package-json" };
+	const scripts = input.manifest.scripts;
+	if (scripts !== undefined && !isRecord(scripts)) return { kind: "error", reason: "invalid-lint-script" };
+	if (!scripts || scripts.lint === undefined) {
+		return input.runner === "project"
+			? { kind: "error", reason: "no-lint-script" }
+			: { kind: "eslint" };
+	}
+	if (typeof scripts.lint !== "string" || !scripts.lint.trim()) {
+		return { kind: "error", reason: "invalid-lint-script" };
+	}
+	const declared = input.packageManager ?? input.manifest.packageManager;
+	if (declared !== undefined && typeof declared !== "string") {
+		return { kind: "error", reason: "invalid-package-manager" };
+	}
+	const detected = [
+		["pnpm-lock.yaml", "pnpm"], ["yarn.lock", "yarn"],
+		["bun.lock", "bun"], ["bun.lockb", "bun"], ["package-lock.json", "npm"],
+	].filter(([lockfile]) => input.lockfiles?.includes(lockfile)).map(([, manager]) => manager);
+	const managers = [...new Set(detected)];
+	if (!declared && managers.length > 1) return { kind: "error", reason: "ambiguous-package-manager" };
+	const manager = declared?.split("@")[0] ?? managers[0] ?? "npm";
+	if (!["npm", "pnpm", "yarn", "bun"].includes(manager)) {
+		return { kind: "error", reason: "unsupported-package-manager" };
+	}
+	if (input.platform === "win32" && manager !== "bun") {
+		return { kind: "script", executable: "cmd.exe", args: ["/d", "/s", "/c", `${manager}.cmd run lint`] };
+	}
+	return { kind: "script", executable: manager, args: ["run", "lint"] };
+}
+
+export function projectLintOutput(input: {
+	filePath: string;
+	status: number | null;
+	stdout: string;
+	stderr: string;
+	error?: unknown;
+	signal?: string | null;
+}): SensorOutput {
+	const pass = input.status === 0 && !input.error && !input.signal;
+	const incomplete = input.status === null || !!input.error || !!input.signal;
+	return {
+		pass, errorCount: pass ? 0 : 1, warningCount: 0, findings_count: pass ? 0 : 1,
+		violations: pass ? [] : [{
+			file: input.filePath, line: 0, column: 0, severity: "error",
+			rule: incomplete ? "lint-execution-incomplete" : "lint-script-failed",
+			message: incomplete ? "Project lint did not complete." :
+				`Project lint exited ${input.status}.\n${input.stderr}\n${input.stdout}`.trim().slice(0, 8192),
+		}],
+	};
+}
+
+export interface ProjectLintExecution {
+	status: number | null;
+	stdout: string;
+	stderr: string;
+	error?: unknown;
+	signal?: string | null;
+}
+
+export function executeProjectLint(input: {
+	plan: Extract<ProjectLintPlan, { kind: "script" }>;
+	projectRoot: string;
+	filePath: string;
+	execute: (input: { executable: string; args: string[]; cwd: string; timeout: number }) => ProjectLintExecution;
+}): SensorOutput {
+	const execution = input.execute({ executable: input.plan.executable, args: input.plan.args,
+		cwd: input.projectRoot, timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS });
+	return projectLintOutput({ ...execution, filePath: input.filePath });
+}
+
+function runConsumerLint(args: Args, projectRoot: string): boolean {
+	if (args.runner === "eslint") return false;
+	const manifestPath = join(projectRoot, "package.json");
+	if (!existsSync(manifestPath)) {
+		if (args.runner === "project") { process.stderr.write("no-lint-script\n"); process.exit(127); }
+		return false;
+	}
+	let manifest: unknown;
+	try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); }
+	catch { process.stderr.write("invalid-package-json\n"); process.exit(1); }
+	const plan = selectProjectLint({
+		manifest, packageManager: args.packageManager, runner: args.runner, platform: process.platform,
+		lockfiles: ["pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "package-lock.json"]
+			.filter((name) => existsSync(join(projectRoot, name))),
+	});
+	if (plan.kind === "eslint") return false;
+	if (plan.kind === "error") {
+		process.stderr.write(`${plan.reason}\n`);
+		process.exit(plan.reason === "no-lint-script" ? 127 : 1);
+	}
+	const output = executeProjectLint({ plan, projectRoot, filePath: args.filePath,
+		execute: (command) => {
+			const execution = spawnSync(command.executable, command.args, {
+				cwd: command.cwd, encoding: "utf-8", timeout: command.timeout,
+			});
+			return { status: execution.status, error: execution.error, signal: execution.signal,
+				stdout: execution.stdout ?? "", stderr: execution.stderr ?? "" };
+		},
+	});
+	process.stdout.write(`${JSON.stringify(output)}\n`);
+	return true;
+}
+
 // --- main -------------------------------------------------------------------
 
 export function main(argv: string[]): void {
@@ -332,7 +498,9 @@ export function main(argv: string[]): void {
 	}
 
 	const projectRoot =
+		args.projectDir ? resolve(args.projectDir) :
 		findProjectRoot(args.filePath) ?? dirname(resolve(args.filePath));
+	if (runConsumerLint(args, projectRoot)) return;
 
 	// Probe order: tool first (cheap, ~1s for cached bunx), then config
 	// (~1s for --print-config). Both gates feed dispatcher branch b
