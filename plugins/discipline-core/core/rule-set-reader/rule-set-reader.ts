@@ -132,6 +132,7 @@ const allowCaseSchema = sourceCaseSchema.refine(
 const anchorKindSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("keyword"), keyword: z.string() }),
   z.object({ kind: z.literal("file") }),
+  z.object({ kind: z.literal("source") }),
 ]);
 
 const clauseDefinitionSchema = z.discriminatedUnion("kind", [
