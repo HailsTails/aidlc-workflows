@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { requiredEntry } from "../../tests/required-entry.ts";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
@@ -60,10 +60,10 @@ const DIRECTORIES: Readonly<Record<string, string>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
   relative: vi.fn<PathPort["relative"]>(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
-  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
+  directoryOf: ({ path }) => requiredEntry({ table: DIRECTORIES, key: path }),
   repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
   resolve: ({ path }) => ({ outcome: "ok", value: absolutePathSchema.parse(path) }),
   fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
@@ -189,7 +189,7 @@ const modulesLoading = (module: unknown): ModuleLoaderPort => ({
 const GIT: GitPort = {
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({
     outcome: "ok",
-    value: z.array(repoPathSchema).parse(["src/a.ts"]),
+    value: [repoPathSchema.parse("src/a.ts")],
   }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
 };

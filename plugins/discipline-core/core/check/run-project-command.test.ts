@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { requiredEntry } from "../../tests/required-entry.ts";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
-import { absolutePathSchema } from "../values/absolute-path.ts";
+import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
+import type { Result } from "../values/result.ts";
 import type { CommandRequest } from "./run-check-command.ts";
 import { runProjectCommand } from "./run-project-command.ts";
 
@@ -87,16 +88,13 @@ const DIRECTORIES: Readonly<Record<string, string>> = {
   "/install/core": "/install",
 };
 
-const fileUrlResultSchema = z.discriminatedUnion("outcome", [
-  z.object({ outcome: z.literal("ok"), value: absolutePathSchema }),
-  z.object({
-    outcome: z.literal("failed"),
-    error: z.object({ kind: z.literal("not-a-file-url"), url: z.string(), detail: z.string() }),
-  }),
-]);
+type FileUrlResult = Result<
+  AbsolutePath,
+  { readonly kind: "not-a-file-url"; readonly url: string; readonly detail: string }
+>;
 
-const FILE_URLS: Readonly<Record<string, unknown>> = {
-  [ENTRY_URL]: { outcome: "ok", value: "/install/core/check/project-command.ts" },
+const FILE_URLS: Readonly<Record<string, FileUrlResult>> = {
+  [ENTRY_URL]: { outcome: "ok", value: absolutePathSchema.parse("/install/core/check/project-command.ts") },
   [NOT_A_FILE_URL]: {
     outcome: "failed",
     error: { kind: "not-a-file-url", url: NOT_A_FILE_URL, detail: "the text is not a file: URL" },
@@ -104,13 +102,13 @@ const FILE_URLS: Readonly<Record<string, unknown>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
   relative: vi.fn<PathPort["relative"]>(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
-  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
+  directoryOf: ({ path }) => requiredEntry({ table: DIRECTORIES, key: path }),
   repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
   resolve: ({ path }) => ({ outcome: "ok", value: absolutePathSchema.parse(path) }),
-  fromFileUrl: ({ url }) => fileUrlResultSchema.parse(FILE_URLS[url]),
+  fromFileUrl: ({ url }) => requiredEntry({ table: FILE_URLS, key: url }),
 };
 
 const REPO_RESOLVING_TO_NO_ABSOLUTE_PATH: PathPort = {
@@ -131,7 +129,7 @@ const modulesLoading = (module: unknown): ModuleLoaderPort => ({
 const gitTracking = (paths: readonly string[]): GitPort => ({
   trackedPaths: vi
     .fn<GitPort["trackedPaths"]>()
-    .mockReturnValue({ outcome: "ok", value: z.array(repoPathSchema).parse(paths) }),
+    .mockReturnValue({ outcome: "ok", value: paths.map((path) => repoPathSchema.parse(path)) }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
 });
 

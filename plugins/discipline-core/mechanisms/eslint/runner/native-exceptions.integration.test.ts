@@ -1,14 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { assert, describe, expect, it, vi } from "vitest";
 import { runCheck } from "../../../core/check/run-check.ts";
 import { checkConformance } from "../../../core/conformance/conformance.ts";
-import { type RunnerClause, runnerModuleSchema } from "../../../core/mechanism-port/runner-module-schema.ts";
-import { createDefaultFileTextPort } from "../../../core/platform-ports/file-text-port.ts";
+import {
+  type LoadedRunner,
+  type RunnerClause,
+  runnerModuleSchema,
+} from "../../../core/mechanism-port/runner-module-schema.ts";
+import { createDefaultFileTextPort, type FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { GitPort } from "../../../core/platform-ports/git-port.ts";
 import { createDefaultModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
-import { createDefaultPathPort } from "../../../core/platform-ports/path-port.ts";
+import { createDefaultPathPort, createPathPort } from "../../../core/platform-ports/path-port.ts";
+import { type ClauseDefinition, readDisciplineFile } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { type AbsolutePath, absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
+import { disciplineIdSchema } from "../../../core/values/identifiers.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import cd14Discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
 import { runner as walkerRunner } from "../../walker/runner/runner.ts";
@@ -46,7 +51,7 @@ const consumerRepo = (request: { readonly name: string }): AbsolutePath =>
 const gitTracking = (request: { readonly tracked: readonly string[] }): GitPort => ({
   trackedPaths: vi
     .fn<GitPort["trackedPaths"]>()
-    .mockReturnValue({ outcome: "ok", value: z.array(repoPathSchema).parse(request.tracked) }),
+    .mockReturnValue({ outcome: "ok", value: request.tracked.map((tracked) => repoPathSchema.parse(tracked)) }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
 });
 
@@ -380,17 +385,15 @@ describe("the ESLint runner's projection states under real ESLint 10, over a con
   });
 });
 
-const SHARED_CASE_FILES = z
-  .array(repoPathSchema)
-  .parse([
-    "src/decl.ts",
-    "src/expr.ts",
-    "src/default.ts",
-    "src/abstract.ts",
-    "src/nested.ts",
-    "src/space.ts",
-    "src/anon.ts",
-  ]);
+const SHARED_CASE_FILES = [
+  "src/decl.ts",
+  "src/expr.ts",
+  "src/default.ts",
+  "src/abstract.ts",
+  "src/nested.ts",
+  "src/space.ts",
+  "src/anon.ts",
+].map((file) => repoPathSchema.parse(file));
 
 const SHARED_CASES_RUN = {
   repoRoot: consumerRepo({ name: "fr3-anchors" }),
@@ -430,33 +433,46 @@ describe("FR-3 over real files: the ESLint runner on real ESLint 10 and the walk
   });
 });
 
-const sourceCaseSchema = z.object({
-  name: z.string(),
-  fileName: repoPathSchema,
-  source: z.string(),
-  expectedLines: z.array(z.number()),
-});
+type MechanicalCases = Extract<ClauseDefinition, { readonly kind: "mechanical" }>["cases"];
 
-const CLASS_SYNTAX_CASES = z
-  .object({
-    clauses: z.tuple([
-      z.object({
-        id: z.literal("class-syntax"),
-        cases: z.object({ flag: z.array(sourceCaseSchema), allow: z.array(sourceCaseSchema) }),
-      }),
-      z.object({ id: z.literal("library-construction") }),
-    ]),
-  })
-  .parse(cd14Discipline).clauses[0].cases;
+const classSyntaxCases = (): MechanicalCases => {
+  const loaded = readDisciplineFile({
+    fileText: {
+      read: () => ({ outcome: "ok", value: JSON.stringify(cd14Discipline) }),
+      exists: () => "present",
+      write: vi.fn<FileTextPort["write"]>(),
+    },
+    path: createPathPort({ flavour: "posix", workingDirectory: () => "/install" }),
+    ruleSetRoot: absolutePathSchema.parse("/install"),
+    discipline: disciplineIdSchema.parse("CD-14"),
+  });
+  assert(loaded.outcome === "ok", "CD-14 discipline.json reads through the rule-set reader");
+  const [classSyntax, libraryConstruction, ...surplus] = loaded.value.clauses;
+  assert(classSyntax?.id === "class-syntax", "CD-14 declares class-syntax as its first clause");
+  assert(classSyntax.kind === "mechanical", "CD-14 declares class-syntax as a mechanical clause");
+  assert(
+    libraryConstruction?.id === "library-construction",
+    "CD-14 declares the library-construction judgement clause second",
+  );
+  assert(surplus.length === 0, "CD-14 declares exactly two clauses");
+  return classSyntax.cases;
+};
 
-const coreLoadedEslintRunner = () =>
-  modules
-    .load({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })
-    .then(
-      (loaded) =>
-        z.object({ outcome: z.literal("ok"), value: z.object({ runner: runnerModuleSchema }) }).parse(loaded).value
-          .runner,
-    );
+const CLASS_SYNTAX_CASES = classSyntaxCases();
+
+const exportedRunnerOf = (request: { readonly namespace: unknown }): unknown => {
+  assert(
+    typeof request.namespace === "object" && request.namespace !== null && "runner" in request.namespace,
+    "the runner module exports runner",
+  );
+  return request.namespace.runner;
+};
+
+const coreLoadedEslintRunner = async (): Promise<LoadedRunner> => {
+  const loaded = await modules.load({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` });
+  assert(loaded.outcome === "ok", "core loads the ESLint runner module");
+  return runnerModuleSchema.parse(exportedRunnerOf({ namespace: loaded.value }));
+};
 
 describe("checkConformance over the ESLint runner as core loads it, on real ESLint 10", () => {
   it("has no failures for CD-14#class-syntax over every CD-14 shared case", async () => {

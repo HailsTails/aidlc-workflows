@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { requiredEntry } from "../../tests/required-entry.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import { pieceImportFindings } from "./piece-import-rules.ts";
 
@@ -53,9 +53,9 @@ const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
 const TABLE_PATH: PathPort = {
   join: vi.fn<PathPort["join"]>(),
   relative: vi.fn<PathPort["relative"]>(),
-  joinRepository: ({ segments }) => z.string().parse(JOINED_REPOSITORY_PATHS[JSON.stringify(segments)]),
+  joinRepository: ({ segments }) => requiredEntry({ table: JOINED_REPOSITORY_PATHS, key: JSON.stringify(segments) }),
   directoryOf: vi.fn<PathPort["directoryOf"]>(),
-  repositoryDirectoryOf: ({ path }) => z.string().parse(REPOSITORY_DIRECTORIES[path]),
+  repositoryDirectoryOf: ({ path }) => requiredEntry({ table: REPOSITORY_DIRECTORIES, key: path }),
   resolve: vi.fn<PathPort["resolve"]>(),
   fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
 };
@@ -68,18 +68,15 @@ const outcome = pieceImportFindings({
   typePackageTexts,
 });
 
-const piecesSchema = z.object({
-  outcome: z.literal("ok"),
-  value: z.object({ pieces: z.array(z.object({ file: z.string() }).loose()) }),
-});
-
 describe("FR-8 piece imports over what this repository's own piece source imports, read as build-time raw modules (CD-47: that source is the assertion's subject and no fake can stand in for it; nothing is spawned or written)", () => {
   it("finds the install's CD-14 walker piece among the pieces it checks", () => {
-    expect(piecesSchema.parse(outcome).value.pieces).toContainEqual({
-      file: "./mechanisms/walker/CD-14/class-syntax.ts",
-      ruleSetRoot: ".",
-      mechanism: "walker",
-      discipline: "CD-14",
+    expect(outcome).toMatchObject({
+      outcome: "ok",
+      value: {
+        pieces: expect.arrayContaining([
+          { file: "./mechanisms/walker/CD-14/class-syntax.ts", ruleSetRoot: ".", mechanism: "walker", discipline: "CD-14" },
+        ]),
+      },
     });
   });
 

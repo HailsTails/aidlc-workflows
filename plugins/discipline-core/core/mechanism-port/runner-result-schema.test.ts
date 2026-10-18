@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import type { Result } from "../values/result.ts";
 import type { Equal } from "../values/type-equality.ts";
 import type { RunnerFailure } from "./runner-failure.ts";
 import {
   type CaseVerdict,
   caseVerdictSchema,
-  type Hit,
   hitSchema,
+  type ProjectionWrite,
   projectionWriteSchema,
   runnerResultSchema,
 } from "./runner-result-schema.ts";
@@ -25,9 +24,11 @@ const hit = {
   snippet: "class A {}",
 };
 
-const hitsResultSchema = runnerResultSchema({
-  value: z.array(hitSchema).readonly(),
-});
+const write = { path: "eslint.config.js", effect: "written" };
+
+const projectionWriteResultSchema = runnerResultSchema({ value: projectionWriteSchema });
+
+type ProjectionWriteResultOutput = NonNullable<(typeof projectionWriteResultSchema)["~standard"]["types"]>["output"];
 
 describe("hitSchema", () => {
   it("accepts a hit naming a clause address, a repository file, an anchor and a snippet", () => {
@@ -106,15 +107,15 @@ describe("projectionWriteSchema", () => {
 
 describe("runnerResultSchema", () => {
   it("parses an ok envelope carrying its value", () => {
-    expect(hitsResultSchema.safeParse({ outcome: "ok", value: [hit] })).toEqual({
+    expect(projectionWriteResultSchema.safeParse({ outcome: "ok", value: write })).toEqual({
       success: true,
-      data: { outcome: "ok", value: [hit] },
+      data: { outcome: "ok", value: write },
     });
   });
 
   it("parses a failed envelope carrying a runner failure", () => {
     expect(
-      hitsResultSchema.safeParse({
+      projectionWriteResultSchema.safeParse({
         outcome: "failed",
         error: { kind: "tool-failed", detail: "eslint exited 2" },
       }),
@@ -125,20 +126,17 @@ describe("runnerResultSchema", () => {
   });
 
   it("refuses an ok envelope whose value fails the value schema", () => {
-    expect(hitsResultSchema.safeParse({ outcome: "ok", value: "no hits" }).success).toBe(false);
+    expect(projectionWriteResultSchema.safeParse({ outcome: "ok", value: "no write" }).success).toBe(false);
   });
 
   it("refuses a failed envelope whose error is not a runner failure", () => {
     expect(
-      hitsResultSchema.safeParse({ outcome: "failed", error: { kind: "disk-full" } }).success,
+      projectionWriteResultSchema.safeParse({ outcome: "failed", error: { kind: "disk-full" } }).success,
     ).toBe(false);
   });
 
   it("infers the result type the author contract returns", () => {
-    const sameAsContract: Equal<
-      z.output<typeof hitsResultSchema>,
-      Result<readonly Hit[], RunnerFailure>
-    > = true;
+    const sameAsContract: Equal<ProjectionWriteResultOutput, Result<ProjectionWrite, RunnerFailure>> = true;
     expect(sameAsContract).toBe(true);
   });
 });

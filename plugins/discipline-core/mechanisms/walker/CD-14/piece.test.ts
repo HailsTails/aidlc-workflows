@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { PathPort } from "../../../core/platform-ports/path-port.ts";
 import {
@@ -12,6 +11,7 @@ import {
   disciplineIdSchema,
   mechanismIdSchema,
 } from "../../../core/values/identifiers.ts";
+import { requiredEntry } from "../../../tests/required-entry.ts";
 import { walkerPieceSettingsSchema } from "../runner/walker-check-schema.ts";
 import piece from "./piece.json" with { type: "json" };
 
@@ -27,7 +27,7 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
   relative: vi.fn<PathPort["relative"]>(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn<PathPort["directoryOf"]>(),

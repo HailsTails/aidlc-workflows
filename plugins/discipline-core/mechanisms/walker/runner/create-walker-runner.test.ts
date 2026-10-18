@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
@@ -9,6 +8,7 @@ import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import type { AnchorKind } from "../../../core/values/anchor.ts";
 import { type ClauseAddress, clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
+import { requiredEntry } from "../../../tests/required-entry.ts";
 import { createWalkerRunner } from "./create-walker-runner.ts";
 import type { ParsePort, WalkerCheck } from "./walker-check.ts";
 
@@ -110,7 +110,7 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
   relative: vi.fn<PathPort["relative"]>(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn<PathPort["directoryOf"]>(),

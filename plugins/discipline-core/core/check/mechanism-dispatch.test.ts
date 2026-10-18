@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { LoadedRunner, RunnerClause, RunRequest } from "../mechanism-port/runner-module-schema.ts";
 import { runnerModuleSchema } from "../mechanism-port/runner-module-schema.ts";
@@ -26,8 +25,8 @@ const CLASS_SYNTAX_CLAUSE: RunnerClause = {
 const RUN_REQUEST: RunRequest = {
   repoRoot: REPO_ROOT,
   installRoot: INSTALL_ROOT,
-  files: z.array(repoPathSchema).parse(["src/a.ts", "src/b.ts"]),
-  trackedPaths: z.array(repoPathSchema).parse(["README.md", "src/a.ts", "src/b.ts"]),
+  files: [repoPathSchema.parse("src/a.ts"), repoPathSchema.parse("src/b.ts")],
+  trackedPaths: [repoPathSchema.parse("README.md"), repoPathSchema.parse("src/a.ts"), repoPathSchema.parse("src/b.ts")],
   clauses: [CLASS_SYNTAX_CLAUSE],
 };
 

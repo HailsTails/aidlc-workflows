@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { runCheck } from "../core/check/run-check.ts";
 import type { FileTextPort } from "../core/platform-ports/file-text-port.ts";
 import type { GitPort } from "../core/platform-ports/git-port.ts";
@@ -78,7 +77,7 @@ const git: GitPort = {
     .fn<GitPort["trackedPaths"]>()
     .mockReturnValue({
       outcome: "ok",
-      value: z.array(repoPathSchema).parse(["src/scratch.tmp.ts", "src/kept.ts", "src/plain.ts", "README.md"]),
+      value: ["src/scratch.tmp.ts", "src/kept.ts", "src/plain.ts", "README.md"].map((tracked) => repoPathSchema.parse(tracked)),
     }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
 };

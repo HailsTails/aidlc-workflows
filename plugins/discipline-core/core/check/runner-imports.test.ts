@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import { createPathPort } from "../platform-ports/path-port.ts";
-import { importsIn } from "./piece-import-rules.ts";
+import { importsIn, type ModuleImport } from "./piece-import-rules.ts";
 
 declare global {
   interface ImportMeta {
@@ -33,35 +32,42 @@ const eslintRunnerSources = import.meta.glob(["./mechanisms/eslint/runner/*.ts",
   eager: true,
 });
 
+const vendorImportsTestSources = import.meta.glob(["./core/check/vendor-imports.test.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
 const NAMED_CORE_FOLDERS = "core/(?:mechanism-port|values|platform-ports|rule-set-reader|exception-records)/";
 
-const relativeTargetsWithin = (request: { readonly runnerFolder: string }) => {
+const resolvesWithin = (request: { readonly runnerFolder: string; readonly moduleImport: ModuleImport }): boolean => {
+  if (!/^\.\.?\//.test(request.moduleImport.specifier)) {
+    return false;
+  }
   const runnerPath = createPathPort({ flavour: "posix", workingDirectory: () => `/install/${request.runnerFolder}` });
-  const relativeImport = z.object({
-    specifier: z
-      .string()
-      .regex(/^\.\.?\//)
-      .transform((specifier) => runnerPath.relative({ from: "/install", to: specifier }))
-      .pipe(
-        z.object({
-          relation: z.literal("within-root"),
-          path: z.string().regex(new RegExp(`^(?:${request.runnerFolder}/|${NAMED_CORE_FOLDERS})`)),
-        }),
-      ),
-    form: z.enum(["value", "type-only", "dynamic"]),
-  });
-  const packageOrComputedImport = z.object({
-    specifier: z.string().regex(/^[^.]/),
-    form: z.enum(["value", "type-only", "dynamic"]),
-  });
-  return z.record(
-    z.string(),
-    z
-      .string()
-      .transform((text) => importsIn({ text }))
-      .pipe(z.array(z.union([relativeImport, packageOrComputedImport]))),
+  const location = runnerPath.relative({ from: "/install", to: request.moduleImport.specifier });
+  return (
+    location.relation === "within-root" &&
+    new RegExp(`^(?:${request.runnerFolder}/|${NAMED_CORE_FOLDERS})`).test(location.path)
   );
 };
+
+const isPackageOrComputed = (request: { readonly moduleImport: ModuleImport }): boolean =>
+  /^[^.]/.test(request.moduleImport.specifier);
+
+const importsReachingOutside = (request: {
+  readonly runnerFolder: string;
+  readonly sources: Readonly<Record<string, string>>;
+}): readonly (ModuleImport & { readonly file: string })[] =>
+  Object.entries(request.sources).flatMap(([file, text]) =>
+    importsIn({ text })
+      .filter(
+        (moduleImport) =>
+          !resolvesWithin({ runnerFolder: request.runnerFolder, moduleImport }) && !isPackageOrComputed({ moduleImport }),
+      )
+      .map((moduleImport) => ({ file, ...moduleImport })),
+  );
 
 const REACHES_ONLY_NAMED_CORE_FOLDERS =
   /^(?!.*(?:\bfrom|\bimport)\s*\(?\s*["'](?:\.\.\/)+core\/(?!(?:mechanism-port|values|platform-ports|rule-set-reader|exception-records)\/)).*$/s;
@@ -69,15 +75,18 @@ const REACHES_ONLY_NAMED_CORE_FOLDERS =
 const TAKES_ONLY_TYPES_FROM_EXCEPTION_RECORDS =
   /^(?!.*(?:\b(?:import|export)\s+(?!type\s)[^;]*?\bfrom\s*|\bimport\s*\(?\s*)["'](?:\.\.\/)+core\/exception-records\/).*$/s;
 
-const runnerSourceWithinCoreReach = z
-  .string()
-  .regex(
-    REACHES_ONLY_NAMED_CORE_FOLDERS,
-    "imports a core folder outside mechanism-port, values, platform-ports, rule-set-reader and exception-records",
-  )
-  .regex(TAKES_ONLY_TYPES_FROM_EXCEPTION_RECORDS, "imports a value from core/exception-records");
+const isRelativeOrStaticVitest = (request: { readonly moduleImport: ModuleImport }): boolean =>
+  /^\.\.?\//.test(request.moduleImport.specifier) ||
+  (request.moduleImport.specifier === "vitest" &&
+    (request.moduleImport.form === "value" || request.moduleImport.form === "type-only"));
 
-const runnerSourcesWithinCoreReach = z.record(z.string(), runnerSourceWithinCoreReach);
+const filesBreaking = (request: {
+  readonly sources: Readonly<Record<string, string>>;
+  readonly rule: RegExp;
+}): readonly string[] =>
+  Object.entries(request.sources)
+    .filter(([, text]) => !request.rule.test(text))
+    .map(([file]) => file);
 
 describe("FR-8 and AR-1 runner reach into core and its own mechanism over what this repository's own runner source imports, read as build-time raw modules (CD-47: that source is the assertion's subject and no fake can stand in for it; nothing is spawned or written)", () => {
   it("reads a known file through every scanned set, so no set is silently empty", () => {
@@ -92,18 +101,40 @@ describe("FR-8 and AR-1 runner reach into core and its own mechanism over what t
   });
 
   it("finds every runner file importing from core only mechanism-port, values, platform-ports, rule-set-reader, and types from exception-records", () => {
-    expect(runnerSourcesWithinCoreReach.safeParse(runnerSources).error).toBeUndefined();
+    expect({
+      importingACoreFolderOutsideTheNamedFolders: filesBreaking({
+        sources: runnerSources,
+        rule: REACHES_ONLY_NAMED_CORE_FOLDERS,
+      }),
+      importingAValueFromExceptionRecords: filesBreaking({
+        sources: runnerSources,
+        rule: TAKES_ONLY_TYPES_FROM_EXCEPTION_RECORDS,
+      }),
+    }).toEqual({ importingACoreFolderOutsideTheNamedFolders: [], importingAValueFromExceptionRecords: [] });
   });
 
   it("finds every walker runner import resolving inside the walker runner or core's named folders", () => {
     expect(
-      relativeTargetsWithin({ runnerFolder: "mechanisms/walker/runner" }).safeParse(walkerRunnerSources).error,
-    ).toBeUndefined();
+      importsReachingOutside({ runnerFolder: "mechanisms/walker/runner", sources: walkerRunnerSources }),
+    ).toEqual([]);
   });
 
   it("finds every ESLint runner import resolving inside the ESLint runner or core's named folders", () => {
     expect(
-      relativeTargetsWithin({ runnerFolder: "mechanisms/eslint/runner" }).safeParse(eslintRunnerSources).error,
-    ).toBeUndefined();
+      importsReachingOutside({ runnerFolder: "mechanisms/eslint/runner", sources: eslintRunnerSources }),
+    ).toEqual([]);
+  });
+});
+
+describe("the test-import confinement check's own file, which its glob cannot include, read here as a build-time raw module (CD-47: that source is the assertion's subject; nothing is spawned or written)", () => {
+  it("finds core/check/vendor-imports.test.ts importing only relative paths and vitest, type-only imports included", () => {
+    expect({
+      scanned: Object.keys(vendorImportsTestSources),
+      importsOutside: Object.entries(vendorImportsTestSources).flatMap(([file, text]) =>
+        importsIn({ text })
+          .filter((moduleImport) => !isRelativeOrStaticVitest({ moduleImport }))
+          .map((moduleImport) => ({ file, ...moduleImport })),
+      ),
+    }).toEqual({ scanned: ["./core/check/vendor-imports.test.ts"], importsOutside: [] });
   });
 });

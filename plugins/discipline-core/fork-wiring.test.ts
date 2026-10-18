@@ -1,13 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { z } from "zod";
+import { assert, describe, expect, it } from "vitest";
 import { createDefaultFileTextPort } from "./core/platform-ports/file-text-port.ts";
 import { createDefaultPathPort } from "./core/platform-ports/path-port.ts";
+import { parsedJson } from "./core/rule-set-reader/rule-set-reader.ts";
 
-const resolvedSchema = z.object({ outcome: z.literal("ok"), value: z.string() });
-const forkRoot = resolvedSchema.parse(createDefaultPathPort({}).resolve({ path: `${import.meta.dirname}/../..` })).value;
+const resolvedForkRoot = (): string => {
+  const resolved = createDefaultPathPort({}).resolve({ path: `${import.meta.dirname}/../..` });
+  assert(resolved.outcome === "ok", "the fork root resolves to an absolute path");
+  return resolved.value;
+};
+
+const forkRoot = resolvedForkRoot();
 const fileText = createDefaultFileTextPort({});
 
-const readOkSchema = z.object({ outcome: z.literal("ok"), value: z.string() });
+const trackedText = (request: { readonly path: string }): string => {
+  const read = fileText.read({ path: `${forkRoot}/${request.path}` });
+  assert(read.outcome === "ok", `${request.path} reads`);
+  return read.value;
+};
+
 const DISCIPLINE_CORE_STEPS = `      - uses: actions/setup-node@v4
         with:
           node-version: 22.18.0
@@ -45,23 +55,19 @@ const SOURCE_CHECKS_JOB_STEPS = `  source-checks:
           bun-version: '1.4.2'
 ${DISCIPLINE_CORE_STEPS}`;
 
-const harnessConfigSchema = z.object({ constitution: z.object({ include: z.array(z.string()) }) });
-
 describe("the fork's CI and audit wiring for discipline core (CD-47: what this repository's own CI workflow and harness config say is the assertion's subject, and no fake can stand in for it, so the test reads those two tracked files read-only)", () => {
   it("sets up Node 22.18.0, then checks discipline core and proves an install, in the Windows job", () => {
-    expect(readOkSchema.parse(fileText.read({ path: `${forkRoot}/.github/workflows/rin-ci.yml` })).value).toContain(WINDOWS_JOB_STEPS);
+    expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(WINDOWS_JOB_STEPS);
   });
 
   it("sets up Node 22.18.0, then checks discipline core and proves an install, in the source-checks job", () => {
-    expect(readOkSchema.parse(fileText.read({ path: `${forkRoot}/.github/workflows/rin-ci.yml` })).value).toContain(
-      SOURCE_CHECKS_JOB_STEPS,
-    );
+    expect(trackedText({ path: ".github/workflows/rin-ci.yml" })).toContain(SOURCE_CHECKS_JOB_STEPS);
   });
 
   it("puts discipline core inside the constitution audit's scope", () => {
-    expect(
-      harnessConfigSchema.parse(JSON.parse(readOkSchema.parse(fileText.read({ path: `${forkRoot}/harness.config.json` })).value))
-        .constitution.include,
-    ).toContain("plugins/discipline-core/**");
+    expect(parsedJson({ text: trackedText({ path: "harness.config.json" }) })).toMatchObject({
+      outcome: "ok",
+      value: { constitution: { include: expect.arrayContaining(["plugins/discipline-core/**"]) } },
+    });
   });
 });

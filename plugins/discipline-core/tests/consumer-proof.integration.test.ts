@@ -1,5 +1,4 @@
-import { describe, expect, it, type MockInstance, vi } from "vitest";
-import { z } from "zod";
+import { assert, describe, expect, it, type MockInstance, vi } from "vitest";
 import { checkCommandOutcome } from "../core/check/command-outcome.ts";
 import { runCheck } from "../core/check/run-check.ts";
 import { runProject } from "../core/check/run-project.ts";
@@ -7,7 +6,7 @@ import { createDefaultFileTextPort, type FileTextPort } from "../core/platform-p
 import type { GitPort } from "../core/platform-ports/git-port.ts";
 import { createDefaultModuleLoaderPort, type ModuleLoaderPort } from "../core/platform-ports/module-loader-port.ts";
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
-import { type AbsolutePath, absolutePathSchema } from "../core/values/absolute-path.ts";
+import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { repoPathSchema } from "../core/values/repo-path.ts";
 import { createEslintRunner } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import { createDefaultEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
@@ -16,65 +15,53 @@ import { createDefaultParsePort } from "../mechanisms/walker/runner/typescript-p
 
 const path = createDefaultPathPort({});
 
-const resolvedSchema = z.object({ outcome: z.literal("ok"), value: absolutePathSchema });
+const resolvedPath = (request: { readonly path: string }): AbsolutePath => {
+  const resolved = path.resolve(request);
+  assert(resolved.outcome === "ok", `${request.path} resolves to an absolute path`);
+  return resolved.value;
+};
 
-const INSTALL_ROOT = resolvedSchema.parse(path.resolve({ path: `${import.meta.dirname}/..` })).value;
+const INSTALL_ROOT = resolvedPath({ path: `${import.meta.dirname}/..` });
 
-const WALKER_CONSUMER = resolvedSchema.parse(path.resolve({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/walker` })).value;
+const WALKER_CONSUMER = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/walker` });
 
-const ESLINT_CONSUMER = resolvedSchema.parse(path.resolve({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/eslint` })).value;
+const ESLINT_CONSUMER = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/eslint` });
 
-const INSTALLED_SOURCE = z.string().regex(/^(?!(?:[^/]*\/)*tests\/)(?!.*\.test\.ts$).*$/);
+const INSTALLED_SOURCE = String.raw`(?!(?:[^/]*\/)*tests\/)(?!.*\.test\.ts$).*`;
 
-const CORE_PATHS = z.templateLiteral(["core/", INSTALLED_SOURCE]);
+const WALKER_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/walker\/runner|mechanisms\/walker\/CD-14)\/${INSTALLED_SOURCE}`;
 
-const CD14_RULE_PATHS = z.templateLiteral(["rules/CD-14/", INSTALLED_SOURCE]);
+const ESLINT_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/eslint\/runner|mechanisms\/eslint\/CD-14)\/${INSTALLED_SOURCE}`;
 
-const WALKER_INSTALL_LIST = z.union([
-  CORE_PATHS,
-  CD14_RULE_PATHS,
-  z.templateLiteral(["mechanisms/walker/runner/", INSTALLED_SOURCE]),
-  z.templateLiteral(["mechanisms/walker/CD-14/", INSTALLED_SOURCE]),
-]);
+const WALKER_INSTALL_LIST = new RegExp(`^${WALKER_INSTALLED}$`);
 
-const ESLINT_INSTALL_LIST = z.union([
-  CORE_PATHS,
-  CD14_RULE_PATHS,
-  z.templateLiteral(["mechanisms/eslint/runner/", INSTALLED_SOURCE]),
-  z.templateLiteral(["mechanisms/eslint/CD-14/", INSTALLED_SOURCE]),
-]);
+const ESLINT_INSTALL_LIST = new RegExp(`^${ESLINT_INSTALLED}$`);
 
-const WALKER_READABLE = z.union([
-  WALKER_INSTALL_LIST,
-  z.templateLiteral(["tests/test-fixtures/consumer-proof/walker/", z.string()]),
-]);
+const WALKER_READABLE = new RegExp(String.raw`^(?:${WALKER_INSTALLED}|tests\/test-fixtures\/consumer-proof\/walker\/.*)$`);
 
-const ESLINT_READABLE = z.union([
-  ESLINT_INSTALL_LIST,
-  z.templateLiteral(["tests/test-fixtures/consumer-proof/eslint/", z.string()]),
-]);
+const ESLINT_READABLE = new RegExp(String.raw`^(?:${ESLINT_INSTALLED}|tests\/test-fixtures\/consumer-proof\/eslint\/.*)$`);
 
-const NO_HARNESS_SEGMENT = z.string().regex(/^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/);
+const NO_HARNESS_SEGMENT = /^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/;
 
+const isWithin = (request: { readonly observed: string; readonly paths: RegExp }): boolean => {
+  const location = path.relative({ from: INSTALL_ROOT, to: request.observed });
+  return location.relation === "within-root" && request.paths.test(location.path);
+};
 
-const installRelative = (request: { readonly observed: string }) =>
-  path.relative({ from: INSTALL_ROOT, to: request.observed });
+type PathCallsOutside = {
+  readonly called: "at least once" | "never";
+  readonly outside: readonly string[];
+};
 
-const pathCallsWithin = (request: { readonly paths: z.ZodType<string, string> }) =>
-  expect.schemaMatching(
-    z
-      .array(
-        z.tuple([
-          z.object({
-            path: z
-              .string()
-              .transform((observed) => installRelative({ observed }))
-              .pipe(z.object({ relation: z.literal("within-root"), path: request.paths })),
-          }),
-        ]),
-      )
-      .min(1),
-  );
+const pathCallsOutside = (request: {
+  readonly calls: readonly (readonly [{ readonly path: string }])[];
+  readonly paths: RegExp;
+}): PathCallsOutside => ({
+  called: request.calls.length === 0 ? "never" : "at least once",
+  outside: request.calls.map(([call]) => call.path).filter((observed) => !isWithin({ observed, paths: request.paths })),
+});
+
+const EVERY_CALL_WITHIN: PathCallsOutside = { called: "at least once", outside: [] };
 
 
 type ObservedPorts = {
@@ -95,10 +82,10 @@ const observedPorts = (): ObservedPorts => {
   };
   const pieceModules: ModuleLoaderPort = { load: createDefaultModuleLoaderPort({}).load };
   const runners: Readonly<Record<string, unknown>> = {
-    [resolvedSchema.parse(path.resolve({ path: `${INSTALL_ROOT}/mechanisms/walker/runner/runner.ts` })).value]: {
+    [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/walker/runner/runner.ts` })]: {
       runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: createDefaultParsePort({}) }),
     },
-    [resolvedSchema.parse(path.resolve({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })).value]: {
+    [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })]: {
       runner: createEslintRunner({ fileText, modules: pieceModules, path, eslint: createDefaultEslintPort({}) }),
     },
   };
@@ -118,7 +105,7 @@ const observedPorts = (): ObservedPorts => {
 const gitTracking = (request: { readonly tracked: readonly string[] }): GitPort => ({
   trackedPaths: vi
     .fn<GitPort["trackedPaths"]>()
-    .mockReturnValue({ outcome: "ok", value: z.array(repoPathSchema).parse(request.tracked) }),
+    .mockReturnValue({ outcome: "ok", value: request.tracked.map((tracked) => repoPathSchema.parse(tracked)) }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
 });
 
@@ -203,19 +190,19 @@ describe("a consumer with no harness directory selecting CD-14 through the walke
   it("reads, probes and loads only paths in the walker's install path list or the consumer repo", async () => {
     const ports = observedPorts();
     await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
-    expect(ports.reads.mock.calls).toEqual(pathCallsWithin({ paths: WALKER_READABLE }));
-    expect(ports.probes.mock.calls).toEqual(pathCallsWithin({ paths: WALKER_READABLE }));
-    expect(ports.pieceLoads.mock.calls).toEqual(pathCallsWithin({ paths: WALKER_INSTALL_LIST }));
-    expect(ports.runnerLoads.mock.calls).toEqual(pathCallsWithin({ paths: WALKER_INSTALL_LIST }));
+    expect(pathCallsOutside({ calls: ports.reads.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.probes.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: WALKER_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: WALKER_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
   });
 
   it("reads, probes and loads no path carrying a harness segment", async () => {
     const ports = observedPorts();
     await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
-    expect(ports.reads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
-    expect(ports.probes.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
-    expect(ports.pieceLoads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
-    expect(ports.runnerLoads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
+    expect(pathCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
   });
 });
 
@@ -250,19 +237,19 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
     const ports = observedPorts();
     await projectOf({ repo: ESLINT_CONSUMER, ports });
     await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLASS_TRACKED, ports });
-    expect(ports.reads.mock.calls).toEqual(pathCallsWithin({ paths: ESLINT_READABLE }));
-    expect(ports.probes.mock.calls).toEqual(pathCallsWithin({ paths: ESLINT_READABLE }));
-    expect(ports.pieceLoads.mock.calls).toEqual(pathCallsWithin({ paths: ESLINT_INSTALL_LIST }));
-    expect(ports.runnerLoads.mock.calls).toEqual(pathCallsWithin({ paths: ESLINT_INSTALL_LIST }));
+    expect(pathCallsOutside({ calls: ports.reads.mock.calls, paths: ESLINT_READABLE })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.probes.mock.calls, paths: ESLINT_READABLE })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: ESLINT_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: ESLINT_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
   });
 
   it("reads, probes and loads no path carrying a harness segment, check and project alike", async () => {
     const ports = observedPorts();
     await projectOf({ repo: ESLINT_CONSUMER, ports });
     await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLASS_TRACKED, ports });
-    expect(ports.reads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
-    expect(ports.probes.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
-    expect(ports.pieceLoads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
-    expect(ports.runnerLoads.mock.calls).toEqual(pathCallsWithin({ paths: NO_HARNESS_SEGMENT }));
+    expect(pathCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(pathCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
   });
 });
