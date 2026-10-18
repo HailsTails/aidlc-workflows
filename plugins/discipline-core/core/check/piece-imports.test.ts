@@ -30,6 +30,10 @@ const typePackageTexts = import.meta.glob(["./mechanisms/*/runner/piece-type-pac
 });
 
 const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
+  '[".","mechanisms","walker","CD-3"]': "mechanisms/walker/CD-3",
+  '[".","rules","CD-3"]': "rules/CD-3",
+  '["./mechanisms/walker/CD-3","../runner/jsonc-parse.ts"]': "mechanisms/walker/runner/jsonc-parse.ts",
+  '["./mechanisms/walker/CD-3","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
   '[".","mechanisms","eslint","runner","piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '["./mechanisms/eslint/runner/piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '[".","mechanisms","walker","CD-14"]': "mechanisms/walker/CD-14",
@@ -46,6 +50,7 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
 };
 
 const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
+  "./mechanisms/walker/CD-3/compiler-overrides.ts": "./mechanisms/walker/CD-3",
   "./mechanisms/walker/CD-14/class-syntax.ts": "./mechanisms/walker/CD-14",
   "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": "./tests/probe-rule-set/mechanisms/walker/PD-1",
 };
