@@ -2,7 +2,8 @@ import { z } from "zod";
 
 export type AnchorKind =
   | { readonly kind: "keyword"; readonly keyword: string }
-  | { readonly kind: "file" };
+  | { readonly kind: "file" }
+  | { readonly kind: "source" };
 
 export type Anchor = { readonly line: number; readonly column: number };
 

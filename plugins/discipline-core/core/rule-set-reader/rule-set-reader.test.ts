@@ -124,6 +124,52 @@ describe("readDisciplineFile", () => {
     expect(readDiscipline(DISCIPLINE)).toEqual({ outcome: "ok", value: DISCIPLINE });
   });
 
+  it("admits a mechanism-reported source descriptor and retains its source case lines", () => {
+    const discipline = {
+      ...DISCIPLINE,
+      clauses: [{
+        kind: "mechanical",
+        id: "source-position",
+        summary: "mechanism-reported source positions",
+        mechanisms: ["walker"],
+        anchor: { kind: "source" },
+        cases: {
+          flag: [{
+            name: "reported source line",
+            fileName: "src/source.ts",
+            source: "const ready = true;\n\nconst value = inspect();\n",
+            expectedLines: [3],
+          }],
+          allow: [ALLOW_CASE],
+        },
+      }],
+    };
+
+    expect(readDiscipline(discipline)).toEqual({ outcome: "ok", value: discipline });
+  });
+
+  it("retains a file descriptor and its existing source cases", () => {
+    const discipline = {
+      ...DISCIPLINE,
+      clauses: [{ ...CLASS_SYNTAX, anchor: { kind: "file" } }],
+    };
+
+    expect(readDiscipline(discipline)).toEqual({ outcome: "ok", value: discipline });
+  });
+
+  it.each([
+    { name: "unknown", anchor: { kind: "position" } },
+    { name: "omitted", anchor: {} },
+  ])("refuses an $name anchor kind without a fallback", ({ anchor }) => {
+    expect(readDiscipline({
+      ...DISCIPLINE,
+      clauses: [{ ...CLASS_SYNTAX, anchor }],
+    })).toMatchObject({
+      outcome: "failed",
+      error: { kind: "file-malformed", path: DISCIPLINE_PATH },
+    });
+  });
+
   it("allows a case fileName ending .d.ts", () => {
     const file = {
       ...DISCIPLINE,
