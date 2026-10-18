@@ -27,7 +27,7 @@ const packageFiles = import.meta.glob(["../README.md", "../package.json"], {
 });
 
 const README_INSTALL_LIST = {
-  always: ["package.json", "core/"],
+  always: ["package.json", "core/", "test-support/hermetic-git/"],
   perSharedClause: ["rules/<DisciplineId>/", "mechanisms/<MechanismId>/runner/", "mechanisms/<MechanismId>/<DisciplineId>/"],
   leftOut: ["*.test.ts", "tests/", "test-fixtures/"],
 };
@@ -92,7 +92,7 @@ describe("installPaths", () => {
   it("substitutes the discipline and mechanism into concrete relative paths", () => {
     expect(installPaths({ installList: README_INSTALL_LIST, disciplineId: "CD-14", mechanism: "eslint" })).toEqual({
       outcome: "ok",
-      value: ["package.json", "core", "rules/CD-14", "mechanisms/eslint/runner", "mechanisms/eslint/CD-14"],
+      value: ["package.json", "core", "test-support/hermetic-git", "rules/CD-14", "mechanisms/eslint/runner", "mechanisms/eslint/CD-14"],
     });
   });
 
