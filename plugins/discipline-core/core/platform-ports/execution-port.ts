@@ -5,6 +5,10 @@ import type { Result } from "../values/result.ts";
 
 export type ExecutionEnvironment = Readonly<Record<string, string | undefined>>;
 
+export type ExecutionEnvironmentSnapshot = (
+  request: Record<string, never>,
+) => Result<ExecutionEnvironment, ExecutionFailure>;
+
 export type ExecutionExit = {
   readonly status: number;
   readonly stdout: string;
@@ -186,8 +190,25 @@ export const createExecutionPort = (options: {
 
 export const createDefaultExecutionPort = (options: {
   readonly policy: ExecutionPolicy;
+  readonly ambientEnvironment?: ExecutionEnvironment;
 }): ExecutionPort => createExecutionPort({
   spawn: createExecutionSpawn({ spawnProvider: spawnSync }),
   policy: options.policy,
-  ambientEnvironment: { ...process.env },
+  ambientEnvironment: options.ambientEnvironment ?? { ...process.env },
 });
+
+export const createExecutionEnvironmentSnapshot = (options: {
+  readonly readEnvironment: () => NodeJS.ProcessEnv;
+}): ExecutionEnvironmentSnapshot => () => {
+  try {
+    const parsed = executionEnvironmentSchema.safeParse(options.readEnvironment());
+    return parsed.success
+      ? { outcome: "ok", value: parsed.data }
+      : failedExecution({ ...EMPTY_DIAGNOSTICS, kind: "host-failed", detail: z.prettifyError(parsed.error) });
+  } catch (thrown) {
+    return failedExecution({ ...EMPTY_DIAGNOSTICS, kind: "host-failed", detail: failureDetail({ thrown }) });
+  }
+};
+
+export const defaultExecutionEnvironmentSnapshot: ExecutionEnvironmentSnapshot =
+  createExecutionEnvironmentSnapshot({ readEnvironment: () => process.env });

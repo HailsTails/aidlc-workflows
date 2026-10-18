@@ -29,6 +29,9 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./rules/**/*.test.*",
     "!./tests/**/*.test.*",
     "!./scripts/**/*.test.*",
+    "!./test-support/hermetic-git/hermetic-git-environment.test.ts",
+    "!./test-support/hermetic-git/hermetic-git-repository.test.ts",
+    "!./test-support/hermetic-git/index.test.ts",
     "!./tests/test-fixtures/**",
     "!./tests/required-entry.ts",
     "!./tests/confinement.ts",
@@ -180,6 +183,9 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./core/check/run-check.ts": expect.any(String),
         "./scripts/install-proof.ts": expect.any(String),
         "./scripts/run-install-proof.ts": expect.any(String),
+        "./test-support/hermetic-git/hermetic-git-environment.ts": expect.any(String),
+        "./test-support/hermetic-git/hermetic-git-repository.ts": expect.any(String),
+        "./test-support/hermetic-git/index.ts": expect.any(String),
       }),
       runnerSources: expect.objectContaining({ "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String) }),
       platformPortSources: expect.objectContaining({
@@ -201,6 +207,9 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.test.ts": expect.any(String),
         "./tests/required-entry.ts": expect.any(String),
         "./tests/confinement.ts": expect.any(String),
+        "./test-support/hermetic-git/hermetic-git-environment.test.ts": expect.any(String),
+        "./test-support/hermetic-git/hermetic-git-repository.test.ts": expect.any(String),
+        "./test-support/hermetic-git/index.test.ts": expect.any(String),
       }),
     });
   });

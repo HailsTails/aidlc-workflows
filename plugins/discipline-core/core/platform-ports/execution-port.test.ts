@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { absolutePathSchema } from "../values/absolute-path.ts";
 import {
+  createExecutionEnvironmentSnapshot,
   createExecutionPort,
   createExecutionSpawn,
   type ExecutionPolicy,
@@ -9,6 +10,7 @@ import {
 } from "./execution-port.ts";
 
 const WORKING_DIRECTORY = absolutePathSchema.parse("H:\\Development\\project files");
+type EnvironmentReader = Parameters<typeof createExecutionEnvironmentSnapshot>[0]["readEnvironment"];
 
 describe("createExecutionPort", () => {
   it("binds policy and environment once and snapshots inputs across direct argv runs", () => {
@@ -159,6 +161,73 @@ describe("createExecutionPort", () => {
       timeoutMilliseconds: undefined,
       maximumOutputBytes: 268435456,
     });
+  });
+});
+
+describe("createExecutionEnvironmentSnapshot", () => {
+  it("binds its provider lazily and captures a fresh copied environment exactly once per invocation", () => {
+    const ambient: ReturnType<EnvironmentReader> = { PATH: "first search path", UNUSED: undefined };
+    const readEnvironment = vi.fn<EnvironmentReader>().mockReturnValue(ambient);
+    const snapshot = createExecutionEnvironmentSnapshot({ readEnvironment });
+    expect(readEnvironment).not.toHaveBeenCalled();
+
+    const first = snapshot({});
+    Object.assign(ambient, { PATH: "second search path" });
+    const second = snapshot({});
+
+    expect(first).toStrictEqual({
+      outcome: "ok",
+      value: { PATH: "first search path", UNUSED: undefined },
+    });
+    expect(second).toStrictEqual({
+      outcome: "ok",
+      value: { PATH: "second search path", UNUSED: undefined },
+    });
+    expect(readEnvironment).toHaveBeenNthCalledWith(1);
+    expect(readEnvironment).toHaveBeenNthCalledWith(2);
+    expect(readEnvironment).toHaveBeenCalledTimes(2);
+    expect(ambient).toStrictEqual({ PATH: "second search path", UNUSED: undefined });
+  });
+
+  it.each([
+    { thrown: new Error("environment read refused"), detail: "environment read refused" },
+    { thrown: "environment snapshot unavailable", detail: "environment snapshot unavailable" },
+  ])("returns the external read failure as complete host-failed data: $detail", ({ thrown, detail }) => {
+    const readEnvironment = vi.fn<EnvironmentReader>().mockThrow(thrown);
+    const snapshot = createExecutionEnvironmentSnapshot({ readEnvironment });
+
+    expect(snapshot({})).toStrictEqual({
+      outcome: "failed",
+      error: {
+        kind: "host-failed",
+        detail,
+        stdout: "",
+        stderr: "",
+        code: undefined,
+        signal: undefined,
+      },
+    });
+    expect(readEnvironment).toHaveBeenCalledExactlyOnceWith();
+  });
+
+  it("refuses one malformed host environment rather than certifying a corrupted snapshot", () => {
+    const ambient: ReturnType<EnvironmentReader> = { PATH: "fixture search path" };
+    Object.defineProperty(ambient, "PATH", { value: 7, enumerable: true });
+    const readEnvironment = vi.fn<EnvironmentReader>().mockReturnValue(ambient);
+    const snapshot = createExecutionEnvironmentSnapshot({ readEnvironment });
+
+    expect(snapshot({})).toStrictEqual({
+      outcome: "failed",
+      error: {
+        kind: "host-failed",
+        detail: expect.stringMatching(/\S/),
+        stdout: "",
+        stderr: "",
+        code: undefined,
+        signal: undefined,
+      },
+    });
+    expect(readEnvironment).toHaveBeenCalledExactlyOnceWith();
   });
 });
 
