@@ -36,6 +36,12 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
   '[".","mechanisms","walker","CD-23"]': "mechanisms/walker/CD-23",
   '[".","rules","CD-23"]': "rules/CD-23",
   '["./mechanisms/walker/CD-23","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
+  '[".","mechanisms","walker","CD-25"]': "mechanisms/walker/CD-25",
+  '[".","rules","CD-25"]': "rules/CD-25",
+  '["./mechanisms/walker/CD-25","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
+  '[".","mechanisms","walker","CD-26"]': "mechanisms/walker/CD-26",
+  '[".","rules","CD-26"]': "rules/CD-26",
+  '["./mechanisms/walker/CD-26","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
   '[".","mechanisms","eslint","runner","piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '["./mechanisms/eslint/runner/piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '[".","mechanisms","walker","CD-14"]': "mechanisms/walker/CD-14",
@@ -54,6 +60,8 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
 const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
   "./mechanisms/walker/CD-10/throws-in-tests.ts": "./mechanisms/walker/CD-10",
   "./mechanisms/walker/CD-23/export-test-sibling.ts": "./mechanisms/walker/CD-23",
+  "./mechanisms/walker/CD-25/dependency-isolation.ts": "./mechanisms/walker/CD-25",
+  "./mechanisms/walker/CD-26/module-mocking.ts": "./mechanisms/walker/CD-26",
   "./mechanisms/walker/CD-14/class-syntax.ts": "./mechanisms/walker/CD-14",
   "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": "./tests/probe-rule-set/mechanisms/walker/PD-1",
 };
