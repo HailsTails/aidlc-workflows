@@ -55,6 +55,7 @@ const probePiece: ProjectedPiece = {
 
 const authorisedInB: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture mechanisms/eslint/runner/projection.test.ts#authorisedInB; not historical authorisation" },
   clause: classSyntax,
   mechanism: eslint,
   file: repoPathSchema.parse("src/b.ts"),
@@ -72,6 +73,7 @@ const carveOutInA: ExceptionRecord = {
 
 const authorisedRoute: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture mechanisms/eslint/runner/projection.test.ts#authorisedRoute; not historical authorisation" },
   clause: noTmpFiles,
   mechanism: eslint,
   file: repoPathSchema.parse("route/[id].ts"),

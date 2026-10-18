@@ -14,9 +14,21 @@ import type { MechanismId } from "../values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
 import { type WhyChain, whyChainSchema } from "../values/why-chain.ts";
-import type { ExceptionRecord, InvalidRecord } from "./exception-record.ts";
+import type { AuthorisedLocationEntry, ExceptionRecord, FileCarveOutEntry, InvalidRecord } from "./exception-record.ts";
 
-export type { ExceptionRecord, InvalidRecord } from "./exception-record.ts";
+export type {
+  AuthorisationEvidence,
+  AuthorisedLocationEntry,
+  ClauseWideCarveOutEntry,
+  ExceptionEntry,
+  ExceptionRecord,
+  ExceptionsFile,
+  ExistingAuthorisationProvenance,
+  FileCarveOutEntry,
+  FileDebtEvidence,
+  InheritedDebtProvenance,
+  InvalidRecord,
+} from "./exception-record.ts";
 
 export type ExceptionReading = {
   readonly records: readonly ExceptionRecord[];
@@ -50,33 +62,6 @@ export const createDefaultExceptionRepository = (options: {
   path: createDefaultPathPort({}),
 });
 
-export type ExceptionsFile = {
-  readonly version: 1;
-  readonly exceptions: readonly (
-    | {
-        readonly kind: "authorised-location";
-        readonly clause: string;
-        readonly file: string;
-        readonly reason: string;
-      }
-    | {
-        readonly kind: "file-carve-out";
-        readonly clause: string;
-        readonly file: string;
-        readonly reason: string;
-        readonly whyChain: unknown;
-      }
-    | {
-        readonly kind: "clause-wide-carve-out";
-        readonly clause: string;
-        readonly reason: string;
-        readonly whyChain: unknown;
-      }
-  )[];
-};
-
-type ExceptionEntry = ExceptionsFile["exceptions"][number];
-
 type IndexedRecord = { readonly index: number; readonly record: ExceptionRecord };
 
 type EntryProblem = InvalidRecord["problem"];
@@ -90,13 +75,16 @@ const exceptionsFileSchema = z.object({
         clause: z.string(),
         file: z.string(),
         reason: z.string(),
+        whyChain: z.unknown().optional(),
+        provenance: z.unknown().optional(),
       }),
       z.strictObject({
         kind: z.literal("file-carve-out"),
         clause: z.string(),
         file: z.string(),
         reason: z.string(),
-        whyChain: z.unknown(),
+        whyChain: z.unknown().optional(),
+        provenance: z.unknown().optional(),
       }),
       z.strictObject({
         kind: z.literal("clause-wide-carve-out"),
@@ -107,6 +95,46 @@ const exceptionsFileSchema = z.object({
     ]),
   ),
 });
+
+type StructuralExceptionEntry = z.infer<typeof exceptionsFileSchema>["exceptions"][number];
+
+const recordedTextSchema = z.string().refine((text) => text.trim().length > 0, { error: "must not be blank" });
+
+const existingAuthorisationProvenanceSchema = z.strictObject({
+  kind: z.literal("existing-authorisation"),
+  source: recordedTextSchema,
+  decision: recordedTextSchema.optional(),
+});
+
+const inheritedDebtProvenanceSchema = z.strictObject({
+  kind: z.literal("inherited-debt"),
+  source: recordedTextSchema,
+  decision: recordedTextSchema,
+});
+
+const authorisedLocationFields = {
+  kind: z.literal("authorised-location"),
+  clause: z.string(),
+  file: z.string(),
+  reason: z.string(),
+};
+
+const authorisedLocationSchema: z.ZodType<AuthorisedLocationEntry> = z.union([
+  z.strictObject({ ...authorisedLocationFields, whyChain: whyChainSchema, provenance: existingAuthorisationProvenanceSchema.optional() }),
+  z.strictObject({ ...authorisedLocationFields, whyChain: z.never().optional(), provenance: existingAuthorisationProvenanceSchema }),
+]);
+
+const fileCarveOutFields = {
+  kind: z.literal("file-carve-out"),
+  clause: z.string(),
+  file: z.string(),
+  reason: z.string(),
+};
+
+const fileCarveOutSchema: z.ZodType<FileCarveOutEntry> = z.union([
+  z.strictObject({ ...fileCarveOutFields, whyChain: whyChainSchema, provenance: inheritedDebtProvenanceSchema.optional() }),
+  z.strictObject({ ...fileCarveOutFields, whyChain: z.never().optional(), provenance: inheritedDebtProvenanceSchema }),
+]);
 
 const recordedFile = (request: {
   readonly file: string;
@@ -132,7 +160,7 @@ const recordedWhyChain = (request: {
 type ClauseSelection = { readonly clause: ClauseAddress; readonly mechanism: MechanismId };
 
 const selectedClauseOf = (request: {
-  readonly entry: ExceptionEntry;
+  readonly entry: StructuralExceptionEntry;
   readonly selection: Selection;
 }): Result<ClauseSelection, EntryProblem> => {
   const address = clauseAddressSchema.safeParse(request.entry.clause);
@@ -149,11 +177,14 @@ const selectedClauseOf = (request: {
   if (selected === undefined) {
     return { outcome: "failed", error: { kind: "clause-not-selected", clause } };
   }
+  if (clause.discipline === "CD-1") {
+    return { outcome: "failed", error: { kind: "non-exemptible-clause", clause } };
+  }
   return { outcome: "ok", value: { clause, mechanism: selected.mechanism } };
 };
 
 const parsedRecord = (request: {
-  readonly entry: ExceptionEntry;
+  readonly entry: StructuralExceptionEntry;
   readonly selection: Selection;
 }): Result<ExceptionRecord, EntryProblem> => {
   const { entry } = request;
@@ -168,9 +199,13 @@ const parsedRecord = (request: {
       if (file.outcome === "failed") {
         return file;
       }
+      const evidence = authorisedLocationSchema.safeParse(entry);
+      if (!evidence.success) {
+        return { outcome: "failed", error: { kind: "evidence-refused", detail: z.prettifyError(evidence.error) } };
+      }
       return {
         outcome: "ok",
-        value: { kind: entry.kind, clause, mechanism, file: file.value, reason: entry.reason },
+        value: { ...evidence.data, clause, mechanism, file: file.value },
       };
     }
     case "file-carve-out": {
@@ -178,19 +213,23 @@ const parsedRecord = (request: {
       if (file.outcome === "failed") {
         return file;
       }
-      const whyChain = recordedWhyChain({ whyChain: entry.whyChain });
-      if (whyChain.outcome === "failed") {
-        return whyChain;
+      const evidence = fileCarveOutSchema.safeParse(entry);
+      if (!evidence.success) {
+        const refusal = evidence.error.issues[0];
+        const invalidChain = entry.whyChain !== undefined && refusal?.code === "invalid_union" &&
+          refusal.errors[0]?.some((issue) => issue.path[0] === "whyChain");
+        return {
+          outcome: "failed",
+          error: { kind: invalidChain ? "why-chain-refused" : "evidence-refused", detail: z.prettifyError(evidence.error) },
+        };
       }
       return {
         outcome: "ok",
         value: {
-          kind: entry.kind,
+          ...evidence.data,
           clause,
           mechanism,
           file: file.value,
-          reason: entry.reason,
-          whyChain: whyChain.value,
         },
       };
     }
@@ -272,7 +311,7 @@ const firstRecordsOf = (request: { readonly valid: readonly IndexedRecord[] }): 
     .map(({ record }) => record);
 
 export const parseExceptionEntries = (request: {
-  readonly entries: ExceptionsFile["exceptions"];
+  readonly entries: readonly StructuralExceptionEntry[];
   readonly selection: Selection;
 }): {
   readonly records: readonly ExceptionRecord[];
@@ -289,7 +328,7 @@ export const readExceptionEntries = (request: {
   readonly fileText: FileTextPort;
   readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
-}): Result<ExceptionsFile["exceptions"], LoadFailure> => {
+}): Result<readonly StructuralExceptionEntry[], LoadFailure> => {
   const path = request.path.join({ segments: [request.repoRoot, "discipline-exceptions.json"] });
   if (request.fileText.exists({ path }) === "absent") {
     return { outcome: "ok", value: [] };

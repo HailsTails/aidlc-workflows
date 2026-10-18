@@ -32,6 +32,7 @@ const RUN_REQUEST: RunRequest = {
 
 const CARVE_OUT: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/mechanism-dispatch.test.ts#CARVE_OUT; not historical authorisation" },
   clause: CLASS_SYNTAX,
   mechanism: WALKER,
   file: repoPathSchema.parse("src/a.ts"),
@@ -174,6 +175,7 @@ const ESLINT = mechanismIdSchema.parse("eslint");
 
 const ESLINT_LOCATION: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/mechanism-dispatch.test.ts#ESLINT_LOCATION; not historical authorisation" },
   clause: CLASS_SYNTAX,
   mechanism: ESLINT,
   file: repoPathSchema.parse("src/a.ts"),

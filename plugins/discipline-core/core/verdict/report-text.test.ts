@@ -38,6 +38,7 @@ const finding: Finding = {
 
 const located: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/verdict/report-text.test.ts#located; not historical authorisation" },
   clause: noClass,
   mechanism: walker,
   file: fileA,

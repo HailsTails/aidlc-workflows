@@ -104,6 +104,7 @@ const WHY_CHAIN: WhyChain = {
 
 const FACTORY_LOCATION: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture mechanisms/eslint/runner/create-eslint-runner.test.ts#FACTORY_LOCATION; not historical authorisation" },
   clause: CLASS_SYNTAX,
   mechanism: ESLINT,
   file: FACTORY,
@@ -121,6 +122,7 @@ const FACTORY_CARVE_OUT: ExceptionRecord = {
 
 const GONE_LOCATION: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture mechanisms/eslint/runner/create-eslint-runner.test.ts#GONE_LOCATION; not historical authorisation" },
   clause: CLASS_SYNTAX,
   mechanism: ESLINT,
   file: repoPathSchema.parse("src/gone.ts"),
