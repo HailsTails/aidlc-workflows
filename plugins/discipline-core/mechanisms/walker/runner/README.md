@@ -12,10 +12,15 @@ The walker runner is discipline-core's standalone mechanism for checks that read
 
 - `walker-check.ts` declares the contract a piece implements, `WalkerCheck<Api, Tree, Node>`, and the parse port the runner walks with, `ParsePort<Api, Tree, Node>`. Both are generic over the syntax tree and name no parser.
 - `walker-check-schema.ts` holds the schemas the runner parses a loaded piece with: a clause's settings (`module`, a path inside the piece folder ending `.ts`), the piece module's `check` export, and the values a check returns.
+- `walker-piece.ts` declares the prepared registration contract, including per-file eligibility and source observers, using the existing TypeScript provider aliases.
+- `prepare-walker-pieces.ts` loads each selected module once and prepares it with its selected clauses and bounded repository membership.
+- `observe-walker-file.ts` declares the per-file observation entry and result, including actual applicable clause addresses.
 - `create-walker-runner.ts` builds the runner from its ports: file text, module loading, paths and parsing.
 - `typescript-parse.ts` binds the parse port to TypeScript. It parses with parent pointers set, so a check can walk a node's ancestors through `node.parent`.
 - `runner.ts` is the runner core loads, wired to the default ports.
 - `piece-type-packages.json` lists the packages a piece may import types from. It is not the runtime list above.
+
+The prepared registration helpers are staged alongside the current runner. The default `runner.ts` still uses `WalkerCheck`; the writing instructions below describe that current contract until the coordinated runner and piece cutover.
 
 ## Writing a piece
 
