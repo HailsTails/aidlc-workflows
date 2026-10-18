@@ -14,20 +14,11 @@
 // fixture bindings/receipts and are unaffected by the tool deletions (their
 // repo-SoR rewrite is PR2).
 
-import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
+import { defaultPathOperations } from "../rin-harness-path-operations.ts";
+import { defaultContentDigestPort } from "../rin-harness-content-digest.ts";
+import { defaultFileTextPort } from "../rin-harness-sidecar-file-reader.ts";
+import { defaultReviewProcessPort } from "./review-process-port.ts";
 import type { ReviewVerdict } from "../../hooks/rin-gates-autonomy-gate.ts";
 import { composePluginFixture } from "../../../../tests/harness/plugin-kit.ts";
 import {
@@ -35,19 +26,34 @@ import {
   loadStageGraphNodes,
 } from "./rin-gates-reviewer-identity.ts";
 
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const runtime = defaultReviewProcessPort();
+const digests = defaultContentDigestPort();
+
 // Read ONCE per run so every fixture age resolves against one instant. Sampling
 // per fixture would let a run straddling midnight skew two records' relative
 // neglect and decide a rung the case never meant to exercise.
 const RUN_INSTANT_MS = Date.now();
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const HOOKS_DIR = resolve(HERE, "..", "..", "hooks");
-const STATUS_TOOL = join(HERE, "rin-gates-status.ts");
-const PROMOTE_TOOL = join(HERE, "rin-gates-promote.ts");
-const AUTONOMY_HOOK = join(HOOKS_DIR, "rin-gates-autonomy-gate.ts");
-const VERDICT_GUARD = join(HOOKS_DIR, "rin-gates-verdict-guard.ts");
-const VERDICT_EMITTER = join(HERE, "rin-gates-review-verdict.ts");
-const SHIPPED_OWNERS_CONFIG = join(HERE, "transition-owners.json");
+const HERE = paths.dirname({
+  path: paths.fromFileUrl({ url: import.meta.url }),
+});
+const HOOKS_DIR = paths.resolve({ segments: [HERE, "..", "..", "hooks"] });
+const STATUS_TOOL = paths.join({ segments: [HERE, "rin-gates-status.ts"] });
+const PROMOTE_TOOL = paths.join({ segments: [HERE, "rin-gates-promote.ts"] });
+const AUTONOMY_HOOK = paths.join({
+  segments: [HOOKS_DIR, "rin-gates-autonomy-gate.ts"],
+});
+const VERDICT_GUARD = paths.join({
+  segments: [HOOKS_DIR, "rin-gates-verdict-guard.ts"],
+});
+const VERDICT_EMITTER = paths.join({
+  segments: [HERE, "rin-gates-review-verdict.ts"],
+});
+const SHIPPED_OWNERS_CONFIG = paths.join({
+  segments: [HERE, "transition-owners.json"],
+});
 
 type ObservedReviewVerdict = ReviewVerdict & {
   readonly findings?: readonly string[];
@@ -66,31 +72,45 @@ const record = (name: string, passed: boolean, detail: string): void => {
 
 const MINIMUM_CASE_FLOOR = 84;
 
-const SANDBOX = mkdtempSync(join(tmpdir(), "rin-gates-derivation-"));
+const SANDBOX = files.makeTemporaryDirectory(
+  paths.join({ segments: [files.temporaryRoot(), "rin-gates-derivation-"] }),
+);
 const publicEngine = composePluginFixture({
   plugin: "rin",
   harness: "claude",
-  projectDir: join(SANDBOX, "public-engine"),
+  projectDir: paths.join({ segments: [SANDBOX, "public-engine"] }),
   beforeCompose: ({ projectDir }) => {
-    mkdirSync(join(projectDir, ".git"));
-    const harnessDataPath = join(projectDir, ".claude", "tools", "data", "harness.json");
-    writeFileSync(
+    files.mkdir(paths.join({ segments: [projectDir, ".git"] }));
+    const harnessDataPath = paths.join({
+      segments: [projectDir, ".claude", "tools", "data", "harness.json"],
+    });
+    files.write(
       harnessDataPath,
-      readFileSync(harnessDataPath, "utf-8").replace("{", '{"plugins":["rin"],'),
+      files.read(harnessDataPath, "utf-8").replace("{", '{"plugins":["rin"],'),
     );
   },
 });
-const PUBLIC_ENGINE_TOOLS = join(publicEngine.projectDir, ".claude", "tools");
+const PUBLIC_ENGINE_TOOLS = paths.join({
+  segments: [publicEngine.projectDir, ".claude", "tools"],
+});
 
 const fixtureWorkspace = (name: string): string => {
-  const root = join(SANDBOX, name);
-  mkdirSync(join(root, ".git"), { recursive: true });
-  mkdirSync(join(root, "aidlc", "spaces", "default", "intents"), {
-    recursive: true,
-  });
-  mkdirSync(join(root, ".claude", "rin-gates", "receipts"), {
-    recursive: true,
-  });
+  const root = paths.join({ segments: [SANDBOX, name] });
+  files.mkdir(paths.join({ segments: [root, ".git"] }), { recursive: true });
+  files.mkdir(
+    paths.join({
+      segments: [root, "aidlc", "spaces", "default", "intents"],
+    }),
+    {
+      recursive: true,
+    },
+  );
+  files.mkdir(
+    paths.join({ segments: [root, ".claude", "rin-gates", "receipts"] }),
+    {
+      recursive: true,
+    },
+  );
   return root;
 };
 
@@ -103,15 +123,17 @@ const writeEngineRecord = (
   currentStage: string,
   parkedAtStage?: string,
 ): string => {
-  const recordDir = join(
-    workspaceRoot,
-    "aidlc",
-    "spaces",
-    "default",
-    "intents",
-    intentDirName,
-  );
-  mkdirSync(recordDir, { recursive: true });
+  const recordDir = paths.join({
+    segments: [
+      workspaceRoot,
+      "aidlc",
+      "spaces",
+      "default",
+      "intents",
+      intentDirName,
+    ],
+  });
+  files.mkdir(recordDir, { recursive: true });
   const parkLines =
     parkedAtStage === undefined
       ? []
@@ -119,8 +141,8 @@ const writeEngineRecord = (
           "- **Parked**: 2026-07-24T10:30:58Z",
           `- **Parked At Stage**: ${parkedAtStage}`,
         ];
-  writeFileSync(
-    join(recordDir, "aidlc-state.md"),
+  files.write(
+    paths.join({ segments: [recordDir, "aidlc-state.md"] }),
     [
       "# AI-DLC State Tracking",
       "",
@@ -144,8 +166,8 @@ const writeProvenance = (
   taskId: string,
   promotedAt = "2026-07-24T00:00:00.000Z",
 ): void => {
-  writeFileSync(
-    join(recordDir, "promoted-from.json"),
+  files.write(
+    paths.join({ segments: [recordDir, "promoted-from.json"] }),
     `${JSON.stringify({ taskId, promotedBy: "rin-gate-0-reconcile", promotedAt })}\n`,
     "utf-8",
   );
@@ -161,10 +183,10 @@ const writeAdvanceShard = (args: {
   readonly at: string;
   readonly stage: string;
 }): void => {
-  const auditDir = join(args.recordDir, "audit");
-  mkdirSync(auditDir, { recursive: true });
-  writeFileSync(
-    join(auditDir, "selftest-shard.md"),
+  const auditDir = paths.join({ segments: [args.recordDir, "audit"] });
+  files.mkdir(auditDir, { recursive: true });
+  files.write(
+    paths.join({ segments: [auditDir, "selftest-shard.md"] }),
     [
       "# AI-DLC Audit Log",
       "---",
@@ -187,13 +209,18 @@ const runTool = (
   readonly stdout: string;
   readonly stderr: string;
 } => {
-  const spawned = spawnSync("bun", [tool, ...args], {
-    encoding: "utf-8",
-    env: {
+  const spawned = runtime.runSync({
+    program: "bun",
+    args: [tool, ...args],
+    environment: {
       ...process.env,
       RIN_GATES_WORKSPACE_ROOT: workspaceRoot,
-      RIN_GATES_ENGINE_CLI: join(PUBLIC_ENGINE_TOOLS, "aidlc-utility.ts"),
-      AIDLC_STAGE_GRAPH: join(PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json"),
+      RIN_GATES_ENGINE_CLI: paths.join({
+        segments: [PUBLIC_ENGINE_TOOLS, "aidlc-utility.ts"],
+      }),
+      AIDLC_STAGE_GRAPH: paths.join({
+        segments: [PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json"],
+      }),
       RIN_GATES_OWNERS_CONFIG: SHIPPED_OWNERS_CONFIG,
       ...extraEnv,
     },
@@ -210,8 +237,8 @@ const snapshotFile = (
   name: string,
   payload: unknown,
 ): string => {
-  const path = join(workspaceRoot, name);
-  writeFileSync(path, `${JSON.stringify(payload)}\n`, "utf-8");
+  const path = paths.join({ segments: [workspaceRoot, name] });
+  files.write(path, `${JSON.stringify(payload)}\n`, "utf-8");
   return path;
 };
 
@@ -237,12 +264,14 @@ const snapshotFile = (
   const workspace = fixtureWorkspace("t2");
   writeEngineRecord(workspace, "260707-t2-gate5", "rin-gate-5-review-cycle");
   const shippedOwners = JSON.parse(
-    readFileSync(SHIPPED_OWNERS_CONFIG, "utf-8"),
+    files.read(SHIPPED_OWNERS_CONFIG, "utf-8"),
   );
   const { merged: _removed, ...transitionsWithoutMerged } =
     shippedOwners.transitions;
-  const holedOwnersPath = join(workspace, "owners-holed.json");
-  writeFileSync(
+  const holedOwnersPath = paths.join({
+    segments: [workspace, "owners-holed.json"],
+  });
+  files.write(
     holedOwnersPath,
     JSON.stringify({ ...shippedOwners, transitions: transitionsWithoutMerged }),
     "utf-8",
@@ -332,7 +361,10 @@ const snapshotFile = (
     workspace,
   );
   const statusJson = JSON.parse(
-    readFileSync(join(workspace, "aidlc", "rin-gates-status.json"), "utf-8"),
+    files.read(
+      paths.join({ segments: [workspace, "aidlc", "rin-gates-status.json"] }),
+      "utf-8",
+    ),
   );
   const classificationOf = (dirName: string): string =>
     statusJson.records.find(
@@ -394,13 +426,13 @@ const runPromote = (
   runTool(PROMOTE_TOOL, args, workspaceRoot);
 
 const gitInitWorkspace = (name: string): string => {
-  const root = join(SANDBOX, name);
-  mkdirSync(root, { recursive: true });
+  const root = paths.join({ segments: [SANDBOX, name] });
+  files.mkdir(root, { recursive: true });
   // Mark a checkout root so the tool's checkoutRootFromHere walk-up and the
   // engine's project-dir resolution both stop here. No real git process is
   // spawned by promote or intent-birth in this path (a bare .git dir suffices
   // for the workspace-root probes); the engine writes its shell under aidlc/.
-  mkdirSync(join(root, ".git"), { recursive: true });
+  files.mkdir(paths.join({ segments: [root, ".git"] }), { recursive: true });
   return root;
 };
 
@@ -421,19 +453,25 @@ const gitInitWorkspace = (name: string): string => {
     "--arguments",
     "P1 fixture capture",
   ]);
-  const intentsRoot = join(workspace, "aidlc", "spaces", "default", "intents");
+  const intentsRoot = paths.join({
+    segments: [workspace, "aidlc", "spaces", "default", "intents"],
+  });
   const promotedLine = stdout
     .split("\n")
     .find((line) => line.startsWith("PROMOTED"));
   const dirName = promotedLine?.split("->")[1]?.trim().split(" ")[0] ?? "";
-  const provenancePath = join(intentsRoot, dirName, "promoted-from.json");
-  const provenance = existsSync(provenancePath)
-    ? JSON.parse(readFileSync(provenancePath, "utf-8"))
+  const provenancePath = paths.join({
+    segments: [intentsRoot, dirName, "promoted-from.json"],
+  });
+  const provenance = files.exists(provenancePath)
+    ? JSON.parse(files.read(provenancePath, "utf-8"))
     : null;
-  const statePath = join(intentsRoot, dirName, "aidlc-state.md");
+  const statePath = paths.join({
+    segments: [intentsRoot, dirName, "aidlc-state.md"],
+  });
   const routesToGate0 =
-    existsSync(statePath) &&
-    readFileSync(statePath, "utf-8").includes(
+    files.exists(statePath) &&
+    files.read(statePath, "utf-8").includes(
       "Current Stage**: rin-gate-0-reconcile",
     );
   record(
@@ -451,9 +489,11 @@ const gitInitWorkspace = (name: string): string => {
   // P8 — the binding artefact is READ BACK FROM DISK, never inferred from the
   // exit code: a record minted without its binding reads as unbound and
   // silently rejoins the standing pool.
-  const bindingPath = join(intentsRoot, dirName, "importance-binding.json");
-  const binding = existsSync(bindingPath)
-    ? JSON.parse(readFileSync(bindingPath, "utf-8"))
+  const bindingPath = paths.join({
+    segments: [intentsRoot, dirName, "importance-binding.json"],
+  });
+  const binding = files.exists(bindingPath)
+    ? JSON.parse(files.read(bindingPath, "utf-8"))
     : null;
   record(
     "P8 promotion writes the importance binding, read back from disk",
@@ -478,8 +518,11 @@ const gitInitWorkspace = (name: string): string => {
     "--importance",
     "not-flagged:no-milestone:T3",
   ]);
-  const intentDirs = existsSync(intentsRoot)
-    ? readFileSync(join(intentsRoot, "intents.json"), "utf-8")
+  const intentDirs = files.exists(intentsRoot)
+    ? files.read(
+        paths.join({ segments: [intentsRoot, "intents.json"] }),
+        "utf-8",
+      )
     : "[]";
   const rowCount = (intentDirs.match(/"uuid"/g) ?? []).length;
   record(
@@ -507,11 +550,13 @@ const gitInitWorkspace = (name: string): string => {
     "not-flagged:no-milestone:T3",
     "--dry-run",
   ]);
-  const intentsRoot = join(workspace, "aidlc", "spaces", "default", "intents");
+  const intentsRoot = paths.join({
+    segments: [workspace, "aidlc", "spaces", "default", "intents"],
+  });
   record(
     "P3 promote --dry-run plans without creating a record",
-    exitCode === 0 && stdout.startsWith("PLAN") && !existsSync(intentsRoot),
-    `plan printed; intents dir absent: ${!existsSync(intentsRoot)}`,
+    exitCode === 0 && stdout.startsWith("PLAN") && !files.exists(intentsRoot),
+    `plan printed; intents dir absent: ${!files.exists(intentsRoot)}`,
   );
 }
 
@@ -532,14 +577,16 @@ const gitInitWorkspace = (name: string): string => {
     "not-flagged:no-milestone:unscored",
     "--dry-run",
   ]);
-  const intentsRoot = join(workspace, "aidlc", "spaces", "default", "intents");
+  const intentsRoot = paths.join({
+    segments: [workspace, "aidlc", "spaces", "default", "intents"],
+  });
   record(
     "P3b promote REFUSES an unscored tier on a no-milestone mint, naming T3, creating nothing",
     exitCode !== 0 &&
       stderr.includes("no longer allowed") &&
       stderr.includes("T3") &&
-      !existsSync(intentsRoot),
-    `exit ${exitCode}; intents dir absent: ${!existsSync(intentsRoot)}`,
+      !files.exists(intentsRoot),
+    `exit ${exitCode}; intents dir absent: ${!files.exists(intentsRoot)}`,
   );
 }
 
@@ -582,12 +629,14 @@ const gitInitWorkspace = (name: string): string => {
     "rin-gates",
     "--dry-run",
   ]);
-  const intentsRoot = join(workspace, "aidlc", "spaces", "default", "intents");
+  const intentsRoot = paths.join({
+    segments: [workspace, "aidlc", "spaces", "default", "intents"],
+  });
   record(
     "P7 promote --dry-run refuses a missing --importance and creates nothing (exit 1)",
     exitCode === 1 &&
       stderr.includes("--importance is required") &&
-      !existsSync(intentsRoot),
+      !files.exists(intentsRoot),
     `exit ${exitCode}; ${stderr.trim().slice(0, 60)}`,
   );
 }
@@ -614,12 +663,14 @@ const gitInitWorkspace = (name: string): string => {
     "--label",
     "no scope",
   ]);
-  const intentsRoot = join(workspace, "aidlc", "spaces", "default", "intents");
+  const intentsRoot = paths.join({
+    segments: [workspace, "aidlc", "spaces", "default", "intents"],
+  });
   record(
     "P5 promote refuses a missing --scope and creates nothing (exit 1)",
     exitCode === 1 &&
       stderr.includes("--scope is required") &&
-      !existsSync(intentsRoot),
+      !files.exists(intentsRoot),
     `exit ${exitCode}; ${stderr.trim().slice(0, 60)}`,
   );
 }
@@ -680,7 +731,10 @@ const gitInitWorkspace = (name: string): string => {
     });
     if (exitCode !== 0) return [];
     const statusJson = JSON.parse(
-      readFileSync(join(workspace, "aidlc", "rin-gates-status.json"), "utf-8"),
+      files.read(
+      paths.join({ segments: [workspace, "aidlc", "rin-gates-status.json"] }),
+      "utf-8",
+    ),
     );
     return statusJson.records.map(
       (entry: { dirName: string }) => entry.dirName,
@@ -688,8 +742,8 @@ const gitInitWorkspace = (name: string): string => {
   };
 
   const writeBinding = (recordDir: string, flagged: string): void => {
-    writeFileSync(
-      join(recordDir, "importance-binding.json"),
+    files.write(
+      paths.join({ segments: [recordDir, "importance-binding.json"] }),
       `${JSON.stringify({
         flagged,
         milestone: { kind: "no-milestone" },
@@ -705,8 +759,8 @@ const gitInitWorkspace = (name: string): string => {
   // Without this seam, ratifying a milestone or tuning the threshold turns a
   // green case red with no code change (CD-47).
   const pinnedSelectionConfig = (workspace: string): string => {
-    const path = join(workspace, "selection-ranking.json");
-    writeFileSync(
+    const path = paths.join({ segments: [workspace, "selection-ranking.json"] });
+    files.write(
       path,
       `${JSON.stringify({
         ratifiedMilestones: [],
@@ -851,7 +905,12 @@ const gitInitWorkspace = (name: string): string => {
   });
   const p10Sequence = dirNameSequenceFor(p10Workspace);
   const p10Json = JSON.parse(
-    readFileSync(join(p10Workspace, "aidlc", "rin-gates-status.json"), "utf-8"),
+    files.read(
+      paths.join({
+        segments: [p10Workspace, "aidlc", "rin-gates-status.json"],
+      }),
+      "utf-8",
+    ),
   );
   const countCoverage = (coverage: string): number =>
     p10Json.records.filter(
@@ -978,8 +1037,12 @@ const scrubbedGitEnv = (): Record<string, string> => ({
         entry[1] !== undefined && !entry[0].startsWith("GIT_"),
     ),
   ),
-  RIN_GATES_ENGINE_CLI: join(PUBLIC_ENGINE_TOOLS, "aidlc-utility.ts"),
-  AIDLC_STAGE_GRAPH: join(PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json"),
+  RIN_GATES_ENGINE_CLI: paths.join({
+    segments: [PUBLIC_ENGINE_TOOLS, "aidlc-utility.ts"],
+  }),
+  AIDLC_STAGE_GRAPH: paths.join({
+    segments: [PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json"],
+  }),
   GIT_CONFIG_NOSYSTEM: "1",
 });
 
@@ -1003,7 +1066,9 @@ const r7SensorGraphSchema = z.array(
 );
 
 const r7SensorGraph = r7SensorGraphSchema.safeParse(
-  loadStageGraphNodes(join(PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json")),
+  loadStageGraphNodes(
+    paths.join({ segments: [PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json"] }),
+  ),
 );
 record(
   "R7/IF-7 composed graph has readable stage and sensor rows",
@@ -1061,27 +1126,37 @@ const autonomyFixture = (
     grid?: Record<string, unknown>;
   },
 ): { root: string; head: string } => {
-  const root = join(SANDBOX, name);
-  const intents = join(root, "aidlc", "spaces", "default", "intents");
+  const root = paths.join({ segments: [SANDBOX, name] });
+  const intents = paths.join({
+    segments: [root, "aidlc", "spaces", "default", "intents"],
+  });
   const gridForFixture =
     opts.grid === undefined && opts.scope !== "feature" && opts.scope !== "poc"
       ? { [opts.scope]: COVERED_GRID_ROW }
       : opts.grid;
   if (gridForFixture !== undefined) {
-    const gridDir = join(root, ".claude", "tools", "data");
-    mkdirSync(gridDir, { recursive: true });
-    writeFileSync(
-      join(gridDir, "scope-grid.json"),
+    const gridDir = paths.join({
+      segments: [root, ".claude", "tools", "data"],
+    });
+    files.mkdir(gridDir, { recursive: true });
+    files.write(
+      paths.join({ segments: [gridDir, "scope-grid.json"] }),
       `${JSON.stringify(gridForFixture, null, 2)}\n`,
       "utf-8",
     );
   }
   const recordDirName = "260713-fixture-intent";
-  const recordDir = join(intents, recordDirName);
-  mkdirSync(join(recordDir, "inception", opts.gate), { recursive: true });
-  writeFileSync(join(intents, "active-intent"), `${recordDirName}\n`, "utf-8");
-  writeFileSync(
-    join(recordDir, "aidlc-state.md"),
+  const recordDir = paths.join({ segments: [intents, recordDirName] });
+  files.mkdir(paths.join({ segments: [recordDir, "inception", opts.gate] }), {
+    recursive: true,
+  });
+  files.write(
+    paths.join({ segments: [intents, "active-intent"] }),
+    `${recordDirName}\n`,
+    "utf-8",
+  );
+  files.write(
+    paths.join({ segments: [recordDir, "aidlc-state.md"] }),
     `# AI-DLC State Tracking\n\n- **Scope**: ${opts.scope}\n- **Current Stage**: ${opts.gate}\n`,
     "utf-8",
   );
@@ -1089,8 +1164,10 @@ const autonomyFixture = (
   // reads a slice-binding.json, so the fixture writes none. opts.taskId is kept
   // only to seed the verdict fixtures' taskId field (now the record-name key).
   if (opts.verdict) {
-    writeFileSync(
-      join(recordDir, "inception", opts.gate, "review-verdict.json"),
+    files.write(
+      paths.join({
+        segments: [recordDir, "inception", opts.gate, "review-verdict.json"],
+      }),
       `${JSON.stringify(opts.verdict)}\n`,
       "utf-8",
     );
@@ -1103,11 +1180,12 @@ const runAutonomyHook = (
   command: string,
   headSha: string = FIXTURE_HEAD_SHA,
 ): { status: number; stderr: string } => {
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: root,
     input: JSON.stringify({ tool_name: "Bash", tool_input: { command } }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       CLAUDE_PROJECT_DIR: root,
       RIN_GATES_SPACE: "default",
@@ -1145,17 +1223,19 @@ const readyVerdict = (
   `${JSON.stringify({ gate: "rin-gate-2-plan-review", taskId, headSha, verdict: "READY", reviewedAt: "2026-07-13T00:00:00.000Z", lenses: GATE_2_FLOOR, emittedBy: "rin-gates-review-verdict", ...extra })}\n`;
 
 const verdictFilePath = (root: string): string =>
-  join(
-    root,
-    "aidlc",
-    "spaces",
-    "default",
-    "intents",
-    "260713-fixture-intent",
-    "inception",
-    "rin-gate-2-plan-review",
-    "review-verdict.json",
-  );
+  paths.join({
+    segments: [
+      root,
+      "aidlc",
+      "spaces",
+      "default",
+      "intents",
+      "260713-fixture-intent",
+      "inception",
+      "rin-gate-2-plan-review",
+      "review-verdict.json",
+    ],
+  });
 
 const REPORT_CMD =
   "bun .claude/tools/aidlc-orchestrate.ts report --stage rin-gate-2-plan-review --result approved";
@@ -1182,7 +1262,7 @@ const REPORT_CMD =
     taskId: "slice-a2",
     gate: "rin-gate-2-plan-review",
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     readyVerdict("slice-a2", fx.head),
     "utf-8",
@@ -1217,7 +1297,7 @@ const REPORT_CMD =
     taskId: "slice-a4",
     gate: "rin-gate-2-plan-review",
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     readyVerdict("slice-a4", "0000000000000000000000000000000000000000"),
     "utf-8",
@@ -1237,7 +1317,7 @@ const REPORT_CMD =
     taskId: "slice-a5",
     gate: "rin-gate-2-plan-review",
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     readyVerdict("slice-a5", fx.head, { verdict: "NOT-READY" }),
     "utf-8",
@@ -1259,7 +1339,7 @@ const REPORT_CMD =
     taskId: "slice-a8",
     gate: "rin-gate-2-plan-review",
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     readyVerdict("slice-a8", fx.head, { emittedBy: undefined }),
     "utf-8",
@@ -1279,7 +1359,7 @@ const REPORT_CMD =
     taskId: "slice-a9",
     gate: "rin-gate-2-plan-review",
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     readyVerdict("slice-a9", fx.head, { lenses: [] }),
     "utf-8",
@@ -1295,10 +1375,13 @@ const REPORT_CMD =
 // A10 — H1 fail-closed: rin-gates report with an INDETERMINATE scope (no
 // active-intent cursor) → deny (exit 2), not fail-open.
 {
-  const root = join(SANDBOX, "a10");
-  mkdirSync(join(root, "aidlc", "spaces", "default", "intents"), {
-    recursive: true,
-  });
+  const root = paths.join({ segments: [SANDBOX, "a10"] });
+  files.mkdir(
+    paths.join({ segments: [root, "aidlc", "spaces", "default", "intents"] }),
+    {
+      recursive: true,
+    },
+  );
   const { status, stderr } = runAutonomyHook(root, REPORT_CMD);
   record(
     "A10 autonomy hook fails CLOSED on an indeterminate scope (exit 2)",
@@ -1314,14 +1397,15 @@ const REPORT_CMD =
     taskId: "slice-a11",
     gate: "rin-gate-2-plan-review",
   });
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: fx.root,
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: { command: REPORT_CMD },
     }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       CLAUDE_PROJECT_DIR: fx.root,
       RIN_GATES_SPACE: "default",
@@ -1382,23 +1466,26 @@ const REPORT_CMD =
     taskId: "slice-a12",
     gate: "rin-gate-2-plan-review",
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     readyVerdict("slice-a12", fx.head),
     "utf-8",
   );
-  mkdirSync(join(fx.root, ".git"), { recursive: true }); // mark the worktree root so the cwd walk-up stops here
-  const primaryWithoutRecord = join(SANDBOX, "a12-primary");
-  mkdirSync(primaryWithoutRecord, { recursive: true });
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  files.mkdir(paths.join({ segments: [fx.root, ".git"] }), {
+    recursive: true,
+  }); // mark the worktree root so the cwd walk-up stops here
+  const primaryWithoutRecord = paths.join({ segments: [SANDBOX, "a12-primary"] });
+  files.mkdir(primaryWithoutRecord, { recursive: true });
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: primaryWithoutRecord,
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: { command: REPORT_CMD },
       cwd: fx.root,
     }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       CLAUDE_PROJECT_DIR: primaryWithoutRecord,
       RIN_GATES_SPACE: "default",
@@ -1415,7 +1502,9 @@ const REPORT_CMD =
 
 // V1 — the verdict guard DENIES a hand Write to review-verdict.json (exit 2).
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Write",
       tool_input: {
@@ -1424,8 +1513,7 @@ const REPORT_CMD =
         content: "{}",
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V1 verdict guard denies a hand Write to review-verdict.json (exit 2)",
@@ -1437,7 +1525,9 @@ const REPORT_CMD =
 
 // V2 — the verdict guard ALLOWS a write to an unrelated file (exit 0).
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Write",
       tool_input: {
@@ -1446,8 +1536,7 @@ const REPORT_CMD =
         content: "x",
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V2 verdict guard allows an unrelated write (exit 0)",
@@ -1458,23 +1547,25 @@ const REPORT_CMD =
 
 // V3 — the emitter REFUSES without the RIN_GATES_VERDICT_EMITTER token (exit 1).
 {
-  const root = join(SANDBOX, "v3");
-  mkdirSync(
-    join(
-      root,
-      "aidlc",
-      "spaces",
-      "default",
-      "intents",
-      "260713-fixture-intent",
-      "inception",
-      "rin-gate-2-plan-review",
-    ),
+  const root = paths.join({ segments: [SANDBOX, "v3"] });
+  files.mkdir(
+    paths.join({
+      segments: [
+        root,
+        "aidlc",
+        "spaces",
+        "default",
+        "intents",
+        "260713-fixture-intent",
+        "inception",
+        "rin-gate-2-plan-review",
+      ],
+    }),
     { recursive: true },
   );
-  const out = spawnSync(
-    "bun",
-    [
+  const out = runtime.runSync({
+    program: "bun",
+    args: [
       VERDICT_EMITTER,
       "--record-dir",
       "260713-fixture-intent",
@@ -1487,17 +1578,14 @@ const REPORT_CMD =
       "--lenses",
       "challenger",
     ],
-    {
-      encoding: "utf-8",
-      env: {
-        ...scrubbedGitEnv(),
-        RIN_GATES_WORKSPACE_ROOT: root,
-        RIN_GATES_TEST_MODE: "1",
-        RIN_GATES_HEAD_SHA: "deadbeef",
-        RIN_GATES_DIFF_DIGEST: "abc123",
-      },
+    environment: {
+      ...scrubbedGitEnv(),
+      RIN_GATES_WORKSPACE_ROOT: root,
+      RIN_GATES_TEST_MODE: "1",
+      RIN_GATES_HEAD_SHA: "deadbeef",
+      RIN_GATES_DIFF_DIGEST: "abc123",
     },
-  );
+  });
   record(
     "V3 emitter refuses without the RIN_GATES_VERDICT_EMITTER token (exit 1)",
     (out.status ?? -1) === 1 &&
@@ -1509,21 +1597,23 @@ const REPORT_CMD =
 // V4 — the emitter WRITES a stamped, content-bound verdict with the token (exit 0),
 // and it carries emittedBy + diffDigest + non-empty lenses.
 {
-  const root = join(SANDBOX, "v4");
-  const gateDir = join(
-    root,
-    "aidlc",
-    "spaces",
-    "default",
-    "intents",
-    "260713-fixture-intent",
-    "inception",
-    "rin-gate-2-plan-review",
-  );
-  mkdirSync(gateDir, { recursive: true });
-  const out = spawnSync(
-    "bun",
-    [
+  const root = paths.join({ segments: [SANDBOX, "v4"] });
+  const gateDir = paths.join({
+    segments: [
+      root,
+      "aidlc",
+      "spaces",
+      "default",
+      "intents",
+      "260713-fixture-intent",
+      "inception",
+      "rin-gate-2-plan-review",
+    ],
+  });
+  files.mkdir(gateDir, { recursive: true });
+  const out = runtime.runSync({
+    program: "bun",
+    args: [
       VERDICT_EMITTER,
       "--record-dir",
       "260713-fixture-intent",
@@ -1536,20 +1626,20 @@ const REPORT_CMD =
       "--lenses",
       "challenger,validator",
     ],
-    {
-      encoding: "utf-8",
-      env: {
-        ...scrubbedGitEnv(),
-        RIN_GATES_VERDICT_EMITTER: "1",
-        RIN_GATES_WORKSPACE_ROOT: root,
-        RIN_GATES_TEST_MODE: "1",
-        RIN_GATES_HEAD_SHA: "deadbeefcafe",
-        RIN_GATES_DIFF_DIGEST: "digest123",
-      },
+    environment: {
+      ...scrubbedGitEnv(),
+      RIN_GATES_VERDICT_EMITTER: "1",
+      RIN_GATES_WORKSPACE_ROOT: root,
+      RIN_GATES_TEST_MODE: "1",
+      RIN_GATES_HEAD_SHA: "deadbeefcafe",
+      RIN_GATES_DIFF_DIGEST: "digest123",
     },
-  );
-  const written = existsSync(join(gateDir, "review-verdict.json"))
-    ? JSON.parse(readFileSync(join(gateDir, "review-verdict.json"), "utf-8"))
+  });
+  const verdictPath = paths.join({
+    segments: [gateDir, "review-verdict.json"],
+  });
+  const written = files.exists(verdictPath)
+    ? JSON.parse(files.read(verdictPath, "utf-8"))
     : null;
   record(
     "V4 emitter writes a stamped content-bound verdict (exit 0)",
@@ -1568,7 +1658,9 @@ const REPORT_CMD =
 // V5 — the verdict guard DENIES a Bash redirect into review-verdict.json (the
 // command arm; Gate-5 re-review L3). Mirrors the receipt selftest's redirect case.
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: {
@@ -1576,8 +1668,7 @@ const REPORT_CMD =
           'echo "{}" > aidlc/spaces/default/intents/x/inception/rin-gate-2-plan-review/review-verdict.json',
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V5 verdict guard denies a Bash redirect into review-verdict.json (exit 2)",
@@ -1588,7 +1679,9 @@ const REPORT_CMD =
 
 // V6 — the verdict guard DENIES a `mv` onto review-verdict.json (rename evasion).
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: {
@@ -1596,8 +1689,7 @@ const REPORT_CMD =
           "mv /tmp/x.json aidlc/spaces/default/intents/x/inception/rin-gate-2-plan-review/review-verdict.json",
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V6 verdict guard denies a mv onto review-verdict.json (exit 2)",
@@ -1608,7 +1700,9 @@ const REPORT_CMD =
 
 // V7 — a Bash READ that merely names the path (no mutator) is allowed (exit 0).
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: {
@@ -1616,8 +1710,7 @@ const REPORT_CMD =
           "cat aidlc/spaces/default/intents/x/inception/rin-gate-2-plan-review/review-verdict.json",
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V7 verdict guard allows a read that names the path (exit 0)",
@@ -1630,7 +1723,9 @@ const REPORT_CMD =
 // FABRICATION, and deletion fabricates nothing — after a delete the gate still
 // demands a real emitted READY, so the lane is strictly worse off.
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: {
@@ -1638,8 +1733,7 @@ const REPORT_CMD =
           "git rm aidlc/spaces/default/intents/x/operation/gate-6-operate/review-verdict.json",
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V8 verdict guard allows a pure git rm of a verdict (exit 0)",
@@ -1650,7 +1744,9 @@ const REPORT_CMD =
 
 // V9 — a bare `rm` of a verdict is likewise allowed (same reasoning as V8).
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: {
@@ -1658,8 +1754,7 @@ const REPORT_CMD =
           "rm -f aidlc/spaces/default/intents/x/operation/gate-6-operate/review-verdict.json",
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V9 verdict guard allows a bare rm of a verdict (exit 0)",
@@ -1671,7 +1766,9 @@ const REPORT_CMD =
 // V10 — a delete that ALSO writes a verdict is still DENIED. This is the boundary
 // of V8/V9: the allowance is for deletion, not for "a command containing rm".
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: {
@@ -1679,8 +1776,7 @@ const REPORT_CMD =
           'rm /tmp/scratch.txt && echo "{}" > aidlc/spaces/default/intents/x/operation/rin-gate-6-operate/review-verdict.json',
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V10 verdict guard denies rm chained with a verdict write (exit 2)",
@@ -1692,7 +1788,9 @@ const REPORT_CMD =
 // V11 — `git mv` between two verdict paths stays DENIED: a rename WRITES a verdict
 // at the destination, which is the V6 fabrication route regardless of the source.
 {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: {
@@ -1700,8 +1798,7 @@ const REPORT_CMD =
           "git mv aidlc/spaces/default/intents/x/operation/gate-6-operate/review-verdict.json aidlc/spaces/default/intents/x/operation/rin-gate-6-operate/review-verdict.json",
       },
     }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   record(
     "V11 verdict guard denies a git mv between verdict paths (exit 2)",
@@ -1718,10 +1815,11 @@ const VERDICT_OPERAND =
   "aidlc/spaces/default/intents/x/operation/gate-6-operate/review-verdict.json";
 
 const guardExit = (command: string): number => {
-  const out = spawnSync("bun", [VERDICT_GUARD], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_GUARD],
     input: JSON.stringify({ tool_name: "Bash", tool_input: { command } }),
-    encoding: "utf-8",
-    env: scrubbedGitEnv(),
+    environment: scrubbedGitEnv(),
   });
   return out.status ?? -1;
 };
@@ -1812,7 +1910,9 @@ const guardExit = (command: string): number => {
 // The fixture holds a `.git` dir (so the cwd walk-up stops at the fixture), an
 // active-intent cursor, a bound record dir, and an aidlc-state.md naming the
 // gate. Each SubagentStop payload is fed as one reviewer-lens subagent stop.
-const REVIEW_SCRIBE_HOOK = join(HOOKS_DIR, "rin-gates-review-scribe.ts");
+const REVIEW_SCRIBE_HOOK = paths.join({
+  segments: [HOOKS_DIR, "rin-gates-review-scribe.ts"],
+});
 
 const REVIEW_ROSTER: readonly string[] = [
   "aidlc-architecture-reviewer-agent",
@@ -1835,15 +1935,20 @@ const prepareScribeReceiptFixture = (input: {
   readonly recordDir: string;
   readonly gate: string;
 }): void => {
-  writeFileSync(join(input.root, "fixture-aidlc-log.ts"), "process.exit(0);\n");
+  files.write(
+    paths.join({ segments: [input.root, "fixture-aidlc-log.ts"] }),
+    "process.exit(0);\n",
+  );
   const logicalPath = declaredReviewArtifactPathFor({
     gate: input.gate,
-    graph: loadStageGraphNodes(join(PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json")),
+    graph: loadStageGraphNodes(
+    paths.join({ segments: [PUBLIC_ENGINE_TOOLS, "data", "stage-graph.json"] }),
+  ),
   });
   if (logicalPath === null) return;
-  const artifactPath = join(input.recordDir, logicalPath);
-  mkdirSync(dirname(artifactPath), { recursive: true });
-  writeFileSync(artifactPath, "# Review artifact fixture\n");
+  const artifactPath = paths.join({ segments: [input.recordDir, logicalPath] });
+  files.mkdir(paths.dirname({ path: artifactPath }), { recursive: true });
+  files.write(artifactPath, "# Review artifact fixture\n");
 };
 
 const reviewScribeFixture = (
@@ -1856,18 +1961,26 @@ const reviewScribeFixture = (
   capturesDir: string;
   tracePath: string;
 } => {
-  const root = join(SANDBOX, name);
-  const intents = join(root, "aidlc", "spaces", "default", "intents");
+  const root = paths.join({ segments: [SANDBOX, name] });
+  const intents = paths.join({
+    segments: [root, "aidlc", "spaces", "default", "intents"],
+  });
   // Under repo-SoR the record dir NAME is the intent identity the scribe stamps
   // into the verdict (there is no slice-binding.json). One record name per
   // fixture keyed by `name` so concurrent RS fixtures don't collide.
   const recordName = `260714-review-scribe-${name}`;
-  const recordDir = join(intents, recordName);
-  mkdirSync(join(recordDir, "inception", gate), { recursive: true });
-  mkdirSync(join(root, ".git"), { recursive: true });
-  writeFileSync(join(intents, "active-intent"), `${recordName}\n`, "utf-8");
-  writeFileSync(
-    join(recordDir, "aidlc-state.md"),
+  const recordDir = paths.join({ segments: [intents, recordName] });
+  files.mkdir(paths.join({ segments: [recordDir, "inception", gate] }), {
+    recursive: true,
+  });
+  files.mkdir(paths.join({ segments: [root, ".git"] }), { recursive: true });
+  files.write(
+    paths.join({ segments: [intents, "active-intent"] }),
+    `${recordName}\n`,
+    "utf-8",
+  );
+  files.write(
+    paths.join({ segments: [recordDir, "aidlc-state.md"] }),
     `# AI-DLC State Tracking\n\n- **Scope**: rin-gates\n- **Current Stage**: ${gate}\n`,
     "utf-8",
   );
@@ -1876,8 +1989,8 @@ const reviewScribeFixture = (
     root,
     recordDir,
     recordName,
-    capturesDir: join(root, ".captures"),
-    tracePath: join(root, "review-scribe-trace.jsonl"),
+    capturesDir: paths.join({ segments: [root, ".captures"] }),
+    tracePath: paths.join({ segments: [root, "review-scribe-trace.jsonl"] }),
   };
 };
 
@@ -1903,7 +2016,9 @@ const runReviewScribe = (
     headSha?: string;
   },
 ): { status: number } => {
-  const out = spawnSync("bun", [REVIEW_SCRIBE_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [REVIEW_SCRIBE_HOOK],
     cwd: fx.root,
     input: JSON.stringify({
       agent_type: payload.agentType,
@@ -1916,17 +2031,22 @@ const runReviewScribe = (
       cwd: fx.root,
       session_id: `session-${payload.agentType}`,
     }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       RIN_GATES_SPACE: "default",
       RIN_GATES_TEST_MODE: "1",
       RIN_GATES_HEAD_SHA: payload.headSha ?? RS_HEAD_SHA,
       RIN_GATES_REVIEW_CAPTURES_DIR: fx.capturesDir,
       RIN_GATES_REVIEW_TRACE_PATH: fx.tracePath,
-      RIN_GATES_REVIEW_DISCARD_LEDGER_PATH: join(fx.root, "review-discards.jsonl"),
-      RIN_GATES_REVIEW_HANDBACK_LEDGER_PATH: join(fx.root, "review-handbacks.jsonl"),
-      RIN_GATES_ENGINE_LOG_PATH: join(fx.root, "fixture-aidlc-log.ts"),
+      RIN_GATES_REVIEW_DISCARD_LEDGER_PATH: paths.join({
+        segments: [fx.root, "review-discards.jsonl"],
+      }),
+      RIN_GATES_REVIEW_HANDBACK_LEDGER_PATH: paths.join({
+        segments: [fx.root, "review-handbacks.jsonl"],
+      }),
+      RIN_GATES_ENGINE_LOG_PATH: paths.join({
+        segments: [fx.root, "fixture-aidlc-log.ts"],
+      }),
     },
   });
   return { status: out.status ?? -1 };
@@ -1936,9 +2056,11 @@ const reviewVerdictAt = (
   recordDir: string,
   gate: string,
 ): ObservedReviewVerdict | null => {
-  const path = join(recordDir, "inception", gate, "review-verdict.json");
-  return existsSync(path)
-    ? (JSON.parse(readFileSync(path, "utf-8")) as ObservedReviewVerdict)
+  const path = paths.join({
+    segments: [recordDir, "inception", gate, "review-verdict.json"],
+  });
+  return files.exists(path)
+    ? (JSON.parse(files.read(path, "utf-8")) as ObservedReviewVerdict)
     : null;
 };
 
@@ -2018,9 +2140,14 @@ const RS_GATE = "rin-gate-2-plan-review";
       headSha: RS_OTHER_HEAD_SHA,
     }),
   );
-  rmSync(join(fx.recordDir, "inception", RS_GATE, "review-verdict.json"), {
-    force: true,
-  });
+  files.remove(
+    paths.join({
+      segments: [fx.recordDir, "inception", RS_GATE, "review-verdict.json"],
+    }),
+    {
+      force: true,
+    },
+  );
   runReviewScribe(fx, {
     agentType: LEADING_ROSTER_LENS,
     gate: RS_GATE,
@@ -2053,12 +2180,14 @@ const RS_GATE = "rin-gate-2-plan-review";
     gate: RS_GATE,
     verdict: "READY",
   });
-  const capturesPath = join(
-    fx.capturesDir,
-    `${fx.recordName}.${RS_GATE}.${RS_HEAD_SHA}.jsonl`,
-  );
-  const capturedLenses = existsSync(capturesPath)
-    ? readFileSync(capturesPath, "utf-8")
+  const capturesPath = paths.join({
+    segments: [
+      fx.capturesDir,
+      `${fx.recordName}.${RS_GATE}.${RS_HEAD_SHA}.jsonl`,
+    ],
+  });
+  const capturedLenses = files.exists(capturesPath)
+    ? files.read(capturesPath, "utf-8")
         .split("\n")
         .filter((line) => line.trim() !== "")
         .map((line) => (JSON.parse(line) as { lens: string }).lens)
@@ -2082,15 +2211,16 @@ const RS_GATE = "rin-gate-2-plan-review";
   REVIEW_ROSTER.map((lens) =>
     runReviewScribe(fx, { agentType: lens, gate: RS_GATE, verdict: "READY" }),
   );
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: fx.root,
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: { command: REPORT_CMD },
       cwd: fx.root,
     }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       CLAUDE_PROJECT_DIR: fx.root,
       RIN_GATES_SPACE: "default",
@@ -2110,8 +2240,10 @@ const RS_GATE = "rin-gate-2-plan-review";
 // three of four roster lenses → deny (exit 2).
 {
   const fx = reviewScribeFixture("rs7", RS_GATE);
-  writeFileSync(
-    join(fx.recordDir, "inception", RS_GATE, "review-verdict.json"),
+  files.write(
+    paths.join({
+      segments: [fx.recordDir, "inception", RS_GATE, "review-verdict.json"],
+    }),
     `${JSON.stringify({
       gate: RS_GATE,
       taskId: fx.recordName,
@@ -2123,15 +2255,16 @@ const RS_GATE = "rin-gate-2-plan-review";
     })}\n`,
     "utf-8",
   );
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: fx.root,
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: { command: REPORT_CMD },
       cwd: fx.root,
     }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       CLAUDE_PROJECT_DIR: fx.root,
       RIN_GATES_SPACE: "default",
@@ -2156,8 +2289,10 @@ const RS_GATE = "rin-gate-2-plan-review";
 // blockingFindings list is non-empty.
 {
   const fx = reviewScribeFixture("rs7b", RS_GATE);
-  writeFileSync(
-    join(fx.recordDir, "inception", RS_GATE, "review-verdict.json"),
+  files.write(
+    paths.join({
+      segments: [fx.recordDir, "inception", RS_GATE, "review-verdict.json"],
+    }),
     `${JSON.stringify({
       gate: RS_GATE,
       taskId: fx.recordName,
@@ -2172,15 +2307,16 @@ const RS_GATE = "rin-gate-2-plan-review";
     })}\n`,
     "utf-8",
   );
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: fx.root,
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: { command: REPORT_CMD },
       cwd: fx.root,
     }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       CLAUDE_PROJECT_DIR: fx.root,
       RIN_GATES_SPACE: "default",
@@ -2224,29 +2360,35 @@ const slugScribeFixture = (
   capturesDir: string;
   tracePath: string;
 } => {
-  const root = join(SANDBOX, name);
-  const intents = join(root, "aidlc", "spaces", "default", "intents");
+  const root = paths.join({ segments: [SANDBOX, name] });
+  const intents = paths.join({
+    segments: [root, "aidlc", "spaces", "default", "intents"],
+  });
   const recordDirName = "260723-slug-scribe-intent";
-  const recordDir = join(intents, recordDirName);
-  mkdirSync(recordDir, { recursive: true });
-  mkdirSync(join(root, ".git"), { recursive: true });
-  writeFileSync(join(intents, "active-intent"), `${recordDirName}\n`, "utf-8");
-  writeFileSync(
-    join(recordDir, "aidlc-state.md"),
+  const recordDir = paths.join({ segments: [intents, recordDirName] });
+  files.mkdir(recordDir, { recursive: true });
+  files.mkdir(paths.join({ segments: [root, ".git"] }), { recursive: true });
+  files.write(
+    paths.join({ segments: [intents, "active-intent"] }),
+    `${recordDirName}\n`,
+    "utf-8",
+  );
+  files.write(
+    paths.join({ segments: [recordDir, "aidlc-state.md"] }),
     `# AI-DLC State Tracking\n\n- **Scope**: rin-gates\n- **Current Stage**: ${stateGate}\n`,
     "utf-8",
   );
   prepareScribeReceiptFixture({ root, recordDir, gate: stateGate });
-  writeFileSync(
-    join(recordDir, "slice-binding.json"),
+  files.write(
+    paths.join({ segments: [recordDir, "slice-binding.json"] }),
     `${JSON.stringify({ taskId, boundBy: "rin-gate-0-reconcile", boundAt: "2026-07-23T00:00:00.000Z" })}\n`,
     "utf-8",
   );
   return {
     root,
     recordDir,
-    capturesDir: join(root, ".captures"),
-    tracePath: join(root, "review-scribe-trace.jsonl"),
+    capturesDir: paths.join({ segments: [root, ".captures"] }),
+    tracePath: paths.join({ segments: [root, "review-scribe-trace.jsonl"] }),
   };
 };
 
@@ -2254,9 +2396,11 @@ const verdictAtPhase = (
   recordDir: string,
   gate: string,
 ): ObservedReviewVerdict | null => {
-  const path = join(recordDir, phaseDirOf(gate), gate, "review-verdict.json");
-  return existsSync(path)
-    ? (JSON.parse(readFileSync(path, "utf-8")) as ObservedReviewVerdict)
+  const path = paths.join({
+    segments: [recordDir, phaseDirOf(gate), gate, "review-verdict.json"],
+  });
+  return files.exists(path)
+    ? (JSON.parse(files.read(path, "utf-8")) as ObservedReviewVerdict)
     : null;
 };
 
@@ -2287,13 +2431,15 @@ const GATE5_ROSTER: readonly string[] = [
     }),
   );
   const verdict = verdictAtPhase(fx.recordDir, "rin-gate-2-plan-review");
-  const barePathAbsent = !existsSync(
-    join(
-      fx.recordDir,
-      "inception",
-      "gate-2-plan-review",
-      "review-verdict.json",
-    ),
+  const barePathAbsent = !files.exists(
+    paths.join({
+      segments: [
+        fx.recordDir,
+        "inception",
+        "gate-2-plan-review",
+        "review-verdict.json",
+      ],
+    }),
   );
   record(
     "RS8 review-scribe accepts the engine's rin-gate-* Current Stage slug and writes at the prefixed path (019f8be9)",
@@ -2365,7 +2511,9 @@ const GATE5_ROSTER: readonly string[] = [
       verdict: "READY",
     }),
   );
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: fx.root,
     input: JSON.stringify({
       tool_name: "Bash",
@@ -2375,8 +2523,7 @@ const GATE5_ROSTER: readonly string[] = [
       },
       cwd: fx.root,
     }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       CLAUDE_PROJECT_DIR: fx.root,
       RIN_GATES_SPACE: "default",
@@ -2397,14 +2544,12 @@ const GATE5_ROSTER: readonly string[] = [
 // check must fail on a right-count-wrong-lens verdict.
 {
   const fx = slugScribeFixture("rs12", "slice-rs12", GATE5_STATE_SLUG);
-  const gate5Dir = join(
-    fx.recordDir,
-    "construction",
-    "rin-gate-5-review-cycle",
-  );
-  mkdirSync(gate5Dir, { recursive: true });
-  writeFileSync(
-    join(gate5Dir, "review-verdict.json"),
+  const gate5Dir = paths.join({
+    segments: [fx.recordDir, "construction", "rin-gate-5-review-cycle"],
+  });
+  files.mkdir(gate5Dir, { recursive: true });
+  files.write(
+    paths.join({ segments: [gate5Dir, "review-verdict.json"] }),
     `${JSON.stringify({
       gate: "rin-gate-5-review-cycle",
       taskId: "slice-rs12",
@@ -2416,7 +2561,9 @@ const GATE5_ROSTER: readonly string[] = [
     })}\n`,
     "utf-8",
   );
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: fx.root,
     input: JSON.stringify({
       tool_name: "Bash",
@@ -2426,8 +2573,7 @@ const GATE5_ROSTER: readonly string[] = [
       },
       cwd: fx.root,
     }),
-    encoding: "utf-8",
-    env: {
+    environment: {
       ...scrubbedGitEnv(),
       CLAUDE_PROJECT_DIR: fx.root,
       RIN_GATES_SPACE: "default",
@@ -2447,15 +2593,17 @@ const GATE5_ROSTER: readonly string[] = [
 // prefixed gate field (019f8be9, emitter arm). The retired bare
 // `gate-2-plan-review/` path must NOT be written — the slug names its own dir.
 {
-  const root = join(SANDBOX, "a13");
+  const root = paths.join({ segments: [SANDBOX, "a13"] });
   const recordDirName = "260723-emitter-slug-intent";
-  mkdirSync(
-    join(root, "aidlc", "spaces", "default", "intents", recordDirName),
+  files.mkdir(
+    paths.join({
+      segments: [root, "aidlc", "spaces", "default", "intents", recordDirName],
+    }),
     { recursive: true },
   );
-  const out = spawnSync(
-    "bun",
-    [
+  const out = runtime.runSync({
+    program: "bun",
+    args: [
       VERDICT_EMITTER,
       "--record-dir",
       recordDirName,
@@ -2468,34 +2616,17 @@ const GATE5_ROSTER: readonly string[] = [
       "--lenses",
       "challenger",
     ],
-    {
-      encoding: "utf-8",
-      env: {
-        ...scrubbedGitEnv(),
-        RIN_GATES_VERDICT_EMITTER: "1",
-        RIN_GATES_WORKSPACE_ROOT: root,
-        RIN_GATES_TEST_MODE: "1",
-        RIN_GATES_HEAD_SHA: "deadbeefcafe",
-        RIN_GATES_DIFF_DIGEST: "digest-a13",
-      },
+    environment: {
+      ...scrubbedGitEnv(),
+      RIN_GATES_VERDICT_EMITTER: "1",
+      RIN_GATES_WORKSPACE_ROOT: root,
+      RIN_GATES_TEST_MODE: "1",
+      RIN_GATES_HEAD_SHA: "deadbeefcafe",
+      RIN_GATES_DIFF_DIGEST: "digest-a13",
     },
-  );
-  const prefixedPath = join(
-    root,
-    "aidlc",
-    "spaces",
-    "default",
-    "intents",
-    recordDirName,
-    "inception",
-    "rin-gate-2-plan-review",
-    "review-verdict.json",
-  );
-  const written = existsSync(prefixedPath)
-    ? (JSON.parse(readFileSync(prefixedPath, "utf-8")) as ObservedReviewVerdict)
-    : null;
-  const bareAbsent = !existsSync(
-    join(
+  });
+  const prefixedPath = paths.join({
+    segments: [
       root,
       "aidlc",
       "spaces",
@@ -2503,9 +2634,27 @@ const GATE5_ROSTER: readonly string[] = [
       "intents",
       recordDirName,
       "inception",
-      "gate-2-plan-review",
+      "rin-gate-2-plan-review",
       "review-verdict.json",
-    ),
+    ],
+  });
+  const written = files.exists(prefixedPath)
+    ? (JSON.parse(files.read(prefixedPath, "utf-8")) as ObservedReviewVerdict)
+    : null;
+  const bareAbsent = !files.exists(
+    paths.join({
+      segments: [
+        root,
+        "aidlc",
+        "spaces",
+        "default",
+        "intents",
+        recordDirName,
+        "inception",
+        "gate-2-plan-review",
+        "review-verdict.json",
+      ],
+    }),
   );
   record(
     "A13 emitter accepts the rin-gate-* slug and writes at the prefixed path with a prefixed gate field (019f8be9)",
@@ -2526,9 +2675,7 @@ const GATE5_ROSTER: readonly string[] = [
 // a static specifier: this file is a byte-identical synced twin, and a literal
 // relative specifier cannot be correct from both locations at once.
 const { createHermeticGitRepository } = await import(
-  pathToFileURL(
-    join(HERE, "..", "hermetic-git", "index.ts"),
-  ).href
+  paths.join({ segments: [HERE, "..", "hermetic-git", "index.ts"] })
 );
 
 // Detail strings are truncated so one failing case cannot bury the summary; the
@@ -2536,7 +2683,6 @@ const { createHermeticGitRepository } = await import(
 const DETAIL_WIDTH = 160;
 const WIDE_DETAIL_WIDTH = 200;
 const FIXTURE_PULL_REQUEST = 561;
-const STUB_EXECUTABLE_MODE = 0o755;
 const SHA256_HEX_LENGTH = 64;
 const WRONG_DIGEST = "0".repeat(SHA256_HEX_LENGTH);
 const PLACEHOLDER_DIGEST = "9".repeat(SHA256_HEX_LENGTH);
@@ -2566,7 +2712,12 @@ const writeNested = (
   relativePath: string,
   body: string,
 ): void => {
-  mkdirSync(dirname(join(repository.path, relativePath)), { recursive: true });
+  files.mkdir(
+    paths.dirname({
+      path: paths.join({ segments: [repository.path, relativePath] }),
+    }),
+    { recursive: true },
+  );
   repository.writeFile({ relativePath, body });
 };
 
@@ -2617,14 +2768,16 @@ const seedIntentRepository = (input: {
     [...RECORD_RELATIVE, "active-intent"].join("/"),
     `${input.recordDirName}\n`,
   );
-  mkdirSync(
-    join(
-      repository.path,
-      ...RECORD_RELATIVE,
-      input.recordDirName,
-      "inception",
-      input.gate,
-    ),
+  files.mkdir(
+    paths.join({
+      segments: [
+        repository.path,
+        ...RECORD_RELATIVE,
+        input.recordDirName,
+        "inception",
+        input.gate,
+      ],
+    }),
     { recursive: true },
   );
   repository.commitAll({ message: "seed" });
@@ -2648,15 +2801,16 @@ const runAutonomyHookAt = (
   repository: MintedRepository,
   extra: Record<string, string> = {},
 ): { status: number; stderr: string } => {
-  const out = spawnSync("bun", [AUTONOMY_HOOK], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [AUTONOMY_HOOK],
     cwd: repository.path,
     input: JSON.stringify({
       tool_name: "Bash",
       tool_input: { command: REPORT_CMD },
       cwd: repository.path,
     }),
-    encoding: "utf-8",
-    env: tier2Environment(repository, {
+    environment: tier2Environment(repository, {
       CLAUDE_PROJECT_DIR: repository.path,
       RIN_GATES_SPACE: "default",
       ...extra,
@@ -2707,19 +2861,13 @@ const mergePatchDigestIn = (
   repository: MintedRepository,
   mergeCommitSha: string,
 ): string => {
-  const spawned = spawnSync(
-    "git",
-    ["diff", `${mergeCommitSha}^..${mergeCommitSha}`],
-    {
-      cwd: repository.path,
-      encoding: "buffer",
-      stdio: ["ignore", "pipe", "ignore"],
-      env: { ...repository.environment },
-    },
-  );
-  return createHash("sha256")
-    .update(spawned.stdout ?? Buffer.alloc(0))
-    .digest("hex");
+  const spawned = runtime.runSyncBytes({
+    program: "git",
+    args: ["diff", `${mergeCommitSha}^..${mergeCommitSha}`],
+    cwd: repository.path,
+    environment: { ...repository.environment },
+  });
+  return digests.sha256Hex({ content: spawned.stdout });
 };
 
 // A merge commit reachable from HEAD: branch off, MODIFY the multi-line seed so
@@ -2863,7 +3011,7 @@ const seedMergedBranch = (input: {
     taskId: "slice-a17",
     gate: LANDED_GATE,
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     `${JSON.stringify({
       gate: LANDED_GATE,
@@ -2898,7 +3046,7 @@ const seedMergedBranch = (input: {
     taskId: "slice-a18",
     gate: LANDED_GATE,
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     `${JSON.stringify({
       gate: LANDED_GATE,
@@ -2931,7 +3079,7 @@ const seedMergedBranch = (input: {
     taskId: "slice-a19",
     gate: LANDED_GATE,
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     `${JSON.stringify({
       gate: LANDED_GATE,
@@ -2962,7 +3110,7 @@ const seedMergedBranch = (input: {
     taskId: "slice-a20",
     gate: LANDED_GATE,
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     readyVerdict("slice-a20", fx.head),
     "utf-8",
@@ -3168,7 +3316,7 @@ const recordsOnlyFixture = (input: {
     taskId: "slice-a31",
     gate: "rin-gate-2-plan-review",
   });
-  writeFileSync(
+  files.write(
     verdictFilePath(fx.root),
     readyVerdict("slice-a31", fx.head),
     "utf-8",
@@ -3217,7 +3365,10 @@ const recordsOnlyFixture = (input: {
     gate: "rin-gate-2-plan-review",
     grid: undefined,
   });
-  rmSync(join(fx.root, ".claude"), { recursive: true, force: true });
+  files.remove(paths.join({ segments: [fx.root, ".claude"] }), {
+    recursive: true,
+    force: true,
+  });
   const { status, stderr } = runAutonomyHook(fx.root, REPORT_CMD);
   record(
     "A34 autonomy hook still denies a verdict-less rin-gates approve when the grid is absent, the fallback covering rin-gates alone (exit 2)",
@@ -3360,15 +3511,17 @@ const stubGhIn = (
   repository: MintedRepository,
   view: Record<string, unknown>,
 ): string => {
-  const binDir = join(dirname(repository.path), "stub-bin");
-  mkdirSync(binDir, { recursive: true });
-  const payload = JSON.stringify(view).replace(/'/g, "'\\''");
-  writeFileSync(join(binDir, "gh"), `#!/bin/sh\nprintf '%s' '${payload}'\n`, {
-    encoding: "utf-8",
-    mode: STUB_EXECUTABLE_MODE,
+  const binDir = paths.join({
+    segments: [paths.dirname({ path: repository.path }), "stub-bin"],
   });
-  writeFileSync(
-    join(binDir, "gh.cmd"),
+  files.mkdir(binDir, { recursive: true });
+  const payload = JSON.stringify(view).replace(/'/g, "'\\''");
+  files.writeExecutable(
+    paths.join({ segments: [binDir, "gh"] }),
+    `#!/bin/sh\nprintf '%s' '${payload}'\n`,
+  );
+  files.write(
+    paths.join({ segments: [binDir, "gh.cmd"] }),
     `@echo off\r\nbun -e "process.stdout.write(process.env.RIN_GATES_STUB_GH_VIEW)"\r\n`,
     "utf-8",
   );
@@ -3393,10 +3546,11 @@ const runEmitterAt = (input: {
     environment.PATH = `${binDir}${process.platform === "win32" ? ";" : ":"}${environment.PATH ?? ""}`;
     environment.RIN_GATES_STUB_GH_VIEW = JSON.stringify(input.ghView);
   }
-  const out = spawnSync("bun", [VERDICT_EMITTER, ...input.args], {
+  const out = runtime.runSync({
+    program: "bun",
+    args: [VERDICT_EMITTER, ...input.args],
     cwd: input.repository.path,
-    encoding: "utf-8",
-    env: environment,
+    environment,
   });
   return {
     status: out.status ?? -1,
@@ -3410,15 +3564,17 @@ const emittedVerdictIn = (
   recordDirName: string,
   gate: string,
 ): Record<string, unknown> | null => {
-  const path = join(
-    repository.path,
-    ...RECORD_RELATIVE,
-    recordDirName,
-    "inception",
-    gate,
-    "review-verdict.json",
-  );
-  return existsSync(path) ? JSON.parse(readFileSync(path, "utf-8")) : null;
+  const path = paths.join({
+    segments: [
+      repository.path,
+      ...RECORD_RELATIVE,
+      recordDirName,
+      "inception",
+      gate,
+      "review-verdict.json",
+    ],
+  });
+  return files.exists(path) ? JSON.parse(files.read(path, "utf-8")) : null;
 };
 
 const landedEmitterArgs = (input: {
@@ -3611,11 +3767,13 @@ const RETRO_REVIEWED_AT = "2026-08-01T12:34:56.000Z";
 // E5 — a PARTIAL landed flag set never silently falls back to live. Tier 1: the
 // refusal precedes every read, so no repo is needed.
 {
-  const root = join(SANDBOX, "e5");
-  mkdirSync(join(root, ...RECORD_RELATIVE, LANDED_RECORD), { recursive: true });
-  const out = spawnSync(
-    "bun",
-    [
+  const root = paths.join({ segments: [SANDBOX, "e5"] });
+  files.mkdir(paths.join({ segments: [root, ...RECORD_RELATIVE, LANDED_RECORD] }), {
+    recursive: true,
+  });
+  const out = runtime.runSync({
+    program: "bun",
+    args: [
       VERDICT_EMITTER,
       "--record-dir",
       LANDED_RECORD,
@@ -3630,27 +3788,26 @@ const RETRO_REVIEWED_AT = "2026-08-01T12:34:56.000Z";
       "--pr",
       "561",
     ],
-    {
-      encoding: "utf-8",
-      env: {
-        ...scrubbedGitEnv(),
-        RIN_GATES_VERDICT_EMITTER: "1",
-        RIN_GATES_WORKSPACE_ROOT: root,
-        RIN_GATES_TEST_MODE: "1",
-        RIN_GATES_HEAD_SHA: "deadbeefcafe",
-        RIN_GATES_DIFF_DIGEST: "digest-e5",
-      },
+    environment: {
+      ...scrubbedGitEnv(),
+      RIN_GATES_VERDICT_EMITTER: "1",
+      RIN_GATES_WORKSPACE_ROOT: root,
+      RIN_GATES_TEST_MODE: "1",
+      RIN_GATES_HEAD_SHA: "deadbeefcafe",
+      RIN_GATES_DIFF_DIGEST: "digest-e5",
     },
-  );
-  const written = existsSync(
-    join(
-      root,
-      ...RECORD_RELATIVE,
-      LANDED_RECORD,
-      "inception",
-      LANDED_GATE,
-      "review-verdict.json",
-    ),
+  });
+  const written = files.exists(
+    paths.join({
+      segments: [
+        root,
+        ...RECORD_RELATIVE,
+        LANDED_RECORD,
+        "inception",
+        LANDED_GATE,
+        "review-verdict.json",
+      ],
+    }),
   );
   record(
     "E5 emitter refuses a PARTIAL landed flag set naming the missing flags, never falling back to live (exit 1)",
@@ -3666,11 +3823,13 @@ const RETRO_REVIEWED_AT = "2026-08-01T12:34:56.000Z";
 // fields in today's exact order, plus binding: { mode: "live" } carrying the same
 // sha. This is the byte-comparability criterion, asserted over serialised text.
 {
-  const root = join(SANDBOX, "e6");
-  mkdirSync(join(root, ...RECORD_RELATIVE, LANDED_RECORD), { recursive: true });
-  const out = spawnSync(
-    "bun",
-    [
+  const root = paths.join({ segments: [SANDBOX, "e6"] });
+  files.mkdir(paths.join({ segments: [root, ...RECORD_RELATIVE, LANDED_RECORD] }), {
+    recursive: true,
+  });
+  const out = runtime.runSync({
+    program: "bun",
+    args: [
       VERDICT_EMITTER,
       "--record-dir",
       LANDED_RECORD,
@@ -3683,28 +3842,27 @@ const RETRO_REVIEWED_AT = "2026-08-01T12:34:56.000Z";
       "--lenses",
       "challenger,validator",
     ],
-    {
-      encoding: "utf-8",
-      env: {
-        ...scrubbedGitEnv(),
-        RIN_GATES_VERDICT_EMITTER: "1",
-        RIN_GATES_WORKSPACE_ROOT: root,
-        RIN_GATES_TEST_MODE: "1",
-        RIN_GATES_HEAD_SHA: "deadbeefcafe",
-        RIN_GATES_DIFF_DIGEST: "digest-e6",
-      },
+    environment: {
+      ...scrubbedGitEnv(),
+      RIN_GATES_VERDICT_EMITTER: "1",
+      RIN_GATES_WORKSPACE_ROOT: root,
+      RIN_GATES_TEST_MODE: "1",
+      RIN_GATES_HEAD_SHA: "deadbeefcafe",
+      RIN_GATES_DIFF_DIGEST: "digest-e6",
     },
-  );
-  const path = join(
-    root,
-    ...RECORD_RELATIVE,
-    LANDED_RECORD,
-    "inception",
-    LANDED_GATE,
-    "review-verdict.json",
-  );
-  const written = existsSync(path)
-    ? (JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>)
+  });
+  const path = paths.join({
+    segments: [
+      root,
+      ...RECORD_RELATIVE,
+      LANDED_RECORD,
+      "inception",
+      LANDED_GATE,
+      "review-verdict.json",
+    ],
+  });
+  const written = files.exists(path)
+    ? (JSON.parse(files.read(path, "utf-8")) as Record<string, unknown>)
     : null;
   const keys = written === null ? [] : Object.keys(written);
   record(
@@ -3768,11 +3926,13 @@ const RETRO_REVIEWED_AT = "2026-08-01T12:34:56.000Z";
 // there is a freshness spoof: it would let a stale review present itself as
 // having happened at whatever moment the caller names.
 {
-  const root = join(SANDBOX, "e8");
-  mkdirSync(join(root, ...RECORD_RELATIVE, LANDED_RECORD), { recursive: true });
-  const out = spawnSync(
-    "bun",
-    [
+  const root = paths.join({ segments: [SANDBOX, "e8"] });
+  files.mkdir(paths.join({ segments: [root, ...RECORD_RELATIVE, LANDED_RECORD] }), {
+    recursive: true,
+  });
+  const out = runtime.runSync({
+    program: "bun",
+    args: [
       VERDICT_EMITTER,
       "--record-dir",
       LANDED_RECORD,
@@ -3787,27 +3947,26 @@ const RETRO_REVIEWED_AT = "2026-08-01T12:34:56.000Z";
       "--reviewed-at",
       RETRO_REVIEWED_AT,
     ],
-    {
-      encoding: "utf-8",
-      env: {
-        ...scrubbedGitEnv(),
-        RIN_GATES_VERDICT_EMITTER: "1",
-        RIN_GATES_WORKSPACE_ROOT: root,
-        RIN_GATES_TEST_MODE: "1",
-        RIN_GATES_HEAD_SHA: "deadbeefcafe",
-        RIN_GATES_DIFF_DIGEST: "digest-e8",
-      },
+    environment: {
+      ...scrubbedGitEnv(),
+      RIN_GATES_VERDICT_EMITTER: "1",
+      RIN_GATES_WORKSPACE_ROOT: root,
+      RIN_GATES_TEST_MODE: "1",
+      RIN_GATES_HEAD_SHA: "deadbeefcafe",
+      RIN_GATES_DIFF_DIGEST: "digest-e8",
     },
-  );
-  const written = existsSync(
-    join(
-      root,
-      ...RECORD_RELATIVE,
-      LANDED_RECORD,
-      "inception",
-      LANDED_GATE,
-      "review-verdict.json",
-    ),
+  });
+  const written = files.exists(
+    paths.join({
+      segments: [
+        root,
+        ...RECORD_RELATIVE,
+        LANDED_RECORD,
+        "inception",
+        LANDED_GATE,
+        "review-verdict.json",
+      ],
+    }),
   );
   record(
     "E8 emitter refuses --reviewed-at on the LIVE path, naming it landed-path-only, and writes no verdict (exit 1)",
@@ -3819,7 +3978,7 @@ const RETRO_REVIEWED_AT = "2026-08-01T12:34:56.000Z";
 }
 
 // ---------------------------------------------------------------------------
-rmSync(SANDBOX, { recursive: true, force: true });
+files.remove(SANDBOX, { recursive: true, force: true });
 const failed = results.filter((result) => !result.passed);
 console.log(
   `\n${results.length - failed.length}/${results.length} derivation selftest cases passed`,

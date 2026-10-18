@@ -66,15 +66,12 @@
 // output root), RIN_GATES_OWNERS_CONFIG, RIN_GATES_SPACE, AIDLC_STAGE_GRAPH,
 // RIN_GATES_SELECTION_CONFIG, RIN_GATES_NOW.
 
+import { defaultPathOperations } from "../rin-harness-path-operations.ts";
 import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+  defaultFileKindPort,
+  defaultFileTextPort,
+  defaultSidecarFileReader,
+} from "../rin-harness-sidecar-file-reader.ts";
 import {
   gateDirSegments,
   REVIEW_VERDICT_FILENAME,
@@ -114,19 +111,28 @@ import {
   resolveConsumerWorkflowContext,
 } from "./rin-gates-workflow-selection.ts";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const directories = defaultSidecarFileReader();
+const fileKinds = defaultFileKindPort();
+const HERE = paths.dirname({
+  path: paths.fromFileUrl({ url: import.meta.url }),
+});
 const checkoutRootFrom = (dir: string, fallback: string): string => {
-  if (existsSync(join(dir, ".git"))) return dir;
-  const parent = dirname(dir);
+  if (files.exists(paths.join({ segments: [dir, ".git"] }))) return dir;
+  const parent = paths.dirname({ path: dir });
   return parent === dir ? fallback : checkoutRootFrom(parent, fallback);
 };
 
 const checkoutRootFromHere = (start: string): string =>
-  checkoutRootFrom(resolve(start), resolve(start));
+  checkoutRootFrom(
+    paths.resolve({ segments: [start] }),
+    paths.resolve({ segments: [start] }),
+  );
 const PROJECT_DIR = checkoutRootFromHere(HERE);
 const OWNERS_CONFIG_PATH =
   process.env["RIN_GATES_OWNERS_CONFIG"] ??
-  join(HERE, "transition-owners.json");
+  paths.join({ segments: [HERE, "transition-owners.json"] });
 // Seam for the same reason as OWNERS_CONFIG_PATH: without it a test's ordering
 // assertions depend on the developer's real shipped config, so ratifying a
 // milestone or tuning the threshold would turn a green case red with no code
@@ -156,9 +162,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const readJson = (path: string, label: string): unknown => {
-  if (!existsSync(path)) fail(`${label} not found at ${path}`);
+  if (!files.exists(path)) fail(`${label} not found at ${path}`);
   try {
-    return JSON.parse(readFileSync(path, "utf-8"));
+    return JSON.parse(files.read(path, "utf-8"));
   } catch (error) {
     fail(`${label} is not valid JSON (${path}): ${String(error)}`);
   }
@@ -184,8 +190,10 @@ type GateEntry = {
 const loadGates = (): readonly GateEntry[] => {
   const path =
     process.env["AIDLC_STAGE_GRAPH"] ??
-    join(PROJECT_DIR, ".claude", "tools", "data", "stage-graph.json");
-  if (!existsSync(path)) return [];
+    paths.join({
+      segments: [PROJECT_DIR, ".claude", "tools", "data", "stage-graph.json"],
+    });
+  if (!files.exists(path)) return [];
   const graph = readJson(path, "stage graph");
   if (!Array.isArray(graph)) return [];
   return graph
@@ -292,7 +300,7 @@ type RecordFileReader = {
 };
 
 const nodeRecordFileReader: RecordFileReader = {
-  fileExists: (path) => existsSync(path),
+  fileExists: (path) => files.exists(path),
   readFile: (path) => readFileOrNull(path),
 };
 
@@ -311,14 +319,18 @@ const readRecordReadiness = (args: {
       storedVerdict: "none",
     };
   }
-  const gateDir = join(args.recordDir, segments[0], segments[1]);
+  const gateDir = paths.join({
+    segments: [args.recordDir, segments[0], segments[1]],
+  });
   return {
     gateArtefactsPresent: args.produces.filter((artefact) =>
-      reader.fileExists(join(gateDir, `${artefact}.md`)),
+      reader.fileExists(paths.join({ segments: [gateDir, `${artefact}.md`] })),
     ).length,
     gateArtefactsExpected: args.produces.length,
     storedVerdict: storedVerdictOf({
-      raw: reader.readFile(join(gateDir, REVIEW_VERDICT_FILENAME)),
+      raw: reader.readFile(
+        paths.join({ segments: [gateDir, REVIEW_VERDICT_FILENAME] }),
+      ),
     }),
   };
 };
@@ -360,8 +372,8 @@ type RegistryRow = {
 const readRegistry = (args: {
   readonly intentsRoot: string;
 }): readonly RegistryRow[] => {
-  const path = join(args.intentsRoot, "intents.json");
-  if (!existsSync(path)) return [];
+  const path = paths.join({ segments: [args.intentsRoot, "intents.json"] });
+  if (!files.exists(path)) return [];
   const parsed = readJson(path, "intents registry");
   if (!Array.isArray(parsed)) return [];
   return parsed.filter(isRecord).map((row) => ({
@@ -373,12 +385,14 @@ const readRegistry = (args: {
 };
 
 const readFileOrNull = (path: string): string | null =>
-  existsSync(path) ? readFileSync(path, "utf-8") : null;
+  files.exists(path) ? files.read(path, "utf-8") : null;
 
 const readProvenance = (
   recordDir: string,
 ): { readonly taskId: string | null; readonly promotedAt: string | null } => {
-  const raw = readFileOrNull(join(recordDir, "promoted-from.json"));
+  const raw = readFileOrNull(
+    paths.join({ segments: [recordDir, "promoted-from.json"] }),
+  );
   if (raw === null) return { taskId: null, promotedAt: null };
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -394,11 +408,12 @@ const readProvenance = (
 };
 
 const readShardBodies = (recordDir: string): readonly string[] => {
-  const auditDir = join(recordDir, "audit");
-  if (!existsSync(auditDir)) return [];
-  return readdirSync(auditDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => readFileOrNull(join(auditDir, entry.name)))
+  const auditDir = paths.join({ segments: [recordDir, "audit"] });
+  if (!files.exists(auditDir)) return [];
+  return (directories.listDirectory(auditDir) ?? [])
+    .map((name) => ({ name, path: paths.join({ segments: [auditDir, name] }) }))
+    .filter((entry) => entry.name.endsWith(".md") && fileKinds.isFile(entry.path))
+    .map((entry) => readFileOrNull(entry.path))
     .filter((body): body is string => body !== null);
 };
 
@@ -416,7 +431,7 @@ const enumerateRecords = (args: {
   readonly facts: RecordRankingFacts;
 }[] => {
   const root = args.intentsRoot;
-  if (!existsSync(root)) return [];
+  if (!files.exists(root)) return [];
   const registry = readRegistry({ intentsRoot: args.intentsRoot });
   const rowByDir = new Map(
     registry
@@ -425,11 +440,14 @@ const enumerateRecords = (args: {
       )
       .map((row) => [row.dirName, row] as const),
   );
-  return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
+  return (directories.listDirectory(root) ?? [])
+    .map((name) => ({ name, path: paths.join({ segments: [root, name] }) }))
+    .filter((entry) => fileKinds.isDirectory(entry.path))
     .map((entry) => {
-      const recordDir = join(root, entry.name);
-      const stateBody = readFileOrNull(join(recordDir, "aidlc-state.md"));
+      const recordDir = entry.path;
+      const stateBody = readFileOrNull(
+        paths.join({ segments: [recordDir, "aidlc-state.md"] }),
+      );
       if (stateBody === null) return null;
       const row = rowByDir.get(entry.name);
       const provenance = readProvenance(recordDir);
@@ -446,7 +464,9 @@ const enumerateRecords = (args: {
         },
         facts: {
           ...readRecordImportance({
-            raw: readFileOrNull(join(recordDir, IMPORTANCE_BINDING_FILENAME)),
+            raw: readFileOrNull(
+              paths.join({ segments: [recordDir, IMPORTANCE_BINDING_FILENAME] }),
+            ),
           }),
           clock: readNeglectClock({
             dirName: entry.name,
@@ -975,10 +995,14 @@ const writeStatusProjection = (args: {
   readonly records: readonly RecordStatus[];
   readonly config: SelectionConfig;
 }): void => {
-  mkdirSync(args.outDir, { recursive: true });
-  const jsonPath = join(args.outDir, "rin-gates-status.json");
-  const markdownPath = join(args.outDir, "rin-gates-status.md");
-  writeFileSync(
+  files.mkdir(args.outDir, { recursive: true });
+  const jsonPath = paths.join({
+    segments: [args.outDir, "rin-gates-status.json"],
+  });
+  const markdownPath = paths.join({
+    segments: [args.outDir, "rin-gates-status.md"],
+  });
+  files.write(
     jsonPath,
     `${JSON.stringify(
       {
@@ -994,7 +1018,7 @@ const writeStatusProjection = (args: {
     )}\n`,
     "utf-8",
   );
-  writeFileSync(
+  files.write(
     markdownPath,
     renderMarkdown({
       records: args.records,
@@ -1075,7 +1099,9 @@ const run = (): void => {
   const consumerRoot = process.env["RIN_GATES_WORKSPACE_ROOT"] ?? PROJECT_DIR;
   const engineUtilityPath =
     process.env["RIN_GATES_ENGINE_CLI"] ??
-    join(PROJECT_DIR, ".claude", "tools", "aidlc-utility.ts");
+    paths.join({
+      segments: [PROJECT_DIR, ".claude", "tools", "aidlc-utility.ts"],
+    });
   const workflowSelection = resolveConsumerWorkflowContext({
     consumerRoot,
     engineUtilityPath,
@@ -1095,7 +1121,8 @@ const run = (): void => {
   });
   const { selectionRankingConfigPath, selectionConfig: config } =
     selectionRankingConfiguration;
-  const outDir = argValue("--out") ?? join(consumerRoot, "aidlc");
+  const outDir =
+    argValue("--out") ?? paths.join({ segments: [consumerRoot, "aidlc"] });
 
   const laneMap = laneByGate(
     readJson(OWNERS_CONFIG_PATH, "transition owners") as OwnersConfig,
@@ -1131,7 +1158,10 @@ const run = (): void => {
   if (lane !== null) printLaneQueue({ records, laneMap, lane });
 };
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+if (
+  paths.fromFileUrl({ url: import.meta.url }) ===
+  paths.resolve({ segments: [process.argv[1] ?? ""] })
+) {
   run();
 }
 

@@ -1,15 +1,7 @@
-import { spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
+import { defaultPathOperations } from "../rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "../rin-harness-sidecar-file-reader.ts";
+import { defaultReviewProcessPort } from "./review-process-port.ts";
 import type {
   IntentRecord,
   RecordRank,
@@ -18,9 +10,24 @@ import type {
   TransitionOwner,
 } from "./rin-gates-status";
 
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const runtime = defaultReviewProcessPort();
+
+const ambientEnvironment: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(runtime.environment).filter(
+    (entry): entry is [string, string] => entry[1] !== undefined,
+  ),
+);
+
+const temporaryDirectory = (prefix: string): string =>
+  files.makeTemporaryDirectory(
+    paths.join({ segments: [files.temporaryRoot(), prefix] }),
+  );
+
 const loadStatusAgainstFixture = async () => {
-  const root = mkdtempSync(join(tmpdir(), "rin-status-module-"));
-  const stageGraphPath = join(root, "stage-graph.json");
+  const root = temporaryDirectory("rin-status-module-");
+  const stageGraphPath = paths.join({ segments: [root, "stage-graph.json"] });
   const previousGraph = process.env["AIDLC_STAGE_GRAPH"];
   const stages = [
     "rin-gate-0-reconcile",
@@ -31,7 +38,7 @@ const loadStatusAgainstFixture = async () => {
     "rin-gate-5-review-cycle",
     "rin-gate-6-operate",
   ];
-  writeFileSync(
+  files.write(
     stageGraphPath,
     JSON.stringify(stages.map((slug) => ({ slug, produces: [] }))),
   );
@@ -41,7 +48,7 @@ const loadStatusAgainstFixture = async () => {
   } finally {
     if (previousGraph === undefined) delete process.env["AIDLC_STAGE_GRAPH"];
     else process.env["AIDLC_STAGE_GRAPH"] = previousGraph;
-    rmSync(root, { recursive: true, force: true });
+    files.remove(root, { recursive: true, force: true });
   }
 };
 
@@ -77,39 +84,41 @@ const fixtureRoots: string[] = [];
 
 afterEach(() => {
   fixtureRoots.splice(0).forEach((fixtureRoot) => {
-    rmSync(fixtureRoot, { recursive: true, force: true });
+    files.remove(fixtureRoot, { recursive: true, force: true });
   });
 });
 
 const createStatusFixture = () => {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), "rin-gates-status-"));
+  const fixtureRoot = temporaryDirectory("rin-gates-status-");
   fixtureRoots.push(fixtureRoot);
-  const consumerRoot = join(fixtureRoot, "consumer-alpha");
-  const outputRoot = join(fixtureRoot, "status-output");
-  const selectionRankingConfigPath = join(
-    fixtureRoot,
-    "alpha-selection-ranking.json",
+  const inFixture = (name: string): string =>
+    paths.join({ segments: [fixtureRoot, name] });
+  const consumerRoot = inFixture("consumer-alpha");
+  const outputRoot = inFixture("status-output");
+  const selectionRankingConfigPath = inFixture("alpha-selection-ranking.json");
+  const ownersConfigPath = inFixture("transition-owners.json");
+  const stageGraphPath = inFixture("stage-graph.json");
+  const utilityPath = inFixture("fake-aidlc-utility.ts");
+  const utilityArgumentsPath = inFixture("utility-arguments.json");
+  files.mkdir(
+    paths.join({
+      segments: [consumerRoot, "aidlc", "spaces", "alpha", "intents"],
+    }),
+    { recursive: true },
   );
-  const ownersConfigPath = join(fixtureRoot, "transition-owners.json");
-  const stageGraphPath = join(fixtureRoot, "stage-graph.json");
-  const utilityPath = join(fixtureRoot, "fake-aidlc-utility.ts");
-  const utilityArgumentsPath = join(fixtureRoot, "utility-arguments.json");
-  mkdirSync(join(consumerRoot, "aidlc", "spaces", "alpha", "intents"), {
-    recursive: true,
-  });
-  writeFileSync(
+  files.write(
     selectionRankingConfigPath,
     JSON.stringify({
       ratifiedMilestones: ["M-alpha"],
       neglectThresholdDays: 9,
     }),
   );
-  writeFileSync(
+  files.write(
     ownersConfigPath,
     JSON.stringify({ transitions: {}, doneChecks: {} }),
   );
-  writeFileSync(stageGraphPath, "[]");
-  writeFileSync(
+  files.write(stageGraphPath, "[]");
+  files.write(
     utilityPath,
     [
       'import { writeFileSync } from "node:fs";',
@@ -131,33 +140,32 @@ const createStatusFixture = () => {
 };
 
 describe("status command composition", () => {
-  test("uses the selected consumer context and records ranking policy provenance", () => {
+  test("uses the selected consumer context and records ranking policy provenance", async () => {
     const fixture = createStatusFixture();
-    const statusCommandPath = resolve(
-      dirname(fileURLToPath(import.meta.url)),
-      "rin-gates-status.ts",
-    );
-    const execution = spawnSync(
-      "bun",
-      [statusCommandPath, "--out", fixture.outputRoot],
-      {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          AIDLC_STAGE_GRAPH: fixture.stageGraphPath,
-          FAKE_UTILITY_ARGUMENTS_PATH: fixture.utilityArgumentsPath,
-          RIN_GATES_ENGINE_CLI: fixture.utilityPath,
-          RIN_GATES_OWNERS_CONFIG: fixture.ownersConfigPath,
-          RIN_GATES_SELECTION_CONFIG: fixture.selectionRankingConfigPath,
-          RIN_GATES_SPACE: "alpha",
-          RIN_GATES_WORKSPACE_ROOT: fixture.consumerRoot,
-        },
+    const statusCommandPath = paths.resolve({
+      segments: [
+        paths.dirname({ path: paths.fromFileUrl({ url: import.meta.url }) }),
+        "rin-gates-status.ts",
+      ],
+    });
+    const execution = await runtime.run({
+      program: "bun",
+      args: [statusCommandPath, "--out", fixture.outputRoot],
+      environment: {
+        ...ambientEnvironment,
+        AIDLC_STAGE_GRAPH: fixture.stageGraphPath,
+        FAKE_UTILITY_ARGUMENTS_PATH: fixture.utilityArgumentsPath,
+        RIN_GATES_ENGINE_CLI: fixture.utilityPath,
+        RIN_GATES_OWNERS_CONFIG: fixture.ownersConfigPath,
+        RIN_GATES_SELECTION_CONFIG: fixture.selectionRankingConfigPath,
+        RIN_GATES_SPACE: "alpha",
+        RIN_GATES_WORKSPACE_ROOT: fixture.consumerRoot,
       },
-    );
+    });
 
     expect(execution.status).toBe(0);
     expect(
-      JSON.parse(readFileSync(fixture.utilityArgumentsPath, "utf8")),
+      JSON.parse(files.read(fixture.utilityArgumentsPath, "utf8")),
     ).toEqual([
       "--project-dir",
       fixture.consumerRoot,
@@ -169,14 +177,20 @@ describe("status command composition", () => {
     ]);
     expect(
       JSON.parse(
-        readFileSync(join(fixture.outputRoot, "rin-gates-status.json"), "utf8"),
+        files.read(
+          paths.join({ segments: [fixture.outputRoot, "rin-gates-status.json"] }),
+          "utf8",
+        ),
       ),
     ).toMatchObject({
       space: "alpha",
       selectionRankingConfigPath: fixture.selectionRankingConfigPath,
     });
     expect(
-      readFileSync(join(fixture.outputRoot, "rin-gates-status.md"), "utf8"),
+      files.read(
+        paths.join({ segments: [fixture.outputRoot, "rin-gates-status.md"] }),
+        "utf8",
+      ),
     ).toContain(
       `Selection ranking policy: ${fixture.selectionRankingConfigPath}`,
     );
@@ -897,7 +911,10 @@ describe("describeMilestone", () => {
 // which verdict token it extracts, and all of that is expressible against a
 // fake, so a real temp directory would be an unwarranted spawn.
 describe("readRecordReadiness", () => {
-  const gateDir = join("record", "inception", "rin-gate-0-reconcile");
+  const inGateDir = (name: string): string =>
+    paths.join({
+      segments: ["record", "inception", "rin-gate-0-reconcile", name],
+    });
   const produces = ["rin-reconcile-report", "rin-readiness-verdict"];
   const readerOver = (tree: Readonly<Record<string, string>>) => ({
     fileExists: (path: string): boolean => Object.hasOwn(tree, path),
@@ -926,8 +943,8 @@ describe("readRecordReadiness", () => {
         currentStage: "rin-gate-0-reconcile",
         produces,
         reader: readerOver({
-          [join(gateDir, "rin-reconcile-report.md")]: "# report",
-          [join(gateDir, "some-other-artefact.md")]: "# not declared",
+          [inGateDir("rin-reconcile-report.md")]: "# report",
+          [inGateDir("some-other-artefact.md")]: "# not declared",
         }),
       }),
     ).toMatchObject({ gateArtefactsPresent: 1, gateArtefactsExpected: 2 });
@@ -940,7 +957,7 @@ describe("readRecordReadiness", () => {
         currentStage: "rin-gate-0-reconcile",
         produces,
         reader: readerOver({
-          [join(gateDir, "review-verdict.json")]: JSON.stringify({
+          [inGateDir("review-verdict.json")]: JSON.stringify({
             verdict: "NOT-READY",
             headSha: "abc123",
           }),
@@ -956,7 +973,7 @@ describe("readRecordReadiness", () => {
         currentStage: "rin-gate-0-reconcile",
         produces,
         reader: readerOver({
-          [join(gateDir, "review-verdict.json")]: "{ not json",
+          [inGateDir("review-verdict.json")]: "{ not json",
         }),
       }),
     ).toMatchObject({ storedVerdict: "none" });
