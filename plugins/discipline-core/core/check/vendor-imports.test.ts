@@ -182,7 +182,11 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./scripts/run-install-proof.ts": expect.any(String),
       }),
       runnerSources: expect.objectContaining({ "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String) }),
-      platformPortSources: expect.objectContaining({ "./core/platform-ports/file-text-port.ts": expect.any(String) }),
+      platformPortSources: expect.objectContaining({
+        "./core/platform-ports/file-text-port.ts": expect.any(String),
+        "./core/platform-ports/file-system-port.ts": expect.any(String),
+        "./core/platform-ports/execution-port.ts": expect.any(String),
+      }),
       coreSources: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
       installProofPortSources: { "./scripts/install-proof-ports.ts": expect.any(String) },
       walkerPieceSources: expect.objectContaining({
@@ -192,6 +196,8 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       eslintPieceSources: expect.objectContaining({ "./mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts": expect.any(String) }),
       testSources: expect.objectContaining({
         "./core/check/run-check.test.ts": expect.any(String),
+        "./core/platform-ports/file-system-port.test.ts": expect.any(String),
+        "./core/platform-ports/execution-port.test.ts": expect.any(String),
         "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.test.ts": expect.any(String),
         "./tests/required-entry.ts": expect.any(String),
         "./tests/confinement.ts": expect.any(String),
