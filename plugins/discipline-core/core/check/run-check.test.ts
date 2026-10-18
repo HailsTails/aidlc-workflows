@@ -238,14 +238,18 @@ const TEAM_INSTALL: Readonly<Record<string, FakeFile>> = {
   [RUNNER_PATH]: presentFile({ text: "export const runner = {};\n" }),
 };
 
-const repoPaths = (request: { readonly paths: readonly string[] }): readonly RepoPath[] =>
-  request.paths.map((path) => repoPathSchema.parse(path));
+const TRACKED_PATHS: readonly RepoPath[] = [
+  repoPathSchema.parse("README.md"),
+  repoPathSchema.parse("package.json"),
+  repoPathSchema.parse("src/a.ts"),
+  repoPathSchema.parse("src/b.tsx"),
+  repoPathSchema.parse("src/c.mts"),
+  repoPathSchema.parse("src/d.cts"),
+  repoPathSchema.parse("src/e.js"),
+  repoPathSchema.parse("src/f.json"),
+];
 
-const TRACKED_PATHS = repoPaths({
-  paths: ["README.md", "package.json", "src/a.ts", "src/b.tsx", "src/c.mts", "src/d.cts", "src/e.js", "src/f.json"],
-});
-
-const CHANGED_PATHS = repoPaths({ paths: ["src/a.ts"] });
+const CHANGED_PATHS: readonly RepoPath[] = [repoPathSchema.parse("src/a.ts")];
 
 const HIT_IN_A = {
   clause: CLASS_SYNTAX_OBJECT,
@@ -328,7 +332,7 @@ describe("runCheck reports", () => {
             runner: standaloneRunner({ runReturns: { outcome: "ok", value: [{ ...HIT_IN_A, file: "src/factory.ts" }] } }),
           }),
           git: gitReporting({
-            trackedPaths: { outcome: "ok", value: repoPaths({ paths: ["src/factory.ts"] }) },
+            trackedPaths: { outcome: "ok", value: [repoPathSchema.parse("src/factory.ts")] },
             changedSince: { outcome: "ok", value: [] },
           }),
         }),
@@ -454,7 +458,7 @@ describe("runCheck forfeiture measurement", () => {
           fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_FILE_CARVE_OUT }) }),
           git: gitReporting({
             trackedPaths: { outcome: "ok", value: TRACKED_PATHS },
-            changedSince: { outcome: "ok", value: repoPaths({ paths: ["src/legacy.ts"] }) },
+            changedSince: { outcome: "ok", value: [repoPathSchema.parse("src/legacy.ts")] },
           }),
         }),
       ),
@@ -540,7 +544,7 @@ describe("runCheck runner dispatch", () => {
       checkRequest({
         modules: modulesLoading({ runner }),
         git: gitReporting({
-          trackedPaths: { outcome: "ok", value: repoPaths({ paths: ["README.md", "src/a.ts", "src/gone.ts"] }) },
+          trackedPaths: { outcome: "ok", value: [repoPathSchema.parse("README.md"), repoPathSchema.parse("src/a.ts"), repoPathSchema.parse("src/gone.ts")] },
           changedSince: { outcome: "ok", value: [] },
         }),
       }),
@@ -558,8 +562,8 @@ describe("runCheck runner dispatch", () => {
         fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_FILE_CARVE_OUT_ON_GONE }) }),
         modules: modulesLoading({ runner }),
         git: gitReporting({
-          trackedPaths: { outcome: "ok", value: repoPaths({ paths: ["src/a.ts", "src/gone.ts"] }) },
-          changedSince: { outcome: "ok", value: repoPaths({ paths: ["src/gone.ts"] }) },
+          trackedPaths: { outcome: "ok", value: [repoPathSchema.parse("src/a.ts"), repoPathSchema.parse("src/gone.ts")] },
+          changedSince: { outcome: "ok", value: [repoPathSchema.parse("src/gone.ts")] },
         }),
       }),
     );
@@ -914,7 +918,7 @@ describe("runCheck with an embedded runner", () => {
             }),
           }),
           git: gitReporting({
-            trackedPaths: { outcome: "ok", value: repoPaths({ paths: ["src/factory.ts"] }) },
+            trackedPaths: { outcome: "ok", value: [repoPathSchema.parse("src/factory.ts")] },
             changedSince: { outcome: "ok", value: [] },
           }),
         }),

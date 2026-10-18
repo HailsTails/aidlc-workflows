@@ -7,7 +7,7 @@ import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
-import { repoPathSchema } from "../values/repo-path.ts";
+import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import { type CommandRequest, runCheckCommand } from "./run-check-command.ts";
 
 const ENTRY_URL = "file:///install/core/check/check-command.ts";
@@ -117,10 +117,8 @@ const modulesLoading = (module: unknown): ModuleLoaderPort => ({
   load: vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: module }),
 });
 
-const gitTracking = (paths: readonly string[]): GitPort => ({
-  trackedPaths: vi
-    .fn<GitPort["trackedPaths"]>()
-    .mockReturnValue({ outcome: "ok", value: paths.map((path) => repoPathSchema.parse(path)) }),
+const gitTracking = (paths: readonly RepoPath[]): GitPort => ({
+  trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: paths }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
 });
 
@@ -176,7 +174,7 @@ describe("runCheckCommand", () => {
         process: processPort,
         fileText: fileTextOver(CLASS_SYNTAX_SELECTED),
         modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [HIT_IN_A] } }) }),
-        git: gitTracking(["src/a.ts"]),
+        git: gitTracking([repoPathSchema.parse("src/a.ts")]),
       }),
     );
 
@@ -190,7 +188,7 @@ describe("runCheckCommand", () => {
     const modules = modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) });
 
     await runCheckCommand(
-      commandRequest({ fileText: fileTextOver(CLASS_SYNTAX_SELECTED), modules, git: gitTracking(["src/a.ts"]) }),
+      commandRequest({ fileText: fileTextOver(CLASS_SYNTAX_SELECTED), modules, git: gitTracking([repoPathSchema.parse("src/a.ts")]) }),
     );
 
     expect(vi.mocked(modules.load).mock.calls).toEqual([

@@ -77,7 +77,12 @@ const git: GitPort = {
     .fn<GitPort["trackedPaths"]>()
     .mockReturnValue({
       outcome: "ok",
-      value: ["src/scratch.tmp.ts", "src/kept.ts", "src/plain.ts", "README.md"].map((tracked) => repoPathSchema.parse(tracked)),
+      value: [
+        repoPathSchema.parse("src/scratch.tmp.ts"),
+        repoPathSchema.parse("src/kept.ts"),
+        repoPathSchema.parse("src/plain.ts"),
+        repoPathSchema.parse("README.md"),
+      ],
     }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
 };

@@ -7,11 +7,12 @@ import type { GitPort } from "../core/platform-ports/git-port.ts";
 import { createDefaultModuleLoaderPort, type ModuleLoaderPort } from "../core/platform-ports/module-loader-port.ts";
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import type { AbsolutePath } from "../core/values/absolute-path.ts";
-import { repoPathSchema } from "../core/values/repo-path.ts";
+import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
 import { createEslintRunner } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import { createDefaultEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
 import { createWalkerRunner } from "../mechanisms/walker/runner/create-walker-runner.ts";
 import { createDefaultParsePort } from "../mechanisms/walker/runner/typescript-parse.ts";
+import { type PathCallsOutside, pathCallsOutside } from "./confinement.ts";
 
 const path = createDefaultPathPort({});
 
@@ -43,26 +44,12 @@ const ESLINT_READABLE = new RegExp(String.raw`^(?:${ESLINT_INSTALLED}|tests\/tes
 
 const NO_HARNESS_SEGMENT = /^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/;
 
-const isWithin = (request: { readonly observed: string; readonly paths: RegExp }): boolean => {
-  const location = path.relative({ from: INSTALL_ROOT, to: request.observed });
-  return location.relation === "within-root" && request.paths.test(location.path);
-};
-
-type PathCallsOutside = {
-  readonly called: "at least once" | "never";
-  readonly outside: readonly string[];
-};
-
-const pathCallsOutside = (request: {
+const installCallsOutside = (request: {
   readonly calls: readonly (readonly [{ readonly path: string }])[];
   readonly paths: RegExp;
-}): PathCallsOutside => ({
-  called: request.calls.length === 0 ? "never" : "at least once",
-  outside: request.calls.map(([call]) => call.path).filter((observed) => !isWithin({ observed, paths: request.paths })),
-});
+}): PathCallsOutside => pathCallsOutside({ path, root: INSTALL_ROOT, calls: request.calls, paths: request.paths });
 
 const EVERY_CALL_WITHIN: PathCallsOutside = { called: "at least once", outside: [] };
-
 
 type ObservedPorts = {
   readonly fileText: FileTextPort;
@@ -102,16 +89,14 @@ const observedPorts = (): ObservedPorts => {
   };
 };
 
-const gitTracking = (request: { readonly tracked: readonly string[] }): GitPort => ({
-  trackedPaths: vi
-    .fn<GitPort["trackedPaths"]>()
-    .mockReturnValue({ outcome: "ok", value: request.tracked.map((tracked) => repoPathSchema.parse(tracked)) }),
+const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPort => ({
+  trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
 });
 
 const checkOf = (request: {
   readonly repo: AbsolutePath;
-  readonly tracked: readonly string[];
+  readonly tracked: readonly RepoPath[];
   readonly ports: ObservedPorts;
 }) =>
   runCheck({
@@ -134,18 +119,27 @@ const projectOf = (request: { readonly repo: AbsolutePath; readonly ports: Obser
     git: gitTracking({ tracked: [] }),
   });
 
-const CLEAN_TRACKED = ["disciplines.json", "src/plain.ts"];
+const CLEAN_TRACKED: readonly RepoPath[] = [repoPathSchema.parse("disciplines.json"), repoPathSchema.parse("src/plain.ts")];
 
-const CLASS_TRACKED = ["disciplines.json", "src/plain.ts", "src/kept.ts"];
+const CLASS_TRACKED: readonly RepoPath[] = [
+  repoPathSchema.parse("disciplines.json"),
+  repoPathSchema.parse("src/plain.ts"),
+  repoPathSchema.parse("src/kept.ts"),
+];
 
-const ESLINT_CLEAN_TRACKED = ["disciplines.json", "disciplines.eslint.mjs", "eslint.config.mjs", "src/plain.ts"];
+const ESLINT_CLEAN_TRACKED: readonly RepoPath[] = [
+  repoPathSchema.parse("disciplines.json"),
+  repoPathSchema.parse("disciplines.eslint.mjs"),
+  repoPathSchema.parse("eslint.config.mjs"),
+  repoPathSchema.parse("src/plain.ts"),
+];
 
-const ESLINT_CLASS_TRACKED = [
-  "disciplines.json",
-  "disciplines.eslint.mjs",
-  "eslint.config.mjs",
-  "src/plain.ts",
-  "src/kept.ts",
+const ESLINT_CLASS_TRACKED: readonly RepoPath[] = [
+  repoPathSchema.parse("disciplines.json"),
+  repoPathSchema.parse("disciplines.eslint.mjs"),
+  repoPathSchema.parse("eslint.config.mjs"),
+  repoPathSchema.parse("src/plain.ts"),
+  repoPathSchema.parse("src/kept.ts"),
 ];
 
 const classFinding = (request: { readonly mechanism: string }) => ({
@@ -190,19 +184,19 @@ describe("a consumer with no harness directory selecting CD-14 through the walke
   it("reads, probes and loads only paths in the walker's install path list or the consumer repo", async () => {
     const ports = observedPorts();
     await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
-    expect(pathCallsOutside({ calls: ports.reads.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.probes.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: WALKER_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: WALKER_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: WALKER_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: WALKER_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
   });
 
   it("reads, probes and loads no path carrying a harness segment", async () => {
     const ports = observedPorts();
     await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
-    expect(pathCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
   });
 });
 
@@ -237,19 +231,19 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
     const ports = observedPorts();
     await projectOf({ repo: ESLINT_CONSUMER, ports });
     await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLASS_TRACKED, ports });
-    expect(pathCallsOutside({ calls: ports.reads.mock.calls, paths: ESLINT_READABLE })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.probes.mock.calls, paths: ESLINT_READABLE })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: ESLINT_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: ESLINT_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: ESLINT_READABLE })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: ESLINT_READABLE })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: ESLINT_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: ESLINT_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
   });
 
   it("reads, probes and loads no path carrying a harness segment, check and project alike", async () => {
     const ports = observedPorts();
     await projectOf({ repo: ESLINT_CONSUMER, ports });
     await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLASS_TRACKED, ports });
-    expect(pathCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
-    expect(pathCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
+    expect(installCallsOutside({ calls: ports.runnerLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
   });
 });

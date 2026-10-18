@@ -7,7 +7,7 @@ import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
-import { repoPathSchema } from "../values/repo-path.ts";
+import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
 import type { CommandRequest } from "./run-check-command.ts";
 import { runProjectCommand } from "./run-project-command.ts";
@@ -126,10 +126,8 @@ const modulesLoading = (module: unknown): ModuleLoaderPort => ({
   load: vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: module }),
 });
 
-const gitTracking = (paths: readonly string[]): GitPort => ({
-  trackedPaths: vi
-    .fn<GitPort["trackedPaths"]>()
-    .mockReturnValue({ outcome: "ok", value: paths.map((path) => repoPathSchema.parse(path)) }),
+const gitTracking = (paths: readonly RepoPath[]): GitPort => ({
+  trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: paths }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
 });
 
@@ -210,7 +208,7 @@ describe("runProjectCommand", () => {
     const processPort = processWith({ arguments: ["--repo", "/repo"] });
 
     await runProjectCommand(
-      commandRequest({ process: processPort, fileText: fileTextOver(CLASS_SYNTAX_SELECTED), git: gitTracking(["src/a.ts"]) }),
+      commandRequest({ process: processPort, fileText: fileTextOver(CLASS_SYNTAX_SELECTED), git: gitTracking([repoPathSchema.parse("src/a.ts")]) }),
     );
 
     expect(outputOf({ process: processPort })).toEqual({

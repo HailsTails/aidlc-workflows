@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { createPathPort } from "../platform-ports/path-port.ts";
-import { importsIn, type ModuleImport } from "./piece-import-rules.ts";
+import {
+  computedModuleLoad,
+  importsOutside,
+  nodeBuiltinImport,
+  packageImport,
+  packageOrComputedImport,
+  packageTypeImport,
+  relativeImport,
+  relativeImportOfAnyForm,
+  relativeImportReaching,
+} from "../../tests/confinement.ts";
 
 declare global {
   interface ImportMeta {
@@ -22,6 +31,7 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./scripts/**/*.test.*",
     "!./tests/test-fixtures/**",
     "!./tests/required-entry.ts",
+    "!./tests/confinement.ts",
     "!./mechanisms/**",
     "!./vitest.config.ts",
     "!./scripts/install-proof-ports.ts",
@@ -130,63 +140,21 @@ const eslintPieceSources = import.meta.glob(
 );
 
 const testSources = import.meta.glob(
-  ["./**/*.test.{ts,mts,cts,tsx}", "./tests/required-entry.ts", "!./node_modules/**", "!./**/test-fixtures/**"],
+  [
+    "./**/*.test.{ts,mts,cts,tsx}",
+    "./tests/required-entry.ts",
+    "./tests/confinement.ts",
+    "!./node_modules/**",
+    "!./**/test-fixtures/**",
+  ],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
-
-type ImportAllowance = (request: { readonly moduleImport: ModuleImport }) => boolean;
-
-const RELATIVE_SPECIFIER = /^\.\.?\//;
-
-const isStaticForm = (request: { readonly moduleImport: ModuleImport }): boolean =>
-  request.moduleImport.form === "value" || request.moduleImport.form === "type-only";
-
-const relativeImport: ImportAllowance = ({ moduleImport }) =>
-  RELATIVE_SPECIFIER.test(moduleImport.specifier) && isStaticForm({ moduleImport });
-
-const relativeImportOfAnyForm: ImportAllowance = ({ moduleImport }) => RELATIVE_SPECIFIER.test(moduleImport.specifier);
-
-const nodeBuiltinImport: ImportAllowance = ({ moduleImport }) =>
-  /^node:/.test(moduleImport.specifier) && isStaticForm({ moduleImport });
-
-const computedModuleLoad: ImportAllowance = ({ moduleImport }) =>
-  /[^\w@/.:-]/.test(moduleImport.specifier) && moduleImport.form === "dynamic";
-
-const packageImport =
-  (request: { readonly packageName: string }): ImportAllowance =>
-  ({ moduleImport }) =>
-    moduleImport.specifier === request.packageName && isStaticForm({ moduleImport });
-
-const packageTypeImport =
-  (request: { readonly packageName: string }): ImportAllowance =>
-  ({ moduleImport }) =>
-    moduleImport.specifier === request.packageName && moduleImport.form === "type-only";
 
 const zodImport = packageImport({ packageName: "zod" });
 
 const vitestImport = packageImport({ packageName: "vitest" });
 
-const coreFolderPath = createPathPort({ flavour: "posix", workingDirectory: () => "/install/core/folder" });
-
-const relativeImportUnderCore: ImportAllowance = ({ moduleImport }) => {
-  if (!RELATIVE_SPECIFIER.test(moduleImport.specifier)) {
-    return false;
-  }
-  const location = coreFolderPath.relative({ from: "/install", to: moduleImport.specifier });
-  return location.relation === "within-root" && location.path.startsWith("core/");
-};
-
-const packageOrComputedImport: ImportAllowance = ({ moduleImport }) => /^[^.]/.test(moduleImport.specifier);
-
-const importsOutside = (request: {
-  readonly sources: Readonly<Record<string, string>>;
-  readonly allowed: readonly ImportAllowance[];
-}): readonly (ModuleImport & { readonly file: string })[] =>
-  Object.entries(request.sources).flatMap(([file, text]) =>
-    importsIn({ text })
-      .filter((moduleImport) => !request.allowed.some((allows) => allows({ moduleImport })))
-      .map((moduleImport) => ({ file, ...moduleImport })),
-  );
+const relativeImportUnderCore = relativeImportReaching({ importingFolder: "core/folder", reach: /^core\// });
 
 describe("Vendor confinement over what this repository's own discipline-core source imports, read as build-time raw modules (CD-19, CD-20; CD-47: that source is the assertion's subject and no fake can stand in for it; nothing is spawned or written)", () => {
   it("reads a known file through every scanned set, so no set is silently empty", () => {
@@ -218,6 +186,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./core/check/run-check.test.ts": expect.any(String),
         "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.test.ts": expect.any(String),
         "./tests/required-entry.ts": expect.any(String),
+        "./tests/confinement.ts": expect.any(String),
       }),
     });
   });
@@ -309,7 +278,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     ).toEqual([]);
   });
 
-  it("finds every test file and the test-support module importing only relative paths and vitest, type-only imports included, so zod, eslint and typescript reach a test only through their owners", () => {
+  it("finds every test file and the test-support modules importing only relative paths and vitest, type-only imports included, so zod, eslint and typescript reach a test only through their owners", () => {
     expect(importsOutside({ sources: testSources, allowed: [relativeImportOfAnyForm, vitestImport] })).toEqual([]);
   });
 });
