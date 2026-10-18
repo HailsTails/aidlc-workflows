@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
-import { createPathPort } from "../platform-ports/path-port.ts";
-import { importsIn, type ModuleImport } from "./piece-import-rules.ts";
+import {
+  computedModuleLoad,
+  importsOutside,
+  nodeBuiltinImport,
+  packageImport,
+  packageOrComputedImport,
+  packageTypeImport,
+  relativeImport,
+  relativeImportOfAnyForm,
+  relativeImportReaching,
+} from "../../tests/confinement.ts";
 
 declare global {
   interface ImportMeta {
@@ -22,6 +30,8 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./tests/**/*.test.*",
     "!./scripts/**/*.test.*",
     "!./tests/test-fixtures/**",
+    "!./tests/required-entry.ts",
+    "!./tests/confinement.ts",
     "!./mechanisms/**",
     "!./vitest.config.ts",
     "!./scripts/install-proof-ports.ts",
@@ -129,52 +139,22 @@ const eslintPieceSources = import.meta.glob(
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
 
-const relativeImport = z.object({ specifier: z.string().regex(/^\.\.?\//), form: z.enum(["value", "type-only"]) });
-
-const zodImport = z.object({ specifier: z.literal("zod"), form: z.enum(["value", "type-only"]) });
-
-const nodeBuiltinImport = z.object({ specifier: z.string().regex(/^node:/), form: z.enum(["value", "type-only"]) });
-
-const computedModuleLoad = z.object({ specifier: z.string().regex(/[^\w@/.:-]/), form: z.literal("dynamic") });
-
-const packageImport = (packageName: string) =>
-  z.object({ specifier: z.literal(packageName), form: z.enum(["value", "type-only"]) });
-
-const packageTypeImport = (packageName: string) =>
-  z.object({ specifier: z.literal(packageName), form: z.literal("type-only") });
-
-const coreFolderPath = createPathPort({ flavour: "posix", workingDirectory: () => "/install/core/folder" });
-
-const relativeImportUnderCore = z.object({
-  specifier: z
-    .string()
-    .regex(/^\.\.?\//)
-    .transform((specifier) => coreFolderPath.relative({ from: "/install", to: specifier }))
-    .pipe(z.object({ relation: z.literal("within-root"), path: z.string().regex(/^core\//, "resolves outside core/") })),
-  form: z.enum(["value", "type-only", "dynamic"]),
-});
-
-const packageOrComputedImport = z.object({
-  specifier: z.string().regex(/^[^.]/),
-  form: z.enum(["value", "type-only", "dynamic"]),
-});
-
-const relativeTargetsUnderCore = z.record(
-  z.string(),
-  z
-    .string()
-    .transform((text) => importsIn({ text }))
-    .pipe(z.array(z.union([relativeImportUnderCore, packageOrComputedImport]))),
+const testSources = import.meta.glob(
+  [
+    "./**/*.test.{ts,mts,cts,tsx}",
+    "./tests/required-entry.ts",
+    "./tests/confinement.ts",
+    "!./node_modules/**",
+    "!./**/test-fixtures/**",
+  ],
+  { base: "../../", query: "?raw", import: "default", eager: true },
 );
 
-const importsOnly = (allowed: readonly [z.ZodType<unknown, ModuleImport>, ...z.ZodType<unknown, ModuleImport>[]]) =>
-  z.record(
-    z.string(),
-    z
-      .string()
-      .transform((text) => importsIn({ text }))
-      .pipe(z.array(z.union(allowed))),
-  );
+const zodImport = packageImport({ packageName: "zod" });
+
+const vitestImport = packageImport({ packageName: "vitest" });
+
+const relativeImportUnderCore = relativeImportReaching({ importingFolder: "core/folder", reach: /^core\// });
 
 describe("Vendor confinement over what this repository's own discipline-core source imports, read as build-time raw modules (CD-19, CD-20; CD-47: that source is the assertion's subject and no fake can stand in for it; nothing is spawned or written)", () => {
   it("reads a known file through every scanned set, so no set is silently empty", () => {
@@ -186,6 +166,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       installProofPortSources,
       walkerPieceSources,
       eslintPieceSources,
+      testSources,
     }).toEqual({
       sourcesOutsideMechanisms: expect.objectContaining({
         "./core/check/run-check.ts": expect.any(String),
@@ -201,6 +182,12 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": expect.any(String),
       }),
       eslintPieceSources: expect.objectContaining({ "./mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts": expect.any(String) }),
+      testSources: expect.objectContaining({
+        "./core/check/run-check.test.ts": expect.any(String),
+        "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.test.ts": expect.any(String),
+        "./tests/required-entry.ts": expect.any(String),
+        "./tests/confinement.ts": expect.any(String),
+      }),
     });
   });
 
@@ -209,74 +196,89 @@ describe("Vendor confinement over what this repository's own discipline-core sou
   });
 
   it("finds every relative import in a core file resolving under core/", () => {
-    expect(relativeTargetsUnderCore.safeParse(coreSources).error).toBeUndefined();
+    expect(
+      importsOutside({ sources: coreSources, allowed: [relativeImportUnderCore, packageOrComputedImport] }),
+    ).toEqual([]);
   });
 
-  it("finds every file outside the mechanisms, platform ports and probe pieces importing only relative paths and zod", () => {
-    expect(
-      importsOnly([relativeImport, zodImport]).safeParse(sourcesOutsideMechanisms).error,
-    ).toBeUndefined();
+  it("finds every file outside the mechanisms, platform ports, probe pieces and tests importing only relative paths and zod", () => {
+    expect(importsOutside({ sources: sourcesOutsideMechanisms, allowed: [relativeImport, zodImport] })).toEqual([]);
   });
 
   it("finds every runner file outside the wrapping files importing only relative paths and zod", () => {
-    expect(importsOnly([relativeImport, zodImport]).safeParse(runnerSources).error).toBeUndefined();
+    expect(importsOutside({ sources: runnerSources, allowed: [relativeImport, zodImport] })).toEqual([]);
   });
 
   it("finds the platform ports other than the module loader importing only relative paths, zod and node builtins", () => {
     expect(
-      importsOnly([relativeImport, zodImport, nodeBuiltinImport]).safeParse(platformPortSources).error,
-    ).toBeUndefined();
+      importsOutside({ sources: platformPortSources, allowed: [relativeImport, zodImport, nodeBuiltinImport] }),
+    ).toEqual([]);
   });
 
   it("finds the module-loader port importing only relative paths, zod, node builtins and computed module loads", () => {
     expect(
-      importsOnly([relativeImport, zodImport, nodeBuiltinImport, computedModuleLoad]).safeParse(
-        moduleLoaderPortSources,
-      ).error,
-    ).toBeUndefined();
+      importsOutside({
+        sources: moduleLoaderPortSources,
+        allowed: [relativeImport, zodImport, nodeBuiltinImport, computedModuleLoad],
+      }),
+    ).toEqual([]);
   });
 
   it("finds scripts/install-proof-ports.ts, the install proof's wrapping ports, importing only relative paths and node builtins", () => {
-    expect(importsOnly([relativeImport, nodeBuiltinImport]).safeParse(installProofPortSources).error).toBeUndefined();
+    expect(importsOutside({ sources: installProofPortSources, allowed: [relativeImport, nodeBuiltinImport] })).toEqual([]);
   });
 
   it("finds typescript-parse.ts the only file importing typescript by value", () => {
     expect(
-      importsOnly([relativeImport, zodImport, packageImport("typescript")]).safeParse(
-        typescriptWrapperSources,
-      ).error,
-    ).toBeUndefined();
+      importsOutside({
+        sources: typescriptWrapperSources,
+        allowed: [relativeImport, zodImport, packageImport({ packageName: "typescript" })],
+      }),
+    ).toEqual([]);
   });
 
   it("finds eslint-instance.ts the only file importing eslint and @typescript-eslint/parser by value", () => {
     expect(
-      importsOnly([relativeImport, zodImport, packageImport("eslint"), packageImport("@typescript-eslint/parser")]).safeParse(
-        eslintWrapperSources,
-      ).error,
-    ).toBeUndefined();
+      importsOutside({
+        sources: eslintWrapperSources,
+        allowed: [
+          relativeImport,
+          zodImport,
+          packageImport({ packageName: "eslint" }),
+          packageImport({ packageName: "@typescript-eslint/parser" }),
+        ],
+      }),
+    ).toEqual([]);
   });
 
   it("finds inline-config-parser.ts the only file importing @eslint/plugin-kit by value", () => {
     expect(
-      importsOnly([relativeImport, zodImport, packageImport("@eslint/plugin-kit")]).safeParse(
-        pluginKitWrapperSources,
-      ).error,
-    ).toBeUndefined();
+      importsOutside({
+        sources: pluginKitWrapperSources,
+        allowed: [relativeImport, zodImport, packageImport({ packageName: "@eslint/plugin-kit" })],
+      }),
+    ).toEqual([]);
   });
 
   it("finds walker pieces taking only types from typescript", () => {
     expect(
-      importsOnly([relativeImport, zodImport, packageTypeImport("typescript")]).safeParse(
-        walkerPieceSources,
-      ).error,
-    ).toBeUndefined();
+      importsOutside({
+        sources: walkerPieceSources,
+        allowed: [relativeImport, zodImport, packageTypeImport({ packageName: "typescript" })],
+      }),
+    ).toEqual([]);
   });
 
   it("finds ESLint pieces taking only types from eslint", () => {
     expect(
-      importsOnly([relativeImport, zodImport, packageTypeImport("eslint")]).safeParse(eslintPieceSources)
-        .error,
-    ).toBeUndefined();
+      importsOutside({
+        sources: eslintPieceSources,
+        allowed: [relativeImport, zodImport, packageTypeImport({ packageName: "eslint" })],
+      }),
+    ).toEqual([]);
   });
 
+  it("finds every test file and the test-support modules importing only relative paths and vitest, type-only imports included, so zod, eslint and typescript reach a test only through their owners", () => {
+    expect(importsOutside({ sources: testSources, allowed: [relativeImportOfAnyForm, vitestImport] })).toEqual([]);
+  });
 });

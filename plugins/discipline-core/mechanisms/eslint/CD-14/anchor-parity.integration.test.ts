@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import { createPathPort } from "../../../core/platform-ports/path-port.ts";
+import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
@@ -16,29 +16,20 @@ import classAuthoringPlugin from "./cd14/cd14.eslint-plugin.ts";
 
 const PIECE_ROOT = absolutePathSchema.parse(import.meta.dirname);
 
-const keywordAfterNodeStartCases = z
-  .array(
-    z.object({
-      name: z.string(),
-      fileName: repoPathSchema,
-      source: z.string(),
-      expectedLines: z.array(z.number()),
-    }),
-  )
-  .parse([
-    {
-      name: "decorator on the line before the class keyword",
-      fileName: "decorated.ts",
-      source: "@sealed\nclass Alpha {}\n",
-      expectedLines: [2],
-    },
-    {
-      name: "decorated class expression",
-      fileName: "decorated-expression.ts",
-      source: "export const Gamma = @sealed\nclass {};\n",
-      expectedLines: [2],
-    },
-  ]);
+const keywordAfterNodeStartCases: readonly SourceCase[] = [
+  {
+    name: "decorator on the line before the class keyword",
+    fileName: repoPathSchema.parse("decorated.ts"),
+    source: "@sealed\nclass Alpha {}\n",
+    expectedLines: [2],
+  },
+  {
+    name: "decorated class expression",
+    fileName: repoPathSchema.parse("decorated-expression.ts"),
+    source: "export const Gamma = @sealed\nclass {};\n",
+    expectedLines: [2],
+  },
+];
 
 const loadedPlugin = eslintPluginModuleSchema.parse({ default: classAuthoringPlugin }).default;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { requiredEntry } from "../../tests/required-entry.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
@@ -60,7 +60,7 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
   relative: vi.fn(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn(),

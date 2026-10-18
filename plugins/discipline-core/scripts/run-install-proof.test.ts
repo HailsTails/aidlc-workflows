@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import type { FileTextPort } from "../core/platform-ports/file-text-port.ts";
 import type { PathPort } from "../core/platform-ports/path-port.ts";
 import type { ProcessPort } from "../core/platform-ports/process-port.ts";
 import { absolutePathSchema } from "../core/values/absolute-path.ts";
+import { requiredEntry } from "../tests/required-entry.ts";
 import type { ProofCase, StepRun } from "./install-proof-plan.ts";
 import type { CommandRunPort, EffectFailure, ListedEntry, ScratchFilesPort } from "./install-proof-ports.ts";
 import { type InstallProofRequest, runInstallProof } from "./run-install-proof.ts";
@@ -75,17 +75,17 @@ const processPort = (): ProcessPort => ({
 });
 
 const pathPort = (): PathPort => ({
-  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   relative: vi.fn<PathPort["relative"]>(),
-  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
+  directoryOf: ({ path }) => requiredEntry({ table: DIRECTORIES, key: path }),
   repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
   resolve: vi.fn<PathPort["resolve"]>(),
   fromFileUrl: () => ({ outcome: "ok", value: absolutePathSchema.parse("/package/scripts/install-proof.ts") }),
 });
 
 const fileTextPort = (): FileTextPort => ({
-  read: ({ path }) => ({ outcome: "ok", value: z.string().parse(PACKAGE_FILES[path]) }),
+  read: ({ path }) => ({ outcome: "ok", value: requiredEntry({ table: PACKAGE_FILES, key: path }) }),
   exists: vi.fn<FileTextPort["exists"]>(),
   write: vi.fn<FileTextPort["write"]>().mockReturnValue({ outcome: "ok", value: undefined }),
 });

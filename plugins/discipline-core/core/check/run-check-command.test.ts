@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { requiredEntry } from "../../tests/required-entry.ts";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
@@ -7,7 +7,7 @@ import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import type { ProcessPort } from "../platform-ports/process-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
-import { repoPathSchema } from "../values/repo-path.ts";
+import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import { type CommandRequest, runCheckCommand } from "./run-check-command.ts";
 
 const ENTRY_URL = "file:///install/core/check/check-command.ts";
@@ -91,10 +91,10 @@ const DIRECTORIES: Readonly<Record<string, string>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
   relative: vi.fn<PathPort["relative"]>(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
-  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
+  directoryOf: ({ path }) => requiredEntry({ table: DIRECTORIES, key: path }),
   repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
   resolve: ({ path }) => ({ outcome: "ok", value: absolutePathSchema.parse(path) }),
   fromFileUrl: ({ url }) => ({ outcome: "ok", value: absolutePathSchema.parse(FILE_PATHS[url]) }),
@@ -117,10 +117,8 @@ const modulesLoading = (module: unknown): ModuleLoaderPort => ({
   load: vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: module }),
 });
 
-const gitTracking = (paths: readonly string[]): GitPort => ({
-  trackedPaths: vi
-    .fn<GitPort["trackedPaths"]>()
-    .mockReturnValue({ outcome: "ok", value: z.array(repoPathSchema).parse(paths) }),
+const gitTracking = (paths: readonly RepoPath[]): GitPort => ({
+  trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: paths }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
 });
 
@@ -176,7 +174,7 @@ describe("runCheckCommand", () => {
         process: processPort,
         fileText: fileTextOver(CLASS_SYNTAX_SELECTED),
         modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [HIT_IN_A] } }) }),
-        git: gitTracking(["src/a.ts"]),
+        git: gitTracking([repoPathSchema.parse("src/a.ts")]),
       }),
     );
 
@@ -190,7 +188,7 @@ describe("runCheckCommand", () => {
     const modules = modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) });
 
     await runCheckCommand(
-      commandRequest({ fileText: fileTextOver(CLASS_SYNTAX_SELECTED), modules, git: gitTracking(["src/a.ts"]) }),
+      commandRequest({ fileText: fileTextOver(CLASS_SYNTAX_SELECTED), modules, git: gitTracking([repoPathSchema.parse("src/a.ts")]) }),
     );
 
     expect(vi.mocked(modules.load).mock.calls).toEqual([

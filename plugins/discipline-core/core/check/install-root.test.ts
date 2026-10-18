@@ -1,24 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { requiredEntry } from "../../tests/required-entry.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
-import { absolutePathSchema } from "../values/absolute-path.ts";
+import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
+import type { Result } from "../values/result.ts";
 import { installRootOf } from "./install-root.ts";
 
 const ENTRY_URL = "file:///install/core/check/check-command.ts";
 const NOT_A_FILE_URL = "https://example.invalid/core/check/check-command.ts";
 const WINDOWS_ENTRY_URL = "file:///C:/repo/plugins/discipline-core/core/check/check-command.ts";
 
-const fileUrlResultSchema = z.discriminatedUnion("outcome", [
-  z.object({ outcome: z.literal("ok"), value: absolutePathSchema }),
-  z.object({
-    outcome: z.literal("failed"),
-    error: z.object({ kind: z.literal("not-a-file-url"), url: z.string(), detail: z.string() }),
-  }),
-]);
+type FileUrlResult = Result<
+  AbsolutePath,
+  { readonly kind: "not-a-file-url"; readonly url: string; readonly detail: string }
+>;
 
-const FILE_URLS: Readonly<Record<string, unknown>> = {
-  [ENTRY_URL]: { outcome: "ok", value: "/install/core/check/check-command.ts" },
-  [WINDOWS_ENTRY_URL]: { outcome: "ok", value: "C:\\repo\\plugins\\discipline-core\\core\\check\\check-command.ts" },
+const FILE_URLS: Readonly<Record<string, FileUrlResult>> = {
+  [ENTRY_URL]: { outcome: "ok", value: absolutePathSchema.parse("/install/core/check/check-command.ts") },
+  [WINDOWS_ENTRY_URL]: {
+    outcome: "ok",
+    value: absolutePathSchema.parse("C:\\repo\\plugins\\discipline-core\\core\\check\\check-command.ts"),
+  },
   [NOT_A_FILE_URL]: {
     outcome: "failed",
     error: { kind: "not-a-file-url", url: NOT_A_FILE_URL, detail: "the text is not a file: URL" },
@@ -38,10 +39,10 @@ const TABLE_PATH: PathPort = {
   join: vi.fn<PathPort["join"]>(),
   relative: vi.fn<PathPort["relative"]>(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
-  directoryOf: ({ path }) => z.string().parse(DIRECTORIES[path]),
+  directoryOf: ({ path }) => requiredEntry({ table: DIRECTORIES, key: path }),
   repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
   resolve: ({ path }) => ({ outcome: "ok", value: absolutePathSchema.parse(path) }),
-  fromFileUrl: ({ url }) => fileUrlResultSchema.parse(FILE_URLS[url]),
+  fromFileUrl: ({ url }) => requiredEntry({ table: FILE_URLS, key: url }),
 };
 
 const UNRESOLVABLE_PATH: PathPort = {

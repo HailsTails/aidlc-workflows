@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { requiredEntry } from "../../tests/required-entry.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import {
   type PieceLocation,
@@ -49,9 +49,9 @@ const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
 const path: PathPort = {
   join: vi.fn<PathPort["join"]>(),
   relative: vi.fn<PathPort["relative"]>(),
-  joinRepository: ({ segments }) => z.string().parse(JOINED_REPOSITORY_PATHS[JSON.stringify(segments)]),
+  joinRepository: ({ segments }) => requiredEntry({ table: JOINED_REPOSITORY_PATHS, key: JSON.stringify(segments) }),
   directoryOf: vi.fn<PathPort["directoryOf"]>(),
-  repositoryDirectoryOf: ({ path: filePath }) => z.string().parse(REPOSITORY_DIRECTORIES[filePath]),
+  repositoryDirectoryOf: ({ path: filePath }) => requiredEntry({ table: REPOSITORY_DIRECTORIES, key: filePath }),
   resolve: vi.fn<PathPort["resolve"]>(),
   fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
 };

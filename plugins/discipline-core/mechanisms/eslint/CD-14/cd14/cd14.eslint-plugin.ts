@@ -12,20 +12,6 @@ export type ClassAncestor = {
 	readonly declare?: unknown;
 	readonly parent?: ClassAncestor | null | undefined;
 };
-export type ClassFinding<Node extends ClassAncestor> = {
-	readonly node: Node;
-	readonly messageId: "noClass";
-};
-export type ClassDiagnosticPort<Node extends ClassAncestor> = {
-	readonly filename: string;
-	readonly publish: (finding: ClassFinding<Node>) => void;
-};
-export type ClassReporter<Node extends ClassAncestor> = {
-	readonly reportClass: (event: {
-		readonly node: Node;
-		readonly kind: "declaration" | "expression";
-	}) => void;
-};
 export type ClassAuthoringPlugin = {
 	readonly meta: { readonly name: string; readonly version: string };
 	readonly rules: Readonly<Record<string, object>>;
@@ -57,22 +43,6 @@ export const containerMode = ({
 		return "ambient";
 	return containerMode({ node: node.parent });
 };
-export const createClassReporter = <Node extends ClassAncestor>({
-	port,
-}: {
-	readonly port: ClassDiagnosticPort<Node>;
-}): ClassReporter<Node> => ({
-	reportClass: ({ node, kind }) => {
-		const disposition = classDisposition({
-			filename: port.filename,
-			kind,
-			declaration: declarationMode({ node }),
-			container: containerMode({ node: node.parent }),
-		});
-		if (disposition === "allow") return;
-		port.publish({ node, messageId: "noClass" });
-	},
-});
 const classKeywordToken = ({
 	context,
 	node,
@@ -86,21 +56,20 @@ const classKeywordToken = ({
 			token.value === "class" &&
 			context.sourceCode.getNodeByRangeIndex(token.range[0]) === node,
 	});
-const defaultClassDiagnosticPort = ({
+const reportAtClassKeyword = ({
 	context,
+	node,
 }: {
 	readonly context: Rule.RuleContext;
-}): ClassDiagnosticPort<Rule.Node> => ({
-	filename: context.filename,
-	publish: ({ node, messageId }) => {
-		const keyword = classKeywordToken({ context, node });
-		if (keyword === null) {
-			context.report({ node, messageId });
-			return;
-		}
-		context.report({ loc: keyword.loc, messageId });
-	},
-});
+	readonly node: Rule.Node;
+}): void => {
+	const keyword = classKeywordToken({ context, node });
+	if (keyword === null) {
+		context.report({ node, messageId: "noClass" });
+		return;
+	}
+	context.report({ loc: keyword.loc, messageId: "noClass" });
+};
 const noClassAuthoring: Rule.RuleModule = {
 	meta: {
 		type: "problem",
@@ -112,14 +81,25 @@ const noClassAuthoring: Rule.RuleModule = {
 		},
 	},
 	create(context) {
-		const reporter = createClassReporter({
-			port: defaultClassDiagnosticPort({ context }),
-		});
+		const reportClass = ({
+			node,
+			kind,
+		}: {
+			readonly node: Rule.Node;
+			readonly kind: "declaration" | "expression";
+		}): void => {
+			const disposition = classDisposition({
+				filename: context.filename,
+				kind,
+				declaration: declarationMode({ node }),
+				container: containerMode({ node: node.parent }),
+			});
+			if (disposition === "allow") return;
+			reportAtClassKeyword({ context, node });
+		};
 		return {
-			ClassDeclaration: (node) =>
-				reporter.reportClass({ node, kind: "declaration" }),
-			ClassExpression: (node) =>
-				reporter.reportClass({ node, kind: "expression" }),
+			ClassDeclaration: (node) => reportClass({ node, kind: "declaration" }),
+			ClassExpression: (node) => reportClass({ node, kind: "expression" }),
 		};
 	},
 };

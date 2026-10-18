@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { pieceImportFindings } from "../../core/check/piece-import-rules.ts";
 import type { PathPort } from "../../core/platform-ports/path-port.ts";
+import { requiredEntry } from "../required-entry.ts";
 
 declare global {
   interface ImportMeta {
@@ -43,9 +43,9 @@ const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
 const TABLE_PATH: PathPort = {
   join: vi.fn<PathPort["join"]>(),
   relative: vi.fn<PathPort["relative"]>(),
-  joinRepository: ({ segments }) => z.string().parse(JOINED_REPOSITORY_PATHS[JSON.stringify(segments)]),
+  joinRepository: ({ segments }) => requiredEntry({ table: JOINED_REPOSITORY_PATHS, key: JSON.stringify(segments) }),
   directoryOf: vi.fn<PathPort["directoryOf"]>(),
-  repositoryDirectoryOf: ({ path }) => z.string().parse(REPOSITORY_DIRECTORIES[path]),
+  repositoryDirectoryOf: ({ path }) => requiredEntry({ table: REPOSITORY_DIRECTORIES, key: path }),
   resolve: vi.fn<PathPort["resolve"]>(),
   fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
 };
@@ -58,18 +58,20 @@ const outcome = pieceImportFindings({
   typePackageTexts,
 });
 
-const piecesSchema = z.object({
-  outcome: z.literal("ok"),
-  value: z.object({ pieces: z.array(z.object({ file: z.string() }).loose()) }),
-});
-
 describe("FR-8 piece imports over the probe rule set's own piece source, shipped with the probe so the check without it stays green", () => {
   it("finds the probe rule set's PD-1 walker piece among the pieces it checks", () => {
-    expect(piecesSchema.parse(outcome).value.pieces).toContainEqual({
-      file: "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts",
-      ruleSetRoot: "./tests/probe-rule-set",
-      mechanism: "walker",
-      discipline: "PD-1",
+    expect(outcome).toMatchObject({
+      outcome: "ok",
+      value: {
+        pieces: expect.arrayContaining([
+          {
+            file: "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts",
+            ruleSetRoot: "./tests/probe-rule-set",
+            mechanism: "walker",
+            discipline: "PD-1",
+          },
+        ]),
+      },
     });
   });
 

@@ -1,13 +1,7 @@
 import tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "eslint";
-import { describe, expect, vi, test } from "vitest";
-import {
-	classDisposition,
-	createClassReporter,
-	type ClassAncestor,
-	type ClassDiagnosticPort,
-	noClassAuthoring,
-} from "./cd14.eslint-plugin.ts";
+import { describe, expect, test } from "vitest";
+import { classDisposition, noClassAuthoring } from "./cd14.eslint-plugin.ts";
 
 RuleTester.describe = describe;
 RuleTester.it = test;
@@ -62,46 +56,6 @@ test("classes enclosed by ambient modules are type-only", () => {
 		}),
 	).toBe("allow");
 });
-test("the rule publishes the original runtime class through its injected diagnostic port", () => {
-	const publish = vi.fn<ClassDiagnosticPort<ClassAncestor>["publish"]>();
-	const reporter = createClassReporter({
-		port: { filename: "src/runtime.ts", publish },
-	});
-	reporter.reportClass({
-		node: { type: "ClassDeclaration", parent: null },
-		kind: "declaration",
-	});
-	expect(publish).toHaveBeenCalledWith({
-		node: { type: "ClassDeclaration", parent: null },
-		messageId: "noClass",
-	});
-});
-test("the rule does not publish an ambient class", () => {
-	const publish = vi.fn<ClassDiagnosticPort<ClassAncestor>["publish"]>();
-	const reporter = createClassReporter({
-		port: { filename: "src/ambient.ts", publish },
-	});
-	reporter.reportClass({
-		node: { type: "ClassDeclaration", declare: true, parent: null },
-		kind: "declaration",
-	});
-	expect(publish).not.toHaveBeenCalled();
-});
-test("the rule publishes runtime class expressions", () => {
-	const publish = vi.fn<ClassDiagnosticPort<ClassAncestor>["publish"]>();
-	const reporter = createClassReporter({
-		port: { filename: "src/runtime.ts", publish },
-	});
-	reporter.reportClass({
-		node: { type: "ClassExpression", parent: null },
-		kind: "expression",
-	});
-	expect(publish).toHaveBeenCalledWith({
-		node: { type: "ClassExpression", parent: null },
-		messageId: "noClass",
-	});
-});
-
 const tester = new RuleTester({
 	languageOptions: { ecmaVersion: "latest", sourceType: "module" },
 });
@@ -158,6 +112,16 @@ typescriptTester.run(
 			{ code: "class Declaration {}", filename: "external.d.ts" },
 		],
 		invalid: [
+			{
+				code: "class Internal {}",
+				filename: "runtime.ts",
+				errors: [{ messageId: "noClass" }],
+			},
+			{
+				code: "const Internal = class {};",
+				filename: "runtime.ts",
+				errors: [{ messageId: "noClass" }],
+			},
 			{
 				code: "namespace Runtime { export class Internal {} }",
 				filename: "runtime.ts",

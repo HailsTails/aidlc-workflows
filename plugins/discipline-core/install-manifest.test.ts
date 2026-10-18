@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import { parsedJson } from "./core/rule-set-reader/rule-set-reader.ts";
+import { requiredEntry } from "./tests/required-entry.ts";
 
 declare global {
   interface ImportMeta {
@@ -18,13 +18,11 @@ const installFiles = import.meta.glob(["./package.json"], {
   eager: true,
 });
 
-const declaresModuleType = z
-  .string()
-  .transform((text) => parsedJson({ text }))
-  .pipe(z.object({ outcome: z.literal("ok"), value: z.object({ type: z.literal("module") }).loose() }));
-
 describe("the install's own module type, read as build-time raw files (CD-47: this package's manifest is the assertion's subject and no fake can stand in for it; nothing is spawned or written)", () => {
   it("declares package.json type module, so an install's .ts entries load as ES modules whatever the consumer's own package.json says", () => {
-    expect(declaresModuleType.safeParse(installFiles["./package.json"]).error).toBeUndefined();
+    expect(parsedJson({ text: requiredEntry({ table: installFiles, key: "./package.json" }) })).toMatchObject({
+      outcome: "ok",
+      value: { type: "module" },
+    });
   });
 });

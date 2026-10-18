@@ -1,13 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { assert, describe, expect, it, vi } from "vitest";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
-import type { PathPort } from "../../../core/platform-ports/path-port.ts";
+import { createPathPort, type PathPort } from "../../../core/platform-ports/path-port.ts";
+import { type ClauseDefinition, readDisciplineFile } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
+import { disciplineIdSchema } from "../../../core/values/identifiers.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
+import { requiredEntry } from "../../../tests/required-entry.ts";
 import { createWalkerRunner } from "../runner/create-walker-runner.ts";
 import { createDefaultParsePort } from "../runner/typescript-parse.ts";
 import { check } from "./class-syntax.ts";
@@ -15,23 +17,29 @@ import { check } from "./class-syntax.ts";
 const CLASS_ON_LINE_THREE = "const a = 1;\n\n  class Alpha {}\n";
 const ADDRESS = clauseAddressSchema.parse("CD-14#class-syntax");
 
-const sharedCaseSchema = z.object({
-  name: z.string(),
-  fileName: repoPathSchema,
-  source: z.string(),
-  expectedLines: z.array(z.number()),
-});
+type MechanicalCases = Extract<ClauseDefinition, { readonly kind: "mechanical" }>["cases"];
 
-const sharedCases = z
-  .object({
-    clauses: z.tuple([
-      z.object({
-        cases: z.object({ flag: z.array(sharedCaseSchema), allow: z.array(sharedCaseSchema) }),
-      }),
-      z.object({ kind: z.literal("judgement") }),
-    ]),
-  })
-  .parse(discipline).clauses[0].cases;
+const classSyntaxCases = (): MechanicalCases => {
+  const loaded = readDisciplineFile({
+    fileText: {
+      read: () => ({ outcome: "ok", value: JSON.stringify(discipline) }),
+      exists: () => "present",
+      write: vi.fn<FileTextPort["write"]>(),
+    },
+    path: createPathPort({ flavour: "posix", workingDirectory: () => "/install" }),
+    ruleSetRoot: absolutePathSchema.parse("/install"),
+    discipline: disciplineIdSchema.parse("CD-14"),
+  });
+  assert(loaded.outcome === "ok", "CD-14 discipline.json reads through the rule-set reader");
+  const [classSyntax, judgement, ...surplus] = loaded.value.clauses;
+  assert(classSyntax?.id === "class-syntax", "CD-14 declares class-syntax as its first clause");
+  assert(classSyntax.kind === "mechanical", "CD-14 declares class-syntax as a mechanical clause");
+  assert(judgement?.kind === "judgement", "CD-14 declares a judgement clause second");
+  assert(surplus.length === 0, "CD-14 declares exactly two clauses");
+  return classSyntax.cases;
+};
+
+const sharedCases = classSyntaxCases();
 
 const CLAUSE: RunnerClause = {
   address: ADDRESS,
@@ -57,7 +65,7 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
 };
 
 const TABLE_PATH: PathPort = {
-  join: ({ segments }) => z.string().parse(JOINED_PATHS[JSON.stringify(segments)]),
+  join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
   relative: vi.fn<PathPort["relative"]>(),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn<PathPort["directoryOf"]>(),

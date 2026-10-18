@@ -57,10 +57,10 @@ The fragments don't read `.constitution-carve-outs`; exceptions are out of scope
 ## Rule ownership and limits
 
 ESLint and Oxlint load one CD14 rule source; the fragments select the same dedicated rule.
-Oxlint uses its supported ESLint-compatible plugin protocol. The implementation
-currently includes a diagnostic port; whether to retain that layer remains
-Helen's open decision. This slice leaves it unchanged. The rule has no runtime
-package dependency.
+Oxlint uses its supported ESLint-compatible plugin protocol. The rule's
+`create(context)` is its only boundary with the engine: it decides each class
+with the pure `classDisposition` and reports through `context.report`. The rule
+has no runtime package dependency.
 
 The dedicated ID is `rin-discipline/no-class-authoring`. Runtime class
 declarations and expressions are rejected, including nested, non-exported and
