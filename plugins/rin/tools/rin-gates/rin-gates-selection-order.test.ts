@@ -100,7 +100,7 @@ describe("rung 2 — milestone rank", () => {
     expect(firstOf(left, right)).toBe("b");
   });
 
-  test("unratified defers even against a ratified record", () => {
+  test("a ratified record ranks above an unratified one", () => {
     const unratified = record({
       dirName: "a-unratified",
       milestone: { kind: "unratified" },
@@ -111,10 +111,10 @@ describe("rung 2 — milestone rank", () => {
       milestone: { kind: "ratified", rank: 0 },
       neglectDays: 1,
     });
-    expect(firstOf(unratified, ratified)).toBe("a-unratified");
+    expect(firstOf(unratified, ratified)).toBe("b-ratified");
   });
 
-  test("no-milestone defers", () => {
+  test("a ratified record ranks above a no-milestone one", () => {
     const none = record({
       dirName: "a-none",
       milestone: { kind: "no-milestone" },
@@ -125,10 +125,10 @@ describe("rung 2 — milestone rank", () => {
       milestone: { kind: "ratified", rank: 0 },
       neglectDays: 1,
     });
-    expect(firstOf(none, ratified)).toBe("a-none");
+    expect(firstOf(none, ratified)).toBe("b-ratified");
   });
 
-  test("unbound defers", () => {
+  test("a ratified record ranks above an unbound one", () => {
     const unbound = record({
       dirName: "a-unbound",
       milestone: { kind: "unbound" },
@@ -139,7 +139,117 @@ describe("rung 2 — milestone rank", () => {
       milestone: { kind: "ratified", rank: 0 },
       neglectDays: 1,
     });
-    expect(firstOf(unbound, ratified)).toBe("a-unbound");
+    expect(firstOf(unbound, ratified)).toBe("b-ratified");
+  });
+
+  test("a ratified record outranks a non-ratified one that is further along and more neglected", () => {
+    const furtherAlong = record({
+      dirName: "a-no-milestone-implement",
+      milestone: { kind: "no-milestone" },
+      gatePosition: 4,
+      neglectDays: 90,
+    });
+    const ratified = record({
+      dirName: "b-ratified-framing",
+      milestone: { kind: "ratified", rank: 2 },
+      gatePosition: 1,
+      neglectDays: 1,
+    });
+    expect(firstOf(furtherAlong, ratified)).toBe("b-ratified-framing");
+  });
+
+  test("the lowest-ranked ratified milestone still outranks a non-ratified record", () => {
+    const unratified = record({
+      dirName: "a-unratified",
+      milestone: { kind: "unratified" },
+      gatePosition: 4,
+    });
+    const ratified = record({
+      dirName: "b-ratified-last",
+      milestone: { kind: "ratified", rank: 9 },
+      gatePosition: 1,
+    });
+    expect(firstOf(unratified, ratified)).toBe("b-ratified-last");
+  });
+
+  const lastRatified = record({
+    dirName: "z-ratified-framing",
+    milestone: { kind: "ratified", rank: 9 },
+    gatePosition: 1,
+    neglectDays: 1,
+  });
+  const unratifiedImplement = record({
+    dirName: "a-unratified-implement",
+    milestone: { kind: "unratified" },
+    gatePosition: 4,
+    neglectDays: 90,
+  });
+  const noMilestoneImplement = record({
+    dirName: "a-no-milestone-implement",
+    milestone: { kind: "no-milestone" },
+    gatePosition: 4,
+    neglectDays: 90,
+  });
+  const unboundImplement = record({
+    dirName: "a-unbound-implement",
+    milestone: { kind: "unbound" },
+    gatePosition: 4,
+    neglectDays: 90,
+  });
+
+  test.each([
+    ["unratified", "left", lastRatified, unratifiedImplement],
+    ["unratified", "right", unratifiedImplement, lastRatified],
+    ["no-milestone", "left", lastRatified, noMilestoneImplement],
+    ["no-milestone", "right", noMilestoneImplement, lastRatified],
+    ["unbound", "left", lastRatified, unboundImplement],
+    ["unbound", "right", unboundImplement, lastRatified],
+  ])("a ratified record outranks a further-along %s one with the ratified row on the %s", (_kind, _side, left, right) => {
+    expect(firstOf(left, right)).toBe("z-ratified-framing");
+  });
+
+  const unratifiedFraming = record({
+    dirName: "z-unratified-framing",
+    milestone: { kind: "unratified" },
+    gatePosition: 1,
+    neglectDays: 90,
+  });
+  const noMilestoneFraming = record({
+    dirName: "z-no-milestone-framing",
+    milestone: { kind: "no-milestone" },
+    gatePosition: 1,
+    neglectDays: 90,
+  });
+  const noMilestoneLaterImplement = record({
+    dirName: "z-no-milestone-implement",
+    milestone: { kind: "no-milestone" },
+    gatePosition: 4,
+    neglectDays: 1,
+  });
+  const unratifiedLaterImplement = record({
+    dirName: "z-unratified-implement",
+    milestone: { kind: "unratified" },
+    gatePosition: 4,
+    neglectDays: 1,
+  });
+  const unboundLaterImplement = record({
+    dirName: "z-unbound-implement",
+    milestone: { kind: "unbound" },
+    gatePosition: 4,
+    neglectDays: 1,
+  });
+
+  test.each([
+    ["unratified framing", "no-milestone implement", unratifiedFraming, noMilestoneLaterImplement, "z-no-milestone-implement"],
+    ["no-milestone implement", "unratified framing", noMilestoneLaterImplement, unratifiedFraming, "z-no-milestone-implement"],
+    ["no-milestone framing", "no-milestone implement", noMilestoneFraming, noMilestoneLaterImplement, "z-no-milestone-implement"],
+    ["no-milestone implement", "no-milestone framing", noMilestoneLaterImplement, noMilestoneFraming, "z-no-milestone-implement"],
+    ["unratified framing", "unbound implement", unratifiedFraming, unboundLaterImplement, "z-unbound-implement"],
+    ["unbound implement", "unratified framing", unboundLaterImplement, unratifiedFraming, "z-unbound-implement"],
+    ["no-milestone framing", "unratified implement", noMilestoneFraming, unratifiedLaterImplement, "z-unratified-implement"],
+    ["unratified implement", "no-milestone framing", unratifiedLaterImplement, noMilestoneFraming, "z-unratified-implement"],
+  ])("two non-ratified rows defer to stage reached: %s against %s", (_leftLabel, _rightLabel, left, right, expected) => {
+    expect(firstOf(left, right)).toBe(expected);
   });
 });
 
@@ -320,11 +430,6 @@ describe("rankMilestone (adapter resolves identifier to position)", () => {
   });
 });
 
-// IF-11's inertness obligation, in TWO parts. Neither substitutes for the other:
-// the emitted-order assertion alone passes on a rung that is never called, and
-// the rung's own return value alone would not catch a wiring change that
-// reordered ties. This keeps Gap `G3-C6` honest and is amended by the same
-// lock-amendment ceremony that answers it — never deleted.
 describe("the meta-tier rung — present, executing, and inert until G3-C6", () => {
   const SCORED_TIERS: readonly TierValue[] = ["T0", "T1", "T2", "T3"];
   const UNSCORED: MetaTier = { kind: "unscored" };
@@ -355,9 +460,6 @@ describe("the meta-tier rung — present, executing, and inert until G3-C6", () 
     expect(decideByMetaTier({ left, right, depth: META_TIER_DEPTH })).toBe(0);
   });
 
-  // The fixture corpus MUST differ in tier or (b) passes vacuously: with
-  // identical tiers the rung has nothing to act on, so the assertion would stay
-  // green even against a rung that ranked.
   test("(b) the emitted order is unchanged by tier, over a corpus whose tiers DIFFER", () => {
     const best = record({
       dirName: "260101-b-scored-t0",

@@ -806,7 +806,7 @@ const describeSelectionOrder = (args: {
 }): readonly string[] => [
   `**Rows are in ratified selection order.** Tiers, in order: operator-flagged, then milestone rank (${args.config.ratifiedMilestones.join(" > ")}), then furthest along (a later Current Stage first), then neglect age, then the record directory name as a final tiebreak.`,
   "",
-  `Two consequences worth reading off the table rather than re-deriving. Furthest along outranks neglect age, so work close to delivery is finished before older work is started; the BREACH mark (\`>= ${args.config.neglectThresholdDays}d\`) is information, not a rung. And the milestone tier decides only between two RATIFIED milestones — a \`no-milestone\` record does not lose to an \`M1\` here; it skips the tier and is settled on stage reached and neglect age instead, which is why unbound records can sit above milestone-bound ones.`,
+  `Two consequences worth reading off the table rather than re-deriving. Furthest along outranks neglect age, so work close to delivery is finished before older work is started; the BREACH mark (\`>= ${args.config.neglectThresholdDays}d\`) is information, not a rung. And a record on a ratified milestone ranks above a record without one, whatever its stage or age; two ratified records compare by milestone rank, and records without a ratified milestone (unratified, \`no-milestone\` or unbound) are settled by stage reached and neglect age instead.`,
   "",
   "Take the first row eligible for your lane; do NOT re-sort by any key of your own, and cite the `#` you acted on. A run that re-sorts this table has replaced the ratified ordering with one it invented — which is the defect this column set exists to prevent.",
   "",
@@ -1143,6 +1143,7 @@ export {
   describeGateWork,
   describeMilestone,
   describeNeglect,
+  describeSelectionOrder,
   extractTaskArray,
   type IntakeCapture,
   type IntentRecord,

@@ -49,6 +49,7 @@ const {
   describeGateWork,
   describeMilestone,
   describeNeglect,
+  describeSelectionOrder,
   extractTaskArray,
   laneQueue,
   orderedRecords,
@@ -179,6 +180,23 @@ describe("status command composition", () => {
     ).toContain(
       `Selection ranking policy: ${fixture.selectionRankingConfigPath}`,
     );
+  });
+});
+
+describe("describeSelectionOrder", () => {
+  const description = (): string =>
+    describeSelectionOrder({
+      config: { ratifiedMilestones: ["M1", "M2"], neglectThresholdDays: 30 },
+    }).join("\n");
+
+  test("states that a ratified milestone ranks above a record without one", () => {
+    expect(description()).toContain(
+      "a record on a ratified milestone ranks above a record without one",
+    );
+  });
+
+  test("no longer claims a no-milestone record does not lose to an M1", () => {
+    expect(description()).not.toContain("does not lose to an");
   });
 });
 
@@ -595,7 +613,7 @@ describe("orderedRecords", () => {
     ).toEqual(["1:new-flagged", "2:old-unflagged"]);
   });
 
-  test("a no-milestone record can outrank an M1 one on neglect age — the milestone tier only decides between two ratified milestones", () => {
+  test("an M1 record outranks a more neglected no-milestone one — a ratified milestone ranks above a record without one", () => {
     expect(
       positionsFor([
         entry({
@@ -611,7 +629,7 @@ describe("orderedRecords", () => {
           ageDays: 10,
         }),
       ]),
-    ).toEqual(["1:unbound-older", "2:m1-recent"]);
+    ).toEqual(["1:m1-recent", "2:unbound-older"]);
   });
 
   test("carries the rank inputs onto each record, so a lane can cite what it selected on", () => {
@@ -856,7 +874,7 @@ describe("describeMilestone", () => {
     ).toBe("no-milestone");
   });
 
-  test("distinguishes unratified from no-milestone — they skip the milestone tier alike but mean different things", () => {
+  test("distinguishes unratified from no-milestone — both rank below a ratified milestone but mean different things", () => {
     expect(
       describeMilestone({
         milestone: { kind: "unratified" },
