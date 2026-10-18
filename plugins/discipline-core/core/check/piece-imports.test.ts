@@ -30,6 +30,13 @@ const typePackageTexts = import.meta.glob(["./mechanisms/*/runner/piece-type-pac
 });
 
 const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
+  '[".","mechanisms","walker","CD-17"]': "mechanisms/walker/CD-17",
+  '[".","rules","CD-17"]': "rules/CD-17",
+  '["./mechanisms/walker/CD-17","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
+  '[".","mechanisms","walker","CD-19"]': "mechanisms/walker/CD-19",
+  '[".","rules","CD-19"]': "rules/CD-19",
+  '["./mechanisms/walker/CD-19","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
+  '["./mechanisms/walker/CD-19","../runner/typescript-parse.ts"]': "mechanisms/walker/runner/typescript-parse.ts",
   '[".","mechanisms","walker","CD-1"]': "mechanisms/walker/CD-1",
   '[".","rules","CD-1"]': "rules/CD-1",
   '["./mechanisms/walker/CD-1","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
@@ -72,6 +79,8 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
 };
 
 const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
+  "./mechanisms/walker/CD-17/clock-sources.ts": "./mechanisms/walker/CD-17",
+  "./mechanisms/walker/CD-19/import-boundaries.ts": "./mechanisms/walker/CD-19",
   "./mechanisms/walker/CD-1/any-cast.ts": "./mechanisms/walker/CD-1",
   "./mechanisms/walker/CD-2/cast-expressions.ts": "./mechanisms/walker/CD-2",
   "./mechanisms/walker/CD-5/comments-directives.ts": "./mechanisms/walker/CD-5",
