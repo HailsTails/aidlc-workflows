@@ -48,6 +48,7 @@ const runnerSources = import.meta.glob(
     "!./mechanisms/*/runner/**/*.test.*",
     "!./mechanisms/*/runner/test-fixtures/**",
     "!./mechanisms/walker/runner/typescript-parse.ts",
+    "!./mechanisms/walker/runner/jsonc-parse.ts",
     "!./mechanisms/eslint/runner/eslint-instance.ts",
     "!./mechanisms/eslint/runner/inline-config-parser.ts",
   ],
@@ -95,6 +96,13 @@ const coreSources = import.meta.glob(["./core/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
 });
 
 const typescriptWrapperSources = import.meta.glob(["./mechanisms/walker/runner/typescript-parse.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const jsoncWrapperSources = import.meta.glob(["./mechanisms/walker/runner/jsonc-parse.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -233,6 +241,15 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       importsOutside({
         sources: typescriptWrapperSources,
         allowed: [relativeImport, zodImport, packageImport({ packageName: "typescript" })],
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds jsonc-parse.ts importing only relative paths, zod and jsonc-parser", () => {
+    expect(
+      importsOutside({
+        sources: jsoncWrapperSources,
+        allowed: [relativeImport, zodImport, packageImport({ packageName: "jsonc-parser" })],
       }),
     ).toEqual([]);
   });

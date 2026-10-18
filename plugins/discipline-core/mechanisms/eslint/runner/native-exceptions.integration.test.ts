@@ -51,6 +51,7 @@ const consumerRepo = (request: { readonly name: string }): AbsolutePath =>
 const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPort => ({
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
+  contentInBase: vi.fn<GitPort["contentInBase"]>(),
 });
 
 const checkOf = (request: { readonly name: string; readonly tracked: readonly RepoPath[] }) =>

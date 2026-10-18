@@ -29,6 +29,7 @@ const failed = (): Result<readonly (typeof A)[], GitFailure> => ({
 const fakeGit = (changedSince: GitPort["changedSince"]): GitPort => ({
   trackedPaths: () => ({ outcome: "ok", value: [] }),
   changedSince,
+  contentInBase: vi.fn<GitPort["contentInBase"]>(),
 });
 
 const measuredMemberKeysArePaths: Equal<
