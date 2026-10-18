@@ -1,5 +1,4 @@
 import type { MetaTier } from "./rin-gates-importance-binding.ts";
-import type { SelectionConfig } from "./rin-gates-selection-config.ts";
 
 type RankedMilestone =
   | { readonly kind: "ratified"; readonly rank: number }
@@ -18,6 +17,7 @@ type RankedRecord = {
   readonly flagged: RankedFlag;
   readonly milestone: RankedMilestone;
   readonly tier: MetaTier;
+  readonly gatePosition: number;
   readonly neglectDays: number;
 };
 
@@ -30,17 +30,6 @@ const LEFT_FIRST = -1;
 const RIGHT_FIRST = 1;
 const DEFER = 0;
 
-const decideByBreach = (args: {
-  readonly left: RankedRecord;
-  readonly right: RankedRecord;
-  readonly thresholdDays: number;
-}): number => {
-  const leftBreaches = args.left.neglectDays >= args.thresholdDays;
-  const rightBreaches = args.right.neglectDays >= args.thresholdDays;
-  if (leftBreaches === rightBreaches) return DEFER;
-  return leftBreaches ? LEFT_FIRST : RIGHT_FIRST;
-};
-
 const decideByOperatorFlag = (args: {
   readonly left: RankedRecord;
   readonly right: RankedRecord;
@@ -51,31 +40,62 @@ const decideByOperatorFlag = (args: {
   return leftFlagged ? LEFT_FIRST : RIGHT_FIRST;
 };
 
+const decideRatifiedAgainst = (args: {
+  readonly rank: number;
+  readonly other: RankedMilestone;
+}): number => {
+  switch (args.other.kind) {
+    case "ratified":
+      if (args.rank === args.other.rank) return DEFER;
+      return args.rank < args.other.rank ? LEFT_FIRST : RIGHT_FIRST;
+    case "unratified":
+    case "no-milestone":
+    case "unbound":
+      return LEFT_FIRST;
+  }
+};
+
+const decideNonRatifiedAgainst = (args: {
+  readonly other: RankedMilestone;
+}): number => {
+  switch (args.other.kind) {
+    case "ratified":
+      return RIGHT_FIRST;
+    case "unratified":
+    case "no-milestone":
+    case "unbound":
+      return DEFER;
+  }
+};
+
 const decideByMilestoneRank = (args: {
   readonly left: RankedMilestone;
   readonly right: RankedMilestone;
 }): number => {
-  if (args.left.kind !== "ratified" || args.right.kind !== "ratified") {
-    return DEFER;
+  switch (args.left.kind) {
+    case "ratified":
+      return decideRatifiedAgainst({ rank: args.left.rank, other: args.right });
+    case "unratified":
+    case "no-milestone":
+    case "unbound":
+      return decideNonRatifiedAgainst({ other: args.right });
   }
-  if (args.left.rank === args.right.rank) return DEFER;
-  return args.left.rank < args.right.rank ? LEFT_FIRST : RIGHT_FIRST;
 };
 
-// Gap `G3-C6` as a closed union rather than a comment: where the tier rung sits
-// relative to milestone rank is reserved to the goal owner, so the unanswered
-// state is a member the comparator must handle rather than an absence it can
-// forget. Answering the Gap adds a member here, and CD-8's exhaustive switch
-// then makes handling it a compile-time obligation at every rung site. That
-// amendment travels the lock-amendment ceremony, never implementation fiat.
+const decideByGatePosition = (args: {
+  readonly left: RankedRecord;
+  readonly right: RankedRecord;
+}): number => {
+  if (args.left.gatePosition === args.right.gatePosition) return DEFER;
+  return args.left.gatePosition > args.right.gatePosition
+    ? LEFT_FIRST
+    : RIGHT_FIRST;
+};
+
 type MetaTierDepth = { readonly kind: "unanswered" };
 
 const META_TIER_DEPTH: MetaTierDepth = { kind: "unanswered" };
 
-// IF-11 — the meta-tier rung, locked in SHAPE and DEFERRING in DEPTH. It is
-// wired into the comparator and executes on every comparison, so its path is
-// never dark; until the Gap is answered it returns DEFER for every pair and the
-// emitted order stays byte-identical to the pre-change order.
 const decideByMetaTier = (args: {
   readonly left: MetaTier;
   readonly right: MetaTier;
@@ -97,35 +117,30 @@ const decideByNeglectAge = (args: {
     : RIGHT_FIRST;
 };
 
-const selectionOrderComparator = (args: {
-  readonly config: SelectionConfig;
-}): SelectionOrderComparator => {
-  const thresholdDays = args.config.neglectThresholdDays;
-  return (left, right) => {
-    const byBreach = decideByBreach({ left, right, thresholdDays });
-    if (byBreach !== DEFER) return byBreach;
+const selectionOrderComparator: SelectionOrderComparator = (left, right) => {
+  const byOperatorFlag = decideByOperatorFlag({ left, right });
+  if (byOperatorFlag !== DEFER) return byOperatorFlag;
 
-    const byOperatorFlag = decideByOperatorFlag({ left, right });
-    if (byOperatorFlag !== DEFER) return byOperatorFlag;
+  const byMilestone = decideByMilestoneRank({
+    left: left.milestone,
+    right: right.milestone,
+  });
+  if (byMilestone !== DEFER) return byMilestone;
 
-    const byMilestone = decideByMilestoneRank({
-      left: left.milestone,
-      right: right.milestone,
-    });
-    if (byMilestone !== DEFER) return byMilestone;
+  const byGatePosition = decideByGatePosition({ left, right });
+  if (byGatePosition !== DEFER) return byGatePosition;
 
-    const byMetaTier = decideByMetaTier({
-      left: left.tier,
-      right: right.tier,
-      depth: META_TIER_DEPTH,
-    });
-    if (byMetaTier !== DEFER) return byMetaTier;
+  const byMetaTier = decideByMetaTier({
+    left: left.tier,
+    right: right.tier,
+    depth: META_TIER_DEPTH,
+  });
+  if (byMetaTier !== DEFER) return byMetaTier;
 
-    const byNeglect = decideByNeglectAge({ left, right });
-    if (byNeglect !== DEFER) return byNeglect;
+  const byNeglect = decideByNeglectAge({ left, right });
+  if (byNeglect !== DEFER) return byNeglect;
 
-    return left.dirName.localeCompare(right.dirName);
-  };
+  return left.dirName.localeCompare(right.dirName);
 };
 
 const rankMilestone = (args: {

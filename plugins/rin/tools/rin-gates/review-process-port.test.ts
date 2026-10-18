@@ -12,6 +12,23 @@ describe("review process boundary", () => {
     expect(Object.keys(result).sort()).toEqual(["status", "stderr", "stdout"]);
   });
 
+  test("passes the supplied environment and standard input to a synchronous child", () => {
+    const result = runtime.runSync({
+      program: "bun",
+      args: ["-e", "process.stdin.on('data', (chunk) => process.stdout.write(process.env.REVIEW_PORT_PROBE + ':' + chunk))"],
+      environment: { ...runtime.environment, REVIEW_PORT_PROBE: "probe" },
+      input: "stdin-text",
+    });
+    expect(result.stdout).toBe("probe:stdin-text");
+  });
+
+  test("returns a synchronous child's standard output as owned bytes", () => {
+    const result = runtime.runSyncBytes({ program: "bun", args: ["-e", "process.stdout.write('bytes')"] });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBeInstanceOf(Uint8Array);
+    expect(new TextDecoder().decode(result.stdout)).toBe("bytes");
+  });
+
   test("returns owned data after asynchronous child completion", async () => {
     const result = await runtime.run({ program: "bun", args: ["--version"] });
     expect(result.status).toBe(0);

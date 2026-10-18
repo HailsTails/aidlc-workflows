@@ -19,6 +19,43 @@
   },
   {
     "files": [
+      "plugins/rin/tools/rin-harness-content-digest.ts"
+    ],
+    "reason": "Structural CD19 location: defaultContentDigestPort confines node:crypto sha256 hashing behind a ContentDigestPort whose single capability takes text or bytes and returns a hex string. Consumers receive the digest string, never a Hash object. This is the single wrapping site for content hashing in the rin plugin's tools.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does plugins/rin/tools/rin-harness-content-digest.ts import a platform runtime surface at all?",
+          "because": "The rin-gates derivation selftest's landed-binding cases compute an independent sha256 of a merge patch to check the verdict emitter's digest, and sha256 hashing is provided only by the runtime's node:crypto.",
+          "evidence": "plugins/rin/tools/rin-gates/rin-gates-derivation-selftest.spec.ts mergePatchDigestIn, used by case E1 (emitter digest equals an independently computed sha256 of the merge patch)."
+        },
+        {
+          "why": "Why is that hashing not left as a direct import in the selftest?",
+          "because": "The selftest is a carved file that fork PR #4 touches, so CD-46 revokes its carve-out, and CD-19 then requires its stdlib dependencies to arrive through ports; no hashing port existed in the plugin to route through.",
+          "evidence": "HailsTails/aidlc-workflows PR #4 Source checks: rin-harness-carve-out-decay.ts reported [CD-19] plugins/rin/tools/rin-gates/rin-gates-derivation-selftest.spec.ts; .constitution-carve-outs/cd-19.json entry for that file listed node:crypto among its inherited imports."
+        },
+        {
+          "why": "Why does the default binding live in this file?",
+          "because": "CD-21 requires each port to ship its default production factory co-located in its own module, so the port type and its node:crypto binding form one canonical construction site.",
+          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-021-ports-ship-default-factory.md; plugins/rin/tools/rin-harness-content-digest.ts defaultContentDigestPort."
+        },
+        {
+          "why": "Why is this a wrapping factory rather than a relocated violation?",
+          "because": "The file holds no logic beyond binding the one capability: consumers depend on ContentDigestPort, no crypto type crosses the boundary, and its co-located test pins the digest of known inputs, which is the shape the sibling path, file and process ports already take.",
+          "evidence": "plugins/rin/tools/rin-harness-content-digest.test.ts (known sha256 vectors for text, bytes and empty input); the sibling entries for rin-harness-path-operations.ts, rin-harness-sidecar-file-reader.ts and rin-gates/review-process-port.ts in this registry."
+        },
+        {
+          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
+          "because": "A wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt, and that reclassification is CD-46's discharge; the audit's bare-import detector cannot tell a sanctioned wrapping site from a scattered import without this registry entry.",
+          "evidence": "rin repo aidlc/spaces/default/memory/project.md § Decided, 2026-08-07: a wrapping factory the CD-19/CD-20 walker flags is an authorised location and that reclassification is CD-46's discharge (knowledge/harness/decisions.md, PR #473)."
+        }
+      ],
+      "rootCause": "The rin plugin needed sha256 hashing in a file whose carve-out decayed on touch, and had no wrapping port for node:crypto to route it through.",
+      "owner": "rin record 261011-progress-lane-gates-1-4"
+    }
+  },
+  {
+    "files": [
       "plugins/discipline-core/core/platform-ports/git-port.ts"
     ],
     "reason": "Structural CD19 location: createGitPort holds the git argv, environment stripping, NUL splitting and failure mapping over an injected GitSpawn and ambient environment; defaultGitSpawn binds node:child_process spawnSync to that surface and createDefaultGitPort passes process.env as the ambient environment. Consumers receive RepoPath lists and GitFailure data in a Result, never Node types. git-port.test.ts fakes GitSpawn with vi.fn and passes a literal environment object. This is the single wrapping site for git subprocess execution in the discipline-core plugin.",

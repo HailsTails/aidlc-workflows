@@ -5,6 +5,8 @@ type SyncCommandInput = {
   readonly program: string;
   readonly args: readonly string[];
   readonly cwd?: string;
+  readonly environment?: Readonly<Record<string, string | undefined>>;
+  readonly input?: string;
 };
 type CommandInput = {
   readonly program: string;
@@ -18,6 +20,10 @@ type CommandOutput = {
   readonly stdout: string;
   readonly stderr: string;
 };
+type ByteCommandOutput = {
+  readonly status: number | null;
+  readonly stdout: Uint8Array;
+};
 type ReviewProcessPort = {
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly arguments: readonly string[];
@@ -28,6 +34,7 @@ type ReviewProcessPort = {
   readonly exit: (status: number) => never;
   readonly timestamp: () => string;
   readonly runSync: (input: SyncCommandInput) => CommandOutput;
+  readonly runSyncBytes: (input: SyncCommandInput) => ByteCommandOutput;
   readonly run: (input: CommandInput) => Promise<CommandOutput>;
 };
 
@@ -50,9 +57,13 @@ const defaultReviewProcessPort = (): ReviewProcessPort => ({
     process.stdin.on("data", (chunk: string) => { text += chunk; });
     process.stdin.on("end", () => resolveInput(text));
   }),
-  runSync: ({ program, args, cwd }) => {
-    const result = processOperation(() => spawnSync(program, [...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true }));
+  runSync: ({ program, args, cwd, environment, input }) => {
+    const result = processOperation(() => spawnSync(program, [...args], { cwd, env: environment, input, encoding: "utf8", stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], windowsHide: true }));
     return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+  },
+  runSyncBytes: ({ program, args, cwd, environment, input }) => {
+    const result = processOperation(() => spawnSync(program, [...args], { cwd, env: environment, input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "ignore"], windowsHide: true }));
+    return { status: result.status, stdout: new Uint8Array(result.stdout ?? new Uint8Array(0)) };
   },
   run: ({ program, args, cwd, environment, input }) => new Promise((resolveOutput, reject) => {
     const child = processOperation(() => spawn(program, [...args], { cwd, env: environment, stdio: ["pipe", "pipe", "pipe"], windowsHide: true }));
@@ -68,5 +79,5 @@ const defaultReviewProcessPort = (): ReviewProcessPort => ({
   }),
 });
 
-export type { CommandInput, CommandOutput, ReviewProcessPort };
+export type { ByteCommandOutput, CommandInput, CommandOutput, ReviewProcessPort };
 export { defaultReviewProcessPort };

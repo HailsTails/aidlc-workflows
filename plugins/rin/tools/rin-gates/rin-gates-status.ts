@@ -66,15 +66,12 @@
 // output root), RIN_GATES_OWNERS_CONFIG, RIN_GATES_SPACE, AIDLC_STAGE_GRAPH,
 // RIN_GATES_SELECTION_CONFIG, RIN_GATES_NOW.
 
+import { defaultPathOperations } from "../rin-harness-path-operations.ts";
 import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+  defaultFileKindPort,
+  defaultFileTextPort,
+  defaultSidecarFileReader,
+} from "../rin-harness-sidecar-file-reader.ts";
 import {
   gateDirSegments,
   REVIEW_VERDICT_FILENAME,
@@ -114,19 +111,28 @@ import {
   resolveConsumerWorkflowContext,
 } from "./rin-gates-workflow-selection.ts";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+const directories = defaultSidecarFileReader();
+const fileKinds = defaultFileKindPort();
+const HERE = paths.dirname({
+  path: paths.fromFileUrl({ url: import.meta.url }),
+});
 const checkoutRootFrom = (dir: string, fallback: string): string => {
-  if (existsSync(join(dir, ".git"))) return dir;
-  const parent = dirname(dir);
+  if (files.exists(paths.join({ segments: [dir, ".git"] }))) return dir;
+  const parent = paths.dirname({ path: dir });
   return parent === dir ? fallback : checkoutRootFrom(parent, fallback);
 };
 
 const checkoutRootFromHere = (start: string): string =>
-  checkoutRootFrom(resolve(start), resolve(start));
+  checkoutRootFrom(
+    paths.resolve({ segments: [start] }),
+    paths.resolve({ segments: [start] }),
+  );
 const PROJECT_DIR = checkoutRootFromHere(HERE);
 const OWNERS_CONFIG_PATH =
   process.env["RIN_GATES_OWNERS_CONFIG"] ??
-  join(HERE, "transition-owners.json");
+  paths.join({ segments: [HERE, "transition-owners.json"] });
 // Seam for the same reason as OWNERS_CONFIG_PATH: without it a test's ordering
 // assertions depend on the developer's real shipped config, so ratifying a
 // milestone or tuning the threshold would turn a green case red with no code
@@ -156,9 +162,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const readJson = (path: string, label: string): unknown => {
-  if (!existsSync(path)) fail(`${label} not found at ${path}`);
+  if (!files.exists(path)) fail(`${label} not found at ${path}`);
   try {
-    return JSON.parse(readFileSync(path, "utf-8"));
+    return JSON.parse(files.read(path, "utf-8"));
   } catch (error) {
     fail(`${label} is not valid JSON (${path}): ${String(error)}`);
   }
@@ -184,8 +190,10 @@ type GateEntry = {
 const loadGates = (): readonly GateEntry[] => {
   const path =
     process.env["AIDLC_STAGE_GRAPH"] ??
-    join(PROJECT_DIR, ".claude", "tools", "data", "stage-graph.json");
-  if (!existsSync(path)) return [];
+    paths.join({
+      segments: [PROJECT_DIR, ".claude", "tools", "data", "stage-graph.json"],
+    });
+  if (!files.exists(path)) return [];
   const graph = readJson(path, "stage graph");
   if (!Array.isArray(graph)) return [];
   return graph
@@ -292,7 +300,7 @@ type RecordFileReader = {
 };
 
 const nodeRecordFileReader: RecordFileReader = {
-  fileExists: (path) => existsSync(path),
+  fileExists: (path) => files.exists(path),
   readFile: (path) => readFileOrNull(path),
 };
 
@@ -311,14 +319,18 @@ const readRecordReadiness = (args: {
       storedVerdict: "none",
     };
   }
-  const gateDir = join(args.recordDir, segments[0], segments[1]);
+  const gateDir = paths.join({
+    segments: [args.recordDir, segments[0], segments[1]],
+  });
   return {
     gateArtefactsPresent: args.produces.filter((artefact) =>
-      reader.fileExists(join(gateDir, `${artefact}.md`)),
+      reader.fileExists(paths.join({ segments: [gateDir, `${artefact}.md`] })),
     ).length,
     gateArtefactsExpected: args.produces.length,
     storedVerdict: storedVerdictOf({
-      raw: reader.readFile(join(gateDir, REVIEW_VERDICT_FILENAME)),
+      raw: reader.readFile(
+        paths.join({ segments: [gateDir, REVIEW_VERDICT_FILENAME] }),
+      ),
     }),
   };
 };
@@ -360,8 +372,8 @@ type RegistryRow = {
 const readRegistry = (args: {
   readonly intentsRoot: string;
 }): readonly RegistryRow[] => {
-  const path = join(args.intentsRoot, "intents.json");
-  if (!existsSync(path)) return [];
+  const path = paths.join({ segments: [args.intentsRoot, "intents.json"] });
+  if (!files.exists(path)) return [];
   const parsed = readJson(path, "intents registry");
   if (!Array.isArray(parsed)) return [];
   return parsed.filter(isRecord).map((row) => ({
@@ -373,12 +385,14 @@ const readRegistry = (args: {
 };
 
 const readFileOrNull = (path: string): string | null =>
-  existsSync(path) ? readFileSync(path, "utf-8") : null;
+  files.exists(path) ? files.read(path, "utf-8") : null;
 
 const readProvenance = (
   recordDir: string,
 ): { readonly taskId: string | null; readonly promotedAt: string | null } => {
-  const raw = readFileOrNull(join(recordDir, "promoted-from.json"));
+  const raw = readFileOrNull(
+    paths.join({ segments: [recordDir, "promoted-from.json"] }),
+  );
   if (raw === null) return { taskId: null, promotedAt: null };
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -394,11 +408,12 @@ const readProvenance = (
 };
 
 const readShardBodies = (recordDir: string): readonly string[] => {
-  const auditDir = join(recordDir, "audit");
-  if (!existsSync(auditDir)) return [];
-  return readdirSync(auditDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => readFileOrNull(join(auditDir, entry.name)))
+  const auditDir = paths.join({ segments: [recordDir, "audit"] });
+  if (!files.exists(auditDir)) return [];
+  return (directories.listDirectory(auditDir) ?? [])
+    .map((name) => ({ name, path: paths.join({ segments: [auditDir, name] }) }))
+    .filter((entry) => entry.name.endsWith(".md") && fileKinds.isFile(entry.path))
+    .map((entry) => readFileOrNull(entry.path))
     .filter((body): body is string => body !== null);
 };
 
@@ -416,7 +431,7 @@ const enumerateRecords = (args: {
   readonly facts: RecordRankingFacts;
 }[] => {
   const root = args.intentsRoot;
-  if (!existsSync(root)) return [];
+  if (!files.exists(root)) return [];
   const registry = readRegistry({ intentsRoot: args.intentsRoot });
   const rowByDir = new Map(
     registry
@@ -425,11 +440,14 @@ const enumerateRecords = (args: {
       )
       .map((row) => [row.dirName, row] as const),
   );
-  return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
+  return (directories.listDirectory(root) ?? [])
+    .map((name) => ({ name, path: paths.join({ segments: [root, name] }) }))
+    .filter((entry) => fileKinds.isDirectory(entry.path))
     .map((entry) => {
-      const recordDir = join(root, entry.name);
-      const stateBody = readFileOrNull(join(recordDir, "aidlc-state.md"));
+      const recordDir = entry.path;
+      const stateBody = readFileOrNull(
+        paths.join({ segments: [recordDir, "aidlc-state.md"] }),
+      );
       if (stateBody === null) return null;
       const row = rowByDir.get(entry.name);
       const provenance = readProvenance(recordDir);
@@ -446,7 +464,9 @@ const enumerateRecords = (args: {
         },
         facts: {
           ...readRecordImportance({
-            raw: readFileOrNull(join(recordDir, IMPORTANCE_BINDING_FILENAME)),
+            raw: readFileOrNull(
+              paths.join({ segments: [recordDir, IMPORTANCE_BINDING_FILENAME] }),
+            ),
           }),
           clock: readNeglectClock({
             dirName: entry.name,
@@ -625,6 +645,7 @@ const describeMilestone = (args: {
 // comparator never learns the config's internals (IF-5).
 const rankedRecordFor = (args: {
   readonly dirName: string;
+  readonly currentStage: string;
   readonly facts: RecordRankingFacts;
   readonly config: SelectionConfig;
   readonly now: () => Date;
@@ -638,6 +659,7 @@ const rankedRecordFor = (args: {
       ratifiedMilestones: args.config.ratifiedMilestones,
     }),
     tier: args.facts.tier,
+    gatePosition: GATE_SLUGS.indexOf(args.currentStage),
     neglectDays: resolveNeglectDays({ clock: args.facts.clock, now: args.now }),
   };
 };
@@ -798,9 +820,9 @@ const describeNeglect = (args: { readonly rank: RecordRank }): string =>
 const describeSelectionOrder = (args: {
   readonly config: SelectionConfig;
 }): readonly string[] => [
-  `**Rows are in ratified selection order.** Tiers, in order: neglect BREACH (\`>= ${args.config.neglectThresholdDays}d\`), then operator-flagged, then milestone rank (${args.config.ratifiedMilestones.join(" > ")}), then neglect age, then the record directory name as a final tiebreak.`,
+  `**Rows are in ratified selection order.** Tiers, in order: operator-flagged, then milestone rank (${args.config.ratifiedMilestones.join(" > ")}), then furthest along (a later Current Stage first), then neglect age, then the record directory name as a final tiebreak.`,
   "",
-  "Two consequences worth reading off the table rather than re-deriving. A high neglect age does NOT outrank a flag unless it BREACHES, so an unbreached 28d record loses to a flagged 2d one. And the milestone tier decides only between two RATIFIED milestones — a `no-milestone` record does not lose to an `M1` here; it skips the tier and is settled on neglect age instead, which is why unbound records can sit above milestone-bound ones.",
+  `Two consequences worth reading off the table rather than re-deriving. Furthest along outranks neglect age, so work close to delivery is finished before older work is started; the BREACH mark (\`>= ${args.config.neglectThresholdDays}d\`) is information, not a rung. And a record on a ratified milestone ranks above a record without one, whatever its stage or age; two ratified records compare by milestone rank, and records without a ratified milestone (unratified, \`no-milestone\` or unbound) are settled by stage reached and neglect age instead.`,
   "",
   "Take the first row eligible for your lane; do NOT re-sort by any key of your own, and cite the `#` you acted on. A run that re-sorts this table has replaced the ratified ordering with one it invented — which is the defect this column set exists to prevent.",
   "",
@@ -886,37 +908,37 @@ const orderedRecords = (args: {
   readonly config: SelectionConfig;
   readonly now: () => Date;
 }): readonly RecordStatus[] => {
-  const compare = selectionOrderComparator({ config: args.config });
+  const pipelineEntries = args.enumerated.flatMap((entry) => {
+    const status = recordStatusFor({
+      record: entry.record,
+      owners: args.laneMap,
+      facts: entry.facts,
+    });
+    return status === null ? [] : [{ status, facts: entry.facts }];
+  });
   const rankByDirName = new Map(
-    args.enumerated.map(
-      (entry) =>
+    pipelineEntries.map(
+      ({ status, facts }) =>
         [
-          entry.record.dirName,
+          status.dirName,
           rankedRecordFor({
-            dirName: entry.record.dirName,
-            facts: entry.facts,
+            dirName: status.dirName,
+            currentStage: status.currentStage,
+            facts,
             config: args.config,
             now: args.now,
           }),
         ] as const,
     ),
   );
-  return args.enumerated
-    .map((entry) =>
-      recordStatusFor({
-        record: entry.record,
-        owners: args.laneMap,
-        facts: entry.facts,
-      }),
-    )
-    .filter((status): status is RecordStatus => status !== null)
-    .slice()
+  return pipelineEntries
+    .map(({ status }) => status)
     .sort((left, right) => {
       const leftRank = rankByDirName.get(left.dirName);
       const rightRank = rankByDirName.get(right.dirName);
       return leftRank === undefined || rightRank === undefined
         ? left.dirName.localeCompare(right.dirName)
-        : compare(leftRank, rightRank);
+        : selectionOrderComparator(leftRank, rightRank);
     })
     .map((status, index) => {
       const ranked = rankByDirName.get(status.dirName);
@@ -973,10 +995,14 @@ const writeStatusProjection = (args: {
   readonly records: readonly RecordStatus[];
   readonly config: SelectionConfig;
 }): void => {
-  mkdirSync(args.outDir, { recursive: true });
-  const jsonPath = join(args.outDir, "rin-gates-status.json");
-  const markdownPath = join(args.outDir, "rin-gates-status.md");
-  writeFileSync(
+  files.mkdir(args.outDir, { recursive: true });
+  const jsonPath = paths.join({
+    segments: [args.outDir, "rin-gates-status.json"],
+  });
+  const markdownPath = paths.join({
+    segments: [args.outDir, "rin-gates-status.md"],
+  });
+  files.write(
     jsonPath,
     `${JSON.stringify(
       {
@@ -992,7 +1018,7 @@ const writeStatusProjection = (args: {
     )}\n`,
     "utf-8",
   );
-  writeFileSync(
+  files.write(
     markdownPath,
     renderMarkdown({
       records: args.records,
@@ -1009,6 +1035,58 @@ const writeStatusProjection = (args: {
   );
 };
 
+const LANE_QUEUE_DEPTH = 5;
+
+type LaneQueue =
+  | { readonly kind: "known-lane"; readonly rows: readonly RecordStatus[] }
+  | { readonly kind: "unknown-lane"; readonly knownLanes: readonly string[] };
+
+const laneQueue = (args: {
+  readonly records: readonly RecordStatus[];
+  readonly laneMap: ReadonlyMap<string, TransitionOwner>;
+  readonly lane: string;
+}): LaneQueue => {
+  const knownLanes = [
+    ...new Set([...args.laneMap.values()].map((owner) => owner.owningLane)),
+  ].toSorted();
+  if (!knownLanes.includes(args.lane)) return { kind: "unknown-lane", knownLanes };
+  return {
+    kind: "known-lane",
+    rows: args.records
+      .filter((record) => record.owningLane === args.lane)
+      .slice(0, LANE_QUEUE_DEPTH),
+  };
+};
+
+const renderLaneQueue = (args: {
+  readonly lane: string;
+  readonly rows: readonly RecordStatus[];
+}): readonly string[] =>
+  args.rows.length === 0
+    ? [`lane ${args.lane}: no eligible rows`]
+    : [
+        `lane ${args.lane}: eligible rows in selection order (take the first; skip only on an open PR tagged intent:<record> or an engine park naming a blocker)`,
+        ...args.rows.map(
+          (record) =>
+            `#${record.rank.position} ${record.dirName} ${record.currentStage} ${record.classification} ${describeNeglect({ rank: record.rank })}`,
+        ),
+      ];
+
+const printLaneQueue = (args: {
+  readonly records: readonly RecordStatus[];
+  readonly laneMap: ReadonlyMap<string, TransitionOwner>;
+  readonly lane: string;
+}): void => {
+  const queue = laneQueue(args);
+  const lines =
+    queue.kind === "known-lane"
+      ? renderLaneQueue({ lane: args.lane, rows: queue.rows })
+      : fail(
+          `unknown lane '${args.lane}'; lanes in the ownership map: ${queue.knownLanes.join(", ")}`,
+        );
+  console.log(lines.join("\n"));
+};
+
 const assertOwnershipTotality = (records: readonly RecordStatus[]): void => {
   const totalityGaps = checkTotality(records);
   if (totalityGaps.length > 0) {
@@ -1021,7 +1099,9 @@ const run = (): void => {
   const consumerRoot = process.env["RIN_GATES_WORKSPACE_ROOT"] ?? PROJECT_DIR;
   const engineUtilityPath =
     process.env["RIN_GATES_ENGINE_CLI"] ??
-    join(PROJECT_DIR, ".claude", "tools", "aidlc-utility.ts");
+    paths.join({
+      segments: [PROJECT_DIR, ".claude", "tools", "aidlc-utility.ts"],
+    });
   const workflowSelection = resolveConsumerWorkflowContext({
     consumerRoot,
     engineUtilityPath,
@@ -1041,7 +1121,8 @@ const run = (): void => {
   });
   const { selectionRankingConfigPath, selectionConfig: config } =
     selectionRankingConfiguration;
-  const outDir = argValue("--out") ?? join(consumerRoot, "aidlc");
+  const outDir =
+    argValue("--out") ?? paths.join({ segments: [consumerRoot, "aidlc"] });
 
   const laneMap = laneByGate(
     readJson(OWNERS_CONFIG_PATH, "transition owners") as OwnersConfig,
@@ -1072,9 +1153,15 @@ const run = (): void => {
     records,
     config,
   });
+
+  const lane = argValue("--lane");
+  if (lane !== null) printLaneQueue({ records, laneMap, lane });
 };
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+if (
+  paths.fromFileUrl({ url: import.meta.url }) ===
+  paths.resolve({ segments: [process.argv[1] ?? ""] })
+) {
   run();
 }
 
@@ -1082,9 +1169,11 @@ export {
   describeGateWork,
   describeMilestone,
   describeNeglect,
+  describeSelectionOrder,
   extractTaskArray,
   type IntakeCapture,
   type IntentRecord,
+  laneQueue,
   orderedRecords,
   type RecordRank,
   type RecordRankingFacts,
@@ -1093,6 +1182,7 @@ export {
   readRecordImportance,
   readRecordReadiness,
   recordStatusFor,
+  renderLaneQueue,
   selectIntakeCaptures,
   type TransitionOwner,
 };
