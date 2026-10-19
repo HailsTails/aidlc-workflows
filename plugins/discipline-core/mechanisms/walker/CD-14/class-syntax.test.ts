@@ -92,6 +92,19 @@ describe("CD-14 class-syntax walker check over TypeScript's own parse", () => {
     });
   });
 
+  it.each([
+    { name: "a nested node_modules folder", fileName: "src/node_modules/lib/a.ts" },
+    { name: "a dist folder", fileName: "dist/a.ts" },
+    { name: "a root vendor folder", fileName: "vendor/a.ts" },
+  ])("flags nothing in $name, a generated folder the walker skips", async ({ name, fileName }) => {
+    expect(
+      await walkerRunner.conform({
+        clause: CLAUSE,
+        cases: [{ name, fileName: repoPathSchema.parse(fileName), source: "export class Generated {}\n", expectedLines: [] }],
+      }),
+    ).toEqual({ outcome: "ok", value: [{ caseName: name, flaggedLines: [] }] });
+  });
+
   it("anchors a class on line 3 at its class keyword, as the fake-port runner test does", async () => {
     expect(
       await walkerRunner.run({

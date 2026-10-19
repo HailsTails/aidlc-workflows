@@ -14,7 +14,7 @@ The rule above is quoted verbatim from `cd-014-no-class-authoring.md` in the rin
 | `CD-14#library-construction` | review | library classes are built only in wrapping factories and never re-exported |
 
 ## What the check flags
-- TypeScript source files; declaration files (`.d.ts`) are skipped.
+- TypeScript source files; declaration files (`.d.ts`) are skipped. Generated folders (`node_modules`, `dist`, `build`, `coverage`, `.git`, root `vendor`) are skipped by the walker; any other folder can be left out with `exclude` in disciplines.json. The ESLint piece lints whatever files the team's ESLint run includes.
 - Any class declaration, class expression, `abstract class`, nested class, or class inside a runtime `namespace`, reported at the `class` keyword.
 - Allowed: `declare class`, classes inside `declare module`, `declare global` or `declare namespace`, and `new Client()` on a class imported from a library.
 - `library-construction` is a judgement clause. It cannot be selected and is enforced by review.

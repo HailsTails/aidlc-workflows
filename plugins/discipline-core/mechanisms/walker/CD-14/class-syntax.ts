@@ -1,3 +1,4 @@
+import { folderScope } from "../runner/source-scope.ts";
 import type { SyntaxApi, SyntaxNode, SyntaxTree } from "../runner/typescript-parse.ts";
 import type { PieceHit, WalkerPiece } from "../runner/walker-piece.ts";
 
@@ -9,6 +10,7 @@ const TYPESCRIPT_SOURCE_ENDINGS: readonly string[] = [".ts", ".tsx", ".mts", ".c
 const DECLARATION_FILE_ENDINGS: readonly string[] = [".d.ts", ".d.mts", ".d.cts"];
 
 const sourceEligibility = (request: { readonly file: string }): "eligible" | "excluded" =>
+  folderScope({ file: request.file }) === "authored" &&
   TYPESCRIPT_SOURCE_ENDINGS.some((ending) => request.file.endsWith(ending)) &&
   !DECLARATION_FILE_ENDINGS.some((ending) => request.file.endsWith(ending))
     ? "eligible"
