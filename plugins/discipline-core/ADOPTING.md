@@ -209,7 +209,7 @@ Every entry needs a `reason` and a `whyChain` shaped like this, with exactly fiv
 }
 ```
 
-Answers must be real: placeholders, and a root cause that only says the check was failing or there was no time, are refused as `invalidRecords`. `file` is an exact repository path. A clause whose rule refuses exceptions, CD-1 today, cannot be exempted at all.
+Answers must be real: placeholders, and a root cause that only says the check was failing or there was no time, are refused as `invalidRecords`. `file` is an exact repository path.
 
 Debt or authorisations already recorded by an earlier system, for example the old standalone route's `.constitution-carve-outs/`, can be imported with `provenance` instead of a `whyChain`, as [MIGRATING.md](MIGRATING.md#3-convert-the-old-records-into-exceptions) step 3 shows. Imported entries are checked against `--base-revision`: any entry you write or change yourself needs the full `whyChain`.
 

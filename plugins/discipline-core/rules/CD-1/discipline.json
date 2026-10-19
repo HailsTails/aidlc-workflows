@@ -12,7 +12,6 @@
       "anchor": {
         "kind": "file"
       },
-      "exceptions": "refused",
       "cases": {
         "flag": [
           {
@@ -73,7 +72,6 @@
         "kind": "keyword",
         "keyword": "any"
       },
-      "exceptions": "refused",
       "cases": {
         "flag": [
           {
@@ -128,7 +126,6 @@
         "kind": "keyword",
         "keyword": "let"
       },
-      "exceptions": "refused",
       "cases": {
         "flag": [
           {

@@ -15,6 +15,6 @@
     }
   },
   "files": {
-    "includes": ["**", "!node_modules"]
+    "includes": ["**", "!node_modules", "!tests/test-fixtures/cd1-exempted/src", "!tests/test-fixtures/cd1-cascade/src"]
   }
 }
