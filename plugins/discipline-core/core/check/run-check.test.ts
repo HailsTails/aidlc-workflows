@@ -201,6 +201,7 @@ const EXCEPTIONS_WITH_AUTHORISED_LOCATION = JSON.stringify({
       clause: "CD-14#class-syntax",
       file: "src/factory.ts",
       reason: "the wrapping factory for the library",
+      provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" },
     },
   ],
 });
@@ -352,6 +353,7 @@ describe("runCheck reports", () => {
                 mechanism: "walker",
                 file: "src/factory.ts",
                 reason: "the wrapping factory for the library",
+                provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" },
               },
             ],
           },
@@ -808,8 +810,8 @@ const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
     text: JSON.stringify({
       version: 1,
       exceptions: [
-        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "walker location" },
-        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location" },
+        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "walker location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" } },
+        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" } },
       ],
     }),
   }),
@@ -824,6 +826,7 @@ const WALKER_RECORD = {
   mechanism: "walker",
   file: "src/walker.ts",
   reason: "walker location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" },
 };
 
 const modulesByPath = (modules: Readonly<Record<string, unknown>>): ModuleLoaderPort => ({
@@ -935,6 +938,7 @@ describe("runCheck with an embedded runner", () => {
             mechanism: "walker",
             file: "src/factory.ts",
             reason: "the wrapping factory for the library",
+            provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" },
           },
         ],
       },

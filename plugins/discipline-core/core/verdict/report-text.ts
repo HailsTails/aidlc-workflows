@@ -50,8 +50,10 @@ const invalidDetail = (request: { readonly problem: InvalidRecord["problem"] }):
   switch (request.problem.kind) {
     case "clause-unparseable":
     case "why-chain-refused":
+    case "evidence-refused":
       return escapedLineBreaks({ text: request.problem.detail });
     case "clause-not-selected":
+    case "non-exemptible-clause":
       return clauseAddressText({ address: request.problem.clause });
     case "file-not-repo-path":
       return escapedLineBreaks({ text: request.problem.file });
