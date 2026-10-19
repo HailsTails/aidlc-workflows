@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-7",
+  "mechanism": "walker",
+  "clauses": [
+    { "clause": "categorical-paths", "settings": { "module": "categorical-paths.ts" } }
+  ]
+}

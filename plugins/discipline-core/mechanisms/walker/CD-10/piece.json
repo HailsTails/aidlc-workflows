@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-10",
+  "mechanism": "walker",
+  "clauses": [
+    { "clause": "throws-in-tests", "settings": { "module": "throws-in-tests.ts" } }
+  ]
+}

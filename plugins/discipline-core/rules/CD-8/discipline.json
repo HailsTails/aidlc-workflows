@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "CD-8",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "switch-defaults",
+      "summary": "No default on switch over a closed discriminated union",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "default arm",
+            "fileName": "dispatch.ts",
+            "source": "export const dispatch = (kind: \"opened\" | \"closed\"): number => {\n  switch (kind) {\n    case \"opened\": return 1;\n    default: return 0;\n  }\n};\n",
+            "expectedLines": [
+              4
+            ]
+          },
+          {
+            "name": "default arm on the switch line",
+            "fileName": "inline.ts",
+            "source": "declare const stop: () => void;\ndeclare const kind: string;\nswitch (kind) { default: stop(); }\n",
+            "expectedLines": [
+              3
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "exhaustive cases",
+            "fileName": "exhaustive.ts",
+            "source": "export const dispatch = (kind: \"opened\" | \"closed\"): number => {\n  switch (kind) {\n    case \"opened\": return 1;\n    case \"closed\": return 0;\n  }\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "default key outside a switch",
+            "fileName": "object.ts",
+            "source": "export const config = { default: \"literal\" };\n",
+            "expectedLines": []
+          },
+          {
+            "name": "default in a comment line",
+            "fileName": "commented.ts",
+            "source": "// switch (kind) { default: stop(); }\nexport const value = 1;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

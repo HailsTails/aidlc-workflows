@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "CD-25",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "dependency-isolation",
+      "summary": "Unit tests fake everything outside the unit",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "vi.fn with an implementation",
+            "fileName": "clock.test.ts",
+            "source": "const clock = { now: vi.fn(() => 1) };\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "mockImplementation call",
+            "fileName": "port.test.ts",
+            "source": "const port = vi.fn();\nport.mockImplementation(() => 2);\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "vi.fn with a fixed return value",
+            "fileName": "value.test.ts",
+            "source": "const port = vi.fn().mockReturnValue(1);\n",
+            "expectedLines": []
+          },
+          {
+            "name": "mockResolvedValue",
+            "fileName": "resolved.test.ts",
+            "source": "const port = vi.fn().mockResolvedValue(1);\n",
+            "expectedLines": []
+          },
+          {
+            "name": "vi.fn with an implementation outside a test file",
+            "fileName": "helper.ts",
+            "source": "export const port = vi.fn(() => 1);\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

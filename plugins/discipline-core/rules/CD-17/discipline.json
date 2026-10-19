@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "id": "CD-17",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "clock-sources",
+      "summary": "Clock is the only time source",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "Date.now call",
+            "fileName": "started-at.ts",
+            "source": "export const startedAt = Date.now();\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "new Date construction",
+            "fileName": "wall-clock.ts",
+            "source": "export const stampNow = (): number => new Date().getTime();\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "injected clock",
+            "fileName": "injected.ts",
+            "source": "export const stamp = (clock: { readonly now: () => number }): number => clock.now();\n",
+            "expectedLines": []
+          },
+          {
+            "name": "parsing a date string",
+            "fileName": "src/parse.ts",
+            "source": "export const parsed = (request: { readonly text: string }): number => Date.parse(request.text);\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

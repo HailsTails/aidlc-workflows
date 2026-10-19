@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-15",
+  "mechanism": "walker",
+  "clauses": [
+    { "clause": "loops", "settings": { "module": "loops.ts" } }
+  ]
+}

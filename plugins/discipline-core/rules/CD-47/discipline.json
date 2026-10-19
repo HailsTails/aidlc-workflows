@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "CD-47",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "hermetic-git-spawns",
+      "summary": "Tests are hermetic — no real side effects on anything real",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "spawnSync git without env",
+            "fileName": "init.test.ts",
+            "source": "spawnSync(\"git\", [\"init\"], { cwd: directory });\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "execSync git in a js test",
+            "fileName": "run.test.js",
+            "source": "execSync(\"git\", []);\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "spawn with hermetic env",
+            "fileName": "hermetic.test.mjs",
+            "source": "spawn(\"git\", [], { env: hermeticGitEnvironment() });\n",
+            "expectedLines": []
+          },
+          {
+            "name": "non-git command",
+            "fileName": "other.test.ts",
+            "source": "spawnSync(\"node\", [\"--version\"], { cwd: directory });\n",
+            "expectedLines": []
+          },
+          {
+            "name": "git spawn in a production file",
+            "fileName": "helper.ts",
+            "source": "spawnSync(\"git\", [\"init\"], { cwd: directory });\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

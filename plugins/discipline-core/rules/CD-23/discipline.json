@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "CD-23",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "export-test-sibling",
+      "summary": "Every unit has a co-located test sibling",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "runtime const export without sibling",
+            "fileName": "src/price.ts",
+            "source": "export const price = 1;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "function export without sibling",
+            "fileName": "src/format.ts",
+            "source": "export function format(): string {\n  return \"\";\n}\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "type-only exports",
+            "fileName": "src/types-only.ts",
+            "source": "export interface Account { readonly id: string }\nexport type Id = string;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "no exports",
+            "fileName": "src/internal.ts",
+            "source": "const hidden = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "test file is not a production file",
+            "fileName": "src/price.test.ts",
+            "source": "export const price = 1;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

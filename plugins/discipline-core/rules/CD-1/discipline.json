@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "id": "CD-1",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "any-cast",
+      "summary": "No any, ever",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "exceptions": "refused",
+      "cases": {
+        "flag": [
+          {
+            "name": "as any assertion",
+            "fileName": "parse.ts",
+            "source": "export const parsed = JSON.parse(text) as any;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "angle-bracket any assertion",
+            "fileName": "angle.ts",
+            "source": "declare const candidate: unknown;\nexport const narrowed = <any>candidate;\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "as any on a later line",
+            "fileName": "later.ts",
+            "source": "declare const candidate: unknown;\nconst first = 1;\nexport const narrowed = candidate as any;\n",
+            "expectedLines": [
+              3
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "as unknown assertion",
+            "fileName": "unknown.ts",
+            "source": "export const parsed = JSON.parse(text) as unknown;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "const assertion",
+            "fileName": "const-assertion.ts",
+            "source": "export const PERMITTED_LITERAL = \"permitted\" as const;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "bare any annotation is left to review",
+            "fileName": "annotation.ts",
+            "source": "declare const candidate: unknown;\nexport const direct: any = candidate;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

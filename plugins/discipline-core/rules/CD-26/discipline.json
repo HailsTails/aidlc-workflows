@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "CD-26",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "module-mocking",
+      "summary": "No module-mocking — module-mock means DI is wrong",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "vi.mock of a module",
+            "fileName": "store.test.ts",
+            "source": "vi.mock(\"./store.ts\");\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "vi.mock in a tsx test",
+            "fileName": "view.test.tsx",
+            "source": "import { vi } from \"vitest\";\nvi.mock(\"module\");\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "injected fake port",
+            "fileName": "port.test.ts",
+            "source": "const port = vi.fn();\nconst other = { mock: vi.fn() };\n",
+            "expectedLines": []
+          },
+          {
+            "name": "vi.mock outside a test file",
+            "fileName": "helper.ts",
+            "source": "vi.mock(\"module\");\n",
+            "expectedLines": []
+          },
+          {
+            "name": "bracket access is not detected",
+            "fileName": "bracket.test.ts",
+            "source": "vi[\"mock\"](\"module\");\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

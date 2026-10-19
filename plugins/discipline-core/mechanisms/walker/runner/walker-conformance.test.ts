@@ -4,10 +4,10 @@ import { type RunnerClause, runnerModuleSchema } from "../../../core/mechanism-p
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import { createPathPort } from "../../../core/platform-ports/path-port.ts";
 import {
-  type ClauseDefinition,
   type DisciplineFile,
   readDisciplineFile,
   readPieceFile,
+  type SourceCase,
 } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
@@ -24,7 +24,14 @@ declare global {
   }
 }
 
-const ruleSetTexts = import.meta.glob(["./rules/CD-14/discipline.json", "./mechanisms/walker/CD-14/piece.json"], {
+const ruleSetTexts = import.meta.glob(["./rules/*/discipline.json", "./mechanisms/walker/*/piece.json"], {
+  base: "../../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const walkerModules = import.meta.glob(["./mechanisms/walker/*/*.ts", "!./mechanisms/walker/*/*.test.ts", "!./mechanisms/walker/runner/*"], {
   base: "../../../",
   query: "?raw",
   import: "default",
@@ -32,80 +39,97 @@ const ruleSetTexts = import.meta.glob(["./rules/CD-14/discipline.json", "./mecha
 });
 
 const RULE_SET_ROOT = absolutePathSchema.parse("/install");
+const WALKER = mechanismIdSchema.parse("walker");
 
-const RULE_SET_FILES: Readonly<Record<string, string>> = {
-  "/install/rules/CD-14/discipline.json": requiredEntry({ table: ruleSetTexts, key: "./rules/CD-14/discipline.json" }),
-  "/install/mechanisms/walker/CD-14/piece.json": requiredEntry({
-    table: ruleSetTexts,
-    key: "./mechanisms/walker/CD-14/piece.json",
-  }),
-};
+const folderOf = (request: { readonly key: string }): string => request.key.split("/").at(-2) ?? "";
 
 const ruleSetFileText: FileTextPort = {
-  read: ({ path }) => ({ outcome: "ok", value: requiredEntry({ table: RULE_SET_FILES, key: path }) }),
+  read: ({ path }) => ({
+    outcome: "ok",
+    value: requiredEntry({ table: ruleSetTexts, key: path.replace("/install/", "./") }),
+  }),
   exists: () => "present",
   write: vi.fn<FileTextPort["write"]>(),
 };
 
 const ruleSetPath = createPathPort({ flavour: "posix", workingDirectory: () => "/install" });
 
-const cd14Discipline = (): DisciplineFile => {
+const walkerDisciplines: readonly string[] = [
+  ...new Set(Object.keys(walkerModules).map((key) => folderOf({ key }))),
+].sort();
+
+const disciplineOf = (request: { readonly discipline: string }): DisciplineFile => {
   const discipline = readDisciplineFile({
     fileText: ruleSetFileText,
     path: ruleSetPath,
     ruleSetRoot: RULE_SET_ROOT,
-    discipline: disciplineIdSchema.parse("CD-14"),
+    discipline: disciplineIdSchema.parse(request.discipline),
   });
-  assert(discipline.outcome === "ok", "CD-14 discipline.json reads through the rule-set reader");
+  assert(discipline.outcome === "ok", `${request.discipline} discipline.json reads through the rule-set reader`);
   return discipline.value;
 };
 
-const CD14_DISCIPLINE = cd14Discipline();
-
-const classSyntaxDefinition = (): Extract<ClauseDefinition, { readonly kind: "mechanical" }> => {
-  const [definition, judgement, ...surplus] = CD14_DISCIPLINE.clauses;
-  assert(definition?.id === "class-syntax", "CD-14 declares class-syntax as its first clause");
-  assert(definition.kind === "mechanical", "CD-14 declares class-syntax as a mechanical clause");
-  assert(definition.anchor.kind === "keyword", "CD-14 class-syntax anchors at a keyword");
-  assert(judgement?.kind === "judgement", "CD-14 declares a judgement clause second");
-  assert(surplus.length === 0, "CD-14 declares exactly two clauses");
-  return definition;
+type ConformanceRow = {
+  readonly name: string;
+  readonly clause: RunnerClause;
+  readonly cases: readonly SourceCase[];
 };
 
-const CLASS_SYNTAX_DEFINITION = classSyntaxDefinition();
-
-const classSyntaxSettings = (): unknown => {
+const conformanceRowsOf = (request: { readonly discipline: string }): readonly ConformanceRow[] => {
+  const discipline = disciplineOf(request);
   const piece = readPieceFile({
     fileText: ruleSetFileText,
     path: ruleSetPath,
     ruleSetRoot: RULE_SET_ROOT,
-    mechanism: mechanismIdSchema.parse("walker"),
-    discipline: CD14_DISCIPLINE,
+    mechanism: WALKER,
+    discipline,
   });
-  assert(piece.outcome === "ok", "the CD-14 walker piece.json reads through the rule-set reader");
-  const [entry, ...surplus] = piece.value.clauses;
-  assert(entry?.clause === "class-syntax", "the CD-14 walker piece carries class-syntax");
-  assert(surplus.length === 0, "the CD-14 walker piece carries exactly one clause");
-  return entry.settings;
+  assert(piece.outcome === "ok", `${request.discipline} walker piece.json reads through the rule-set reader`);
+  return piece.value.clauses.map((entry) => {
+    const definition = discipline.clauses.find((clause) => clause.id === entry.clause);
+    assert(definition?.kind === "mechanical", `${request.discipline}#${entry.clause} is a mechanical clause`);
+    return {
+      name: `${request.discipline}#${entry.clause}`,
+      clause: {
+        address: clauseAddressSchema.parse(`${request.discipline}#${entry.clause}`),
+        anchor: definition.anchor,
+        pieceRoot: `${import.meta.dirname}/../${request.discipline}`,
+        settings: entry.settings,
+      },
+      cases: [...definition.cases.flag, ...definition.cases.allow],
+    };
+  });
 };
 
-const CLASS_SYNTAX_CLAUSE: RunnerClause = {
-  address: clauseAddressSchema.parse("CD-14#class-syntax"),
-  anchor: CLASS_SYNTAX_DEFINITION.anchor,
-  pieceRoot: `${import.meta.dirname}/../CD-14`,
-  settings: classSyntaxSettings(),
-};
+const CONFORMANCE_ROWS = walkerDisciplines.flatMap((discipline) => conformanceRowsOf({ discipline }));
 
 const walkerRunner = runnerModuleSchema.parse(walkerRunnerModule.runner);
 
-describe("the walker runner, loaded as core loads it, conforms to CD-14 class-syntax's shared cases read as build-time raw modules (CD-47: the shipped runner and its piece are the assertion's subject; nothing is spawned or written)", () => {
-  it("has no conformance failure over every shared flag and allow case", async () => {
+describe("every walker piece on disk is registered with a piece.json and a discipline.json", () => {
+  it("has a piece.json for each walker piece folder", () => {
     expect(
-      await checkConformance({
-        clause: CLASS_SYNTAX_CLAUSE,
-        cases: [...CLASS_SYNTAX_DEFINITION.cases.flag, ...CLASS_SYNTAX_DEFINITION.cases.allow],
-        runner: walkerRunner,
-      }),
-    ).toEqual({ outcome: "ok", value: [] });
+      Object.keys(ruleSetTexts)
+        .filter((key) => key.startsWith("./mechanisms/walker/"))
+        .map((key) => folderOf({ key }))
+        .sort(),
+    ).toEqual(walkerDisciplines);
+  });
+
+  it("has a discipline.json for each walker piece folder", () => {
+    expect(
+      Object.keys(ruleSetTexts)
+        .filter((key) => key.startsWith("./rules/"))
+        .map((key) => folderOf({ key }))
+        .sort(),
+    ).toEqual(expect.arrayContaining([...walkerDisciplines]));
+  });
+});
+
+describe("the walker runner, loaded as core loads it, conforms to every registered clause's shared cases read as build-time raw modules (CD-47: the shipped runner and its pieces are the assertion's subject; nothing is spawned or written)", () => {
+  it.each(CONFORMANCE_ROWS)("$name has no conformance failure over its flag and allow cases", async (row) => {
+    expect(await checkConformance({ clause: row.clause, cases: row.cases, runner: walkerRunner })).toEqual({
+      outcome: "ok",
+      value: [],
+    });
   });
 });

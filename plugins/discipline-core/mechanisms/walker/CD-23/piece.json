@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-23",
+  "mechanism": "walker",
+  "clauses": [
+    { "clause": "export-test-sibling", "settings": { "module": "export-test-sibling.ts" } }
+  ]
+}

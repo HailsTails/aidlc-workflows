@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "CD-7a",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "factory-return-types",
+      "summary": "No ReturnType<typeof X> for our own codebase",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "ReturnType of a factory",
+            "fileName": "client.ts",
+            "source": "declare const createClient: () => unknown;\nexport type Client = ReturnType<typeof createClient>;\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "awaited ReturnType of a factory",
+            "fileName": "awaited.ts",
+            "source": "declare const createClient: () => Promise<unknown>;\nexport type Client = Awaited<ReturnType<typeof createClient>>;\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "named exported type",
+            "fileName": "named.ts",
+            "source": "export interface Client { readonly id: string }\nexport const createClient = (): Client => ({ id: \"a\" });\n",
+            "expectedLines": []
+          },
+          {
+            "name": "ReturnType in a comment line",
+            "fileName": "commented.ts",
+            "source": "// type Client = ReturnType<typeof createClient>;\nexport const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "ReturnType of a type parameter",
+            "fileName": "generic.ts",
+            "source": "export type Result<Factory extends () => unknown> = ReturnType<Factory>;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

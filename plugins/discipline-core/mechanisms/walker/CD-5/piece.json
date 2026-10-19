@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-5",
+  "mechanism": "walker",
+  "clauses": [
+    { "clause": "comments-directives", "settings": { "module": "comments-directives.ts" } }
+  ]
+}

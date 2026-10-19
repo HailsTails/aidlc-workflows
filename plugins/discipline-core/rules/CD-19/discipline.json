@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "id": "CD-19",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "import-boundaries",
+      "summary": "External dependencies confined to wrapping ports at the boundary",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "banned library import",
+            "fileName": "imports-winston.ts",
+            "source": "import winston from \"winston\";\n\nexport const useWinston = (): unknown => winston;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "node: import",
+            "fileName": "reads-file.ts",
+            "source": "import { readFileSync } from \"node:fs\";\n\nexport const read = readFileSync;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "require of a node: module",
+            "fileName": "requires.ts",
+            "source": "export const loaded = require(\"node:path\");\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "project-owned import",
+            "fileName": "own.ts",
+            "source": "import { logger } from \"./logger-port.ts\";\n\nexport const log = logger;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "unlisted library import",
+            "fileName": "other.ts",
+            "source": "import { z } from \"zod\";\n\nexport const schema = z;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "unprefixed fs is not detected",
+            "fileName": "bare-fs.ts",
+            "source": "import { readFileSync } from \"fs\";\n\nexport const read = readFileSync;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

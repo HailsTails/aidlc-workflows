@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "id": "CD-43",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "boolean-signatures",
+      "summary": "Booleans are evaluative, not declarative",
+      "mechanisms": [
+        "walker"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "boolean parameter",
+            "fileName": "has-bare-boolean.ts",
+            "source": "export const performAction = (shouldForce: boolean): string => {\n  return shouldForce ? \"forced\" : \"lenient\";\n};\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "boolean return type",
+            "fileName": "has-boolean-return.ts",
+            "source": "export const isPositive = (candidate: number): boolean => candidate > 0;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "boolean property signature",
+            "fileName": "property.ts",
+            "source": "export interface Options {\n  readonly compact: boolean;\n}\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "discriminated union parameter",
+            "fileName": "union.ts",
+            "source": "type ForceMode = { readonly kind: \"force\" } | { readonly kind: \"lenient\" };\nexport const performAction = (mode: ForceMode): string => mode.kind;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "type predicate return",
+            "fileName": "predicate.ts",
+            "source": "export const isItem = (value: unknown): value is string => typeof value === \"string\";\n",
+            "expectedLines": []
+          },
+          {
+            "name": "inferred boolean variable",
+            "fileName": "inferred.ts",
+            "source": "export const ready = 1 > 0;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}
