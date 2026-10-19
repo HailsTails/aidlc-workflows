@@ -23,7 +23,7 @@ The chosen disciplines are the `cd-NNN-*.md` files that were copied (CD-1, CD-3 
 
 A CD that a record file names but whose rule file was not copied (for example CD-15, when only CD-1, CD-3 and CD-46 were copied) is expected: select it in step 2 like the others. Stop and ask the human only if a named CD is one of CD-35 to CD-38.
 
-Old code often holds CD-1 `any` the old route never checked. Core flags it in step 3, and it must be fixed: CD-1 refuses exceptions.
+Old code often holds CD-1 `any` the old route never checked. Core flags it in step 3; it is new debt, so fix it or record it only after the human approves (step 3), and any further `any` still fails.
 
 ## 2. Install core and select the clauses
 
@@ -70,7 +70,6 @@ An old record file is a JSON array of entries, each listing one or more files:
 - Each file in a `.constitution-authorised-locations/cd-<id>.json` entry that core now flags becomes one `authorised-location`.
 - A listed file core does not flag gets no record: a record that exempts nothing is reported `stale` and fails the run.
 - A finding in a file no old record lists is new debt: fix it, or record it only after the human approves.
-- CD-1 refuses exceptions. A CD-1 finding must be fixed. Stop and ask the human if it cannot be fixed in this change.
 
 Each converted record is imported: give it `provenance` naming the old record instead of a `whyChain`, and keep the old `reason`:
 
@@ -161,7 +160,7 @@ Stop and ask the human if anything outside the old trial uses the copied tools o
 | What is installed | rule text only; checks were the repository's own linters, plus an optional copied tools tree | one folder that runs every selected check |
 | Selection | whole CD files, read by an agent; a check ran only if wired by hand | clauses in `disciplines.json`; every mechanical clause of an adopted discipline must be selected |
 | First-adoption debt | inherited debt could be recorded without a why-chain | imported with `provenance` and no `whyChain`, accepted only while unchanged since `--base-revision`; new or edited exceptions need a five-step `whyChain` |
-| CD-1 | no exemptions | no exemptions (`"exceptions": "refused"`) |
+| CD-1 | no exemptions | exempted like every other discipline, so existing `any` debt can be recorded |
 | CD-3 flags | merged into the shared `compilerOptions`, wherever they were | set only in a base file not named `tsconfig.json`; any of the seven in a `tsconfig.json` is a finding |
 | Running with debt | the decay check needed a base ref | every run with a file carve-out needs `--base-revision` |
 | Debt decay (CD-46) | optional `rin-harness-carve-out-decay.ts` run | built into every check run with `--base-revision` |
