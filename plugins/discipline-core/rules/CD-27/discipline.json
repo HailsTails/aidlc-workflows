@@ -7,7 +7,7 @@
       "id": "test-body-logic",
       "summary": "Tests are zero-everything — zero logic, zero branches, zero unpredictability",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

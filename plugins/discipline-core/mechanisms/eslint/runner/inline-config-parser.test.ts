@@ -5,27 +5,27 @@ describe("parseInlineConfigComment", () => {
   it.each([
     { text: " eslint-disable ", parsed: { kind: "disable", ruleIds: [] } },
     {
-      text: " eslint-disable rin-discipline/no-class-authoring, no-console -- generated ",
-      parsed: { kind: "disable", ruleIds: ["rin-discipline/no-class-authoring", "no-console"] },
+      text: " eslint-disable discipline/no-class-authoring, no-console -- generated ",
+      parsed: { kind: "disable", ruleIds: ["discipline/no-class-authoring", "no-console"] },
     },
     {
-      text: " eslint-disable-line rin-discipline/no-class-authoring",
-      parsed: { kind: "disable", ruleIds: ["rin-discipline/no-class-authoring"] },
+      text: " eslint-disable-line discipline/no-class-authoring",
+      parsed: { kind: "disable", ruleIds: ["discipline/no-class-authoring"] },
     },
     {
-      text: " eslint-disable-next-line rin-discipline/no-class-authoring",
-      parsed: { kind: "disable", ruleIds: ["rin-discipline/no-class-authoring"] },
+      text: " eslint-disable-next-line discipline/no-class-authoring",
+      parsed: { kind: "disable", ruleIds: ["discipline/no-class-authoring"] },
     },
     {
-      text: ' eslint rin-discipline/no-class-authoring: "off", no-console: 0 ',
-      parsed: { kind: "rule-config", ruleIds: ["rin-discipline/no-class-authoring", "no-console"] },
+      text: ' eslint discipline/no-class-authoring: "off", no-console: 0 ',
+      parsed: { kind: "rule-config", ruleIds: ["discipline/no-class-authoring", "no-console"] },
     },
   ])("parses the comment '$text' as $parsed.kind", ({ text, parsed }) => {
     expect(parseInlineConfigComment({ text })).toEqual(parsed);
   });
 
   it.each([
-    " eslint-enable rin-discipline/no-class-authoring ",
+    " eslint-enable discipline/no-class-authoring ",
     " eslint-enable ",
     " global foo ",
     " globals foo ",
@@ -38,7 +38,7 @@ describe("parseInlineConfigComment", () => {
 
   it("parses an eslint comment whose configuration does not parse as an unparseable rule config", () => {
     expect(
-      parseInlineConfigComment({ text: " eslint rin-discipline/no-class-authoring: [ " }),
+      parseInlineConfigComment({ text: " eslint discipline/no-class-authoring: [ " }),
     ).toEqual({ kind: "unparseable-rule-config" });
   });
 });

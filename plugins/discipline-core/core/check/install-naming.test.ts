@@ -3,13 +3,13 @@ import { identifiersNamedIn, installNamingFindings, reachingSpecifiersIn } from 
 
 describe("identifiersNamedIn", () => {
   it("finds a mechanism id written as a string literal", () => {
-    expect(identifiersNamedIn({ text: 'const mechanism = "walker";\n', identifiers: ["walker", "eslint"] })).toEqual([
-      "walker",
+    expect(identifiersNamedIn({ text: 'const mechanism = "audit";\n', identifiers: ["audit", "eslint"] })).toEqual([
+      "audit",
     ]);
   });
 
   it("does not match an id inside a longer token", () => {
-    expect(identifiersNamedIn({ text: "const walker_count = 1;\n", identifiers: ["walker"] })).toEqual([]);
+    expect(identifiersNamedIn({ text: "const walker_count = 1;\n", identifiers: ["audit"] })).toEqual([]);
   });
 
   it("does not take a longer discipline id for a shorter one", () => {
@@ -20,8 +20,8 @@ describe("identifiersNamedIn", () => {
 describe("reachingSpecifiersIn", () => {
   it("finds an import specifier reaching a mechanism folder", () => {
     expect(
-      reachingSpecifiersIn({ text: 'import { runner } from "../../mechanisms/walker/runner/runner.ts";\n' }),
-    ).toEqual(["../../mechanisms/walker/runner/runner.ts"]);
+      reachingSpecifiersIn({ text: 'import { runner } from "../../mechanisms/audit/runner/runner.ts";\n' }),
+    ).toEqual(["../../mechanisms/audit/runner/runner.ts"]);
   });
 
   it("finds an import specifier reaching a rules folder", () => {
@@ -42,7 +42,7 @@ describe("reachingSpecifiersIn", () => {
 });
 
 const RUN_CHECK_KEY = "../../core/check/run-check.ts";
-const RUNNER_KEY = "../../mechanisms/walker/runner/runner.ts";
+const RUNNER_KEY = "../../mechanisms/audit/runner/runner.ts";
 
 describe("installNamingFindings", () => {
   it("reports a core file naming a mechanism, a runner naming a discipline and a core import reaching a runner", () => {
@@ -50,21 +50,21 @@ describe("installNamingFindings", () => {
       installNamingFindings({
         installRoot: "../..",
         sources: {
-          [RUN_CHECK_KEY]: 'import { runner } from "../../mechanisms/walker/runner/runner.ts";\n',
+          [RUN_CHECK_KEY]: 'import { runner } from "../../mechanisms/audit/runner/runner.ts";\n',
           [RUNNER_KEY]: 'const address = "CD-14#class-syntax";\n',
         },
         disciplineFiles: { "../../rules/CD-14/discipline.json": "{}" },
       }),
     ).toEqual({
       scope: {
-        mechanisms: ["walker"],
+        mechanisms: ["audit"],
         disciplines: ["CD-14"],
         coreFiles: [RUN_CHECK_KEY],
         runnerFiles: [RUNNER_KEY],
       },
-      coreNaming: [{ file: RUN_CHECK_KEY, named: ["walker"] }],
+      coreNaming: [{ file: RUN_CHECK_KEY, named: ["audit"] }],
       runnerNaming: [{ file: RUNNER_KEY, named: ["CD-14"] }],
-      coreReach: [{ file: RUN_CHECK_KEY, specifiers: ["../../mechanisms/walker/runner/runner.ts"] }],
+      coreReach: [{ file: RUN_CHECK_KEY, specifiers: ["../../mechanisms/audit/runner/runner.ts"] }],
     });
   });
 
@@ -74,7 +74,7 @@ describe("installNamingFindings", () => {
         installRoot: "../..",
         sources: {
           [RUN_CHECK_KEY]: "export const run = 1;\n",
-          [RUNNER_KEY]: 'const mechanism = "walker";\n',
+          [RUNNER_KEY]: 'const mechanism = "audit";\n',
         },
         disciplineFiles: { "../../rules/CD-14/discipline.json": "{}" },
       }),

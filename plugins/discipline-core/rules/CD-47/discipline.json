@@ -7,7 +7,7 @@
       "id": "hermetic-git-spawns",
       "summary": "Tests are hermetic — no real side effects on anything real",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

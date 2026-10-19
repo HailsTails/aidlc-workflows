@@ -7,7 +7,7 @@
       "id": "boolean-signatures",
       "summary": "Booleans are evaluative, not declarative",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

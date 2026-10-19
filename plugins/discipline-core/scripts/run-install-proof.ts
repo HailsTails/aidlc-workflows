@@ -41,7 +41,7 @@ type ProofContext = {
 
 const SUCCEEDED: Result<null, string> = { outcome: "ok", value: null };
 const COMMONJS_MANIFEST = '{ "type": "commonjs" }\n';
-const INSTALL_DIRECTORY = [".rin", "dc"];
+const INSTALL_DIRECTORY = ["tools", "discipline-core"];
 const TEMPORARY_PREFIX = "discipline-core-install-proof-";
 const GIT_IDENTITY = ["-c", "user.name=proof", "-c", "user.email=proof@invalid", "-c", "commit.gpgsign=false"];
 const NPM_INSTALL = ["install", "--no-audit", "--no-fund", "--ignore-scripts"];

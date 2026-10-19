@@ -7,7 +7,7 @@
       "id": "strict",
       "summary": "Strict mode flags inherited, never overridden",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"
@@ -58,7 +58,7 @@
       "id": "no-unchecked-indexed-access",
       "summary": "Strict mode flags inherited, never overridden",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"
@@ -109,7 +109,7 @@
       "id": "exact-optional-property-types",
       "summary": "Strict mode flags inherited, never overridden",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"
@@ -160,7 +160,7 @@
       "id": "no-implicit-override",
       "summary": "Strict mode flags inherited, never overridden",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"
@@ -211,7 +211,7 @@
       "id": "no-fallthrough-cases-in-switch",
       "summary": "Strict mode flags inherited, never overridden",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"
@@ -262,7 +262,7 @@
       "id": "no-property-access-from-index-signature",
       "summary": "Strict mode flags inherited, never overridden",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"
@@ -313,7 +313,7 @@
       "id": "use-unknown-in-catch-variables",
       "summary": "Strict mode flags inherited, never overridden",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

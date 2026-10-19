@@ -16,7 +16,7 @@ const EXCEPTIONS_PATH = "/repo/discipline-exceptions.json";
 
 const SELECTION: Selection = {
   selected: [
-    { address: clauseAddressSchema.parse("CD-14#class-syntax"), mechanism: mechanismIdSchema.parse("walker"), exceptions: "allowed" },
+    { address: clauseAddressSchema.parse("CD-14#class-syntax"), mechanism: mechanismIdSchema.parse("audit"), exceptions: "allowed" },
     { address: clauseAddressSchema.parse("team/TM-1#no-tmp-files"), mechanism: mechanismIdSchema.parse("eslint"), exceptions: "allowed" },
   ],
   uncovered: [],
@@ -25,12 +25,12 @@ const SELECTION: Selection = {
 const WHY = {
   why: "why is the exception taken",
   because: "the matcher cannot express the tracker id",
-  evidence: "plugins/rin/tools/rin-harness-why-chain.ts:9",
+  evidence: "tools/why-chain-check.ts:9",
 };
 
 const CHAIN = {
   whys: [WHY, WHY, WHY, WHY, WHY],
-  rootCause: "the walker's matcher predates the tracker id format",
+  rootCause: "the audit's matcher predates the tracker id format",
   owner: "capture 01a0b421",
 };
 
@@ -137,7 +137,7 @@ describe("createExceptionRepository", () => {
       outcome: "ok",
       value: {
         records: [
-          { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/factory.ts", reason: LOCATION.reason, provenance: LOCATION.provenance },
+          { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/factory.ts", reason: LOCATION.reason, provenance: LOCATION.provenance },
           {
             kind: "clause-wide-carve-out",
             clause: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" },
@@ -180,7 +180,7 @@ describe("parseExceptionEntries records", () => {
   it("parses an authorised location with the mechanism copied from the selection", () => {
     expect(parseExceptionEntries({ entries: [LOCATION], selection: SELECTION })).toEqual({
       records: [
-        { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/factory.ts", reason: LOCATION.reason, provenance: LOCATION.provenance },
+        { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/factory.ts", reason: LOCATION.reason, provenance: LOCATION.provenance },
       ],
       invalid: [],
     });
@@ -192,7 +192,7 @@ describe("parseExceptionEntries records", () => {
         {
           kind: "file-carve-out",
           clause: CLASS_SYNTAX,
-          mechanism: "walker",
+          mechanism: "audit",
           file: "src/legacy.ts",
           reason: FILE_CARVE_OUT.reason,
           whyChain: CHAIN,
@@ -412,12 +412,12 @@ describe("canonical exception evidence", () => {
     ] }) });
 
     expect(exceptionReading).toEqual({ outcome: "ok", value: { records: [
-      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/authorisation-chain.ts", reason: FICTIONAL_LOCATION_INPUT.reason, whyChain: CHAIN },
-      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/authorisation-provenance.ts", reason: FICTIONAL_LOCATION_INPUT.reason, provenance: { kind: "existing-authorisation", source: FICTIONAL_AUTHORISATION_PROVENANCE.source } },
-      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/authorisation-both.ts", reason: FICTIONAL_LOCATION_INPUT.reason, whyChain: CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
-      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/legacy.ts", reason: FILE_CARVE_OUT.reason, whyChain: CHAIN },
-      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/debt-provenance.ts", reason: FILE_CARVE_OUT.reason, provenance: FICTIONAL_DEBT_PROVENANCE },
-      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/debt-both.ts", reason: FILE_CARVE_OUT.reason, whyChain: CHAIN, provenance: FICTIONAL_DEBT_PROVENANCE },
+      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/authorisation-chain.ts", reason: FICTIONAL_LOCATION_INPUT.reason, whyChain: CHAIN },
+      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/authorisation-provenance.ts", reason: FICTIONAL_LOCATION_INPUT.reason, provenance: { kind: "existing-authorisation", source: FICTIONAL_AUTHORISATION_PROVENANCE.source } },
+      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/authorisation-both.ts", reason: FICTIONAL_LOCATION_INPUT.reason, whyChain: CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
+      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/legacy.ts", reason: FILE_CARVE_OUT.reason, whyChain: CHAIN },
+      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/debt-provenance.ts", reason: FILE_CARVE_OUT.reason, provenance: FICTIONAL_DEBT_PROVENANCE },
+      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/debt-both.ts", reason: FILE_CARVE_OUT.reason, whyChain: CHAIN, provenance: FICTIONAL_DEBT_PROVENANCE },
     ], invalid: [] } });
   });
 
@@ -468,8 +468,8 @@ describe("canonical exception evidence", () => {
       { ...FILE_CARVE_OUT, file: FICTIONAL_LOCATION_INPUT.file, provenance: FICTIONAL_DEBT_PROVENANCE },
     ] }) })).toEqual({ outcome: "ok", value: {
       records: [
-        { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "walker", file: FICTIONAL_LOCATION_INPUT.file, reason: FICTIONAL_LOCATION_INPUT.reason, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
-        { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "walker", file: FICTIONAL_LOCATION_INPUT.file, reason: FILE_CARVE_OUT.reason, provenance: FICTIONAL_DEBT_PROVENANCE },
+        { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: FICTIONAL_LOCATION_INPUT.file, reason: FICTIONAL_LOCATION_INPUT.reason, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
+        { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: FICTIONAL_LOCATION_INPUT.file, reason: FILE_CARVE_OUT.reason, provenance: FICTIONAL_DEBT_PROVENANCE },
       ],
       invalid: [
         { index: 0, problem: { kind: "evidence-refused", detail: expect.any(String) } },
@@ -494,7 +494,7 @@ describe("non-exemptibility at the canonical boundary, for a clause whose discip
   ])("refuses an adopted any clause for $kind", (entry) => {
     expect(readCanonicalExceptions({
       text: JSON.stringify({ version: 1, exceptions: [entry] }),
-      selection: { selected: [{ address: clauseAddressSchema.parse("CD-1#any-cast"), mechanism: mechanismIdSchema.parse("walker"), exceptions: "refused" }], uncovered: [] },
+      selection: { selected: [{ address: clauseAddressSchema.parse("CD-1#any-cast"), mechanism: mechanismIdSchema.parse("audit"), exceptions: "refused" }], uncovered: [] },
     })).toEqual({ outcome: "ok", value: { records: [], invalid: [
       { index: 0, problem: { kind: "non-exemptible-clause", clause: { ruleSet: "shared", discipline: "CD-1", clause: "any-cast" } } },
     ] } });

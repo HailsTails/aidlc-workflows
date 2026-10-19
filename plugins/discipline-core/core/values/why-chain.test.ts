@@ -4,10 +4,10 @@ import { whyChainSchema } from "./why-chain.ts";
 const WHY = {
   why: "why is the exception taken",
   because: "the matcher cannot express the tracker id",
-  evidence: "plugins/rin/tools/rin-harness-why-chain.ts:9",
+  evidence: "tools/why-chain-check.ts:9",
 };
 
-const ROOT_CAUSE = "the walker's matcher predates the tracker id format";
+const ROOT_CAUSE = "the audit's matcher predates the tracker id format";
 
 const CHAIN = {
   whys: [WHY, WHY, WHY, WHY, WHY],
@@ -56,7 +56,7 @@ describe("whyChainSchema accepts a complete chain", () => {
     "no timeline was set for the migration",
     "the matcher outlived its naming scheme, an existing convention nobody revisited when the rule landed",
     "the port was introduced under a deadline that has since passed, and the temporary shape was never revisited",
-    "the walker predates the rule and was left out of scope by the migration that introduced it",
+    "the audit predates the rule and was left out of scope by the migration that introduced it",
     "the fixture shares a module-level cache, so the second case reads the first's state and the test was failing only in suite order",
   ])("accepts the root cause %j, which only resembles a restatement", (rootCause) => {
     expect(whyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(true);

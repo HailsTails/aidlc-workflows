@@ -7,7 +7,7 @@
       "id": "import-boundaries",
       "summary": "External dependencies confined to wrapping ports at the boundary",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

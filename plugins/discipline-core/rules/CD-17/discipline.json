@@ -7,7 +7,7 @@
       "id": "clock-sources",
       "summary": "Clock is the only time source",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

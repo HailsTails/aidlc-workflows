@@ -6,13 +6,13 @@ Iteration is a transformation, expressed with `map`, `reduce`, `flatMap`, `filte
 
 **Async stream consumption is iteration this rule does not reach.** Draining an `AsyncIterable` — pulling `await iterator.next()` until exhaustion, or the `for await…of` that desugars to it — is permitted at sites declared as authorised locations for CD-15. The functional forms cannot express it: `map`/`reduce`/`flatMap` over an `AsyncIterable` require materialising the whole stream, which destroys the bounded-residency property that streaming exists to provide. This is a structural fact about the language, not debt — a drain loop at a declared site is fully compliant, carries no paydown obligation, and takes an authorised-location entry, never a carve-out. Everything the rule does reach still binds inside such a loop: the body is a transformation, accumulator updates are whole-value replacements rather than in-place mutation, and synchronous iteration over materialised collections stays functional.
 
-The rule above is quoted verbatim from `cd-015-no-for-of.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-15#loops` | walker | `for...of`, `for await`, counted `for` and `while` loops |
+| `CD-15#loops` | audit | `for...of`, `for await`, counted `for` and `while` loops |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

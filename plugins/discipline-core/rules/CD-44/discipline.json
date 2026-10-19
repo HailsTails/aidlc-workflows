@@ -7,7 +7,7 @@
       "id": "parameter-mutation",
       "summary": "Functions must not mutate fields of parameters they receive",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

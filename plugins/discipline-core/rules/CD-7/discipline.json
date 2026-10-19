@@ -7,7 +7,7 @@
       "id": "categorical-paths",
       "summary": "No categorical filenames or folder names",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

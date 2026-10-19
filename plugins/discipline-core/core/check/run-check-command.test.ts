@@ -31,7 +31,7 @@ const CLASS_SYNTAX_DEFINITION = {
   kind: "mechanical",
   id: "class-syntax",
   summary: "no class syntax",
-  mechanisms: ["walker"],
+  mechanisms: ["audit"],
   anchor: { kind: "keyword", keyword: "class" },
   cases: {
     flag: [{ name: "flagged", fileName: "src/a.ts", source: "class A {}\n", expectedLines: [1] }],
@@ -46,21 +46,21 @@ const NOTHING_SELECTED: Readonly<Record<string, FakeFile>> = {
 
 const CLASS_SYNTAX_SELECTED: Readonly<Record<string, FakeFile>> = {
   "/repo/disciplines.json": presentFile({
-    text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } }),
+    text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } }),
   }),
   "/repo/discipline-exceptions.json": ABSENT_FILE,
   "/install/rules/CD-14/discipline.json": presentFile({
     text: JSON.stringify({ version: 1, id: "CD-14", clauses: [CLASS_SYNTAX_DEFINITION] }),
   }),
-  "/install/mechanisms/walker/CD-14/piece.json": presentFile({
+  "/install/mechanisms/audit/CD-14/piece.json": presentFile({
     text: JSON.stringify({
       version: 1,
       discipline: "CD-14",
-      mechanism: "walker",
+      mechanism: "audit",
       clauses: [{ clause: "class-syntax", settings: { module: "class-syntax.ts" } }],
     }),
   }),
-  "/install/mechanisms/walker/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
+  "/install/mechanisms/audit/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
   "/repo/src/a.ts": presentFile({ text: "class A {}\n" }),
 };
 
@@ -75,9 +75,9 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","discipline-exceptions.json"]': "/repo/discipline-exceptions.json",
   '["/repo","src/a.ts"]': "/repo/src/a.ts",
   '["/install","rules","CD-14","discipline.json"]': "/install/rules/CD-14/discipline.json",
-  '["/install","mechanisms","walker","CD-14","piece.json"]': "/install/mechanisms/walker/CD-14/piece.json",
-  '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
-  '["/install","mechanisms","walker","runner","runner.ts"]': "/install/mechanisms/walker/runner/runner.ts",
+  '["/install","mechanisms","audit","CD-14","piece.json"]': "/install/mechanisms/audit/CD-14/piece.json",
+  '["/install","mechanisms","audit","CD-14"]': "/install/mechanisms/audit/CD-14",
+  '["/install","mechanisms","audit","runner","runner.ts"]': "/install/mechanisms/audit/runner/runner.ts",
 };
 
 const FILE_PATHS: Readonly<Record<string, string>> = {
@@ -180,7 +180,7 @@ describe("runCheckCommand", () => {
     );
 
     expect(outputOf({ process: processPort })).toEqual({
-      writes: [[{ text: "findings (1)\nCD-14#class-syntax walker src/a.ts:3:0 class A {}\nverdict: fail\n" }]],
+      writes: [[{ text: "findings (1)\nCD-14#class-syntax audit src/a.ts:3:0 class A {}\nverdict: fail\n" }]],
       exits: [[{ code: 1 }]],
     });
   });
@@ -193,7 +193,7 @@ describe("runCheckCommand", () => {
     );
 
     expect(vi.mocked(modules.load).mock.calls).toEqual([
-      [{ path: "/install/mechanisms/walker/runner/runner.ts" }],
+      [{ path: "/install/mechanisms/audit/runner/runner.ts" }],
     ]);
   });
 

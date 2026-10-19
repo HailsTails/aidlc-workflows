@@ -4,13 +4,13 @@
 
 A unit test fakes everything outside the unit under test, injected through the unit's own seam — no real I/O, no real collaborators. The test exercises exactly one unit's logic, with every dependency a controlled fake, so a failure points at that unit and nowhere else.
 
-The rule above is quoted verbatim from `cd-025-fake-everything-outside-unit.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-25#dependency-isolation` | walker | `vi.fn(<implementation>)` and `.mockImplementation(...)` |
+| `CD-25#dependency-isolation` | audit | `vi.fn(<implementation>)` and `.mockImplementation(...)` |
 
 ## What the check flags
 - Test files only: `*.test.ts` and `*.test.tsx`. Generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

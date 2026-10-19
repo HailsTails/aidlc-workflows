@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "discipline": "CD-7a",
-  "mechanism": "walker",
-  "clauses": [
-    { "clause": "factory-return-types", "settings": { "module": "factory-return-types.ts" } }
-  ]
-}

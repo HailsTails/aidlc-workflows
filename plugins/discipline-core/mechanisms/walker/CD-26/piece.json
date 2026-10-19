@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "discipline": "CD-26",
-  "mechanism": "walker",
-  "clauses": [
-    { "clause": "module-mocking", "settings": { "module": "module-mocking.ts" } }
-  ]
-}

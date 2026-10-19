@@ -16,9 +16,9 @@ import {
 
 const ROOT = absolutePathSchema.parse("/install");
 const CD_14 = disciplineIdSchema.parse("CD-14");
-const WALKER = mechanismIdSchema.parse("walker");
+const WALKER = mechanismIdSchema.parse("audit");
 const DISCIPLINE_PATH = "/install/rules/CD-14/discipline.json";
-const PIECE_PATH = "/install/mechanisms/walker/CD-14/piece.json";
+const PIECE_PATH = "/install/mechanisms/audit/CD-14/piece.json";
 
 const fileTextReading = (request: { readonly text: string }): FileTextPort => ({
   read: vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: request.text }),
@@ -62,7 +62,7 @@ const CLASS_SYNTAX = {
   kind: "mechanical",
   id: "class-syntax",
   summary: "no class syntax",
-  mechanisms: ["walker", "eslint"],
+  mechanisms: ["audit", "eslint"],
   anchor: { kind: "keyword", keyword: "class" },
   exceptions: "allowed",
   cases: { flag: [FLAG_CASE], allow: [ALLOW_CASE] },
@@ -84,7 +84,7 @@ const DISCIPLINE = {
 const PIECE = {
   version: 1,
   discipline: "CD-14",
-  mechanism: "walker",
+  mechanism: "audit",
   clauses: [{ clause: "class-syntax", settings: { module: "class-syntax.ts" } }],
 };
 
@@ -325,7 +325,7 @@ describe("readPieceFile", () => {
     });
 
     expect(fileText.read).toHaveBeenCalledWith({
-      path: "/install/mechanisms/walker/CD-14/piece.json",
+      path: "/install/mechanisms/audit/CD-14/piece.json",
     });
   });
 

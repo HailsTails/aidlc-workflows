@@ -8,7 +8,7 @@ import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import { projectMechanism, runMechanism } from "./mechanism-dispatch.ts";
 
-const WALKER = mechanismIdSchema.parse("walker");
+const WALKER = mechanismIdSchema.parse("audit");
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
 const CLASS_SYNTAX = clauseAddressSchema.parse("CD-14#class-syntax");
@@ -18,7 +18,7 @@ const ABSTRACT_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause:
 const CLASS_SYNTAX_CLAUSE: RunnerClause = {
   address: CLASS_SYNTAX,
   anchor: { kind: "keyword", keyword: "class" },
-  pieceRoot: "/install/mechanisms/walker/CD-14",
+  pieceRoot: "/install/mechanisms/audit/CD-14",
   settings: { module: "class-syntax.ts" },
 };
 
@@ -65,7 +65,7 @@ describe("runMechanism with a standalone runner", () => {
     ).resolves.toEqual({
       outcome: "ok",
       value: {
-        mechanism: "walker",
+        mechanism: "audit",
         hits: [HIT_IN_A],
         nativeExceptions: [],
         projectedKinds: [],
@@ -79,7 +79,7 @@ describe("runMechanism with a standalone runner", () => {
       dispatchRun({ runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [] }) }) }),
     ).resolves.toEqual({
       outcome: "ok",
-      value: { mechanism: "walker", hits: [], nativeExceptions: [], projectedKinds: [], projection: "none" },
+      value: { mechanism: "audit", hits: [], nativeExceptions: [], projectedKinds: [], projection: "none" },
     });
   });
 

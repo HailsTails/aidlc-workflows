@@ -1,6 +1,6 @@
 # Adopting discipline core
 
-This page takes a TypeScript repository from nothing to a checked, passing run. Do the steps in order. Every command is run from the root of the repository being checked, which this page calls `<repo>`. Nothing here needs AIDLC, rin or any agent harness.
+This page takes a TypeScript repository from nothing to a checked, passing run. Do the steps in order. Every command is run from the root of the repository being checked, which this page calls `<repo>`. Nothing here needs AIDLC or any agent harness.
 
 Discipline core reads `disciplines.json` in `<repo>`, runs the selected disciplines' checks over every git-tracked file, applies the exceptions in `discipline-exceptions.json`, and prints one report ending in `verdict: pass` or `verdict: fail`.
 
@@ -32,18 +32,18 @@ git -C /tmp/discipline-core-source checkout <pinned-sha>
 
 On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
-Copy `package.json`, `core/`, the walker runner, and one rule folder plus one piece folder per discipline you will select (step 4 lists them; copying all of them is fine):
+Copy `package.json`, `core/`, the audit runner, and one rule folder plus one piece folder per discipline you will select (step 4 lists them; copying all of them is fine):
 
 ```bash
 SRC=/tmp/discipline-core-source/plugins/discipline-core
 DEST=tools/discipline-core
-mkdir -p "$DEST/mechanisms/walker" "$DEST/rules"
+mkdir -p "$DEST/mechanisms/audit" "$DEST/rules"
 cp "$SRC/package.json" "$DEST/"
 cp -r "$SRC/core" "$DEST/"
-cp -r "$SRC/mechanisms/walker/runner" "$DEST/mechanisms/walker/"
+cp -r "$SRC/mechanisms/audit/runner" "$DEST/mechanisms/audit/"
 for ID in CD-1 CD-2 CD-3 CD-5 CD-6 CD-7 CD-7a CD-8 CD-10 CD-14 CD-15 CD-17 CD-19 CD-23 CD-25 CD-26 CD-27 CD-43 CD-44 CD-47; do
   cp -r "$SRC/rules/$ID" "$DEST/rules/"
-  cp -r "$SRC/mechanisms/walker/$ID" "$DEST/mechanisms/walker/"
+  cp -r "$SRC/mechanisms/audit/$ID" "$DEST/mechanisms/audit/"
 done
 find "$DEST" -name '*.test.ts' -delete
 ```
@@ -65,22 +65,22 @@ Add `tools/discipline-core/node_modules/` to `<repo>/.gitignore`, and commit `to
 
 ## 4. Write disciplines.json
 
-Create `<repo>/disciplines.json`. Map every clause you adopt to the mechanism `walker`, and exclude the vendored core so it is not checked as your code:
+Create `<repo>/disciplines.json`. Map every clause you adopt to the mechanism `audit`, and exclude the vendored core so it is not checked as your code:
 
 ```json
 {
   "version": 1,
   "ruleSets": {},
   "clauses": {
-    "CD-14#class-syntax": "walker",
-    "CD-15#loops": "walker",
-    "CD-17#clock-sources": "walker"
+    "CD-14#class-syntax": "audit",
+    "CD-15#loops": "audit",
+    "CD-17#clock-sources": "audit"
   },
   "exclude": ["tools/discipline-core"]
 }
 ```
 
-- `clauses` keys are clause addresses from the rules pages; the value is always `walker` for the disciplines listed in step 3.
+- `clauses` keys are clause addresses from the rules pages; the value is always `audit` for the disciplines listed in step 3.
 - Selecting one clause of a discipline adopts the whole discipline: any of its other mechanical clauses you leave out are reported as `uncovered` and fail the run. CD-3 has seven clauses; select all seven or none.
 - `exclude` lists folders or exact files, as repository paths with forward slashes; an entry containing `*` is refused, because globs are not supported. A folder entry excludes everything under it. Use it for generated or third-party code. `node_modules`, `dist`, `build`, `coverage`, `.git` and a top-level `vendor` folder are skipped already.
 - `ruleSets` stays `{}` unless you write disciplines of your own; see [docs/adding-a-discipline-or-mechanism.md](docs/adding-a-discipline-or-mechanism.md).
@@ -130,7 +130,7 @@ The report prints only the sections that have entries, each with its count, then
 
 ```text
 <clause> <mechanism> <file>:<line>:<column> <snippet>
-CD-15#loops walker src/basket.ts:15:0 for (const line of this.lines) {
+CD-15#loops audit src/basket.ts:15:0 for (const line of this.lines) {
 ```
 
 Lines are 1-based and columns 0-based. The run passes only when every section except `excluded` and `exempted` is empty. The sections are:
@@ -185,13 +185,13 @@ Before, `node tools/discipline-core/core/check/check-command.ts --repo .` prints
 excluded (1)
 generated
 findings (7)
-CD-14#class-syntax walker src/basket.ts:5:7 export class Basket {
-CD-17#clock-sources walker src/basket.ts:7:0 private openedAt = Date.now();
-CD-2#cast-expressions walker src/basket.ts:10:20 entry as Line);   }    total(): string {     let pence = 0;     for (const line …
-CD-15#loops walker src/basket.ts:15:0 for (const line of this.lines) {
-CD-17#clock-sources walker src/basket.ts:22:0 return Date.now() - this.openedAt;
-CD-7#categorical-paths walker src/utils/format.ts:1:0 forbidden categorical folder: utils
-CD-23#export-test-sibling walker src/utils/format.ts:1:0 missing co-located *.test.ts(x) sibling
+CD-14#class-syntax audit src/basket.ts:5:7 export class Basket {
+CD-17#clock-sources audit src/basket.ts:7:0 private openedAt = Date.now();
+CD-2#cast-expressions audit src/basket.ts:10:20 entry as Line);   }    total(): string {     let pence = 0;     for (const line …
+CD-15#loops audit src/basket.ts:15:0 for (const line of this.lines) {
+CD-17#clock-sources audit src/basket.ts:22:0 return Date.now() - this.openedAt;
+CD-7#categorical-paths audit src/utils/format.ts:1:0 forbidden categorical folder: utils
+CD-23#export-test-sibling audit src/utils/format.ts:1:0 missing co-located *.test.ts(x) sibling
 verdict: fail
 ```
 
@@ -201,13 +201,13 @@ The fix replaces the `Basket` class with functions over a readonly `Basket` valu
 excluded (1)
 generated
 exempted (1)
-CD-17#clock-sources walker src/clock.ts:3:0 export const createSystemClock = (): Clock => ({ now: () => Date.now() }); exempted by authorised-location
+CD-17#clock-sources audit src/clock.ts:3:0 export const createSystemClock = (): Clock => ({ now: () => Date.now() }); exempted by authorised-location
 verdict: pass
 ```
 
 ## Known gaps
 
-- Only the walker mechanism is covered here. The ESLint mechanism ships for CD-14 only; see [README.md](README.md#adopting-the-eslint-mechanism).
+- Only the audit mechanism is covered here. The ESLint mechanism ships for CD-14 only; see [README.md](README.md#adopting-the-eslint-mechanism).
 - Each check flags exactly what its rules page says and no more. Where a rule asks for more than its check can see, the page says which part is left to review.
 - A snippet is the text the check reports; some checks report a fixed-width window that runs across lines, as CD-2 does above.
 - The disciplines' IDs and rule text come from one team's code-discipline set. Selecting a subset is supported; editing a shipped rule is not. Write your own rule set for different rules.

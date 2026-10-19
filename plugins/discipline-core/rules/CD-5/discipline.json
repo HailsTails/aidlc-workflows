@@ -7,7 +7,7 @@
       "id": "comments-directives",
       "summary": "No comments, no JSDoc",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

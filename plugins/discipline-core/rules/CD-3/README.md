@@ -4,19 +4,19 @@
 
 Every unit compiles under one shared, maximally-strict compiler configuration; no unit weakens it locally. A relaxed flag in one corner (disabling strictness, unchecked indexing, exact-optional handling, catch-variable typing) creates a zone where the type system quietly stops protecting you, and that zone spreads. Strictness is inherited, never overridden.
 
-The rule above is quoted verbatim from `cd-003-strict-mode-flags.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-3#strict` | walker | `strict` is set in a `tsconfig.json` |
-| `CD-3#no-unchecked-indexed-access` | walker | `noUncheckedIndexedAccess` is set |
-| `CD-3#exact-optional-property-types` | walker | `exactOptionalPropertyTypes` is set |
-| `CD-3#no-implicit-override` | walker | `noImplicitOverride` is set |
-| `CD-3#no-fallthrough-cases-in-switch` | walker | `noFallthroughCasesInSwitch` is set |
-| `CD-3#no-property-access-from-index-signature` | walker | `noPropertyAccessFromIndexSignature` is set |
-| `CD-3#use-unknown-in-catch-variables` | walker | `useUnknownInCatchVariables` is set |
+| `CD-3#strict` | audit | `strict` is set in a `tsconfig.json` |
+| `CD-3#no-unchecked-indexed-access` | audit | `noUncheckedIndexedAccess` is set |
+| `CD-3#exact-optional-property-types` | audit | `exactOptionalPropertyTypes` is set |
+| `CD-3#no-implicit-override` | audit | `noImplicitOverride` is set |
+| `CD-3#no-fallthrough-cases-in-switch` | audit | `noFallthroughCasesInSwitch` is set |
+| `CD-3#no-property-access-from-index-signature` | audit | `noPropertyAccessFromIndexSignature` is set |
+| `CD-3#use-unknown-in-catch-variables` | audit | `useUnknownInCatchVariables` is set |
 
 ## What the check flags
 - `tsconfig.json` files, named exactly, at any depth. `tsconfig.base.json` and other names are not read. Generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

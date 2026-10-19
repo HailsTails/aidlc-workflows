@@ -97,7 +97,7 @@ describe("installPaths", () => {
   });
 
   it("fails on a placeholder it does not know", () => {
-    expect(installPaths({ installList: UNKNOWN_PLACEHOLDER_LIST, disciplineId: "CD-14", mechanism: "walker" })).toEqual({
+    expect(installPaths({ installList: UNKNOWN_PLACEHOLDER_LIST, disciplineId: "CD-14", mechanism: "audit" })).toEqual({
       outcome: "failed",
       error: { kind: "unresolved-placeholder", path: "rules/<RuleSet>/" },
     });
@@ -133,39 +133,39 @@ describe("entryDisposition, over the README's left-out names", () => {
 describe("judgedStep", () => {
   it("passes on the expected exit and a line containing the expected text", () => {
     expect(
-      judgedStep({ label: "walker check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 1, output: "x\nverdict: fail\n" } }),
-    ).toEqual({ outcome: "ok", value: 'ok: walker check -> exit 1, "verdict: fail"' });
+      judgedStep({ label: "audit check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 1, output: "x\nverdict: fail\n" } }),
+    ).toEqual({ outcome: "ok", value: 'ok: audit check -> exit 1, "verdict: fail"' });
   });
 
   it("fails on an exit mismatch, carrying the captured output", () => {
     expect(
-      judgedStep({ label: "walker check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 0, output: "verdict: fail\n" } }),
-    ).toEqual({ outcome: "failed", error: 'FAIL: walker check: expected exit 1 and "verdict: fail", got exit 0\nverdict: fail\n' });
+      judgedStep({ label: "audit check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 0, output: "verdict: fail\n" } }),
+    ).toEqual({ outcome: "failed", error: 'FAIL: audit check: expected exit 1 and "verdict: fail", got exit 0\nverdict: fail\n' });
   });
 
   it("fails when the expected text is missing", () => {
     expect(
-      judgedStep({ label: "walker check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 1, output: "verdict: pass\n" } }),
-    ).toEqual({ outcome: "failed", error: 'FAIL: walker check: expected exit 1 and "verdict: fail", got exit 1\nverdict: pass\n' });
+      judgedStep({ label: "audit check", expectation: CONTAINS_FAIL, run: { outcome: "exited", exitCode: 1, output: "verdict: pass\n" } }),
+    ).toEqual({ outcome: "failed", error: 'FAIL: audit check: expected exit 1 and "verdict: fail", got exit 1\nverdict: pass\n' });
   });
 
   it("passes an empty-output expectation on no output", () => {
-    expect(judgedStep({ label: "walker project", expectation: EMPTY_OUTPUT, run: { outcome: "exited", exitCode: 0, output: "" } })).toEqual({
+    expect(judgedStep({ label: "audit project", expectation: EMPTY_OUTPUT, run: { outcome: "exited", exitCode: 0, output: "" } })).toEqual({
       outcome: "ok",
-      value: 'ok: walker project -> exit 0, ""',
+      value: 'ok: audit project -> exit 0, ""',
     });
   });
 
   it("fails an empty-output expectation on any output", () => {
     expect(
-      judgedStep({ label: "walker project", expectation: EMPTY_OUTPUT, run: { outcome: "exited", exitCode: 0, output: "a written\n" } }),
-    ).toEqual({ outcome: "failed", error: 'FAIL: walker project: expected exit 0 and "", got exit 0\na written\n' });
+      judgedStep({ label: "audit project", expectation: EMPTY_OUTPUT, run: { outcome: "exited", exitCode: 0, output: "a written\n" } }),
+    ).toEqual({ outcome: "failed", error: 'FAIL: audit project: expected exit 0 and "", got exit 0\na written\n' });
   });
 
   it("fails a run that did not exit", () => {
-    expect(judgedStep({ label: "walker project", expectation: EMPTY_OUTPUT, run: { outcome: "not-exited", detail: "spawn ENOENT" } })).toEqual({
+    expect(judgedStep({ label: "audit project", expectation: EMPTY_OUTPUT, run: { outcome: "not-exited", detail: "spawn ENOENT" } })).toEqual({
       outcome: "failed",
-      error: 'FAIL: walker project: expected exit 0 and "", but it did not exit: spawn ENOENT',
+      error: 'FAIL: audit project: expected exit 0 and "", but it did not exit: spawn ENOENT',
     });
   });
 });

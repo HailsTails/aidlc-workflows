@@ -2,12 +2,12 @@
   "version": 1,
   "ruleSets": {},
   "clauses": {
-    "CD-2#cast-expressions": "walker",
-    "CD-7#categorical-paths": "walker",
-    "CD-14#class-syntax": "walker",
-    "CD-15#loops": "walker",
-    "CD-17#clock-sources": "walker",
-    "CD-23#export-test-sibling": "walker"
+    "CD-2#cast-expressions": "audit",
+    "CD-7#categorical-paths": "audit",
+    "CD-14#class-syntax": "audit",
+    "CD-15#loops": "audit",
+    "CD-17#clock-sources": "audit",
+    "CD-23#export-test-sibling": "audit"
   },
   "exclude": ["generated"]
 }

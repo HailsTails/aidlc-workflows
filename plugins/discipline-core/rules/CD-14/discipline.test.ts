@@ -36,7 +36,7 @@ const loaded = () =>
   });
 
 describe("CD-14 discipline.json", () => {
-  it("states class syntax as a mechanical clause the walker and ESLint decide at the class keyword", () => {
+  it("states class syntax as a mechanical clause the audit and ESLint decide at the class keyword", () => {
     expect(loaded()).toMatchObject({
       outcome: "ok",
       value: {
@@ -46,7 +46,7 @@ describe("CD-14 discipline.json", () => {
           {
             kind: "mechanical",
             id: "class-syntax",
-            mechanisms: ["walker", "eslint"],
+            mechanisms: ["audit", "eslint"],
             anchor: { kind: "keyword", keyword: "class" },
           },
           { kind: "judgement", id: "library-construction", enforcedBy: "review" },

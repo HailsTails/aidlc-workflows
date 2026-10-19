@@ -24,14 +24,14 @@ const EVERY_NATIVE_KIND = [
     clause: CLASS_SYNTAX,
     file: "src/a.ts",
     line: 4,
-    text: "// eslint-disable-next-line rin-discipline/no-class-authoring",
+    text: "// eslint-disable-next-line discipline/no-class-authoring",
   },
   {
     kind: "inline-rule-config",
     clause: CLASS_SYNTAX,
     file: "src/a.ts",
     line: 1,
-    text: '/* eslint rin-discipline/no-class-authoring: "off" */',
+    text: '/* eslint discipline/no-class-authoring: "off" */',
   },
   {
     kind: "command-line-option",

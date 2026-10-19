@@ -4,13 +4,13 @@
 
 A boolean parameter, field, or return is an evaluative predicate the reader must decode at every call site — `true` for what? Prefer a string-literal or discriminated union that states the meaning in the value itself. Booleans that name a state or mode hide that meaning behind a bare truth value.
 
-The rule above is quoted verbatim from `cd-043-booleans-are-evaluative.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-43#boolean-signatures` | walker | a boolean type in a parameter, property signature or return |
+| `CD-43#boolean-signatures` | audit | a boolean type in a parameter, property signature or return |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

@@ -4,13 +4,13 @@
 
 A name states the concept the value represents, not its shape or its category. Shorthand (single letters, truncations) and filler words (data, info, value, result, manager, handler) force the reader to reconstruct meaning the name should have carried — at every scope, including callback parameters and destructures. The name is the documentation.
 
-The rule above is quoted verbatim from `cd-006-meaningful-names.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-6#identifier-names` | walker | a binding named from a fixed shorthand or filler list |
+| `CD-6#identifier-names` | audit | a binding named from a fixed shorthand or filler list |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

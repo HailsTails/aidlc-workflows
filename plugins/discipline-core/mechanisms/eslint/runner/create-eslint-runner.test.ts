@@ -44,8 +44,8 @@ const LOOPS_PIECE_ROOT = "/repo/node_modules/discipline-core/mechanisms/eslint/C
 const PLUGIN_MODULE_PATH = "/repo/node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
 const LOOPS_MODULE_PATH = "/repo/node_modules/discipline-core/mechanisms/eslint/CD-15/loops/loops.eslint-plugin.ts";
 const PROJECTION_PATH = "/repo/disciplines.eslint.mjs";
-const RULE_ID = "rin-discipline/no-class-authoring";
-const LOOPS_RULE_ID = "rin-loops/no-for-of";
+const RULE_ID = "discipline/no-class-authoring";
+const LOOPS_RULE_ID = "loops/no-for-of";
 
 const ESLINT = mechanismIdSchema.parse("eslint");
 const CLASS_SYNTAX = clauseAddressSchema.parse("CD-14#class-syntax");
@@ -58,7 +58,7 @@ const FACTORY = repoPathSchema.parse("src/factory.ts");
 const FILES = [FILE_A, FACTORY];
 
 const CLASS_SETTINGS = {
-  pluginNamespace: "rin-discipline",
+  pluginNamespace: "discipline",
   pluginModule: "cd14/cd14.eslint-plugin.ts",
   rule: "no-class-authoring",
 };
@@ -74,7 +74,7 @@ const LOOPS_CLAUSE: RunnerClause = {
   address: FOR_OF,
   anchor: { kind: "keyword", keyword: "for" },
   pieceRoot: LOOPS_PIECE_ROOT,
-  settings: { pluginNamespace: "rin-loops", pluginModule: "loops/loops.eslint-plugin.ts", rule: "no-for-of" },
+  settings: { pluginNamespace: "loops", pluginModule: "loops/loops.eslint-plugin.ts", rule: "no-for-of" },
 };
 
 const CLASS_PLUGIN_MODULE = {
@@ -141,29 +141,29 @@ const ENABLING_PROJECTION = `import piece0 from "./node_modules/discipline-core/
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
 ];
 `;
 
-const ENABLING_PROJECTION_CRLF = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";\r\n\r\nexport default [\r\n  {\r\n    name: "discipline-core/piece/rin-discipline",\r\n    files: ["**/*.{ts,tsx,mts,cts}"],\r\n    plugins: { "rin-discipline": piece0 },\r\n    rules: { "rin-discipline/no-class-authoring": "error" },\r\n  },\r\n];\r\n`;
+const ENABLING_PROJECTION_CRLF = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";\r\n\r\nexport default [\r\n  {\r\n    name: "discipline-core/piece/discipline",\r\n    files: ["**/*.{ts,tsx,mts,cts}"],\r\n    plugins: { "discipline": piece0 },\r\n    rules: { "discipline/no-class-authoring": "error" },\r\n  },\r\n];\r\n`;
 
 const FACTORY_LOCATION_PROJECTION = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
   {
     name: "discipline-core/authorised-location/CD-14#class-syntax/src/factory.ts",
     files: ["src/factory.ts"],
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
 ];
 `;
@@ -172,15 +172,15 @@ const GONE_LOCATION_PROJECTION = `import piece0 from "./node_modules/discipline-
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
   {
     name: "discipline-core/authorised-location/CD-14#class-syntax/src/gone.ts",
     files: ["src/gone.ts"],
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
 ];
 `;
@@ -189,14 +189,14 @@ const CLAUSE_WIDE_PROJECTION = `import piece0 from "./node_modules/discipline-co
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
   {
     name: "discipline-core/clause-wide-carve-out/CD-14#class-syntax",
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
 ];
 `;
@@ -349,7 +349,7 @@ const TWO_RULES_IN_EFFECT = queryOver({
   },
 });
 
-const SHARED_FOR_OF_RULE_ID = "rin-discipline/no-for-of";
+const SHARED_FOR_OF_RULE_ID = "discipline/no-for-of";
 
 const SHARED_MODULE_FOR_OF_CLAUSE: RunnerClause = {
   address: FOR_OF,
@@ -373,10 +373,10 @@ const SHARED_MODULE_PROJECTION = `import piece0 from "./node_modules/discipline-
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error", "rin-discipline/no-for-of": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error", "discipline/no-for-of": "error" },
   },
 ];
 `;
@@ -455,7 +455,7 @@ describe("the governance run, step 1: selected pieces", () => {
             CLASS_CLAUSE,
             {
               ...LOOPS_CLAUSE,
-              settings: { pluginNamespace: "rin-discipline", pluginModule: "loops/loops.eslint-plugin.ts", rule: "no-for-of" },
+              settings: { pluginNamespace: "discipline", pluginModule: "loops/loops.eslint-plugin.ts", rule: "no-for-of" },
             },
           ],
           records: [],
@@ -591,11 +591,11 @@ describe("the governance run, step 3: the projection in effect", () => {
   it("passes plugin-conflict through from the query instance", async () => {
     await expect(
       runnerOver({
-        eslint: eslintOver({ query: failingQuery({ kind: "plugin-conflict", detail: 'Cannot redefine plugin "rin-discipline"' }) }),
+        eslint: eslintOver({ query: failingQuery({ kind: "plugin-conflict", detail: 'Cannot redefine plugin "discipline"' }) }),
       }).run(CLASS_RUN),
     ).resolves.toEqual({
       outcome: "failed",
-      error: { kind: "plugin-conflict", detail: 'Cannot redefine plugin "rin-discipline"' },
+      error: { kind: "plugin-conflict", detail: 'Cannot redefine plugin "discipline"' },
     });
   });
 
@@ -737,7 +737,7 @@ describe("the governance run, step 4: the governance instance", () => {
         {
           repoRoot: "/repo",
           plugins: {
-            "rin-discipline": expect.objectContaining({
+            "discipline": expect.objectContaining({
               rules: expect.objectContaining({ "no-class-authoring": expect.anything() }),
             }),
           },
@@ -856,7 +856,7 @@ describe("the governance run, step 5: messages", () => {
                   messageId: "inline-disable",
                   line: 4,
                   column: 1,
-                  message: "// eslint-disable-next-line rin-discipline/no-class-authoring",
+                  message: "// eslint-disable-next-line discipline/no-class-authoring",
                 },
               ],
             }),
@@ -873,7 +873,7 @@ describe("the governance run, step 5: messages", () => {
             clause: CLASS_SYNTAX_OBJECT,
             file: "src/a.ts",
             line: 4,
-            text: "// eslint-disable-next-line rin-discipline/no-class-authoring",
+            text: "// eslint-disable-next-line discipline/no-class-authoring",
           },
         ],
         projection: "current",
@@ -894,7 +894,7 @@ describe("the governance run, step 5: messages", () => {
                   messageId: "inline-rule-config",
                   line: 1,
                   column: 1,
-                  message: '/* eslint rin-discipline/no-class-authoring: "off" */',
+                  message: '/* eslint discipline/no-class-authoring: "off" */',
                 },
               ],
             }),
@@ -911,7 +911,7 @@ describe("the governance run, step 5: messages", () => {
             clause: CLASS_SYNTAX_OBJECT,
             file: "src/a.ts",
             line: 1,
-            text: '/* eslint rin-discipline/no-class-authoring: "off" */',
+            text: '/* eslint discipline/no-class-authoring: "off" */',
           },
         ],
         projection: "current",
@@ -960,7 +960,7 @@ describe("conform", () => {
           expect.objectContaining({
             cwd: PIECE_ROOT,
             plugin: expect.objectContaining({ rules: expect.objectContaining({ "no-class-authoring": expect.anything() }) }),
-            pluginNamespace: "rin-discipline",
+            pluginNamespace: "discipline",
             rule: "no-class-authoring",
             cases: [CLASS_CASE],
           }),
@@ -1137,7 +1137,7 @@ describe("native exceptions: suppression files over tracked paths", () => {
           projection: ENABLING_PROJECTION,
           files: {
             "/repo/eslint-suppressions.json": presentFile({
-              text: JSON.stringify({ "src/a.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+              text: JSON.stringify({ "src/a.ts": { "discipline/no-class-authoring": { count: 1 } } }),
             }),
           },
         }),
@@ -1161,7 +1161,7 @@ describe("native exceptions: suppression files over tracked paths", () => {
           projection: ENABLING_PROJECTION,
           files: {
             "/repo/packages/a/eslint-suppressions.json": presentFile({
-              text: JSON.stringify({ "src/x.ts": { "rin-discipline/no-class-authoring": { count: 2 } } }),
+              text: JSON.stringify({ "src/x.ts": { "discipline/no-class-authoring": { count: 2 } } }),
             }),
           },
         }),
@@ -1203,7 +1203,7 @@ describe("native exceptions: package.json scripts over tracked paths", () => {
           projection: ENABLING_PROJECTION,
           files: {
             "/repo/package.json": presentFile({
-              text: JSON.stringify({ scripts: { lint: "eslint --rule 'rin-discipline/no-class-authoring: off' src" } }),
+              text: JSON.stringify({ scripts: { lint: "eslint --rule 'discipline/no-class-authoring: off' src" } }),
             }),
           },
         }),
@@ -1218,7 +1218,7 @@ describe("native exceptions: package.json scripts over tracked paths", () => {
             clause: CLASS_SYNTAX_OBJECT,
             location: "package.json",
             script: "lint",
-            option: "--rule rin-discipline/no-class-authoring: off",
+            option: "--rule discipline/no-class-authoring: off",
           },
         ],
         projection: "current",
@@ -1236,7 +1236,7 @@ describe("native exceptions: package.json scripts over tracked paths", () => {
               text: JSON.stringify({ scripts: { lint: "eslint --suppressions-location ci/lint-suppressions.json src" } }),
             }),
             "/repo/ci/lint-suppressions.json": presentFile({
-              text: JSON.stringify({ "src/a.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+              text: JSON.stringify({ "src/a.ts": { "discipline/no-class-authoring": { count: 1 } } }),
             }),
           },
         }),
@@ -1268,7 +1268,7 @@ describe("native exceptions: package.json scripts over tracked paths", () => {
               text: JSON.stringify({ scripts: { lint: "eslint --suppressions-location=ci/s.json src" } }),
             }),
             "/repo/packages/a/ci/s.json": presentFile({
-              text: JSON.stringify({ "src/x.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+              text: JSON.stringify({ "src/x.ts": { "discipline/no-class-authoring": { count: 1 } } }),
             }),
           },
         }),
@@ -1336,7 +1336,7 @@ describe("native exceptions: inline directives with several selected clauses", (
           query: TWO_RULES_IN_EFFECT,
           lintFiles: inlineMessageInA({
             messageId: "inline-disable",
-            text: "// eslint-disable-next-line rin-discipline/no-class-authoring",
+            text: "// eslint-disable-next-line discipline/no-class-authoring",
           }),
         }),
       }).run(TWO_CLAUSE_RUN),
@@ -1350,7 +1350,7 @@ describe("native exceptions: inline directives with several selected clauses", (
             clause: CLASS_SYNTAX_OBJECT,
             file: "src/a.ts",
             line: 2,
-            text: "// eslint-disable-next-line rin-discipline/no-class-authoring",
+            text: "// eslint-disable-next-line discipline/no-class-authoring",
           },
         ],
         projection: "out-of-date",
@@ -1366,7 +1366,7 @@ describe("native exceptions: inline directives with several selected clauses", (
           query: TWO_RULES_IN_EFFECT,
           lintFiles: inlineMessageInA({
             messageId: "inline-disable",
-            text: "/* eslint-disable rin-discipline/no-class-authoring, rin-loops/no-for-of */",
+            text: "/* eslint-disable discipline/no-class-authoring, loops/no-for-of */",
           }),
         }),
       }).run(TWO_CLAUSE_RUN),
@@ -1380,14 +1380,14 @@ describe("native exceptions: inline directives with several selected clauses", (
             clause: CLASS_SYNTAX_OBJECT,
             file: "src/a.ts",
             line: 2,
-            text: "/* eslint-disable rin-discipline/no-class-authoring, rin-loops/no-for-of */",
+            text: "/* eslint-disable discipline/no-class-authoring, loops/no-for-of */",
           },
           {
             kind: "inline-disable",
             clause: FOR_OF_OBJECT,
             file: "src/a.ts",
             line: 2,
-            text: "/* eslint-disable rin-discipline/no-class-authoring, rin-loops/no-for-of */",
+            text: "/* eslint-disable discipline/no-class-authoring, loops/no-for-of */",
           },
         ],
         projection: "out-of-date",
@@ -1423,7 +1423,7 @@ describe("native exceptions: inline directives with several selected clauses", (
         fileText: projectionHolding({ text: "export default [];\n" }),
         eslint: eslintOver({
           query: TWO_RULES_IN_EFFECT,
-          lintFiles: inlineMessageInA({ messageId: "inline-rule-config", text: '/* eslint rin-loops/no-for-of: "off" */' }),
+          lintFiles: inlineMessageInA({ messageId: "inline-rule-config", text: '/* eslint loops/no-for-of: "off" */' }),
         }),
       }).run(TWO_CLAUSE_RUN),
     ).resolves.toEqual({
@@ -1436,7 +1436,7 @@ describe("native exceptions: inline directives with several selected clauses", (
             clause: FOR_OF_OBJECT,
             file: "src/a.ts",
             line: 2,
-            text: '/* eslint rin-loops/no-for-of: "off" */',
+            text: '/* eslint loops/no-for-of: "off" */',
           },
         ],
         projection: "out-of-date",
@@ -1453,10 +1453,10 @@ describe("the governance run, settled message handling", () => {
           projection: ENABLING_PROJECTION,
           files: {
             "/repo/package.json": presentFile({
-              text: JSON.stringify({ scripts: { lint: "eslint --rule 'rin-discipline/no-class-authoring: off' src" } }),
+              text: JSON.stringify({ scripts: { lint: "eslint --rule 'discipline/no-class-authoring: off' src" } }),
             }),
             "/repo/eslint-suppressions.json": presentFile({
-              text: JSON.stringify({ "src/a.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+              text: JSON.stringify({ "src/a.ts": { "discipline/no-class-authoring": { count: 1 } } }),
             }),
           },
         }),
@@ -1485,7 +1485,7 @@ describe("the governance run, settled message handling", () => {
             clause: CLASS_SYNTAX_OBJECT,
             location: "package.json",
             script: "lint",
-            option: "--rule rin-discipline/no-class-authoring: off",
+            option: "--rule discipline/no-class-authoring: off",
           },
         ],
         projection: "current",
@@ -1506,7 +1506,7 @@ describe("the governance run with nothing to lint", () => {
         projection: ENABLING_PROJECTION,
         files: {
           "/repo/package.json": presentFile({
-            text: JSON.stringify({ scripts: { lint: "eslint --rule 'rin-discipline/no-class-authoring: off' src" } }),
+            text: JSON.stringify({ scripts: { lint: "eslint --rule 'discipline/no-class-authoring: off' src" } }),
           }),
         },
       }),
@@ -1527,7 +1527,7 @@ describe("the governance run with nothing to lint", () => {
               clause: CLASS_SYNTAX_OBJECT,
               location: "package.json",
               script: "lint",
-              option: "--rule rin-discipline/no-class-authoring: off",
+              option: "--rule discipline/no-class-authoring: off",
             },
           ],
           projection: "current",

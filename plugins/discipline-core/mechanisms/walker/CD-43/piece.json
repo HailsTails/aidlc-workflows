@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "discipline": "CD-43",
-  "mechanism": "walker",
-  "clauses": [
-    { "clause": "boolean-signatures", "settings": { "module": "boolean-signatures.ts" } }
-  ]
-}

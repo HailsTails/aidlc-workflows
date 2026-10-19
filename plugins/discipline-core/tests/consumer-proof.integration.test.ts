@@ -10,8 +10,8 @@ import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
 import { createEslintRunner } from "../mechanisms/eslint/runner/create-eslint-runner.ts";
 import { createDefaultEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
-import { createWalkerRunner } from "../mechanisms/walker/runner/create-walker-runner.ts";
-import { createDefaultParsePort } from "../mechanisms/walker/runner/typescript-parse.ts";
+import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
+import { createDefaultParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
 import { type PathCallsOutside, pathCallsOutside } from "./confinement.ts";
 
 const path = createDefaultPathPort({});
@@ -24,13 +24,13 @@ const resolvedPath = (request: { readonly path: string }): AbsolutePath => {
 
 const INSTALL_ROOT = resolvedPath({ path: `${import.meta.dirname}/..` });
 
-const WALKER_CONSUMER = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/walker` });
+const WALKER_CONSUMER = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/audit` });
 
 const ESLINT_CONSUMER = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/eslint` });
 
 const INSTALLED_SOURCE = String.raw`(?!(?:[^/]*\/)*tests\/)(?!.*\.test\.ts$).*`;
 
-const WALKER_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/walker\/runner|mechanisms\/walker\/CD-14)\/${INSTALLED_SOURCE}`;
+const WALKER_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/audit\/runner|mechanisms\/audit\/CD-14)\/${INSTALLED_SOURCE}`;
 
 const ESLINT_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/eslint\/runner|mechanisms\/eslint\/CD-14)\/${INSTALLED_SOURCE}`;
 
@@ -38,7 +38,7 @@ const WALKER_INSTALL_LIST = new RegExp(`^${WALKER_INSTALLED}$`);
 
 const ESLINT_INSTALL_LIST = new RegExp(`^${ESLINT_INSTALLED}$`);
 
-const WALKER_READABLE = new RegExp(String.raw`^(?:${WALKER_INSTALLED}|tests\/test-fixtures\/consumer-proof\/walker\/.*)$`);
+const WALKER_READABLE = new RegExp(String.raw`^(?:${WALKER_INSTALLED}|tests\/test-fixtures\/consumer-proof\/audit\/.*)$`);
 
 const ESLINT_READABLE = new RegExp(String.raw`^(?:${ESLINT_INSTALLED}|tests\/test-fixtures\/consumer-proof\/eslint\/.*)$`);
 
@@ -69,7 +69,7 @@ const observedPorts = (): ObservedPorts => {
   };
   const pieceModules: ModuleLoaderPort = { load: createDefaultModuleLoaderPort({}).load };
   const runners: Readonly<Record<string, unknown>> = {
-    [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/walker/runner/runner.ts` })]: {
+    [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/audit/runner/runner.ts` })]: {
       runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: createDefaultParsePort({}) }),
     },
     [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })]: {
@@ -165,7 +165,7 @@ const CLEAN_REPORT = {
   projectionProblems: [],
 };
 
-describe("a consumer with no harness directory selecting CD-14 through the walker, run against the install", () => {
+describe("a consumer with no harness directory selecting CD-14 through the audit, run against the install", () => {
   it("passes when its tracked files hold no class, exiting 0", async () => {
     const ports = observedPorts();
     const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: CLEAN_TRACKED, ports });
@@ -173,17 +173,17 @@ describe("a consumer with no harness directory selecting CD-14 through the walke
     expect(checkCommandOutcome({ result: checked }).code).toBe(0);
   });
 
-  it("fails when a tracked file holds a class, exiting 1 with the class as a walker finding", async () => {
+  it("fails when a tracked file holds a class, exiting 1 with the class as a audit finding", async () => {
     const ports = observedPorts();
     const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
     expect(checked).toEqual({
       outcome: "ok",
-      value: { ...CLEAN_REPORT, findings: [classFinding({ mechanism: "walker" })] },
+      value: { ...CLEAN_REPORT, findings: [classFinding({ mechanism: "audit" })] },
     });
     expect(checkCommandOutcome({ result: checked }).code).toBe(1);
   });
 
-  it("reads, probes and loads only paths in the walker's install path list or the consumer repo", async () => {
+  it("reads, probes and loads only paths in the audit mechanism's install path list or the consumer repo", async () => {
     const ports = observedPorts();
     await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
     expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);

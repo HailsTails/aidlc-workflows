@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "discipline": "CD-2",
-  "mechanism": "walker",
-  "clauses": [
-    { "clause": "cast-expressions", "settings": { "module": "cast-expressions.ts" } }
-  ]
-}

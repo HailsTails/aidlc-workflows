@@ -7,7 +7,7 @@
       "id": "throws-in-tests",
       "summary": "Throws permitted in exactly two contexts",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

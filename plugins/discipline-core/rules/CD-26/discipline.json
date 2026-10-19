@@ -7,7 +7,7 @@
       "id": "module-mocking",
       "summary": "No module-mocking — module-mock means DI is wrong",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

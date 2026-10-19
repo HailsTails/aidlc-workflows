@@ -8,13 +8,13 @@ A test fakes the real subsystem. Spawning it is permitted in exactly one closed 
 
 Real git is the mechanically checked class: a test that spawns a real `git` subprocess passes an explicit hermetic environment at that call site, and never inherits the ambient one.
 
-The rule above is quoted verbatim from `cd-047-tests-are-hermetic.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-47#hermetic-git-spawns` | walker | a git spawn in a test without a hermetic `env` |
+| `CD-47#hermetic-git-spawns` | audit | a git spawn in a test without a hermetic `env` |
 
 ## What the check flags
 - Test files: `*.test.ts`, `*.test.tsx`, `*.test.mjs`, `*.test.js`, `*.spec.ts`, `*.spec.mjs`. Generated folders (`node_modules`, `dist`, `build`, `coverage`, `.git`, root `vendor`) are skipped; any other folder can be left out with `exclude` in disciplines.json.

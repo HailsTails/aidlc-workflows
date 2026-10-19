@@ -7,7 +7,7 @@
       "id": "any-cast",
       "summary": "No any, ever",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

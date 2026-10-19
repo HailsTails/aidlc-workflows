@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "discipline": "CD-47",
-  "mechanism": "walker",
-  "clauses": [
-    { "clause": "hermetic-git-spawns", "settings": { "module": "hermetic-git-spawns.ts" } }
-  ]
-}

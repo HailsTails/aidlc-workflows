@@ -7,7 +7,7 @@
       "id": "cast-expressions",
       "summary": "Closed enumerated list of permitted cast sites",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

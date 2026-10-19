@@ -193,34 +193,34 @@ describe("createPathPort with the win32 flavour, paths on different roots", () =
 
 describe("createPathPort joinRepository", () => {
   it("joins repository segments with forward slashes under the POSIX flavour", () => {
-    expect(pathPortIn({ directory: "/work" }).joinRepository({ segments: ["mechanisms", "walker", "runner"] })).toBe(
-      "mechanisms/walker/runner",
+    expect(pathPortIn({ directory: "/work" }).joinRepository({ segments: ["mechanisms", "audit", "runner"] })).toBe(
+      "mechanisms/audit/runner",
     );
   });
 
   it("joins repository segments with forward slashes under the win32 flavour", () => {
     expect(
-      windowsPathPortIn({ directory: "C:\\work" }).joinRepository({ segments: ["mechanisms", "walker", "runner"] }),
-    ).toBe("mechanisms/walker/runner");
+      windowsPathPortIn({ directory: "C:\\work" }).joinRepository({ segments: ["mechanisms", "audit", "runner"] }),
+    ).toBe("mechanisms/audit/runner");
   });
 
   it("normalises . and .. segments of a repository join under the win32 flavour", () => {
     expect(
-      windowsPathPortIn({ directory: "C:\\work" }).joinRepository({ segments: ["mechanisms/walker/CD-14", "../runner/x.ts"] }),
-    ).toBe("mechanisms/walker/runner/x.ts");
+      windowsPathPortIn({ directory: "C:\\work" }).joinRepository({ segments: ["mechanisms/audit/CD-14", "../runner/x.ts"] }),
+    ).toBe("mechanisms/audit/runner/x.ts");
   });
 
   it("drops a leading . root of a repository join under the win32 flavour", () => {
     expect(
-      windowsPathPortIn({ directory: "C:\\work" }).joinRepository({ segments: [".", "mechanisms", "walker"] }),
-    ).toBe("mechanisms/walker");
+      windowsPathPortIn({ directory: "C:\\work" }).joinRepository({ segments: [".", "mechanisms", "audit"] }),
+    ).toBe("mechanisms/audit");
   });
 });
 
 describe("createPathPort repositoryDirectoryOf", () => {
   it("gives the forward-slashed directory of a repository path under the POSIX flavour", () => {
-    expect(pathPortIn({ directory: "/work" }).repositoryDirectoryOf({ path: "mechanisms/walker/CD-14/a.ts" })).toBe(
-      "mechanisms/walker/CD-14",
+    expect(pathPortIn({ directory: "/work" }).repositoryDirectoryOf({ path: "mechanisms/audit/CD-14/a.ts" })).toBe(
+      "mechanisms/audit/CD-14",
     );
   });
 });

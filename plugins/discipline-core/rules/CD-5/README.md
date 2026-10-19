@@ -4,13 +4,13 @@
 
 Code is self-documenting: the names, types, and schemas carry the meaning. A prose comment is almost always there to excuse an unclear name or a convoluted expression — so the fix is to clarify the code, not annotate it. The only permitted annotations are machine-meaningful directives that carry a tracked reference; explanatory comments and doc-comments are not.
 
-The rule above is quoted verbatim from `cd-005-no-comments.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-5#comments-directives` | walker | TODOs, linter directives and `@ts-expect-error` without a tracker |
+| `CD-5#comments-directives` | audit | TODOs, linter directives and `@ts-expect-error` without a tracker |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

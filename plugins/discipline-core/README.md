@@ -2,7 +2,7 @@
 
 Discipline core checks a repository against the coding disciplines it has chosen to adopt. It is a tool, not a framework: it reads what the repository selected, hands each selected clause to the mechanism that checks it, applies the repository's recorded exceptions, and prints one verdict. Core itself enforces nothing and names no discipline and no mechanism. A discipline (for example CD-14, no authored classes) is data under `rules/`, and a mechanism is a runner under `mechanisms/`; core reaches both only through files and one module contract.
 
-Two mechanisms ship: `walker`, a standalone TypeScript syntax walker, and `eslint`, which runs the clause as an ESLint rule inside the team's own ESLint setup. The walker checks the 20 shared disciplines listed in [rules/README.md](rules/README.md); CD-14's `class-syntax` clause also has an ESLint piece.
+Two mechanisms ship: `audit`, a standalone TypeScript syntax walker, and `eslint`, which runs the clause as an ESLint rule inside the team's own ESLint setup. The audit mechanism checks the 20 shared disciplines listed in [rules/README.md](rules/README.md); CD-14's `class-syntax` clause also has an ESLint piece.
 
 To adopt the core in another repository, follow [ADOPTING.md](ADOPTING.md) step by step.
 
@@ -31,7 +31,7 @@ The report lists the excluded paths, findings, exempted findings, uncovered clau
 
 Without `--base-revision`, core cannot tell which files were touched, so a file carve-out cannot be forfeited; if any file carve-out exists the report lists `forfeiture-unmeasured` and the run fails.
 
-`project-command` writes the native configuration each embedded mechanism needs, and prints `<path> <effect>` per file (`written` or `unchanged`). The walker is standalone and writes nothing, so with only the walker selected the command prints nothing and exits `0`.
+`project-command` writes the native configuration each embedded mechanism needs, and prints `<path> <effect>` per file (`written` or `unchanged`). The audit mechanism is standalone and writes nothing, so with only the walker selected the command prints nothing and exits `0`.
 
 ## Adopting the ESLint mechanism
 
@@ -62,7 +62,7 @@ At the repository root. It selects clauses and the mechanism that checks each on
   "ruleSets": { "team": "tools/disciplines" },
   "clauses": {
     "CD-14#class-syntax": "eslint",
-    "team/TD-1#some-clause": "walker"
+    "team/TD-1#some-clause": "audit"
   },
   "exclude": ["tools/discipline-core", "generated"]
 }
@@ -121,12 +121,14 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 - Node 22.18.0 or later, which runs `.ts` source by stripping types (`engines.node` in `package.json`). The team's own ESLint run needs it too, since the projection imports each piece's `.ts` plugin module.
 - git 2.24 or later. Older git rejects `--end-of-options`, so the changed-file query fails and forfeiture is reported unmeasured.
 - `zod`, for core.
-- The walker adds `typescript`.
+- The audit mechanism adds `typescript`.
 - The ESLint mechanism adds the team's `eslint` 10.x, an ESLint-10-compatible `@typescript-eslint/parser`, and `@eslint/plugin-kit`.
 
 The packages must resolve from the install directory.
 
 ## Known limits
+
+The namespace and package names are provisional until the tool is named: the mechanism id `audit`, the ESLint plugin namespace `discipline`, and the folder name `discipline-core` may change before a first named release.
 
 This is the first release. Its tests cover each supported platform's ordinary paths and drives, and a committed ESLint projection checked out with either LF or CRLF line endings. The cases below are not covered by tests. Some may already work, but none is supported until a consumer needs it and a test is added:
 
@@ -155,7 +157,3 @@ This directory builds and tests on its own, using only its own configuration: `p
 | `test` | Vitest with `vitest.config.ts` |
 | `check` | all three in that order |
 | `install-proof` | `node scripts/install-proof.ts`: reads the install path list from § Installing in this README, builds CommonJS consumers in an OS temporary directory outside the working tree, installs the `dependencies` from this package's `package.json` there with `npm`, copies the listed paths into each consumer, and runs both commands under both mechanisms, expecting a fail on a class, a pass once it is removed, and a crash when the installed `package.json` is missing; the temporary directory is removed afterwards |
-
-### Inside the aidlc-workflows repository only
-
-These two notes concern the repository this package is developed in, not an adopter's install. Its CI runs `check`, then `install-proof`, and then that repository's own constitution audit, `bun run audit:rin`, from the repository root. `fork-wiring.test.ts` reads that repository's CI workflow and harness configuration, so it passes only there.

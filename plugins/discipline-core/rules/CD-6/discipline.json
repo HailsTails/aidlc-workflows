@@ -7,7 +7,7 @@
       "id": "identifier-names",
       "summary": "Meaningful names always — no shorthand, no filler words",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

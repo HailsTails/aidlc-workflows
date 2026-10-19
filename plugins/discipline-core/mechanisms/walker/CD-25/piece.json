@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "discipline": "CD-25",
-  "mechanism": "walker",
-  "clauses": [
-    { "clause": "dependency-isolation", "settings": { "module": "dependency-isolation.ts" } }
-  ]
-}

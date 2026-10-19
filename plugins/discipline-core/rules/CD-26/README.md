@@ -4,13 +4,13 @@
 
 Faking happens through the unit's own injected dependencies, never by intercepting the module system. A module-mock is a signal that the dependency injection is wrong: if a unit reaches for a collaborator the test cannot substitute through the signature, the collaborator should have been a port. Fix the seam, don't mock the module.
 
-The rule above is quoted verbatim from `cd-026-no-module-mocking.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-26#module-mocking` | walker | calls to `vi.mock` |
+| `CD-26#module-mocking` | audit | calls to `vi.mock` |
 
 ## What the check flags
 - Test files only: `*.test.ts` and `*.test.tsx`. Generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

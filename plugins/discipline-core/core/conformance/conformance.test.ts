@@ -10,7 +10,7 @@ const CLASS_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause: "c
 const CLASS_SYNTAX_CLAUSE: RunnerClause = {
   address: clauseAddressSchema.parse("CD-14#class-syntax"),
   anchor: { kind: "keyword", keyword: "class" },
-  pieceRoot: "/install/mechanisms/walker/CD-14",
+  pieceRoot: "/install/mechanisms/audit/CD-14",
   settings: { module: "class-syntax.ts" },
 };
 
@@ -228,12 +228,12 @@ describe("checkConformance", () => {
       conformanceOf({
         runner: conformingWith({
           outcome: "failed",
-          error: { kind: "piece-invalid", pieceRoot: "/install/mechanisms/walker/CD-14", detail: "no check export" },
+          error: { kind: "piece-invalid", pieceRoot: "/install/mechanisms/audit/CD-14", detail: "no check export" },
         }),
       }),
     ).resolves.toEqual({
       outcome: "failed",
-      error: { kind: "piece-invalid", pieceRoot: "/install/mechanisms/walker/CD-14", detail: "no check export" },
+      error: { kind: "piece-invalid", pieceRoot: "/install/mechanisms/audit/CD-14", detail: "no check export" },
     });
   });
 });

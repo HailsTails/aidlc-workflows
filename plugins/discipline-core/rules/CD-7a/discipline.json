@@ -7,7 +7,7 @@
       "id": "factory-return-types",
       "summary": "No ReturnType<typeof X> for our own codebase",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

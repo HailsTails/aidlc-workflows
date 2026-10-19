@@ -103,7 +103,7 @@ describe("relativeImportReaching", () => {
 
   it("refuses a relative import resolving outside the reach, and a package import", () => {
     expect([
-      underCore({ moduleImport: { specifier: "../../mechanisms/walker/runner/runner.ts", form: "value" } }),
+      underCore({ moduleImport: { specifier: "../../mechanisms/audit/runner/runner.ts", form: "value" } }),
       underCore({ moduleImport: { specifier: "../../../outside.ts", form: "value" } }),
       underCore({ moduleImport: { specifier: "zod", form: "value" } }),
     ]).toEqual(["outside", "outside", "outside"]);

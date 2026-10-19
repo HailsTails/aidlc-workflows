@@ -7,7 +7,7 @@
       "id": "export-test-sibling",
       "summary": "Every unit has a co-located test sibling",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

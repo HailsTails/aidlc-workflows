@@ -1,5 +1,5 @@
 {
   "version": 1,
   "ruleSets": {},
-  "clauses": { "CD-1#any-cast": "walker" }
+  "clauses": { "CD-1#any-cast": "audit" }
 }

@@ -104,7 +104,7 @@ const noClassAuthoring: Rule.RuleModule = {
 	},
 };
 const checkedPlugin = {
-	meta: { name: "rin-discipline", version: "0.0.0-local" },
+	meta: { name: "discipline", version: "0.0.0-local" },
 	rules: { "no-class-authoring": noClassAuthoring },
 } satisfies ESLint.Plugin;
 export const classAuthoringPlugin: ClassAuthoringPlugin = checkedPlugin;

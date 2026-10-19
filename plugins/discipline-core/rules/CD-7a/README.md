@@ -4,13 +4,13 @@
 
 Every type the code produces is named and exported, and callers use that named type. Deriving a type from a factory's inferred return couples the type to the implementation, hides it from find-usages, and breaks the moment the factory's internals shift. The single carve-out is an external library symbol whose package exports no named return type.
 
-The rule above is quoted verbatim from `cd-007a-no-returntype-typeof.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-7a#factory-return-types` | walker | a line containing `ReturnType<typeof` |
+| `CD-7a#factory-return-types` | audit | a line containing `ReturnType<typeof` |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

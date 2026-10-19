@@ -7,7 +7,7 @@
       "id": "dependency-isolation",
       "summary": "Unit tests fake everything outside the unit",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

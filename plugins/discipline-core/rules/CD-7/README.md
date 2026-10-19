@@ -4,13 +4,13 @@
 
 A file or folder is named for the abstraction it holds, not for a category of things. A junk-drawer name (utils, helpers, common, shared, types, misc) signals a missing primitive: the code inside wants a real home named for what it does. Category names accrete unrelated code because anything can be justified into them.
 
-The rule above is quoted verbatim from `cd-007-no-categorical-filenames.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-7#categorical-paths` | walker | a forbidden file name or folder name in a path |
+| `CD-7#categorical-paths` | audit | a forbidden file name or folder name in a path |
 
 ## What the check flags
 - `.ts` and `.tsx` files only, judged by path; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

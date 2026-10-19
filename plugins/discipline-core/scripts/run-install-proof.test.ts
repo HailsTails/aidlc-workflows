@@ -30,20 +30,20 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/package","package.json"]': "/package/package.json",
   '["/package","core"]': "/package/core",
   '["/package","rules/CD-14"]': "/package/rules/CD-14",
-  '["/package","tests","test-fixtures","consumer-proof","walker"]': "/package/tests/test-fixtures/consumer-proof/walker",
+  '["/package","tests","test-fixtures","consumer-proof","audit"]': "/package/tests/test-fixtures/consumer-proof/audit",
   '["/scratch","package.json"]': "/scratch/package.json",
-  '["/scratch","walker"]': "/scratch/walker",
-  '["/scratch/walker","package.json"]': "/scratch/walker/package.json",
-  '["/scratch/walker",".rin","dc"]': "/scratch/walker/.rin/dc",
-  '["/scratch/walker/.rin/dc","package.json"]': "/scratch/walker/.rin/dc/package.json",
-  '["/scratch/walker/.rin/dc","core"]': "/scratch/walker/.rin/dc/core",
-  '["/scratch/walker/.rin/dc","rules/CD-14"]': "/scratch/walker/.rin/dc/rules/CD-14",
-  '["/scratch/walker",".rin","dc","core","check","check-command.ts"]': "/scratch/walker/.rin/dc/core/check/check-command.ts",
+  '["/scratch","audit"]': "/scratch/audit",
+  '["/scratch/audit","package.json"]': "/scratch/audit/package.json",
+  '["/scratch/audit","tools","discipline-core"]': "/scratch/audit/tools/discipline-core",
+  '["/scratch/audit/tools/discipline-core","package.json"]': "/scratch/audit/tools/discipline-core/package.json",
+  '["/scratch/audit/tools/discipline-core","core"]': "/scratch/audit/tools/discipline-core/core",
+  '["/scratch/audit/tools/discipline-core","rules/CD-14"]': "/scratch/audit/tools/discipline-core/rules/CD-14",
+  '["/scratch/audit","tools","discipline-core","core","check","check-command.ts"]': "/scratch/audit/tools/discipline-core/core/check/check-command.ts",
 };
 
 const EXPECTING_PASS: ProofCase = {
-  consumer: "walker",
-  mechanism: "walker",
+  consumer: "audit",
+  mechanism: "audit",
   installedManifest: "kept",
   actions: [{ kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } }],
 };
@@ -127,8 +127,8 @@ describe("runInstallProof", () => {
 
     expect(reportOf({ process: proofProcess })).toEqual({
       writes: [
-        [{ text: "ok: walker install leaves out *.test.ts, tests/\n" }],
-        [{ text: 'ok: walker check -> exit 0, "verdict: pass"\n' }],
+        [{ text: "ok: audit install leaves out *.test.ts, tests/\n" }],
+        [{ text: 'ok: audit check -> exit 0, "verdict: pass"\n' }],
         [{ text: "install proof: pass\n" }],
       ],
       exits: [[{ code: 0 }]],
@@ -142,14 +142,14 @@ describe("runInstallProof", () => {
 
     expect(vi.mocked(commands.run).mock.calls).toEqual([
       [{ command: "npm", arguments: ["install", "--no-audit", "--no-fund", "--ignore-scripts"], directory: "/scratch" }],
-      [{ command: "git", arguments: expect.arrayContaining(["init", "-q"]), directory: "/scratch/walker" }],
-      [{ command: "git", arguments: expect.arrayContaining(["add", "-A"]), directory: "/scratch/walker" }],
-      [{ command: "git", arguments: expect.arrayContaining(["commit", "-q", "-m", "consumer"]), directory: "/scratch/walker" }],
+      [{ command: "git", arguments: expect.arrayContaining(["init", "-q"]), directory: "/scratch/audit" }],
+      [{ command: "git", arguments: expect.arrayContaining(["add", "-A"]), directory: "/scratch/audit" }],
+      [{ command: "git", arguments: expect.arrayContaining(["commit", "-q", "-m", "consumer"]), directory: "/scratch/audit" }],
       [
         {
           command: "node",
-          arguments: ["/scratch/walker/.rin/dc/core/check/check-command.ts", "--repo", "/scratch/walker", "--base-revision", "HEAD"],
-          directory: "/scratch/walker",
+          arguments: ["/scratch/audit/tools/discipline-core/core/check/check-command.ts", "--repo", "/scratch/audit", "--base-revision", "HEAD"],
+          directory: "/scratch/audit",
         },
       ],
     ]);
@@ -172,8 +172,8 @@ describe("runInstallProof", () => {
 
     expect(reportOf({ process: proofProcess })).toEqual({
       writes: [
-        [{ text: "ok: walker install leaves out *.test.ts, tests/\n" }],
-        [{ text: 'FAIL: walker check: expected exit 1 and "verdict: fail", got exit 0\nverdict: pass\n' }],
+        [{ text: "ok: audit install leaves out *.test.ts, tests/\n" }],
+        [{ text: 'FAIL: audit check: expected exit 1 and "verdict: fail", got exit 0\nverdict: pass\n' }],
       ],
       exits: [[{ code: 1 }]],
     });
@@ -200,7 +200,7 @@ describe("runInstallProof", () => {
     );
 
     expect(reportOf({ process: proofProcess })).toEqual({
-      writes: [[{ text: "FAIL: walker install leaves out *.test.ts, tests/: found core/a.test.ts\n" }]],
+      writes: [[{ text: "FAIL: audit install leaves out *.test.ts, tests/: found core/a.test.ts\n" }]],
       exits: [[{ code: 1 }]],
     });
   });
@@ -210,7 +210,7 @@ describe("runInstallProof", () => {
 
     await runInstallProof(proofRequest({ scratch }));
 
-    expect(vi.mocked(scratch.listTree).mock.calls).toEqual([[{ path: "/scratch/walker/.rin/dc" }]]);
+    expect(vi.mocked(scratch.listTree).mock.calls).toEqual([[{ path: "/scratch/audit/tools/discipline-core" }]]);
   });
 
   it("exits 1 with the npm output when npm install fails, running nothing after it", async () => {

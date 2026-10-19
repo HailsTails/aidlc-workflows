@@ -4,13 +4,13 @@
 
 `any` is the absence of a type: it tells the compiler to stop checking, and that hole propagates silently through every call site that consumes the value. The whole reason a type system exists — catching shape errors before runtime — is forfeited at each `any`. Reach for `unknown` and narrow at the read site, or a precise union. There are no carve-outs: every `any` is a violation regardless of stated reason.
 
-The rule above is quoted verbatim from `cd-001-no-any.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-1#any-cast` | walker | a type assertion whose text contains `any` |
+| `CD-1#any-cast` | audit | a type assertion whose text contains `any` |
 
 ## What the check flags
 - `.ts` and `.tsx` files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

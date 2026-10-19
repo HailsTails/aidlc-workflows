@@ -2,9 +2,9 @@ import piece0 from "../../../../mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
 ];

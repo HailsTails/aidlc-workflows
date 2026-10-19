@@ -6,7 +6,7 @@
     {
       "clause": "class-syntax",
       "settings": {
-        "pluginNamespace": "rin-discipline",
+        "pluginNamespace": "discipline",
         "pluginModule": "cd14/cd14.eslint-plugin.ts",
         "rule": "no-class-authoring"
       }

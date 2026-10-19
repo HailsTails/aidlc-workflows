@@ -4,13 +4,13 @@
 
 A switch over a closed discriminated union carries no `default:` arm. Exhaustiveness is the type system's job: with no default, adding a variant surfaces as a compile error at every switch that has not handled it. A `default:` swallows that signal and lets the new variant slip through silently at runtime.
 
-The rule above is quoted verbatim from `cd-008-no-default-on-closed-union.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-8#switch-defaults` | walker | a `default:` arm inside a `switch` |
+| `CD-8#switch-defaults` | audit | a `default:` arm inside a `switch` |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

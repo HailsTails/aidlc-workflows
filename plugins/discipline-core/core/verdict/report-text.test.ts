@@ -13,7 +13,7 @@ const probeNoTmp = clauseAddressSchema.parse("probe/PD-1#no-tmp-files");
 const fileA = repoPathSchema.parse("src/a.ts");
 const packageJson = repoPathSchema.parse("package.json");
 const suppressions = repoPathSchema.parse("eslint-suppressions.json");
-const walker = mechanismIdSchema.parse("walker");
+const audit = mechanismIdSchema.parse("audit");
 const eslint = mechanismIdSchema.parse("eslint");
 
 const why = {
@@ -33,14 +33,14 @@ const finding: Finding = {
   file: fileA,
   anchor: { line: 3, column: 5 },
   snippet: "class A {}",
-  mechanism: walker,
+  mechanism: audit,
 };
 
 const located: ExceptionRecord = {
   kind: "authorised-location",
   provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/verdict/report-text.test.ts#located; not historical authorisation" },
   clause: noClass,
-  mechanism: walker,
+  mechanism: audit,
   file: fileA,
   reason: "the adapter factory wraps the parser's class",
 };
@@ -48,7 +48,7 @@ const located: ExceptionRecord = {
 const carved: ExceptionRecord = {
   kind: "file-carve-out",
   clause: noClass,
-  mechanism: walker,
+  mechanism: audit,
   file: fileA,
   reason: "the parser adapter is unpaid debt",
   whyChain,
@@ -57,7 +57,7 @@ const carved: ExceptionRecord = {
 const carvedEverywhere: ExceptionRecord = {
   kind: "clause-wide-carve-out",
   clause: noClass,
-  mechanism: walker,
+  mechanism: audit,
   reason: "the whole clause is unpaid debt",
   whyChain,
 };
@@ -80,7 +80,7 @@ describe("renderReportText entry lines", () => {
   it("renders a finding as clause, mechanism, file:line:column and snippet", () => {
     expect(
       renderReportText({ report: { ...emptyReport, findings: [finding] } }),
-    ).toContain("\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {}\n");
+    ).toContain("\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {}\n");
   });
 
   it("renders the excluded paths first, one per line, before any finding", () => {
@@ -89,7 +89,7 @@ describe("renderReportText entry lines", () => {
         report: { ...emptyReport, excluded: [repoPathSchema.parse("generated"), repoPathSchema.parse("src/legacy.ts")], findings: [finding] },
       }),
     ).toBe(
-      "excluded (2)\ngenerated\nsrc/legacy.ts\nfindings (1)\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {}\nverdict: fail\n",
+      "excluded (2)\ngenerated\nsrc/legacy.ts\nfindings (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {}\nverdict: fail\n",
     );
   });
 
@@ -99,7 +99,7 @@ describe("renderReportText entry lines", () => {
         report: { ...emptyReport, exempted: [{ finding, by: [carved, carvedEverywhere] }] },
       }),
     ).toContain(
-      "\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {} exempted by file-carve-out exempted by clause-wide-carve-out\n",
+      "\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {} exempted by file-carve-out exempted by clause-wide-carve-out\n",
     );
   });
 
@@ -112,19 +112,19 @@ describe("renderReportText entry lines", () => {
   it("renders a stale authorised location as clause, mechanism, kind and file", () => {
     expect(
       renderReportText({ report: { ...emptyReport, stale: [located] } }),
-    ).toContain("\nCD-14#no-class-syntax walker authorised-location src/a.ts\n");
+    ).toContain("\nCD-14#no-class-syntax audit authorised-location src/a.ts\n");
   });
 
   it("renders a stale clause-wide carve-out with * for its file", () => {
     expect(
       renderReportText({ report: { ...emptyReport, stale: [carvedEverywhere] } }),
-    ).toContain("\nCD-14#no-class-syntax walker clause-wide-carve-out *\n");
+    ).toContain("\nCD-14#no-class-syntax audit clause-wide-carve-out *\n");
   });
 
   it("renders a forfeited file carve-out as clause, mechanism, kind and file", () => {
     expect(
       renderReportText({ report: { ...emptyReport, forfeited: [carved] } }),
-    ).toContain("\nCD-14#no-class-syntax walker file-carve-out src/a.ts\n");
+    ).toContain("\nCD-14#no-class-syntax audit file-carve-out src/a.ts\n");
   });
 
   it("renders a doubly-held entry as clause, mechanism, doubly-held and file", () => {
@@ -132,10 +132,10 @@ describe("renderReportText entry lines", () => {
       renderReportText({
         report: {
           ...emptyReport,
-          doublyHeld: [{ clause: noClass, file: fileA, mechanism: walker }],
+          doublyHeld: [{ clause: noClass, file: fileA, mechanism: audit }],
         },
       }),
-    ).toContain("\nCD-14#no-class-syntax walker doubly-held src/a.ts\n");
+    ).toContain("\nCD-14#no-class-syntax audit doubly-held src/a.ts\n");
   });
 
   it("renders an unrecorded ignore as clause, mechanism, kind and file", () => {
@@ -190,7 +190,7 @@ describe("renderReportText entry lines", () => {
         },
       }),
     ).toContain(String.raw`
-CD-14#no-class-syntax walker src/a.ts:3:5 class A {\n}\r\nclass B {}
+CD-14#no-class-syntax audit src/a.ts:3:5 class A {\n}\r\nclass B {}
 `);
   });
 
@@ -427,7 +427,7 @@ describe("renderReportText sections", () => {
     expect(
       renderReportText({ report: { ...emptyReport, stale: [located, carvedEverywhere] } }),
     ).toContain(
-      "stale (2)\nCD-14#no-class-syntax walker authorised-location src/a.ts\nCD-14#no-class-syntax walker clause-wide-carve-out *\n",
+      "stale (2)\nCD-14#no-class-syntax audit authorised-location src/a.ts\nCD-14#no-class-syntax audit clause-wide-carve-out *\n",
     );
   });
 
@@ -454,7 +454,7 @@ describe("renderReportText sections", () => {
     expect(
       renderReportText({ report: { ...emptyReport, findings: [finding], stale: [located] } }),
     ).toBe(
-      "findings (1)\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {}\nstale (1)\nCD-14#no-class-syntax walker authorised-location src/a.ts\nverdict: fail\n",
+      "findings (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {}\nstale (1)\nCD-14#no-class-syntax audit authorised-location src/a.ts\nverdict: fail\n",
     );
   });
 
@@ -464,7 +464,7 @@ describe("renderReportText sections", () => {
         report: { ...emptyReport, exempted: [{ finding, by: [located] }] },
       }),
     ).toBe(
-      "exempted (1)\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {} exempted by authorised-location\nverdict: pass\n",
+      "exempted (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {} exempted by authorised-location\nverdict: pass\n",
     );
   });
 

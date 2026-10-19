@@ -3,10 +3,10 @@ import { rejectedCall, runnerFailureSchema, runnerInvalidOutput } from "./runner
 
 describe("runnerFailureSchema", () => {
   it.each([
-    { kind: "piece-invalid", pieceRoot: "mechanisms/walker/CD-14", detail: "no check export" },
+    { kind: "piece-invalid", pieceRoot: "mechanisms/audit/CD-14", detail: "no check export" },
     { kind: "tool-failed", detail: "eslint exited 2" },
     { kind: "file-unreadable", file: "src/a.ts", detail: "EACCES" },
-    { kind: "plugin-conflict", detail: "two plugins named rin" },
+    { kind: "plugin-conflict", detail: "two plugins named team" },
     { kind: "team-config-unloadable", detail: "eslint.config.js threw" },
     { kind: "runner-invalid-output", detail: "hit has no snippet" },
     { kind: "file-unparseable", file: "src/a.ts", detail: "unexpected token" },

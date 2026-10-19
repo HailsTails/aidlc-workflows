@@ -4,13 +4,13 @@
 
 Time is an injected capability, not an ambient global: domain code never calls the runtime's now-primitives directly, it reads the current instant through a clock port. Real time enters through exactly one clock abstraction; tests inject a fake clock and advance it deterministically. Bare time construction anywhere else makes behaviour un-fakeable and non-deterministic.
 
-The rule above is quoted verbatim from `cd-017-clock-only-time-source.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-17#clock-sources` | walker | `Date.now()` and `new Date` |
+| `CD-17#clock-sources` | audit | `Date.now()` and `new Date` |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests. Generated folders (`node_modules`, `dist`, `build`, `coverage`, `.git`, root `vendor`) are skipped; any other folder or file can be left out with `exclude` in disciplines.json.

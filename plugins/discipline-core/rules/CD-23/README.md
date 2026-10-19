@@ -4,13 +4,13 @@
 
 Every source file ships a test sibling that sits beside it, sharing its name — there are no source files without a test, and no tests in a separate parallel tree. This is the real coverage floor: not a percentage, but the guarantee that every unit has at least one co-located test stating what it is for. Co-location makes the test the unit's visible contract and keeps the two changing together, where a parallel test tree lets them drift apart.
 
-The rule above is quoted verbatim from `cd-023-tests-co-located.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-23#export-test-sibling` | walker | a production file with a runtime export and no `.test` sibling |
+| `CD-23#export-test-sibling` | audit | a production file with a runtime export and no `.test` sibling |
 
 ## What the check flags
 - Production `.ts` and `.tsx` files. Skipped: `*.test.ts(x)`, `.d.ts` and anything under `__tests__`. Generated folders (`node_modules`, `dist`, `build`, `coverage`, `.git`, root `vendor`) are skipped; any other folder or file can be left out with `exclude` in disciplines.json.

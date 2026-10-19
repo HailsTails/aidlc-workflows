@@ -41,22 +41,22 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","team-rules"]': "/repo/team-rules",
   '["/repo","."]': "/repo",
   '["/repo","rules","TM-1","discipline.json"]': "/repo/rules/TM-1/discipline.json",
-  '["/repo","mechanisms","walker","TM-1","piece.json"]': "/repo/mechanisms/walker/TM-1/piece.json",
-  '["/repo","mechanisms","walker","TM-1"]': "/repo/mechanisms/walker/TM-1",
+  '["/repo","mechanisms","audit","TM-1","piece.json"]': "/repo/mechanisms/audit/TM-1/piece.json",
+  '["/repo","mechanisms","audit","TM-1"]': "/repo/mechanisms/audit/TM-1",
   '["/install","rules","CD-14","discipline.json"]': "/install/rules/CD-14/discipline.json",
   '["/install","rules","CD-99","discipline.json"]': "/install/rules/CD-99/discipline.json",
-  '["/install","mechanisms","walker","CD-14","piece.json"]': "/install/mechanisms/walker/CD-14/piece.json",
-  '["/install","mechanisms","walker","runner","runner.ts"]': "/install/mechanisms/walker/runner/runner.ts",
+  '["/install","mechanisms","audit","CD-14","piece.json"]': "/install/mechanisms/audit/CD-14/piece.json",
+  '["/install","mechanisms","audit","runner","runner.ts"]': "/install/mechanisms/audit/runner/runner.ts",
   '["/repo/team-rules","rules","TM-1","discipline.json"]': "/repo/team-rules/rules/TM-1/discipline.json",
-  '["/repo/team-rules","mechanisms","walker","TM-1","piece.json"]': "/repo/team-rules/mechanisms/walker/TM-1/piece.json",
-  '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
-  '["/repo/team-rules","mechanisms","walker","TM-1"]': "/repo/team-rules/mechanisms/walker/TM-1",
+  '["/repo/team-rules","mechanisms","audit","TM-1","piece.json"]': "/repo/team-rules/mechanisms/audit/TM-1/piece.json",
+  '["/install","mechanisms","audit","CD-14"]': "/install/mechanisms/audit/CD-14",
+  '["/repo/team-rules","mechanisms","audit","TM-1"]': "/repo/team-rules/mechanisms/audit/TM-1",
   '["/install","mechanisms","oxlint","runner","runner.ts"]': "/install/mechanisms/oxlint/runner/runner.ts",
   '["/install","mechanisms","oxlint","CD-14","piece.json"]': "/install/mechanisms/oxlint/CD-14/piece.json",
   '["/install","mechanisms","oxlint","CD-14"]': "/install/mechanisms/oxlint/CD-14",
   '["/repo/team-rules","rules","CD-14","discipline.json"]': "/repo/team-rules/rules/CD-14/discipline.json",
-  '["/repo/team-rules","mechanisms","walker","CD-14","piece.json"]': "/repo/team-rules/mechanisms/walker/CD-14/piece.json",
-  '["/repo/team-rules","mechanisms","walker","CD-14"]': "/repo/team-rules/mechanisms/walker/CD-14",
+  '["/repo/team-rules","mechanisms","audit","CD-14","piece.json"]': "/repo/team-rules/mechanisms/audit/CD-14/piece.json",
+  '["/repo/team-rules","mechanisms","audit","CD-14"]': "/repo/team-rules/mechanisms/audit/CD-14",
 };
 
 const TABLE_PATH: PathPort = {
@@ -78,7 +78,7 @@ const mechanical = (id: string) => ({
   kind: "mechanical",
   id,
   summary: "a mechanical clause",
-  mechanisms: ["walker"],
+  mechanisms: ["audit"],
   anchor: { kind: "keyword", keyword: "class" },
   cases: CASES,
 });
@@ -107,7 +107,7 @@ const CD_14_WITH_THREE_MECHANICAL = JSON.stringify({
 const CD_14_PIECE = JSON.stringify({
   version: 1,
   discipline: "CD-14",
-  mechanism: "walker",
+  mechanism: "audit",
   clauses: [
     { clause: "class-syntax", settings: { module: "class-syntax.ts" } },
     { clause: "abstract-syntax", settings: { module: "abstract-syntax.ts" } },
@@ -118,8 +118,8 @@ const CD_14_ON_TWO_MECHANISMS = JSON.stringify({
   version: 1,
   id: "CD-14",
   clauses: [
-    { ...mechanical("class-syntax"), mechanisms: ["walker", "oxlint"] },
-    { ...mechanical("abstract-syntax"), mechanisms: ["walker", "oxlint"] },
+    { ...mechanical("class-syntax"), mechanisms: ["audit", "oxlint"] },
+    { ...mechanical("abstract-syntax"), mechanisms: ["audit", "oxlint"] },
   ],
 });
 
@@ -138,7 +138,7 @@ const TEAM_CD_14 = JSON.stringify({
       kind: "mechanical",
       id: "class-syntax",
       summary: "the team's own class clause",
-      mechanisms: ["walker"],
+      mechanisms: ["audit"],
       anchor: { kind: "keyword", keyword: "enum" },
       cases: CASES,
     },
@@ -148,7 +148,7 @@ const TEAM_CD_14 = JSON.stringify({
 const TEAM_CD_14_PIECE = JSON.stringify({
   version: 1,
   discipline: "CD-14",
-  mechanism: "walker",
+  mechanism: "audit",
   clauses: [{ clause: "class-syntax", settings: { module: "team-class-syntax.ts" } }],
 });
 
@@ -157,7 +157,7 @@ const TM_1 = JSON.stringify({ version: 1, id: "TM-1", clauses: [mechanical("no-t
 const TM_1_PIECE = JSON.stringify({
   version: 1,
   discipline: "TM-1",
-  mechanism: "walker",
+  mechanism: "audit",
   clauses: [{ clause: "no-tmp-files", settings: { module: "no-tmp-files.ts" } }],
 });
 
@@ -165,10 +165,10 @@ const INSTALL: Readonly<Record<string, FakeFile>> = {
   [SELECTION_PATH]: ABSENT_FILE,
   "/install/rules/CD-14/discipline.json": presentFile({ text: CD_14 }),
   "/install/rules/CD-99/discipline.json": ABSENT_FILE,
-  "/install/mechanisms/walker/CD-14/piece.json": presentFile({ text: CD_14_PIECE }),
-  "/install/mechanisms/walker/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
+  "/install/mechanisms/audit/CD-14/piece.json": presentFile({ text: CD_14_PIECE }),
+  "/install/mechanisms/audit/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
   "/repo/team-rules/rules/TM-1/discipline.json": presentFile({ text: TM_1 }),
-  "/repo/team-rules/mechanisms/walker/TM-1/piece.json": presentFile({ text: TM_1_PIECE }),
+  "/repo/team-rules/mechanisms/audit/TM-1/piece.json": presentFile({ text: TM_1_PIECE }),
 };
 
 const select = (files: Readonly<Record<string, FakeFile>>) =>
@@ -193,7 +193,7 @@ describe("createSelectionRepository", () => {
         [SELECTION_PATH]: presentFile({ text: JSON.stringify({
           version: 1,
           ruleSets: { team: "team-rules" },
-          clauses: { "CD-14#class-syntax": "walker", "team/TM-1#no-tmp-files": "walker" },
+          clauses: { "CD-14#class-syntax": "audit", "team/TM-1#no-tmp-files": "audit" },
         }) }),
       }),
     });
@@ -203,27 +203,27 @@ describe("createSelectionRepository", () => {
       value: {
         selection: {
           selected: [
-            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker", exceptions: "allowed" },
-            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker", exceptions: "allowed" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "audit", exceptions: "allowed" },
+            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "audit", exceptions: "allowed" },
           ],
           uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }],
         },
         bindings: [
           {
-            mechanism: "walker",
+            mechanism: "audit",
             clause: {
               address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
               anchor: { kind: "keyword", keyword: "class" },
-              pieceRoot: "/install/mechanisms/walker/CD-14",
+              pieceRoot: "/install/mechanisms/audit/CD-14",
               settings: { module: "class-syntax.ts" },
             },
           },
           {
-            mechanism: "walker",
+            mechanism: "audit",
             clause: {
               address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" },
               anchor: { kind: "keyword", keyword: "class" },
-              pieceRoot: "/repo/team-rules/mechanisms/walker/TM-1",
+              pieceRoot: "/repo/team-rules/mechanisms/audit/TM-1",
               settings: { module: "no-tmp-files.ts" },
             },
           },
@@ -243,7 +243,7 @@ describe("createSelectionRepository", () => {
         [SELECTION_PATH]: presentFile({ text: JSON.stringify({
           version: 1,
           ruleSets: {},
-          clauses: { "CD-14#class-syntax": "walker" },
+          clauses: { "CD-14#class-syntax": "audit" },
           exclude: ["vendor", "src/generated.ts"],
         }) }),
       }),
@@ -262,7 +262,7 @@ describe("createSelectionRepository", () => {
         [SELECTION_PATH]: presentFile({ text: JSON.stringify({
           version: 1,
           ruleSets: {},
-          clauses: { "CD-14#class-syntax": "walker" },
+          clauses: { "CD-14#class-syntax": "audit" },
           exclude: ["../outside"],
         }) }),
       }),
@@ -282,7 +282,7 @@ describe("createSelectionRepository", () => {
         [SELECTION_PATH]: presentFile({ text: JSON.stringify({
           version: 1,
           ruleSets: {},
-          clauses: { "CD-14#class-syntax": "walker" },
+          clauses: { "CD-14#class-syntax": "audit" },
           exclude: ["src/**/generated"],
         }) }),
       }),
@@ -332,34 +332,34 @@ describe("readSelection", () => {
       selecting({
         version: 1,
         ruleSets: {},
-        clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "walker" },
+        clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "audit" },
       }),
     ).toEqual({
       outcome: "ok",
       value: {
         selection: {
           selected: [
-            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker", exceptions: "allowed" },
-            { address: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }, mechanism: "walker", exceptions: "allowed" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "audit", exceptions: "allowed" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }, mechanism: "audit", exceptions: "allowed" },
           ],
           uncovered: [],
         },
         bindings: [
           {
-            mechanism: "walker",
+            mechanism: "audit",
             clause: {
               address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
               anchor: { kind: "keyword", keyword: "class" },
-              pieceRoot: "/install/mechanisms/walker/CD-14",
+              pieceRoot: "/install/mechanisms/audit/CD-14",
               settings: { module: "class-syntax.ts" },
             },
           },
           {
-            mechanism: "walker",
+            mechanism: "audit",
             clause: {
               address: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" },
               anchor: { kind: "keyword", keyword: "class" },
-              pieceRoot: "/install/mechanisms/walker/CD-14",
+              pieceRoot: "/install/mechanisms/audit/CD-14",
               settings: { module: "abstract-syntax.ts" },
             },
           },
@@ -374,24 +374,24 @@ describe("readSelection", () => {
       selecting({
         version: 1,
         ruleSets: { team: "team-rules" },
-        clauses: { "team/TM-1#no-tmp-files": "walker" },
+        clauses: { "team/TM-1#no-tmp-files": "audit" },
       }),
     ).toEqual({
       outcome: "ok",
       value: {
         selection: {
           selected: [
-            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker", exceptions: "allowed" },
+            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "audit", exceptions: "allowed" },
           ],
           uncovered: [],
         },
         bindings: [
           {
-            mechanism: "walker",
+            mechanism: "audit",
             clause: {
               address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" },
               anchor: { kind: "keyword", keyword: "class" },
-              pieceRoot: "/repo/team-rules/mechanisms/walker/TM-1",
+              pieceRoot: "/repo/team-rules/mechanisms/audit/TM-1",
               settings: { module: "no-tmp-files.ts" },
             },
           },
@@ -403,17 +403,17 @@ describe("readSelection", () => {
 
   it("lists the unlisted mechanical clauses of an adopted discipline as uncovered, never its judgement clauses", () => {
     expect(
-      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } }),
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } }),
     ).toEqual({
       outcome: "ok",
       value: {
         selection: {
           selected: [
-            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker", exceptions: "allowed" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "audit", exceptions: "allowed" },
           ],
           uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }],
         },
-        bindings: [expect.objectContaining({ mechanism: "walker" })],
+        bindings: [expect.objectContaining({ mechanism: "audit" })],
         excluded: [],
       },
     });
@@ -428,7 +428,7 @@ describe("readSelection", () => {
           text: JSON.stringify({
             version: 1,
             ruleSets: {},
-            clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "walker" },
+            clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "audit" },
           }),
         }),
       }),
@@ -446,7 +446,7 @@ describe("readSelection", () => {
         value: JSON.stringify({
           version: 1,
           ruleSets: {},
-          clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "walker" },
+          clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "audit" },
         }),
       })
       .mockReturnValueOnce({ outcome: "ok", value: CD_14 })
@@ -460,7 +460,7 @@ describe("readSelection", () => {
     expect(read.mock.calls).toEqual([
       [{ path: SELECTION_PATH }],
       [{ path: "/install/rules/CD-14/discipline.json" }],
-      [{ path: "/install/mechanisms/walker/CD-14/piece.json" }],
+      [{ path: "/install/mechanisms/audit/CD-14/piece.json" }],
     ]);
   });
 
@@ -475,7 +475,7 @@ describe("readSelection", () => {
           text: JSON.stringify({
             version: 1,
             ruleSets: {},
-            clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "oxlint" },
+            clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "oxlint" },
           }),
         }),
       }),
@@ -483,7 +483,7 @@ describe("readSelection", () => {
       outcome: "ok",
       value: {
         bindings: [
-          { mechanism: "walker", clause: { settings: { module: "class-syntax.ts" } } },
+          { mechanism: "audit", clause: { settings: { module: "class-syntax.ts" } } },
           {
             mechanism: "oxlint",
             clause: { pieceRoot: "/install/mechanisms/oxlint/CD-14", settings: { rule: "no-abstract" } },
@@ -504,7 +504,7 @@ describe("readSelection", () => {
           text: JSON.stringify({
             version: 1,
             ruleSets: {},
-            clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "oxlint" },
+            clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "oxlint" },
           }),
         }),
       }),
@@ -519,12 +519,12 @@ describe("readSelection", () => {
       select({
         ...INSTALL,
         "/repo/team-rules/rules/CD-14/discipline.json": presentFile({ text: TEAM_CD_14 }),
-        "/repo/team-rules/mechanisms/walker/CD-14/piece.json": presentFile({ text: TEAM_CD_14_PIECE }),
+        "/repo/team-rules/mechanisms/audit/CD-14/piece.json": presentFile({ text: TEAM_CD_14_PIECE }),
         [SELECTION_PATH]: presentFile({
           text: JSON.stringify({
             version: 1,
             ruleSets: { team: "team-rules" },
-            clauses: { "CD-14#class-syntax": "walker", "team/CD-14#class-syntax": "walker" },
+            clauses: { "CD-14#class-syntax": "audit", "team/CD-14#class-syntax": "audit" },
           }),
         }),
       }),
@@ -533,7 +533,7 @@ describe("readSelection", () => {
       value: {
         bindings: [
           {
-            mechanism: "walker",
+            mechanism: "audit",
             clause: {
               address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
               anchor: { kind: "keyword", keyword: "class" },
@@ -541,11 +541,11 @@ describe("readSelection", () => {
             },
           },
           {
-            mechanism: "walker",
+            mechanism: "audit",
             clause: {
               address: { ruleSet: { name: "team" }, discipline: "CD-14", clause: "class-syntax" },
               anchor: { kind: "keyword", keyword: "enum" },
-              pieceRoot: "/repo/team-rules/mechanisms/walker/CD-14",
+              pieceRoot: "/repo/team-rules/mechanisms/audit/CD-14",
               settings: { module: "team-class-syntax.ts" },
             },
           },
@@ -559,7 +559,7 @@ describe("readSelection", () => {
       selecting({
         version: 1,
         ruleSets: { team: "team-rules" },
-        clauses: { "team/TM-1#no-tmp-files": "walker" },
+        clauses: { "team/TM-1#no-tmp-files": "audit" },
       }),
     ).toMatchObject({ outcome: "ok", value: { selection: { uncovered: [] } } });
   });
@@ -596,7 +596,7 @@ describe("readSelection", () => {
 
   it("refuses a clauses key that is not a clause address as file-malformed", () => {
     expect(
-      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14 class-syntax": "walker" } }),
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14 class-syntax": "audit" } }),
     ).toMatchObject({
       outcome: "failed",
       error: { kind: "file-malformed", path: SELECTION_PATH },
@@ -644,14 +644,14 @@ describe("readSelection", () => {
       select({
         ...INSTALL,
         [SELECTION_PATH]: presentFile({
-          text: JSON.stringify({ version: 1, ruleSets: { team: "." }, clauses: { "team/TM-1#no-tmp-files": "walker" } }),
+          text: JSON.stringify({ version: 1, ruleSets: { team: "." }, clauses: { "team/TM-1#no-tmp-files": "audit" } }),
         }),
         "/repo/rules/TM-1/discipline.json": presentFile({ text: TM_1 }),
-        "/repo/mechanisms/walker/TM-1/piece.json": presentFile({ text: TM_1_PIECE }),
+        "/repo/mechanisms/audit/TM-1/piece.json": presentFile({ text: TM_1_PIECE }),
       }),
     ).toMatchObject({
       outcome: "ok",
-      value: { bindings: [{ clause: { pieceRoot: "/repo/mechanisms/walker/TM-1" } }] },
+      value: { bindings: [{ clause: { pieceRoot: "/repo/mechanisms/audit/TM-1" } }] },
     });
   });
 
@@ -675,7 +675,7 @@ describe("readSelection", () => {
 
   it("is unknown-rule-set for a clause naming a rule set the file does not declare", () => {
     expect(
-      selecting({ version: 1, ruleSets: {}, clauses: { "team/TM-1#no-tmp-files": "walker" } }),
+      selecting({ version: 1, ruleSets: {}, clauses: { "team/TM-1#no-tmp-files": "audit" } }),
     ).toEqual({
       outcome: "failed",
       error: { kind: "unknown-rule-set", name: "team" },
@@ -684,7 +684,7 @@ describe("readSelection", () => {
 
   it("is unknown-discipline for a discipline the rule set does not hold", () => {
     expect(
-      selecting({ version: 1, ruleSets: {}, clauses: { "CD-99#class-syntax": "walker" } }),
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-99#class-syntax": "audit" } }),
     ).toEqual({
       outcome: "failed",
       error: { kind: "unknown-discipline", address: "CD-99#class-syntax" },
@@ -693,7 +693,7 @@ describe("readSelection", () => {
 
   it("is unknown-clause for a clause the discipline does not declare", () => {
     expect(
-      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#no-such-clause": "walker" } }),
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#no-such-clause": "audit" } }),
     ).toEqual({
       outcome: "failed",
       error: { kind: "unknown-clause", address: "CD-14#no-such-clause" },
@@ -702,7 +702,7 @@ describe("readSelection", () => {
 
   it("is judgement-clause-selected for a judgement clause", () => {
     expect(
-      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#library-construction": "walker" } }),
+      selecting({ version: 1, ruleSets: {}, clauses: { "CD-14#library-construction": "audit" } }),
     ).toEqual({
       outcome: "failed",
       error: { kind: "judgement-clause-selected", address: "CD-14#library-construction" },
@@ -722,14 +722,14 @@ describe("readSelection", () => {
     expect(
       select({
         ...INSTALL,
-        "/install/mechanisms/walker/runner/runner.ts": ABSENT_FILE,
+        "/install/mechanisms/audit/runner/runner.ts": ABSENT_FILE,
         [SELECTION_PATH]: presentFile({
-          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } }),
+          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } }),
         }),
       }),
     ).toEqual({
       outcome: "failed",
-      error: { kind: "runner-missing", mechanism: "walker" },
+      error: { kind: "runner-missing", mechanism: "audit" },
     });
   });
 
@@ -737,14 +737,14 @@ describe("readSelection", () => {
     expect(
       select({
         ...INSTALL,
-        "/install/mechanisms/walker/CD-14/piece.json": ABSENT_FILE,
+        "/install/mechanisms/audit/CD-14/piece.json": ABSENT_FILE,
         [SELECTION_PATH]: presentFile({
-          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } }),
+          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } }),
         }),
       }),
     ).toEqual({
       outcome: "failed",
-      error: { kind: "piece-missing", address: "CD-14#class-syntax", mechanism: "walker" },
+      error: { kind: "piece-missing", address: "CD-14#class-syntax", mechanism: "audit" },
     });
   });
 
@@ -752,21 +752,21 @@ describe("readSelection", () => {
     expect(
       select({
         ...INSTALL,
-        "/install/mechanisms/walker/CD-14/piece.json": presentFile({
+        "/install/mechanisms/audit/CD-14/piece.json": presentFile({
           text: JSON.stringify({
             version: 1,
             discipline: "CD-14",
-            mechanism: "walker",
+            mechanism: "audit",
             clauses: [{ clause: "abstract-syntax", settings: {} }],
           }),
         }),
         [SELECTION_PATH]: presentFile({
-          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } }),
+          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } }),
         }),
       }),
     ).toEqual({
       outcome: "failed",
-      error: { kind: "piece-missing", address: "CD-14#class-syntax", mechanism: "walker" },
+      error: { kind: "piece-missing", address: "CD-14#class-syntax", mechanism: "audit" },
     });
   });
 
@@ -778,7 +778,7 @@ describe("readSelection", () => {
           text: JSON.stringify({ version: 1, id: "CD-15", clauses: [mechanical("class-syntax")] }),
         }),
         [SELECTION_PATH]: presentFile({
-          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } }),
+          text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } }),
         }),
       }),
     ).toMatchObject({

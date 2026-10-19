@@ -4,13 +4,13 @@
 
 A type assertion tells the compiler the value is something the compiler cannot see — it is a claim the type system can no longer check. Casting is therefore permitted only at a closed, enumerated list of sites where an external boundary genuinely forces it (library-introspection and raw-row narrowing shapes the project names explicitly). Everywhere else a cast is a design smell: the type is wrong, so fix the type rather than assert over it. Adding a site to the permitted list is a deliberate, recorded amendment, not an inline decision.
 
-The rule above is quoted verbatim from `cd-002-closed-cast-list.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-2#cast-expressions` | walker | a type assertion that is not on the permitted list |
+| `CD-2#cast-expressions` | audit | a type assertion that is not on the permitted list |
 
 ## What the check flags
 - `.ts` and `.tsx` files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

@@ -4,13 +4,13 @@
 
 A function never mutates the fields of the parameters it receives — no assigning to a parameter's property, no pushing into a parameter's array, no sorting it in place. It returns new data instead. Mutating an input makes the function's effect invisible at the call site and couples the caller to an order of operations it cannot see.
 
-The rule above is quoted verbatim from `cd-044-no-parameter-field-mutation.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-44#parameter-mutation` | walker | assignment to, deletion from or in-place methods on a parameter's fields |
+| `CD-44#parameter-mutation` | audit | assignment to, deletion from or in-place methods on a parameter's fields |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

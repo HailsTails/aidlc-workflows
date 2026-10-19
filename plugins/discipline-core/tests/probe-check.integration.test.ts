@@ -6,13 +6,13 @@ import type { ModuleLoaderPort } from "../core/platform-ports/module-loader-port
 import { createPathPort } from "../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../core/values/absolute-path.ts";
 import { repoPathSchema } from "../core/values/repo-path.ts";
-import * as classSyntax from "../mechanisms/walker/CD-14/class-syntax.ts";
-import cd14Piece from "../mechanisms/walker/CD-14/piece.json" with { type: "json" };
-import { createWalkerRunner } from "../mechanisms/walker/runner/create-walker-runner.ts";
-import { createDefaultParsePort } from "../mechanisms/walker/runner/typescript-parse.ts";
+import * as classSyntax from "../mechanisms/audit/CD-14/class-syntax.ts";
+import cd14Piece from "../mechanisms/audit/CD-14/piece.json" with { type: "json" };
+import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
+import { createDefaultParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
 import cd14Discipline from "../rules/CD-14/discipline.json" with { type: "json" };
-import * as noTmpFiles from "./probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts";
-import probePiece from "./probe-rule-set/mechanisms/walker/PD-1/piece.json" with { type: "json" };
+import * as noTmpFiles from "./probe-rule-set/mechanisms/audit/PD-1/no-tmp-files.ts";
+import probePiece from "./probe-rule-set/mechanisms/audit/PD-1/piece.json" with { type: "json" };
 import probeDiscipline from "./probe-rule-set/rules/PD-1/discipline.json" with { type: "json" };
 
 const TEMPORARY_SOURCE = "export const scratch = 1;\n";
@@ -39,15 +39,15 @@ const FILES: Readonly<Record<string, FakeFile>> = {
     text: JSON.stringify({
       version: 1,
       ruleSets: { probe: "probe" },
-      clauses: { "probe/PD-1#no-tmp-files": "walker", "CD-14#class-syntax": "walker" },
+      clauses: { "probe/PD-1#no-tmp-files": "audit", "CD-14#class-syntax": "audit" },
     }),
   }),
   "/repo/discipline-exceptions.json": ABSENT_FILE,
   "/install/rules/CD-14/discipline.json": presentFile({ text: JSON.stringify(cd14Discipline) }),
-  "/install/mechanisms/walker/CD-14/piece.json": presentFile({ text: JSON.stringify(cd14Piece) }),
-  "/install/mechanisms/walker/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
+  "/install/mechanisms/audit/CD-14/piece.json": presentFile({ text: JSON.stringify(cd14Piece) }),
+  "/install/mechanisms/audit/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
   "/repo/probe/rules/PD-1/discipline.json": presentFile({ text: JSON.stringify(probeDiscipline) }),
-  "/repo/probe/mechanisms/walker/PD-1/piece.json": presentFile({ text: JSON.stringify(probePiece) }),
+  "/repo/probe/mechanisms/audit/PD-1/piece.json": presentFile({ text: JSON.stringify(probePiece) }),
   "/repo/src/scratch.tmp.ts": presentFile({ text: TEMPORARY_SOURCE }),
   "/repo/src/kept.ts": presentFile({ text: CLASS_SOURCE }),
   "/repo/src/plain.ts": presentFile({ text: PLAIN_SOURCE }),
@@ -63,8 +63,8 @@ const fileText: FileTextPort = {
 const path = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
 
 const PIECE_MODULES: Readonly<Record<string, unknown>> = {
-  "/install/mechanisms/walker/CD-14/class-syntax.ts": classSyntax,
-  "/repo/probe/mechanisms/walker/PD-1/no-tmp-files.ts": noTmpFiles,
+  "/install/mechanisms/audit/CD-14/class-syntax.ts": classSyntax,
+  "/repo/probe/mechanisms/audit/PD-1/no-tmp-files.ts": noTmpFiles,
 };
 
 const pieceModules: ModuleLoaderPort = {
@@ -109,7 +109,7 @@ const probeCheck = () => {
   return { report, parseCalls };
 };
 
-describe("a check selecting the probe rule set's PD-1 beside CD-14 through the walker", () => {
+describe("a check selecting the probe rule set's PD-1 beside CD-14 through the audit", () => {
   it("flags the temporary file through the probe and the class through CD-14 in one run", async () => {
     await expect(probeCheck().report).resolves.toEqual({
       outcome: "ok",
@@ -121,14 +121,14 @@ describe("a check selecting the probe rule set's PD-1 beside CD-14 through the w
             file: "src/scratch.tmp.ts",
             anchor: { line: 1, column: 0 },
             snippet: "src/scratch.tmp.ts",
-            mechanism: "walker",
+            mechanism: "audit",
           },
           {
             clause: CLASS_SYNTAX_ADDRESS,
             file: "src/kept.ts",
             anchor: { line: 1, column: 7 },
             snippet: "export class Kept {}",
-            mechanism: "walker",
+            mechanism: "audit",
           },
         ],
         exempted: [],

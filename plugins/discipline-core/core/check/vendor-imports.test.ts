@@ -36,7 +36,7 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./vitest.config.ts",
     "!./scripts/install-proof-ports.ts",
     "!./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}",
-    "!./tests/probe-rule-set/mechanisms/walker/**",
+    "!./tests/probe-rule-set/mechanisms/audit/**",
     "!./tests/probe-rule-set/mechanisms/eslint/**",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
@@ -47,8 +47,8 @@ const runnerSources = import.meta.glob(
     "./mechanisms/*/runner/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
     "!./mechanisms/*/runner/**/*.test.*",
     "!./mechanisms/*/runner/test-fixtures/**",
-    "!./mechanisms/walker/runner/typescript-parse.ts",
-    "!./mechanisms/walker/runner/jsonc-parse.ts",
+    "!./mechanisms/audit/runner/typescript-parse.ts",
+    "!./mechanisms/audit/runner/jsonc-parse.ts",
     "!./mechanisms/eslint/runner/eslint-instance.ts",
     "!./mechanisms/eslint/runner/inline-config-parser.ts",
   ],
@@ -61,8 +61,8 @@ const unlistedMechanismSources = import.meta.glob(
     "!./mechanisms/**/*.test.*",
     "!./mechanisms/**/test-fixtures/**",
     "!./mechanisms/*/runner/**",
-    "!./mechanisms/walker/*/*",
-    "!./mechanisms/walker/*/*/**",
+    "!./mechanisms/audit/*/*",
+    "!./mechanisms/audit/*/*/**",
     "!./mechanisms/eslint/*/*",
     "!./mechanisms/eslint/*/*/**",
   ],
@@ -95,14 +95,14 @@ const coreSources = import.meta.glob(["./core/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
   eager: true,
 });
 
-const typescriptWrapperSources = import.meta.glob(["./mechanisms/walker/runner/typescript-parse.ts"], {
+const typescriptWrapperSources = import.meta.glob(["./mechanisms/audit/runner/typescript-parse.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
   eager: true,
 });
 
-const jsoncWrapperSources = import.meta.glob(["./mechanisms/walker/runner/jsonc-parse.ts"], {
+const jsoncWrapperSources = import.meta.glob(["./mechanisms/audit/runner/jsonc-parse.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -125,12 +125,12 @@ const pluginKitWrapperSources = import.meta.glob(["./mechanisms/eslint/runner/in
 
 const walkerPieceSources = import.meta.glob(
   [
-    "./mechanisms/walker/*/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
-    "./tests/probe-rule-set/mechanisms/walker/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
-    "!./mechanisms/walker/runner/**",
-    "!./mechanisms/walker/**/*.test.*",
-    "!./tests/probe-rule-set/mechanisms/walker/**/*.test.*",
-    "!./mechanisms/walker/**/test-fixtures/**",
+    "./mechanisms/audit/*/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
+    "./tests/probe-rule-set/mechanisms/audit/**/*.{ts,mts,cts,tsx,js,mjs,cjs}",
+    "!./mechanisms/audit/runner/**",
+    "!./mechanisms/audit/**/*.test.*",
+    "!./tests/probe-rule-set/mechanisms/audit/**/*.test.*",
+    "!./mechanisms/audit/**/test-fixtures/**",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
@@ -190,22 +190,22 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       coreSources: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
       installProofPortSources: { "./scripts/install-proof-ports.ts": expect.any(String) },
       walkerPieceSources: expect.objectContaining({
-        "./mechanisms/walker/CD-14/class-syntax.ts": expect.any(String),
-        "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": expect.any(String),
+        "./mechanisms/audit/CD-14/class-syntax.ts": expect.any(String),
+        "./tests/probe-rule-set/mechanisms/audit/PD-1/no-tmp-files.ts": expect.any(String),
       }),
       eslintPieceSources: expect.objectContaining({ "./mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts": expect.any(String) }),
       testSources: expect.objectContaining({
         "./core/check/run-check.test.ts": expect.any(String),
         "./core/platform-ports/file-system-port.test.ts": expect.any(String),
         "./core/platform-ports/execution-port.test.ts": expect.any(String),
-        "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.test.ts": expect.any(String),
+        "./tests/probe-rule-set/mechanisms/audit/PD-1/no-tmp-files.test.ts": expect.any(String),
         "./tests/required-entry.ts": expect.any(String),
         "./tests/confinement.ts": expect.any(String),
       }),
     });
   });
 
-  it("finds no mechanism source outside a runner folder or a walker or ESLint piece folder", () => {
+  it("finds no mechanism source outside a runner folder or a audit or ESLint piece folder", () => {
     expect(unlistedMechanismSources).toEqual({});
   });
 
@@ -283,7 +283,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     ).toEqual([]);
   });
 
-  it("finds walker pieces taking only types from typescript", () => {
+  it("finds audit pieces taking only types from typescript", () => {
     expect(
       importsOutside({
         sources: walkerPieceSources,

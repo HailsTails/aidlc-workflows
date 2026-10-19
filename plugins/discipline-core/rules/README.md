@@ -1,6 +1,6 @@
 # Disciplines
 
-The IDs, titles and rule text come verbatim from the rin code-discipline set. Adopters may select any subset in `disciplines.json`.
+Adopters may select any subset in `disciplines.json`.
 
 | ID | Title | Clauses | Files checked |
 | --- | --- | --- | --- |

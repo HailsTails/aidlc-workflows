@@ -7,7 +7,7 @@
       "id": "class-syntax",
       "summary": "Zero class authoring; classes only at external-library call sites",
       "mechanisms": [
-        "walker",
+        "audit",
         "eslint"
       ],
       "anchor": {

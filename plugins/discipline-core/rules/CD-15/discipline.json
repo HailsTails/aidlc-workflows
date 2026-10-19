@@ -7,7 +7,7 @@
       "id": "loops",
       "summary": "Iteration is functional transformation, never an imperative loop",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"

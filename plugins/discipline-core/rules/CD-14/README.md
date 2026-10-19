@@ -4,17 +4,17 @@
 
 Behaviour is composed from functions and closures, not authored classes — state lives in a factory that closes over it. A class appears only where an external library's API demands `new` at the call site; that instance is created inside the wrapping factory and held internally, never re-exported as a class. The rule is per-declaration, not per-export: even a non-exported authored class is a violation.
 
-The rule above is quoted verbatim from `cd-014-no-class-authoring.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-14#class-syntax` | walker or eslint | a class declaration or expression outside ambient code |
+| `CD-14#class-syntax` | audit or eslint | a class declaration or expression outside ambient code |
 | `CD-14#library-construction` | review | library classes are built only in wrapping factories and never re-exported |
 
 ## What the check flags
-- TypeScript source files; declaration files (`.d.ts`) are skipped. Generated folders (`node_modules`, `dist`, `build`, `coverage`, `.git`, root `vendor`) are skipped by the walker; any other folder can be left out with `exclude` in disciplines.json. The ESLint piece lints whatever files the team's ESLint run includes.
+- TypeScript source files; declaration files (`.d.ts`) are skipped. Generated folders (`node_modules`, `dist`, `build`, `coverage`, `.git`, root `vendor`) are skipped by the audit mechanism; any other folder can be left out with `exclude` in disciplines.json. The ESLint piece lints whatever files the team's ESLint run includes.
 - Any class declaration, class expression, `abstract class`, nested class, or class inside a runtime `namespace`, reported at the `class` keyword.
 - Allowed: `declare class`, classes inside `declare module`, `declare global` or `declare namespace`, and `new Client()` on a class imported from a library.
 - `library-construction` is a judgement clause. It cannot be selected and is enforced by review.

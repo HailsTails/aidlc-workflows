@@ -4,13 +4,13 @@
 
 Test bodies are zero-logic straight lines: no branching, no loops, no try, no ternary, no computed expectations — just arrange, act, assert against hardcoded values. Logic in a test is untested code testing code; variability is faked and pinned, never accommodated with a conditional.
 
-The rule above is quoted verbatim from `cd-027-tests-are-zero-everything.md` in the rin code-discipline set. The sections below describe what the walker check covers.
+The sections below describe what the audit check covers.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
-| `CD-27#test-body-logic` | walker | branching, `let`, and computing methods in a test file |
+| `CD-27#test-body-logic` | audit | branching, `let`, and computing methods in a test file |
 
 ## What the check flags
 - Test files only: `*.test.ts` and `*.test.tsx`. Generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.

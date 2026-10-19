@@ -7,7 +7,7 @@
       "id": "switch-defaults",
       "summary": "No default on switch over a closed discriminated union",
       "mechanisms": [
-        "walker"
+        "audit"
       ],
       "anchor": {
         "kind": "file"
