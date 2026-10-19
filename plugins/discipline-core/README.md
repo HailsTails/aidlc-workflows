@@ -2,7 +2,9 @@
 
 Discipline core checks a repository against the coding disciplines it has chosen to adopt. It is a tool, not a framework: it reads what the repository selected, hands each selected clause to the mechanism that checks it, applies the repository's recorded exceptions, and prints one verdict. Core itself enforces nothing and names no discipline and no mechanism. A discipline (for example CD-14, no authored classes) is data under `rules/`, and a mechanism is a runner under `mechanisms/`; core reaches both only through files and one module contract.
 
-Two mechanisms ship: `walker`, a standalone TypeScript syntax walker, and `eslint`, which runs the clause as an ESLint rule inside the team's own ESLint setup. CD-14's `class-syntax` clause has a piece for each.
+Two mechanisms ship: `walker`, a standalone TypeScript syntax walker, and `eslint`, which runs the clause as an ESLint rule inside the team's own ESLint setup. The walker checks the 20 shared disciplines listed in [rules/README.md](rules/README.md); CD-14's `class-syntax` clause also has an ESLint piece.
+
+To adopt the core in another repository, follow [ADOPTING.md](ADOPTING.md) step by step.
 
 Adding a discipline or a mechanism, and the full list of ESLint native channels, are covered in [docs/adding-a-discipline-or-mechanism.md](docs/adding-a-discipline-or-mechanism.md).
 
@@ -61,7 +63,8 @@ At the repository root. It selects clauses and the mechanism that checks each on
   "clauses": {
     "CD-14#class-syntax": "eslint",
     "team/TD-1#some-clause": "walker"
-  }
+  },
+  "exclude": ["tools/discipline-core", "generated"]
 }
 ```
 
@@ -69,6 +72,7 @@ At the repository root. It selects clauses and the mechanism that checks each on
 - `clauses` maps a clause address to a mechanism id. An address is `[<ruleSet>/]<DisciplineId>#<clauseId>`; no prefix means the shared rule set. The mechanism must be one the clause lists.
 - Selecting a clause adopts its discipline. Mechanical clauses of an adopted discipline that are not selected are reported as uncovered, and fail the run.
 - A judgement clause cannot be selected; it is enforced by review.
+- `exclude`, optional, lists repository folders or exact files that no mechanism checks. A folder entry covers everything under it; no globs. Exclude the core's own install when it is vendored inside the repository.
 
 ## discipline-exceptions.json
 
@@ -86,8 +90,10 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 ```
 
 - An `authorised-location` says the clause does not apply to that file.
-- A `file-carve-out` is debt in one file. It is forfeited once the file is touched, and needs a five-step `whyChain` (`whys`, `rootCause`, `owner`).
-- A `clause-wide-carve-out` exempts the clause everywhere and needs a `whyChain`.
+- A `file-carve-out` is debt in one file. It is forfeited once the file is touched.
+- A `clause-wide-carve-out` exempts the clause everywhere.
+- Every entry needs a `whyChain`: `whys`, exactly five `{ "why", "because", "evidence" }` steps, then `rootCause` and `owner`. Placeholder answers, and a root cause that only restates the failure, are refused. [tests/test-fixtures/walkthrough/after/discipline-exceptions.json](tests/test-fixtures/walkthrough/after/discipline-exceptions.json) holds a complete entry.
+- A clause whose `discipline.json` declares `"exceptions": "refused"` cannot be exempted; CD-1 does.
 - Files are exact repository paths, never globs.
 - An entry that exempts nothing is stale, a file both authorised and carved for one clause is doubly held, and an entry that cannot be parsed is invalid. Each fails the run.
 
@@ -105,7 +111,7 @@ Leave out test files (`*.test.ts`), `tests/` folders and `test-fixtures/` folder
 
 `core/` is fetched whole, so it also carries three modules used only by core's own tests of piece imports and install naming: `core/check/piece-import-rules.ts`, `core/check/install-naming.ts` and `core/mechanism-port/piece-type-packages-schema.ts`; nothing loads them at runtime.
 
-With the ESLint mechanism selected, the install must sit at the same path relative to the repository root on every teammate's machine and every CI runner, for example a fixed `.rin/<name>/` inside the repository. The projection `disciplines.eslint.mjs` embeds the relative path from the repository root to each piece's plugin module, and core compares the committed file byte for byte with what `project-command` would write now. An install at a different relative path makes the check report `eslint out-of-date`, and the team's own ESLint run may fail to resolve the plugin import.
+With the ESLint mechanism selected, the install must sit at the same path relative to the repository root on every teammate's machine and every CI runner, for example a fixed `tools/discipline-core/` inside the repository. The projection `disciplines.eslint.mjs` embeds the relative path from the repository root to each piece's plugin module, and core compares the committed file byte for byte with what `project-command` would write now. An install at a different relative path makes the check report `eslint out-of-date`, and the team's own ESLint run may fail to resolve the plugin import.
 
 Core ships no helper that derives this list from `disciplines.json`; whether it should is an open design decision. For now the list is applied by hand or by the adopter's own script.
 
@@ -150,6 +156,6 @@ This directory builds and tests on its own, using only its own configuration: `p
 | `check` | all three in that order |
 | `install-proof` | `node scripts/install-proof.ts`: reads the install path list from § Installing in this README, builds CommonJS consumers in an OS temporary directory outside the working tree, installs the `dependencies` from this package's `package.json` there with `npm`, copies the listed paths into each consumer, and runs both commands under both mechanisms, expecting a fail on a class, a pass once it is removed, and a crash when the installed `package.json` is missing; the temporary directory is removed afterwards |
 
-CI runs `check`, then `install-proof`, and then the fork's constitution audit, `bun run audit:rin`, from the repository root; the audit covers this package.
+### Inside the aidlc-workflows repository only
 
-`fork-wiring.test.ts` reads this repository's CI workflow and harness configuration, so it passes only inside this repository.
+These two notes concern the repository this package is developed in, not an adopter's install. Its CI runs `check`, then `install-proof`, and then that repository's own constitution audit, `bun run audit:rin`, from the repository root. `fork-wiring.test.ts` reads that repository's CI workflow and harness configuration, so it passes only there.

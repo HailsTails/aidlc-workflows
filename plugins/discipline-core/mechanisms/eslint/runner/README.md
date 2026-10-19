@@ -4,7 +4,7 @@ The ESLint runner is discipline-core's embedded mechanism: each selected clause 
 
 The native channels, the exception kind each maps to, and how the projection is adopted and checked are in [the guide](../../../docs/adding-a-discipline-or-mechanism.md#embedded-mechanisms).
 
-The projection imports each piece's plugin module by its path relative to the repository root, and the check compares the committed file byte for byte with what the runner would write now. The install must therefore sit at the same path relative to the repository root for every teammate and CI runner, for example a fixed `.rin/<name>/` inside the repository; otherwise the projection reads `out-of-date` and its plugin import may not resolve.
+The projection imports each piece's plugin module by its path relative to the repository root, and the check compares the committed file byte for byte with what the runner would write now. The install must therefore sit at the same path relative to the repository root for every teammate and CI runner, for example a fixed `tools/discipline-core/` inside the repository; otherwise the projection reads `out-of-date` and its plugin import may not resolve.
 
 ## Runtime
 
