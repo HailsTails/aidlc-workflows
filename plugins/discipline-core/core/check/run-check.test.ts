@@ -269,6 +269,7 @@ const HIT_IN_A = {
 };
 
 const EMPTY_REPORT = {
+  excluded: [],
   findings: [],
   exempted: [],
   uncovered: [],

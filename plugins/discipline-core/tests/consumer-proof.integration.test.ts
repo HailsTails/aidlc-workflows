@@ -152,6 +152,7 @@ const classFinding = (request: { readonly mechanism: string }) => ({
 });
 
 const CLEAN_REPORT = {
+  excluded: [],
   findings: [],
   exempted: [],
   uncovered: [],

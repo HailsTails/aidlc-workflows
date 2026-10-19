@@ -73,6 +73,7 @@ const unmeasuredLine = (request: { readonly unmeasured: Unmeasured }): string =>
 
 export const renderReportText = (request: { readonly report: CheckReport }): string => {
   const sections: readonly { readonly name: keyof CheckReport; readonly lines: readonly string[] }[] = [
+    { name: "excluded", lines: request.report.excluded },
     { name: "findings", lines: request.report.findings.map((finding) => findingLine({ finding })) },
     { name: "exempted", lines: request.report.exempted.map((exempted) => exemptedLine({ exempted })) },
     { name: "uncovered", lines: request.report.uncovered.map((address) => clauseAddressText({ address })) },

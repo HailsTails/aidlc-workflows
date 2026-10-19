@@ -30,6 +30,7 @@ const record: ExceptionRecord = {
 };
 
 const emptyReport: CheckReport = {
+  excluded: [],
   findings: [],
   exempted: [],
   uncovered: [],
@@ -45,6 +46,10 @@ const emptyReport: CheckReport = {
 describe("verdictOf", () => {
   it("passes an empty report", () => {
     expect(verdictOf({ report: emptyReport })).toBe("pass");
+  });
+
+  it("passes a report whose only entries are excluded paths", () => {
+    expect(verdictOf({ report: { ...emptyReport, excluded: [repoPathSchema.parse("generated")] } })).toBe("pass");
   });
 
   it("passes a report whose only entries are exempted findings", () => {

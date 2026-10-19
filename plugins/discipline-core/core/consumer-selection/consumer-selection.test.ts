@@ -271,6 +271,26 @@ describe("createSelectionRepository", () => {
     expect(repository.read({})).toMatchObject({ outcome: "failed", error: { kind: "file-malformed" } });
   });
 
+
+  it("is file-malformed when disciplines.json excludes a glob rather than a repository path", () => {
+    const repository = createSelectionRepository({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      path: TABLE_PATH,
+      fileText: fileTextOver({
+        ...INSTALL,
+        [SELECTION_PATH]: presentFile({ text: JSON.stringify({
+          version: 1,
+          ruleSets: {},
+          clauses: { "CD-14#class-syntax": "walker" },
+          exclude: ["src/**/generated"],
+        }) }),
+      }),
+    });
+
+    expect(repository.read({})).toMatchObject({ outcome: "failed", error: { kind: "file-malformed" } });
+  });
+
   it("preserves the canonical selection read failure at the captured repository root", () => {
     const repository = createSelectionRepository({
       repoRoot: REPO_ROOT,

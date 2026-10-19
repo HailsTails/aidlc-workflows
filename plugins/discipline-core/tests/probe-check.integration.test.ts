@@ -114,6 +114,7 @@ describe("a check selecting the probe rule set's PD-1 beside CD-14 through the w
     await expect(probeCheck().report).resolves.toEqual({
       outcome: "ok",
       value: {
+        excluded: [],
         findings: [
           {
             clause: PROBE_ADDRESS,

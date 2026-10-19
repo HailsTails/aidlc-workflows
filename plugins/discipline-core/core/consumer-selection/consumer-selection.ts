@@ -89,7 +89,13 @@ const consumerSelectionFileSchema = z.strictObject({
     .record(z.string(), z.string())
     .transform((clauses) => Object.entries(clauses))
     .pipe(z.array(z.tuple([clauseAddressSchema, mechanismIdSchema]))),
-  exclude: z.array(repoPathSchema).default([]),
+  exclude: z
+    .array(
+      repoPathSchema.refine((excludedPath) => !excludedPath.includes("*"), {
+        error: "an exclude entry is a repository path, not a glob",
+      }),
+    )
+    .default([]),
 });
 
 type ConsumerSelectionFile = z.infer<typeof consumerSelectionFileSchema>;

@@ -63,6 +63,7 @@ const carvedEverywhere: ExceptionRecord = {
 };
 
 const emptyReport: CheckReport = {
+  excluded: [],
   findings: [],
   exempted: [],
   uncovered: [],
@@ -80,6 +81,16 @@ describe("renderReportText entry lines", () => {
     expect(
       renderReportText({ report: { ...emptyReport, findings: [finding] } }),
     ).toContain("\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {}\n");
+  });
+
+  it("renders the excluded paths first, one per line, before any finding", () => {
+    expect(
+      renderReportText({
+        report: { ...emptyReport, excluded: [repoPathSchema.parse("generated"), repoPathSchema.parse("src/legacy.ts")], findings: [finding] },
+      }),
+    ).toBe(
+      "excluded (2)\ngenerated\nsrc/legacy.ts\nfindings (1)\nCD-14#no-class-syntax walker src/a.ts:3:5 class A {}\nverdict: fail\n",
+    );
   });
 
   it("renders an exempted finding followed by the kind of each crediting record", () => {

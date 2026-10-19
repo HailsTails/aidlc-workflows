@@ -67,6 +67,8 @@ const checkedText = async (request: { readonly repo: AbsolutePath; readonly trac
 };
 
 const BEFORE_REPORT = [
+  "excluded (1)",
+  "generated",
   "findings (7)",
   "CD-14#class-syntax walker src/basket.ts:5:7 export class Basket {",
   "CD-17#clock-sources walker src/basket.ts:7:0 private openedAt = Date.now();",
@@ -80,6 +82,8 @@ const BEFORE_REPORT = [
 ].join("\n");
 
 const AFTER_REPORT = [
+  "excluded (1)",
+  "generated",
   "exempted (1)",
   "CD-17#clock-sources walker src/clock.ts:3:0 export const createSystemClock = (): Clock => ({ now: () => Date.now() }); exempted by authorised-location",
   "verdict: pass",
