@@ -3,7 +3,7 @@ import type { LoadFailure } from "../check/load-failure.ts";
 import type { Selection } from "../consumer-selection/selection.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../platform-ports/file-text-port.ts";
 import { createDefaultPathPort, type PathPort } from "../platform-ports/path-port.ts";
-import { readVersionOneJson } from "../rule-set-reader/rule-set-reader.ts";
+import { parsedJson, readVersionOneJson } from "../rule-set-reader/rule-set-reader.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
 import {
   type ClauseAddress,
@@ -36,7 +36,10 @@ export type ExceptionReading = {
 };
 
 export type ExceptionRepository = {
-  readonly read: (request: { readonly selection: Selection }) => Result<ExceptionReading, LoadFailure>;
+  readonly read: (request: {
+    readonly selection: Selection;
+    readonly baseline: ImportBaseline;
+  }) => Result<ExceptionReading, LoadFailure>;
 };
 
 export const createExceptionRepository = (options: {
@@ -44,12 +47,12 @@ export const createExceptionRepository = (options: {
   readonly fileText: FileTextPort;
   readonly path: PathPort;
 }): ExceptionRepository => ({
-  read: ({ selection }) => {
+  read: ({ selection, baseline }) => {
     const entries = readExceptionEntries(options);
     if (entries.outcome === "failed") return entries;
     return {
       outcome: "ok",
-      value: parseExceptionEntries({ entries: entries.value, selection }),
+      value: parseExceptionEntries({ entries: entries.value, selection, baseline }),
     };
   },
 });
@@ -96,7 +99,41 @@ const exceptionsFileSchema = z.object({
   ),
 });
 
-type StructuralExceptionEntry = z.infer<typeof exceptionsFileSchema>["exceptions"][number];
+export type StructuralExceptionEntry = z.infer<typeof exceptionsFileSchema>["exceptions"][number];
+
+export type ImportBaseline =
+  | { readonly measured: "no" }
+  | {
+      readonly measured: "yes";
+      readonly entriesAtBase: readonly StructuralExceptionEntry[];
+      readonly sourceTextsAtBase: ReadonlyMap<RepoPath, string>;
+    };
+
+export const UNMEASURED_IMPORT_BASELINE: ImportBaseline = { measured: "no" };
+
+const LEGACY_DIRECTORY_OF = {
+  "inherited-debt": ".constitution-carve-outs",
+  "existing-authorisation": ".constitution-authorised-locations",
+} as const;
+
+type ImportProvenanceKind = keyof typeof LEGACY_DIRECTORY_OF;
+
+const LEGACY_SOURCE = /^(?<directory>[^/#]+)\/(?<stem>cd-[0-9a-z]+)\.json#(?<index>\d+)$/;
+
+const legacySourceGroupsSchema = z.object({
+  directory: z.enum([LEGACY_DIRECTORY_OF["inherited-debt"], LEGACY_DIRECTORY_OF["existing-authorisation"]]),
+  stem: z.string(),
+  index: z.coerce.number().int().nonnegative(),
+});
+
+const legacyRecordsSchema = z.array(z.looseObject({ files: z.array(z.string()) }));
+
+type LegacySource = {
+  readonly path: RepoPath;
+  readonly directory: z.infer<typeof legacySourceGroupsSchema>["directory"];
+  readonly discipline: string;
+  readonly index: number;
+};
 
 const recordedTextSchema = z.string().refine((text) => text.trim().length > 0, { error: "must not be blank" });
 
@@ -135,6 +172,90 @@ const fileCarveOutSchema: z.ZodType<FileCarveOutEntry> = z.union([
   z.strictObject({ ...fileCarveOutFields, whyChain: whyChainSchema, provenance: inheritedDebtProvenanceSchema.optional() }),
   z.strictObject({ ...fileCarveOutFields, whyChain: z.never().optional(), provenance: inheritedDebtProvenanceSchema }),
 ]);
+
+const legacySourceOf = (request: { readonly source: string }): LegacySource | "not-legacy-source" => {
+  const groups = legacySourceGroupsSchema.safeParse(LEGACY_SOURCE.exec(request.source)?.groups);
+  if (!groups.success) {
+    return "not-legacy-source";
+  }
+  const path = repoPathSchema.safeParse(`${groups.data.directory}/${groups.data.stem}.json`);
+  return path.success
+    ? { path: path.data, directory: groups.data.directory, discipline: groups.data.stem.toUpperCase(), index: groups.data.index }
+    : "not-legacy-source";
+};
+
+type ImportedIdentity = {
+  readonly kind: "authorised-location" | "file-carve-out";
+  readonly clause: string;
+  readonly file: RepoPath;
+};
+
+const sameEntry = (request: {
+  readonly left: StructuralExceptionEntry;
+  readonly right: StructuralExceptionEntry;
+}): "same" | "different" => (JSON.stringify(request.left) === JSON.stringify(request.right) ? "same" : "different");
+
+const sameIdentity = (request: {
+  readonly entry: StructuralExceptionEntry;
+  readonly identity: ImportedIdentity;
+}): "same" | "different" =>
+  request.entry.kind === request.identity.kind &&
+  request.entry.clause === request.identity.clause &&
+  request.entry.file === request.identity.file
+    ? "same"
+    : "different";
+
+const legacyListing = (request: {
+  readonly sourceTextsAtBase: ReadonlyMap<RepoPath, string>;
+  readonly source: LegacySource;
+  readonly file: RepoPath;
+}): "listed" | "not-listed" => {
+  const text = request.sourceTextsAtBase.get(request.source.path);
+  const document = text === undefined ? undefined : parsedJson({ text });
+  if (document === undefined || document.outcome === "failed") {
+    return "not-listed";
+  }
+  const records = legacyRecordsSchema.safeParse(document.value);
+  return records.success && records.data[request.source.index]?.files.includes(request.file) === true
+    ? "listed"
+    : "not-listed";
+};
+
+const importRefused = (request: { readonly detail: string }): Result<never, EntryProblem> => ({
+  outcome: "failed",
+  error: { kind: "import-unverified", detail: `${request.detail}: give it a whyChain` },
+});
+
+const verifiedImport = <ImportedRecord>(request: {
+  readonly record: ImportedRecord;
+  readonly entry: StructuralExceptionEntry;
+  readonly identity: ImportedIdentity;
+  readonly discipline: string;
+  readonly provenance: { readonly kind: ImportProvenanceKind; readonly source: string };
+  readonly baseline: ImportBaseline;
+}): Result<ImportedRecord, EntryProblem> => {
+  const { baseline } = request;
+  if (baseline.measured === "no") {
+    return { outcome: "ok", value: request.record };
+  }
+  if (baseline.entriesAtBase.some((baseEntry) => sameEntry({ left: baseEntry, right: request.entry }) === "same")) {
+    return { outcome: "ok", value: request.record };
+  }
+  if (baseline.entriesAtBase.some((baseEntry) => sameIdentity({ entry: baseEntry, identity: request.identity }) === "same")) {
+    return importRefused({ detail: "the imported record was edited since the base revision" });
+  }
+  const source = legacySourceOf({ source: request.provenance.source });
+  const listed =
+    source !== "not-legacy-source" &&
+    source.directory === LEGACY_DIRECTORY_OF[request.provenance.kind] &&
+    source.discipline === request.discipline.toUpperCase() &&
+    legacyListing({ sourceTextsAtBase: baseline.sourceTextsAtBase, source, file: request.identity.file }) === "listed";
+  return listed
+    ? { outcome: "ok", value: request.record }
+    : importRefused({
+        detail: `the record is new since the base revision, and its provenance source ${request.provenance.source} is not an entry at the base revision listing ${request.identity.file} under ${LEGACY_DIRECTORY_OF[request.provenance.kind]}/${request.discipline.toLowerCase()}.json`,
+      });
+};
 
 const recordedFile = (request: {
   readonly file: string;
@@ -186,6 +307,7 @@ const selectedClauseOf = (request: {
 const parsedRecord = (request: {
   readonly entry: StructuralExceptionEntry;
   readonly selection: Selection;
+  readonly baseline: ImportBaseline;
 }): Result<ExceptionRecord, EntryProblem> => {
   const { entry } = request;
   const selected = selectedClauseOf(request);
@@ -203,10 +325,17 @@ const parsedRecord = (request: {
       if (!evidence.success) {
         return { outcome: "failed", error: { kind: "evidence-refused", detail: z.prettifyError(evidence.error) } };
       }
-      return {
-        outcome: "ok",
-        value: { ...evidence.data, clause, mechanism, file: file.value },
-      };
+      const record: ExceptionRecord = { ...evidence.data, clause, mechanism, file: file.value };
+      return evidence.data.whyChain === undefined
+        ? verifiedImport({
+            record,
+            entry,
+            identity: { kind: entry.kind, clause: entry.clause, file: file.value },
+            discipline: clause.discipline,
+            provenance: evidence.data.provenance,
+            baseline: request.baseline,
+          })
+        : { outcome: "ok", value: record };
     }
     case "file-carve-out": {
       const file = recordedFile({ file: entry.file });
@@ -223,15 +352,17 @@ const parsedRecord = (request: {
           error: { kind: invalidChain ? "why-chain-refused" : "evidence-refused", detail: z.prettifyError(evidence.error) },
         };
       }
-      return {
-        outcome: "ok",
-        value: {
-          ...evidence.data,
-          clause,
-          mechanism,
-          file: file.value,
-        },
-      };
+      const record: ExceptionRecord = { ...evidence.data, clause, mechanism, file: file.value };
+      return evidence.data.whyChain === undefined
+        ? verifiedImport({
+            record,
+            entry,
+            identity: { kind: entry.kind, clause: entry.clause, file: file.value },
+            discipline: clause.discipline,
+            provenance: evidence.data.provenance,
+            baseline: request.baseline,
+          })
+        : { outcome: "ok", value: record };
     }
     case "clause-wide-carve-out": {
       const whyChain = recordedWhyChain({ whyChain: entry.whyChain });
@@ -313,12 +444,16 @@ const firstRecordsOf = (request: { readonly valid: readonly IndexedRecord[] }): 
 export const parseExceptionEntries = (request: {
   readonly entries: readonly StructuralExceptionEntry[];
   readonly selection: Selection;
+  readonly baseline: ImportBaseline;
 }): {
   readonly records: readonly ExceptionRecord[];
   readonly invalid: readonly InvalidRecord[];
 } => {
   const parsed = request.entries.map(
-    (entry, index): ParsedEntry => ({ index, record: parsedRecord({ entry, selection: request.selection }) }),
+    (entry, index): ParsedEntry => ({
+      index,
+      record: parsedRecord({ entry, selection: request.selection, baseline: request.baseline }),
+    }),
   );
   const valid = validRecordsOf({ parsed });
   return { records: firstRecordsOf({ valid }), invalid: invalidRecordsOf({ parsed, valid }) };
@@ -345,4 +480,52 @@ export const readExceptionEntries = (request: {
     };
   }
   return { outcome: "ok", value: parsed.data.exceptions };
+};
+
+type ImportEvidence = { readonly imported: "no" } | { readonly imported: "yes"; readonly source: string };
+
+const evidenceOf = (request: { readonly entry: StructuralExceptionEntry }) => {
+  switch (request.entry.kind) {
+    case "authorised-location":
+      return authorisedLocationSchema.safeParse(request.entry);
+    case "file-carve-out":
+      return fileCarveOutSchema.safeParse(request.entry);
+    case "clause-wide-carve-out":
+      return undefined;
+  }
+};
+
+const importEvidenceOf = (request: { readonly entry: StructuralExceptionEntry }): ImportEvidence => {
+  const evidence = evidenceOf(request);
+  if (evidence === undefined || !evidence.success || evidence.data.whyChain !== undefined) {
+    return { imported: "no" };
+  }
+  return { imported: "yes", source: evidence.data.provenance.source };
+};
+
+const importSourcePathsOf = (request: { readonly entry: StructuralExceptionEntry }): readonly RepoPath[] => {
+  const evidence = importEvidenceOf(request);
+  if (evidence.imported === "no") {
+    return [];
+  }
+  const source = legacySourceOf({ source: evidence.source });
+  return source === "not-legacy-source" ? [] : [source.path];
+};
+
+export const importedEntriesIn = (request: {
+  readonly entries: readonly StructuralExceptionEntry[];
+}): "present" | "absent" =>
+  request.entries.some((entry) => importEvidenceOf({ entry }).imported === "yes") ? "present" : "absent";
+
+export const importSourcesOf = (request: {
+  readonly entries: readonly StructuralExceptionEntry[];
+}): readonly RepoPath[] => [...new Set(request.entries.flatMap((entry) => importSourcePathsOf({ entry })))];
+
+export const exceptionEntriesOfText = (request: { readonly text: string }): readonly StructuralExceptionEntry[] => {
+  const document = parsedJson({ text: request.text });
+  if (document.outcome === "failed") {
+    return [];
+  }
+  const parsed = exceptionsFileSchema.safeParse(document.value);
+  return parsed.success ? parsed.data.exceptions : [];
 };

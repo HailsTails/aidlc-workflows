@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-28",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "unit-responsibility",
+      "summary": "a test asserts the unit's output and its direct collaborator calls only",
+      "enforcedBy": "review"
+    }
+  ]
+}

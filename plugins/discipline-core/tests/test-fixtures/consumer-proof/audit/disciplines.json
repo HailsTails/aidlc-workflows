@@ -2,6 +2,7 @@
   "version": 1,
   "ruleSets": {},
   "clauses": {
-    "CD-14#class-syntax": "audit"
-  }
+    "CD-23#export-test-sibling": "audit"
+  },
+  "exclude": ["tools/discipline-core"]
 }

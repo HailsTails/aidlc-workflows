@@ -10,7 +10,6 @@ import {
   type InstallList,
   installPaths,
   judgedStep,
-  PROOF_DISCIPLINE_ID,
   type ProofAction,
   type ProofCase,
   parsedInstallList,
@@ -273,7 +272,7 @@ const provenCase = (request: {
   const consumer = request.proofCase.consumer;
   const paths = installPaths({
     installList: request.installList,
-    disciplineId: PROOF_DISCIPLINE_ID,
+    disciplineId: request.proofCase.disciplineId,
     mechanism: request.proofCase.mechanism,
   });
   if (paths.outcome === "failed") {

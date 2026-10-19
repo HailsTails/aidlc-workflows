@@ -2,6 +2,7 @@
   "version": 1,
   "ruleSets": {},
   "clauses": {
-    "CD-14#class-syntax": "eslint"
+    "CD-14#class-syntax": "eslint",
+    "CD-14#static-only-class": "eslint"
   }
 }

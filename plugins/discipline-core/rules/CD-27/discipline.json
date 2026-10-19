@@ -68,6 +68,166 @@
           }
         ]
       }
+    },
+    {
+      "kind": "mechanical",
+      "id": "focused-tests",
+      "summary": "Tests are zero-everything — zero logic, zero branches, zero unpredictability",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "only"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "test.only",
+            "fileName": "src/sum.test.ts",
+            "source": "test.only(\"adds\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "describe.only",
+            "fileName": "src/sum.test.ts",
+            "source": "describe.only(\"sum\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "fit",
+            "fileName": "src/sum.test.ts",
+            "source": "fit(\"adds\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "test.only.each",
+            "fileName": "src/sum.test.ts",
+            "source": "test.only.each([1])(\"adds %s\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "nested it.only",
+            "fileName": "src/sum.test.ts",
+            "source": "describe(\"sum\", () => {\n  it.only(\"adds\", () => {});\n});\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "qualified it.only",
+            "fileName": "src/sum.test.ts",
+            "source": "foo.it.only(\"adds\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "plain test",
+            "fileName": "src/sum.test.ts",
+            "source": "test(\"adds\", () => {});\n",
+            "expectedLines": []
+          },
+          {
+            "name": "test.todo",
+            "fileName": "src/sum.test.ts",
+            "source": "test.todo(\"later\");\n",
+            "expectedLines": []
+          },
+          {
+            "name": "only on another object",
+            "fileName": "src/sum.test.ts",
+            "source": "bench.only(\"fast\", () => {});\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "skipped-tests",
+      "summary": "Tests are zero-everything — zero logic, zero branches, zero unpredictability",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "skip"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "test.skip",
+            "fileName": "src/sum.test.ts",
+            "source": "test.skip(\"adds\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "describe.skip",
+            "fileName": "src/sum.test.ts",
+            "source": "describe.skip(\"sum\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "xit",
+            "fileName": "src/sum.test.ts",
+            "source": "xit(\"adds\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "test.fixme",
+            "fileName": "src/sum.test.ts",
+            "source": "test.fixme(\"adds\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "qualified describe.skip",
+            "fileName": "src/sum.test.ts",
+            "source": "ns.describe.skip(\"sum\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "plain test",
+            "fileName": "src/sum.test.ts",
+            "source": "test(\"adds\", () => {});\n",
+            "expectedLines": []
+          },
+          {
+            "name": "test.todo",
+            "fileName": "src/sum.test.ts",
+            "source": "test.todo(\"later\");\n",
+            "expectedLines": []
+          },
+          {
+            "name": "test.concurrent",
+            "fileName": "src/sum.test.ts",
+            "source": "test.concurrent(\"adds\", () => {});\n",
+            "expectedLines": []
+          }
+        ]
+      }
     }
   ]
 }

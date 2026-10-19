@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-11",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "error-envelopes",
+      "summary": "operational errors are tagged data built by a factory and dispatched on their tag",
+      "enforcedBy": "review"
+    }
+  ]
+}

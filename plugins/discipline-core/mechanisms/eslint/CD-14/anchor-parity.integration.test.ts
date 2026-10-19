@@ -70,6 +70,7 @@ describe("CD-14 class-syntax anchors in the audit and the ESLint piece", () => {
         plugin: loadedPlugin,
         pluginNamespace: "discipline",
         rule: "no-class-authoring",
+        options: [],
         cases: [anchorCase],
       }),
     }).toEqual({

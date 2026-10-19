@@ -40,6 +40,7 @@ export type ProofAction =
 export type ProofCase = {
   readonly consumer: string;
   readonly mechanism: Mechanism;
+  readonly disciplineId: string;
   readonly installedManifest: "kept" | "removed";
   readonly actions: readonly ProofAction[];
 };
@@ -55,12 +56,11 @@ const MECHANISM_PLACEHOLDER = "<MechanismId>";
 const PLACEHOLDER_PATTERN = /<[^>]+>/;
 const CODE_SPAN_PATTERN = /`([^`]+)`/g;
 
-export const PROOF_DISCIPLINE_ID = "CD-14";
-
 export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "audit",
     mechanism: "audit",
+    disciplineId: "CD-23",
     installedManifest: "kept",
     actions: [
       { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
@@ -73,6 +73,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "eslint",
     mechanism: "eslint",
+    disciplineId: "CD-14",
     installedManifest: "kept",
     actions: [
       { kind: "project", expectation: { exitCode: 0, output: { kind: "contains", text: "disciplines.eslint.mjs written" } } },
@@ -86,6 +87,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   {
     consumer: "no-package-json",
     mechanism: "audit",
+    disciplineId: "CD-23",
     installedManifest: "removed",
     actions: [
       {

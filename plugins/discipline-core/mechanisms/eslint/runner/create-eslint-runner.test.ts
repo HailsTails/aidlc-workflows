@@ -741,9 +741,22 @@ describe("the governance run, step 4: the governance instance", () => {
               rules: expect.objectContaining({ "no-class-authoring": expect.anything() }),
             }),
           },
-          ruleIds: [RULE_ID],
+          rules: [{ ruleId: RULE_ID, options: [] }],
         },
       ],
+    ]);
+  });
+
+  it("hands the governance instance each selected rule with the options its piece settings declare", async () => {
+    const eslint = eslintOver({});
+    await runnerOver({ eslint }).run(
+      runRequest({
+        clauses: [{ ...CLASS_CLAUSE, settings: { ...CLASS_SETTINGS, options: [{ max: 2 }] } }],
+        records: [],
+      }),
+    );
+    expect(vi.mocked(eslint.createGovernanceInstance).mock.calls).toEqual([
+      [expect.objectContaining({ rules: [{ ruleId: RULE_ID, options: [{ max: 2 }] }] })],
     ]);
   });
 
@@ -967,6 +980,15 @@ describe("conform", () => {
         ],
       ],
     });
+  });
+
+  it("lints the cases with the options the piece settings declare", async () => {
+    const lintSourceCases = vi.fn<EslintPort["lintSourceCases"]>().mockResolvedValue(CLASS_VERDICTS);
+    await runnerOver({ eslint: eslintOver({ lintSourceCases }) }).conform({
+      clause: { ...CLASS_CLAUSE, settings: { ...CLASS_SETTINGS, options: ["always"] } },
+      cases: [CLASS_CASE],
+    });
+    expect(lintSourceCases.mock.calls).toEqual([[expect.objectContaining({ options: ["always"] })]]);
   });
 
   it("passes runner-invalid-output naming a case through from the case lint", async () => {

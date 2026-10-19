@@ -82,11 +82,11 @@ A repository selects it by naming the rule set and the clause:
 {
   "version": 1,
   "ruleSets": { "probe": "probe" },
-  "clauses": { "probe/PD-1#no-tmp-files": "audit", "CD-14#class-syntax": "audit" }
+  "clauses": { "probe/PD-1#no-tmp-files": "audit", "CD-23#export-test-sibling": "audit" }
 }
 ```
 
-`tests/probe-check.integration.test.ts` runs that selection: the probe flags `src/scratch.tmp.ts`, CD-14 flags the class in `src/kept.ts`, and the audit runner parses each file once even though two disciplines are selected.
+`tests/probe-check.integration.test.ts` runs that selection: the probe flags `src/scratch.tmp.ts`, CD-23 flags `src/kept.ts` for its missing test sibling, and the audit runner parses each file once even though two disciplines are selected.
 
 ## Adding a mechanism
 
@@ -185,4 +185,4 @@ The team spreads its default export last in its flat config; the projection is t
 
 ### Runtime
 
-The ESLint mechanism needs the team's `eslint` 10.x, an ESLint-10-compatible `@typescript-eslint/parser`, and `@eslint/plugin-kit`, which it imports directly because a transitive copy does not resolve under strict package managers. This package pins `eslint` 10.11.0, `@typescript-eslint/parser` 8.71.2 and `@eslint/plugin-kit` 0.7.3, and its integration suite runs on those, against the consumer repositories in `mechanisms/eslint/runner/test-fixtures/`.
+The ESLint mechanism needs the team's `eslint` 10.x, an ESLint-10-compatible `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin` for the pieces that reuse its rules, and `@eslint/plugin-kit`, which it imports directly because a transitive copy does not resolve under strict package managers. This package pins `eslint` 10.11.0, `@typescript-eslint/parser` 8.71.2, `@typescript-eslint/eslint-plugin` 8.71.2 and `@eslint/plugin-kit` 0.7.3, and its integration suite runs on those, against the consumer repositories in `mechanisms/eslint/runner/test-fixtures/`.

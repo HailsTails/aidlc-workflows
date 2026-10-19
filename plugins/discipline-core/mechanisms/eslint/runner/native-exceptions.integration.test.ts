@@ -52,6 +52,7 @@ const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPor
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
   contentInBase: vi.fn<GitPort["contentInBase"]>(),
+  textInBase: vi.fn<GitPort["textInBase"]>(),
 });
 
 const checkOf = (request: { readonly name: string; readonly tracked: readonly RepoPath[] }) =>
@@ -465,14 +466,15 @@ const classSyntaxCases = (): MechanicalCases => {
     discipline: disciplineIdSchema.parse("CD-14"),
   });
   assert(loaded.outcome === "ok", "CD-14 discipline.json reads through the rule-set reader");
-  const [classSyntax, libraryConstruction, ...surplus] = loaded.value.clauses;
+  const [classSyntax, libraryConstruction, staticOnlyClass, ...surplus] = loaded.value.clauses;
   assert(classSyntax?.id === "class-syntax", "CD-14 declares class-syntax as its first clause");
   assert(classSyntax.kind === "mechanical", "CD-14 declares class-syntax as a mechanical clause");
   assert(
     libraryConstruction?.id === "library-construction",
     "CD-14 declares the library-construction judgement clause second",
   );
-  assert(surplus.length === 0, "CD-14 declares exactly two clauses");
+  assert(staticOnlyClass?.id === "static-only-class", "CD-14 declares the static-only-class clause third");
+  assert(surplus.length === 0, "CD-14 declares exactly three clauses");
   return classSyntax.cases;
 };
 

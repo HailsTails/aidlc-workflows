@@ -106,7 +106,7 @@ const lintsGovernanceText = (request: { readonly code: string }) =>
       allowInlineConfig: false,
       overrideConfig: governanceConfig({
         plugins: { cd: classAndFunctionPlugin },
-        ruleIds: ["cd/no-class"],
+        rules: [{ ruleId: "cd/no-class", options: [] }],
       }),
     },
   }).lintText({ code: request.code, filePath: "src/a.ts" });
@@ -114,7 +114,7 @@ const lintsGovernanceText = (request: { readonly code: string }) =>
 describe("governanceConfig", () => {
   it("builds one block for TypeScript files", () => {
     expect(
-      governanceConfig({ plugins: { cd: classAndFunctionPlugin }, ruleIds: ["cd/no-class"] }),
+      governanceConfig({ plugins: { cd: classAndFunctionPlugin }, rules: [{ ruleId: "cd/no-class", options: [] }] }),
     ).toMatchObject({ files: ["**/*.{ts,tsx,mts,cts}"] });
   });
 
@@ -122,7 +122,7 @@ describe("governanceConfig", () => {
     expect(
       governanceConfig({
         plugins: { cd: classAndFunctionPlugin, pd: tmpFilePlugin },
-        ruleIds: ["cd/no-class", "pd/no-tmp"],
+        rules: [{ ruleId: "cd/no-class", options: [] }, { ruleId: "pd/no-tmp", options: [] }],
       }).rules,
     ).toEqual({
       "cd/no-class": "error",
@@ -131,11 +131,23 @@ describe("governanceConfig", () => {
     });
   });
 
+  it("sets a selected rule with options to an error entry followed by those options", () => {
+    expect(
+      governanceConfig({
+        plugins: { cd: classAndFunctionPlugin },
+        rules: [{ ruleId: "cd/no-class", options: [{ max: 2 }] }],
+      }).rules,
+    ).toEqual({
+      "cd/no-class": ["error", { max: 2 }],
+      "discipline-core/inline-config": "error",
+    });
+  });
+
   it("registers each plugin under its namespace beside the discipline-core plugin carrying inline-config", () => {
     expect(
       governanceConfig({
         plugins: { cd: classAndFunctionPlugin, pd: tmpFilePlugin },
-        ruleIds: ["cd/no-class", "pd/no-tmp"],
+        rules: [{ ruleId: "cd/no-class", options: [] }, { ruleId: "pd/no-tmp", options: [] }],
       }).plugins,
     ).toEqual({
       cd: classAndFunctionPlugin,
@@ -154,6 +166,7 @@ describe("lintSourceCases over ESLint", () => {
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
       rule: "no-class",
+      options: [],
       cases: [classCase, noClassCase],
     });
 
@@ -172,6 +185,7 @@ describe("lintSourceCases over ESLint", () => {
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
       rule: "no-class",
+      options: [],
       cases: [functionAndClassCase],
     });
 
@@ -187,6 +201,7 @@ describe("lintSourceCases over ESLint", () => {
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
       rule: "no-class",
+      options: [],
       cases: [disabledClassCase],
     });
 
@@ -433,7 +448,7 @@ describe("createGovernanceInstance", () => {
       .createGovernanceInstance({
         repoRoot,
         plugins: { cd: classAndFunctionPlugin },
-        ruleIds: ["cd/no-class"],
+        rules: [{ ruleId: "cd/no-class", options: [] }],
       })
       .lintFiles({ files: [fileA] });
 
@@ -461,7 +476,7 @@ describe("createGovernanceInstance", () => {
       .createGovernanceInstance({
         repoRoot,
         plugins: { cd: classAndFunctionPlugin },
-        ruleIds: ["cd/no-class"],
+        rules: [{ ruleId: "cd/no-class", options: [] }],
       })
       .lintFiles({ files: [fileA, fileB] });
 
@@ -483,7 +498,7 @@ describe("createGovernanceInstance", () => {
       .createGovernanceInstance({
         repoRoot,
         plugins: { cd: classAndFunctionPlugin },
-        ruleIds: ["cd/no-class"],
+        rules: [{ ruleId: "cd/no-class", options: [] }],
       })
       .lintFiles({ files: [fileA] });
 
@@ -505,6 +520,7 @@ describe("lintSourceCases", () => {
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
       rule: "no-class",
+      options: [],
       cases: [classCase, noClassCase],
     });
 
@@ -522,6 +538,7 @@ describe("lintSourceCases", () => {
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
       rule: "no-class",
+      options: [],
       cases: [classCase],
     });
 
@@ -562,6 +579,7 @@ describe("lintSourceCases", () => {
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
       rule: "no-class",
+      options: [],
       cases: [classCase],
     });
 
@@ -589,6 +607,7 @@ describe("lintSourceCases", () => {
       plugin: classAndFunctionPlugin,
       pluginNamespace: "cd",
       rule: "no-class",
+      options: [],
       cases: [classCase],
     });
 

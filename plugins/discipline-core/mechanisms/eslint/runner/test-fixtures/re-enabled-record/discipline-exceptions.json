@@ -6,7 +6,41 @@
       "clause": "CD-14#class-syntax",
       "file": "src/owned.ts",
       "reason": "wrapping factory for a library construction",
-      "provenance": { "kind": "existing-authorisation", "source": "fictional native unit fixture re-enabled-record; not historical authorisation" }
+      "provenance": {
+        "kind": "existing-authorisation",
+        "source": "fictional native unit fixture re-enabled-record; not historical authorisation"
+      },
+      "whyChain": {
+        "whys": [
+          {
+            "why": "why is the exception taken",
+            "because": "the matcher cannot express the tracker id",
+            "evidence": "tools/why-chain-check.ts:9"
+          },
+          {
+            "why": "why is the exception taken",
+            "because": "the matcher cannot express the tracker id",
+            "evidence": "tools/why-chain-check.ts:9"
+          },
+          {
+            "why": "why is the exception taken",
+            "because": "the matcher cannot express the tracker id",
+            "evidence": "tools/why-chain-check.ts:9"
+          },
+          {
+            "why": "why is the exception taken",
+            "because": "the matcher cannot express the tracker id",
+            "evidence": "tools/why-chain-check.ts:9"
+          },
+          {
+            "why": "why is the exception taken",
+            "because": "the matcher cannot express the tracker id",
+            "evidence": "tools/why-chain-check.ts:9"
+          }
+        ],
+        "rootCause": "the audit's matcher predates the tracker id format",
+        "owner": "capture 01a0b421"
+      }
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, vi } from "vitest";
-import { createExceptionRepository } from "../exception-records/exception-records.ts";
+import { createExceptionRepository, UNMEASURED_IMPORT_BASELINE } from "../exception-records/exception-records.ts";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
@@ -146,7 +146,7 @@ describe("applyGovernance with provenance-only inherited debt", () => {
       resolve: vi.fn<PathPort["resolve"]>(),
       fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
     };
-    const exceptionReading = createExceptionRepository({ repoRoot: absolutePathSchema.parse("/repo"), fileText, path }).read({ selection: { selected: [{ address: noClass, mechanism: audit, exceptions: "allowed" }], uncovered: [] } });
+    const exceptionReading = createExceptionRepository({ repoRoot: absolutePathSchema.parse("/repo"), fileText, path }).read({ selection: { selected: [{ address: noClass, mechanism: audit, exceptions: "allowed" }], uncovered: [] }, baseline: UNMEASURED_IMPORT_BASELINE });
 
     expect(exceptionReading).toMatchObject({ outcome: "ok", value: { invalid: [] } });
     assert(exceptionReading.outcome === "ok");

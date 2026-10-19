@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "discipline": "CD-10",
+  "mechanism": "eslint",
+  "clauses": [
+    {
+      "clause": "throw-only-error",
+      "settings": {
+        "pluginNamespace": "discipline-cd10",
+        "pluginModule": "cd10/cd10.eslint-plugin.ts",
+        "rule": "throw-only-error"
+      }
+    }
+  ]
+}

@@ -11,11 +11,13 @@ import {
 } from "../../../core/values/clause-address.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
-import { reservedNamespace } from "./eslint-instance.ts";
+import { enabledRuleEntry, reservedNamespace } from "./eslint-instance.ts";
+import type { RuleOptions } from "./eslint-piece-settings-schema.ts";
 
 export type ProjectedClause = {
   readonly address: ClauseAddress;
   readonly ruleId: string;
+  readonly options: RuleOptions;
 };
 
 export type PluginImport =
@@ -34,7 +36,7 @@ export type CurrentProjection =
 
 export type GeneratedProjectionState = "current" | "out-of-date" | "missing";
 
-type RuleSeverity = "error" | "off";
+type RuleLine = { readonly ruleId: string; readonly entry: string };
 
 type FileRecord = Exclude<ExceptionRecord, { readonly kind: "clause-wide-carve-out" }>;
 
@@ -79,13 +81,19 @@ export const pluginImportOf = (request: {
   };
 };
 
-const rulesLine = (request: {
-  readonly ruleIds: readonly string[];
-  readonly severity: RuleSeverity;
-}): string =>
-  `    rules: { ${request.ruleIds
-    .map((ruleId) => `${quoted({ text: ruleId })}: ${quoted({ text: request.severity })}`)
+const rulesLine = (request: { readonly rules: readonly RuleLine[] }): string =>
+  `    rules: { ${[...request.rules]
+    .sort((left, right) => codeUnitOrder({ left: left.ruleId, right: right.ruleId }))
+    .map((rule) => `${quoted({ text: rule.ruleId })}: ${rule.entry}`)
     .join(", ")} },`;
+
+const enabledLine = (request: { readonly clause: ProjectedClause }): RuleLine => ({
+  ruleId: request.clause.ruleId,
+  entry: JSON.stringify(enabledRuleEntry({ options: request.clause.options })),
+});
+
+const offLines = (request: { readonly ruleIds: readonly string[] }): readonly RuleLine[] =>
+  request.ruleIds.map((ruleId) => ({ ruleId, entry: quoted({ text: "off" }) }));
 
 const blockText = (request: { readonly lines: readonly string[] }): string =>
   ["  {", ...request.lines, "  },"].join("\n");
@@ -99,12 +107,7 @@ const pieceBlock = (request: {
       `    name: ${quoted({ text: `${reservedNamespace}/piece/${request.piece.pluginNamespace}` })},`,
       `    files: [${quoted({ text: SOURCE_FILES })}],`,
       `    plugins: { ${quoted({ text: request.piece.pluginNamespace })}: ${request.importName} },`,
-      rulesLine({
-        ruleIds: request.piece.clauses
-          .map((clause) => clause.ruleId)
-          .sort((left, right) => codeUnitOrder({ left, right })),
-        severity: "error",
-      }),
+      rulesLine({ rules: request.piece.clauses.map((clause) => enabledLine({ clause })) }),
     ],
   });
 
@@ -130,10 +133,7 @@ const fileRecordBlock = (request: {
         text: `${reservedNamespace}/${request.record.kind}/${clauseAddressText({ address: request.record.clause })}/${request.record.file}`,
       })},`,
       `    files: [${quoted({ text: escapedGlobPath({ path: request.record.file }) })}],`,
-      rulesLine({
-        ruleIds: ruleIdsOfClause({ pieces: request.pieces, address: request.record.clause }),
-        severity: "off",
-      }),
+      rulesLine({ rules: offLines({ ruleIds: ruleIdsOfClause({ pieces: request.pieces, address: request.record.clause }) }) }),
     ],
   });
 
@@ -146,10 +146,7 @@ const clauseWideBlock = (request: {
       `    name: ${quoted({
         text: `${reservedNamespace}/${request.record.kind}/${clauseAddressText({ address: request.record.clause })}`,
       })},`,
-      rulesLine({
-        ruleIds: ruleIdsOfClause({ pieces: request.pieces, address: request.record.clause }),
-        severity: "off",
-      }),
+      rulesLine({ rules: offLines({ ruleIds: ruleIdsOfClause({ pieces: request.pieces, address: request.record.clause }) }) }),
     ],
   });
 

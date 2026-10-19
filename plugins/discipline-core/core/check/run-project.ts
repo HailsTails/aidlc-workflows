@@ -1,4 +1,4 @@
-import type { ExceptionRecord } from "../exception-records/exception-records.ts";
+import { type ExceptionRecord, UNMEASURED_IMPORT_BASELINE } from "../exception-records/exception-records.ts";
 import type { ProjectionRequest } from "../mechanism-port/runner-module-schema.ts";
 import type { ProjectionWrite } from "../mechanism-port/runner-result-schema.ts";
 import type { Result } from "../values/result.ts";
@@ -38,7 +38,7 @@ const projectionWritesOf = (request: {
 export const runProject = async (
   request: ProjectRequest,
 ): Promise<Result<readonly ProjectionWrite[], LoadFailure>> => {
-  const inputs = await loadInputs(request);
+  const inputs = await loadInputs({ ...request, importBaselineOf: () => UNMEASURED_IMPORT_BASELINE });
   if (inputs.outcome === "failed") {
     return inputs;
   }

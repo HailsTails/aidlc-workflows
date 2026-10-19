@@ -464,7 +464,7 @@ describe("renderReportText sections", () => {
         report: { ...emptyReport, exempted: [{ finding, by: [located] }] },
       }),
     ).toBe(
-      "exempted (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {} exempted by authorised-location\nverdict: pass\n",
+      "exempted (1)\nCD-14#no-class-syntax audit src/a.ts:3:5 class A {} exempted by authorised-location imported from fictional unit fixture core/verdict/report-text.test.ts#located; not historical authorisation\nverdict: pass\n",
     );
   });
 

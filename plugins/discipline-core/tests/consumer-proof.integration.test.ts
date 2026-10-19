@@ -30,7 +30,7 @@ const ESLINT_CONSUMER = resolvedPath({ path: `${import.meta.dirname}/test-fixtur
 
 const INSTALLED_SOURCE = String.raw`(?!(?:[^/]*\/)*tests\/)(?!.*\.test\.ts$).*`;
 
-const WALKER_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/audit\/runner|mechanisms\/audit\/CD-14)\/${INSTALLED_SOURCE}`;
+const WALKER_INSTALLED = String.raw`(?:core|rules\/CD-23|mechanisms\/audit\/runner|mechanisms\/audit\/CD-23)\/${INSTALLED_SOURCE}`;
 
 const ESLINT_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/eslint\/runner|mechanisms\/eslint\/CD-14)\/${INSTALLED_SOURCE}`;
 
@@ -93,6 +93,7 @@ const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPor
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
   contentInBase: vi.fn<GitPort["contentInBase"]>(),
+  textInBase: vi.fn<GitPort["textInBase"]>(),
 });
 
 const checkOf = (request: {
@@ -120,11 +121,16 @@ const projectOf = (request: { readonly repo: AbsolutePath; readonly ports: Obser
     git: gitTracking({ tracked: [] }),
   });
 
-const CLEAN_TRACKED: readonly RepoPath[] = [repoPathSchema.parse("disciplines.json"), repoPathSchema.parse("src/plain.ts")];
-
-const CLASS_TRACKED: readonly RepoPath[] = [
+const SIBLINGED_TRACKED: readonly RepoPath[] = [
   repoPathSchema.parse("disciplines.json"),
   repoPathSchema.parse("src/plain.ts"),
+  repoPathSchema.parse("src/plain.test.ts"),
+];
+
+const UNSIBLINGED_TRACKED: readonly RepoPath[] = [
+  repoPathSchema.parse("disciplines.json"),
+  repoPathSchema.parse("src/plain.ts"),
+  repoPathSchema.parse("src/plain.test.ts"),
   repoPathSchema.parse("src/kept.ts"),
 ];
 
@@ -143,13 +149,23 @@ const ESLINT_CLASS_TRACKED: readonly RepoPath[] = [
   repoPathSchema.parse("src/kept.ts"),
 ];
 
-const classFinding = (request: { readonly mechanism: string }) => ({
+const UNSIBLINGED_FINDING = {
+  clause: { ruleSet: "shared", discipline: "CD-23", clause: "export-test-sibling" },
+  file: "src/kept.ts",
+  anchor: { line: 1, column: 0 },
+  snippet: "missing co-located *.test.ts(x) sibling",
+  mechanism: "audit",
+};
+
+const CLASS_FINDING = {
   clause: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
   file: "src/kept.ts",
   anchor: { line: 1, column: 7 },
   snippet: "export class Kept {}",
-  mechanism: request.mechanism,
-});
+  mechanism: "eslint",
+};
+
+const WALKER_EXCLUDED = ["tools/discipline-core"];
 
 const CLEAN_REPORT = {
   excluded: [],
@@ -165,27 +181,27 @@ const CLEAN_REPORT = {
   projectionProblems: [],
 };
 
-describe("a consumer with no harness directory selecting CD-14 through the audit, run against the install", () => {
-  it("passes when its tracked files hold no class, exiting 0", async () => {
+describe("a consumer with no harness directory selecting CD-23 through the audit, run against the install", () => {
+  it("passes when every tracked unit has its test sibling, exiting 0", async () => {
     const ports = observedPorts();
-    const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: CLEAN_TRACKED, ports });
-    expect(checked).toEqual({ outcome: "ok", value: CLEAN_REPORT });
+    const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: SIBLINGED_TRACKED, ports });
+    expect(checked).toEqual({ outcome: "ok", value: { ...CLEAN_REPORT, excluded: WALKER_EXCLUDED } });
     expect(checkCommandOutcome({ result: checked }).code).toBe(0);
   });
 
-  it("fails when a tracked file holds a class, exiting 1 with the class as a audit finding", async () => {
+  it("fails when a tracked unit has no test sibling, exiting 1 with the unit as an audit finding", async () => {
     const ports = observedPorts();
-    const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
+    const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: UNSIBLINGED_TRACKED, ports });
     expect(checked).toEqual({
       outcome: "ok",
-      value: { ...CLEAN_REPORT, findings: [classFinding({ mechanism: "audit" })] },
+      value: { ...CLEAN_REPORT, excluded: WALKER_EXCLUDED, findings: [UNSIBLINGED_FINDING] },
     });
     expect(checkCommandOutcome({ result: checked }).code).toBe(1);
   });
 
   it("reads, probes and loads only paths in the audit mechanism's install path list or the consumer repo", async () => {
     const ports = observedPorts();
-    await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
+    await checkOf({ repo: WALKER_CONSUMER, tracked: UNSIBLINGED_TRACKED, ports });
     expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: WALKER_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
@@ -194,7 +210,7 @@ describe("a consumer with no harness directory selecting CD-14 through the audit
 
   it("reads, probes and loads no path carrying a harness segment", async () => {
     const ports = observedPorts();
-    await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
+    await checkOf({ repo: WALKER_CONSUMER, tracked: UNSIBLINGED_TRACKED, ports });
     expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
@@ -224,7 +240,7 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
     const checked = await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLASS_TRACKED, ports });
     expect(checked).toEqual({
       outcome: "ok",
-      value: { ...CLEAN_REPORT, findings: [classFinding({ mechanism: "eslint" })] },
+      value: { ...CLEAN_REPORT, findings: [CLASS_FINDING] },
     });
     expect(checkCommandOutcome({ result: checked }).code).toBe(1);
   });

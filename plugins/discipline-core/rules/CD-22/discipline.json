@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-22",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "middleware-context",
+      "summary": "middleware reads its context through a constrained generic, not an open property bag",
+      "enforcedBy": "review"
+    }
+  ]
+}

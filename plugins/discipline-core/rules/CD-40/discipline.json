@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "id": "CD-40",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "parameter-count",
+      "summary": "Single-object-argument functions",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "function"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "arrow with three parameters",
+            "fileName": "src/add.ts",
+            "source": "export const add = (left: number, right: number, carry: number): number => left + right + carry;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "function with three parameters",
+            "fileName": "src/join.ts",
+            "source": "export function join(first: string, second: string, third: string): string {\n  return first + second + third;\n}\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "two parameters",
+            "fileName": "src/add.ts",
+            "source": "export const add = (left: number, right: number): number => left + right;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "one object parameter",
+            "fileName": "src/add.ts",
+            "source": "export const add = (request: { readonly left: number; readonly right: number }): number =>\n  request.left + request.right;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "judgement",
+      "id": "named-object-argument",
+      "summary": "the single argument is an object with named fields, not a positional scalar",
+      "enforcedBy": "review"
+    }
+  ]
+}

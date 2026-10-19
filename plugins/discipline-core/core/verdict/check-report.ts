@@ -14,6 +14,7 @@ import type { RepoPath } from "../values/repo-path.ts";
 
 export type Unmeasured =
   | { readonly kind: "forfeiture-unmeasured" }
+  | { readonly kind: "import-unmeasured" }
   | {
       readonly kind: "mechanism-not-run";
       readonly mechanism: MechanismId;

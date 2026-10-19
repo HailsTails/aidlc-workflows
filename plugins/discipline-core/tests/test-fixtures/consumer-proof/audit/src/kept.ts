@@ -1,1 +1,1 @@
-export class Kept {}
+export const kept = 1;

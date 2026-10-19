@@ -130,6 +130,7 @@ const gitTracking = (paths: readonly RepoPath[]): GitPort => ({
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: paths }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
   contentInBase: vi.fn<GitPort["contentInBase"]>(),
+  textInBase: vi.fn<GitPort["textInBase"]>(),
 });
 
 const processWith = (request: { readonly arguments: readonly string[] }): ProcessPort => ({

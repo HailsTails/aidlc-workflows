@@ -12,6 +12,8 @@ The sections below describe what the audit check covers.
 | --- | --- | --- |
 | `CD-19#import-boundaries` | audit | imports of a fixed list of libraries, and any `node:` import |
 
+Review lens: [function-first](../../methods/lenses/function-first.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - A line with `from "<name>"` for: `eslint winston winston-transport better-sqlite3 pino hono @hono/node-server hono/cors hono/cookie hono/types hono/utils/http-status jose @modelcontextprotocol/sdk zod-to-json-schema uuid`. Type-only imports and matches inside strings are flagged too.
@@ -40,4 +42,4 @@ Add an entry to `discipline-exceptions.json` at the repository root. Use `author
 ] }
 ```
 
-Every record, `authorised-location` included, also needs a `whyChain`: five `{ "why", "because", "evidence" }` steps, a `rootCause` and an `owner`. A complete record is in [the worked example](../../tests/test-fixtures/walkthrough/after/discipline-exceptions.json).
+Every record, `authorised-location` included, also needs a `whyChain`: five `{ "why", "because", "evidence" }` steps, a `rootCause` and an `owner`. The one exception is a record imported from an earlier system, which carries `provenance` instead. [The exceptions format](../../README.md#discipline-exceptionsjson) gives both shapes.

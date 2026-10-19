@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-12",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "repository-ports",
+      "summary": "storage sits behind a repository port and domain code never imports a storage driver",
+      "enforcedBy": "review"
+    }
+  ]
+}

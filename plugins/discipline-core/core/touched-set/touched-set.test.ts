@@ -30,6 +30,7 @@ const fakeGit = (changedSince: GitPort["changedSince"]): GitPort => ({
   trackedPaths: () => ({ outcome: "ok", value: [] }),
   changedSince,
   contentInBase: vi.fn<GitPort["contentInBase"]>(),
+  textInBase: vi.fn<GitPort["textInBase"]>(),
 });
 
 const measuredMemberKeysArePaths: Equal<

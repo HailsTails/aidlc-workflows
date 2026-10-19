@@ -50,6 +50,12 @@ describe("CD-14 discipline.json", () => {
             anchor: { kind: "keyword", keyword: "class" },
           },
           { kind: "judgement", id: "library-construction", enforcedBy: "review" },
+          {
+            kind: "mechanical",
+            id: "static-only-class",
+            mechanisms: ["eslint"],
+            anchor: { kind: "keyword", keyword: "class" },
+          },
         ],
       },
     });
@@ -73,6 +79,7 @@ describe("CD-14 discipline.json", () => {
             },
           },
           {},
+          {},
         ],
       },
     });
@@ -94,6 +101,7 @@ describe("CD-14 discipline.json", () => {
               ],
             },
           },
+          {},
           {},
         ],
       },

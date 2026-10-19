@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "discipline": "CD-1",
+  "mechanism": "eslint",
+  "clauses": [
+    {
+      "clause": "explicit-any",
+      "settings": {
+        "pluginNamespace": "discipline-cd1",
+        "pluginModule": "cd1/cd1.eslint-plugin.ts",
+        "rule": "no-explicit-any"
+      }
+    },
+    {
+      "clause": "implicit-any-let",
+      "settings": {
+        "pluginNamespace": "discipline-cd1",
+        "pluginModule": "cd1/cd1.eslint-plugin.ts",
+        "rule": "implicit-any-let"
+      }
+    }
+  ]
+}
