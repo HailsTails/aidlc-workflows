@@ -6,6 +6,7 @@ import { absolutePathSchema } from "../values/absolute-path.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import {
+  createExceptionRepository,
   parseExceptionEntries,
   readExceptionEntries,
 } from "./exception-records.ts";
@@ -92,6 +93,61 @@ const readEntries = (request: { readonly fileText: FileTextPort }) =>
 
 const readEntriesOf = (request: { readonly text: string }) =>
   readEntries({ fileText: fileTextReading({ text: request.text }) });
+
+describe("createExceptionRepository", () => {
+  it("reads complete records against the supplied full selection and preserves original invalid indexes", () => {
+    const path = pathJoiningTo({ joined: EXCEPTIONS_PATH });
+    const repository = createExceptionRepository({
+      repoRoot: REPO_ROOT,
+      path,
+      fileText: fileTextReading({ text: JSON.stringify({
+        version: 1,
+        exceptions: [LOCATION, { ...LOCATION, file: "../outside.ts" }, CLAUSE_WIDE, { ...LOCATION, reason: "duplicate record" }],
+      }) }),
+    });
+
+    expect(repository.read({ selection: SELECTION })).toEqual({
+      outcome: "ok",
+      value: {
+        records: [
+          { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "walker", file: "src/factory.ts", reason: LOCATION.reason },
+          {
+            kind: "clause-wide-carve-out",
+            clause: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" },
+            mechanism: "eslint",
+            reason: CLAUSE_WIDE.reason,
+            whyChain: CHAIN,
+          },
+        ],
+        invalid: [
+          { index: 1, problem: { kind: "file-not-repo-path", file: "../outside.ts" } },
+          { index: 3, problem: { kind: "duplicate", ofIndex: 0 } },
+        ],
+      },
+    });
+    expect(path.join).toHaveBeenCalledExactlyOnceWith({ segments: [REPO_ROOT, "discipline-exceptions.json"] });
+  });
+
+  it("preserves a canonical exception read failure without publishing empty records", () => {
+    const repository = createExceptionRepository({
+      repoRoot: REPO_ROOT,
+      path: pathJoiningTo({ joined: EXCEPTIONS_PATH }),
+      fileText: {
+        read: vi.fn<FileTextPort["read"]>().mockReturnValue({
+          outcome: "failed",
+          error: { kind: "unreadable", path: EXCEPTIONS_PATH, detail: "EACCES" },
+        }),
+        exists: vi.fn<FileTextPort["exists"]>().mockReturnValue("present"),
+        write: vi.fn(),
+      },
+    });
+
+    expect(repository.read({ selection: SELECTION })).toEqual({
+      outcome: "failed",
+      error: { kind: "file-unreadable", path: EXCEPTIONS_PATH, detail: "EACCES" },
+    });
+  });
+});
 
 describe("parseExceptionEntries records", () => {
   it("parses an authorised location with the mechanism copied from the selection", () => {

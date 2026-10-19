@@ -6,7 +6,7 @@ import { absolutePathSchema } from "../values/absolute-path.ts";
 import { ruleSetNameSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
-import { type RuleSetLocation, readSelection, ruleSetRootOf } from "./consumer-selection.ts";
+import { createSelectionRepository, type RuleSetLocation, readSelection, ruleSetRootOf } from "./consumer-selection.ts";
 
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
@@ -181,6 +181,91 @@ const select = (files: Readonly<Record<string, FakeFile>>) =>
 
 const selecting = (selection: unknown) =>
   select({ ...INSTALL, [SELECTION_PATH]: presentFile({ text: JSON.stringify(selection) }) });
+
+describe("createSelectionRepository", () => {
+  it("reads the complete canonical selection with shared and named bindings and uncovered clauses", () => {
+    const repository = createSelectionRepository({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      path: TABLE_PATH,
+      fileText: fileTextOver({
+        ...INSTALL,
+        [SELECTION_PATH]: presentFile({ text: JSON.stringify({
+          version: 1,
+          ruleSets: { team: "team-rules" },
+          clauses: { "CD-14#class-syntax": "walker", "team/TM-1#no-tmp-files": "walker" },
+        }) }),
+      }),
+    });
+
+    expect(repository.read({})).toEqual({
+      outcome: "ok",
+      value: {
+        selection: {
+          selected: [
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker" },
+            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker" },
+          ],
+          uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }],
+        },
+        bindings: [
+          {
+            mechanism: "walker",
+            clause: {
+              address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
+              anchor: { kind: "keyword", keyword: "class" },
+              pieceRoot: "/install/mechanisms/walker/CD-14",
+              settings: { module: "class-syntax.ts" },
+            },
+          },
+          {
+            mechanism: "walker",
+            clause: {
+              address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" },
+              anchor: { kind: "keyword", keyword: "class" },
+              pieceRoot: "/repo/team-rules/mechanisms/walker/TM-1",
+              settings: { module: "no-tmp-files.ts" },
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("preserves the canonical selection read failure at the captured repository root", () => {
+    const repository = createSelectionRepository({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      path: TABLE_PATH,
+      fileText: fileTextOver({
+        ...INSTALL,
+        [SELECTION_PATH]: {
+          presence: "present",
+          read: { outcome: "failed", error: { kind: "unreadable", path: SELECTION_PATH, detail: "EACCES" } },
+        },
+      }),
+    });
+
+    expect(repository.read({})).toEqual({
+      outcome: "failed",
+      error: { kind: "file-unreadable", path: SELECTION_PATH, detail: "EACCES" },
+    });
+  });
+
+  it("preserves malformed canonical selection failure instead of returning an empty adoption", () => {
+    const repository = createSelectionRepository({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      path: TABLE_PATH,
+      fileText: fileTextOver({ ...INSTALL, [SELECTION_PATH]: presentFile({ text: "{" }) }),
+    });
+
+    expect(repository.read({})).toEqual({
+      outcome: "failed",
+      error: { kind: "file-malformed", path: SELECTION_PATH, detail: expect.any(String) },
+    });
+  });
+});
 
 describe("readSelection", () => {
   it("selects a shared clause, rooted at the install, with its mechanism", () => {

@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { LoadFailure } from "../check/load-failure.ts";
-import type { RunnerClause } from "../mechanism-port/runner-module-schema.ts";
-import type { FileTextPort } from "../platform-ports/file-text-port.ts";
-import type { PathPort } from "../platform-ports/path-port.ts";
+import { createDefaultFileTextPort, type FileTextPort } from "../platform-ports/file-text-port.ts";
+import { createDefaultPathPort, type PathPort } from "../platform-ports/path-port.ts";
 import {
   type DisciplineFile,
   disciplineFilePath,
@@ -26,26 +25,31 @@ import {
   ruleSetNameSchema,
 } from "../values/identifiers.ts";
 import type { Result } from "../values/result.ts";
+import type { ClauseBinding, SelectionReading } from "./selection.ts";
 
-export type SelectedClause = {
-  readonly address: ClauseAddress;
-  readonly mechanism: MechanismId;
+export type { SelectedClause, Selection, ClauseBinding, SelectionReading } from "./selection.ts";
+
+export type SelectionRepository = {
+  readonly read: (request: Record<string, never>) => Result<SelectionReading, LoadFailure>;
 };
 
-export type Selection = {
-  readonly selected: readonly SelectedClause[];
-  readonly uncovered: readonly ClauseAddress[];
-};
+export const createSelectionRepository = (options: {
+  readonly repoRoot: AbsolutePath;
+  readonly installRoot: AbsolutePath;
+  readonly fileText: FileTextPort;
+  readonly path: PathPort;
+}): SelectionRepository => ({
+  read: (_request) => readSelection(options),
+});
 
-export type ClauseBinding = {
-  readonly mechanism: MechanismId;
-  readonly clause: RunnerClause;
-};
-
-export type SelectionReading = {
-  readonly selection: Selection;
-  readonly bindings: readonly ClauseBinding[];
-};
+export const createDefaultSelectionRepository = (options: {
+  readonly repoRoot: AbsolutePath;
+  readonly installRoot: AbsolutePath;
+}): SelectionRepository => createSelectionRepository({
+  ...options,
+  fileText: createDefaultFileTextPort({}),
+  path: createDefaultPathPort({}),
+});
 
 type ResolvedClause = {
   readonly ruleSetRoot: AbsolutePath;

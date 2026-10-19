@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { LoadFailure } from "../check/load-failure.ts";
-import type { Selection } from "../consumer-selection/consumer-selection.ts";
-import type { FileTextPort } from "../platform-ports/file-text-port.ts";
-import type { PathPort } from "../platform-ports/path-port.ts";
+import type { Selection } from "../consumer-selection/selection.ts";
+import { createDefaultFileTextPort, type FileTextPort } from "../platform-ports/file-text-port.ts";
+import { createDefaultPathPort, type PathPort } from "../platform-ports/path-port.ts";
 import { readVersionOneJson } from "../rule-set-reader/rule-set-reader.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
 import {
@@ -14,6 +14,41 @@ import type { MechanismId } from "../values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
 import { type WhyChain, whyChainSchema } from "../values/why-chain.ts";
+import type { ExceptionRecord, InvalidRecord } from "./exception-record.ts";
+
+export type { ExceptionRecord, InvalidRecord } from "./exception-record.ts";
+
+export type ExceptionReading = {
+  readonly records: readonly ExceptionRecord[];
+  readonly invalid: readonly InvalidRecord[];
+};
+
+export type ExceptionRepository = {
+  readonly read: (request: { readonly selection: Selection }) => Result<ExceptionReading, LoadFailure>;
+};
+
+export const createExceptionRepository = (options: {
+  readonly repoRoot: AbsolutePath;
+  readonly fileText: FileTextPort;
+  readonly path: PathPort;
+}): ExceptionRepository => ({
+  read: ({ selection }) => {
+    const entries = readExceptionEntries(options);
+    if (entries.outcome === "failed") return entries;
+    return {
+      outcome: "ok",
+      value: parseExceptionEntries({ entries: entries.value, selection }),
+    };
+  },
+});
+
+export const createDefaultExceptionRepository = (options: {
+  readonly repoRoot: AbsolutePath;
+}): ExceptionRepository => createExceptionRepository({
+  ...options,
+  fileText: createDefaultFileTextPort({}),
+  path: createDefaultPathPort({}),
+});
 
 export type ExceptionsFile = {
   readonly version: 1;
@@ -38,40 +73,6 @@ export type ExceptionsFile = {
         readonly whyChain: unknown;
       }
   )[];
-};
-
-export type ExceptionRecord =
-  | {
-      readonly kind: "authorised-location";
-      readonly clause: ClauseAddress;
-      readonly mechanism: MechanismId;
-      readonly file: RepoPath;
-      readonly reason: string;
-    }
-  | {
-      readonly kind: "file-carve-out";
-      readonly clause: ClauseAddress;
-      readonly mechanism: MechanismId;
-      readonly file: RepoPath;
-      readonly reason: string;
-      readonly whyChain: WhyChain;
-    }
-  | {
-      readonly kind: "clause-wide-carve-out";
-      readonly clause: ClauseAddress;
-      readonly mechanism: MechanismId;
-      readonly reason: string;
-      readonly whyChain: WhyChain;
-    };
-
-export type InvalidRecord = {
-  readonly index: number;
-  readonly problem:
-    | { readonly kind: "clause-unparseable"; readonly detail: string }
-    | { readonly kind: "clause-not-selected"; readonly clause: ClauseAddress }
-    | { readonly kind: "file-not-repo-path"; readonly file: string }
-    | { readonly kind: "why-chain-refused"; readonly detail: string }
-    | { readonly kind: "duplicate"; readonly ofIndex: number };
 };
 
 type ExceptionEntry = ExceptionsFile["exceptions"][number];
