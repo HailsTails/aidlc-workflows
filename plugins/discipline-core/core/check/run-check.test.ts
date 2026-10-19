@@ -287,6 +287,7 @@ const gitReporting = (request: {
 }): GitPort => ({
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue(request.trackedPaths),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue(request.changedSince),
+  contentInBase: vi.fn<GitPort["contentInBase"]>(),
 });
 
 const MEASURED_GIT = gitReporting({

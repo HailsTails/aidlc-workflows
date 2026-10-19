@@ -192,6 +192,7 @@ const GIT: GitPort = {
     value: [repoPathSchema.parse("src/a.ts")],
   }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
+  contentInBase: vi.fn<GitPort["contentInBase"]>(),
 };
 
 const projectRequest = (overrides: Partial<ProjectRequest>): ProjectRequest => ({
