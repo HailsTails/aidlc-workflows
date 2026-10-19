@@ -156,7 +156,7 @@ construct-and-matcher check.
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates (e.g. production files
+Produce the counts the review asks for (e.g. production files
 inspected, siblings present vs missing, test files inspected, zero-logic
 construct violations, vague-matcher assertions, delegation leaks, mis-scoped
 tests by direction, tautological-act tests, valueless tests, uniform cases written out by hand). Every finding is

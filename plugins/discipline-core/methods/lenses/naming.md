@@ -117,7 +117,7 @@ absent tracker.
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates (e.g. shorthand identifiers,
+Produce the counts the review asks for (e.g. shorthand identifiers,
 filler-word identifiers, categorical filenames, categorical folders, untracked or
 forbidden annotations, scoped overrides to narrow/retire). Every finding is
 `file:line | quoted code | <rule-id> | defect-named`, citing the loaded rule by

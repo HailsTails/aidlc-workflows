@@ -180,7 +180,7 @@ failure mode — every finding commits to a bucket or a named replacement.
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates across all four axes — class
+Produce the counts the review asks for across all four axes — class
 declarations by classification (justified / closure-candidate / pure-fn-candidate
 / rubric-resistant), imperative-loop sites by kind (element-iteration vs counted),
 raw-library-import and `new X(...)` sites by in-factory vs out-of-factory, and

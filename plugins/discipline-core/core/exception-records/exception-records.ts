@@ -111,7 +111,29 @@ export type ImportBaseline =
 
 export const UNMEASURED_IMPORT_BASELINE: ImportBaseline = { measured: "no" };
 
-const IMPORT_SOURCE_ENTRY_SEPARATOR = "#";
+const LEGACY_DIRECTORY_OF = {
+  "inherited-debt": ".constitution-carve-outs",
+  "existing-authorisation": ".constitution-authorised-locations",
+} as const;
+
+type ImportProvenanceKind = keyof typeof LEGACY_DIRECTORY_OF;
+
+const LEGACY_SOURCE = /^(?<directory>[^/#]+)\/(?<stem>cd-[0-9a-z]+)\.json#(?<index>\d+)$/;
+
+const legacySourceGroupsSchema = z.object({
+  directory: z.enum([LEGACY_DIRECTORY_OF["inherited-debt"], LEGACY_DIRECTORY_OF["existing-authorisation"]]),
+  stem: z.string(),
+  index: z.coerce.number().int().nonnegative(),
+});
+
+const legacyRecordsSchema = z.array(z.looseObject({ files: z.array(z.string()) }));
+
+type LegacySource = {
+  readonly path: RepoPath;
+  readonly directory: z.infer<typeof legacySourceGroupsSchema>["directory"];
+  readonly discipline: string;
+  readonly index: number;
+};
 
 const recordedTextSchema = z.string().refine((text) => text.trim().length > 0, { error: "must not be blank" });
 
@@ -151,9 +173,21 @@ const fileCarveOutSchema: z.ZodType<FileCarveOutEntry> = z.union([
   z.strictObject({ ...fileCarveOutFields, whyChain: z.never().optional(), provenance: inheritedDebtProvenanceSchema }),
 ]);
 
-const importSourcePathOf = (request: { readonly source: string }): RepoPath | "not-repo-path" => {
-  const parsed = repoPathSchema.safeParse(request.source.split(IMPORT_SOURCE_ENTRY_SEPARATOR)[0]);
-  return parsed.success ? parsed.data : "not-repo-path";
+const legacySourceOf = (request: { readonly source: string }): LegacySource | "not-legacy-source" => {
+  const groups = legacySourceGroupsSchema.safeParse(LEGACY_SOURCE.exec(request.source)?.groups);
+  if (!groups.success) {
+    return "not-legacy-source";
+  }
+  const path = repoPathSchema.safeParse(`${groups.data.directory}/${groups.data.stem}.json`);
+  return path.success
+    ? { path: path.data, directory: groups.data.directory, discipline: groups.data.stem.toUpperCase(), index: groups.data.index }
+    : "not-legacy-source";
+};
+
+type ImportedIdentity = {
+  readonly kind: "authorised-location" | "file-carve-out";
+  readonly clause: string;
+  readonly file: RepoPath;
 };
 
 const sameEntry = (request: {
@@ -161,11 +195,43 @@ const sameEntry = (request: {
   readonly right: StructuralExceptionEntry;
 }): "same" | "different" => (JSON.stringify(request.left) === JSON.stringify(request.right) ? "same" : "different");
 
+const sameIdentity = (request: {
+  readonly entry: StructuralExceptionEntry;
+  readonly identity: ImportedIdentity;
+}): "same" | "different" =>
+  request.entry.kind === request.identity.kind &&
+  request.entry.clause === request.identity.clause &&
+  request.entry.file === request.identity.file
+    ? "same"
+    : "different";
+
+const legacyListing = (request: {
+  readonly sourceTextsAtBase: ReadonlyMap<RepoPath, string>;
+  readonly source: LegacySource;
+  readonly file: RepoPath;
+}): "listed" | "not-listed" => {
+  const text = request.sourceTextsAtBase.get(request.source.path);
+  const document = text === undefined ? undefined : parsedJson({ text });
+  if (document === undefined || document.outcome === "failed") {
+    return "not-listed";
+  }
+  const records = legacyRecordsSchema.safeParse(document.value);
+  return records.success && records.data[request.source.index]?.files.includes(request.file) === true
+    ? "listed"
+    : "not-listed";
+};
+
+const importRefused = (request: { readonly detail: string }): Result<never, EntryProblem> => ({
+  outcome: "failed",
+  error: { kind: "import-unverified", detail: `${request.detail}: give it a whyChain` },
+});
+
 const verifiedImport = <ImportedRecord>(request: {
   readonly record: ImportedRecord;
   readonly entry: StructuralExceptionEntry;
-  readonly file: RepoPath;
-  readonly source: string;
+  readonly identity: ImportedIdentity;
+  readonly discipline: string;
+  readonly provenance: { readonly kind: ImportProvenanceKind; readonly source: string };
   readonly baseline: ImportBaseline;
 }): Result<ImportedRecord, EntryProblem> => {
   const { baseline } = request;
@@ -175,17 +241,20 @@ const verifiedImport = <ImportedRecord>(request: {
   if (baseline.entriesAtBase.some((baseEntry) => sameEntry({ left: baseEntry, right: request.entry }) === "same")) {
     return { outcome: "ok", value: request.record };
   }
-  const sourcePath = importSourcePathOf({ source: request.source });
-  if (sourcePath !== "not-repo-path" && baseline.sourceTextsAtBase.get(sourcePath)?.includes(request.file) === true) {
-    return { outcome: "ok", value: request.record };
+  if (baseline.entriesAtBase.some((baseEntry) => sameIdentity({ entry: baseEntry, identity: request.identity }) === "same")) {
+    return importRefused({ detail: "the imported record was edited since the base revision" });
   }
-  return {
-    outcome: "failed",
-    error: {
-      kind: "import-unverified",
-      detail: `the record is new or changed since the base revision, and its provenance source ${request.source} does not list ${request.file} at the base revision: give it a whyChain`,
-    },
-  };
+  const source = legacySourceOf({ source: request.provenance.source });
+  const listed =
+    source !== "not-legacy-source" &&
+    source.directory === LEGACY_DIRECTORY_OF[request.provenance.kind] &&
+    source.discipline === request.discipline.toUpperCase() &&
+    legacyListing({ sourceTextsAtBase: baseline.sourceTextsAtBase, source, file: request.identity.file }) === "listed";
+  return listed
+    ? { outcome: "ok", value: request.record }
+    : importRefused({
+        detail: `the record is new since the base revision, and its provenance source ${request.provenance.source} is not an entry at the base revision listing ${request.identity.file} under ${LEGACY_DIRECTORY_OF[request.provenance.kind]}/${request.discipline.toLowerCase()}.json`,
+      });
 };
 
 const recordedFile = (request: {
@@ -261,8 +330,9 @@ const parsedRecord = (request: {
         ? verifiedImport({
             record,
             entry,
-            file: file.value,
-            source: evidence.data.provenance.source,
+            identity: { kind: entry.kind, clause: entry.clause, file: file.value },
+            discipline: clause.discipline,
+            provenance: evidence.data.provenance,
             baseline: request.baseline,
           })
         : { outcome: "ok", value: record };
@@ -287,8 +357,9 @@ const parsedRecord = (request: {
         ? verifiedImport({
             record,
             entry,
-            file: file.value,
-            source: evidence.data.provenance.source,
+            identity: { kind: entry.kind, clause: entry.clause, file: file.value },
+            discipline: clause.discipline,
+            provenance: evidence.data.provenance,
             baseline: request.baseline,
           })
         : { outcome: "ok", value: record };
@@ -437,8 +508,8 @@ const importSourcePathsOf = (request: { readonly entry: StructuralExceptionEntry
   if (evidence.imported === "no") {
     return [];
   }
-  const sourcePath = importSourcePathOf({ source: evidence.source });
-  return sourcePath === "not-repo-path" ? [] : [sourcePath];
+  const source = legacySourceOf({ source: evidence.source });
+  return source === "not-legacy-source" ? [] : [source.path];
 };
 
 export const importedEntriesIn = (request: {

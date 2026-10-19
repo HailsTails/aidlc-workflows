@@ -146,7 +146,7 @@ are the lens's own failure mode.
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates. The boundary inventory walk
+Produce the counts the review asks for. The boundary inventory walk
 is mandatory and so are the counts it yields: crossings inspected / validated /
 typeless; library returns inspected / validated / accepted-at-face-value;
 internal validation-library imports; seam ambiguities. Every finding is

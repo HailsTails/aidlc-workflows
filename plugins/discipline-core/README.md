@@ -93,8 +93,22 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 - An `authorised-location` says the clause does not apply to that file.
 - A `file-carve-out` is debt in one file. It is forfeited once the file is touched.
 - A `clause-wide-carve-out` exempts the clause everywhere.
-- Every entry needs a `whyChain`: `whys`, exactly five `{ "why", "because", "evidence" }` steps, then `rootCause` and `owner`. Placeholder answers, and a root cause that only restates the failure, are refused. [tests/test-fixtures/walkthrough/after/discipline-exceptions.json](tests/test-fixtures/walkthrough/after/discipline-exceptions.json) holds a complete entry.
-- An entry carried over from an earlier system may give `provenance` instead of a `whyChain`: `{ "kind": "inherited-debt", "source", "decision" }` on a file carve-out, `{ "kind": "existing-authorisation", "source" }` on an authorised location. `source` is the repository path of the old record, optionally followed by `#` and the entry. Such an entry is imported, and is accepted only while the `--base-revision` already holds it unchanged or its `source` lists the file at that revision. A new or edited entry without a `whyChain` is refused as `import-unverified`, and a run with imported entries and no `--base-revision` is `import-unmeasured`. The report names each imported entry it exempts by.
+- Every entry needs a `whyChain`: `whys`, exactly five `{ "why", "because", "evidence" }` steps, then `rootCause` and `owner`. Placeholder answers, and a root cause that only restates the failure, are refused:
+
+  ```json
+  "whyChain": {
+    "whys": [
+      { "why": "...", "because": "...", "evidence": "..." },
+      { "why": "...", "because": "...", "evidence": "..." },
+      { "why": "...", "because": "...", "evidence": "..." },
+      { "why": "...", "because": "...", "evidence": "..." },
+      { "why": "...", "because": "...", "evidence": "..." }
+    ],
+    "rootCause": "...",
+    "owner": "..."
+  }
+  ```
+- An entry carried over from an earlier system may give `provenance` instead of a `whyChain`: `{ "kind": "inherited-debt", "source", "decision" }` on a file carve-out, `{ "kind": "existing-authorisation", "source" }` on an authorised location. `source` names the old record entry as `<directory>/cd-<id>.json#<index>`: `.constitution-carve-outs` for inherited debt, `.constitution-authorised-locations` for an existing authorisation, the old file for the record's discipline, and the entry's position in its array. Such an entry is imported, and is accepted only while the `--base-revision` already holds it unchanged, or, when the base holds no record for that kind, clause and file, while the `source` entry at that revision lists the file in its `files`. A new or edited entry without a `whyChain` is refused as `import-unverified`, and a run with imported entries and no `--base-revision` is `import-unmeasured`. The report names each imported entry it exempts by.
 - A clause whose `discipline.json` declares `"exceptions": "refused"` cannot be exempted; CD-1 does.
 - Files are exact repository paths, never globs.
 - An entry that exempts nothing is stale, a file both authorised and carved for one clause is doubly held, and an entry that cannot be parsed is invalid. Each fails the run.
@@ -103,7 +117,7 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 
 Fetch these paths from a pinned commit of this repository into one install directory, keeping their layout:
 
-- always: `package.json` and `core/`
+- always: `package.json`, `README.md` and `core/`
 - for each selected clause in the shared rule set: `rules/<DisciplineId>/`, `mechanisms/<MechanismId>/runner/` and `mechanisms/<MechanismId>/<DisciplineId>/`
 - for each selected clause in the repository's own rule set: `mechanisms/<MechanismId>/runner/` only, since the discipline and its piece live in that rule set
 - to apply judgement rules in review: `rules/<DisciplineId>/` for each adopted judgement rule, and `methods/`; the check itself never reads them

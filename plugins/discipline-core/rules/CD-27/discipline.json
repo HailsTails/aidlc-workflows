@@ -121,6 +121,14 @@
             "expectedLines": [
               2
             ]
+          },
+          {
+            "name": "qualified it.only",
+            "fileName": "src/sum.test.ts",
+            "source": "foo.it.only(\"adds\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
           }
         ],
         "allow": [
@@ -186,6 +194,14 @@
             "name": "test.fixme",
             "fileName": "src/sum.test.ts",
             "source": "test.fixme(\"adds\", () => {});\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "qualified describe.skip",
+            "fileName": "src/sum.test.ts",
+            "source": "ns.describe.skip(\"sum\", () => {});\n",
             "expectedLines": [
               1
             ]

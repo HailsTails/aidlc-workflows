@@ -145,7 +145,7 @@ lens's own failure mode.
 
 ## Output shape
 
-Report **two-sided** counts the dispatching agent mandates: a production-side
+Report **two-sided** counts the review asks for: a production-side
 block (ambient-binding violations by capability, missing default factories,
 threading gaps, unbound context generics) and a test-side block
 (module-interception violations by mechanism, spy classifications, structural

@@ -584,6 +584,88 @@ describe("parseExceptionEntries imported records against the base revision", () 
     ).toEqual([]);
   });
 
+  it("refuses a new record whose provenance source mentions the file outside any entry's files", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [IMPORTED_CARVE_OUT],
+        selection: SELECTION,
+        baseline: baselineHolding({
+          entriesAtBase: [],
+          sourceTextsAtBase: new Map([[IMPORT_SOURCE, '[{ "files": ["src/other.ts"], "reason": "src/legacy.ts was paid down" }]']]),
+        }),
+      }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "import-unverified" } }] });
+  });
+
+  it("refuses a new record whose provenance source entry index lists a different file", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...IMPORTED_CARVE_OUT, provenance: { ...IMPORTED_CARVE_OUT.provenance, source: `${IMPORT_SOURCE}#1` } }],
+        selection: SELECTION,
+        baseline: baselineHolding({
+          entriesAtBase: [],
+          sourceTextsAtBase: new Map([[IMPORT_SOURCE, '[{ "files": ["src/legacy.ts"] }, { "files": ["src/other.ts"] }]']]),
+        }),
+      }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "import-unverified" } }] });
+  });
+
+  it("refuses a new record whose provenance source belongs to a different discipline", () => {
+    const otherDisciplineSource = repoPathSchema.parse(".constitution-carve-outs/cd-15.json");
+
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...IMPORTED_CARVE_OUT, provenance: { ...IMPORTED_CARVE_OUT.provenance, source: `${otherDisciplineSource}#0` } }],
+        selection: SELECTION,
+        baseline: baselineHolding({
+          entriesAtBase: [],
+          sourceTextsAtBase: new Map([[otherDisciplineSource, '[{ "files": ["src/legacy.ts"] }]']]),
+        }),
+      }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "import-unverified" } }] });
+  });
+
+  it("refuses a carve-out imported from an authorised-locations source", () => {
+    const authorisationSource = repoPathSchema.parse(".constitution-authorised-locations/cd-14.json");
+
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...IMPORTED_CARVE_OUT, provenance: { ...IMPORTED_CARVE_OUT.provenance, source: `${authorisationSource}#0` } }],
+        selection: SELECTION,
+        baseline: baselineHolding({
+          entriesAtBase: [],
+          sourceTextsAtBase: new Map([[authorisationSource, '[{ "files": ["src/legacy.ts"] }]']]),
+        }),
+      }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "import-unverified" } }] });
+  });
+
+  it("refuses an imported record edited since base even while its provenance source still lists the file", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...IMPORTED_CARVE_OUT, reason: "legacy class, now partly paid down" }],
+        selection: SELECTION,
+        baseline: baselineHolding({
+          entriesAtBase: [IMPORTED_CARVE_OUT],
+          sourceTextsAtBase: new Map([[IMPORT_SOURCE, '[{ "files": ["src/legacy.ts"] }]']]),
+        }),
+      }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "import-unverified" } }] });
+  });
+
+  it("refuses an import for a clause whose discipline refuses exceptions", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [{ ...IMPORTED_CARVE_OUT, clause: "CD-1#any-cast" }],
+        selection: { selected: [{ address: clauseAddressSchema.parse("CD-1#any-cast"), mechanism: mechanismIdSchema.parse("audit"), exceptions: "refused" }], uncovered: [] },
+        baseline: baselineHolding({ entriesAtBase: [IMPORTED_CARVE_OUT], sourceTextsAtBase: new Map() }),
+      }),
+    ).toEqual({
+      records: [],
+      invalid: [{ index: 0, problem: { kind: "non-exemptible-clause", clause: { ruleSet: "shared", discipline: "CD-1", clause: "any-cast" } } }],
+    });
+  });
+
   it("accepts an imported record without a why-chain while the base is unmeasured", () => {
     expect(
       parseExceptionEntries({ entries: [IMPORTED_CARVE_OUT], selection: SELECTION, baseline: UNMEASURED_IMPORT_BASELINE }),

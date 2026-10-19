@@ -158,7 +158,7 @@ failure mode — every finding names the specific boundary and the rule that dra
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates (e.g. imports inspected,
+Produce the counts the review asks for (e.g. imports inspected,
 outward-arrow / cross-layer violations, inner-code-importing-driver violations,
 ambient-global call sites, unannotated-PII log emissions, unbranded-secret
 declarations, secret-at-forbidden-surface hits, minimal-surface cap breaches).

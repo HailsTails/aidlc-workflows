@@ -124,7 +124,7 @@ are the lens's own failure mode.
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates (e.g. cast sites by
+Produce the counts the review asks for (e.g. cast sites by
 permitted/violation, absent-top-type occurrences, strict-flag overrides,
 return-type-of-own-symbol sites, closed-union `default:` arms, declarative-boolean
 sites by carve-out invoked). Record the compiler version / config you read where

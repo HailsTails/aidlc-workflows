@@ -68,13 +68,13 @@ Each converted record is imported: give it `provenance` naming the old record in
   "reason": "Inherited for...of totals loop from the 2025 pricing import",
   "provenance": {
     "kind": "inherited-debt",
-    "source": ".constitution-carve-outs/cd-15.json",
+    "source": ".constitution-carve-outs/cd-15.json#0",
     "decision": "Initial adoption inventory accepted by pricing owner Sam on 2026-09-02; retire on touch"
   }
 }
 ```
 
-An authorised location uses `{ "kind": "existing-authorisation", "source": ".constitution-authorised-locations/cd-<id>.json" }`. Core accepts an imported record only while the `--base-revision` holds it unchanged or its `source` file lists the record's file at that revision, so keep the old record files committed until step 6, and run every check in this migration with `--base-revision HEAD`. A record you write for new debt, or an imported record you later change, needs a full `whyChain` (five `why`/`because`/`evidence` steps, a `rootCause` and an `owner`): core refuses it as `import-unverified` otherwise.
+`source` is the old file and the entry's position in its array, counting from `0`. An authorised location uses `{ "kind": "existing-authorisation", "source": ".constitution-authorised-locations/cd-<id>.json#<index>" }`. Core accepts an imported record only while the `--base-revision` holds it unchanged or its `source` entry lists the record's file at that revision, so keep the old record files committed until step 6, and run every check in this migration with `--base-revision HEAD`. A record you write for new debt, or an imported record you later change, needs a full `whyChain` (five `why`/`because`/`evidence` steps, a `rootCause` and an `owner`): core refuses it as `import-unverified` otherwise.
 
 Stop and ask the human if an old record has no `decision`. Never write a placeholder or a root cause that only says the check was failing: core refuses those as `invalidRecords`.
 

@@ -32,13 +32,13 @@ git -C /tmp/discipline-core-source checkout <pinned-sha>
 
 On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
-Copy `package.json`, `core/`, every rule page, both mechanisms and the review methods, then remove the core's own tests:
+Copy `package.json`, `README.md`, `core/`, every rule page, both mechanisms and the review methods, then remove the core's own tests:
 
 ```bash
 SRC=/tmp/discipline-core-source/plugins/discipline-core
 DEST=tools/discipline-core
 mkdir -p "$DEST"
-cp "$SRC/package.json" "$DEST/"
+cp "$SRC/package.json" "$SRC/README.md" "$DEST/"
 cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
 find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
 find "$DEST" -name '*.test.ts' -delete
@@ -213,8 +213,6 @@ Answers must be real: placeholders, and a root cause that only says the check wa
 
 Debt or authorisations already recorded by an earlier system, for example the old standalone route's `.constitution-carve-outs/`, can be imported with `provenance` instead of a `whyChain`, as [MIGRATING.md](MIGRATING.md#3-convert-the-old-records-into-exceptions) step 3 shows. Imported entries are checked against `--base-revision`: any entry you write or change yourself needs the full `whyChain`.
 
-A complete, accepted entry is in [the worked example](tests/test-fixtures/walkthrough/after/discipline-exceptions.json).
-
 ## 8. Prove one failure and correction
 
 Before relying on the check, prove that it fails on a real violation in your repository and passes once it is fixed. With CD-17 selected, create `src/discipline-probe.ts` (any path the check covers) containing exactly:
@@ -254,7 +252,7 @@ To remove, delete `tools/discipline-core/`, `disciplines.json`, `discipline-exce
 
 ## Worked example
 
-[tests/test-fixtures/walkthrough/](tests/test-fixtures/walkthrough/) is a small repository before and after its fix, selecting CD-2, CD-15, CD-17 and CD-23 through the audit, with a `generated/` folder excluded. `tests/walkthrough.integration.test.ts` pins both reports exactly.
+In the discipline-core source, [tests/test-fixtures/walkthrough/](tests/test-fixtures/walkthrough/) is a small repository before and after its fix, selecting CD-2, CD-15, CD-17 and CD-23 through the audit, with a `generated/` folder excluded. `tests/walkthrough.integration.test.ts` pins both reports exactly.
 
 Before, `node tools/discipline-core/core/check/check-command.ts --repo .` prints, and exits `1`:
 

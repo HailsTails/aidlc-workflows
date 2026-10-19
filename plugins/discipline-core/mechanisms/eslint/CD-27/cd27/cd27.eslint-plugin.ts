@@ -71,9 +71,11 @@ const modifiedLink = (request: {
   if (chain.members.length === 0) {
     return request.modifier.bareNames.has(chain.root.name) ? chain.root : undefined;
   }
-  return request.modifier.roots.has(chain.root.name)
-    ? chain.members.find((link) => request.modifier.members.has(link.name))
-    : undefined;
+  const links = [chain.root, ...chain.members];
+  const testFunction = links.findIndex((link) => request.modifier.roots.has(link.name));
+  return testFunction === -1
+    ? undefined
+    : links.slice(testFunction + 1).find((link) => request.modifier.members.has(link.name));
 };
 
 const modifierRule = (request: {

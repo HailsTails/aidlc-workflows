@@ -80,7 +80,7 @@ defeated*, grounded in the specific loaded rule. Vague phrasings ("could throw",
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates (e.g. throws by
+Produce the counts the review asks for (e.g. throws by
 classification, authored-error-classes by classification, under-enumerated error
 types, superseded-discriminator accesses). Every finding is
 `file:line | quoted code | <rule-id> | defect-named`, citing the loaded rule by

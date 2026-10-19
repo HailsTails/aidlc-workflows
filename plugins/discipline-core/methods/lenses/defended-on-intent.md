@@ -156,7 +156,7 @@ letter-vs-intent gap.
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates:
+Produce the counts the review asks for:
 
 - `pass-claims-tested=N` — every PASS claim in the bundle is either tested or
   explicitly excluded. A verdict without N means sampling, which is the exact

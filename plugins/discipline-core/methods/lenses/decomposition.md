@@ -149,7 +149,7 @@ happy/unhappy asymmetry, not findings. Vague phrasings ("function is too long",
 
 ## Output shape
 
-Produce the counts the dispatching agent mandates: files inspected, functions
+Produce the counts the review asks for: files inspected, functions
 inspected, complexity/length ceilings crossed by type, orchestrator-purity
 violations, early-return inversions, parameter-mutation findings (split by
 script-confirmed vs code-review category), and untracked suppressions. Every
