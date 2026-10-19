@@ -1,8 +1,7 @@
 import * as typescriptParser from "@typescript-eslint/parser";
 import { ESLint } from "eslint-9";
+import { eslintPluginModuleSchema } from "../../../mechanisms/eslint/runner/eslint-plugin-schema.ts";
 import type { EslintPieceSettings } from "../../../mechanisms/eslint/runner/eslint-piece-settings-schema.ts";
-
-type PieceModule = { readonly default: object };
 
 export const ESLINT_9_VERSION = ESLint.version;
 
@@ -13,7 +12,7 @@ export const linesFlaggedByPiece = async (request: {
   readonly source: string;
 }): Promise<readonly number[]> => {
   const { pluginNamespace, pluginModule, rule, options = [] } = request.settings;
-  const piece = (await import(`${request.pieceRoot}/${pluginModule}`)) as PieceModule;
+  const piece = eslintPluginModuleSchema.parse(await import(`${request.pieceRoot}/${pluginModule}`));
   const eslint = new ESLint({
     overrideConfigFile: true,
     overrideConfig: [
