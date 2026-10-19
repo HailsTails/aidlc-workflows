@@ -1,0 +1,4 @@
+{
+  "before": "excluded (1)\ngenerated\nfindings (7)\nCD-14#class-syntax audit src/basket.ts:5:7 export class Basket {\nCD-17#clock-sources audit src/basket.ts:7:0 private openedAt = Date.now();\nCD-2#cast-expressions audit src/basket.ts:10:20 entry as Line);   }    total(): string {     let pence = 0;     for (const line …\nCD-15#loops audit src/basket.ts:15:0 for (const line of this.lines) {\nCD-17#clock-sources audit src/basket.ts:22:0 return Date.now() - this.openedAt;\nCD-7#categorical-paths audit src/utils/format.ts:1:0 forbidden categorical folder: utils\nCD-23#export-test-sibling audit src/utils/format.ts:1:0 missing co-located *.test.ts(x) sibling\nverdict: fail\n",
+  "after": "excluded (1)\ngenerated\nexempted (1)\nCD-17#clock-sources audit src/clock.ts:3:0 export const createSystemClock = (): Clock => ({ now: () => Date.now() }); exempted by authorised-location\nverdict: pass\n"
+}

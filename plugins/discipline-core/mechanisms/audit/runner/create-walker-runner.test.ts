@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import type { RunnerClause, RunRequest } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
@@ -49,7 +49,7 @@ const modulesOf = (request: { readonly check: unknown }): ModuleLoaderPort => ({
 const LET_POSITION = 13;
 
 const letKeywordPiece: WalkerPiece = {
-  prepare: ({ clauses }) => ({
+  prepare: () => ({
     outcome: "ok",
     value: {
       prepareFile: vi
@@ -59,11 +59,43 @@ const letKeywordPiece: WalkerPiece = {
           value: {
             kind: "syntax",
             begin: ({ anchorAt }) => ({
-              finish: () =>
-                clauses.flatMap((clause) => [
-                  { clause: clause.address, anchor: anchorAt({ position: LET_POSITION }), snippet: "let b = 2;" },
-                  { clause: clause.address, anchor: anchorAt({ position: 0 }), snippet: "const a = 1;" },
-                ]),
+              finish: () => [
+                { clause: FIRST, anchor: anchorAt({ position: LET_POSITION }), snippet: "let b = 2;" },
+                { clause: FIRST, anchor: anchorAt({ position: 0 }), snippet: "const a = 1;" },
+                { clause: SECOND, anchor: anchorAt({ position: LET_POSITION }), snippet: "let b = 2;" },
+                { clause: SECOND, anchor: anchorAt({ position: 0 }), snippet: "const a = 1;" },
+              ],
+            }),
+          },
+        })
+        .mockReturnValueOnce({
+          outcome: "ok",
+          value: { kind: "complete", hits: [{ clause: FIRST, anchor: { line: 1, column: 0 }, snippet: CONFIG }] },
+        })
+        .mockReturnValue({ outcome: "ok", value: { kind: "skipped" } }),
+      finish: () => ({
+        outcome: "ok",
+        value: [{ clause: SECOND, file: CONFIG, anchor: { line: 1, column: 0 }, snippet: "repository-wide" }],
+      }),
+    },
+  }),
+};
+
+const firstClauseLetKeywordPiece: WalkerPiece = {
+  prepare: () => ({
+    outcome: "ok",
+    value: {
+      prepareFile: vi
+        .fn<PreparedWalkerCheck["prepareFile"]>()
+        .mockReturnValueOnce({
+          outcome: "ok",
+          value: {
+            kind: "syntax",
+            begin: ({ anchorAt }) => ({
+              finish: () => [
+                { clause: FIRST, anchor: anchorAt({ position: LET_POSITION }), snippet: "let b = 2;" },
+                { clause: FIRST, anchor: anchorAt({ position: 0 }), snippet: "const a = 1;" },
+              ],
             }),
           },
         })
@@ -166,9 +198,7 @@ describe("createWalkerRunner run", () => {
         outcome: "ok",
         value: {
           prepareFile: () => ({ outcome: "ok", value: { kind: "skipped" } }),
-          finish: () => {
-            throw new Error("finish broke");
-          },
+          finish: () => assert.fail("finish broke"),
         },
       }),
     };
@@ -182,7 +212,7 @@ describe("createWalkerRunner run", () => {
 describe("createWalkerRunner conform", () => {
   it("returns each case's flagged lines in case order from its own source, reading no file", async () => {
     const read = vi.fn<FileTextPort["read"]>();
-    const runner = runnerWith({ fileText: fileTextOf({ read }), modules: modulesOf({ check: letKeywordPiece }) });
+    const runner = runnerWith({ fileText: fileTextOf({ read }), modules: modulesOf({ check: firstClauseLetKeywordPiece }) });
 
     expect(
       await runner.conform({

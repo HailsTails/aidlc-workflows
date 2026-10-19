@@ -7,6 +7,7 @@ import { createDefaultModuleLoaderPort } from "../core/platform-ports/module-loa
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
 import type { AbsolutePath } from "../core/values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../core/values/repo-path.ts";
+import expectedReports from "./test-fixtures/walkthrough/expected-reports.json" with { type: "json" };
 
 const path = createDefaultPathPort({});
 
@@ -20,32 +21,25 @@ const INSTALL_ROOT = resolvedPath({ path: `${import.meta.dirname}/..` });
 const BEFORE = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/walkthrough/before` });
 const AFTER = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/walkthrough/after` });
 
-const trackedPathsOf = (request: { readonly paths: readonly string[] }): readonly RepoPath[] =>
-  request.paths.map((tracked) => repoPathSchema.parse(tracked));
+const BEFORE_TRACKED: readonly RepoPath[] = [
+  repoPathSchema.parse("disciplines.json"),
+  repoPathSchema.parse("generated/schema.ts"),
+  repoPathSchema.parse("src/basket.test.ts"),
+  repoPathSchema.parse("src/basket.ts"),
+  repoPathSchema.parse("src/utils/format.ts"),
+];
 
-const BEFORE_TRACKED = trackedPathsOf({
-  paths: [
-    "disciplines.json",
-    "generated/schema.ts",
-    "src/basket.test.ts",
-    "src/basket.ts",
-    "src/utils/format.ts",
-  ],
-});
-
-const AFTER_TRACKED = trackedPathsOf({
-  paths: [
-    "discipline-exceptions.json",
-    "disciplines.json",
-    "generated/schema.ts",
-    "src/basket.test.ts",
-    "src/basket.ts",
-    "src/clock.test.ts",
-    "src/clock.ts",
-    "src/format.test.ts",
-    "src/format.ts",
-  ],
-});
+const AFTER_TRACKED: readonly RepoPath[] = [
+  repoPathSchema.parse("discipline-exceptions.json"),
+  repoPathSchema.parse("disciplines.json"),
+  repoPathSchema.parse("generated/schema.ts"),
+  repoPathSchema.parse("src/basket.test.ts"),
+  repoPathSchema.parse("src/basket.ts"),
+  repoPathSchema.parse("src/clock.test.ts"),
+  repoPathSchema.parse("src/clock.ts"),
+  repoPathSchema.parse("src/format.test.ts"),
+  repoPathSchema.parse("src/format.ts"),
+];
 
 const checkedText = async (request: { readonly repo: AbsolutePath; readonly tracked: readonly RepoPath[] }) => {
   const git: GitPort = {
@@ -66,36 +60,14 @@ const checkedText = async (request: { readonly repo: AbsolutePath; readonly trac
   });
 };
 
-const BEFORE_REPORT = [
-  "excluded (1)",
-  "generated",
-  "findings (7)",
-  "CD-14#class-syntax audit src/basket.ts:5:7 export class Basket {",
-  "CD-17#clock-sources audit src/basket.ts:7:0 private openedAt = Date.now();",
-  "CD-2#cast-expressions audit src/basket.ts:10:20 entry as Line);   }    total(): string {     let pence = 0;     for (const line …",
-  "CD-15#loops audit src/basket.ts:15:0 for (const line of this.lines) {",
-  "CD-17#clock-sources audit src/basket.ts:22:0 return Date.now() - this.openedAt;",
-  "CD-7#categorical-paths audit src/utils/format.ts:1:0 forbidden categorical folder: utils",
-  "CD-23#export-test-sibling audit src/utils/format.ts:1:0 missing co-located *.test.ts(x) sibling",
-  "verdict: fail",
-  "",
-].join("\n");
 
-const AFTER_REPORT = [
-  "excluded (1)",
-  "generated",
-  "exempted (1)",
-  "CD-17#clock-sources audit src/clock.ts:3:0 export const createSystemClock = (): Clock => ({ now: () => Date.now() }); exempted by authorised-location",
-  "verdict: pass",
-  "",
-].join("\n");
 
 describe("the adopter walkthrough's sample repository, checked against this install through the default runners (CD-47: the shipped pieces and the fixture's own files are the assertion's subject; nothing is spawned or written)", () => {
   it("fails before the fix with one finding per violation and none in the excluded generated folder, exiting 1", async () => {
-    expect(await checkedText({ repo: BEFORE, tracked: BEFORE_TRACKED })).toEqual({ code: 1, text: BEFORE_REPORT });
+    expect(await checkedText({ repo: BEFORE, tracked: BEFORE_TRACKED })).toEqual({ code: 1, text: expectedReports.before });
   });
 
   it("passes after the fix with the clock adapter exempted by its authorised location, exiting 0", async () => {
-    expect(await checkedText({ repo: AFTER, tracked: AFTER_TRACKED })).toEqual({ code: 0, text: AFTER_REPORT });
+    expect(await checkedText({ repo: AFTER, tracked: AFTER_TRACKED })).toEqual({ code: 0, text: expectedReports.after });
   });
 });
