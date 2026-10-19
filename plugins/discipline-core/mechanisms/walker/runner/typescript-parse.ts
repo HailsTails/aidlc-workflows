@@ -4,6 +4,7 @@ import type { ParsePort, WalkerCheck } from "./walker-check.ts";
 export type SyntaxApi = typeof typescript;
 export type SyntaxTree = typescript.SourceFile;
 export type SyntaxNode = typescript.Node;
+export type CommentRange = typescript.CommentRange;
 export type TypeScriptWalkerCheck = WalkerCheck<SyntaxApi, SyntaxTree, SyntaxNode>;
 export type TypeScriptParsePort = ParsePort<SyntaxApi, SyntaxTree, SyntaxNode>;
 
