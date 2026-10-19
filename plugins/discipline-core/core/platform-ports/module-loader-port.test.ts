@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createModuleLoaderPort, type ImportModule } from "./module-loader-port.ts";
 
-const PATH = "/install/mechanisms/walker/runner/runner.ts";
+const PATH = "/install/mechanisms/audit/runner/runner.ts";
 
 describe("createModuleLoaderPort", () => {
   it("returns the imported namespace as ok", async () => {
@@ -17,7 +17,7 @@ describe("createModuleLoaderPort", () => {
 
     await createModuleLoaderPort({ importModule }).load({ path: PATH });
 
-    expect(importModule).toHaveBeenCalledWith({ path: "/install/mechanisms/walker/runner/runner.ts" });
+    expect(importModule).toHaveBeenCalledWith({ path: "/install/mechanisms/audit/runner/runner.ts" });
   });
 
   it("loads as module-unloadable with the path and message when the import rejects", async () => {
@@ -29,7 +29,7 @@ describe("createModuleLoaderPort", () => {
       outcome: "failed",
       error: {
         kind: "module-unloadable",
-        path: "/install/mechanisms/walker/runner/runner.ts",
+        path: "/install/mechanisms/audit/runner/runner.ts",
         detail: "evaluation failed",
       },
     });

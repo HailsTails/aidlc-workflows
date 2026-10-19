@@ -36,7 +36,7 @@ describe("suppressionsFileSchema", () => {
     expect(
       suppressionsFileSchema.safeParse({
         "src/a.ts": {
-          "rin-discipline/no-class-authoring": { count: 2 },
+          "discipline/no-class-authoring": { count: 2 },
           "no-console": { count: 1, note: "legacy" },
         },
       }),
@@ -44,7 +44,7 @@ describe("suppressionsFileSchema", () => {
       success: true,
       data: {
         "src/a.ts": {
-          "rin-discipline/no-class-authoring": { count: 2 },
+          "discipline/no-class-authoring": { count: 2 },
           "no-console": { count: 1, note: "legacy" },
         },
       },
@@ -56,11 +56,11 @@ describe("suppressionsFileSchema", () => {
   });
 
   it.each([
-    { "src/a.ts": ["rin-discipline/no-class-authoring"] },
-    { "src/a.ts": { "rin-discipline/no-class-authoring": { count: "2" } } },
-    { "src/a.ts": { "rin-discipline/no-class-authoring": {} } },
-    { "src/a.ts": { "rin-discipline/no-class-authoring": 2 } },
-    { "src/a.ts": "rin-discipline/no-class-authoring" },
+    { "src/a.ts": ["discipline/no-class-authoring"] },
+    { "src/a.ts": { "discipline/no-class-authoring": { count: "2" } } },
+    { "src/a.ts": { "discipline/no-class-authoring": {} } },
+    { "src/a.ts": { "discipline/no-class-authoring": 2 } },
+    { "src/a.ts": "discipline/no-class-authoring" },
   ])("refuses %j, which is not files mapping rule ids to entries with a numeric count", (file) => {
     expect(suppressionsFileSchema.safeParse(file)).toMatchObject({ success: false });
   });

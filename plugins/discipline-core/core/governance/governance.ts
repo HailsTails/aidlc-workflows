@@ -1,4 +1,4 @@
-import type { ExceptionRecord } from "../exception-records/exception-records.ts";
+import type { ExceptionRecord } from "../exception-records/exception-record.ts";
 import type { Hit, NativeException } from "../mechanism-port/runner-result-schema.ts";
 import type { TouchedSet } from "../touched-set/touched-set.ts";
 import { type ClauseAddress, clauseAddressText } from "../values/clause-address.ts";

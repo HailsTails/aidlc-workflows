@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { LoadFailure } from "../check/load-failure.ts";
-import type { RunnerClause } from "../mechanism-port/runner-module-schema.ts";
-import type { FileTextPort } from "../platform-ports/file-text-port.ts";
-import type { PathPort } from "../platform-ports/path-port.ts";
+import { createDefaultFileTextPort, type FileTextPort } from "../platform-ports/file-text-port.ts";
+import { createDefaultPathPort, type PathPort } from "../platform-ports/path-port.ts";
 import {
+  type ClauseExceptions,
   type DisciplineFile,
   disciplineFilePath,
   type PieceFile,
@@ -26,32 +26,38 @@ import {
   ruleSetNameSchema,
 } from "../values/identifiers.ts";
 import type { Result } from "../values/result.ts";
+import type { ClauseBinding, SelectionReading } from "./selection.ts";
 
-export type SelectedClause = {
-  readonly address: ClauseAddress;
-  readonly mechanism: MechanismId;
+export type { SelectedClause, Selection, ClauseBinding, SelectionReading } from "./selection.ts";
+
+export type SelectionRepository = {
+  readonly read: (request: Record<string, never>) => Result<SelectionReading, LoadFailure>;
 };
 
-export type Selection = {
-  readonly selected: readonly SelectedClause[];
-  readonly uncovered: readonly ClauseAddress[];
-};
+export const createSelectionRepository = (options: {
+  readonly repoRoot: AbsolutePath;
+  readonly installRoot: AbsolutePath;
+  readonly fileText: FileTextPort;
+  readonly path: PathPort;
+}): SelectionRepository => ({
+  read: (_request) => readSelection(options),
+});
 
-export type ClauseBinding = {
-  readonly mechanism: MechanismId;
-  readonly clause: RunnerClause;
-};
-
-export type SelectionReading = {
-  readonly selection: Selection;
-  readonly bindings: readonly ClauseBinding[];
-};
+export const createDefaultSelectionRepository = (options: {
+  readonly repoRoot: AbsolutePath;
+  readonly installRoot: AbsolutePath;
+}): SelectionRepository => createSelectionRepository({
+  ...options,
+  fileText: createDefaultFileTextPort({}),
+  path: createDefaultPathPort({}),
+});
 
 type ResolvedClause = {
   readonly ruleSetRoot: AbsolutePath;
   readonly discipline: DisciplineFile;
   readonly piece: PieceFile;
   readonly binding: ClauseBinding;
+  readonly exceptions: ClauseExceptions;
 };
 
 const SHARED_RULE_SET = "shared";
@@ -83,6 +89,13 @@ const consumerSelectionFileSchema = z.strictObject({
     .record(z.string(), z.string())
     .transform((clauses) => Object.entries(clauses))
     .pipe(z.array(z.tuple([clauseAddressSchema, mechanismIdSchema]))),
+  exclude: z
+    .array(
+      repoPathSchema.refine((excludedPath) => !excludedPath.includes("*"), {
+        error: "an exclude entry is a repository path, not a glob",
+      }),
+    )
+    .default([]),
 });
 
 type ConsumerSelectionFile = z.infer<typeof consumerSelectionFileSchema>;
@@ -236,6 +249,7 @@ const resolvedClauseOf = (request: {
     ruleSetRoot: clauseRequest.ruleSetRoot,
     discipline: defined.discipline,
     piece: entry.piece,
+    exceptions: defined.definition.exceptions,
     binding: {
       mechanism: clauseRequest.mechanism,
       clause: {
@@ -369,12 +383,20 @@ const parsedSelectionFile = (request: {
   return { outcome: "ok", value: parsed.data };
 };
 
-const selectionReadingOf = (request: { readonly resolved: readonly ResolvedClause[] }): SelectionReading => ({
+const selectionReadingOf = (request: {
+  readonly resolved: readonly ResolvedClause[];
+  readonly excluded: readonly RepoPath[];
+}): SelectionReading => ({
   selection: {
-    selected: request.resolved.map(({ binding }) => ({ address: binding.clause.address, mechanism: binding.mechanism })),
+    selected: request.resolved.map(({ binding, exceptions }) => ({
+      address: binding.clause.address,
+      mechanism: binding.mechanism,
+      exceptions,
+    })),
     uncovered: uncoveredClauses(request),
   },
   bindings: request.resolved.map(({ binding }) => binding),
+  excluded: request.excluded,
 });
 
 export const readSelection = (request: {
@@ -394,5 +416,5 @@ export const readSelection = (request: {
   if (resolved.outcome === "failed") {
     return resolved;
   }
-  return { outcome: "ok", value: selectionReadingOf({ resolved: resolved.value }) };
+  return { outcome: "ok", value: selectionReadingOf({ resolved: resolved.value, excluded: file.value.exclude }) };
 };

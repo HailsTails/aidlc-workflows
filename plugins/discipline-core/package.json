@@ -18,6 +18,7 @@
     "@eslint/plugin-kit": "0.7.3",
     "@typescript-eslint/parser": "8.71.2",
     "eslint": "10.11.0",
+    "jsonc-parser": "3.3.1",
     "typescript": "6.0.3",
     "zod": "4.4.3"
   },

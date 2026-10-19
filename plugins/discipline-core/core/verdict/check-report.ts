@@ -10,6 +10,7 @@ import type {
 } from "../governance/governance.ts";
 import type { ClauseAddress } from "../values/clause-address.ts";
 import type { MechanismId } from "../values/identifiers.ts";
+import type { RepoPath } from "../values/repo-path.ts";
 
 export type Unmeasured =
   | { readonly kind: "forfeiture-unmeasured" }
@@ -25,6 +26,7 @@ export type ProjectionProblem = {
 };
 
 export type CheckReport = {
+  readonly excluded: readonly RepoPath[];
   readonly findings: readonly Finding[];
   readonly exempted: readonly ExemptedFinding[];
   readonly uncovered: readonly ClauseAddress[];

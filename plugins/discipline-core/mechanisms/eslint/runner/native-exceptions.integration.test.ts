@@ -16,7 +16,7 @@ import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { disciplineIdSchema } from "../../../core/values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
 import cd14Discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
-import { runner as walkerRunner } from "../../walker/runner/runner.ts";
+import { runner as walkerRunner } from "../../audit/runner/runner.ts";
 import { runner as eslintRunner } from "./runner.ts";
 
 const INSTALL_ROOT = absolutePathSchema.parse(`${import.meta.dirname}/../../..`);
@@ -29,13 +29,13 @@ const ESLINT_CLAUSE: RunnerClause = {
   address: CLAUSE,
   anchor: { kind: "keyword", keyword: "class" },
   pieceRoot: `${INSTALL_ROOT}/mechanisms/eslint/CD-14`,
-  settings: { pluginNamespace: "rin-discipline", pluginModule: "cd14/cd14.eslint-plugin.ts", rule: "no-class-authoring" },
+  settings: { pluginNamespace: "discipline", pluginModule: "cd14/cd14.eslint-plugin.ts", rule: "no-class-authoring" },
 };
 
 const WALKER_CLAUSE: RunnerClause = {
   address: CLAUSE,
   anchor: { kind: "keyword", keyword: "class" },
-  pieceRoot: `${INSTALL_ROOT}/mechanisms/walker/CD-14`,
+  pieceRoot: `${INSTALL_ROOT}/mechanisms/audit/CD-14`,
   settings: { module: "class-syntax.ts" },
 };
 
@@ -51,6 +51,7 @@ const consumerRepo = (request: { readonly name: string }): AbsolutePath =>
 const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPort => ({
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
+  contentInBase: vi.fn<GitPort["contentInBase"]>(),
 });
 
 const checkOf = (request: { readonly name: string; readonly tracked: readonly RepoPath[] }) =>
@@ -213,7 +214,7 @@ describe("eslint-suppressions.json files and package.json lint scripts read by t
             clause: CLASS_SYNTAX,
             location: "package.json",
             script: "lint",
-            option: "--rule rin-discipline/no-class-authoring: off",
+            option: "--rule discipline/no-class-authoring: off",
             mechanism: "eslint",
           },
           {
@@ -245,7 +246,7 @@ describe("eslint-suppressions.json files and package.json lint scripts read by t
             clause: CLASS_SYNTAX,
             location: "package.json",
             script: "lint:suppress",
-            option: "--suppress-rule rin-discipline/no-class-authoring",
+            option: "--suppress-rule discipline/no-class-authoring",
             mechanism: "eslint",
           },
         ],
@@ -284,7 +285,7 @@ describe("inline configuration comments read by the ESLint runner's governance r
             clause: CLASS_SYNTAX,
             file: "i/disable-file-named.ts",
             line: 1,
-            text: "/* eslint-disable rin-discipline/no-class-authoring */",
+            text: "/* eslint-disable discipline/no-class-authoring */",
             mechanism: "eslint",
           },
           {
@@ -292,7 +293,7 @@ describe("inline configuration comments read by the ESLint runner's governance r
             clause: CLASS_SYNTAX,
             file: "i/disable-line.ts",
             line: 2,
-            text: "// eslint-disable-line rin-discipline/no-class-authoring",
+            text: "// eslint-disable-line discipline/no-class-authoring",
             mechanism: "eslint",
           },
           {
@@ -300,7 +301,7 @@ describe("inline configuration comments read by the ESLint runner's governance r
             clause: CLASS_SYNTAX,
             file: "i/disable-next-line.ts",
             line: 1,
-            text: "// eslint-disable-next-line rin-discipline/no-class-authoring",
+            text: "// eslint-disable-next-line discipline/no-class-authoring",
             mechanism: "eslint",
           },
           {
@@ -308,7 +309,7 @@ describe("inline configuration comments read by the ESLint runner's governance r
             clause: CLASS_SYNTAX,
             file: "i/rule-config.ts",
             line: 1,
-            text: '/* eslint rin-discipline/no-class-authoring: "off" */',
+            text: '/* eslint discipline/no-class-authoring: "off" */',
             mechanism: "eslint",
           },
         ],
@@ -327,7 +328,7 @@ describe("inline configuration comments read by the ESLint runner's governance r
             clause: CLASS_SYNTAX,
             file: "i/disable-line.ts",
             anchor: { line: 2, column: 7 },
-            snippet: "export class Kept {} // eslint-disable-line rin-discipline/no-class-authoring",
+            snippet: "export class Kept {} // eslint-disable-line discipline/no-class-authoring",
             mechanism: "eslint",
           },
           classFinding({ file: "i/disable-next-line.ts", line: 2 }),
@@ -439,13 +440,13 @@ const EXPECTED_SHARED_HITS = [
   },
 ];
 
-describe("FR-3 over real files: the ESLint runner on real ESLint 10 and the walker runner on real TypeScript", () => {
+describe("FR-3 over real files: the ESLint runner on real ESLint 10 and the audit runner on real TypeScript", () => {
   it("give the same whole anchors for every flagged CD-14 shared case", async () => {
     const eslintRun = await eslintRunner.run({ ...SHARED_CASES_RUN, records: [], clauses: [ESLINT_CLAUSE] });
     const walkerRun = await walkerRunner.run({ ...SHARED_CASES_RUN, clauses: [WALKER_CLAUSE] });
-    expect({ eslint: eslintRun, walker: walkerRun }).toEqual({
+    expect({ eslint: eslintRun, audit: walkerRun }).toEqual({
       eslint: { outcome: "ok", value: { hits: EXPECTED_SHARED_HITS, nativeExceptions: [], projection: "current" } },
-      walker: { outcome: "ok", value: EXPECTED_SHARED_HITS },
+      audit: { outcome: "ok", value: EXPECTED_SHARED_HITS },
     });
   });
 });

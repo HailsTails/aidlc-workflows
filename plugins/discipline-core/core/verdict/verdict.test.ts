@@ -9,7 +9,7 @@ import { verdictOf } from "./verdict.ts";
 
 const noClass = clauseAddressSchema.parse("CD-14#no-class-syntax");
 const fileA = repoPathSchema.parse("src/a.ts");
-const walker = mechanismIdSchema.parse("walker");
+const audit = mechanismIdSchema.parse("audit");
 const eslint = mechanismIdSchema.parse("eslint");
 
 const finding: Finding = {
@@ -17,18 +17,20 @@ const finding: Finding = {
   file: fileA,
   anchor: { line: 3, column: 5 },
   snippet: "class A {}",
-  mechanism: walker,
+  mechanism: audit,
 };
 
 const record: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/verdict/verdict.test.ts#record; not historical authorisation" },
   clause: noClass,
-  mechanism: walker,
+  mechanism: audit,
   file: fileA,
   reason: "the adapter factory wraps the parser's class",
 };
 
 const emptyReport: CheckReport = {
+  excluded: [],
   findings: [],
   exempted: [],
   uncovered: [],
@@ -44,6 +46,10 @@ const emptyReport: CheckReport = {
 describe("verdictOf", () => {
   it("passes an empty report", () => {
     expect(verdictOf({ report: emptyReport })).toBe("pass");
+  });
+
+  it("passes a report whose only entries are excluded paths", () => {
+    expect(verdictOf({ report: { ...emptyReport, excluded: [repoPathSchema.parse("generated")] } })).toBe("pass");
   });
 
   it("passes a report whose only entries are exempted findings", () => {
@@ -66,7 +72,7 @@ describe("verdictOf", () => {
     ],
     [
       "doublyHeld",
-      { ...emptyReport, doublyHeld: [{ clause: noClass, file: fileA, mechanism: walker }] },
+      { ...emptyReport, doublyHeld: [{ clause: noClass, file: fileA, mechanism: audit }] },
     ],
     [
       "invalidRecords",

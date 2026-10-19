@@ -16,9 +16,9 @@ import {
 
 const ROOT = absolutePathSchema.parse("/install");
 const CD_14 = disciplineIdSchema.parse("CD-14");
-const WALKER = mechanismIdSchema.parse("walker");
+const WALKER = mechanismIdSchema.parse("audit");
 const DISCIPLINE_PATH = "/install/rules/CD-14/discipline.json";
-const PIECE_PATH = "/install/mechanisms/walker/CD-14/piece.json";
+const PIECE_PATH = "/install/mechanisms/audit/CD-14/piece.json";
 
 const fileTextReading = (request: { readonly text: string }): FileTextPort => ({
   read: vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: request.text }),
@@ -62,8 +62,9 @@ const CLASS_SYNTAX = {
   kind: "mechanical",
   id: "class-syntax",
   summary: "no class syntax",
-  mechanisms: ["walker", "eslint"],
+  mechanisms: ["audit", "eslint"],
   anchor: { kind: "keyword", keyword: "class" },
+  exceptions: "allowed",
   cases: { flag: [FLAG_CASE], allow: [ALLOW_CASE] },
 };
 
@@ -83,7 +84,7 @@ const DISCIPLINE = {
 const PIECE = {
   version: 1,
   discipline: "CD-14",
-  mechanism: "walker",
+  mechanism: "audit",
   clauses: [{ clause: "class-syntax", settings: { module: "class-syntax.ts" } }],
 };
 
@@ -105,6 +106,7 @@ const LOADED_DISCIPLINE: DisciplineFile = {
       summary: CLASS_SYNTAX.summary,
       mechanisms: [WALKER, mechanismIdSchema.parse("eslint")],
       anchor: { kind: "keyword", keyword: "class" },
+      exceptions: "allowed",
       cases: { flag: [], allow: [] },
     },
   ],
@@ -122,6 +124,21 @@ const readPiece = (file: unknown) =>
 describe("readDisciplineFile", () => {
   it("reads <ruleSetRoot>/rules/<discipline>/discipline.json into a discipline file", () => {
     expect(readDiscipline(DISCIPLINE)).toEqual({ outcome: "ok", value: DISCIPLINE });
+  });
+
+  it("reads a clause that names no exceptions policy as allowing exceptions", () => {
+    const { exceptions: _exceptions, ...unstated } = CLASS_SYNTAX;
+
+    expect(readDiscipline({ ...DISCIPLINE, clauses: [unstated, LIBRARY_CONSTRUCTION] })).toEqual({
+      outcome: "ok",
+      value: DISCIPLINE,
+    });
+  });
+
+  it("reads a clause that refuses exceptions", () => {
+    const refusing = { ...DISCIPLINE, clauses: [{ ...CLASS_SYNTAX, exceptions: "refused" }, LIBRARY_CONSTRUCTION] };
+
+    expect(readDiscipline(refusing)).toEqual({ outcome: "ok", value: refusing });
   });
 
   it("allows a case fileName ending .d.ts", () => {
@@ -308,7 +325,7 @@ describe("readPieceFile", () => {
     });
 
     expect(fileText.read).toHaveBeenCalledWith({
-      path: "/install/mechanisms/walker/CD-14/piece.json",
+      path: "/install/mechanisms/audit/CD-14/piece.json",
     });
   });
 

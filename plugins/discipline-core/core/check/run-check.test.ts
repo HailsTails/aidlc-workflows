@@ -15,13 +15,13 @@ const INSTALL_ROOT = absolutePathSchema.parse("/install");
 const SELECTION_PATH = "/repo/disciplines.json";
 const EXCEPTIONS_PATH = "/repo/discipline-exceptions.json";
 const DISCIPLINE_PATH = "/install/rules/CD-14/discipline.json";
-const PIECE_PATH = "/install/mechanisms/walker/CD-14/piece.json";
-const RUNNER_PATH = "/install/mechanisms/walker/runner/runner.ts";
+const PIECE_PATH = "/install/mechanisms/audit/CD-14/piece.json";
+const RUNNER_PATH = "/install/mechanisms/audit/runner/runner.ts";
 const LINT_PIECE_PATH = "/install/mechanisms/lint/CD-14/piece.json";
 const LINT_RUNNER_PATH = "/install/mechanisms/lint/runner/runner.ts";
 const TEAM_ROOT = "/repo/rules/team";
 const TEAM_DISCIPLINE_PATH = "/repo/rules/team/rules/CD-14/discipline.json";
-const TEAM_PIECE_PATH = "/repo/rules/team/mechanisms/walker/CD-14/piece.json";
+const TEAM_PIECE_PATH = "/repo/rules/team/mechanisms/audit/CD-14/piece.json";
 const HARNESS_SEGMENT = /(?:^|\/)\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)/;
 
 const CLASS_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
@@ -57,16 +57,16 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","disciplines.json"]': SELECTION_PATH,
   '["/repo","discipline-exceptions.json"]': EXCEPTIONS_PATH,
   '["/install","rules","CD-14","discipline.json"]': DISCIPLINE_PATH,
-  '["/install","mechanisms","walker","CD-14","piece.json"]': PIECE_PATH,
-  '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
-  '["/install","mechanisms","walker","runner","runner.ts"]': RUNNER_PATH,
+  '["/install","mechanisms","audit","CD-14","piece.json"]': PIECE_PATH,
+  '["/install","mechanisms","audit","CD-14"]': "/install/mechanisms/audit/CD-14",
+  '["/install","mechanisms","audit","runner","runner.ts"]': RUNNER_PATH,
   '["/install","mechanisms","lint","CD-14","piece.json"]': LINT_PIECE_PATH,
   '["/install","mechanisms","lint","CD-14"]': "/install/mechanisms/lint/CD-14",
   '["/install","mechanisms","lint","runner","runner.ts"]': LINT_RUNNER_PATH,
   '["/repo","rules/team"]': TEAM_ROOT,
   '["/repo/rules/team","rules","CD-14","discipline.json"]': TEAM_DISCIPLINE_PATH,
-  '["/repo/rules/team","mechanisms","walker","CD-14","piece.json"]': TEAM_PIECE_PATH,
-  '["/repo/rules/team","mechanisms","walker","CD-14"]': "/repo/rules/team/mechanisms/walker/CD-14",
+  '["/repo/rules/team","mechanisms","audit","CD-14","piece.json"]': TEAM_PIECE_PATH,
+  '["/repo/rules/team","mechanisms","audit","CD-14"]': "/repo/rules/team/mechanisms/audit/CD-14",
   '["/repo","README.md"]': "/repo/README.md",
   '["/repo","package.json"]': "/repo/package.json",
   '["/repo","src/a.ts"]': "/repo/src/a.ts",
@@ -77,15 +77,16 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","src/f.json"]': "/repo/src/f.json",
   '["/repo","src/factory.ts"]': "/repo/src/factory.ts",
   '["/repo","src/gone.ts"]': "/repo/src/gone.ts",
+  '["/repo","vendored/kept.ts"]': "/repo/vendored/kept.ts",
 };
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
-  [PIECE_PATH]: "/install/mechanisms/walker/CD-14",
+  [PIECE_PATH]: "/install/mechanisms/audit/CD-14",
   [DISCIPLINE_PATH]: "/install/rules/CD-14",
-  [RUNNER_PATH]: "/install/mechanisms/walker/runner",
+  [RUNNER_PATH]: "/install/mechanisms/audit/runner",
   [LINT_PIECE_PATH]: "/install/mechanisms/lint/CD-14",
   [LINT_RUNNER_PATH]: "/install/mechanisms/lint/runner",
-  [TEAM_PIECE_PATH]: "/repo/rules/team/mechanisms/walker/CD-14",
+  [TEAM_PIECE_PATH]: "/repo/rules/team/mechanisms/audit/CD-14",
   [TEAM_DISCIPLINE_PATH]: "/repo/rules/team/rules/CD-14",
 };
 
@@ -108,7 +109,7 @@ const CLASS_SYNTAX_DEFINITION = {
   kind: "mechanical",
   id: "class-syntax",
   summary: "no class syntax",
-  mechanisms: ["walker"],
+  mechanisms: ["audit"],
   anchor: { kind: "keyword", keyword: "class" },
   cases: CASES,
 };
@@ -117,7 +118,7 @@ const ABSTRACT_SYNTAX_DEFINITION = {
   kind: "mechanical",
   id: "abstract-syntax",
   summary: "no abstract syntax",
-  mechanisms: ["walker"],
+  mechanisms: ["audit"],
   anchor: { kind: "keyword", keyword: "abstract" },
   cases: CASES,
 };
@@ -133,37 +134,44 @@ const DISCIPLINE_WITH_TWO_CLAUSES = JSON.stringify({
 const PIECE = JSON.stringify({
   version: 1,
   discipline: "CD-14",
-  mechanism: "walker",
+  mechanism: "audit",
   clauses: [{ clause: "class-syntax", settings: { module: "class-syntax.ts" } }],
 });
 
 const PIECE_WITH_TWO_CLAUSES = JSON.stringify({
   version: 1,
   discipline: "CD-14",
-  mechanism: "walker",
+  mechanism: "audit",
   clauses: [
     { clause: "class-syntax", settings: { module: "class-syntax.ts" } },
     { clause: "abstract-syntax", settings: { module: "abstract-syntax.ts" } },
   ],
 });
 
-const SELECTION = JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } });
+const SELECTION = JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } });
+
+const SELECTION_EXCLUDING_VENDOR = JSON.stringify({
+  version: 1,
+  ruleSets: {},
+  clauses: { "CD-14#class-syntax": "audit" },
+  exclude: ["vendor", "src/generated.ts"],
+});
 
 const SELECTION_OF_TWO_CLAUSES = JSON.stringify({
   version: 1,
   ruleSets: {},
-  clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "walker" },
+  clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "audit" },
 });
 
 const WHY = {
   why: "why is the exception taken",
   because: "the matcher cannot express the tracker id",
-  evidence: "plugins/rin/tools/rin-harness-why-chain.ts:9",
+  evidence: "tools/why-chain-check.ts:9",
 };
 
 const CHAIN = {
   whys: [WHY, WHY, WHY, WHY, WHY],
-  rootCause: "the walker's matcher predates the tracker id format",
+  rootCause: "the audit's matcher predates the tracker id format",
   owner: "capture 01a0b421",
 };
 
@@ -201,6 +209,7 @@ const EXCEPTIONS_WITH_AUTHORISED_LOCATION = JSON.stringify({
       clause: "CD-14#class-syntax",
       file: "src/factory.ts",
       reason: "the wrapping factory for the library",
+      provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" },
     },
   ],
 });
@@ -216,6 +225,7 @@ const WORKING_TREE: Readonly<Record<string, FakeFile>> = {
   "/repo/src/f.json": presentFile({ text: "" }),
   "/repo/src/factory.ts": presentFile({ text: "" }),
   "/repo/src/gone.ts": ABSENT_FILE,
+  "/repo/vendored/kept.ts": presentFile({ text: "" }),
 };
 
 const INSTALL: Readonly<Record<string, FakeFile>> = {
@@ -230,7 +240,7 @@ const INSTALL: Readonly<Record<string, FakeFile>> = {
 const TEAM_INSTALL: Readonly<Record<string, FakeFile>> = {
   ...WORKING_TREE,
   [SELECTION_PATH]: presentFile({
-    text: JSON.stringify({ version: 1, ruleSets: { team: "rules/team" }, clauses: { "team/CD-14#class-syntax": "walker" } }),
+    text: JSON.stringify({ version: 1, ruleSets: { team: "rules/team" }, clauses: { "team/CD-14#class-syntax": "audit" } }),
   }),
   [EXCEPTIONS_PATH]: ABSENT_FILE,
   [TEAM_DISCIPLINE_PATH]: presentFile({ text: DISCIPLINE }),
@@ -259,6 +269,7 @@ const HIT_IN_A = {
 };
 
 const EMPTY_REPORT = {
+  excluded: [],
   findings: [],
   exempted: [],
   uncovered: [],
@@ -287,6 +298,7 @@ const gitReporting = (request: {
 }): GitPort => ({
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue(request.trackedPaths),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue(request.changedSince),
+  contentInBase: vi.fn<GitPort["contentInBase"]>(),
 });
 
 const MEASURED_GIT = gitReporting({
@@ -319,7 +331,7 @@ describe("runCheck reports", () => {
       ),
     ).resolves.toEqual({
       outcome: "ok",
-      value: { ...EMPTY_REPORT, findings: [{ ...HIT_IN_A, mechanism: "walker" }] },
+      value: { ...EMPTY_REPORT, findings: [{ ...HIT_IN_A, mechanism: "audit" }] },
     });
   });
 
@@ -343,14 +355,15 @@ describe("runCheck reports", () => {
         ...EMPTY_REPORT,
         exempted: [
           {
-            finding: { ...HIT_IN_A, file: "src/factory.ts", mechanism: "walker" },
+            finding: { ...HIT_IN_A, file: "src/factory.ts", mechanism: "audit" },
             by: [
               {
                 kind: "authorised-location",
                 clause: CLASS_SYNTAX_OBJECT,
-                mechanism: "walker",
+                mechanism: "audit",
                 file: "src/factory.ts",
                 reason: "the wrapping factory for the library",
+                provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" },
               },
             ],
           },
@@ -513,13 +526,13 @@ describe("runCheck runner dispatch", () => {
             {
               address: CLASS_SYNTAX_OBJECT,
               anchor: { kind: "keyword", keyword: "class" },
-              pieceRoot: "/install/mechanisms/walker/CD-14",
+              pieceRoot: "/install/mechanisms/audit/CD-14",
               settings: { module: "class-syntax.ts" },
             },
             {
               address: ABSTRACT_SYNTAX_OBJECT,
               anchor: { kind: "keyword", keyword: "abstract" },
-              pieceRoot: "/install/mechanisms/walker/CD-14",
+              pieceRoot: "/install/mechanisms/audit/CD-14",
               settings: { module: "abstract-syntax.ts" },
             },
           ],
@@ -551,6 +564,31 @@ describe("runCheck runner dispatch", () => {
     );
     expect(vi.mocked(runner.run).mock.calls).toEqual([
       [expect.objectContaining({ files: ["src/a.ts"], trackedPaths: ["README.md", "src/a.ts"] })],
+    ]);
+  });
+
+  it("drops every tracked path disciplines.json excludes, as a folder or as an exact file, from the files and the tracked paths it runs on", async () => {
+    const runner = standaloneRunner({ runReturns: { outcome: "ok", value: [] } });
+    await runCheck(
+      checkRequest({
+        fileText: fileTextOver({ ...INSTALL, [SELECTION_PATH]: presentFile({ text: SELECTION_EXCLUDING_VENDOR }) }),
+        modules: modulesLoading({ runner }),
+        git: gitReporting({
+          trackedPaths: {
+            outcome: "ok",
+            value: [
+              repoPathSchema.parse("src/a.ts"),
+              repoPathSchema.parse("src/generated.ts"),
+              repoPathSchema.parse("vendor/lib.ts"),
+              repoPathSchema.parse("vendored/kept.ts"),
+            ],
+          },
+          changedSince: { outcome: "ok", value: [] },
+        }),
+      }),
+    );
+    expect(vi.mocked(runner.run).mock.calls).toEqual([
+      [expect.objectContaining({ files: ["src/a.ts", "vendored/kept.ts"], trackedPaths: ["src/a.ts", "vendored/kept.ts"] })],
     ]);
   });
 
@@ -616,7 +654,7 @@ describe("runCheck runner dispatch", () => {
               {
                 address: { ruleSet: { name: "team" }, discipline: "CD-14", clause: "class-syntax" },
                 anchor: { kind: "keyword", keyword: "class" },
-                pieceRoot: "/repo/rules/team/mechanisms/walker/CD-14",
+                pieceRoot: "/repo/rules/team/mechanisms/audit/CD-14",
                 settings: { module: "class-syntax.ts" },
               },
             ],
@@ -688,7 +726,7 @@ describe("runCheck load failures", () => {
   it("is runner-missing when the mechanism has no runner.ts in the install", async () => {
     await expect(
       runCheck(checkRequest({ fileText: fileTextOver({ ...INSTALL, [RUNNER_PATH]: ABSENT_FILE }) })),
-    ).resolves.toEqual({ outcome: "failed", error: { kind: "runner-missing", mechanism: "walker" } });
+    ).resolves.toEqual({ outcome: "failed", error: { kind: "runner-missing", mechanism: "audit" } });
   });
 
   it("is runner-invalid for a runner export whose exception path is outside every path", async () => {
@@ -700,7 +738,7 @@ describe("runCheck load failures", () => {
           }),
         }),
       ),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid", mechanism: "walker" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid", mechanism: "audit" } });
   });
 
   it("is runner-invalid with the loader's detail when the runner module fails to load", async () => {
@@ -717,14 +755,14 @@ describe("runCheck load failures", () => {
       ),
     ).resolves.toEqual({
       outcome: "failed",
-      error: { kind: "runner-invalid", mechanism: "walker", detail: "Cannot find package 'typescript'" },
+      error: { kind: "runner-invalid", mechanism: "audit", detail: "Cannot find package 'typescript'" },
     });
   });
 
   it("is runner-invalid for a runner module with no runner export", async () => {
     await expect(
       runCheck(checkRequest({ modules: modulesLoading({ createWalkerRunner: vi.fn() }) })),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid", mechanism: "walker" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid", mechanism: "audit" } });
   });
 
   it("is git-failed when git cannot list the tracked paths", async () => {
@@ -755,7 +793,7 @@ describe("runCheck load failures", () => {
       outcome: "failed",
       error: {
         kind: "runner-failed",
-        mechanism: "walker",
+        mechanism: "audit",
         failure: { kind: "file-unparseable", file: "src/a.ts", detail: "unexpected token" },
       },
     });
@@ -766,7 +804,7 @@ describe("runCheck load failures", () => {
       runCheck(checkRequest({ modules: modulesLoading({ runner: standaloneRunner({ runReturns: [HIT_IN_A] }) }) })),
     ).resolves.toMatchObject({
       outcome: "failed",
-      error: { kind: "runner-failed", mechanism: "walker", failure: { kind: "runner-invalid-output" } },
+      error: { kind: "runner-failed", mechanism: "audit", failure: { kind: "runner-invalid-output" } },
     });
   });
 });
@@ -800,15 +838,15 @@ const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
     text: JSON.stringify({
       version: 1,
       ruleSets: {},
-      clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "lint" },
+      clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "lint" },
     }),
   }),
   [EXCEPTIONS_PATH]: presentFile({
     text: JSON.stringify({
       version: 1,
       exceptions: [
-        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "walker location" },
-        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location" },
+        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "audit location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" } },
+        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" } },
       ],
     }),
   }),
@@ -820,9 +858,10 @@ const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
 const WALKER_RECORD = {
   kind: "authorised-location",
   clause: CLASS_SYNTAX_OBJECT,
-  mechanism: "walker",
+  mechanism: "audit",
   file: "src/walker.ts",
-  reason: "walker location",
+  reason: "audit location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" },
 };
 
 const modulesByPath = (modules: Readonly<Record<string, unknown>>): ModuleLoaderPort => ({
@@ -841,7 +880,7 @@ describe("runCheck with an embedded runner", () => {
       ),
     ).resolves.toEqual({
       outcome: "ok",
-      value: { ...EMPTY_REPORT, unmeasured: [{ kind: "mechanism-not-run", mechanism: "walker", projection: "not-included" }] },
+      value: { ...EMPTY_REPORT, unmeasured: [{ kind: "mechanism-not-run", mechanism: "audit", projection: "not-included" }] },
     });
   });
 
@@ -856,7 +895,7 @@ describe("runCheck with an embedded runner", () => {
       ),
     ).resolves.toEqual({
       outcome: "ok",
-      value: { ...EMPTY_REPORT, unmeasured: [{ kind: "mechanism-not-run", mechanism: "walker", projection: "missing" }] },
+      value: { ...EMPTY_REPORT, unmeasured: [{ kind: "mechanism-not-run", mechanism: "audit", projection: "missing" }] },
     });
   });
 
@@ -873,8 +912,8 @@ describe("runCheck with an embedded runner", () => {
       outcome: "ok",
       value: {
         ...EMPTY_REPORT,
-        findings: [{ ...HIT_IN_A, mechanism: "walker" }],
-        projectionProblems: [{ mechanism: "walker", state: "out-of-date" }],
+        findings: [{ ...HIT_IN_A, mechanism: "audit" }],
+        projectionProblems: [{ mechanism: "audit", state: "out-of-date" }],
       },
     });
   });
@@ -898,7 +937,7 @@ describe("runCheck with an embedded runner", () => {
       outcome: "ok",
       value: {
         ...EMPTY_REPORT,
-        unrecorded: [{ kind: "ignore", clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", mechanism: "walker" }],
+        unrecorded: [{ kind: "ignore", clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", mechanism: "audit" }],
       },
     });
   });
@@ -931,9 +970,10 @@ describe("runCheck with an embedded runner", () => {
           {
             kind: "authorised-location",
             clause: CLASS_SYNTAX_OBJECT,
-            mechanism: "walker",
+            mechanism: "audit",
             file: "src/factory.ts",
             reason: "the wrapping factory for the library",
+            provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" },
           },
         ],
       },

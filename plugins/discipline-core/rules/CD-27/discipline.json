@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "id": "CD-27",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "test-body-logic",
+      "summary": "Tests are zero-everything — zero logic, zero branches, zero unpredictability",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "if statement",
+            "fileName": "branch.test.ts",
+            "source": "const ok = true;\nif (ok) {\n  expect(ok).toBe(true);\n}\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "let declaration",
+            "fileName": "mutable.test.ts",
+            "source": "let total = 1;\nexpect(total).toBe(1);\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "ternary expression",
+            "fileName": "ternary.test.ts",
+            "source": "const ok = true;\nconst expected = ok ? 1 : 2;\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "computing method call",
+            "fileName": "compute.test.ts",
+            "source": "const rows = [{ id: 1 }];\nconst expected = rows.map((row) => row.id);\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "hardcoded arrange act assert",
+            "fileName": "straight.test.ts",
+            "source": "const rows = [1, 2];\nexpect(rows).toEqual([1, 2]);\n",
+            "expectedLines": []
+          },
+          {
+            "name": "branching in production code",
+            "fileName": "branch.ts",
+            "source": "export const pick = (ok: boolean): number => {\n  if (ok) return 1;\n  return 2;\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "throw is covered by CD-10",
+            "fileName": "throws.test.ts",
+            "source": "throw new Error(\"bad\");\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

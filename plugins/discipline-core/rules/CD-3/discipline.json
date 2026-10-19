@@ -1,0 +1,363 @@
+{
+  "version": 1,
+  "id": "CD-3",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "strict",
+      "summary": "Strict mode flags inherited, never overridden",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "strict set to false",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{\n  \"compilerOptions\": {\n    \"strict\": false\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "strict restated as true",
+            "fileName": "tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"target\": \"ESNext\", \"strict\": true } }\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "inherits the shared base",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{ \"extends\": \"../../tsconfig.base.json\", \"compilerOptions\": { \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "only other options set",
+            "fileName": "packages/b/tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"outDir\": \"dist\", \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsconfig.base.json is not read",
+            "fileName": "tsconfig.base.json",
+            "source": "{ \"compilerOptions\": { \"strict\": true } }\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "no-unchecked-indexed-access",
+      "summary": "Strict mode flags inherited, never overridden",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "noUncheckedIndexedAccess set to false",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{\n  \"compilerOptions\": {\n    \"noUncheckedIndexedAccess\": false\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "noUncheckedIndexedAccess restated as true",
+            "fileName": "tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"target\": \"ESNext\", \"noUncheckedIndexedAccess\": true } }\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "inherits the shared base",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{ \"extends\": \"../../tsconfig.base.json\", \"compilerOptions\": { \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "only other options set",
+            "fileName": "packages/b/tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"outDir\": \"dist\", \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsconfig.base.json is not read",
+            "fileName": "tsconfig.base.json",
+            "source": "{ \"compilerOptions\": { \"noUncheckedIndexedAccess\": true } }\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "exact-optional-property-types",
+      "summary": "Strict mode flags inherited, never overridden",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "exactOptionalPropertyTypes set to false",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{\n  \"compilerOptions\": {\n    \"exactOptionalPropertyTypes\": false\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "exactOptionalPropertyTypes restated as true",
+            "fileName": "tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"target\": \"ESNext\", \"exactOptionalPropertyTypes\": true } }\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "inherits the shared base",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{ \"extends\": \"../../tsconfig.base.json\", \"compilerOptions\": { \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "only other options set",
+            "fileName": "packages/b/tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"outDir\": \"dist\", \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsconfig.base.json is not read",
+            "fileName": "tsconfig.base.json",
+            "source": "{ \"compilerOptions\": { \"exactOptionalPropertyTypes\": true } }\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "no-implicit-override",
+      "summary": "Strict mode flags inherited, never overridden",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "noImplicitOverride set to false",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{\n  \"compilerOptions\": {\n    \"noImplicitOverride\": false\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "noImplicitOverride restated as true",
+            "fileName": "tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"target\": \"ESNext\", \"noImplicitOverride\": true } }\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "inherits the shared base",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{ \"extends\": \"../../tsconfig.base.json\", \"compilerOptions\": { \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "only other options set",
+            "fileName": "packages/b/tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"outDir\": \"dist\", \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsconfig.base.json is not read",
+            "fileName": "tsconfig.base.json",
+            "source": "{ \"compilerOptions\": { \"noImplicitOverride\": true } }\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "no-fallthrough-cases-in-switch",
+      "summary": "Strict mode flags inherited, never overridden",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "noFallthroughCasesInSwitch set to false",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{\n  \"compilerOptions\": {\n    \"noFallthroughCasesInSwitch\": false\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "noFallthroughCasesInSwitch restated as true",
+            "fileName": "tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"target\": \"ESNext\", \"noFallthroughCasesInSwitch\": true } }\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "inherits the shared base",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{ \"extends\": \"../../tsconfig.base.json\", \"compilerOptions\": { \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "only other options set",
+            "fileName": "packages/b/tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"outDir\": \"dist\", \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsconfig.base.json is not read",
+            "fileName": "tsconfig.base.json",
+            "source": "{ \"compilerOptions\": { \"noFallthroughCasesInSwitch\": true } }\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "no-property-access-from-index-signature",
+      "summary": "Strict mode flags inherited, never overridden",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "noPropertyAccessFromIndexSignature set to false",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{\n  \"compilerOptions\": {\n    \"noPropertyAccessFromIndexSignature\": false\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "noPropertyAccessFromIndexSignature restated as true",
+            "fileName": "tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"target\": \"ESNext\", \"noPropertyAccessFromIndexSignature\": true } }\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "inherits the shared base",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{ \"extends\": \"../../tsconfig.base.json\", \"compilerOptions\": { \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "only other options set",
+            "fileName": "packages/b/tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"outDir\": \"dist\", \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsconfig.base.json is not read",
+            "fileName": "tsconfig.base.json",
+            "source": "{ \"compilerOptions\": { \"noPropertyAccessFromIndexSignature\": true } }\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "use-unknown-in-catch-variables",
+      "summary": "Strict mode flags inherited, never overridden",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "useUnknownInCatchVariables set to false",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{\n  \"compilerOptions\": {\n    \"useUnknownInCatchVariables\": false\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "useUnknownInCatchVariables restated as true",
+            "fileName": "tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"target\": \"ESNext\", \"useUnknownInCatchVariables\": true } }\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "inherits the shared base",
+            "fileName": "packages/a/tsconfig.json",
+            "source": "{ \"extends\": \"../../tsconfig.base.json\", \"compilerOptions\": { \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "only other options set",
+            "fileName": "packages/b/tsconfig.json",
+            "source": "{ \"compilerOptions\": { \"outDir\": \"dist\", \"target\": \"ESNext\" } }\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsconfig.base.json is not read",
+            "fileName": "tsconfig.base.json",
+            "source": "{ \"compilerOptions\": { \"useUnknownInCatchVariables\": true } }\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

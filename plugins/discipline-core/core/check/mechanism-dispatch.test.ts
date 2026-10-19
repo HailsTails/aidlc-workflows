@@ -8,7 +8,7 @@ import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import { projectMechanism, runMechanism } from "./mechanism-dispatch.ts";
 
-const WALKER = mechanismIdSchema.parse("walker");
+const WALKER = mechanismIdSchema.parse("audit");
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
 const CLASS_SYNTAX = clauseAddressSchema.parse("CD-14#class-syntax");
@@ -18,7 +18,7 @@ const ABSTRACT_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause:
 const CLASS_SYNTAX_CLAUSE: RunnerClause = {
   address: CLASS_SYNTAX,
   anchor: { kind: "keyword", keyword: "class" },
-  pieceRoot: "/install/mechanisms/walker/CD-14",
+  pieceRoot: "/install/mechanisms/audit/CD-14",
   settings: { module: "class-syntax.ts" },
 };
 
@@ -32,6 +32,7 @@ const RUN_REQUEST: RunRequest = {
 
 const CARVE_OUT: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/mechanism-dispatch.test.ts#CARVE_OUT; not historical authorisation" },
   clause: CLASS_SYNTAX,
   mechanism: WALKER,
   file: repoPathSchema.parse("src/a.ts"),
@@ -64,7 +65,7 @@ describe("runMechanism with a standalone runner", () => {
     ).resolves.toEqual({
       outcome: "ok",
       value: {
-        mechanism: "walker",
+        mechanism: "audit",
         hits: [HIT_IN_A],
         nativeExceptions: [],
         projectedKinds: [],
@@ -78,7 +79,7 @@ describe("runMechanism with a standalone runner", () => {
       dispatchRun({ runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [] }) }) }),
     ).resolves.toEqual({
       outcome: "ok",
-      value: { mechanism: "walker", hits: [], nativeExceptions: [], projectedKinds: [], projection: "none" },
+      value: { mechanism: "audit", hits: [], nativeExceptions: [], projectedKinds: [], projection: "none" },
     });
   });
 
@@ -146,12 +147,20 @@ describe("runMechanism with a standalone runner", () => {
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#abstract-syntax in src/a.ts, which the request did not hold") } });
   });
 
-  it("is runner-invalid-output when a hit names a tracked file that is not in files", async () => {
+  it("accepts a hit in a tracked file that is not in files, since a standalone runner walks every tracked path", async () => {
     await expect(
       dispatchRun({
         runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, file: "README.md" }] }) }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in README.md, which the request did not hold") } });
+    ).resolves.toMatchObject({ outcome: "ok", value: { hits: [{ ...HIT_IN_A, file: "README.md" }] } });
+  });
+
+  it("is runner-invalid-output when a hit names a file that is not tracked", async () => {
+    await expect(
+      dispatchRun({
+        runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, file: "src/untracked.ts" }] }) }),
+      }),
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in src/untracked.ts, which the request did not hold") } });
   });
 });
 
@@ -174,6 +183,7 @@ const ESLINT = mechanismIdSchema.parse("eslint");
 
 const ESLINT_LOCATION: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/mechanism-dispatch.test.ts#ESLINT_LOCATION; not historical authorisation" },
   clause: CLASS_SYNTAX,
   mechanism: ESLINT,
   file: repoPathSchema.parse("src/a.ts"),

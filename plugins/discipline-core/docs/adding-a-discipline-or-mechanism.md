@@ -5,7 +5,7 @@ Core names no discipline and no mechanism, so adding either one is a matter of a
 Terms used below:
 
 - A **discipline** is a coding rule with an id such as `CD-14`, made of one or more **clauses**.
-- A **mechanism** is a tool that checks clauses, such as the TypeScript `walker` or `eslint`. Each mechanism has one **runner**.
+- A **mechanism** is a tool that checks clauses, such as the TypeScript `audit` or `eslint`. Each mechanism has one **runner**.
 - A **piece** is one discipline's code for one mechanism, written in that mechanism's own extension format.
 - A **rule set** is a directory holding `rules/` and `mechanisms/` folders. The rule set shipped with core is `shared`; a repository can add its own and name them in `disciplines.json`.
 - A **native channel** is a way the tool itself lets a team exempt or weaken a rule, outside core's exception records.
@@ -45,15 +45,15 @@ For each mechanism in a clause's `mechanisms` list, add a piece folder `mechanis
 {
   "version": 1,
   "discipline": "PD-1",
-  "mechanism": "walker",
+  "mechanism": "audit",
   "clauses": [{ "clause": "no-tmp-files", "settings": { "module": "no-tmp-files.ts" } }]
 }
 ```
 
 `discipline` and `mechanism` must match the folder names, every `clause` must exist in the discipline, and no clause may appear twice. Core reads only this envelope. `settings` belongs to the runner, which parses it with its own schema:
 
-- **walker:** `{ "module": "<file>.ts" }`, a path inside the piece folder. The module exports `check`, typed with `import type { TypeScriptWalkerCheck }` from `mechanisms/walker/runner/typescript-parse.ts`, or `WalkerCheck` from `walker-check.ts` for a path check. See `mechanisms/walker/runner/README.md`.
-- **eslint:** `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` path inside the piece folder whose default export is an ESLint plugin; `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`. The namespace `discipline-core` is reserved, and two selected clauses may not share a rule id, or a namespace with different plugin modules. CD-14's piece is `mechanisms/eslint/CD-14/piece.json`, pointing at the rule `no-class-authoring` in `cd14/cd14.eslint-plugin.ts` under the namespace `rin-discipline`.
+- **audit:** `{ "module": "<file>.ts" }`, a path inside the piece folder. The module exports `check`, typed with `import type { WalkerPiece }` from `mechanisms/audit/runner/walker-piece.ts`. See `mechanisms/audit/runner/README.md`.
+- **eslint:** `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` path inside the piece folder whose default export is an ESLint plugin; `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`. The namespace `discipline-core` is reserved, and two selected clauses may not share a rule id, or a namespace with different plugin modules. CD-14's piece is `mechanisms/eslint/CD-14/piece.json`, pointing at the rule `no-class-authoring` in `cd14/cd14.eslint-plugin.ts` under the namespace `discipline`.
 
 A runner reports a bad `settings` value, a module that fails to load or does not match its schema, or a missing rule as `piece-invalid`.
 
@@ -61,20 +61,20 @@ A runner reports a bad `settings` value, a module that fails to load or does not
 
 Give each piece source file a co-located `.test.ts`. A piece's test runs the clause's shared cases through its runner and checks the flagged lines:
 
-- a walker piece calls `conform` on a walker runner (`mechanisms/walker/CD-14/class-syntax.test.ts` builds one with `createWalkerRunner` and the real TypeScript parse port);
+- an audit piece calls `conform` on an audit runner (`mechanisms/audit/CD-14/class-syntax.test.ts` builds one with `createWalkerRunner` and the real TypeScript parse port);
 - an ESLint piece calls the ESLint port's `lintSourceCases` with its plugin (`mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.test.ts`).
 
-A path-only walker piece reads no source, so its test can call `check` directly on each path, as the probe's does. The runner's own suite runs core's `checkConformance` over every shared piece it serves (see "Adding a mechanism", step 4). FR-8's import checks (below) cover the new files with no change.
+A path-only audit piece reads no source, so its test can prepare `check` and call `prepareFile` directly on each path, as the probe's does. The runner's own suite runs core's `checkConformance` over every shared piece it serves (see "Adding a mechanism", step 4). FR-8's import checks (below) cover the new files with no change.
 
 ### Worked example: the probe discipline
 
-`tests/probe-rule-set/` is a test-only rule set, named `probe`, holding one discipline written exactly as a team would write its own. It was added beside CD-14 with no change to core or to the walker runner.
+`tests/probe-rule-set/` is a test-only rule set, named `probe`, holding one discipline written exactly as a team would write its own. It was added beside CD-14 with no change to core or to the audit runner.
 
-- `tests/probe-rule-set/rules/PD-1/discipline.json` declares one mechanical clause, `no-tmp-files`: mechanisms `["walker"]`, anchor `{ "kind": "file" }`, one flag case (`src/scratch.tmp.ts`, line 1) and one allow case (`src/kept.ts`, no lines).
-- `tests/probe-rule-set/mechanisms/walker/PD-1/piece.json` maps that clause to the module `no-tmp-files.ts`.
-- `tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts` exports `check`, a walker path check that returns `"violates"` for a path ending `.tmp.ts` and `"conforms"` otherwise. It reads no file, so the walker offers it every path without parsing.
+- `tests/probe-rule-set/rules/PD-1/discipline.json` declares one mechanical clause, `no-tmp-files`: mechanisms `["audit"]`, anchor `{ "kind": "file" }`, one flag case (`src/scratch.tmp.ts`, line 1) and one allow case (`src/kept.ts`, no lines).
+- `tests/probe-rule-set/mechanisms/audit/PD-1/piece.json` maps that clause to the module `no-tmp-files.ts`.
+- `tests/probe-rule-set/mechanisms/audit/PD-1/no-tmp-files.ts` exports `check`, an audit piece that completes each file from its path alone: a hit at line 1 for a path ending `.tmp.ts`, none otherwise. It reads no file, so the walker never parses on its behalf.
 - `no-tmp-files.test.ts` tests `check` directly; the probe has no conformance test of its own.
-- The piece imports only a type, `WalkerCheck`, from the walker runner, as a path relative to its own file. Type imports are erased when Node runs the source, so the path matters only to typechecking.
+- The piece imports only a type, `WalkerPiece`, from the audit runner, as a path relative to its own file. Type imports are erased when Node runs the source, so the path matters only to typechecking.
 
 A repository selects it by naming the rule set and the clause:
 
@@ -82,11 +82,11 @@ A repository selects it by naming the rule set and the clause:
 {
   "version": 1,
   "ruleSets": { "probe": "probe" },
-  "clauses": { "probe/PD-1#no-tmp-files": "walker", "CD-14#class-syntax": "walker" }
+  "clauses": { "probe/PD-1#no-tmp-files": "audit", "CD-14#class-syntax": "audit" }
 }
 ```
 
-`tests/probe-check.integration.test.ts` runs that selection: the probe flags `src/scratch.tmp.ts`, CD-14 flags the class in `src/kept.ts`, and the walker parses each file once even though two disciplines are selected.
+`tests/probe-check.integration.test.ts` runs that selection: the probe flags `src/scratch.tmp.ts`, CD-14 flags the class in `src/kept.ts`, and the audit runner parses each file once even though two disciplines are selected.
 
 ## Adding a mechanism
 
@@ -105,26 +105,26 @@ export const runner = createEslintRunner({
 
 Core loads `runner.ts` once per check and parses the export with its own schema (`core/mechanism-port/runner-module-schema.ts`). An unknown exception path, a missing member or a member that is not a function is the load failure `runner-invalid`. Core also parses everything a runner returns; a value outside its schema, a hit for a clause or file it was not asked about, or a call that throws or rejects is `runner-invalid-output`, and the check exits `2`. A runner reports its own failures as a `RunnerFailure` (`core/mechanism-port/runner-failure.ts`): `piece-invalid`, `tool-failed`, `file-unreadable`, `file-unparseable`, `plugin-conflict`, `team-config-unloadable` or `runner-invalid-output`.
 
-Use core's ports (`core/platform-ports/`) for files, module loading and paths, and wrap the tool itself in one factory file that is the only place the tool's package is imported. The walker's is `typescript-parse.ts`; the ESLint runner's is `eslint-instance.ts` (ESLint and `@typescript-eslint/parser`), with `inline-config-parser.ts` the only importer of `@eslint/plugin-kit`.
+Use core's ports (`core/platform-ports/`) for files, module loading and paths, and wrap the tool itself in one factory file that is the only place the tool's package is imported. The audit mechanism's is `typescript-parse.ts`; the ESLint runner's is `eslint-instance.ts` (ESLint and `@typescript-eslint/parser`), with `inline-config-parser.ts` the only importer of `@eslint/plugin-kit`.
 
 ### 2. Choose an exception path
 
 A runner declares `exceptionPath`, which tells core how the tool's own exception formats are handled.
 
-- **Standalone** (`"standalone"`): the tool has no exception format of its own, or none the repository can write to. The runner implements `run`, which returns raw hits for the selected clauses with no exception applied, and `conform`, which runs a clause over its shared cases without reading any repository file. Core applies `discipline-exceptions.json` itself. The walker is standalone. The author's contract is `StandaloneRunner` in `core/mechanism-port/runner-module-schema.ts`.
+- **Standalone** (`"standalone"`): the tool has no exception format of its own, or none the repository can write to. The runner implements `run`, which returns raw hits for the selected clauses with no exception applied, and `conform`, which runs a clause over its shared cases without reading any repository file. Core applies `discipline-exceptions.json` itself. The audit mechanism is standalone. The author's contract is `StandaloneRunner` in `core/mechanism-port/runner-module-schema.ts`.
 - **Embedded** (`"embedded"`): the tool has its own ignore, override, suppression or inline formats, which the team's own run of the tool honours. The runner reports every native channel that touches a selected clause, and writes a projection so the team's run honours the recorded exceptions. ESLint is embedded. The author's contract is `EmbeddedRunner` in `core/mechanism-port/embedded-runner-module-schema.ts`; see "Embedded mechanisms" below.
 
 Core knows only these two paths. A mechanism that fits neither would need a change to core.
 
 ### 3. The runner's other files
 
-- `mechanisms/<MechanismId>/runner/piece-type-packages.json`: a JSON array of the packages a piece may import types from. The walker's is `["typescript"]` and the ESLint runner's is `["eslint"]`. It is not the runtime list.
-- `mechanisms/<MechanismId>/runner/README.md`: the runner's runtime requirements, its piece contract and its piece settings. See `mechanisms/walker/runner/README.md` and `mechanisms/eslint/runner/README.md`.
+- `mechanisms/<MechanismId>/runner/piece-type-packages.json`: a JSON array of the packages a piece may import types from. The audit mechanism's is `["typescript"]` and the ESLint runner's is `["eslint"]`. It is not the runtime list.
+- `mechanisms/<MechanismId>/runner/README.md`: the runner's runtime requirements, its piece contract and its piece settings. See `mechanisms/audit/runner/README.md` and `mechanisms/eslint/runner/README.md`.
 - A co-located `.test.ts` for every source file.
 
 ### 4. Conformance
 
-Each runner's suite runs core's `checkConformance` (`core/conformance/conformance.ts`) over the real runner as core loads it, for every shared clause its pieces serve. It calls the runner's `conform` and compares the flagged lines with each case's expected lines; the runner conforms for a clause when the result is ok and lists no failures. The walker's is `mechanisms/walker/runner/walker-conformance.test.ts`; the ESLint runner's is in `mechanisms/eslint/runner/native-exceptions.integration.test.ts`. Conformance runs the real tool in memory, because the tool's verdict is what is being checked.
+Each runner's suite runs core's `checkConformance` (`core/conformance/conformance.ts`) over the real runner as core loads it, for every shared clause its pieces serve. It calls the runner's `conform` and compares the flagged lines with each case's expected lines; the runner conforms for a clause when the result is ok and lists no failures. The audit mechanism's is `mechanisms/audit/runner/walker-conformance.test.ts`; the ESLint runner's is in `mechanisms/eslint/runner/native-exceptions.integration.test.ts`. Conformance runs the real tool in memory, because the tool's verdict is what is being checked.
 
 ### 5. Selecting it
 
@@ -137,7 +137,7 @@ These hold for every discipline and mechanism. Tests under `core/check/` check t
 - **Core names no discipline and no mechanism.** No file under `core/` may contain a discipline id or mechanism id found in the install, or import anything under `mechanisms/` or `rules/` (`core/check/core-names-no-mechanism.test.ts`). Core reaches a runner only by loading its `runner.ts` at run time.
 - **A runner names no discipline.** No file in a `mechanisms/<MechanismId>/runner/` folder may contain a discipline id.
 - **A piece reaches only its own mechanism's runner, core, and its own discipline's files** (`core/check/piece-imports.test.ts`). A relative import from a piece in `mechanisms/<MechanismId>/<DisciplineId>/` must resolve inside exactly one of: that piece folder; the same rule set's `rules/<DisciplineId>/`; the install's `mechanisms/<MechanismId>/runner/`; or the install's `core/`. Another mechanism's piece for the same discipline is out of reach.
-- **A piece imports a package only as a type**, and only a package its runner lists in `piece-type-packages.json`. A value import of a package, including a `node:` module, and any dynamic import are refused. A walker piece gets TypeScript's runtime API as an argument, so it never imports `typescript` as a value; an ESLint rule gets everything it needs from ESLint's rule context.
+- **A piece imports a package only as a type**, and only a package its runner lists in `piece-type-packages.json`. A value import of a package, including a `node:` module, and any dynamic import are refused. An audit piece gets TypeScript's runtime API as an argument, so it never imports `typescript` as a value; an ESLint rule gets everything it needs from ESLint's rule context.
 
 ## Embedded mechanisms
 

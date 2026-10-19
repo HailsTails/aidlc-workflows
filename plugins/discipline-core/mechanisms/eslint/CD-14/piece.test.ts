@@ -53,7 +53,7 @@ describe("CD-14 ESLint piece.json", () => {
           {
             clause: "class-syntax",
             settings: {
-              pluginNamespace: "rin-discipline",
+              pluginNamespace: "discipline",
               pluginModule: "cd14/cd14.eslint-plugin.ts",
               rule: "no-class-authoring",
             },
@@ -67,7 +67,7 @@ describe("CD-14 ESLint piece.json", () => {
     expect(eslintPieceSettingsSchema.safeParse(piece.clauses[0].settings)).toEqual({
       success: true,
       data: {
-        pluginNamespace: "rin-discipline",
+        pluginNamespace: "discipline",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
         rule: "no-class-authoring",
       },

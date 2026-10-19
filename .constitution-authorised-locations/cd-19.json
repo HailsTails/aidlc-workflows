@@ -56,76 +56,76 @@
   },
   {
     "files": [
-      "plugins/discipline-core/core/platform-ports/git-port.ts"
+      "plugins/discipline-core/core/platform-ports/execution-port.ts"
     ],
-    "reason": "Structural CD19 location: createGitPort holds the git argv, environment stripping, NUL splitting and failure mapping over an injected GitSpawn and ambient environment; defaultGitSpawn binds node:child_process spawnSync to that surface and createDefaultGitPort passes process.env as the ambient environment. Consumers receive RepoPath lists and GitFailure data in a Result, never Node types. git-port.test.ts fakes GitSpawn with vi.fn and passes a literal environment object. This is the single wrapping site for git subprocess execution in the discipline-core plugin.",
+    "reason": "Current structural CD19/CD21 conformance: this is the sole shipped consumer node:child_process and child-environment wrapping site. Official Node outcomes are mapped to plain ExecutionExit/ExecutionFailure; policy and environment are bound once. Git consumes the plain execution port and retains its own argv/environment policy. The provider alias is used only inside this boundary and its own tests. This current judgement grants no tolerated debt or old-location permission.",
     "whyChain": {
       "whys": [
         {
-          "why": "Why does plugins/discipline-core/core/platform-ports/git-port.ts import or touch a platform runtime surface at all?",
-          "because": "Discipline-core's checker needs git subprocess execution, which only the runtime's node:child_process spawnSync and process.env provides.",
-          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Touched set defines GitPort and § Ports core depends on places it in core/platform-ports/; plugins/discipline-core/core/platform-ports/git-port.ts defaultGitSpawn."
+          "why": "Why does the current execution boundary require native child execution and ambient child environment?",
+          "because": "The existing production Git capability must launch Git and obtain its exit, output and failures; the neutral default performs that real runtime operation while the Git adapter retains semantic policy.",
+          "evidence": "execution-port.ts createDefaultExecutionPort/createExecutionSpawn/nativeOutcome; git-port.ts createDefaultGitPort/GIT_EXECUTION_POLICY; host-next/qualification/source-closure.json."
         },
         {
-          "why": "Why is that runtime access not confined somewhere else, away from core logic?",
-          "because": "CD-19 requires every stdlib dependency to sit in exactly one wrapping port at the boundary, and this file is that port: the rest of core imports the port type, never the runtime.",
-          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/rin/knowledge/aidlc-shared/code-discipline/cd-020-node-stdlib-through-ports.md (collapsed into CD-19)."
+          "why": "Why is native execution confined here rather than in each semantic consumer?",
+          "because": "The complete current shipped source inventory has exactly one child-process import and ambient-environment read here; Git receives only the owned ExecutionPort result and exposes no Node process types.",
+          "evidence": "host-next/qualification/source-closure.json: 68 source files, one execution import, one ambient environment site, zero inward provider type leaks."
         },
         {
-          "why": "Why does the default binding live in the same file as the port's logic?",
-          "because": "CD-21 requires each port to ship its default production factory co-located in its own module, so one canonical construction site exists per capability.",
-          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-021-ports-ship-default-factory.md; the lead's design ruling in rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3)."
+          "why": "Why does moving the import fail to remove this structural boundary requirement?",
+          "because": "A production implementation still has to cross from plain execution requests to native spawn and decode native outcomes. Relocating that implementation would move the same wrapping responsibility rather than eliminate it.",
+          "evidence": "execution-port.ts ExecutionPort/ExecutionSpawn contracts, createExecutionSpawn and nativeOutcome; frozen Rin IF6 and CD19/CD21 source-qualified structural ruling."
         },
         {
-          "why": "Why can the port's logic still be unit-tested without real I/O?",
-          "because": "The logic is createGitPort over the injected GitSpawn and ambient environment; the tests inject a vi.fn GitSpawn returning literal GitRun objects and a literal environment, and only defaultGitSpawn and createDefaultGitPort touch node:child_process and process.env, which CD-47 keeps out of unit tests.",
-          "evidence": "plugins/discipline-core/core/platform-ports/git-port.test.ts (vi.fn<GitSpawn>() with literal GitRun values and AMBIENT_ENVIRONMENT); rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3) (CD-47 and CD-19/CD-20 in tests)."
+          "why": "Why do consumers and unit tests remain independent of the native runtime operation?",
+          "because": "The production factory is colocated with injected plain execution and boundary-local official provider seams. Tests fake those seams, while Git's existing injected contracts and policy tests remain unchanged.",
+          "evidence": "execution-port.test.ts; git-port.test.ts; host-next/test-final-manifest.json and build-manifest.json; full core1252/85 passing."
         },
         {
-          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
-          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; the audit's bare-import detector cannot tell a sanctioned wrapping site from a scattered import without this registry entry.",
-          "evidence": "bun run audit:rin reported CD-19/CD-20 on plugins/discipline-core/core/platform-ports/git-port.ts before this entry; rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on."
+          "why": "Why record this current location instead of treating it as inherited permission or tolerated debt?",
+          "because": "The actual implemented source meets all three standing wrapper conditions. The bare-import audit cannot classify that conformance; its old Git entry is now stale and is preserved separately as exact retired-location history.",
+          "evidence": "host-next/build-root-audit.log; host-next/history/manifest.json and original-git-record.json; host-next/qualification/current-source-assessment.md."
         }
       ],
-      "rootCause": "Discipline-core needs git subprocess execution from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
-      "owner": "rin record 261014-discipline-core-foundati"
+      "rootCause": "Native child execution requires one actual runtime adapter behind owned plain ports; this implemented boundary satisfies that structural obligation rather than introducing business-code debt.",
+      "owner": "rin record 261016-discipline-core-migratio, current Gate4 source judgement"
     }
   },
   {
     "files": [
-      "plugins/discipline-core/core/platform-ports/file-text-port.ts"
+      "plugins/discipline-core/core/platform-ports/file-system-port.ts"
     ],
-    "reason": "Structural CD19 location: createFileTextPort maps an injected FileSystemSurface's throws to unreadable/unwritable Result data and to a present/absent FilePresence; defaultFileSystemSurface binds node:fs readFileSync, writeFileSync and accessSync to that surface and createDefaultFileTextPort wires it. Consumers receive strings, FilePresence values and Result data, never Node types. file-text-port.test.ts fakes the surface with an object of vi.fn functions. This is the single wrapping site for file text reading, writing and presence in the discipline-core plugin.",
+    "reason": "Current structural CD19/CD21 conformance: this is the sole shipped consumer node:fs wrapping site for existing text/presence plus immediate directory listing. Existing text implementations and six compatibility exports are preserved. Directory results contain only owned name/kind data; no Dirent escapes. This current judgement grants no tolerated debt or old-location permission.",
     "whyChain": {
       "whys": [
         {
-          "why": "Why does plugins/discipline-core/core/platform-ports/file-text-port.ts import or touch a platform runtime surface at all?",
-          "because": "Discipline-core's checker needs file text reading, writing and presence, which only the runtime's node:fs readFileSync, writeFileSync and accessSync provides.",
-          "evidence": "rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on defines FileTextPort; plugins/discipline-core/core/platform-ports/file-text-port.ts defaultFileSystemSurface."
+          "why": "Why does the current filesystem boundary require native filesystem operations?",
+          "because": "The existing checker reads and writes text and checks presence, and its final walker capability needs immediate directory entries. Those production operations require the runtime filesystem at their shared default boundary.",
+          "evidence": "file-system-port.ts defaultFileSystemSurface/defaultDirectorySurface and colocated factories; frozen Rin IF6/P08."
         },
         {
-          "why": "Why is that runtime access not confined somewhere else, away from core logic?",
-          "because": "CD-19 requires every stdlib dependency to sit in exactly one wrapping port at the boundary, and this file is that port: the rest of core imports the port type, never the runtime.",
-          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-019-third-party-wrapping-factories.md; plugins/rin/knowledge/aidlc-shared/code-discipline/cd-020-node-stdlib-through-ports.md (collapsed into CD-19)."
+          "why": "Why is filesystem access confined here rather than spread across existing readers and runners?",
+          "because": "The complete shipped source inventory has exactly one filesystem import here. Existing readers and runners consume FileTextPort through the pure compatibility module; directory results cross only DirectoryPort as plain data.",
+          "evidence": "host-next/qualification/source-closure.json: one filesystem site and owned consumer edges; file-text-port.ts six explicit compatibility re-exports."
         },
         {
-          "why": "Why does the default binding live in the same file as the port's logic?",
-          "because": "CD-21 requires each port to ship its default production factory co-located in its own module, so one canonical construction site exists per capability.",
-          "evidence": "plugins/rin/knowledge/aidlc-shared/code-discipline/cd-021-ports-ship-default-factory.md; the lead's design ruling in rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3)."
+          "why": "Why would relocating the import retain the same structural need?",
+          "because": "Text, access and directory defaults still have to invoke native filesystem operations and map their outcomes to owned results. Moving that implementation would relocate the same port boundary rather than remove runtime dependence.",
+          "evidence": "file-system-port.ts createFileTextPort/createDirectoryPort/defaultFileSystemSurface/defaultDirectorySurface; frozen IF6 and CD19/CD21."
         },
         {
-          "why": "Why can the port's logic still be unit-tested without real I/O?",
-          "because": "The logic is createFileTextPort over the injected FileSystemSurface; the tests inject an object of vi.fn readText, writeText and access functions, and only defaultFileSystemSurface touches node:fs, which CD-47 keeps out of unit tests.",
-          "evidence": "plugins/discipline-core/core/platform-ports/file-text-port.test.ts (fileSystemOver builds the surface from vi.fn functions); rin record 261014-discipline-core-foundati, construction/rin-gate-4-implement/rin-code-generation-plan.md § Audit fix-up (after round 3) (CD-47 and CD-19/CD-20 in tests)."
+          "why": "Why can the consumer behavior be verified without native filesystem effects in unit tests?",
+          "because": "The preserved text and new directory implementations consume their separate owned injected surfaces. Existing text cases and new complete/sorted/immutable/native-path/failure cases fake those surfaces; no SDK shape crosses inward.",
+          "evidence": "file-text-port.test.ts and file-system-port.test.ts; host-next/test-final-manifest.json/build-manifest.json; full core1252/85 passing."
         },
         {
-          "why": "Why is the binding recorded as an authorised location rather than rewritten?",
-          "because": "The wrapping factory is where CD-19 says the dependency belongs, so the file was never in debt; the audit's bare-import detector cannot tell a sanctioned wrapping site from a scattered import without this registry entry.",
-          "evidence": "bun run audit:rin reported CD-19/CD-20 on plugins/discipline-core/core/platform-ports/file-text-port.ts before this entry; rin record 261014-discipline-core-foundati, inception/rin-gate-3-interface-lock/rin-interface-lock.md § Ports core depends on."
+          "why": "Why record a current conforming location without transferring the old text entry?",
+          "because": "The actual relocated implementation meets the three standing source conditions. Its bare import is still reported mechanically, while the compatibility file's old entry is stale; that original reason and chain remain exact separate history.",
+          "evidence": "host-next/build-root-audit.log; host-next/history/manifest.json and original-file-text-record.json; host-next/qualification/current-source-assessment.md."
         }
       ],
-      "rootCause": "Discipline-core needs file text reading, writing and presence from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
-      "owner": "rin record 261014-discipline-core-foundati"
+      "rootCause": "The checker needs native filesystem effects behind one owned production boundary; the implemented shared wrapper preserves text behavior and confines directory data without creating business-code debt.",
+      "owner": "rin record 261016-discipline-core-migratio, current Gate4 source judgement"
     }
   },
   {

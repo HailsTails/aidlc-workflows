@@ -24,7 +24,7 @@ const runnerSources = import.meta.glob(["./mechanisms/*/runner/**/*.ts", "!./mec
   eager: true,
 });
 
-const walkerRunnerSources = import.meta.glob(["./mechanisms/walker/runner/*.ts", "!./mechanisms/walker/runner/*.test.ts"], {
+const walkerRunnerSources = import.meta.glob(["./mechanisms/audit/runner/*.ts", "!./mechanisms/audit/runner/*.test.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -46,8 +46,8 @@ const vendorImportsTestSources = import.meta.glob(["./core/check/vendor-imports.
 });
 
 const walkerRunnerReach = relativeImportReaching({
-  importingFolder: "mechanisms/walker/runner",
-  reach: /^(?:mechanisms\/walker\/runner\/|core\/(?:mechanism-port|values|platform-ports|rule-set-reader|exception-records)\/)/,
+  importingFolder: "mechanisms/audit/runner",
+  reach: /^(?:mechanisms\/audit\/runner\/|core\/(?:mechanism-port|values|platform-ports|rule-set-reader|exception-records)\/)/,
 });
 
 const eslintRunnerReach = relativeImportReaching({
@@ -68,10 +68,10 @@ describe("FR-8 and AR-1 runner reach into core and its own mechanism over what t
   it("reads a known file through every scanned set, so no set is silently empty", () => {
     expect({ runnerSources, walkerRunnerSources, eslintRunnerSources }).toEqual({
       runnerSources: expect.objectContaining({
-        "./mechanisms/walker/runner/create-walker-runner.ts": expect.any(String),
+        "./mechanisms/audit/runner/create-walker-runner.ts": expect.any(String),
         "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String),
       }),
-      walkerRunnerSources: expect.objectContaining({ "./mechanisms/walker/runner/create-walker-runner.ts": expect.any(String) }),
+      walkerRunnerSources: expect.objectContaining({ "./mechanisms/audit/runner/create-walker-runner.ts": expect.any(String) }),
       eslintRunnerSources: expect.objectContaining({ "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String) }),
     });
   });
@@ -89,7 +89,7 @@ describe("FR-8 and AR-1 runner reach into core and its own mechanism over what t
     }).toEqual({ importingACoreFolderOutsideTheNamedFolders: [], importingAValueFromExceptionRecords: [] });
   });
 
-  it("finds every walker runner import resolving inside the walker runner or core's named folders", () => {
+  it("finds every audit runner import resolving inside the audit runner or core's named folders", () => {
     expect(
       importsOutside({ sources: walkerRunnerSources, allowed: [walkerRunnerReach, packageOrComputedImport] }),
     ).toEqual([]);

@@ -29,7 +29,7 @@ export type StepRun =
   | { readonly outcome: "exited"; readonly exitCode: number; readonly output: string }
   | { readonly outcome: "not-exited"; readonly detail: string };
 
-export type Mechanism = "walker" | "eslint";
+export type Mechanism = "audit" | "eslint";
 
 export type ProofAction =
   | { readonly kind: "check"; readonly expectation: StepExpectation }
@@ -59,8 +59,8 @@ export const PROOF_DISCIPLINE_ID = "CD-14";
 
 export const PROOF_CASES: readonly ProofCase[] = [
   {
-    consumer: "walker",
-    mechanism: "walker",
+    consumer: "audit",
+    mechanism: "audit",
     installedManifest: "kept",
     actions: [
       { kind: "check", expectation: { exitCode: 1, output: { kind: "contains", text: "verdict: fail" } } },
@@ -85,7 +85,7 @@ export const PROOF_CASES: readonly ProofCase[] = [
   },
   {
     consumer: "no-package-json",
-    mechanism: "walker",
+    mechanism: "audit",
     installedManifest: "removed",
     actions: [
       {

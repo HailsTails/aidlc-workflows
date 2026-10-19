@@ -5,7 +5,8 @@
       "kind": "authorised-location",
       "clause": "CD-14#class-syntax",
       "file": "src/owned.ts",
-      "reason": "wrapping factory for a library construction"
+      "reason": "wrapping factory for a library construction",
+      "provenance": { "kind": "existing-authorisation", "source": "fictional native unit fixture re-enabled-record; not historical authorisation" }
     }
   ]
 }

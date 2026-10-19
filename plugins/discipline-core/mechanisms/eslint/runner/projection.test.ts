@@ -42,19 +42,20 @@ const whyChain: WhyChain = {
 };
 
 const cd14Piece: ProjectedPiece = {
-  pluginNamespace: "rin-discipline",
+  pluginNamespace: "discipline",
   pluginImport: "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
-  clauses: [{ address: classSyntax, ruleId: "rin-discipline/no-class-authoring" }],
+  clauses: [{ address: classSyntax, ruleId: "discipline/no-class-authoring" }],
 };
 
 const probePiece: ProjectedPiece = {
-  pluginNamespace: "probe-lint",
+  pluginNamespace: "custom-lint",
   pluginImport: "../team-rules/mechanisms/eslint/PD-1/plugin.ts",
-  clauses: [{ address: noTmpFiles, ruleId: "probe-lint/no-tmp-files" }],
+  clauses: [{ address: noTmpFiles, ruleId: "custom-lint/no-tmp-files" }],
 };
 
 const authorisedInB: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture mechanisms/eslint/runner/projection.test.ts#authorisedInB; not historical authorisation" },
   clause: classSyntax,
   mechanism: eslint,
   file: repoPathSchema.parse("src/b.ts"),
@@ -72,6 +73,7 @@ const carveOutInA: ExceptionRecord = {
 
 const authorisedRoute: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture mechanisms/eslint/runner/projection.test.ts#authorisedRoute; not historical authorisation" },
   clause: noTmpFiles,
   mechanism: eslint,
   file: repoPathSchema.parse("route/[id].ts"),
@@ -101,39 +103,39 @@ import piece1 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/
 
 export default [
   {
-    name: "discipline-core/piece/probe-lint",
+    name: "discipline-core/piece/custom-lint",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "probe-lint": piece0 },
-    rules: { "probe-lint/no-tmp-files": "error" },
+    plugins: { "custom-lint": piece0 },
+    rules: { "custom-lint/no-tmp-files": "error" },
   },
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece1 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece1 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
   {
     name: "discipline-core/file-carve-out/CD-14#class-syntax/src/a.ts",
     files: ["src/a.ts"],
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
   {
     name: "discipline-core/authorised-location/CD-14#class-syntax/src/b.ts",
     files: ["src/b.ts"],
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
   {
     name: "discipline-core/authorised-location/probe/PD-1#no-tmp-files/route/[id].ts",
     files: ["route/\\\\[id\\\\].ts"],
-    rules: { "probe-lint/no-tmp-files": "off" },
+    rules: { "custom-lint/no-tmp-files": "off" },
   },
   {
     name: "discipline-core/clause-wide-carve-out/CD-14#class-syntax",
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
   {
     name: "discipline-core/clause-wide-carve-out/probe/PD-1#no-tmp-files",
-    rules: { "probe-lint/no-tmp-files": "off" },
+    rules: { "custom-lint/no-tmp-files": "off" },
   },
 ];
 `;
@@ -142,10 +144,10 @@ const enablingOnlyProjection = `import piece0 from "./node_modules/discipline-co
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
 ];
 `;
@@ -154,15 +156,15 @@ const carveOutOnlyProjection = `import piece0 from "./node_modules/discipline-co
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
   {
     name: "discipline-core/file-carve-out/CD-14#class-syntax/src/a.ts",
     files: ["src/a.ts"],
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
 ];
 `;
@@ -171,15 +173,15 @@ const authorisedInBOnlyProjection = `import piece0 from "./node_modules/discipli
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
   {
     name: "discipline-core/authorised-location/CD-14#class-syntax/src/b.ts",
     files: ["src/b.ts"],
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
 ];
 `;
@@ -255,20 +257,20 @@ describe("projectionText", () => {
 
 export default [
   {
-    name: "discipline-core/piece/rin-discipline",
+    name: "discipline-core/piece/discipline",
     files: ["**/*.{ts,tsx,mts,cts}"],
-    plugins: { "rin-discipline": piece0 },
-    rules: { "rin-discipline/no-class-authoring": "error" },
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": "error" },
   },
   {
     name: "discipline-core/authorised-location/CD-14#class-syntax/src/B.ts",
     files: ["src/B.ts"],
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
   {
     name: "discipline-core/file-carve-out/CD-14#class-syntax/src/a.ts",
     files: ["src/a.ts"],
-    rules: { "rin-discipline/no-class-authoring": "off" },
+    rules: { "discipline/no-class-authoring": "off" },
   },
 ];
 `);

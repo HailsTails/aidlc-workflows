@@ -59,11 +59,11 @@ describe("clauseIdSchema", () => {
 });
 
 describe("mechanismIdSchema", () => {
-  it.each(["walker", "eslint", "oxlint2"])("accepts %j", (text) => {
+  it.each(["audit", "eslint", "oxlint2"])("accepts %j", (text) => {
     expect(mechanismIdSchema.safeParse(text).success).toBe(true);
   });
 
-  it.each(["", "ESLint", "2walker", "-walker", "type_script", "es lint", "walker/ts"])(
+  it.each(["", "ESLint", "2walker", "-walker", "type_script", "es lint", "audit/ts"])(
     "refuses %j",
     (text) => {
       expect(mechanismIdSchema.safeParse(text).success).toBe(false);

@@ -6,9 +6,10 @@ import { repoPathSchema } from "../values/repo-path.ts";
 import type { CheckReport } from "../verdict/check-report.ts";
 import { checkCommandOutcome, projectCommandOutcome } from "./command-outcome.ts";
 
-const WALKER = mechanismIdSchema.parse("walker");
+const WALKER = mechanismIdSchema.parse("audit");
 
 const EMPTY_REPORT: CheckReport = {
+  excluded: [],
   findings: [],
   exempted: [],
   uncovered: [],
@@ -40,7 +41,7 @@ describe("checkCommandOutcome", () => {
   it("exits 1 and prints the report when the verdict is fail", () => {
     expect(checkCommandOutcome({ result: { outcome: "ok", value: { ...EMPTY_REPORT, findings: [CLASS_IN_A] } } })).toEqual({
       code: 1,
-      text: "findings (1)\nCD-14#class-syntax walker src/a.ts:3:0 class A {}\nverdict: fail\n",
+      text: "findings (1)\nCD-14#class-syntax audit src/a.ts:3:0 class A {}\nverdict: fail\n",
     });
   });
 
@@ -74,7 +75,7 @@ describe("checkCommandOutcome", () => {
           error: { kind: "runner-failed", mechanism: WALKER, failure: { kind: "runner-invalid-output", detail: "run rejected" } },
         },
       }),
-    ).toEqual({ code: 2, text: "load failure: runner-failed walker runner-invalid-output run rejected\n" });
+    ).toEqual({ code: 2, text: "load failure: runner-failed audit runner-invalid-output run rejected\n" });
   });
 });
 
@@ -100,6 +101,6 @@ describe("projectCommandOutcome", () => {
   it("exits 2 and prints the load failure line on a failure", () => {
     expect(
       projectCommandOutcome({ result: { outcome: "failed", error: { kind: "runner-missing", mechanism: WALKER } } }),
-    ).toEqual({ code: 2, text: "load failure: runner-missing walker\n" });
+    ).toEqual({ code: 2, text: "load failure: runner-missing audit\n" });
   });
 });

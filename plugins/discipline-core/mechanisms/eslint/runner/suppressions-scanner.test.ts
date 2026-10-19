@@ -20,17 +20,17 @@ const windowsPath = createPathPort({ flavour: "windows", workingDirectory: () =>
 const nestedLocation = repoPathSchema.parse("packages/a/eslint-suppressions.json");
 const packageDirectory = repoPathSchema.parse("packages/a");
 
-const classRule: SelectedRule = { ruleId: "rin-discipline/no-class-authoring", clause: classSyntax };
+const classRule: SelectedRule = { ruleId: "discipline/no-class-authoring", clause: classSyntax };
 const tmpRule: SelectedRule = { ruleId: "probe-lint/no-tmp-files", clause: noTmpFiles };
 
 const suppressionsText = JSON.stringify({
   "src/a.ts": {
-    "rin-discipline/no-class-authoring": { count: 2 },
+    "discipline/no-class-authoring": { count: 2 },
     "no-console": { count: 1 },
   },
   "src/b.ts": {
     "probe-lint/no-tmp-files": { count: 1 },
-    "rin-discipline/no-class-authoring": { count: 1 },
+    "discipline/no-class-authoring": { count: 1 },
   },
   "src/c.ts": { "no-console": { count: 4 } },
 });
@@ -70,7 +70,7 @@ describe("suppressionEntriesOf", () => {
       suppressionEntriesOf({
         location: scriptLocation,
         keysRelativeTo: "repo-root",
-        text: JSON.stringify({ "src/clean.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+        text: JSON.stringify({ "src/clean.ts": { "discipline/no-class-authoring": { count: 1 } } }),
         selectedRules: [classRule],
       }),
     ).toEqual({
@@ -86,7 +86,7 @@ describe("suppressionEntriesOf", () => {
       suppressionEntriesOf({
         location: defaultLocation,
         keysRelativeTo: "repo-root",
-        text: JSON.stringify({ "src/a.ts": { "rin-discipline/no-class-authoring-x": { count: 1 } } }),
+        text: JSON.stringify({ "src/a.ts": { "discipline/no-class-authoring-x": { count: 1 } } }),
         selectedRules: [classRule],
       }),
     ).toEqual({ outcome: "ok", value: [] });
@@ -106,7 +106,7 @@ describe("suppressionEntriesOf with keys relative to a directory", () => {
       suppressionEntriesOf({
         location: nestedLocation,
         keysRelativeTo: packageDirectory,
-        text: JSON.stringify({ "src/x.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+        text: JSON.stringify({ "src/x.ts": { "discipline/no-class-authoring": { count: 1 } } }),
         selectedRules: [classRule],
       }),
     ).toEqual({
@@ -127,7 +127,7 @@ describe("suppressionEntriesOf with keys relative to a directory", () => {
       suppressionEntriesOf({
         location: scriptLocation,
         keysRelativeTo: packageDirectory,
-        text: JSON.stringify({ "src/x.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+        text: JSON.stringify({ "src/x.ts": { "discipline/no-class-authoring": { count: 1 } } }),
         selectedRules: [classRule],
       }),
     ).toEqual({
@@ -149,7 +149,7 @@ describe("scriptSuppressionEntries", () => {
     const fileText: FileTextPort = {
       read: vi.fn().mockReturnValue({
         outcome: "ok",
-        value: JSON.stringify({ "src/x.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+        value: JSON.stringify({ "src/x.ts": { "discipline/no-class-authoring": { count: 1 } } }),
       }),
       exists: vi.fn().mockReturnValue("present"),
       write: vi.fn(),
@@ -175,7 +175,7 @@ describe("scriptSuppressionEntries", () => {
   it("reads the script-named suppressions file under the repo root and reports its entries", () => {
     const read = vi.fn().mockReturnValue({
       outcome: "ok",
-      value: JSON.stringify({ "src/a.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }),
+      value: JSON.stringify({ "src/a.ts": { "discipline/no-class-authoring": { count: 1 } } }),
     });
     const fileText: FileTextPort = { read, exists: vi.fn().mockReturnValue("present"), write: vi.fn() };
 

@@ -1,8 +1,8 @@
 {
   "name": "consumer",
   "scripts": {
-    "lint": "eslint --rule 'rin-discipline/no-class-authoring: off' --ignore-pattern 'dormant/**' -c alt.config.mjs src",
-    "lint:suppress": "eslint --suppress-all --suppress-rule rin-discipline/no-class-authoring src",
-    "lint:extended": "eslint --rule 'rin-discipline/no-class-authoring-x: off' src"
+    "lint": "eslint --rule 'discipline/no-class-authoring: off' --ignore-pattern 'dormant/**' -c alt.config.mjs src",
+    "lint:suppress": "eslint --suppress-all --suppress-rule discipline/no-class-authoring src",
+    "lint:extended": "eslint --rule 'discipline/no-class-authoring-x: off' src"
   }
 }

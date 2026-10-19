@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "id": "CD-6",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "identifier-names",
+      "summary": "Meaningful names always — no shorthand, no filler words",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "shorthand parameter",
+            "fileName": "bad-shorthand.ts",
+            "source": "export const handleRequest = (req: { readonly path: string }): string => {\n  return req.path;\n};\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "filler variable",
+            "fileName": "filler.ts",
+            "source": "declare const loadAccount: () => string;\nexport const data = loadAccount();\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "destructured filler binding",
+            "fileName": "bad-destructure.ts",
+            "source": "export const summariseIncident = (report: { readonly body: string }): string => {\n  const { body } = report;\n  return body;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "domain compound names",
+            "fileName": "domain-names.ts",
+            "source": "export const accountData = { greeting: \"hello\" };\nexport const renderGreeting = (incomingRequest: { readonly userName: string }): string => `Hello, ${incomingRequest.userName}`;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "underscore-prefixed name",
+            "fileName": "unused.ts",
+            "source": "export const ignore = (_item: string): number => 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "property key named data",
+            "fileName": "key.ts",
+            "source": "export const response = { data: 1 };\nexport const total = response.data;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

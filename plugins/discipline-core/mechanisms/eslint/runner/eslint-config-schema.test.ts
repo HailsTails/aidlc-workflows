@@ -32,8 +32,8 @@ describe("resolvedConfigSchema", () => {
 
   it("keeps the configuration keys beside rules", () => {
     expect(
-      resolvedConfigSchema.safeParse({ settings: { team: "rin" }, rules: { "p/r": [2] } }),
-    ).toEqual({ success: true, data: { settings: { team: "rin" }, rules: { "p/r": [2] } } });
+      resolvedConfigSchema.safeParse({ settings: { team: "platform" }, rules: { "p/r": [2] } }),
+    ).toEqual({ success: true, data: { settings: { team: "platform" }, rules: { "p/r": [2] } } });
   });
 
   it.each([

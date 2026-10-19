@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "kind": "authorised-location",
+      "clause": "CD-1#any-cast",
+      "file": "src/parse.ts",
+      "reason": "the parser boundary wants an any cast",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/clock.ts call Date.now()?",
+            "because": "it is the adapter that turns the platform clock into the Clock port",
+            "evidence": "src/clock.ts createSystemClock"
+          },
+          {
+            "why": "Why must some file read the platform clock?",
+            "because": "basket ages are measured against real elapsed time in production",
+            "evidence": "src/basket.ts basketAge"
+          },
+          {
+            "why": "Why not read the clock where the age is measured?",
+            "because": "domain code takes a Clock so tests can pin the time",
+            "evidence": "src/basket.test.ts clockAt"
+          },
+          {
+            "why": "Why does one adapter satisfy CD-17?",
+            "because": "CD-17 confines time reads to the clock boundary, and this file is that boundary",
+            "evidence": "rules/CD-17/README.md"
+          },
+          {
+            "why": "Why record it rather than leave the finding?",
+            "because": "an unrecorded finding fails the check, and the boundary is intentional",
+            "evidence": "discipline-exceptions.json"
+          }
+        ],
+        "rootCause": "the platform clock has to be read somewhere, and the adapter is the designated place",
+        "owner": "basket team"
+      }
+    }
+  ]
+}

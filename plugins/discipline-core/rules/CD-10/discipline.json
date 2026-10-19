@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "id": "CD-10",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "throws-in-tests",
+      "summary": "Throws permitted in exactly two contexts",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "throw inside a test",
+            "fileName": "src/load.test.ts",
+            "source": "it(\"loads\", () => {\n  const result = { outcome: \"ok\" };\n  if (result.outcome !== \"ok\") throw new Error(\"load failed\");\n});\n",
+            "expectedLines": [
+              3
+            ]
+          },
+          {
+            "name": "throw in a tsx test",
+            "fileName": "src/view.test.tsx",
+            "source": "const a = 1;\nthrow new Error(\"bad\");\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "assertion in a test",
+            "fileName": "src/load.test.ts",
+            "source": "it(\"loads\", () => {\n  expect(1).toBe(1);\n});\n",
+            "expectedLines": []
+          },
+          {
+            "name": "throw in production code is left to review",
+            "fileName": "src/load.ts",
+            "source": "export const load = (): never => {\n  throw new Error(\"failed\");\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "spec files are not read",
+            "fileName": "src/load.spec.ts",
+            "source": "throw new Error(\"bad\");\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

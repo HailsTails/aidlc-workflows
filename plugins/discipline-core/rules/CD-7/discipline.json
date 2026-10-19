@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "id": "CD-7",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "categorical-paths",
+      "summary": "No categorical filenames or folder names",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "categorical file name",
+            "fileName": "src/utils.ts",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "types file",
+            "fileName": "src/types.ts",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "file under a categorical folder",
+            "fileName": "src/helpers/format-price.ts",
+            "source": "export const formatPrice = (): string => \"\";\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "hyphenated name containing types",
+            "fileName": "src/account-types.ts",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "capitalised name is not an exact match",
+            "fileName": "src/Types.ts",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsx extension is not an exact match",
+            "fileName": "src/types.tsx",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

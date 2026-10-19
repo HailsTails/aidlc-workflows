@@ -11,38 +11,38 @@ import {
 const INSTALL_ROOT = "plugins/discipline-core";
 const PROBE_ROOT = "plugins/discipline-core/tests/probe-rule-set";
 
-const PIECE_FOLDER = "plugins/discipline-core/mechanisms/walker/CD-14";
-const CLASS_SYNTAX_KEY = "../../mechanisms/walker/CD-14/class-syntax.ts";
-const HELPER_KEY = "../../mechanisms/walker/CD-14/helper.ts";
-const PROBE_KEY = "../../tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts";
-const PROBE_FOLDER = "../../tests/probe-rule-set/mechanisms/walker/PD-1";
-const TYPE_PACKAGES_KEY = "../../mechanisms/walker/runner/piece-type-packages.json";
+const PIECE_FOLDER = "plugins/discipline-core/mechanisms/audit/CD-14";
+const CLASS_SYNTAX_KEY = "../../mechanisms/audit/CD-14/class-syntax.ts";
+const HELPER_KEY = "../../mechanisms/audit/CD-14/helper.ts";
+const PROBE_KEY = "../../tests/probe-rule-set/mechanisms/audit/PD-1/no-tmp-files.ts";
+const PROBE_FOLDER = "../../tests/probe-rule-set/mechanisms/audit/PD-1";
+const TYPE_PACKAGES_KEY = "../../mechanisms/audit/runner/piece-type-packages.json";
 
 const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
-  '["plugins/discipline-core","mechanisms","walker","CD-14"]': PIECE_FOLDER,
+  '["plugins/discipline-core","mechanisms","audit","CD-14"]': PIECE_FOLDER,
   '["plugins/discipline-core","rules","CD-14"]': "plugins/discipline-core/rules/CD-14",
-  '["plugins/discipline-core","mechanisms","walker","runner"]': "plugins/discipline-core/mechanisms/walker/runner",
+  '["plugins/discipline-core","mechanisms","audit","runner"]': "plugins/discipline-core/mechanisms/audit/runner",
   '["plugins/discipline-core","core"]': "plugins/discipline-core/core",
   [`["${PIECE_FOLDER}","./nested/helper.ts"]`]: `${PIECE_FOLDER}/nested/helper.ts`,
-  [`["${PIECE_FOLDER}","../runner/walker-check.ts"]`]: "plugins/discipline-core/mechanisms/walker/runner/walker-check.ts",
+  [`["${PIECE_FOLDER}","../runner/walker-piece.ts"]`]: "plugins/discipline-core/mechanisms/audit/runner/walker-piece.ts",
   [`["${PIECE_FOLDER}","../../../core/values/result.ts"]`]: "plugins/discipline-core/core/values/result.ts",
   [`["${PIECE_FOLDER}","../../../rules/CD-14/discipline.json"]`]: "plugins/discipline-core/rules/CD-14/discipline.json",
   [`["${PIECE_FOLDER}","../../eslint/CD-14/cd14.ts"]`]: "plugins/discipline-core/mechanisms/eslint/CD-14/cd14.ts",
-  [`["${PIECE_FOLDER}","../CD-15/no-for-of.ts"]`]: "plugins/discipline-core/mechanisms/walker/CD-15/no-for-of.ts",
+  [`["${PIECE_FOLDER}","../CD-15/no-for-of.ts"]`]: "plugins/discipline-core/mechanisms/audit/CD-15/no-for-of.ts",
   [`["${PIECE_FOLDER}","../../eslint/runner/eslint-instance.ts"]`]:
     "plugins/discipline-core/mechanisms/eslint/runner/eslint-instance.ts",
-  '["../..","mechanisms","walker","runner","piece-type-packages.json"]': TYPE_PACKAGES_KEY,
+  '["../..","mechanisms","audit","runner","piece-type-packages.json"]': TYPE_PACKAGES_KEY,
   [`["${TYPE_PACKAGES_KEY}"]`]: TYPE_PACKAGES_KEY,
-  '["../../tests/probe-rule-set","mechanisms","walker","PD-1"]': PROBE_FOLDER,
+  '["../../tests/probe-rule-set","mechanisms","audit","PD-1"]': PROBE_FOLDER,
   '["../../tests/probe-rule-set","rules","PD-1"]': "../../tests/probe-rule-set/rules/PD-1",
-  '["../..","mechanisms","walker","runner"]': "../../mechanisms/walker/runner",
+  '["../..","mechanisms","audit","runner"]': "../../mechanisms/audit/runner",
   '["../..","core"]': "../../core",
-  [`["${PROBE_FOLDER}","../../../../../mechanisms/walker/runner/walker-check.ts"]`]:
-    "../../mechanisms/walker/runner/walker-check.ts",
+  [`["${PROBE_FOLDER}","../../../../../mechanisms/audit/runner/walker-piece.ts"]`]:
+    "../../mechanisms/audit/runner/walker-piece.ts",
 };
 
 const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
-  "plugins/discipline-core/mechanisms/walker/CD-14/class-syntax.ts": PIECE_FOLDER,
+  "plugins/discipline-core/mechanisms/audit/CD-14/class-syntax.ts": PIECE_FOLDER,
   [PROBE_KEY]: PROBE_FOLDER,
 };
 
@@ -57,9 +57,9 @@ const path: PathPort = {
 };
 
 const WALKER_PIECE: PieceLocation = {
-  file: "plugins/discipline-core/mechanisms/walker/CD-14/class-syntax.ts",
+  file: "plugins/discipline-core/mechanisms/audit/CD-14/class-syntax.ts",
   ruleSetRoot: INSTALL_ROOT,
-  mechanism: "walker",
+  mechanism: "audit",
   discipline: "CD-14",
 };
 
@@ -80,9 +80,9 @@ describe("pieceFilesOf", () => {
     expect(
       pieceFilesOf({
         trackedPaths: [
-          "plugins/discipline-core/mechanisms/walker/CD-14/class-syntax.ts",
-          "plugins/discipline-core/mechanisms/walker/CD-14/class-syntax.test.ts",
-          "plugins/discipline-core/mechanisms/walker/CD-14/piece.json",
+          "plugins/discipline-core/mechanisms/audit/CD-14/class-syntax.ts",
+          "plugins/discipline-core/mechanisms/audit/CD-14/class-syntax.test.ts",
+          "plugins/discipline-core/mechanisms/audit/CD-14/piece.json",
         ],
         ruleSetRoots: [INSTALL_ROOT, PROBE_ROOT],
       }),
@@ -97,7 +97,7 @@ describe("pieceImportRefusals allows", () => {
 
   it("a relative import of the piece's own mechanism runner", () => {
     expect(
-      refusalsOf({ piece: WALKER_PIECE, source: 'import type { WalkerCheck } from "../runner/walker-check.ts";\n' }),
+      refusalsOf({ piece: WALKER_PIECE, source: 'import type { WalkerPiece } from "../runner/walker-piece.ts";\n' }),
     ).toEqual([]);
   });
 
@@ -162,7 +162,7 @@ describe("pieceImportRefusals refuses", () => {
 const SOURCES: Readonly<Record<string, string>> = {
   [CLASS_SYNTAX_KEY]: 'import type { Program } from "acorn";\n',
   [HELPER_KEY]: 'import type { Node } from "typescript";\n',
-  [PROBE_KEY]: 'import type { WalkerCheck } from "../../../../../mechanisms/walker/runner/walker-check.ts";\n',
+  [PROBE_KEY]: 'import type { WalkerPiece } from "../../../../../mechanisms/audit/runner/walker-piece.ts";\n',
 };
 
 const findingsOver = (request: { readonly typePackageTexts: Readonly<Record<string, string>> }) =>
@@ -180,9 +180,9 @@ describe("pieceImportFindings", () => {
       outcome: "ok",
       value: {
         pieces: [
-          { file: CLASS_SYNTAX_KEY, ruleSetRoot: "../..", mechanism: "walker", discipline: "CD-14" },
-          { file: HELPER_KEY, ruleSetRoot: "../..", mechanism: "walker", discipline: "CD-14" },
-          { file: PROBE_KEY, ruleSetRoot: "../../tests/probe-rule-set", mechanism: "walker", discipline: "PD-1" },
+          { file: CLASS_SYNTAX_KEY, ruleSetRoot: "../..", mechanism: "audit", discipline: "CD-14" },
+          { file: HELPER_KEY, ruleSetRoot: "../..", mechanism: "audit", discipline: "CD-14" },
+          { file: PROBE_KEY, ruleSetRoot: "../../tests/probe-rule-set", mechanism: "audit", discipline: "PD-1" },
         ],
         refusals: [{ file: CLASS_SYNTAX_KEY, specifier: "acorn", reason: "package-not-listed" }],
       },

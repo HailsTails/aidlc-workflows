@@ -27,10 +27,10 @@ const findings = installNamingFindings({ installRoot: ".", sources, disciplineFi
 describe("FR-8 naming over what this repository's own core and runner source names, read as build-time raw modules (CD-47: that source is the assertion's subject and no fake can stand in for it; nothing is spawned or written)", () => {
   it("scans the install's mechanisms, disciplines, core files and runner files", () => {
     expect(findings.scope).toMatchObject({
-      mechanisms: expect.arrayContaining(["walker"]),
+      mechanisms: expect.arrayContaining(["audit"]),
       disciplines: expect.arrayContaining(["CD-14"]),
       coreFiles: expect.arrayContaining(["./core/check/run-check.ts"]),
-      runnerFiles: expect.arrayContaining(["./mechanisms/walker/runner/create-walker-runner.ts"]),
+      runnerFiles: expect.arrayContaining(["./mechanisms/audit/runner/create-walker-runner.ts"]),
     });
   });
 

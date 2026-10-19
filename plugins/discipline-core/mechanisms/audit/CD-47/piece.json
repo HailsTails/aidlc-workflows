@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-47",
+  "mechanism": "audit",
+  "clauses": [
+    { "clause": "hermetic-git-spawns", "settings": { "module": "hermetic-git-spawns.ts" } }
+  ]
+}

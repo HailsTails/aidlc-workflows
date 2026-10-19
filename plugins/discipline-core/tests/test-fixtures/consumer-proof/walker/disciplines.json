@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "ruleSets": {},
-  "clauses": {
-    "CD-14#class-syntax": "walker"
-  }
-}

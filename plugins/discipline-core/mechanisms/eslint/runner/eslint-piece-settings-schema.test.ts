@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eslintPieceSettingsSchema } from "./eslint-piece-settings-schema.ts";
 
 const settings = {
-  pluginNamespace: "rin-discipline",
+  pluginNamespace: "discipline",
   pluginModule: "cd14/cd14.eslint-plugin.ts",
   rule: "no-class-authoring",
 };
@@ -43,7 +43,7 @@ describe("eslintPieceSettingsSchema", () => {
     },
   );
 
-  it("refuses a walker piece's module key as an unknown key", () => {
+  it("refuses a audit piece's module key as an unknown key", () => {
     expect(
       eslintPieceSettingsSchema.safeParse({ ...settings, module: "class-syntax.ts" }),
     ).toMatchObject({
@@ -55,7 +55,7 @@ describe("eslintPieceSettingsSchema", () => {
   it("refuses settings with no rule, at the rule key", () => {
     expect(
       eslintPieceSettingsSchema.safeParse({
-        pluginNamespace: "rin-discipline",
+        pluginNamespace: "discipline",
         pluginModule: "cd14/cd14.eslint-plugin.ts",
       }),
     ).toMatchObject({ success: false, error: { issues: [{ path: ["rule"] }] } });

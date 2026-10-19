@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
+import { createExceptionRepository } from "../exception-records/exception-records.ts";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
+import type { FileTextPort } from "../platform-ports/file-text-port.ts";
+import type { PathPort } from "../platform-ports/path-port.ts";
 import type { TouchedSet } from "../touched-set/touched-set.ts";
+import { absolutePathSchema } from "../values/absolute-path.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
@@ -14,7 +18,7 @@ const fileA = repoPathSchema.parse("src/a.ts");
 const fileB = repoPathSchema.parse("src/b.ts");
 const packageJson = repoPathSchema.parse("package.json");
 const suppressions = repoPathSchema.parse("eslint-suppressions.json");
-const walker = mechanismIdSchema.parse("walker");
+const audit = mechanismIdSchema.parse("audit");
 const eslint = mechanismIdSchema.parse("eslint");
 
 const why = {
@@ -34,7 +38,7 @@ const noClassInA: Finding = {
   file: fileA,
   anchor: { line: 3, column: 5 },
   snippet: "class A {}",
-  mechanism: walker,
+  mechanism: audit,
 };
 
 const noClassInB: Finding = {
@@ -42,13 +46,14 @@ const noClassInB: Finding = {
   file: fileB,
   anchor: { line: 8, column: 1 },
   snippet: "class B {}",
-  mechanism: walker,
+  mechanism: audit,
 };
 
 const locatedNoClassInA: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/governance/governance.test.ts#locatedNoClassInA; not historical authorisation" },
   clause: noClass,
-  mechanism: walker,
+  mechanism: audit,
   file: fileA,
   reason: "the adapter factory wraps the parser's class",
 };
@@ -56,7 +61,7 @@ const locatedNoClassInA: ExceptionRecord = {
 const carvedNoClassInA: ExceptionRecord = {
   kind: "file-carve-out",
   clause: noClass,
-  mechanism: walker,
+  mechanism: audit,
   file: fileA,
   reason: "the parser adapter is unpaid debt",
   whyChain,
@@ -65,15 +70,16 @@ const carvedNoClassInA: ExceptionRecord = {
 const carvedNoClassEverywhere: ExceptionRecord = {
   kind: "clause-wide-carve-out",
   clause: noClass,
-  mechanism: walker,
+  mechanism: audit,
   reason: "the whole clause is unpaid debt",
   whyChain,
 };
 
 const locatedNoForOfInA: ExceptionRecord = {
   kind: "authorised-location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/governance/governance.test.ts#locatedNoForOfInA; not historical authorisation" },
   clause: noForOf,
-  mechanism: walker,
+  mechanism: audit,
   file: fileA,
   reason: "the stream drain is an authorised site",
 };
@@ -81,7 +87,7 @@ const locatedNoForOfInA: ExceptionRecord = {
 const carvedProbeNoClassInA: ExceptionRecord = {
   kind: "file-carve-out",
   clause: probeNoClass,
-  mechanism: walker,
+  mechanism: audit,
   file: fileA,
   reason: "the probe rule set's debt",
   whyChain,
@@ -95,7 +101,7 @@ const unmeasured: TouchedSet = {
   detail: "no base revision was given",
 };
 
-const quietWalker = { mechanism: walker, nativeExceptions: [], projectedKinds: [] };
+const quietWalker = { mechanism: audit, nativeExceptions: [], projectedKinds: [] };
 
 const nothingGoverned = {
   findings: [],
@@ -116,6 +122,43 @@ describe("applyGovernance with no records", () => {
         runs: [quietWalker],
       }),
     ).toEqual({ ...nothingGoverned, findings: [noClassInA] });
+  });
+});
+
+describe("applyGovernance with provenance-only inherited debt", () => {
+  it("preserves provenance when exempting untouched debt and forfeits the same complete record when touched", () => {
+    const provenance = {
+      kind: "inherited-debt",
+      source: "fictional unit input governance.test.ts; not historical debt",
+      decision: "fictional initial baseline assertion; not a live debt decision",
+    };
+    const fileText: FileTextPort = {
+      read: vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: JSON.stringify({ version: 1, exceptions: [{ kind: "file-carve-out", clause: "CD-14#no-class-syntax", file: "src/a.ts", reason: "fictional inherited-debt fixture", provenance }] }) }),
+      exists: vi.fn<FileTextPort["exists"]>().mockReturnValue("present"),
+      write: vi.fn<FileTextPort["write"]>(),
+    };
+    const path: PathPort = {
+      join: vi.fn<PathPort["join"]>().mockReturnValue("/repo/discipline-exceptions.json"),
+      relative: vi.fn<PathPort["relative"]>(),
+      joinRepository: vi.fn<PathPort["joinRepository"]>(),
+      directoryOf: vi.fn<PathPort["directoryOf"]>(),
+      repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
+      resolve: vi.fn<PathPort["resolve"]>(),
+      fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
+    };
+    const exceptionReading = createExceptionRepository({ repoRoot: absolutePathSchema.parse("/repo"), fileText, path }).read({ selection: { selected: [{ address: noClass, mechanism: audit, exceptions: "allowed" }], uncovered: [] } });
+
+    expect(exceptionReading).toMatchObject({ outcome: "ok", value: { invalid: [] } });
+    assert(exceptionReading.outcome === "ok");
+    expect(applyGovernance({ findings: [noClassInA], records: exceptionReading.value.records, touched: nothingTouched, runs: [quietWalker] })).toEqual({
+      ...nothingGoverned,
+      exempted: [{ finding: noClassInA, by: [{ kind: "file-carve-out", clause: noClass, mechanism: audit, file: fileA, reason: "fictional inherited-debt fixture", provenance }] }],
+    });
+    expect(applyGovernance({ findings: [noClassInA], records: exceptionReading.value.records, touched: fileATouched, runs: [quietWalker] })).toEqual({
+      ...nothingGoverned,
+      findings: [noClassInA],
+      forfeited: [{ kind: "file-carve-out", clause: noClass, mechanism: audit, file: fileA, reason: "fictional inherited-debt fixture", provenance }],
+    });
   });
 });
 
@@ -281,7 +324,7 @@ describe("applyGovernance rule 2, doubly held", () => {
     ).toEqual({
       ...nothingGoverned,
       findings: [noClassInA],
-      doublyHeld: [{ clause: noClass, file: fileA, mechanism: walker }],
+      doublyHeld: [{ clause: noClass, file: fileA, mechanism: audit }],
     });
   });
 
@@ -295,7 +338,7 @@ describe("applyGovernance rule 2, doubly held", () => {
       }),
     ).toEqual({
       ...nothingGoverned,
-      doublyHeld: [{ clause: noClass, file: fileA, mechanism: walker }],
+      doublyHeld: [{ clause: noClass, file: fileA, mechanism: audit }],
     });
   });
 
@@ -464,13 +507,13 @@ describe("applyGovernance rule 5, unrecorded", () => {
             projectedKinds: ["config-override"],
           },
           {
-            mechanism: walker,
+            mechanism: audit,
             nativeExceptions: [{ kind: "config-override", clause: noClass, file: fileA }],
             projectedKinds: [],
           },
         ],
       }).unrecorded,
-    ).toEqual([{ kind: "config-override", clause: noClass, file: fileA, mechanism: walker }]);
+    ).toEqual([{ kind: "config-override", clause: noClass, file: fileA, mechanism: audit }]);
   });
 
   it("records a native exception that a forfeited file carve-out matches", () => {
@@ -675,8 +718,8 @@ describe("applyGovernance order", () => {
         runs: [quietWalker],
       }).doublyHeld,
     ).toEqual([
-      { clause: noForOf, file: fileA, mechanism: walker },
-      { clause: noClass, file: fileA, mechanism: walker },
+      { clause: noForOf, file: fileA, mechanism: audit },
+      { clause: noClass, file: fileA, mechanism: audit },
     ]);
   });
 
@@ -696,7 +739,7 @@ describe("applyGovernance order", () => {
             projectedKinds: [],
           },
           {
-            mechanism: walker,
+            mechanism: audit,
             nativeExceptions: [{ kind: "ignore", clause: noForOf, file: fileA }],
             projectedKinds: [],
           },
@@ -705,7 +748,7 @@ describe("applyGovernance order", () => {
     ).toEqual([
       { kind: "ignore", clause: noClass, file: fileB, mechanism: eslint },
       { kind: "ignore", clause: noClass, file: fileA, mechanism: eslint },
-      { kind: "ignore", clause: noForOf, file: fileA, mechanism: walker },
+      { kind: "ignore", clause: noForOf, file: fileA, mechanism: audit },
     ]);
   });
 });

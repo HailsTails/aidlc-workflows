@@ -6,7 +6,7 @@
       "kind": "mechanical",
       "id": "no-tmp-files",
       "summary": "no tracked TypeScript file named as a temporary file",
-      "mechanisms": ["walker"],
+      "mechanisms": ["audit"],
       "anchor": { "kind": "file" },
       "cases": {
         "flag": [

@@ -13,8 +13,8 @@ import { type ProjectRequest, runProject } from "./run-project.ts";
 const SELECTION_PATH = "/repo/disciplines.json";
 const EXCEPTIONS_PATH = "/repo/discipline-exceptions.json";
 const DISCIPLINE_PATH = "/install/rules/CD-14/discipline.json";
-const PIECE_PATH = "/install/mechanisms/walker/CD-14/piece.json";
-const RUNNER_PATH = "/install/mechanisms/walker/runner/runner.ts";
+const PIECE_PATH = "/install/mechanisms/audit/CD-14/piece.json";
+const RUNNER_PATH = "/install/mechanisms/audit/runner/runner.ts";
 const LINT_PIECE_PATH = "/install/mechanisms/lint/CD-14/piece.json";
 const LINT_RUNNER_PATH = "/install/mechanisms/lint/runner/runner.ts";
 
@@ -43,18 +43,18 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","disciplines.json"]': SELECTION_PATH,
   '["/repo","discipline-exceptions.json"]': EXCEPTIONS_PATH,
   '["/install","rules","CD-14","discipline.json"]': DISCIPLINE_PATH,
-  '["/install","mechanisms","walker","CD-14","piece.json"]': PIECE_PATH,
-  '["/install","mechanisms","walker","CD-14"]': "/install/mechanisms/walker/CD-14",
-  '["/install","mechanisms","walker","runner","runner.ts"]': RUNNER_PATH,
+  '["/install","mechanisms","audit","CD-14","piece.json"]': PIECE_PATH,
+  '["/install","mechanisms","audit","CD-14"]': "/install/mechanisms/audit/CD-14",
+  '["/install","mechanisms","audit","runner","runner.ts"]': RUNNER_PATH,
   '["/install","mechanisms","lint","CD-14","piece.json"]': LINT_PIECE_PATH,
   '["/install","mechanisms","lint","CD-14"]': "/install/mechanisms/lint/CD-14",
   '["/install","mechanisms","lint","runner","runner.ts"]': LINT_RUNNER_PATH,
 };
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
-  [PIECE_PATH]: "/install/mechanisms/walker/CD-14",
+  [PIECE_PATH]: "/install/mechanisms/audit/CD-14",
   [DISCIPLINE_PATH]: "/install/rules/CD-14",
-  [RUNNER_PATH]: "/install/mechanisms/walker/runner",
+  [RUNNER_PATH]: "/install/mechanisms/audit/runner",
   [LINT_PIECE_PATH]: "/install/mechanisms/lint/CD-14",
   [LINT_RUNNER_PATH]: "/install/mechanisms/lint/runner",
 };
@@ -77,7 +77,7 @@ const DISCIPLINE = JSON.stringify({
       kind: "mechanical",
       id: "class-syntax",
       summary: "no class syntax",
-      mechanisms: ["walker"],
+      mechanisms: ["audit"],
       anchor: { kind: "keyword", keyword: "class" },
       cases: {
         flag: [{ name: "flagged", fileName: "src/a.ts", source: "class A {}\n", expectedLines: [1] }],
@@ -90,13 +90,13 @@ const DISCIPLINE = JSON.stringify({
 const PIECE = JSON.stringify({
   version: 1,
   discipline: "CD-14",
-  mechanism: "walker",
+  mechanism: "audit",
   clauses: [{ clause: "class-syntax", settings: { module: "class-syntax.ts" } }],
 });
 
 const INSTALL: Readonly<Record<string, FakeFile>> = {
   [SELECTION_PATH]: presentFile({
-    text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } }),
+    text: JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "audit" } }),
   }),
   [EXCEPTIONS_PATH]: ABSENT_FILE,
   [DISCIPLINE_PATH]: presentFile({ text: DISCIPLINE }),
@@ -112,7 +112,7 @@ const TWO_MECHANISM_DISCIPLINE = JSON.stringify({
       kind: "mechanical",
       id: "class-syntax",
       summary: "no class syntax",
-      mechanisms: ["walker"],
+      mechanisms: ["audit"],
       anchor: { kind: "keyword", keyword: "class" },
       cases: {
         flag: [{ name: "flagged", fileName: "src/a.ts", source: "class A {}\n", expectedLines: [1] }],
@@ -145,15 +145,15 @@ const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
     text: JSON.stringify({
       version: 1,
       ruleSets: {},
-      clauses: { "CD-14#class-syntax": "walker", "CD-14#abstract-syntax": "lint" },
+      clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "lint" },
     }),
   }),
   [EXCEPTIONS_PATH]: presentFile({
     text: JSON.stringify({
       version: 1,
       exceptions: [
-        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "walker location" },
-        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location" },
+        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "audit location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-project.test.ts; not historical authorisation" } },
+        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-project.test.ts; not historical authorisation" } },
       ],
     }),
   }),
@@ -167,9 +167,10 @@ const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
 const WALKER_RECORD = {
   kind: "authorised-location",
   clause: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" },
-  mechanism: "walker",
+  mechanism: "audit",
   file: "src/walker.ts",
-  reason: "walker location",
+  reason: "audit location",
+  provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-project.test.ts; not historical authorisation" },
 };
 
 const modulesByPath = (modules: Readonly<Record<string, unknown>>): ModuleLoaderPort => ({
@@ -192,6 +193,7 @@ const GIT: GitPort = {
     value: [repoPathSchema.parse("src/a.ts")],
   }),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue({ outcome: "ok", value: [] }),
+  contentInBase: vi.fn<GitPort["contentInBase"]>(),
 };
 
 const projectRequest = (overrides: Partial<ProjectRequest>): ProjectRequest => ({
@@ -273,7 +275,7 @@ describe("runProject", () => {
   it("is runner-invalid for a runner export whose exception path is outside every path", async () => {
     await expect(
       runProject(projectRequest({ modules: modulesLoading({ runner: { ...standaloneRunner(), exceptionPath: "unknown-path" } }) })),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid", mechanism: "walker" } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid", mechanism: "audit" } });
   });
 });
 

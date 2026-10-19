@@ -3,7 +3,7 @@ import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import { loadFailureText } from "./load-failure-text.ts";
 
-const WALKER = mechanismIdSchema.parse("walker");
+const WALKER = mechanismIdSchema.parse("audit");
 
 describe("loadFailureText", () => {
   it("prints one line naming the kind and its detail", () => {
@@ -21,12 +21,12 @@ describe("loadFailureText", () => {
   it("prints a mechanism-not-allowed failure's address then its mechanism", () => {
     expect(
       loadFailureText({ failure: { kind: "mechanism-not-allowed", address: "CD-14#class-syntax", mechanism: WALKER } }),
-    ).toBe("load failure: mechanism-not-allowed CD-14#class-syntax walker\n");
+    ).toBe("load failure: mechanism-not-allowed CD-14#class-syntax audit\n");
   });
 
   it("prints runner-missing with its mechanism", () => {
     expect(loadFailureText({ failure: { kind: "runner-missing", mechanism: WALKER } })).toBe(
-      "load failure: runner-missing walker\n",
+      "load failure: runner-missing audit\n",
     );
   });
 
@@ -45,7 +45,7 @@ describe("loadFailureText", () => {
           failure: { kind: "file-unparseable", file: repoPathSchema.parse("src/a.ts"), detail: "unexpected token" },
         },
       }),
-    ).toBe("load failure: runner-failed walker file-unparseable src/a.ts unexpected token\n");
+    ).toBe("load failure: runner-failed audit file-unparseable src/a.ts unexpected token\n");
   });
 
   it("escapes a line feed and a carriage return in a git-failed detail", () => {
@@ -73,6 +73,6 @@ describe("loadFailureText", () => {
       loadFailureText({
         failure: { kind: "runner-failed", mechanism: WALKER, failure: { kind: "tool-failed", detail: "crashed\nverdict: pass" } },
       }),
-    ).toBe("load failure: runner-failed walker tool-failed crashed\\nverdict: pass\n");
+    ).toBe("load failure: runner-failed audit tool-failed crashed\\nverdict: pass\n");
   });
 });
