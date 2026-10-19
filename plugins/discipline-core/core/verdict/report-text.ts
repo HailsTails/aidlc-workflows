@@ -10,9 +10,19 @@ const escapedLineBreaks = (request: { readonly text: string }): string =>
 const findingLine = (request: { readonly finding: Finding }): string =>
   `${clauseAddressText({ address: request.finding.clause })} ${request.finding.mechanism} ${request.finding.file}:${request.finding.anchor.line}:${request.finding.anchor.column} ${escapedLineBreaks({ text: request.finding.snippet })}`;
 
+const importNote = (request: { readonly record: ExceptionRecord }): string => {
+  switch (request.record.kind) {
+    case "authorised-location":
+    case "file-carve-out":
+      return request.record.whyChain === undefined ? ` imported from ${request.record.provenance.source}` : "";
+    case "clause-wide-carve-out":
+      return "";
+  }
+};
+
 const exemptedLine = (request: { readonly exempted: ExemptedFinding }): string =>
   `${findingLine({ finding: request.exempted.finding })}${request.exempted.by
-    .map((record) => ` exempted by ${record.kind}`)
+    .map((record) => ` exempted by ${record.kind}${importNote({ record })}`)
     .join("")}`;
 
 const recordFile = (request: { readonly record: ExceptionRecord }): string => {
@@ -51,6 +61,7 @@ const invalidDetail = (request: { readonly problem: InvalidRecord["problem"] }):
     case "clause-unparseable":
     case "why-chain-refused":
     case "evidence-refused":
+    case "import-unverified":
       return escapedLineBreaks({ text: request.problem.detail });
     case "clause-not-selected":
     case "non-exemptible-clause":
@@ -65,6 +76,7 @@ const invalidDetail = (request: { readonly problem: InvalidRecord["problem"] }):
 const unmeasuredLine = (request: { readonly unmeasured: Unmeasured }): string => {
   switch (request.unmeasured.kind) {
     case "forfeiture-unmeasured":
+    case "import-unmeasured":
       return request.unmeasured.kind;
     case "mechanism-not-run":
       return `${request.unmeasured.kind} ${request.unmeasured.mechanism} ${request.unmeasured.projection}`;

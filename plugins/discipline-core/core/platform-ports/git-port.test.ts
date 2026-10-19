@@ -302,3 +302,40 @@ describe("createGitPort contentInBase", () => {
     expect(spawn).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("createGitPort textInBase", () => {
+  it("reads the file's text at the selected revision using option-safe arguments", () => {
+    const spawn = vi.fn<GitSpawn>()
+      .mockReturnValueOnce({ ...EXITED_EMPTY, stdout: "src/example.ts\0" })
+      .mockReturnValueOnce({ ...EXITED_EMPTY, stdout: "export const example = 1;\n" });
+
+    const reading = gitOver(spawn).textInBase({ repoRoot: REPO_ROOT, baseRevision: "-selected-base", file: CONTENT_FILE });
+
+    expect(reading).toEqual({ outcome: "ok", value: { presence: "present-in-base", text: "export const example = 1;\n" } });
+    expect(spawn.mock.calls).toEqual([
+      [{ file: "git", arguments: ["-C", "/repo", "ls-tree", "-z", "--name-only", "--end-of-options", "-selected-base", "src/example.ts"], maxBuffer: 268435456, environment: { PATH: "/usr/bin", HOME: "/home/someone" } }],
+      [{ file: "git", arguments: ["-C", "/repo", "cat-file", "blob", "--end-of-options", "-selected-base:src/example.ts"], maxBuffer: 268435456, environment: { PATH: "/usr/bin", HOME: "/home/someone" } }],
+    ]);
+  });
+
+  it("is absent without reading a blob when the selected tree does not list the file", () => {
+    const spawn = vi.fn<GitSpawn>().mockReturnValueOnce(EXITED_EMPTY);
+
+    const reading = gitOver(spawn).textInBase({ repoRoot: REPO_ROOT, baseRevision: "base", file: CONTENT_FILE });
+
+    expect(reading).toEqual({ outcome: "ok", value: { presence: "absent-from-base" } });
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves an invalid selected base as GitFailure rather than absent text", () => {
+    const spawn = vi.fn<GitSpawn>()
+      .mockReturnValueOnce({ ...EXITED_NOT_A_REPOSITORY, stderr: "fatal: not a valid object name missing-base" });
+
+    const reading = gitOver(spawn).textInBase({ repoRoot: REPO_ROOT, baseRevision: "missing-base", file: CONTENT_FILE });
+
+    expect(reading).toEqual({
+      outcome: "failed",
+      error: { kind: "git-failed", command: "git -C /repo ls-tree -z --name-only --end-of-options missing-base src/example.ts", detail: "fatal: not a valid object name missing-base" },
+    });
+  });
+});

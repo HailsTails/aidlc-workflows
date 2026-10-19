@@ -82,6 +82,7 @@ export type InvalidRecord = {
     | { readonly kind: "file-not-repo-path"; readonly file: string }
     | { readonly kind: "why-chain-refused"; readonly detail: string }
     | { readonly kind: "evidence-refused"; readonly detail: string }
+    | { readonly kind: "import-unverified"; readonly detail: string }
     | { readonly kind: "non-exemptible-clause"; readonly clause: ClauseAddress }
     | { readonly kind: "duplicate"; readonly ofIndex: number };
 };

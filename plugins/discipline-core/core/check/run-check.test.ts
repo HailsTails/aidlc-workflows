@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { requiredEntry } from "../../tests/required-entry.ts";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
-import type { GitFailure, GitPort } from "../platform-ports/git-port.ts";
+import type { BaseFileText, GitFailure, GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import { absolutePathSchema } from "../values/absolute-path.ts";
@@ -292,13 +292,22 @@ const modulesLoading = (module: unknown): ModuleLoaderPort => ({
   load: vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: module }),
 });
 
+const ABSENT_AT_BASE: Result<BaseFileText, GitFailure> = { outcome: "ok", value: { presence: "absent-from-base" } };
+
+const presentAtBase = (request: { readonly text: string }): Result<BaseFileText, GitFailure> => ({
+  outcome: "ok",
+  value: { presence: "present-in-base", text: request.text },
+});
+
 const gitReporting = (request: {
   readonly trackedPaths: Result<readonly RepoPath[], GitFailure>;
   readonly changedSince: Result<readonly RepoPath[], GitFailure>;
+  readonly textInBase?: Result<BaseFileText, GitFailure>;
 }): GitPort => ({
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue(request.trackedPaths),
   changedSince: vi.fn<GitPort["changedSince"]>().mockReturnValue(request.changedSince),
   contentInBase: vi.fn<GitPort["contentInBase"]>(),
+  textInBase: vi.fn<GitPort["textInBase"]>().mockReturnValue(request.textInBase ?? ABSENT_AT_BASE),
 });
 
 const MEASURED_GIT = gitReporting({
@@ -346,6 +355,7 @@ describe("runCheck reports", () => {
           git: gitReporting({
             trackedPaths: { outcome: "ok", value: [repoPathSchema.parse("src/factory.ts")] },
             changedSince: { outcome: "ok", value: [] },
+            textInBase: presentAtBase({ text: EXCEPTIONS_WITH_AUTHORISED_LOCATION }),
           }),
         }),
       ),
@@ -443,7 +453,7 @@ describe("runCheck forfeiture measurement", () => {
     });
   });
 
-  it("reports nothing unmeasured when no base revision is given and only an authorised location exists", async () => {
+  it("reports import-unmeasured when no base revision is given and only an imported authorised location exists", async () => {
     await expect(
       runCheck(
         checkRequest({
@@ -451,7 +461,28 @@ describe("runCheck forfeiture measurement", () => {
           fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_AUTHORISED_LOCATION }) }),
         }),
       ),
-    ).resolves.toMatchObject({ outcome: "ok", value: { unmeasured: [] } });
+    ).resolves.toMatchObject({ outcome: "ok", value: { unmeasured: [{ kind: "import-unmeasured" }] } });
+  });
+
+  it("refuses an imported authorised location the base revision does not hold", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_AUTHORISED_LOCATION }) }),
+        }),
+      ),
+    ).resolves.toMatchObject({
+      outcome: "ok",
+      value: { invalidRecords: [{ index: 0, problem: { kind: "import-unverified" } }], unmeasured: [] },
+    });
+  });
+
+  it("reads nothing at the base revision when no record is imported", async () => {
+    const git = gitReporting({ trackedPaths: { outcome: "ok", value: TRACKED_PATHS }, changedSince: { outcome: "ok", value: [] } });
+
+    await runCheck(checkRequest({ git, fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_FILE_CARVE_OUT }) }) }));
+
+    expect(git.textInBase).not.toHaveBeenCalled();
   });
 
   it("reports nothing unmeasured when the change set is measured and a file carve-out exists", async () => {
@@ -832,6 +863,14 @@ const LINT_PIECE = JSON.stringify({
   clauses: [{ clause: "abstract-syntax", settings: { module: "abstract-syntax.ts" } }],
 });
 
+const TWO_MECHANISM_EXCEPTIONS = JSON.stringify({
+      version: 1,
+      exceptions: [
+        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "audit location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" } },
+        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" } },
+      ],
+    });
+
 const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
   ...INSTALL,
   [SELECTION_PATH]: presentFile({
@@ -841,15 +880,7 @@ const TWO_MECHANISM_INSTALL: Readonly<Record<string, FakeFile>> = {
       clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "lint" },
     }),
   }),
-  [EXCEPTIONS_PATH]: presentFile({
-    text: JSON.stringify({
-      version: 1,
-      exceptions: [
-        { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "audit location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" } },
-        { kind: "authorised-location", clause: "CD-14#abstract-syntax", file: "src/lint.ts", reason: "lint location", provenance: { kind: "existing-authorisation", source: "fictional unit fixture core/check/run-check.test.ts; not historical authorisation" } },
-      ],
-    }),
-  }),
+  [EXCEPTIONS_PATH]: presentFile({ text: TWO_MECHANISM_EXCEPTIONS }),
   [DISCIPLINE_PATH]: presentFile({ text: TWO_MECHANISM_DISCIPLINE }),
   [LINT_PIECE_PATH]: presentFile({ text: LINT_PIECE }),
   [LINT_RUNNER_PATH]: presentFile({ text: "export const runner = {};\n" }),
@@ -959,6 +990,7 @@ describe("runCheck with an embedded runner", () => {
           git: gitReporting({
             trackedPaths: { outcome: "ok", value: [repoPathSchema.parse("src/factory.ts")] },
             changedSince: { outcome: "ok", value: [] },
+            textInBase: presentAtBase({ text: EXCEPTIONS_WITH_AUTHORISED_LOCATION }),
           }),
         }),
       ),
@@ -988,6 +1020,11 @@ describe("runCheck with an embedded runner", () => {
         modules: modulesByPath({
           [RUNNER_PATH]: { runner },
           [LINT_RUNNER_PATH]: { runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) },
+        }),
+        git: gitReporting({
+          trackedPaths: { outcome: "ok", value: TRACKED_PATHS },
+          changedSince: { outcome: "ok", value: CHANGED_PATHS },
+          textInBase: presentAtBase({ text: TWO_MECHANISM_EXCEPTIONS }),
         }),
       }),
     );

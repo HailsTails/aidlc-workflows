@@ -46,6 +46,7 @@ const checkedText = async (request: { readonly repo: AbsolutePath; readonly trac
     trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
     changedSince: vi.fn<GitPort["changedSince"]>(),
     contentInBase: vi.fn<GitPort["contentInBase"]>(),
+    textInBase: vi.fn<GitPort["textInBase"]>(),
   };
   return checkCommandOutcome({
     result: await runCheck({

@@ -11,6 +11,10 @@ export type GitFailure = {
 
 export type BaseContentMembership = "present-in-base" | "absent-from-base";
 
+export type BaseFileText =
+  | { readonly presence: "absent-from-base" }
+  | { readonly presence: "present-in-base"; readonly text: string };
+
 export type GitContentQuery = {
   readonly repoRoot: AbsolutePath;
   readonly baseRevision: string;
@@ -26,6 +30,7 @@ export type GitPort = {
     readonly baseRevision: string;
   }) => Result<readonly RepoPath[], GitFailure>;
   readonly contentInBase: (request: GitContentQuery) => Result<BaseContentMembership, GitFailure>;
+  readonly textInBase: (request: GitContentQuery) => Result<BaseFileText, GitFailure>;
 };
 
 export type GitEnvironment = Readonly<Record<string, string | undefined>>;
@@ -232,6 +237,24 @@ const contentMembership = (
   return { outcome: "ok", value: treeHashes.includes(candidateHash) ? "present-in-base" : "absent-from-base" };
 };
 
+const fileTextInBase = (request: GitContext & GitContentQuery): Result<BaseFileText, GitFailure> => {
+  const listed = gitPaths({
+    ...request,
+    gitArguments: ["ls-tree", "-z", "--name-only", "--end-of-options", request.baseRevision, request.file],
+  });
+  if (listed.outcome === "failed") {
+    return listed;
+  }
+  if (!listed.value.includes(request.file)) {
+    return { outcome: "ok", value: { presence: "absent-from-base" } };
+  }
+  const blob = gitOutput({ ...request, gitArguments: ["cat-file", "blob", "--end-of-options", `${request.baseRevision}:${request.file}`] });
+  if (blob.outcome === "failed") {
+    return blob;
+  }
+  return { outcome: "ok", value: { presence: "present-in-base", text: blob.value.stdout } };
+};
+
 export const createGitPort = (options: {
   readonly spawn: GitSpawn;
   readonly ambientEnvironment: GitEnvironment;
@@ -250,6 +273,7 @@ export const createGitPort = (options: {
         baseRevision: request.baseRevision,
       }),
     contentInBase: (request) => contentMembership({ ...request, spawn: options.spawn, environment }),
+    textInBase: (request) => fileTextInBase({ ...request, spawn: options.spawn, environment }),
   };
 };
 

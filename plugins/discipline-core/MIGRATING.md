@@ -58,9 +58,25 @@ CD-3 findings on `tsconfig.json` are fixed in step 4, not recorded. Then write `
 - A finding in a file no old record lists is new debt: fix it, or record it only after the human approves.
 - CD-1 refuses exceptions. A CD-1 finding must be fixed. Stop and ask the human if it cannot be fixed in this change.
 
-Every record needs a `whyChain`: five `why`/`because`/`evidence` steps, a `rootCause` and an `owner`. Build it from the old record's `reason` and `decision`, the code itself and its history (`git log --follow -- <file>`). Each `evidence` must point at something checkable: a file and symbol, a commit, or a document.
+Each converted record is imported: give it `provenance` naming the old record instead of a `whyChain`, and keep the old `reason`:
 
-Stop and ask the human if the original reason or owner is unknown or the old record says only that the finding was inherited. Never write a placeholder or a root cause that only says the check was failing: core refuses those as `invalidRecords`. If no one can give the reason, fix the file instead of recording it.
+```json
+{
+  "kind": "file-carve-out",
+  "clause": "CD-15#loops",
+  "file": "src/legacy.ts",
+  "reason": "Inherited for...of totals loop from the 2025 pricing import",
+  "provenance": {
+    "kind": "inherited-debt",
+    "source": ".constitution-carve-outs/cd-15.json",
+    "decision": "Initial adoption inventory accepted by pricing owner Sam on 2026-09-02; retire on touch"
+  }
+}
+```
+
+An authorised location uses `{ "kind": "existing-authorisation", "source": ".constitution-authorised-locations/cd-<id>.json" }`. Core accepts an imported record only while the `--base-revision` holds it unchanged or its `source` file lists the record's file at that revision, so keep the old record files committed until step 6, and run every check in this migration with `--base-revision HEAD`. A record you write for new debt, or an imported record you later change, needs a full `whyChain` (five `why`/`because`/`evidence` steps, a `rootCause` and an `owner`): core refuses it as `import-unverified` otherwise.
+
+Stop and ask the human if an old record has no `decision`. Never write a placeholder or a root cause that only says the check was failing: core refuses those as `invalidRecords`.
 
 ## 4. Replace the hand-written linter rules
 
@@ -105,7 +121,7 @@ Stop and ask the human if anything outside the old trial uses the copied tools o
 | --- | --- | --- |
 | What is installed | rule text only; checks were the repository's own linters, plus an optional copied tools tree | one folder that runs every selected check |
 | Selection | whole CD files, read by an agent; a check ran only if wired by hand | clauses in `disciplines.json`; every mechanical clause of an adopted discipline must be selected |
-| First-adoption debt | inherited debt could be recorded without a why-chain | every exception needs a five-step `whyChain`, including inherited debt |
+| First-adoption debt | inherited debt could be recorded without a why-chain | imported with `provenance` and no `whyChain`, accepted only while unchanged since `--base-revision`; new or edited exceptions need a five-step `whyChain` |
 | CD-1 | no exemptions | no exemptions (`"exceptions": "refused"`) |
 | CD-3 flags | merged into the shared `compilerOptions`, wherever they were | set only in a base file not named `tsconfig.json`; any of the seven in a `tsconfig.json` is a finding |
 | Running with debt | the decay check needed a base ref | every run with a file carve-out needs `--base-revision` |

@@ -52,6 +52,7 @@ const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPor
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
   changedSince: vi.fn<GitPort["changedSince"]>(),
   contentInBase: vi.fn<GitPort["contentInBase"]>(),
+  textInBase: vi.fn<GitPort["textInBase"]>(),
 });
 
 const checkOf = (request: { readonly name: string; readonly tracked: readonly RepoPath[] }) =>
