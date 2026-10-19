@@ -1,4 +1,4 @@
-import { type SpawnSyncReturns, spawnSync } from "node:child_process";
+import { createDefaultExecutionPort, type ExecutionPolicy } from "./execution-port.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
@@ -74,6 +74,13 @@ const environmentWithoutRepositoryLocation = (request: {
       ([name]) => !REPOSITORY_LOCATION_VARIABLES.includes(name),
     ),
   );
+
+const GIT_EXECUTION_POLICY: ExecutionPolicy = {
+  executable: "git",
+  environment: ({ ambient }) => environmentWithoutRepositoryLocation({ ambientEnvironment: ambient }),
+  timeoutMilliseconds: undefined,
+  maximumOutputBytes: LARGEST_GIT_OUTPUT_BYTES,
+};
 
 const parsedRepoPaths = (request: {
   readonly listed: readonly string[];
@@ -246,32 +253,21 @@ export const createGitPort = (options: {
   };
 };
 
-const spawnedRun = (request: GitSpawnRequest): GitRun => {
-  try {
-    return exitedRun({
-      run: spawnSync(request.file, request.arguments, {
-        encoding: "utf8",
-        maxBuffer: request.maxBuffer,
-        env: request.environment,
-      }),
-    });
-  } catch (thrown) {
-    return { outcome: "errored", detail: thrown instanceof Error ? thrown.message : String(thrown) };
-  }
+export const createDefaultGitPort = (_options: Record<string, never>): GitPort => {
+  const execution = createDefaultExecutionPort({ policy: GIT_EXECUTION_POLICY });
+  return createGitPort({
+    spawn: (request) => {
+      const executed = execution.run({ arguments: request.arguments });
+      if (executed.outcome === "failed") {
+        return {
+          outcome: "errored",
+          detail: executed.error.kind === "terminated"
+            ? `git was ended by signal ${executed.error.signal}`
+            : executed.error.detail,
+        };
+      }
+      return { outcome: "exited", ...executed.value };
+    },
+    ambientEnvironment: {},
+  });
 };
-
-const exitedRun = (request: { readonly run: SpawnSyncReturns<string> }): GitRun => {
-  const run = request.run;
-  if (run.error !== undefined) {
-    return { outcome: "errored", detail: run.error.message };
-  }
-  if (run.status === null) {
-    return { outcome: "errored", detail: `git was ended by signal ${run.signal}` };
-  }
-  return { outcome: "exited", status: run.status, stdout: run.stdout, stderr: run.stderr };
-};
-
-export const defaultGitSpawn: GitSpawn = spawnedRun;
-
-export const createDefaultGitPort = (_options: Record<string, never>): GitPort =>
-  createGitPort({ spawn: defaultGitSpawn, ambientEnvironment: process.env });
