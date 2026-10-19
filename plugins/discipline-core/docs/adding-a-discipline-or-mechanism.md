@@ -52,7 +52,7 @@ For each mechanism in a clause's `mechanisms` list, add a piece folder `mechanis
 
 `discipline` and `mechanism` must match the folder names, every `clause` must exist in the discipline, and no clause may appear twice. Core reads only this envelope. `settings` belongs to the runner, which parses it with its own schema:
 
-- **walker:** `{ "module": "<file>.ts" }`, a path inside the piece folder. The module exports `check`, typed with `import type { TypeScriptWalkerCheck }` from `mechanisms/walker/runner/typescript-parse.ts`, or `WalkerCheck` from `walker-check.ts` for a path check. See `mechanisms/walker/runner/README.md`.
+- **walker:** `{ "module": "<file>.ts" }`, a path inside the piece folder. The module exports `check`, typed with `import type { WalkerPiece }` from `mechanisms/walker/runner/walker-piece.ts`. See `mechanisms/walker/runner/README.md`.
 - **eslint:** `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` path inside the piece folder whose default export is an ESLint plugin; `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`. The namespace `discipline-core` is reserved, and two selected clauses may not share a rule id, or a namespace with different plugin modules. CD-14's piece is `mechanisms/eslint/CD-14/piece.json`, pointing at the rule `no-class-authoring` in `cd14/cd14.eslint-plugin.ts` under the namespace `rin-discipline`.
 
 A runner reports a bad `settings` value, a module that fails to load or does not match its schema, or a missing rule as `piece-invalid`.
@@ -64,7 +64,7 @@ Give each piece source file a co-located `.test.ts`. A piece's test runs the cla
 - a walker piece calls `conform` on a walker runner (`mechanisms/walker/CD-14/class-syntax.test.ts` builds one with `createWalkerRunner` and the real TypeScript parse port);
 - an ESLint piece calls the ESLint port's `lintSourceCases` with its plugin (`mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.test.ts`).
 
-A path-only walker piece reads no source, so its test can call `check` directly on each path, as the probe's does. The runner's own suite runs core's `checkConformance` over every shared piece it serves (see "Adding a mechanism", step 4). FR-8's import checks (below) cover the new files with no change.
+A path-only walker piece reads no source, so its test can prepare `check` and call `prepareFile` directly on each path, as the probe's does. The runner's own suite runs core's `checkConformance` over every shared piece it serves (see "Adding a mechanism", step 4). FR-8's import checks (below) cover the new files with no change.
 
 ### Worked example: the probe discipline
 
@@ -72,9 +72,9 @@ A path-only walker piece reads no source, so its test can call `check` directly 
 
 - `tests/probe-rule-set/rules/PD-1/discipline.json` declares one mechanical clause, `no-tmp-files`: mechanisms `["walker"]`, anchor `{ "kind": "file" }`, one flag case (`src/scratch.tmp.ts`, line 1) and one allow case (`src/kept.ts`, no lines).
 - `tests/probe-rule-set/mechanisms/walker/PD-1/piece.json` maps that clause to the module `no-tmp-files.ts`.
-- `tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts` exports `check`, a walker path check that returns `"violates"` for a path ending `.tmp.ts` and `"conforms"` otherwise. It reads no file, so the walker offers it every path without parsing.
+- `tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts` exports `check`, a walker piece that completes each file from its path alone: a hit at line 1 for a path ending `.tmp.ts`, none otherwise. It reads no file, so the walker never parses on its behalf.
 - `no-tmp-files.test.ts` tests `check` directly; the probe has no conformance test of its own.
-- The piece imports only a type, `WalkerCheck`, from the walker runner, as a path relative to its own file. Type imports are erased when Node runs the source, so the path matters only to typechecking.
+- The piece imports only a type, `WalkerPiece`, from the walker runner, as a path relative to its own file. Type imports are erased when Node runs the source, so the path matters only to typechecking.
 
 A repository selects it by naming the rule set and the clause:
 

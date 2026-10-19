@@ -22,6 +22,7 @@ import {
 import { projectionWriteSchema } from "../mechanism-port/runner-result-schema.ts";
 import { clauseAddressText, sameClauseAddress } from "../values/clause-address.ts";
 import type { MechanismId } from "../values/identifiers.ts";
+import type { RepoPath } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
 
 export type MechanismRun = {
@@ -49,10 +50,11 @@ const hitsResultSchema = runnerResultSchema({ value: z.array(hitSchema).readonly
 const unrequestedHit = (request: {
   readonly hits: readonly Hit[];
   readonly run: RunRequest;
+  readonly checkedFiles: readonly RepoPath[];
 }): Hit | undefined =>
   request.hits.find(
     (hit) =>
-      !request.run.files.includes(hit.file) ||
+      !request.checkedFiles.includes(hit.file) ||
       !request.run.clauses.some(
         (clause) => sameClauseAddress({ left: clause.address, right: hit.clause }) === "same",
       ),
@@ -70,7 +72,7 @@ const standaloneRun = (request: {
   if (parsed.data.outcome === "failed") {
     return parsed.data;
   }
-  const unrequested = unrequestedHit({ hits: parsed.data.value, run: request.run });
+  const unrequested = unrequestedHit({ hits: parsed.data.value, run: request.run, checkedFiles: request.run.trackedPaths });
   if (unrequested !== undefined) {
     return runnerInvalidOutput({
       detail: `a hit names ${clauseAddressText({ address: unrequested.clause })} in ${unrequested.file}, which the request did not hold`,
@@ -118,7 +120,7 @@ const embeddedRun = (request: {
     return parsed.data;
   }
   const report = parsed.data.value;
-  const unrequested = unrequestedHit({ hits: report.hits, run: request.run });
+  const unrequested = unrequestedHit({ hits: report.hits, run: request.run, checkedFiles: request.run.files });
   if (unrequested !== undefined) {
     return runnerInvalidOutput({
       detail: `a hit names ${clauseAddressText({ address: unrequested.clause })} in ${unrequested.file}, which the request did not hold`,

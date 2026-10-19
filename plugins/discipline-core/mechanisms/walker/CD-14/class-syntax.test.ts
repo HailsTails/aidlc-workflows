@@ -98,7 +98,7 @@ describe("CD-14 class-syntax walker check over TypeScript's own parse", () => {
         repoRoot: absolutePathSchema.parse("/repo"),
         installRoot: absolutePathSchema.parse("/install"),
         files: [repoPathSchema.parse("src/alpha.ts")],
-        trackedPaths: [],
+        trackedPaths: [repoPathSchema.parse("src/alpha.ts")],
         clauses: [CLAUSE],
       }),
     ).toEqual({

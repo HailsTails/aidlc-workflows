@@ -1,12 +1,15 @@
 import typescript from "typescript";
-import type { ParsePort, WalkerCheck } from "./walker-check.ts";
 
 export type SyntaxApi = typeof typescript;
 export type SyntaxTree = typescript.SourceFile;
 export type SyntaxNode = typescript.Node;
 export type CommentRange = typescript.CommentRange;
-export type TypeScriptWalkerCheck = WalkerCheck<SyntaxApi, SyntaxTree, SyntaxNode>;
-export type TypeScriptParsePort = ParsePort<SyntaxApi, SyntaxTree, SyntaxNode>;
+
+export type TypeScriptParsePort = {
+  readonly syntaxApi: SyntaxApi;
+  readonly parse: (request: { readonly fileName: string; readonly source: string }) => SyntaxTree;
+  readonly children: (request: { readonly node: SyntaxNode }) => readonly SyntaxNode[];
+};
 
 const directChildren = (request: { readonly node: SyntaxNode }): readonly SyntaxNode[] => {
   const collected: SyntaxNode[] = [];

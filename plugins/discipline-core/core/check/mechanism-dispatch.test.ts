@@ -147,12 +147,20 @@ describe("runMechanism with a standalone runner", () => {
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#abstract-syntax in src/a.ts, which the request did not hold") } });
   });
 
-  it("is runner-invalid-output when a hit names a tracked file that is not in files", async () => {
+  it("accepts a hit in a tracked file that is not in files, since a standalone runner walks every tracked path", async () => {
     await expect(
       dispatchRun({
         runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, file: "README.md" }] }) }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in README.md, which the request did not hold") } });
+    ).resolves.toMatchObject({ outcome: "ok", value: { hits: [{ ...HIT_IN_A, file: "README.md" }] } });
+  });
+
+  it("is runner-invalid-output when a hit names a file that is not tracked", async () => {
+    await expect(
+      dispatchRun({
+        runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, file: "src/untracked.ts" }] }) }),
+      }),
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in src/untracked.ts, which the request did not hold") } });
   });
 });
 

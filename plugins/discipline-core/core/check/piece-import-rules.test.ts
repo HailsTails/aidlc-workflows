@@ -24,7 +24,7 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
   '["plugins/discipline-core","mechanisms","walker","runner"]': "plugins/discipline-core/mechanisms/walker/runner",
   '["plugins/discipline-core","core"]': "plugins/discipline-core/core",
   [`["${PIECE_FOLDER}","./nested/helper.ts"]`]: `${PIECE_FOLDER}/nested/helper.ts`,
-  [`["${PIECE_FOLDER}","../runner/walker-check.ts"]`]: "plugins/discipline-core/mechanisms/walker/runner/walker-check.ts",
+  [`["${PIECE_FOLDER}","../runner/walker-piece.ts"]`]: "plugins/discipline-core/mechanisms/walker/runner/walker-piece.ts",
   [`["${PIECE_FOLDER}","../../../core/values/result.ts"]`]: "plugins/discipline-core/core/values/result.ts",
   [`["${PIECE_FOLDER}","../../../rules/CD-14/discipline.json"]`]: "plugins/discipline-core/rules/CD-14/discipline.json",
   [`["${PIECE_FOLDER}","../../eslint/CD-14/cd14.ts"]`]: "plugins/discipline-core/mechanisms/eslint/CD-14/cd14.ts",
@@ -37,8 +37,8 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
   '["../../tests/probe-rule-set","rules","PD-1"]': "../../tests/probe-rule-set/rules/PD-1",
   '["../..","mechanisms","walker","runner"]': "../../mechanisms/walker/runner",
   '["../..","core"]': "../../core",
-  [`["${PROBE_FOLDER}","../../../../../mechanisms/walker/runner/walker-check.ts"]`]:
-    "../../mechanisms/walker/runner/walker-check.ts",
+  [`["${PROBE_FOLDER}","../../../../../mechanisms/walker/runner/walker-piece.ts"]`]:
+    "../../mechanisms/walker/runner/walker-piece.ts",
 };
 
 const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
@@ -97,7 +97,7 @@ describe("pieceImportRefusals allows", () => {
 
   it("a relative import of the piece's own mechanism runner", () => {
     expect(
-      refusalsOf({ piece: WALKER_PIECE, source: 'import type { WalkerCheck } from "../runner/walker-check.ts";\n' }),
+      refusalsOf({ piece: WALKER_PIECE, source: 'import type { WalkerPiece } from "../runner/walker-piece.ts";\n' }),
     ).toEqual([]);
   });
 
@@ -162,7 +162,7 @@ describe("pieceImportRefusals refuses", () => {
 const SOURCES: Readonly<Record<string, string>> = {
   [CLASS_SYNTAX_KEY]: 'import type { Program } from "acorn";\n',
   [HELPER_KEY]: 'import type { Node } from "typescript";\n',
-  [PROBE_KEY]: 'import type { WalkerCheck } from "../../../../../mechanisms/walker/runner/walker-check.ts";\n',
+  [PROBE_KEY]: 'import type { WalkerPiece } from "../../../../../mechanisms/walker/runner/walker-piece.ts";\n',
 };
 
 const findingsOver = (request: { readonly typePackageTexts: Readonly<Record<string, string>> }) =>

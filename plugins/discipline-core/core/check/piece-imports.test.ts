@@ -98,14 +98,15 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
   '[".","mechanisms","walker","CD-14"]': "mechanisms/walker/CD-14",
   '[".","rules","CD-14"]': "rules/CD-14",
   '["./mechanisms/walker/CD-14","../runner/typescript-parse.ts"]': "mechanisms/walker/runner/typescript-parse.ts",
+  '["./mechanisms/walker/CD-14","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
   '[".","mechanisms","walker","runner","piece-type-packages.json"]': "mechanisms/walker/runner/piece-type-packages.json",
   '["./mechanisms/walker/runner/piece-type-packages.json"]': "mechanisms/walker/runner/piece-type-packages.json",
   '["./tests/probe-rule-set","mechanisms","walker","PD-1"]': "tests/probe-rule-set/mechanisms/walker/PD-1",
   '["./tests/probe-rule-set","rules","PD-1"]': "tests/probe-rule-set/rules/PD-1",
   '[".","mechanisms","walker","runner"]': "mechanisms/walker/runner",
   '[".","core"]': "core",
-  '["./tests/probe-rule-set/mechanisms/walker/PD-1","../../../../../mechanisms/walker/runner/walker-check.ts"]':
-    "mechanisms/walker/runner/walker-check.ts",
+  '["./tests/probe-rule-set/mechanisms/walker/PD-1","../../../../../mechanisms/walker/runner/walker-piece.ts"]':
+    "mechanisms/walker/runner/walker-piece.ts",
 };
 
 const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {

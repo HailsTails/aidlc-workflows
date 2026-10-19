@@ -1,6 +1,19 @@
-import type { WalkerCheck } from "../../../../../mechanisms/walker/runner/walker-check.ts";
+import type { WalkerPiece } from "../../../../../mechanisms/walker/runner/walker-piece.ts";
 
-export const check: Extract<WalkerCheck<unknown, unknown, unknown>, { readonly kind: "path" }> = {
-  kind: "path",
-  inspect: (request) => (request.file.endsWith(".tmp.ts") ? "violates" : "conforms"),
+export const check: WalkerPiece = {
+  prepare: ({ clauses }) => ({
+    outcome: "ok",
+    value: {
+      prepareFile: ({ file }) => ({
+        outcome: "ok",
+        value: {
+          kind: "complete",
+          hits: file.endsWith(".tmp.ts")
+            ? clauses.map((clause) => ({ clause: clause.address, anchor: { line: 1, column: 0 }, snippet: file }))
+            : [],
+        },
+      }),
+      finish: () => ({ outcome: "ok", value: [] }),
+    },
+  }),
 };
