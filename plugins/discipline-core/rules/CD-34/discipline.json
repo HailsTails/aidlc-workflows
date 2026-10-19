@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-34",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "no-repo-secrets",
+      "summary": "secrets never enter source, history, logs or URLs",
+      "enforcedBy": "review"
+    }
+  ]
+}

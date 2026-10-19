@@ -10,6 +10,22 @@
         "pluginModule": "cd14/cd14.eslint-plugin.ts",
         "rule": "no-class-authoring"
       }
+    },
+    {
+      "clause": "static-only-class",
+      "settings": {
+        "pluginNamespace": "discipline",
+        "pluginModule": "cd14/cd14.eslint-plugin.ts",
+        "rule": "no-extraneous-class",
+        "options": [
+          {
+            "allowConstructorOnly": true,
+            "allowEmpty": true,
+            "allowStaticOnly": false,
+            "allowWithDecorator": true
+          }
+        ]
+      }
     }
   ]
 }

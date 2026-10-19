@@ -118,6 +118,56 @@
       "id": "library-construction",
       "summary": "library classes are constructed only in wrapping factories and never re-exported",
       "enforcedBy": "review"
+    },
+    {
+      "kind": "mechanical",
+      "id": "static-only-class",
+      "summary": "Zero class authoring; classes only at external-library call sites",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "class"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "class with only static members",
+            "fileName": "src/paths.ts",
+            "source": "export class Paths {\n  static root = \"/\";\n}\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "empty class",
+            "fileName": "src/empty.ts",
+            "source": "export class Empty {}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "class with an instance member",
+            "fileName": "src/store.ts",
+            "source": "export class Store {\n  value = 1;\n}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "decorated static-only class",
+            "fileName": "src/paths.ts",
+            "source": "@sealed\nexport class Paths {\n  static root = \"/\";\n}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "static-only class that extends another",
+            "fileName": "src/paths.ts",
+            "source": "export class Paths extends Base {\n  static root = \"/\";\n}\n",
+            "expectedLines": []
+          }
+        ]
+      }
     }
   ]
 }

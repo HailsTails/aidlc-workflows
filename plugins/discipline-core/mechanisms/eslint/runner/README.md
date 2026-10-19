@@ -11,6 +11,7 @@ The projection imports each piece's plugin module by its path relative to the re
 - Node 22.18.0 or later, which runs the `.ts` modules directly by stripping types.
 - `zod`, for the piece settings, the loaded plugin, ESLint's resolved configuration and the files the runner reads.
 - `eslint` 10.x. This package pins 10.11.0.
+- `@typescript-eslint/eslint-plugin` 8.71.2, for the typescript-eslint rules a piece reuses.
 - An ESLint-10-compatible `@typescript-eslint/parser`. This package pins 8.71.2.
 - `@eslint/plugin-kit`, for parsing inline configuration comments. This package pins 0.7.3. It is a direct dependency, because a transitive copy does not resolve under strict package managers.
 
@@ -19,6 +20,7 @@ The projection imports each piece's plugin module by its path relative to the re
 - `create-eslint-runner.ts` builds the runner from its ports: file text, module loading, paths and ESLint. It implements `run`, `conform` and `project`.
 - `eslint-instance.ts` is the wrapping factory for ESLint and `@typescript-eslint/parser`, the only file that imports them. It builds a query instance on the team's own configuration, a governance instance on the runner's configuration only, and `lintSourceCases` for conformance. It also defines the reserved rule `<reservedNamespace>/inline-config`. `reservedNamespace` is the one constant naming core's ESLint namespace, currently `discipline-core` while the tooling's name is provisional; the reserved rule, the governance configuration and the projection's block names all take it from there, so a rename is one edit.
 - `inline-config-parser.ts` is the wrapping factory for `@eslint/plugin-kit`, the only file that imports it.
+- `native-rules.ts` re-exports the ESLint core rules (`eslintCoreRules`) and the typescript-eslint rules (`typescriptEslintRules`) that pieces reuse. It is the only file that imports them.
 - `projection.ts` writes `disciplines.eslint.mjs` and compares it with the file on disk.
 - `package-script-scanner.ts` finds ESLint invocations in tracked `package.json` scripts, and the options and `--suppressions-location` values they carry.
 - `suppressions-scanner.ts` reads suppression entries from `eslint-suppressions.json` files and from files named by `--suppressions-location`.
@@ -30,6 +32,10 @@ The projection imports each piece's plugin module by its path relative to the re
 ## Writing a piece
 
 An ESLint piece lives at `mechanisms/eslint/<DisciplineId>/` beside its `piece.json`. Each clause's settings are `{ "pluginNamespace", "pluginModule", "rule" }`. `pluginModule` is a `.ts` path inside the piece folder whose default export is an ESLint plugin, and `rule` must be a key of its `rules`. The rule id is `<pluginNamespace>/<rule>`.
+
+A clause's settings may also carry `options`, a JSON array passed to the rule after its severity. The governance run, the conformance run and the projection all enable the rule as `["error", ...options]`; without `options` the rule gets only the severity.
+
+A piece reuses an ESLint core or typescript-eslint rule by re-exporting it from its plugin module through `native-rules.ts`: `eslintCoreRules` for core rules and `typescriptEslintRules` for typescript-eslint rules. A piece does not import `eslint` rules or `@typescript-eslint/eslint-plugin` directly.
 
 The namespace `reservedNamespace` names (currently `discipline-core`) is reserved. Two selected clauses may not share a rule id, or a namespace with different plugin modules. A bad setting, a module that fails to load or does not match its schema, or a missing rule makes the run fail as `piece-invalid`.
 

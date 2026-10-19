@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-29",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "test-pyramid",
+      "summary": "unit tests form the bulk and component or integration tests stay few",
+      "enforcedBy": "review"
+    }
+  ]
+}

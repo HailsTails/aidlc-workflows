@@ -65,29 +65,31 @@ Add `tools/discipline-core/node_modules/` to `<repo>/.gitignore`, and commit `to
 
 ## 4. Write disciplines.json
 
-Create `<repo>/disciplines.json`. Map every clause you adopt to the mechanism `audit`, and exclude the vendored core so it is not checked as your code:
+Create `<repo>/disciplines.json`. Map every clause you adopt to the mechanism that checks it, and exclude the vendored core so it is not checked as your code:
 
 ```json
 {
   "version": 1,
   "ruleSets": {},
   "clauses": {
-    "CD-14#class-syntax": "audit",
     "CD-15#loops": "audit",
-    "CD-17#clock-sources": "audit"
+    "CD-17#clock-sources": "audit",
+    "CD-23#export-test-sibling": "audit"
   },
   "exclude": ["tools/discipline-core"]
 }
 ```
 
-- `clauses` keys are clause addresses from the rules pages; the value is always `audit` for the disciplines listed in step 3.
+- `clauses` keys are clause addresses from the rules pages; the value is a mechanism the clause's rules page lists, `audit` or `eslint`.
 - Selecting one clause of a discipline adopts the whole discipline: any of its other mechanical clauses you leave out are reported as `uncovered` and fail the run. CD-3 has seven clauses; select all seven or none.
+- A discipline may span mechanisms; adopt every mechanical clause through the mechanism that has it, or the discipline reports the rest uncovered. CD-14, for example, checks `class-syntax` through `audit` or `eslint` but `static-only-class` only through `eslint`, so adopting CD-14 means adopting the ESLint mechanism for at least that clause; see [README.md](README.md#adopting-the-eslint-mechanism). To defer such a clause, still list it with its mechanism and record a `clause-wide-carve-out` for it (step 7).
 - `exclude` lists folders or exact files, as repository paths with forward slashes; an entry containing `*` is refused, because globs are not supported. A folder entry excludes everything under it. Use it for generated or third-party code. `node_modules`, `dist`, `build`, `coverage`, `.git` and a top-level `vendor` folder are skipped already.
 - `ruleSets` stays `{}` unless you write disciplines of your own; see [docs/adding-a-discipline-or-mechanism.md](docs/adding-a-discipline-or-mechanism.md).
 
 Every clause address the core ships:
 
 ```text
+audit:
 CD-1#any-cast            CD-2#cast-expressions      CD-5#comments-directives
 CD-6#identifier-names    CD-7#categorical-paths     CD-7a#factory-return-types
 CD-8#switch-defaults     CD-10#throws-in-tests      CD-14#class-syntax
@@ -98,7 +100,16 @@ CD-44#parameter-mutation CD-47#hermetic-git-spawns
 CD-3#strict  CD-3#no-unchecked-indexed-access  CD-3#exact-optional-property-types
 CD-3#no-implicit-override  CD-3#no-fallthrough-cases-in-switch
 CD-3#no-property-access-from-index-signature  CD-3#use-unknown-in-catch-variables
+
+eslint:
+CD-1#explicit-any        CD-1#implicit-any-let      CD-6#naming-convention
+CD-7#filename-case       CD-10#throw-only-error     CD-14#class-syntax
+CD-14#static-only-class  CD-27#focused-tests        CD-27#skipped-tests
+CD-40#parameter-count    CD-41#cognitive-complexity CD-41#function-length
+CD-42#useless-else       CD-44#parameter-reassignment
 ```
+
+CD-1, CD-6, CD-7, CD-10, CD-14, CD-27 and CD-44 have clauses under both mechanisms, and CD-40, CD-41 and CD-42 only under `eslint`, so adopting any of them needs the ESLint mechanism.
 
 Starting with a few disciplines and adding more once the run passes is easier than fixing everything at once.
 
@@ -153,7 +164,7 @@ Fix findings where you can. Where a file legitimately needs what a clause forbid
 
 - `authorised-location`: the clause does not apply to this one file, for example the single adapter that reads the real clock.
 - `file-carve-out`: known debt in one file. It is forfeited, and fails the run, as soon as that file changes since `--base-revision`.
-- `clause-wide-carve-out`: the clause is waived everywhere. Prefer not selecting the clause instead.
+- `clause-wide-carve-out`: the clause is waived everywhere. Not selecting the clause is not an alternative: it leaves the clause `uncovered`. A clause-wide carve-out that exempts no finding is `stale`, so record one only while the clause still has findings.
 
 Every entry needs a `reason` and a `whyChain` shaped like this, with exactly five steps in `whys`:
 
@@ -177,20 +188,18 @@ A complete, accepted entry is in [the worked example](tests/test-fixtures/walkth
 
 ## Worked example
 
-[tests/test-fixtures/walkthrough/](tests/test-fixtures/walkthrough/) is a small repository before and after its fix, selecting CD-2, CD-7, CD-14, CD-15, CD-17 and CD-23, with a `generated/` folder excluded. `tests/walkthrough.integration.test.ts` pins both reports exactly.
+[tests/test-fixtures/walkthrough/](tests/test-fixtures/walkthrough/) is a small repository before and after its fix, selecting CD-2, CD-15, CD-17 and CD-23 through the audit, with a `generated/` folder excluded. `tests/walkthrough.integration.test.ts` pins both reports exactly.
 
 Before, `node tools/discipline-core/core/check/check-command.ts --repo .` prints, and exits `1`:
 
 ```text
 excluded (1)
 generated
-findings (7)
-CD-14#class-syntax audit src/basket.ts:5:7 export class Basket {
+findings (5)
 CD-17#clock-sources audit src/basket.ts:7:0 private openedAt = Date.now();
 CD-2#cast-expressions audit src/basket.ts:10:20 entry as Line);   }    total(): string {     let pence = 0;     for (const line …
 CD-15#loops audit src/basket.ts:15:0 for (const line of this.lines) {
 CD-17#clock-sources audit src/basket.ts:22:0 return Date.now() - this.openedAt;
-CD-7#categorical-paths audit src/utils/format.ts:1:0 forbidden categorical folder: utils
 CD-23#export-test-sibling audit src/utils/format.ts:1:0 missing co-located *.test.ts(x) sibling
 verdict: fail
 ```
@@ -207,7 +216,7 @@ verdict: pass
 
 ## Known gaps
 
-- Only the audit mechanism is covered here. The ESLint mechanism ships for CD-14 only; see [README.md](README.md#adopting-the-eslint-mechanism).
+- Only the audit mechanism is walked through here. The ESLint mechanism is set up as [README.md](README.md#adopting-the-eslint-mechanism) describes.
 - Each check flags exactly what its rules page says and no more. Where a rule asks for more than its check can see, the page says which part is left to review.
 - A snippet is the text the check reports; some checks report a fixed-width window that runs across lines, as CD-2 does above.
 - The disciplines' IDs and rule text come from one team's code-discipline set. Selecting a subset is supported; editing a shipped rule is not. Write your own rule set for different rules.

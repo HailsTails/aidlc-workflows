@@ -60,6 +60,83 @@
           }
         ]
       }
+    },
+    {
+      "kind": "mechanical",
+      "id": "filename-case",
+      "summary": "No categorical filenames or folder names",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "camelCase file name",
+            "fileName": "src/userProfile.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "snake_case file name",
+            "fileName": "src/user_profile.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "all-capitals file name",
+            "fileName": "src/README.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "kebab-case file name",
+            "fileName": "src/user-profile.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "PascalCase file name",
+            "fileName": "src/UserProfile.tsx",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "kebab-case test file",
+            "fileName": "src/user-profile.test.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "consecutive capitals in PascalCase",
+            "fileName": "src/HTTPServer.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "route segment",
+            "fileName": "src/[slug].ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "lower-case index",
+            "fileName": "src/index.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          }
+        ]
+      }
     }
   ]
 }

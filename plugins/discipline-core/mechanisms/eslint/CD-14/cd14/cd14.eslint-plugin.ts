@@ -1,4 +1,5 @@
 import type { ESLint, Rule } from "eslint";
+import { typescriptEslintRules } from "../../runner/native-rules.ts";
 
 export type ClassSyntax = {
 	readonly filename: string;
@@ -105,7 +106,10 @@ const noClassAuthoring: Rule.RuleModule = {
 };
 const checkedPlugin = {
 	meta: { name: "discipline", version: "0.0.0-local" },
-	rules: { "no-class-authoring": noClassAuthoring },
+	rules: {
+		"no-class-authoring": noClassAuthoring,
+		...typescriptEslintRules({ names: ["no-extraneous-class"] }),
+	},
 } satisfies ESLint.Plugin;
 export const classAuthoringPlugin: ClassAuthoringPlugin = checkedPlugin;
 export default classAuthoringPlugin;

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-4",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "boundary-validation",
+      "summary": "every crossing from the untyped outside world is schema-validated at the seam",
+      "enforcedBy": "review"
+    }
+  ]
+}

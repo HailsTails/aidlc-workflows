@@ -60,6 +60,52 @@
           }
         ]
       }
+    },
+    {
+      "kind": "mechanical",
+      "id": "parameter-reassignment",
+      "summary": "Functions must not mutate fields of parameters they receive",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "="
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "assigning to a parameter",
+            "fileName": "src/bump.ts",
+            "source": "export const bump = (count: number): number => {\n  count = count + 1;\n  return count;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "incrementing a parameter",
+            "fileName": "src/bump.ts",
+            "source": "export const bump = (count: number): number => {\n  count++;\n  return count;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "assigning to a parameter's field",
+            "fileName": "src/fill.ts",
+            "source": "export const fill = (target: { value: number }): void => {\n  target.value = 1;\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "returning a new value",
+            "fileName": "src/bump.ts",
+            "source": "export const bump = (count: number): number => count + 1;\n",
+            "expectedLines": []
+          }
+        ]
+      }
     }
   ]
 }

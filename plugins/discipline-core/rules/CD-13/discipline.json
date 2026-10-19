@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-13",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "layer-boundaries",
+      "summary": "dependencies point inward and an inner layer never imports an outer one",
+      "enforcedBy": "review"
+    }
+  ]
+}

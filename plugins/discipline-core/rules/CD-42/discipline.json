@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "id": "CD-42",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "useless-else",
+      "summary": "Unhappy paths are early returns; happy path is the final return",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "else"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "else after return",
+            "fileName": "src/sign.ts",
+            "source": "export const sign = (value: number): string => {\n  if (value < 0) {\n    return \"negative\";\n  } else {\n    return \"positive\";\n  }\n};\n",
+            "expectedLines": [
+              4
+            ]
+          },
+          {
+            "name": "else after throw",
+            "fileName": "src/check.ts",
+            "source": "export const check = (value: number): number => {\n  if (value < 0) {\n    throw new Error(\"negative\");\n  } else {\n    return value;\n  }\n};\n",
+            "expectedLines": [
+              4
+            ]
+          },
+          {
+            "name": "every else of an exiting chain",
+            "fileName": "src/rank.ts",
+            "source": "export const rank = (value: number): number => {\n  if (value < 0) {\n    return 0;\n  } else if (value < 10) {\n    return 1;\n  } else {\n    return 2;\n  }\n};\n",
+            "expectedLines": [
+              4,
+              6
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "else after a branch that continues",
+            "fileName": "src/log.ts",
+            "source": "export const log = (value: number): void => {\n  if (value < 0) {\n    report();\n  } else {\n    record();\n  }\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "guard then final return",
+            "fileName": "src/sign.ts",
+            "source": "export const sign = (value: number): string => {\n  if (value < 0) {\n    return \"negative\";\n  }\n  return \"positive\";\n};\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

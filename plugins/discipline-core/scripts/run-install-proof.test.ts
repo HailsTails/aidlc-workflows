@@ -44,6 +44,7 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
 const EXPECTING_PASS: ProofCase = {
   consumer: "audit",
   mechanism: "audit",
+  disciplineId: "CD-14",
   installedManifest: "kept",
   actions: [{ kind: "check", expectation: { exitCode: 0, output: { kind: "contains", text: "verdict: pass" } } }],
 };

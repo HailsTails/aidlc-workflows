@@ -4,13 +4,14 @@
 
 A name states the concept the value represents, not its shape or its category. Shorthand (single letters, truncations) and filler words (data, info, value, result, manager, handler) force the reader to reconstruct meaning the name should have carried — at every scope, including callback parameters and destructures. The name is the documentation.
 
-The sections below describe what the audit check covers.
+The sections below describe what the audit and ESLint checks cover.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
 | `CD-6#identifier-names` | audit | a binding named from a fixed shorthand or filler list |
+| `CD-6#naming-convention` | eslint | a name that breaks the naming convention for its kind |
 
 ## What the check flags
 - `.ts` and `.tsx` files, including tests; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
@@ -19,6 +20,16 @@ The sections below describe what the audit check covers.
   - filler: `object obj args arguments details extra extras data info params parameters props payload body value result stuff things misc metadata`
 - Allowed: longer names that contain these words (`accountData`), names starting with `_`, property keys and property accesses.
 - Other poor names (`manager`, `handler`, vague nouns) are left to review.
+
+## What the ESLint check flags
+Needs ESLint adopted through the projection; see [the ESLint piece](../../mechanisms/eslint/CD-6/README.md).
+- `discipline-cd6/naming-convention` is typescript-eslint's `naming-convention` with the option list in the piece's `piece.json`.
+- Enum members are CONSTANT_CASE. `const` bindings are CONSTANT_CASE, camelCase or PascalCase.
+- Object literal properties are camelCase. Type properties are camelCase or PascalCase.
+- Other variables, functions and parameters are camelCase or PascalCase; a leading or trailing `_` or `$` is allowed.
+- Types are PascalCase. Class members are camelCase, and static ones may also be CONSTANT_CASE.
+- Consecutive capitals are allowed (`agentID`, `HTTPServer`).
+- Ignored: names that need quotes, destructured bindings, imports and unused bindings whose name starts with `_`.
 
 ## Example violation
 ```ts

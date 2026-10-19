@@ -82,11 +82,11 @@ A repository selects it by naming the rule set and the clause:
 {
   "version": 1,
   "ruleSets": { "probe": "probe" },
-  "clauses": { "probe/PD-1#no-tmp-files": "audit", "CD-14#class-syntax": "audit" }
+  "clauses": { "probe/PD-1#no-tmp-files": "audit", "CD-23#export-test-sibling": "audit" }
 }
 ```
 
-`tests/probe-check.integration.test.ts` runs that selection: the probe flags `src/scratch.tmp.ts`, CD-14 flags the class in `src/kept.ts`, and the audit runner parses each file once even though two disciplines are selected.
+`tests/probe-check.integration.test.ts` runs that selection: the probe flags `src/scratch.tmp.ts`, CD-23 flags `src/kept.ts` for its missing test sibling, and the audit runner parses each file once even though two disciplines are selected.
 
 ## Adding a mechanism
 

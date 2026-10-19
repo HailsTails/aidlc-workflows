@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-21",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "default-factories",
+      "summary": "each injected port ships one default production factory",
+      "enforcedBy": "review"
+    }
+  ]
+}

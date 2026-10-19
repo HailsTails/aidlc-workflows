@@ -52,6 +52,7 @@ const runnerSources = import.meta.glob(
     "!./mechanisms/audit/runner/jsonc-parse.ts",
     "!./mechanisms/eslint/runner/eslint-instance.ts",
     "!./mechanisms/eslint/runner/inline-config-parser.ts",
+    "!./mechanisms/eslint/runner/native-rules.ts",
   ],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
@@ -118,6 +119,13 @@ const eslintWrapperSources = import.meta.glob(["./mechanisms/eslint/runner/eslin
 });
 
 const pluginKitWrapperSources = import.meta.glob(["./mechanisms/eslint/runner/inline-config-parser.ts"], {
+  base: "../../",
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const nativeRulesWrapperSources = import.meta.glob(["./mechanisms/eslint/runner/native-rules.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -281,6 +289,18 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       importsOutside({
         sources: pluginKitWrapperSources,
         allowed: [relativeImport, zodImport, packageImport({ packageName: "@eslint/plugin-kit" })],
+      }),
+    ).toEqual([]);
+  });
+
+  it("finds native-rules.ts the only file importing ESLint's core rules and @typescript-eslint/eslint-plugin by value", () => {
+    expect(
+      importsOutside({
+        sources: nativeRulesWrapperSources,
+        allowed: [
+          packageImport({ packageName: "eslint/use-at-your-own-risk" }),
+          packageImport({ packageName: "@typescript-eslint/eslint-plugin" }),
+        ],
       }),
     ).toEqual([]);
   });

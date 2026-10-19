@@ -6,18 +6,19 @@ import type { ModuleLoaderPort } from "../core/platform-ports/module-loader-port
 import { createPathPort } from "../core/platform-ports/path-port.ts";
 import { absolutePathSchema } from "../core/values/absolute-path.ts";
 import { repoPathSchema } from "../core/values/repo-path.ts";
-import * as classSyntax from "../mechanisms/audit/CD-14/class-syntax.ts";
-import cd14Piece from "../mechanisms/audit/CD-14/piece.json" with { type: "json" };
+import * as exportTestSibling from "../mechanisms/audit/CD-23/export-test-sibling.ts";
+import cd23Piece from "../mechanisms/audit/CD-23/piece.json" with { type: "json" };
 import { createWalkerRunner } from "../mechanisms/audit/runner/create-walker-runner.ts";
 import { createDefaultParsePort } from "../mechanisms/audit/runner/typescript-parse.ts";
-import cd14Discipline from "../rules/CD-14/discipline.json" with { type: "json" };
+import cd23Discipline from "../rules/CD-23/discipline.json" with { type: "json" };
 import * as noTmpFiles from "./probe-rule-set/mechanisms/audit/PD-1/no-tmp-files.ts";
 import probePiece from "./probe-rule-set/mechanisms/audit/PD-1/piece.json" with { type: "json" };
 import probeDiscipline from "./probe-rule-set/rules/PD-1/discipline.json" with { type: "json" };
 
-const TEMPORARY_SOURCE = "export const scratch = 1;\n";
-const CLASS_SOURCE = "export class Kept {}\n";
+const TEMPORARY_SOURCE = "const scratch = 1;\n";
+const UNSIBLINGED_SOURCE = "export const kept = 1;\n";
 const PLAIN_SOURCE = "export const plain = 3;\n";
+const PLAIN_TEST_SOURCE = 'import { plain } from "./plain.ts";\n';
 
 type FakeFile = {
   readonly read: ReturnType<FileTextPort["read"]>;
@@ -39,18 +40,19 @@ const FILES: Readonly<Record<string, FakeFile>> = {
     text: JSON.stringify({
       version: 1,
       ruleSets: { probe: "probe" },
-      clauses: { "probe/PD-1#no-tmp-files": "audit", "CD-14#class-syntax": "audit" },
+      clauses: { "probe/PD-1#no-tmp-files": "audit", "CD-23#export-test-sibling": "audit" },
     }),
   }),
   "/repo/discipline-exceptions.json": ABSENT_FILE,
-  "/install/rules/CD-14/discipline.json": presentFile({ text: JSON.stringify(cd14Discipline) }),
-  "/install/mechanisms/audit/CD-14/piece.json": presentFile({ text: JSON.stringify(cd14Piece) }),
+  "/install/rules/CD-23/discipline.json": presentFile({ text: JSON.stringify(cd23Discipline) }),
+  "/install/mechanisms/audit/CD-23/piece.json": presentFile({ text: JSON.stringify(cd23Piece) }),
   "/install/mechanisms/audit/runner/runner.ts": presentFile({ text: "export const runner = {};\n" }),
   "/repo/probe/rules/PD-1/discipline.json": presentFile({ text: JSON.stringify(probeDiscipline) }),
   "/repo/probe/mechanisms/audit/PD-1/piece.json": presentFile({ text: JSON.stringify(probePiece) }),
   "/repo/src/scratch.tmp.ts": presentFile({ text: TEMPORARY_SOURCE }),
-  "/repo/src/kept.ts": presentFile({ text: CLASS_SOURCE }),
+  "/repo/src/kept.ts": presentFile({ text: UNSIBLINGED_SOURCE }),
   "/repo/src/plain.ts": presentFile({ text: PLAIN_SOURCE }),
+  "/repo/src/plain.test.ts": presentFile({ text: PLAIN_TEST_SOURCE }),
   "/repo/README.md": presentFile({ text: "# probe\n" }),
 };
 
@@ -63,7 +65,7 @@ const fileText: FileTextPort = {
 const path = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
 
 const PIECE_MODULES: Readonly<Record<string, unknown>> = {
-  "/install/mechanisms/audit/CD-14/class-syntax.ts": classSyntax,
+  "/install/mechanisms/audit/CD-23/export-test-sibling.ts": exportTestSibling,
   "/repo/probe/mechanisms/audit/PD-1/no-tmp-files.ts": noTmpFiles,
 };
 
@@ -81,6 +83,7 @@ const git: GitPort = {
         repoPathSchema.parse("src/scratch.tmp.ts"),
         repoPathSchema.parse("src/kept.ts"),
         repoPathSchema.parse("src/plain.ts"),
+        repoPathSchema.parse("src/plain.test.ts"),
         repoPathSchema.parse("README.md"),
       ],
     }),
@@ -89,7 +92,7 @@ const git: GitPort = {
 };
 
 const PROBE_ADDRESS = { ruleSet: { name: "probe" }, discipline: "PD-1", clause: "no-tmp-files" };
-const CLASS_SYNTAX_ADDRESS = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
+const EXPORT_TEST_SIBLING_ADDRESS = { ruleSet: "shared", discipline: "CD-23", clause: "export-test-sibling" };
 
 const probeCheck = () => {
   const parse = createDefaultParsePort({});
@@ -109,8 +112,8 @@ const probeCheck = () => {
   return { report, parseCalls };
 };
 
-describe("a check selecting the probe rule set's PD-1 beside CD-14 through the audit", () => {
-  it("flags the temporary file through the probe and the class through CD-14 in one run", async () => {
+describe("a check selecting the probe rule set's PD-1 beside CD-23 through the audit", () => {
+  it("flags the temporary file through the probe and the unit without a test sibling through CD-23 in one run", async () => {
     await expect(probeCheck().report).resolves.toEqual({
       outcome: "ok",
       value: {
@@ -124,10 +127,10 @@ describe("a check selecting the probe rule set's PD-1 beside CD-14 through the a
             mechanism: "audit",
           },
           {
-            clause: CLASS_SYNTAX_ADDRESS,
+            clause: EXPORT_TEST_SIBLING_ADDRESS,
             file: "src/kept.ts",
-            anchor: { line: 1, column: 7 },
-            snippet: "export class Kept {}",
+            anchor: { line: 1, column: 0 },
+            snippet: "missing co-located *.test.ts(x) sibling",
             mechanism: "audit",
           },
         ],
@@ -149,7 +152,7 @@ describe("a check selecting the probe rule set's PD-1 beside CD-14 through the a
     await report;
     expect(parseCalls.mock.calls).toEqual([
       [{ fileName: "src/scratch.tmp.ts", source: TEMPORARY_SOURCE }],
-      [{ fileName: "src/kept.ts", source: CLASS_SOURCE }],
+      [{ fileName: "src/kept.ts", source: UNSIBLINGED_SOURCE }],
       [{ fileName: "src/plain.ts", source: PLAIN_SOURCE }],
     ]);
   });

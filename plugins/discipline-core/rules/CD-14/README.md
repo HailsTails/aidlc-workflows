@@ -4,13 +4,14 @@
 
 Behaviour is composed from functions and closures, not authored classes — state lives in a factory that closes over it. A class appears only where an external library's API demands `new` at the call site; that instance is created inside the wrapping factory and held internally, never re-exported as a class. The rule is per-declaration, not per-export: even a non-exported authored class is a violation.
 
-The sections below describe what the audit check covers.
+The sections below describe what the audit and ESLint checks cover.
 
 ## Clauses
 
 | Clause | Mechanism | Checks |
 | --- | --- | --- |
 | `CD-14#class-syntax` | audit or eslint | a class declaration or expression outside ambient code |
+| `CD-14#static-only-class` | eslint | a class whose members are all static |
 | `CD-14#library-construction` | review | library classes are built only in wrapping factories and never re-exported |
 
 ## What the check flags
@@ -18,6 +19,12 @@ The sections below describe what the audit check covers.
 - Any class declaration, class expression, `abstract class`, nested class, or class inside a runtime `namespace`, reported at the `class` keyword.
 - Allowed: `declare class`, classes inside `declare module`, `declare global` or `declare namespace`, and `new Client()` on a class imported from a library.
 - `library-construction` is a judgement clause. It cannot be selected and is enforced by review.
+
+## What the ESLint check flags
+Needs ESLint adopted through the projection; see [the ESLint piece](../../mechanisms/eslint/CD-14/README.md).
+- `discipline/no-extraneous-class` is typescript-eslint's `no-extraneous-class` with `allowConstructorOnly: true`, `allowEmpty: true`, `allowStaticOnly: false` and `allowWithDecorator: true`.
+- It flags a class whose members are all static.
+- Allowed: empty classes, decorated classes and classes that extend another class.
 
 ## Example violation
 ```ts

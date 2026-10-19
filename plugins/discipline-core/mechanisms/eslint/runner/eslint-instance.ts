@@ -13,7 +13,10 @@ import {
   inlineConfigNodesSchema,
   type LoadedEslintPlugin,
 } from "./eslint-plugin-schema.ts";
+import type { RuleOptions } from "./eslint-piece-settings-schema.ts";
 import { parseInlineConfigComment } from "./inline-config-parser.ts";
+
+export type { AST, Rule, SourceCode } from "eslint";
 
 export const reservedNamespace = "discipline-core";
 
@@ -59,11 +62,18 @@ type InlineConfigPlugin = {
   };
 };
 
+export type GovernedRule = {
+  readonly ruleId: string;
+  readonly options: RuleOptions;
+};
+
+export type EnabledRuleEntry = "error" | readonly ["error", ...RuleOptions];
+
 export type GovernanceBlock = {
   readonly files: readonly string[];
   readonly languageOptions: { readonly parser: unknown };
   readonly plugins: Readonly<Record<string, LoadedEslintPlugin | InlineConfigPlugin>>;
-  readonly rules: Readonly<Record<string, "error">>;
+  readonly rules: Readonly<Record<string, EnabledRuleEntry>>;
 };
 
 export type EslintSurfaceOptions = {
@@ -128,13 +138,14 @@ export type EslintPort = {
   readonly createGovernanceInstance: (request: {
     readonly repoRoot: AbsolutePath;
     readonly plugins: Readonly<Record<string, LoadedEslintPlugin>>;
-    readonly ruleIds: readonly string[];
+    readonly rules: readonly GovernedRule[];
   }) => GovernanceInstance;
   readonly lintSourceCases: (request: {
     readonly cwd: AbsolutePath;
     readonly plugin: LoadedEslintPlugin;
     readonly pluginNamespace: string;
     readonly rule: string;
+    readonly options: RuleOptions;
     readonly cases: readonly SourceCase[];
   }) => Promise<Result<readonly CaseVerdict[], RunnerFailure>>;
 };
@@ -234,32 +245,37 @@ const inlineConfigPlugin = (request: { readonly ruleIds: readonly string[] }): I
   },
 });
 
+export const enabledRuleEntry = (request: { readonly options: RuleOptions }): EnabledRuleEntry =>
+  request.options.length === 0 ? "error" : ["error", ...request.options];
+
 export const governanceConfig = (request: {
   readonly plugins: Readonly<Record<string, LoadedEslintPlugin>>;
-  readonly ruleIds: readonly string[];
+  readonly rules: readonly GovernedRule[];
 }): GovernanceBlock => ({
   files: GOVERNED_FILES,
   languageOptions: { parser: typescriptParser },
   plugins: {
     ...request.plugins,
-    [reservedNamespace]: inlineConfigPlugin({ ruleIds: request.ruleIds }),
+    [reservedNamespace]: inlineConfigPlugin({ ruleIds: request.rules.map((governed) => governed.ruleId) }),
   },
   rules: Object.fromEntries(
-    [...request.ruleIds, INLINE_CONFIG_RULE_ID].map((ruleId): [string, "error"] => [ruleId, "error"]),
+    [...request.rules, { ruleId: INLINE_CONFIG_RULE_ID, options: [] }].map(
+      (governed): [string, EnabledRuleEntry] => [governed.ruleId, enabledRuleEntry({ options: governed.options })],
+    ),
   ),
 });
 
 const governanceOptions = (request: {
   readonly cwd: AbsolutePath;
   readonly plugins: Readonly<Record<string, LoadedEslintPlugin>>;
-  readonly ruleIds: readonly string[];
+  readonly rules: readonly GovernedRule[];
 }): EslintSurfaceOptions => ({
   cwd: request.cwd,
   overrideConfigFile: true,
   ignore: false,
   applySuppressions: false,
   allowInlineConfig: false,
-  overrideConfig: governanceConfig({ plugins: request.plugins, ruleIds: request.ruleIds }),
+  overrideConfig: governanceConfig({ plugins: request.plugins, rules: request.rules }),
 });
 
 const thrownDetail = (thrown: unknown): string =>
@@ -429,6 +445,7 @@ const sourceCaseVerdicts = (request: {
   readonly plugin: LoadedEslintPlugin;
   readonly pluginNamespace: string;
   readonly rule: string;
+  readonly options: RuleOptions;
   readonly cases: readonly SourceCase[];
 }): Promise<Result<readonly CaseVerdict[], RunnerFailure>> => {
   const ruleId = `${request.pluginNamespace}/${request.rule}`;
@@ -438,7 +455,7 @@ const sourceCaseVerdicts = (request: {
       options: governanceOptions({
         cwd: request.cwd,
         plugins: { [request.pluginNamespace]: request.plugin },
-        ruleIds: [ruleId],
+        rules: [{ ruleId, options: request.options }],
       }),
     }),
     act: (eslint) => lintedCasesOf({ eslint, cases: request.cases }),
@@ -454,7 +471,7 @@ export const createEslintPort = (options: { readonly createEslint: CreateEslint 
   createGovernanceInstance: (request) => {
     const surface = builtSurface({
       createEslint: options.createEslint,
-      options: governanceOptions({ cwd: request.repoRoot, plugins: request.plugins, ruleIds: request.ruleIds }),
+      options: governanceOptions({ cwd: request.repoRoot, plugins: request.plugins, rules: request.rules }),
     });
     return {
       lintFiles: (lint) =>
@@ -483,7 +500,19 @@ const eslintOptionsOf = (request: { readonly options: EslintSurfaceOptions }): E
   if (overrideConfig === undefined) {
     return surfaceOptions;
   }
-  return { ...surfaceOptions, overrideConfig: { ...overrideConfig, files: [...overrideConfig.files] } };
+  return {
+    ...surfaceOptions,
+    overrideConfig: {
+      ...overrideConfig,
+      files: [...overrideConfig.files],
+      rules: Object.fromEntries(
+        Object.entries(overrideConfig.rules).map(([ruleId, entry]) => [
+          ruleId,
+          typeof entry === "string" ? entry : [...entry],
+        ]),
+      ),
+    },
+  };
 };
 
 export const defaultCreateEslint: CreateEslint = (request) => {

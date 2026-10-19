@@ -60,6 +60,106 @@
           }
         ]
       }
+    },
+    {
+      "kind": "mechanical",
+      "id": "naming-convention",
+      "summary": "Meaningful names always — no shorthand, no filler words",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "identifier"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "snake_case function",
+            "fileName": "src/load.ts",
+            "source": "export function load_profile(): void {}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "PascalCase enum member",
+            "fileName": "src/colour.ts",
+            "source": "export enum Colour {\n  Red,\n}\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "snake_case object property",
+            "fileName": "src/settings.ts",
+            "source": "export const settings = { max_size: 1 };\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "lower-case type alias",
+            "fileName": "src/profile.ts",
+            "source": "export type profile = string;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "snake_case let binding",
+            "fileName": "src/count.ts",
+            "source": "let item_count = 0;\nexport { item_count };\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "CONSTANT_CASE const",
+            "fileName": "src/limits.ts",
+            "source": "export const MAX_SIZE = 10;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "camelCase function",
+            "fileName": "src/load.ts",
+            "source": "export function loadProfile(): void {}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "CONSTANT_CASE enum member",
+            "fileName": "src/colour.ts",
+            "source": "export enum Colour {\n  RED,\n}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "PascalCase type with camelCase property",
+            "fileName": "src/profile.ts",
+            "source": "export type Profile = { readonly displayName: string };\n",
+            "expectedLines": []
+          },
+          {
+            "name": "quoted property that is not an identifier",
+            "fileName": "src/headers.ts",
+            "source": "export const headers = { \"content-type\": \"json\" };\n",
+            "expectedLines": []
+          },
+          {
+            "name": "consecutive capitals in camelCase",
+            "fileName": "src/agent.ts",
+            "source": "export const agentID = \"a\";\n",
+            "expectedLines": []
+          },
+          {
+            "name": "unused underscore parameter",
+            "fileName": "src/ignore.ts",
+            "source": "export const ignore = (_unused_value: string): void => {};\n",
+            "expectedLines": []
+          }
+        ]
+      }
     }
   ]
 }

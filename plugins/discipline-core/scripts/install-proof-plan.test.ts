@@ -179,6 +179,7 @@ describe("consumerRootManifest", () => {
           private: true,
           dependencies: {
             "@eslint/plugin-kit": "0.7.3",
+            "@typescript-eslint/eslint-plugin": "8.71.2",
             "@typescript-eslint/parser": "8.71.2",
             eslint: "10.11.0",
             "jsonc-parser": "3.3.1",

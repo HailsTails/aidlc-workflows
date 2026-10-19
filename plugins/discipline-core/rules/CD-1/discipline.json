@@ -61,6 +61,128 @@
           }
         ]
       }
+    },
+    {
+      "kind": "mechanical",
+      "id": "explicit-any",
+      "summary": "No any, ever",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "any"
+      },
+      "exceptions": "refused",
+      "cases": {
+        "flag": [
+          {
+            "name": "any return annotation",
+            "fileName": "src/parse.ts",
+            "source": "export const parse = (text: string): any => JSON.parse(text);\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "any type argument",
+            "fileName": "src/table.ts",
+            "source": "export const table = new Map<string, any>();\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "as any cast",
+            "fileName": "src/value.ts",
+            "source": "export const value = JSON.parse(\"1\") as any;\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "unknown return annotation",
+            "fileName": "src/parse.ts",
+            "source": "export const parse = (text: string): unknown => JSON.parse(text);\n",
+            "expectedLines": []
+          },
+          {
+            "name": "the word any in a string",
+            "fileName": "src/label.ts",
+            "source": "export const label = \"any\";\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "implicit-any-let",
+      "summary": "No any, ever",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "let"
+      },
+      "exceptions": "refused",
+      "cases": {
+        "flag": [
+          {
+            "name": "let without a type or initialiser",
+            "fileName": "src/total.ts",
+            "source": "let total;\nexport { total };\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "var without a type or initialiser",
+            "fileName": "src/count.ts",
+            "source": "var count;\nexport { count };\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "one report for two untyped bindings",
+            "fileName": "src/pair.ts",
+            "source": "let first, second;\nexport { first, second };\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "let with an initialiser",
+            "fileName": "src/total.ts",
+            "source": "let total = 0;\nexport { total };\n",
+            "expectedLines": []
+          },
+          {
+            "name": "let with a type annotation",
+            "fileName": "src/total.ts",
+            "source": "let total: number;\nexport { total };\n",
+            "expectedLines": []
+          },
+          {
+            "name": "for-of head",
+            "fileName": "src/each.ts",
+            "source": "export const each = (items: readonly number[]): void => {\n  for (let item of items) {\n    void item;\n  }\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "declaration file",
+            "fileName": "src/env.d.ts",
+            "source": "declare let flag;\n",
+            "expectedLines": []
+          }
+        ]
+      }
     }
   ]
 }

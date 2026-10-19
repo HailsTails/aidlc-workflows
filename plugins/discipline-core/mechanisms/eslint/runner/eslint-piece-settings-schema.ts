@@ -17,7 +17,13 @@ export const eslintPieceSettingsSchema = z
     pluginNamespace: z.string(),
     pluginModule: pieceModulePathSchema,
     rule: z.string(),
+    options: z.array(z.json()).readonly().optional(),
   })
   .readonly();
 
 export type EslintPieceSettings = z.infer<typeof eslintPieceSettingsSchema>;
+
+export type RuleOptions = NonNullable<EslintPieceSettings["options"]>;
+
+export const ruleOptionsOf = (request: { readonly settings: EslintPieceSettings }): RuleOptions =>
+  request.settings.options ?? [];

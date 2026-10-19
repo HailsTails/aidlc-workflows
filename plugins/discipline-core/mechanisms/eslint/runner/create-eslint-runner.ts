@@ -25,6 +25,7 @@ import type { Result } from "../../../core/values/result.ts";
 import type { RuleState } from "./eslint-config-schema.ts";
 import {
   type EslintPort,
+  type GovernedRule,
   INLINE_CONFIG_RULE_ID,
   type IgnoredState,
   type LintedFile,
@@ -32,7 +33,7 @@ import {
   type QueryInstance,
   reservedNamespace,
 } from "./eslint-instance.ts";
-import { type EslintPieceSettings, eslintPieceSettingsSchema } from "./eslint-piece-settings-schema.ts";
+import { type EslintPieceSettings, eslintPieceSettingsSchema, ruleOptionsOf } from "./eslint-piece-settings-schema.ts";
 import { eslintPluginModuleSchema, type LoadedEslintPlugin } from "./eslint-plugin-schema.ts";
 import { parseInlineConfigComment } from "./inline-config-parser.ts";
 import { type PackageJsonScan, scanPackageJson, type SelectedRule } from "./package-script-scanner.ts";
@@ -347,7 +348,11 @@ const projectedPieceOf = (request: {
   pluginImport: request.first.pluginImport,
   clauses: request.configured
     .filter((entry) => entry.settings.pluginNamespace === request.first.settings.pluginNamespace)
-    .map((entry) => ({ address: entry.clause.address, ruleId: entry.ruleId })),
+    .map((entry) => ({
+      address: entry.clause.address,
+      ruleId: entry.ruleId,
+      options: ruleOptionsOf({ settings: entry.settings }),
+    })),
 });
 
 const projectedPieces = (request: {
@@ -893,6 +898,9 @@ const reportWith = (request: {
 const ruleIdsOf = (request: { readonly selected: readonly SelectedClause[] }): readonly string[] =>
   request.selected.map((entry) => entry.ruleId);
 
+const governedRulesOf = (request: { readonly selected: readonly SelectedClause[] }): readonly GovernedRule[] =>
+  request.selected.map((entry) => ({ ruleId: entry.ruleId, options: ruleOptionsOf({ settings: entry.settings }) }));
+
 const pluginsByNamespace = (request: {
   readonly selected: readonly SelectedClause[];
 }): Readonly<Record<string, LoadedEslintPlugin>> =>
@@ -923,7 +931,7 @@ const governedLint = (request: {
     .createGovernanceInstance({
       repoRoot: request.run.repoRoot,
       plugins: pluginsByNamespace({ selected: request.selected }),
-      ruleIds: ruleIdsOf({ selected: request.selected }),
+      rules: governedRulesOf({ selected: request.selected }),
     })
     .lintFiles({ files: request.run.files });
 };
@@ -1062,6 +1070,7 @@ const lintedSourceCases = (request: {
     plugin: request.selected.value.plugin,
     pluginNamespace: request.selected.value.settings.pluginNamespace,
     rule: request.selected.value.settings.rule,
+    options: ruleOptionsOf({ settings: request.selected.value.settings }),
     cases: request.cases,
   });
 };

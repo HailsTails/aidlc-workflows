@@ -30,11 +30,17 @@ const CD14: DisciplineFile = {
       summary: "no authored class syntax",
       enforcedBy: "review",
     },
+    {
+      kind: "judgement",
+      id: clauseIdSchema.parse("static-only-class"),
+      summary: "no class holding only static members",
+      enforcedBy: "review",
+    },
   ],
 };
 
 describe("CD-14 ESLint piece.json", () => {
-  it("loads as the ESLint CD-14 piece pointing class-syntax at the no-class-authoring rule of its plugin module", () => {
+  it("loads as the ESLint CD-14 piece pointing class-syntax at no-class-authoring and static-only-class at no-extraneous-class with Biome's noStaticOnlyClass reach", () => {
     expect(
       readPieceFile({
         fileText,
@@ -56,6 +62,15 @@ describe("CD-14 ESLint piece.json", () => {
               pluginNamespace: "discipline",
               pluginModule: "cd14/cd14.eslint-plugin.ts",
               rule: "no-class-authoring",
+            },
+          },
+          {
+            clause: "static-only-class",
+            settings: {
+              pluginNamespace: "discipline",
+              pluginModule: "cd14/cd14.eslint-plugin.ts",
+              rule: "no-extraneous-class",
+              options: [{ allowConstructorOnly: true, allowEmpty: true, allowStaticOnly: false, allowWithDecorator: true }],
             },
           },
         ],

@@ -62,6 +62,7 @@ At the repository root. It selects clauses and the mechanism that checks each on
   "ruleSets": { "team": "tools/disciplines" },
   "clauses": {
     "CD-14#class-syntax": "eslint",
+    "CD-14#static-only-class": "eslint",
     "team/TD-1#some-clause": "audit"
   },
   "exclude": ["tools/discipline-core", "generated"]

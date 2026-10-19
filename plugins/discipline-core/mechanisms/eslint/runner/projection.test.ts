@@ -44,13 +44,13 @@ const whyChain: WhyChain = {
 const cd14Piece: ProjectedPiece = {
   pluginNamespace: "discipline",
   pluginImport: "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
-  clauses: [{ address: classSyntax, ruleId: "discipline/no-class-authoring" }],
+  clauses: [{ address: classSyntax, ruleId: "discipline/no-class-authoring", options: [] }],
 };
 
 const probePiece: ProjectedPiece = {
   pluginNamespace: "custom-lint",
   pluginImport: "../team-rules/mechanisms/eslint/PD-1/plugin.ts",
-  clauses: [{ address: noTmpFiles, ruleId: "custom-lint/no-tmp-files" }],
+  clauses: [{ address: noTmpFiles, ruleId: "custom-lint/no-tmp-files", options: [] }],
 };
 
 const authorisedInB: ExceptionRecord = {
@@ -152,6 +152,18 @@ export default [
 ];
 `;
 
+const enablingWithOptionsProjection = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
+
+export default [
+  {
+    name: "discipline-core/piece/discipline",
+    files: ["**/*.{ts,tsx,mts,cts}"],
+    plugins: { "discipline": piece0 },
+    rules: { "discipline/no-class-authoring": ["error",{"max":2}] },
+  },
+];
+`;
+
 const carveOutOnlyProjection = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
 
 export default [
@@ -233,6 +245,17 @@ describe("projectionText", () => {
     expect(projectionText({ selectedPieces: [cd14Piece], records: [] })).toBe(
       enablingOnlyProjection,
     );
+  });
+
+  it("enables a rule with options as an error entry followed by those options", () => {
+    expect(
+      projectionText({
+        selectedPieces: [
+          { ...cd14Piece, clauses: [{ address: classSyntax, ruleId: "discipline/no-class-authoring", options: [{ max: 2 }] }] },
+        ],
+        records: [],
+      }),
+    ).toBe(enablingWithOptionsProjection);
   });
 
   it("emits a file carve-out block whether or not the carve-out is forfeited, since the projection takes no touched set", () => {
