@@ -3,6 +3,7 @@ import type { LoadFailure } from "../check/load-failure.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../platform-ports/file-text-port.ts";
 import { createDefaultPathPort, type PathPort } from "../platform-ports/path-port.ts";
 import {
+  type ClauseExceptions,
   type DisciplineFile,
   disciplineFilePath,
   type PieceFile,
@@ -56,6 +57,7 @@ type ResolvedClause = {
   readonly discipline: DisciplineFile;
   readonly piece: PieceFile;
   readonly binding: ClauseBinding;
+  readonly exceptions: ClauseExceptions;
 };
 
 const SHARED_RULE_SET = "shared";
@@ -87,6 +89,7 @@ const consumerSelectionFileSchema = z.strictObject({
     .record(z.string(), z.string())
     .transform((clauses) => Object.entries(clauses))
     .pipe(z.array(z.tuple([clauseAddressSchema, mechanismIdSchema]))),
+  exclude: z.array(repoPathSchema).default([]),
 });
 
 type ConsumerSelectionFile = z.infer<typeof consumerSelectionFileSchema>;
@@ -240,6 +243,7 @@ const resolvedClauseOf = (request: {
     ruleSetRoot: clauseRequest.ruleSetRoot,
     discipline: defined.discipline,
     piece: entry.piece,
+    exceptions: defined.definition.exceptions,
     binding: {
       mechanism: clauseRequest.mechanism,
       clause: {
@@ -373,12 +377,20 @@ const parsedSelectionFile = (request: {
   return { outcome: "ok", value: parsed.data };
 };
 
-const selectionReadingOf = (request: { readonly resolved: readonly ResolvedClause[] }): SelectionReading => ({
+const selectionReadingOf = (request: {
+  readonly resolved: readonly ResolvedClause[];
+  readonly excluded: readonly RepoPath[];
+}): SelectionReading => ({
   selection: {
-    selected: request.resolved.map(({ binding }) => ({ address: binding.clause.address, mechanism: binding.mechanism })),
+    selected: request.resolved.map(({ binding, exceptions }) => ({
+      address: binding.clause.address,
+      mechanism: binding.mechanism,
+      exceptions,
+    })),
     uncovered: uncoveredClauses(request),
   },
   bindings: request.resolved.map(({ binding }) => binding),
+  excluded: request.excluded,
 });
 
 export const readSelection = (request: {
@@ -398,5 +410,5 @@ export const readSelection = (request: {
   if (resolved.outcome === "failed") {
     return resolved;
   }
-  return { outcome: "ok", value: selectionReadingOf({ resolved: resolved.value }) };
+  return { outcome: "ok", value: selectionReadingOf({ resolved: resolved.value, excluded: file.value.exclude }) };
 };

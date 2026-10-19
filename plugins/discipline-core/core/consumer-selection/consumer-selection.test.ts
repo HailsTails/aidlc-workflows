@@ -203,8 +203,8 @@ describe("createSelectionRepository", () => {
       value: {
         selection: {
           selected: [
-            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker" },
-            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker", exceptions: "allowed" },
+            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker", exceptions: "allowed" },
           ],
           uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }],
         },
@@ -228,8 +228,47 @@ describe("createSelectionRepository", () => {
             },
           },
         ],
+        excluded: [],
       },
     });
+  });
+
+  it("reads the paths disciplines.json excludes from checking", () => {
+    const repository = createSelectionRepository({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      path: TABLE_PATH,
+      fileText: fileTextOver({
+        ...INSTALL,
+        [SELECTION_PATH]: presentFile({ text: JSON.stringify({
+          version: 1,
+          ruleSets: {},
+          clauses: { "CD-14#class-syntax": "walker" },
+          exclude: ["vendor", "src/generated.ts"],
+        }) }),
+      }),
+    });
+
+    expect(repository.read({})).toMatchObject({ outcome: "ok", value: { excluded: ["vendor", "src/generated.ts"] } });
+  });
+
+  it("is file-malformed when disciplines.json excludes a path that is not a repository path", () => {
+    const repository = createSelectionRepository({
+      repoRoot: REPO_ROOT,
+      installRoot: INSTALL_ROOT,
+      path: TABLE_PATH,
+      fileText: fileTextOver({
+        ...INSTALL,
+        [SELECTION_PATH]: presentFile({ text: JSON.stringify({
+          version: 1,
+          ruleSets: {},
+          clauses: { "CD-14#class-syntax": "walker" },
+          exclude: ["../outside"],
+        }) }),
+      }),
+    });
+
+    expect(repository.read({})).toMatchObject({ outcome: "failed", error: { kind: "file-malformed" } });
   });
 
   it("preserves the canonical selection read failure at the captured repository root", () => {
@@ -280,8 +319,8 @@ describe("readSelection", () => {
       value: {
         selection: {
           selected: [
-            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker" },
-            { address: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }, mechanism: "walker" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker", exceptions: "allowed" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }, mechanism: "walker", exceptions: "allowed" },
           ],
           uncovered: [],
         },
@@ -305,6 +344,7 @@ describe("readSelection", () => {
             },
           },
         ],
+        excluded: [],
       },
     });
   });
@@ -321,7 +361,7 @@ describe("readSelection", () => {
       value: {
         selection: {
           selected: [
-            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker" },
+            { address: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "walker", exceptions: "allowed" },
           ],
           uncovered: [],
         },
@@ -336,6 +376,7 @@ describe("readSelection", () => {
             },
           },
         ],
+        excluded: [],
       },
     });
   });
@@ -348,11 +389,12 @@ describe("readSelection", () => {
       value: {
         selection: {
           selected: [
-            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker" },
+            { address: { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" }, mechanism: "walker", exceptions: "allowed" },
           ],
           uncovered: [{ ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" }],
         },
         bindings: [expect.objectContaining({ mechanism: "walker" })],
+        excluded: [],
       },
     });
   });

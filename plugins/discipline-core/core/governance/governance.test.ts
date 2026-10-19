@@ -146,7 +146,7 @@ describe("applyGovernance with provenance-only inherited debt", () => {
       resolve: vi.fn<PathPort["resolve"]>(),
       fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
     };
-    const exceptionReading = createExceptionRepository({ repoRoot: absolutePathSchema.parse("/repo"), fileText, path }).read({ selection: { selected: [{ address: noClass, mechanism: walker }], uncovered: [] } });
+    const exceptionReading = createExceptionRepository({ repoRoot: absolutePathSchema.parse("/repo"), fileText, path }).read({ selection: { selected: [{ address: noClass, mechanism: walker, exceptions: "allowed" }], uncovered: [] } });
 
     expect(exceptionReading).toMatchObject({ outcome: "ok", value: { invalid: [] } });
     assert(exceptionReading.outcome === "ok");

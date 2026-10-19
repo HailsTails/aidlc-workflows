@@ -64,6 +64,7 @@ const CLASS_SYNTAX = {
   summary: "no class syntax",
   mechanisms: ["walker", "eslint"],
   anchor: { kind: "keyword", keyword: "class" },
+  exceptions: "allowed",
   cases: { flag: [FLAG_CASE], allow: [ALLOW_CASE] },
 };
 
@@ -105,6 +106,7 @@ const LOADED_DISCIPLINE: DisciplineFile = {
       summary: CLASS_SYNTAX.summary,
       mechanisms: [WALKER, mechanismIdSchema.parse("eslint")],
       anchor: { kind: "keyword", keyword: "class" },
+      exceptions: "allowed",
       cases: { flag: [], allow: [] },
     },
   ],
@@ -122,6 +124,21 @@ const readPiece = (file: unknown) =>
 describe("readDisciplineFile", () => {
   it("reads <ruleSetRoot>/rules/<discipline>/discipline.json into a discipline file", () => {
     expect(readDiscipline(DISCIPLINE)).toEqual({ outcome: "ok", value: DISCIPLINE });
+  });
+
+  it("reads a clause that names no exceptions policy as allowing exceptions", () => {
+    const { exceptions: _exceptions, ...unstated } = CLASS_SYNTAX;
+
+    expect(readDiscipline({ ...DISCIPLINE, clauses: [unstated, LIBRARY_CONSTRUCTION] })).toEqual({
+      outcome: "ok",
+      value: DISCIPLINE,
+    });
+  });
+
+  it("reads a clause that refuses exceptions", () => {
+    const refusing = { ...DISCIPLINE, clauses: [{ ...CLASS_SYNTAX, exceptions: "refused" }, LIBRARY_CONSTRUCTION] };
+
+    expect(readDiscipline(refusing)).toEqual({ outcome: "ok", value: refusing });
   });
 
   it("allows a case fileName ending .d.ts", () => {

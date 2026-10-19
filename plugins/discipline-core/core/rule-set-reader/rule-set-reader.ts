@@ -29,6 +29,7 @@ export type ClauseDefinition =
       readonly summary: string;
       readonly mechanisms: readonly MechanismId[];
       readonly anchor: AnchorKind;
+      readonly exceptions: ClauseExceptions;
       readonly cases: {
         readonly flag: readonly SourceCase[];
         readonly allow: readonly SourceCase[];
@@ -40,6 +41,8 @@ export type ClauseDefinition =
       readonly summary: string;
       readonly enforcedBy: "review";
     };
+
+export type ClauseExceptions = "allowed" | "refused";
 
 export type DisciplineFile = {
   readonly version: 1;
@@ -143,6 +146,7 @@ const clauseDefinitionSchema = z.discriminatedUnion("kind", [
       .array(mechanismIdSchema)
       .refine((entries) => entryCount(entries) === "some", { error: "a mechanical clause names no mechanism" }),
     anchor: anchorKindSchema,
+    exceptions: z.enum(["allowed", "refused"]).default("allowed"),
     cases: z.object({
       flag: z
         .array(flagCaseSchema)

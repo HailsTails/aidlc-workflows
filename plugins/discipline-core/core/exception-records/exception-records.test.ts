@@ -16,8 +16,8 @@ const EXCEPTIONS_PATH = "/repo/discipline-exceptions.json";
 
 const SELECTION: Selection = {
   selected: [
-    { address: clauseAddressSchema.parse("CD-14#class-syntax"), mechanism: mechanismIdSchema.parse("walker") },
-    { address: clauseAddressSchema.parse("team/TM-1#no-tmp-files"), mechanism: mechanismIdSchema.parse("eslint") },
+    { address: clauseAddressSchema.parse("CD-14#class-syntax"), mechanism: mechanismIdSchema.parse("walker"), exceptions: "allowed" },
+    { address: clauseAddressSchema.parse("team/TM-1#no-tmp-files"), mechanism: mechanismIdSchema.parse("eslint"), exceptions: "allowed" },
   ],
   uncovered: [],
 };
@@ -486,7 +486,7 @@ describe("canonical exception evidence", () => {
   });
 });
 
-describe("CD1 non-exemptibility at the canonical boundary", () => {
+describe("non-exemptibility at the canonical boundary, for a clause whose discipline refuses exceptions", () => {
   it.each([
     { kind: "authorised-location", clause: "CD-1#any-cast", file: "src/unsafe.ts", reason: "fictional non-exemptibility input", whyChain: CHAIN },
     { kind: "file-carve-out", clause: "CD-1#any-cast", file: "src/unsafe.ts", reason: "fictional non-exemptibility input", whyChain: CHAIN },
@@ -494,7 +494,7 @@ describe("CD1 non-exemptibility at the canonical boundary", () => {
   ])("refuses an adopted any clause for $kind", (entry) => {
     expect(readCanonicalExceptions({
       text: JSON.stringify({ version: 1, exceptions: [entry] }),
-      selection: { selected: [{ address: clauseAddressSchema.parse("CD-1#any-cast"), mechanism: mechanismIdSchema.parse("walker") }], uncovered: [] },
+      selection: { selected: [{ address: clauseAddressSchema.parse("CD-1#any-cast"), mechanism: mechanismIdSchema.parse("walker"), exceptions: "refused" }], uncovered: [] },
     })).toEqual({ outcome: "ok", value: { records: [], invalid: [
       { index: 0, problem: { kind: "non-exemptible-clause", clause: { ruleSet: "shared", discipline: "CD-1", clause: "any-cast" } } },
     ] } });

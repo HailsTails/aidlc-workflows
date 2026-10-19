@@ -50,6 +50,7 @@ export type LoadedInputs = {
   readonly records: readonly ExceptionRecord[];
   readonly invalidRecords: readonly InvalidRecord[];
   readonly mechanisms: readonly LoadedMechanism[];
+  readonly excluded: readonly RepoPath[];
 };
 
 const TYPESCRIPT_FILE = /\.(?:ts|tsx|mts|cts)$/;
@@ -160,6 +161,7 @@ export const loadInputs = async (request: LoadRequest): Promise<Result<LoadedInp
       records: parsed.records,
       invalidRecords: parsed.invalid,
       mechanisms: mechanisms.value,
+      excluded: reading.value.excluded,
     },
   };
 };
@@ -209,12 +211,28 @@ const workingTreePaths = (request: {
       }) === "present",
   );
 
-const presentTrackedPaths = (request: CheckRequest): Result<readonly RepoPath[], LoadFailure> => {
-  const tracked = request.git.trackedPaths({ repoRoot: request.repoRoot });
+const exclusion = (request: {
+  readonly trackedPath: RepoPath;
+  readonly excluded: readonly RepoPath[];
+}): "excluded" | "checked" =>
+  request.excluded.some(
+    (excludedPath) => request.trackedPath === excludedPath || request.trackedPath.startsWith(`${excludedPath}/`),
+  )
+    ? "excluded"
+    : "checked";
+
+const presentTrackedPaths = (request: {
+  readonly check: CheckRequest;
+  readonly excluded: readonly RepoPath[];
+}): Result<readonly RepoPath[], LoadFailure> => {
+  const tracked = request.check.git.trackedPaths({ repoRoot: request.check.repoRoot });
   if (tracked.outcome === "failed") {
     return failed({ kind: "git-failed", detail: `${tracked.error.command}: ${tracked.error.detail}` });
   }
-  return { outcome: "ok", value: workingTreePaths({ check: request, tracked: tracked.value }) };
+  const checked = tracked.value.filter(
+    (trackedPath) => exclusion({ trackedPath, excluded: request.excluded }) === "checked",
+  );
+  return { outcome: "ok", value: workingTreePaths({ check: request.check, tracked: checked }) };
 };
 
 const runRequestOf = (request: {
@@ -287,7 +305,7 @@ export const runCheck = async (request: CheckRequest): Promise<Result<CheckRepor
   if (inputs.outcome === "failed") {
     return inputs;
   }
-  const tracked = presentTrackedPaths(request);
+  const tracked = presentTrackedPaths({ check: request, excluded: inputs.value.excluded });
   if (tracked.outcome === "failed") {
     return tracked;
   }

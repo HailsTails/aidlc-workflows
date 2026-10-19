@@ -177,7 +177,7 @@ const selectedClauseOf = (request: {
   if (selected === undefined) {
     return { outcome: "failed", error: { kind: "clause-not-selected", clause } };
   }
-  if (clause.discipline === "CD-1") {
+  if (selected.exceptions === "refused") {
     return { outcome: "failed", error: { kind: "non-exemptible-clause", clause } };
   }
   return { outcome: "ok", value: { clause, mechanism: selected.mechanism } };

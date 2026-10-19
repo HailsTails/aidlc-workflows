@@ -77,6 +77,7 @@ const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","src/f.json"]': "/repo/src/f.json",
   '["/repo","src/factory.ts"]': "/repo/src/factory.ts",
   '["/repo","src/gone.ts"]': "/repo/src/gone.ts",
+  '["/repo","vendored/kept.ts"]': "/repo/vendored/kept.ts",
 };
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
@@ -149,6 +150,13 @@ const PIECE_WITH_TWO_CLAUSES = JSON.stringify({
 
 const SELECTION = JSON.stringify({ version: 1, ruleSets: {}, clauses: { "CD-14#class-syntax": "walker" } });
 
+const SELECTION_EXCLUDING_VENDOR = JSON.stringify({
+  version: 1,
+  ruleSets: {},
+  clauses: { "CD-14#class-syntax": "walker" },
+  exclude: ["vendor", "src/generated.ts"],
+});
+
 const SELECTION_OF_TWO_CLAUSES = JSON.stringify({
   version: 1,
   ruleSets: {},
@@ -217,6 +225,7 @@ const WORKING_TREE: Readonly<Record<string, FakeFile>> = {
   "/repo/src/f.json": presentFile({ text: "" }),
   "/repo/src/factory.ts": presentFile({ text: "" }),
   "/repo/src/gone.ts": ABSENT_FILE,
+  "/repo/vendored/kept.ts": presentFile({ text: "" }),
 };
 
 const INSTALL: Readonly<Record<string, FakeFile>> = {
@@ -554,6 +563,31 @@ describe("runCheck runner dispatch", () => {
     );
     expect(vi.mocked(runner.run).mock.calls).toEqual([
       [expect.objectContaining({ files: ["src/a.ts"], trackedPaths: ["README.md", "src/a.ts"] })],
+    ]);
+  });
+
+  it("drops every tracked path disciplines.json excludes, as a folder or as an exact file, from the files and the tracked paths it runs on", async () => {
+    const runner = standaloneRunner({ runReturns: { outcome: "ok", value: [] } });
+    await runCheck(
+      checkRequest({
+        fileText: fileTextOver({ ...INSTALL, [SELECTION_PATH]: presentFile({ text: SELECTION_EXCLUDING_VENDOR }) }),
+        modules: modulesLoading({ runner }),
+        git: gitReporting({
+          trackedPaths: {
+            outcome: "ok",
+            value: [
+              repoPathSchema.parse("src/a.ts"),
+              repoPathSchema.parse("src/generated.ts"),
+              repoPathSchema.parse("vendor/lib.ts"),
+              repoPathSchema.parse("vendored/kept.ts"),
+            ],
+          },
+          changedSince: { outcome: "ok", value: [] },
+        }),
+      }),
+    );
+    expect(vi.mocked(runner.run).mock.calls).toEqual([
+      [expect.objectContaining({ files: ["src/a.ts", "vendored/kept.ts"], trackedPaths: ["src/a.ts", "vendored/kept.ts"] })],
     ]);
   });
 
