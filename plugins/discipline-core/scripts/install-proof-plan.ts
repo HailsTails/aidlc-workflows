@@ -257,10 +257,7 @@ export const consumerRootManifest = (request: { readonly packageManifest: string
   }
   const manifest = dependenciesManifestSchema.safeParse(parsed.value);
   return manifest.success
-    ? {
-        outcome: "ok",
-        value: `${JSON.stringify({ private: true, dependencies: manifest.data.dependencies }, null, 2)}\n`,
-      }
+    ? { outcome: "ok", value: request.packageManifest }
     : { outcome: "failed", error: { kind: "manifest-invalid", detail: manifest.error.message } };
 };
 

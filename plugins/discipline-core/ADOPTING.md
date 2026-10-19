@@ -38,7 +38,7 @@ Copy `package.json`, `README.md`, `core/`, every rule page, both mechanisms and 
 SRC=/tmp/discipline-core-source/plugins/discipline-core
 DEST=tools/discipline-core
 mkdir -p "$DEST"
-cp "$SRC/package.json" "$SRC/README.md" "$DEST/"
+cp "$SRC/package.json" "$SRC/package-lock.json" "$SRC/README.md" "$DEST/"
 cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
 find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
 find "$DEST" -name '*.test.ts' -delete
@@ -46,16 +46,15 @@ find "$DEST" -name '*.test.ts' -delete
 
 Copying everything is the simplest install. [README.md](README.md#installing) lists the smaller set a selection strictly needs, if you would rather copy only that.
 
-Install the core's runtime packages inside the install folder, so they resolve from there. Remove the core's own development entries first; npm otherwise tries to resolve its test tooling and can fail:
+Install the core's runtime packages inside the install folder, from the lockfile, so every machine gets exactly the tree that core's tests ran against. `--omit=dev` leaves out the core's own test tooling:
 
 ```bash
 cd tools/discipline-core
-npm pkg delete devDependencies scripts
-npm install --no-audit --no-fund --ignore-scripts
+npm ci --omit=dev --no-audit --no-fund --ignore-scripts
 cd -
 ```
 
-Add `tools/discipline-core/node_modules/` to `<repo>/.gitignore`, and commit `tools/discipline-core/` with a message that names the pinned SHA. To update later, repeat this step with a newer SHA.
+Add `tools/discipline-core/node_modules/` to `<repo>/.gitignore`, and commit `tools/discipline-core/` including its `package-lock.json` with a message that names the pinned SHA. To update later, repeat this step with a newer SHA.
 
 ## 3. Read what each discipline means
 

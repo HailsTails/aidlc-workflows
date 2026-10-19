@@ -118,12 +118,12 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 
 Fetch these paths from a pinned commit of this repository into one install directory, keeping their layout:
 
-- always: `package.json`, `README.md` and `core/`
+- always: `package.json`, `package-lock.json`, `README.md` and `core/`
 - for each selected clause in the shared rule set: `rules/<DisciplineId>/`, `mechanisms/<MechanismId>/runner/` and `mechanisms/<MechanismId>/<DisciplineId>/`
 - for each selected clause in the repository's own rule set: `mechanisms/<MechanismId>/runner/` only, since the discipline and its piece live in that rule set
 - to apply judgement rules in review: `rules/<DisciplineId>/` for each adopted judgement rule, and `methods/`; the check itself never reads them
 
-`package.json` is fetched for its `"type": "module"`. Every runtime file is an ES module, and Node takes a file's module type from the nearest `package.json` above it; without this one, that is the consumer's own, and under `"type": "commonjs"` the check crashes.
+`package.json` is fetched for its `"type": "module"` and, with `package-lock.json`, for the dependency tree to install: run `npm ci --omit=dev` in the install directory. Every runtime file is an ES module, and Node takes a file's module type from the nearest `package.json` above it; without this one, that is the consumer's own, and under `"type": "commonjs"` the check crashes.
 
 Leave out test files (`*.test.ts`), `tests/` folders and `test-fixtures/` folders. The install must not sit under a `node_modules` path, because Node does not strip types there. Nothing core reads or writes is under a harness directory.
 
@@ -144,7 +144,7 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 
 A repository can hold one `eslint.config.*` at its root or one per package. Core resolves the team's configuration the way the team's own ESLint run does. ESLint 10, and ESLint 9 started with `--flag v10_config_lookup_from_file` (or `unstable_config_lookup_from_file`), use the `eslint.config.*` nearest each checked file. Plain ESLint 9 uses only the one in the directory it runs from, so for a repository whose `eslint` resolves to 9.x at `node_modules/eslint` and whose lint scripts carry no such flag, core reads the root `eslint.config.*` for every file, and fails the run as `team-config-unloadable` if there is none. When core cannot read an installed `eslint` at the repository root it assumes the nearest-to-file lookup. Each config that applies to a file must spread the projection. Detection cannot see how a task runner starts ESLint, so `disciplines.json` can state the lookup: `"eslintConfigLookup": "nearest-to-file"` or `"repository-root"`, which overrides detection. Both lookups are tested against monorepo fixtures with a config per package.
 
-The packages must resolve from the install directory.
+Every package core runs itself is a locked dependency in `package.json` and `package-lock.json`, installed inside the install directory; the pieces' plugin modules resolve their packages from there too, so the team's own ESLint run loads them next to its own `eslint` and parser without a peer declaration (tested on 9.39.5 with both installed). The lockfile is regenerated with `npm run lock`, which passes `--legacy-peer-deps` because npm 10 cannot resolve the test tooling's peers.
 
 ## Known limits
 

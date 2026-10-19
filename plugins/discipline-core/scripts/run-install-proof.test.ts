@@ -15,9 +15,12 @@ const README =
 
 const PACKAGE_MANIFEST = '{ "dependencies": { "zod": "4.4.3" } }';
 
+const PACKAGE_LOCK = '{ "lockfileVersion": 3 }';
+
 const PACKAGE_FILES: Readonly<Record<string, string>> = {
   "/package/README.md": README,
   "/package/package.json": PACKAGE_MANIFEST,
+  "/package/package-lock.json": PACKAGE_LOCK,
 };
 
 const DIRECTORIES: Readonly<Record<string, string>> = {
@@ -28,10 +31,12 @@ const DIRECTORIES: Readonly<Record<string, string>> = {
 const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/package","README.md"]': "/package/README.md",
   '["/package","package.json"]': "/package/package.json",
+  '["/package","package-lock.json"]': "/package/package-lock.json",
   '["/package","core"]': "/package/core",
   '["/package","rules/CD-14"]': "/package/rules/CD-14",
   '["/package","tests","test-fixtures","consumer-proof","audit"]': "/package/tests/test-fixtures/consumer-proof/audit",
   '["/scratch","package.json"]': "/scratch/package.json",
+  '["/scratch","package-lock.json"]': "/scratch/package-lock.json",
   '["/scratch","audit"]': "/scratch/audit",
   '["/scratch/audit","package.json"]': "/scratch/audit/package.json",
   '["/scratch/audit","tools","discipline-core"]': "/scratch/audit/tools/discipline-core",
@@ -142,7 +147,7 @@ describe("runInstallProof", () => {
     await runInstallProof(proofRequest({ commands }));
 
     expect(vi.mocked(commands.run).mock.calls).toEqual([
-      [{ command: "npm", arguments: ["install", "--no-audit", "--no-fund", "--ignore-scripts"], directory: "/scratch" }],
+      [{ command: "npm", arguments: ["ci", "--omit=dev", "--no-audit", "--no-fund", "--ignore-scripts"], directory: "/scratch" }],
       [{ command: "git", arguments: expect.arrayContaining(["init", "-q"]), directory: "/scratch/audit" }],
       [{ command: "git", arguments: expect.arrayContaining(["add", "-A"]), directory: "/scratch/audit" }],
       [{ command: "git", arguments: expect.arrayContaining(["commit", "-q", "-m", "consumer"]), directory: "/scratch/audit" }],
@@ -214,7 +219,7 @@ describe("runInstallProof", () => {
     expect(vi.mocked(scratch.listTree).mock.calls).toEqual([[{ path: "/scratch/audit/tools/discipline-core" }]]);
   });
 
-  it("exits 1 with the npm output when npm install fails, running nothing after it", async () => {
+  it("exits 1 with the npm output when npm ci fails, running nothing after it", async () => {
     const proofProcess = processPort();
     const commands = commandsReturning(EXITED_NPM_ERROR);
 
@@ -222,14 +227,14 @@ describe("runInstallProof", () => {
 
     expect({ report: reportOf({ process: proofProcess }), runs: vi.mocked(commands.run).mock.calls.length }).toEqual({
       report: {
-        writes: [[{ text: "FAIL: npm install at the consumer root: exit 1\nnpm ERR! network\n" }]],
+        writes: [[{ text: "FAIL: npm ci at the consumer root: exit 1\nnpm ERR! network\n" }]],
         exits: [[{ code: 1 }]],
       },
       runs: 1,
     });
   });
 
-  it("removes the temporary consumer root when npm install fails", async () => {
+  it("removes the temporary consumer root when npm ci fails", async () => {
     const scratch = scratchPort({});
 
     await runInstallProof(proofRequest({ scratch, commands: commandsReturning(EXITED_NPM_ERROR) }));
