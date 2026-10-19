@@ -141,6 +141,13 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 - The audit mechanism adds `typescript`.
 - The ESLint mechanism adds the team's `eslint` 9.x or 10.x, an `@typescript-eslint/parser` that supports it, and `@eslint/plugin-kit`. The team's own ESLint run, which loads the projection and the pieces' plugin modules, is tested on 9.39.5 (every piece's shared cases, in `eslint-9-compatibility.test.ts`) and on 10.11.0; core's own check run always uses the `eslint` it ships with, whatever the team runs. Versions before 9.0 are not supported.
 
+Core reads the team's configuration the way ESLint 10 does: from the `eslint.config.*` nearest each checked file. ESLint 9 by default finds only the one in the directory it is run from, so a repository with a nested `eslint.config.*` (a per-package config in a monorepo) gets different verdicts from core and from the team's own run unless the team's run looks up configs the same way. On ESLint 9 use one of these shapes:
+
+- One `eslint.config.*` at the repository root that spreads the projection, with no nested `eslint.config.*`.
+- Nested configs that each spread the projection, with the team's ESLint 9 run started with `--flag v10_config_lookup_from_file` (proven on 9.39.5; ESLint 10 behaves this way without the flag), or run from inside each package.
+
+A root-only ESLint 9 run over a repository with nested configs is not supported: ESLint 9 applies only the root config there, so core can report `not-included` or `config-override` for a file the team's run lints, or pass a file the team's run never applies the rules to.
+
 The packages must resolve from the install directory.
 
 ## Known limits
