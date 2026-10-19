@@ -167,7 +167,7 @@ describe("CD3 existing explicit compiler overrides", () => {
     { name: "different basename", fileName: "tsconfig.base.json" },
     { name: "different basename case", fileName: "packages/app/TSConfig.json" },
     { name: "non-config union candidate", fileName: "src/example.ts" },
-    { name: "all-depth excluded directory", fileName: "src/.claude/tsconfig.json" },
+    { name: "all-depth excluded directory", fileName: "src/node_modules/tsconfig.json" },
     { name: "root-only excluded directory", fileName: "vendor/tsconfig.json" },
   ])("excludes $name without reading or parsing", ({ fileName }) => {
     const file = repoPathSchema.parse(fileName);

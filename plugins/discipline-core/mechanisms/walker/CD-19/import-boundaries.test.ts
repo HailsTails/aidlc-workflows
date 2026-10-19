@@ -124,15 +124,13 @@ describe("CD-19 existing third-party and redirected stdlib import observations",
   });
 
   it.each([
-    { name: "all-depth exclusion", fileName: "src/.claude/imports.ts", kind: "skipped" },
+    { name: "all-depth exclusion", fileName: "src/node_modules/imports.ts", kind: "skipped" },
     { name: "root-only exclusion", fileName: "vendor/imports.ts", kind: "skipped" },
     { name: "nested root-only directory", fileName: "src/vendor/imports.ts", kind: "syntax" },
     { name: "TSX source", fileName: "src/Imports.tsx", kind: "syntax" },
     { name: "test source", fileName: "src/imports.test.ts", kind: "syntax" },
     { name: "declaration source", fileName: "src/imports.d.ts", kind: "syntax" },
     { name: "physical script retained", fileName: "scripts/imports.ts", kind: "syntax" },
-    { name: "App basename retained", fileName: "src/App.tsx", kind: "syntax" },
-    { name: "audit self basename", fileName: "src/audit-constitution.ts", kind: "skipped" },
     { name: "non-TypeScript union candidate", fileName: "src/imports.js", kind: "skipped" },
   ])("preserves its own source population without reading for $name", ({ fileName, kind }) => {
     const file = repoPathSchema.parse(fileName);

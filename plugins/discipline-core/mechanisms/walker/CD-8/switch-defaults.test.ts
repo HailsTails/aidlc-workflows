@@ -96,14 +96,13 @@ describe("CD-8 existing raw switch state", () => {
   });
 
   it.each([
-    { name: "all-depth exclusion", fileName: "src/.claude/state.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
+    { name: "all-depth exclusion", fileName: "src/node_modules/state.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
     { name: "root-only exclusion", fileName: "vendor/state.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
     { name: "nested root-only directory", fileName: "src/vendor/state.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "TSX source", fileName: "src/state.tsx", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "test source", fileName: "src/state.test.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "declaration source", fileName: "src/state.d.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "physical script", fileName: "scripts/state.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
-    { name: "unexcluded audit basename", fileName: "src/audit-constitution.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "non-TypeScript candidate", fileName: "src/state.js", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
   ])("preserves composed source-family eligibility for $name", ({ fileName, expected, readCount }) => {
     const file = repoPathSchema.parse(fileName);

@@ -134,12 +134,8 @@ describe("CD-23 existing exported-source sibling obligation", () => {
     "src/view.js",
     "src/view.d.ts",
     "src/__tests__/fixture.ts",
-    "ui/App.tsx",
-    "ui/main.tsx",
-    "src/.claude/view.ts",
+    "src/node_modules/view.ts",
     "vendor/view.ts",
-    "scripts/task.ts",
-    "src/audit-constitution.ts",
   ])("preserves the existing companion-check exclusion for %s", (fileName) => {
     const file = repoPathSchema.parse(fileName);
     const prepared = check.prepare({
@@ -156,7 +152,7 @@ describe("CD-23 existing exported-source sibling obligation", () => {
     expect(readText).not.toHaveBeenCalled();
   });
 
-  it.each(["src/vendor/view.ts", "src/scripts/task.ts", "scripts/vendor/task.ts"])("retains nested source directories without a root-only exclusion for %s", (fileName) => {
+  it.each(["src/vendor/view.ts", "src/scripts/task.ts", "scripts/task.ts", "ui/view.tsx"])("retains authored source for %s", (fileName) => {
     const file = repoPathSchema.parse(fileName);
     const prepared = check.prepare({ clauses: [CLAUSE], repository: { files: [file], exists: vi.fn().mockReturnValue("absent") }, syntaxApi: SYNTAX_API });
     assert(prepared.outcome === "ok");

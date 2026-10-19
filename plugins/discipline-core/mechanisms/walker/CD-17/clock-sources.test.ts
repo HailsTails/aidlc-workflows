@@ -72,20 +72,15 @@ describe("CD-17 existing raw clock observations", () => {
   });
 
   it.each([
-    { name: "all-depth exclusion", fileName: "src/.claude/clock.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
+    { name: "all-depth exclusion", fileName: "src/node_modules/clock.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
     { name: "root-only exclusion", fileName: "vendor/clock.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
     { name: "nested root-only directory", fileName: "src/vendor/clock.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "ordinary TSX source", fileName: "src/Clock.tsx", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "test source", fileName: "src/clock.test.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "declaration source", fileName: "src/clock.d.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
-    { name: "physical script member", fileName: "scripts/clock.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
-    { name: "script-root vendor excluded from script enumeration", fileName: "scripts/vendor/clock.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
-    { name: "nested script vendor retained by script enumeration", fileName: "scripts/nested/vendor/clock.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
-    { name: "App composition basename", fileName: "src/nested/App.tsx", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
-    { name: "main composition basename", fileName: "main.tsx", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
-    { name: "audit self basename", fileName: "src/audit-constitution.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
+    { name: "physical script member", fileName: "scripts/clock.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "non-TypeScript union input", fileName: "src/clock.js", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
-  ])("preserves exact source and physical-script membership for $name", ({ fileName, expected, readCount }) => {
+  ])("preserves exact source membership for $name", ({ fileName, expected, readCount }) => {
     const file = repoPathSchema.parse(fileName);
     const readText = vi.fn<WalkerFile["readText"]>().mockReturnValue({ outcome: "ok", value: "const now = clock.now();" });
 

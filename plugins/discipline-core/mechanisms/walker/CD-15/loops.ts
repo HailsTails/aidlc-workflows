@@ -1,17 +1,9 @@
 import type { WalkerPiece } from "../runner/walker-piece.ts";
-
-const EXCLUDED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
-  "node_modules", "dist", "dist-release", "build", "coverage", ".git", ".claude", "aidlc", ".aidlc",
-]);
-const EXCLUDED_ROOT_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
-  "vendor", ".codex", ".opencode", ".agents",
-]);
+import { folderScope } from "../runner/source-scope.ts";
 
 const sourceEligibility = (request: { readonly file: string }): "eligible" | "excluded" => {
   if (!request.file.endsWith(".ts") && !request.file.endsWith(".tsx")) return "excluded";
-  const parents = request.file.split("/").slice(0, -1);
-  if (parents.some((directory) => EXCLUDED_DIRECTORY_NAMES.has(directory))) return "excluded";
-  if (EXCLUDED_ROOT_DIRECTORY_NAMES.has(parents[0] ?? "")) return "excluded";
+  if (folderScope({ file: request.file }) === "generated") return "excluded";
   return "eligible";
 };
 

@@ -35,7 +35,7 @@ const sourceObservations = (request: { readonly source: string }): {
 
 describe("CD-25 existing dependency-isolation observations", () => {
   it.each([
-    { name: "all-depth excluded directory", fileName: "src/.claude/example.test.ts", kind: "skipped" },
+    { name: "all-depth excluded directory", fileName: "src/node_modules/example.test.ts", kind: "skipped" },
     { name: "root-only excluded directory", fileName: "vendor/example.test.ts", kind: "skipped" },
     { name: "nested root-only directory", fileName: "src/vendor/example.test.ts", kind: "syntax" },
     { name: "TSX test", fileName: "src/example.test.tsx", kind: "syntax" },

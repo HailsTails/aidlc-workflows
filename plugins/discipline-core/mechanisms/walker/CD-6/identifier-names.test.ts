@@ -35,7 +35,7 @@ const sourceObservations = (request: { readonly source: string }): {
 
 describe("CD-6 existing binding-name capability", () => {
   it.each([
-    { name: "all-depth excluded directory", fileName: "src/.claude/example.ts", kind: "skipped" },
+    { name: "all-depth excluded directory", fileName: "src/node_modules/example.ts", kind: "skipped" },
     { name: "root-only excluded directory", fileName: "vendor/example.ts", kind: "skipped" },
     { name: "nested root-only directory", fileName: "src/vendor/example.ts", kind: "syntax" },
     { name: "TSX source", fileName: "src/example.tsx", kind: "syntax" },
@@ -43,7 +43,6 @@ describe("CD-6 existing binding-name capability", () => {
     { name: "declaration source", fileName: "src/example.d.ts", kind: "syntax" },
     { name: "physical scripts source", fileName: "scripts/task.ts", kind: "syntax" },
     { name: "non-TypeScript candidate", fileName: "src/example.js", kind: "skipped" },
-    { name: "unexcluded audit basename", fileName: "src/audit-constitution.ts", kind: "syntax" },
   ])("preserves source eligibility without a read for $name", ({ fileName, kind }) => {
     const file = repoPathSchema.parse(fileName);
     const prepared = check.prepare({ clauses: [CLAUSE], repository: { files: [file], exists: vi.fn().mockReturnValue("present") }, syntaxApi: SYNTAX_API });

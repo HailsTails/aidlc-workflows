@@ -42,7 +42,7 @@ const sourceObservations = (request: { readonly source: string }): ObservationFi
 
 describe("CD-1 existing any-cast capability", () => {
   it.each([
-    { name: "all-depth excluded directory", fileName: "src/.claude/example.ts", kind: "skipped" },
+    { name: "all-depth excluded directory", fileName: "src/node_modules/example.ts", kind: "skipped" },
     { name: "root-only excluded directory", fileName: "vendor/example.ts", kind: "skipped" },
     { name: "nested root-only directory", fileName: "src/vendor/example.ts", kind: "syntax" },
     { name: "TSX source", fileName: "src/example.tsx", kind: "syntax" },

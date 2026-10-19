@@ -91,13 +91,8 @@ describe("CD-47 existing raw Git spawn guard", () => {
   });
 
   it.each([
-    { name: "all-depth vendor exclusion", fileName: "src/vendor/git.test.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
-    { name: "all-depth worktrees exclusion", fileName: "src/worktrees/git.test.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
-    { name: "all-depth installed output exclusion", fileName: "src/.aidlc-dist/git.test.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
-    { name: "harness JavaScript test", fileName: ".claude/git.test.js", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
-    { name: "aidlc MJS test", fileName: "aidlc/git.test.mjs", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
-    { name: "release TypeScript spec", fileName: "dist-release/git.spec.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
-    { name: "codex MJS spec", fileName: ".codex/git.spec.mjs", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
+    { name: "all-depth generated folder exclusion", fileName: "src/node_modules/git.test.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
+    { name: "JavaScript test", fileName: "src/git.test.js", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "TSX test", fileName: "src/git.test.tsx", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "ordinary source", fileName: "src/git.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
     { name: "unsupported JavaScript spec", fileName: "src/git.spec.js", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },

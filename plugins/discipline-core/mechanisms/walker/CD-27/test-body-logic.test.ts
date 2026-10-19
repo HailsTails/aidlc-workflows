@@ -35,7 +35,7 @@ const sourceObservations = (request: { readonly source: string }): {
 
 describe("CD-27 existing whole-test-file logic observations", () => {
   it.each([
-    { name: "all-depth exclusion", fileName: "src/.claude/logic.test.ts", kind: "skipped" },
+    { name: "all-depth exclusion", fileName: "src/node_modules/logic.test.ts", kind: "skipped" },
     { name: "root-only exclusion", fileName: "vendor/logic.test.ts", kind: "skipped" },
     { name: "nested root-only directory", fileName: "src/vendor/logic.test.ts", kind: "syntax" },
     { name: "TSX test", fileName: "src/logic.test.tsx", kind: "syntax" },

@@ -44,7 +44,6 @@ describe("CD44 existing parameter mutation capability", () => {
     { name: "test source", fileName: "src/view.test.ts" },
     { name: "declaration source", fileName: "src/view.d.ts" },
     { name: "physical script", fileName: "scripts/task.ts" },
-    { name: "audit basename", fileName: "src/audit-constitution.ts" },
     { name: "nested root-only directory", fileName: "src/vendor/view.ts" },
   ])("admits $name without requesting text", ({ fileName }) => {
     const file = repoPathSchema.parse(fileName);
@@ -58,7 +57,7 @@ describe("CD44 existing parameter mutation capability", () => {
 
   it.each([
     { name: "non-TypeScript union candidate", fileName: "src/view.test.js" },
-    { name: "all-depth excluded directory", fileName: "src/.claude/view.ts" },
+    { name: "all-depth excluded directory", fileName: "src/node_modules/view.ts" },
     { name: "root-only excluded directory", fileName: "vendor/view.ts" },
   ])("excludes $name without requesting text", ({ fileName }) => {
     const file = repoPathSchema.parse(fileName);

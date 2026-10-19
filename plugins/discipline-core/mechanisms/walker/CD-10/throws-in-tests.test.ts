@@ -69,7 +69,7 @@ describe("CD-10 existing test throw observation", () => {
     expect(observed.anchorAt).not.toHaveBeenCalled();
   });
 
-  it.each(["src/example.ts", "src/example.spec.ts", "src/example.test.js", "src/.claude/example.test.ts", "vendor/example.test.ts"])("preserves the existing test-family exclusion for %s", (fileName) => {
+  it.each(["src/example.ts", "src/example.spec.ts", "src/example.test.js", "src/node_modules/example.test.ts", "vendor/example.test.ts"])("preserves the existing test-family exclusion for %s", (fileName) => {
     const file = repoPathSchema.parse(fileName);
     const prepared = check.prepare({
       clauses: [CLAUSE],

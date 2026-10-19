@@ -1,13 +1,10 @@
 import type { WalkerPiece } from "../runner/walker-piece.ts";
+import { folderScope } from "../runner/source-scope.ts";
 
-const PRUNED_DIRECTORIES: readonly string[] = [
-  "node_modules", "dist", "build", "coverage", ".git", "vendor", ".aidlc-dist", "worktrees",
-];
 const TEST_FILE_SUFFIXES: readonly string[] = [".test.ts", ".test.tsx", ".test.mjs", ".test.js", ".spec.ts", ".spec.mjs"];
 
 const testFileEligibility = (request: { readonly file: string }): "eligible" | "skipped" => {
-  const directories = request.file.split("/").slice(0, -1);
-  if (directories.some((directory) => PRUNED_DIRECTORIES.includes(directory))) return "skipped";
+  if (folderScope({ file: request.file }) === "generated") return "skipped";
   return TEST_FILE_SUFFIXES.some((suffix) => request.file.endsWith(suffix)) ? "eligible" : "skipped";
 };
 

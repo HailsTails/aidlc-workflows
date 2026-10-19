@@ -77,14 +77,13 @@ describe("CD-7a existing raw factory-type query check", () => {
   });
 
   it.each([
-    { name: "all-depth exclusion", fileName: "src/.claude/profile.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
+    { name: "all-depth exclusion", fileName: "src/node_modules/profile.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
     { name: "root-only exclusion", fileName: "vendor/profile.ts", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
     { name: "nested root-only directory", fileName: "src/vendor/profile.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "TSX source", fileName: "src/profile.tsx", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "test source", fileName: "src/profile.test.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "declaration source", fileName: "src/profile.d.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "physical script", fileName: "scripts/profile.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
-    { name: "unexcluded audit basename", fileName: "src/audit-constitution.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } }, readCount: 1 },
     { name: "non-TypeScript candidate", fileName: "src/profile.md", expected: { outcome: "ok", value: { kind: "skipped" } }, readCount: 0 },
   ])("preserves composed source-family eligibility for $name", ({ fileName, expected, readCount }) => {
     const file = repoPathSchema.parse(fileName);

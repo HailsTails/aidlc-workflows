@@ -11,6 +11,7 @@ The walker runner is discipline-core's standalone mechanism for checks that read
 ## Files
 
 - `walker-piece.ts` declares the contract a piece implements, `WalkerPiece`: a `prepare` call that receives the piece's selected clauses, the repository's tracked paths and TypeScript's API, and returns a prepared check with per-file `prepareFile` and a repository-wide `finish`.
+- `source-scope.ts` classifies a repository path as `generated` (under `node_modules`, `dist`, `build`, `coverage`, `.git`, or a root `vendor`) or `authored`, so every piece skips generated folders the same way.
 - `walker-check-schema.ts` holds the schema for a clause's settings: `module`, a path inside the piece folder ending `.ts`.
 - `prepare-walker-pieces.ts` loads each selected module once and prepares it with every selected clause that names it.
 - `observe-walker-file.ts` offers one file to every prepared piece, parses it once if any piece asks for syntax, walks it, and collects the hits.

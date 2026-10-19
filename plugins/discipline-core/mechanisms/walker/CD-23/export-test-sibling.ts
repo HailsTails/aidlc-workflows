@@ -1,32 +1,13 @@
 import type { WalkerPiece } from "../runner/walker-piece.ts";
-
-const PRUNED_DIRECTORIES: readonly string[] = [
-  "node_modules", "dist", "dist-release", "build", "coverage", ".git", ".claude", "aidlc", ".aidlc",
-];
-
-const PRUNED_ROOT_DIRECTORIES: readonly string[] = ["vendor", ".codex", ".opencode", ".agents"];
-
-const directoryEligibility = (request: {
-  readonly directories: readonly string[];
-}): "eligible" | "skipped" =>
-  PRUNED_ROOT_DIRECTORIES.includes(request.directories[0] ?? "") ||
-  request.directories.some((directory) => PRUNED_DIRECTORIES.includes(directory))
-    ? "skipped"
-    : "eligible";
+import { folderScope } from "../runner/source-scope.ts";
 
 const productionFileEligibility = (request: { readonly file: string }): "eligible" | "skipped" => {
   const directories = request.file.split("/").slice(0, -1);
-  const fileName = request.file.slice(request.file.lastIndexOf("/") + 1);
   if (
     (!request.file.endsWith(".ts") && !request.file.endsWith(".tsx")) ||
     request.file.endsWith(".test.ts") || request.file.endsWith(".test.tsx") ||
     request.file.endsWith(".d.ts") || directories.includes("__tests__") ||
-    ["App.tsx", "main.tsx", "audit-constitution.ts"].includes(fileName) ||
-    directoryEligibility({ directories }) === "skipped"
-  ) return "skipped";
-  if (
-    directories[0] === "scripts" &&
-    directoryEligibility({ directories: directories.slice(1) }) === "eligible"
+    folderScope({ file: request.file }) === "generated"
   ) return "skipped";
   return "eligible";
 };

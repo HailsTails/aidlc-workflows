@@ -52,14 +52,12 @@ describe("CD-7 existing categorical path checks", () => {
   });
 
   it.each([
-    { name: "all-depth exclusion", fileName: "src/.claude/types.ts", expected: { outcome: "ok", value: { kind: "skipped" } } },
+    { name: "all-depth exclusion", fileName: "src/node_modules/types.ts", expected: { outcome: "ok", value: { kind: "skipped" } } },
     { name: "root-only exclusion", fileName: "vendor/types.ts", expected: { outcome: "ok", value: { kind: "skipped" } } },
     { name: "nested root-only directory", fileName: "src/vendor/types.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [{ clause: ADDRESS, anchor: { line: 1, column: 0 }, snippet: "forbidden categorical filename: types.ts" }] } } },
     { name: "physical script", fileName: "scripts/types.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [{ clause: ADDRESS, anchor: { line: 1, column: 0 }, snippet: "forbidden categorical filename: types.ts" }] } } },
     { name: "test source", fileName: "src/example.test.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } } },
     { name: "declaration source", fileName: "src/example.d.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } } },
-    { name: "legacy self basename", fileName: "src/audit-constitution.ts", expected: { outcome: "ok", value: { kind: "skipped" } } },
-    { name: "non-self basename suffix", fileName: "src/x-audit-constitution.ts", expected: { outcome: "ok", value: { kind: "complete", hits: [] } } },
     { name: "non-TypeScript candidate", fileName: "src/types.js", expected: { outcome: "ok", value: { kind: "skipped" } } },
   ])("preserves path-family eligibility and findings for $name", ({ fileName, expected }) => {
     const file = repoPathSchema.parse(fileName);
