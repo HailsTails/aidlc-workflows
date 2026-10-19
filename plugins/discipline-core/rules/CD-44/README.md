@@ -13,6 +13,8 @@ The sections below describe what the audit and ESLint checks cover.
 | `CD-44#parameter-mutation` | audit | assignment to, deletion from or in-place methods on a parameter's fields |
 | `CD-44#parameter-reassignment` | eslint | assigning to, incrementing or destructuring into a parameter itself |
 
+Review lens: [decomposition](../../methods/lenses/decomposition.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - Inside a function declaration, function expression, arrow function or method, where the root name is one of its parameters (including destructured and outer-function parameters):

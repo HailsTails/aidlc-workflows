@@ -32,21 +32,19 @@ git -C /tmp/discipline-core-source checkout <pinned-sha>
 
 On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
-Copy `package.json`, `core/`, the audit runner, and one rule folder plus one piece folder per discipline you will select (step 4 lists them; copying all of them is fine):
+Copy `package.json`, `core/`, every rule page, both mechanisms and the review methods, then remove the core's own tests:
 
 ```bash
 SRC=/tmp/discipline-core-source/plugins/discipline-core
 DEST=tools/discipline-core
-mkdir -p "$DEST/mechanisms/audit" "$DEST/rules"
+mkdir -p "$DEST"
 cp "$SRC/package.json" "$DEST/"
-cp -r "$SRC/core" "$DEST/"
-cp -r "$SRC/mechanisms/audit/runner" "$DEST/mechanisms/audit/"
-for ID in CD-1 CD-2 CD-3 CD-5 CD-6 CD-7 CD-7a CD-8 CD-10 CD-14 CD-15 CD-17 CD-19 CD-23 CD-25 CD-26 CD-27 CD-43 CD-44 CD-47; do
-  cp -r "$SRC/rules/$ID" "$DEST/rules/"
-  cp -r "$SRC/mechanisms/audit/$ID" "$DEST/mechanisms/audit/"
-done
+cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
+find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
 find "$DEST" -name '*.test.ts' -delete
 ```
+
+Copying everything is the simplest install. [README.md](README.md#installing) lists the smaller set a selection strictly needs, if you would rather copy only that.
 
 Install the core's runtime packages inside the install folder, so they resolve from there. Remove the core's own development entries first; npm otherwise tries to resolve its test tooling and can fail:
 
@@ -61,7 +59,11 @@ Add `tools/discipline-core/node_modules/` to `<repo>/.gitignore`, and commit `to
 
 ## 3. Read what each discipline means
 
-[rules/README.md](rules/README.md) lists every discipline. Each `rules/<ID>/README.md` quotes the rule, says exactly what its check flags, shows a violation and its fix, and says how to record an exception. A discipline's clause addresses are in its README's Clauses table, for example `CD-14#class-syntax`.
+[rules/README.md](rules/README.md) lists every discipline. Each `rules/<ID>/README.md` quotes the rule, says exactly what its check flags, shows a violation and its fix, and says how to record an exception. A discipline's clause addresses are in its README's Clauses table, for example `CD-14#class-syntax`, with the mechanism that checks each clause. A clause whose mechanism is `review` is a judgement clause: it is applied in review, not by a check, with the review lens the page names (step 9).
+
+A check covers only what its page says it flags. Read the whole rule, not only the Clauses table: where a rule asks for more than its check can see, the page says which part is left to review, and the page's review lens covers that part.
+
+Where to start: for an API, boundary validation (CD-4, CD-45), result-shaped failures (CD-9, CD-10, CD-11) and inward dependency direction (CD-12, CD-13) are useful next selections, most of them judgement rules. For React, first select the type and test disciplines that apply to component code; do not apply server ports or process-lifecycle rules to browser code.
 
 ## 4. Write disciplines.json
 
@@ -113,6 +115,27 @@ CD-1, CD-6, CD-7, CD-10, CD-14, CD-27 and CD-44 have clauses under both mechanis
 
 Starting with a few disciplines and adding more once the run passes is easier than fixing everything at once.
 
+### 4a. Set up ESLint for `eslint` clauses
+
+Skip this if every selected clause is `audit`. Otherwise, after writing `disciplines.json`, write the ESLint projection:
+
+```bash
+node tools/discipline-core/core/check/project-command.ts --repo .
+```
+
+It prints `disciplines.eslint.mjs written`. Spread its default export last in the repository's flat config. A repository with no ESLint config yet can start from this `eslint.config.mjs`:
+
+```js
+import projection from "./disciplines.eslint.mjs";
+
+export default [
+  { files: ["**/*.{ts,tsx,mts,cts}"] },
+  ...projection,
+];
+```
+
+Commit both files. Core's check reads this configuration and fails if the projection is missing, not in effect, or out of date, so re-run `project-command` whenever `disciplines.json` or `discipline-exceptions.json` changes. Core's own ESLint run uses the copy installed in step 2, so the repository's own ESLint version does not change the verdict. [README.md](README.md#adopting-the-eslint-mechanism) has the details.
+
 ## 5. Run the check
 
 ```bash
@@ -134,6 +157,10 @@ In CI, pass the branch's base so that debt recorded per file is forfeited once t
 ```bash
 node tools/discipline-core/core/check/check-command.ts --repo . --base-revision origin/main
 ```
+
+Add the command to the repository's existing validation script, and run that same script in CI and in any pre-push hook the repository already has, so the check runs wherever the other checks run. With `eslint` clauses, the repository's own `eslint` run also reports them in the editor, from the projection.
+
+Tell any coding agent working in the repository, in its project instructions: "Read the rule pages under `tools/discipline-core/rules/` for the disciplines in `disciplines.json` before editing. Before handing off, run the repository's validation command, report its exit code and findings, and apply the judgement rules listed in this file with their review lenses." Copying the rule pages does not make an agent read them; the instruction does.
 
 ## 6. Read the report
 
@@ -186,6 +213,43 @@ Answers must be real: placeholders, and a root cause that only says the check wa
 
 A complete, accepted entry is in [the worked example](tests/test-fixtures/walkthrough/after/discipline-exceptions.json).
 
+## 8. Prove one failure and correction
+
+Before relying on the check, prove that it fails on a real violation in your repository and passes once it is fixed. With CD-17 selected, create `src/discipline-probe.ts` (any path the check covers) containing exactly:
+
+```ts
+const probeStartedAt = Date.now();
+```
+
+Stage it, since only tracked files are checked, and run the check:
+
+```bash
+git add src/discipline-probe.ts
+node tools/discipline-core/core/check/check-command.ts --repo .
+```
+
+It must exit `1` with the line `CD-17#clock-sources audit src/discipline-probe.ts:1:0 const probeStartedAt = Date.now();` among its findings. Change the same file to `const probeStartedAt = 0;`, stage it, and run the check again: that finding must be gone. Then remove the probe with `git rm -f src/discipline-probe.ts`. A run that never showed the finding proves nothing: check that the file was staged and is not under an `exclude` entry. For another discipline, take a flag case from its `rules/<ID>/discipline.json`.
+
+## 9. Apply the judgement rules
+
+A judgement clause cannot be selected in `disciplines.json`, and no check reports it. Write down which judgement rules the repository adopts, in the project instructions beside `disciplines.json`, so reviewers and agents know to apply them.
+
+Each rule page names its review lens, a method under [methods/lenses/](methods/README.md) for reading code against that kind of rule. To review a change, by a human reviewer or a coding agent:
+
+1. The reviewer is not the change's author. An agent reviewing a change reads files only; it does not edit them.
+2. Pin the tree under review to a commit and review that.
+3. Run each lens on its own, one concern at a time, without seeing the other lenses' findings. Follow the lens file: load the rule pages that name it, inspect the change as it says, and report findings in its output shape, citing the clause address. A lens covers mechanical rules too, beyond what their checks flag.
+4. Run [defended-on-intent](methods/lenses/defended-on-intent.md) last, over the rule text and the other lenses' findings, to catch changes that meet a rule's letter but defeat its intent.
+5. Fix each finding. A deliberate departure from a judgement rule is recorded where the review decision is kept, with the same five-step `whyChain` as step 7.
+
+To use an agent, give it the lens file, the rule pages it names, the change and the pinned commit, and ask it to follow the lens exactly. A single reviewer covering every concern at once misses what separate lenses catch.
+
+## 10. Update and remove
+
+To update, repeat step 2 on a branch with a newer pinned SHA, compare the copied rule pages with the old ones, re-run `project-command` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages.
+
+To remove, delete `tools/discipline-core/`, `disciplines.json`, `discipline-exceptions.json` and, with `eslint` clauses, `disciplines.eslint.mjs` and its spread in the flat config, and take the check out of the validation script.
+
 ## Worked example
 
 [tests/test-fixtures/walkthrough/](tests/test-fixtures/walkthrough/) is a small repository before and after its fix, selecting CD-2, CD-15, CD-17 and CD-23 through the audit, with a `generated/` folder excluded. `tests/walkthrough.integration.test.ts` pins both reports exactly.
@@ -216,7 +280,7 @@ verdict: pass
 
 ## Known gaps
 
-- Only the audit mechanism is walked through here. The ESLint mechanism is set up as [README.md](README.md#adopting-the-eslint-mechanism) describes.
+- The worked example uses only the audit mechanism. The ESLint consumer in `tests/test-fixtures/consumer-proof/eslint/` is the tested ESLint setup.
 - Each check flags exactly what its rules page says and no more. Where a rule asks for more than its check can see, the page says which part is left to review.
 - A snippet is the text the check reports; some checks report a fixed-width window that runs across lines, as CD-2 does above.
 - The disciplines' IDs and rule text come from one team's code-discipline set. Selecting a subset is supported; editing a shipped rule is not. Write your own rule set for different rules.

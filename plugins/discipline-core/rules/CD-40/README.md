@@ -13,6 +13,8 @@ The sections below describe what the ESLint check covers.
 | `CD-40#parameter-count` | eslint | a function with more than two parameters |
 | `CD-40#named-object-argument` | review | the single argument is an object with named fields, not a positional scalar |
 
+Review lens: [function-first](../../methods/lenses/function-first.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - The ESLint piece lints whatever files the team's ESLint run includes. It needs ESLint adopted through the projection; see [the ESLint piece](../../mechanisms/eslint/CD-40/README.md).
 - Rule `discipline-cd40/max-params`, which is typescript-eslint's `max-params` with `{ "max": 2, "countVoidThis": true }`.

@@ -12,6 +12,8 @@ The sections below describe what the audit check covers.
 | --- | --- | --- |
 | `CD-8#switch-defaults` | audit | a `default:` arm inside a `switch` |
 
+Review lens: [type-soundness](../../methods/lenses/type-soundness.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - A line matching `default:` while inside a `switch (`, tracked line by line by counting braces. One finding per line; comment lines are ignored.

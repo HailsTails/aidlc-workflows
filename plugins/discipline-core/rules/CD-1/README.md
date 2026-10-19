@@ -14,6 +14,8 @@ The sections below describe what the audit and ESLint checks cover.
 | `CD-1#explicit-any` | eslint | an `any` type anywhere in a type position |
 | `CD-1#implicit-any-let` | eslint | a `let` or `var` with neither a type annotation nor an initialiser |
 
+Review lens: [type-soundness](../../methods/lenses/type-soundness.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - A type assertion (`x as T` or `<T>x`) where the first 80 characters from the start of the assertion match `as any`, `: any` or `<any>`.

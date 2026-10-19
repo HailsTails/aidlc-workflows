@@ -12,6 +12,8 @@ The sections below describe what the audit check covers.
 | --- | --- | --- |
 | `CD-17#clock-sources` | audit | `Date.now()` and `new Date` |
 
+Review lens: [di-discipline](../../methods/lenses/di-discipline.md), [test-discipline](../../methods/lenses/test-discipline.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests. Generated folders (`node_modules`, `dist`, `build`, `coverage`, `.git`, root `vendor`) are skipped; any other folder or file can be left out with `exclude` in disciplines.json.
 - Any line containing `Date.now()` or `new Date`, one finding per line. Comments and strings are matched too.

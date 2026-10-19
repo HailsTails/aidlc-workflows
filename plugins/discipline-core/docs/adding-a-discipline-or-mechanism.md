@@ -185,4 +185,4 @@ The team spreads its default export last in its flat config; the projection is t
 
 ### Runtime
 
-The ESLint mechanism needs the team's `eslint` 10.x, an ESLint-10-compatible `@typescript-eslint/parser`, and `@eslint/plugin-kit`, which it imports directly because a transitive copy does not resolve under strict package managers. This package pins `eslint` 10.11.0, `@typescript-eslint/parser` 8.71.2 and `@eslint/plugin-kit` 0.7.3, and its integration suite runs on those, against the consumer repositories in `mechanisms/eslint/runner/test-fixtures/`.
+The ESLint mechanism needs the team's `eslint` 10.x, an ESLint-10-compatible `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin` for the pieces that reuse its rules, and `@eslint/plugin-kit`, which it imports directly because a transitive copy does not resolve under strict package managers. This package pins `eslint` 10.11.0, `@typescript-eslint/parser` 8.71.2, `@typescript-eslint/eslint-plugin` 8.71.2 and `@eslint/plugin-kit` 0.7.3, and its integration suite runs on those, against the consumer repositories in `mechanisms/eslint/runner/test-fixtures/`.

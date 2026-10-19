@@ -18,6 +18,8 @@ The sections below describe what the audit check covers.
 | `CD-3#no-property-access-from-index-signature` | audit | `noPropertyAccessFromIndexSignature` is set |
 | `CD-3#use-unknown-in-catch-variables` | audit | `useUnknownInCatchVariables` is set |
 
+Review lens: [type-soundness](../../methods/lenses/type-soundness.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `tsconfig.json` files, named exactly, at any depth. `tsconfig.base.json` and other names are not read. Generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - For each selected clause, the matching option present in that file's `compilerOptions`. Presence is enough: `true` is flagged as well as `false`, and the shared base is not consulted.

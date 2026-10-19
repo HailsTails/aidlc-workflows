@@ -14,6 +14,8 @@ The sections below describe what the ESLint check covers.
 | `CD-41#function-length` | eslint | a function body longer than 50 lines |
 | `CD-41#orchestration-only` | review | an orchestrator only composes helper calls and assembles their results |
 
+Review lens: [decomposition](../../methods/lenses/decomposition.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - The ESLint piece lints whatever files the team's ESLint run includes. It needs ESLint adopted through the projection; see [the ESLint piece](../../mechanisms/eslint/CD-41/README.md).
 - `discipline-cd41/cognitive-complexity`: each function's cognitive complexity must be at most 15.

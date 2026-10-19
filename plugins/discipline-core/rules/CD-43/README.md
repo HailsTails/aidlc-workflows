@@ -12,6 +12,8 @@ The sections below describe what the audit check covers.
 | --- | --- | --- |
 | `CD-43#boolean-signatures` | audit | a boolean type in a parameter, property signature or return |
 
+Review lens: [type-soundness](../../methods/lenses/type-soundness.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - A declared type of `boolean`, or `boolean` unioned only with `null` and `undefined`, on a parameter, an interface or type-literal property, a function, method, arrow or accessor return, or a function, call or index signature.

@@ -12,6 +12,8 @@ The sections below describe how the rule is checked.
 | --- | --- | --- |
 | `CD-39#cite-by-id` | review | reviews and rationale cite principles and rules by identifier |
 
+Review lens: none. A reviewer applies the rule text directly.
+
 ## How it is checked
 
-Every clause of this discipline is a judgement clause. It cannot be selected in `disciplines.json` and no mechanism checks it; a reviewer applies the rule above. Selecting no clause of this discipline leaves nothing uncovered.
+Every clause of this discipline is a judgement clause. It cannot be selected in `disciplines.json` and no mechanism checks it; a reviewer applies the rule above with its review lens, as [ADOPTING.md](../../ADOPTING.md#9-apply-the-judgement-rules) describes. Selecting no clause of this discipline leaves nothing uncovered.

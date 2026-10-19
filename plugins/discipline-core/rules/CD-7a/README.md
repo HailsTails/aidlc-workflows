@@ -12,6 +12,8 @@ The sections below describe what the audit check covers.
 | --- | --- | --- |
 | `CD-7a#factory-return-types` | audit | a line containing `ReturnType<typeof` |
 
+Review lens: [type-soundness](../../methods/lenses/type-soundness.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - Any line matching `ReturnType<typeof`, one finding per line. This includes `Awaited<ReturnType<typeof ...>>` and matches inside strings.

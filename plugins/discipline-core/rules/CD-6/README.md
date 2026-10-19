@@ -13,6 +13,8 @@ The sections below describe what the audit and ESLint checks cover.
 | `CD-6#identifier-names` | audit | a binding named from a fixed shorthand or filler list |
 | `CD-6#naming-convention` | eslint | a name that breaks the naming convention for its kind |
 
+Review lens: [naming](../../methods/lenses/naming.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - The declared name of a variable, a parameter, a named function declaration or a destructured binding, when the whole name is exactly one of these (case-sensitive):

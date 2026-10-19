@@ -12,6 +12,8 @@ The sections below describe what the audit check covers.
 | --- | --- | --- |
 | `CD-5#comments-directives` | audit | TODOs, linter directives and `@ts-expect-error` without a tracker |
 
+Review lens: [naming](../../methods/lenses/naming.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - `// TODO` not followed by `(`. Any parenthesised text is accepted, for example `// TODO(spec-42) ...`.

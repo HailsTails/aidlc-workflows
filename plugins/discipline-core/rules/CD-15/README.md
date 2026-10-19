@@ -14,6 +14,8 @@ The sections below describe what the audit check covers.
 | --- | --- | --- |
 | `CD-15#loops` | audit | `for...of`, `for await`, counted `for` and `while` loops |
 
+Review lens: [function-first](../../methods/lenses/function-first.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files, including tests and declaration files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - Lines matching `for (... of ...)` (with or without `await`), `for (init; test; step)` and `while (`. This includes `do...while`. Each kind is reported once per line.

@@ -6,6 +6,8 @@ A suppression or exemption is inherited debt held at rest, not a standing licenc
 
 The sections below describe how the rule is checked.
 
+Review lens: none. A reviewer applies the rule text directly.
+
 ## How it is checked
 
 This discipline has no clauses to select: the check applies it to every file carve-out. Run the check with `--base-revision`, and a `file-carve-out` record whose file changed since that revision is forfeited, so its findings come back and the run fails until the file is clean and the record is removed. Without `--base-revision`, any file carve-out makes the report list `forfeiture-unmeasured` and the run fails. See [discipline-exceptions.json](../../README.md#discipline-exceptionsjson).

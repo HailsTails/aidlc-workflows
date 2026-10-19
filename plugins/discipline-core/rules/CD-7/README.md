@@ -13,6 +13,8 @@ The sections below describe what the audit and ESLint checks cover.
 | `CD-7#categorical-paths` | audit | a forbidden file name or folder name in a path |
 | `CD-7#filename-case` | eslint | a file name that is not kebab-case or PascalCase |
 
+Review lens: [naming](../../methods/lenses/naming.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files only, judged by path; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - File names, exactly and in lower case, with a `.ts` extension: `types.ts interfaces.ts models.ts enums.ts utils.ts util.ts helpers.ts helper.ts common.ts lib.ts misc.ts shared.ts`.

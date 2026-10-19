@@ -2,7 +2,7 @@
 
 Discipline core checks a repository against the coding disciplines it has chosen to adopt. It is a tool, not a framework: it reads what the repository selected, hands each selected clause to the mechanism that checks it, applies the repository's recorded exceptions, and prints one verdict. Core itself enforces nothing and names no discipline and no mechanism. A discipline (for example CD-14, no authored classes) is data under `rules/`, and a mechanism is a runner under `mechanisms/`; core reaches both only through files and one module contract.
 
-Two mechanisms ship: `audit`, a standalone TypeScript syntax walker, and `eslint`, which runs the clause as an ESLint rule inside the team's own ESLint setup. The audit mechanism checks the 20 shared disciplines listed in [rules/README.md](rules/README.md); CD-14's `class-syntax` clause also has an ESLint piece.
+Two mechanisms ship: `audit`, a standalone TypeScript syntax walker, and `eslint`, which runs the clause as an ESLint rule inside the team's own ESLint setup. [rules/README.md](rules/README.md) lists every shared discipline with its clauses: the audit mechanism checks 20 disciplines, and ESLint pieces check clauses of CD-1, CD-6, CD-7, CD-10, CD-14, CD-27, CD-40, CD-41, CD-42 and CD-44. The rest are judgement rules, applied in review with the review methods in [methods/](methods/README.md).
 
 To adopt the core in another repository, follow [ADOPTING.md](ADOPTING.md) step by step.
 
@@ -105,6 +105,7 @@ Fetch these paths from a pinned commit of this repository into one install direc
 - always: `package.json` and `core/`
 - for each selected clause in the shared rule set: `rules/<DisciplineId>/`, `mechanisms/<MechanismId>/runner/` and `mechanisms/<MechanismId>/<DisciplineId>/`
 - for each selected clause in the repository's own rule set: `mechanisms/<MechanismId>/runner/` only, since the discipline and its piece live in that rule set
+- to apply judgement rules in review: `rules/<DisciplineId>/` for each adopted judgement rule, and `methods/`; the check itself never reads them
 
 `package.json` is fetched for its `"type": "module"`. Every runtime file is an ES module, and Node takes a file's module type from the nearest `package.json` above it; without this one, that is the consumer's own, and under `"type": "commonjs"` the check crashes.
 

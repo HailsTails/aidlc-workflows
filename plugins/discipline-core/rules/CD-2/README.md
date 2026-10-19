@@ -12,6 +12,8 @@ The sections below describe what the audit check covers.
 | --- | --- | --- |
 | `CD-2#cast-expressions` | audit | a type assertion that is not on the permitted list |
 
+Review lens: [type-soundness](../../methods/lenses/type-soundness.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - `.ts` and `.tsx` files; generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - Every `x as T` and `<T>x` assertion except the permitted forms. Assertions that CD-1 reports (`any`) are not repeated here.

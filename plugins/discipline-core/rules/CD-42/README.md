@@ -12,6 +12,8 @@ The sections below describe what the ESLint check covers.
 | --- | --- | --- |
 | `CD-42#useless-else` | eslint | an `else` after an `if` branch that always exits |
 
+Review lens: [decomposition](../../methods/lenses/decomposition.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - The ESLint piece lints whatever files the team's ESLint run includes. It needs ESLint adopted through the projection; see [the ESLint piece](../../mechanisms/eslint/CD-42/README.md).
 - Rule `discipline-cd42/useless-else`: an `else` after an `if` branch that always exits is reported at the `else` keyword.

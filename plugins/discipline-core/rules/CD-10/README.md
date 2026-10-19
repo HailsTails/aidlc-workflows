@@ -13,6 +13,8 @@ The sections below describe what the audit and ESLint checks cover.
 | `CD-10#throws-in-tests` | audit | a `throw` statement in a test file |
 | `CD-10#throw-only-error` | eslint | a `throw` of something that is not an error object |
 
+Review lens: [errors-as-data](../../methods/lenses/errors-as-data.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - Test files only: `*.test.ts` and `*.test.tsx`. `*.spec.ts` and `.js` tests are not read. Generated folders such as `node_modules`, `dist`, `build` and `coverage` are skipped.
 - Every `throw` statement, wherever it sits in the file.

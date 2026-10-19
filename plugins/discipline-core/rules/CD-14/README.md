@@ -14,6 +14,8 @@ The sections below describe what the audit and ESLint checks cover.
 | `CD-14#static-only-class` | eslint | a class whose members are all static |
 | `CD-14#library-construction` | review | library classes are built only in wrapping factories and never re-exported |
 
+Review lens: [function-first](../../methods/lenses/function-first.md). The lens reviews the whole rule, including what no check flags.
+
 ## What the check flags
 - TypeScript source files; declaration files (`.d.ts`) are skipped. Generated folders (`node_modules`, `dist`, `build`, `coverage`, `.git`, root `vendor`) are skipped by the audit mechanism; any other folder can be left out with `exclude` in disciplines.json. The ESLint piece lints whatever files the team's ESLint run includes.
 - Any class declaration, class expression, `abstract class`, nested class, or class inside a runtime `namespace`, reported at the `class` keyword.
