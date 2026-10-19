@@ -89,6 +89,10 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
   '[".","rules","CD-44"]': "rules/CD-44",
   '["./mechanisms/walker/CD-44","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
   '["./mechanisms/walker/CD-44","../runner/typescript-parse.ts"]': "mechanisms/walker/runner/typescript-parse.ts",
+  '[".","mechanisms","walker","CD-3"]': "mechanisms/walker/CD-3",
+  '[".","rules","CD-3"]': "rules/CD-3",
+  '["./mechanisms/walker/CD-3","../runner/jsonc-parse.ts"]': "mechanisms/walker/runner/jsonc-parse.ts",
+  '["./mechanisms/walker/CD-3","../runner/walker-piece.ts"]': "mechanisms/walker/runner/walker-piece.ts",
   '[".","mechanisms","eslint","runner","piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '["./mechanisms/eslint/runner/piece-type-packages.json"]': "mechanisms/eslint/runner/piece-type-packages.json",
   '[".","mechanisms","walker","CD-14"]': "mechanisms/walker/CD-14",
@@ -123,6 +127,7 @@ const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {
   "./mechanisms/walker/CD-47/hermetic-git-spawns.ts": "./mechanisms/walker/CD-47",
   "./mechanisms/walker/CD-43/boolean-signatures.ts": "./mechanisms/walker/CD-43",
   "./mechanisms/walker/CD-44/parameter-mutation.ts": "./mechanisms/walker/CD-44",
+  "./mechanisms/walker/CD-3/compiler-overrides.ts": "./mechanisms/walker/CD-3",
   "./mechanisms/walker/CD-14/class-syntax.ts": "./mechanisms/walker/CD-14",
   "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.ts": "./tests/probe-rule-set/mechanisms/walker/PD-1",
 };
