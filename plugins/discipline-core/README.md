@@ -139,7 +139,7 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 - git 2.24 or later. Older git rejects `--end-of-options`, so the changed-file query fails and forfeiture is reported unmeasured.
 - `zod`, for core.
 - The audit mechanism adds `typescript`.
-- The ESLint mechanism adds the team's `eslint` 10.x, an ESLint-10-compatible `@typescript-eslint/parser`, and `@eslint/plugin-kit`.
+- The ESLint mechanism adds the team's `eslint` 9.x or 10.x, an `@typescript-eslint/parser` that supports it, and `@eslint/plugin-kit`. The team's own ESLint run, which loads the projection and the pieces' plugin modules, is tested on 9.39.5 (every piece's shared cases, in `eslint-9-compatibility.test.ts`) and on 10.11.0; core's own check run always uses the `eslint` it ships with, whatever the team runs. Versions before 9.0 are not supported.
 
 The packages must resolve from the install directory.
 

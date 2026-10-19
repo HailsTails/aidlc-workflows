@@ -134,7 +134,7 @@ export default [
 ];
 ```
 
-Commit both files. Core's check reads this configuration and fails if the projection is missing, not in effect, or out of date, so re-run `project-command` whenever `disciplines.json` or `discipline-exceptions.json` changes. Core's own ESLint run uses the copy installed in step 2, so the repository's own ESLint version does not change the verdict. [README.md](README.md#adopting-the-eslint-mechanism) has the details.
+Commit both files. Core's check reads this configuration and fails if the projection is missing, not in effect, or out of date, so re-run `project-command` whenever `disciplines.json` or `discipline-exceptions.json` changes. Core's own ESLint run uses the copy installed in step 2, so the repository's own ESLint version (9.x or 10.x) does not change the verdict. [README.md](README.md#adopting-the-eslint-mechanism) has the details.
 
 ## 5. Run the check
 
