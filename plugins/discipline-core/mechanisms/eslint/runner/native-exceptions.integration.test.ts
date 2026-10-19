@@ -1,4 +1,6 @@
-import { assert, describe, expect, it, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, expect, it, vi } from "vitest";
+import { createSelectionRepository } from "../../../core/consumer-selection/consumer-selection.ts";
+import { createExceptionRepository } from "../../../core/exception-records/exception-records.ts";
 import { runCheck } from "../../../core/check/run-check.ts";
 import { checkConformance } from "../../../core/conformance/conformance.ts";
 import {
@@ -8,13 +10,14 @@ import {
 } from "../../../core/mechanism-port/runner-module-schema.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { GitPort } from "../../../core/platform-ports/git-port.ts";
-import { createDefaultModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
+import { createDefaultModuleLoaderPort, type ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import { createDefaultPathPort, createPathPort } from "../../../core/platform-ports/path-port.ts";
 import { type ClauseDefinition, readDisciplineFile } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { type AbsolutePath, absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { disciplineIdSchema } from "../../../core/values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
+import { createDefaultScratchFilesPort } from "../../../scripts/install-proof-ports.ts";
 import cd14Discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
 import { runner as walkerRunner } from "../../walker/runner/runner.ts";
 import { runner as eslintRunner } from "./runner.ts";
@@ -45,8 +48,111 @@ const modules = createDefaultModuleLoaderPort({});
 
 const path = createDefaultPathPort({});
 
-const consumerRepo = (request: { readonly name: string }): AbsolutePath =>
-  absolutePathSchema.parse(`${import.meta.dirname}/test-fixtures/${request.name}`);
+const SOURCE_INSTALL_ROOT = INSTALL_ROOT;
+
+const resolvedPath = (request: { readonly path: string }): AbsolutePath => {
+  const resolved = path.resolve(request);
+  assert(resolved.outcome === "ok", JSON.stringify(resolved));
+  return resolved.value;
+};
+
+const PROVIDER_FILES = [
+  "rules/CD-14/discipline.json",
+  "mechanisms/eslint/CD-14/piece.json",
+  "mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
+  "mechanisms/eslint/runner/runner.ts",
+  "mechanisms/walker/CD-14/piece.json",
+  "mechanisms/walker/CD-14/class-syntax.ts",
+  "mechanisms/walker/runner/runner.ts",
+];
+const scratch = createDefaultScratchFilesPort({});
+const fixtureText = createDefaultFileTextPort({});
+let fixtureEnclosure: AbsolutePath | undefined;
+
+const fixtureRoot = (): AbsolutePath => {
+  assert(fixtureEnclosure !== undefined, "the physical fixture enclosure was allocated");
+  return fixtureEnclosure;
+};
+
+const fixtureInstallRoot = (): AbsolutePath =>
+  resolvedPath({ path: path.join({ segments: [fixtureRoot(), "provider"] }) });
+
+const fixtureConsumer = (request: { readonly name: string }): AbsolutePath =>
+  resolvedPath({ path: path.join({ segments: [fixtureRoot(), "consumers", request.name] }) });
+
+const copyProviderFile = (file: string): void => {
+  const copied = scratch.copyTree({
+    from: path.join({ segments: [SOURCE_INSTALL_ROOT, file] }),
+    to: path.join({ segments: [fixtureInstallRoot(), file] }),
+    disposition: () => "kept",
+  });
+  assert(copied.outcome === "ok", JSON.stringify(copied));
+};
+
+const rewriteCopiedImport = (request: { readonly file: string; readonly previous: string }): void => {
+  const file = path.join({ segments: [fixtureRoot(), "consumers", request.file] });
+  const read = fixtureText.read({ path: file });
+  assert(read.outcome === "ok", JSON.stringify(read));
+  assert(read.value.includes(request.previous), "the copied fixture retains its original provider import");
+  const written = fixtureText.write({
+    path: file,
+    text: read.value.replace(request.previous, '"../../provider/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts"'),
+  });
+  assert(written.outcome === "ok", JSON.stringify(written));
+};
+
+const COPIED_PROJECTIONS = [
+  "command-line-options/disciplines.eslint.mjs",
+  "fr3-anchors/disciplines.eslint.mjs",
+  "fragment-not-projection/disciplines.eslint.mjs",
+  "global-ignore/disciplines.eslint.mjs",
+  "inline-forms/disciplines.eslint.mjs",
+  "override-after/disciplines.eslint.mjs",
+  "projection-hand-edited/disciplines.eslint.mjs",
+  "projection-not-imported/disciplines.eslint.mjs",
+  "re-enabled-record/disciplines.eslint.mjs",
+  "route-brackets/disciplines.eslint.mjs",
+  "severity-zero/disciplines.eslint.mjs",
+  "suppression-default/disciplines.eslint.mjs",
+  "suppression-nested/disciplines.eslint.mjs",
+  "suppression-scripted/disciplines.eslint.mjs",
+  "fragment-not-projection/eslint.config.mjs",
+];
+
+beforeAll(() => {
+  const allocated = scratch.createTemporaryDirectory({ prefix: "discipline-core-native-fixtures-" });
+  assert(allocated.outcome === "ok", JSON.stringify(allocated));
+  fixtureEnclosure = resolvedPath({ path: allocated.value });
+  const copied = scratch.copyTree({
+    from: path.join({ segments: [SOURCE_INSTALL_ROOT, "mechanisms", "eslint", "runner", "test-fixtures"] }),
+    to: path.join({ segments: [fixtureRoot(), "consumers"] }),
+    disposition: () => "kept",
+  });
+  assert(copied.outcome === "ok", JSON.stringify(copied));
+  PROVIDER_FILES.forEach(copyProviderFile);
+  COPIED_PROJECTIONS.forEach((file) => {
+    rewriteCopiedImport({
+      file, previous: '"../../../CD-14/cd14/cd14.eslint-plugin.ts"',
+    });
+  });
+});
+
+afterAll(() => {
+  const removed = scratch.removeTree({ path: fixtureRoot() });
+  assert(removed.outcome === "ok", JSON.stringify(removed));
+});
+
+const consumerRepo = fixtureConsumer;
+
+const fixtureModules: ModuleLoaderPort = {
+  load: ({ path: modulePath }) => {
+    const runners: Readonly<Record<string, unknown>> = {
+      [path.join({ segments: [fixtureInstallRoot(), "mechanisms", "eslint", "runner", "runner.ts"] })]: { runner: eslintRunner },
+      [path.join({ segments: [fixtureInstallRoot(), "mechanisms", "walker", "runner", "runner.ts"] })]: { runner: walkerRunner },
+    };
+    return Promise.resolve({ outcome: "ok", value: runners[modulePath] });
+  },
+};
 
 const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPort => ({
   trackedPaths: vi.fn<GitPort["trackedPaths"]>().mockReturnValue({ outcome: "ok", value: request.tracked }),
@@ -57,10 +163,11 @@ const gitTracking = (request: { readonly tracked: readonly RepoPath[] }): GitPor
 const checkOf = (request: { readonly name: string; readonly tracked: readonly RepoPath[] }) =>
   runCheck({
     repoRoot: consumerRepo({ name: request.name }),
-    installRoot: INSTALL_ROOT,
+    installRoot: fixtureInstallRoot(),
     baseRevision: undefined,
-    fileText,
-    modules,
+    selections: createSelectionRepository({ repoRoot: consumerRepo({ name: request.name }), installRoot: fixtureInstallRoot(), fileText, path }),
+    exceptions: createExceptionRepository({ repoRoot: consumerRepo({ name: request.name }), fileText, path }),
+    modules: fixtureModules,
     path,
     git: gitTracking({ tracked: request.tracked }),
   });
@@ -413,12 +520,11 @@ const SHARED_CASE_FILES: readonly RepoPath[] = [
   repoPathSchema.parse("src/anon.ts"),
 ];
 
-const SHARED_CASES_RUN = {
+const sharedCasesRun = () => ({
   repoRoot: consumerRepo({ name: "fr3-anchors" }),
-  installRoot: INSTALL_ROOT,
-  files: SHARED_CASE_FILES,
+  installRoot: fixtureInstallRoot(),
   trackedPaths: SHARED_CASE_FILES,
-};
+});
 
 const EXPECTED_SHARED_HITS = [
   { clause: CLASS_SYNTAX, file: "src/decl.ts", anchor: { line: 1, column: 7 }, snippet: "export class Alpha {}" },
@@ -442,12 +548,16 @@ const EXPECTED_SHARED_HITS = [
 
 describe("FR-3 over real files: the ESLint runner on real ESLint 10 and the walker runner on real TypeScript", () => {
   it("give the same whole anchors for every flagged CD-14 shared case", async () => {
-    const eslintRun = await eslintRunner.run({ ...SHARED_CASES_RUN, records: [], clauses: [ESLINT_CLAUSE] });
-    const walkerRun = await walkerRunner.run({ ...SHARED_CASES_RUN, clauses: [WALKER_CLAUSE] });
+    const eslintRun = await eslintRunner.run({ ...sharedCasesRun(), records: [], clauses: [{ ...ESLINT_CLAUSE, pieceRoot: path.join({ segments: [fixtureInstallRoot(), "mechanisms", "eslint", "CD-14"] }) }] });
+    const walkerRun = await walkerRunner.run({ ...sharedCasesRun(), clauses: [{ ...WALKER_CLAUSE, pieceRoot: path.join({ segments: [fixtureInstallRoot(), "mechanisms", "walker", "CD-14"] }) }] });
     expect({ eslint: eslintRun, walker: walkerRun }).toEqual({
-      eslint: { outcome: "ok", value: { hits: EXPECTED_SHARED_HITS, nativeExceptions: [], projection: "current" } },
-      walker: { outcome: "ok", value: EXPECTED_SHARED_HITS },
+      eslint: { outcome: "ok", value: { hits: expect.arrayContaining(EXPECTED_SHARED_HITS), evaluated: [{ clause: CLASS_SYNTAX, files: expect.arrayContaining(["src/decl.ts", "src/expr.ts", "src/default.ts", "src/abstract.ts", "src/nested.ts", "src/space.ts", "src/anon.ts"]) }], nativeExceptions: [], projection: "current" } },
+      walker: { outcome: "ok", value: { hits: expect.arrayContaining(EXPECTED_SHARED_HITS), evaluated: [{ clause: CLASS_SYNTAX, files: expect.arrayContaining(["src/decl.ts", "src/expr.ts", "src/default.ts", "src/abstract.ts", "src/nested.ts", "src/space.ts", "src/anon.ts"]) }] } },
     });
+    assert(eslintRun.outcome === "ok");
+    assert(walkerRun.outcome === "ok");
+    expect(eslintRun.value.hits).toHaveLength(7);
+    expect(walkerRun.value.hits).toHaveLength(7);
   });
 });
 

@@ -1,5 +1,5 @@
 import { parse, type ParseError } from "jsonc-parser";
-import type { Result } from "../../../core/values/result.ts";
+import type { Result } from "../values/result.ts";
 
 export type JsoncParsePort = {
   readonly parse: (request: {

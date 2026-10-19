@@ -13,7 +13,9 @@ import type {
 } from "../mechanism-port/runner-module-schema.ts";
 import {
   type Hit,
-  hitSchema,
+  type ClauseEvaluation,
+  type MechanismObservations,
+  mechanismObservationsSchema,
   type NativeException,
   type ProjectionState,
   type ProjectionWrite,
@@ -27,6 +29,7 @@ import type { Result } from "../values/result.ts";
 export type MechanismRun = {
   readonly mechanism: MechanismId;
   readonly hits: readonly Hit[];
+  readonly evaluated: readonly ClauseEvaluation[];
   readonly nativeExceptions: readonly NativeException[];
   readonly projectedKinds: readonly NativeException["kind"][];
   readonly projection: "none" | ProjectionState;
@@ -44,43 +47,73 @@ export type MechanismProjectionRequest = {
   readonly request: ProjectionRequest;
 };
 
-const hitsResultSchema = runnerResultSchema({ value: z.array(hitSchema).readonly() });
+const observationsResultSchema = runnerResultSchema({ value: mechanismObservationsSchema });
 
 const unrequestedHit = (request: {
   readonly hits: readonly Hit[];
+  readonly evaluated: readonly ClauseEvaluation[];
   readonly run: RunRequest;
 }): Hit | undefined =>
   request.hits.find(
     (hit) =>
-      !request.run.files.includes(hit.file) ||
-      !request.run.clauses.some(
-        (clause) => sameClauseAddress({ left: clause.address, right: hit.clause }) === "same",
+      !request.evaluated.some(
+        (evaluation) => sameClauseAddress({ left: evaluation.clause, right: hit.clause }) === "same" &&
+          evaluation.files.includes(hit.file),
       ),
   );
+
+const observationsProblem = (request: {
+  readonly observations: MechanismObservations;
+  readonly run: RunRequest;
+  readonly measurement: "measured" | "unmeasured";
+}): string | undefined => {
+  const foreign = request.observations.evaluated.find((evaluation) =>
+    !request.run.clauses.some((clause) =>
+      sameClauseAddress({ left: clause.address, right: evaluation.clause }) === "same",
+    ),
+  );
+  if (foreign !== undefined) {
+    return `an evaluation names ${clauseAddressText({ address: foreign.clause })}, which the request did not hold`;
+  }
+  if (request.measurement === "unmeasured" && request.observations.evaluated.length !== 0) {
+    return "an unavailable mechanism returned evaluated clauses";
+  }
+  if (request.measurement === "measured") {
+    const incomplete = request.run.clauses.find((clause) =>
+      request.observations.evaluated.filter((evaluation) =>
+        sameClauseAddress({ left: clause.address, right: evaluation.clause }) === "same",
+      ).length !== 1,
+    );
+    if (incomplete !== undefined) {
+      return `the requested clause ${clauseAddressText({ address: incomplete.address })} has no single evaluation`;
+    }
+  }
+  const unrequested = unrequestedHit({ ...request.observations, run: request.run });
+  return unrequested === undefined
+    ? undefined
+    : `a hit names ${clauseAddressText({ address: unrequested.clause })} in ${unrequested.file}, which the request did not hold`;
+};
 
 const standaloneRun = (request: {
   readonly returned: unknown;
   readonly mechanism: MechanismId;
   readonly run: RunRequest;
 }): Result<MechanismRun, RunnerFailure> => {
-  const parsed = hitsResultSchema.safeParse(request.returned);
+  const parsed = observationsResultSchema.safeParse(request.returned);
   if (!parsed.success) {
     return runnerInvalidOutput({ detail: z.prettifyError(parsed.error) });
   }
   if (parsed.data.outcome === "failed") {
     return parsed.data;
   }
-  const unrequested = unrequestedHit({ hits: parsed.data.value, run: request.run });
-  if (unrequested !== undefined) {
-    return runnerInvalidOutput({
-      detail: `a hit names ${clauseAddressText({ address: unrequested.clause })} in ${unrequested.file}, which the request did not hold`,
-    });
-  }
+  const problem = observationsProblem({ observations: parsed.data.value, run: request.run, measurement: "measured" });
+  if (problem !== undefined) return runnerInvalidOutput({ detail: problem });
   return {
     outcome: "ok",
     value: {
       mechanism: request.mechanism,
-      hits: parsed.data.value,
+      hits: parsed.data.value.hits,
+      evaluated: parsed.data.value.evaluated,
       nativeExceptions: [],
       projectedKinds: [],
       projection: "none",
@@ -118,12 +151,12 @@ const embeddedRun = (request: {
     return parsed.data;
   }
   const report = parsed.data.value;
-  const unrequested = unrequestedHit({ hits: report.hits, run: request.run });
-  if (unrequested !== undefined) {
-    return runnerInvalidOutput({
-      detail: `a hit names ${clauseAddressText({ address: unrequested.clause })} in ${unrequested.file}, which the request did not hold`,
-    });
-  }
+  const problem = observationsProblem({
+    observations: report,
+    run: request.run,
+    measurement: report.projection === "missing" || report.projection === "not-included" ? "unmeasured" : "measured",
+  });
+  if (problem !== undefined) return runnerInvalidOutput({ detail: problem });
   const unrequestedNative = unrequestedNativeException({
     nativeExceptions: report.nativeExceptions,
     run: request.run,
@@ -138,6 +171,7 @@ const embeddedRun = (request: {
     value: {
       mechanism: request.mechanism,
       hits: report.hits,
+      evaluated: report.evaluated,
       nativeExceptions: report.nativeExceptions,
       projectedKinds: request.projectedKinds,
       projection: report.projection,

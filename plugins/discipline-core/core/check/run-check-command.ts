@@ -1,3 +1,5 @@
+import { createSelectionRepository } from "../consumer-selection/consumer-selection.ts";
+import { createExceptionRepository } from "../exception-records/exception-records.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
@@ -60,7 +62,17 @@ const checkResult = (request: CommandRequest): Promise<Result<CheckReport, LoadF
     repoRoot: repoRoot.value,
     installRoot: installRoot.value,
     baseRevision: parsed.value.baseRevision,
-    fileText: request.fileText,
+    selections: createSelectionRepository({
+      repoRoot: repoRoot.value,
+      installRoot: installRoot.value,
+      fileText: request.fileText,
+      path: request.path,
+    }),
+    exceptions: createExceptionRepository({
+      repoRoot: repoRoot.value,
+      fileText: request.fileText,
+      path: request.path,
+    }),
     modules: request.modules,
     path: request.path,
     git: request.git,

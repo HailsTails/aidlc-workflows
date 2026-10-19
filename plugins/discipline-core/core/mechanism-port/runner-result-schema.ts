@@ -57,6 +57,20 @@ export const hitSchema = z
 
 export type Hit = z.infer<typeof hitSchema>;
 
+export const clauseEvaluationSchema = z.object({
+  clause: clauseAddressObjectSchema,
+  files: z.array(repoPathSchema).readonly(),
+}).readonly();
+
+export type ClauseEvaluation = z.infer<typeof clauseEvaluationSchema>;
+
+export const mechanismObservationsSchema = z.object({
+  hits: z.array(hitSchema).readonly(),
+  evaluated: z.array(clauseEvaluationSchema).readonly(),
+}).readonly();
+
+export type MechanismObservations = z.infer<typeof mechanismObservationsSchema>;
+
 export const caseVerdictSchema = z
   .object({
     caseName: z.string(),

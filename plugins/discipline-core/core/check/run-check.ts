@@ -1,40 +1,48 @@
 import { z } from "zod";
-import { type ClauseBinding, readSelection, type Selection } from "../consumer-selection/consumer-selection.ts";
-import {
-  type ExceptionRecord,
-  type InvalidRecord,
-  parseExceptionEntries,
-  readExceptionEntries,
+import type { SelectionRepository } from "../consumer-selection/consumer-selection.ts";
+import type { ClauseBinding, Selection } from "../consumer-selection/selection.ts";
+import type {
+  ExceptionRepository,
+  ExceptionRecord,
+  InvalidRecord,
 } from "../exception-records/exception-records.ts";
 import { applyGovernance, type Finding } from "../governance/governance.ts";
 import type { RunnerFailure } from "../mechanism-port/runner-failure.ts";
 import {
   type LoadedRunner,
+  type LocationScope,
   type RunnerClause,
   type RunRequest,
   runnerModuleSchema,
 } from "../mechanism-port/runner-module-schema.ts";
-import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../platform-ports/module-loader-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
 import { computeTouchedSet, type TouchedSet } from "../touched-set/touched-set.ts";
 import type { AbsolutePath } from "../values/absolute-path.ts";
+import { type ClauseAddress, clauseAddressText, sameClauseAddress } from "../values/clause-address.ts";
 import type { MechanismId } from "../values/identifiers.ts";
 import type { RepoPath } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
-import type { CheckReport, ProjectionProblem, Unmeasured } from "../verdict/check-report.ts";
+import type { CheckReport, ClauseCoverage, ProjectionProblem, Unmeasured } from "../verdict/check-report.ts";
 import type { LoadFailure } from "./load-failure.ts";
 import { type MechanismRun, runMechanism } from "./mechanism-dispatch.ts";
+
+export type CheckScope = {
+  readonly clauses?: readonly ClauseAddress[];
+  readonly includes?: LocationScope;
+};
 
 export type CheckRequest = {
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
   readonly baseRevision: string | undefined;
-  readonly fileText: FileTextPort;
+  readonly selections: SelectionRepository;
+  readonly exceptions: ExceptionRepository;
   readonly modules: ModuleLoaderPort;
   readonly path: PathPort;
   readonly git: GitPort;
+  readonly scope?: CheckScope;
 };
 
 export type LoadRequest = Omit<CheckRequest, "baseRevision" | "git">;
@@ -51,8 +59,6 @@ export type LoadedInputs = {
   readonly invalidRecords: readonly InvalidRecord[];
   readonly mechanisms: readonly LoadedMechanism[];
 };
-
-const TYPESCRIPT_FILE = /\.(?:ts|tsx|mts|cts)$/;
 
 const runnerExportSchema = z.object({ runner: runnerModuleSchema });
 
@@ -140,25 +146,38 @@ const loadMechanisms = async (
   });
 
 export const loadInputs = async (request: LoadRequest): Promise<Result<LoadedInputs, LoadFailure>> => {
-  const reading = readSelection(request);
+  const reading = request.selections.read({});
   if (reading.outcome === "failed") {
     return reading;
   }
-  const entries = readExceptionEntries(request);
-  if (entries.outcome === "failed") {
-    return entries;
+  const exceptions = request.exceptions.read({ selection: reading.value.selection });
+  if (exceptions.outcome === "failed") {
+    return exceptions;
   }
-  const mechanisms = await loadMechanisms({ ...request, bindings: reading.value.bindings });
+  const unadopted = request.scope?.clauses?.find((clause) =>
+    !reading.value.selection.selected.some((selected) =>
+      sameClauseAddress({ left: selected.address, right: clause }) === "same",
+    ),
+  );
+  if (unadopted !== undefined) {
+    return failed({
+      kind: "arguments-invalid",
+      detail: `the requested clause ${clauseAddressText({ address: unadopted })} is not adopted`,
+    });
+  }
+  const bindings = reading.value.bindings.filter((binding) =>
+    clauseRequest({ clause: binding.clause.address, scope: request.scope }) === "requested",
+  );
+  const mechanisms = await loadMechanisms({ ...request, bindings });
   if (mechanisms.outcome === "failed") {
     return mechanisms;
   }
-  const parsed = parseExceptionEntries({ entries: entries.value, selection: reading.value.selection });
   return {
     outcome: "ok",
     value: {
       selection: reading.value.selection,
-      records: parsed.records,
-      invalidRecords: parsed.invalid,
+      records: exceptions.value.records,
+      invalidRecords: exceptions.value.invalid,
       mechanisms: mechanisms.value,
     },
   };
@@ -198,23 +217,12 @@ const projectionOutcome = (request: {
   }
 };
 
-const workingTreePaths = (request: {
-  readonly check: CheckRequest;
-  readonly tracked: readonly RepoPath[];
-}): readonly RepoPath[] =>
-  request.tracked.filter(
-    (trackedPath) =>
-      request.check.fileText.exists({
-        path: request.check.path.join({ segments: [request.check.repoRoot, trackedPath] }),
-      }) === "present",
-  );
-
-const presentTrackedPaths = (request: CheckRequest): Result<readonly RepoPath[], LoadFailure> => {
+const trackedPathsOf = (request: CheckRequest): Result<readonly RepoPath[], LoadFailure> => {
   const tracked = request.git.trackedPaths({ repoRoot: request.repoRoot });
   if (tracked.outcome === "failed") {
     return failed({ kind: "git-failed", detail: `${tracked.error.command}: ${tracked.error.detail}` });
   }
-  return { outcome: "ok", value: workingTreePaths({ check: request, tracked: tracked.value }) };
+  return tracked;
 };
 
 const runRequestOf = (request: {
@@ -224,9 +232,9 @@ const runRequestOf = (request: {
 }): RunRequest => ({
   repoRoot: request.check.repoRoot,
   installRoot: request.check.installRoot,
-  files: request.tracked.filter((trackedPath) => TYPESCRIPT_FILE.test(trackedPath)),
   trackedPaths: request.tracked,
   clauses: request.loaded.clauses,
+  ...(request.check.scope?.includes === undefined ? {} : { includes: request.check.scope.includes }),
 });
 
 const mechanismRunOf = (request: {
@@ -258,20 +266,61 @@ const mechanismRuns = async (request: {
 const findingsOf = (request: { readonly runs: readonly MechanismRun[] }): readonly Finding[] =>
   request.runs.flatMap((run) => run.hits.map((hit) => ({ ...hit, mechanism: run.mechanism })));
 
+const clauseRequest = (request: {
+  readonly clause: ClauseAddress;
+  readonly scope: CheckScope | undefined;
+}): "requested" | "not-requested" =>
+  request.scope?.clauses === undefined || request.scope.clauses.some((clause) =>
+    sameClauseAddress({ left: clause, right: request.clause }) === "same",
+  ) ? "requested" : "not-requested";
+
+const staleCandidatesOf = (request: {
+  readonly records: readonly ExceptionRecord[];
+  readonly scope: CheckScope | undefined;
+}): readonly ExceptionRecord[] =>
+  request.records.filter((record) =>
+    clauseRequest({ clause: record.clause, scope: request.scope }) === "requested" &&
+    (record.kind === "clause-wide-carve-out" ||
+      request.scope?.includes?.({ clause: record.clause, file: record.file }) !== "excluded"),
+  );
+
+const coverageOf = (request: {
+  readonly selection: Selection;
+  readonly scope: CheckScope | undefined;
+  readonly runs: readonly MechanismRun[];
+}): readonly ClauseCoverage[] =>
+  request.selection.selected.flatMap((selected): readonly ClauseCoverage[] => {
+    const binding = { clause: selected.address, mechanism: selected.mechanism };
+    if (clauseRequest({ clause: selected.address, scope: request.scope }) === "not-requested") {
+      return [{ ...binding, evaluation: "not-requested", scannedCount: 0 }];
+    }
+    const evaluated = request.runs.find((run) => run.mechanism === selected.mechanism)?.evaluated.find((entry) =>
+      sameClauseAddress({ left: entry.clause, right: selected.address }) === "same",
+    );
+    if (evaluated === undefined) {
+      return [];
+    }
+    const scannedCount = new Set(evaluated.files).size;
+    return [{ ...binding, evaluation: scannedCount === 0 ? "not-applicable" : "evaluated", scannedCount }];
+  });
+
 const checkReportOf = (request: {
   readonly inputs: LoadedInputs;
   readonly runs: readonly MechanismRun[];
   readonly touched: TouchedSet;
+  readonly scope: CheckScope | undefined;
 }): CheckReport => {
   const governed = applyGovernance({
     findings: findingsOf(request),
     records: request.inputs.records,
+    staleCandidates: staleCandidatesOf({ records: request.inputs.records, scope: request.scope }),
     touched: request.touched,
     runs: request.runs,
   });
   const projections = request.runs.map((run) => projectionOutcome({ run }));
   return {
     ...governed,
+    coverage: coverageOf({ selection: request.inputs.selection, scope: request.scope, runs: request.runs }),
     uncovered: request.inputs.selection.uncovered,
     invalidRecords: request.inputs.invalidRecords,
     unmeasured: [
@@ -287,7 +336,7 @@ export const runCheck = async (request: CheckRequest): Promise<Result<CheckRepor
   if (inputs.outcome === "failed") {
     return inputs;
   }
-  const tracked = presentTrackedPaths(request);
+  const tracked = trackedPathsOf(request);
   if (tracked.outcome === "failed") {
     return tracked;
   }
@@ -297,6 +346,6 @@ export const runCheck = async (request: CheckRequest): Promise<Result<CheckRepor
   }
   return {
     outcome: "ok",
-    value: checkReportOf({ inputs: inputs.value, runs: runs.value, touched: computeTouchedSet(request) }),
+    value: checkReportOf({ inputs: inputs.value, runs: runs.value, touched: computeTouchedSet(request), scope: request.scope }),
   };
 };

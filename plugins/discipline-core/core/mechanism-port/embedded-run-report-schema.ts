@@ -2,7 +2,7 @@ import { z } from "zod";
 import { clauseAddressObjectSchema } from "../values/clause-address.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import type { Equal } from "../values/type-equality.ts";
-import { hitSchema, type ProjectionState } from "./runner-result-schema.ts";
+import { clauseEvaluationSchema, hitSchema, type ProjectionState } from "./runner-result-schema.ts";
 
 const inlineLineSchema = z.number().int().min(1);
 
@@ -57,6 +57,7 @@ export const nativeExceptionSchema = z.discriminatedUnion("kind", [
 export const embeddedRunReportSchema = z
   .object({
     hits: z.array(hitSchema).readonly(),
+    evaluated: z.array(clauseEvaluationSchema).readonly(),
     nativeExceptions: z.array(nativeExceptionSchema).readonly(),
     projection: z.enum(["current", "out-of-date", "missing", "not-included"]),
   })

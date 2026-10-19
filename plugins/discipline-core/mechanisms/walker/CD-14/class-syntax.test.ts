@@ -1,13 +1,13 @@
 import { assert, describe, expect, it, vi } from "vitest";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
+import type { DirectoryPort } from "../../../core/platform-ports/file-system-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import { createPathPort, type PathPort } from "../../../core/platform-ports/path-port.ts";
 import { type ClauseDefinition, readDisciplineFile } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { disciplineIdSchema } from "../../../core/values/identifiers.ts";
-import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
 import { requiredEntry } from "../../../tests/required-entry.ts";
 import { createWalkerRunner } from "../runner/create-walker-runner.ts";
@@ -60,13 +60,25 @@ const loadingThisPiece: ModuleLoaderPort = {
 
 const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","src/alpha.ts"]': "/repo/src/alpha.ts",
+  '["/repo","src"]': "/repo/src",
+  '["/repo/src","alpha.ts"]': "/repo/src/alpha.ts",
   '["/install/mechanisms/walker/CD-14","class-syntax.ts"]':
     "/install/mechanisms/walker/CD-14/class-syntax.ts",
 };
 
+const RELATIVE_PATHS: Readonly<Record<string, string>> = {
+  '["/repo","/install"]': "../install",
+  '["/repo","/repo/src"]': "src",
+  '["/repo","/repo/src/alpha.ts"]': "src/alpha.ts",
+};
+const DIRECTORY_LISTINGS: ReadonlyMap<string, ReturnType<DirectoryPort["list"]>> = new Map([
+  ["/repo", { outcome: "ok", value: [{ name: "src", kind: "directory" }] }],
+  ["/repo/src", { outcome: "ok", value: [{ name: "alpha.ts", kind: "file" }] }],
+]);
+
 const TABLE_PATH: PathPort = {
   join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
-  relative: vi.fn<PathPort["relative"]>(),
+  relative: ({ from, to }) => ({ relation: "within-root", path: requiredEntry({ table: RELATIVE_PATHS, key: JSON.stringify([from, to]) }) }),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn<PathPort["directoryOf"]>(),
   repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
@@ -75,6 +87,7 @@ const TABLE_PATH: PathPort = {
 };
 
 const walkerRunner = createWalkerRunner({
+  directory: { list: ({ path }) => DIRECTORY_LISTINGS.get(path) ?? assert.fail("unexpected directory") },
   fileText: sourceOnLineThree,
   modules: loadingThisPiece,
   path: TABLE_PATH,
@@ -92,25 +105,24 @@ describe("CD-14 class-syntax walker check over TypeScript's own parse", () => {
     });
   });
 
-  it("anchors a class on line 3 at its class keyword, as the fake-port runner test does", async () => {
+  it("anchors a class on line 3 at its class keyword", async () => {
     expect(
       await walkerRunner.run({
         repoRoot: absolutePathSchema.parse("/repo"),
         installRoot: absolutePathSchema.parse("/install"),
-        files: [repoPathSchema.parse("src/alpha.ts")],
         trackedPaths: [],
         clauses: [CLAUSE],
       }),
     ).toEqual({
       outcome: "ok",
-      value: [
+      value: { hits: [
         {
           clause: ADDRESS,
           file: "src/alpha.ts",
           anchor: { line: 3, column: 2 },
           snippet: "class Alpha {}",
         },
-      ],
+      ], evaluated: [{ clause: ADDRESS, files: ["src/alpha.ts"] }] },
     });
   });
 });

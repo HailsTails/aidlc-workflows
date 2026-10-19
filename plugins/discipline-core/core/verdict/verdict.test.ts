@@ -30,6 +30,7 @@ const record: ExceptionRecord = {
 };
 
 const emptyReport: CheckReport = {
+  coverage: [],
   findings: [],
   exempted: [],
   uncovered: [],

@@ -1,657 +1,342 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
+import type { DirectoryPort } from "../../../core/platform-ports/file-system-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
 import type { PathPort } from "../../../core/platform-ports/path-port.ts";
 import type { SourceCase } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
-import type { AnchorKind } from "../../../core/values/anchor.ts";
 import { type ClauseAddress, clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
 import { requiredEntry } from "../../../tests/required-entry.ts";
 import { createWalkerRunner } from "./create-walker-runner.ts";
-import type { ParsePort, WalkerCheck } from "./walker-check.ts";
+import { createDefaultParsePort, type SyntaxNode, type TypeScriptParsePort } from "./typescript-parse.ts";
+import type { PreparedWalkerCheck, WalkerPiece } from "./walker-piece.ts";
 
-type FakeNode = {
-  readonly label: string;
-  readonly position: number;
-  readonly children: readonly FakeNode[];
-};
-
-type FakeTree = { readonly label: "root"; readonly children: readonly FakeNode[] };
-
-type FakeCheck = WalkerCheck<"fake-api", FakeTree, FakeNode>;
-type FakeSyntaxInspect = Extract<FakeCheck, { readonly kind: "syntax" }>["inspect"];
-type FakeParse = ParsePort<"fake-api", FakeTree, FakeNode>["parse"];
-
+const SYNTAX_API = createDefaultParsePort({}).syntaxApi;
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
 const PIECE_ROOT = "/install/mechanisms/walker/XX-1";
 const FIRST_MODULE = "/install/mechanisms/walker/XX-1/first.ts";
 const SECOND_MODULE = "/install/mechanisms/walker/XX-1/second.ts";
-
 const ALPHA = repoPathSchema.parse("src/alpha.ts");
 const BETA = repoPathSchema.parse("src/beta.ts");
-const DECLARATIONS = repoPathSchema.parse("src/types.d.ts");
 const TRACKED_ONLY = repoPathSchema.parse("src/tracked-only.ts");
-
 const FIRST_ADDRESS = clauseAddressSchema.parse("XX-1#first-check");
 const SECOND_ADDRESS = clauseAddressSchema.parse("XX-1#second-check");
-const KEYWORD_ANCHOR: AnchorKind = { kind: "keyword", keyword: "class" };
 
-const CLASS_ON_LINE_THREE = "const a = 1;\n\n  class Alpha {}\n";
-const CLASS_KEYWORD_ON_LINE_THREE = 16;
-
-const LEAF: FakeNode = { label: "leaf", position: 0, children: [] };
-const INNER: FakeNode = { label: "inner", position: 0, children: [] };
-const OUTER: FakeNode = { label: "outer", position: 0, children: [INNER] };
-
-const TWO_CLASSES = "class Abc {}\n\n  class Def {}\n";
-const FIRST_CLASS_NODE: FakeNode = { label: "first class", position: 0, children: [] };
-const SECOND_CLASS_NODE: FakeNode = { label: "second class", position: 16, children: [] };
-
-const readingText = (request: { readonly text: string }) =>
-  vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: request.text });
-
-const unreadable = () =>
-  vi.fn<FileTextPort["read"]>().mockReturnValue({
-    outcome: "failed",
-    error: { kind: "unreadable", path: "/repo/src/alpha.ts", detail: "EACCES" },
-  });
-
-const loadingNamespace = (request: { readonly namespace: unknown }) =>
-  vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: request.namespace });
-
-const unloadable = () =>
-  vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({
-    outcome: "failed",
-    error: { kind: "module-unloadable", path: FIRST_MODULE, detail: "SyntaxError" },
-  });
-
-const parsingTo = (request: { readonly nodes: readonly FakeNode[] }) =>
-  vi.fn<FakeParse>().mockReturnValue({ label: "root", children: request.nodes });
-
-const anchorEveryNode: FakeSyntaxInspect = (inspectRequest) => [
-  inspectRequest.anchorAt({ position: inspectRequest.node.position }),
-];
-
-const anchorAtPosition =
-  (request: { readonly position: number }): FakeSyntaxInspect =>
-  (inspectRequest) => [inspectRequest.anchorAt({ position: request.position })];
-
-const recordingInspect =() => vi.fn<FakeSyntaxInspect>().mockReturnValue([]);
-
-const syntaxCheck = (request: { readonly inspect: FakeSyntaxInspect }): FakeCheck => ({
-  kind: "syntax",
-  inspect: request.inspect,
-});
-
-const VIOLATING_PATH_CHECK: FakeCheck = { kind: "path", inspect: () => "violates" };
-const CONFORMING_PATH_CHECK: FakeCheck = { kind: "path", inspect: () => "conforms" };
-
-const clauseFor = (request: {
-  readonly address: ClauseAddress;
-  readonly settings: unknown;
-}): RunnerClause => ({
+const clauseFor = (request: { readonly address: ClauseAddress; readonly settings: unknown }): RunnerClause => ({
   address: request.address,
-  anchor: KEYWORD_ANCHOR,
+  anchor: { kind: "source" },
   pieceRoot: PIECE_ROOT,
   settings: request.settings,
 });
-
 const FIRST_CLAUSE = clauseFor({ address: FIRST_ADDRESS, settings: { module: "first.ts" } });
 const SECOND_CLAUSE = clauseFor({ address: SECOND_ADDRESS, settings: { module: "second.ts" } });
+const ALPHA_HIT = { clause: FIRST_ADDRESS, file: ALPHA, anchor: { line: 9, column: 1 }, snippet: "first" };
+const FINISH_HIT = { clause: FIRST_ADDRESS, file: ALPHA, anchor: { line: 2, column: 0 }, snippet: "finished" };
+
+const readingText = (request: { readonly text: string }) =>
+  vi.fn<FileTextPort["read"]>().mockReturnValue({ outcome: "ok", value: request.text });
+const loadingNamespace = (request: { readonly namespace: unknown }) =>
+  vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: request.namespace });
+const parsingTo = (request: { readonly nodes: readonly SyntaxNode[] }) => {
+  const tree = SYNTAX_API.createSourceFile("fixture.ts", "", SYNTAX_API.ScriptTarget.Latest, true);
+  return {
+    syntaxApi: SYNTAX_API,
+    parse: vi.fn<TypeScriptParsePort["parse"]>().mockReturnValue(tree),
+    children: () => request.nodes,
+  };
+};
+const EMPTY_PREPARED: PreparedWalkerCheck = {
+  prepareFile: () => ({ outcome: "ok", value: { kind: "complete", hits: [] } }),
+  finish: () => ({ outcome: "ok", value: [] }),
+};
+const SYNTAX_PREPARED: PreparedWalkerCheck = {
+  prepareFile: () => ({ outcome: "ok", value: { kind: "syntax", begin: () => ({ finish: () => [] }) } }),
+  finish: () => ({ outcome: "ok", value: [] }),
+};
+const pieceWith = (request: { readonly prepared: PreparedWalkerCheck }): WalkerPiece => ({
+  prepare: () => ({ outcome: "ok", value: request.prepared }),
+});
 
 const JOINED_PATHS: Readonly<Record<string, string>> = {
   '["/repo","src/alpha.ts"]': "/repo/src/alpha.ts",
   '["/repo","src/beta.ts"]': "/repo/src/beta.ts",
   '["/install/mechanisms/walker/XX-1","first.ts"]': FIRST_MODULE,
   '["/install/mechanisms/walker/XX-1","second.ts"]': SECOND_MODULE,
+  '["/repo","src"]': "/repo/src",
+  '["/repo/src","alpha.ts"]': "/repo/src/alpha.ts",
+  '["/repo","tests"]': "/repo/tests",
+  '["/repo","tools"]': "/repo/tools",
+  '["/repo","tsconfig.json"]': "/repo/tsconfig.json",
+  '["/repo/src","untracked.ts"]': "/repo/src/untracked.ts",
+  '["/repo/tests","example.test.js"]': "/repo/tests/example.test.js",
+  '["/repo/tools","core"]': "/repo/tools/core",
+  '["/repo/tools","kept.ts"]': "/repo/tools/kept.ts",
+  '["/repo","src/untracked.ts"]': "/repo/src/untracked.ts",
+  '["/repo","tests/example.test.js"]': "/repo/tests/example.test.js",
+  '["/repo","tools/kept.ts"]': "/repo/tools/kept.ts",
+  '["/repo/tools/core/mechanisms/walker/XX-1","first.ts"]': "/repo/tools/core/mechanisms/walker/XX-1/first.ts",
 };
 
+const PREPARED_RELATIVE_PATHS: Readonly<Record<string, string>> = {
+  '["/repo","/repo/tools/core"]': "tools/core",
+  '["/repo","/repo/src"]': "src",
+  '["/repo","/repo/tests"]': "tests",
+  '["/repo","/repo/tools"]': "tools",
+  '["/repo","/repo/src/untracked.ts"]': "src/untracked.ts",
+  '["/repo","/repo/tests/example.test.js"]': "tests/example.test.js",
+  '["/repo","/repo/tools/kept.ts"]': "tools/kept.ts",
+  '["/repo","/repo/tsconfig.json"]': "tsconfig.json",
+};
+
+const PREPARED_DIRECTORY_LISTINGS: ReadonlyMap<string, ReturnType<DirectoryPort["list"]>> = new Map([
+  ["/repo", { outcome: "ok", value: [
+    { name: "src", kind: "directory" },
+    { name: "tests", kind: "directory" },
+    { name: "tools", kind: "directory" },
+    { name: "tsconfig.json", kind: "file" },
+  ] }],
+  ["/repo/src", { outcome: "ok", value: [{ name: "untracked.ts", kind: "file" }] }],
+  ["/repo/tests", { outcome: "ok", value: [{ name: "example.test.js", kind: "file" }] }],
+  ["/repo/tools", { outcome: "ok", value: [
+    { name: "core", kind: "directory" },
+    { name: "kept.ts", kind: "file" },
+  ] }],
+]);
+
+
+const RELATIVE_PATHS: Readonly<Record<string, string>> = {
+  '["/repo","/install"]': "../install",
+  '["/repo","/repo/src"]': "src",
+  '["/repo","/repo/src/alpha.ts"]': "src/alpha.ts",
+};
 const TABLE_PATH: PathPort = {
   join: ({ segments }) => requiredEntry({ table: JOINED_PATHS, key: JSON.stringify(segments) }),
-  relative: vi.fn<PathPort["relative"]>(),
+  relative: ({ from, to }) => ({ relation: "within-root", path: requiredEntry({ table: RELATIVE_PATHS, key: JSON.stringify([from, to]) }) }),
   joinRepository: vi.fn<PathPort["joinRepository"]>(),
   directoryOf: vi.fn<PathPort["directoryOf"]>(),
   repositoryDirectoryOf: vi.fn<PathPort["repositoryDirectoryOf"]>(),
   resolve: vi.fn<PathPort["resolve"]>(),
   fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
 };
-
+const DIRECTORY_LISTINGS: ReadonlyMap<string, ReturnType<DirectoryPort["list"]>> = new Map([
+  ["/repo", { outcome: "ok", value: [{ name: "src", kind: "directory" }] }],
+  ["/repo/src", { outcome: "ok", value: [{ name: "alpha.ts", kind: "file" }] }],
+]);
 const walkerRunner = (request: {
   readonly read: FileTextPort["read"];
   readonly load: ModuleLoaderPort["load"];
-  readonly parse: FakeParse;
-}) =>
-  createWalkerRunner<"fake-api", FakeTree, FakeNode>({
-    fileText: {
-      read: request.read,
-      exists: () => "present",
-      write: () => ({ outcome: "ok", value: undefined }),
-    },
-    modules: { load: request.load },
-    path: TABLE_PATH,
-    parse: {
-      syntaxApi: "fake-api",
-      parse: request.parse,
-      children: (childRequest) => childRequest.node.children,
-    },
-  });
-
-const runRequest = (request: {
-  readonly files: readonly RepoPath[];
-  readonly clauses: readonly RunnerClause[];
-}) => ({
+  readonly parse: TypeScriptParsePort;
+}) => createWalkerRunner({
+  directory: { list: ({ path }) => DIRECTORY_LISTINGS.get(path) ?? assert.fail("unexpected directory") },
+  fileText: { read: request.read, exists: () => "present", write: vi.fn<FileTextPort["write"]>() },
+  modules: { load: request.load },
+  path: TABLE_PATH,
+  parse: request.parse,
+});
+const RUN_REQUEST = {
   repoRoot: REPO_ROOT,
   installRoot: INSTALL_ROOT,
-  files: request.files,
   trackedPaths: [TRACKED_ONLY],
-  clauses: request.clauses,
-});
-
-const sourceCase = (request: {
-  readonly name: string;
-  readonly fileName: RepoPath;
-  readonly source: string;
-}): SourceCase => ({ ...request, expectedLines: [] });
-
+  clauses: [FIRST_CLAUSE],
+};
+const sourceCase = (request: { readonly name: string; readonly fileName: RepoPath; readonly source: string }): SourceCase =>
+  ({ ...request, expectedLines: [] });
 const pieceInvalid = {
   outcome: "failed",
   error: { kind: "piece-invalid", pieceRoot: PIECE_ROOT, detail: expect.any(String) },
 };
 
-describe("createWalkerRunner run", () => {
-  it("reports a hit at the line, column and trimmed line text of the position a syntax check anchors", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({
-        namespace: {
-          check: syntaxCheck({
-            inspect: anchorAtPosition({ position: CLASS_KEYWORD_ON_LINE_THREE }),
-          }),
-        },
-      }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual({
-      outcome: "ok",
-      value: [
-        {
-          clause: FIRST_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 3, column: 2 },
-          snippet: "class Alpha {}",
-        },
-      ],
-    });
-  });
-
-  it("reads each file under the repository root", async () => {
-    const read = readingText({ text: CLASS_ON_LINE_THREE });
-    const runner = walkerRunner({
-      read,
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    await runner.run(runRequest({ files: [ALPHA, BETA], clauses: [FIRST_CLAUSE] }));
-
-    expect(read.mock.calls).toEqual([
-      [{ path: "/repo/src/alpha.ts" }],
-      [{ path: "/repo/src/beta.ts" }],
-    ]);
-  });
-
-  it("parses each file once under its repository path however many syntax checks are selected", async () => {
-    const parse = parsingTo({ nodes: [LEAF] });
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
-      parse,
-    });
-
-    await runner.run(
-      runRequest({ files: [ALPHA, BETA], clauses: [FIRST_CLAUSE, SECOND_CLAUSE] }),
-    );
-
-    expect(parse.mock.calls).toEqual([
-      [{ fileName: "src/alpha.ts", source: CLASS_ON_LINE_THREE }],
-      [{ fileName: "src/beta.ts", source: CLASS_ON_LINE_THREE }],
-    ]);
-  });
-
-  it("offers each node of each file to every selected syntax check", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(
-      await runner.run(
-        runRequest({ files: [ALPHA, BETA], clauses: [FIRST_CLAUSE, SECOND_CLAUSE] }),
-      ),
-    ).toEqual({
-      outcome: "ok",
-      value: expect.arrayContaining([
-        {
-          clause: FIRST_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 1, column: 0 },
-          snippet: "const a = 1;",
-        },
-        {
-          clause: SECOND_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 1, column: 0 },
-          snippet: "const a = 1;",
-        },
-        {
-          clause: FIRST_ADDRESS,
-          file: "src/beta.ts",
-          anchor: { line: 1, column: 0 },
-          snippet: "const a = 1;",
-        },
-        {
-          clause: SECOND_ADDRESS,
-          file: "src/beta.ts",
-          anchor: { line: 1, column: 0 },
-          snippet: "const a = 1;",
-        },
-      ]),
-    });
-  });
-
-  it("neither reads nor parses a declaration file", async () => {
-    const read = readingText({ text: CLASS_ON_LINE_THREE });
-    const parse = parsingTo({ nodes: [LEAF] });
-    const runner = walkerRunner({
-      read,
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
-      parse,
-    });
-
-    await runner.run(runRequest({ files: [ALPHA, DECLARATIONS], clauses: [FIRST_CLAUSE] }));
-
-    expect({ reads: read.mock.calls, parses: parse.mock.calls }).toEqual({
-      reads: [[{ path: "/repo/src/alpha.ts" }]],
-      parses: [[{ fileName: "src/alpha.ts", source: CLASS_ON_LINE_THREE }]],
-    });
-  });
-
-  it("orders a file's hits by position, then by clause order at the same position", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: TWO_CLASSES }),
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
-      parse: parsingTo({ nodes: [FIRST_CLASS_NODE, SECOND_CLASS_NODE] }),
-    });
-
-    expect(
-      await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE, SECOND_CLAUSE] })),
-    ).toEqual({
-      outcome: "ok",
-      value: [
-        {
-          clause: FIRST_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 1, column: 0 },
-          snippet: "class Abc {}",
-        },
-        {
-          clause: SECOND_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 1, column: 0 },
-          snippet: "class Abc {}",
-        },
-        {
-          clause: FIRST_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 3, column: 2 },
-          snippet: "class Def {}",
-        },
-        {
-          clause: SECOND_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 3, column: 2 },
-          snippet: "class Def {}",
-        },
-      ],
-    });
-  });
-
-  it("offers a nested node by recursing through children", async () => {
-    const inspect = recordingInspect();
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect }) } }),
-      parse: parsingTo({ nodes: [OUTER] }),
-    });
-
-    await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }));
-
-    expect(inspect).toHaveBeenCalledWith(expect.objectContaining({ node: INNER }));
-  });
-
-  it("hands a syntax check the node, its tree, the port's syntax API and the clause's anchor kind", async () => {
-    const inspect = recordingInspect();
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect }) } }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }));
-
-    expect(inspect.mock.calls).toEqual([
-      [
-        {
-          node: LEAF,
-          tree: { label: "root", children: [LEAF] },
-          syntaxApi: "fake-api",
-          anchorKind: { kind: "keyword", keyword: "class" },
-          anchorAt: expect.any(Function),
-        },
-      ],
-    ]);
-  });
-
-  it("offers every file, declaration files included, to a path check and none of the tracked paths", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: VIOLATING_PATH_CHECK } }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(
-      await runner.run(runRequest({ files: [ALPHA, DECLARATIONS], clauses: [FIRST_CLAUSE] })),
-    ).toEqual({
-      outcome: "ok",
-      value: [
-        {
-          clause: FIRST_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 1, column: 0 },
-          snippet: "src/alpha.ts",
-        },
-        {
-          clause: FIRST_ADDRESS,
-          file: "src/types.d.ts",
-          anchor: { line: 1, column: 0 },
-          snippet: "src/types.d.ts",
-        },
-      ],
-    });
-  });
-
-  it("neither reads nor parses a file when only path checks are selected", async () => {
-    const read = readingText({ text: CLASS_ON_LINE_THREE });
-    const parse = parsingTo({ nodes: [LEAF] });
-    const runner = walkerRunner({
-      read,
-      load: loadingNamespace({ namespace: { check: VIOLATING_PATH_CHECK } }),
-      parse,
-    });
-
-    await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }));
-
-    expect({ reads: read.mock.calls, parses: parse.mock.calls }).toEqual({
-      reads: [],
-      parses: [],
-    });
-  });
-
-  it("reports no hit for a file a path check finds conforming", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: CONFORMING_PATH_CHECK } }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual({
-      outcome: "ok",
-      value: [],
-    });
-  });
-
-  it("loads each piece module from its piece folder", async () => {
-    const load = loadingNamespace({
-      namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) },
-    });
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load,
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE, SECOND_CLAUSE] }));
-
-    expect(load.mock.calls).toEqual([[{ path: FIRST_MODULE }], [{ path: SECOND_MODULE }]]);
-  });
-
-  it("loads a piece module two clauses name once", async () => {
-    const load = loadingNamespace({
-      namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) },
-    });
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load,
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    await runner.run(
-      runRequest({
-        files: [ALPHA],
-        clauses: [
-          FIRST_CLAUSE,
-          clauseFor({ address: SECOND_ADDRESS, settings: { module: "first.ts" } }),
-        ],
-      }),
-    );
-
-    expect(load.mock.calls).toEqual([[{ path: FIRST_MODULE }]]);
-  });
-
-  it("is file-unreadable with the file and the port's detail when a file cannot be read", async () => {
-    const runner = walkerRunner({
-      read: unreadable(),
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual({
-      outcome: "failed",
-      error: { kind: "file-unreadable", file: "src/alpha.ts", detail: "EACCES" },
-    });
-  });
-
-  it("is file-unparseable with the file and the thrown message when the parse port throws", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
-      parse: vi.fn<FakeParse>().mockThrow(new Error("parser crashed")),
-    });
-
-    await expect(runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).resolves.toEqual({
-      outcome: "failed",
-      error: { kind: "file-unparseable", file: "src/alpha.ts", detail: "parser crashed" },
-    });
-  });
-});
-
-describe("createWalkerRunner anchorAt", () => {
-  it("ends a line at a carriage return line feed", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: "first\r\nsecond\r\n  class X {}" }),
-      load: loadingNamespace({
-        namespace: { check: syntaxCheck({ inspect: anchorAtPosition({ position: 17 }) }) },
-      }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual({
-      outcome: "ok",
-      value: [
-        {
-          clause: FIRST_ADDRESS,
-          file: "src/alpha.ts",
-          anchor: { line: 3, column: 2 },
-          snippet: "class X {}",
-        },
-      ],
-    });
-  });
-});
-
-describe("createWalkerRunner piece failures", () => {
-  it.each([
-    { name: "no module", settings: {} },
-  ])("is piece-invalid for settings with $name, loading nothing", async ({ settings }) => {
-    const load = loadingNamespace({
-      namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) },
-    });
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load,
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect({
-      result: await runner.run(
-        runRequest({ files: [ALPHA], clauses: [clauseFor({ address: FIRST_ADDRESS, settings })] }),
-      ),
-      loads: load.mock.calls,
-    }).toEqual({ result: pieceInvalid, loads: [] });
-  });
-
-  it.each([
-    { name: "no check export", namespace: {} },
-  ])("is piece-invalid for a piece module with $name", async ({ namespace }) => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual(
-      pieceInvalid,
-    );
-  });
-
-  it("is piece-invalid when the piece module cannot be loaded", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: unloadable(),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual(
-      pieceInvalid,
-    );
-  });
-
-  it("is piece-invalid when a syntax check throws", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({
-        namespace: {
-          check: syntaxCheck({
-            inspect: vi.fn<FakeSyntaxInspect>().mockThrow(new Error("the check threw")),
-          }),
-        },
-      }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual(
-      pieceInvalid,
-    );
-  });
-
-  it.each([
-    {
-      name: "a syntax check returning a promise that rejects",
-      check: {
-        kind: "syntax",
-        inspect: vi.fn().mockRejectedValue(new Error("the check rejected")),
+describe("createWalkerRunner prepared population", () => {
+  it("prepares a shared piece once over the filesystem union and reports applicable clean files per clause", async () => {
+    const prepareFile = vi.fn<PreparedWalkerCheck["prepareFile"]>().mockReturnValue({ outcome: "ok", value: { kind: "complete", hits: [] } });
+    const finish = vi.fn<PreparedWalkerCheck["finish"]>().mockReturnValue({ outcome: "ok", value: [] });
+    const prepare = vi.fn<WalkerPiece["prepare"]>().mockReturnValue({ outcome: "ok", value: { prepareFile, finish } });
+    const firstClause: RunnerClause = { ...FIRST_CLAUSE, pieceRoot: "/repo/tools/core/mechanisms/walker/XX-1" };
+    const sharedClause: RunnerClause = { ...SECOND_CLAUSE, pieceRoot: "/repo/tools/core/mechanisms/walker/XX-1", settings: { module: "first.ts" } };
+    const directory: DirectoryPort = { list: (request) => PREPARED_DIRECTORY_LISTINGS.get(request.path) ?? assert.fail("unexpected directory read") };
+    const list = vi.spyOn(directory, "list");
+    const read = vi.fn<FileTextPort["read"]>();
+    const parse = parsingTo({ nodes: [] });
+    const load = loadingNamespace({ namespace: { check: { prepare } } });
+    const runner = createWalkerRunner({
+      directory,
+      fileText: { read, exists: () => "present", write: vi.fn<FileTextPort["write"]>() },
+      modules: { load },
+      path: {
+        ...TABLE_PATH,
+        relative: ({ from, to }) => ({ relation: "within-root", path: requiredEntry({ table: PREPARED_RELATIVE_PATHS, key: JSON.stringify([from, to]) }) }),
       },
-    },
-  ])("is piece-invalid for $name", async ({ check }) => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check } }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
-
-    expect(await runner.run(runRequest({ files: [ALPHA], clauses: [FIRST_CLAUSE] }))).toEqual(
-      pieceInvalid,
-    );
-  });
-});
-
-describe("createWalkerRunner conform", () => {
-  it("returns each case's flagged lines in case order, skipping a declaration file", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
-      parse: parsingTo({
-        nodes: [
-          { label: "first", position: 0, children: [] },
-          { label: "second", position: 2, children: [] },
-        ],
-      }),
-    });
-
-    expect(
-      await runner.conform({
-        clause: FIRST_CLAUSE,
-        cases: [
-          sourceCase({ name: "two lines", fileName: ALPHA, source: "a\nb\n" }),
-          sourceCase({ name: "declaration file", fileName: DECLARATIONS, source: "a\nb\n" }),
-        ],
-      }),
-    ).toEqual({
-      outcome: "ok",
-      value: [
-        { caseName: "two lines", flaggedLines: [1, 2] },
-        { caseName: "declaration file", flaggedLines: [] },
-      ],
-    });
-  });
-
-  it("parses each case's source under its file name and reads no file", async () => {
-    const read = readingText({ text: CLASS_ON_LINE_THREE });
-    const parse = parsingTo({ nodes: [LEAF] });
-    const runner = walkerRunner({
-      read,
-      load: loadingNamespace({ namespace: { check: syntaxCheck({ inspect: anchorEveryNode }) } }),
       parse,
     });
 
-    await runner.conform({
-      clause: FIRST_CLAUSE,
-      cases: [sourceCase({ name: "one line", fileName: BETA, source: "class Beta {}\n" })],
+    const returned = await runner.run({
+      repoRoot: REPO_ROOT,
+      installRoot: absolutePathSchema.parse("/repo/tools/core"),
+      trackedPaths: [TRACKED_ONLY],
+      clauses: [firstClause, sharedClause],
     });
 
-    expect({ reads: read.mock.calls, parses: parse.mock.calls }).toEqual({
-      reads: [],
-      parses: [[{ fileName: "src/beta.ts", source: "class Beta {}\n" }]],
+    expect(returned).toEqual({
+      outcome: "ok",
+      value: {
+        hits: [],
+        evaluated: [
+          { clause: FIRST_ADDRESS, files: expect.arrayContaining(["src/untracked.ts", "tests/example.test.js", "tools/kept.ts", "tsconfig.json"]) },
+          { clause: SECOND_ADDRESS, files: expect.arrayContaining(["src/untracked.ts", "tests/example.test.js", "tools/kept.ts", "tsconfig.json"]) },
+        ],
+      },
+    });
+    expect(returned).toHaveProperty("value.evaluated.0.files.length", 4);
+    expect(returned).toHaveProperty("value.evaluated.1.files.length", 4);
+    expect(prepare).toHaveBeenCalledExactlyOnceWith({
+      clauses: [firstClause, sharedClause],
+      repository: {
+        files: expect.arrayContaining(["src/untracked.ts", "tests/example.test.js", "tools/kept.ts", "tsconfig.json"]),
+        exists: expect.any(Function),
+      },
+      syntaxApi: SYNTAX_API,
+    });
+    expect(prepare.mock.calls[0]?.[0].repository.files).toHaveLength(4);
+    expect(load).toHaveBeenCalledExactlyOnceWith({ path: "/repo/tools/core/mechanisms/walker/XX-1/first.ts" });
+    expect(list).toHaveBeenCalledTimes(4);
+    expect(list.mock.calls).toEqual(expect.arrayContaining([
+      [{ path: "/repo" }], [{ path: "/repo/src" }], [{ path: "/repo/tests" }], [{ path: "/repo/tools" }],
+    ]));
+    expect(prepareFile).toHaveBeenCalledTimes(4);
+    expect(prepareFile.mock.calls).toEqual(expect.arrayContaining([
+      [{ file: "src/untracked.ts", readText: expect.any(Function) }],
+      [{ file: "tests/example.test.js", readText: expect.any(Function) }],
+      [{ file: "tools/kept.ts", readText: expect.any(Function) }],
+      [{ file: "tsconfig.json", readText: expect.any(Function) }],
+    ]));
+    expect(finish).toHaveBeenCalledExactlyOnceWith();
+    expect(read).not.toHaveBeenCalled();
+    expect(parse.parse).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("createWalkerRunner prepared composition", () => {
+  it("retains file emissions before repository completion without position sorting", async () => {
+    const prepareFile = vi.fn<PreparedWalkerCheck["prepareFile"]>().mockReturnValue({
+      outcome: "ok", value: { kind: "complete", hits: [ALPHA_HIT] },
+    });
+    const finish = vi.fn<PreparedWalkerCheck["finish"]>().mockReturnValue({ outcome: "ok", value: [FINISH_HIT] });
+    const load = loadingNamespace({ namespace: { check: pieceWith({ prepared: { prepareFile, finish } }) } });
+    const runner = walkerRunner({ read: readingText({ text: "" }), load, parse: parsingTo({ nodes: [] }) });
+
+    expect(await runner.run(RUN_REQUEST)).toEqual({
+      outcome: "ok",
+      value: { hits: [ALPHA_HIT, FINISH_HIT], evaluated: [{ clause: FIRST_ADDRESS, files: [ALPHA] }] },
+    });
+    expect(load).toHaveBeenCalledExactlyOnceWith({ path: FIRST_MODULE });
+    expect(prepareFile).toHaveBeenCalledExactlyOnceWith({ file: ALPHA, readText: expect.any(Function) });
+    expect(finish).toHaveBeenCalledExactlyOnceWith();
+    expect(prepareFile.mock.invocationCallOrder[0]).toBeLessThan(finish.mock.invocationCallOrder[0] ?? assert.fail("finish was not invoked"));
+  });
+
+  it("reads discovered files under the repository root and passes their names and text to the parser", async () => {
+    const read = readingText({ text: "export const alpha = 1;" });
+    const parse = parsingTo({ nodes: [] });
+    const runner = walkerRunner({ read, parse, load: loadingNamespace({ namespace: { check: pieceWith({ prepared: SYNTAX_PREPARED }) } }) });
+
+    expect(await runner.run(RUN_REQUEST)).toEqual({
+      outcome: "ok", value: { hits: [], evaluated: [{ clause: FIRST_ADDRESS, files: [ALPHA] }] },
+    });
+    expect(read).toHaveBeenCalledExactlyOnceWith({ path: "/repo/src/alpha.ts" });
+    expect(parse.parse).toHaveBeenCalledExactlyOnceWith({ fileName: ALPHA, source: "export const alpha = 1;" });
+  });
+
+  it("preserves the affected file and reader failure", async () => {
+    const read = vi.fn<FileTextPort["read"]>().mockReturnValue({
+      outcome: "failed", error: { kind: "unreadable", path: "/repo/src/alpha.ts", detail: "EACCES" },
+    });
+    const runner = walkerRunner({ read, parse: parsingTo({ nodes: [] }), load: loadingNamespace({ namespace: { check: pieceWith({ prepared: SYNTAX_PREPARED }) } }) });
+
+    expect(await runner.run(RUN_REQUEST)).toEqual({
+      outcome: "failed", error: { kind: "file-unreadable", file: ALPHA, detail: "EACCES" },
     });
   });
 
-  it("flags line 1 of a case a path check finds violating", async () => {
-    const runner = walkerRunner({
-      read: readingText({ text: CLASS_ON_LINE_THREE }),
-      load: loadingNamespace({ namespace: { check: VIOLATING_PATH_CHECK } }),
-      parse: parsingTo({ nodes: [LEAF] }),
-    });
+  it("attributes an external parser failure to the discovered file", async () => {
+    const parse: TypeScriptParsePort = { ...parsingTo({ nodes: [] }), parse: () => assert.fail("parser crashed") };
+    const runner = walkerRunner({ read: readingText({ text: "" }), parse, load: loadingNamespace({ namespace: { check: pieceWith({ prepared: SYNTAX_PREPARED }) } }) });
 
-    expect(
-      await runner.conform({
-        clause: FIRST_CLAUSE,
-        cases: [sourceCase({ name: "declaration file", fileName: DECLARATIONS, source: "" })],
-      }),
-    ).toEqual({ outcome: "ok", value: [{ caseName: "declaration file", flaggedLines: [1] }] });
+    expect(await runner.run(RUN_REQUEST)).toEqual({
+      outcome: "failed", error: { kind: "file-unparseable", file: ALPHA, detail: "parser crashed" },
+    });
+  });
+});
+
+describe("createWalkerRunner preparation failures", () => {
+  it("refuses invalid settings before loading a module", async () => {
+    const load = loadingNamespace({ namespace: { check: pieceWith({ prepared: EMPTY_PREPARED }) } });
+    const runner = walkerRunner({ read: readingText({ text: "" }), load, parse: parsingTo({ nodes: [] }) });
+
+    expect(await runner.run({ ...RUN_REQUEST, clauses: [clauseFor({ address: FIRST_ADDRESS, settings: {} })] })).toEqual(pieceInvalid);
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("preserves module admission and loading failures", async () => {
+    const load = vi.fn<ModuleLoaderPort["load"]>()
+      .mockResolvedValueOnce({ outcome: "ok", value: {} })
+      .mockResolvedValueOnce({ outcome: "failed", error: { kind: "module-unloadable", path: FIRST_MODULE, detail: "SyntaxError" } });
+    const runner = walkerRunner({ read: readingText({ text: "" }), load, parse: parsingTo({ nodes: [] }) });
+
+    expect(await runner.run(RUN_REQUEST)).toEqual(pieceInvalid);
+    expect(await runner.run(RUN_REQUEST)).toEqual(pieceInvalid);
+  });
+});
+
+describe("createWalkerRunner isolated conformance", () => {
+  it("uses each case's supplied source and filename without reading disk", async () => {
+    const read = vi.fn<FileTextPort["read"]>();
+    const parse = parsingTo({ nodes: [] });
+    const runner = walkerRunner({ read, parse, load: loadingNamespace({ namespace: { check: pieceWith({ prepared: SYNTAX_PREPARED }) } }) });
+
+    expect(await runner.conform({ clause: FIRST_CLAUSE, cases: [
+      sourceCase({ name: "first", fileName: ALPHA, source: "first source" }),
+      sourceCase({ name: "second", fileName: BETA, source: "second source" }),
+    ] })).toEqual({ outcome: "ok", value: [
+      { caseName: "first", flaggedLines: [] }, { caseName: "second", flaggedLines: [] },
+    ] });
+    expect(parse.parse.mock.calls).toEqual([
+      [{ fileName: ALPHA, source: "first source" }], [{ fileName: BETA, source: "second source" }],
+    ]);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("isolates preparation and repository completion for alternatives sharing a filename", async () => {
+    const firstFinish = vi.fn<PreparedWalkerCheck["finish"]>().mockReturnValue({ outcome: "ok", value: [ALPHA_HIT, ALPHA_HIT] });
+    const secondFinish = vi.fn<PreparedWalkerCheck["finish"]>().mockReturnValue({ outcome: "ok", value: [] });
+    const prepare = vi.fn<WalkerPiece["prepare"]>()
+      .mockReturnValueOnce({ outcome: "ok", value: { ...EMPTY_PREPARED, finish: firstFinish } })
+      .mockReturnValueOnce({ outcome: "ok", value: { ...EMPTY_PREPARED, finish: secondFinish } });
+    const runner = walkerRunner({ read: vi.fn<FileTextPort["read"]>(), parse: parsingTo({ nodes: [] }), load: loadingNamespace({ namespace: { check: { prepare } } }) });
+
+    expect(await runner.conform({ clause: FIRST_CLAUSE, cases: [
+      sourceCase({ name: "violating", fileName: ALPHA, source: "first" }),
+      sourceCase({ name: "clean", fileName: ALPHA, source: "second" }),
+    ] })).toEqual({ outcome: "ok", value: [
+      { caseName: "violating", flaggedLines: [9] }, { caseName: "clean", flaggedLines: [] },
+    ] });
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(firstFinish).toHaveBeenCalledExactlyOnceWith();
+    expect(secondFinish).toHaveBeenCalledExactlyOnceWith();
+  });
+
+  it("refuses a repository finish hit naming a different file from the conformance case", async () => {
+    const prepared: PreparedWalkerCheck = {
+      ...EMPTY_PREPARED,
+      finish: () => ({ outcome: "ok", value: [{ ...ALPHA_HIT, file: BETA }] }),
+    };
+    const runner = walkerRunner({ read: vi.fn<FileTextPort["read"]>(), parse: parsingTo({ nodes: [] }), load: loadingNamespace({ namespace: { check: pieceWith({ prepared }) } }) });
+
+    expect(await runner.conform({ clause: FIRST_CLAUSE, cases: [
+      sourceCase({ name: "alpha only", fileName: ALPHA, source: "" }),
+    ] })).toEqual(pieceInvalid);
   });
 });

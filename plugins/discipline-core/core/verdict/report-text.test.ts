@@ -63,6 +63,7 @@ const carvedEverywhere: ExceptionRecord = {
 };
 
 const emptyReport: CheckReport = {
+  coverage: [],
   findings: [],
   exempted: [],
   uncovered: [],

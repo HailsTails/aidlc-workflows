@@ -46,6 +46,7 @@ const loadingWalkerPiece: ModuleLoaderPort = {
 };
 
 const walkerRunner = createWalkerRunner({
+  directory: { list: () => ({ outcome: "ok", value: [] }) },
   fileText: noFileText,
   modules: loadingWalkerPiece,
   path: createPathPort({ flavour: "posix", workingDirectory: () => "/install" }),

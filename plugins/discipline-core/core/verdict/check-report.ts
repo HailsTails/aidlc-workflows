@@ -24,7 +24,15 @@ export type ProjectionProblem = {
   readonly state: "out-of-date";
 };
 
+export type ClauseCoverage = {
+  readonly clause: ClauseAddress;
+  readonly mechanism: MechanismId;
+  readonly evaluation: "evaluated" | "not-applicable" | "not-requested";
+  readonly scannedCount: number;
+};
+
 export type CheckReport = {
+  readonly coverage: readonly ClauseCoverage[];
   readonly findings: readonly Finding[];
   readonly exempted: readonly ExemptedFinding[];
   readonly uncovered: readonly ClauseAddress[];

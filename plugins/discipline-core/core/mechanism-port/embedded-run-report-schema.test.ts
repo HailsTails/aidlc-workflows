@@ -44,34 +44,34 @@ const EVERY_NATIVE_KIND = [
 
 describe("embeddedRunReportSchema", () => {
   it("accepts a report holding a hit, one native exception of every kind and a not-included projection", () => {
-    const report = { hits: [HIT_IN_A], nativeExceptions: EVERY_NATIVE_KIND, projection: "not-included" };
+    const report = { hits: [HIT_IN_A], evaluated: [], nativeExceptions: EVERY_NATIVE_KIND, projection: "not-included" };
     expect(embeddedRunReportSchema.safeParse(report)).toEqual({ success: true, data: report });
   });
 
   it("accepts a current projection with no hits and no native exceptions", () => {
-    const report = { hits: [], nativeExceptions: [], projection: "current" };
+    const report = { hits: [], evaluated: [], nativeExceptions: [], projection: "current" };
     expect(embeddedRunReportSchema.safeParse(report)).toEqual({ success: true, data: report });
   });
 
   it("accepts an out-of-date projection", () => {
-    const report = { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" };
+    const report = { hits: [HIT_IN_A], evaluated: [], nativeExceptions: [], projection: "out-of-date" };
     expect(embeddedRunReportSchema.safeParse(report)).toEqual({ success: true, data: report });
   });
 
   it("accepts a missing projection", () => {
-    const report = { hits: [], nativeExceptions: [], projection: "missing" };
+    const report = { hits: [], evaluated: [], nativeExceptions: [], projection: "missing" };
     expect(embeddedRunReportSchema.safeParse(report)).toEqual({ success: true, data: report });
   });
 
   it("refuses a projection state outside the four, at the projection key", () => {
     expect(
-      embeddedRunReportSchema.safeParse({ hits: [], nativeExceptions: [], projection: "stale" }),
+      embeddedRunReportSchema.safeParse({ hits: [], evaluated: [], nativeExceptions: [], projection: "stale" }),
     ).toMatchObject({ success: false, error: { issues: [{ path: ["projection"] }] } });
   });
 
   it("refuses the standalone none as a projection state, at the projection key", () => {
     expect(
-      embeddedRunReportSchema.safeParse({ hits: [], nativeExceptions: [], projection: "none" }),
+      embeddedRunReportSchema.safeParse({ hits: [], evaluated: [], nativeExceptions: [], projection: "none" }),
     ).toMatchObject({ success: false, error: { issues: [{ path: ["projection"] }] } });
   });
 
@@ -79,7 +79,7 @@ describe("embeddedRunReportSchema", () => {
     expect(
       embeddedRunReportSchema.safeParse({
         hits: [],
-        nativeExceptions: [{ kind: "baseline", clause: CLASS_SYNTAX, file: "src/a.ts" }],
+        evaluated: [], nativeExceptions: [{ kind: "baseline", clause: CLASS_SYNTAX, file: "src/a.ts" }],
         projection: "current",
       }),
     ).toMatchObject({
@@ -92,7 +92,7 @@ describe("embeddedRunReportSchema", () => {
     expect(
       embeddedRunReportSchema.safeParse({
         hits: [],
-        nativeExceptions: [{ kind: "ignore", clause: CLASS_SYNTAX, file: "/repo/src/a.ts" }],
+        evaluated: [], nativeExceptions: [{ kind: "ignore", clause: CLASS_SYNTAX, file: "/repo/src/a.ts" }],
         projection: "current",
       }),
     ).toMatchObject({
@@ -105,7 +105,7 @@ describe("embeddedRunReportSchema", () => {
     expect(
       embeddedRunReportSchema.safeParse({
         hits: [],
-        nativeExceptions: [
+        evaluated: [], nativeExceptions: [
           { kind: "inline-disable", clause: CLASS_SYNTAX, file: "src/a.ts", text: "// eslint-disable" },
         ],
         projection: "current",
@@ -120,7 +120,7 @@ describe("embeddedRunReportSchema", () => {
     expect(
       embeddedRunReportSchema.safeParse({
         hits: [{ ...HIT_IN_A, file: "/repo/src/a.ts" }],
-        nativeExceptions: [],
+        evaluated: [], nativeExceptions: [],
         projection: "current",
       }),
     ).toMatchObject({
@@ -130,7 +130,7 @@ describe("embeddedRunReportSchema", () => {
   });
 
   it("refuses a report with no projection, at the projection key", () => {
-    expect(embeddedRunReportSchema.safeParse({ hits: [], nativeExceptions: [] })).toMatchObject({
+    expect(embeddedRunReportSchema.safeParse({ hits: [], evaluated: [], nativeExceptions: [] })).toMatchObject({
       success: false,
       error: { issues: [{ path: ["projection"] }] },
     });

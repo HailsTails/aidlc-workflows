@@ -21,3 +21,8 @@ export const eslintPieceSettingsSchema = z
   .readonly();
 
 export type EslintPieceSettings = z.infer<typeof eslintPieceSettingsSchema>;
+
+export type EslintRuleConfiguration =
+  | "error"
+  | readonly ["error", { readonly allowElseIf: false }]
+  | readonly ["error", { readonly props: true }];

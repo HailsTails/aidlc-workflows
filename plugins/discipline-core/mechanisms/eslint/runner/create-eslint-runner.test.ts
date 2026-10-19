@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ExceptionRecord } from "../../../core/exception-records/exception-records.ts";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
-import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
+import type { LocationScope, RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
 import type { CaseVerdict } from "../../../core/mechanism-port/runner-result-schema.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { ModuleLoaderPort } from "../../../core/platform-ports/module-loader-port.ts";
@@ -56,6 +56,11 @@ const FOR_OF_OBJECT = { ruleSet: "shared", discipline: "CD-15", clause: "for-of"
 const FILE_A = repoPathSchema.parse("src/a.ts");
 const FACTORY = repoPathSchema.parse("src/factory.ts");
 const FILES = [FILE_A, FACTORY];
+const CLASS_EVALUATED = [{ clause: CLASS_SYNTAX, files: [FILE_A, FACTORY] }];
+const TWO_CLAUSE_EVALUATED = [
+  { clause: CLASS_SYNTAX, files: [FILE_A, FACTORY] },
+  { clause: FOR_OF, files: [FILE_A, FACTORY] },
+];
 
 const CLASS_SETTINGS = {
   pluginNamespace: "rin-discipline",
@@ -223,6 +228,7 @@ const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort =
 });
 
 const SOURCE_FILES: Readonly<Record<string, FakeFile>> = {
+  "/repo/docs/my-package.json": presentFile({ text: "{}" }),
   "/repo/src/a.ts": presentFile({ text: "const a = 1;\n\n  class A {}\n" }),
   "/repo/src/factory.ts": presentFile({
     text: "const b = 1;\nconst c = 2;\nconst d = 3;\nconst e = 4;\n  xs.forEach(visit);\n",
@@ -324,7 +330,6 @@ const runRequest = (request: {
 }) => ({
   repoRoot: REPO_ROOT,
   installRoot: INSTALL_ROOT,
-  files: FILES,
   trackedPaths: FILES,
   clauses: request.clauses,
   records: request.records,
@@ -404,7 +409,7 @@ const inlineMessageInA = (request: {
     }),
   });
 
-const NOT_INCLUDED = { outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "not-included" } };
+const NOT_INCLUDED = { outcome: "ok", value: { hits: [], evaluated: [], nativeExceptions: [], projection: "not-included" } };
 
 const CLASS_CASE: SourceCase = {
   name: "class",
@@ -503,7 +508,7 @@ describe("the governance run, step 1: selected pieces", () => {
     }).run(SHARED_MODULE_RUN);
     expect({ loads: load.mock.calls, report }).toEqual({
       loads: [[{ path: PLUGIN_MODULE_PATH }]],
-      report: { outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "current" } },
+      report: { outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], evaluated: TWO_CLAUSE_EVALUATED, projection: "current" } },
     });
   });
 
@@ -526,7 +531,7 @@ describe("the governance run, step 2: the projection's presence and bytes", () =
       queryInstances: vi.mocked(eslint.createQueryInstance).mock.calls,
       governanceInstances: vi.mocked(eslint.createGovernanceInstance).mock.calls,
     }).toEqual({
-      report: { outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "missing" } },
+      report: { outcome: "ok", value: { hits: [], nativeExceptions: [], evaluated: [], projection: "missing" } },
       queryInstances: [],
       governanceInstances: [],
     });
@@ -538,7 +543,7 @@ describe("the governance run, step 2: the projection's presence and bytes", () =
         fileText: projectionHolding({ text: `// hand edited\n${ENABLING_PROJECTION}` }),
         eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
       }).run(CLASS_RUN),
-    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" } });
+    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], evaluated: CLASS_EVALUATED, projection: "out-of-date" } });
   });
 
   it("is current for a committed projection that differs from the generation only by CRLF line endings", async () => {
@@ -547,7 +552,7 @@ describe("the governance run, step 2: the projection's presence and bytes", () =
         fileText: projectionHolding({ text: ENABLING_PROJECTION_CRLF }),
         eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
       }).run(CLASS_RUN),
-    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "current" } });
+    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], evaluated: CLASS_EVALUATED, projection: "current" } });
   });
 
   it("is out-of-date when the projection lacks the block of a record the run was given", async () => {
@@ -770,7 +775,7 @@ describe("the governance run, step 5: messages", () => {
       runnerOver({
         eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
       }).run(CLASS_RUN),
-    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "current" } });
+    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], evaluated: CLASS_EVALUATED, projection: "current" } });
   });
 
   it("maps each message back to its clause by rule id across two pieces", async () => {
@@ -807,7 +812,7 @@ describe("the governance run, step 5: messages", () => {
           { clause: FOR_OF_OBJECT, file: "src/factory.ts", anchor: { line: 5, column: 0 }, snippet: "xs.forEach(visit);" },
         ],
         nativeExceptions: [],
-        projection: "out-of-date",
+        evaluated: TWO_CLAUSE_EVALUATED, projection: "out-of-date",
       },
     });
   });
@@ -822,7 +827,7 @@ describe("the governance run, step 5: messages", () => {
           }),
         }),
       }).run(CLASS_RUN),
-    ).resolves.toEqual({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "current" } });
+    ).resolves.toEqual({ outcome: "ok", value: { hits: [], nativeExceptions: [], evaluated: CLASS_EVALUATED, projection: "current" } });
   });
 
   it("is file-unparseable for a file ESLint could not parse", async () => {
@@ -876,7 +881,7 @@ describe("the governance run, step 5: messages", () => {
             text: "// eslint-disable-next-line rin-discipline/no-class-authoring",
           },
         ],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -914,7 +919,7 @@ describe("the governance run, step 5: messages", () => {
             text: '/* eslint rin-discipline/no-class-authoring: "off" */',
           },
         ],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1062,7 +1067,7 @@ describe("native exceptions: ignores and configuration overrides over files", ()
           { kind: "ignore", clause: CLASS_SYNTAX_OBJECT, file: "src/factory.ts" },
           { kind: "ignore", clause: FOR_OF_OBJECT, file: "src/factory.ts" },
         ],
-        projection: "out-of-date",
+        evaluated: TWO_CLAUSE_EVALUATED, projection: "out-of-date",
       },
     });
   });
@@ -1082,7 +1087,7 @@ describe("native exceptions: ignores and configuration overrides over files", ()
       value: {
         hits: [],
         nativeExceptions: [{ kind: "config-override", clause: CLASS_SYNTAX_OBJECT, file: "src/factory.ts" }],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1102,7 +1107,7 @@ describe("native exceptions: ignores and configuration overrides over files", ()
       value: {
         hits: [],
         nativeExceptions: [{ kind: "config-override", clause: CLASS_SYNTAX_OBJECT, file: "src/factory.ts" }],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1123,7 +1128,7 @@ describe("native exceptions: ignores and configuration overrides over files", ()
       value: {
         hits: [],
         nativeExceptions: [{ kind: "config-override", clause: CLASS_SYNTAX_OBJECT, file: "src/factory.ts" }],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1149,7 +1154,7 @@ describe("native exceptions: suppression files over tracked paths", () => {
         nativeExceptions: [
           { kind: "suppression-entry", clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", location: "eslint-suppressions.json" },
         ],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1178,7 +1183,7 @@ describe("native exceptions: suppression files over tracked paths", () => {
             location: "packages/a/eslint-suppressions.json",
           },
         ],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1221,7 +1226,7 @@ describe("native exceptions: package.json scripts over tracked paths", () => {
             option: "--rule rin-discipline/no-class-authoring: off",
           },
         ],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1253,7 +1258,7 @@ describe("native exceptions: package.json scripts over tracked paths", () => {
             location: "ci/lint-suppressions.json",
           },
         ],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1285,7 +1290,7 @@ describe("native exceptions: package.json scripts over tracked paths", () => {
             location: "packages/a/ci/s.json",
           },
         ],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1323,7 +1328,7 @@ describe("native exceptions: package.json scripts over tracked paths", () => {
   it("reads no tracked path whose name only ends in package.json", async () => {
     await expect(
       runnerOver({}).run(trackedRun({ tracked: "docs/my-package.json" })),
-    ).resolves.toEqual({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "current" } });
+    ).resolves.toEqual({ outcome: "ok", value: { hits: [], nativeExceptions: [], evaluated: CLASS_EVALUATED, projection: "current" } });
   });
 });
 
@@ -1353,7 +1358,7 @@ describe("native exceptions: inline directives with several selected clauses", (
             text: "// eslint-disable-next-line rin-discipline/no-class-authoring",
           },
         ],
-        projection: "out-of-date",
+        evaluated: TWO_CLAUSE_EVALUATED, projection: "out-of-date",
       },
     });
   });
@@ -1390,7 +1395,7 @@ describe("native exceptions: inline directives with several selected clauses", (
             text: "/* eslint-disable rin-discipline/no-class-authoring, rin-loops/no-for-of */",
           },
         ],
-        projection: "out-of-date",
+        evaluated: TWO_CLAUSE_EVALUATED, projection: "out-of-date",
       },
     });
   });
@@ -1412,7 +1417,7 @@ describe("native exceptions: inline directives with several selected clauses", (
           { kind: "inline-disable", clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", line: 2, text: "/* eslint-disable */" },
           { kind: "inline-disable", clause: FOR_OF_OBJECT, file: "src/a.ts", line: 2, text: "/* eslint-disable */" },
         ],
-        projection: "out-of-date",
+        evaluated: TWO_CLAUSE_EVALUATED, projection: "out-of-date",
       },
     });
   });
@@ -1439,7 +1444,7 @@ describe("native exceptions: inline directives with several selected clauses", (
             text: '/* eslint rin-loops/no-for-of: "off" */',
           },
         ],
-        projection: "out-of-date",
+        evaluated: TWO_CLAUSE_EVALUATED, projection: "out-of-date",
       },
     });
   });
@@ -1488,7 +1493,7 @@ describe("the governance run, settled message handling", () => {
             option: "--rule rin-discipline/no-class-authoring: off",
           },
         ],
-        projection: "current",
+        evaluated: CLASS_EVALUATED, projection: "current",
       },
     });
   });
@@ -1511,7 +1516,7 @@ describe("the governance run with nothing to lint", () => {
         },
       }),
       eslint,
-    }).run({ ...CLASS_RUN, files: [], trackedPaths: [repoPathSchema.parse("package.json")] });
+    }).run({ ...CLASS_RUN, trackedPaths: [repoPathSchema.parse("package.json")] });
     expect({
       report,
       governanceInstances: vi.mocked(eslint.createGovernanceInstance).mock.calls,
@@ -1530,7 +1535,7 @@ describe("the governance run with nothing to lint", () => {
               option: "--rule rin-discipline/no-class-authoring: off",
             },
           ],
-          projection: "current",
+          evaluated: [{ clause: CLASS_SYNTAX, files: [] }], projection: "current",
         },
       },
       governanceInstances: [],
@@ -1557,8 +1562,7 @@ const EVERY_PATH_HOLDING_SOURCE_A: FileTextPort = {
 const windowsRun = (request: { readonly pieceRoot: string }) => ({
   repoRoot: WINDOWS_REPO_ROOT,
   installRoot: WINDOWS_INSTALL_ROOT,
-  files: FILES,
-  trackedPaths: [],
+  trackedPaths: FILES,
   clauses: [{ ...CLASS_CLAUSE, pieceRoot: request.pieceRoot }],
   records: [],
 });
@@ -1595,7 +1599,7 @@ describe("the governance run on Windows paths", () => {
           }),
         }),
       }).run(windowsRun({ pieceRoot: WINDOWS_PIECE_ROOT })),
-    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" } });
+    ).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], evaluated: [{ clause: CLASS_SYNTAX, files: [FILE_A] }], projection: "out-of-date" } });
   });
 
   it("reads the projection and a tracked suppressions file at their Windows forms under the repo root", async () => {
@@ -1613,5 +1617,172 @@ describe("the governance run on Windows paths", () => {
       [{ path: "C:\\repo\\disciplines.eslint.mjs" }],
       [{ path: "C:\\repo\\src\\eslint-suppressions.json" }],
     ]);
+  });
+});
+
+const VIEW = repoPathSchema.parse("src/view.tsx");
+const ENTRY = repoPathSchema.parse("src/entry.mts");
+const MODULE = repoPathSchema.parse("src/module.cts");
+const INSTALLED = repoPathSchema.parse("node_modules/discipline-core/internal.ts");
+const INSTALL_SIBLING = repoPathSchema.parse("node_modules/discipline-core-extra/kept.ts");
+const ABSENT_SOURCE = repoPathSchema.parse("src/deleted.ts");
+const JAVASCRIPT = repoPathSchema.parse("src/helper.js");
+const PACKAGE = repoPathSchema.parse("package.json");
+const SUPPRESSIONS = repoPathSchema.parse("eslint-suppressions.json");
+const ABSENT_PACKAGE = repoPathSchema.parse("deleted/package.json");
+const ABSENT_SUPPRESSIONS = repoPathSchema.parse("deleted/eslint-suppressions.json");
+const INSTALLED_PACKAGE = repoPathSchema.parse("node_modules/discipline-core/package.json");
+const PAIR_SCOPE: ReadonlyMap<string, ReturnType<LocationScope>> = new Map([
+  ["src/a.ts class-syntax", "included"],
+  ["src/factory.ts for-of", "included"],
+]);
+const pairScope: LocationScope = ({ clause, file }) => PAIR_SCOPE.get(`${file} ${clause.clause}`) ?? "excluded";
+const FIRST_FILE_SCOPE: ReadonlyMap<string, ReturnType<LocationScope>> = new Map([["src/a.ts", "included"]]);
+const firstFileScope: LocationScope = ({ file }) => FIRST_FILE_SCOPE.get(file) ?? "excluded";
+
+describe("the governance run's owned population and actual evaluations", () => {
+  it("reports only the actual returned clean provider subset as evaluated", async () => {
+    const lintFiles = lintResolving({ outcome: "ok", value: [{ filePath: "/repo/src/factory.ts", messages: [] }] });
+    const runner = runnerOver({ eslint: eslintOver({ lintFiles }) });
+
+    expect(await runner.run(CLASS_RUN)).toEqual({
+      outcome: "ok",
+      value: { hits: [], evaluated: [{ clause: CLASS_SYNTAX, files: [FACTORY] }], nativeExceptions: [], projection: "current" },
+    });
+    expect(lintFiles).toHaveBeenCalledExactlyOnceWith({ files: [FILE_A, FACTORY] });
+  });
+
+  it("retains a measured empty row when the provider returns no evaluated files", async () => {
+    const lintFiles = lintResolving({ outcome: "ok", value: [] });
+
+    expect(await runnerOver({ eslint: eslintOver({ lintFiles }) }).run(CLASS_RUN)).toEqual({
+      outcome: "ok",
+      value: { hits: [], evaluated: [{ clause: CLASS_SYNTAX, files: [] }], nativeExceptions: [], projection: "current" },
+    });
+    expect(lintFiles).toHaveBeenCalledExactlyOnceWith({ files: [FILE_A, FACTORY] });
+  });
+
+  it("qualifies present tracked native files and exact installation membership before querying and linting", async () => {
+    const fileText = repoHolding({ projection: ENABLING_PROJECTION, files: {
+      "/repo/src/view.tsx": presentFile({ text: "" }),
+      "/repo/src/entry.mts": presentFile({ text: "" }),
+      "/repo/src/module.cts": presentFile({ text: "" }),
+      "/repo/node_modules/discipline-core-extra/kept.ts": presentFile({ text: "" }),
+      "/repo/src/deleted.ts": ABSENT_FILE,
+      "/repo/src/helper.js": presentFile({ text: "" }),
+      "/repo/package.json": presentFile({ text: "{}" }),
+      "/repo/eslint-suppressions.json": presentFile({ text: "{}" }),
+      "/repo/deleted/package.json": ABSENT_FILE,
+      "/repo/deleted/eslint-suppressions.json": ABSENT_FILE,
+      "/repo/node_modules/discipline-core/internal.ts": presentFile({ text: "" }),
+      "/repo/node_modules/discipline-core/package.json": presentFile({ text: "unreadable as consumer configuration" }),
+    } });
+    const presence = vi.spyOn(fileText, "exists");
+    const read = vi.spyOn(fileText, "read");
+    const query: QueryInstance = {
+      ignoredState: vi.fn<QueryInstance["ignoredState"]>().mockResolvedValue({ outcome: "ok", value: "checked" }),
+      ruleState: vi.fn<QueryInstance["ruleState"]>().mockResolvedValue({ outcome: "ok", value: ERROR }),
+    };
+    const lintFiles = lintResolving({ outcome: "ok", value: [
+      { filePath: "/repo/src/module.cts", messages: [] },
+      { filePath: "/repo/src/view.tsx", messages: [] },
+    ] });
+
+    const report = await runnerOver({ fileText, eslint: eslintOver({ query, lintFiles }) }).run({
+      ...CLASS_RUN,
+      trackedPaths: [VIEW, ENTRY, MODULE, INSTALL_SIBLING, ABSENT_SOURCE, JAVASCRIPT, PACKAGE, SUPPRESSIONS, ABSENT_PACKAGE, ABSENT_SUPPRESSIONS, INSTALLED, INSTALLED_PACKAGE],
+    });
+
+    expect(lintFiles).toHaveBeenCalledExactlyOnceWith({ files: [VIEW, ENTRY, MODULE, INSTALL_SIBLING] });
+    expect(vi.mocked(query.ignoredState).mock.calls).toEqual([
+      [{ file: VIEW }], [{ file: ENTRY }], [{ file: MODULE }], [{ file: INSTALL_SIBLING }],
+    ]);
+    expect(report).toEqual({
+      outcome: "ok", value: {
+        hits: [], evaluated: [{ clause: CLASS_SYNTAX, files: [MODULE, VIEW] }],
+        nativeExceptions: [], projection: "current",
+      },
+    });
+    expect(presence).toHaveBeenCalledWith({ path: "/repo/src/deleted.ts" });
+    expect(presence).toHaveBeenCalledWith({ path: "/repo/src/helper.js" });
+    expect(presence).toHaveBeenCalledWith({ path: "/repo/deleted/package.json" });
+    expect(presence).toHaveBeenCalledWith({ path: "/repo/deleted/eslint-suppressions.json" });
+    expect(read).toHaveBeenCalledWith({ path: "/repo/package.json" });
+    expect(read).toHaveBeenCalledWith({ path: "/repo/eslint-suppressions.json" });
+    expect(read).not.toHaveBeenCalledWith({ path: "/repo/deleted/package.json" });
+    expect(read).not.toHaveBeenCalledWith({ path: "/repo/deleted/eslint-suppressions.json" });
+    expect(read).not.toHaveBeenCalledWith({ path: "/repo/node_modules/discipline-core/package.json" });
+  });
+
+  it("queries only included clause and file pairs while one unhidden union run retains scoped findings in provider order", async () => {
+    const query = queryOver({
+      ignored: { "src/a.ts": "checked", "src/factory.ts": "ignored" },
+      states: { [`src/a.ts ${RULE_ID}`]: ERROR, [`src/a.ts ${LOOPS_RULE_ID}`]: ABSENT },
+    });
+    const ruleState = vi.spyOn(query, "ruleState");
+    const lintFiles = lintResolving({ outcome: "ok", value: [
+      { filePath: "/repo/src/factory.ts", messages: [{ ruleId: LOOPS_RULE_ID, line: 5, column: 1, message: "loop" }] },
+      { filePath: "/repo/src/a.ts", messages: [CLASS_MESSAGE, { ruleId: LOOPS_RULE_ID, line: 1, column: 1, message: "excluded loop" }] },
+    ] });
+    const eslint = eslintOver({ query, lintFiles });
+
+    const report = await runnerOver({ eslint }).run({ ...TWO_CLAUSE_RUN, includes: pairScope });
+
+    expect(ruleState.mock.calls).toEqual([
+      [{ file: FILE_A, ruleId: RULE_ID }],
+    ]);
+    expect(lintFiles).toHaveBeenCalledExactlyOnceWith({ files: [FILE_A, FACTORY] });
+    expect(eslint.createGovernanceInstance).toHaveBeenCalledWith(expect.objectContaining({ ruleIds: [RULE_ID, LOOPS_RULE_ID] }));
+    expect(report).toEqual({
+      outcome: "ok", value: {
+        hits: [
+          { clause: FOR_OF, file: FACTORY, anchor: { line: 5, column: 0 }, snippet: "xs.forEach(visit);" },
+          HIT_IN_A,
+        ],
+        evaluated: [{ clause: CLASS_SYNTAX, files: [FILE_A] }, { clause: FOR_OF, files: [FACTORY] }],
+        nativeExceptions: [{ kind: "ignore", clause: FOR_OF, file: FACTORY }], projection: "out-of-date",
+      },
+    });
+  });
+
+  it("keeps excluded canonical records in projection comparison and inventories selected-rule exceptions outside evaluated scope", async () => {
+    const fileText = repoHolding({ projection: FACTORY_LOCATION_PROJECTION, files: {
+      "/repo/package.json": presentFile({ text: JSON.stringify({ scripts: { lint: "eslint --rule 'rin-discipline/no-class-authoring: off' src" } }) }),
+      "/repo/eslint-suppressions.json": presentFile({ text: JSON.stringify({ "outside/omitted.ts": { "rin-discipline/no-class-authoring": { count: 1 } } }) }),
+    } });
+    const query = queryOver({ ignored: CHECKED, states: { [`src/a.ts ${RULE_ID}`]: ERROR, [`src/factory.ts ${RULE_ID}`]: ABSENT } });
+    const ruleState = vi.spyOn(query, "ruleState");
+    const lintFiles = lintResolving({ outcome: "ok", value: [{ filePath: "/repo/src/a.ts", messages: [CLASS_MESSAGE] }] });
+
+    const report = await runnerOver({ fileText, eslint: eslintOver({ query, lintFiles }) }).run({
+      ...CLASS_RUN, trackedPaths: [FILE_A, FACTORY, PACKAGE, SUPPRESSIONS],
+      records: [FACTORY_LOCATION], includes: firstFileScope,
+    });
+
+    expect(lintFiles).toHaveBeenCalledExactlyOnceWith({ files: [FILE_A] });
+    expect(ruleState.mock.calls).toEqual([[{ file: FILE_A, ruleId: RULE_ID }]]);
+    expect(report).toEqual({
+      outcome: "ok", value: {
+        hits: [HIT_IN_A], evaluated: [{ clause: CLASS_SYNTAX, files: [FILE_A] }],
+        nativeExceptions: [
+          { kind: "suppression-entry", clause: CLASS_SYNTAX, file: "outside/omitted.ts", location: "eslint-suppressions.json" },
+          { kind: "command-line-option", clause: CLASS_SYNTAX, location: "package.json", script: "lint", option: "--rule rin-discipline/no-class-authoring: off" },
+        ],
+        projection: "current",
+      },
+    });
+    expect(fileText.write).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unexpected clean provider file without publishing earlier valid findings", async () => {
+    const lintFiles = lintResolving({ outcome: "ok", value: [
+      { filePath: "/repo/src/a.ts", messages: [CLASS_MESSAGE] },
+      { filePath: "/repo/src/unrequested.ts", messages: [] },
+    ] });
+
+    expect(await runnerOver({ eslint: eslintOver({ lintFiles }) }).run(CLASS_RUN)).toEqual({
+      outcome: "failed",
+      error: { kind: "tool-failed", detail: expect.stringContaining("src/unrequested.ts") },
+    });
   });
 });

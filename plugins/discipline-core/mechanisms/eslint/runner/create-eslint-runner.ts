@@ -4,6 +4,7 @@ import type { EmbeddedRunReport } from "../../../core/mechanism-port/embedded-ru
 import type { EmbeddedRunner } from "../../../core/mechanism-port/embedded-runner-module-schema.ts";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type {
+  LocationScope,
   ProjectionRequest,
   RunnerClause,
   RunRequest,
@@ -32,7 +33,7 @@ import {
   type QueryInstance,
   reservedNamespace,
 } from "./eslint-instance.ts";
-import { type EslintPieceSettings, eslintPieceSettingsSchema } from "./eslint-piece-settings-schema.ts";
+import { type EslintPieceSettings, type EslintRuleConfiguration, eslintPieceSettingsSchema } from "./eslint-piece-settings-schema.ts";
 import { eslintPluginModuleSchema, type LoadedEslintPlugin } from "./eslint-plugin-schema.ts";
 import { parseInlineConfigComment } from "./inline-config-parser.ts";
 import { type PackageJsonScan, scanPackageJson, type SelectedRule } from "./package-script-scanner.ts";
@@ -82,6 +83,11 @@ type QueriedFiles = {
 type ProjectionEffect = "in-effect" | "not-in-effect";
 
 type RecordedRunRequest = RunRequest & { readonly records: readonly ExceptionRecord[] };
+
+type NativePopulation = {
+  readonly files: readonly RepoPath[];
+  readonly trackedPaths: readonly RepoPath[];
+};
 
 type QueriedFile =
   | { readonly file: RepoPath; readonly ignored: "ignored" }
@@ -369,7 +375,7 @@ const fileRuleStates = (request: {
   readonly file: RepoPath;
   readonly ruleId: string;
 }): Promise<Outcome<CheckedFile["states"]>> =>
-  request.query.ruleState({ file: request.file, ruleId: request.ruleId }).then((state) =>
+  request.query.ruleState({ file: request.file, ruleId: request.ruleId, configuration: "error" }).then((state) =>
     mappedOutcome({ outcome: state, map: (ruleState) => [{ ruleId: request.ruleId, state: ruleState }] }),
   );
 
@@ -422,10 +428,15 @@ const partitionedFiles = (request: { readonly queried: readonly QueriedFile[] })
 const queriedFiles = (request: {
   readonly query: QueryInstance;
   readonly files: readonly RepoPath[];
-  readonly ruleIds: readonly string[];
+  readonly selected: readonly SelectedClause[];
+  readonly includes: LocationScope | undefined;
 }): Promise<Outcome<QueriedFiles>> =>
   Promise.all(
-    request.files.map((file) => queriedFile({ query: request.query, file, ruleIds: request.ruleIds })),
+    request.files.map((file) => queriedFile({
+      query: request.query,
+      file,
+      ruleIds: ruleIdsOf({ selected: selectedForFile({ ...request, file }) }),
+    })),
   ).then((outcomes) =>
     mappedOutcome({
       outcome: collectOutcomes({ outcomes }),
@@ -478,9 +489,12 @@ const recordEffect = (request: {
   readonly record: ExceptionRecord;
   readonly selected: readonly SelectedClause[];
   readonly checked: readonly CheckedFile[];
+  readonly includes: LocationScope | undefined;
 }): ProjectionEffect => {
   const ruleIds = ruleIdsOfRecord({ record: request.record, selected: request.selected });
-  return governedChecked({ record: request.record, checked: request.checked }).every(
+  return governedChecked({ record: request.record, checked: request.checked }).filter((checked) =>
+    request.includes?.({ clause: request.record.clause, file: checked.file }) !== "excluded",
+  ).every(
     (checked) => fileOffEffect({ checked, ruleIds }) === "in-effect",
   )
     ? "in-effect"
@@ -499,9 +513,13 @@ const ruleEnablement = (request: {
 const enabledEffect = (request: {
   readonly selected: readonly SelectedClause[];
   readonly checked: readonly CheckedFile[];
+  readonly includes: LocationScope | undefined;
 }): ProjectionEffect =>
   request.selected.every(
-    (entry) => ruleEnablement({ ruleId: entry.ruleId, checked: request.checked }) === "in-effect",
+    (entry) => ruleEnablement({
+      ruleId: entry.ruleId,
+      checked: request.checked.filter((checked) => request.includes?.({ clause: entry.clause.address, file: checked.file }) !== "excluded"),
+    }) === "in-effect",
   )
     ? "in-effect"
     : "not-in-effect";
@@ -510,9 +528,10 @@ const exemptingEffect = (request: {
   readonly selected: readonly SelectedClause[];
   readonly records: readonly ExceptionRecord[];
   readonly checked: readonly CheckedFile[];
+  readonly includes: LocationScope | undefined;
 }): ProjectionEffect =>
   request.records.every(
-    (record) => recordEffect({ record, selected: request.selected, checked: request.checked }) === "in-effect",
+    (record) => recordEffect({ ...request, record }) === "in-effect",
   )
     ? "in-effect"
     : "not-in-effect";
@@ -521,12 +540,14 @@ const projectionEffect = (request: {
   readonly selected: readonly SelectedClause[];
   readonly records: readonly ExceptionRecord[];
   readonly queried: QueriedFiles;
+  readonly includes: LocationScope | undefined;
 }): ProjectionEffect => {
-  const enabled = enabledEffect({ selected: request.selected, checked: request.queried.checked });
+  const enabled = enabledEffect({ selected: request.selected, checked: request.queried.checked, includes: request.includes });
   const exempting = exemptingEffect({
     selected: request.selected,
     records: request.records,
     checked: request.queried.checked,
+    includes: request.includes,
   });
   return enabled === "in-effect" && exempting === "in-effect" ? "in-effect" : "not-in-effect";
 };
@@ -562,9 +583,10 @@ const overrideExceptions = (request: {
 const queryExceptions = (request: {
   readonly selected: readonly SelectedClause[];
   readonly queried: QueriedFiles;
+  readonly includes: LocationScope | undefined;
 }): readonly NativeException[] => [
-  ...request.queried.ignored.flatMap((file) => ignoreExceptions({ selected: request.selected, file })),
-  ...request.queried.checked.flatMap((checked) => overrideExceptions({ selected: request.selected, checked })),
+  ...request.queried.ignored.flatMap((file) => ignoreExceptions({ selected: selectedForFile({ ...request, file }), file })),
+  ...request.queried.checked.flatMap((checked) => overrideExceptions({ selected: selectedForFile({ ...request, file: checked.file }), checked })),
 ];
 
 const commentValueOf = (request: { readonly text: string }): string => {
@@ -650,6 +672,8 @@ const sourceLineOf = (request: {
 
 type LintFindings = { readonly hits: readonly Hit[]; readonly nativeExceptions: readonly NativeException[] };
 
+type FileFindings = LintFindings & { readonly file: RepoPath };
+
 const outsideRepository = (request: { readonly linted: LintedFile }): Outcome<RepoPath> => ({
   outcome: "failed",
   error: {
@@ -726,6 +750,7 @@ const messageFindings = (request: {
   readonly selected: readonly SelectedClause[];
   readonly ports: EslintRunnerPorts;
   readonly repoRoot: AbsolutePath;
+  readonly includes: LocationScope | undefined;
 }): Outcome<readonly LintFindings[]> => {
   if (request.message.ruleId === INLINE_CONFIG_RULE_ID) {
     return mappedOutcome({
@@ -733,7 +758,8 @@ const messageFindings = (request: {
       map: (nativeExceptions): readonly LintFindings[] => [{ hits: [], nativeExceptions }],
     });
   }
-  const clause = request.selected.find((entry) => entry.ruleId === request.message.ruleId);
+  const clause = request.selected.find((entry) => entry.ruleId === request.message.ruleId &&
+    request.includes?.({ clause: entry.clause.address, file: request.file }) !== "excluded");
   if (clause === undefined) {
     return { outcome: "ok", value: [] };
   }
@@ -745,21 +771,34 @@ const lintedFindings = (request: {
   readonly selected: readonly SelectedClause[];
   readonly ports: EslintRunnerPorts;
   readonly repoRoot: AbsolutePath;
-}): Outcome<readonly LintFindings[]> => {
+  readonly files: readonly RepoPath[];
+  readonly includes: LocationScope | undefined;
+}): Outcome<readonly FileFindings[]> => {
   const file = parseableFile({ linted: request.linted, path: request.ports.path, repoRoot: request.repoRoot });
   if (file.outcome === "failed") {
     return file;
   }
-  return collectOutcomes({
-    outcomes: request.linted.messages.map((message) =>
-      messageFindings({
-        message,
-        file: file.value,
-        selected: request.selected,
-        ports: request.ports,
-        repoRoot: request.repoRoot,
-      }),
-    ),
+  if (!request.files.includes(file.value)) {
+    return { outcome: "failed", error: { kind: "tool-failed", detail: `ESLint returned ${file.value}, which is outside its qualified input files` } };
+  }
+  return mappedOutcome({
+    outcome: collectOutcomes({
+      outcomes: request.linted.messages.map((message) =>
+        messageFindings({
+          message,
+          file: file.value,
+          selected: request.selected,
+          ports: request.ports,
+          repoRoot: request.repoRoot,
+          includes: request.includes,
+        }),
+      ),
+    }),
+    map: (findings) => [{
+      file: file.value,
+      hits: findings.flatMap((finding) => finding.hits),
+      nativeExceptions: findings.flatMap((finding) => finding.nativeExceptions),
+    }],
   });
 };
 
@@ -887,7 +926,7 @@ const reportWith = (request: {
   readonly projection: EmbeddedRunReport["projection"];
 }): Outcome<EmbeddedRunReport> => ({
   outcome: "ok",
-  value: { hits: [], nativeExceptions: [], projection: request.projection },
+  value: { hits: [], evaluated: [], nativeExceptions: [], projection: request.projection },
 });
 
 const ruleIdsOf = (request: { readonly selected: readonly SelectedClause[] }): readonly string[] =>
@@ -900,6 +939,33 @@ const pluginsByNamespace = (request: {
 
 const selectedRulesOf = (request: { readonly selected: readonly SelectedClause[] }): readonly SelectedRule[] =>
   request.selected.map((entry) => ({ ruleId: entry.ruleId, clause: entry.clause.address }));
+
+const selectedForFile = (request: {
+  readonly selected: readonly SelectedClause[];
+  readonly file: RepoPath;
+  readonly includes: LocationScope | undefined;
+}): readonly SelectedClause[] => request.selected.filter((entry) =>
+  request.includes?.({ clause: entry.clause.address, file: request.file }) !== "excluded",
+);
+
+const nativePopulation = (request: {
+  readonly run: RecordedRunRequest;
+  readonly ports: EslintRunnerPorts;
+  readonly selected: readonly SelectedClause[];
+}): NativePopulation => {
+  const trackedPaths = request.run.trackedPaths.filter((file) => {
+    const path = request.ports.path.join({ segments: [request.run.repoRoot, file] });
+    const installation = request.ports.path.relative({ from: request.run.installRoot, to: path });
+    if (installation.relation === "within-root" &&
+      (installation.path === "" || repoPathSchema.safeParse(installation.path).success)) return false;
+    return request.ports.fileText.exists({ path }) === "present";
+  });
+  return {
+    trackedPaths,
+    files: trackedPaths.filter((file) => /\.(?:ts|tsx|mts|cts)$/.test(file) &&
+      selectedForFile({ selected: request.selected, file, includes: request.run.includes }).length !== 0),
+  };
+};
 
 const recordsUnderCheck = (request: {
   readonly records: readonly ExceptionRecord[];
@@ -915,17 +981,20 @@ const governedLint = (request: {
   readonly run: RecordedRunRequest;
   readonly selected: readonly SelectedClause[];
   readonly eslint: EslintPort;
+  readonly population: NativePopulation;
 }): Promise<Outcome<readonly LintedFile[]>> => {
-  if (request.run.files.length === 0 || request.selected.length === 0) {
+  if (request.population.files.length === 0 || request.selected.length === 0) {
     return Promise.resolve({ outcome: "ok", value: [] });
   }
   return request.eslint
     .createGovernanceInstance({
       repoRoot: request.run.repoRoot,
       plugins: pluginsByNamespace({ selected: request.selected }),
-      ruleIds: ruleIdsOf({ selected: request.selected }),
+      rules: Object.fromEntries(ruleIdsOf({ selected: request.selected }).map(
+        (ruleId): readonly [string, EslintRuleConfiguration] => [ruleId, "error"],
+      )),
     })
-    .lintFiles({ files: request.run.files });
+    .lintFiles({ files: request.population.files });
 };
 
 const governedReport = (request: {
@@ -935,10 +1004,14 @@ const governedReport = (request: {
   readonly ports: EslintRunnerPorts;
   readonly queried: QueriedFiles;
   readonly lintedFiles: readonly LintedFile[];
+  readonly population: NativePopulation;
 }): Outcome<EmbeddedRunReport> => {
   const findings = collectOutcomes({
     outcomes: request.lintedFiles.map((linted) =>
-      lintedFindings({ linted, selected: request.selected, ports: request.ports, repoRoot: request.run.repoRoot }),
+      lintedFindings({
+        linted, selected: request.selected, ports: request.ports, repoRoot: request.run.repoRoot,
+        files: request.population.files, includes: request.run.includes,
+      }),
     ),
   });
   if (findings.outcome === "failed") {
@@ -948,7 +1021,7 @@ const governedReport = (request: {
     fileText: request.ports.fileText,
     path: request.ports.path,
     repoRoot: request.run.repoRoot,
-    trackedPaths: request.run.trackedPaths,
+    trackedPaths: request.population.trackedPaths,
     selectedRules: selectedRulesOf({ selected: request.selected }),
   });
   if (tracked.outcome === "failed") {
@@ -958,8 +1031,13 @@ const governedReport = (request: {
     outcome: "ok",
     value: {
       hits: findings.value.flatMap((found) => found.hits),
+      evaluated: request.run.clauses.map((clause) => ({
+        clause: clause.address,
+        files: findings.value.filter((found) => request.run.includes?.({ clause: clause.address, file: found.file }) !== "excluded")
+          .map((found) => found.file),
+      })),
       nativeExceptions: [
-        ...queryExceptions({ selected: request.selected, queried: request.queried }),
+        ...queryExceptions({ selected: request.selected, queried: request.queried, includes: request.run.includes }),
         ...findings.value.flatMap((found) => found.nativeExceptions),
         ...tracked.value,
       ],
@@ -974,8 +1052,9 @@ const lintedReport = (request: {
   readonly projection: "current" | "out-of-date";
   readonly ports: EslintRunnerPorts;
   readonly queried: QueriedFiles;
+  readonly population: NativePopulation;
 }): Promise<Outcome<EmbeddedRunReport>> =>
-  governedLint({ run: request.run, selected: request.selected, eslint: request.ports.eslint }).then(
+  governedLint({ ...request, eslint: request.ports.eslint }).then(
     (lintedFiles) =>
       lintedFiles.outcome === "failed" ? lintedFiles : governedReport({ ...request, lintedFiles: lintedFiles.value }),
   );
@@ -986,13 +1065,14 @@ const queriedReport = (request: {
   readonly projection: "current" | "out-of-date";
   readonly ports: EslintRunnerPorts;
   readonly queried: Outcome<QueriedFiles>;
+  readonly population: NativePopulation;
 }): Promise<Outcome<EmbeddedRunReport>> => {
   if (request.queried.outcome === "failed") {
     return Promise.resolve(request.queried);
   }
   const queried = request.queried.value;
   const records = recordsUnderCheck({ records: request.run.records, checked: queried.checked });
-  if (projectionEffect({ selected: request.selected, records, queried }) === "not-in-effect") {
+  if (projectionEffect({ selected: request.selected, records, queried, includes: request.run.includes }) === "not-in-effect") {
     return Promise.resolve(reportWith({ projection: "not-included" }));
   }
   return lintedReport({ ...request, queried });
@@ -1003,11 +1083,13 @@ const governedRun = (request: {
   readonly selected: readonly SelectedClause[];
   readonly projection: "current" | "out-of-date";
   readonly ports: EslintRunnerPorts;
+  readonly population: NativePopulation;
 }): Promise<Outcome<EmbeddedRunReport>> =>
   queriedFiles({
     query: request.ports.eslint.createQueryInstance({ repoRoot: request.run.repoRoot }),
-    files: request.run.files,
-    ruleIds: ruleIdsOf({ selected: request.selected }),
+    files: request.population.files,
+    selected: request.selected,
+    includes: request.run.includes,
   }).then((queried) => queriedReport({ ...request, queried }));
 
 const presentProjectionState = (request: {
@@ -1040,6 +1122,7 @@ const selectedRun = (request: {
   }
   return governedRun({
     ...request,
+    population: nativePopulation(request),
     projection: presentProjectionState({
       current: current.value,
       selected: request.selected,
@@ -1059,9 +1142,8 @@ const lintedSourceCases = (request: {
   }
   return request.eslint.lintSourceCases({
     cwd: request.cwd,
-    plugin: request.selected.value.plugin,
-    pluginNamespace: request.selected.value.settings.pluginNamespace,
-    rule: request.selected.value.settings.rule,
+    plugins: { [request.selected.value.settings.pluginNamespace]: request.selected.value.plugin },
+    rule: { ruleId: request.selected.value.ruleId, configuration: "error" },
     cases: request.cases,
   });
 };

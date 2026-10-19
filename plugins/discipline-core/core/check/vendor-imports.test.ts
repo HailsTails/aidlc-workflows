@@ -29,6 +29,9 @@ const sourcesOutsideMechanisms = import.meta.glob(
     "!./rules/**/*.test.*",
     "!./tests/**/*.test.*",
     "!./scripts/**/*.test.*",
+    "!./test-support/hermetic-git/hermetic-git-environment.test.ts",
+    "!./test-support/hermetic-git/hermetic-git-repository.test.ts",
+    "!./test-support/hermetic-git/index.test.ts",
     "!./tests/test-fixtures/**",
     "!./tests/required-entry.ts",
     "!./tests/confinement.ts",
@@ -48,7 +51,6 @@ const runnerSources = import.meta.glob(
     "!./mechanisms/*/runner/**/*.test.*",
     "!./mechanisms/*/runner/test-fixtures/**",
     "!./mechanisms/walker/runner/typescript-parse.ts",
-    "!./mechanisms/walker/runner/jsonc-parse.ts",
     "!./mechanisms/eslint/runner/eslint-instance.ts",
     "!./mechanisms/eslint/runner/inline-config-parser.ts",
   ],
@@ -70,7 +72,7 @@ const unlistedMechanismSources = import.meta.glob(
 );
 
 const platformPortSources = import.meta.glob(
-  ["./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}", "!./core/platform-ports/*.test.*", "!./core/platform-ports/module-loader-port.ts"],
+  ["./core/platform-ports/*-port.{ts,mts,cts,tsx,js,mjs,cjs}", "!./core/platform-ports/*.test.*", "!./core/platform-ports/module-loader-port.ts", "!./core/platform-ports/jsonc-parse-port.ts"],
   { base: "../../", query: "?raw", import: "default", eager: true },
 );
 
@@ -102,7 +104,7 @@ const typescriptWrapperSources = import.meta.glob(["./mechanisms/walker/runner/t
   eager: true,
 });
 
-const jsoncWrapperSources = import.meta.glob(["./mechanisms/walker/runner/jsonc-parse.ts"], {
+const jsoncWrapperSources = import.meta.glob(["./core/platform-ports/jsonc-parse-port.ts"], {
   base: "../../",
   query: "?raw",
   import: "default",
@@ -171,6 +173,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
       runnerSources,
       platformPortSources,
       coreSources,
+      jsoncWrapperSources,
       installProofPortSources,
       walkerPieceSources,
       eslintPieceSources,
@@ -180,6 +183,9 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./core/check/run-check.ts": expect.any(String),
         "./scripts/install-proof.ts": expect.any(String),
         "./scripts/run-install-proof.ts": expect.any(String),
+        "./test-support/hermetic-git/hermetic-git-environment.ts": expect.any(String),
+        "./test-support/hermetic-git/hermetic-git-repository.ts": expect.any(String),
+        "./test-support/hermetic-git/index.ts": expect.any(String),
       }),
       runnerSources: expect.objectContaining({ "./mechanisms/eslint/runner/create-eslint-runner.ts": expect.any(String) }),
       platformPortSources: expect.objectContaining({
@@ -188,6 +194,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./core/platform-ports/execution-port.ts": expect.any(String),
       }),
       coreSources: expect.objectContaining({ "./core/check/run-check.ts": expect.any(String) }),
+      jsoncWrapperSources: { "./core/platform-ports/jsonc-parse-port.ts": expect.any(String) },
       installProofPortSources: { "./scripts/install-proof-ports.ts": expect.any(String) },
       walkerPieceSources: expect.objectContaining({
         "./mechanisms/walker/CD-14/class-syntax.ts": expect.any(String),
@@ -201,6 +208,9 @@ describe("Vendor confinement over what this repository's own discipline-core sou
         "./tests/probe-rule-set/mechanisms/walker/PD-1/no-tmp-files.test.ts": expect.any(String),
         "./tests/required-entry.ts": expect.any(String),
         "./tests/confinement.ts": expect.any(String),
+        "./test-support/hermetic-git/hermetic-git-environment.test.ts": expect.any(String),
+        "./test-support/hermetic-git/hermetic-git-repository.test.ts": expect.any(String),
+        "./test-support/hermetic-git/index.test.ts": expect.any(String),
       }),
     });
   });
@@ -223,7 +233,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     expect(importsOutside({ sources: runnerSources, allowed: [relativeImport, zodImport] })).toEqual([]);
   });
 
-  it("finds the platform ports other than the module loader importing only relative paths, zod and node builtins", () => {
+  it("finds the platform ports other than the module loader and JSONC parser importing only relative paths, zod and node builtins", () => {
     expect(
       importsOutside({ sources: platformPortSources, allowed: [relativeImport, zodImport, nodeBuiltinImport] }),
     ).toEqual([]);
@@ -251,7 +261,7 @@ describe("Vendor confinement over what this repository's own discipline-core sou
     ).toEqual([]);
   });
 
-  it("finds jsonc-parse.ts importing only relative paths, zod and jsonc-parser", () => {
+  it("finds jsonc-parse-port.ts importing only relative paths, zod and jsonc-parser", () => {
     expect(
       importsOutside({
         sources: jsoncWrapperSources,

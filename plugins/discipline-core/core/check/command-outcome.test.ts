@@ -9,6 +9,7 @@ import { checkCommandOutcome, projectCommandOutcome } from "./command-outcome.ts
 const WALKER = mechanismIdSchema.parse("walker");
 
 const EMPTY_REPORT: CheckReport = {
+  coverage: [],
   findings: [],
   exempted: [],
   uncovered: [],

@@ -13,6 +13,7 @@ const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
 const CLASS_SYNTAX = clauseAddressSchema.parse("CD-14#class-syntax");
 const CLASS_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
+const EVALUATED_A = [{ clause: CLASS_SYNTAX_OBJECT, files: ["src/a.ts"] }];
 const ABSTRACT_SYNTAX_OBJECT = { ruleSet: "shared", discipline: "CD-14", clause: "abstract-syntax" };
 
 const CLASS_SYNTAX_CLAUSE: RunnerClause = {
@@ -25,7 +26,6 @@ const CLASS_SYNTAX_CLAUSE: RunnerClause = {
 const RUN_REQUEST: RunRequest = {
   repoRoot: REPO_ROOT,
   installRoot: INSTALL_ROOT,
-  files: [repoPathSchema.parse("src/a.ts"), repoPathSchema.parse("src/b.ts")],
   trackedPaths: [repoPathSchema.parse("README.md"), repoPathSchema.parse("src/a.ts"), repoPathSchema.parse("src/b.ts")],
   clauses: [CLASS_SYNTAX_CLAUSE],
 };
@@ -61,12 +61,13 @@ const dispatchRun = (request: { readonly runner: LoadedRunner }) =>
 describe("runMechanism with a standalone runner", () => {
   it("returns the runner's hits with the standalone empty native values and no projection", async () => {
     await expect(
-      dispatchRun({ runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [HIT_IN_A] }) }) }),
+      dispatchRun({ runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: { hits: [HIT_IN_A], evaluated: EVALUATED_A } }) }) }),
     ).resolves.toEqual({
       outcome: "ok",
       value: {
         mechanism: "walker",
         hits: [HIT_IN_A],
+        evaluated: EVALUATED_A,
         nativeExceptions: [],
         projectedKinds: [],
         projection: "none",
@@ -76,15 +77,15 @@ describe("runMechanism with a standalone runner", () => {
 
   it("returns no hits when the runner flags nothing", async () => {
     await expect(
-      dispatchRun({ runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [] }) }) }),
+      dispatchRun({ runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: { hits: [], evaluated: [{ clause: CLASS_SYNTAX_OBJECT, files: [] }] } }) }) }),
     ).resolves.toEqual({
       outcome: "ok",
-      value: { mechanism: "walker", hits: [], nativeExceptions: [], projectedKinds: [], projection: "none" },
+      value: { mechanism: "walker", hits: [], evaluated: [{ clause: CLASS_SYNTAX_OBJECT, files: [] }], nativeExceptions: [], projectedKinds: [], projection: "none" },
     });
   });
 
   it("calls run once with the run request it was given", async () => {
-    const run = runResolving({ outcome: "ok", value: [] });
+    const run = runResolving({ outcome: "ok", value: { hits: [], evaluated: EVALUATED_A } });
     await dispatchRun({ runner: standaloneRunner({ run }) });
     expect(run).toHaveBeenCalledExactlyOnceWith(RUN_REQUEST);
   });
@@ -124,9 +125,9 @@ describe("runMechanism with a standalone runner", () => {
   it("is runner-invalid-output when a hit's file is not a repo path", async () => {
     await expect(
       dispatchRun({
-        runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, file: "/repo/src/a.ts" }] }) }),
+        runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: { hits: [{ ...HIT_IN_A, file: "/repo/src/a.ts" }], evaluated: EVALUATED_A } }) }),
       }),
-    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("→ at value[0].file") } });
+    ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("→ at value.hits[0].file") } });
   });
 
   it("is runner-invalid-output when the runner returns a failure of an unknown kind", async () => {
@@ -141,18 +142,113 @@ describe("runMechanism with a standalone runner", () => {
     await expect(
       dispatchRun({
         runner: standaloneRunner({
-          run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, clause: ABSTRACT_SYNTAX_OBJECT }] }),
+          run: runResolving({ outcome: "ok", value: { hits: [{ ...HIT_IN_A, clause: ABSTRACT_SYNTAX_OBJECT }], evaluated: EVALUATED_A } }),
         }),
       }),
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#abstract-syntax in src/a.ts, which the request did not hold") } });
   });
 
-  it("is runner-invalid-output when a hit names a tracked file that is not in files", async () => {
+  it("is runner-invalid-output when a hit names a file outside its clause evaluation", async () => {
     await expect(
       dispatchRun({
-        runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [{ ...HIT_IN_A, file: "README.md" }] }) }),
+        runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: { hits: [{ ...HIT_IN_A, file: "README.md" }], evaluated: EVALUATED_A } }) }),
       }),
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in README.md, which the request did not hold") } });
+  });
+});
+
+describe("runMechanism observation envelope migration", () => {
+  it.each([
+    { name: "missing", evaluated: [] },
+    { name: "duplicate", evaluated: [
+      { clause: CLASS_SYNTAX_OBJECT, files: [] },
+      { clause: CLASS_SYNTAX_OBJECT, files: [] },
+    ] },
+  ])("refuses a $name requested evaluation even when it has no hits or eligible files", async ({ evaluated }) => {
+    await expect(dispatchRun({
+      runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: { hits: [], evaluated } }) }),
+    })).resolves.toMatchObject({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("the requested clause CD-14#class-syntax has no single evaluation") },
+    });
+  });
+
+  it("refuses an evaluation for a clause outside the requested selection", async () => {
+    await expect(dispatchRun({
+      runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: {
+        hits: [], evaluated: [
+          { clause: CLASS_SYNTAX_OBJECT, files: [] },
+          { clause: ABSTRACT_SYNTAX_OBJECT, files: [] },
+        ],
+      } }) }),
+    })).resolves.toMatchObject({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("an evaluation names CD-14#abstract-syntax, which the request did not hold") },
+    });
+  });
+
+  it("refuses a hit whose file was evaluated only for another requested clause", async () => {
+    await expect(runMechanism({
+      runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: {
+        hits: [HIT_IN_A], evaluated: [
+          { clause: CLASS_SYNTAX_OBJECT, files: [] },
+          { clause: ABSTRACT_SYNTAX_OBJECT, files: ["src/a.ts"] },
+        ],
+      } }) }),
+      mechanism: WALKER,
+      run: { ...RUN_REQUEST, clauses: [
+        CLASS_SYNTAX_CLAUSE,
+        { ...CLASS_SYNTAX_CLAUSE, address: clauseAddressSchema.parse("CD-14#abstract-syntax") },
+      ] },
+      records: [],
+    })).resolves.toMatchObject({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in src/a.ts, which the request did not hold") },
+    });
+  });
+
+  it("retains actual per-clause observations beyond tracked TypeScript metadata", async () => {
+    const strict = clauseAddressSchema.parse("CD-3#strict");
+    const hermetic = clauseAddressSchema.parse("CD-47#hermetic-git-spawns");
+    const request: RunRequest = {
+      ...RUN_REQUEST,
+      clauses: [
+        CLASS_SYNTAX_CLAUSE,
+        { address: strict, anchor: { kind: "file" }, pieceRoot: "/install/mechanisms/walker/CD-3", settings: { module: "compiler-overrides.ts" } },
+        { address: hermetic, anchor: { kind: "file" }, pieceRoot: "/install/mechanisms/walker/CD-47", settings: { module: "hermetic-git-spawns.ts" } },
+      ],
+    };
+    const untrackedHit = {
+      clause: CLASS_SYNTAX_OBJECT,
+      file: "src/untracked.ts",
+      anchor: { line: 3, column: 0 },
+      snippet: "class Untracked {}",
+    };
+    const evaluated = [
+      { clause: CLASS_SYNTAX, files: [repoPathSchema.parse("src/untracked.ts")] },
+      { clause: strict, files: [repoPathSchema.parse("tsconfig.json")] },
+      { clause: hermetic, files: [repoPathSchema.parse("tests/fixture.test.js")] },
+    ];
+    const run = runResolving({ outcome: "ok", value: { hits: [untrackedHit], evaluated } });
+
+    await expect(runMechanism({
+      runner: standaloneRunner({ run }), mechanism: WALKER, run: request, records: [],
+    })).resolves.toEqual({
+      outcome: "ok",
+      value: {
+        mechanism: "walker", hits: [untrackedHit], evaluated,
+        nativeExceptions: [], projectedKinds: [], projection: "none",
+      },
+    });
+    expect(run).toHaveBeenCalledExactlyOnceWith(request);
+  });
+
+  it("refuses the legacy bare hit array instead of admitting it as measured observations", async () => {
+    await expect(dispatchRun({
+      runner: standaloneRunner({ run: runResolving({ outcome: "ok", value: [HIT_IN_A] }) }),
+    })).resolves.toMatchObject({
+      outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringMatching(/\S/) },
+    });
   });
 });
 
@@ -214,7 +310,7 @@ const dispatchEmbeddedRun = (request: { readonly run: EmbeddedCall }) =>
     records: [ESLINT_LOCATION],
   });
 
-const UNCALLED_RUN = embeddedResolving({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "current" } });
+const UNCALLED_RUN = embeddedResolving({ outcome: "ok", value: { hits: [], evaluated: EVALUATED_A, nativeExceptions: [], projection: "current" } });
 
 const dispatchEmbeddedProject = (request: { readonly project: EmbeddedCall }) =>
   projectMechanism({
@@ -228,7 +324,7 @@ describe("runMechanism with an embedded runner", () => {
       dispatchEmbeddedRun({
         run: embeddedResolving({
           outcome: "ok",
-          value: { hits: [HIT_IN_A], nativeExceptions: [IGNORED_B], projection: "current" },
+          value: { hits: [HIT_IN_A], evaluated: EVALUATED_A, nativeExceptions: [IGNORED_B], projection: "current" },
         }),
       }),
     ).resolves.toEqual({
@@ -236,6 +332,7 @@ describe("runMechanism with an embedded runner", () => {
       value: {
         mechanism: "eslint",
         hits: [HIT_IN_A],
+        evaluated: EVALUATED_A,
         nativeExceptions: [IGNORED_B],
         projectedKinds: ["config-override"],
         projection: "current",
@@ -246,35 +343,36 @@ describe("runMechanism with an embedded runner", () => {
   it("returns a not-included projection with its empty lists", async () => {
     await expect(
       dispatchEmbeddedRun({
-        run: embeddedResolving({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "not-included" } }),
+        run: embeddedResolving({ outcome: "ok", value: { hits: [], evaluated: [], nativeExceptions: [], projection: "not-included" } }),
       }),
     ).resolves.toEqual({
       outcome: "ok",
-      value: { mechanism: "eslint", hits: [], nativeExceptions: [], projectedKinds: ["config-override"], projection: "not-included" },
+      value: { mechanism: "eslint", hits: [], evaluated: [], nativeExceptions: [], projectedKinds: ["config-override"], projection: "not-included" },
     });
   });
 
   it("returns a missing projection with its empty lists", async () => {
     await expect(
       dispatchEmbeddedRun({
-        run: embeddedResolving({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "missing" } }),
+        run: embeddedResolving({ outcome: "ok", value: { hits: [], evaluated: [], nativeExceptions: [], projection: "missing" } }),
       }),
     ).resolves.toEqual({
       outcome: "ok",
-      value: { mechanism: "eslint", hits: [], nativeExceptions: [], projectedKinds: ["config-override"], projection: "missing" },
+      value: { mechanism: "eslint", hits: [], evaluated: [], nativeExceptions: [], projectedKinds: ["config-override"], projection: "missing" },
     });
   });
 
   it("returns an out-of-date projection beside the report's hits", async () => {
     await expect(
       dispatchEmbeddedRun({
-        run: embeddedResolving({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "out-of-date" } }),
+        run: embeddedResolving({ outcome: "ok", value: { hits: [HIT_IN_A], evaluated: EVALUATED_A, nativeExceptions: [], projection: "out-of-date" } }),
       }),
     ).resolves.toEqual({
       outcome: "ok",
       value: {
         mechanism: "eslint",
         hits: [HIT_IN_A],
+        evaluated: EVALUATED_A,
         nativeExceptions: [],
         projectedKinds: ["config-override"],
         projection: "out-of-date",
@@ -282,8 +380,19 @@ describe("runMechanism with an embedded runner", () => {
     });
   });
 
+  it.each(["missing", "not-included"])("refuses evaluated clauses from a %s unavailable embedded mechanism", async (projection) => {
+    await expect(dispatchEmbeddedRun({
+      run: embeddedResolving({ outcome: "ok", value: {
+        hits: [], evaluated: [{ clause: CLASS_SYNTAX_OBJECT, files: [] }], nativeExceptions: [], projection,
+      } }),
+    })).resolves.toMatchObject({
+      outcome: "failed",
+      error: { kind: "runner-invalid-output", detail: expect.stringContaining("an unavailable mechanism returned evaluated clauses") },
+    });
+  });
+
   it("calls run once with the run request and the mechanism's records, and never calls project", async () => {
-    const run = embeddedResolving({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "current" } });
+    const run = embeddedResolving({ outcome: "ok", value: { hits: [], evaluated: EVALUATED_A, nativeExceptions: [], projection: "current" } });
     const project = embeddedResolving({ outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } });
     await runMechanism({
       runner: embeddedRunner({ run, project }),
@@ -326,7 +435,7 @@ describe("runMechanism with an embedded runner", () => {
   it("is runner-invalid-output when the report's projection is the standalone none", async () => {
     await expect(
       dispatchEmbeddedRun({
-        run: embeddedResolving({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "none" } }),
+        run: embeddedResolving({ outcome: "ok", value: { hits: [], evaluated: EVALUATED_A, nativeExceptions: [], projection: "none" } }),
       }),
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("Invalid input") } });
   });
@@ -338,6 +447,7 @@ describe("runMechanism with an embedded runner", () => {
           outcome: "ok",
           value: {
             hits: [],
+            evaluated: EVALUATED_A,
             nativeExceptions: [{ kind: "baseline", clause: CLASS_SYNTAX_OBJECT, file: "src/b.ts" }],
             projection: "current",
           },
@@ -351,18 +461,18 @@ describe("runMechanism with an embedded runner", () => {
       dispatchEmbeddedRun({
         run: embeddedResolving({
           outcome: "ok",
-          value: { hits: [{ ...HIT_IN_A, clause: ABSTRACT_SYNTAX_OBJECT }], nativeExceptions: [], projection: "current" },
+          value: { hits: [{ ...HIT_IN_A, clause: ABSTRACT_SYNTAX_OBJECT }], evaluated: EVALUATED_A, nativeExceptions: [], projection: "current" },
         }),
       }),
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#abstract-syntax in src/a.ts, which the request did not hold") } });
   });
 
-  it("is runner-invalid-output when a hit names a tracked file that is not in files", async () => {
+  it("is runner-invalid-output when a hit names a file outside its clause evaluation", async () => {
     await expect(
       dispatchEmbeddedRun({
         run: embeddedResolving({
           outcome: "ok",
-          value: { hits: [{ ...HIT_IN_A, file: "README.md" }], nativeExceptions: [], projection: "current" },
+          value: { hits: [{ ...HIT_IN_A, file: "README.md" }], evaluated: EVALUATED_A, nativeExceptions: [], projection: "current" },
         }),
       }),
     ).resolves.toMatchObject({ outcome: "failed", error: { kind: "runner-invalid-output", detail: expect.stringContaining("a hit names CD-14#class-syntax in README.md, which the request did not hold") } });
@@ -379,7 +489,7 @@ describe("projectMechanism with an embedded runner", () => {
   });
 
   it("calls project once with the projection request and never calls run", async () => {
-    const run = embeddedResolving({ outcome: "ok", value: { hits: [], nativeExceptions: [], projection: "current" } });
+    const run = embeddedResolving({ outcome: "ok", value: { hits: [], evaluated: EVALUATED_A, nativeExceptions: [], projection: "current" } });
     const project = embeddedResolving({ outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } });
     await projectMechanism({ runner: embeddedRunner({ run, project }), request: PROJECTION_REQUEST });
     expect({ projectCalls: project.mock.calls, runCalls: run.mock.calls }).toEqual({
@@ -439,6 +549,7 @@ describe("runMechanism with an embedded runner, native exceptions against the re
           outcome: "ok",
           value: {
             hits: [],
+            evaluated: EVALUATED_A,
             nativeExceptions: [{ kind: "ignore", clause: ABSTRACT_SYNTAX_OBJECT, file: "src/b.ts" }],
             projection: "current",
           },
@@ -456,13 +567,14 @@ describe("runMechanism with an embedded runner, native exceptions against the re
     };
     await expect(
       dispatchEmbeddedRun({
-        run: embeddedResolving({ outcome: "ok", value: { hits: [], nativeExceptions: [suppression], projection: "current" } }),
+        run: embeddedResolving({ outcome: "ok", value: { hits: [], evaluated: EVALUATED_A, nativeExceptions: [suppression], projection: "current" } }),
       }),
     ).resolves.toEqual({
       outcome: "ok",
       value: {
         mechanism: "eslint",
         hits: [],
+        evaluated: EVALUATED_A,
         nativeExceptions: [suppression],
         projectedKinds: ["config-override"],
         projection: "current",

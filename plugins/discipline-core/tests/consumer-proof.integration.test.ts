@@ -1,8 +1,11 @@
-import { assert, describe, expect, it, type MockInstance, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, expect, it, type MockInstance, vi } from "vitest";
 import { checkCommandOutcome } from "../core/check/command-outcome.ts";
+import { createSelectionRepository } from "../core/consumer-selection/consumer-selection.ts";
+import { createExceptionRepository } from "../core/exception-records/exception-records.ts";
 import { runCheck } from "../core/check/run-check.ts";
 import { runProject } from "../core/check/run-project.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../core/platform-ports/file-text-port.ts";
+import type { DirectoryPort } from "../core/platform-ports/file-system-port.ts";
 import type { GitPort } from "../core/platform-ports/git-port.ts";
 import { createDefaultModuleLoaderPort, type ModuleLoaderPort } from "../core/platform-ports/module-loader-port.ts";
 import { createDefaultPathPort } from "../core/platform-ports/path-port.ts";
@@ -12,6 +15,7 @@ import { createEslintRunner } from "../mechanisms/eslint/runner/create-eslint-ru
 import { createDefaultEslintPort } from "../mechanisms/eslint/runner/eslint-instance.ts";
 import { createWalkerRunner } from "../mechanisms/walker/runner/create-walker-runner.ts";
 import { createDefaultParsePort } from "../mechanisms/walker/runner/typescript-parse.ts";
+import { createDefaultScratchFilesPort } from "../scripts/install-proof-ports.ts";
 import { type PathCallsOutside, pathCallsOutside } from "./confinement.ts";
 
 const path = createDefaultPathPort({});
@@ -22,32 +26,100 @@ const resolvedPath = (request: { readonly path: string }): AbsolutePath => {
   return resolved.value;
 };
 
-const INSTALL_ROOT = resolvedPath({ path: `${import.meta.dirname}/..` });
+const SOURCE_INSTALL_ROOT = resolvedPath({ path: `${import.meta.dirname}/..` });
 
-const WALKER_CONSUMER = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/walker` });
+const PROVIDER_FILES = [
+  "rules/CD-14/discipline.json",
+  "mechanisms/eslint/CD-14/piece.json",
+  "mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts",
+  "mechanisms/eslint/runner/runner.ts",
+  "mechanisms/walker/CD-14/piece.json",
+  "mechanisms/walker/CD-14/class-syntax.ts",
+  "mechanisms/walker/runner/runner.ts",
+];
+const scratch = createDefaultScratchFilesPort({});
+const fixtureText = createDefaultFileTextPort({});
+let fixtureEnclosure: AbsolutePath | undefined;
 
-const ESLINT_CONSUMER = resolvedPath({ path: `${import.meta.dirname}/test-fixtures/consumer-proof/eslint` });
+const fixtureRoot = (): AbsolutePath => {
+  assert(fixtureEnclosure !== undefined, "the physical fixture enclosure was allocated");
+  return fixtureEnclosure;
+};
+
+const fixtureInstallRoot = (): AbsolutePath =>
+  resolvedPath({ path: path.join({ segments: [fixtureRoot(), "provider"] }) });
+
+const fixtureConsumer = (request: { readonly name: string }): AbsolutePath =>
+  resolvedPath({ path: path.join({ segments: [fixtureRoot(), "consumers", request.name] }) });
+
+const copyProviderFile = (file: string): void => {
+  const copied = scratch.copyTree({
+    from: path.join({ segments: [SOURCE_INSTALL_ROOT, file] }),
+    to: path.join({ segments: [fixtureInstallRoot(), file] }),
+    disposition: () => "kept",
+  });
+  assert(copied.outcome === "ok", JSON.stringify(copied));
+};
+
+const rewriteCopiedImport = (request: { readonly file: string; readonly previous: string }): void => {
+  const file = path.join({ segments: [fixtureRoot(), "consumers", request.file] });
+  const read = fixtureText.read({ path: file });
+  assert(read.outcome === "ok", JSON.stringify(read));
+  assert(read.value.includes(request.previous), "the copied fixture retains its original provider import");
+  const written = fixtureText.write({
+    path: file,
+    text: read.value.replace(request.previous, '"../../provider/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts"'),
+  });
+  assert(written.outcome === "ok", JSON.stringify(written));
+};
+
+beforeAll(() => {
+  const allocated = scratch.createTemporaryDirectory({ prefix: "discipline-core-consumer-fixtures-" });
+  assert(allocated.outcome === "ok", JSON.stringify(allocated));
+  fixtureEnclosure = resolvedPath({ path: allocated.value });
+  const copied = scratch.copyTree({
+    from: path.join({ segments: [SOURCE_INSTALL_ROOT, "tests", "test-fixtures", "consumer-proof"] }),
+    to: path.join({ segments: [fixtureRoot(), "consumers"] }),
+    disposition: () => "kept",
+  });
+  assert(copied.outcome === "ok", JSON.stringify(copied));
+  PROVIDER_FILES.forEach(copyProviderFile);
+  rewriteCopiedImport({
+    file: "eslint/disciplines.eslint.mjs",
+    previous: '"../../../../mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts"',
+  });
+});
+
+afterAll(() => {
+  const removed = scratch.removeTree({ path: fixtureRoot() });
+  assert(removed.outcome === "ok", JSON.stringify(removed));
+});
+
+const walkerDirectories = (): ReadonlyMap<string, ReturnType<DirectoryPort["list"]>> => new Map([
+  [fixtureConsumer({ name: "walker" }), { outcome: "ok", value: [{ name: "disciplines.json", kind: "file" }, { name: "src", kind: "directory" }] }],
+  [resolvedPath({ path: `${fixtureConsumer({ name: "walker" })}/src` }), { outcome: "ok", value: [{ name: "kept.ts", kind: "file" }, { name: "plain.ts", kind: "file" }] }],
+]);
 
 const INSTALLED_SOURCE = String.raw`(?!(?:[^/]*\/)*tests\/)(?!.*\.test\.ts$).*`;
 
-const WALKER_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/walker\/runner|mechanisms\/walker\/CD-14)\/${INSTALLED_SOURCE}`;
+const WALKER_INSTALLED = String.raw`provider\/(?:core|rules\/CD-14|mechanisms\/walker\/runner|mechanisms\/walker\/CD-14)\/${INSTALLED_SOURCE}`;
 
-const ESLINT_INSTALLED = String.raw`(?:core|rules\/CD-14|mechanisms\/eslint\/runner|mechanisms\/eslint\/CD-14)\/${INSTALLED_SOURCE}`;
+const ESLINT_INSTALLED = String.raw`provider\/(?:core|rules\/CD-14|mechanisms\/eslint\/runner|mechanisms\/eslint\/CD-14)\/${INSTALLED_SOURCE}`;
 
 const WALKER_INSTALL_LIST = new RegExp(`^${WALKER_INSTALLED}$`);
 
 const ESLINT_INSTALL_LIST = new RegExp(`^${ESLINT_INSTALLED}$`);
 
-const WALKER_READABLE = new RegExp(String.raw`^(?:${WALKER_INSTALLED}|tests\/test-fixtures\/consumer-proof\/walker\/.*)$`);
+const WALKER_READABLE = new RegExp(String.raw`^(?:${WALKER_INSTALLED}|consumers\/walker\/.*)$`);
 
-const ESLINT_READABLE = new RegExp(String.raw`^(?:${ESLINT_INSTALLED}|tests\/test-fixtures\/consumer-proof\/eslint\/.*)$`);
+const ESLINT_READABLE = new RegExp(String.raw`^(?:${ESLINT_INSTALLED}|consumers\/eslint\/.*)$`);
 
 const NO_HARNESS_SEGMENT = /^(?!(?:.*\/)?\.(?:claude|kiro|codex|cursor|aidlc|opencode|github|copilot)(?:\/|$)).*$/;
 
 const installCallsOutside = (request: {
   readonly calls: readonly (readonly [{ readonly path: string }])[];
   readonly paths: RegExp;
-}): PathCallsOutside => pathCallsOutside({ path, root: INSTALL_ROOT, calls: request.calls, paths: request.paths });
+}): PathCallsOutside => pathCallsOutside({ path, root: fixtureRoot(), calls: request.calls, paths: request.paths });
 
 const EVERY_CALL_WITHIN: PathCallsOutside = { called: "at least once", outside: [] };
 
@@ -68,11 +140,12 @@ const observedPorts = (): ObservedPorts => {
     write: vi.fn<FileTextPort["write"]>(),
   };
   const pieceModules: ModuleLoaderPort = { load: createDefaultModuleLoaderPort({}).load };
+  const directories = walkerDirectories();
   const runners: Readonly<Record<string, unknown>> = {
-    [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/walker/runner/runner.ts` })]: {
-      runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse: createDefaultParsePort({}) }),
+    [resolvedPath({ path: `${fixtureInstallRoot()}/mechanisms/walker/runner/runner.ts` })]: {
+      runner: createWalkerRunner({ directory: { list: ({ path }) => directories.get(path) ?? assert.fail("unexpected directory") }, fileText, modules: pieceModules, path, parse: createDefaultParsePort({}) }),
     },
-    [resolvedPath({ path: `${INSTALL_ROOT}/mechanisms/eslint/runner/runner.ts` })]: {
+    [resolvedPath({ path: `${fixtureInstallRoot()}/mechanisms/eslint/runner/runner.ts` })]: {
       runner: createEslintRunner({ fileText, modules: pieceModules, path, eslint: createDefaultEslintPort({}) }),
     },
   };
@@ -102,9 +175,10 @@ const checkOf = (request: {
 }) =>
   runCheck({
     repoRoot: request.repo,
-    installRoot: INSTALL_ROOT,
+    installRoot: fixtureInstallRoot(),
     baseRevision: undefined,
-    fileText: request.ports.fileText,
+    selections: createSelectionRepository({ repoRoot: request.repo, installRoot: fixtureInstallRoot(), fileText: request.ports.fileText, path }),
+    exceptions: createExceptionRepository({ repoRoot: request.repo, fileText: request.ports.fileText, path }),
     modules: request.ports.runnerModules,
     path,
     git: gitTracking({ tracked: request.tracked }),
@@ -112,9 +186,11 @@ const checkOf = (request: {
 
 const projectOf = (request: { readonly repo: AbsolutePath; readonly ports: ObservedPorts }) =>
   runProject({
+    baseRevision: undefined,
     repoRoot: request.repo,
-    installRoot: INSTALL_ROOT,
-    fileText: request.ports.fileText,
+    installRoot: fixtureInstallRoot(),
+    selections: createSelectionRepository({ repoRoot: request.repo, installRoot: fixtureInstallRoot(), fileText: request.ports.fileText, path }),
+    exceptions: createExceptionRepository({ repoRoot: request.repo, fileText: request.ports.fileText, path }),
     modules: request.ports.runnerModules,
     path,
     git: gitTracking({ tracked: [] }),
@@ -165,17 +241,17 @@ const CLEAN_REPORT = {
 };
 
 describe("a consumer with no harness directory selecting CD-14 through the walker, run against the install", () => {
-  it("passes when its tracked files hold no class, exiting 0", async () => {
+  it("finds a class present outside tracked metadata, exiting 1", async () => {
     const ports = observedPorts();
-    const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: CLEAN_TRACKED, ports });
-    expect(checked).toEqual({ outcome: "ok", value: CLEAN_REPORT });
-    expect(checkCommandOutcome({ result: checked }).code).toBe(0);
+    const checked = await checkOf({ repo: fixtureConsumer({ name: "walker" }), tracked: CLEAN_TRACKED, ports });
+    expect(checked).toMatchObject({ outcome: "ok", value: { ...CLEAN_REPORT, findings: [classFinding({ mechanism: "walker" })] } });
+    expect(checkCommandOutcome({ result: checked }).code).toBe(1);
   });
 
   it("fails when a tracked file holds a class, exiting 1 with the class as a walker finding", async () => {
     const ports = observedPorts();
-    const checked = await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
-    expect(checked).toEqual({
+    const checked = await checkOf({ repo: fixtureConsumer({ name: "walker" }), tracked: CLASS_TRACKED, ports });
+    expect(checked).toMatchObject({
       outcome: "ok",
       value: { ...CLEAN_REPORT, findings: [classFinding({ mechanism: "walker" })] },
     });
@@ -184,7 +260,7 @@ describe("a consumer with no harness directory selecting CD-14 through the walke
 
   it("reads, probes and loads only paths in the walker's install path list or the consumer repo", async () => {
     const ports = observedPorts();
-    await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
+    await checkOf({ repo: fixtureConsumer({ name: "walker" }), tracked: CLASS_TRACKED, ports });
     expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: WALKER_READABLE })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: WALKER_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
@@ -193,7 +269,7 @@ describe("a consumer with no harness directory selecting CD-14 through the walke
 
   it("reads, probes and loads no path carrying a harness segment", async () => {
     const ports = observedPorts();
-    await checkOf({ repo: WALKER_CONSUMER, tracked: CLASS_TRACKED, ports });
+    await checkOf({ repo: fixtureConsumer({ name: "walker" }), tracked: CLASS_TRACKED, ports });
     expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
@@ -204,7 +280,7 @@ describe("a consumer with no harness directory selecting CD-14 through the walke
 describe("a consumer with no harness directory selecting CD-14 through ESLint, run against the install", () => {
   it("projects the checked-in projection unchanged and writes nothing", async () => {
     const ports = observedPorts();
-    await expect(projectOf({ repo: ESLINT_CONSUMER, ports })).resolves.toEqual({
+    await expect(projectOf({ repo: fixtureConsumer({ name: "eslint" }), ports })).resolves.toEqual({
       outcome: "ok",
       value: [{ path: "disciplines.eslint.mjs", effect: "unchanged" }],
     });
@@ -213,15 +289,15 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
 
   it("passes when its tracked files hold no class, exiting 0", async () => {
     const ports = observedPorts();
-    const checked = await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLEAN_TRACKED, ports });
-    expect(checked).toEqual({ outcome: "ok", value: CLEAN_REPORT });
+    const checked = await checkOf({ repo: fixtureConsumer({ name: "eslint" }), tracked: ESLINT_CLEAN_TRACKED, ports });
+    expect(checked).toMatchObject({ outcome: "ok", value: CLEAN_REPORT });
     expect(checkCommandOutcome({ result: checked }).code).toBe(0);
   });
 
   it("fails when a tracked file holds a class, exiting 1 with the class as an ESLint finding", async () => {
     const ports = observedPorts();
-    const checked = await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLASS_TRACKED, ports });
-    expect(checked).toEqual({
+    const checked = await checkOf({ repo: fixtureConsumer({ name: "eslint" }), tracked: ESLINT_CLASS_TRACKED, ports });
+    expect(checked).toMatchObject({
       outcome: "ok",
       value: { ...CLEAN_REPORT, findings: [classFinding({ mechanism: "eslint" })] },
     });
@@ -230,8 +306,8 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
 
   it("reads, probes and loads only paths in the ESLint install path list or the consumer repo, check and project alike", async () => {
     const ports = observedPorts();
-    await projectOf({ repo: ESLINT_CONSUMER, ports });
-    await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLASS_TRACKED, ports });
+    await projectOf({ repo: fixtureConsumer({ name: "eslint" }), ports });
+    await checkOf({ repo: fixtureConsumer({ name: "eslint" }), tracked: ESLINT_CLASS_TRACKED, ports });
     expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: ESLINT_READABLE })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: ESLINT_READABLE })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: ESLINT_INSTALL_LIST })).toEqual(EVERY_CALL_WITHIN);
@@ -240,8 +316,8 @@ describe("a consumer with no harness directory selecting CD-14 through ESLint, r
 
   it("reads, probes and loads no path carrying a harness segment, check and project alike", async () => {
     const ports = observedPorts();
-    await projectOf({ repo: ESLINT_CONSUMER, ports });
-    await checkOf({ repo: ESLINT_CONSUMER, tracked: ESLINT_CLASS_TRACKED, ports });
+    await projectOf({ repo: fixtureConsumer({ name: "eslint" }), ports });
+    await checkOf({ repo: fixtureConsumer({ name: "eslint" }), tracked: ESLINT_CLASS_TRACKED, ports });
     expect(installCallsOutside({ calls: ports.reads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.probes.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);
     expect(installCallsOutside({ calls: ports.pieceLoads.mock.calls, paths: NO_HARNESS_SEGMENT })).toEqual(EVERY_CALL_WITHIN);

@@ -31,6 +31,7 @@ export type DoublyHeld = {
 export type GovernanceRequest = {
   readonly findings: readonly Finding[];
   readonly records: readonly ExceptionRecord[];
+  readonly staleCandidates: readonly ExceptionRecord[];
   readonly touched: TouchedSet;
   readonly runs: readonly GovernedRun[];
 };
@@ -170,12 +171,16 @@ const judgedFinding = (request: {
 const governedFindings = (request: {
   readonly judged: readonly ExemptedFinding[];
   readonly exempting: readonly ExceptionRecord[];
+  readonly staleCandidates: readonly ExceptionRecord[];
 }): Pick<GovernanceResult, "findings" | "exempted" | "stale"> => {
   const credited = new Set(request.judged.flatMap((entry) => entry.by));
   return {
     findings: request.judged.flatMap((entry) => (entry.by.length === 0 ? [entry.finding] : [])),
     exempted: request.judged.filter((entry) => entry.by.length > 0),
-    stale: request.exempting.filter((record) => !credited.has(record)),
+    stale: request.exempting.filter((record) => !credited.has(record) && request.staleCandidates.some((candidate) =>
+      candidate.kind === record.kind && candidate.mechanism === record.mechanism &&
+      coverageKeyOf({ record: candidate }) === coverageKeyOf({ record }),
+    )),
   };
 };
 
@@ -186,7 +191,7 @@ export const applyGovernance = (request: GovernanceRequest): GovernanceResult =>
   const exempting = exemptingRecords({ inForce, doublyHeld });
   const judged = request.findings.map((finding) => judgedFinding({ finding, exempting }));
   return {
-    ...governedFindings({ judged, exempting }),
+    ...governedFindings({ judged, exempting, staleCandidates: request.staleCandidates }),
     forfeited,
     doublyHeld,
     unrecorded: unrecordedExceptions({ runs: request.runs, records: request.records }),

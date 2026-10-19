@@ -1,6 +1,8 @@
-import { accessSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import type { AbsolutePath } from "../values/absolute-path.ts";
+import { accessSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { type AbsolutePath, absolutePathSchema } from "../values/absolute-path.ts";
 import type { Result } from "../values/result.ts";
+import { createDefaultPathPort, type PathPort } from "./path-port.ts";
 
 export type FilePresence = "present" | "absent";
 
@@ -157,3 +159,81 @@ export const createDefaultDirectoryPort = (
   createDirectoryPort({
     directory: defaultDirectorySurface,
   });
+
+export type TemporaryDirectoryFailure =
+  | {
+      readonly kind: "temporary-directory-create-failed";
+      readonly namePrefix: string;
+      readonly detail: string;
+    }
+  | {
+      readonly kind: "temporary-directory-remove-failed";
+      readonly path: AbsolutePath;
+      readonly detail: string;
+    };
+
+export type TemporaryDirectory = {
+  readonly path: AbsolutePath;
+  readonly dispose: () => Result<void, TemporaryDirectoryFailure>;
+};
+
+export type TemporaryDirectoryPort = {
+  readonly create: (request: {
+    readonly namePrefix: string;
+  }) => Result<TemporaryDirectory, TemporaryDirectoryFailure>;
+};
+
+export type TemporaryDirectorySurface = {
+  readonly root: (request: Record<string, never>) => string;
+  readonly create: (request: { readonly prefix: string }) => string;
+  readonly remove: (request: { readonly path: AbsolutePath }) => void;
+};
+
+export const createTemporaryDirectoryPort = (options: {
+  readonly temporaryDirectories: TemporaryDirectorySurface;
+  readonly path: PathPort;
+}): TemporaryDirectoryPort => ({
+  create: (request) => {
+    try {
+      const prefix = options.path.join({ segments: [options.temporaryDirectories.root({}), request.namePrefix] });
+      const path = absolutePathSchema.parse(options.temporaryDirectories.create({ prefix }));
+      return {
+        outcome: "ok",
+        value: {
+          path,
+          dispose: () => {
+            try {
+              options.temporaryDirectories.remove({ path });
+              return { outcome: "ok", value: undefined };
+            } catch (thrown) {
+              return {
+                outcome: "failed",
+                error: { kind: "temporary-directory-remove-failed", path, detail: failureDetail({ thrown }) },
+              };
+            }
+          },
+        },
+      };
+    } catch (thrown) {
+      return {
+        outcome: "failed",
+        error: {
+          kind: "temporary-directory-create-failed",
+          namePrefix: request.namePrefix,
+          detail: failureDetail({ thrown }),
+        },
+      };
+    }
+  },
+});
+
+export const createDefaultTemporaryDirectoryPort = (
+  _options: Record<string, never>,
+): TemporaryDirectoryPort => createTemporaryDirectoryPort({
+  temporaryDirectories: {
+    root: () => tmpdir(),
+    create: (request) => mkdtempSync(request.prefix),
+    remove: (request) => rmSync(request.path, { recursive: true, force: true }),
+  },
+  path: createDefaultPathPort({}),
+});

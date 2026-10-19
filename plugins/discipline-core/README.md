@@ -95,7 +95,7 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 
 Fetch these paths from a pinned commit of this repository into one install directory, keeping their layout:
 
-- always: `package.json` and `core/`
+- always: `package.json`, `core/` and `test-support/hermetic-git/`
 - for each selected clause in the shared rule set: `rules/<DisciplineId>/`, `mechanisms/<MechanismId>/runner/` and `mechanisms/<MechanismId>/<DisciplineId>/`
 - for each selected clause in the repository's own rule set: `mechanisms/<MechanismId>/runner/` only, since the discipline and its piece live in that rule set
 
@@ -108,6 +108,16 @@ Leave out test files (`*.test.ts`), `tests/` folders and `test-fixtures/` folder
 With the ESLint mechanism selected, the install must sit at the same path relative to the repository root on every teammate's machine and every CI runner, for example a fixed `.rin/<name>/` inside the repository. The projection `disciplines.eslint.mjs` embeds the relative path from the repository root to each piece's plugin module, and core compares the committed file byte for byte with what `project-command` would write now. An install at a different relative path makes the check report `eslint out-of-date`, and the team's own ESLint run may fail to resolve the plugin import.
 
 Core ships no helper that derives this list from `disciplines.json`; whether it should is an open design decision. For now the list is applied by hand or by the adopter's own script.
+
+## Hermetic Git support
+
+The installed [hermetic Git helper](test-support/hermetic-git/index.ts) supplies `createHermeticGitRepository()` and `hermeticGitEnvironment()`. Creating a repository returns a synchronous `Result`: check `outcome` before using `value`; on `failed`, retain the complete `error`, including the allocated `enclosure` when present. Failed construction does not remove that enclosure automatically.
+
+On a successful repository, call `writeFile({ relativePath, body })`, `run({ arguments })` and `commitAll({ message })` only within the repository you own. Each returns a `Result`; inspect failure before continuing. `commitAll` stops if `git add` fails. Dispose the repository explicitly after use and inspect the Result returned by `dispose()`. Disposal only removes the helper's allocated enclosure. Write paths are trusted authoring input; the helper does not enforce containment or create parent directories.
+
+`hermeticGitEnvironment({ configHome, ambient })` returns the same Result shape. Supply an owned absolute `configHome`; omit `ambient` to take one environment snapshot, or supply explicit ambient data. The helper removes its eleven checkout-binding Git variables, redirects user and system configuration, and supplies fixture identity without changing the caller's environment. The repository factory captures that environment once for all its Git operations.
+
+Use injected ports through `createHermeticGitRepositoryWithPorts()` when testing helper orchestration. A real Git invocation still requires the CD47 condition: Git's own observable behaviour must be the assertion's subject and no fake can establish it. Using the helper does not establish that condition.
 
 ## Runtime
 

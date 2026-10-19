@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { EslintRuleConfiguration } from "./eslint-piece-settings-schema.ts";
 
 export const resolvedConfigSchema = z.union([
   z.undefined(),
@@ -17,11 +18,16 @@ export type ResolvedConfig = z.output<typeof resolvedConfigSchema>;
 export type RuleState =
   | { readonly state: "file-ignored" }
   | { readonly state: "rule-absent" }
-  | { readonly state: "configured"; readonly severity: 0 | 1 | 2 };
+  | {
+      readonly state: "configured";
+      readonly severity: 0 | 1 | 2;
+      readonly options: "matching" | "weakened";
+    };
 
 export const ruleStateOf = (request: {
   readonly resolved: ResolvedConfig;
   readonly ruleId: string;
+  readonly configuration: EslintRuleConfiguration;
 }): RuleState => {
   if (request.resolved === undefined) {
     return { state: "file-ignored" };
@@ -30,5 +36,5 @@ export const ruleStateOf = (request: {
   if (entry === undefined) {
     return { state: "rule-absent" };
   }
-  return { state: "configured", severity: entry[0] };
+  return { state: "configured", severity: entry[0], options: "matching" };
 };

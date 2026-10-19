@@ -32,8 +32,8 @@ const JOINED_REPOSITORY_PATHS: Readonly<Record<string, string>> = {
   '["./tests/probe-rule-set","rules","PD-1"]': "tests/probe-rule-set/rules/PD-1",
   '[".","mechanisms","walker","runner"]': "mechanisms/walker/runner",
   '[".","core"]': "core",
-  '["./tests/probe-rule-set/mechanisms/walker/PD-1","../../../../../mechanisms/walker/runner/walker-check.ts"]':
-    "mechanisms/walker/runner/walker-check.ts",
+  '["./tests/probe-rule-set/mechanisms/walker/PD-1","../../../../../mechanisms/walker/runner/walker-piece.ts"]':
+    "mechanisms/walker/runner/walker-piece.ts",
 };
 
 const REPOSITORY_DIRECTORIES: Readonly<Record<string, string>> = {

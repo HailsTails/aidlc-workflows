@@ -133,7 +133,7 @@ const commandRequest = (overrides: Partial<CommandRequest>): CommandRequest => (
   process: processWith({ arguments: ["--repo", "/repo"] }),
   path: TABLE_PATH,
   fileText: fileTextOver(NOTHING_SELECTED),
-  modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) }),
+  modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: { hits: [], evaluated: [{ clause: HIT_IN_A.clause, files: [] }] } } }) }),
   git: gitTracking([]),
   moduleUrl: ENTRY_URL,
   ...overrides,
@@ -174,7 +174,7 @@ describe("runCheckCommand", () => {
       commandRequest({
         process: processPort,
         fileText: fileTextOver(CLASS_SYNTAX_SELECTED),
-        modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [HIT_IN_A] } }) }),
+        modules: modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: { hits: [HIT_IN_A], evaluated: [{ clause: HIT_IN_A.clause, files: ["src/a.ts"] }] } } }) }),
         git: gitTracking([repoPathSchema.parse("src/a.ts")]),
       }),
     );
@@ -186,7 +186,7 @@ describe("runCheckCommand", () => {
   });
 
   it("loads the runner from the install three levels above the entry file", async () => {
-    const modules = modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: [] } }) });
+    const modules = modulesLoading({ runner: standaloneRunner({ runReturns: { outcome: "ok", value: { hits: [], evaluated: [{ clause: HIT_IN_A.clause, files: [] }] } } }) });
 
     await runCheckCommand(
       commandRequest({ fileText: fileTextOver(CLASS_SYNTAX_SELECTED), modules, git: gitTracking([repoPathSchema.parse("src/a.ts")]) }),

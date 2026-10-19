@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, vi } from "vitest";
-import { createJsoncParsePort, type JsoncProviderCall } from "./jsonc-parse.ts";
+import { createJsoncParsePort, type JsoncProviderCall } from "./jsonc-parse-port.ts";
 
 describe("createJsoncParsePort", () => {
   it("forwards the exact source once and preserves the provider value with no diagnostics", () => {

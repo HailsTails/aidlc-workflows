@@ -2,8 +2,8 @@ import type {
   SyntaxApi,
   SyntaxNode,
   SyntaxTree,
-  TypeScriptWalkerCheck,
 } from "../runner/typescript-parse.ts";
+import type { PieceHit, WalkerPiece } from "../runner/walker-piece.ts";
 
 type Ambience = "ambient" | "runtime";
 
@@ -34,21 +34,40 @@ const classKeywordOf = (
     .getChildren(request.tree)
     .find((child) => child.kind === request.syntaxApi.SyntaxKind.ClassKeyword);
 
-export const check: TypeScriptWalkerCheck = {
-  kind: "syntax",
-  inspect: (request) => {
-    if (!request.syntaxApi.isClassLike(request.node)) {
-      return [];
-    }
-    if (
-      ownAmbience(request) === "ambient" ||
-      enclosingAmbience({ syntaxApi: request.syntaxApi, node: request.node.parent }) === "ambient"
-    ) {
-      return [];
-    }
-    const keyword = classKeywordOf(request);
-    return keyword === undefined
-      ? []
-      : [request.anchorAt({ position: keyword.getStart(request.tree) })];
-  },
+export const check: WalkerPiece = {
+  prepare: ({ clauses, syntaxApi }) => ({
+    outcome: "ok",
+    value: {
+      prepareFile: ({ file }) => {
+        if (!/\.(?:ts|tsx|mts|cts)$/.test(file) || /\.d\.(?:ts|mts|cts)$/.test(file)) {
+          return { outcome: "ok", value: { kind: "skipped" } };
+        }
+        return {
+          outcome: "ok",
+          value: {
+            kind: "syntax",
+            begin: ({ sourceFile, anchorAt }) => {
+              const hits: PieceHit[] = [];
+              const lines = sourceFile.text.split(/\r\n|[\r\n\u2028\u2029]/g);
+              return {
+                enter: ({ node }) => {
+                  if (!syntaxApi.isClassLike(node)) return;
+                  if (ownAmbience({ syntaxApi, node }) === "ambient" ||
+                    enclosingAmbience({ syntaxApi, node: node.parent }) === "ambient") return;
+                  const keyword = classKeywordOf({ syntaxApi, node, tree: sourceFile });
+                  if (keyword === undefined) return;
+                  const anchor = anchorAt({ position: keyword.getStart(sourceFile) });
+                  clauses.forEach((clause) => {
+                    hits.push({ clause: clause.address, anchor, snippet: lines[anchor.line - 1]?.trim() ?? "" });
+                  });
+                },
+                finish: () => hits,
+              };
+            },
+          },
+        };
+      },
+      finish: () => ({ outcome: "ok", value: [] }),
+    },
+  }),
 };

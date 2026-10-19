@@ -10,7 +10,7 @@ import type { Equal } from "../values/type-equality.ts";
 import type { RunnerFailure } from "./runner-failure.ts";
 import type {
   CaseVerdict,
-  Hit,
+  MechanismObservations,
   NativeException,
   nativeExceptionKindSchema,
 } from "./runner-result-schema.ts";
@@ -23,12 +23,17 @@ export type RunnerClause = {
   readonly settings: unknown;
 };
 
+export type LocationScope = (request: {
+  readonly clause: ClauseAddress;
+  readonly file: RepoPath;
+}) => "included" | "excluded";
+
 export type RunRequest = {
   readonly repoRoot: AbsolutePath;
   readonly installRoot: AbsolutePath;
-  readonly files: readonly RepoPath[];
   readonly trackedPaths: readonly RepoPath[];
   readonly clauses: readonly RunnerClause[];
+  readonly includes?: LocationScope;
 };
 
 export type ProjectionRequest = {
@@ -40,7 +45,7 @@ export type ProjectionRequest = {
 
 export type StandaloneRunner = {
   readonly exceptionPath: "standalone";
-  readonly run: (request: RunRequest) => Promise<Result<readonly Hit[], RunnerFailure>>;
+  readonly run: (request: RunRequest) => Promise<Result<MechanismObservations, RunnerFailure>>;
   readonly conform: (request: {
     readonly clause: RunnerClause;
     readonly cases: readonly SourceCase[];

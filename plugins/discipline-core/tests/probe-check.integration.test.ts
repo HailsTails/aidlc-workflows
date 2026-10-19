@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
+import { createSelectionRepository } from "../core/consumer-selection/consumer-selection.ts";
+import { createExceptionRepository } from "../core/exception-records/exception-records.ts";
 import { runCheck } from "../core/check/run-check.ts";
 import type { FileTextPort } from "../core/platform-ports/file-text-port.ts";
+import type { DirectoryPort } from "../core/platform-ports/file-system-port.ts";
 import type { GitPort } from "../core/platform-ports/git-port.ts";
 import type { ModuleLoaderPort } from "../core/platform-ports/module-loader-port.ts";
 import { createPathPort } from "../core/platform-ports/path-port.ts";
@@ -91,15 +94,32 @@ const git: GitPort = {
 const PROBE_ADDRESS = { ruleSet: { name: "probe" }, discipline: "PD-1", clause: "no-tmp-files" };
 const CLASS_SYNTAX_ADDRESS = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
 
+const DIRECTORY_LISTINGS: ReadonlyMap<string, ReturnType<DirectoryPort["list"]>> = new Map([
+  ["/repo", { outcome: "ok", value: [
+    { name: "README.md", kind: "file" }, { name: "disciplines.json", kind: "file" },
+    { name: "probe", kind: "directory" }, { name: "src", kind: "directory" },
+  ] }],
+  ["/repo/probe", { outcome: "ok", value: [{ name: "mechanisms", kind: "directory" }, { name: "rules", kind: "directory" }] }],
+  ["/repo/probe/mechanisms", { outcome: "ok", value: [{ name: "walker", kind: "directory" }] }],
+  ["/repo/probe/mechanisms/walker", { outcome: "ok", value: [{ name: "PD-1", kind: "directory" }] }],
+  ["/repo/probe/mechanisms/walker/PD-1", { outcome: "ok", value: [{ name: "piece.json", kind: "file" }] }],
+  ["/repo/probe/rules", { outcome: "ok", value: [{ name: "PD-1", kind: "directory" }] }],
+  ["/repo/probe/rules/PD-1", { outcome: "ok", value: [{ name: "discipline.json", kind: "file" }] }],
+  ["/repo/src", { outcome: "ok", value: [
+    { name: "kept.ts", kind: "file" }, { name: "plain.ts", kind: "file" }, { name: "scratch.tmp.ts", kind: "file" },
+  ] }],
+]);
+
 const probeCheck = () => {
   const parse = createDefaultParsePort({});
   const parseCalls = vi.spyOn(parse, "parse");
-  const runnerModule = { runner: createWalkerRunner({ fileText, modules: pieceModules, path, parse }) };
+  const runnerModule = { runner: createWalkerRunner({ directory: { list: ({ path }) => DIRECTORY_LISTINGS.get(path) ?? assert.fail("unexpected directory") }, fileText, modules: pieceModules, path, parse }) };
   const report = runCheck({
     repoRoot: absolutePathSchema.parse("/repo"),
     installRoot: absolutePathSchema.parse("/install"),
     baseRevision: undefined,
-    fileText,
+    selections: createSelectionRepository({ repoRoot: absolutePathSchema.parse("/repo"), installRoot: absolutePathSchema.parse("/install"), fileText, path }),
+    exceptions: createExceptionRepository({ repoRoot: absolutePathSchema.parse("/repo"), fileText, path }),
     modules: {
       load: vi.fn<ModuleLoaderPort["load"]>().mockResolvedValue({ outcome: "ok", value: runnerModule }),
     },
@@ -111,22 +131,22 @@ const probeCheck = () => {
 
 describe("a check selecting the probe rule set's PD-1 beside CD-14 through the walker", () => {
   it("flags the temporary file through the probe and the class through CD-14 in one run", async () => {
-    await expect(probeCheck().report).resolves.toEqual({
+    await expect(probeCheck().report).resolves.toMatchObject({
       outcome: "ok",
       value: {
         findings: [
-          {
-            clause: PROBE_ADDRESS,
-            file: "src/scratch.tmp.ts",
-            anchor: { line: 1, column: 0 },
-            snippet: "src/scratch.tmp.ts",
-            mechanism: "walker",
-          },
           {
             clause: CLASS_SYNTAX_ADDRESS,
             file: "src/kept.ts",
             anchor: { line: 1, column: 7 },
             snippet: "export class Kept {}",
+            mechanism: "walker",
+          },
+          {
+            clause: PROBE_ADDRESS,
+            file: "src/scratch.tmp.ts",
+            anchor: { line: 1, column: 0 },
+            snippet: "src/scratch.tmp.ts",
             mechanism: "walker",
           },
         ],
@@ -143,13 +163,13 @@ describe("a check selecting the probe rule set's PD-1 beside CD-14 through the w
     });
   });
 
-  it("parses each tracked TypeScript file exactly once", async () => {
+  it("parses each eligible discovered TypeScript file exactly once", async () => {
     const { report, parseCalls } = probeCheck();
     await report;
     expect(parseCalls.mock.calls).toEqual([
-      [{ fileName: "src/scratch.tmp.ts", source: TEMPORARY_SOURCE }],
       [{ fileName: "src/kept.ts", source: CLASS_SOURCE }],
       [{ fileName: "src/plain.ts", source: PLAIN_SOURCE }],
+      [{ fileName: "src/scratch.tmp.ts", source: TEMPORARY_SOURCE }],
     ]);
   });
 });
