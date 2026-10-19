@@ -27,7 +27,7 @@ node <install>/core/check/project-command.ts --repo <dir>
 
 A load failure prints one line, `load failure: <kind> <fields>`.
 
-The report lists findings, exempted findings, uncovered clauses, stale, forfeited, unrecorded and doubly-held exceptions, invalid exception records, unmeasured checks and projection problems, each with its count. The verdict is `pass` only when every list except exempted findings is empty.
+The report lists the excluded paths, findings, exempted findings, uncovered clauses, stale, forfeited, unrecorded and doubly-held exceptions, invalid exception records, unmeasured checks and projection problems, each with its count. The verdict is `pass` only when every list except the excluded paths and exempted findings is empty.
 
 Without `--base-revision`, core cannot tell which files were touched, so a file carve-out cannot be forfeited; if any file carve-out exists the report lists `forfeiture-unmeasured` and the run fails.
 
@@ -72,7 +72,7 @@ At the repository root. It selects clauses and the mechanism that checks each on
 - `clauses` maps a clause address to a mechanism id. An address is `[<ruleSet>/]<DisciplineId>#<clauseId>`; no prefix means the shared rule set. The mechanism must be one the clause lists.
 - Selecting a clause adopts its discipline. Mechanical clauses of an adopted discipline that are not selected are reported as uncovered, and fail the run.
 - A judgement clause cannot be selected; it is enforced by review.
-- `exclude`, optional, lists repository folders or exact files that no mechanism checks. A folder entry covers everything under it; no globs. Exclude the core's own install when it is vendored inside the repository.
+- `exclude`, optional, lists repository folders or exact files that no mechanism checks. A folder entry covers everything under it. Globs are refused: an entry containing `*` makes `disciplines.json` malformed. The report lists the active entries under `excluded`. Exclude the core's own install when it is vendored inside the repository.
 
 ## discipline-exceptions.json
 

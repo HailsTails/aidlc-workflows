@@ -15,7 +15,7 @@ The IDs, titles and rule text come verbatim from the rin code-discipline set. Ad
 | [CD-10](CD-10/README.md) | Throws permitted in exactly two contexts | `CD-10#throws-in-tests` | `*.test.ts`, `*.test.tsx` |
 | [CD-14](CD-14/README.md) | Zero class authoring; classes only at external-library call sites | `CD-14#class-syntax`, `CD-14#library-construction` (review) | TypeScript, not `.d.ts` |
 | [CD-15](CD-15/README.md) | Iteration is functional transformation, never an imperative loop | `CD-15#loops` | `.ts`, `.tsx` |
-| [CD-17](CD-17/README.md) | Clock is the only time source | `CD-17#clock-sources` | `.ts`, `.tsx`, not `App.tsx`, `main.tsx`, `scripts/` |
+| [CD-17](CD-17/README.md) | Clock is the only time source | `CD-17#clock-sources` | `.ts`, `.tsx` |
 | [CD-19](CD-19/README.md) | External dependencies confined to wrapping ports at the boundary | `CD-19#import-boundaries` | `.ts`, `.tsx` |
 | [CD-23](CD-23/README.md) | Every unit has a co-located test sibling | `CD-23#export-test-sibling` | production `.ts`, `.tsx` |
 | [CD-25](CD-25/README.md) | Unit tests fake everything outside the unit | `CD-25#dependency-isolation` | `*.test.ts`, `*.test.tsx` |

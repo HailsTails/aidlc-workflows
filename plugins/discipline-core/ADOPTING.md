@@ -16,13 +16,21 @@ It must print `v22.18.0` or later; Node runs the core's `.ts` files directly. Al
 
 Pick a commit of `https://github.com/HailsTails/aidlc-workflows` and write its full SHA down; that SHA is your pin. Copy the core into `<repo>/tools/discipline-core/`. The install must not be under any `node_modules` folder, because Node does not run TypeScript there.
 
+Fetch only `plugins/discipline-core`, with long paths allowed:
+
 ```bash
-git clone https://github.com/HailsTails/aidlc-workflows.git /tmp/discipline-core-source
+git clone -c core.longpaths=true --filter=blob:none --no-checkout https://github.com/HailsTails/aidlc-workflows.git /tmp/discipline-core-source
+```
+
+```bash
+git -C /tmp/discipline-core-source sparse-checkout set plugins/discipline-core
 ```
 
 ```bash
 git -C /tmp/discipline-core-source checkout <pinned-sha>
 ```
+
+On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
 Copy `package.json`, `core/`, the walker runner, and one rule folder plus one piece folder per discipline you will select (step 4 lists them; copying all of them is fine):
 
@@ -74,7 +82,7 @@ Create `<repo>/disciplines.json`. Map every clause you adopt to the mechanism `w
 
 - `clauses` keys are clause addresses from the rules pages; the value is always `walker` for the disciplines listed in step 3.
 - Selecting one clause of a discipline adopts the whole discipline: any of its other mechanical clauses you leave out are reported as `uncovered` and fail the run. CD-3 has seven clauses; select all seven or none.
-- `exclude` lists folders or exact files, as repository paths with forward slashes and no globs. A folder entry excludes everything under it. Use it for generated or third-party code. `node_modules`, `dist`, `build`, `coverage`, `.git` and a top-level `vendor` folder are skipped already.
+- `exclude` lists folders or exact files, as repository paths with forward slashes; an entry containing `*` is refused, because globs are not supported. A folder entry excludes everything under it. Use it for generated or third-party code. `node_modules`, `dist`, `build`, `coverage`, `.git` and a top-level `vendor` folder are skipped already.
 - `ruleSets` stays `{}` unless you write disciplines of your own; see [docs/adding-a-discipline-or-mechanism.md](docs/adding-a-discipline-or-mechanism.md).
 
 Every clause address the core ships:
@@ -125,10 +133,11 @@ The report prints only the sections that have entries, each with its count, then
 CD-15#loops walker src/basket.ts:15:0 for (const line of this.lines) {
 ```
 
-Lines are 1-based and columns 0-based. The run passes only when every section except `exempted` is empty. The other sections are:
+Lines are 1-based and columns 0-based. The run passes only when every section except `excluded` and `exempted` is empty. The sections are:
 
 | Section | Meaning and what to do |
 | --- | --- |
+| `excluded` | the `exclude` entries from `disciplines.json` that were left out of the run; informational, check it is what you meant |
 | `findings` | violations: fix the code, or record an exception (step 7) |
 | `exempted` | findings an exception covers; informational |
 | `uncovered` | a mechanical clause of an adopted discipline is not selected: add it to `disciplines.json` |
@@ -146,7 +155,23 @@ Fix findings where you can. Where a file legitimately needs what a clause forbid
 - `file-carve-out`: known debt in one file. It is forfeited, and fails the run, as soon as that file changes since `--base-revision`.
 - `clause-wide-carve-out`: the clause is waived everywhere. Prefer not selecting the clause instead.
 
-Every entry needs a `reason` and a `whyChain` of exactly five `{ "why", "because", "evidence" }` steps, a `rootCause` and an `owner`. Answers must be real: placeholders, and a root cause that only says the check was failing or there was no time, are refused as `invalidRecords`. `file` is an exact repository path. A clause whose rule refuses exceptions, CD-1 today, cannot be exempted at all.
+Every entry needs a `reason` and a `whyChain` shaped like this, with exactly five steps in `whys`:
+
+```json
+"whyChain": {
+  "whys": [
+    { "why": "...", "because": "...", "evidence": "..." },
+    { "why": "...", "because": "...", "evidence": "..." },
+    { "why": "...", "because": "...", "evidence": "..." },
+    { "why": "...", "because": "...", "evidence": "..." },
+    { "why": "...", "because": "...", "evidence": "..." }
+  ],
+  "rootCause": "...",
+  "owner": "..."
+}
+```
+
+Answers must be real: placeholders, and a root cause that only says the check was failing or there was no time, are refused as `invalidRecords`. `file` is an exact repository path. A clause whose rule refuses exceptions, CD-1 today, cannot be exempted at all.
 
 A complete, accepted entry is in [the worked example](tests/test-fixtures/walkthrough/after/discipline-exceptions.json).
 
@@ -157,6 +182,8 @@ A complete, accepted entry is in [the worked example](tests/test-fixtures/walkth
 Before, `node tools/discipline-core/core/check/check-command.ts --repo .` prints, and exits `1`:
 
 ```text
+excluded (1)
+generated
 findings (7)
 CD-14#class-syntax walker src/basket.ts:5:7 export class Basket {
 CD-17#clock-sources walker src/basket.ts:7:0 private openedAt = Date.now();
@@ -171,6 +198,8 @@ verdict: fail
 The fix replaces the `Basket` class with functions over a readonly `Basket` value, sums with `reduce`, takes the time from an injected `Clock`, types the input instead of casting it, moves `src/utils/format.ts` to `src/format.ts` with a `src/format.test.ts` sibling, and records `src/clock.ts`, the one adapter that reads `Date.now()`, as an authorised location. After, the same command prints, and exits `0`:
 
 ```text
+excluded (1)
+generated
 exempted (1)
 CD-17#clock-sources walker src/clock.ts:3:0 export const createSystemClock = (): Clock => ({ now: () => Date.now() }); exempted by authorised-location
 verdict: pass
