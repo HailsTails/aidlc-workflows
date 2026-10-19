@@ -21,11 +21,13 @@ Look for each of these and write down what you find:
 
 The chosen disciplines are the `cd-NNN-*.md` files that were copied (CD-1, CD-3 and CD-46 in the old quick start), plus any CD named in a record file.
 
-Stop and ask the human if the adoption record names disciplines that were not copied, or the copied files and the record disagree.
+A CD that a record file names but whose rule file was not copied (for example CD-15, when only CD-1, CD-3 and CD-46 were copied) is expected: select it in step 2 like the others. Stop and ask the human only if a named CD is one of CD-35 to CD-38.
+
+Old code often holds CD-1 `any` the old route never checked. Core flags it in step 3, and it must be fixed: CD-1 refuses exceptions.
 
 ## 2. Install core and select the clauses
 
-Do [ADOPTING.md](ADOPTING.md) steps 1, 2 and 4 (and 4a for any `eslint` clause). Leave the old files in place until step 6.
+Do [ADOPTING.md](ADOPTING.md) steps 1, 2 and 4 (and 4a for any `eslint` clause). A repository that used only Biome has no `eslint.config.*`: create `eslint.config.mjs` as step 4a shows before the first check, or the check stops with `runner-failed eslint team-config-unloadable`. Leave the old files in place until step 6.
 
 Map each chosen discipline to its clauses with this table. A discipline is adopted whole: select every mechanical clause it lists, or the check reports the rest as `uncovered`.
 
@@ -52,7 +54,19 @@ node tools/discipline-core/core/check/check-command.ts --repo .
 
 CD-3 findings on `tsconfig.json` are fixed in step 4, not recorded. Then write `discipline-exceptions.json` from the old records, using the format in [README.md](README.md#discipline-exceptionsjson):
 
-- Each file in a `.constitution-carve-outs/cd-<id>.json` entry that core now flags becomes one `file-carve-out`: `clause` is the clause the finding names (for example `CD-15#loops`), `file` is the exact path.
+An old record file is a JSON array of entries, each listing one or more files:
+
+```json
+[
+  {
+    "files": ["src/legacy.ts", "src/legacy-report.ts"],
+    "reason": "Inherited for...of totals loop from the 2025 pricing import",
+    "decision": "Initial adoption inventory accepted by pricing owner Sam on 2026-09-02; retire on touch"
+  }
+]
+```
+
+- Each file in a `.constitution-carve-outs/cd-<id>.json` entry that core now flags becomes one `file-carve-out`: `clause` is the clause the finding names (for example `CD-15#loops`), `file` is the exact path. Two flagged files in one entry become two records with the same `source`.
 - Each file in a `.constitution-authorised-locations/cd-<id>.json` entry that core now flags becomes one `authorised-location`.
 - A listed file core does not flag gets no record: a record that exempts nothing is reported `stale` and fails the run.
 - A finding in a file no old record lists is new debt: fix it, or record it only after the human approves.
@@ -74,7 +88,7 @@ Each converted record is imported: give it `provenance` naming the old record in
 }
 ```
 
-`source` is the old file and the entry's position in its array, counting from `0`. An authorised location uses `{ "kind": "existing-authorisation", "source": ".constitution-authorised-locations/cd-<id>.json#<index>" }`. Core accepts an imported record only while the `--base-revision` holds it unchanged or its `source` entry lists the record's file at that revision, so keep the old record files committed until step 6, and run every check in this migration with `--base-revision HEAD`. A record you write for new debt, or an imported record you later change, needs a full `whyChain` (five `why`/`because`/`evidence` steps, a `rootCause` and an `owner`): core refuses it as `import-unverified` otherwise.
+`source` is the old file and the entry's position in its array, counting from `0`, so both files in the example above use `.constitution-carve-outs/cd-15.json#0`. An authorised location uses `{ "kind": "existing-authorisation", "source": ".constitution-authorised-locations/cd-<id>.json#<index>" }`. Core accepts an imported record only while the `--base-revision` holds it unchanged or its `source` entry lists the record's file at that revision, so keep the old record files committed until step 6, and run every check in this migration with `--base-revision HEAD`. A record you write for new debt, or an imported record you later change, needs a full `whyChain` (five `why`/`because`/`evidence` steps, a `rootCause` and an `owner`): core refuses it as `import-unverified` otherwise.
 
 Stop and ask the human if an old record has no `decision`. Never write a placeholder or a root cause that only says the check was failing: core refuses those as `invalidRecords`.
 
@@ -82,7 +96,7 @@ Stop and ask the human if an old record has no `decision`. Never write a placeho
 
 The ESLint projection from step 2 now carries every `eslint` clause. Remove only the rules the old route added for the disciplines; keep every other rule the repository uses:
 
-- `biome.json`: remove `suspicious.noExplicitAny` and `suspicious.noImplicitAnyLet`. If nothing else in the file was added for the trial, remove the file and the `@biomejs/biome` dev dependency the old quick start installed; otherwise keep it for its other rules.
+- `biome.json`: remove `suspicious.noExplicitAny` and `suspicious.noImplicitAnyLet`. If nothing else in the file was added for the trial, remove the file, the `@biomejs/biome` dev dependency the old quick start installed and the `package.json` script that ran `biome lint` (step 6 replaces it); otherwise keep it for its other rules.
 - `eslint.config.*`: remove `@typescript-eslint/no-explicit-any` (and any other rule the old route added for a CD), and spread the projection last as [ADOPTING.md](ADOPTING.md#4a-set-up-eslint-for-eslint-clauses) shows.
 - `.oxlintrc.json`: remove `typescript/no-explicit-any`; remove the file if it held nothing else.
 - CD-3: core flags any of the seven strict flags written in a file named `tsconfig.json`, even when it is `true`, because the flags must be inherited, never set per project. Move them from every `tsconfig.json` into one shared base file with another name, for example `tsconfig.base.json`, and make each `tsconfig.json` extend it (`"extends": "./tsconfig.base.json"`). Keep every other compiler option where it is. Then run the repository's own typecheck, which must still pass.
@@ -98,7 +112,32 @@ Stop and ask the human if a rule you are about to remove was there before the tr
 
 ## 5. Prove the migration
 
-Do [ADOPTING.md](ADOPTING.md#8-prove-one-failure-and-correction) step 8, the red/green probe, for one `audit` clause and, if any clause is `eslint`, one `eslint` clause (a flag case from that clause's `rules/<ID>/discipline.json`). Then run the check with no probe, with `--base-revision HEAD` if any file carve-out exists: it must print `verdict: pass` and exit `0`.
+Prove one failure per mechanism, then the correction. Create these two files, stage them (only tracked files are checked), and run the check with `--base-revision HEAD`:
+
+```ts
+// src/discipline-probe-loop.ts
+export const probeTotal = (prices: readonly number[]): number => {
+  let sum = 0;
+  for (const price of prices) {
+    sum += price;
+  }
+  return sum;
+};
+```
+
+```ts
+// src/discipline-probe-any.ts
+export const probeValue: any = 1;
+```
+
+```bash
+git add src/discipline-probe-loop.ts src/discipline-probe-any.ts
+node tools/discipline-core/core/check/check-command.ts --repo . --base-revision HEAD
+```
+
+It must print a `CD-15#loops audit` finding and a `CD-1#explicit-any eslint` finding, then `verdict: fail`, and exit `1`. Use a selected clause in place of either if the repository did not adopt CD-15 or CD-1. Then remove both files (`git rm -f src/discipline-probe-loop.ts src/discipline-probe-any.ts`) and run the check again: it must print `verdict: pass` and exit `0`.
+
+To see debt decay, change one line in a carved file, stage it and run the check: the record moves to `forfeited` and the run fails. Restore the file afterwards (`git restore --staged --worktree <file>`).
 
 Stop here, do not remove anything, and ask the human if the check does not pass.
 
@@ -109,7 +148,7 @@ Only after step 5 passes:
 1. Delete the copied rule files and guides from step 1's harness folder (`.cursor/knowledge/aidlc-shared/code-discipline/` or its `.claude`/`.codex` equivalent).
 2. Delete the copied tools tree and `harness.config.json`, unless anything else in the repository uses them.
 3. Delete `.constitution-carve-outs/` and `.constitution-authorised-locations/`: their content now lives in `discipline-exceptions.json`.
-4. In `package.json` scripts, CI and the pre-push hook, replace the old tool commands with the core check, as [ADOPTING.md](ADOPTING.md#5-run-the-check) step 5 shows; in CI pass `--base-revision` with the branch's base.
+4. In `package.json` scripts, CI and the pre-push hook, replace the old tool commands with the core check, as [ADOPTING.md](ADOPTING.md#5-run-the-check) step 5 shows. Every run needs `--base-revision` while a file carve-out exists: in local scripts and the pre-push hook use the branch's base (`origin/main`, or `HEAD` to measure only uncommitted changes); in CI use the pull request's base commit.
 5. Rewrite the agent instructions to point at `tools/discipline-core/rules/` and the judgement rules, as ADOPTING step 5 and step 9 say, and remove any instruction to read the old copied files.
 6. Run the check and the repository's own validation command again, then commit everything in one change.
 

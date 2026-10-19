@@ -30,7 +30,7 @@ git -C /tmp/discipline-core-source sparse-checkout set plugins/discipline-core
 git -C /tmp/discipline-core-source checkout <pinned-sha>
 ```
 
-On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
+The commands in this guide are POSIX shell; on Windows run them in Git Bash. On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
 Copy `package.json`, `README.md`, `core/`, every rule page, both mechanisms and the review methods, then remove the core's own tests:
 
