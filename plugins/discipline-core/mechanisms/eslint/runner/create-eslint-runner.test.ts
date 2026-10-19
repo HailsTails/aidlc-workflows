@@ -1633,6 +1633,7 @@ describe("the governance run on Windows paths", () => {
     });
     expect(read.mock.calls).toEqual([
       [{ path: "C:\\repo\\disciplines.eslint.mjs" }],
+      [{ path: "C:\\repo\\disciplines.json" }],
       [{ path: "C:\\repo\\node_modules\\eslint\\package.json" }],
       [{ path: "C:\\repo\\src\\eslint-suppressions.json" }],
     ]);

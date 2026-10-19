@@ -26,6 +26,7 @@ const lookupOver = (request: {
   readonly eslintVersion?: string;
   readonly lintScript?: string;
   readonly rootConfig?: string;
+  readonly declared?: string;
 }) =>
   teamConfigLookup({
     fileText: fileTextOver({
@@ -36,6 +37,9 @@ const lookupOver = (request: {
         ...(request.lintScript === undefined
           ? {}
           : { "/repo/package.json": JSON.stringify({ scripts: { lint: request.lintScript } }) }),
+        ...(request.declared === undefined
+          ? {}
+          : { "/repo/disciplines.json": JSON.stringify({ eslintConfigLookup: request.declared }) }),
         ...(request.rootConfig === undefined ? {} : { [`/repo/${request.rootConfig}`]: "" }),
       },
     }),
@@ -66,5 +70,22 @@ describe("teamConfigLookup", () => {
       outcome: "failed",
       error: { kind: "team-config-unloadable" },
     });
+  });
+
+  it("lets a declared nearest-to-file win over detecting a plain ESLint 9 run", () => {
+    expect(
+      lookupOver({ eslintVersion: "9.39.5", lintScript: "turbo run lint", rootConfig: "eslint.config.mjs", declared: "nearest-to-file" }),
+    ).toEqual(NEAREST);
+  });
+
+  it("lets a declared repository-root win over detecting ESLint 10", () => {
+    expect(lookupOver({ eslintVersion: "10.11.0", lintScript: "eslint .", rootConfig: "eslint.config.mjs", declared: "repository-root" })).toEqual({
+      outcome: "ok",
+      value: { kind: "repository-root", configFile: "/repo/eslint.config.mjs" },
+    });
+  });
+
+  it("falls back to detection when the declaration is not one of the two settings", () => {
+    expect(lookupOver({ eslintVersion: "10.11.0", rootConfig: "eslint.config.mjs", declared: "anywhere" })).toEqual(NEAREST);
   });
 });

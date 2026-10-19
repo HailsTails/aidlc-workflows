@@ -134,7 +134,13 @@ export default [
 ];
 ```
 
-In a monorepo, every `eslint.config.*` that applies to checked files spreads the projection last, and core follows the lookup the repository's ESLint uses; see [README.md](README.md#runtime).
+In a monorepo, every `eslint.config.*` that applies to checked files spreads the projection last. Core detects which config the team's ESLint run applies from the installed `eslint` version and the lint scripts; see [README.md](README.md#runtime). Detection is wrong when a task runner (turbo, nx, `pnpm -r`) starts ESLint 9 inside each package, because each package then uses its own config, and when ESLint 9 gets the lookup flag outside the scripts. In those repositories set the lookup in `disciplines.json`:
+
+```json
+{ "eslintConfigLookup": "nearest-to-file" }
+```
+
+Use `"nearest-to-file"` when ESLint runs per package, with ESLint 10, or with ESLint 9 and `--flag v10_config_lookup_from_file`. Use `"repository-root"` for one ESLint 9 run from the repository root, whose root `eslint.config.*` then applies to every file. To confirm the setting, lint a package file the way the team does (for example `pnpm exec eslint packages/a/src/x.ts` from where the lint script runs) and check that it reports the same finding the core check lists for that file.
 
 Commit both files. Core's check reads this configuration and fails if the projection is missing, not in effect, or out of date, so re-run `project-command` whenever `disciplines.json` or `discipline-exceptions.json` changes. Core's own ESLint run uses the copy installed in step 2, so the repository's own ESLint version (9.x or 10.x) does not change the verdict. [README.md](README.md#adopting-the-eslint-mechanism) has the details.
 

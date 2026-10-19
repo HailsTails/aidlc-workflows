@@ -1,3 +1,4 @@
+import type { EslintConfigLookup } from "../../../core/values/eslint-config-lookup.ts";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import type { PathPort } from "../../../core/platform-ports/path-port.ts";
@@ -5,7 +6,7 @@ import { parsedJson } from "../../../core/rule-set-reader/rule-set-reader.ts";
 import type { AbsolutePath } from "../../../core/values/absolute-path.ts";
 import type { RepoPath } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
-import { eslintVersionFileSchema, packageJsonSchema } from "./eslint-file-schemas.ts";
+import { eslintVersionFileSchema, packageJsonSchema, selectionLookupSchema } from "./eslint-file-schemas.ts";
 import { eslintInvocationsOf, scriptCommandsOf } from "./package-script-scanner.ts";
 
 export type ConfigLookup =
@@ -17,6 +18,8 @@ type EslintMajor = number | "unknown";
 const ROOT_LOOKUP_MAJOR = 9;
 
 const ESLINT_PACKAGE_JSON = ["node_modules", "eslint", "package.json"];
+
+const SELECTION_FILE = "disciplines.json";
 
 const PACKAGE_JSON_NAME = "package.json";
 
@@ -92,8 +95,20 @@ const rootConfigFile = (request: Pick<LookupRequest, "fileText" | "path" | "repo
     (candidate) => request.fileText.exists({ path: candidate }) === "present",
   );
 
+const declaredLookup = (request: Pick<LookupRequest, "fileText" | "path" | "repoRoot">): EslintConfigLookup | undefined => {
+  const text = request.fileText.read({ path: request.path.join({ segments: [request.repoRoot, SELECTION_FILE] }) });
+  const json = text.outcome === "ok" ? parsedJson({ text: text.value }) : undefined;
+  const parsed = json?.outcome === "ok" ? selectionLookupSchema.safeParse(json.value) : undefined;
+  return parsed?.success ? parsed.data.eslintConfigLookup : undefined;
+};
+
+const detectedLookup = (request: LookupRequest): EslintConfigLookup =>
+  installedEslintMajor(request) !== ROOT_LOOKUP_MAJOR || lintScriptsSelectNearest(request) === "selects-nearest"
+    ? "nearest-to-file"
+    : "repository-root";
+
 export const teamConfigLookup = (request: LookupRequest): Result<ConfigLookup, RunnerFailure> => {
-  if (installedEslintMajor(request) !== ROOT_LOOKUP_MAJOR || lintScriptsSelectNearest(request) === "selects-nearest") {
+  if ((declaredLookup(request) ?? detectedLookup(request)) === "nearest-to-file") {
     return { outcome: "ok", value: NEAREST };
   }
   const configFile = rootConfigFile(request);
@@ -102,7 +117,8 @@ export const teamConfigLookup = (request: LookupRequest): Result<ConfigLookup, R
         outcome: "failed",
         error: {
           kind: "team-config-unloadable",
-          detail: `ESLint 9 finds only an eslint.config.* in the directory it runs from, and the repository root has none; add one there or run ESLint with --flag v10_config_lookup_from_file`,
+          detail:
+            "the repository root has no eslint.config.* for a root-only config lookup; add one there, or set eslintConfigLookup to nearest-to-file in disciplines.json if ESLint runs from each package",
         },
       }
     : { outcome: "ok", value: { kind: "repository-root", configFile } };
