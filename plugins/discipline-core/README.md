@@ -4,7 +4,7 @@ Discipline core checks a repository against the coding disciplines it has chosen
 
 Two mechanisms ship: `audit`, a standalone TypeScript syntax walker, and `eslint`, which runs the clause as an ESLint rule inside the team's own ESLint setup. [rules/README.md](rules/README.md) lists every shared discipline with its clauses: the audit mechanism checks 20 disciplines, and ESLint pieces check clauses of CD-1, CD-6, CD-7, CD-10, CD-14, CD-27, CD-40, CD-41, CD-42 and CD-44. The rest are judgement rules, applied in review with the review methods in [methods/](methods/README.md).
 
-To adopt the core in another repository, follow [ADOPTING.md](ADOPTING.md) step by step.
+To adopt the core in another repository, follow [ADOPTING.md](ADOPTING.md) step by step. A repository already using the older standalone copy route follows [MIGRATING.md](MIGRATING.md) instead.
 
 Adding a discipline or a mechanism, and the full list of ESLint native channels, are covered in [docs/adding-a-discipline-or-mechanism.md](docs/adding-a-discipline-or-mechanism.md).
 
