@@ -36,6 +36,7 @@ import {
 import { type EslintPieceSettings, eslintPieceSettingsSchema, ruleOptionsOf } from "./eslint-piece-settings-schema.ts";
 import { eslintPluginModuleSchema, type LoadedEslintPlugin } from "./eslint-plugin-schema.ts";
 import { parseInlineConfigComment } from "./inline-config-parser.ts";
+import { teamConfigLookup } from "./config-lookup.ts";
 import { type PackageJsonScan, scanPackageJson, type SelectedRule } from "./package-script-scanner.ts";
 import {
   type CurrentProjection,
@@ -1011,12 +1012,26 @@ const governedRun = (request: {
   readonly selected: readonly SelectedClause[];
   readonly projection: "current" | "out-of-date";
   readonly ports: EslintRunnerPorts;
-}): Promise<Outcome<EmbeddedRunReport>> =>
-  queriedFiles({
-    query: request.ports.eslint.createQueryInstance({ repoRoot: request.run.repoRoot }),
+}): Promise<Outcome<EmbeddedRunReport>> => {
+  const lookup = teamConfigLookup({
+    fileText: request.ports.fileText,
+    path: request.ports.path,
+    repoRoot: request.run.repoRoot,
+    trackedPaths: request.run.trackedPaths,
+  });
+  if (lookup.outcome === "failed") {
+    return Promise.resolve(lookup);
+  }
+  return queriedFiles({
+    query: request.ports.eslint.createQueryInstance(
+      lookup.value.kind === "repository-root"
+        ? { repoRoot: request.run.repoRoot, configFile: lookup.value.configFile }
+        : { repoRoot: request.run.repoRoot },
+    ),
     files: request.run.files,
     ruleIds: ruleIdsOf({ selected: request.selected }),
   }).then((queried) => queriedReport({ ...request, queried }));
+};
 
 const presentProjectionState = (request: {
   readonly current: CurrentProjection;

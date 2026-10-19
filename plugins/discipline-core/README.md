@@ -141,12 +141,7 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 - The audit mechanism adds `typescript`.
 - The ESLint mechanism adds the team's `eslint` 9.x or 10.x, an `@typescript-eslint/parser` that supports it, and `@eslint/plugin-kit`. The team's own ESLint run, which loads the projection and the pieces' plugin modules, is tested on 9.39.5 (every piece's shared cases, in `eslint-9-compatibility.test.ts`) and on 10.11.0; core's own check run always uses the `eslint` it ships with, whatever the team runs. Versions before 9.0 are not supported.
 
-Core reads the team's configuration the way ESLint 10 does: from the `eslint.config.*` nearest each checked file. ESLint 9 by default finds only the one in the directory it is run from, so a repository with a nested `eslint.config.*` (a per-package config in a monorepo) gets different verdicts from core and from the team's own run unless the team's run looks up configs the same way. On ESLint 9 use one of these shapes:
-
-- One `eslint.config.*` at the repository root that spreads the projection, with no nested `eslint.config.*`.
-- Nested configs that each spread the projection, with the team's ESLint 9 run started with `--flag v10_config_lookup_from_file` (proven on 9.39.5; ESLint 10 behaves this way without the flag), or run from inside each package.
-
-A root-only ESLint 9 run over a repository with nested configs is not supported: ESLint 9 applies only the root config there, so core can report `not-included` or `config-override` for a file the team's run lints, or pass a file the team's run never applies the rules to.
+A repository can hold one `eslint.config.*` at its root or one per package. Core resolves the team's configuration the way the team's own ESLint run does. ESLint 10, and ESLint 9 started with `--flag v10_config_lookup_from_file` (or `unstable_config_lookup_from_file`), use the `eslint.config.*` nearest each checked file. Plain ESLint 9 uses only the one in the directory it runs from, so for a repository whose `eslint` resolves to 9.x at `node_modules/eslint` and whose lint scripts carry no such flag, core reads the root `eslint.config.*` for every file, and fails the run as `team-config-unloadable` if there is none. When core cannot read an installed `eslint` at the repository root it assumes the nearest-to-file lookup. Each config that applies to a file must spread the projection. Both lookups are tested against monorepo fixtures with a config per package.
 
 The packages must resolve from the install directory.
 
@@ -167,6 +162,7 @@ This is the first release. Its tests cover each supported platform's ordinary pa
 - `.d.mts` and `.d.cts` declaration files are not handled separately from other sources.
 - Columns reported on lines holding non-ASCII text.
 - Lint scripts are read with a simple shell tokenizer, so unusual quoting or a `cd` before `eslint` is not interpreted.
+- An ESLint 9 run started from inside a package, or given the lookup flag through the environment or a script core does not tokenise as an `eslint` invocation, is read as a root-only run; pass `--flag v10_config_lookup_from_file` in the lint script.
 - Team ESLint configs that imitate projection block names, register a second copy of the plugin, or use processors are not exercised.
 - A byte-order mark at the start of `disciplines.json` or `discipline-exceptions.json`; save them without one.
 

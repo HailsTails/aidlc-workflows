@@ -217,8 +217,8 @@ const UNREADABLE_FILE: FakeFile = {
 };
 
 const fileTextOver = (files: Readonly<Record<string, FakeFile>>): FileTextPort => ({
-  read: ({ path }) => files[path].read,
-  exists: ({ path }) => files[path].presence,
+  read: ({ path }) => files[path]?.read ?? { outcome: "failed", error: { kind: "unreadable", path, detail: "not in the fake repository" } },
+  exists: ({ path }) => files[path]?.presence ?? "absent",
   write: vi.fn<FileTextPort["write"]>().mockReturnValue({ outcome: "ok", value: undefined }),
 });
 
@@ -1633,6 +1633,7 @@ describe("the governance run on Windows paths", () => {
     });
     expect(read.mock.calls).toEqual([
       [{ path: "C:\\repo\\disciplines.eslint.mjs" }],
+      [{ path: "C:\\repo\\node_modules\\eslint\\package.json" }],
       [{ path: "C:\\repo\\src\\eslint-suppressions.json" }],
     ]);
   });
