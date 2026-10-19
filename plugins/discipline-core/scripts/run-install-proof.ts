@@ -43,7 +43,7 @@ const COMMONJS_MANIFEST = '{ "type": "commonjs" }\n';
 const INSTALL_DIRECTORY = ["tools", "discipline-core"];
 const TEMPORARY_PREFIX = "discipline-core-install-proof-";
 const GIT_IDENTITY = ["-c", "user.name=proof", "-c", "user.email=proof@invalid", "-c", "commit.gpgsign=false"];
-const NPM_INSTALL = ["ci", "--omit=dev", "--no-audit", "--no-fund", "--ignore-scripts"];
+const NPM_INSTALL = ["install", "--no-audit", "--no-fund", "--ignore-scripts"];
 const PASS_LINE = "install proof: pass\n";
 
 const inOrder = (request: { readonly steps: readonly Step[] }): Result<null, string> =>
@@ -311,7 +311,6 @@ const provenInside = (request: {
   readonly context: ProofContext;
   readonly temporaryRoot: string;
   readonly rootManifest: string;
-  readonly rootLock: string;
   readonly installList: InstallList;
   readonly proofCases: readonly ProofCase[];
 }): Result<null, string> => {
@@ -330,19 +329,9 @@ const provenInside = (request: {
           }),
         }),
       () =>
-        emptied({
-          result: labelled({
-            label: "write the consumer root package-lock.json",
-            result: context.fileText.write({
-              path: context.path.join({ segments: [request.temporaryRoot, "package-lock.json"] }),
-              text: request.rootLock,
-            }),
-          }),
-        }),
-      () =>
         ranCommand({
           context,
-          label: "npm ci at the consumer root",
+          label: "npm install at the consumer root",
           command: "npm",
           arguments: NPM_INSTALL,
           directory: request.temporaryRoot,
@@ -359,7 +348,6 @@ const provenInside = (request: {
 const provenWithin = (request: {
   readonly context: ProofContext;
   readonly rootManifest: string;
-  readonly rootLock: string;
   readonly installList: InstallList;
   readonly proofCases: readonly ProofCase[];
 }): Result<null, string> => {
@@ -414,14 +402,9 @@ const proof = (request: { readonly context: ProofContext; readonly proofCases: r
   if (rootManifest.outcome === "failed") {
     return { outcome: "failed", error: `FAIL: package.json: ${rootManifest.error.detail}` };
   }
-  const rootLock = readPackageFile({ context: request.context, name: "package-lock.json" });
-  if (rootLock.outcome === "failed") {
-    return rootLock;
-  }
   return provenWithin({
     context: request.context,
     rootManifest: rootManifest.value,
-    rootLock: rootLock.value,
     installList: installList.value,
     proofCases: request.proofCases,
   });
