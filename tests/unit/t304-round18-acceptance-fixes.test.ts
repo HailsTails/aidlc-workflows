@@ -1123,7 +1123,14 @@ describe("t304 copied projection configuration", () => {
     const source = temp("aidlc-t304-native-later-");
     cpSync(join(DIST_RELEASE, "claude"), source, { recursive: true });
     stampAs(source, ".claude", OTHER_VERSION);
-    const moved = runCopied(project, ["config", "--from", source, "--force", "--yes"], {
+    // --force steps outside the open-work compatibility check, so this fork
+    // asks for --allow-breaking-refresh alongside it.
+    const refused = runCopied(project, ["config", "--from", source, "--force", "--yes"], {
+      env: { ...machine, AIDLC_RUNTIME_ROOT: DIST_RELEASE },
+    });
+    expect(refused.status, refused.stdout + refused.stderr).toBe(4);
+    expect(refused.stdout + refused.stderr).toContain("--allow-breaking-refresh");
+    const moved = runCopied(project, ["config", "--from", source, "--force", "--allow-breaking-refresh", "--yes"], {
       env: { ...machine, AIDLC_RUNTIME_ROOT: DIST_RELEASE },
     });
     expect(moved.status, moved.stdout + moved.stderr).toBe(0);
