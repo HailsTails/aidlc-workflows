@@ -67,16 +67,23 @@ const needsProvisioning = ({ sessionDirectory }) =>
 
 const PROVISION_COMMAND = "pnpm install --frozen-lockfile --prefer-offline";
 
-const IDENTITY_COMMAND =
-  "node infra/github-apps/configure-worktree-identity.mjs";
+const BOT_CLI = join(".claude", "tools", "github-apps", "cli-main.ts");
 
-const IDENTITY_GUIDANCE = "pnpm gh:adopt-git";
+const IDENTITY_CONFIGURATION = join("aidlc", "github-identity.json");
+
+const IDENTITY_COMMAND = "bun .claude/tools/github-apps/cli-main.ts adopt-git";
 
 const PROVISION_TIMEOUT_MS = 600000;
 
 const STDERR_VISIBLE_EXIT_CODE = 2;
 
+const hasBotIdentityConfigured = ({ sessionDirectory }) =>
+  existsSync(join(sessionDirectory, IDENTITY_CONFIGURATION)) &&
+  existsSync(join(sessionDirectory, BOT_CLI));
+
 const adoptBotGitIdentity = ({ sessionDirectory }) => {
+  if (!hasBotIdentityConfigured({ sessionDirectory }))
+    return { adopted: "unconfigured" };
   try {
     execSync(IDENTITY_COMMAND, {
       cwd: sessionDirectory,
@@ -86,7 +93,7 @@ const adoptBotGitIdentity = ({ sessionDirectory }) => {
     return { adopted: "ok" };
   } catch (cause) {
     process.stderr.write(
-      `Could not adopt the rin-author git identity; run \`${IDENTITY_GUIDANCE}\` manually. ${cause instanceof Error ? cause.message : String(cause)}\n`,
+      `Kept this worktree's own git identity: the author bot identity was not adopted. Run \`${IDENTITY_COMMAND}\` once the author app is installed on the configured repository and its credentials resolve. ${cause instanceof Error ? cause.message : String(cause)}\n`,
     );
     return { adopted: "failed" };
   }
@@ -262,6 +269,7 @@ if (isDirectInvocation) {
 }
 
 export {
+  adoptBotGitIdentity,
   compileRuntimeGraph,
   isWorktreeRoot,
   needsProvisioning,
