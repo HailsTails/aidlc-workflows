@@ -350,4 +350,30 @@ export function createPluginRuntimePort(input: { readonly projectRoot: string })
   };
 }
 
+export function createSharedPluginRuntimePort(port: PluginRuntimePort): PluginRuntimePort {
+  const declarations = new Map<string, DeclarationBundle>();
+  const bundles = new Map<string, Promise<string>>();
+  const keyOf = (input: { readonly pluginRoot: string; readonly file: string }): string =>
+    JSON.stringify([input.pluginRoot, input.file]);
+  return {
+    scan: port.scan,
+    declaration: (input) => {
+      const key = keyOf(input);
+      const known = declarations.get(key);
+      if (known !== undefined) return known;
+      const declaration = port.declaration(input);
+      declarations.set(key, declaration);
+      return declaration;
+    },
+    bundle: (input) => {
+      const key = JSON.stringify([input.pluginRoot, input.file, input.relativeImports]);
+      const known = bundles.get(key);
+      if (known !== undefined) return known;
+      const bundle = port.bundle(input);
+      bundles.set(key, bundle);
+      return bundle;
+    },
+  };
+}
+
 export type { DeclarationBundle, PluginRuntimePort, PreparedRuntime, RuntimeArtifact, RuntimeScan, RuntimeSource };

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import ts from "typescript";
-import { emitEntryDeclaration, preparePluginRuntimeArtifacts, type PluginRuntimePort } from "./plugin-runtime.ts";
+import {
+  createSharedPluginRuntimePort,
+  emitEntryDeclaration,
+  preparePluginRuntimeArtifacts,
+  type PluginRuntimePort,
+} from "./plugin-runtime.ts";
 
 const source = { file: "tools/guard.ts", source: "fixture" };
 const packagePort: PluginRuntimePort = {
@@ -151,5 +156,39 @@ describe("entry declaration compiler identity", () => {
   test("does not borrow a declaration when the requested entry is absent", () => {
     const program = declarationProgram({ "/fixture/other.ts": "export const other = 2;" }, ["/fixture/other.ts"], "/fixture");
     expect(emitEntryDeclaration(program, "/fixture/missing.ts").declaration).toBeUndefined();
+  });
+});
+
+describe("shared plugin runtime port", () => {
+  test("compiles each plugin entry once however many harnesses project it", async () => {
+    const compiled = { declarations: 0, bundles: 0 };
+    const shared = createSharedPluginRuntimePort({
+      ...packagePort,
+      declaration: (input) => { compiled.declarations += 1; return packagePort.declaration(input); },
+      bundle: async (input) => { compiled.bundles += 1; return packagePort.bundle(input); },
+    });
+    const projectFor = (files: readonly string[]) => preparePluginRuntimeArtifacts({
+      pluginRoot: "/fixture", files, sources: [source], port: shared,
+    });
+
+    const first = await projectFor(["tools/guard.ts"]);
+    const second = await projectFor(["tools/guard.ts", "skills/guard.md"]);
+
+    expect(second).toEqual(first);
+    expect(compiled).toEqual({ declarations: 1, bundles: 1 });
+  });
+
+  test("compiles distinct entries separately", async () => {
+    const compiled: string[] = [];
+    const shared = createSharedPluginRuntimePort({
+      ...packagePort,
+      bundle: async ({ file }) => { compiled.push(file); return `export const entry = "${file}";\n`; },
+    });
+
+    await shared.bundle({ pluginRoot: "/fixture", file: "tools/a.ts", relativeImports: [] });
+    await shared.bundle({ pluginRoot: "/fixture", file: "tools/b.ts", relativeImports: [] });
+    await shared.bundle({ pluginRoot: "/fixture", file: "tools/a.ts", relativeImports: [] });
+
+    expect(compiled).toEqual(["tools/a.ts", "tools/b.ts"]);
   });
 });

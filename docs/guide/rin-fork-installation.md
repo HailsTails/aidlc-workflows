@@ -54,6 +54,8 @@ paths. Consumers own service configuration, credentials, project identity,
 operational knowledge, model choices and permissions. The public plugin does
 not carry Rin's private operating lanes.
 
+The plugin ships the GitHub bot CLI that its `guard-github-writes` hook points agents at. Each consumer opts in by committing `aidlc/github-identity.json`; the app credentials stay in one per-user store outside every repository. See [GitHub bot identities](rin-github-bot-identity.md).
+
 Ordinary composition retains the upstream no-clobber behavior. Explicit plugin
 sync can replace unchanged owned files and remove unchanged owned files absent
 from the next projection, including renamed stages. Unknown files are preserved;

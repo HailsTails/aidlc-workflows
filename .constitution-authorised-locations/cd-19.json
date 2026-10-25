@@ -350,5 +350,153 @@
       "rootCause": "The install proof needs real filesystem and subprocess effects from the runtime, and CD-19/CD-21 place that dependency in one co-located wrapping port whose binding the static audit cannot distinguish from an unconfined import.",
       "owner": "rin record 261014-discipline-core-foundati"
     }
+  },
+  {
+    "files": [
+      "plugins/rin/tools/github-apps/infrastructure/text-file-reader.ts"
+    ],
+    "reason": "The one adapter that reads files for the GitHub bot tooling, behind the TextFileReader and CanonicalPathResolver ports. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does text-file-reader.ts import node:fs/promises?",
+          "because": "It implements the TextFileReader and CanonicalPathResolver ports, returning file text or a canonical path, or a file-unreadable failure",
+          "evidence": "plugins/rin/tools/github-apps/infrastructure/text-file-reader.ts exports readTextFile and resolveCanonicalPath against application/text-file-port.ts; nothing else in the package imports node:fs"
+        },
+        {
+          "why": "Why must the bot tooling read files at all?",
+          "because": "The identity configuration, the credential store, the app private keys and --body-file bodies all live on disk, and a body file is resolved to its real path before it is checked against the credential store",
+          "evidence": "identity-configuration.ts, file-credential-store.ts and application/read-body-file.ts take readTextFile, and read-body-file.ts takes resolveCanonicalPath, as dependencies"
+        },
+        {
+          "why": "Why do those callers not import node:fs themselves?",
+          "because": "They depend on the port types, and composition-root.ts injects the one implementation",
+          "evidence": "file-credential-store.test.ts, identity-configuration.test.ts and read-body-file.test.ts run against vi.fn<TextFileReader>() and vi.fn<CanonicalPathResolver>() fakes"
+        },
+        {
+          "why": "Why an authorised location rather than a carve-out?",
+          "because": "An adapter importing the runtime it wraps is permanent structure, not debt that should decay on touch",
+          "evidence": "plugins/discipline-core/rules/CD-19/README.md says to use authorised-location for the wrapping file"
+        },
+        {
+          "why": "Why only this file?",
+          "because": "Replacing the file system binding must touch one file, so only the adapter sees the node:fs surface",
+          "evidence": "CD-19 rule text: a dependency swap then touches one file and vendor types never leak inward"
+        }
+      ],
+      "rootCause": "The GitHub bot tooling inverts file access behind the TextFileReader and CanonicalPathResolver ports, and this adapter is the one place those ports are implemented",
+      "owner": "Helen (HailsTails), carried from HailsTails/minutesarah-shop#10"
+    }
+  },
+  {
+    "files": [
+      "plugins/rin/tools/github-apps/infrastructure/command-runner.ts"
+    ],
+    "reason": "The one adapter that spawns processes for the GitHub bot tooling, behind the CommandRunner port. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does command-runner.ts import node:child_process and node:util?",
+          "because": "It implements the CommandRunner port with a promisified execFile, returning standard output or a command-failed failure",
+          "evidence": "plugins/rin/tools/github-apps/infrastructure/command-runner.ts exports CommandRunner and runCommand"
+        },
+        {
+          "why": "Why must the bot tooling spawn a process?",
+          "because": "Adopting the bot identity, finding the primary worktree and naming the current branch are git operations with no library equivalent in the repository",
+          "evidence": "git-cli-worktree.ts implements GitWorktreePort by running git config, git rev-parse and git worktree list through runCommand"
+        },
+        {
+          "why": "Why does git-cli-worktree.ts not import node:child_process itself?",
+          "because": "It takes runCommand as a dependency, so its git behaviour is tested without spawning git",
+          "evidence": "git-cli-worktree.test.ts asserts the exact git arguments against a vi.fn<CommandRunner>() fake"
+        },
+        {
+          "why": "Why an authorised location rather than a carve-out?",
+          "because": "An adapter importing the runtime it wraps is permanent structure, not debt that should decay on touch",
+          "evidence": "plugins/discipline-core/rules/CD-19/README.md says to use authorised-location for the wrapping file"
+        },
+        {
+          "why": "Why only this file?",
+          "because": "Replacing how processes are spawned must touch one file, so only the adapter sees the child_process surface",
+          "evidence": "CD-19 rule text: a dependency swap then touches one file and vendor types never leak inward"
+        }
+      ],
+      "rootCause": "The GitHub bot tooling inverts process spawning behind the CommandRunner port, and this adapter is the one place that port is implemented",
+      "owner": "Helen (HailsTails), carried from HailsTails/minutesarah-shop#10"
+    }
+  },
+  {
+    "files": [
+      "plugins/rin/tools/github-apps/infrastructure/rs256-signer.ts"
+    ],
+    "reason": "The one adapter that signs GitHub App JWTs, behind the Rs256SignerPort. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy.",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does rs256-signer.ts import node:crypto?",
+          "because": "It implements Rs256SignerPort with createSign, producing a base64url RS256 signature",
+          "evidence": "plugins/rin/tools/github-apps/infrastructure/rs256-signer.ts exports createRs256Signer returning Rs256SignerPort"
+        },
+        {
+          "why": "Why node:crypto rather than the global WebCrypto?",
+          "because": "GitHub issues App private keys as PKCS#1 'BEGIN RSA PRIVATE KEY' PEMs, which crypto.subtle.importKey cannot read and createSign can",
+          "evidence": "GitHub App private keys downloaded for rin-author and rin-reviewer begin with -----BEGIN RSA PRIVATE KEY-----"
+        },
+        {
+          "why": "Why does the JWT assembly not import node:crypto itself?",
+          "because": "application/app-jwt.ts builds the header and claims and asks the injected signer only for the signature",
+          "evidence": "app-jwt.test.ts runs against a vi.fn<Rs256SignerPort['signRs256']>() fake"
+        },
+        {
+          "why": "Why an authorised location rather than a carve-out?",
+          "because": "An adapter importing the runtime it wraps is permanent structure, not debt that should decay on touch",
+          "evidence": "plugins/discipline-core/rules/CD-19/README.md says to use authorised-location for the wrapping file"
+        },
+        {
+          "why": "Why only this file?",
+          "because": "Replacing the signing primitive must touch one file, so only the adapter sees the node:crypto surface",
+          "evidence": "CD-19 rule text: a dependency swap then touches one file and vendor types never leak inward"
+        }
+      ],
+      "rootCause": "The GitHub bot tooling inverts RS256 signing behind Rs256SignerPort, and this adapter is the one place that port is implemented",
+      "owner": "Helen (HailsTails), carried from HailsTails/minutesarah-shop#10"
+    }
+  },
+  {
+    "files": [
+      "plugins/rin/tools/github-apps/infrastructure/user-environment.ts"
+    ],
+    "reason": "The one adapter that reads the per-user environment for the GitHub bot tooling, behind the UserEnvironment port",
+    "whyChain": {
+      "whys": [
+        {
+          "why": "Why does user-environment.ts import node:os?",
+          "because": "It implements the UserEnvironment port, naming the home directory with homedir and reading one environment variable",
+          "evidence": "plugins/rin/tools/github-apps/infrastructure/user-environment.ts exports UserEnvironment and createProcessUserEnvironment"
+        },
+        {
+          "why": "Why must the bot tooling know the home directory at all?",
+          "because": "The app credentials live in one per-user store outside every repository, at ~/.config/rin-github-apps unless RIN_GITHUB_APPS_CREDENTIALS_DIR names another directory",
+          "evidence": "infrastructure/file-credential-store.ts locateUserStore builds the store directory from UserEnvironment"
+        },
+        {
+          "why": "Why is the store outside every repository rather than in the primary checkout as minutesarah had it?",
+          "because": "The tooling now ships in the rin plugin to many consumers, and one store means each private key exists once and is never inside a checkout that could commit it",
+          "evidence": "HailsTails/minutesarah-shop#10 handover: recommendation for the harness is one per-user store outside every repository with an environment-variable override"
+        },
+        {
+          "why": "Why does file-credential-store.ts not import node:os itself?",
+          "because": "It takes UserEnvironment as a dependency, so the store location is tested against a plain fake",
+          "evidence": "file-credential-store.test.ts locateUserStore cases run against an in-memory UserEnvironment"
+        },
+        {
+          "why": "Why an authorised location rather than a carve-out?",
+          "because": "An adapter importing the runtime it wraps is permanent structure, not debt that should decay on touch, and only this file sees the node:os surface",
+          "evidence": "plugins/discipline-core/rules/CD-19/README.md says to use an authorised location for the wrapping file"
+        }
+      ],
+      "rootCause": "The GitHub bot tooling inverts environment and home-directory access behind the UserEnvironment port, and this adapter is the one place that port is implemented",
+      "owner": "Helen (HailsTails), carried from HailsTails/minutesarah-shop#10"
+    }
   }
 ]
