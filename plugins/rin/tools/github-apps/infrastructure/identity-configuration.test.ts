@@ -1,7 +1,7 @@
 import { assert, describe, expect, it, vi } from "vitest";
 import { fail, succeed } from "../domain/result.ts";
 import { loadIdentityConfiguration } from "./identity-configuration.ts";
-import type { TextFileReader } from "./text-file-reader.ts";
+import type { TextFileReader } from "../application/text-file-port.ts";
 
 const location = new URL("file:///H:/shop/aidlc/github-identity.json");
 
@@ -34,6 +34,37 @@ describe("loadIdentityConfiguration", () => {
       configuration.kind === "failure" && configuration.reason.kind === "configuration-invalid",
     );
     expect(configuration.reason.issues).toContain("repository");
+  });
+
+  it.each(["./minutesarah-shop", "../minutesarah-shop", "HailsTails/.", "HailsTails/.."])(
+    "refuses %s, which would point the API at a path rather than a repository",
+    async (repository) => {
+      const readTextFile = reading(
+        JSON.stringify({
+          repository,
+          baseBranch: "main",
+          roles: { author: { appSlug: "a" }, reviewer: { appSlug: "r" } },
+        }),
+      );
+
+      const configuration = await loadIdentityConfiguration({ readTextFile, location });
+
+      assert(
+        configuration.kind === "failure" && configuration.reason.kind === "configuration-invalid",
+      );
+      expect(configuration.reason.issues).toContain("repository");
+    },
+  );
+
+  it("accepts a repository whose name only contains dots", async () => {
+    const readTextFile = reading(
+      '{"repository":"HailsTails/.github","baseBranch":"main","roles":{"author":{"appSlug":"a"},"reviewer":{"appSlug":"r"}}}',
+    );
+
+    const configuration = await loadIdentityConfiguration({ readTextFile, location });
+
+    assert(configuration.kind === "success");
+    expect(configuration.outcome.repository).toEqual({ owner: "HailsTails", name: ".github" });
   });
 
   it("reports a configuration it cannot read", async () => {

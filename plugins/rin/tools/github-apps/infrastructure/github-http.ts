@@ -9,6 +9,8 @@ const GITHUB_API_VERSION = "2022-11-28";
 
 const REJECTION_DETAIL_LIMIT = 500;
 
+const REQUEST_TIMEOUT_MILLISECONDS = 30_000;
+
 type FetchResource = (url: string, init: RequestInit) => Promise<Response>;
 
 type GitHubHttpRequest = {
@@ -35,18 +37,24 @@ const headersFor = (credential: Secret): readonly [string, string][] => [
 
 type Dispatch = GitHubHttpDependencies & { readonly request: GitHubHttpRequest };
 
+type ReceivedResponse = {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly responseText: string;
+};
+
 const send = async ({
   fetchResource,
   request,
-}: Dispatch): Promise<Result<Response, GitHubFailure>> => {
+}: Dispatch): Promise<Result<ReceivedResponse, GitHubFailure>> => {
   try {
-    return succeed(
-      await fetchResource(`${GITHUB_API_ORIGIN}${request.path}`, {
-        method: request.method,
-        headers: [...headersFor(request.credential)],
-        ...(request.requestBody === undefined ? {} : { body: JSON.stringify(request.requestBody) }),
-      }),
-    );
+    const response = await fetchResource(`${GITHUB_API_ORIGIN}${request.path}`, {
+      method: request.method,
+      headers: [...headersFor(request.credential)],
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MILLISECONDS),
+      ...(request.requestBody === undefined ? {} : { body: JSON.stringify(request.requestBody) }),
+    });
+    return succeed({ ok: response.ok, status: response.status, responseText: await response.text() });
   } catch {
     return fail({ kind: "github-unreachable", operation: request.operation });
   }
@@ -56,7 +64,7 @@ const createGitHubHttp = ({ fetchResource }: GitHubHttpDependencies): GitHubHttp
   requestJson: async (request) => {
     const response = await send({ fetchResource, request });
     if (response.kind === "failure") return response;
-    const responseText = await response.outcome.text();
+    const { responseText } = response.outcome;
     if (!response.outcome.ok) {
       return fail({
         kind: "github-rejected",

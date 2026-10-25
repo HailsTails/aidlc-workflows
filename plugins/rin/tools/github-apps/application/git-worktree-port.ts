@@ -15,6 +15,7 @@ type WorktreeGitSettings = {
 type GitWorktreePort = {
   readonly readCurrentBranch: () => Promise<Result<string, GitFailure>>;
   readonly readCheckoutKind: () => Promise<Result<CheckoutKind, GitFailure>>;
+  readonly readPushRemote: () => Promise<Result<string, GitFailure>>;
   readonly configureWorktree: (settings: WorktreeGitSettings) => Promise<Result<void, GitFailure>>;
 };
 

@@ -1,15 +1,21 @@
 import { z } from "zod";
+import type {
+  ConfigurationFailure,
+  IdentityConfiguration,
+} from "../application/identity-configuration-port.ts";
+import type { TextFileReader } from "../application/text-file-port.ts";
 import type { RepositorySlug } from "../domain/repository-slug.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
 import { parseJsonText } from "./json-text.ts";
-import type { TextFileReader } from "./text-file-reader.ts";
+
+const REPOSITORY_SEGMENT = String.raw`(?!\.{1,2}(?:/|$))[\w.-]+`;
 
 const roleAppSchema = z.object({ appSlug: z.string().min(1) });
 
 const identityConfigurationSchema = z.object({
   repository: z
     .string()
-    .regex(/^[\w.-]+\/[\w.-]+$/)
+    .regex(new RegExp(`^${REPOSITORY_SEGMENT}/${REPOSITORY_SEGMENT}$`))
     .transform((slug): RepositorySlug => {
       const [owner = "", name = ""] = slug.split("/");
       return { owner, name };
@@ -17,12 +23,6 @@ const identityConfigurationSchema = z.object({
   baseBranch: z.string().min(1),
   roles: z.object({ author: roleAppSchema, reviewer: roleAppSchema }),
 });
-
-type IdentityConfiguration = z.infer<typeof identityConfigurationSchema>;
-
-type ConfigurationFailure =
-  | { readonly kind: "configuration-unreadable"; readonly location: string }
-  | { readonly kind: "configuration-invalid"; readonly location: string; readonly issues: string };
 
 type ConfigurationSource = {
   readonly readTextFile: TextFileReader;
@@ -52,4 +52,4 @@ const loadIdentityConfiguration = async ({
   return succeed(parsed.data);
 };
 
-export { loadIdentityConfiguration, type ConfigurationFailure, type IdentityConfiguration };
+export { loadIdentityConfiguration };

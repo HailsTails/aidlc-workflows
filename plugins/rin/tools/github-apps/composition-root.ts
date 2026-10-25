@@ -1,4 +1,5 @@
 import { createTokenMinter } from "./application/mint-installation-token.ts";
+import { createBodyFileReader } from "./application/read-body-file.ts";
 import { runCommand } from "./infrastructure/command-runner.ts";
 import {
   createFileCredentialStore,
@@ -14,7 +15,7 @@ import { createGitHubRepositoryApi } from "./infrastructure/github-repository-ap
 import { loadIdentityConfiguration } from "./infrastructure/identity-configuration.ts";
 import { createRs256Signer } from "./infrastructure/rs256-signer.ts";
 import { createSystemClock } from "./infrastructure/system-clock.ts";
-import { readTextFile } from "./infrastructure/text-file-reader.ts";
+import { readTextFile, resolveCanonicalPath } from "./infrastructure/text-file-reader.ts";
 import { createProcessUserEnvironment } from "./infrastructure/user-environment.ts";
 import type { CliDependencies } from "./interface/cli/cli-command.ts";
 import { createProcessTerminal } from "./interface/cli/terminal.ts";
@@ -29,13 +30,14 @@ const CLI_ENTRY_PATH = `${import.meta.dirname}/cli-main.ts`;
 const createCliDependencies = (): CliDependencies => {
   const worktree = createGitCliWorktree({ runCommand });
   const http = createDefaultGitHubHttp();
+  const locateCredentialStore = locateUserStore({ environment: createProcessUserEnvironment() });
   return {
     terminal: createProcessTerminal(),
     loadConfiguration: () =>
       loadIdentityConfiguration({ readTextFile, location: CONSUMER_IDENTITY_CONFIGURATION }),
     tokenMinter: createTokenMinter({
       credentialStore: createFileCredentialStore({
-        locateStoreDirectory: locateUserStore({ environment: createProcessUserEnvironment() }),
+        locateStoreDirectory: locateCredentialStore,
         readTextFile,
       }),
       appApi: createGitHubAppApi({ http }),
@@ -45,7 +47,11 @@ const createCliDependencies = (): CliDependencies => {
     connectRepository: ({ token, repository }) =>
       createGitHubRepositoryApi({ http, credential: token, repository }),
     worktree,
-    readTextFile,
+    readBodyFile: createBodyFileReader({
+      readTextFile,
+      resolveCanonicalPath,
+      locateCredentialStore,
+    }),
     credentialHelperCommand: credentialHelperCommandFor({ cliEntryPath: CLI_ENTRY_PATH }),
   };
 };

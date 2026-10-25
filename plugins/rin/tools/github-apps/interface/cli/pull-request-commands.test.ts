@@ -2,7 +2,7 @@ import { assert, describe, expect, it, vi } from "vitest";
 import type { GitHubRepositoryPort } from "../../application/github-repository-port.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
 import { fail, succeed } from "../../domain/result.ts";
-import type { TextFileReader } from "../../infrastructure/text-file-reader.ts";
+import type { BodyFileReader } from "../../application/read-body-file.ts";
 import type { CommandFlags } from "./command-flags.ts";
 import { pullRequestCommands } from "./pull-request-commands.ts";
 
@@ -68,9 +68,10 @@ const contextWith = ({
         .fn<GitWorktreePort["readCurrentBranch"]>()
         .mockResolvedValue(succeed("feature/basket")),
       readCheckoutKind: vi.fn(),
+      readPushRemote: vi.fn(),
       configureWorktree: vi.fn(),
     },
-    readTextFile: vi.fn<TextFileReader>().mockResolvedValue(succeed("Body from a file.")),
+    readBodyFile: vi.fn<BodyFileReader>().mockResolvedValue(succeed("Body from a file.")),
     credentialHelperCommand: "",
   },
 });

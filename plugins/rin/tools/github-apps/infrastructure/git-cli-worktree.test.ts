@@ -95,6 +95,72 @@ describe("createGitCliWorktree", () => {
   });
 });
 
+describe("createGitCliWorktree push remote", () => {
+  const gitAnswering = (answers: Readonly<Record<string, string>>) =>
+    vi
+      .fn<CommandRunner>()
+      .mockImplementation(({ commandArguments }) =>
+        Promise.resolve(succeed(answers[commandArguments.join(" ")] ?? "")),
+      );
+
+  it("follows the branch's own push remote first", async () => {
+    const runCommand = gitAnswering({
+      "rev-parse --abbrev-ref HEAD": "feature/basket",
+      "config --default  --get branch.feature/basket.pushRemote": "fork",
+      "remote get-url --push fork": "https://github.com/HailsTails/minutesarah-shop.git",
+    });
+
+    expect(await createGitCliWorktree({ runCommand }).readPushRemote()).toEqual(
+      succeed("https://github.com/HailsTails/minutesarah-shop.git"),
+    );
+  });
+
+  it("falls back from the push default to the branch's upstream remote", async () => {
+    const runCommand = gitAnswering({
+      "rev-parse --abbrev-ref HEAD": "feature/basket",
+      "config --default  --get branch.feature/basket.remote": "upstream",
+      "remote get-url --push upstream": "git@github.com:HailsTails/rin.git",
+    });
+
+    expect(await createGitCliWorktree({ runCommand }).readPushRemote()).toEqual(
+      succeed("git@github.com:HailsTails/rin.git"),
+    );
+    expect(runCommand).toHaveBeenCalledWith({
+      command: "git",
+      commandArguments: ["config", "--default", "", "--get", "remote.pushDefault"],
+    });
+  });
+
+  it("pushes to origin when nothing else is configured", async () => {
+    const runCommand = gitAnswering({
+      "rev-parse --abbrev-ref HEAD": "HEAD",
+      "remote get-url --push origin": "https://github.com/HailsTails/minutesarah-shop",
+    });
+
+    expect(await createGitCliWorktree({ runCommand }).readPushRemote()).toEqual(
+      succeed("https://github.com/HailsTails/minutesarah-shop"),
+    );
+  });
+
+  it("reports a remote git cannot name", async () => {
+    const runCommand = vi
+      .fn<CommandRunner>()
+      .mockResolvedValueOnce(succeed("HEAD"))
+      .mockResolvedValueOnce(succeed(""))
+      .mockResolvedValueOnce(
+        fail({ kind: "command-failed", command: "git remote", detail: "No such remote 'origin'" }),
+      );
+
+    expect(await createGitCliWorktree({ runCommand }).readPushRemote()).toEqual(
+      fail({
+        kind: "git-command-failed",
+        command: "git remote",
+        detail: "No such remote 'origin'",
+      }),
+    );
+  });
+});
+
 describe("createGitCliWorktree configuration", () => {
   it("configures this worktree alone to commit and authenticate as the bot", async () => {
     const runCommand = printing("");

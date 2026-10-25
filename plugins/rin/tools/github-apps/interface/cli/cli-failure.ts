@@ -1,4 +1,6 @@
+import type { PushRemoteElsewhere } from "../../application/adopt-worktree-git-identity.ts";
 import type { GitFailure } from "../../application/git-worktree-port.ts";
+import type { ConfigurationFailure } from "../../application/identity-configuration-port.ts";
 import type { CredentialDestinationRefused } from "../../application/issue-git-credential.ts";
 import type { TokenFailure } from "../../application/mint-installation-token.ts";
 import type { NothingToRevise } from "../../application/revise-pull-request.ts";
@@ -6,7 +8,6 @@ import type { CloseRefusal } from "../../domain/close-guard.ts";
 import type { MergeRefusal } from "../../domain/merge-guard.ts";
 import { formatRepositorySlug } from "../../domain/repository-slug.ts";
 import type { ReviewRefusal } from "../../domain/review-guard.ts";
-import type { ConfigurationFailure } from "../../infrastructure/identity-configuration.ts";
 import type { BodyFailure } from "./authored-body.ts";
 import type { FlagFailure } from "./command-flags.ts";
 
@@ -21,6 +22,7 @@ type CommandLineFailure =
 type CliFailure =
   | TokenFailure
   | GitFailure
+  | PushRemoteElsewhere
   | MergeRefusal
   | CloseRefusal
   | ReviewRefusal
@@ -67,6 +69,8 @@ const describers: FailureDescribers = {
   "app-identity-mismatch": ({ role, expectedAppSlug, actualAppSlug }) =>
     `The ${role} credentials authenticate as ${actualAppSlug}, not ${expectedAppSlug}.`,
   "git-command-failed": ({ command, detail }) => `${command} failed: ${detail}`,
+  "push-remote-elsewhere": ({ remoteUrl, repository }) =>
+    `This worktree pushes to ${remoteUrl}, not ${formatRepositorySlug(repository)}; the bot only pushes to the configured repository.`,
   "branch-detached": () => "HEAD is detached; check out a branch or pass --head <branch>.",
   "pull-request-not-open": ({ pullNumber, lifecycle }) =>
     `#${String(pullNumber)} is already ${lifecycle}.`,
@@ -94,6 +98,10 @@ const describers: FailureDescribers = {
   "body-missing": () => "Provide the text with --body or --body-file.",
   "body-given-twice": () => "Pass --body or --body-file, not both.",
   "body-file-unreadable": ({ location }) => `Cannot read the body file ${location}.`,
+  "body-file-refused": ({ location, reason }) =>
+    reason === "inside-credential-store"
+      ? `Refusing to post ${location}: it is inside the bot credential store.`
+      : `Refusing to post ${location}: it contains a private key.`,
   "unknown-command": ({ commandName }) => `Unknown command "${commandName}".`,
   "credential-query-invalid": ({ issues }) =>
     `git sent an unreadable credential request: ${issues}`,

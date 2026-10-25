@@ -3,12 +3,13 @@ import type {
   CredentialFailure,
   CredentialStorePort,
   RoleCredentials,
+  StoreLocator,
 } from "../application/credential-store-port.ts";
+import type { TextFileReader } from "../application/text-file-port.ts";
 import type { AgentRole } from "../domain/agent-role.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
 import { secret } from "../domain/secret.ts";
 import { parseJsonText } from "./json-text.ts";
-import type { TextFileReader } from "./text-file-reader.ts";
 import type { UserEnvironment } from "./user-environment.ts";
 
 const CREDENTIALS_FILE_NAME = "credentials.json";
@@ -28,8 +29,6 @@ const credentialsFileSchema = z.object({
 });
 
 type CredentialsFile = z.infer<typeof credentialsFileSchema>;
-
-type StoreLocator = () => Result<string, { readonly detail: string }>;
 
 type FileCredentialStoreDependencies = {
   readonly locateStoreDirectory: StoreLocator;
@@ -120,4 +119,4 @@ const createFileCredentialStore = (
   },
 });
 
-export { createFileCredentialStore, locateUserStore, type StoreLocator };
+export { createFileCredentialStore, locateUserStore };

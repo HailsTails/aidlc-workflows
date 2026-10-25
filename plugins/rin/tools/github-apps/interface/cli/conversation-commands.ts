@@ -35,7 +35,7 @@ const reviewCommand: RepositoryCommand = {
     const authoredBody = await readRequiredBody({
       inlineBody,
       bodyFile: reviewFlags.outcome["body-file"],
-      readTextFile: dependencies.readTextFile,
+      readBodyFile: dependencies.readBodyFile,
     });
     if (authoredBody.kind === "failure") return authoredBody;
     const reviewed = await submitReview({
@@ -62,7 +62,7 @@ const commentCommand: RepositoryCommand = {
     const authoredBody = await readRequiredBody({
       inlineBody,
       bodyFile: commentFlags.outcome["body-file"],
-      readTextFile: dependencies.readTextFile,
+      readBodyFile: dependencies.readBodyFile,
     });
     if (authoredBody.kind === "failure") return authoredBody;
     const commented = await commentOnIssue({

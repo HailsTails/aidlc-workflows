@@ -1,5 +1,11 @@
-import type { IdentityConfiguration } from "../../infrastructure/identity-configuration.ts";
-import type { CliCommand, CliDependencies, CommandOutcome } from "./cli-command.ts";
+import type { IdentityConfiguration } from "../../application/identity-configuration-port.ts";
+import type {
+  CliCommand,
+  CliDependencies,
+  CommandOutcome,
+  LocalCommand,
+  RepositoryCommand,
+} from "./cli-command.ts";
 import { describeCliFailure } from "./cli-failure.ts";
 import { parseCommandFlags, type CommandFlags } from "./command-flags.ts";
 import { conversationCommands } from "./conversation-commands.ts";
@@ -14,12 +20,17 @@ const EXIT_FAILURE = 1;
 
 const EXIT_USAGE = 2;
 
-const COMMANDS: Readonly<Record<string, CliCommand>> = {
+const COMMANDS = {
   ...pullRequestCommands,
   ...conversationCommands,
   ...landingCommands,
   ...localCommands,
-};
+} satisfies Readonly<Record<string, CliCommand>>;
+
+type CommandName = keyof typeof COMMANDS;
+
+const isCommandName = (commandName: string): commandName is CommandName =>
+  Object.hasOwn(COMMANDS, commandName);
 
 const USAGE = `Usage: bun <harness-dir>/tools/github-apps/cli-main.ts <${Object.keys(COMMANDS).join("|")}> [--flag value ...]\n`;
 
@@ -28,11 +39,15 @@ type CliInvocation = {
   readonly commandArguments: readonly string[];
 };
 
-type CommandRun = {
+type CommandRequest = {
   readonly command: CliCommand;
   readonly flags: CommandFlags;
-  readonly configuration: IdentityConfiguration;
   readonly dependencies: CliDependencies;
+};
+
+type ConfiguredRun = Omit<CommandRequest, "command"> & {
+  readonly command: RepositoryCommand | LocalCommand;
+  readonly configuration: IdentityConfiguration;
 };
 
 type CommandSelection = {
@@ -54,7 +69,7 @@ const executeCommand = async ({
   flags,
   configuration,
   dependencies,
-}: CommandRun): CommandOutcome => {
+}: ConfiguredRun): CommandOutcome => {
   if (command.access === "local") return command.execute({ flags, configuration, dependencies });
   const token = await dependencies.tokenMinter.mintInstallationToken({
     role: command.role,
@@ -73,7 +88,8 @@ const runCommand = async ({
   command,
   flags,
   dependencies,
-}: Omit<CommandRun, "configuration">): CommandOutcome => {
+}: CommandRequest): CommandOutcome => {
+  if (command.access === "standalone") return command.execute({ flags, dependencies });
   const configuration = await dependencies.loadConfiguration();
   if (configuration.kind === "failure") return configuration;
   return executeCommand({ command, flags, configuration: configuration.outcome, dependencies });
@@ -91,7 +107,7 @@ const runWithFlags = async ({
 
 const reportOutcome = ({ command, outcome, terminal }: OutcomeReport): number => {
   if (outcome.kind === "failure") {
-    terminal.writeOutput(command.access === "local" ? command.outputOnFailure : "");
+    terminal.writeOutput(command.access === "repository" ? "" : command.outputOnFailure);
     terminal.writeError(`${describeCliFailure(outcome.reason)}\n`);
     return EXIT_FAILURE;
   }
@@ -108,8 +124,8 @@ const reportUnknownCommand = ({ commandName, terminal }: UnknownCommand): number
 const runCli = async ({ dependencies, commandArguments }: CliInvocation): Promise<number> => {
   const { terminal } = dependencies;
   const [commandName = "", ...flagTokens] = commandArguments;
-  const command = COMMANDS[commandName];
-  if (command === undefined) return reportUnknownCommand({ commandName, terminal });
+  if (!isCommandName(commandName)) return reportUnknownCommand({ commandName, terminal });
+  const command: CliCommand = COMMANDS[commandName];
   const outcome = await runWithFlags({ command, flagTokens, dependencies });
   return reportOutcome({ command, outcome, terminal });
 };

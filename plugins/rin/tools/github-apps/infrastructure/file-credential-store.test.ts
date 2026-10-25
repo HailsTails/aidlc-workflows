@@ -1,11 +1,8 @@
 import { assert, describe, expect, it, vi } from "vitest";
 import { fail, succeed } from "../domain/result.ts";
-import {
-  createFileCredentialStore,
-  locateUserStore,
-  type StoreLocator,
-} from "./file-credential-store.ts";
-import type { TextFileReader } from "./text-file-reader.ts";
+import type { StoreLocator } from "../application/credential-store-port.ts";
+import type { TextFileReader } from "../application/text-file-port.ts";
+import { createFileCredentialStore, locateUserStore } from "./file-credential-store.ts";
 import type { UserEnvironment } from "./user-environment.ts";
 
 const storeDirectory = "C:/Users/helen/.config/rin-github-apps";

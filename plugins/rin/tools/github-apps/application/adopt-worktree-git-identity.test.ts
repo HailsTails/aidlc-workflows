@@ -9,12 +9,18 @@ const fakeWorktree = () => ({
   readCheckoutKind: vi
     .fn<GitWorktreePort["readCheckoutKind"]>()
     .mockResolvedValue(succeed("linked-worktree")),
+  readPushRemote: vi
+    .fn<GitWorktreePort["readPushRemote"]>()
+    .mockResolvedValue(succeed("https://github.com/HailsTails/minutesarah-shop.git")),
   configureWorktree: vi
     .fn<GitWorktreePort["configureWorktree"]>()
     .mockResolvedValue(succeed(undefined)),
 });
 
+const minutesarahShop = { owner: "HailsTails", name: "minutesarah-shop" };
+
 const adoption = () => ({
+  repository: minutesarahShop,
   appSlug: "rin-author",
   credentialHelperCommand:
     '!bun "H:/shop/.claude/tools/github-apps/cli-main.ts" git-credential',
@@ -77,6 +83,38 @@ describe("adoptWorktreeGitIdentity", () => {
         kind: "app-not-installed",
         repository: { owner: "HailsTails", name: "minutesarah-shop" },
       }),
+    );
+    expect(worktree.configureWorktree).not.toHaveBeenCalled();
+  });
+
+  it("leaves the worktree on its own identity when it pushes to another repository", async () => {
+    const worktree = fakeWorktree();
+    worktree.readPushRemote.mockResolvedValue(succeed("https://github.com/HailsTails/rin.git"));
+    const elsewhere = adoption();
+
+    const adopted = await adoptWorktreeGitIdentity({ ...elsewhere, worktree });
+
+    expect(adopted).toEqual(
+      fail({
+        kind: "push-remote-elsewhere",
+        remoteUrl: "https://github.com/HailsTails/rin.git",
+        repository: minutesarahShop,
+      }),
+    );
+    expect(elsewhere.mintAuthorToken).not.toHaveBeenCalled();
+    expect(worktree.configureWorktree).not.toHaveBeenCalled();
+  });
+
+  it("leaves the worktree on its own identity when its push remote cannot be read", async () => {
+    const worktree = fakeWorktree();
+    worktree.readPushRemote.mockResolvedValue(
+      fail({ kind: "git-command-failed", command: "git remote", detail: "No such remote" }),
+    );
+
+    const adopted = await adoptWorktreeGitIdentity({ ...adoption(), worktree });
+
+    expect(adopted).toEqual(
+      fail({ kind: "git-command-failed", command: "git remote", detail: "No such remote" }),
     );
     expect(worktree.configureWorktree).not.toHaveBeenCalled();
   });

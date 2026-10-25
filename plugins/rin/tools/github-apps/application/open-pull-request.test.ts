@@ -23,6 +23,7 @@ const fakeWorktree = () => ({
     .fn<GitWorktreePort["readCurrentBranch"]>()
     .mockResolvedValue(succeed("feature/basket")),
   readCheckoutKind: vi.fn(),
+  readPushRemote: vi.fn(),
   configureWorktree: vi.fn(),
 });
 

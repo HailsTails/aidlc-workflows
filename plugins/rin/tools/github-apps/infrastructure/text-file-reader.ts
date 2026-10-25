@@ -1,9 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { fail, succeed, type Result } from "../domain/result.ts";
-
-type FileUnreadable = { readonly kind: "file-unreadable"; readonly location: string };
-
-type TextFileReader = (location: string | URL) => Promise<Result<string, FileUnreadable>>;
+import { readFile, realpath } from "node:fs/promises";
+import type { CanonicalPathResolver, TextFileReader } from "../application/text-file-port.ts";
+import { fail, succeed } from "../domain/result.ts";
 
 const readTextFile: TextFileReader = async (location) => {
   try {
@@ -13,4 +10,12 @@ const readTextFile: TextFileReader = async (location) => {
   }
 };
 
-export { readTextFile, type FileUnreadable, type TextFileReader };
+const resolveCanonicalPath: CanonicalPathResolver = async (location) => {
+  try {
+    return succeed(await realpath(location));
+  } catch {
+    return fail({ kind: "file-unreadable", location });
+  }
+};
+
+export { readTextFile, resolveCanonicalPath };

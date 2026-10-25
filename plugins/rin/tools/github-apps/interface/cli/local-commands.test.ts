@@ -37,11 +37,14 @@ const contextWith = (flags: CommandFlags) => ({
       readCheckoutKind: vi
         .fn<GitWorktreePort["readCheckoutKind"]>()
         .mockResolvedValue(succeed("linked-worktree")),
+      readPushRemote: vi
+        .fn<GitWorktreePort["readPushRemote"]>()
+        .mockResolvedValue(succeed("https://github.com/HailsTails/minutesarah-shop.git")),
       configureWorktree: vi
         .fn<GitWorktreePort["configureWorktree"]>()
         .mockResolvedValue(succeed(undefined)),
     },
-    readTextFile: vi.fn(),
+    readBodyFile: vi.fn(),
     credentialHelperCommand,
   },
 });

@@ -1,29 +1,25 @@
+import type { BodyFileFailure, BodyFileReader } from "../../application/read-body-file.ts";
 import { fail, succeed, type Result } from "../../domain/result.ts";
-import type { TextFileReader } from "../../infrastructure/text-file-reader.ts";
 
 type BodyFailure =
   | { readonly kind: "body-missing" }
   | { readonly kind: "body-given-twice" }
-  | { readonly kind: "body-file-unreadable"; readonly location: string };
+  | BodyFileFailure;
 
 type BodySources = {
   readonly inlineBody: string | undefined;
   readonly bodyFile: string | undefined;
-  readonly readTextFile: TextFileReader;
+  readonly readBodyFile: BodyFileReader;
 };
 
 const readOptionalBody = async ({
   inlineBody,
   bodyFile,
-  readTextFile,
+  readBodyFile,
 }: BodySources): Promise<Result<string | undefined, BodyFailure>> => {
   if (inlineBody !== undefined && bodyFile !== undefined) return fail({ kind: "body-given-twice" });
   if (bodyFile === undefined) return succeed(inlineBody);
-  const fileBody = await readTextFile(bodyFile);
-  if (fileBody.kind === "failure") {
-    return fail({ kind: "body-file-unreadable", location: fileBody.reason.location });
-  }
-  return fileBody;
+  return readBodyFile(bodyFile);
 };
 
 const readRequiredBody = async (sources: BodySources): Promise<Result<string, BodyFailure>> => {

@@ -64,9 +64,10 @@ const contextWith = ({
     worktree: {
       readCurrentBranch: vi.fn(),
       readCheckoutKind: vi.fn(),
+      readPushRemote: vi.fn(),
       configureWorktree: vi.fn(),
     },
-    readTextFile: vi.fn(),
+    readBodyFile: vi.fn(),
     credentialHelperCommand: "",
   },
 });

@@ -355,23 +355,23 @@
     "files": [
       "plugins/rin/tools/github-apps/infrastructure/text-file-reader.ts"
     ],
-    "reason": "The one adapter that reads files for the GitHub bot tooling, behind the TextFileReader port. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy.",
+    "reason": "The one adapter that reads files for the GitHub bot tooling, behind the TextFileReader and CanonicalPathResolver ports. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy.",
     "whyChain": {
       "whys": [
         {
           "why": "Why does text-file-reader.ts import node:fs/promises?",
-          "because": "It implements the TextFileReader port, returning file text or a file-unreadable failure",
-          "evidence": "plugins/rin/tools/github-apps/infrastructure/text-file-reader.ts exports TextFileReader and readTextFile; nothing else in the package imports node:fs"
+          "because": "It implements the TextFileReader and CanonicalPathResolver ports, returning file text or a canonical path, or a file-unreadable failure",
+          "evidence": "plugins/rin/tools/github-apps/infrastructure/text-file-reader.ts exports readTextFile and resolveCanonicalPath against application/text-file-port.ts; nothing else in the package imports node:fs"
         },
         {
           "why": "Why must the bot tooling read files at all?",
-          "because": "The identity configuration, the credential store, the app private keys and --body-file bodies all live on disk",
-          "evidence": "identity-configuration.ts, file-credential-store.ts and interface/cli/authored-body.ts take readTextFile as a dependency"
+          "because": "The identity configuration, the credential store, the app private keys and --body-file bodies all live on disk, and a body file is resolved to its real path before it is checked against the credential store",
+          "evidence": "identity-configuration.ts, file-credential-store.ts and application/read-body-file.ts take readTextFile, and read-body-file.ts takes resolveCanonicalPath, as dependencies"
         },
         {
           "why": "Why do those callers not import node:fs themselves?",
-          "because": "They depend on the TextFileReader type, and composition-root.ts injects the one implementation",
-          "evidence": "file-credential-store.test.ts, identity-configuration.test.ts and authored-body.test.ts run against vi.fn<TextFileReader>() fakes"
+          "because": "They depend on the port types, and composition-root.ts injects the one implementation",
+          "evidence": "file-credential-store.test.ts, identity-configuration.test.ts and read-body-file.test.ts run against vi.fn<TextFileReader>() and vi.fn<CanonicalPathResolver>() fakes"
         },
         {
           "why": "Why an authorised location rather than a carve-out?",
@@ -384,7 +384,7 @@
           "evidence": "CD-19 rule text: a dependency swap then touches one file and vendor types never leak inward"
         }
       ],
-      "rootCause": "The GitHub bot tooling inverts file access behind the TextFileReader port, and this adapter is the one place that port is implemented",
+      "rootCause": "The GitHub bot tooling inverts file access behind the TextFileReader and CanonicalPathResolver ports, and this adapter is the one place those ports are implemented",
       "owner": "Helen (HailsTails), carried from HailsTails/minutesarah-shop#10"
     }
   },

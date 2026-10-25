@@ -1,31 +1,58 @@
 import { botIdentityFor } from "../domain/bot-identity.ts";
-import { succeed, type Result } from "../domain/result.ts";
+import { matchRemoteUrl, type RepositorySlug } from "../domain/repository-slug.ts";
+import { fail, succeed, type Result } from "../domain/result.ts";
 import type { Secret } from "../domain/secret.ts";
 import type { GitFailure, GitWorktreePort } from "./git-worktree-port.ts";
 import type { TokenFailure } from "./mint-installation-token.ts";
 
 type GitIdentityAdoption = {
   readonly worktree: GitWorktreePort;
+  readonly repository: RepositorySlug;
   readonly appSlug: string;
   readonly credentialHelperCommand: string;
   readonly mintAuthorToken: () => Promise<Result<Secret, TokenFailure>>;
 };
 
+type PushRemoteElsewhere = {
+  readonly kind: "push-remote-elsewhere";
+  readonly remoteUrl: string;
+  readonly repository: RepositorySlug;
+};
+
+type AdoptionFailure = GitFailure | TokenFailure | PushRemoteElsewhere;
+
 type AdoptionOutcome =
   | { readonly kind: "primary-checkout-left-unchanged" }
   | { readonly kind: "worktree-adopted"; readonly login: string };
 
+type PushTarget = Pick<GitIdentityAdoption, "worktree" | "repository">;
+
+const confirmPushTarget = async ({
+  worktree,
+  repository,
+}: PushTarget): Promise<Result<void, GitFailure | PushRemoteElsewhere>> => {
+  const remoteUrl = await worktree.readPushRemote();
+  if (remoteUrl.kind === "failure") return remoteUrl;
+  if (matchRemoteUrl({ repository, remoteUrl: remoteUrl.outcome }) === "other-repository") {
+    return fail({ kind: "push-remote-elsewhere", remoteUrl: remoteUrl.outcome, repository });
+  }
+  return succeed(undefined);
+};
+
 const adoptWorktreeGitIdentity = async ({
   worktree,
+  repository,
   appSlug,
   credentialHelperCommand,
   mintAuthorToken,
-}: GitIdentityAdoption): Promise<Result<AdoptionOutcome, GitFailure | TokenFailure>> => {
+}: GitIdentityAdoption): Promise<Result<AdoptionOutcome, AdoptionFailure>> => {
   const checkout = await worktree.readCheckoutKind();
   if (checkout.kind === "failure") return checkout;
   if (checkout.outcome === "primary-checkout") {
     return succeed({ kind: "primary-checkout-left-unchanged" });
   }
+  const pushTarget = await confirmPushTarget({ worktree, repository });
+  if (pushTarget.kind === "failure") return pushTarget;
   const pushAccess = await mintAuthorToken();
   if (pushAccess.kind === "failure") return pushAccess;
   const identity = botIdentityFor({ appSlug });
@@ -38,4 +65,10 @@ const adoptWorktreeGitIdentity = async ({
   return succeed({ kind: "worktree-adopted", login: identity.login });
 };
 
-export { adoptWorktreeGitIdentity, type AdoptionOutcome, type GitIdentityAdoption };
+export {
+  adoptWorktreeGitIdentity,
+  type AdoptionFailure,
+  type AdoptionOutcome,
+  type GitIdentityAdoption,
+  type PushRemoteElsewhere,
+};

@@ -6,7 +6,13 @@ import { provenanceMarker } from "../../domain/provenance.ts";
 import { formatRepositorySlug } from "../../domain/repository-slug.ts";
 import { succeed, type Result } from "../../domain/result.ts";
 import type { Secret } from "../../domain/secret.ts";
-import type { CommandContext, CommandOutcome, CommandReport, LocalCommand } from "./cli-command.ts";
+import type {
+  CommandContext,
+  CommandOutcome,
+  CommandReport,
+  LocalCommand,
+  StandaloneCommand,
+} from "./cli-command.ts";
 import { sessionFlag } from "./command-flag-schemas.ts";
 import { validateFlags } from "./command-flags.ts";
 import { reportLine } from "./command-report.ts";
@@ -44,8 +50,8 @@ const tokenCommand: LocalCommand = {
   },
 };
 
-const markerCommand: LocalCommand = {
-  access: "local",
+const markerCommand: StandaloneCommand = {
+  access: "standalone",
   outputOnFailure: "",
   execute: ({ flags }) => {
     const markerFlags = validateFlags({ flags, schema: markerFlagsSchema });
@@ -72,6 +78,7 @@ const adoptGitCommand: LocalCommand = {
     if (adoptFlags.kind === "failure") return adoptFlags;
     const adopted = await adoptWorktreeGitIdentity({
       worktree: dependencies.worktree,
+      repository: configuration.repository,
       appSlug: configuration.roles.author.appSlug,
       credentialHelperCommand: dependencies.credentialHelperCommand,
       mintAuthorToken: () => mintAuthorToken({ configuration, dependencies }),

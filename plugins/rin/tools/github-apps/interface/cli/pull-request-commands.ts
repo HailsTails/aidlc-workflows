@@ -38,7 +38,7 @@ const openCommand: RepositoryCommand = {
     const authoredBody = await readRequiredBody({
       inlineBody,
       bodyFile: openFlags.outcome["body-file"],
-      readTextFile: dependencies.readTextFile,
+      readBodyFile: dependencies.readBodyFile,
     });
     if (authoredBody.kind === "failure") return authoredBody;
     const opened = await openPullRequest({
@@ -67,7 +67,7 @@ const reviseCommand: RepositoryCommand = {
     const authoredBody = await readOptionalBody({
       inlineBody,
       bodyFile: reviseFlags.outcome["body-file"],
-      readTextFile: dependencies.readTextFile,
+      readBodyFile: dependencies.readBodyFile,
     });
     if (authoredBody.kind === "failure") return authoredBody;
     const revised = await revisePullRequest({

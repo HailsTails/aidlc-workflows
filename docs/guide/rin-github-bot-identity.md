@@ -26,7 +26,7 @@ Run every command from the consumer's project root. The examples use Claude's `.
 | `... token --role author\|reviewer`                                                                           | prints a one-hour installation token, for `GH_TOKEN=` reads                   |
 | `... marker --role author\|reviewer --session <id>`                                                           | prints the provenance marker                                                  |
 
-Every body an agent posts starts with a hidden marker, `<!-- rin-bot: role=<role> session=<id> -->`, so authorship can be audited and filtered. Use `--body-file` for long or multi-line bodies. A flag may be given once; a value that itself starts with `--` has to go through `--body-file`.
+Every body an agent posts starts with a hidden marker, `<!-- rin-bot: role=<role> session=<id> -->`, so authorship can be audited and filtered. Use `--body-file` for long or multi-line bodies; it refuses a file inside the credential store and any file that contains a private key. A flag may be given once; a value that itself starts with `--` has to go through `--body-file`.
 
 `review` posts against the head sha it read, and refuses if `--commit-sha` names a different head. `merge` passes that head to GitHub as `expectedHeadOid`, so a push that lands between the check and the merge makes GitHub refuse the merge.
 
@@ -64,7 +64,7 @@ A relative `privateKeyPath` is read from the store directory; an absolute one is
 
 ## Worktree git identity
 
-On a new linked worktree, the plugin's `provision-worktree` hook runs `adopt-git`. Adoption first mints an author token for the configured repository. If the app is not installed there, or its credentials do not resolve, the worktree keeps its own git identity and the hook prints one line saying so; `git push` keeps working under the operator's normal credentials. Once adoption succeeds, the worktree's own git config commits as `<author-slug>[bot]` and pushes through a credential helper that mints a fresh token each time. The primary checkout is never changed.
+On a new linked worktree, the plugin's `provision-worktree` hook runs `adopt-git`. Adoption first checks that the worktree's push remote is the configured repository, then mints an author token for it. If the worktree pushes somewhere else, the app is not installed there, or its credentials do not resolve, the worktree keeps its own git identity and the hook prints one line saying so; `git push` keeps working under the operator's normal credentials. Once adoption succeeds, the worktree's own git config commits as `<author-slug>[bot]` and pushes through a credential helper that mints a fresh token each time. The primary checkout is never changed.
 
 ## Setting up a consumer repository
 

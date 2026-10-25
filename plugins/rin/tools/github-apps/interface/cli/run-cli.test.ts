@@ -61,9 +61,10 @@ const fakeDependencies = (repositoryApi: GitHubRepositoryPort) => ({
   worktree: {
     readCurrentBranch: vi.fn(),
     readCheckoutKind: vi.fn(),
+    readPushRemote: vi.fn(),
     configureWorktree: vi.fn(),
   },
-  readTextFile: vi.fn(),
+  readBodyFile: vi.fn(),
   credentialHelperCommand: '!bun "cli-main.ts" git-credential --operation',
 });
 
@@ -162,6 +163,21 @@ describe("runCli local and refused invocations", () => {
     expect(dependencies.tokenMinter.mintInstallationToken).not.toHaveBeenCalled();
   });
 
+  it("prints the provenance marker in a consumer with no identity configured", async () => {
+    const dependencies = fakeDependencies(fakeRepositoryApi());
+    dependencies.loadConfiguration.mockResolvedValue(
+      fail({ kind: "configuration-unreadable", location: "file:///github-identity.json" }),
+    );
+
+    expect(
+      await runCli({
+        dependencies,
+        commandArguments: ["marker", "--role", "reviewer", "--session", "pr-6"],
+      }),
+    ).toBe(0);
+    expect(dependencies.loadConfiguration).not.toHaveBeenCalled();
+  });
+
   it("reports an unusable configuration before minting anything", async () => {
     const dependencies = fakeDependencies(fakeRepositoryApi());
     dependencies.loadConfiguration.mockResolvedValue(
@@ -191,4 +207,16 @@ describe("runCli local and refused invocations", () => {
       expect.stringMatching(/^Unknown command "deploy"\.\nUsage: /),
     );
   });
+
+  it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
+    "treats the inherited object key %s as an unknown command",
+    async (commandName) => {
+      const dependencies = fakeDependencies(fakeRepositoryApi());
+
+      expect(await runCli({ dependencies, commandArguments: [commandName] })).toBe(2);
+      expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(
+        expect.stringMatching(new RegExp(`^Unknown command "${commandName}"`)),
+      );
+    },
+  );
 });

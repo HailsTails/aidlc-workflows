@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { fail, succeed } from "../../domain/result.ts";
-import type { TextFileReader } from "../../infrastructure/text-file-reader.ts";
+import type { BodyFileReader } from "../../application/read-body-file.ts";
 import { readOptionalBody, readRequiredBody } from "./authored-body.ts";
 
-const reading = (fileText: string) => vi.fn<TextFileReader>().mockResolvedValue(succeed(fileText));
+const reading = (fileText: string) => vi.fn<BodyFileReader>().mockResolvedValue(succeed(fileText));
 
 describe("readOptionalBody", () => {
   it("takes an inline body as written", async () => {
@@ -11,18 +11,18 @@ describe("readOptionalBody", () => {
       await readOptionalBody({
         inlineBody: "Short.",
         bodyFile: undefined,
-        readTextFile: reading(""),
+        readBodyFile: reading(""),
       }),
     ).toEqual(succeed("Short."));
   });
 
   it("reads a body file", async () => {
-    const readTextFile = reading("## Summary\n\nLong body.");
+    const readBodyFile = reading("## Summary\n\nLong body.");
 
     expect(
-      await readOptionalBody({ inlineBody: undefined, bodyFile: "body.md", readTextFile }),
+      await readOptionalBody({ inlineBody: undefined, bodyFile: "body.md", readBodyFile }),
     ).toEqual(succeed("## Summary\n\nLong body."));
-    expect(readTextFile).toHaveBeenCalledExactlyOnceWith("body.md");
+    expect(readBodyFile).toHaveBeenCalledExactlyOnceWith("body.md");
   });
 
   it("is absent when neither is given", async () => {
@@ -30,7 +30,7 @@ describe("readOptionalBody", () => {
       await readOptionalBody({
         inlineBody: undefined,
         bodyFile: undefined,
-        readTextFile: reading(""),
+        readBodyFile: reading(""),
       }),
     ).toEqual(succeed(undefined));
   });
@@ -40,18 +40,18 @@ describe("readOptionalBody", () => {
       await readOptionalBody({
         inlineBody: "Short.",
         bodyFile: "body.md",
-        readTextFile: reading(""),
+        readBodyFile: reading(""),
       }),
     ).toEqual(fail({ kind: "body-given-twice" }));
   });
 
   it("reports a body file it cannot read", async () => {
-    const readTextFile = vi
-      .fn<TextFileReader>()
-      .mockResolvedValue(fail({ kind: "file-unreadable", location: "body.md" }));
+    const readBodyFile = vi
+      .fn<BodyFileReader>()
+      .mockResolvedValue(fail({ kind: "body-file-unreadable", location: "body.md" }));
 
     expect(
-      await readOptionalBody({ inlineBody: undefined, bodyFile: "body.md", readTextFile }),
+      await readOptionalBody({ inlineBody: undefined, bodyFile: "body.md", readBodyFile }),
     ).toEqual(fail({ kind: "body-file-unreadable", location: "body.md" }));
   });
 });
@@ -59,7 +59,7 @@ describe("readOptionalBody", () => {
 describe("readRequiredBody", () => {
   it("refuses a blank body", async () => {
     expect(
-      await readRequiredBody({ inlineBody: "  ", bodyFile: undefined, readTextFile: reading("") }),
+      await readRequiredBody({ inlineBody: "  ", bodyFile: undefined, readBodyFile: reading("") }),
     ).toEqual(fail({ kind: "body-missing" }));
   });
 
@@ -68,7 +68,7 @@ describe("readRequiredBody", () => {
       await readRequiredBody({
         inlineBody: undefined,
         bodyFile: undefined,
-        readTextFile: reading(""),
+        readBodyFile: reading(""),
       }),
     ).toEqual(fail({ kind: "body-missing" }));
   });

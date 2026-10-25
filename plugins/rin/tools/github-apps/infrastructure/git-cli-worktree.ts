@@ -13,6 +13,10 @@ type GitInvocation = GitCliDependencies & { readonly gitArguments: readonly stri
 
 type CredentialHelperEntry = { readonly cliEntryPath: string };
 
+type ConfigurationLookup = GitCliDependencies & { readonly keys: readonly string[] };
+
+const DEFAULT_PUSH_REMOTE = "origin";
+
 const runGit = async ({
   runCommand,
   gitArguments,
@@ -55,6 +59,46 @@ const readCheckoutKind = async ({
   );
 };
 
+const firstConfiguredValue = async ({
+  runCommand,
+  keys,
+}: ConfigurationLookup): Promise<Result<string | undefined, GitFailure>> => {
+  const [key, ...remainingKeys] = keys;
+  if (key === undefined) return succeed(undefined);
+  const value = await runGit({ runCommand, gitArguments: ["config", "--default", "", "--get", key] });
+  if (value.kind === "failure") return value;
+  if (value.outcome !== "") return succeed(value.outcome);
+  return firstConfiguredValue({ runCommand, keys: remainingKeys });
+};
+
+const pushRemoteKeys = async ({
+  runCommand,
+}: GitCliDependencies): Promise<Result<readonly string[], GitFailure>> => {
+  const branch = await readCurrentBranch({ runCommand });
+  if (branch.kind === "success") {
+    return succeed([
+      `branch.${branch.outcome}.pushRemote`,
+      "remote.pushDefault",
+      `branch.${branch.outcome}.remote`,
+    ]);
+  }
+  if (branch.reason.kind === "branch-detached") return succeed(["remote.pushDefault"]);
+  return branch;
+};
+
+const readPushRemote = async ({
+  runCommand,
+}: GitCliDependencies): Promise<Result<string, GitFailure>> => {
+  const keys = await pushRemoteKeys({ runCommand });
+  if (keys.kind === "failure") return keys;
+  const remoteName = await firstConfiguredValue({ runCommand, keys: keys.outcome });
+  if (remoteName.kind === "failure") return remoteName;
+  return runGit({
+    runCommand,
+    gitArguments: ["remote", "get-url", "--push", remoteName.outcome ?? DEFAULT_PUSH_REMOTE],
+  });
+};
+
 const worktreeConfiguration = ({
   credentialHelperCommand,
   committerName,
@@ -92,6 +136,7 @@ const credentialHelperCommandFor = ({ cliEntryPath }: CredentialHelperEntry): st
 const createGitCliWorktree = ({ runCommand }: GitCliDependencies): GitWorktreePort => ({
   readCurrentBranch: () => readCurrentBranch({ runCommand }),
   readCheckoutKind: () => readCheckoutKind({ runCommand }),
+  readPushRemote: () => readPushRemote({ runCommand }),
   configureWorktree: (settings) => configureWorktree({ runCommand, settings }),
 });
 

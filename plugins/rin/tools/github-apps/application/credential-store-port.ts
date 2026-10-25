@@ -13,10 +13,18 @@ type CredentialFailure =
 
 type CredentialRequest = { readonly role: AgentRole };
 
+type StoreLocator = () => Result<string, { readonly detail: string }>;
+
 type CredentialStorePort = {
   readonly loadRoleCredentials: (
     request: CredentialRequest,
   ) => Promise<Result<RoleCredentials, CredentialFailure>>;
 };
 
-export type { CredentialFailure, CredentialRequest, CredentialStorePort, RoleCredentials };
+export type {
+  CredentialFailure,
+  CredentialRequest,
+  CredentialStorePort,
+  RoleCredentials,
+  StoreLocator,
+};

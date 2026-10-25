@@ -7,6 +7,14 @@ type RepositoryPathComparison = {
   readonly requestedPath: string;
 };
 
+type RemoteUrlComparison = {
+  readonly repository: RepositorySlug;
+  readonly remoteUrl: string;
+};
+
+const GITHUB_REMOTE_URL =
+  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/?#]+\/[^/?#]+?)\/?$/i;
+
 const formatRepositorySlug = ({ owner, name }: RepositorySlug): string => `${owner}/${name}`;
 
 const matchRepositoryPath = ({
@@ -18,4 +26,16 @@ const matchRepositoryPath = ({
     ? "same-repository"
     : "other-repository";
 
-export { formatRepositorySlug, matchRepositoryPath, type RepositoryPathMatch, type RepositorySlug };
+const matchRemoteUrl = ({ repository, remoteUrl }: RemoteUrlComparison): RepositoryPathMatch => {
+  const [, requestedPath] = GITHUB_REMOTE_URL.exec(remoteUrl.trim()) ?? [];
+  if (requestedPath === undefined) return "other-repository";
+  return matchRepositoryPath({ repository, requestedPath });
+};
+
+export {
+  formatRepositorySlug,
+  matchRemoteUrl,
+  matchRepositoryPath,
+  type RepositoryPathMatch,
+  type RepositorySlug,
+};

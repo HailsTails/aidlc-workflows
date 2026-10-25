@@ -60,7 +60,12 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { createPluginRuntimePort, preparePluginRuntimeArtifacts } from "./plugin-runtime.ts";
+import {
+  createPluginRuntimePort,
+  createSharedPluginRuntimePort,
+  preparePluginRuntimeArtifacts,
+  type PluginRuntimePort,
+} from "./plugin-runtime.ts";
 import type { HarnessManifest } from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
@@ -884,6 +889,7 @@ async function buildTree(
     pluginRoot: CORE_ROOT,
     outDir: treeRoot,
     files: Array.from(walk(treeRoot), (file) => relative(treeRoot, file).split(sep).join("/")),
+    runtimePort: createPassRuntimePort(),
   });
   const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
   if (fmMissed.length > 0) {
@@ -2024,16 +2030,21 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
   return pluginTargets()[harnessName] ?? null;
 }
 
+function createPassRuntimePort(): PluginRuntimePort {
+  return createSharedPluginRuntimePort(createPluginRuntimePort({ projectRoot: REPO_ROOT }));
+}
+
 async function bundleRuntimeDependencies(input: {
   readonly pluginRoot: string;
   readonly outDir: string;
   readonly files: readonly string[];
+  readonly runtimePort: PluginRuntimePort;
 }): Promise<void> {
   const sources = input.files.filter((file) =>
     /\.[cm]?[jt]s$/.test(file) && !/\.d\.[cm]?ts$/.test(file) && existsSync(join(input.pluginRoot, file)),
   ).map((file) => ({ file, source: readFileSync(join(input.pluginRoot, file), "utf-8") }));
   const prepared = await preparePluginRuntimeArtifacts({
-    pluginRoot: input.pluginRoot, files: input.files, sources, port: createPluginRuntimePort({ projectRoot: REPO_ROOT }),
+    pluginRoot: input.pluginRoot, files: input.files, sources, port: input.runtimePort,
   });
   if (prepared.kind === "refused") throw new Error(prepared.message);
   for (const artifact of prepared.artifacts) {
@@ -2048,6 +2059,7 @@ async function buildRepositoryPluginProjection(
   harnessName: string,
   outDir: string,
   outputBoundary = REPO_ROOT,
+  runtimePort: PluginRuntimePort = createPassRuntimePort(),
 ): Promise<PluginProjectionResult> {
   const target = pluginTargetFor(harnessName);
   if (!target) {
@@ -2064,7 +2076,7 @@ async function buildRepositoryPluginProjection(
     reviewerAgents: reviewerAgentSet(CORE_ROOT),
   });
   projectPluginDocuments({ projection, outDir, pluginName, harnessName });
-  await bundleRuntimeDependencies({ pluginRoot: join(PLUGINS_ROOT, pluginName), outDir, files: projection.files });
+  await bundleRuntimeDependencies({ pluginRoot: join(PLUGINS_ROOT, pluginName), outDir, files: projection.files, runtimePort });
   if (!isModelHarness(harnessName)) throw new Error(`unsupported plugin hook harness: ${harnessName}`);
   const hookContributions = renderPluginHookContributions({
     pluginName, harness: harnessName, harnessDir: target.harnessLeaf,
@@ -2237,6 +2249,7 @@ async function emitPlugins(
   distRoot = join(REPO_ROOT, "dist"),
   log = true,
 ): Promise<void> {
+  const runtimePort = createPassRuntimePort();
   for (const pluginName of discoverPluginNames()) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
       await buildRepositoryPluginProjection(
@@ -2244,6 +2257,7 @@ async function emitPlugins(
         harnessName,
         join(distRoot, "plugins", pluginName, harnessName),
         distRoot,
+        runtimePort,
       );
       const nativeOut = join(dirname(distRoot), "dist-release", "plugins", pluginName, harnessName);
       rmSync(nativeOut, { recursive: true, force: true });

@@ -31,6 +31,7 @@ describe("createGitHubHttp", () => {
         ["User-Agent", "rin-github-apps"],
         ["X-GitHub-Api-Version", "2022-11-28"],
       ],
+      signal: expect.any(AbortSignal),
       body: '{"query":"{ viewer { login } }"}',
     });
   });
@@ -54,6 +55,7 @@ describe("createGitHubHttp", () => {
         ["User-Agent", "rin-github-apps"],
         ["X-GitHub-Api-Version", "2022-11-28"],
       ],
+      signal: expect.any(AbortSignal),
     });
   });
 });
@@ -72,6 +74,31 @@ describe("createGitHubHttp failures", () => {
         status: 401,
         detail: '{"message":"Bad credentials"}',
       },
+    });
+  });
+
+  it("reports a reply whose body is cut off as unreachable", async () => {
+    const severedBody = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        controller.error(new Error("connection reset"));
+      },
+    });
+    const fetchResource = vi.fn<FetchResource>().mockResolvedValue(new Response(severedBody));
+
+    expect(await createGitHubHttp({ fetchResource }).requestJson(request)).toEqual({
+      kind: "failure",
+      reason: { kind: "github-unreachable", operation: "read app" },
+    });
+  });
+
+  it("reports an API that does not answer in time as unreachable", async () => {
+    const fetchResource = vi
+      .fn<FetchResource>()
+      .mockRejectedValue(new DOMException("The operation timed out.", "TimeoutError"));
+
+    expect(await createGitHubHttp({ fetchResource }).requestJson(request)).toEqual({
+      kind: "failure",
+      reason: { kind: "github-unreachable", operation: "read app" },
     });
   });
 
