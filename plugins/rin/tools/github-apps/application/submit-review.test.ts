@@ -10,7 +10,7 @@ const pullRequest: PullRequestSnapshot = {
   headSha: "head6",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "clean",
+  mergeState: "clean",
 };
 
 const reviewUrl = "https://github.com/HailsTails/minutesarah-shop/pull/6#pullrequestreview-1";

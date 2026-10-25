@@ -16,6 +16,29 @@ describe("readOptionalBody", () => {
     ).toEqual(succeed("Short."));
   });
 
+  it("refuses an inline body carrying a private key", async () => {
+    const readBodyFile = reading("");
+
+    expect(
+      await readOptionalBody({
+        inlineBody: "Oops:\n-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----",
+        bodyFile: undefined,
+        readBodyFile,
+      }),
+    ).toEqual(fail({ kind: "inline-body-refused", reason: "contains-private-key" }));
+    expect(readBodyFile).not.toHaveBeenCalled();
+  });
+
+  it("takes an inline body that only mentions keys in prose", async () => {
+    expect(
+      await readOptionalBody({
+        inlineBody: "Rotated the reviewer app's private key.",
+        bodyFile: undefined,
+        readBodyFile: reading(""),
+      }),
+    ).toEqual(succeed("Rotated the reviewer app's private key."));
+  });
+
   it("reads a body file", async () => {
     const readBodyFile = reading("## Summary\n\nLong body.");
 

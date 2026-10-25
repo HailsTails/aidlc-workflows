@@ -46,6 +46,35 @@ describe("locateUserStore", () => {
     expect(locate()).toEqual(succeed("H:/keys/rin"));
   });
 
+  it.each(["/home/helen/keys", "C:/keys/rin"])("accepts the absolute override %s", (directory) => {
+    const locate = locateUserStore({
+      environment: environmentWith({
+        variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: directory },
+        homeDirectory: "/home/helen",
+      }),
+    });
+
+    expect(locate()).toEqual(succeed(directory));
+  });
+
+  it.each(["keys", "./keys", "..\\keys", "C:keys"])(
+    "refuses the relative override %s, which would resolve against each worktree",
+    (directory) => {
+      const locate = locateUserStore({
+        environment: environmentWith({
+          variables: { RIN_GITHUB_APPS_CREDENTIALS_DIR: directory },
+          homeDirectory: "/home/helen",
+        }),
+      });
+
+      expect(locate()).toEqual(
+        fail({
+          detail: `RIN_GITHUB_APPS_CREDENTIALS_DIR must be an absolute path, not "${directory}"`,
+        }),
+      );
+    },
+  );
+
   it("ignores an empty override", () => {
     const locate = locateUserStore({
       environment: environmentWith({

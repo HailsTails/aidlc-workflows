@@ -23,8 +23,8 @@ const assessClose = ({
 }: CloseCandidate): Result<CloseClearance, CloseRefusal> => {
   const openPullRequest = requireOpenPullRequest(pullRequest);
   if (openPullRequest.kind === "failure") return openPullRequest;
-  const { pullNumber, mergeability } = openPullRequest.outcome;
-  if (latestVerdict(reviews)?.stance === "approved" && mergeability === "clean") {
+  const { pullNumber, mergeState } = openPullRequest.outcome;
+  if (latestVerdict(reviews)?.stance === "approved" && mergeState === "clean") {
     return fail({ kind: "approved-and-mergeable", pullNumber });
   }
   return succeed({ pullNumber });

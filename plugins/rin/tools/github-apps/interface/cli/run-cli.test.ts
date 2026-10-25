@@ -22,7 +22,7 @@ const pullRequest = {
   headSha: "head4",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "clean",
+  mergeState: "clean",
 } as const;
 
 const fakeRepositoryApi = () => ({
@@ -93,15 +93,20 @@ describe("runCli", () => {
     );
   });
 
-  it("refuses a merge without an approval and says why", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
+  it("refuses a merge the ruleset still blocks and names the merge state", async () => {
+    const repositoryApi = fakeRepositoryApi();
+    repositoryApi.readPullRequest.mockResolvedValue(
+      succeed({ ...pullRequest, mergeState: "blocked" }),
+    );
+    const dependencies = fakeDependencies(repositoryApi);
 
     const exitCode = await runCli({ dependencies, commandArguments: ["merge", "--pr", "4"] });
 
     expect(exitCode).toBe(1);
     expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(
-      "#4 cannot merge: no review has given a verdict; merging requires an approval.\n",
+      "#4 cannot merge: GitHub reports its merge state as blocked, so the ruleset is still waiting on a required approval or status check.\n",
     );
+    expect(repositoryApi.squashMerge).not.toHaveBeenCalled();
   });
 });
 

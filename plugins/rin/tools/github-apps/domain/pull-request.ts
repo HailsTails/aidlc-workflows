@@ -4,7 +4,15 @@ type PullRequestLifecycle = "open" | "closed" | "merged";
 
 type PullRequestReadiness = "draft" | "ready-for-review";
 
-type PullRequestMergeability = "clean" | "not-clean";
+type PullRequestMergeState =
+  | "behind"
+  | "blocked"
+  | "clean"
+  | "dirty"
+  | "draft"
+  | "has-hooks"
+  | "unknown"
+  | "unstable";
 
 type PullRequestSnapshot = {
   readonly pullNumber: number;
@@ -12,7 +20,7 @@ type PullRequestSnapshot = {
   readonly headSha: string;
   readonly lifecycle: PullRequestLifecycle;
   readonly readiness: PullRequestReadiness;
-  readonly mergeability: PullRequestMergeability;
+  readonly mergeState: PullRequestMergeState;
 };
 
 type ReviewStance = "approved" | "changes-requested" | "commented" | "dismissed" | "pending";
@@ -46,7 +54,7 @@ export {
   requireOpenPullRequest,
   type OpenPullRequest,
   type PullRequestLifecycle,
-  type PullRequestMergeability,
+  type PullRequestMergeState,
   type PullRequestNotOpen,
   type PullRequestReadiness,
   type PullRequestSnapshot,

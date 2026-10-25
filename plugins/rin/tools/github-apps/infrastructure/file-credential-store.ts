@@ -44,10 +44,10 @@ type RoleLookup = FileCredentialStoreDependencies & {
   readonly storeDirectory: string;
 };
 
+const isAbsolutePath = (path: string): boolean => /^(?:[A-Za-z]:)?[\\/]/.test(path);
+
 const resolveKeyPath = ({ storeDirectory, privateKeyPath }: KeyLocation): string =>
-  /^(?:[A-Za-z]:)?[\\/]/.test(privateKeyPath)
-    ? privateKeyPath
-    : `${storeDirectory}/${privateKeyPath}`;
+  isAbsolutePath(privateKeyPath) ? privateKeyPath : `${storeDirectory}/${privateKeyPath}`;
 
 const readCredentialsFile = async ({
   readTextFile,
@@ -98,6 +98,11 @@ const locateUserStore =
   () => {
     const overriddenDirectory = environment.variable(STORE_DIRECTORY_VARIABLE);
     if (overriddenDirectory !== undefined && overriddenDirectory.length > 0) {
+      if (!isAbsolutePath(overriddenDirectory)) {
+        return fail({
+          detail: `${STORE_DIRECTORY_VARIABLE} must be an absolute path, not "${overriddenDirectory}"`,
+        });
+      }
       return succeed(withForwardSlashes(overriddenDirectory));
     }
     const homeDirectory = environment.homeDirectory();

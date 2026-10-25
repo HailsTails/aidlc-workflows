@@ -8,7 +8,7 @@ const supersededPullRequest: PullRequestSnapshot = {
   headSha: "head7",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "not-clean",
+  mergeState: "blocked",
 };
 
 describe("assessClose", () => {
@@ -24,7 +24,7 @@ describe("assessClose", () => {
   it("refuses to close an approved, mergeable pull request so it is merged instead", () => {
     expect(
       assessClose({
-        pullRequest: { ...supersededPullRequest, mergeability: "clean" },
+        pullRequest: { ...supersededPullRequest, mergeState: "clean" },
         reviews: [{ stance: "approved", reviewedSha: "head7" }],
       }),
     ).toEqual({ kind: "failure", reason: { kind: "approved-and-mergeable", pullNumber: 7 } });

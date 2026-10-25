@@ -39,10 +39,7 @@ describe("matchRemoteUrl", () => {
   it.each([
     "https://github.com/HailsTails/minutesarah-shop.git",
     "https://github.com/hailstails/minutesarah-shop",
-    "https://x-access-token@github.com/HailsTails/minutesarah-shop.git",
     "https://github.com/HailsTails/minutesarah-shop/",
-    "git@github.com:HailsTails/minutesarah-shop.git",
-    "ssh://git@github.com/HailsTails/minutesarah-shop.git",
   ])("recognises %s as the configured repository", (remoteUrl) => {
     expect(matchRemoteUrl({ repository: minutesarahShop, remoteUrl })).toBe("same-repository");
   });
@@ -50,12 +47,21 @@ describe("matchRemoteUrl", () => {
   it.each([
     "https://github.com/HailsTails/rin.git",
     "https://github.com/someone-else/minutesarah-shop.git",
+  ])("treats %s as another repository", (remoteUrl) => {
+    expect(matchRemoteUrl({ repository: minutesarahShop, remoteUrl })).toBe("other-repository");
+  });
+
+  it.each([
+    "git@github.com:HailsTails/minutesarah-shop.git",
+    "ssh://git@github.com/HailsTails/minutesarah-shop.git",
+    "https://x-access-token@github.com/HailsTails/minutesarah-shop.git",
+    "http://github.com/HailsTails/minutesarah-shop.git",
     "https://gitlab.com/HailsTails/minutesarah-shop.git",
     "https://github.com.evil.example/HailsTails/minutesarah-shop.git",
     "https://github.com/HailsTails/minutesarah-shop/extra.git",
     "H:/Development/minutesarah-shop",
     "",
-  ])("treats %s as another repository", (remoteUrl) => {
-    expect(matchRemoteUrl({ repository: minutesarahShop, remoteUrl })).toBe("other-repository");
+  ])("refuses %s because the credential helper only serves https://github.com/", (remoteUrl) => {
+    expect(matchRemoteUrl({ repository: minutesarahShop, remoteUrl })).toBe("not-github-https");
   });
 });

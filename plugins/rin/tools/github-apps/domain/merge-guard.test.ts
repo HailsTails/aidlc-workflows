@@ -8,26 +8,19 @@ const readyPullRequest: PullRequestSnapshot = {
   headSha: "head4",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "clean",
+  mergeState: "clean",
 };
 
 describe("assessMerge", () => {
-  it("clears an open pull request whose latest verdict approves its current head", () => {
-    expect(
-      assessMerge({
-        pullRequest: readyPullRequest,
-        reviews: [
-          { stance: "changes-requested", reviewedSha: "older" },
-          { stance: "approved", reviewedSha: "head4" },
-        ],
-      }),
-    ).toEqual({ kind: "success", outcome: { pullNumber: 4, headSha: "head4" } });
+  it("clears an open, ready pull request GitHub reports as cleanly mergeable", () => {
+    expect(assessMerge(readyPullRequest)).toEqual({
+      kind: "success",
+      outcome: { pullNumber: 4, headSha: "head4" },
+    });
   });
 
   it("refuses a pull request that is no longer open", () => {
-    expect(
-      assessMerge({ pullRequest: { ...readyPullRequest, lifecycle: "merged" }, reviews: [] }),
-    ).toEqual({
+    expect(assessMerge({ ...readyPullRequest, lifecycle: "merged" })).toEqual({
       kind: "failure",
       reason: { kind: "pull-request-not-open", pullNumber: 4, lifecycle: "merged" },
     });
@@ -35,56 +28,20 @@ describe("assessMerge", () => {
 
   it("refuses a draft", () => {
     expect(
-      assessMerge({
-        pullRequest: { ...readyPullRequest, readiness: "draft" },
-        reviews: [{ stance: "approved", reviewedSha: "head4" }],
-      }),
+      assessMerge({ ...readyPullRequest, readiness: "draft", mergeState: "draft" }),
     ).toEqual({ kind: "failure", reason: { kind: "pull-request-is-draft", pullNumber: 4 } });
   });
-});
 
-describe("assessMerge on the review verdict", () => {
-  it("refuses without any verdict", () => {
-    expect(
-      assessMerge({
-        pullRequest: readyPullRequest,
-        reviews: [{ stance: "commented", reviewedSha: "head4" }],
-      }),
-    ).toEqual({
+  it.each([
+    ["a required review or check is outstanding", "blocked"],
+    ["checks are failing or still pending", "unstable"],
+    ["it conflicts with the base branch", "dirty"],
+    ["it is behind the base branch", "behind"],
+    ["GitHub has not computed the state yet", "unknown"],
+  ] as const)("refuses, naming the state, when %s", (_why, mergeState) => {
+    expect(assessMerge({ ...readyPullRequest, mergeState })).toEqual({
       kind: "failure",
-      reason: { kind: "approval-missing", pullNumber: 4, latestStance: "no-verdict" },
-    });
-  });
-
-  it("refuses when the latest verdict requests changes, even after an earlier approval", () => {
-    expect(
-      assessMerge({
-        pullRequest: readyPullRequest,
-        reviews: [
-          { stance: "approved", reviewedSha: "head4" },
-          { stance: "changes-requested", reviewedSha: "head4" },
-        ],
-      }),
-    ).toEqual({
-      kind: "failure",
-      reason: { kind: "approval-missing", pullNumber: 4, latestStance: "changes-requested" },
-    });
-  });
-
-  it("refuses an approval of a head that has since moved", () => {
-    expect(
-      assessMerge({
-        pullRequest: readyPullRequest,
-        reviews: [{ stance: "approved", reviewedSha: "head3" }],
-      }),
-    ).toEqual({
-      kind: "failure",
-      reason: {
-        kind: "approval-on-stale-head",
-        pullNumber: 4,
-        approvedSha: "head3",
-        headSha: "head4",
-      },
+      reason: { kind: "pull-request-not-mergeable", pullNumber: 4, mergeState },
     });
   });
 });

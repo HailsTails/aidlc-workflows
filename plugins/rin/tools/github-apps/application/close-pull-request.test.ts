@@ -10,7 +10,7 @@ const pullRequest: PullRequestSnapshot = {
   headSha: "head2",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "not-clean",
+  mergeState: "blocked",
 };
 
 const pullRequestUrl = "https://github.com/HailsTails/minutesarah-shop/pull/2";
@@ -57,7 +57,7 @@ describe("closePullRequest", () => {
   it("refuses to close an approved, mergeable pull request", async () => {
     const repositoryApi = fakeRepositoryApi();
     repositoryApi.readPullRequest.mockResolvedValue(
-      succeed({ ...pullRequest, mergeability: "clean" }),
+      succeed({ ...pullRequest, mergeState: "clean" }),
     );
     repositoryApi.listReviews.mockResolvedValue(
       succeed([{ stance: "approved", reviewedSha: "head2" }]),

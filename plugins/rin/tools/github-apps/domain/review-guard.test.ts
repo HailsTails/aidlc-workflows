@@ -8,7 +8,7 @@ const pullRequestUnderReview: PullRequestSnapshot = {
   headSha: "head3",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "clean",
+  mergeState: "clean",
 };
 
 describe("assessReviewTarget", () => {

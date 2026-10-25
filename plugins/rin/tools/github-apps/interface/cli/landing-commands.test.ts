@@ -1,24 +1,27 @@
 import { assert, describe, expect, it, vi } from "vitest";
 import type { GitHubRepositoryPort } from "../../application/github-repository-port.ts";
+import type { PullRequestMergeState, PullRequestSnapshot } from "../../domain/pull-request.ts";
 import { succeed } from "../../domain/result.ts";
 import type { CommandFlags } from "./command-flags.ts";
 import { landingCommands } from "./landing-commands.ts";
 
 const pullRequestUrl = "https://github.com/HailsTails/minutesarah-shop/pull/8";
 
+const pullRequestIn = (mergeState: PullRequestMergeState): PullRequestSnapshot => ({
+  pullNumber: 8,
+  nodeId: "PR_node8",
+  headSha: "head8",
+  lifecycle: "open",
+  readiness: "ready-for-review",
+  mergeState,
+});
+
 const fakeRepositoryApi = () => ({
   openPullRequest: vi.fn(),
   revisePullRequest: vi.fn(),
-  readPullRequest: vi.fn<GitHubRepositoryPort["readPullRequest"]>().mockResolvedValue(
-    succeed({
-      pullNumber: 8,
-      nodeId: "PR_node8",
-      headSha: "head8",
-      lifecycle: "open",
-      readiness: "ready-for-review",
-      mergeability: "not-clean",
-    }),
-  ),
+  readPullRequest: vi
+    .fn<GitHubRepositoryPort["readPullRequest"]>()
+    .mockResolvedValue(succeed(pullRequestIn("blocked"))),
   listReviews: vi
     .fn<GitHubRepositoryPort["listReviews"]>()
     .mockResolvedValue(succeed([{ stance: "approved", reviewedSha: "head8" }])),
@@ -73,8 +76,9 @@ const contextWith = ({
 });
 
 describe("merge", () => {
-  it("squash-merges an approved head and reports the merge commit", async () => {
+  it("squash-merges a clean head and reports the merge commit", async () => {
     const repositoryApi = fakeRepositoryApi();
+    repositoryApi.readPullRequest.mockResolvedValue(succeed(pullRequestIn("clean")));
 
     expect(
       await landingCommands.merge.execute(contextWith({ flags: { pr: "8" }, repositoryApi })),

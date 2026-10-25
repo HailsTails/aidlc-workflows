@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   PullRequestLifecycle,
+  PullRequestMergeState,
   PullRequestSnapshot,
   ReviewEvent,
   ReviewRecord,
@@ -13,7 +14,9 @@ const pullRequestNodeSchema = z.object({
   headRefOid: z.string(),
   state: z.enum(["OPEN", "CLOSED", "MERGED"]),
   isDraft: z.boolean(),
-  mergeStateStatus: z.string(),
+  mergeStateStatus: z
+    .enum(["BEHIND", "BLOCKED", "CLEAN", "DIRTY", "DRAFT", "HAS_HOOKS", "UNKNOWN", "UNSTABLE"])
+    .catch("UNKNOWN"),
 });
 
 const reviewNodeSchema = z.object({
@@ -35,6 +38,27 @@ const lifecycleOf = (state: PullRequestNode["state"]): PullRequestLifecycle => {
       return "closed";
     case "MERGED":
       return "merged";
+  }
+};
+
+const mergeStateOf = (status: PullRequestNode["mergeStateStatus"]): PullRequestMergeState => {
+  switch (status) {
+    case "BEHIND":
+      return "behind";
+    case "BLOCKED":
+      return "blocked";
+    case "CLEAN":
+      return "clean";
+    case "DIRTY":
+      return "dirty";
+    case "DRAFT":
+      return "draft";
+    case "HAS_HOOKS":
+      return "has-hooks";
+    case "UNKNOWN":
+      return "unknown";
+    case "UNSTABLE":
+      return "unstable";
   }
 };
 
@@ -70,7 +94,7 @@ const pullRequestSnapshotOf = (node: PullRequestNode): PullRequestSnapshot => ({
   headSha: node.headRefOid,
   lifecycle: lifecycleOf(node.state),
   readiness: node.isDraft ? "draft" : "ready-for-review",
-  mergeability: node.mergeStateStatus === "CLEAN" ? "clean" : "not-clean",
+  mergeState: mergeStateOf(node.mergeStateStatus),
 });
 
 const reviewRecordOf = (node: ReviewNode): ReviewRecord => ({

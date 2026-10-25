@@ -14,9 +14,7 @@ const mergePullRequest = async ({
 }: MergeRequest): Promise<Result<MergedCommit, GitHubFailure | MergeRefusal>> => {
   const pullRequest = await repositoryApi.readPullRequest({ pullNumber });
   if (pullRequest.kind === "failure") return pullRequest;
-  const reviews = await repositoryApi.listReviews({ pullNumber });
-  if (reviews.kind === "failure") return reviews;
-  const clearance = assessMerge({ pullRequest: pullRequest.outcome, reviews: reviews.outcome });
+  const clearance = assessMerge(pullRequest.outcome);
   if (clearance.kind === "failure") return clearance;
   return repositoryApi.squashMerge({
     pullRequestId: pullRequest.outcome.nodeId,

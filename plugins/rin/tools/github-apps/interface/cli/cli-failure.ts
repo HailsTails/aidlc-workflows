@@ -1,4 +1,7 @@
-import type { PushRemoteElsewhere } from "../../application/adopt-worktree-git-identity.ts";
+import type {
+  PushRemoteElsewhere,
+  PushRemoteNotHttps,
+} from "../../application/adopt-worktree-git-identity.ts";
 import type { GitFailure } from "../../application/git-worktree-port.ts";
 import type { ConfigurationFailure } from "../../application/identity-configuration-port.ts";
 import type { CredentialDestinationRefused } from "../../application/issue-git-credential.ts";
@@ -6,6 +9,7 @@ import type { TokenFailure } from "../../application/mint-installation-token.ts"
 import type { NothingToRevise } from "../../application/revise-pull-request.ts";
 import type { CloseRefusal } from "../../domain/close-guard.ts";
 import type { MergeRefusal } from "../../domain/merge-guard.ts";
+import type { PullRequestMergeState } from "../../domain/pull-request.ts";
 import { formatRepositorySlug } from "../../domain/repository-slug.ts";
 import type { ReviewRefusal } from "../../domain/review-guard.ts";
 import type { BodyFailure } from "./authored-body.ts";
@@ -23,6 +27,7 @@ type CliFailure =
   | TokenFailure
   | GitFailure
   | PushRemoteElsewhere
+  | PushRemoteNotHttps
   | MergeRefusal
   | CloseRefusal
   | ReviewRefusal
@@ -42,6 +47,18 @@ type FailureDescribers = { readonly [Kind in FailureKind]: (failure: FailureOf<K
 type DescribedFailure<Kind extends FailureKind> = {
   readonly kind: Kind;
   readonly failure: FailureOf<Kind>;
+};
+
+const MERGE_STATE_EXPLANATIONS: {
+  readonly [State in Exclude<PullRequestMergeState, "clean">]: string;
+} = {
+  behind: "so its branch is behind the base branch and must be updated",
+  blocked: "so the ruleset is still waiting on a required approval or status check",
+  dirty: "so it conflicts with the base branch",
+  draft: "so it must be marked ready first",
+  "has-hooks": "so it is waiting on the repository's merge hooks",
+  unknown: "so GitHub has not finished computing it; try again shortly",
+  unstable: "so some status checks are failing or still pending",
 };
 
 const shortSha = (sha: string | null): string => sha?.slice(0, SHORT_SHA_LENGTH) ?? "no commit";
@@ -71,15 +88,15 @@ const describers: FailureDescribers = {
   "git-command-failed": ({ command, detail }) => `${command} failed: ${detail}`,
   "push-remote-elsewhere": ({ remoteUrl, repository }) =>
     `This worktree pushes to ${remoteUrl}, not ${formatRepositorySlug(repository)}; the bot only pushes to the configured repository.`,
+  "push-remote-not-https": ({ remoteUrl, repository }) =>
+    `This worktree pushes to ${remoteUrl}, which the bot's credential helper cannot serve; set the push remote to https://github.com/${formatRepositorySlug(repository)}.git.`,
   "branch-detached": () => "HEAD is detached; check out a branch or pass --head <branch>.",
   "pull-request-not-open": ({ pullNumber, lifecycle }) =>
     `#${String(pullNumber)} is already ${lifecycle}.`,
   "pull-request-is-draft": ({ pullNumber }) =>
     `#${String(pullNumber)} is a draft; mark it ready with the ready command before merging.`,
-  "approval-missing": ({ pullNumber, latestStance }) =>
-    `#${String(pullNumber)} cannot merge: ${latestStance === "no-verdict" ? "no review has given a verdict" : "its latest verdict requests changes"}; merging requires an approval.`,
-  "approval-on-stale-head": ({ pullNumber, approvedSha, headSha }) =>
-    `#${String(pullNumber)} was approved at ${shortSha(approvedSha)} but its head is now ${shortSha(headSha)}; re-review the current head before merging.`,
+  "pull-request-not-mergeable": ({ pullNumber, mergeState }) =>
+    `#${String(pullNumber)} cannot merge: GitHub reports its merge state as ${mergeState}, ${MERGE_STATE_EXPLANATIONS[mergeState]}.`,
   "approved-and-mergeable": ({ pullNumber }) =>
     `#${String(pullNumber)} is approved and mergeable; merge it with the merge command instead of closing it.`,
   "reviewed-head-moved": ({ pullNumber, reviewedSha, headSha }) =>
@@ -97,6 +114,7 @@ const describers: FailureDescribers = {
   "flags-invalid": ({ issues }) => `Invalid flags: ${issues}`,
   "body-missing": () => "Provide the text with --body or --body-file.",
   "body-given-twice": () => "Pass --body or --body-file, not both.",
+  "inline-body-refused": () => "Refusing to post the --body text: it contains a private key.",
   "body-file-unreadable": ({ location }) => `Cannot read the body file ${location}.`,
   "body-file-refused": ({ location, reason }) =>
     reason === "inside-credential-store"

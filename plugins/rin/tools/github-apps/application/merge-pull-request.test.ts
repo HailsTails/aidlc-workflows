@@ -10,7 +10,7 @@ const pullRequest: PullRequestSnapshot = {
   headSha: "head8",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "clean",
+  mergeState: "clean",
 };
 
 const fakeRepositoryApi = () => ({
@@ -19,9 +19,7 @@ const fakeRepositoryApi = () => ({
   readPullRequest: vi
     .fn<GitHubRepositoryPort["readPullRequest"]>()
     .mockResolvedValue(succeed(pullRequest)),
-  listReviews: vi
-    .fn<GitHubRepositoryPort["listReviews"]>()
-    .mockResolvedValue(succeed([{ stance: "approved", reviewedSha: "head8" }])),
+  listReviews: vi.fn(),
   submitReview: vi.fn(),
   commentOnIssue: vi.fn(),
   squashMerge: vi
@@ -32,7 +30,7 @@ const fakeRepositoryApi = () => ({
 });
 
 describe("mergePullRequest", () => {
-  it("squash-merges an approved head, pinning the head GitHub must still see", async () => {
+  it("squash-merges a clean head, pinning the head GitHub must still see", async () => {
     const repositoryApi = fakeRepositoryApi();
 
     const merged = await mergePullRequest({ repositoryApi, pullNumber: 8 });
@@ -44,27 +42,29 @@ describe("mergePullRequest", () => {
     });
   });
 
-  it("refuses without an approving verdict and never calls merge", async () => {
+  it("refuses a head the ruleset still blocks and never calls merge", async () => {
     const repositoryApi = fakeRepositoryApi();
-    repositoryApi.listReviews.mockResolvedValue(succeed([]));
+    repositoryApi.readPullRequest.mockResolvedValue(
+      succeed({ ...pullRequest, mergeState: "blocked" }),
+    );
 
     const merged = await mergePullRequest({ repositoryApi, pullNumber: 8 });
 
     expect(merged).toEqual(
-      fail({ kind: "approval-missing", pullNumber: 8, latestStance: "no-verdict" }),
+      fail({ kind: "pull-request-not-mergeable", pullNumber: 8, mergeState: "blocked" }),
     );
     expect(repositoryApi.squashMerge).not.toHaveBeenCalled();
   });
 
-  it("passes a failed review listing through", async () => {
+  it("passes a failed pull request read through", async () => {
     const repositoryApi = fakeRepositoryApi();
-    repositoryApi.listReviews.mockResolvedValue(
-      fail({ kind: "github-unreachable", operation: "list reviews" }),
+    repositoryApi.readPullRequest.mockResolvedValue(
+      fail({ kind: "github-unreachable", operation: "read pull request" }),
     );
 
     const merged = await mergePullRequest({ repositoryApi, pullNumber: 8 });
 
-    expect(merged).toEqual(fail({ kind: "github-unreachable", operation: "list reviews" }));
+    expect(merged).toEqual(fail({ kind: "github-unreachable", operation: "read pull request" }));
     expect(repositoryApi.squashMerge).not.toHaveBeenCalled();
   });
 });

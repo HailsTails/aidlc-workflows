@@ -105,6 +105,26 @@ describe("adoptWorktreeGitIdentity", () => {
     expect(worktree.configureWorktree).not.toHaveBeenCalled();
   });
 
+  it("leaves the worktree on its own identity when it pushes over SSH", async () => {
+    const worktree = fakeWorktree();
+    worktree.readPushRemote.mockResolvedValue(
+      succeed("git@github.com:HailsTails/minutesarah-shop.git"),
+    );
+    const overSsh = adoption();
+
+    const adopted = await adoptWorktreeGitIdentity({ ...overSsh, worktree });
+
+    expect(adopted).toEqual(
+      fail({
+        kind: "push-remote-not-https",
+        remoteUrl: "git@github.com:HailsTails/minutesarah-shop.git",
+        repository: minutesarahShop,
+      }),
+    );
+    expect(overSsh.mintAuthorToken).not.toHaveBeenCalled();
+    expect(worktree.configureWorktree).not.toHaveBeenCalled();
+  });
+
   it("leaves the worktree on its own identity when its push remote cannot be read", async () => {
     const worktree = fakeWorktree();
     worktree.readPushRemote.mockResolvedValue(

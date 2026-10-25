@@ -2,22 +2,31 @@ import { describe, expect, it } from "vitest";
 import { describeCliFailure } from "./cli-failure.ts";
 
 describe("describeCliFailure", () => {
-  it("explains a merge refused for a missing approval", () => {
-    expect(
-      describeCliFailure({ kind: "approval-missing", pullNumber: 4, latestStance: "no-verdict" }),
-    ).toBe("#4 cannot merge: no review has given a verdict; merging requires an approval.");
+  it.each([
+    ["blocked", "the ruleset is still waiting on a required approval or status check"],
+    ["unstable", "some status checks are failing or still pending"],
+    ["dirty", "it conflicts with the base branch"],
+  ] as const)("names the %s merge state GitHub returned and what it waits on", (mergeState, why) => {
+    expect(describeCliFailure({ kind: "pull-request-not-mergeable", pullNumber: 4, mergeState })).toBe(
+      `#4 cannot merge: GitHub reports its merge state as ${mergeState}, so ${why}.`,
+    );
   });
 
-  it("explains an approval left behind by a newer push, with short shas", () => {
+  it("explains a push remote the credential helper cannot serve", () => {
     expect(
       describeCliFailure({
-        kind: "approval-on-stale-head",
-        pullNumber: 4,
-        approvedSha: "0123456789abcdef",
-        headSha: "fedcba9876543210",
+        kind: "push-remote-not-https",
+        remoteUrl: "git@github.com:HailsTails/minutesarah-shop.git",
+        repository: { owner: "HailsTails", name: "minutesarah-shop" },
       }),
     ).toBe(
-      "#4 was approved at 01234567 but its head is now fedcba98; re-review the current head before merging.",
+      "This worktree pushes to git@github.com:HailsTails/minutesarah-shop.git, which the bot's credential helper cannot serve; set the push remote to https://github.com/HailsTails/minutesarah-shop.git.",
+    );
+  });
+
+  it("explains an inline body refused for carrying a private key", () => {
+    expect(describeCliFailure({ kind: "inline-body-refused", reason: "contains-private-key" })).toBe(
+      "Refusing to post the --body text: it contains a private key.",
     );
   });
 

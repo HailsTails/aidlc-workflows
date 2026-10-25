@@ -53,7 +53,7 @@ describe("createGitHubRepositoryApi", () => {
         headSha: "head12",
         lifecycle: "open",
         readiness: "ready-for-review",
-        mergeability: "clean",
+        mergeState: "clean",
       }),
     );
     expect(lastRequest(http)).toMatchObject({

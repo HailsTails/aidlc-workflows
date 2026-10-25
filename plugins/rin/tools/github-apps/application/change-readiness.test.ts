@@ -10,7 +10,7 @@ const pullRequest: PullRequestSnapshot = {
   headSha: "head11",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "clean",
+  mergeState: "clean",
 };
 
 const fakeRepositoryApi = () => ({

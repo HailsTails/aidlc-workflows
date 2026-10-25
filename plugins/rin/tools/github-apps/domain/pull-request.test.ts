@@ -7,7 +7,7 @@ const openPullRequest: PullRequestSnapshot = {
   headSha: "head9",
   lifecycle: "open",
   readiness: "ready-for-review",
-  mergeability: "clean",
+  mergeState: "clean",
 };
 
 describe("requireOpenPullRequest", () => {

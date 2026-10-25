@@ -28,7 +28,7 @@ const fakeRepositoryApi = () => ({
       headSha: "head5",
       lifecycle: "open",
       readiness: "ready-for-review",
-      mergeability: "clean",
+      mergeState: "clean",
     }),
   ),
   listReviews: vi.fn(),

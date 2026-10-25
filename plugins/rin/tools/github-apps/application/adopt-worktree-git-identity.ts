@@ -19,7 +19,15 @@ type PushRemoteElsewhere = {
   readonly repository: RepositorySlug;
 };
 
-type AdoptionFailure = GitFailure | TokenFailure | PushRemoteElsewhere;
+type PushRemoteNotHttps = {
+  readonly kind: "push-remote-not-https";
+  readonly remoteUrl: string;
+  readonly repository: RepositorySlug;
+};
+
+type PushTargetRefusal = PushRemoteElsewhere | PushRemoteNotHttps;
+
+type AdoptionFailure = GitFailure | TokenFailure | PushTargetRefusal;
 
 type AdoptionOutcome =
   | { readonly kind: "primary-checkout-left-unchanged" }
@@ -30,13 +38,17 @@ type PushTarget = Pick<GitIdentityAdoption, "worktree" | "repository">;
 const confirmPushTarget = async ({
   worktree,
   repository,
-}: PushTarget): Promise<Result<void, GitFailure | PushRemoteElsewhere>> => {
+}: PushTarget): Promise<Result<void, GitFailure | PushTargetRefusal>> => {
   const remoteUrl = await worktree.readPushRemote();
   if (remoteUrl.kind === "failure") return remoteUrl;
-  if (matchRemoteUrl({ repository, remoteUrl: remoteUrl.outcome }) === "other-repository") {
-    return fail({ kind: "push-remote-elsewhere", remoteUrl: remoteUrl.outcome, repository });
+  switch (matchRemoteUrl({ repository, remoteUrl: remoteUrl.outcome })) {
+    case "same-repository":
+      return succeed(undefined);
+    case "other-repository":
+      return fail({ kind: "push-remote-elsewhere", remoteUrl: remoteUrl.outcome, repository });
+    case "not-github-https":
+      return fail({ kind: "push-remote-not-https", remoteUrl: remoteUrl.outcome, repository });
   }
-  return succeed(undefined);
 };
 
 const adoptWorktreeGitIdentity = async ({
@@ -71,4 +83,5 @@ export {
   type AdoptionOutcome,
   type GitIdentityAdoption,
   type PushRemoteElsewhere,
+  type PushRemoteNotHttps,
 };

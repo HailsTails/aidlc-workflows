@@ -1,9 +1,11 @@
 import type { BodyFileFailure, BodyFileReader } from "../../application/read-body-file.ts";
+import { containsPrivateKey } from "../../domain/publishable-text.ts";
 import { fail, succeed, type Result } from "../../domain/result.ts";
 
 type BodyFailure =
   | { readonly kind: "body-missing" }
   | { readonly kind: "body-given-twice" }
+  | { readonly kind: "inline-body-refused"; readonly reason: "contains-private-key" }
   | BodyFileFailure;
 
 type BodySources = {
@@ -18,6 +20,9 @@ const readOptionalBody = async ({
   readBodyFile,
 }: BodySources): Promise<Result<string | undefined, BodyFailure>> => {
   if (inlineBody !== undefined && bodyFile !== undefined) return fail({ kind: "body-given-twice" });
+  if (inlineBody !== undefined && containsPrivateKey(inlineBody)) {
+    return fail({ kind: "inline-body-refused", reason: "contains-private-key" });
+  }
   if (bodyFile === undefined) return succeed(inlineBody);
   return readBodyFile(bodyFile);
 };

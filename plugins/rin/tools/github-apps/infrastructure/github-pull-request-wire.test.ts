@@ -24,7 +24,7 @@ describe("pullRequestSnapshotOf", () => {
       headSha: "head12",
       lifecycle: "open",
       readiness: "ready-for-review",
-      mergeability: "clean",
+      mergeState: "clean",
     });
   });
 
@@ -40,9 +40,29 @@ describe("pullRequestSnapshotOf", () => {
       expect.objectContaining({
         lifecycle: "merged",
         readiness: "draft",
-        mergeability: "not-clean",
+        mergeState: "dirty",
       }),
     );
+  });
+
+  it.each([
+    ["BEHIND", "behind"],
+    ["BLOCKED", "blocked"],
+    ["CLEAN", "clean"],
+    ["DIRTY", "dirty"],
+    ["DRAFT", "draft"],
+    ["HAS_HOOKS", "has-hooks"],
+    ["UNKNOWN", "unknown"],
+    ["UNSTABLE", "unstable"],
+  ] as const)("maps the merge state %s to %s", (mergeStateStatus, mergeState) => {
+    expect(pullRequestSnapshotOf({ ...openNode, mergeStateStatus }).mergeState).toBe(mergeState);
+  });
+
+  it("reads a merge state GitHub adds later as unknown, so merge refuses it", () => {
+    expect(
+      pullRequestNodeSchema.parse({ ...openNode, mergeStateStatus: "SOMETHING_NEW" })
+        .mergeStateStatus,
+    ).toBe("UNKNOWN");
   });
 
   it("maps a closed pull request", () => {
