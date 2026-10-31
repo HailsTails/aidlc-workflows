@@ -72,6 +72,23 @@ R7 is opt-in per consumer through `harness.config.json`: set `rinGates.exception
 
 The `dd-7` sensor is advisory. Chain evidence and reasoning quality remain review responsibilities, and baseline growth has no mechanical guard. The normal Rin integration selftest checks sensor resolution against its composed graph; source tests and the legacy-baseline test helper remain excluded from installed payloads.
 
+## Constitution engine
+
+`harness.config.json` `constitution.engine` chooses which checker Rin's constitution surfaces run:
+
+- `"rin-walker"` is the default when absent. The stage gate runs Rin's built-in constitution audit and carve-out decay, the `cd-*` sensors run the walker, and the review lenses read `code-discipline/cd-*.md`. Scope comes from `constitution.include` and `exclude`, and exceptions come from `.constitution-carve-outs/` and `.constitution-authorised-locations/`.
+- `"discipline-core"` is for a consumer that adopted discipline-core (`disciplines.json`, `discipline-exceptions.json`, `tools/discipline-core/`). The stage gate runs `node tools/discipline-core/core/check/check-command.ts --repo <checkout>`, with `--base-revision <constitution.baseRevision>` when that is set. That is the same check CI runs, so selection, scope and exceptions all come from the consumer's own files. The `disciplines` sensor reports core's findings in the edited file, the `cd-*` and `carve-out-decay` sensors report themselves not evaluated, and the lenses read core's rule pages (`aidlc-shared/lenses/ruleset-source.md`).
+
+The gate hook (`rin-constitution-engine-gate.ts`) is registered from the primary checkout, but it works out the checkout from the command's working directory. It reads the engine, and runs the chosen check, from that checkout's own plugin install and packages, so a worktree is judged by its own tree. The hook entry imports no third-party package. Every path that reaches no verdict on a stage completion exits 2, which blocks: a missing install, an unreadable engine, a core load failure or a timeout. Set `baseRevision` (for example `origin/main`) whenever `discipline-exceptions.json` holds a file carve-out or an entry imported with `provenance`. Moving an existing consumer is a step in discipline-core's `MIGRATING.md` and in `standalone-adoption.md` §6.
+
+Three behaviour changes reach every consumer, including those on the default engine:
+
+- **Rollout.** The hook registration comes from the primary checkout, but the engine is read from the worktree. So once the primary checkout syncs this version, a stage completion in a worktree whose branch predates the sync is refused. The refusal says that the checkout's rin install predates `constitution.engine`, and names the step that fixes it: merge the base branch into the worktree, or re-sync rin there. Sync or merge open worktrees when you take this version.
+- **Each worktree is judged by its own tools.** The rin-walker gate and its audit tools now run from the worktree's own install, as CI does, not from the primary checkout's. A branch that edits an audit tool is therefore judged by that edit; the checkers reviewer reads such edits as governance changes.
+- **A completion with no working directory is refused.** The old gate fell back to the hook's own checkout. The engine gate refuses, so it never checks a tree the command did not run in.
+
+The `disciplines` sensor runs core's whole-repository check (ESLint included) and keeps the edited file's findings, which costs about 15 to 18 seconds per TypeScript write on a mid-sized repository. A scoped run needs a core option this version does not have.
+
 ## Fresh consumer installation
 
 The following source-build route uses Claude as the concrete example. Replace

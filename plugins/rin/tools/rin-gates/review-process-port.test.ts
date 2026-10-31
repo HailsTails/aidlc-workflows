@@ -22,6 +22,11 @@ describe("review process boundary", () => {
     expect(result.stdout).toBe("probe:stdin-text");
   });
 
+  test("a synchronous child that outlives its timeout returns no exit status", () => {
+    const result = runtime.runSync({ program: "bun", args: ["-e", "setTimeout(() => {}, 10000)"], timeoutMilliseconds: 200 });
+    expect(result.status).toBeNull();
+  });
+
   test("returns a synchronous child's standard output as owned bytes", () => {
     const result = runtime.runSyncBytes({ program: "bun", args: ["-e", "process.stdout.write('bytes')"] });
     expect(result.status).toBe(0);

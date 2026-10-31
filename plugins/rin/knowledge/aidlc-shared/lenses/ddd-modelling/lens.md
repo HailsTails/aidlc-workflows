@@ -38,6 +38,8 @@ they override any default intuition.
 
 ## Loading the ruleset
 
+Under `constitution.engine: discipline-core`, resolve every rule and exception named below through [`../ruleset-source.md`](../ruleset-source.md) (by the id each cited rule names); otherwise follow the steps as written.
+
 This lens has **no tagged `cd-*.md` ruleset** — it is conceptual. Do not glob for
 rules tagged `lens: ddd-modelling`; there are none, by design. Instead:
 

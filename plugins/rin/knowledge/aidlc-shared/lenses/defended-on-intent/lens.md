@@ -41,6 +41,8 @@ intent rather than against the enumerated letter.
 
 ## Loading the ruleset
 
+Under `constitution.engine: discipline-core`, resolve every rule and exception named below through [`../ruleset-source.md`](../ruleset-source.md) (by the id each cited rule names); otherwise follow the steps as written.
+
 This lens loads **no `lens:`-tagged rules**. Instead:
 
 1. The **denominator** is fixed by the bundle: the set of PASS claims the other

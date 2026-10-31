@@ -41,6 +41,8 @@ the library. Read them first; they override any default intuition.
 
 ## Loading the ruleset
 
+Under `constitution.engine: discipline-core`, resolve every rule and exception named below through [`../ruleset-source.md`](../ruleset-source.md) (by the `Review lens:` match for `zod-boundary`); otherwise follow the steps as written.
+
 1. Resolve the codebase's code-discipline directory (the convention is
    `code-discipline/` beside the constitution; the dispatching workflow states
    the resolved path).

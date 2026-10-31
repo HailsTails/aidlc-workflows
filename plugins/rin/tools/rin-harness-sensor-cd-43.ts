@@ -1,3 +1,3 @@
-import { runCdSensor } from "./rin-harness-cd-enforcement.ts";
+import { runEngineBoundCdSensor } from "./rin-harness-engine-bound-cd-sensor.ts";
 
-runCdSensor({ cdId: "CD-43" });
+runEngineBoundCdSensor({ cdId: "CD-43" });
