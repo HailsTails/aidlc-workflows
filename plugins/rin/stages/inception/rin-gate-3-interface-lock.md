@@ -110,7 +110,7 @@ Write `rin-interface-lock.md`: every contract the solution exposes or depends on
 Each contract element is a heading `### <element>` carrying a state line in exactly one of two forms:
 
 - `- **State:** specified` — the element is complete: nothing in it is to be decided later.
-- `- **State:** escalated — <reserved class>` — the element cannot be specified without a decision that belongs to a reserved class: a constitution or rules-layer amendment, a recut of ratified scope, weakening a standing guard, a values call the rules do not cover, or money and external identity. An escalated element's remedy is the park, which is how it reaches {{OPERATOR}}; the lock is not approvable while one exists.
+- `- **State:** escalated — <reserved class>` — the element cannot be specified without a decision in a stopping reserved class (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` § "Deciding versus stopping"; a class-4 values call is decided and recorded instead). An escalated element's remedy is the park, which is how it reaches {{OPERATOR}}; the lock is not approvable while one exists.
 
 There is no third state. An element that cannot be specified for any other reason is a finding to specify here, or a route-back to Gate 2 if the chosen solution cannot support it. A deferred contract is one construction would invent. The completeness lens judges every element's state.
 

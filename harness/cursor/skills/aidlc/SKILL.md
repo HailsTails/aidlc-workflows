@@ -196,10 +196,12 @@ added merely because a genuine operator question was written to a file.
 
 On an autonomous stage, run the declared work without inventing a routine
 questionnaire or answer-mode choice. Preserve required summary confirmation
-and existing file-backed checkpoint evidence. If the work identifies a genuine
-operator decision or an input knowledge cannot settle, present and record that
-real question normally and wait for the person. Do not self-answer it or mint
-a human turn. Run the reviewer, sensors and artifact/freshness verification;
+and existing file-backed checkpoint evidence. If the work identifies a reserved
+operator decision (the closed set in stage-protocol.md § "Reserved operator
+decisions"), present and record that real question normally and wait for the
+person. Do not self-answer it or mint a human turn. Every other question the
+work raises is settled on the stage by the lead and its collaborators and
+recorded with its source; it is not asked. Run the reviewer, sensors and artifact/freshness verification;
 then report approved through the normal engine mechanism without a human
 approval menu or fabricated user input. The human learnings ritual applies only
 at an actual human gate. Explicit Construction checkpoint, skeleton and

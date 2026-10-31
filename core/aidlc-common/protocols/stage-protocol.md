@@ -16,6 +16,28 @@ knowledge and available evidence cannot settle. Record and await that real
 reply through the normal question contract; never invent a person answer,
 human turn, approval or instruction grant.
 
+### Reserved operator decisions
+
+On an autonomous stage, a question reaches the person only when it is a
+reserved operator decision. When the project's rule layer names the decisions
+it reserves to a person, that list is the whole set. When it names none, the
+set is closed at these classes:
+
+1. Changing the project's rules, its ratified scope, or a standing check.
+2. A values or priority call that no recorded rule, requirement or prior
+   decision settles.
+3. Spending money, or acting under an outside identity or account.
+4. An action that cannot be undone.
+5. A fact only the person holds and no artifact, record or evidence carries,
+   such as which account they own.
+
+Name the class in the question. Every other question the work raises is
+settled on the stage: a design choice, a tradeoff the recorded rules or
+decisions decide, an assumption the evidence supports, and an objection a
+collaborator raises. The lead settles it with its collaborators from the code,
+the upstream artifacts and the rules, and records the answer with its source in
+the stage's artifact. A question that names no class is not asked.
+
 Summary confirmation is owed only when the stage declares summary_confirmation
 and the engine's checkpoint owner requires it. The ceremony switch being on
 alone does not create a checkpoint. Preserve required checkpoints and
