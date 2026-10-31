@@ -259,6 +259,7 @@ for the affected record.
 - `rin-gates-review-scribe.ts` — review-integrity scribe: witnesses that the harness-set reviewer roster actually ran and converged.
 - `rin-gates-review-roster.ts` (`pnpm rin-gates:review-roster`) — resolves WHICH lenses a gate's board must dispatch, from the same `review-rosters.json` + slug normalizer the scribe and autonomy gate use. Run it before convening a board: a partial or substituted roster produces NO verdict (the scribe withholds the aggregate as `roster incomplete`) while looking like a successful review round.
 - `knowledge/rin-gates/rin-pr-review-board.json` — Gate-5 decorrelated board (the six pr-review hunts + intent-defense synthesis).
+- `knowledge/rin-gates/reserved-decisions.md` — who decides at a gate: the fork test, the rin reserved classes, which a gate decides and records versus stops for, and how a stopping question reaches the operator.
 - `{{HARNESS_DIR}}/agents/rin-pr-*-reviewer-agent.md` — the Gate-5 read-only review lenses.
 - `rin-gates-status.ts` — the regenerable, GITIGNORED status projection; an engine-intent enumerator over `intents.json` + each intent's `aidlc-state.md` Current Stage, classifying into `in-pipeline` / `terminal-operate` and consulting the intake store only for the intake queue.
 - `rin-gates-derivation-selftest.spec.ts` — the hermetic seam selftest (status projection, promotion tool, autonomy gate, verdict guard/emitter, review-scribe); the pre-push gate runs it.
