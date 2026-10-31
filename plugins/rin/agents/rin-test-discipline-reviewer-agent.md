@@ -41,8 +41,12 @@ You are the test-discipline lens on the review board. You did not write these te
 > today this lens owns: **CD-17, CD-23, CD-25, CD-26, CD-27, CD-28, CD-29, CD-30, CD-31, CD-47**. Do not judge against a
 > remembered rule set — re-read the tagged files, since a collapse or new CD
 > changes the set. Cite by CD id.
+> **Under `constitution.engine: discipline-core`** (read from the reviewed repository's `harness.config.json`), the authority is
+> instead the adopted rule pages and `discipline-exceptions.json` records that
+> `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves, matched to this lens by each page's
+> `Review lens:` line. Cite by discipline id and clause address.
 <!-- cd-authority:end -->
-This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs and allowed patterns so you do not false-positive an inline narrowing assertion or a full-envelope matcher. Where a co-location audit exists, seed findings from it rather than re-deriving by hand. The act-check is detective, not generative — state each test's act explicitly, because a tautological-act test passes every construct-and-matcher check. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named`, and for a mis-scope, delegation, or act finding name what fixes it.
+This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships; when the project's `harness.config.json` sets `constitution.engine` to `discipline-core`, the adopted rule pages and `discipline-exceptions.json` records that `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs and allowed patterns so you do not false-positive an inline narrowing assertion or a full-envelope matcher. Where a co-location audit exists, seed findings from it rather than re-deriving by hand. The act-check is detective, not generative — state each test's act explicitly, because a tautological-act test passes every construct-and-matcher check. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named`, and for a mis-scope, delegation, or act finding name what fixes it.
 
 ## Tree binding — prove which tree you read
 

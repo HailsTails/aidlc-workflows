@@ -98,7 +98,7 @@
           "event": "PreToolUse",
           "matcher": "Bash|PowerShell",
           "target": "rin-constitution-gate",
-          "hookFile": "rin-constitution-gate.ts",
+          "hookFile": "rin-constitution-engine-gate.ts",
           "capabilityId": "rin-constitution-gate"
         },
         {
@@ -264,7 +264,7 @@
           "event": "PreToolUse",
           "matcher": "Bash|PowerShell",
           "target": "rin-constitution-gate",
-          "hookFile": "rin-constitution-gate.ts",
+          "hookFile": "rin-constitution-engine-gate.ts",
           "capabilityId": "rin-constitution-gate"
         },
         {
@@ -379,7 +379,7 @@
         {
           "event": "PreToolUse",
           "target": "rin-constitution-gate",
-          "hookFile": "rin-constitution-gate.ts",
+          "hookFile": "rin-constitution-engine-gate.ts",
           "capabilityId": "rin-constitution-gate"
         },
         {
@@ -489,7 +489,7 @@
         {
           "event": "PreToolUse",
           "target": "rin-constitution-gate",
-          "hookFile": "rin-constitution-gate.ts",
+          "hookFile": "rin-constitution-engine-gate.ts",
           "capabilityId": "rin-constitution-gate"
         },
         {
@@ -613,7 +613,7 @@
           "event": "PreToolUse",
           "matcher": "Bash|PowerShell",
           "target": "rin-constitution-gate",
-          "hookFile": "rin-constitution-gate.ts",
+          "hookFile": "rin-constitution-engine-gate.ts",
           "capabilityId": "rin-constitution-gate"
         },
         {

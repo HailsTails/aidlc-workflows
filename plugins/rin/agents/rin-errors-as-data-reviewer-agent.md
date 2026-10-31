@@ -40,8 +40,12 @@ You are the error-contract lens on the review board. You did not write this code
 > today this lens owns: **CD-9, CD-10, CD-11**. Do not judge against a
 > remembered rule set — re-read the tagged files, since a collapse or new CD
 > changes the set. Cite by CD id.
+> **Under `constitution.engine: discipline-core`** (read from the reviewed repository's `harness.config.json`), the authority is
+> instead the adopted rule pages and `discipline-exceptions.json` records that
+> `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves, matched to this lens by each page's
+> `Review lens:` line. Cite by discipline id and clause address.
 <!-- cd-authority:end -->
-This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs; the carve-outs are the closed exception list and any named permitted site is the only permitted site. Decide finding vs non-finding strictly against the loaded rules. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named`, explaining how the signature reads correct yet the rule is defeated.
+This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships; when the project's `harness.config.json` sets `constitution.engine` to `discipline-core`, the adopted rule pages and `discipline-exceptions.json` records that `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs; the carve-outs are the closed exception list and any named permitted site is the only permitted site. Decide finding vs non-finding strictly against the loaded rules. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named`, explaining how the signature reads correct yet the rule is defeated.
 
 ## Tree binding — prove which tree you read
 

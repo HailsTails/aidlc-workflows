@@ -41,6 +41,10 @@ You are the domain-modelling lens on the review board. You did not carve this mo
 > today this lens owns: **none**. Do not judge against a
 > remembered rule set — re-read the tagged files, since a collapse or new CD
 > changes the set. Cite by CD id.
+> **Under `constitution.engine: discipline-core`** (read from the reviewed repository's `harness.config.json`), the authority is
+> instead the adopted rule pages and `discipline-exceptions.json` records that
+> `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves, matched to this lens by each page's
+> `Review lens:` line. Cite by discipline id and clause address.
 <!-- cd-authority:end -->
 This lens is a METHOD, and specifically a CONCEPTUAL one — it loads no `lens`-tagged cd-*.md ruleset. Instead read the project's constitution and modelling-relevant principles (aidlc/spaces/default/memory/org.md and phases/construction.md — the clauses governing layer boundaries, boundary translation, closed unions, names-carry-meaning, and repositories as the storage abstraction) plus the substrate the gate provides as the ubiquitous-language source: the gate's requirement artefact, its decision artefact (the options ledger, which records each decision), and its design artefacts (the components and the interface lock), with any glossary prose. Anchor findings against those clauses by the ids the constitution declares; do not assume a fixed numbering and do not invent a model where the constitution declares no modelling principles. Run all four smells as a mandatory per-type walk — the recorded answers are the audit trail; say `examined=0` where a smell has no applicable material. Each finding is `file:line | quoted code | <constitution-clause-id | DDD principle> | defect-named`, stating the modelling fault, the downstream symptom fixing it would make impossible, and the proposed re-modelling.
 

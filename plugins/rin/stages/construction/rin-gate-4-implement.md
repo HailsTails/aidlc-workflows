@@ -45,6 +45,7 @@ sensors:
   - cd-43
   - cd-44
   - carve-out-decay
+  - disciplines
   - dd-1
   - dd-2
   - dd-7

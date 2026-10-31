@@ -38,6 +38,14 @@ they override any default intuition.
 
 ## Loading the ruleset
 
+Where the rules live depends on the reviewed codebase's `constitution.engine`;
+[`../ruleset-source.md`](../ruleset-source.md) is the single procedure for
+resolving it. Under `discipline-core`, the rules are the adopted disciplines'
+rule pages whose `Review lens:` line names `ddd-modelling`, and their exceptions are
+`discipline-exceptions.json` records: read those wherever the steps below say
+`cd-*.md`, frontmatter `lens:` or carve-outs. Under `rin-walker` (the default),
+follow the steps below as written.
+
 This lens has **no tagged `cd-*.md` ruleset** — it is conceptual. Do not glob for
 rules tagged `lens: ddd-modelling`; there are none, by design. Instead:
 

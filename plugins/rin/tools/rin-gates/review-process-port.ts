@@ -7,6 +7,7 @@ type SyncCommandInput = {
   readonly cwd?: string;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly input?: string;
+  readonly timeoutMilliseconds?: number;
 };
 type CommandInput = {
   readonly program: string;
@@ -38,6 +39,8 @@ type ReviewProcessPort = {
   readonly run: (input: CommandInput) => Promise<CommandOutput>;
 };
 
+const SYNC_OUTPUT_LIMIT_BYTES = 64 * 1024 * 1024;
+
 const processOperation = <Value>(operation: () => Value): Value => {
   try { return operation(); }
   catch (error) { throw new Error(error instanceof Error ? error.message : String(error)); }
@@ -57,8 +60,8 @@ const defaultReviewProcessPort = (): ReviewProcessPort => ({
     process.stdin.on("data", (chunk: string) => { text += chunk; });
     process.stdin.on("end", () => resolveInput(text));
   }),
-  runSync: ({ program, args, cwd, environment, input }) => {
-    const result = processOperation(() => spawnSync(program, [...args], { cwd, env: environment, input, encoding: "utf8", stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], windowsHide: true }));
+  runSync: ({ program, args, cwd, environment, input, timeoutMilliseconds }) => {
+    const result = processOperation(() => spawnSync(program, [...args], { cwd, env: environment, input, encoding: "utf8", stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], windowsHide: true, timeout: timeoutMilliseconds, maxBuffer: SYNC_OUTPUT_LIMIT_BYTES }));
     return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
   },
   runSyncBytes: ({ program, args, cwd, environment, input }) => {
@@ -79,5 +82,5 @@ const defaultReviewProcessPort = (): ReviewProcessPort => ({
   }),
 });
 
-export type { ByteCommandOutput, CommandInput, CommandOutput, ReviewProcessPort };
+export type { ByteCommandOutput, CommandInput, CommandOutput, ReviewProcessPort, SyncCommandInput };
 export { defaultReviewProcessPort };
