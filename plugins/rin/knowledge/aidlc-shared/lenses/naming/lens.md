@@ -46,13 +46,7 @@ first; they override any default intuition.
 
 ## Loading the ruleset
 
-Where the rules live depends on the reviewed codebase's `constitution.engine`;
-[`../ruleset-source.md`](../ruleset-source.md) is the single procedure for
-resolving it. Under `discipline-core`, the rules are the adopted disciplines'
-rule pages whose `Review lens:` line names `naming`, and their exceptions are
-`discipline-exceptions.json` records: read those wherever the steps below say
-`cd-*.md`, frontmatter `lens:` or carve-outs. Under `rin-walker` (the default),
-follow the steps below as written.
+Under `constitution.engine: discipline-core`, resolve every rule and exception named below through [`../ruleset-source.md`](../ruleset-source.md) (by the `Review lens:` match for `naming`); otherwise follow the steps as written.
 
 1. Resolve the codebase's code-discipline directory (the convention is
    `code-discipline/` beside the constitution; the dispatching workflow states

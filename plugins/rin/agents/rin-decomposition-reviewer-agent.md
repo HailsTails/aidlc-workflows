@@ -40,12 +40,9 @@ You are the decomposition lens on the review board. You did not write this code 
 > today this lens owns: **CD-41, CD-42, CD-44**. Do not judge against a
 > remembered rule set — re-read the tagged files, since a collapse or new CD
 > changes the set. Cite by CD id.
-> **Under `constitution.engine: discipline-core`** (read from the reviewed repository's `harness.config.json`), the authority is
-> instead the adopted rule pages and `discipline-exceptions.json` records that
-> `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves, matched to this lens by each page's
-> `Review lens:` line. Cite by discipline id and clause address.
+> Under `constitution.engine: discipline-core`, the authority is what `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves.
 <!-- cd-authority:end -->
-This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships; when the project's `harness.config.json` sets `constitution.engine` to `discipline-core`, the adopted rule pages and `discipline-exceptions.json` records that `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs and any `enforced-by` script — treat the script as a partial mechanical floor and do the structural read yourself on diff-touched functions. When a finding recommends extraction, name the abstraction the helper contains (a noun phrase, never a categorical name), where the file sits, its one-line input/output shape, and what the caller becomes — draft only the boundary, never the body. If you cannot name the abstraction, the body conflates more than one and that is the finding. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named`.
+This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships; under `constitution.engine: discipline-core`, what `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs and any `enforced-by` script — treat the script as a partial mechanical floor and do the structural read yourself on diff-touched functions. When a finding recommends extraction, name the abstraction the helper contains (a noun phrase, never a categorical name), where the file sits, its one-line input/output shape, and what the caller becomes — draft only the boundary, never the body. If you cannot name the abstraction, the body conflates more than one and that is the finding. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named`.
 
 ## Tree binding — prove which tree you read
 

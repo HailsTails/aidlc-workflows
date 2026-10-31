@@ -1,4 +1,5 @@
 import type { DisciplinesCheckOutcome, DisciplinesCheckRequest } from "../tools/rin-disciplines-check.ts";
+import type { CommandOutput } from "../tools/rin-gates/review-process-port.ts";
 import { CHECK_COMMAND_TEXT, type FailingSection, failingSectionsOf, remedyOf } from "../tools/rin-disciplines-report.ts";
 import type { ConstitutionEngine } from "../tools/rin-harness-config.ts";
 import type { PathOperations } from "../tools/rin-harness-path-operations.ts";
@@ -240,6 +241,47 @@ const constitutionEngineFromWire = ({ text }: { readonly text: string }): Consti
   }
 };
 
+const UNKNOWN_ENGINE_COMMAND = 'unknown command "constitution-engine"';
+
+const WALKER_DENIAL_EXIT_CODE = 2;
+
+const engineReadingOf = ({
+  configToolPath,
+  output,
+}: {
+  readonly configToolPath: string;
+  readonly output: CommandOutput;
+}): EngineReading => {
+  const printed = `${output.stdout}${output.stderr}`.trim();
+  if (printed.includes(UNKNOWN_ENGINE_COMMAND)) {
+    return {
+      kind: "unavailable",
+      reason: `this checkout's rin install predates constitution.engine (${configToolPath} has no constitution-engine command); merge the base branch into this checkout, or re-sync rin here`,
+    };
+  }
+  const constitutionEngine = output.status === 0 ? constitutionEngineFromWire({ text: output.stdout }) : undefined;
+  if (constitutionEngine === undefined) {
+    return { kind: "unavailable", reason: `${configToolPath} exited ${String(output.status)}: ${printed}` };
+  }
+  return { kind: "read", constitutionEngine };
+};
+
+const walkerGateOutcomeOf = ({
+  walkerGatePath,
+  output,
+}: {
+  readonly walkerGatePath: string;
+  readonly output: CommandOutput;
+}): WalkerGateOutcome => {
+  if (output.status === 0) {
+    return { kind: "allowed" };
+  }
+  if (output.status === WALKER_DENIAL_EXIT_CODE) {
+    return { kind: "denied", reason: output.stderr };
+  }
+  return { kind: "unverified", reason: `${walkerGatePath} exited ${String(output.status)}: ${output.stderr.trim()}` };
+};
+
 const checkoutPluginPathOf = ({
   hookDirectory,
   checkoutRoot,
@@ -269,6 +311,8 @@ export {
   checkoutPluginPathOf,
   constitutionEngineFromWire,
   constitutionGateDecisionOf,
+  engineReadingOf,
   gatedCompletionOf,
   gateRunVerdictOf,
+  walkerGateOutcomeOf,
 };

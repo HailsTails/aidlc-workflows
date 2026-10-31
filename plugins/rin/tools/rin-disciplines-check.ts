@@ -24,6 +24,8 @@ const PASSING_EXIT_CODE = 0;
 
 const FAILING_EXIT_CODE = 1;
 
+const PASSING_VERDICT = /verdict: pass\s*$/;
+
 const FAILING_VERDICT = /verdict: fail\s*$/;
 
 const OUTPUT_SHOWN_LENGTH = 2000;
@@ -74,7 +76,7 @@ const disciplinesCheckOutcomeOf = ({
   readonly output: CommandOutput;
   readonly timeoutMilliseconds: number;
 }): DisciplinesCheckOutcome => {
-  if (output.status === PASSING_EXIT_CODE) {
+  if (output.status === PASSING_EXIT_CODE && PASSING_VERDICT.test(output.stdout)) {
     return { kind: "passed" };
   }
   if (output.status === FAILING_EXIT_CODE && FAILING_VERDICT.test(output.stdout)) {

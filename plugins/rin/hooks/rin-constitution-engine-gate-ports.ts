@@ -6,9 +6,10 @@ import { defaultFileKindPort, type FileKindPort } from "../tools/rin-harness-sid
 import {
   type ConstitutionGatePorts,
   checkoutPluginPathOf,
-  constitutionEngineFromWire,
+  engineReadingOf,
   type EngineReading,
   type WalkerGateOutcome,
+  walkerGateOutcomeOf,
 } from "./rin-constitution-engine-gate-decision.ts";
 
 type GateRuntime = {
@@ -25,8 +26,6 @@ const ENGINE_READ_TIMEOUT_MILLISECONDS = 60_000;
 const WALKER_GATE_TIMEOUT_MILLISECONDS = 400_000;
 
 const DISCIPLINES_CHECK_TIMEOUT_MILLISECONDS = 180_000;
-
-const WALKER_DENIAL_EXIT_CODE = 2;
 
 const checkoutRootOf =
   (runtime: GateRuntime): ConstitutionGatePorts["checkoutRootOf"] =>
@@ -71,14 +70,7 @@ const readEngine =
       environment: { ...runtime.process.environment, CLAUDE_PROJECT_DIR: checkoutRoot },
       timeoutMilliseconds: ENGINE_READ_TIMEOUT_MILLISECONDS,
     });
-    const constitutionEngine = output.status === 0 ? constitutionEngineFromWire({ text: output.stdout }) : undefined;
-    if (constitutionEngine === undefined) {
-      return {
-        kind: "unavailable",
-        reason: `${configToolPath} exited ${String(output.status)}: ${`${output.stdout}${output.stderr}`.trim()}`,
-      };
-    }
-    return { kind: "read", constitutionEngine };
+    return engineReadingOf({ configToolPath, output });
   };
 
 const runWalkerGate =
@@ -96,16 +88,7 @@ const runWalkerGate =
       environment: { ...runtime.process.environment, CLAUDE_PROJECT_DIR: checkoutRoot },
       timeoutMilliseconds: WALKER_GATE_TIMEOUT_MILLISECONDS,
     });
-    if (output.status === 0) {
-      return { kind: "allowed" };
-    }
-    if (output.status === WALKER_DENIAL_EXIT_CODE) {
-      return { kind: "denied", reason: output.stderr };
-    }
-    return {
-      kind: "unverified",
-      reason: `${walkerGatePath} exited ${String(output.status)}: ${output.stderr.trim()}`,
-    };
+    return walkerGateOutcomeOf({ walkerGatePath, output });
   };
 
 const stageOf = ({ command }: { readonly command: string }): string =>

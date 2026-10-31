@@ -40,6 +40,18 @@ The ruleset is the codebase's adopted disciplines:
 5. Cite a finding by discipline id and, where one applies, clause address
    (`CD-15#loops`).
 
+### Looking up a cited rule by id
+
+A lens that loads no tagged rules (defended-on-intent, which re-tests other
+lenses' PASS claims, and ddd-modelling) instead looks up the rule each claim or
+finding cites. It does not match on `Review lens:`. A cited `CD-n` resolves to
+`tools/discipline-core/rules/CD-n/README.md`. A cited `<ruleSet>/<Id>`
+resolves to `<ruleSets[<ruleSet>]>/<Id>/README.md`. A clause address
+`<Id>#<clause>` resolves to the same page, at that clause's row in its
+`## Clauses` table. The page holds whatever its `Review lens:` line says. A
+cited id with no such page is a citation of a rule that does not exist, and is
+reported as one.
+
 If `disciplines.json` is missing or adopts no discipline at all, or the rule
 page directory does not exist, STOP and return CANNOT-REVIEW naming the path
 that was resolved. That is an unloadable ruleset, never a codebase without

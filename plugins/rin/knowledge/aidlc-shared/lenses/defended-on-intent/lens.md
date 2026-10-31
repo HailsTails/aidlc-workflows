@@ -41,13 +41,7 @@ intent rather than against the enumerated letter.
 
 ## Loading the ruleset
 
-Where the rules live depends on the reviewed codebase's `constitution.engine`;
-[`../ruleset-source.md`](../ruleset-source.md) is the single procedure for
-resolving it. Under `discipline-core`, the rules are the adopted disciplines'
-rule pages whose `Review lens:` line names `defended-on-intent`, and their exceptions are
-`discipline-exceptions.json` records: read those wherever the steps below say
-`cd-*.md`, frontmatter `lens:` or carve-outs. Under `rin-walker` (the default),
-follow the steps below as written.
+Under `constitution.engine: discipline-core`, resolve every rule and exception named below through [`../ruleset-source.md`](../ruleset-source.md) (by the id each cited rule names); otherwise follow the steps as written.
 
 This lens loads **no `lens:`-tagged rules**. Instead:
 

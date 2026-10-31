@@ -7,9 +7,11 @@ import {
   constitutionEngineFromWire,
   constitutionGateDecisionOf,
   type EngineReading,
+  engineReadingOf,
   gatedCompletionOf,
   gateRunVerdictOf,
   type WalkerGateOutcome,
+  walkerGateOutcomeOf,
 } from "./rin-constitution-engine-gate-decision.ts";
 import { gatedInvocationFrom } from "./rin-constitution-gate.ts";
 
@@ -63,6 +65,11 @@ describe("gatedCompletionOf", () => {
     ["a bypassed completion", hookInputOf({ command: `AIDLC_CONSTITUTION_BYPASS=1 ${COMPLETION_COMMAND}` })],
     ["a non-shell tool", JSON.stringify({ tool_name: "Write", tool_input: { command: COMPLETION_COMMAND } })],
     ["text that is not JSON", "report --result completed"],
+    ["a PowerShell completion", JSON.stringify({ tool_name: "PowerShell", tool_input: { command: COMPLETION_COMMAND }, cwd: "/repo" })],
+    ["a completion without a working directory", JSON.stringify({ tool_name: "Bash", tool_input: { command: COMPLETION_COMMAND } })],
+    ["a shell call without tool input", JSON.stringify({ tool_name: "Bash", cwd: "/repo" })],
+    ["an approval", hookInputOf({ command: "bun .claude/tools/aidlc.ts engine orchestrate report --result approved" })],
+    ["a bypass placed after the command", hookInputOf({ command: `${COMPLETION_COMMAND} # AIDLC_CONSTITUTION_BYPASS=1` })],
   ])("agrees with the rin-walker gate on %s", (_label, hookInput) => {
     expect(gatedCompletionOf({ hookInput }) === undefined).toBe(gatedInvocationFrom({ raw: hookInput }) === null);
   });
@@ -192,5 +199,51 @@ describe("checkoutPluginPathOf", () => {
         pathOperations,
       }),
     ).toBe("/worktree/plugins/rin/hooks/rin-constitution-gate.ts");
+  });
+});
+
+describe("engineReadingOf", () => {
+  test("a rin install that predates the setting names the step that fixes it", () => {
+    expect(
+      engineReadingOf({
+        configToolPath: "/wt/.claude/tools/rin-harness-config.ts",
+        output: { status: 1, stdout: "", stderr: 'rin-harness-config: unknown command "constitution-engine" (print)\n' },
+      }),
+    ).toEqual({
+      kind: "unavailable",
+      reason:
+        "this checkout's rin install predates constitution.engine (/wt/.claude/tools/rin-harness-config.ts has no constitution-engine command); merge the base branch into this checkout, or re-sync rin here",
+    });
+  });
+
+  test("an invalid config is unavailable with the config tool's own reason", () => {
+    expect(
+      engineReadingOf({
+        configToolPath: "/wt/tools/rin-harness-config.ts",
+        output: { status: 2, stdout: "", stderr: "rin-harness-config: bad engine\n" },
+      }),
+    ).toEqual({ kind: "unavailable", reason: "/wt/tools/rin-harness-config.ts exited 2: rin-harness-config: bad engine" });
+  });
+
+  test("a printed engine is read", () => {
+    expect(
+      engineReadingOf({ configToolPath: "/wt/tools/rin-harness-config.ts", output: { status: 0, stdout: '{"engine":"rin-walker"}\n', stderr: "" } }),
+    ).toEqual({ kind: "read", constitutionEngine: { engine: "rin-walker" } });
+  });
+});
+
+describe("walkerGateOutcomeOf", () => {
+  test.each([
+    [0, { kind: "allowed" }],
+    [2, { kind: "denied", reason: "Blocked: violations\n" }],
+    [1, { kind: "unverified", reason: "/wt/hooks/rin-constitution-gate.ts exited 1: Blocked: violations" }],
+    [null, { kind: "unverified", reason: "/wt/hooks/rin-constitution-gate.ts exited null: Blocked: violations" }],
+  ])("maps the walker gate's exit %s", (status, expected) => {
+    expect(
+      walkerGateOutcomeOf({
+        walkerGatePath: "/wt/hooks/rin-constitution-gate.ts",
+        output: { status, stdout: "", stderr: "Blocked: violations\n" },
+      }),
+    ).toEqual(expected);
   });
 });

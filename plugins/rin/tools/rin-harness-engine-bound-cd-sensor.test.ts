@@ -1,10 +1,15 @@
 import { describe, expect, test } from "vitest";
 import { cdSensorWireOf } from "./rin-harness-cd-enforcement.ts";
-import { delegatedCdSensorResultOf, projectDirOf } from "./rin-harness-engine-bound-cd-sensor.ts";
+import {
+  DELEGATED_SCANNED_TEXT,
+  delegatedCdSensorResultOf,
+  projectDirOf,
+  unreadableEngineCdWireLineOf,
+} from "./rin-harness-engine-bound-cd-sensor.ts";
 
 describe("delegatedCdSensorResultOf", () => {
   test("a CD sensor under discipline-core passes, not evaluated, naming the disciplines sensor", () => {
-    expect(cdSensorWireOf({ result: delegatedCdSensorResultOf({ cdId: "CD-15" }) })).toEqual({
+    expect(cdSensorWireOf({ result: delegatedCdSensorResultOf({ cdId: "CD-15", scanned: DELEGATED_SCANNED_TEXT }) })).toEqual({
       pass: true,
       cd: "CD-15",
       findings_count: 0,
@@ -13,6 +18,16 @@ describe("delegatedCdSensorResultOf", () => {
       stale_authorised_paths: [],
       stale_carved_paths: [],
       doubly_held_paths: [],
+    });
+  });
+});
+
+describe("unreadableEngineCdWireLineOf", () => {
+  test("an unreadable engine fails the CD sensor and names why, instead of running the walker", () => {
+    expect(JSON.parse(unreadableEngineCdWireLineOf({ cdId: "CD-15", reason: "bad engine" }))).toMatchObject({
+      pass: false,
+      cd: "CD-15",
+      scanned: "(constitution.engine could not be read, so no engine was run: bad engine)",
     });
   });
 });

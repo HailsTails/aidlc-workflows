@@ -35,6 +35,12 @@ repository that adopted it. It reads `constitution.engine` from
 - **`rin-walker`** (the default). The sensor passes with a not-evaluated note,
   and the `cd-*` sensors run rin's built-in walker.
 
+## Cost
+
+Core has no per-file mode, so each run checks the whole repository (ESLint
+included) and then keeps one file's findings. That is about 15 to 18 seconds
+per TypeScript write on a mid-sized repository.
+
 ## Failure mode
 
 Emits `SENSOR_FAILED` with the edited file's findings. When core reaches no

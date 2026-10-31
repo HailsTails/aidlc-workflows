@@ -38,10 +38,7 @@ This lens merges three Gate-4 lenses at contract grain. Naming, function-first a
 > those files are the ONLY authority (there is no restated copy). Do not judge against a
 > remembered rule set — re-read the tagged files, since a collapse or new CD
 > changes the set. Cite by CD id.
-> **Under `constitution.engine: discipline-core`** (read from the reviewed repository's `harness.config.json`), the authority is
-> instead the adopted rule pages and `discipline-exceptions.json` records that
-> `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves, matched to this lens by each page's
-> `Review lens:` line. Cite by discipline id and clause address.
+> Under `constitution.engine: discipline-core`, the authority is what `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves.
 <!-- cd-authority:end -->
 This lens is a METHOD, not a hardcoded rule list. Apply the loaded rules to what the lock specifies, not to code that does not exist yet: a rule about a body applies only where the contract makes the violation unavoidable. Cite findings as `file:line | quoted contract | <CD-id> | defect-named`, and where a carve-out was invoked, state which one and why it does not apply.
 

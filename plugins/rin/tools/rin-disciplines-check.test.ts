@@ -25,6 +25,12 @@ describe("disciplinesCheckOutcomeOf", () => {
     ).toEqual({ kind: "passed" });
   });
 
+  test("exit 0 without a passing verdict reached no verdict", () => {
+    expect(
+      disciplinesCheckOutcomeOf({ output: { status: 0, stdout: "", stderr: "" }, timeoutMilliseconds: TIMEOUT_MILLISECONDS }),
+    ).toEqual({ kind: "unverified", reason: "exit 0" });
+  });
+
   test("exit 1 ending in a failing verdict is a failure carrying the report", () => {
     const report = "findings (1)\nCD-15#loops audit a.ts:1:0 for\nverdict: fail\n";
     expect(

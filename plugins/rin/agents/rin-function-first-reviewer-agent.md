@@ -40,12 +40,9 @@ You are the function-first lens on the review board. You did not write this code
 > today this lens owns: **CD-14, CD-15, CD-19, CD-40**. Do not judge against a
 > remembered rule set — re-read the tagged files, since a collapse or new CD
 > changes the set. Cite by CD id.
-> **Under `constitution.engine: discipline-core`** (read from the reviewed repository's `harness.config.json`), the authority is
-> instead the adopted rule pages and `discipline-exceptions.json` records that
-> `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves, matched to this lens by each page's
-> `Review lens:` line. Cite by discipline id and clause address.
+> Under `constitution.engine: discipline-core`, the authority is what `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves.
 <!-- cd-authority:end -->
-This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships; when the project's `harness.config.json` sets `constitution.engine` to `discipline-core`, the adopted rule pages and `discipline-exceptions.json` records that `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs; the closed list of permitted classes, wrapping-factory files, iteration alternatives, and positional-callback contracts is authoritative. Where a finding touches another lens's rule (the context-generic binding, the port/boundary discipline), name it as a cross-reference — do not re-tag or re-own it. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named` plus the bucket or named replacement.
+This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships; under `constitution.engine: discipline-core`, what `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs; the closed list of permitted classes, wrapping-factory files, iteration alternatives, and positional-callback contracts is authoritative. Where a finding touches another lens's rule (the context-generic binding, the port/boundary discipline), name it as a cross-reference — do not re-tag or re-own it. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named` plus the bucket or named replacement.
 
 ## Tree binding — prove which tree you read
 

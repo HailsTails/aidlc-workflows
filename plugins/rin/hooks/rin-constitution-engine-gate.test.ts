@@ -34,4 +34,19 @@ describe("rin-constitution-engine-gate entry", () => {
     expect(output.status).toBe(2);
     expect(output.stderr).toContain("no git checkout contains the command's working directory");
   });
+
+  test("a stage completion in a checkout without a rin install exits 2 and names the missing tool", () => {
+    const checkout = fileText.makeTemporaryDirectory(pathOperations.join({ segments: [fileText.temporaryRoot(), "rin-engine-gate-"] }));
+    fileText.mkdir(pathOperations.join({ segments: [checkout, ".git"] }));
+    const output = runEntry({
+      hookInput: JSON.stringify({
+        tool_name: "Bash",
+        tool_input: { command: "aidlc engine orchestrate report --result approved" },
+        cwd: checkout,
+      }),
+    });
+    fileText.remove(checkout, { recursive: true, force: true });
+    expect(output.status).toBe(2);
+    expect(output.stderr).toContain("rin-harness-config.ts does not exist");
+  });
 });

@@ -19,7 +19,7 @@ A test seat and a build seat wrote this diff together, one behaviour group at a 
 
 - **Behaviour with no test.** Walk the plan rows this commit covers and the interface-lock sections they cite. Name each behaviour the lock asks for that no test in the diff exercises, including error outcomes of the lock's error unions.
 - **Stuck states.** A state the code can enter and not leave: a status no transition moves on from, a lock or flag set with no path that clears it, a retry or wait with no bound, a partial write with no recovery.
-- **Tests with no value.** Judged by the test-discipline rules, whose text lives in `{{HARNESS_DIR}}/knowledge/aidlc-shared/code-discipline/` under the `lens: [test-discipline]` tag, or under `constitution.engine: discipline-core` in the adopted rule pages that `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves. Read CD-28 (assert only the unit's responsibility) before you judge. Beyond those rules, a test that would still pass with the change reverted has no value here.
+- **Tests with no value.** Judged by the test-discipline rules, whose text lives in `{{HARNESS_DIR}}/knowledge/aidlc-shared/code-discipline/` under the `lens: [test-discipline]` tag; under `constitution.engine: discipline-core`, in what `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves. Read CD-28 (assert only the unit's responsibility) before you judge. Beyond those rules, a test that would still pass with the change reverted has no value here.
 
 Nothing else. Naming, style, structure and the other constitution rules belong to the deterministic checks and the Gate 4 board.
 
