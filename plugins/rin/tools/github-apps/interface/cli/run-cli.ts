@@ -9,6 +9,7 @@ import type {
 import { describeCliFailure } from "./cli-failure.ts";
 import { parseCommandFlags, type CommandFlags } from "./command-flags.ts";
 import { conversationCommands } from "./conversation-commands.ts";
+import { issueCommands } from "./issue-commands.ts";
 import { landingCommands } from "./landing-commands.ts";
 import { localCommands } from "./local-commands.ts";
 import { pullRequestCommands } from "./pull-request-commands.ts";
@@ -23,6 +24,7 @@ const EXIT_USAGE = 2;
 const COMMANDS = {
   ...pullRequestCommands,
   ...conversationCommands,
+  ...issueCommands,
   ...landingCommands,
   ...localCommands,
 } satisfies Readonly<Record<string, CliCommand>>;
@@ -100,7 +102,10 @@ const runWithFlags = async ({
   flagTokens,
   dependencies,
 }: CommandSelection): CommandOutcome => {
-  const flags = parseCommandFlags(flagTokens);
+  const flags = parseCommandFlags({
+    tokens: flagTokens,
+    repeatableFlags: command.access === "repository" ? (command.repeatableFlags ?? []) : [],
+  });
   if (flags.kind === "failure") return flags;
   return runCommand({ command, flags: flags.outcome, dependencies });
 };

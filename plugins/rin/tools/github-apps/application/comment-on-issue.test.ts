@@ -17,6 +17,8 @@ const fakeRepositoryApi = () => ({
   squashMerge: vi.fn(),
   closePullRequest: vi.fn(),
   changeReadiness: vi.fn(),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
 });
 
 describe("commentOnIssue", () => {

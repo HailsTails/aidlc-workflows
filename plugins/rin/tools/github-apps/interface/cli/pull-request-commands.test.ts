@@ -39,6 +39,8 @@ const fakeRepositoryApi = () => ({
   changeReadiness: vi
     .fn<GitHubRepositoryPort["changeReadiness"]>()
     .mockResolvedValue(succeed("draft")),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
 });
 
 const contextWith = ({

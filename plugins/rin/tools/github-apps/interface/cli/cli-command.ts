@@ -45,6 +45,7 @@ type RepositoryCommandContext = CommandContext & {
 type RepositoryCommand = {
   readonly access: "repository";
   readonly role: AgentRole;
+  readonly repeatableFlags?: readonly string[];
   readonly execute: (context: RepositoryCommandContext) => CommandOutcome;
 };
 

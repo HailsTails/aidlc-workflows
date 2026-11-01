@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, type Mock } from "vitest";
+import { z } from "zod";
 import { fail, succeed } from "../domain/result.ts";
 import { secret } from "../domain/secret.ts";
-import type { GitHubHttp } from "./github-http.ts";
+import type { GitHubHttp, GitHubHttpRequest } from "./github-http.ts";
 import { createGitHubRepositoryApi } from "./github-repository-api.ts";
 
 const credential = secret("ghs_token");
@@ -226,6 +227,170 @@ describe("createGitHubRepositoryApi landing", () => {
     ).toEqual(succeed("ready-for-review"));
     expect(JSON.stringify(lastRequest(http)?.requestBody)).toContain(
       "markPullRequestReadyForReview",
+    );
+  });
+});
+
+const issueUrl = "https://github.com/HailsTails/minutesarah-shop/issues/429";
+
+const repositoryLabels: Readonly<Record<string, string>> = {
+  bug: "LA_bug",
+  "stage:triage": "LA_triage",
+  "stage:build": "LA_build",
+};
+
+const requestPayloadSchema = z.object({
+  variables: z.object({ labelName: z.string().optional() }).loose(),
+});
+
+const issueReplies: Readonly<Record<string, (labelName: string | undefined) => unknown>> = {
+  "read repository": () => ({ repository: { id: "R_shop" } }),
+  "find label": (labelName) => ({
+    repository: {
+      label:
+        labelName !== undefined && Object.hasOwn(repositoryLabels, labelName)
+          ? { id: repositoryLabels[labelName] }
+          : null,
+    },
+  }),
+  "open issue": () => ({ createIssue: { issue: { url: issueUrl } } }),
+  "find issue": () => ({ repository: { issue: { id: "I_node429", url: issueUrl } } }),
+  "revise issue": () => ({ updateIssue: { issue: { url: issueUrl } } }),
+  "add labels": () => ({ addLabelsToLabelable: { clientMutationId: null } }),
+  "remove labels": () => ({ removeLabelsFromLabelable: { clientMutationId: null } }),
+};
+
+const labelVariable = (request: GitHubHttpRequest): string | undefined =>
+  requestPayloadSchema.parse(request.requestBody).variables.labelName;
+
+const answeringIssueRequests = () => ({
+  requestJson: vi.fn<GitHubHttp["requestJson"]>().mockImplementation((request) => {
+    const reply = issueReplies[request.operation];
+    return Promise.resolve(succeed({ data: reply?.(labelVariable(request)) }));
+  }),
+});
+
+const requestsFor = (http: RecordingHttp, operation: string) =>
+  http.requestJson.mock.calls
+    .map(([request]) => request)
+    .filter((request) => request.operation === operation);
+
+describe("createGitHubRepositoryApi issues", () => {
+  it("opens an issue in the repository with the ids of its labels", async () => {
+    const http = answeringIssueRequests();
+
+    const opened = await createGitHubRepositoryApi({ http, credential, repository }).openIssue({
+      title: "Basket loses items",
+      body: "marker\n\nSteps.",
+      labels: ["bug", "stage:triage"],
+    });
+
+    expect(opened).toEqual(succeed({ url: issueUrl }));
+    expect(requestsFor(http, "open issue")[0]).toMatchObject({
+      requestBody: {
+        variables: {
+          repositoryId: "R_shop",
+          title: "Basket loses items",
+          body: "marker\n\nSteps.",
+          labelIds: ["LA_bug", "LA_triage"],
+        },
+      },
+    });
+  });
+
+  it("refuses to open an issue with a label the repository does not have", async () => {
+    const http = answeringIssueRequests();
+
+    expect(
+      await createGitHubRepositoryApi({ http, credential, repository }).openIssue({
+        title: "Basket loses items",
+        body: "Steps.",
+        labels: ["stage:unknown"],
+      }),
+    ).toEqual(
+      fail({
+        kind: "github-rejected",
+        operation: "find label",
+        status: 404,
+        detail: 'label "stage:unknown" does not exist in HailsTails/minutesarah-shop',
+      }),
+    );
+    expect(requestsFor(http, "open issue")).toEqual([]);
+  });
+
+  it("moves labels on an issue without rewriting its fields", async () => {
+    const http = answeringIssueRequests();
+
+    const revised = await createGitHubRepositoryApi({ http, credential, repository }).reviseIssue({
+      issueNumber: 429,
+      title: undefined,
+      body: undefined,
+      state: undefined,
+      labels: { add: ["stage:build"], remove: ["stage:triage"] },
+    });
+
+    expect(revised).toEqual(succeed({ url: issueUrl }));
+    expect(requestsFor(http, "revise issue")).toEqual([]);
+    expect(requestsFor(http, "add labels")[0]).toMatchObject({
+      requestBody: { variables: { labelableId: "I_node429", labelIds: ["LA_build"] } },
+    });
+    expect(requestsFor(http, "remove labels")[0]).toMatchObject({
+      requestBody: { variables: { labelableId: "I_node429", labelIds: ["LA_triage"] } },
+    });
+  });
+
+  it("treats removing a label the repository does not have as already done", async () => {
+    const http = answeringIssueRequests();
+
+    const revised = await createGitHubRepositoryApi({ http, credential, repository }).reviseIssue({
+      issueNumber: 429,
+      title: undefined,
+      body: undefined,
+      state: undefined,
+      labels: { add: [], remove: ["stage:unknown"] },
+    });
+
+    expect(revised).toEqual(succeed({ url: issueUrl }));
+    expect(requestsFor(http, "remove labels")).toEqual([]);
+  });
+
+  it("closes and retitles an issue in one update", async () => {
+    const http = answeringIssueRequests();
+
+    await createGitHubRepositoryApi({ http, credential, repository }).reviseIssue({
+      issueNumber: 429,
+      title: "Basket keeps its items",
+      body: undefined,
+      state: "closed",
+      labels: { add: [], remove: [] },
+    });
+
+    expect(requestsFor(http, "revise issue")[0]).toMatchObject({
+      requestBody: {
+        variables: { issueId: "I_node429", title: "Basket keeps its items", state: "CLOSED" },
+      },
+    });
+    expect(requestsFor(http, "add labels")).toEqual([]);
+  });
+
+  it("reports an issue number that does not exist", async () => {
+    const http = replying({ repository: { issue: null } });
+
+    expect(
+      await createGitHubRepositoryApi({ http, credential, repository }).reviseIssue({
+        issueNumber: 999,
+        title: "Gone",
+        body: undefined,
+        state: undefined,
+        labels: { add: [], remove: [] },
+      }),
+    ).toEqual(
+      fail({
+        kind: "github-rejected",
+        operation: "find issue",
+        status: 404,
+        detail: "#999 does not exist in HailsTails/minutesarah-shop",
+      }),
     );
   });
 });

@@ -39,6 +39,10 @@ const fakeRepositoryApi = () => ({
   squashMerge: vi.fn(),
   closePullRequest: vi.fn(),
   changeReadiness: vi.fn(),
+  openIssue: vi
+    .fn<GitHubRepositoryPort["openIssue"]>()
+    .mockResolvedValue(succeed({ url: "https://github.com/issues/429" })),
+  reviseIssue: vi.fn(),
 });
 
 const fakeDependencies = (repositoryApi: GitHubRepositoryPort) => ({
@@ -90,6 +94,37 @@ describe("runCli", () => {
     });
     expect(dependencies.terminal.writeOutput).toHaveBeenCalledExactlyOnceWith(
       "Reviewed #4 (approve): https://github.com/review/1\n",
+    );
+  });
+
+  it("opens an issue with every --label given, as the author bot", async () => {
+    const repositoryApi = fakeRepositoryApi();
+    const dependencies = fakeDependencies(repositoryApi);
+
+    const exitCode = await runCli({
+      dependencies,
+      commandArguments: [
+        "issue",
+        "--title",
+        "Basket loses items",
+        "--body",
+        "Steps.",
+        "--label",
+        "bug",
+        "--label",
+        "stage:triage",
+      ],
+    });
+
+    expect(exitCode).toBe(0);
+    expect(dependencies.tokenMinter.mintInstallationToken).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "author", appSlug: "rin-author" }),
+    );
+    expect(repositoryApi.openIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ labels: ["bug", "stage:triage"] }),
+    );
+    expect(dependencies.terminal.writeOutput).toHaveBeenCalledExactlyOnceWith(
+      "https://github.com/issues/429\n",
     );
   });
 

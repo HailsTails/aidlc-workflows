@@ -31,6 +31,8 @@ const fakeRepositoryApi = () => ({
     .fn<GitHubRepositoryPort["closePullRequest"]>()
     .mockResolvedValue(succeed({ url: pullRequestUrl })),
   changeReadiness: vi.fn(),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
 });
 
 describe("closePullRequest", () => {

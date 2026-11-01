@@ -6,6 +6,7 @@ import type { GitFailure } from "../../application/git-worktree-port.ts";
 import type { ConfigurationFailure } from "../../application/identity-configuration-port.ts";
 import type { CredentialDestinationRefused } from "../../application/issue-git-credential.ts";
 import type { TokenFailure } from "../../application/mint-installation-token.ts";
+import type { IssueUnchanged } from "../../application/revise-issue.ts";
 import type { NothingToRevise } from "../../application/revise-pull-request.ts";
 import type { CloseRefusal } from "../../domain/close-guard.ts";
 import type { MergeRefusal } from "../../domain/merge-guard.ts";
@@ -32,6 +33,7 @@ type CliFailure =
   | CloseRefusal
   | ReviewRefusal
   | NothingToRevise
+  | IssueUnchanged
   | CredentialDestinationRefused
   | ConfigurationFailure
   | FlagFailure
@@ -103,6 +105,8 @@ const describers: FailureDescribers = {
     `#${String(pullNumber)} head is ${shortSha(headSha)} but this review read ${shortSha(reviewedSha)}; review the current head.`,
   "nothing-to-revise": ({ pullNumber }) =>
     `Nothing to change on #${String(pullNumber)}; pass --title, --body or --body-file.`,
+  "issue-unchanged": ({ issueNumber }) =>
+    `Nothing to change on #${String(issueNumber)}; pass --title, --body, --body-file, --state, --add-label or --remove-label.`,
   "credential-destination-refused": ({ destination }) =>
     `Refusing to hand the author bot's credential to ${destination}; it serves only the configured repository.`,
   "configuration-unreadable": ({ location }) =>
@@ -111,6 +115,7 @@ const describers: FailureDescribers = {
     `The identity configuration at ${location} is malformed: ${issues}`,
   "flag-malformed": ({ token }) => `Unexpected argument "${token}"; every argument is a --flag.`,
   "flag-repeated": ({ flag }) => `--${flag} was given more than once.`,
+  "flag-value-missing": ({ flag }) => `--${flag} needs a value.`,
   "flags-invalid": ({ issues }) => `Invalid flags: ${issues}`,
   "body-missing": () => "Provide the text with --body or --body-file.",
   "body-given-twice": () => "Pass --body or --body-file, not both.",

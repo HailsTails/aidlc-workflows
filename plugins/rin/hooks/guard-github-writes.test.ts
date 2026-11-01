@@ -132,6 +132,16 @@ describe("guard-github-writes deny path", () => {
     );
   });
 
+  test.each([
+    ['gh issue create --title "x" --body "y" --label bug', `${BOT_CLI} issue --title`],
+    ["gh issue edit 42 --add-label stage:build", `${BOT_CLI} issue-edit --issue <n>`],
+    ['gh issue close 42 --comment "done"', `${BOT_CLI} issue-edit --issue <n> --state closed`],
+  ])("denies raw %s and names the issue wrapper", async (command, wrapper) => {
+    const denial = await denialOf({ command, hookPath: configuredHook });
+    expect(denial?.permissionDecision).toBe("deny");
+    expect(denial?.permissionDecisionReason).toContain(wrapper);
+  });
+
   test("denies raw gh pr merge", async () => {
     const outcome = await invokeBashHook({
       hookFileName: HOOK,
@@ -266,6 +276,16 @@ describe("guard-github-writes pass-through path", () => {
     });
     const decision = permissionDecisionFrom({ stdout: outcome.stdout });
     expect(decision.hookSpecificOutput?.permissionDecision).toBeUndefined();
+  });
+
+  test("allows read-only gh issue view and list", async () => {
+    const viewed = await denialOf({ command: "gh issue view 42", hookPath: configuredHook });
+    const listed = await denialOf({
+      command: "gh issue list --label stage:triage",
+      hookPath: configuredHook,
+    });
+    expect(viewed?.permissionDecision).toBeUndefined();
+    expect(listed?.permissionDecision).toBeUndefined();
   });
 
   test("allows a read-only gh api GET", async () => {
