@@ -397,3 +397,46 @@ copies and chosen config/script/dependency edits after review; preserve tools
 or rules used elsewhere and the consumer's lockfile history.
 No core/plugin uninstall command applies to these copies. Native rule projection
 and a true rules-only install/update/removal selection remain backlog gaps.
+
+## 6. Moving to discipline-core
+
+A repository that adopts discipline-core (`disciplines.json`,
+`discipline-exceptions.json`, `tools/discipline-core/`) replaces this route.
+Follow `tools/discipline-core/MIGRATING.md`. If the repository also runs the
+Rin AIDLC plugin, it keeps `harness.config.json` and must flip the engine in the
+same change. Otherwise Rin's stage gate, per-CD sensors and review lenses keep
+using the walker and the records described above, and they disagree with CI:
+
+```json
+{
+  "constitution": {
+    "engine": "discipline-core",
+    "baseRevision": "origin/main"
+  }
+}
+```
+
+- `engine` is `"rin-walker"` (the default when absent) or `"discipline-core"`.
+  Any other value fails the stage gate rather than silently choosing one.
+- `baseRevision` is passed to core as `--base-revision`. Set it whenever
+  `discipline-exceptions.json` holds a file carve-out or an entry imported with
+  `provenance`; otherwise core reports `forfeiture-unmeasured` or
+  `import-unmeasured` and fails. Use a ref every worktree can resolve, such as
+  `origin/main`, not a local `main` that may lag.
+- Each `.constitution-carve-outs/cd-<id>.json` entry moves to
+  `discipline-exceptions.json` as a `file-carve-out` with
+  `{ "kind": "inherited-debt", "source", "decision" }` provenance, and each
+  `.constitution-authorised-locations/cd-<id>.json` entry moves as an
+  `authorised-location` with `{ "kind": "existing-authorisation", "source" }`.
+  MIGRATING step 3 gives the exact shapes.
+- `constitution.include`, `exclude`, `scriptGlobs` and `uiGlobs` no longer set
+  the scope under discipline-core: `disciplines.json` and its `exclude` do.
+
+With the engine flipped, the stage gate runs
+`node tools/discipline-core/core/check/check-command.ts --repo <checkout>` from
+the checkout that holds the command's working directory, with that checkout's
+own packages. Exit 0 passes. Exit 1 ending in `verdict: fail` refuses the stage
+and lists the failing sections. Anything else refuses it as unverified. The
+`disciplines` sensor reports core's findings in each edited file, the `cd-*`
+and `carve-out-decay` sensors report themselves not evaluated, and the review
+lenses read core's rule pages (see `aidlc-shared/lenses/ruleset-source.md`).

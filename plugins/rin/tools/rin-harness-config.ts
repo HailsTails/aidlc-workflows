@@ -1,7 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { type ParseError, parse as parseJsonc } from "jsonc-parser";
 import { z } from "zod";
+import { defaultPathOperations } from "./rin-harness-path-operations.ts";
+import { defaultSidecarFileReader } from "./rin-harness-sidecar-file-reader.ts";
 
 type PackageManagerConfig = {
   readonly primary: string;
@@ -103,12 +103,26 @@ type ResolvedReviewCommand =
   | ConfiguredReviewCommand
   | { readonly kind: "unconfigured" };
 
+type ConstitutionEngine =
+  | { readonly engine: "rin-walker" }
+  | {
+      readonly engine: "discipline-core";
+      readonly baseRevision: string | undefined;
+    };
+
+type ConstitutionEngineResolution =
+  | { readonly outcome: "resolved"; readonly constitutionEngine: ConstitutionEngine }
+  | { readonly outcome: "failed"; readonly reason: string };
+
 type ConstitutionScopeConfig = {
   readonly include: readonly string[];
   readonly exclude: readonly string[];
   readonly scriptGlobs: readonly string[];
   readonly uiGlobs: readonly string[];
+  readonly engine: ConstitutionEngine;
 };
+
+const RIN_WALKER_ENGINE: ConstitutionEngine = { engine: "rin-walker" };
 
 const rinGatesSchema = z.object({
   exceptionWhyChains: z.boolean().default(false),
@@ -603,6 +617,48 @@ const optionalStringArray = ({
   };
 };
 
+const validateBaseRevision = ({
+  container,
+}: {
+  readonly container: Record<string, unknown>;
+}): Validation<string | undefined> => {
+  const raw = container["baseRevision"];
+  if (raw === undefined) {
+    return { ok: true, value: undefined };
+  }
+  if (typeof raw !== "string" || raw.trim() === "") {
+    return {
+      ok: false,
+      error: `"constitution.baseRevision" must be a non-empty string`,
+    };
+  }
+  return { ok: true, value: raw };
+};
+
+const validateConstitutionEngine = ({
+  container,
+}: {
+  readonly container: Record<string, unknown>;
+}): Validation<ConstitutionEngine> => {
+  const baseRevision = validateBaseRevision({ container });
+  if (!baseRevision.ok) return baseRevision;
+  switch (container["engine"]) {
+    case undefined:
+    case "rin-walker":
+      return { ok: true, value: RIN_WALKER_ENGINE };
+    case "discipline-core":
+      return {
+        ok: true,
+        value: { engine: "discipline-core", baseRevision: baseRevision.value },
+      };
+    default:
+      return {
+        ok: false,
+        error: `"constitution.engine" must be "rin-walker" or "discipline-core"`,
+      };
+  }
+};
+
 const validateConstitution = ({
   container,
 }: {
@@ -626,6 +682,8 @@ const validateConstitution = ({
   if (!scriptGlobs.ok) return scriptGlobs;
   const uiGlobs = optionalStringArray({ container: raw, key: "uiGlobs" });
   if (!uiGlobs.ok) return uiGlobs;
+  const engine = validateConstitutionEngine({ container: raw });
+  if (!engine.ok) return engine;
   return {
     ok: true,
     value: {
@@ -633,6 +691,7 @@ const validateConstitution = ({
       exclude: exclude.value ?? [],
       scriptGlobs: scriptGlobs.value ?? [],
       uiGlobs: uiGlobs.value ?? [],
+      engine: engine.value,
     },
   };
 };
@@ -708,7 +767,7 @@ const validateHarnessConfig = ({
 };
 
 const configPath = ({ projectDir }: { readonly projectDir: string }): string =>
-  join(projectDir, CONFIG_FILENAME);
+  defaultPathOperations().join({ segments: [projectDir, CONFIG_FILENAME] });
 
 const quotedKeyPattern = /"([^"]+)"/;
 
@@ -721,22 +780,17 @@ const readConfig = ({
   readonly projectDir: string;
 }): LoadedConfig => {
   const path = configPath({ projectDir });
-  let rawConfiguration: string;
-  try {
-    rawConfiguration = readFileSync(path, "utf-8");
-  } catch (failure) {
-    if (
-      failure instanceof Error &&
-      "code" in failure &&
-      failure.code === "ENOENT"
-    ) {
-      return {
-        config: defaultConfig,
-        source: "defaults",
-        warning: null,
-        failure: { kind: "missing-file", path },
-      };
-    }
+  const fileReader = defaultSidecarFileReader();
+  if (!fileReader.fileExists(path)) {
+    return {
+      config: defaultConfig,
+      source: "defaults",
+      warning: null,
+      failure: { kind: "missing-file", path },
+    };
+  }
+  const rawConfiguration = fileReader.readFile(path);
+  if (rawConfiguration === undefined) {
     const detail = `${CONFIG_FILENAME} is unreadable or not valid JSON`;
     return {
       config: defaultConfig,
@@ -908,6 +962,24 @@ const configConstitution = ({
 }): ConstitutionScopeConfig | undefined =>
   loadHarnessConfig({ projectDir }).constitution;
 
+const resolveConstitutionEngine = ({
+  projectDir,
+}: {
+  readonly projectDir: string;
+}): ConstitutionEngineResolution => {
+  const loaded = readConfig({ projectDir });
+  if (loaded.failure?.kind === "missing-file") {
+    return { outcome: "resolved", constitutionEngine: RIN_WALKER_ENGINE };
+  }
+  if (loaded.failure !== null) {
+    return { outcome: "failed", reason: loaded.failure.detail };
+  }
+  return {
+    outcome: "resolved",
+    constitutionEngine: loaded.config.constitution?.engine ?? RIN_WALKER_ENGINE,
+  };
+};
+
 const configR7OptIn = ({
   projectDir,
 }: {
@@ -948,9 +1020,16 @@ if (invokedDirectly) {
       process.stderr.write(`rin-harness-config: ${loaded.warning}\n`);
     }
     process.stdout.write(`${JSON.stringify(loaded.config, null, 2)}\n`);
+  } else if (command === "constitution-engine") {
+    const resolution = resolveConstitutionEngine({ projectDir });
+    if (resolution.outcome === "failed") {
+      process.stderr.write(`rin-harness-config: ${resolution.reason}\n`);
+      process.exit(2);
+    }
+    process.stdout.write(`${JSON.stringify(resolution.constitutionEngine)}\n`);
   } else {
     process.stderr.write(
-      `rin-harness-config: unknown command "${command}" (print)\n`,
+      `rin-harness-config: unknown command "${command}" (print, constitution-engine)\n`,
     );
     process.exit(1);
   }
@@ -960,6 +1039,8 @@ export type {
   BacklogStoreConfig,
   ConfigSource,
   ConfiguredReviewCommand,
+  ConstitutionEngine,
+  ConstitutionEngineResolution,
   ConstitutionScopeConfig,
   HarnessConfig,
   IdentityConfig,
@@ -1003,6 +1084,7 @@ export {
   readConfig,
   readVaultPolicy,
   requiresExceptionWhyChains,
+  resolveConstitutionEngine,
   resolveProjectIdentity,
   resolveVaultWritePolicy,
   validateProjectIdentity,

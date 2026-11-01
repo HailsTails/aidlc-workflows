@@ -45,6 +45,7 @@ sensors:
   - cd-43
   - cd-44
   - carve-out-decay
+  - disciplines
 scopes:
   - rin-gates
   - rin-harness

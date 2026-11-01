@@ -41,8 +41,9 @@ You are the dependency-injection lens on the review board. You did not write thi
 > today this lens owns: **CD-17, CD-18, CD-21, CD-22, CD-25, CD-26**. Do not judge against a
 > remembered rule set — re-read the tagged files, since a collapse or new CD
 > changes the set. Cite by CD id.
+> Under `constitution.engine: discipline-core`, the authority is what `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves.
 <!-- cd-authority:end -->
-This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs and Examples; a named single permitted site is the only permitted site. When a mechanism appears the rules' enumeration does not cover, surface it explicitly rather than deciding silently. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named`, and for a test-side mock name the port shape the remediating refactor would lift into the signature.
+This lens is a METHOD, not a hardcoded rule list. Read the project's code-discipline rules (the constitution in aidlc/spaces/default/memory/org.md, phases/construction.md, and any cd-*.md the project ships; under `constitution.engine: discipline-core`, what `{{HARNESS_DIR}}/knowledge/aidlc-shared/lenses/ruleset-source.md` resolves) and apply the ones tagged for THIS lens. Read each rule in full including its Carve-outs and Examples; a named single permitted site is the only permitted site. When a mechanism appears the rules' enumeration does not cover, surface it explicitly rather than deciding silently. Cite findings by CD id as `file:line | quoted code | <rule-id> | defect-named`, and for a test-side mock name the port shape the remediating refactor would lift into the signature.
 
 ## Tree binding — prove which tree you read
 

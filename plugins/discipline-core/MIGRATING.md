@@ -146,7 +146,7 @@ Stop here, do not remove anything, and ask the human if the check does not pass.
 Only after step 5 passes:
 
 1. Delete the copied rule files and guides from step 1's harness folder (`.cursor/knowledge/aidlc-shared/code-discipline/` or its `.claude`/`.codex` equivalent).
-2. Delete the copied tools tree and `harness.config.json`, unless anything else in the repository uses them.
+2. Delete the copied tools tree and `harness.config.json`, unless anything else in the repository uses them. A repository that also runs the rin AIDLC plugin keeps `harness.config.json`, and in this same change sets `"constitution": { "engine": "discipline-core", "baseRevision": "origin/main" }` in it. Otherwise rin's stage gate, sensors and review lenses keep running the old walker over the old records, and they refuse what this check passes. Set `baseRevision` whenever a file carve-out or an imported entry exists.
 3. Delete `.constitution-carve-outs/` and `.constitution-authorised-locations/`: their content now lives in `discipline-exceptions.json`.
 4. In `package.json` scripts, CI and the pre-push hook, replace the old tool commands with the core check, as [ADOPTING.md](ADOPTING.md#5-run-the-check) step 5 shows. Every run needs `--base-revision` while a file carve-out exists: in local scripts and the pre-push hook use the branch's base (`origin/main`, or `HEAD` to measure only uncommitted changes); in CI use the pull request's base commit.
 5. Rewrite the agent instructions to point at `tools/discipline-core/rules/` and the judgement rules, as ADOPTING step 5 and step 9 say, and remove any instruction to read the old copied files.

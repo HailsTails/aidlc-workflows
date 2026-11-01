@@ -1,7 +1,7 @@
 ---
 id: carve-out-decay
 kind: deterministic
-command: bun {{HARNESS_DIR}}/tools/rin-harness-carve-out-decay.ts
+command: bun {{HARNESS_DIR}}/tools/rin-harness-sensor-carve-out-decay.ts
 default_severity: advisory
 description: Ports rin CD-46 — a file carrying an active constitution carve-out forfeits it on touch; flags any git-changed file still listed in .constitution-carve-outs.json
 category: constitution
