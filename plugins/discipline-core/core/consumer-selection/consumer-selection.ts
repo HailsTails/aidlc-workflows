@@ -1,3 +1,4 @@
+import { eslintConfigLookupSchema } from "../values/eslint-config-lookup.ts";
 import { z } from "zod";
 import type { LoadFailure } from "../check/load-failure.ts";
 import { createDefaultFileTextPort, type FileTextPort } from "../platform-ports/file-text-port.ts";
@@ -96,6 +97,7 @@ const consumerSelectionFileSchema = z.strictObject({
       }),
     )
     .default([]),
+  eslintConfigLookup: eslintConfigLookupSchema.optional(),
 });
 
 type ConsumerSelectionFile = z.infer<typeof consumerSelectionFileSchema>;

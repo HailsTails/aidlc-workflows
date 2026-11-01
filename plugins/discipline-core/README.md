@@ -73,6 +73,7 @@ At the repository root. It selects clauses and the mechanism that checks each on
 - `clauses` maps a clause address to a mechanism id. An address is `[<ruleSet>/]<DisciplineId>#<clauseId>`; no prefix means the shared rule set. The mechanism must be one the clause lists.
 - Selecting a clause adopts its discipline. Mechanical clauses of an adopted discipline that are not selected are reported as uncovered, and fail the run.
 - A judgement clause cannot be selected; it is enforced by review.
+- `eslintConfigLookup`, optional, is `"nearest-to-file"` or `"repository-root"` and says which `eslint.config.*` the team's own ESLint run applies to a file; see [Runtime](#runtime). Leave it out to let core detect it.
 - `exclude`, optional, lists repository folders or exact files that no mechanism checks. A folder entry covers everything under it. Globs are refused: an entry containing `*` makes `disciplines.json` malformed. The report lists the active entries under `excluded`. Exclude the core's own install when it is vendored inside the repository.
 
 ## discipline-exceptions.json
@@ -139,7 +140,9 @@ Core ships no helper that derives this list from `disciplines.json`; whether it 
 - git 2.24 or later. Older git rejects `--end-of-options`, so the changed-file query fails and forfeiture is reported unmeasured.
 - `zod`, for core.
 - The audit mechanism adds `typescript`.
-- The ESLint mechanism adds the team's `eslint` 10.x, an ESLint-10-compatible `@typescript-eslint/parser`, and `@eslint/plugin-kit`.
+- The ESLint mechanism adds the team's `eslint` 9.x or 10.x, an `@typescript-eslint/parser` that supports it, and `@eslint/plugin-kit`. The team's own ESLint run, which loads the projection and the pieces' plugin modules, is tested on 9.39.5 (every piece's shared cases, in `eslint-9-compatibility.test.ts`) and on 10.11.0; core's own check run always uses the `eslint` it ships with, whatever the team runs. Versions before 9.0 are not supported.
+
+A repository can hold one `eslint.config.*` at its root or one per package. Core resolves the team's configuration the way the team's own ESLint run does. ESLint 10, and ESLint 9 started with `--flag v10_config_lookup_from_file` (or `unstable_config_lookup_from_file`), use the `eslint.config.*` nearest each checked file. Plain ESLint 9 uses only the one in the directory it runs from, so for a repository whose `eslint` resolves to 9.x at `node_modules/eslint` and whose lint scripts carry no such flag, core reads the root `eslint.config.*` for every file, and fails the run as `team-config-unloadable` if there is none. When core cannot read an installed `eslint` at the repository root it assumes the nearest-to-file lookup. Each config that applies to a file must spread the projection. Detection cannot see how a task runner starts ESLint, so `disciplines.json` can state the lookup: `"eslintConfigLookup": "nearest-to-file"` or `"repository-root"`, which overrides detection. Both lookups are tested against monorepo fixtures with a config per package.
 
 The packages must resolve from the install directory.
 
@@ -160,6 +163,7 @@ This is the first release. Its tests cover each supported platform's ordinary pa
 - `.d.mts` and `.d.cts` declaration files are not handled separately from other sources.
 - Columns reported on lines holding non-ASCII text.
 - Lint scripts are read with a simple shell tokenizer, so unusual quoting or a `cd` before `eslint` is not interpreted.
+- Detection reads an ESLint 9 run started from inside a package, or given the lookup flag through the environment or a task runner, as a root-only run; set `eslintConfigLookup` in `disciplines.json` for those repositories.
 - Team ESLint configs that imitate projection block names, register a second copy of the plugin, or use processors are not exercised.
 - A byte-order mark at the start of `disciplines.json` or `discipline-exceptions.json`; save them without one.
 

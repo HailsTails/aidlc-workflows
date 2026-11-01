@@ -15,8 +15,11 @@ import { type AbsolutePath, absolutePathSchema } from "../../../core/values/abso
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { disciplineIdSchema } from "../../../core/values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
+import { overlaidFileText } from "../../../tests/overlaid-file-text.ts";
 import cd14Discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
 import { runner as walkerRunner } from "../../audit/runner/runner.ts";
+import { createEslintRunner } from "./create-eslint-runner.ts";
+import { createDefaultEslintPort } from "./eslint-instance.ts";
 import { runner as eslintRunner } from "./runner.ts";
 
 const INSTALL_ROOT = absolutePathSchema.parse(`${import.meta.dirname}/../../..`);
@@ -503,5 +506,75 @@ describe("checkConformance over the ESLint runner as core loads it, on real ESLi
         runner: await coreLoadedEslintRunner(),
       }),
     ).resolves.toEqual({ outcome: "ok", value: [] });
+  });
+});
+
+const ESLINT_PACKAGE_JSON = "node_modules/eslint/package.json";
+
+const LINT_SCRIPT_PACKAGE_JSON = "package.json";
+
+const eslintVersion = (request: { readonly version: string }): string => JSON.stringify({ name: "eslint", version: request.version });
+
+const lintScript = (request: { readonly command: string }): string => JSON.stringify({ scripts: { lint: request.command } });
+
+const monorepoRun = (request: {
+  readonly name: string;
+  readonly version: string;
+  readonly lintCommand: string;
+}) =>
+  createEslintRunner({
+    fileText: overlaidFileText({
+      base: fileText,
+      files: {
+        [`${consumerRepo({ name: request.name })}/${ESLINT_PACKAGE_JSON}`]: eslintVersion({ version: request.version }),
+        [`${consumerRepo({ name: request.name })}/${LINT_SCRIPT_PACKAGE_JSON}`]: lintScript({ command: request.lintCommand }),
+      },
+    }),
+    modules,
+    path,
+    eslint: createDefaultEslintPort({}),
+  }).run({
+    repoRoot: consumerRepo({ name: request.name }),
+    installRoot: INSTALL_ROOT,
+    files: [repoPathSchema.parse("packages/a/x.ts")],
+    trackedPaths: [repoPathSchema.parse("packages/a/x.ts"), repoPathSchema.parse("package.json")],
+    clauses: [ESLINT_CLAUSE],
+    records: [],
+  });
+
+const PACKAGE_HIT = { file: "packages/a/x.ts" };
+
+const NEAREST_LOOKUP_FLAG = "--flag v10_config_lookup_from_file";
+
+const NEAREST_LOOKUP_TEAMS = [
+  { version: "10.11.0", lintCommand: "eslint ." },
+  { version: "9.39.5", lintCommand: `eslint ${NEAREST_LOOKUP_FLAG} .` },
+];
+
+describe("the ESLint runner follows the config lookup the team's own ESLint run uses, over a monorepo with a config per package", () => {
+  it.each(NEAREST_LOOKUP_TEAMS)("applies a package config's projection under ESLint $version running `$lintCommand`", async (team) => {
+    await expect(monorepoRun({ name: "monorepo-package-config", ...team })).resolves.toMatchObject({
+      outcome: "ok",
+      value: { hits: [PACKAGE_HIT], projection: "current" },
+    });
+  });
+
+  it("finds no projection in effect under ESLint 9 run from the root, which loads only the root config", async () => {
+    await expect(
+      monorepoRun({ name: "monorepo-package-config", version: "9.39.5", lintCommand: "eslint ." }),
+    ).resolves.toMatchObject({ outcome: "ok", value: { hits: [], projection: "not-included" } });
+  });
+
+  it.each(NEAREST_LOOKUP_TEAMS)("finds no projection in effect where a package config drops it under ESLint $version running `$lintCommand`", async (team) => {
+    await expect(monorepoRun({ name: "monorepo-root-config", ...team })).resolves.toMatchObject({
+      outcome: "ok",
+      value: { hits: [], projection: "not-included" },
+    });
+  });
+
+  it("applies the root config's projection to every package under ESLint 9 run from the root", async () => {
+    await expect(
+      monorepoRun({ name: "monorepo-root-config", version: "9.39.5", lintCommand: "eslint ." }),
+    ).resolves.toMatchObject({ outcome: "ok", value: { hits: [PACKAGE_HIT], projection: "current" } });
   });
 });

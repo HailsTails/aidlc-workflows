@@ -37,6 +37,8 @@ A clause's settings may also carry `options`, a JSON array passed to the rule af
 
 A piece reuses an ESLint core or typescript-eslint rule by re-exporting it from its plugin module through `native-rules.ts`: `eslintCoreRules` for core rules and `typescriptEslintRules` for typescript-eslint rules. A piece does not import `eslint` rules or `@typescript-eslint/eslint-plugin` directly.
 
+`eslintCoreRules` takes the builtin rules to read from as a port. A piece that wraps core rules exports `createPlugin({ builtinRules })` and builds its default export from `defaultEslintBuiltinRules`, so the ESLint 9 compatibility test can hand it ESLint 9's own core rules.
+
 The namespace `reservedNamespace` names (currently `discipline-core`) is reserved. Two selected clauses may not share a rule id, or a namespace with different plugin modules. A bad setting, a module that fails to load or does not match its schema, or a missing rule makes the run fail as `piece-invalid`.
 
 The rule imports only types from `eslint` and gets everything else from ESLint's rule context. The guide (`docs/adding-a-discipline-or-mechanism.md`) walks through a shipped piece as the example.
