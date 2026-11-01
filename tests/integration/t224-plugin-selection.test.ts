@@ -461,7 +461,7 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
 
   // config project is the person's own choice, so it is done while work is
   // open; the line says which work stops until the plugin is on again.
-  test("config project turning off a plugin open work needs is done and says which work stops", () => {
+  test("config project turning off a plugin open work needs is refused by the compatibility check, and done with --allow-breaking-refresh", () => {
     const proj = join(tmp, "strand-config-project");
     composePluginFixture({
       plugin: PLUGIN,
@@ -481,7 +481,13 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
     const recorded = config("--from", join(REPO_ROOT, "dist", "claude"), "--force", "--yes");
     expect(recorded.status, `${recorded.stdout}${recorded.stderr}`).toBe(0);
     seedActiveWorkflow(proj, "test-pro-validation");
-    const result = config("project", "--plugins", "aidlc", "--yes");
+    // The plugin's stages disappear under open work, a contract change the
+    // fork's open-work check refuses until the person lets it through.
+    const refused = config("project", "--plugins", "aidlc", "--yes");
+    expect(refused.status, `${refused.stdout}${refused.stderr}`).toBe(4);
+    expect(`${refused.stdout}${refused.stderr}`).toContain("open-workflow refresh refused");
+    expect(JSON.parse(readFileSync(harnessPath(proj), "utf-8")).plugins).not.toEqual(["aidlc"]);
+    const result = config("project", "--plugins", "aidlc", "--allow-breaking-refresh", "--yes");
     expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
     expect(result.stdout).toContain(
       "default/strand-probe-deadbeef needs the test-pro plugin, which is now off, so it continues once it is on again.",

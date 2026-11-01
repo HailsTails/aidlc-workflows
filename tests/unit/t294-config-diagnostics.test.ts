@@ -21,7 +21,6 @@ import { parse as parseToml } from "smol-toml";
 import { cleanupTestProject, createOrchestrationTestProject, REPO_ROOT } from "../harness/fixtures.ts";
 import { appendAuditEntry } from "../../core/tools/aidlc-audit.ts";
 import { sha256Bytes } from "../../core/tools/aidlc-distribution.ts";
-import { transactionSourceHash } from "../../core/tools/aidlc-transaction.ts";
 import { hooksHealthReadDir } from "../../core/tools/aidlc-lib.ts";
 import { doctorCommandLines, vscodeVisibleOutput } from "../harness/vscode-output-trim.ts";
 import {
@@ -1537,20 +1536,22 @@ endpoint_url = "https://consumer.example/bedrock"
     return project;
   }
 
-  function activeAnswerUnchanged({ projectDirectory, priorFingerprint }: { projectDirectory: string; priorFingerprint: string }): boolean {
-    return transactionSourceHash(projectDirectory) === priorFingerprint;
+  function openWorkBytes(projectDirectory: string): string {
+    const intents = join(projectDirectory, "aidlc", "spaces", "default", "intents");
+    return readFileSync(join(intents, "intents.json"), "utf-8") +
+      readFileSync(join(intents, "active-answers", "aidlc-state.md"), "utf-8");
   }
 
   test.each([
     { answer: "trust", commandArguments: ["trust", "--acknowledge"] },
     { answer: "providers", commandArguments: ["providers", "--provider", "current"] },
-  ])("an active workflow refuses the $answer answer and restores its inputs", ({ commandArguments }) => {
+  ])("an active workflow does not block the $answer answer and is left as it was", ({ commandArguments }) => {
     const projectDirectory = activeAnswerProject();
-    const priorFingerprint = transactionSourceHash(projectDirectory);
-    const configurationRefusal = run(["config", ...commandArguments, "--project-dir", projectDirectory, "--yes"], projectDirectory, runtimeEnv());
-    expect(configurationRefusal.status, configurationRefusal.stdout + configurationRefusal.stderr).toBe(4);
-    expect(configurationRefusal.stdout + configurationRefusal.stderr).toContain("refusing to refresh");
-    expect(activeAnswerUnchanged({ projectDirectory, priorFingerprint })).toBe(true);
+    const priorOpenWork = openWorkBytes(projectDirectory);
+    const answered = run(["config", ...commandArguments, "--project-dir", projectDirectory, "--yes"], projectDirectory, runtimeEnv());
+    expect(answered.status, answered.stdout + answered.stderr).toBe(0);
+    expect(answered.stdout + answered.stderr).not.toContain("refusing to refresh");
+    expect(openWorkBytes(projectDirectory)).toBe(priorOpenWork);
   });
 
   test("an answer recorded outside active work names its file and says how to undo it", () => {
