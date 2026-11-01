@@ -10,17 +10,95 @@ scope, a previous stage or a recorded answer style grants no autonomy to another
 stage. The gate field describes lifecycle verification, not human participation. Answer-mode metadata selects how applicable questions are answered; it does not create an interview.
 
 For an autonomous stage, run the work its stage file declares without adding
-a routine interview or answer-mode choice. Questions remain appropriate when
-the stage needs a genuinely reserved operator decision or an input that
-knowledge and available evidence cannot settle. Record and await that real
-reply through the normal question contract; never invent a person answer,
-human turn, approval or instruction grant.
+a routine interview or answer-mode choice. A question is appropriate only when
+it falls in a stopping class under § "Reserved operator decisions" below. An
+input that knowledge and evidence cannot settle is no reason to ask on its own:
+it is asked only when it fits such a class, such as the default class for a
+fact only the person holds. Record and await that real reply as that section
+says; never invent a person answer, human turn, approval or instruction grant.
+
+### Reserved operator decisions
+
+On an autonomous stage, a question the work raises, or an action the stage
+would take, reaches the person only when it falls in a stopping reserved class.
+Engine checkpoints stay human stops and are not reserved-decision questions:
+summary confirmation, Plan Approval, verification-command selection, the
+Construction autonomy choice, failure halts and blocking-sensor overrides.
+When no person is in the session, as defined below, an engine checkpoint is
+recorded and the stage parks; where park is refused, the checkpoint stays open,
+the turn ends and the engine holds it. It is still a human stop and is never
+approved for the person.
+
+The reserved classes come from the first of these that exists, and that list
+is the whole set: the list the project's rule layer gives, under its own
+markings; otherwise the list the stage's plugin knowledge names; otherwise
+these default classes, each marked stop before the action:
+
+1. Changing the project's rules, weakening or removing a standing check, or
+   recutting its ratified scope: scope the person approved in a recorded
+   decision. Framing inside that scope is not a recut. Adding or strengthening
+   a check is the stage's own work.
+2. A values call: one that no recorded rule, requirement or decision, the code
+   or a measurement settles, after ties are broken toward the recorded goal.
+   A technical choice is never a values call.
+3. Spending money, or acting under an outside identity or account.
+4. A production change (a deploy, a cutover, a DNS change), deleting or
+   migrating customer data, or any other action that cannot be undone.
+5. A fact only the person holds and no artifact, record or evidence carries,
+   such as which account they own. A fact, never a preference or a judgement.
+
+Every reserved class carries one marking: decided and recorded, or stop before
+the action. A class with no marking stops. A question that fits any stopping
+class stops, even if it also fits a decided class. A decided-class question is
+settled on the stage, recorded naming its class, and left for review. Only a
+stopping-class question is asked. A stage's own declared actions follow the
+same markings: before it takes one, the stage checks it against the active
+list, and an action in a stopping class waits for an answer as a question does.
+
+Whatever list is active, a preference or judgement never falls in a class for
+facts the person holds; it falls in the class its subject does.
+
+Every other question the work raises is settled on the stage: a technical
+design choice, a tradeoff the recorded rules or decisions decide, an
+assumption the evidence supports, and an objection a collaborator raises. The
+lead settles it with its collaborators from the code, the upstream artifacts
+and the rules, and records the answer with its source in the stage's artifact.
+
+The person is in the session when they have written in it since the stage
+began and `AIDLC_UNATTENDED` is not `1`. Otherwise no person is in the
+session, as in a scheduled or dispatched run.
+
+Ask a stopping-class question naming its class. When the person is in the
+session, ask it through the normal question contract (§3 and § "Conversation
+event logging checklist"): write it to the stage's `<slug>-questions.md` with
+a blank `[Answer]:` tag, run `{{INVOKE}} engine log decision` before
+presenting it, render it and end the turn; on their reply, fill the tag and
+run `{{INVOKE}} engine log answer`. The blank tag and the open decision are
+what the Stop hook holds the turn on. When no person is in the session, never
+open a picker: write a pack into the stage's artifact and run
+`{{INVOKE}} engine orchestrate park`. The pack holds the question, its class,
+why no record, code or measurement settles it, the options, a recommendation,
+the consequences of each answer, and an `Operator answer:` line. On resume,
+the stage moves past the question only once that line holds the answer and
+links to the person's own reply: their PR or issue comment, or their
+`engine log answer` record carrying their reply. A comment by any other
+account, an agent's included, does not count. When the line does not qualify
+and the person is in the session on resume, ask them through the question
+contract; otherwise the stage parks again.
+
+Wherever park is refused, the pack is recorded with the action not taken and
+surfaces at the next human gate. While `Construction Autonomy Mode` is
+`autonomous`, in any phase, the stage does not park and the Stop hook holds no
+turn for a question, even with the person in the session: the question is
+recorded, the action it guards is not taken, and it surfaces at the final-batch
+gate.
 
 Summary confirmation is owed only when the stage declares summary_confirmation
 and the engine's checkpoint owner requires it. The ceremony switch being on
 alone does not create a checkpoint. Preserve required checkpoints and
 if-present file-backed checkpoint evidence; an undeclared checkpoint is not
-added merely because a genuine operator question was written to a file.
+added merely because a stopping-class question (§ "Reserved operator
+decisions") was written to a file.
 
 Keep every declared artifact, reviewer, sensor and freshness requirement.
 Required summary confirmation and existing file-backed checkpoint evidence
@@ -31,7 +109,7 @@ Isolated single-run reporting and unfinished per-unit routing retain their exist
 where it requires a real person.
 
 Carry approval_mode unchanged in every delegated worker brief. A worker
-follows the stage's work and returns its evidence or genuine operator question;
+follows the stage's work and returns its evidence or stopping-class question;
 the conductor retains lifecycle reporting and reviewer ownership.
 
 ### The person drives
@@ -535,9 +613,10 @@ Stage files list **topic areas and example questions** — they are guidance, no
 **Step 2: Use the person's earlier answer mode, or ask for it.**
 
 An autonomous stage does not infer an interview from an absent answer_mode.
-Present a genuinely reserved operator question directly through the normal
-question-rendering and reply-recording contract; do not add a routine style
-choice. The human-policy flow below retains the existing mode choice and reuse.
+Present a stopping-class question (§ "Reserved operator decisions") directly
+through the normal question-rendering and reply-recording contract when the
+person is in the session, or write its pack and park when no person is; do not
+add a routine style choice. The human-policy flow below retains the existing mode choice and reuse.
 
 The person picks how to answer once per piece of work, at the first stage with
 questions; later stages reuse that choice. The run-stage directive's

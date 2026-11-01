@@ -312,9 +312,14 @@ subagent (agent separation), never by deferring to a future session. On
 NOT-READY within the iteration cap: route findings to the author leg (Step 5),
 then return to Step 3 with a FRESH reviewer subagent over the new head — never
 reuse a subagent across legs or rounds. On cap exhaustion (or a timebox hit
-mid-cycle): PARK the Slice (the never-strand protocol below), never a bare HOLD;
-escalate a genuine scope residue to the human at the gate as a scope decision
-(never a raw option-vs-option question). For a class-(c) PR with no APPROVE on
+mid-cycle): PARK the Slice (the never-strand protocol below), never a bare HOLD.
+A residue in a stopping class on the active list
+(`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`) parks with its
+pack, naming the class, or, where park is refused, has its pack recorded with
+the action not taken for the next human gate. One in a decided class is
+decided and recorded, naming the class, and added to the PR body's list of
+decided calls for {{OPERATOR}}'s sign-off. Any other residue is a problem the
+lane fixes before it convenes again. For a class-(c) PR with no APPROVE on
 the current head or no cited task id, there is no cap to exhaust — hold and name
 the missing element in the digest (Step 6).
 
@@ -343,7 +348,9 @@ transition — a parked Slice did not complete its gate, so there is no forward
 move; the engine's `Parked At Stage` marker it carries, not a stage change, is
 what a resuming run reads. Any PR that failed its class's merge conditions
 (Step 4) gets no merge and no transition — flag the exact failing condition in
-the run digest instead.
+the run digest instead. The run digest also lists each merged PR's decided
+calls, with their class and where each is recorded, and every stopping-class
+pack recorded where park was refused, so {{OPERATOR}} sees them.
 
 Reap the PR-head review worktree once the board has converged and the merge is
 read back: `pnpm rin-gates:review-worktree --pr <N> --remove`. Leaving them
@@ -381,7 +388,8 @@ reviewer step), learnings, and approval.
   through the author leg IN THIS RUN (Step 5 → re-review), not posted-and-deferred
   to a future "author session" — no such lane exists, so a deferred verdict
   strands the PR. The only run-terminal outcomes are converge-and-merge, PARK
-  (cannot complete this run), or a genuine scope escalation at cap exhaustion.
+  (cannot complete this run), PARK on a stopping-class residue, or, where park
+  is refused, its pack recorded with the action not taken.
 - **Never strand.** A blocked run PARKS via the engine-native park and pushes the
   marker durably; it never ends with work-in-progress uncommitted.
 
