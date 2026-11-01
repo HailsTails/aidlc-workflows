@@ -663,7 +663,8 @@ Deviations" section.
 
    **Lead integration.** The aidlc-product-agent integrates all three
    contributions into `personas.md` and `stories.md` before the completion
-   gate. Judgment calls go to the human mid-stage; knowledge disputes get one
+   gate. Judgment calls go to the human mid-stage, except as the autonomous-stage
+   triage in `stage-protocol-ensemble.md` §5 settles them; knowledge disputes get one
    bounded objection round. Maintained dissent is quoted at the gate.
 
 9. **Prepare Completion** -- Verify the mob artifacts and all three

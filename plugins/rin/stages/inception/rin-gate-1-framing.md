@@ -34,18 +34,18 @@ sensors:
 scopes:
   - rin-gates
 inputs: The Gate-0 reconcile report + readiness verdict, and the target Slice's intent
-outputs: rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions, each with the gate's answer and its source, or its reserved class), under this stage's record dir, engine-resolved
+outputs: rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions, each with the gate's answer and its source, or its stopping class and pack), under this stage's record dir, engine-resolved
 ---
 
 # Gate 1 — Framing (rin)
 
 MANDATORY: Follow stage-protocol.md — the conductor runs the gate ritual
-(question flow, reviewer, learnings, approval, report) uniformly around this
+(reviewer, learnings, approval, report) uniformly around this
 stage. This file describes only the WORK: surface the load-bearing decisions,
 settle them with the seats, and write confirmed scope into the native
 requirements artefact. It does NOT present the gate or report.
 
-This is rin Gate 1 — "frame, don't solve". The lead (`aidlc-product-agent`) is the framer: it surfaces the Slice's baked-in assumptions as atomic, non-dominated, consequence-bearing decision-questions. The two seats are this stage's `support_agents`, dispatched per the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`), and each performs work rather than reviewing: the architect seat drafts the alternative framing and says what it would cost; the developer seat attempts the smallest implementation against the framing and reports where it does not fit. The lead arbitrates their evidence. The gate NEVER drafts the solution — choosing among solutions is Gate 2's — and NEVER leaves a load-bearing decision implicit. The lead and seats settle each one from evidence; only a reserved one reaches {{OPERATOR}} (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`).
+This is rin Gate 1 — "frame, don't solve". The lead (`aidlc-product-agent`) is the framer: it surfaces the Slice's baked-in assumptions as atomic, non-dominated, consequence-bearing decision-questions. The two seats are this stage's `support_agents`, dispatched per the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`), and each performs work rather than reviewing: the architect seat drafts the alternative framing and says what it would cost; the developer seat attempts the smallest implementation against the framing and reports where it does not fit. The lead arbitrates their evidence. The gate NEVER drafts the solution — choosing among solutions is Gate 2's — and NEVER leaves a load-bearing decision implicit. The lead and seats settle each one from evidence; only one in a stopping class reaches {{OPERATOR}} (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`).
 
 ## Native artefact chain (no Spec-Kit)
 
@@ -72,7 +72,7 @@ separate DB call and no receipt artefact.
 The lead produces the decision-question set. The architect and developer seats perform their acts against it (above), and the lead folds what their evidence shows into the set. Questions must be atomic, non-dominated (no question whose answer forces another), consequence-bearing, and load-bearing (the answer changes the design). The solution is never proposed here, and the artefacts are prose only: a shape written as a type, a schema or a signature is a solution, and the board judges whether the artefacts carry one. A shape the framing needs to mention is recorded as a candidate for Gate 2, never as a requirement.
 
 ### Step 2: Settle the decisions
-Settle each decision-question on the stage. The lead answers it from the seats' evidence, the code, the upstream artefacts, the recorded decisions and the rules, and records the answer and its source in `rin-framing-questions.md`. A question goes to {{OPERATOR}} only when it names a reserved class; apply the fork test and the deciding-versus-stopping split in `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`. A class-4 values call is decided and recorded for review, not asked. A stopping question is written as a pack into `rin-framing-questions.md` and the gate parks; it never goes through the interactive question picker in a scheduled or dispatched run. This file is the gate's decision record, not the stage protocol's question flow: no blank `[Answer]:` tags and no question-count target.
+Settle each decision-question on the stage. The lead answers it from the seats' evidence, the code, the upstream artefacts, the recorded decisions and the rules, and records the answer and its source in `rin-framing-questions.md`. Apply the fork test and the deciding-versus-stopping split in `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` against the active list. A question in a class the active list marks decided and recorded is decided here, naming its class, and recorded for review; it is not asked. Only a question in a stopping class goes to {{OPERATOR}}: its pack is written into `rin-framing-questions.md`, then it is asked or the gate parks as that file says, never through the interactive question picker in a scheduled or dispatched run. On resume, it is settled only once its pack's `Operator answer:` line holds the answer and its link. This file is the gate's decision record, not the stage protocol's question flow: no blank `[Answer]:` tags and no question-count target.
 
 ### Step 3: Write confirmed scope into the requirements artefact
 Fold the settled decisions into `rin-requirements.md` (the native AIDLC requirements
@@ -86,8 +86,8 @@ this gate's whole roster), learnings, and approval.
 
 - **Frame, never solve.** No plan, no design, no interface here.
 - **Never leave a load-bearing decision implicit or unsourced.** Each one is settled
-  on the stage with its source, or carries the reserved class that sends it to
-  {{OPERATOR}}. A question that names no reserved class is not asked.
+  on the stage with its source, or carries the stopping class that sends it to
+  {{OPERATOR}}. A question in no stopping class is not asked.
 - **Native artefact only.** Confirmed scope lands in `rin-requirements.md`, never a
   `spec.md`.
 

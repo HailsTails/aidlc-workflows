@@ -711,7 +711,8 @@ artifacts, and the contribution files are the engine-checked completion evidence
 on pipeline the chain links advance the artifacts directly and the final link leaves
 them complete. Who sees what differs per topology — spokes are mutually blind, chain
 links see all upstream work, mob objectors get one confirm-or-maintain round while
-judgment-call objections surface to the human mid-stage — but on every topology the
+judgment-call objections surface to the human mid-stage except as the §5 triage
+settles them on an autonomous stage — but on every topology the
 conductor performs every delegation; agents never spawn subagents. See
 `stage-protocol-ensemble.md` for the full contract.
 

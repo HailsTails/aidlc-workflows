@@ -189,7 +189,7 @@ Construction module); every Unit still gets its own approval.
 
 The orchestration engine emits eight kinds today: `load-steering`, `run-stage`, `invoke-swarm`, `ask`, `print`, `error`, `done`, `parked` (`invoke-swarm` is emitted only for an eligible Construction batch selected by its execution policy; `invoke-swarm` is an orthogonal directive kind, NOT the reserved `agent-team` stage `mode`). The `dispatch-subagent` and `present-gate` arms remain documented placeholders so the loop is complete-shaped; until the engine emits those two, you will only ever act on the eight. Do not implement those two placeholder behaviours speculatively.
 
-**Parking a workflow.** A long workflow (enterprise scope spans many stages) need not finish in one session. Park when the user wants to stop and continue later: run `{{INVOKE}} engine orchestrate park` to park the workflow cleanly at the current inter-stage boundary; it emits a `parked` directive you act on as above. Only the person parks: never park on your own to hand them a decision, such as a next stage that looks outside the plan, work you just set up, or a check that refused. Carry on with the next stage, or ask your question and wait for their answer in this conversation. **Do not park because context *feels* heavy.** You cannot measure your own context window, and a conversation that feels long is routinely under half full — a 32-stage run that felt heavy has been measured at 37% used. Park for context only when the harness has actually surfaced a usage figure at or above 80%; absent such a figure you have no grounds to park, so keep running stages. Never advance or approve stages you did not actually run just to reach `done`: run them, or ask the person and wait. Tell the user their work is saved and how to pick it back up. The next session resumes with `/aidlc --resume` (the engine clears the park marker before continuing).
+**Parking a workflow.** A long workflow (enterprise scope spans many stages) need not finish in one session. Park when the user wants to stop and continue later: run `{{INVOKE}} engine orchestrate park` to park the workflow cleanly at the current inter-stage boundary; it emits a `parked` directive you act on as above. Only the person parks: never park on your own to hand them a decision, such as a next stage that looks outside the plan, work you just set up, or a check that refused. Carry on with the next stage, or ask your question and wait for their answer in this conversation. The one exception is a stopping-class question when no person is in the session: write its pack and park, as stage-protocol.md § "Reserved operator decisions" says. **Do not park because context *feels* heavy.** You cannot measure your own context window, and a conversation that feels long is routinely under half full — a 32-stage run that felt heavy has been measured at 37% used. Park for context only when the harness has actually surfaced a usage figure at or above 80%; absent such a figure you have no grounds to park, so keep running stages. Never advance or approve stages you did not actually run just to reach `done`: run them, or ask the person and wait. Tell the user their work is saved and how to pick it back up. The next session resumes with `/aidlc --resume` (the engine clears the park marker before continuing).
 
 **Stage-specific approval policy.** Read directive.approval_mode before the
 ordinary gate branch. Human is the default, including legacy directives that
@@ -205,12 +205,21 @@ added merely because a genuine operator question was written to a file.
 
 On an autonomous stage, run the declared work without inventing a routine
 questionnaire or answer-mode choice. Preserve required summary confirmation
-and existing file-backed checkpoint evidence. If the work identifies a reserved
-operator decision (the closed set in stage-protocol.md § "Reserved operator
-decisions"), present and record that real question normally and wait for the
-person. Do not self-answer it or mint a human turn. Every other question the
-work raises is settled on the stage by the lead and its collaborators and
-recorded with its source; it is not asked. Run the reviewer, sensors and artifact/freshness verification;
+and existing file-backed checkpoint evidence. Apply stage-protocol.md §
+"Reserved operator decisions" to every question the work raises. Every
+reserved class carries one marking: decided and recorded, or stop before the
+action. A class with no marking stops. A question that fits any stopping class
+stops, even if it also fits a decided class. A decided-class question is
+settled on the stage, recorded naming its class, and left for review. Only a
+stopping-class question is asked. When the person is in the session, ask it
+through the normal question contract: write it to the stage's questions file
+with a blank `[Answer]:` tag, run `{{INVOKE}} engine log decision` before
+presenting it and end the turn; on their reply, fill the tag and run
+`{{INVOKE}} engine log answer`. When no person is in the session, never open a
+picker: write the pack that section names into the stage's artifact and park.
+Do not self-answer it or mint a human turn. Every other question is settled on
+the stage by the lead and its collaborators and recorded with its source; it
+is not asked. Run the reviewer, sensors and artifact/freshness verification;
 then report approved through the normal engine mechanism without a human
 approval menu or fabricated user input. The human learnings ritual applies only
 at an actual human gate. Explicit Construction checkpoint, skeleton and

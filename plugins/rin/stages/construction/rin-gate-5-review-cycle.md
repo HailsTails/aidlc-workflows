@@ -311,9 +311,12 @@ subagent (agent separation), never by deferring to a future session. On
 NOT-READY within the iteration cap: route findings to the author leg (Step 5),
 then return to Step 3 with a FRESH reviewer subagent over the new head — never
 reuse a subagent across legs or rounds. On cap exhaustion (or a timebox hit
-mid-cycle): PARK the Slice (the never-strand protocol below), never a bare HOLD;
-escalate a genuine scope residue to the human at the gate as a scope decision
-(never a raw option-vs-option question). For a class-(c) PR with no APPROVE on
+mid-cycle): PARK the Slice (the never-strand protocol below), never a bare HOLD.
+A residue in a stopping class on the active list
+(`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`) parks with its
+pack, naming the class; one in a decided class is decided and recorded, naming
+the class; any other residue is a problem the lane fixes before it convenes
+again. For a class-(c) PR with no APPROVE on
 the current head or no cited task id, there is no cap to exhaust — hold and name
 the missing element in the digest (Step 6).
 

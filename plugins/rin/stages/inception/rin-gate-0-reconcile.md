@@ -420,9 +420,10 @@ without evidence is a defect; **"probably resolved" is never a reason.**
 
 #### (4) leave-with-note
 
-**Entry — ANY of:** **needs {{OPERATOR}}** (a framing fork, a values call, a constitution
-amendment, or an irreversible non-DB action — note a *liveness/archival judgement*
-on a capture is hers, a forward promotion is not); **unresolvable from this
+**Entry — ANY of:** **needs {{OPERATOR}}** (a question in a stopping class on the active
+list, `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`; one in a decided
+class is decided and recorded instead — note a *liveness/archival judgement* on a
+capture is hers, a forward promotion is not); **unresolvable from this
 surface** (needs a live check the run cannot make); **cluster remainder**; **run
 budget reached** (read but not acted on).
 
@@ -670,8 +671,9 @@ artefact guard (the stage's declared `produces:` must exist) and the reviewer
 precondition both still fire. A Slice cannot be retired out of a gate it never
 honestly reached.
 
-**Who retires depends on WHY.** Apply the naming test before escalating: name
-which reserved class the retirement falls in, or settle it yourself.
+**Who retires depends on WHY.** Apply the fork test in
+`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` before escalating: name
+which class on the active list the retirement falls in, or settle it yourself.
 
 - **Obsolete-premise retirement — this gate fires it, autonomously.** The
   premise is refuted by ground truth (the locus is gone, the defect was fixed
@@ -682,8 +684,10 @@ which reserved class the retirement falls in, or settle it yourself.
   has already been filed four times against the same record.
 - **Ratified-scope recut — escalate.** The premise stands and the question is
   whether the work is still wanted (reinstating an {{OPERATOR}}-retired Slice, dropping
-  scope they commissioned). Reserved class 1. Escalate with the record, the
-  evidence, and the pre-staged `--reason`, then proceed with the rest of the run.
+  scope they commissioned). That is a ratified-scope recut. When the active list
+  marks it a stopping class, as rin's own list does, escalate with the record, the
+  evidence, and the pre-staged `--reason` as its pack, then proceed with the rest
+  of the run; when the list marks it decided, decide and record it.
 
 The test: **premise refuted ⇒ retire; merely not-worth-doing ⇒ {{OPERATOR}}'s.** See
 `{{HARNESS_DIR}}/scopes/rin-retired.md` § "Who retires" for the full split.
@@ -694,7 +698,10 @@ If the selected intent's committed `aidlc-state.md` carries the engine's
 re-run the parked gate's work from scratch. Route it back to the marked stage via
 `aidlc-orchestrate next` (the engine's unpark-on-resume path) and continue from
 there — the already-landed work is on `main` (the parked PR merged as class (d)),
-so re-deriving it is waste and risks divergence.
+so re-deriving it is waste and risks divergence. A gate parked on a stopping
+question moves past it only once its pack's `Operator answer:` line holds the
+answer and a link to where it came from; otherwise the gate parks again
+(`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`).
 
 ### Step 6: Null-stage reservoir reconciliation (verify-then-act, never bulk)
 As the intake resolver, Gate 0 owns the **null/missing-stage systems captures** in

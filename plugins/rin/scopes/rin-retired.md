@@ -90,9 +90,9 @@ pnpm rin-gates:retire --record <record-dir-name> --reason "<why it is obsolete>"
 ## Who retires
 
 Retirement splits into two classes, and only one of them is {{OPERATOR}}'s. Apply the
-naming test from `project.md` § "a fork is one of those reserved classes":
-before escalating, name which reserved class the retirement falls in. If you
-cannot name one, it is a problem the lane settles itself.
+naming test from `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` § "The fork test":
+before escalating, name which class on the active list the retirement falls in.
+If you cannot name one, it is a problem the lane settles itself.
 
 **Obsolete-premise retirement — the lane's, fired autonomously.** The Slice's
 founding premise is refuted by ground truth: the locus it names is gone, the
@@ -108,9 +108,11 @@ leaves a dead record re-selecting into every later pool.
 **Ratified-scope recut — {{OPERATOR}}'s, escalated.** The premise still stands and the
 question is whether the work is still *wanted*: reinstating a Slice {{OPERATOR}}
 retired, retiring a Slice they explicitly commissioned, or dropping ratified
-scope that no evidence has refuted. That is reserved class 1 (a ratified-scope
-recut) or a values call. Escalate with a full actionable pack — the record, the
-evidence, and the pre-staged `--reason` — and proceed with everything else.
+scope that no evidence has refuted. That is a ratified-scope recut. Where the
+active list marks that class stopping, as rin's own list does, it stops even if
+it also reads as a values call: escalate with a full actionable pack — the
+record, the evidence, and the pre-staged `--reason` — and proceed with
+everything else. Where the list marks it decided, decide and record it.
 
 The distinguishing question is **"has the premise been refuted, or do I merely
 judge the work not worth doing?"** Refuted ⇒ retire. Not-worth-doing ⇒ {{OPERATOR}}'s.
