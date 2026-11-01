@@ -5,8 +5,9 @@
 // The deterministic evidence guard is covered exhaustively by t236. This test
 // covers the live conductor half: a workflow seeded at user-stories must emit a
 // run-stage directive, dispatch the design/developer/quality participants with
-// mutually blind round-1 briefs, collect their identity-marked contribution
-// files, integrate as the product lead, and approve only after that evidence is
+// mutually blind round-1 briefs, collect their identity-marked working-space
+// contribution files, assemble as the product lead, re-dispatch every
+// participant for the shared round, and approve only after that evidence is
 // present. A preflight report on the same fixture proves the missing-evidence
 // refusal without reproducing t236's full guard matrix.
 //
@@ -478,7 +479,7 @@ describe("t238 user-stories mob topology (Claude SDK live)", () => {
   );
 
   test(
-    "three mutually blind supports write evidence, the lead integrates, and approval then succeeds",
+    "three supports write their pieces blind, revise them in the shared round, the lead assembles, and approval then succeeds",
     async () => {
       const deadlineMs = Date.now() + TEST_TIMEOUT_MS;
       const projectDir = setupIntegrationProject({ withAudit: true });
@@ -629,7 +630,7 @@ describe("t238 user-stories mob topology (Claude SDK live)", () => {
         );
 
         // Round 1 dispatched every declared support. Each brief names the
-        // shared draft/input, carries the active-space rules delivered by the
+        // outputs and inputs, carries the active-space rules delivered by the
         // preceding load-steering sequence (content pasted into the brief;
         // path-only briefs are not accepted), plus only that participant's
         // contribution filename, never a sibling's contribution.
@@ -684,18 +685,35 @@ describe("t238 user-stories mob topology (Claude SDK live)", () => {
         });
         expect(
           leadIntegrated,
-          "expected a lead-owned integration step after all round-1 support results",
+          "expected a lead-owned assembly step after all round-1 support results",
         ).toBe(true);
 
-        // Permanent evidence and final lead-owned artifacts landed on disk.
+        // The shared round re-dispatched every support with every sibling's
+        // contribution, after the lead assembled round 1.
+        for (const agent of SUPPORT_AGENTS) {
+          const sharedRound = afterSupports.find(
+            (toolResult) => dispatchedAgent(toolResult) === agent,
+          );
+          expect(sharedRound, `missing shared-round dispatch for ${agent}`).toBeDefined();
+          const prompt = String(sharedRound?.input.prompt ?? "");
+          for (const sibling of SUPPORT_AGENTS) {
+            if (sibling === agent) continue;
+            expect(
+              prompt,
+              `${agent}'s shared-round brief omitted ${sibling}'s contribution`,
+            ).toContain(`${sibling}.md`);
+          }
+        }
+
+        // Working-space contributions and final lead-owned artifacts landed on disk.
         for (const agent of SUPPORT_AGENTS) {
           const path = contributionPath(projectDir, agent);
           expect(existsSync(path), `missing ${path}`).toBe(true);
+          const [identity, workingSpace] = readFileSync(path, "utf-8").split("\n", 2);
+          expect(identity.trim()).toBe(`**Collaborator:** ${agent}`);
+          expect(workingSpace.trim().startsWith("**Working space:**")).toBe(true);
           const contribution = readFileSync(path, "utf-8");
-          expect(contribution.split("\n", 1)[0].trim()).toBe(
-            `**Collaborator:** ${agent}`,
-          );
-          expect(contribution).toContain("## Contribution");
+          expect(contribution).toContain("## Pieces");
           expect(contribution).toContain("## Positions");
         }
 

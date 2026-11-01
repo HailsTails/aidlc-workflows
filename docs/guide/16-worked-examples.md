@@ -282,7 +282,7 @@ Produces 12 functional requirements (notification triggers, preference CRUD, ema
 
 **Stage 2.4 — User Stories** (mob)
 
-The aidlc-product-agent first drafts the personas and stories. The aidlc-design-agent, aidlc-developer-agent, and aidlc-quality-agent then inspect that draft as mutually blind collaborators, each writing an identity-marked contribution file. The aidlc-product-agent lead integrates all three contributions into `personas.md` and `stories.md` before presenting the **Approve** / **Request Changes** gate.
+The aidlc-product-agent and the aidlc-design-agent, aidlc-developer-agent, and aidlc-quality-agent write `personas.md` and `stories.md` together in the mob rounds of [`stage-protocol-ensemble.md` §5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies). The design agent writes the personas; the product agent writes the stories, the quality agent their acceptance criteria, and the developer agent their dependencies and INVEST notes. The aidlc-product-agent then presents the **Approve** / **Request Changes** gate.
 
 **Stage 2.6 — Domain Design** (aidlc-architect-agent)
 

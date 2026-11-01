@@ -24,7 +24,7 @@
 
 | Stage | Name | What This Agent Contributes |
 |-------|------|-----------------------------|
-| user-stories | User Stories | Enriches stories with interaction details and UX acceptance criteria |
+| user-stories | User Stories | Writes the personas in the mob |
 | domain-design | Domain Design | Contributes UI component specifications and design system mapping |
 
 ---

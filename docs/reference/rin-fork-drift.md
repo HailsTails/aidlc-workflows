@@ -8,8 +8,9 @@ The fork also removes upstream's other workflow files and owns its small `.githu
 
 Tests that asserted the removed upstream workflow YAML are retired with those workflows. Tests of the retained installer, release planner/publisher, version grammar, review tools and prompts remain. The source-check job does not execute those retained release or review tools.
 
-Comparison baseline: upstream AIDLC **2.10.0**, commit
-`7a61fa7b2bca5bc701ab0a7e6ca3608df8f4694f`. The separate upstream-sync
+Comparison baseline: upstream AIDLC main at commit
+`7a61fa7b2bca5bc701ab0a7e6ca3608df8f4694f` (#2100, 2026-10-07), 577 commits
+after the 2.10.0 tag `2a883858f5483bce3b48f43b8f6d3ca2c042d6ae`. The separate upstream-sync
 branch merges that immutable pin into fork main `7f7118df5b02c4703e2182e6ce36520cfca5d587`,
 preserving both parents. The previous extraction baseline was 2.9.0 at
 `22f5d1b15a064c9ae80046e5b1761d5877e2f69f`. The registry identifiers below
@@ -21,7 +22,7 @@ for this new baseline.
 
 Most retained changes repair execution or make existing plugin contracts work
 across harnesses. Four differences affect workflow philosophy: optional
-per-stage autonomous approval, collaborators doing bounded work, avoiding repeated delivery of ambient rules, and explicit compatible refresh while independent workflows remain open. They must be evaluated independently at an
+per-stage autonomous approval, mob seats writing the outputs with the lead, avoiding repeated delivery of ambient rules, and explicit compatible refresh while independent workflows remain open. They must be evaluated independently at an
 upstream update; equivalent code structure alone does not establish equivalent
 behavior.
 
@@ -63,7 +64,7 @@ A fresh project consumer was rehearsed using the existing copy archive and Bun, 
 
 In the table, **build** means covered by this build/type/lint snapshot; **plugin** means the passing reusable plugin suite. A named regression is the behavior to retest at each baseline change, even where a current focused result is pending.
 
-### Pinned 2.10.0 sync validation, 2026-10-08
+### Pinned upstream sync validation, 2026-10-08
 
 The sync uses upstream 7a61fa7b2bca5bc701ab0a7e6ca3608df8f4694f and fork parent 7f7118df5b02c4703e2182e6ce36520cfca5d587. All seven host packages build and are byte-identical across two independent builds. Source/test/adapter type checks and lint pass; the reusable Rin suite passes 2,404 tests in 118 files, and the Rin constitution audit reports zero violations across 242 plugin files.
 
@@ -118,7 +119,7 @@ delegated-rule and native-evidence requirements remain unchanged.
 | 13 | Recovered machine-backfilled rejection rows do not falsely advance the review-attempt floor. Production freshness still invalidates earlier pipeline receipts when a rejection is recovered; the migration repairs the accidental shared-filter coupling. | `aidlc-lib.ts`, `aidlc-log.ts`; recovered workflows. | Revision backstop 14 tests and review/pipeline floor 12 tests pass. Recovered review budgeting remains unchanged; old pipeline receipts become stale. | Upstream independently preserves recovered review budgeting and production rejection freshness. |
 | Review recovery accounting | Artifact-staleness and source-staleness recovery spend independent bounded allowances. Modern receipts bind to the pending request; ambiguous legacy causes refuse. | `aidlc-lib.ts` shared review-attempt accounting, recovery derivation and fresh review receipts; `aidlc-log.ts` request admission. | Preserve cause-specific budgets, modern request binding and legacy refusal. This ports existing Rin behavior rather than introducing unlimited retries. | Upstream supplies equivalent independent accounting, receipt binding and conservative legacy handling. |
 | Source identity | Root `.gate-runs/**` telemetry is excluded consistently from source fingerprints; nested application directories remain included. | `aidlc-lib.ts` Git and filesystem source-identity paths. | Root telemetry cannot invalidate implementation evidence, while nested production edits still do. | Upstream excludes the actual root telemetry writer surface with equivalent scope; broad ignored-file exclusion alone does not establish that behavior. |
-| 15 | Mob collaborators perform bounded acts and report what those acts showed; only the lead integrates produced artifacts. | Ensemble protocol and all harness skills; stages declaring mob collaboration. | Seats can produce probes/fixtures without racing produced artifacts. Build; behavioral collaboration quality is not established by packaging. | Upstream adopts both practical collaborator work and an act-based contribution contract. This is a deliberate method difference upstream may decline. |
+| 15 | Mob seats and the lead write the stage's outputs together. Each output is split into pieces with one author each; seats write theirs in parallel into working-space contribution files, then revise them against the assembled artifacts in a shared round and at most one contested round. Only the lead edits produced artifacts. No participant drafts alone for the others to react to. | Ensemble protocol §5 and its harness bindings; the user-stories stage; every stage declaring `mode: mob`. | Parallel seats never race produced artifacts; a contribution carries the working-space marker and is revised in place. Build; behavioural collaboration quality is measured by the rin pilot, not by packaging. | Upstream's own mob definition is a mesh with cross-talk; upstream adopts round mechanics that let every seat write and revise against the others. This is a deliberate method difference upstream may decline. |
 | 16 | Stage steering avoids retransmitting ambient rules while retaining validation and the governing rule list; directives carry seat dispatch data and protocols must be reread. | Steering/directive/orchestrator tools and all harness skills; consumers with ambient rule delivery. | Ambient dedupe has an explicit opt-out; seats/paths are carried without losing governing rules. Build; hermetic directive regression pending. | Retire dedupe, dispatch and reread obligations separately when upstream supplies each equivalent or ambient delivery changes. |
 | 17, 18, 19 | Abandoned unstamped locks are distinguishable from acquisitions; platform FFI loaders resolve lazily and stop retrying a known unavailable API. | `aidlc-lib.ts`, `aidlc-usage.ts`; Linux/macOS/Windows and Node test consumers. | Live token-bearing acquisition remains protected; imports load without eager Bun FFI; unavailable gates fail within their real lock budget. Build; platform probes pending. | Upstream repairs each independent locking/loading behavior; a single Windows fix does not retire the other platform paths. |
 | 20, 21 | Sensor writer notices reach Claude; Codex patch notices combine into one bounded context envelope without hiding gate failures. | Sensor verdict/dispatcher/state/hooks and Codex adapter; writing agents. | An unwritable detail file does not lose a writer notice; gate-time missing evidence still refuses; multi-file patch summaries survive. Plugin suite/build; focused host notice probes pending. | Upstream delivers equivalent writer feedback and patch aggregation; detail-file/audit behavior may retire independently. |

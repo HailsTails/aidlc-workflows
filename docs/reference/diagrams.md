@@ -324,7 +324,7 @@ flowchart TD
 
 ## 7. Execution Model
 
-This implementation uses four active execution modes for stages. **Inline** stages execute directly within the orchestrator conversation (user can interact). **Subagent** stages delegate to a single agent via the Claude Code Task tool (hub-and-spoke when the stage declares support agents). **Pipeline** stages chain agents sequentially, each link advancing the work product (Reverse Engineering is the shipped example). **Mob** stages convene all support agents in parallel rounds (User Stories is the shipped example).
+This implementation uses four active execution modes for stages. **Inline** stages execute directly within the orchestrator conversation (user can interact). **Subagent** stages delegate to a single agent via the Claude Code Task tool (hub-and-spoke when the stage declares support agents). **Pipeline** stages chain agents sequentially, each link advancing the work product (Reverse Engineering is the shipped example). **Mob** stages have the seats and the lead write the outputs together in bounded rounds, as [`stage-protocol-ensemble.md` §5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies) defines (User Stories is the shipped example).
 
 ```mermaid
 flowchart LR
@@ -360,15 +360,12 @@ flowchart LR
         TS1 --> TS2 --> TS3 --> TS4 --> TS5 --> TS6
     end
 
-    subgraph MOB["Mode 4: Mob (parallel rounds)"]
+    subgraph MOB["Mode 4: Mob (bounded rounds)"]
         direction TB
         MB1["Orchestrator reads\nstage file"]
-        MB2["Lead drafts the\nartifacts inline"]
-        MB3["Parallel Tasks: all\nsupport agents, blind"]
-        MB4["Each writes its\ncontribution file"]
-        MB5["Lead integrates;\nobjection triage\n(judgment -> human,\nknowledge -> round 2)"]
-        MB6["Orchestrator presents\ncompletion + approval"]
-        MB1 --> MB2 --> MB3 --> MB4 --> MB5 --> MB6
+        MB2["Seats and lead write\nthe outputs in rounds\n(ensemble protocol §5)"]
+        MB3["Orchestrator presents\ncompletion + approval"]
+        MB1 --> MB2 --> MB3
     end
 
     style INLINE fill:#e8f5e9,stroke:#4caf50,color:#000

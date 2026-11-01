@@ -389,9 +389,8 @@ sequenceDiagram
         O->>U: AskUserQuestion: Approval Gate
         U-->>O: Approve / Request Changes
     else Mob Stage (1 of 33)
-        O->>U: Execute lead draft inline
-        O->>O: Dispatch blind support-agent contributions
-        O->>U: Integrate as lead and present Approval Gate
+        O->>O: Run the mob rounds (ensemble protocol §5)
+        O->>U: Present Approval Gate
         U-->>O: Approve / Request Changes
     end
 
@@ -474,10 +473,10 @@ its lead inline and dispatches only its support agents:
 |-------|------|---------------------------|-------|--------|
 | 2.1 Reverse Engineering | pipeline | `aidlc-developer-agent` then `aidlc-architect-agent` (2-link chain) | aidlc-developer-agent + aidlc-architect-agent | Deep code analysis produces large intermediate output; the final link writes the artifacts |
 | 2.2 Practices Discovery | subagent | `aidlc-pipeline-deploy-agent`, then three parallel spokes, then the lead again | pipeline-deploy + quality + developer + devsecops | Hub-and-spoke discovery keeps evidence perspectives independent before the human interview and lead integration |
-| 2.4 User Stories | mob | lead inline; `aidlc-design-agent` + `aidlc-developer-agent` + `aidlc-quality-agent` in parallel | 4 participants | The lead drafts; mutually blind collaborators write contribution files; the lead integrates before the gate |
+| 2.4 User Stories | mob | lead inline; `aidlc-design-agent` + `aidlc-developer-agent` + `aidlc-quality-agent` in parallel | 4 participants | Seats and lead write the stories together ([§5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies)) |
 | 3.5 Code Generation | subagent | `aidlc-developer-agent` | aidlc-developer-agent | Code writing benefits from clean context focused on unit specification |
 
-With collaborators off (every shipped scope except `enterprise`), the directive's `support_agents` is empty and the first three rows run their lead alone: the developer is the pipeline's only link, and no spokes, mob round, or contribution files follow.
+With collaborators off (every shipped scope except `enterprise`), the directive's `support_agents` is empty and the first three rows run their lead alone: the developer is the pipeline's only link, and no spokes, mob rounds, or contribution files follow.
 
 Workspace detection (0.2) used to be a subagent. It is now a deterministic rule-based scanner inside `aidlc-utility intent-create`; rules are documented in `aidlc-common/stages/initialization/workspace-detection.md`.
 
@@ -495,8 +494,9 @@ The 6-step process:
    harness agent config loads persona and knowledge; do not copy either into
    the prompt.
 4. **Apply the topology.** Use blind spokes for subagent supports, ordered links
-   for pipeline, and blind support contributions plus the bounded objection
-   round for mob. After each pipeline return, mint the current-attempt
+   for pipeline, and the rounds of
+   [`stage-protocol-ensemble.md` §5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies)
+   for mob. After each pipeline return, mint the current-attempt
    `PIPELINE_LINK_COMPLETED` receipt before dispatching the next link; resume
    from `directive.pipeline.completed`, and add `--single` on an isolated run.
 5. **Collect durable output.** The lead owns `produces[]`; dispatched
@@ -509,8 +509,8 @@ The 6-step process:
 Some stages involve multiple agents: a lead agent and one or more support agents. The coordination pattern follows `directive.mode` — the stage's communication topology — and is always orchestrator-mediated:
 
 1. Execute the lead agent's work first, producing primary artifacts.
-2. Bring in each support agent per the topology. On an `inline` stage the orchestrator reads every lead/support entry in `directive.inline_context_paths` and adopts those perspectives rather than dispatching them. On `mob`, it reads the lead-only roster and performs the lead work inline, while each support is a real dispatch. On `subagent` (hub-and-spoke) and `pipeline` (chain), the lead and supports are dispatched: mutually-blind spokes on subagent, ordered enrichment hops on pipeline, and parallel blind contributions plus a bounded objection round on mob (`stage-protocol-ensemble.md`). Every returned pipeline hop is recorded with `aidlc-log.ts link`; multi-repo chains include `--repo`, isolated runs include `--single`, and repo-scoped reuse rows suppress dispatch for reused stores.
-3. Synthesize all agent outputs into the final stage artifacts — dispatched support agents write contribution files (Contribution + Positions, `stage-protocol-ensemble.md` §11) that the lead integrates; the lead alone edits the `produces[]` artifacts (pipeline links advance them directly); unresolved mob judgment calls surface to the human mid-stage, except on an autonomous stage, where only a call in a stopping reserved class is asked and the rest are settled on the stage (`stage-protocol.md` § "Reserved operator decisions"); maintained dissent is quoted verbatim at the gate.
+2. Bring in each support agent per the topology. On an `inline` stage the orchestrator reads every lead/support entry in `directive.inline_context_paths` and adopts those perspectives rather than dispatching them. On `mob`, it reads the lead-only roster and performs the lead work inline, while each support is a real dispatch, in the rounds of [`stage-protocol-ensemble.md` §5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies). On `subagent` (hub-and-spoke) and `pipeline` (chain), the lead and supports are dispatched: mutually-blind spokes on subagent, ordered enrichment hops on pipeline. Every returned pipeline hop is recorded with `aidlc-log.ts link`; multi-repo chains include `--repo`, isolated runs include `--single`, and repo-scoped reuse rows suppress dispatch for reused stores.
+3. Synthesize all agent outputs into the final stage artifacts — dispatched support agents write contribution files, and the lead alone edits the `produces[]` artifacts (pipeline links advance them directly). A mob's objections and dissent follow §5.
 4. Agents do NOT invoke each other -- only the orchestrator delegates. Authored core and Claude personas enforce this with `disallowedTools: Task`; harness projections use their native tool policy instead where needed. Kiro omits that unsupported Markdown key and excludes the `subagent` tool from delegate JSON/frontmatter allowlists.
 
 Practices Discovery is the gate-ordering exception. Its hub-and-spoke work ends
