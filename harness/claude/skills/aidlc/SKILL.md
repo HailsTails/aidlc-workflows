@@ -207,7 +207,7 @@ open a picker: write the pack that section names into the stage's artifact and
 park; where park is refused, record it with the action not taken for the next
 human gate. On resume, its `Operator answer:` line counts only when it links to the
 person's own reply; with the person in the session, ask them instead of
-parking again. Under autonomous Construction the question is recorded, the
+parking again. While `Construction Autonomy Mode` is `autonomous`, in any phase, the question is recorded, the
 action is not taken, and it surfaces at the final-batch gate. An engine
 checkpoint with no person in the session is recorded and the stage parks, or,
 where park is refused, stays open for the engine to hold; it is never approved

@@ -81,15 +81,17 @@ why no record, code or measurement settles it, the options, a recommendation,
 the consequences of each answer, and an `Operator answer:` line. On resume,
 the stage moves past the question only once that line holds the answer and
 links to the person's own reply: their PR or issue comment, or their
-`engine log answer` record. A comment by any other account, an agent's
-included, does not count. When the person is in the session on resume, ask
-them through the question contract; otherwise the stage parks again.
+`engine log answer` record carrying their reply. A comment by any other
+account, an agent's included, does not count. When the line does not qualify
+and the person is in the session on resume, ask them through the question
+contract; otherwise the stage parks again.
 
 Wherever park is refused, the pack is recorded with the action not taken and
-surfaces at the next human gate. Under autonomous Construction, park is
-refused and the Stop hook holds no turn for a question, even with the person in
-the session: the question is recorded, the action it guards is not taken, and
-it surfaces at the final-batch gate.
+surfaces at the next human gate. While `Construction Autonomy Mode` is
+`autonomous`, in any phase, the stage does not park and the Stop hook holds no
+turn for a question, even with the person in the session: the question is
+recorded, the action it guards is not taken, and it surfaces at the final-batch
+gate.
 
 Summary confirmation is owed only when the stage declares summary_confirmation
 and the engine's checkpoint owner requires it. The ceremony switch being on

@@ -348,8 +348,8 @@ move; the engine's `Parked At Stage` marker it carries, not a stage change, is
 what a resuming run reads. Any PR that failed its class's merge conditions
 (Step 4) gets no merge and no transition — flag the exact failing condition in
 the run digest instead. The run digest also lists each merged PR's decided
-calls, with their class and where each is recorded, so {{OPERATOR}} sees them
-after the merge.
+calls, with their class and where each is recorded, and every stopping-class
+pack recorded where park was refused, so {{OPERATOR}} sees them.
 
 Reap the PR-head review worktree once the board has converged and the merge is
 read back: `pnpm rin-gates:review-worktree --pr <N> --remove`. Leaving them
@@ -387,7 +387,8 @@ reviewer step), learnings, and approval.
   through the author leg IN THIS RUN (Step 5 → re-review), not posted-and-deferred
   to a future "author session" — no such lane exists, so a deferred verdict
   strands the PR. The only run-terminal outcomes are converge-and-merge, PARK
-  (cannot complete this run), or PARK on a stopping-class residue.
+  (cannot complete this run), PARK on a stopping-class residue, or, where park
+  is refused, its pack recorded with the action not taken.
 - **Never strand.** A blocked run PARKS via the engine-native park and pushes the
   marker durably; it never ends with work-in-progress uncommitted.
 
