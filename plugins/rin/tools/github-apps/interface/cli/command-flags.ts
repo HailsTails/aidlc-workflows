@@ -1,14 +1,26 @@
 import type { z } from "zod";
 import { fail, succeed, type Result } from "../../domain/result.ts";
 
-type CommandFlags = Readonly<Record<string, string | true>>;
+type CommandFlags = Readonly<Record<string, string | true | readonly string[]>>;
 
 type FlagFailure =
   | { readonly kind: "flag-malformed"; readonly token: string }
   | { readonly kind: "flag-repeated"; readonly flag: string }
+  | { readonly kind: "flag-value-missing"; readonly flag: string }
   | { readonly kind: "flags-invalid"; readonly issues: string };
 
-type FlagReading = { readonly tokens: readonly string[]; readonly collected: CommandFlags };
+type FlagParsing = {
+  readonly tokens: readonly string[];
+  readonly repeatableFlags: readonly string[];
+};
+
+type FlagReading = FlagParsing & { readonly collected: CommandFlags };
+
+type FlagValue = {
+  readonly collected: CommandFlags;
+  readonly flag: string;
+  readonly flagValue: string;
+};
 
 type FlagValidation<Flags> = { readonly flags: CommandFlags; readonly schema: z.ZodType<Flags> };
 
@@ -17,23 +29,61 @@ const FLAG_PREFIX = "--";
 const isFlagToken = (token: string | undefined): token is string =>
   token?.startsWith(FLAG_PREFIX) === true && token.length > FLAG_PREFIX.length;
 
-const readFlags = ({ tokens, collected }: FlagReading): Result<CommandFlags, FlagFailure> => {
+const appendFlagValue = ({ collected, flag, flagValue }: FlagValue): CommandFlags => {
+  const earlierValues = collected[flag];
+  return {
+    ...collected,
+    [flag]: [...(typeof earlierValues === "object" ? earlierValues : []), flagValue],
+  };
+};
+
+const readRepeatableFlag = ({
+  tokens,
+  collected,
+  repeatableFlags,
+}: FlagReading): Result<CommandFlags, FlagFailure> => {
+  const [token = "", flagValue, ...afterValue] = tokens;
+  const flag = token.slice(FLAG_PREFIX.length);
+  if (flagValue === undefined || isFlagToken(flagValue)) {
+    return fail({ kind: "flag-value-missing", flag });
+  }
+  return readFlags({
+    tokens: afterValue,
+    collected: appendFlagValue({ collected, flag, flagValue }),
+    repeatableFlags,
+  });
+};
+
+const readFlags = ({
+  tokens,
+  collected,
+  repeatableFlags,
+}: FlagReading): Result<CommandFlags, FlagFailure> => {
   const [token, ...remaining] = tokens;
   if (token === undefined) return succeed(collected);
   if (!isFlagToken(token)) return fail({ kind: "flag-malformed", token });
   const flag = token.slice(FLAG_PREFIX.length);
+  if (repeatableFlags.includes(flag)) return readRepeatableFlag({ tokens, collected, repeatableFlags });
   if (Object.hasOwn(collected, flag)) return fail({ kind: "flag-repeated", flag });
   const [flagValue, ...afterValue] = remaining;
   if (flagValue === undefined || isFlagToken(flagValue)) {
-    return readFlags({ tokens: remaining, collected: { ...collected, [flag]: true } });
+    return readFlags({ tokens: remaining, collected: { ...collected, [flag]: true }, repeatableFlags });
   }
-  return readFlags({ tokens: afterValue, collected: { ...collected, [flag]: flagValue } });
+  return readFlags({
+    tokens: afterValue,
+    collected: { ...collected, [flag]: flagValue },
+    repeatableFlags,
+  });
 };
 
-const parseCommandFlags = (tokens: readonly string[]): Result<CommandFlags, FlagFailure> =>
+const parseCommandFlags = ({
+  tokens,
+  repeatableFlags,
+}: FlagParsing): Result<CommandFlags, FlagFailure> =>
   readFlags({
     tokens: tokens[0] === FLAG_PREFIX ? tokens.slice(1) : tokens,
     collected: {},
+    repeatableFlags,
   });
 
 const validateFlags = <Flags>({

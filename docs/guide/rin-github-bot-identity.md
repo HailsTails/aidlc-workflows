@@ -4,7 +4,7 @@ Rin's `guard-github-writes` hook blocks raw `gh` writes in agent sessions, becau
 
 | Role       | Actor               | Used by           | Commands                                                                   |
 | ---------- | ------------------- | ----------------- | -------------------------------------------------------------------------- |
-| `author`   | `<author-slug>[bot]`   | author sessions   | `pr`, `pr-edit`, `comment`, `draft`, `ready`, `merge`, `close`, `git push` |
+| `author`   | `<author-slug>[bot]`   | author sessions   | `pr`, `pr-edit`, `comment`, `issue`, `issue-edit`, `draft`, `ready`, `merge`, `close`, `git push` |
 | `reviewer` | `<reviewer-slug>[bot]` | reviewer sessions | `review`                                                                   |
 
 GitHub refuses a bot's approval of its own pull request. Splitting authoring from reviewing across two apps is what lets an agent review count. Helen's consumers use the `rin-author` and `rin-reviewer` apps.
@@ -18,6 +18,8 @@ Run every command from the consumer's project root. The examples use Claude's `.
 | `bun .claude/tools/github-apps/cli-main.ts pr --title "T" --body-file body.md [--base main] [--head <branch>] [--draft] [--session <id>]` | opens a pull request as the author bot |
 | `... pr-edit --pr <n> [--title "T"] [--body "B" \| --body-file <path>]`                                       | retitles or rewrites a pull request                                           |
 | `... comment --target <n> --body "B"`                                                                         | comments on an issue or pull request                                          |
+| `... issue --title "T" --body "B" [--label <name> ...] [--session <id>]`                                      | opens an issue as the author bot                                              |
+| `... issue-edit --issue <n> [--add-label <name> ...] [--remove-label <name> ...] [--title "T"] [--body "B" \| --body-file <path>] [--state open\|closed]` | relabels, retitles, rewrites, closes or reopens an issue; removing a label it lacks is not an error |
 | `... draft --pr <n>` / `... ready --pr <n>`                                                                   | converts to draft / marks ready for review                                    |
 | `... review --pr <n> --event approve\|request-changes\|comment --body "B" [--commit-sha <sha>]`               | posts a review as the reviewer bot, bound to the head it read                 |
 | `... merge --pr <n>`                                                                                          | squash-merges a pull request GitHub reports as cleanly mergeable              |
@@ -26,7 +28,7 @@ Run every command from the consumer's project root. The examples use Claude's `.
 | `... token --role author\|reviewer`                                                                           | prints a one-hour installation token, for `GH_TOKEN=` reads                   |
 | `... marker --role author\|reviewer --session <id>`                                                           | prints the provenance marker                                                  |
 
-Every body an agent posts starts with a hidden marker, `<!-- rin-bot: role=<role> session=<id> -->`, so authorship can be audited and filtered. A body given with `--body` or `--body-file` that contains a private key is refused. Use `--body-file` for long or multi-line bodies; it also refuses a file inside the credential store. A flag may be given once; a value that itself starts with `--` has to go through `--body-file`.
+Every body an agent posts starts with a hidden marker, `<!-- rin-bot: role=<role> session=<id> -->`, so authorship can be audited and filtered. A body given with `--body` or `--body-file` that contains a private key is refused. Use `--body-file` for long or multi-line bodies; it also refuses a file inside the credential store. A flag may be given once, except `--label`, `--add-label` and `--remove-label`, which repeat once per label; every label must already exist in the repository, except one being removed. `issue-edit` prints one warning line on stderr for each `--remove-label` the repository does not have, and still exits 0. A value that itself starts with `--` has to go through `--body-file`.
 
 `review` posts against the head sha it read, and refuses if `--commit-sha` names a different head. `merge` does not judge reviews itself. It refuses unless the pull request is open, not a draft, and GitHub reports its merge state as `CLEAN`, which already folds in the ruleset's required approvals and checks and any conflict. A refusal names the state GitHub returned, such as `blocked` (waiting on a review or required check), `unstable` (checks failing or pending) or `dirty` (a conflict). It passes the head it checked to GitHub as `expectedHeadOid`, so a push that lands between the check and the merge makes GitHub refuse the merge.
 
@@ -47,7 +49,7 @@ Each consumer commits `aidlc/github-identity.json`:
 }
 ```
 
-A token is always scoped to that one repository, and minting refuses credentials that authenticate as a different app slug. Without this file the bot identity is unconfigured: the hook still blocks raw `gh` writes but says what to add, and worktree provisioning skips identity adoption without a message.
+A token is always scoped to that one repository. `issue` and `issue-edit` narrow it further to **Issues: write**, and `comment` to **Issues: write** and **Pull requests: write**. Minting refuses credentials that authenticate as a different app slug. Without this file the bot identity is unconfigured: the hook still blocks raw `gh` writes but says what to add, and worktree provisioning skips identity adoption without a message.
 
 ## Credentials
 
@@ -68,7 +70,7 @@ On a new linked worktree, the plugin's `provision-worktree` hook runs `adopt-git
 
 ## Setting up a consumer repository
 
-1. Install each app on the consumer repository: on the app's settings page choose *Install App*, then the owning account, then *Only select repositories*, and add the repository. An installation inherits the app's permissions; it does not choose its own. Check that the author app has **Contents: read and write** (push and merge), **Pull requests: read and write** and **Issues: read and write** (comments), plus **Workflows: read and write** if agents change `.github/workflows/`. Check that the reviewer app has **Pull requests: read and write** and **Contents: read**. **Metadata: read** is always granted.
+1. Install each app on the consumer repository: on the app's settings page choose *Install App*, then the owning account, then *Only select repositories*, and add the repository. An installation inherits the app's permissions; it does not choose its own. Check that the author app has **Contents: read and write** (push and merge), **Pull requests: read and write** and **Issues: read and write** (comments, and opening, relabelling and closing issues), plus **Workflows: read and write** if agents change `.github/workflows/`. Check that the reviewer app has **Pull requests: read and write** and **Contents: read**. **Metadata: read** is always granted.
 2. Configure the base branch's ruleset to require a pull request with at least one approval, and to require its status checks. `merge` trusts that ruleset: without it, a clean merge state means nothing has been checked, and the merge has no gate. The reviewer bot's approval satisfies the approval rule, and GitHub never lets the author bot approve its own pull request. If the rule restricts who may push or merge to the branch, add the author app to that list.
 3. Commit `aidlc/github-identity.json`.
 4. Make sure the per-user credential store holds both roles.

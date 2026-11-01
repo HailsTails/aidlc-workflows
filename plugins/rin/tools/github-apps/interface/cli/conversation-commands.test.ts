@@ -31,6 +31,8 @@ const fakeRepositoryApi = () => ({
   squashMerge: vi.fn(),
   closePullRequest: vi.fn(),
   changeReadiness: vi.fn(),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
 });
 
 const contextWith = ({
@@ -131,6 +133,13 @@ describe("comment", () => {
     expect(repositoryApi.commentOnIssue).toHaveBeenCalledExactlyOnceWith({
       issueNumber: 6,
       body: "<!-- rin-bot: role=author session=6 -->\n\nRebased.",
+    });
+  });
+
+  it("asks for a token that can write issue and pull request comments only", () => {
+    expect(conversationCommands.comment.permissions).toEqual({
+      issues: "write",
+      pull_requests: "write",
     });
   });
 });

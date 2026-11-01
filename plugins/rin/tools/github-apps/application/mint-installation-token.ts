@@ -1,4 +1,5 @@
 import type { AgentRole } from "../domain/agent-role.ts";
+import type { InstallationPermissions } from "../domain/installation-permissions.ts";
 import type { RepositorySlug } from "../domain/repository-slug.ts";
 import { fail, type Result } from "../domain/result.ts";
 import type { Secret } from "../domain/secret.ts";
@@ -20,6 +21,7 @@ type InstallationTokenGrant = {
   readonly role: AgentRole;
   readonly appSlug: string;
   readonly repository: RepositorySlug;
+  readonly permissions?: InstallationPermissions;
 };
 
 type AppIdentityMismatch = {
@@ -44,7 +46,7 @@ const createTokenMinter = ({
   clock,
   signer,
 }: TokenMintingDependencies): TokenMinter => ({
-  mintInstallationToken: async ({ role, appSlug, repository }) => {
+  mintInstallationToken: async ({ role, appSlug, repository, permissions }) => {
     const credentials = await credentialStore.loadRoleCredentials({ role });
     if (credentials.kind === "failure") return credentials;
     const appJwt = createAppJwt({
@@ -72,6 +74,7 @@ const createTokenMinter = ({
       appJwt: appJwt.outcome,
       repository,
       installationId: installation.outcome.installationId,
+      permissions,
     });
   },
 });

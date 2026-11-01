@@ -1,3 +1,4 @@
+import type { IssueState, LabelChange } from "../domain/issue.ts";
 import type {
   PullRequestReadiness,
   PullRequestSnapshot,
@@ -30,6 +31,20 @@ type ReviewSubmission = {
 
 type IssueComment = { readonly issueNumber: number; readonly body: string };
 
+type IssueProposal = {
+  readonly title: string;
+  readonly body: string;
+  readonly labels: readonly string[];
+};
+
+type IssueRevision = {
+  readonly issueNumber: number;
+  readonly title: string | undefined;
+  readonly body: string | undefined;
+  readonly state: IssueState | undefined;
+  readonly labels: LabelChange;
+};
+
 type SquashMerge = { readonly pullRequestId: string; readonly expectedHeadSha: string };
 
 type ReadinessChange = { readonly pullRequestId: string; readonly readiness: PullRequestReadiness };
@@ -39,6 +54,8 @@ type PullRequestReference = { readonly pullNumber: number };
 type PullRequestIdentity = { readonly pullRequestId: string };
 
 type PublishedLink = { readonly url: string };
+
+type RevisedIssue = PublishedLink & { readonly missingLabels: readonly string[] };
 
 type MergedCommit = { readonly mergeSha: string };
 
@@ -66,11 +83,15 @@ type GitHubRepositoryPort = {
   readonly changeReadiness: (
     change: ReadinessChange,
   ) => Promise<Result<PullRequestReadiness, GitHubFailure>>;
+  readonly openIssue: (proposal: IssueProposal) => Promise<Result<PublishedLink, GitHubFailure>>;
+  readonly reviseIssue: (revision: IssueRevision) => Promise<Result<RevisedIssue, GitHubFailure>>;
 };
 
 export type {
   GitHubRepositoryPort,
   IssueComment,
+  IssueProposal,
+  IssueRevision,
   MergedCommit,
   PublishedLink,
   PullRequestIdentity,
@@ -79,5 +100,6 @@ export type {
   PullRequestRevision,
   ReadinessChange,
   ReviewSubmission,
+  RevisedIssue,
   SquashMerge,
 };

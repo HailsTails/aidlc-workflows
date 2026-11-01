@@ -24,6 +24,18 @@ describe("describeCliFailure", () => {
     );
   });
 
+  it("says what an issue edit needs to change something", () => {
+    expect(describeCliFailure({ kind: "issue-unchanged", issueNumber: 429 })).toBe(
+      "Nothing to change on #429; pass --title, --body, --body-file, --state, --add-label or --remove-label.",
+    );
+  });
+
+  it("names a repeatable flag given without a value", () => {
+    expect(describeCliFailure({ kind: "flag-value-missing", flag: "label" })).toBe(
+      "--label needs a value.",
+    );
+  });
+
   it("explains an inline body refused for carrying a private key", () => {
     expect(describeCliFailure({ kind: "inline-body-refused", reason: "contains-private-key" })).toBe(
       "Refusing to post the --body text: it contains a private key.",

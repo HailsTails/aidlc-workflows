@@ -27,6 +27,8 @@ const fakeRepositoryApi = () => ({
     .mockResolvedValue(succeed({ mergeSha: "merge8" })),
   closePullRequest: vi.fn(),
   changeReadiness: vi.fn(),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
 });
 
 describe("mergePullRequest", () => {

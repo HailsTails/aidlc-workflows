@@ -5,27 +5,54 @@ import { parseCommandFlags, validateFlags } from "./command-flags.ts";
 
 describe("parseCommandFlags", () => {
   it("pairs each flag with its value and marks bare flags present", () => {
-    expect(parseCommandFlags(["--title", "Add the basket", "--draft", "--base", "main"])).toEqual(
+    expect(parseCommandFlags({ tokens: ["--title", "Add the basket", "--draft", "--base", "main"], repeatableFlags: [] })).toEqual(
       succeed({ title: "Add the basket", draft: true, base: "main" }),
     );
   });
 
   it("ignores the separator pnpm forwards before script arguments", () => {
-    expect(parseCommandFlags(["--", "--pr", "4"])).toEqual(succeed({ pr: "4" }));
+    expect(parseCommandFlags({ tokens: ["--", "--pr", "4"], repeatableFlags: [] })).toEqual(succeed({ pr: "4" }));
   });
 
   it("marks a trailing flag present", () => {
-    expect(parseCommandFlags(["--pr", "4", "--draft"])).toEqual(succeed({ pr: "4", draft: true }));
+    expect(parseCommandFlags({ tokens: ["--pr", "4", "--draft"], repeatableFlags: [] })).toEqual(succeed({ pr: "4", draft: true }));
   });
 
   it("refuses a flag given twice so a later one cannot silently win", () => {
-    expect(parseCommandFlags(["--pr", "4", "--pr", "5"])).toEqual(
+    expect(parseCommandFlags({ tokens: ["--pr", "4", "--pr", "5"], repeatableFlags: [] })).toEqual(
       fail({ kind: "flag-repeated", flag: "pr" }),
     );
   });
 
+  it("collects every value of a repeatable flag in order", () => {
+    expect(
+      parseCommandFlags({
+        tokens: ["--label", "bug", "--title", "T", "--label", "stage:triage"],
+        repeatableFlags: ["label"],
+      }),
+    ).toEqual(succeed({ label: ["bug", "stage:triage"], title: "T" }));
+  });
+
+  it("collects a repeatable flag given once as a single-value list", () => {
+    expect(parseCommandFlags({ tokens: ["--label", "bug"], repeatableFlags: ["label"] })).toEqual(
+      succeed({ label: ["bug"] }),
+    );
+  });
+
+  it("refuses a repeatable flag without a value", () => {
+    expect(
+      parseCommandFlags({ tokens: ["--label", "--title", "T"], repeatableFlags: ["label"] }),
+    ).toEqual(fail({ kind: "flag-value-missing", flag: "label" }));
+  });
+
+  it("still refuses repeating a flag the command does not declare repeatable", () => {
+    expect(
+      parseCommandFlags({ tokens: ["--title", "A", "--title", "B"], repeatableFlags: ["label"] }),
+    ).toEqual(fail({ kind: "flag-repeated", flag: "title" }));
+  });
+
   it("refuses a stray positional argument", () => {
-    expect(parseCommandFlags(["--pr", "4", "5"])).toEqual(
+    expect(parseCommandFlags({ tokens: ["--pr", "4", "5"], repeatableFlags: [] })).toEqual(
       fail({ kind: "flag-malformed", token: "5" }),
     );
   });

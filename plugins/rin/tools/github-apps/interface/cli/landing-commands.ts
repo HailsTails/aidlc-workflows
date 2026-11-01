@@ -3,13 +3,13 @@ import { closePullRequest } from "../../application/close-pull-request.ts";
 import { mergePullRequest } from "../../application/merge-pull-request.ts";
 import { succeed } from "../../domain/result.ts";
 import type { RepositoryCommand } from "./cli-command.ts";
-import { pullNumberFlag } from "./command-flag-schemas.ts";
+import { issueOrPullNumberFlag } from "./command-flag-schemas.ts";
 import { validateFlags } from "./command-flags.ts";
 import { reportLine } from "./command-report.ts";
 
-const mergeFlagsSchema = z.strictObject({ pr: pullNumberFlag });
+const mergeFlagsSchema = z.strictObject({ pr: issueOrPullNumberFlag });
 
-const closeFlagsSchema = z.strictObject({ pr: pullNumberFlag, reason: z.string().min(1) });
+const closeFlagsSchema = z.strictObject({ pr: issueOrPullNumberFlag, reason: z.string().min(1) });
 
 const mergeCommand: RepositoryCommand = {
   access: "repository",

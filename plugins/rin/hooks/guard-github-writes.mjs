@@ -73,6 +73,25 @@ const writeRules = [
     hint: ({ cli }) => `${cli} comment --target <n> --body "..."`,
   },
   {
+    pattern: atCommandStart({ tail: "gh\\s+issue\\s+create\\b" }),
+    hint: ({ cli }) =>
+      `${cli} issue --title "..." --body "..." [--label <name> ...]`,
+  },
+  {
+    pattern: atCommandStart({ tail: "gh\\s+issue\\s+edit\\b" }),
+    hint: ({ cli }) =>
+      `${cli} issue-edit --issue <n> [--add-label <name> ...] [--remove-label <name> ...] [--title "..."] [--body "..."] [--state open|closed]`,
+  },
+  {
+    pattern: atCommandStart({ tail: "gh\\s+issue\\s+close\\b" }),
+    hint: ({ cli }) =>
+      `${cli} issue-edit --issue <n> --state closed (add a closing note with ${cli} comment --target <n> --body "...")`,
+  },
+  {
+    pattern: atCommandStart({ tail: "gh\\s+issue\\s+reopen\\b" }),
+    hint: ({ cli }) => `${cli} issue-edit --issue <n> --state open`,
+  },
+  {
     pattern: atCommandStart({ tail: "gh\\s+pr\\s+merge\\b" }),
     hint: ({ cli, authorLogin }) =>
       `${cli} merge --pr <n> (squash-merges as ${authorLogin}; refuses without an APPROVED verdict)`,

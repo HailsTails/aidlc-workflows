@@ -18,9 +18,9 @@ import type {
   PullRequestSnapshot,
   ReviewRecord,
 } from "../domain/pull-request.ts";
-import { formatRepositorySlug, type RepositorySlug } from "../domain/repository-slug.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
-import { executeGraphql, type GraphqlConnection } from "./github-graphql.ts";
+import { executeGraphql } from "./github-graphql.ts";
+import { openIssue, reviseIssue } from "./github-issue-api.ts";
 import {
   graphqlReviewEventOf,
   pullRequestNodeSchema,
@@ -28,28 +28,25 @@ import {
   reviewNodeSchema,
   reviewRecordOf,
 } from "./github-pull-request-wire.ts";
-
-const GITHUB_NOT_FOUND_STATUS = 404;
+import {
+  linkSchema,
+  missingSubject,
+  readRepositoryId,
+  type Located,
+  type RepositoryConnection,
+} from "./github-repository-scope.ts";
 
 const REVIEW_WINDOW = 100;
-
-type RepositoryConnection = GraphqlConnection & { readonly repository: RepositorySlug };
-
-type RepositoryScope = { readonly connection: RepositoryConnection };
-
-type Located<Request> = RepositoryScope & Request;
-
-const linkSchema = z.object({ url: z.string() });
 
 const missingNumber = ({
   connection,
   pullNumber,
-}: Located<PullRequestReference>): GitHubFailure => ({
-  kind: "github-rejected",
-  operation: "find pull request",
-  status: GITHUB_NOT_FOUND_STATUS,
-  detail: `#${String(pullNumber)} does not exist in ${formatRepositorySlug(connection.repository)}`,
-});
+}: Located<PullRequestReference>): GitHubFailure =>
+  missingSubject({
+    connection,
+    operation: "find pull request",
+    subject: `#${String(pullNumber)}`,
+  });
 
 const readPullRequest = async ({
   connection,
@@ -101,22 +98,6 @@ const listReviews = async ({
   const reviews = found.outcome.repository?.pullRequest?.reviews.nodes;
   if (reviews === undefined) return fail(missingNumber({ connection, pullNumber }));
   return succeed(reviews.map(reviewRecordOf));
-};
-
-const readRepositoryId = async ({
-  connection,
-}: RepositoryScope): Promise<Result<string, GitHubFailure>> => {
-  const found = await executeGraphql({
-    ...connection,
-    operation: "read repository",
-    query: `query RepositoryId($owner: String!, $name: String!) {
-      repository(owner: $owner, name: $name) { id }
-    }`,
-    variables: { ...connection.repository },
-    dataSchema: z.object({ repository: z.object({ id: z.string() }) }),
-  });
-  if (found.kind === "failure") return found;
-  return succeed(found.outcome.repository.id);
 };
 
 const openPullRequest = async ({
@@ -306,6 +287,8 @@ const createGitHubRepositoryApi = (connection: RepositoryConnection): GitHubRepo
   squashMerge: (merge) => squashMerge({ connection, ...merge }),
   closePullRequest: (identity) => closePullRequest({ connection, ...identity }),
   changeReadiness: (change) => changeReadiness({ connection, ...change }),
+  openIssue: (proposal) => openIssue({ connection, ...proposal }),
+  reviseIssue: (revision) => reviseIssue({ connection, ...revision }),
 });
 
 export { createGitHubRepositoryApi, type RepositoryConnection };
