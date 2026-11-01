@@ -15,6 +15,7 @@ import { type AbsolutePath, absolutePathSchema } from "../../../core/values/abso
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { disciplineIdSchema } from "../../../core/values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../../../core/values/repo-path.ts";
+import { overlaidFileText } from "../../../tests/overlaid-file-text.ts";
 import cd14Discipline from "../../../rules/CD-14/discipline.json" with { type: "json" };
 import { runner as walkerRunner } from "../../audit/runner/runner.ts";
 import { createEslintRunner } from "./create-eslint-runner.ts";
@@ -512,24 +513,6 @@ const ESLINT_PACKAGE_JSON = "node_modules/eslint/package.json";
 
 const LINT_SCRIPT_PACKAGE_JSON = "package.json";
 
-const slashed = (text: string): string => text.replaceAll("\\", "/");
-
-const overlaidFileText = (request: {
-  readonly repo: AbsolutePath;
-  readonly files: Readonly<Record<string, string>>;
-}): FileTextPort => {
-  const overlaid = (requested: string): string | undefined =>
-    Object.entries(request.files).find(([name]) => slashed(requested) === slashed(`${request.repo}/${name}`))?.[1];
-  return {
-    ...fileText,
-    read: (reading) => {
-      const text = overlaid(reading.path);
-      return text === undefined ? fileText.read(reading) : { outcome: "ok", value: text };
-    },
-    exists: (probing) => (overlaid(probing.path) === undefined ? fileText.exists(probing) : "present"),
-  };
-};
-
 const eslintVersion = (request: { readonly version: string }): string => JSON.stringify({ name: "eslint", version: request.version });
 
 const lintScript = (request: { readonly command: string }): string => JSON.stringify({ scripts: { lint: request.command } });
@@ -541,10 +524,10 @@ const monorepoRun = (request: {
 }) =>
   createEslintRunner({
     fileText: overlaidFileText({
-      repo: consumerRepo({ name: request.name }),
+      base: fileText,
       files: {
-        [ESLINT_PACKAGE_JSON]: eslintVersion({ version: request.version }),
-        [LINT_SCRIPT_PACKAGE_JSON]: lintScript({ command: request.lintCommand }),
+        [`${consumerRepo({ name: request.name })}/${ESLINT_PACKAGE_JSON}`]: eslintVersion({ version: request.version }),
+        [`${consumerRepo({ name: request.name })}/${LINT_SCRIPT_PACKAGE_JSON}`]: lintScript({ command: request.lintCommand }),
       },
     }),
     modules,
