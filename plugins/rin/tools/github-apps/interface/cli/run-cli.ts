@@ -77,6 +77,7 @@ const executeCommand = async ({
     role: command.role,
     appSlug: configuration.roles[command.role].appSlug,
     repository: configuration.repository,
+    permissions: command.permissions,
   });
   if (token.kind === "failure") return token;
   const repositoryApi = dependencies.connectRepository({

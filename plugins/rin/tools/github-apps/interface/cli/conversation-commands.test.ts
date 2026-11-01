@@ -135,4 +135,11 @@ describe("comment", () => {
       body: "<!-- rin-bot: role=author session=6 -->\n\nRebased.",
     });
   });
+
+  it("asks for a token that can write issue and pull request comments only", () => {
+    expect(conversationCommands.comment.permissions).toEqual({
+      issues: "write",
+      pull_requests: "write",
+    });
+  });
 });

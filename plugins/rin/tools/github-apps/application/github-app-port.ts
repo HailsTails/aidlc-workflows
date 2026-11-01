@@ -1,3 +1,4 @@
+import type { InstallationPermissions } from "../domain/installation-permissions.ts";
 import type { RepositorySlug } from "../domain/repository-slug.ts";
 import type { Result } from "../domain/result.ts";
 import type { Secret } from "../domain/secret.ts";
@@ -7,7 +8,10 @@ type AppAuthentication = { readonly appJwt: Secret };
 
 type RepositoryInstallationLookup = AppAuthentication & { readonly repository: RepositorySlug };
 
-type InstallationTokenRequest = RepositoryInstallationLookup & { readonly installationId: number };
+type InstallationTokenRequest = RepositoryInstallationLookup & {
+  readonly installationId: number;
+  readonly permissions?: InstallationPermissions;
+};
 
 type AuthenticatedApp = { readonly appSlug: string };
 

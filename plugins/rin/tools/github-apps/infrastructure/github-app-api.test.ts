@@ -79,6 +79,26 @@ describe("createGitHubAppApi token creation", () => {
     });
   });
 
+  it("asks GitHub for only the permissions requested", async () => {
+    const http = fakeHttp({ token: "ghs_minted" });
+
+    await createGitHubAppApi({ http }).createInstallationToken({
+      appJwt,
+      repository,
+      installationId: 77,
+      permissions: { issues: "write", pull_requests: "write" },
+    });
+
+    expect(http.requestJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: {
+          repositories: ["minutesarah-shop"],
+          permissions: { issues: "write", pull_requests: "write" },
+        },
+      }),
+    );
+  });
+
   it("reports a token reply without a token", async () => {
     const http = fakeHttp({ message: "Integration suspended" });
 

@@ -7,6 +7,7 @@ import type {
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
 import type { BodyFileReader } from "../../application/read-body-file.ts";
 import type { AgentRole } from "../../domain/agent-role.ts";
+import type { InstallationPermissions } from "../../domain/installation-permissions.ts";
 import type { RepositorySlug } from "../../domain/repository-slug.ts";
 import type { Result } from "../../domain/result.ts";
 import type { Secret } from "../../domain/secret.ts";
@@ -46,6 +47,7 @@ type RepositoryCommand = {
   readonly access: "repository";
   readonly role: AgentRole;
   readonly repeatableFlags?: readonly string[];
+  readonly permissions?: InstallationPermissions;
   readonly execute: (context: RepositoryCommandContext) => CommandOutcome;
 };
 

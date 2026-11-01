@@ -4,6 +4,7 @@ import type {
   IssueProposal,
   IssueRevision,
   PublishedLink,
+  RevisedIssue,
 } from "../application/github-repository-port.ts";
 import type { IssueState } from "../domain/issue.ts";
 import { fail, succeed, type Failure, type Result } from "../domain/result.ts";
@@ -35,7 +36,11 @@ type IssueNode = { readonly id: string; readonly url: string };
 
 type IssueFields = Pick<IssueRevision, "title" | "body" | "state"> & { readonly issueId: string };
 
-type LabelEdit = LabelNames & { readonly labelableId: string; readonly mutation: LabelMutation };
+type ResolvedLabels = {
+  readonly addIds: readonly string[];
+  readonly removeIds: readonly string[];
+  readonly missingLabels: readonly string[];
+};
 
 type AppliedLabels = {
   readonly labelableId: string;
@@ -94,13 +99,22 @@ const requireLabelIds = async ({
   return succeed(knownIds(lookups.outcome));
 };
 
-const existingLabelIds = async ({
+const missingNames = (lookups: readonly LabelLookup[]): readonly string[] =>
+  lookups.flatMap(({ name, id }) => (id === undefined ? [name] : []));
+
+const resolveLabelChange = async ({
   connection,
-  names,
-}: Located<LabelNames>): Promise<Result<readonly string[], GitHubFailure>> => {
-  const lookups = await lookUpLabels({ connection, names });
-  if (lookups.kind === "failure") return lookups;
-  return succeed(knownIds(lookups.outcome));
+  labels,
+}: Located<Pick<IssueRevision, "labels">>): Promise<Result<ResolvedLabels, GitHubFailure>> => {
+  const addIds = await requireLabelIds({ connection, names: labels.add });
+  if (addIds.kind === "failure") return addIds;
+  const removals = await lookUpLabels({ connection, names: labels.remove });
+  if (removals.kind === "failure") return removals;
+  return succeed({
+    addIds: addIds.outcome,
+    removeIds: knownIds(removals.outcome),
+    missingLabels: missingNames(removals.outcome),
+  });
 };
 
 const openIssue = async ({
@@ -200,46 +214,30 @@ const applyLabels = async ({
   return succeed(undefined);
 };
 
-const editLabels = async ({
-  connection,
-  labelableId,
-  names,
-  mutation,
-}: Located<LabelEdit>): Promise<Result<void, GitHubFailure>> => {
-  const labelIds =
-    mutation === "add"
-      ? await requireLabelIds({ connection, names })
-      : await existingLabelIds({ connection, names });
-  if (labelIds.kind === "failure") return labelIds;
-  return applyLabels({ connection, labelableId, labelIds: labelIds.outcome, mutation });
-};
-
 const reviseIssue = async ({
   connection,
   issueNumber,
   labels,
   ...fields
-}: Located<IssueRevision>): Promise<Result<PublishedLink, GitHubFailure>> => {
+}: Located<IssueRevision>): Promise<Result<RevisedIssue, GitHubFailure>> => {
   const issue = await readIssue({ connection, issueNumber });
   if (issue.kind === "failure") return issue;
+  const resolved = await resolveLabelChange({ connection, labels });
+  if (resolved.kind === "failure") return resolved;
   const { id: issueId, url } = issue.outcome;
+  const { addIds, removeIds, missingLabels } = resolved.outcome;
   const updated = await updateIssueFields({ connection, issueId, ...fields });
   if (updated.kind === "failure") return updated;
-  const added = await editLabels({
-    connection,
-    labelableId: issueId,
-    names: labels.add,
-    mutation: "add",
-  });
+  const added = await applyLabels({ connection, labelableId: issueId, labelIds: addIds, mutation: "add" });
   if (added.kind === "failure") return added;
-  const removed = await editLabels({
+  const removed = await applyLabels({
     connection,
     labelableId: issueId,
-    names: labels.remove,
+    labelIds: removeIds,
     mutation: "remove",
   });
   if (removed.kind === "failure") return removed;
-  return succeed({ url });
+  return succeed({ url, missingLabels });
 };
 
 export { openIssue, reviseIssue };

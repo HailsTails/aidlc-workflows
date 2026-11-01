@@ -99,6 +99,7 @@ const createInstallationToken = async ({
   appJwt,
   repository,
   installationId,
+  permissions,
 }: AppApiDependencies & InstallationTokenRequest): Promise<Result<Secret, GitHubFailure>> => {
   const installationToken = await requestValidated({
     http,
@@ -106,7 +107,10 @@ const createInstallationToken = async ({
     method: "POST",
     path: `/app/installations/${String(installationId)}/access_tokens`,
     credential: appJwt,
-    requestBody: { repositories: [repository.name] },
+    requestBody: {
+      repositories: [repository.name],
+      ...(permissions === undefined ? {} : { permissions }),
+    },
     responseSchema: installationTokenSchema,
   });
   if (installationToken.kind === "failure") return installationToken;

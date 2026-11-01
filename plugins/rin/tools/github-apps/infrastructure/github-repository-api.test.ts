@@ -329,7 +329,7 @@ describe("createGitHubRepositoryApi issues", () => {
       labels: { add: ["stage:build"], remove: ["stage:triage"] },
     });
 
-    expect(revised).toEqual(succeed({ url: issueUrl }));
+    expect(revised).toEqual(succeed({ url: issueUrl, missingLabels: [] }));
     expect(requestsFor(http, "revise issue")).toEqual([]);
     expect(requestsFor(http, "add labels")[0]).toMatchObject({
       requestBody: { variables: { labelableId: "I_node429", labelIds: ["LA_build"] } },
@@ -339,7 +339,7 @@ describe("createGitHubRepositoryApi issues", () => {
     });
   });
 
-  it("treats removing a label the repository does not have as already done", async () => {
+  it("treats removing a label the repository does not have as already done, and names it", async () => {
     const http = answeringIssueRequests();
 
     const revised = await createGitHubRepositoryApi({ http, credential, repository }).reviseIssue({
@@ -347,10 +347,36 @@ describe("createGitHubRepositoryApi issues", () => {
       title: undefined,
       body: undefined,
       state: undefined,
-      labels: { add: [], remove: ["stage:unknown"] },
+      labels: { add: [], remove: ["stage:unknown", "stage:triage"] },
     });
 
-    expect(revised).toEqual(succeed({ url: issueUrl }));
+    expect(revised).toEqual(succeed({ url: issueUrl, missingLabels: ["stage:unknown"] }));
+    expect(requestsFor(http, "remove labels")[0]).toMatchObject({
+      requestBody: { variables: { labelableId: "I_node429", labelIds: ["LA_triage"] } },
+    });
+  });
+
+  it("changes nothing on the issue when a label to add does not exist", async () => {
+    const http = answeringIssueRequests();
+
+    const revised = await createGitHubRepositoryApi({ http, credential, repository }).reviseIssue({
+      issueNumber: 429,
+      title: undefined,
+      body: undefined,
+      state: "closed",
+      labels: { add: ["stage:typo"], remove: ["stage:triage"] },
+    });
+
+    expect(revised).toEqual(
+      fail({
+        kind: "github-rejected",
+        operation: "find label",
+        status: 404,
+        detail: 'label "stage:typo" does not exist in HailsTails/minutesarah-shop',
+      }),
+    );
+    expect(requestsFor(http, "revise issue")).toEqual([]);
+    expect(requestsFor(http, "add labels")).toEqual([]);
     expect(requestsFor(http, "remove labels")).toEqual([]);
   });
 

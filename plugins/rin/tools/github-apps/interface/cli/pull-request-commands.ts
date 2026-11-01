@@ -6,7 +6,7 @@ import type { PullRequestReadiness } from "../../domain/pull-request.ts";
 import { succeed } from "../../domain/result.ts";
 import { readOptionalBody, readRequiredBody } from "./authored-body.ts";
 import type { RepositoryCommand, RepositoryCommandContext } from "./cli-command.ts";
-import { bodyFlags, pullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
+import { bodyFlags, issueOrPullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
 import { validateFlags } from "./command-flags.ts";
 import { reportLine } from "./command-report.ts";
 
@@ -20,13 +20,13 @@ const openFlagsSchema = z.strictObject({
 });
 
 const reviseFlagsSchema = z.strictObject({
-  pr: pullNumberFlag,
+  pr: issueOrPullNumberFlag,
   title: z.string().min(1).optional(),
   ...bodyFlags,
   session: sessionFlag.optional(),
 });
 
-const readinessFlagsSchema = z.strictObject({ pr: pullNumberFlag });
+const readinessFlagsSchema = z.strictObject({ pr: issueOrPullNumberFlag });
 
 const openCommand: RepositoryCommand = {
   access: "repository",

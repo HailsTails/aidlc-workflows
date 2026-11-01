@@ -21,7 +21,7 @@ const fakeRepositoryApi = () => ({
     .mockResolvedValue(succeed({ url: issueUrl })),
   reviseIssue: vi
     .fn<GitHubRepositoryPort["reviseIssue"]>()
-    .mockResolvedValue(succeed({ url: issueUrl })),
+    .mockResolvedValue(succeed({ url: issueUrl, missingLabels: [] })),
 });
 
 const contextWith = ({
@@ -160,7 +160,39 @@ describe("issue-edit", () => {
     ).toEqual({ kind: "failure", reason: { kind: "issue-unchanged", issueNumber: 429 } });
   });
 
+  it("warns once per label it could not remove because the repository does not have it", async () => {
+    const repositoryApi = fakeRepositoryApi();
+    repositoryApi.reviseIssue.mockResolvedValue(
+      succeed({ url: issueUrl, missingLabels: ["stage:triag", "stage:typo"] }),
+    );
+
+    const revised = await issueCommands["issue-edit"].execute(
+      contextWith({
+        flags: {
+          issue: "429",
+          "add-label": ["stage:build"],
+          "remove-label": ["stage:triag", "stage:typo"],
+        },
+        repositoryApi,
+      }),
+    );
+
+    expect(revised).toEqual(
+      succeed({
+        standardOutput: `${issueUrl}\n`,
+        standardError:
+          'label "stage:triag" does not exist; nothing removed\nlabel "stage:typo" does not exist; nothing removed\n',
+      }),
+    );
+  });
+
   it("lets --add-label and --remove-label repeat", () => {
     expect(issueCommands["issue-edit"].repeatableFlags).toEqual(["add-label", "remove-label"]);
+  });
+});
+
+describe("issue command token permissions", () => {
+  it.each(["issue", "issue-edit"] as const)("%s asks for an issues-only token", (commandName) => {
+    expect(issueCommands[commandName].permissions).toEqual({ issues: "write" });
   });
 });

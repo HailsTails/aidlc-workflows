@@ -88,6 +88,10 @@ const writeRules = [
       `${cli} issue-edit --issue <n> --state closed (add a closing note with ${cli} comment --target <n> --body "...")`,
   },
   {
+    pattern: atCommandStart({ tail: "gh\\s+issue\\s+reopen\\b" }),
+    hint: ({ cli }) => `${cli} issue-edit --issue <n> --state open`,
+  },
+  {
     pattern: atCommandStart({ tail: "gh\\s+pr\\s+merge\\b" }),
     hint: ({ cli, authorLogin }) =>
       `${cli} merge --pr <n> (squash-merges as ${authorLogin}; refuses without an APPROVED verdict)`,

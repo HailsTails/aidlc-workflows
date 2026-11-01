@@ -1,10 +1,11 @@
 import { z } from "zod";
+import type { RevisedIssue } from "../../application/github-repository-port.ts";
 import { openIssue } from "../../application/open-issue.ts";
 import { reviseIssue } from "../../application/revise-issue.ts";
 import { succeed } from "../../domain/result.ts";
 import { readOptionalBody, readRequiredBody } from "./authored-body.ts";
-import type { RepositoryCommand } from "./cli-command.ts";
-import { bodyFlags, labelsFlag, pullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
+import type { CommandReport, RepositoryCommand } from "./cli-command.ts";
+import { bodyFlags, labelsFlag, issueOrPullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
 import { validateFlags } from "./command-flags.ts";
 import { reportLine } from "./command-report.ts";
 
@@ -16,7 +17,7 @@ const openFlagsSchema = z.strictObject({
 });
 
 const reviseFlagsSchema = z.strictObject({
-  issue: pullNumberFlag,
+  issue: issueOrPullNumberFlag,
   title: z.string().min(1).optional(),
   ...bodyFlags,
   state: z.enum(["open", "closed"]).optional(),
@@ -25,10 +26,22 @@ const reviseFlagsSchema = z.strictObject({
   session: sessionFlag.optional(),
 });
 
+const ISSUES_ONLY = { issues: "write" } as const;
+
+const missingLabelWarnings = (missingLabels: readonly string[]): string =>
+  missingLabels.map((name) => `label "${name}" does not exist; nothing removed
+`).join("");
+
+const revisionReport = ({ url, missingLabels }: RevisedIssue): CommandReport => ({
+  ...reportLine(url),
+  standardError: missingLabelWarnings(missingLabels),
+});
+
 const openCommand: RepositoryCommand = {
   access: "repository",
   role: "author",
   repeatableFlags: ["label"],
+  permissions: ISSUES_ONLY,
   execute: async ({ flags, dependencies, role, repositoryApi }) => {
     const openFlags = validateFlags({ flags, schema: openFlagsSchema });
     if (openFlags.kind === "failure") return openFlags;
@@ -56,6 +69,7 @@ const reviseCommand: RepositoryCommand = {
   access: "repository",
   role: "author",
   repeatableFlags: ["add-label", "remove-label"],
+  permissions: ISSUES_ONLY,
   execute: async ({ flags, dependencies, role, repositoryApi }) => {
     const reviseFlags = validateFlags({ flags, schema: reviseFlagsSchema });
     if (reviseFlags.kind === "failure") return reviseFlags;
@@ -77,7 +91,7 @@ const reviseCommand: RepositoryCommand = {
       session,
     });
     if (revised.kind === "failure") return revised;
-    return succeed(reportLine(revised.outcome.url));
+    return succeed(revisionReport(revised.outcome));
   },
 };
 

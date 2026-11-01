@@ -136,6 +136,7 @@ describe("guard-github-writes deny path", () => {
     ['gh issue create --title "x" --body "y" --label bug', `${BOT_CLI} issue --title`],
     ["gh issue edit 42 --add-label stage:build", `${BOT_CLI} issue-edit --issue <n>`],
     ['gh issue close 42 --comment "done"', `${BOT_CLI} issue-edit --issue <n> --state closed`],
+    ["gh issue reopen 42", `${BOT_CLI} issue-edit --issue <n> --state open`],
   ])("denies raw %s and names the issue wrapper", async (command, wrapper) => {
     const denial = await denialOf({ command, hookPath: configuredHook });
     expect(denial?.permissionDecision).toBe("deny");

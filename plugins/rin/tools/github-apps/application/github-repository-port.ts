@@ -55,6 +55,8 @@ type PullRequestIdentity = { readonly pullRequestId: string };
 
 type PublishedLink = { readonly url: string };
 
+type RevisedIssue = PublishedLink & { readonly missingLabels: readonly string[] };
+
 type MergedCommit = { readonly mergeSha: string };
 
 type GitHubRepositoryPort = {
@@ -82,7 +84,7 @@ type GitHubRepositoryPort = {
     change: ReadinessChange,
   ) => Promise<Result<PullRequestReadiness, GitHubFailure>>;
   readonly openIssue: (proposal: IssueProposal) => Promise<Result<PublishedLink, GitHubFailure>>;
-  readonly reviseIssue: (revision: IssueRevision) => Promise<Result<PublishedLink, GitHubFailure>>;
+  readonly reviseIssue: (revision: IssueRevision) => Promise<Result<RevisedIssue, GitHubFailure>>;
 };
 
 export type {
@@ -98,5 +100,6 @@ export type {
   PullRequestRevision,
   ReadinessChange,
   ReviewSubmission,
+  RevisedIssue,
   SquashMerge,
 };

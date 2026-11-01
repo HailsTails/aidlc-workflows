@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { bodyFlags, pullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
+import { bodyFlags, issueOrPullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
 
-describe("pullNumberFlag", () => {
-  it("reads a pull request number", () => {
-    expect(pullNumberFlag.parse("42")).toBe(42);
+describe("issueOrPullNumberFlag", () => {
+  it("reads an issue or pull request number", () => {
+    expect(issueOrPullNumberFlag.parse("42")).toBe(42);
   });
 
   it("refuses something that is not a positive number", () => {
-    expect(pullNumberFlag.safeParse("#42").success).toBe(false);
+    expect(issueOrPullNumberFlag.safeParse("#42").success).toBe(false);
   });
 });
 

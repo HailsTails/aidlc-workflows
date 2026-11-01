@@ -4,12 +4,12 @@ import { submitReview } from "../../application/submit-review.ts";
 import { succeed } from "../../domain/result.ts";
 import { readRequiredBody } from "./authored-body.ts";
 import type { RepositoryCommand } from "./cli-command.ts";
-import { bodyFlags, pullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
+import { bodyFlags, issueOrPullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
 import { validateFlags } from "./command-flags.ts";
 import { reportLine } from "./command-report.ts";
 
 const reviewFlagsSchema = z.strictObject({
-  pr: pullNumberFlag,
+  pr: issueOrPullNumberFlag,
   event: z.enum(["approve", "request-changes", "comment"]),
   "commit-sha": z
     .string()
@@ -20,7 +20,7 @@ const reviewFlagsSchema = z.strictObject({
 });
 
 const commentFlagsSchema = z.strictObject({
-  target: pullNumberFlag,
+  target: issueOrPullNumberFlag,
   ...bodyFlags,
   session: sessionFlag.optional(),
 });
@@ -55,6 +55,7 @@ const reviewCommand: RepositoryCommand = {
 const commentCommand: RepositoryCommand = {
   access: "repository",
   role: "author",
+  permissions: { issues: "write", pull_requests: "write" },
   execute: async ({ flags, dependencies, role, repositoryApi }) => {
     const commentFlags = validateFlags({ flags, schema: commentFlagsSchema });
     if (commentFlags.kind === "failure") return commentFlags;

@@ -3,7 +3,7 @@ import { changesLabels, type IssueState, type LabelChange } from "../domain/issu
 import { withProvenance } from "../domain/provenance.ts";
 import { fail, type Result } from "../domain/result.ts";
 import type { GitHubFailure } from "./github-failure.ts";
-import type { GitHubRepositoryPort, PublishedLink } from "./github-repository-port.ts";
+import type { GitHubRepositoryPort, RevisedIssue } from "./github-repository-port.ts";
 
 type IssueRevisionRequest = {
   readonly repositoryApi: GitHubRepositoryPort;
@@ -36,7 +36,7 @@ const attributedBody = ({
 
 const reviseIssue = async (
   request: IssueRevisionRequest,
-): Promise<Result<PublishedLink, GitHubFailure | IssueUnchanged>> => {
+): Promise<Result<RevisedIssue, GitHubFailure | IssueUnchanged>> => {
   const { repositoryApi, issueNumber, title, state, labels } = request;
   if (!changesSomething(request)) return fail({ kind: "issue-unchanged", issueNumber });
   return repositoryApi.reviseIssue({

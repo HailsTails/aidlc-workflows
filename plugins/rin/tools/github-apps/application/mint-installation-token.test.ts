@@ -46,6 +46,19 @@ describe("mintInstallationToken", () => {
       expect.objectContaining({ repository, installationId: 77 }),
     );
   });
+
+  it("narrows the token to the permissions the grant asks for", async () => {
+    const dependencies = fakeDependencies();
+
+    await createTokenMinter(dependencies).mintInstallationToken({
+      ...grant,
+      permissions: { issues: "write" },
+    });
+
+    expect(dependencies.appApi.createInstallationToken).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ installationId: 77, permissions: { issues: "write" } }),
+    );
+  });
 });
 
 describe("mintInstallationToken refusals", () => {

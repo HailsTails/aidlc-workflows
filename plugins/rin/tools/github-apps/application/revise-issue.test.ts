@@ -20,7 +20,7 @@ const fakeRepositoryApi = () => ({
   openIssue: vi.fn(),
   reviseIssue: vi
     .fn<GitHubRepositoryPort["reviseIssue"]>()
-    .mockResolvedValue(succeed({ url: issueUrl })),
+    .mockResolvedValue(succeed({ url: issueUrl, missingLabels: [] })),
 });
 
 describe("reviseIssue", () => {
@@ -38,7 +38,7 @@ describe("reviseIssue", () => {
       session: undefined,
     });
 
-    expect(revised).toEqual(succeed({ url: issueUrl }));
+    expect(revised).toEqual(succeed({ url: issueUrl, missingLabels: [] }));
     expect(repositoryApi.reviseIssue).toHaveBeenCalledExactlyOnceWith({
       issueNumber: 429,
       title: undefined,

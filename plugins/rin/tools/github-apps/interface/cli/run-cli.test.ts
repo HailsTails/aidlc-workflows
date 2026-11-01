@@ -117,9 +117,12 @@ describe("runCli", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(dependencies.tokenMinter.mintInstallationToken).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "author", appSlug: "rin-author" }),
-    );
+    expect(dependencies.tokenMinter.mintInstallationToken).toHaveBeenCalledExactlyOnceWith({
+      role: "author",
+      appSlug: "rin-author",
+      repository,
+      permissions: { issues: "write" },
+    });
     expect(repositoryApi.openIssue).toHaveBeenCalledWith(
       expect.objectContaining({ labels: ["bug", "stage:triage"] }),
     );
