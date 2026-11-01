@@ -347,7 +347,9 @@ transition — a parked Slice did not complete its gate, so there is no forward
 move; the engine's `Parked At Stage` marker it carries, not a stage change, is
 what a resuming run reads. Any PR that failed its class's merge conditions
 (Step 4) gets no merge and no transition — flag the exact failing condition in
-the run digest instead.
+the run digest instead. The run digest also lists each merged PR's decided
+calls, with their class and where each is recorded, so {{OPERATOR}} sees them
+after the merge.
 
 Reap the PR-head review worktree once the board has converged and the merge is
 read back: `pnpm rin-gates:review-worktree --pr <N> --remove`. Leaving them

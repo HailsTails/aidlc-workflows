@@ -709,9 +709,8 @@ re-run the parked gate's work from scratch. Route it back to the marked stage vi
 `aidlc-orchestrate next` (the engine's unpark-on-resume path) and continue from
 there — the already-landed work is on `main` (the parked PR merged as class (d)),
 so re-deriving it is waste and risks divergence. A gate parked on a stopping
-question moves past it only once its pack's `Operator answer:` line holds the
-answer and a link to where it came from; otherwise the gate parks again
-(`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`).
+question moves past it only under the resume rule in
+`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`.
 
 ### Step 6: Null-stage reservoir reconciliation (verify-then-act, never bulk)
 As the intake resolver, Gate 0 owns the **null/missing-stage systems captures** in

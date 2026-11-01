@@ -25,8 +25,9 @@ Engine checkpoints stay human stops and are not reserved-decision questions:
 summary confirmation, Plan Approval, verification-command selection, the
 Construction autonomy choice, failure halts and blocking-sensor overrides.
 When no person is in the session, as defined below, an engine checkpoint is
-recorded and the stage parks. It is still a human stop and is never approved
-for the person.
+recorded and the stage parks; where park is refused, the checkpoint stays open,
+the turn ends and the engine holds it. It is still a human stop and is never
+approved for the person.
 
 The reserved classes come from the first of these that exists, and that list
 is the whole set: the list the project's rule layer gives, under its own
@@ -79,13 +80,16 @@ open a picker: write a pack into the stage's artifact and run
 why no record, code or measurement settles it, the options, a recommendation,
 the consequences of each answer, and an `Operator answer:` line. On resume,
 the stage moves past the question only once that line holds the answer and
-is, or links to, the person's own reply. A comment by any other account, an
-agent's included, does not count. Otherwise the stage parks again.
+links to the person's own reply: their PR or issue comment, or their
+`engine log answer` record. A comment by any other account, an agent's
+included, does not count. When the person is in the session on resume, ask
+them through the question contract; otherwise the stage parks again.
 
 Wherever park is refused, the pack is recorded with the action not taken and
-surfaces at the next human gate. Under autonomous Construction, where park is
-refused and the Stop hook holds no turn for a question, that is the
-final-batch gate.
+surfaces at the next human gate. Under autonomous Construction, park is
+refused and the Stop hook holds no turn for a question, even with the person in
+the session: the question is recorded, the action it guards is not taken, and
+it surfaces at the final-batch gate.
 
 Summary confirmation is owed only when the stage declares summary_confirmation
 and the engine's checkpoint owner requires it. The ceremony switch being on
