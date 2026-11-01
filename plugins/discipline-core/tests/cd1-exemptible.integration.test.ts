@@ -84,8 +84,8 @@ const cascadeCheck = (request: { readonly changed: readonly RepoPath[] }) => {
 
 describe("adopting a repository whose legacy file holds CD-1 debt beside another discipline's debt (CD-47: the shipped rules and the fixture's own files are the assertion's subject; nothing is spawned or written)", () => {
   it("passes with the file untouched and every carve-out, the CD-1 ones included, still in force", async () => {
-    const result = await cascadeCheck({ changed: [] });
-    expect(result).toMatchObject({
+    const cascadeReport = await cascadeCheck({ changed: [] });
+    expect(cascadeReport).toMatchObject({
       outcome: "ok",
       value: {
         findings: [],
@@ -98,12 +98,12 @@ describe("adopting a repository whose legacy file holds CD-1 debt beside another
         ]),
       },
     });
-    expect(checkCommandOutcome({ result }).code).toBe(0);
+    expect(checkCommandOutcome({ result: cascadeReport }).code).toBe(0);
   });
 
   it("forfeits all three carve-outs once the file is touched, the ordinary touch-and-own for any discipline", async () => {
-    const result = await cascadeCheck({ changed: [LEGACY_FILE] });
-    expect(result).toMatchObject({ outcome: "ok", value: { forfeited: [{}, {}, {}] } });
-    expect(checkCommandOutcome({ result }).code).toBe(1);
+    const cascadeReport = await cascadeCheck({ changed: [LEGACY_FILE] });
+    expect(cascadeReport).toMatchObject({ outcome: "ok", value: { forfeited: [{}, {}, {}] } });
+    expect(checkCommandOutcome({ result: cascadeReport }).code).toBe(1);
   });
 });
