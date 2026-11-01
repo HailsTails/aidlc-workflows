@@ -11,7 +11,7 @@
     "answered": {
       "gate": "rin-gate-1-framing",
       "owningLane": "progress",
-      "actor": "autonomous gate lane; the operator answers a framed question only when the frame forks on the goal",
+      "actor": "autonomous gate lane; the operator answers a framed question only when it falls in a stopping reserved class",
       "requiredCapabilities": ["record-dir write + commit"]
     },
     "planned": {

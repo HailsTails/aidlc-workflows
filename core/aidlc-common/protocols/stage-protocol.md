@@ -19,22 +19,27 @@ says; never invent a person answer, human turn, approval or instruction grant.
 
 ### Reserved operator decisions
 
-On an autonomous stage, a question the stage's work raises reaches the person
-only when it falls in a stopping reserved class. Engine checkpoints stay human
-stops and are not reserved-decision questions: summary confirmation, Plan
-Approval, verification-command selection, the Construction autonomy choice,
-failure halts and blocking-sensor overrides.
+On an autonomous stage, a question the work raises, or an action the stage
+would take, reaches the person only when it falls in a stopping reserved class.
+Engine checkpoints stay human stops and are not reserved-decision questions:
+summary confirmation, Plan Approval, verification-command selection, the
+Construction autonomy choice, failure halts and blocking-sensor overrides.
+When no person is in the session, as defined below, an engine checkpoint is
+recorded and the stage parks. It is still a human stop and is never approved
+for the person.
 
 The reserved classes come from the first of these that exists, and that list
 is the whole set: the list the project's rule layer gives, under its own
 markings; otherwise the list the stage's plugin knowledge names; otherwise
 these default classes, each marked stop before the action:
 
-1. Changing the project's rules or a standing check, or recutting its ratified
-   scope: scope the person approved in a recorded decision. Framing inside
-   that scope is not a recut.
+1. Changing the project's rules, weakening or removing a standing check, or
+   recutting its ratified scope: scope the person approved in a recorded
+   decision. Framing inside that scope is not a recut. Adding or strengthening
+   a check is the stage's own work.
 2. A values call: one that no recorded rule, requirement or decision, the code
    or a measurement settles, after ties are broken toward the recorded goal.
+   A technical choice is never a values call.
 3. Spending money, or acting under an outside identity or account.
 4. A production change (a deploy, a cutover, a DNS change), deleting or
    migrating customer data, or any other action that cannot be undone.
@@ -45,7 +50,12 @@ Every reserved class carries one marking: decided and recorded, or stop before
 the action. A class with no marking stops. A question that fits any stopping
 class stops, even if it also fits a decided class. A decided-class question is
 settled on the stage, recorded naming its class, and left for review. Only a
-stopping-class question is asked.
+stopping-class question is asked. A stage's own declared actions follow the
+same markings: before it takes one, the stage checks it against the active
+list, and an action in a stopping class waits for an answer as a question does.
+
+Whatever list is active, a preference or judgement never falls in a class for
+facts the person holds; it falls in the class its subject does.
 
 Every other question the work raises is settled on the stage: a technical
 design choice, a tradeoff the recorded rules or decisions decide, an
@@ -53,28 +63,36 @@ assumption the evidence supports, and an objection a collaborator raises. The
 lead settles it with its collaborators from the code, the upstream artifacts
 and the rules, and records the answer with its source in the stage's artifact.
 
+The person is in the session when they have written in it since the stage
+began and `AIDLC_UNATTENDED` is not `1`. Otherwise no person is in the
+session, as in a scheduled or dispatched run.
+
 Ask a stopping-class question naming its class. When the person is in the
 session, ask it through the normal question contract (§3 and § "Conversation
 event logging checklist"): write it to the stage's `<slug>-questions.md` with
 a blank `[Answer]:` tag, run `{{INVOKE}} engine log decision` before
 presenting it, render it and end the turn; on their reply, fill the tag and
 run `{{INVOKE}} engine log answer`. The blank tag and the open decision are
-what the Stop hook holds the turn on. When no person is in the session (a
-scheduled or dispatched run, or `AIDLC_UNATTENDED=1`), never open a picker:
-write a pack into the stage's artifact and run
+what the Stop hook holds the turn on. When no person is in the session, never
+open a picker: write a pack into the stage's artifact and run
 `{{INVOKE}} engine orchestrate park`. The pack holds the question, its class,
 why no record, code or measurement settles it, the options, a recommendation,
-the consequences of each answer, and an `Operator answer:` line. On resume, the stage moves past
-the question only once that line holds the answer and a link to where it came
-from; otherwise it parks again. Under autonomous Construction, where park is
-refused and the Stop hook holds no turn for a question, the pack is recorded,
-the action it guards is not taken, and it surfaces at the final-batch gate.
+the consequences of each answer, and an `Operator answer:` line. On resume,
+the stage moves past the question only once that line holds the answer and
+is, or links to, the person's own reply. A comment by any other account, an
+agent's included, does not count. Otherwise the stage parks again.
+
+Wherever park is refused, the pack is recorded with the action not taken and
+surfaces at the next human gate. Under autonomous Construction, where park is
+refused and the Stop hook holds no turn for a question, that is the
+final-batch gate.
 
 Summary confirmation is owed only when the stage declares summary_confirmation
 and the engine's checkpoint owner requires it. The ceremony switch being on
 alone does not create a checkpoint. Preserve required checkpoints and
 if-present file-backed checkpoint evidence; an undeclared checkpoint is not
-added merely because a genuine operator question was written to a file.
+added merely because a stopping-class question (§ "Reserved operator
+decisions") was written to a file.
 
 Keep every declared artifact, reviewer, sensor and freshness requirement.
 Required summary confirmation and existing file-backed checkpoint evidence

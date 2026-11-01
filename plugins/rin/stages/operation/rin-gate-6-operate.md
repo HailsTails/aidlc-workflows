@@ -50,6 +50,9 @@ ad-hoc. It is AIDLC's `operation` phase, scoped to one Slice. It folds AIDLC's
 operation stages (deployment-execution, observability-setup, feedback-optimization)
 into the three post-merge concerns rin actually has.
 
+Questions and actions in a reserved class follow
+`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`.
+
 ## Three concerns
 
 ### 1. Deployment
@@ -74,6 +77,12 @@ rebuild, back to `main`. Gate 6 drives that deploy whenever either axis is behin
 the deploy's scope, and is never a precondition for running it — and logs it in
 `rin-deployment-log.md` (deployed HEAD, rollback anchor, exit code, migration
 outcome, live-verification result).
+
+Before deploying, check the deploy against the active reserved list. Rin's own
+list names this deploy as decided in advance, so under it the deploy runs. A
+project list that marks a deploy, or a production change, as a stopping class
+holds it: the deploy is a hard stop below, and the gate asks or parks with its
+pack instead of deploying.
 
 ### 2. Monitoring + live verification
 **Prove the live path — an entry point's success is not the system's capability.**
@@ -179,7 +188,9 @@ the pushed branch under the author identity). Never commit at the primary checko
 `guard-primary-commit` denies it deterministically. This scheduled lane spawns
 into the primary checkout by default; move onto an agent worktree before
 committing ({{WORKTREE_TOOL}}) — the session-start guide's
-Worktree protocol carries the mechanics.
+Worktree protocol carries the mechanics. The PR body lists every call this gate
+made under a decided class, with its class and where it is recorded, for
+{{OPERATOR}}'s sign-off.
 
 Stop here — the conductor runs the reviewer, learnings, and approval; the stage's own `report --result approved` + committed audit event
 is the operational-done record.
@@ -196,7 +207,12 @@ of these hold:
 - a known deploy landmine is flagged for the Slice or its services (check the
   Slice body and memory notes);
 - the live verification cannot force the real path this run (a deploy that can
-  only be checked state-at-rest is not verifiable, so it does not ship).
+  only be checked state-at-rest is not verifiable, so it does not ship);
+- the deploy falls in a stopping class on the active reserved list. Write the
+  pack into `rin-deployment-log.md` and park, or, with {{OPERATOR}} present in
+  the session, ask through the question contract
+  (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`). Deploy only
+  once {{OPERATOR}}'s own answer allows it.
 
 A held deploy is a correct outcome, recorded loudly; it is never "declared
 live" and never silently dropped.

@@ -71,6 +71,8 @@ This is rin Gate 4 — TDD implement. The conductor leads and convenes a pair of
 
 Small rounds are the point. Each round surfaces a mistake before the next round builds on it, so the pair reaches a correct result faster than one agent taking large steps, and rework (the largest cost in construction) stays small.
 
+Questions and actions in a reserved class follow `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`.
+
 ## Construction entry is gated on Gate 3's committed completion
 
 Gate 4 is the pre-spec→construction handoff. Its entry is gated two ways,
@@ -195,6 +197,7 @@ Before every hand-off, the seat holding the work runs the full checks: the packa
 - Before each commit, the lead dispatches `rin-commit-check-agent` against the diff, with the head sha pinned. It wrote none of the code and looks only for what both authors could miss: behaviour the lock asks for with no test, a state the code can get stuck in, and tests with no value.
 - It reports only blocking findings. The pair fixes those before the commit. Anything smaller is recorded in `rin-code-summary.md` for review, not fixed now.
 - It is not the gate's review. At stage completion the conductor runs the decorrelated board over the code diff and this plan, dispatching this gate's roster from `review-rosters.json`.
+- The Slice's PR body lists every call its gates made under a decided class, with its class and where it is recorded, for {{OPERATOR}}'s sign-off.
 
 The blocking deterministic verdict is the `rin-constitution-gate` hook at stage completion, and the pre-push lefthook legs execute repo-wide on the tree itself.
 

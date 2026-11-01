@@ -89,7 +89,7 @@ pnpm rin-gates:retire --record <record-dir-name> --reason "<why it is obsolete>"
 
 ## Who retires
 
-Retirement splits into two classes, and only one of them is {{OPERATOR}}'s. Apply the
+Retirement splits into two classes, and only one of them can be {{OPERATOR}}'s. Apply the
 naming test from `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` § "The fork test":
 before escalating, name which class on the active list the retirement falls in.
 If you cannot name one, it is a problem the lane settles itself.
@@ -105,17 +105,19 @@ cheap; that is what makes acting first correct. A lane that escalates an
 obsolete-premise retirement has escalated a problem, which stalls the queue and
 leaves a dead record re-selecting into every later pool.
 
-**Ratified-scope recut — {{OPERATOR}}'s, escalated.** The premise still stands and the
+**Ratified-scope recut — the active list's marking decides.** The premise still stands and the
 question is whether the work is still *wanted*: reinstating a Slice {{OPERATOR}}
 retired, retiring a Slice they explicitly commissioned, or dropping ratified
 scope that no evidence has refuted. That is a ratified-scope recut. Where the
 active list marks that class stopping, as rin's own list does, it stops even if
 it also reads as a values call: escalate with a full actionable pack — the
 record, the evidence, and the pre-staged `--reason` — and proceed with
-everything else. Where the list marks it decided, decide and record it.
+everything else. Where the list marks it decided, decide and record it. Where
+no class on the list fits it, the lane settles it and records it.
 
 The distinguishing question is **"has the premise been refuted, or do I merely
-judge the work not worth doing?"** Refuted ⇒ retire. Not-worth-doing ⇒ {{OPERATOR}}'s.
+judge the work not worth doing?"** Refuted ⇒ retire. Not-worth-doing ⇒ a recut,
+which follows the active list's marking (under rin's own list, {{OPERATOR}}'s).
 "Retirement asserts work should never be built" describes only the second class;
 read as a blanket reservation it produced four consecutive escalations of the
 same obsolete-premise finding while the dead record kept re-selecting.

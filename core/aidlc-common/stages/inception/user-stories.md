@@ -154,7 +154,8 @@ integrate, or triage, and no contribution files.
 **Integrate and triage.** As the lead, fold the contributions into the two
 artifacts, then triage unresolved objections per stage-protocol-ensemble.md §5: a judgment call (both
 positions legitimate) goes to the user NOW as a structured question (add it
-to the questions file first, blank `[Answer]:` tag); a knowledge dispute
+to the questions file first, blank `[Answer]:` tag), except as §5 triage
+settles it on an autonomous stage; a knowledge dispute
 goes to **round 2** — re-dispatch only the objecting agent(s) with the
 revised draft and the other participants' positions (they update their own
 contribution files). Maintained dissent is quoted verbatim in the Step 10

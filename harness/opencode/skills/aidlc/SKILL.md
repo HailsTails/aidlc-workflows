@@ -201,13 +201,14 @@ Summary confirmation is owed only when the stage declares summary_confirmation
 and the engine's checkpoint owner requires it. The ceremony switch being on
 alone does not create a checkpoint. Preserve required checkpoints and
 if-present file-backed checkpoint evidence; an undeclared checkpoint is not
-added merely because a genuine operator question was written to a file.
+added merely because a stopping-class question (stage-protocol.md §
+"Reserved operator decisions") was written to a file.
 
 On an autonomous stage, run the declared work without inventing a routine
 questionnaire or answer-mode choice. Preserve required summary confirmation
 and existing file-backed checkpoint evidence. Apply stage-protocol.md §
-"Reserved operator decisions" to every question the work raises. Every
-reserved class carries one marking: decided and recorded, or stop before the
+"Reserved operator decisions" to every question the work raises and every
+action the stage would take. Every reserved class carries one marking: decided and recorded, or stop before the
 action. A class with no marking stops. A question that fits any stopping class
 stops, even if it also fits a decided class. A decided-class question is
 settled on the stage, recorded naming its class, and left for review. Only a
@@ -215,8 +216,13 @@ stopping-class question is asked. When the person is in the session, ask it
 through the normal question contract: write it to the stage's questions file
 with a blank `[Answer]:` tag, run `{{INVOKE}} engine log decision` before
 presenting it and end the turn; on their reply, fill the tag and run
-`{{INVOKE}} engine log answer`. When no person is in the session, never open a
-picker: write the pack that section names into the stage's artifact and park.
+`{{INVOKE}} engine log answer`. The person is in the session when they have
+written in it since the stage began. When no person is in the session, never
+open a picker: write the pack that section names into the stage's artifact and
+park; where park is refused, record it with the action not taken for the next
+human gate. On resume, its `Operator answer:` line counts only when it is, or
+links to, the person's own reply. An engine checkpoint with no person in the
+session is recorded and the stage parks; it is never approved for the person.
 Do not self-answer it or mint a human turn. Every other question is settled on
 the stage by the lead and its collaborators and recorded with its source; it
 is not asked. Run the reviewer, sensors and artifact/freshness verification;
