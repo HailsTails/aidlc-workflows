@@ -27,7 +27,6 @@ Needs ESLint adopted through the projection; see [the ESLint piece](../../mechan
 - `discipline-cd1/no-explicit-any` is typescript-eslint's `no-explicit-any` with default options. It flags every `any` type: annotations, type arguments such as `Map<string, any>`, and `as any`.
 - `discipline-cd1/implicit-any-let` flags a `let` or `var` declaration in a `.ts` or `.tsx` file that has neither a type annotation nor an initialiser, one report per declaration at its first such binding. Declaration files (`.d.ts`), `const`, and `for-in` and `for-of` heads are not flagged.
 - Allowed: `unknown`, `let total = 0` and `let total: number`.
-- These clauses refuse exceptions, like the rest of CD-1: core rejects any entry for them as `non-exemptible-clause`.
 
 ## Example violation
 ```ts
@@ -41,4 +40,4 @@ const parsed: unknown = JSON.parse(text);
 Narrow `unknown` with a schema or a type guard at the point of use.
 
 ## Exceptions
-CD-1 cannot be exempted. Core rejects any entry in `discipline-exceptions.json` for a CD-1 clause as `non-exemptible-clause`, so there is no `authorised-location`, `file-carve-out` or clause-wide carve-out for it. See [discipline-exceptions.json](../../README.md#discipline-exceptionsjson).
+CD-1 is exempted like any other discipline: record an `authorised-location`, a `file-carve-out` for existing debt, or a clause-wide carve-out in `discipline-exceptions.json`. A carved or authorised file keeps its existing `any`; an `any` anywhere else still fails. See [discipline-exceptions.json](../../README.md#discipline-exceptionsjson).

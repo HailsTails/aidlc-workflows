@@ -5,7 +5,7 @@ This piece enforces CD-1's `explicit-any` and `implicit-any-let` clauses through
 - `no-explicit-any` reuses typescript-eslint's rule with default options and flags every `any` type.
 - `implicit-any-let` flags a `let` or `var` with neither a type annotation nor an initialiser in a `.ts` or `.tsx` file, once per declaration.
 
-CD-1 refuses exceptions, so no exception record can cover these clauses.
+Exception records cover these clauses like any other discipline's, so existing `any` debt can be recorded while new `any` still fails.
 
 ## Adopting the rule
 

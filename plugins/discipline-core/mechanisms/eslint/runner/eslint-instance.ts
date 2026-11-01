@@ -78,7 +78,7 @@ export type GovernanceBlock = {
 
 export type EslintSurfaceOptions = {
   readonly cwd?: AbsolutePath;
-  readonly overrideConfigFile?: true;
+  readonly overrideConfigFile?: true | string;
   readonly ignore?: false;
   readonly applySuppressions?: false;
   readonly allowInlineConfig?: false;
@@ -134,6 +134,7 @@ export type GovernanceInstance = {
 export type EslintPort = {
   readonly createQueryInstance: (request: {
     readonly repoRoot: AbsolutePath;
+    readonly configFile?: string;
   }) => QueryInstance;
   readonly createGovernanceInstance: (request: {
     readonly repoRoot: AbsolutePath;
@@ -466,7 +467,13 @@ const sourceCaseVerdicts = (request: {
 export const createEslintPort = (options: { readonly createEslint: CreateEslint }): EslintPort => ({
   createQueryInstance: (request) =>
     queryInstanceOf({
-      surface: builtSurface({ createEslint: options.createEslint, options: { cwd: request.repoRoot } }),
+      surface: builtSurface({
+        createEslint: options.createEslint,
+        options:
+          request.configFile === undefined
+            ? { cwd: request.repoRoot }
+            : { cwd: request.repoRoot, overrideConfigFile: request.configFile },
+      }),
     }),
   createGovernanceInstance: (request) => {
     const surface = builtSurface({
