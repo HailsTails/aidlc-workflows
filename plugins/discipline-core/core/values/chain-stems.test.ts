@@ -26,6 +26,14 @@ describe("stemsOf reads the content words of a sentence", () => {
     expect(wordsOf({ stems: stemsOf({ text: "Matchers match the matcher" }) })).toEqual(["matchers", "match"]);
   });
 
+  it("drops pronouns, possessives and prepositions", () => {
+    expect(wordsOf({ stems: stemsOf({ text: "Since then our approach, about your view, held until now via you" }) })).toEqual([
+      "approach",
+      "view",
+      "held",
+    ]);
+  });
+
   it("reads no words from a sentence of function words", () => {
     expect(stemsOf({ text: "why is that so?" }).size).toBe(0);
   });
@@ -65,6 +73,10 @@ describe("stemsOf reads inflections of one word as one stem", () => {
     ["added", "add"],
     ["falling", "fall"],
     ["passing", "pass"],
+    ["needed", "need"],
+    ["exceeded", "exceed"],
+    ["speeding", "speed"],
+    ["bringing", "bring"],
     ["Matcher", "matcher"],
   ])("reads %j and %j as one stem", (left, right) => {
     expect([...stemsOf({ text: left }).keys()]).toEqual([...stemsOf({ text: right }).keys()]);

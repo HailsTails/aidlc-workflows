@@ -19,7 +19,7 @@ import {
   whyChainFormOf,
   whyChainSchema,
 } from "../values/why-chain.ts";
-import type { ExceptionRecord, InvalidRecord } from "./exception-record.ts";
+import type { AuthorisedLocationEntry, ExceptionRecord, FileCarveOutEntry, InvalidRecord } from "./exception-record.ts";
 
 export type {
   AuthorisationEvidence,
@@ -161,9 +161,15 @@ const authorisedLocationFields = {
   reason: z.string(),
 };
 
-const unjudgedWhyChainSchema = z.custom<NonNullable<unknown>>((whyChain) => whyChain !== undefined);
+type UnjudgedWhyChain = NonNullable<unknown>;
 
-const authorisedLocationSchema = z.union([
+type Unjudged<Entry> = Entry extends { readonly whyChain: RecordedWhyChain }
+  ? Omit<Entry, "whyChain"> & { readonly whyChain: UnjudgedWhyChain }
+  : Entry;
+
+const unjudgedWhyChainSchema = z.custom<UnjudgedWhyChain>((whyChain) => whyChain !== undefined);
+
+const authorisedLocationSchema: z.ZodType<Unjudged<AuthorisedLocationEntry>> = z.union([
   z.strictObject({ ...authorisedLocationFields, whyChain: unjudgedWhyChainSchema, provenance: existingAuthorisationProvenanceSchema.optional() }),
   z.strictObject({ ...authorisedLocationFields, whyChain: z.never().optional(), provenance: existingAuthorisationProvenanceSchema }),
 ]);
@@ -175,7 +181,7 @@ const fileCarveOutFields = {
   reason: z.string(),
 };
 
-const fileCarveOutSchema = z.union([
+const fileCarveOutSchema: z.ZodType<Unjudged<FileCarveOutEntry>> = z.union([
   z.strictObject({ ...fileCarveOutFields, whyChain: unjudgedWhyChainSchema, provenance: inheritedDebtProvenanceSchema.optional() }),
   z.strictObject({ ...fileCarveOutFields, whyChain: z.never().optional(), provenance: inheritedDebtProvenanceSchema }),
 ]);
@@ -274,7 +280,7 @@ const recordedFile = (request: {
 };
 
 const LEGACY_CHAIN_NEW_OR_EDITED =
-  "a new or edited entry's whyChain follows the causal contract (docs/why-chain-contract.md); a chain without rootCheck and readback is accepted only while --base-revision holds its entry unchanged";
+  "a new or edited entry's whyChain follows the causal contract (docs/why-chain-contract.md in the discipline-core install); a chain without rootCheck and readback is accepted only while --base-revision holds its entry unchanged";
 
 type LegacyChainStanding = "unchanged-since-base" | "base-unmeasured" | "new-or-edited";
 

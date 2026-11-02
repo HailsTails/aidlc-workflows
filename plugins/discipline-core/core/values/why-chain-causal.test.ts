@@ -74,6 +74,9 @@ describe("whyChainSchema accepts a chain that runs cause to cause", () => {
     ["a file name", "the matcher in name-matcher.ts"],
     ["a dotted file name opening the text", "vitest.config.ts runs plain Vitest"],
     ["a file name glob", "a literal *.fixture.ts beside its subject"],
+    ["a file name with a long extension", "the root build.gradle declares it"],
+    ["a dotfile", "the repository .gitignore lists it"],
+    ["a path holding a lookalike", "the index at src/n/a.ts module"],
   ])("accepts evidence that is %s", (_label, evidence) => {
     expect(issuePathsOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([]);
   });
@@ -151,6 +154,46 @@ describe("causalProblemsOf refuses the objection lists the Gate 1 and 3 pilot re
   });
 });
 
+const PRONOUN_LINKS: WhyChain = {
+  whys: [
+    {
+      why: "Why does the lint gate flag the factory file?",
+      because: "Our factory module declares a class instead of exporting functions.",
+      evidence: "src/factory.ts:3",
+    },
+    {
+      why: "Why is our approach acceptable here?",
+      because: "The lead signed off about a month ago in review.",
+      evidence: "issue #12",
+    },
+    {
+      why: "Why is the sign-off binding?",
+      because: "Nobody objected after hearing the proposal at standup.",
+      evidence: "standup notes 2026-10-01",
+    },
+    {
+      why: "Why does it matter what happened after?",
+      because: "Silence counts as consent, according to your team lead.",
+      evidence: "team charter, rule 4",
+    },
+    {
+      why: "Why should your view decide it?",
+      because: "The charter gives the lead the final call on module shape.",
+      evidence: "docs/charter.md:12",
+    },
+  ],
+  rootCause: "The charter gives the lead the final call on module shape.",
+  rootCheck: "docs/charter.md:12 still grants the call today.",
+  readback: "The lead holds the final call, therefore the lint gate flags the factory file.",
+  owner: "Helen",
+};
+
+describe("whyChainSchema refuses a why that links only by pronoun or preposition", () => {
+  it("refuses links through our, after and your", () => {
+    expect(issuePathsOf(PRONOUN_LINKS)).toEqual(expect.arrayContaining(["whys.1.why", "whys.3.why", "whys.4.why"]));
+  });
+});
+
 describe("whyChainSchema refuses a chain that restates one reason", () => {
   it("refuses an answer that rewords an earlier answer", () => {
     expect(
@@ -178,6 +221,7 @@ describe("whyChainSchema refuses evidence that cannot be checked again", () => {
     ["an e.g. with no final dot", "e.g the redirect docs page"],
     ["a time of day", "approx a.m. meeting with lead"],
     ["a sentence run into the next", "the team said so.Then moved on"],
+    ["an a.k.a. abbreviation", "a.k.a. the legacy factory"],
   ])("refuses %s", (_label, evidence) => {
     expect(issuePathsOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([
       "whys.2.evidence",

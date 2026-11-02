@@ -46,8 +46,14 @@ const MINIMUM_ANSWER_CHARACTERS = 12;
 const MINIMUM_OWNER_CHARACTERS = 2;
 const MINIMUM_SYMPTOM_STEMS_NAMED = 2;
 const ONE_REPEATED_CHARACTER = /^(.)\1+$/;
-const PROSE_LOOKALIKES = /\b(?:e\.g\b\.?|i\.e\b\.?|etc\.|[ap]\.m\.|and\/or|n\/a|w\/o|yes\/no)/gi;
-const CHECKABLE_LOCATORS: readonly RegExp[] = [/https?:\/\/\S/i, /[\w.-][\\/][\w.-]/, /(?:^|[\s(\x60'"])(?:\*|[\w-]+)(?:\.[\w-]+)*\.[a-z][a-z0-9]{0,4}\b/, /\d/];
+const PROSE_LOOKALIKES = /\b(?:e\.g\b\.?|i\.e\b\.?|a\.k\.a\.|etc\.|[ap]\.m\.)|(?<![\w./\\-])(?:and\/or|n\/a|w\/o|yes\/no)(?![\w./\\-])/gi;
+const CHECKABLE_LOCATORS: readonly RegExp[] = [
+  /https?:\/\/\S/i,
+  /[\w.-][\\/][\w.-]/,
+  /(?:^|[\s(\x60'"])(?:\*|[\w-]+)(?:\.[\w-]+)*\.[a-z][a-z0-9]{0,9}\b/,
+  /(?:^|[\s(\x60'"])\.[a-z][\w-]+\b/,
+  /\d/,
+];
 const THEREFORE = /\btherefore\b/i;
 
 const rootCauseReading = (request: {

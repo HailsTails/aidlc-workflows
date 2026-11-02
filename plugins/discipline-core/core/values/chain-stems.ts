@@ -1,13 +1,22 @@
 export type Stems = ReadonlyMap<string, string>;
 
 const FUNCTION_WORDS: ReadonlySet<string> = new Set([
-  "all", "also", "and", "any", "are", "because", "been", "being", "but", "can", "cannot", "could", "did",
-  "does", "down", "each", "for", "from", "had", "has", "have", "hence", "here", "how", "into", "its",
-  "itself", "just", "may", "might", "more", "most", "must", "nor", "not", "off", "one", "only", "onto",
-  "other", "out", "over", "own", "same", "shall", "should", "some", "still", "such", "than", "that", "the",
-  "their", "them", "then", "there", "therefore", "these", "they", "this", "those", "thus", "under", "very",
-  "was", "were", "what", "when", "where", "which", "while", "who", "whom", "why", "will", "with",
-  "without", "would",
+  "about", "above", "after", "again", "against", "ago", "all", "almost", "already", "also", "although",
+  "always", "among", "and", "another", "any", "anyone", "anything", "are", "around", "away", "because",
+  "been", "before", "being", "below", "beside", "between", "beyond", "both", "but", "can", "cannot",
+  "could", "did", "does", "doing", "done", "down", "during", "each", "either", "else", "enough", "even",
+  "ever", "every", "everyone", "everything", "few", "for", "from", "had", "has", "have", "having", "hence",
+  "her", "here", "hers", "herself", "him", "himself", "his", "how", "however", "into", "its", "itself",
+  "just", "less", "like", "many", "may", "maybe", "might", "mine", "more", "most", "much", "must", "myself",
+  "near", "neither", "never", "next", "nobody", "none", "nor", "not", "nothing", "now", "off", "often",
+  "once", "one", "only", "onto", "other", "others", "otherwise", "our", "ours", "ourselves", "out", "over",
+  "own", "per", "perhaps", "quite", "rather", "really", "same", "she", "shall", "should", "since", "some",
+  "someone", "something", "soon", "still", "such", "than", "that", "the", "their", "theirs", "them",
+  "themselves", "then", "there", "therefore", "these", "they", "this", "those", "though", "through",
+  "thus", "too", "toward", "towards", "under", "unless", "until", "upon", "very", "via", "was", "were",
+  "what", "whatever", "when", "whenever", "where", "whether", "which", "while", "who", "whoever", "whom",
+  "whose", "why", "will", "with", "within", "without", "would", "yet", "you", "your", "yours", "yourself",
+  "yourselves",
 ]);
 
 const MINIMUM_LETTERS = 3;
@@ -21,12 +30,16 @@ const PLURAL_RULES: readonly (readonly [RegExp, string])[] = [
   [/(?<=ss|x|z|ch|sh)es$/, ""],
   [/(?<![siu])s$/, ""],
 ];
-const INFLECTION = /(?:ing|ed)$/;
+const INFLECTION = /(?:ing|(?<!e)ed)$/;
 const DOUBLED_FINAL_CONSONANT = /([bcdfghjkmnpqrtvwxy])\1$/;
 const TRAILING_E = /e$/;
+const VOWEL = /[aeiouy]/;
 
 const shortenedTo = (request: { readonly stem: string; readonly shortened: string; readonly floor: number }): string =>
   request.shortened.length >= request.floor ? request.shortened : request.stem;
+
+const voicedShortenedTo = (request: { readonly stem: string; readonly shortened: string }): string =>
+  VOWEL.test(request.shortened) ? shortenedTo({ ...request, floor: MINIMUM_STEM_LETTERS }) : request.stem;
 
 const singularOf = (request: { readonly word: string }): string =>
   PLURAL_RULES.reduce(
@@ -39,7 +52,7 @@ const uninflectedOf = (request: { readonly stem: string }): string => {
   if (!INFLECTION.test(request.stem)) {
     return request.stem;
   }
-  const bare = shortenedTo({ stem: request.stem, shortened: request.stem.replace(INFLECTION, ""), floor: MINIMUM_STEM_LETTERS });
+  const bare = voicedShortenedTo({ stem: request.stem, shortened: request.stem.replace(INFLECTION, "") });
   return bare === request.stem ? bare : shortenedTo({ stem: bare, shortened: bare.replace(DOUBLED_FINAL_CONSONANT, "$1"), floor: MINIMUM_LETTERS });
 };
 
