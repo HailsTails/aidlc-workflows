@@ -11,7 +11,14 @@ const PORT_FACTORIES: ReadonlySet<string> = new Set([
   "createSharedPluginRuntimePort",
 ]);
 const MODULE_SCOPE = "<module>";
-const PASS_ROOTS = ["createPassRuntimePort", "checkPackageDeterminism", MODULE_SCOPE];
+const PORT_CONSTRUCTION_OWNERS = [
+  "createPassRuntimePort",
+  "createPassRuntimePort",
+  "checkPackageDeterminism",
+  "checkPackageDeterminism",
+  MODULE_SCOPE,
+  MODULE_SCOPE,
+];
 
 const packagerSource = ts.createSourceFile(PACKAGER, readFileSync(PACKAGER, "utf-8"), ts.ScriptTarget.Latest, true);
 
@@ -38,7 +45,7 @@ function portConstructionOwners(node: ts.Node): readonly string[] {
 }
 
 describe("packager plugin runtime port", () => {
-  test("is built only at pass roots, so every tree in a pass shares one compile per entry", () => {
-    expect([...new Set(portConstructionOwners(packagerSource))].sort()).toEqual([...PASS_ROOTS].sort());
+  test("is built once per pass at its root, so every tree in a pass shares one compile per entry", () => {
+    expect([...portConstructionOwners(packagerSource)].sort()).toEqual([...PORT_CONSTRUCTION_OWNERS].sort());
   });
 });
