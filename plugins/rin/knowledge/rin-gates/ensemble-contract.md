@@ -1,67 +1,43 @@
-# rin ensemble contract — collaborators contribute, they do not review
+# rin ensemble contract — which seat writes which piece
 
-Binding on every rin-gates stage declaring `mode: mob`. It refines the upstream `stage-protocol-ensemble.md` for this repo; where upstream is silent this adds, and where upstream sets a boundary (the lead alone edits `produces[]`) that boundary holds.
+Binding on every rin-gates stage declaring `mode: mob`. How a mob runs — the rounds, the contribution file and its working-space marker, who edits the outputs — is `stage-protocol-ensemble.md` §5. This contract adds only what §5 leaves to the stage: which seat writes which piece at each gate, and how seats are chosen.
 
-## The rule
+## Pieces, by gate
 
-**A mob collaborator's output is work, not an opinion about work.** A seat that only read the draft and formed a judgement has not contributed — it has reviewed, and review is the gate's reviewer and roster, never a seat.
+A **round-1** piece is written in parallel, blind, from the gate's inputs. A **shared-round** piece answers the assembled outputs, so it is written once they exist. Each seat's brief names its pieces.
 
-Every seat is dispatched with a brief naming the concrete act it performs on this stage. A brief asking for an assessment gets an assessment back, which is the failure this contract exists to stop.
+| gate | seat | round | piece |
+|---|---|---|---|
+| Gate 1 framing | customer | 1 | the requirements' `## Customer and ordinary use` section |
+| | product (lead) | 1 | the requirements, Given/When/Then, the known limits, and the decision questions the ask raises |
+| | architect | 1 | the decision questions an alternative framing raises, each with what that framing would cost |
+| | developer | 1 | the decision questions the code raises: where the smallest implementation of the ask does not fit the framing |
+| | customer | shared | its position on every requirement, known limit and question |
+| Gate 2 solution options | architect (lead) | 1 | the decision points, its candidates on each, and the candidate it leans towards |
+| | developer | 1 | on each point, the candidate that reuses the most of what exists, with what a read-only probe of its riskiest premise showed |
+| | challenger | 1 | on each point, one genuinely different candidate, built from evidence it gathered |
+| | challenger | shared | the strongest case for the candidate the lead leans against, and what would have to be true for it to win |
+| | quality | shared | comparison rows: the acceptance tests the leading and the challenged candidates imply, and which of them cannot satisfy one |
+| | customer | shared | comparison rows: each candidate's obligations, and each reason given against a cheaper candidate, weighed against the customer section, which it extends for any question it does not answer |
+| Gate 3 detailed solution design | architect (lead) | 1 | the domain model, components, contracts, External reality section and Constitution Check, after the stage's measurement step |
+| | developer | 1 | the units of work and their dependencies |
+| | developer | shared | one caller implemented against each proposed contract, and where it did not fit |
+| | quality | shared | for each refusal the lock claims, a planted violation and whether it was caught |
+| | customer | shared | its position on each lock clause, safeguard and refusal, and on each case the lock leaves out |
+| Gate 6 operate | pipeline-deploy | 1 | the deployment log's record of the deploy path, forced and read back |
+| | delivery | 1 | each operational claim in the health-check report, verified from the running system |
 
-## What a seat DOES, by gate
-
-| gate | seat | the act it performs |
-|---|---|---|
-| Gate 1 framing | architect | draft the alternative framing and say what it would cost |
-| | developer | attempt the smallest implementation against the framing; report where it does not fit |
-| Gate 2 solution options | developer | probe the riskiest premise while options are cheap; report what the probe showed |
-| | quality | write the acceptance tests the leading and the challenged candidate imply; report which of the two cannot satisfy one |
-| | challenger | build the strongest case, with evidence it gathered, for the candidate the lead is leaning against; state what would have to be true for it to win |
-| Gate 3 detailed solution design | developer | implement one caller against the proposed lock |
-| | quality | plant a violation the lock claims to forbid and confirm it is caught |
-| Gate 4 implement | quality | run the suite under real contention; plant the defect each new check claims to catch |
-| | developer | exercise the live path rather than the unit boundary |
-| Gate 6 operate | pipeline-deploy | force the deploy path and read the side effect back |
-| | delivery | verify the operational claim from the running system, not the record |
-
-A seat unable to perform its act says so and says why — that is a finding about the work, and it is more useful than a verdict.
-
-## The contribution file
-
-Upstream's identity marker and path are unchanged (`contributions/<agent-slug>.md`, first line `**Collaborator:** <agent-slug>`). rin orders the body so the doing leads:
-
-```markdown
-**Collaborator:** <agent-slug>
-
-## What I did
-[The act from the brief, performed. Commands run, files touched, what was
-planted or exercised. Enough that another seat could repeat it.]
-
-## What that showed
-[What the doing revealed — including "it worked as claimed", which is a
-result. Measurements carry their derivation.]
-
-## Positions
-- AGREE: [aspect endorsed] — [one line]
-- OBJECT: [aspect disputed] — [one line]
-```
-
-`## Positions` is retained because the objection triage needs it, and it is a **tail**, not the point. A file whose `## What I did` says only that the seat read the draft has not met this contract.
-
-## Write scope
-
-A collaborator may create and edit evidence **inside its own contribution directory** — probes, fixtures, throwaway measurement scripts — and cite it. This is what gives a seat something to author.
-
-The lead alone edits the stage's `produces[]` artefacts. That upstream boundary is not relaxed: it prevents write races between blind parallel seats, and the seat's leverage comes from evidence the lead must integrate rather than from editing the artefact directly.
+Gate 4's test and build seats pair serially rather than in rounds; the gate's own body defines that pairing.
 
 ## Seat selection
 
 - **At least two seats, with distinct disciplinary lenses.** One seat is a two-party critique, which is the reviewer topology wearing a mob's name.
-- **No reviewer persona is seated as a collaborator.** `rin-*-reviewer-agent` and `aidlc-architecture-reviewer-agent` belong to the review loop. Seating one here is what turns an ensemble into a second board.
+- **No reviewer persona is seated as a collaborator.** `rin-*-reviewer-agent` belongs to the review loop. Seating one here is what turns an ensemble into a second board.
+- **Every seat and lead is a rin agent.** A stock persona carries knowledge rin's rules may contradict.
 - **Model tier follows the seat, not the gate** — a collaborator that runs and measures is doing worker-shaped work.
 
 ## Where review lives
 
-Every gate's review is its declared `reviewer` plus its resolved roster in `review-rosters.json`, bounded by `reviewer_max_iterations` — which the upstream protocol is explicit is **not a mode** and layers on top of any topology. Where the reviewer is the board coordinator, the roster is dispatched as a decorrelated board. Seats never review: a gate convenes contributors for work, and its review runs separately from them.
+Every gate's review is its declared `reviewer` plus its resolved roster in `review-rosters.json`, bounded by `reviewer_max_iterations`. Where the reviewer is the board coordinator, the roster is dispatched as a decorrelated board. Seats never review.
 
 Whether review boards belong before Gate 5 is a consumer policy decision. This contract describes the configured mechanism without choosing that policy.

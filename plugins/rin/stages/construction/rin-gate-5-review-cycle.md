@@ -6,7 +6,7 @@ plugin: rin
 phase: construction
 execution: ALWAYS
 condition: Final gate of the rin pipeline — the reviewer↔author review round-trip, run as a bounded DECORRELATED cycle inside one stage. A decorrelated review board (the six pr-review hunts + disposition-diff enforcer + intent-defense synthesis) sweeps the PR; NOT-READY routes findings to the author leg (exhaustive disposition table); re-sweep up to the iteration cap. Converges to merged only on APPROVE + zero unresolved atoms + a managed merge ({{MERGE_COMMAND}} under the rails conditions; {{OPERATOR}} holds a standing veto).
-lead_agent: aidlc-developer-agent
+lead_agent: rin-developer-agent
 support_agents: []
 mode: inline
 approval_mode: autonomous

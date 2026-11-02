@@ -6,10 +6,11 @@ plugin: rin
 phase: inception
 execution: ALWAYS
 condition: Fourth gate of the rin pipeline and the inception→construction boundary. Answers "what exactly are we building, measured against reality". Measures the chosen solution's premises and every other external fact first, then designs the domain model, components and exact contracts of the solution Gate 2 chose, with every contract element specified and every external fact it relies on measured. Its `report --result approved` audit event (GATE_APPROVED) is the proof construction's entry check reads.
-lead_agent: aidlc-architect-agent
+lead_agent: rin-architect-agent
 support_agents:
-  - aidlc-developer-agent
-  - aidlc-quality-agent
+  - rin-developer-agent
+  - rin-quality-agent
+  - rin-customer-seat-agent
 mode: mob
 reviewer: rin-decorrelated-review-agent
 review_artifact: rin-interface-lock
@@ -97,6 +98,8 @@ The jump resets Gate 2 and every later stage, and records `STAGE_JUMPED` with th
 
 ### Step 3: Domain model and components
 
+Once measurement holds, the seats and the lead write both artefacts in the mob rounds (`stage-protocol-ensemble.md` §5), each writing the pieces the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`) names for this gate. Steps 3 to 6 govern what the artefacts say.
+
 Write `rin-components.md` for the chosen solution: the domain model (entities, value objects, aggregates, and the invariants each holds), the components that own them, and the units of work with their dependencies — the content AIDLC's native domain-design and units-generation stages produce, folded into this gate.
 
 - **One owner per entity.** Every entity is owned by exactly one component; an entity two components both write is a modelling defect to resolve here, not a contract to specify.
@@ -142,7 +145,7 @@ The lock carries the Slice's single Constitution Check (CD-38) — it is written
 
 ### Step 7: The review
 
-The reviewer is the board coordinator marker (`rin-decorrelated-review-agent`). The conductor logs the normal reviewer request, then runs `{{HARNESS_DIR}}/knowledge/rin-gates/decorrelated-review.md` inline. Because this gate is listed in `roster_dispatch_gates` in `{{HARNESS_DIR}}/tools/data/review-board.json`, the conductor dispatches **this gate's resolved producing roster** from `review-rosters.json`, then the intent-defense synthesis lens last. The roster is completeness (`aidlc-architecture-reviewer-agent`), ddd-modelling, clean-architecture, and the contract-constitution lens, which judges the contracts against the type-soundness, errors-as-data and zod-boundary rules at contract grain. The dispatch brief tells each lens to read the lock's fenced signatures as code. The conductor writes the supplied review file from the collated board and records its standard review receipt.
+The reviewer is the board coordinator marker (`rin-decorrelated-review-agent`). The conductor logs the normal reviewer request, then runs `{{HARNESS_DIR}}/knowledge/rin-gates/decorrelated-review.md` inline. Because this gate is listed in `roster_dispatch_gates` in `{{HARNESS_DIR}}/tools/data/review-board.json`, the conductor dispatches **this gate's resolved producing roster** from `review-rosters.json`, then the intent-defense synthesis lens last. The dispatch brief tells each lens to read the lock's fenced signatures as code. The conductor writes the supplied review file from the collated board and records its standard review receipt.
 
 The verdict is **READY** or **NOT-READY**. On NOT-READY the findings are fixed in this gate's artefacts and the board re-runs, up to `reviewer_max_iterations`. This stage adds no second counter. A finding still unresolved at the limit is written into the stage's review diagnosis, `review-diagnosis.md` in this stage's record directory, one entry per finding naming its class: a class on the active reserved list (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`), or `problem`. A finding in a stopping class parks the record, naming the class; a finding in a decided class is decided and recorded, naming the class. Any other finding is a problem the lane fixes before it convenes again. Once the iterations are spent, the lane convenes again only through the gate's rejection-and-revision path (`stage-protocol-reviewer.md`), which restarts the review budget. Each restart is recorded in the review diagnosis, and nothing yet caps how many there are. Seats never review.
 

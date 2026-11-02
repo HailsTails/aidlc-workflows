@@ -6,13 +6,13 @@ plugin: rin
 phase: operation
 execution: ALWAYS
 condition: The operational gate — genuinely missing from the original rin gates, which stop at merge. Deploys the merged Slice, verifies it live (health-checked against the real path, not state-at-rest), wires its monitoring, and closes the bookkeeping (tend-log breadcrumb, scope-routed decisions, backlog reconcile). Converges only when the Slice is provably live AND its record is closed.
-lead_agent: aidlc-operations-agent
+lead_agent: rin-operations-agent
 support_agents:
-  - aidlc-pipeline-deploy-agent
-  - aidlc-delivery-agent
+  - rin-pipeline-deploy-agent
+  - rin-delivery-agent
 mode: mob
 approval_mode: autonomous
-reviewer: aidlc-architecture-reviewer-agent
+reviewer: rin-stage-reviewer-agent
 review_artifact: rin-bookkeeping-close
 reviewer_max_iterations: 3
 produces:
@@ -137,7 +137,7 @@ gates its own completion on that call succeeding.
 ## One reviewer
 
 Gate 6 follows the deploy playbook and closes the books, so it has one reviewer,
-not the board. `aidlc-architecture-reviewer-agent` checks that the deployment log,
+not the board. `rin-stage-reviewer-agent` checks that the deployment log,
 health-check report, runbook and bookkeeping close are complete and agree with
 each other, and that the live verification forced the real path rather than a
 green entry point.

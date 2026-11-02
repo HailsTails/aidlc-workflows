@@ -32,6 +32,7 @@ Every artefact named in a `produces:` entry of a stage the record's scope select
 | `aidlc-state.md`, `runtime-graph.json` | engine-generated; their stage numbers and identifiers are not authored claims |
 | `audit/**` | hook-written gate proof; not authored prose |
 | `.aidlc-*` scratch, evidence and sensor-detail directories | working files, not artefacts |
+| `contributions/**` | a seat's working space (`stage-protocol-ensemble.md` §5): its pieces become official only once assembled into a declared artefact |
 | anything not named by a `produces:` entry | not an official artefact |
 
 ## Closed conditions
