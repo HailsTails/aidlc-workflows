@@ -15,8 +15,17 @@ const PASS_ROOTS = ["createPassRuntimePort", "checkPackageDeterminism", MODULE_S
 
 const packagerSource = ts.createSourceFile(PACKAGER, readFileSync(PACKAGER, "utf-8"), ts.ScriptTarget.Latest, true);
 
+function isRepeatingScope(node: ts.Node): boolean {
+  return ts.isFunctionLike(node) || ts.isIterationStatement(node, false);
+}
+
+function scopeName(scope: ts.Node): string {
+  return ts.isFunctionDeclaration(scope) && scope.name !== undefined ? scope.name.text : ts.SyntaxKind[scope.kind];
+}
+
 function ownerOf(node: ts.Node): string {
-  return ts.findAncestor(node.parent, ts.isFunctionDeclaration)?.name?.text ?? MODULE_SCOPE;
+  const scope = ts.findAncestor(node.parent, isRepeatingScope);
+  return scope === undefined ? MODULE_SCOPE : scopeName(scope);
 }
 
 function isPortConstruction(node: ts.Node): node is ts.CallExpression {
