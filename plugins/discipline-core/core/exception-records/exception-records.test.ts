@@ -9,8 +9,9 @@ import { mechanismIdSchema } from "../values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import {
   createExceptionRepository,
-  legacyChainsIn,
   type ExceptionBaseline,
+  exceptionEntriesOfText,
+  legacyChainsIn,
   parseExceptionEntries,
   readExceptionEntries,
   type StructuralExceptionEntry,
@@ -736,6 +737,28 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
   it("refuses a legacy chain on a new entry when base holds no exceptions file", () => {
     expect(
       parseExceptionEntries({ entries: [LEGACY_CARVE_OUT], selection: SELECTION, baseline: NOTHING_AT_BASE }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
+  });
+
+  it("refuses a legacy chain when the base exceptions file does not parse, since base then holds no entries", () => {
+    expect(
+      parseExceptionEntries({
+        entries: [LEGACY_CARVE_OUT],
+        selection: SELECTION,
+        baseline: baselineHolding({ entriesAtBase: exceptionEntriesOfText({ text: "{ not json" }), sourceTextsAtBase: new Map() }),
+      }),
+    ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
+  });
+
+  it("refuses a legacy chain unchanged since base that fails the earlier floor", () => {
+    const ownerless = { ...FILE_CARVE_OUT, whyChain: { ...LEGACY_WHY_CHAIN, owner: "" } };
+
+    expect(
+      parseExceptionEntries({
+        entries: [ownerless],
+        selection: SELECTION,
+        baseline: baselineHolding({ entriesAtBase: [ownerless], sourceTextsAtBase: new Map() }),
+      }),
     ).toMatchObject({ records: [], invalid: [{ index: 0, problem: { kind: "why-chain-refused" } }] });
   });
 

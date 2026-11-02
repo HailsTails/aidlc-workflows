@@ -129,7 +129,9 @@ and the machine-diffable convergence predicate. Then re-run the decorrelated swe
 dispositions leave the cited violation STANDING — one argues it away, the other
 parks it — so each is an exception judgement and carries its why-chain in the
 row. The chain follows discipline-core's why-chain contract
-(`plugins/discipline-core/docs/why-chain-contract.md`), which R7 adopts.
+(`tools/discipline-core/docs/why-chain-contract.md` where core is installed,
+`plugins/discipline-core/docs/why-chain-contract.md` in the fork), which R7
+adopts.
 `fixed@<sha>` and `withdrawn(<reason>)` carry no chain and that asymmetry is
 deliberate: a fix removes the violation and a withdrawal retracts the finding,
 so neither grants a standing exception. The row's shape is:

@@ -41,7 +41,7 @@ These checks work on the words of the chain. Core lowercases the text, splits ca
 1. **Five steps, each answered.** Core keeps the earlier floor: exactly five whys, a non-blank `why`, a `because` and `evidence` of at least 12 characters that are not one repeated character, a `rootCause` that does not open with a stock restatement, and an `owner`.
 2. **Evidence can be checked again.** Every `evidence` and the `rootCheck` must hold a path (`a/b`), a file name, a link, or a number. A file name starts a word and ends in a lowercase extension of one to ten letters or digits (`name.ext`, `vitest.config.ts`, `*.fixture.ts`), or is a dotfile (`.gitignore`); a name with no extension, such as `Makefile`, needs its path. Prose such as "the redirects documentation" is refused, and "e.g.", "i.e.", "a.k.a.", "etc.", "a.m.", "p.m.", and a standalone "and/or", "n/a", "w/o" or "yes/no" don't count. This is a floor: any path-shaped word passes, whether or not it points at the cause.
 3. **Each answer introduces a cause.** An answer's new words are the words that appear in neither why 1's question nor any earlier answer. An answer with no new words restates the symptom or an earlier answer, and is refused.
-4. **Each why asks about the previous answer.** Why 2 to why 5 must each use at least one of the previous answer's new words. A question that only reuses the symptom's words, or names its subject by pronoun ("why is that enough?"), is refused, and the refusal lists the words it could have named.
+4. **Each why asks about the previous answer.** Why 1 must name the symptom in at least one content word. Why 2 to why 5 must each use at least one of the previous answer's new words. A question that only reuses the symptom's words, or names its subject by pronoun ("why is that enough?"), is refused, and the refusal lists the words it could have named.
 5. **The root is the fifth answer's cause.** `rootCause` must use at least one of the fifth answer's new words.
 6. **The readback runs from root to symptom.** `readback` must contain "therefore", use at least one word of `rootCause`, and use at least two words of why 1's question (all of them when it has fewer).
 
@@ -67,9 +67,9 @@ The checks catch a chain's shape, not whether it is true. A chain can pass every
 
 A chain with neither `rootCheck` nor `readback` is a legacy chain, written before this contract. It is judged against `--base-revision`, the same way imported records are:
 
-- **Unchanged since the base revision:** judged by the earlier floor (check 1 only) and accepted. Reordering keys inside the chain counts as an edit.
+- **Unchanged since the base revision:** judged by the earlier floor (check 1 only), and accepted when it passes. Reordering keys inside the chain counts as an edit.
 - **New or edited since the base revision:** judged by this contract and refused until it is rewritten. The refusal says so.
-- **No base revision, or git cannot read the base:** the record is accepted, and the run reports `legacy-chain-unmeasured`, which fails the verdict. Pass `--base-revision`, or rewrite every legacy chain.
+- **No base revision, or git cannot read the base:** the record is judged by the earlier floor and accepted when it passes, and the run reports `legacy-chain-unmeasured`, which fails the verdict. Pass `--base-revision`, or rewrite every legacy chain.
 - **A base whose `discipline-exceptions.json` does not parse:** the base holds no entries, so every legacy chain counts as new and is refused, the same way imported records are.
 - **The `project` command** reads no base revision. It projects legacy chains as it always did, and reports nothing about them.
 

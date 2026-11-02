@@ -41,6 +41,12 @@ describe("stemsOf reads the content words of a sentence", () => {
     expect(stemsOf({ text: word }).size).toBe(0);
   });
 
+  it("reads a negative contraction as its function words", () => {
+    expect(
+      wordsOf({ stems: stemsOf({ text: "The parser doesn't export, isn't scheduled, didn't ship, wasn't asked, can't wait, won’t move" }) }),
+    ).toEqual(["parser", "export", "scheduled", "ship", "asked", "wait", "move"]);
+  });
+
   it("reads no words from a sentence of function words", () => {
     expect(stemsOf({ text: "why is that so?" }).size).toBe(0);
   });

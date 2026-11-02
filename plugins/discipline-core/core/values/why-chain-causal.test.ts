@@ -16,6 +16,14 @@ const contractPage =
     "./docs/why-chain-contract.md"
   ] ?? "";
 
+const JSON_EXAMPLE = /```json\n([\s\S]*?)\n```/;
+
+describe("the contract page's example is the chain these tests start from", () => {
+  it("holds CAUSAL_WHY_CHAIN as its JSON example", () => {
+    expect(JSON.parse(`{${JSON_EXAMPLE.exec(contractPage)?.[1] ?? ""}}`)).toEqual({ whyChain: CAUSAL_WHY_CHAIN });
+  });
+});
+
 const OBJECTION_LIST: WhyChain = {
   whys: [
     {
@@ -211,9 +219,55 @@ const PRONOUN_LINKS: WhyChain = {
   owner: "Helen",
 };
 
+const CONTRACTION_LINKS: WhyChain = {
+  whys: [
+    {
+      why: "Why does the lint gate flag the factory file?",
+      because: "Our factory module declares a class, so it doesn't export functions.",
+      evidence: "src/factory.ts:3",
+    },
+    {
+      why: "Why doesn't the team just rewrite it now?",
+      because: "A rewrite isn't scheduled before the release freeze.",
+      evidence: "docs/release-plan.md:8",
+    },
+    {
+      why: "Why isn't a later fix acceptable instead?",
+      because: "The release manager didn't approve extra work in this cycle.",
+      evidence: "issue #31, planning thread",
+    },
+    {
+      why: "Why didn't anyone ask again?",
+      because: "The request wasn't raised at the planning meeting.",
+      evidence: "planning notes 2026-10-08",
+    },
+    {
+      why: "Why wasn't that enough of a signal?",
+      because: "The charter gives the lead the final call on module shape.",
+      evidence: "docs/charter.md:12",
+    },
+  ],
+  rootCause: "The charter gives the lead the final call on module shape.",
+  rootCheck: "docs/charter.md:12 still grants the call today.",
+  readback: "The charter gives the lead the call, therefore the lint gate flags the factory file.",
+  owner: "Helen",
+};
+
 describe("whyChainSchema refuses a why that links only by pronoun or preposition", () => {
   it("refuses links through our, after and your", () => {
     expect(issuePathsOf(PRONOUN_LINKS)).toEqual(["whys.1.why", "whys.3.why", "whys.4.why"]);
+  });
+
+  it("refuses links through negative contractions", () => {
+    expect(issuePathsOf(CONTRACTION_LINKS)).toEqual(["whys.1.why", "whys.2.why", "whys.3.why", "whys.4.why"]);
+  });
+});
+
+describe("whyChainSchema refuses a first why that names no symptom", () => {
+  it("refuses a first why made only of function words", () => {
+    expect(
+      issuePathsOf(withWhy({ chain: CAUSAL_WHY_CHAIN, position: 0, field: "why", text: "Why is this here?" })),
+    ).toEqual(["whys.0.why"]);
   });
 });
 

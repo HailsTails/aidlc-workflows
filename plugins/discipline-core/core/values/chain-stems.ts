@@ -22,6 +22,7 @@ const FUNCTION_WORDS: ReadonlySet<string> = new Set([
 
 const MINIMUM_LETTERS = 3;
 const MINIMUM_STEM_LETTERS = 2;
+const NEGATIVE_CONTRACTION = /n['’]t\b/gi;
 const CAMEL_CASE_BOUNDARY = /([a-z0-9])([A-Z])/g;
 const WORD_SEPARATOR = /[^a-z0-9]+/;
 const BARE_NUMBER = /^\d+$/;
@@ -67,6 +68,7 @@ const isContentWord = (request: { readonly word: string }): boolean =>
 
 export const stemsOf = (request: { readonly text: string }): Stems => {
   const spellings = request.text
+    .replace(NEGATIVE_CONTRACTION, " not")
     .replace(CAMEL_CASE_BOUNDARY, "$1 $2")
     .toLowerCase()
     .split(WORD_SEPARATOR)

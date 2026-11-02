@@ -167,6 +167,11 @@ export type CausalProblem = {
 
 const causeNamed = (request: { readonly cause: Stems }): string => wordsOf({ stems: request.cause }).join(", ");
 
+const symptomProblems = (request: { readonly symptom: Stems }): readonly CausalProblem[] =>
+  request.symptom.size === 0
+    ? [{ path: ["whys", 0, "why"], message: "names no symptom: ask why the exception's own subject happens, naming it" }]
+    : [];
+
 const restatementProblems = (request: {
   readonly introduced: readonly Stems[];
 }): readonly CausalProblem[] =>
@@ -240,6 +245,7 @@ export const causalProblemsOf = (request: { readonly chain: WhyChain }): readonl
     stemsWithout({ stems: answer, excluded: [symptom, ...answers.slice(0, position)] }),
   );
   return [
+    ...symptomProblems({ symptom }),
     ...restatementProblems({ introduced }),
     ...linkProblems({ whys, introduced }),
     ...rootProblems({ rootCause, fifthCause: introduced[4] ?? new Map() }),
