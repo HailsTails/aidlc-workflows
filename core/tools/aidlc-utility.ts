@@ -258,9 +258,7 @@ import {
   loadStageGraphAll,
   loadScopeMetadata,
   installedScopeOwners,
-  coreScopesWithoutFile,
-  composedScopeRecordNames,
-  readScopeDirectory,
+  scopeFilesToRestore,
   loadScopeMetadataAll,
   MERGE_SUCCEEDED_TAG_REGEX,
   migrateFlatLayout,
@@ -1403,15 +1401,15 @@ export function activeWorkflowPluginDependencies(
   return violations;
 }
 
-function finishCoreSelectionStep(coreWasEnabled: boolean, names: readonly string[]): string {
+function finishCoreSelectionStep(projectDir: string, coreWasEnabled: boolean, names: readonly string[]): string {
   const settles = "sets the default scope and start-up banner for this selection.";
   const command = (extra: string): string => `${aidlcInvocation()} config project --plugins ${names.join(",")}${extra} --yes`;
   if (coreWasEnabled) {
     return `Run \`${command("")}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${settles}`;
   }
-  const missing = coreScopesWithoutFile(readScopeDirectory(scopesDir()), loadStageGraphAll(), composedScopeRecordNames());
-  if (missing.length === 0) return `Run \`${command("")}\` to finish: it ${settles}`;
-  return `Run \`${command(" --download")}\` to finish: core's scope files are gone here, so it fetches the release to put them back and ${settles} With the release files at hand, pass --from <release> instead of --download.`;
+  const removed = scopeFilesToRestore(projectDir, resolveHarnessPath(["tools", "data"], { projectDir }));
+  if (removed.length === 0) return `Run \`${command("")}\` to finish: it ${settles}`;
+  return `Run \`${command(" --download")}\` to finish: the core scope files your plugin selection removed are gone here, so it fetches the release to put them back and ${settles} With the release files at hand, pass --from <release> instead of --download.`;
 }
 
 function handleSelectPlugins(projectDir: string, positional: string[]): void {
@@ -1513,7 +1511,7 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
         );
       }
       process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
-      if (nameSet.has("aidlc") !== coreWasEnabled) process.stdout.write(`${finishCoreSelectionStep(coreWasEnabled, names)}\n`);
+      if (nameSet.has("aidlc") !== coreWasEnabled) process.stdout.write(`${finishCoreSelectionStep(projectDir, coreWasEnabled, names)}\n`);
     } catch (err) {
       resetSelectionSensitiveCaches();
       die(`select-plugins failed: ${errorMessage(err)}`);

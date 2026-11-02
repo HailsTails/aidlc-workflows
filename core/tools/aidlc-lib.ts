@@ -35669,15 +35669,19 @@ export function coreOwnedScopeFiles(directory: ScopeDirectory, composed: Readonl
     .flatMap((meta) => directory.files.get(meta.name) ?? []);
 }
 
-export type ScopeMembership = Pick<StageEntry, "plugin" | "scopes">;
+export type ScopeSelectionRecord = { readonly leftOutScopeFiles?: readonly string[] };
 
-export function coreScopesWithoutFile(
-  directory: ScopeDirectory,
-  stages: readonly ScopeMembership[],
-  composed: ReadonlySet<string>,
-): string[] {
-  const declared = new Set(stages.filter((stage) => scopeOwner(stage) === "aidlc").flatMap((stage) => stage.scopes ?? []));
-  return [...declared].filter((name) => !composed.has(name) && !directory.files.has(name)).sort();
+export function scopeFilesToRestore(projectDir: string, dataDir: string): string[] {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(readFileSync(join(dataDir, "aidlc-manifest.json"), "utf-8"));
+  } catch {
+    return [];
+  }
+  if (typeof manifest !== "object" || manifest === null || !("leftOutScopeFiles" in manifest)) return [];
+  const recorded: unknown = manifest.leftOutScopeFiles;
+  if (!Array.isArray(recorded)) return [];
+  return recorded.filter((rel): rel is string => typeof rel === "string" && !existsSync(join(projectDir, rel))).sort();
 }
 
 export function deselectedCoreScopeFiles(): string[] {

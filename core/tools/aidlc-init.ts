@@ -150,11 +150,11 @@ import {
   normalizeProjectFlagsRecord,
   readScopeDirectory,
   coreOwnedScopeFiles,
-  coreScopesWithoutFile,
   hasRunnerGenMarker,
   installedScopeOwners,
-  type ScopeMembership,
   scopeEnabledBySelection,
+  scopeFilesToRestore,
+  type ScopeSelectionRecord,
   type SelectedDefaultScope,
   selectionAwareDefaultScope,
   selectionDefaultScope,
@@ -335,7 +335,7 @@ type Baseline = {
   shippedOnly?: true;
   entries?: Record<string, Record<string, string>>;
   rootContributions: Record<string, RootContribution>;
-};
+} & ScopeSelectionRecord;
 
 type PreparedRefreshSource = {
   root: string;
@@ -6100,6 +6100,18 @@ function shippedLeftOutFile(source: {
   };
 }
 
+function placedByAidlc(file: {
+  readonly rel: string;
+  readonly runnerSkill: string;
+  readonly sourceRoot: string;
+  readonly projectProjection: boolean;
+  readonly prior: Baseline | null;
+}): boolean {
+  return file.rel === file.runnerSkill ||
+    (file.prior?.shippedOnly === true && file.prior.files[file.rel] !== undefined) ||
+    (!file.projectProjection && regularFile(join(file.sourceRoot, file.rel)));
+}
+
 function skillFolderFiles(root: string, stagedHarness: string): ReadonlyMap<string, string> {
   const runnerSkills = new Map<string, string>();
   const directories = new Set([resolveSkillsPath([], { mutable: true }), join(stagedHarness, "skills"), join(root, ".agents", "skills")]);
@@ -6636,7 +6648,8 @@ function prepareRefreshSource(input: {
     regenerateRunnerSurfaces();
     resetProjectionCaches();
     for (const [rel, runnerSkill] of skillFilesBeforeRegeneration) {
-      if (!pathPresent(join(root, rel))) deselectedFiles.set(rel, { provenance: "generated", runnerSkill });
+      if (pathPresent(join(root, rel)) || !placedByAidlc({ rel, runnerSkill, sourceRoot, projectProjection, prior })) continue;
+      deselectedFiles.set(rel, { provenance: "generated", runnerSkill });
     }
 
     const skillPath = existsSync(join(stagedHarness, "skills", "aidlc", "SKILL.md"))
@@ -6975,29 +6988,12 @@ function selectsCorePlugin(selection: readonly string[] | null): boolean {
   return pluginEnabledBy(selection === null ? null : new Set(selection), "aidlc");
 }
 
-function isScopeMembershipGraph(value: unknown): value is ScopeMembership[] {
-  return Array.isArray(value) && value.every((stage) =>
-    isRecord(stage) &&
-    (stage.scopes === undefined || (Array.isArray(stage.scopes) && stage.scopes.every((name) => typeof name === "string"))) &&
-    (stage.plugin === undefined || typeof stage.plugin === "string")
-  );
-}
-
-function missingCoreScopes(projectDir: string, harnessRoot: string): readonly string[] | null {
-  const graphPath = join(harnessRoot, "tools", "data", "stage-graph.json");
-  const graph: unknown = regularFile(graphPath) ? readJsonFile(graphPath) : null;
-  if (!isScopeMembershipGraph(graph)) return null;
-  const composed = composedScopeRecordNames(join(projectDir, ...COMPOSED_SCOPES_SEGMENTS));
-  return coreScopesWithoutFile(readScopeDirectory(join(harnessRoot, "scopes")), graph, composed);
-}
-
-function coreScopeFilesMissing(projectDir: string, harnessRoot: string): boolean {
-  const missing = missingCoreScopes(projectDir, harnessRoot);
-  return missing === null || missing.length > 0;
+function leftOutScopeFilesToRestore(projectDir: string, harnessRoot: string): readonly string[] {
+  return scopeFilesToRestore(projectDir, join(harnessRoot, "tools", "data"));
 }
 
 function coreScopesMatchSelection(projectDir: string, harnessRoot: string, plugins: readonly string[] | null): boolean {
-  if (selectsCorePlugin(plugins)) return (missingCoreScopes(projectDir, harnessRoot) ?? []).length === 0;
+  if (selectsCorePlugin(plugins)) return leftOutScopeFilesToRestore(projectDir, harnessRoot).length === 0;
   const composed = composedScopeRecordNames(join(projectDir, ...COMPOSED_SCOPES_SEGMENTS));
   return coreOwnedScopeFiles(readScopeDirectory(join(harnessRoot, "scopes")), composed).length === 0;
 }
@@ -7061,7 +7057,7 @@ function releaseNeedSentence(need: ReleaseNeed): string {
         ? `${dir} has no MCP server list for ${need.version}.`
         : `${dir} no longer has the MCP server list for ${need.version}.`;
     case "core-scopes":
-      return `${dir} no longer has all of core's scope files for ${need.version}, so selecting aidlc needs the release files.`;
+      return `${dir} no longer has the core scope files its plugin selection removed, so selecting aidlc needs the release files for ${need.version}.`;
     case "from":
       return `The files passed to --from are ${need.current}, but this project is pinned to ${need.version}.`;
   }
@@ -8900,6 +8896,7 @@ function planManagedFiles(
   operations: TransactionOperation[],
   actions: PlannedAction[],
   nextHashes: Record<string, string>,
+  leftOutScopeFiles: Set<string>,
   prepared: PreparedRefreshSource,
   workspaceMode: "seed" | "read-only",
   retainBaseline: boolean,
@@ -9070,11 +9067,15 @@ function planManagedFiles(
     if (plan === "removable") {
       operations.push({ kind: "remove", path: rel, expected: expected(target) });
       actions.push({ path: rel, action: "remove", detail: LEFT_OUT_BY_SELECTION });
+      if (file.provenance === "shipped") leftOutScopeFiles.add(rel);
       continue;
     }
     actions.push({ path: rel, action: "preserve", detail: KEPT_BY_SELECTION[plan] });
     const installedHash = file.provenance === "shipped" ? file.installedHash ?? file.releaseHash : undefined;
     if (plan === "changed" && installedHash !== undefined) nextHashes[rel] = installedHash;
+  }
+  for (const rel of prior?.leftOutScopeFiles ?? []) {
+    if (!shipped.has(rel) && !pathPresent(join(projectDir, rel))) leftOutScopeFiles.add(rel);
   }
 }
 
@@ -11938,7 +11939,7 @@ export async function main(
           const previousMcp = normalizeProjectChoicesRecord(choicesContext?.previous)?.mcp;
           const mcpTarget = choicesContext?.mcpMode;
           const restoresCoreScopes = selectsCorePlugin(choicesContext.nextPlugins) &&
-            coreScopeFilesMissing(projectDir, join(projectDir, harness.harnessDir));
+            leftOutScopeFilesToRestore(projectDir, join(projectDir, harness.harnessDir)).length > 0;
           if (
             !restoresCoreScopes &&
             ownFilesCoverChoices(
@@ -12235,6 +12236,7 @@ export async function main(
     const operations: TransactionOperation[] = [];
     const actions: PlannedAction[] = [];
     const files: Record<string, string> = {};
+    const leftOutScopeFiles = new Set<string>();
     const rootContributions: Record<string, RootContribution> = {};
     // A manifest-less copy-channel projection has no baseline to retain.
     // Record its current projection on the first record-only command so a
@@ -12251,6 +12253,7 @@ export async function main(
       operations,
       actions,
       files,
+      leftOutScopeFiles,
       prepared,
       workspaceMode,
       retainBaseline,
@@ -12480,6 +12483,7 @@ export async function main(
       ...(!selected.projectProjection || prior?.shippedOnly ? { shippedOnly: true as const } : {}),
       entries: prepared.entries,
       rootContributions,
+      ...(leftOutScopeFiles.size > 0 ? { leftOutScopeFiles: [...leftOutScopeFiles].sort() } : {}),
     };
     const baselineRel = join(descriptor.harnessDir, "tools", "data", "aidlc-manifest.json");
     operations.push(writeOperation(
