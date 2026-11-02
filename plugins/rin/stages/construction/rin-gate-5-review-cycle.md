@@ -143,14 +143,17 @@ so neither grants a standing exception. The row's shape is:
 This is enforced, not asked for: the verdict emitter's disposition predicate
 treats a `push-back`/`defer` row carrying no complete chain as UNDISPOSED, so the
 finding stays live and a READY over it is refused with the same message an
-evidence-free disposition gets. On this surface the predicate checks the
-contract's earlier floor only: five numbered steps, whys 1 to 4 each answered
-with a parenthesised citation, a root cause that is not a symptom ("the gate was
-failing", "no time", "out of scope"), and an owner. The contract's other
-mechanical checks don't run on this surface until rin runs the contract here
+evidence-free disposition gets. On this surface the predicate checks rin's own
+R7 floor, which is weaker than the contract's: five numbered steps, whys 1 to 4
+each answered with a parenthesised citation, a root cause that is not a symptom
+("the gate was failing", "no time", "out of scope"), and an owner. Step 5 may be
+the root cause itself, so a row with four whys still disposes, and why 5's
+evidence is not checked. None of the contract's mechanical checks run on this
+surface until rin runs the contract here
 ([#76](https://github.com/HailsTails/aidlc-workflows/issues/76)); until then the
-reviewer judges whether each why asks about the answer before it, whether an
-answer only restates, the root check and the readback.
+reviewer judges the row against the contract: five whys each with evidence,
+whether each why asks about the answer before it, whether an answer only
+restates, the root check and the readback.
 
 **The fix-leg writes code, so the deterministic teeth fire here too.** A `fixed`
 disposition is a code change, and a review round is exactly where discipline

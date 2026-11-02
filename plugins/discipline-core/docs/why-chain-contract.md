@@ -51,9 +51,9 @@ A refusal names the step and what to fix. With why 3 of the example above change
 exceptions[0] why-chain-refused ✖ does not ask about the cause why 2's answer gave: ask why that answer is true, naming its cause (copied, branch, validator, git, refs, fold, case, windows)\n  → at whys[2].why
 ```
 
-## What the review lenses still judge
+## What review still judges
 
-The checks catch a chain's shape, not whether it is true. A chain can pass every check and still be wrong. Reviewers judge:
+The checks catch a chain's shape, not whether it is true. A chain can pass every check and still be wrong. Whoever reviews a change to `discipline-exceptions.json` judges:
 
 - whether each answer is true, and whether its evidence supports it;
 - whether each link is a real cause, not an objection that happens to reuse a word from the previous answer ("Why is a recorded check enough?" after an answer that mentions a check passes check 4 and is still an objection);
