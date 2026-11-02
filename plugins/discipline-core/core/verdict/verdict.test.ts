@@ -82,6 +82,7 @@ describe("verdictOf", () => {
       },
     ],
     ["unmeasured", { ...emptyReport, unmeasured: [{ kind: "forfeiture-unmeasured" }] }],
+    ["legacy-chain unmeasured", { ...emptyReport, unmeasured: [{ kind: "legacy-chain-unmeasured" }] }],
     [
       "projectionProblems",
       { ...emptyReport, projectionProblems: [{ mechanism: eslint, state: "out-of-date" }] },

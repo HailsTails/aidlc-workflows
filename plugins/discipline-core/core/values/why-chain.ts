@@ -13,6 +13,8 @@ export type LegacyWhyChain = {
   readonly whys: FiveWhys;
   readonly rootCause: string;
   readonly owner: string;
+  readonly rootCheck?: never;
+  readonly readback?: never;
 };
 
 export type WhyChain = {

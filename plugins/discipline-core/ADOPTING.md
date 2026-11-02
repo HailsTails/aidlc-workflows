@@ -32,14 +32,15 @@ git -C /tmp/discipline-core-source checkout <pinned-sha>
 
 The commands in this guide are POSIX shell; on Windows run them in Git Bash. On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
-Copy `package.json`, `README.md`, `core/`, the docs with the why-chain contract, every rule page, both mechanisms and the review methods, then remove the core's own tests:
+Copy `package.json`, `README.md`, `core/`, the why-chain contract page, every rule page, both mechanisms and the review methods, then remove the core's own tests:
 
 ```bash
 SRC=/tmp/discipline-core-source/plugins/discipline-core
 DEST=tools/discipline-core
-mkdir -p "$DEST"
+mkdir -p "$DEST/docs"
 cp "$SRC/package.json" "$SRC/README.md" "$DEST/"
-cp -r "$SRC/core" "$SRC/docs" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
+cp "$SRC/docs/why-chain-contract.md" "$DEST/docs/"
+cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
 find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
 find "$DEST" -name '*.test.ts' -delete
 ```
@@ -250,7 +251,7 @@ Each rule page names its review lens, a method under [methods/lenses/](methods/R
 2. Pin the tree under review to a commit and review that.
 3. Run each lens on its own, one concern at a time, without seeing the other lenses' findings. Follow the lens file: load the rule pages that name it, inspect the change as it says, and report findings in its output shape, citing the clause address. A lens covers mechanical rules too, beyond what their checks flag.
 4. Run [defended-on-intent](methods/lenses/defended-on-intent.md) last, over the rule text and the other lenses' findings, to catch changes that meet a rule's letter but defeat its intent.
-5. Fix each finding. A deliberate departure from a judgement rule is recorded where the review decision is kept, with the same five-step `whyChain` as step 7.
+5. Fix each finding. A deliberate departure from a judgement rule is recorded where the review decision is kept, with a `whyChain` in the same shape as step 7.
 
 To use an agent, give it the lens file, the rule pages it names, the change and the pinned commit, and ask it to follow the lens exactly. A single reviewer covering every concern at once misses what separate lenses catch.
 

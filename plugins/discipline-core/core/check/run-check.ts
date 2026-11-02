@@ -205,7 +205,7 @@ const importedRecords = (request: { readonly records: readonly ExceptionRecord[]
     : "absent";
 
 const legacyChainRecords = (request: { readonly records: readonly ExceptionRecord[] }): "present" | "absent" =>
-  request.records.some((record) => record.whyChain !== undefined && whyChainFormOf({ chain: record.whyChain }) === "legacy")
+  request.records.some((record) => whyChainFormOf({ chain: record.whyChain }) === "legacy")
     ? "present"
     : "absent";
 

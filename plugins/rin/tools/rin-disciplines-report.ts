@@ -42,7 +42,7 @@ const FINDING_LINE = /^(\S+) (\S+) (.+?):(\d+):(\d+)(?: (.*))?$/;
 
 const SECTION_REMEDIES: Readonly<Record<FailingSectionName, string>> = {
   findings:
-    "change the code, or record an exception in discipline-exceptions.json with a five-step whyChain.",
+    "change the code, or record an exception in discipline-exceptions.json with a whyChain written to tools/discipline-core/docs/why-chain-contract.md: five whys chained cause to cause, a rootCause, its rootCheck, a readback and an owner.",
   uncovered:
     "select every mechanical clause of each adopted discipline in disciplines.json.",
   stale:

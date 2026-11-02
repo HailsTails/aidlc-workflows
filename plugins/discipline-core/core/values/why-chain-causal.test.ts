@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { causalProblemsOf, type Why, type WhyChain, whyChainFormOf, whyChainSchema } from "./why-chain.ts";
 import { CAUSAL_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
+import { causalProblemsOf, type Why, type WhyChain, whyChainFormOf, whyChainSchema } from "./why-chain.ts";
 
-const CAUSAL_CHAIN = CAUSAL_WHY_CHAIN;
+declare global {
+  interface ImportMeta {
+    readonly glob: (
+      patterns: readonly string[],
+      options: { readonly base: string; readonly query: "?raw"; readonly import: "default"; readonly eager: true },
+    ) => Readonly<Record<string, string>>;
+  }
+}
+
+const contractPage =
+  import.meta.glob(["./docs/why-chain-contract.md"], { base: "../../", query: "?raw", import: "default", eager: true })[
+    "./docs/why-chain-contract.md"
+  ] ?? "";
 
 const OBJECTION_LIST: WhyChain = {
   whys: [
@@ -60,11 +72,11 @@ const withWhy = (request: {
 
 describe("whyChainSchema accepts a chain that runs cause to cause", () => {
   it("accepts five linked whys, a root, its check and a readback", () => {
-    expect(issuePathsOf(CAUSAL_CHAIN)).toEqual([]);
+    expect(issuePathsOf(CAUSAL_WHY_CHAIN)).toEqual([]);
   });
 
   it("parses the chain to the same values", () => {
-    expect(whyChainSchema.parse(CAUSAL_CHAIN)).toEqual(CAUSAL_CHAIN);
+    expect(whyChainSchema.parse(CAUSAL_WHY_CHAIN)).toEqual(CAUSAL_WHY_CHAIN);
   });
 
   it.each([
@@ -78,7 +90,7 @@ describe("whyChainSchema accepts a chain that runs cause to cause", () => {
     ["a dotfile", "the repository .gitignore lists it"],
     ["a path holding a lookalike", "the index at src/n/a.ts module"],
   ])("accepts evidence that is %s", (_label, evidence) => {
-    expect(issuePathsOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([]);
+    expect(issuePathsOf(withWhy({ chain: CAUSAL_WHY_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([]);
   });
 });
 
@@ -90,21 +102,30 @@ describe("whyChainSchema refuses a chain that lists objections instead of causes
   it("refuses a why that names only the symptom's own subject", () => {
     expect(
       issuePathsOf(
-        withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "why", text: "Why does the audit refuse these names at all?" }),
+        withWhy({ chain: CAUSAL_WHY_CHAIN, position: 2, field: "why", text: "Why does the audit refuse these names at all?" }),
       ),
     ).toEqual(["whys.2.why"]);
   });
 
+  it("reports the refusal the contract page shows for its example", () => {
+    const [problem] = causalProblemsOf({
+      chain: withWhy({ chain: CAUSAL_WHY_CHAIN, position: 2, field: "why", text: "Why is that enough?" }),
+    });
+    expect(contractPage).toContain(
+      String.raw`exceptions[0] why-chain-refused ✖ ${problem?.message}\n  → at whys[2].why`,
+    );
+  });
+
   it("refuses a why that names its subject only by pronoun", () => {
     expect(
-      issuePathsOf(withWhy({ chain: CAUSAL_CHAIN, position: 1, field: "why", text: "Why is that the case?" })),
+      issuePathsOf(withWhy({ chain: CAUSAL_WHY_CHAIN, position: 1, field: "why", text: "Why is that the case?" })),
     ).toEqual(["whys.1.why"]);
   });
 
   it("refuses a root cause that names nothing the fifth answer introduced", () => {
     expect(
-      issuePathsOf({ ...CAUSAL_CHAIN, rootCause: "The audit refuses tracker ids in carve-out names by design." }),
-    ).toEqual(expect.arrayContaining(["rootCause"]));
+      issuePathsOf({ ...CAUSAL_WHY_CHAIN, rootCause: "The audit refuses tracker ids in carve-out names by design." }),
+    ).toEqual(["rootCause"]);
   });
 });
 
@@ -113,15 +134,17 @@ describe("causalProblemsOf refuses the objection lists the Gate 1 and 3 pilot re
     const [first, second, third, fourth] = request.steps.map(([why, because, evidence]) => ({ why, because, evidence }));
     const root = { why: "Why does the root hold?", because: "the root is recorded below", evidence: "this chain's root" };
     return {
-      ...CAUSAL_CHAIN,
+      ...CAUSAL_WHY_CHAIN,
       whys: [first ?? root, second ?? root, third ?? root, fourth ?? root, root],
     };
   };
 
+  const PILOT_LINK_PATHS = ["whys.1.why", "whys.2.why", "whys.3.why"];
+
   const linkProblemsOf = (chain: WhyChain): readonly string[] =>
     causalProblemsOf({ chain })
-      .filter((problem) => problem.path.at(-1) === "why")
-      .map((problem) => problem.path.join("."));
+      .map((problem) => problem.path.join("."))
+      .filter((path) => PILOT_LINK_PATHS.includes(path));
 
   it("refuses links 2 to 4 of the case 2 line-number push-back", () => {
     expect(
@@ -135,7 +158,7 @@ describe("causalProblemsOf refuses the objection lists the Gate 1 and 3 pilot re
           ],
         }),
       ),
-    ).toEqual(expect.arrayContaining(["whys.1.why", "whys.2.why", "whys.3.why"]));
+    ).toEqual(["whys.1.why", "whys.2.why", "whys.3.why"]);
   });
 
   it("refuses links 2 to 4 of case 1's known limit on raw HTML in the long description", () => {
@@ -150,7 +173,7 @@ describe("causalProblemsOf refuses the objection lists the Gate 1 and 3 pilot re
           ],
         }),
       ),
-    ).toEqual(expect.arrayContaining(["whys.1.why", "whys.2.why", "whys.3.why"]));
+    ).toEqual(["whys.1.why", "whys.2.why", "whys.3.why"]);
   });
 });
 
@@ -164,7 +187,7 @@ const PRONOUN_LINKS: WhyChain = {
     {
       why: "Why is our approach acceptable here?",
       because: "The lead signed off about a month ago in review.",
-      evidence: "issue #12",
+      evidence: "issue #12, review thread",
     },
     {
       why: "Why is the sign-off binding?",
@@ -190,7 +213,7 @@ const PRONOUN_LINKS: WhyChain = {
 
 describe("whyChainSchema refuses a why that links only by pronoun or preposition", () => {
   it("refuses links through our, after and your", () => {
-    expect(issuePathsOf(PRONOUN_LINKS)).toEqual(expect.arrayContaining(["whys.1.why", "whys.3.why", "whys.4.why"]));
+    expect(issuePathsOf(PRONOUN_LINKS)).toEqual(["whys.1.why", "whys.3.why", "whys.4.why"]);
   });
 });
 
@@ -199,13 +222,13 @@ describe("whyChainSchema refuses a chain that restates one reason", () => {
     expect(
       issuePathsOf(
         withWhy({
-          chain: CAUSAL_CHAIN,
+          chain: CAUSAL_WHY_CHAIN,
           position: 3,
           field: "because",
           text: "When the audit landed, no shared slug type existed, so each tool wrote its own pattern.",
         }),
       ),
-    ).toEqual(expect.arrayContaining(["whys.3.because"]));
+    ).toEqual(["whys.3.because"]);
   });
 });
 
@@ -223,7 +246,7 @@ describe("whyChainSchema refuses evidence that cannot be checked again", () => {
     ["a sentence run into the next", "the team said so.Then moved on"],
     ["an a.k.a. abbreviation", "a.k.a. the legacy factory"],
   ])("refuses %s", (_label, evidence) => {
-    expect(issuePathsOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([
+    expect(issuePathsOf(withWhy({ chain: CAUSAL_WHY_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([
       "whys.2.evidence",
     ]);
   });
@@ -236,23 +259,23 @@ describe("whyChainSchema names the right remedy for evidence", () => {
   };
 
   it("asks for real evidence, not a locator, when the evidence is located but too short", () => {
-    expect(messagesOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: "PR #212" }))).toEqual([
+    expect(messagesOf(withWhy({ chain: CAUSAL_WHY_CHAIN, position: 2, field: "evidence", text: "PR #212" }))).toEqual([
       expect.stringContaining("carries no real `evidence`"),
     ]);
   });
 
   it("asks for a locator when the evidence is long enough but cites nothing checkable", () => {
     expect(
-      messagesOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: "the redirects documentation" })),
+      messagesOf(withWhy({ chain: CAUSAL_WHY_CHAIN, position: 2, field: "evidence", text: "the redirects documentation" })),
     ).toEqual([expect.stringContaining("carries no checkable `evidence`")]);
   });
 });
 
 describe("whyChainSchema links through a plural and its singular", () => {
   it("accepts a why that names the previous answer's words in their plural and a readback that names the symptom in its singular", () => {
-    const [first, second, third, fourth, fifth] = CAUSAL_CHAIN.whys;
+    const [first, second, third, fourth, fifth] = CAUSAL_WHY_CHAIN.whys;
     const chain: WhyChain = {
-      ...CAUSAL_CHAIN,
+      ...CAUSAL_WHY_CHAIN,
       whys: [
         { ...first, because: "Each finding becomes one string, and tracker ids carry uppercase letters." },
         { ...second, why: "Why does each of the findings become strings?" },
@@ -260,7 +283,7 @@ describe("whyChainSchema links through a plural and its singular", () => {
         fourth,
         fifth,
       ],
-      readback: CAUSAL_CHAIN.readback.replace("refuses tracker ids in carve-out names", "refuses a tracker id in a carve-out name"),
+      readback: CAUSAL_WHY_CHAIN.readback.replace("refuses tracker ids in carve-out names", "refuses a tracker id in a carve-out name"),
     };
     expect(issuePathsOf(chain)).toEqual([]);
   });
@@ -268,8 +291,8 @@ describe("whyChainSchema links through a plural and its singular", () => {
 
 describe("whyChainSchema refuses a root that is not checked against today", () => {
   it.each([
-    ["no root check", (({ rootCheck: _, ...rest }) => rest)(CAUSAL_CHAIN)],
-    ["a root check with nothing to check", { ...CAUSAL_CHAIN, rootCheck: "the monorepo move is still incomplete today" }],
+    ["no root check", (({ rootCheck: _, ...rest }) => rest)(CAUSAL_WHY_CHAIN)],
+    ["a root check with nothing to check", { ...CAUSAL_WHY_CHAIN, rootCheck: "the monorepo move is still incomplete today" }],
   ])("refuses %s", (_label, chain) => {
     expect(issuePathsOf(chain)).toEqual(["rootCheck"]);
   });
@@ -277,18 +300,18 @@ describe("whyChainSchema refuses a root that is not checked against today", () =
 
 describe("whyChainSchema refuses a readback that does not run from root to symptom", () => {
   it.each([
-    ["no readback", (({ readback: _, ...rest }) => rest)(CAUSAL_CHAIN)],
+    ["no readback", (({ readback: _, ...rest }) => rest)(CAUSAL_WHY_CHAIN)],
     [
       "a readback with no therefore",
-      { ...CAUSAL_CHAIN, readback: "Older tools carry pre-monorepo patterns, so the audit refuses tracker ids in carve-out names." },
+      { ...CAUSAL_WHY_CHAIN, readback: "Older tools carry pre-monorepo patterns, so the audit refuses tracker ids in carve-out names." },
     ],
     [
       "a readback that never names the symptom",
-      { ...CAUSAL_CHAIN, readback: "Older tools carry pre-monorepo patterns, therefore the matcher is lowercase." },
+      { ...CAUSAL_WHY_CHAIN, readback: "Older tools carry pre-monorepo patterns, therefore the matcher is lowercase." },
     ],
     [
       "a readback that never names the root",
-      { ...CAUSAL_CHAIN, readback: "The matcher is lowercase, therefore the audit refuses tracker ids in carve-out names." },
+      { ...CAUSAL_WHY_CHAIN, readback: "The matcher is lowercase, therefore the audit refuses tracker ids in carve-out names." },
     ],
   ])("refuses %s", (_label, chain) => {
     expect(issuePathsOf(chain)).toEqual(["readback"]);
@@ -297,11 +320,11 @@ describe("whyChainSchema refuses a readback that does not run from root to sympt
 
 describe("whyChainSchema keeps the five-why floor", () => {
   it.each([
-    ["four whys", { ...CAUSAL_CHAIN, whys: CAUSAL_CHAIN.whys.slice(0, 4) }],
-    ["six whys", { ...CAUSAL_CHAIN, whys: [...CAUSAL_CHAIN.whys, CAUSAL_CHAIN.whys[4]] }],
-    ["a placeholder answer", withWhy({ chain: CAUSAL_CHAIN, position: 1, field: "because", text: "tbd" })],
-    ["a root that restates the exception", { ...CAUSAL_CHAIN, rootCause: "there was no time to pay the monorepo debt down" }],
-    ["no owner", (({ owner: _, ...rest }) => rest)(CAUSAL_CHAIN)],
+    ["four whys", { ...CAUSAL_WHY_CHAIN, whys: CAUSAL_WHY_CHAIN.whys.slice(0, 4) }],
+    ["six whys", { ...CAUSAL_WHY_CHAIN, whys: [...CAUSAL_WHY_CHAIN.whys, CAUSAL_WHY_CHAIN.whys[4]] }],
+    ["a placeholder answer", withWhy({ chain: CAUSAL_WHY_CHAIN, position: 1, field: "because", text: "tbd" })],
+    ["a root that restates the exception", { ...CAUSAL_WHY_CHAIN, rootCause: "there was no time to pay the monorepo debt down" }],
+    ["no owner", (({ owner: _, ...rest }) => rest)(CAUSAL_WHY_CHAIN)],
   ])("refuses %s", (_label, chain) => {
     expect(whyChainSchema.safeParse(chain).success).toBe(false);
   });
@@ -309,10 +332,10 @@ describe("whyChainSchema keeps the five-why floor", () => {
 
 describe("whyChainFormOf tells a causal chain from one written to the legacy contract", () => {
   it.each([
-    ["a chain with a readback and a root check", "causal", CAUSAL_CHAIN],
-    ["a chain with only a root check", "causal", (({ readback: _, ...rest }) => rest)(CAUSAL_CHAIN)],
-    ["a chain with only a readback", "causal", (({ rootCheck: _, ...rest }) => rest)(CAUSAL_CHAIN)],
-    ["a chain with neither", "legacy", (({ rootCheck: _, readback: __, ...rest }) => rest)(CAUSAL_CHAIN)],
+    ["a chain with a readback and a root check", "causal", CAUSAL_WHY_CHAIN],
+    ["a chain with only a root check", "causal", (({ readback: _, ...rest }) => rest)(CAUSAL_WHY_CHAIN)],
+    ["a chain with only a readback", "causal", (({ rootCheck: _, ...rest }) => rest)(CAUSAL_WHY_CHAIN)],
+    ["a chain with neither", "legacy", (({ rootCheck: _, readback: __, ...rest }) => rest)(CAUSAL_WHY_CHAIN)],
     ["a value that is not a chain", "causal", "five whys"],
   ])("reads %s as %s", (_label, form, chain) => {
     expect(whyChainFormOf({ chain })).toBe(form);

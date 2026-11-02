@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CAUSAL_WHY_CHAIN } from "../../../tests/causal-why-chain.ts";
 import type { ExceptionRecord } from "../../../core/exception-records/exception-records.ts";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
@@ -24,7 +25,6 @@ import type {
   LintedMessage,
   QueryInstance,
 } from "./eslint-instance.ts";
-import { CAUSAL_WHY_CHAIN } from "../../../tests/causal-why-chain.ts";
 
 type FakeFile = {
   readonly read: Result<string, { readonly kind: "unreadable"; readonly path: string; readonly detail: string }>;
@@ -90,9 +90,6 @@ const PLUGIN_MODULES: Readonly<Record<string, unknown>> = {
   [LOOPS_MODULE_PATH]: LOOPS_PLUGIN_MODULE,
 };
 
-
-const WHY_CHAIN = CAUSAL_WHY_CHAIN;
-
 const FACTORY_LOCATION: ExceptionRecord = {
   kind: "authorised-location",
   provenance: { kind: "existing-authorisation", source: "fictional unit fixture mechanisms/eslint/runner/create-eslint-runner.test.ts#FACTORY_LOCATION; not historical authorisation" },
@@ -108,7 +105,7 @@ const FACTORY_CARVE_OUT: ExceptionRecord = {
   mechanism: ESLINT,
   file: FACTORY,
   reason: "Inherited class awaiting paydown",
-  whyChain: WHY_CHAIN,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const GONE_LOCATION: ExceptionRecord = {
@@ -125,7 +122,7 @@ const CLAUSE_WIDE: ExceptionRecord = {
   clause: CLASS_SYNTAX,
   mechanism: ESLINT,
   reason: "Class syntax carved out during migration",
-  whyChain: WHY_CHAIN,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const ENABLING_PROJECTION = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";

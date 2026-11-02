@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { requiredEntry } from "../../tests/required-entry.ts";
+import { CAUSAL_WHY_CHAIN, LEGACY_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { BaseFileText, GitFailure, GitPort } from "../platform-ports/git-port.ts";
@@ -9,7 +10,6 @@ import { absolutePathSchema } from "../values/absolute-path.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
 import { type CheckRequest, runCheck } from "./run-check.ts";
-import { CAUSAL_WHY_CHAIN, LEGACY_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const INSTALL_ROOT = absolutePathSchema.parse("/install");
@@ -164,9 +164,6 @@ const SELECTION_OF_TWO_CLAUSES = JSON.stringify({
   clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "audit" },
 });
 
-
-const CHAIN = CAUSAL_WHY_CHAIN;
-
 const EXCEPTIONS_WITH_FILE_CARVE_OUT = JSON.stringify({
   version: 1,
   exceptions: [
@@ -175,7 +172,7 @@ const EXCEPTIONS_WITH_FILE_CARVE_OUT = JSON.stringify({
       clause: "CD-14#class-syntax",
       file: "src/legacy.ts",
       reason: "legacy class awaiting paydown",
-      whyChain: CHAIN,
+      whyChain: CAUSAL_WHY_CHAIN,
     },
   ],
 });
@@ -188,7 +185,7 @@ const EXCEPTIONS_WITH_FILE_CARVE_OUT_ON_GONE = JSON.stringify({
       clause: "CD-14#class-syntax",
       file: "src/gone.ts",
       reason: "legacy class awaiting paydown",
-      whyChain: CHAIN,
+      whyChain: CAUSAL_WHY_CHAIN,
     },
   ],
 });

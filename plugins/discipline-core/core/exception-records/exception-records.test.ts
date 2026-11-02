@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CAUSAL_WHY_CHAIN, LEGACY_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 import type { Selection } from "../consumer-selection/consumer-selection.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
@@ -15,7 +16,6 @@ import {
   type StructuralExceptionEntry,
   UNMEASURED_EXCEPTION_BASELINE,
 } from "./exception-records.ts";
-import { CAUSAL_WHY_CHAIN, LEGACY_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 
 const REPO_ROOT = absolutePathSchema.parse("/repo");
 const EXCEPTIONS_PATH = "/repo/discipline-exceptions.json";
@@ -28,9 +28,7 @@ const SELECTION: Selection = {
   uncovered: [],
 };
 
-const CHAIN = CAUSAL_WHY_CHAIN;
-
-const SHORT_CHAIN = { ...CHAIN, whys: CHAIN.whys.slice(0, 2) };
+const SHORT_CHAIN = { ...CAUSAL_WHY_CHAIN, whys: CAUSAL_WHY_CHAIN.whys.slice(0, 2) };
 
 const CLASS_SYNTAX = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
 
@@ -47,14 +45,14 @@ const FILE_CARVE_OUT = {
   clause: "CD-14#class-syntax",
   file: "src/legacy.ts",
   reason: "legacy class awaiting paydown",
-  whyChain: CHAIN,
+  whyChain: CAUSAL_WHY_CHAIN,
 } as const;
 
 const CLAUSE_WIDE = {
   kind: "clause-wide-carve-out",
   clause: "team/TM-1#no-tmp-files",
   reason: "the whole clause is held",
-  whyChain: CHAIN,
+  whyChain: CAUSAL_WHY_CHAIN,
 } as const;
 
 const fileTextReading = (request: { readonly text: string }): FileTextPort => ({
@@ -139,7 +137,7 @@ describe("createExceptionRepository", () => {
             clause: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" },
             mechanism: "eslint",
             reason: CLAUSE_WIDE.reason,
-            whyChain: CHAIN,
+            whyChain: CAUSAL_WHY_CHAIN,
           },
         ],
         invalid: [
@@ -191,7 +189,7 @@ describe("parseExceptionEntries records", () => {
           mechanism: "audit",
           file: "src/legacy.ts",
           reason: FILE_CARVE_OUT.reason,
-          whyChain: CHAIN,
+          whyChain: CAUSAL_WHY_CHAIN,
         },
       ],
       invalid: [],
@@ -206,7 +204,7 @@ describe("parseExceptionEntries records", () => {
           clause: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" },
           mechanism: "eslint",
           reason: CLAUSE_WIDE.reason,
-          whyChain: CHAIN,
+          whyChain: CAUSAL_WHY_CHAIN,
         },
       ],
       invalid: [],
@@ -399,21 +397,21 @@ describe("readExceptionEntries", () => {
 describe("canonical exception evidence", () => {
   it("preserves chain-only provenance-only and both forms for authorisation and file debt in input order", () => {
     const exceptionReading = readCanonicalExceptions({ text: JSON.stringify({ version: 1, exceptions: [
-      { ...FICTIONAL_LOCATION_INPUT, file: "src/authorisation-chain.ts", whyChain: CHAIN },
+      { ...FICTIONAL_LOCATION_INPUT, file: "src/authorisation-chain.ts", whyChain: CAUSAL_WHY_CHAIN },
       { ...FICTIONAL_LOCATION_INPUT, file: "src/authorisation-provenance.ts", provenance: { kind: "existing-authorisation", source: FICTIONAL_AUTHORISATION_PROVENANCE.source } },
-      { ...FICTIONAL_LOCATION_INPUT, file: "src/authorisation-both.ts", whyChain: CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
+      { ...FICTIONAL_LOCATION_INPUT, file: "src/authorisation-both.ts", whyChain: CAUSAL_WHY_CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
       FILE_CARVE_OUT,
       { kind: "file-carve-out", clause: "CD-14#class-syntax", file: "src/debt-provenance.ts", reason: FILE_CARVE_OUT.reason, provenance: FICTIONAL_DEBT_PROVENANCE },
       { ...FILE_CARVE_OUT, file: "src/debt-both.ts", provenance: FICTIONAL_DEBT_PROVENANCE },
     ] }) });
 
     expect(exceptionReading).toEqual({ outcome: "ok", value: { records: [
-      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/authorisation-chain.ts", reason: FICTIONAL_LOCATION_INPUT.reason, whyChain: CHAIN },
+      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/authorisation-chain.ts", reason: FICTIONAL_LOCATION_INPUT.reason, whyChain: CAUSAL_WHY_CHAIN },
       { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/authorisation-provenance.ts", reason: FICTIONAL_LOCATION_INPUT.reason, provenance: { kind: "existing-authorisation", source: FICTIONAL_AUTHORISATION_PROVENANCE.source } },
-      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/authorisation-both.ts", reason: FICTIONAL_LOCATION_INPUT.reason, whyChain: CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
-      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/legacy.ts", reason: FILE_CARVE_OUT.reason, whyChain: CHAIN },
+      { kind: "authorised-location", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/authorisation-both.ts", reason: FICTIONAL_LOCATION_INPUT.reason, whyChain: CAUSAL_WHY_CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
+      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/legacy.ts", reason: FILE_CARVE_OUT.reason, whyChain: CAUSAL_WHY_CHAIN },
       { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/debt-provenance.ts", reason: FILE_CARVE_OUT.reason, provenance: FICTIONAL_DEBT_PROVENANCE },
-      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/debt-both.ts", reason: FILE_CARVE_OUT.reason, whyChain: CHAIN, provenance: FICTIONAL_DEBT_PROVENANCE },
+      { kind: "file-carve-out", clause: CLASS_SYNTAX, mechanism: "audit", file: "src/debt-both.ts", reason: FILE_CARVE_OUT.reason, whyChain: CAUSAL_WHY_CHAIN, provenance: FICTIONAL_DEBT_PROVENANCE },
     ], invalid: [] } });
   });
 
@@ -431,16 +429,16 @@ describe("canonical exception evidence", () => {
     expect(readCanonicalExceptions({ text: JSON.stringify({ version: 1, exceptions: [
       CLAUSE_WIDE,
       { ...FICTIONAL_LOCATION_INPUT, whyChain: SHORT_CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
-      { ...FICTIONAL_LOCATION_INPUT, whyChain: CHAIN, provenance: { ...FICTIONAL_AUTHORISATION_PROVENANCE, source: " \t " } },
-      { ...FICTIONAL_LOCATION_INPUT, whyChain: CHAIN, provenance: { ...FICTIONAL_AUTHORISATION_PROVENANCE, decision: " \n " } },
-      { ...FICTIONAL_LOCATION_INPUT, whyChain: CHAIN, provenance: { ...FICTIONAL_AUTHORISATION_PROVENANCE, permission: "extra field" } },
+      { ...FICTIONAL_LOCATION_INPUT, whyChain: CAUSAL_WHY_CHAIN, provenance: { ...FICTIONAL_AUTHORISATION_PROVENANCE, source: " \t " } },
+      { ...FICTIONAL_LOCATION_INPUT, whyChain: CAUSAL_WHY_CHAIN, provenance: { ...FICTIONAL_AUTHORISATION_PROVENANCE, decision: " \n " } },
+      { ...FICTIONAL_LOCATION_INPUT, whyChain: CAUSAL_WHY_CHAIN, provenance: { ...FICTIONAL_AUTHORISATION_PROVENANCE, permission: "extra field" } },
       { ...FILE_CARVE_OUT, whyChain: SHORT_CHAIN, provenance: FICTIONAL_DEBT_PROVENANCE },
       { ...FILE_CARVE_OUT, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
       { kind: "file-carve-out", clause: "CD-14#class-syntax", file: "src/debt-missing-decision.ts", reason: FILE_CARVE_OUT.reason, provenance: { kind: "inherited-debt", source: FICTIONAL_DEBT_PROVENANCE.source } },
       { kind: "file-carve-out", clause: "CD-14#class-syntax", file: "src/debt-blank-decision.ts", reason: FILE_CARVE_OUT.reason, provenance: { ...FICTIONAL_DEBT_PROVENANCE, decision: " \t " } },
       { ...FICTIONAL_LOCATION_INPUT, provenance: FICTIONAL_DEBT_PROVENANCE },
     ] }) })).toEqual({ outcome: "ok", value: {
-      records: [{ kind: "clause-wide-carve-out", clause: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "eslint", reason: CLAUSE_WIDE.reason, whyChain: CHAIN }],
+      records: [{ kind: "clause-wide-carve-out", clause: { ruleSet: { name: "team" }, discipline: "TM-1", clause: "no-tmp-files" }, mechanism: "eslint", reason: CLAUSE_WIDE.reason, whyChain: CAUSAL_WHY_CHAIN }],
       invalid: [
         { index: 1, problem: { kind: "why-chain-refused", detail: expect.any(String) } },
         { index: 2, problem: { kind: "evidence-refused", detail: expect.any(String) } },
@@ -459,7 +457,7 @@ describe("canonical exception evidence", () => {
     expect(readCanonicalExceptions({ text: JSON.stringify({ version: 1, exceptions: [
       FICTIONAL_LOCATION_INPUT,
       { ...FICTIONAL_LOCATION_INPUT, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
-      { ...FICTIONAL_LOCATION_INPUT, whyChain: CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
+      { ...FICTIONAL_LOCATION_INPUT, whyChain: CAUSAL_WHY_CHAIN, provenance: FICTIONAL_AUTHORISATION_PROVENANCE },
       { kind: "file-carve-out", clause: "CD-14#class-syntax", file: FICTIONAL_LOCATION_INPUT.file, reason: FILE_CARVE_OUT.reason, provenance: FICTIONAL_DEBT_PROVENANCE },
       { ...FILE_CARVE_OUT, file: FICTIONAL_LOCATION_INPUT.file, provenance: FICTIONAL_DEBT_PROVENANCE },
     ] }) })).toEqual({ outcome: "ok", value: {
@@ -484,9 +482,9 @@ describe("canonical exception evidence", () => {
 
 describe("non-exemptibility at the canonical boundary, for a clause whose discipline refuses exceptions", () => {
   it.each([
-    { kind: "authorised-location", clause: "CD-1#any-cast", file: "src/unsafe.ts", reason: "fictional non-exemptibility input", whyChain: CHAIN },
-    { kind: "file-carve-out", clause: "CD-1#any-cast", file: "src/unsafe.ts", reason: "fictional non-exemptibility input", whyChain: CHAIN },
-    { kind: "clause-wide-carve-out", clause: "CD-1#any-cast", reason: "fictional non-exemptibility input", whyChain: CHAIN },
+    { kind: "authorised-location", clause: "CD-1#any-cast", file: "src/unsafe.ts", reason: "fictional non-exemptibility input", whyChain: CAUSAL_WHY_CHAIN },
+    { kind: "file-carve-out", clause: "CD-1#any-cast", file: "src/unsafe.ts", reason: "fictional non-exemptibility input", whyChain: CAUSAL_WHY_CHAIN },
+    { kind: "clause-wide-carve-out", clause: "CD-1#any-cast", reason: "fictional non-exemptibility input", whyChain: CAUSAL_WHY_CHAIN },
   ])("refuses an adopted any clause for $kind", (entry) => {
     expect(readCanonicalExceptions({
       text: JSON.stringify({ version: 1, exceptions: [entry] }),
@@ -572,7 +570,7 @@ describe("parseExceptionEntries imported records against the base revision", () 
       invalid: [{ index: 0, problem: { kind: "import-unverified" } }],
     });
     expect(
-      parseExceptionEntries({ entries: [{ ...edited, whyChain: CHAIN }], selection: SELECTION, baseline }).invalid,
+      parseExceptionEntries({ entries: [{ ...edited, whyChain: CAUSAL_WHY_CHAIN }], selection: SELECTION, baseline }).invalid,
     ).toEqual([]);
   });
 
@@ -757,7 +755,7 @@ describe("parseExceptionEntries judges a chain without rootCheck and readback by
   it("refuses a chain that adds only rootCheck, naming readback as its missing partner", () => {
     expect(
       parseExceptionEntries({
-        entries: [{ ...FILE_CARVE_OUT, whyChain: { ...LEGACY_WHY_CHAIN, rootCheck: CHAIN.rootCheck } }],
+        entries: [{ ...FILE_CARVE_OUT, whyChain: { ...LEGACY_WHY_CHAIN, rootCheck: CAUSAL_WHY_CHAIN.rootCheck } }],
         selection: SELECTION,
         baseline: baselineHolding({ entriesAtBase: [LEGACY_CARVE_OUT], sourceTextsAtBase: new Map() }),
       }),

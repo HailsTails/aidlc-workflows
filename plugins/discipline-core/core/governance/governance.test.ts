@@ -1,4 +1,5 @@
 import { assert, describe, expect, it, vi } from "vitest";
+import { CAUSAL_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 import { createExceptionRepository, UNMEASURED_EXCEPTION_BASELINE } from "../exception-records/exception-records.ts";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
@@ -9,7 +10,6 @@ import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
 import { applyGovernance, type Finding } from "./governance.ts";
-import { CAUSAL_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 
 const noClass = clauseAddressSchema.parse("CD-14#no-class-syntax");
 const noForOf = clauseAddressSchema.parse("CD-15#no-for-of");
@@ -20,9 +20,6 @@ const packageJson = repoPathSchema.parse("package.json");
 const suppressions = repoPathSchema.parse("eslint-suppressions.json");
 const audit = mechanismIdSchema.parse("audit");
 const eslint = mechanismIdSchema.parse("eslint");
-
-
-const whyChain = CAUSAL_WHY_CHAIN;
 
 const noClassInA: Finding = {
   clause: noClass,
@@ -55,7 +52,7 @@ const carvedNoClassInA: ExceptionRecord = {
   mechanism: audit,
   file: fileA,
   reason: "the parser adapter is unpaid debt",
-  whyChain,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const carvedNoClassEverywhere: ExceptionRecord = {
@@ -63,7 +60,7 @@ const carvedNoClassEverywhere: ExceptionRecord = {
   clause: noClass,
   mechanism: audit,
   reason: "the whole clause is unpaid debt",
-  whyChain,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const locatedNoForOfInA: ExceptionRecord = {
@@ -81,7 +78,7 @@ const carvedProbeNoClassInA: ExceptionRecord = {
   mechanism: audit,
   file: fileA,
   reason: "the probe rule set's debt",
-  whyChain,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const nothingTouched: TouchedSet = { measured: "yes", paths: new Set() };

@@ -34,6 +34,13 @@ describe("stemsOf reads the content words of a sentence", () => {
     ]);
   });
 
+  it.each([
+    "outside", "inside", "across", "along", "behind", "despite", "except", "including", "instead", "anyway",
+    "somebody", "everybody", "throughout", "whereas",
+  ])("drops the function word %j", (word) => {
+    expect(stemsOf({ text: word }).size).toBe(0);
+  });
+
   it("reads no words from a sentence of function words", () => {
     expect(stemsOf({ text: "why is that so?" }).size).toBe(0);
   });

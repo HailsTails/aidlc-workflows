@@ -161,7 +161,7 @@ const authorisedLocationFields = {
   reason: z.string(),
 };
 
-type UnjudgedWhyChain = NonNullable<unknown>;
+type UnjudgedWhyChain = NonNullable<unknown> | null;
 
 type Unjudged<Entry> = Entry extends { readonly whyChain: RecordedWhyChain }
   ? Omit<Entry, "whyChain"> & { readonly whyChain: UnjudgedWhyChain }
@@ -574,7 +574,7 @@ export const importedEntriesIn = (request: {
 export const legacyChainsIn = (request: {
   readonly entries: readonly StructuralExceptionEntry[];
 }): "present" | "absent" =>
-  request.entries.some((entry) => entry.whyChain !== undefined && whyChainFormOf({ chain: entry.whyChain }) === "legacy")
+  request.entries.some((entry) => whyChainFormOf({ chain: entry.whyChain }) === "legacy")
     ? "present"
     : "absent";
 
