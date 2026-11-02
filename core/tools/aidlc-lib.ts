@@ -35673,19 +35673,39 @@ export function coreOwnedScopeFiles(directory: ScopeDirectory, composed: Readonl
     .flatMap((meta) => directory.files.get(meta.name) ?? []);
 }
 
-export type ScopeSelectionRecord = { readonly leftOutScopeFiles?: readonly string[]; readonly selectionBanner?: true };
+export type ScopeSelectionRecord = {
+  readonly leftOutScopeFiles?: readonly string[];
+  readonly selectionBanner?: true;
+  readonly projectedSelection?: readonly string[];
+};
+
+function recordedStrings(manifest: object, key: string): string[] {
+  const value: unknown = key in manifest ? Reflect.get(manifest, key) : undefined;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
 
 export function scopeSelectionRecordOf(manifest: unknown): ScopeSelectionRecord {
   if (typeof manifest !== "object" || manifest === null || !("schemaVersion" in manifest) || manifest.schemaVersion !== 1) return {};
-  const files = "leftOutScopeFiles" in manifest && Array.isArray(manifest.leftOutScopeFiles)
-    ? manifest.leftOutScopeFiles.filter((rel): rel is string => typeof rel === "string")
-    : [];
+  const files = recordedStrings(manifest, "leftOutScopeFiles");
+  const projected = recordedStrings(manifest, "projectedSelection");
   const banner = "selectionBanner" in manifest && manifest.selectionBanner === true;
-  return { ...(files.length > 0 ? { leftOutScopeFiles: files } : {}), ...(banner ? { selectionBanner: true as const } : {}) };
+  return {
+    ...(files.length > 0 ? { leftOutScopeFiles: files } : {}),
+    ...(banner ? { selectionBanner: true as const } : {}),
+    ...(projected.length > 0 ? { projectedSelection: projected } : {}),
+  };
 }
 
 export function selectionRecordHeld(record: ScopeSelectionRecord): boolean {
-  return (record.leftOutScopeFiles?.length ?? 0) > 0 || record.selectionBanner === true;
+  return (record.leftOutScopeFiles?.length ?? 0) > 0 || record.selectionBanner === true || record.projectedSelection !== undefined;
+}
+
+export function canonicalSelection(plugins: Iterable<string>): string[] {
+  return [...new Set(plugins)].sort();
+}
+
+export function projectedFor(record: ScopeSelectionRecord, plugins: readonly string[]): boolean {
+  return canonicalSelection(record.projectedSelection ?? []).join(",") === canonicalSelection(plugins).join(",");
 }
 
 export function readScopeSelectionRecord(dataDir: string): ScopeSelectionRecord {

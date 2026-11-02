@@ -157,6 +157,8 @@ import {
   pluginsEnabled,
   presentUnder,
   writesSelectionSettings,
+  canonicalSelection,
+  projectedFor,
   type ConfigCommandFor,
   configInvocationFor,
   namedHarness,
@@ -6961,9 +6963,10 @@ function selectsCorePlugin(selection: readonly string[] | null): boolean {
 }
 
 function coreScopesMatchSelection(projectDir: string, harnessRoot: string, plugins: readonly string[] | null): boolean {
-  if (selectsCorePlugin(plugins)) return !selectionRecordHeld(readScopeSelectionRecord(join(harnessRoot, "tools", "data")));
+  const record = readScopeSelectionRecord(join(harnessRoot, "tools", "data"));
+  if (plugins === null || selectsCorePlugin(plugins)) return !selectionRecordHeld(record);
   const composed = composedScopeRecordNames(join(projectDir, ...COMPOSED_SCOPES_SEGMENTS));
-  return coreOwnedScopeFiles(readScopeDirectory(join(harnessRoot, "scopes")), composed).length === 0;
+  return projectedFor(record, plugins) && coreOwnedScopeFiles(readScopeDirectory(join(harnessRoot, "scopes")), composed).length === 0;
 }
 
 // Whether a copied project's own files can apply its project choices. Plugins
@@ -9077,6 +9080,16 @@ function fileCount(count: number): string {
 interface SelectionRestore {
   readonly plugins: readonly string[] | null;
   readonly fetchesRelease: boolean;
+}
+
+function scopeSelectionRecordFor(prepared: PreparedRefreshSource, leftOutScopeFiles: ReadonlySet<string>): ScopeSelectionRecord {
+  return {
+    ...(leftOutScopeFiles.size > 0 ? { leftOutScopeFiles: [...leftOutScopeFiles].sort() } : {}),
+    ...(prepared.selectionBanner ? { selectionBanner: true as const } : {}),
+    ...(prepared.coreLeftOut && prepared.selectedPlugins !== null
+      ? { projectedSelection: canonicalSelection(prepared.selectedPlugins) }
+      : {}),
+  };
 }
 
 function removesLeftOutScopeFiles(actions: readonly PlannedAction[], leftOutScopeFiles: ReadonlySet<string>): boolean {
@@ -12256,11 +12269,14 @@ export async function main(
       workspaceMode,
       retainBaseline,
     );
+    const selectionRecord = scopeSelectionRecordFor(prepared, leftOutScopeFiles);
     const restore = selectionRestore(
       restoringSelection(choicesContext, prepared, removesLeftOutScopeFiles(actions, leftOutScopeFiles)),
       actions,
-      { leftOutScopeFiles: [...leftOutScopeFiles], ...(prepared.selectionBanner ? { selectionBanner: true as const } : {}) },
+      selectionRecord,
     );
+    const undoFetchesRelease = choicesContext !== null &&
+      selectionRestore(choicesContext.previousPlugins, actions, selectionRecord).fetchesRelease;
     for (const rel of prepared.retiredManagedFiles) {
       const target = join(projectDir, rel);
       if (!pathPresent(target)) continue;
@@ -12486,8 +12502,7 @@ export async function main(
       ...(!selected.projectProjection || prior?.shippedOnly ? { shippedOnly: true as const } : {}),
       entries: prepared.entries,
       rootContributions,
-      ...(leftOutScopeFiles.size > 0 ? { leftOutScopeFiles: [...leftOutScopeFiles].sort() } : {}),
-      ...(prepared.selectionBanner ? { selectionBanner: true as const } : {}),
+      ...selectionRecord,
     };
     const baselineRel = join(descriptor.harnessDir, "tools", "data", "aidlc-manifest.json");
     operations.push(writeOperation(
@@ -12818,7 +12833,7 @@ export async function main(
           item.action !== "preserve" && (item.path.startsWith(`${agentsDir}/`) || item.path === kiroCliSettings)
         ))
     );
-    if (choicesContext?.section === "project") changes.push(...projectChangeLines(projectDir, choicesContext, restore.fetchesRelease));
+    if (choicesContext?.section === "project") changes.push(...projectChangeLines(projectDir, choicesContext, undoFetchesRelease));
     const openLine = recordOnly && reachesWork && settingsMutation
       ? openWorkflowLine(
         projectDir,

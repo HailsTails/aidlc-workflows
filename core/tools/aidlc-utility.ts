@@ -1423,11 +1423,25 @@ function finishCoreOffStep(projectDir: string, names: readonly string[]): string
   return `Run \`${finishCommand(projectDir, names, false)}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${settlesSelection(projectDir)}`;
 }
 
+function finishSettleStep(projectDir: string, names: readonly string[]): string {
+  return `Run \`${finishCommand(projectDir, names, false)}\` to finish: it ${settlesSelection(projectDir)}`;
+}
+
+interface SelectionChange {
+  readonly coreWas: boolean;
+  readonly selectionChanged: boolean;
+}
+
+function finishingStep(projectDir: string, names: readonly string[], change: SelectionChange): string | null {
+  const coreNow = names.includes("aidlc");
+  if (change.coreWas) return coreNow ? null : finishCoreOffStep(projectDir, names);
+  if (coreNow) return finishCoreOnStep(projectDir, names);
+  return change.selectionChanged ? finishSettleStep(projectDir, names) : null;
+}
+
 function finishCoreOnStep(projectDir: string, names: readonly string[]): string {
   const record = readScopeSelectionRecord(resolveHarnessPath(["tools", "data"], { projectDir }));
-  if (!installedFromCopy() || !copyRestoreNeedsRelease(record, presentUnder(projectDir))) {
-    return `Run \`${finishCommand(projectDir, names, false)}\` to finish: it ${settlesSelection(projectDir)}`;
-  }
+  if (!installedFromCopy() || !copyRestoreNeedsRelease(record, presentUnder(projectDir))) return finishSettleStep(projectDir, names);
   return `Run \`${finishCommand(projectDir, names, true)}\` to finish: what your plugin selection left out can only come back from the release, so it fetches the release to put it back and ${settlesSelection(projectDir)} ${RELEASE_AT_HAND_STEP}`;
 }
 
@@ -1530,9 +1544,8 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
         );
       }
       process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
-      if (nameSet.has("aidlc") !== coreWasEnabled) {
-        process.stdout.write(`${coreWasEnabled ? finishCoreOffStep(projectDir, names) : finishCoreOnStep(projectDir, names)}\n`);
-      }
+      const finishing = finishingStep(projectDir, names, { coreWas: coreWasEnabled, selectionChanged: previousSelection !== renderPluginSelection(new Set(names)) });
+      if (finishing !== null) process.stdout.write(`${finishing}\n`);
     } catch (err) {
       resetSelectionSensitiveCaches();
       die(`select-plugins failed: ${errorMessage(err)}`);
@@ -3654,8 +3667,6 @@ export function harnessTreeVersionsCheck(projectDir: string): DoctorCheck | null
     .sort((left, right) => compareVersions(right.frameworkVersion ?? "", left.frameworkVersion ?? ""))[0];
   const release = pinned ?? (native ? AIDLC_VERSION : newest.frameworkVersion ?? AIDLC_VERSION);
   const behind = trees.filter((tree) => tree.frameworkVersion !== release);
-  // The commands run through the tool running this check, which takes every
-  // flag they use; an older tree's tool may not.
   const fromProject = normalizeDriveLetter(resolve(projectDir)) === normalizeDriveLetter(resolve(process.cwd()));
   const target = fromProject ? "" : ` --project-dir ${quoteCommandArgument(projectDir)}`;
   // The commands run through the tool running this check, which takes every

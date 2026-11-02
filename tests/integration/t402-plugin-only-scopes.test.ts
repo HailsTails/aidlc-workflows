@@ -280,6 +280,12 @@ describe("a selection without the core plugin installs only the selected plugins
     const banner = settings(projectDir).companyAnnouncements.join("\n");
     expect(banner).toContain("| rin-gates");
     expect(banner).not.toContain("| classic");
+
+    utility(projectDir, ["plugin-sync"]);
+    expect(installedScopeFiles(projectDir)).toEqual(readdirSync(join(REPO_ROOT, "plugins", "rin", "scopes")).filter((name) => name.endsWith(".md")).sort());
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe("rin-gates");
+    expect(settings(projectDir).companyAnnouncements.join("\n")).toBe(banner);
+    expect(aidlc(projectDir, ["config", "project", "--plugins", "rin", "--yes"]).stdout).toContain("project configuration unchanged");
   });
 
   test("switching between two selections without core names a restore that brings core's removed files back", () => {
@@ -297,6 +303,31 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(installedScopeFiles(projectDir)).not.toContain("aidlc-classic.md");
     expect(switched.stdout).toContain("config project --plugins aidlc,rin --download --yes` puts them back.");
     expect(switched.stdout).not.toContain("config project --plugins rin --yes` puts them back.");
+  });
+
+  test("plugin select between two selections without core prints a finishing step that moves the default and banner", () => {
+    const root = mkdtempSync(join(tmpdir(), "aidlc-plugin-only-plugin-switch-"));
+    temporary.push(root);
+    const projectDir = join(root, "project");
+    composePluginFixture({ plugin: PLUGIN, harness: "claude", projectDir, pluginBuilt });
+    composePluginFixture({ plugin: "rin", harness: "claude", projectDir, pluginBuilt: rinPluginBuilt, copyInstall: false });
+    const recorded = aidlc(projectDir, ["config", "--from", RELEASE, "--force", "--yes"]);
+    expect(recorded.status, recorded.stdout + recorded.stderr).toBe(0);
+    selectPlugins(projectDir, "rin");
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe("rin-gates");
+
+    const switched = utility(projectDir, ["select-plugins", PLUGIN]);
+    expect(switched.stdout).toContain(`config project --plugins ${PLUGIN} --yes\` to finish: it sets the default scope and start-up banner for this selection.`);
+    const finished = aidlc(projectDir, ["config", "project", "--plugins", PLUGIN, "--yes"]);
+
+    expect(finished.status, finished.stdout + finished.stderr).toBe(0);
+    expect(finished.stdout).not.toContain("project configuration unchanged");
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+    const banner = settings(projectDir).companyAnnouncements.join("\n");
+    expect(banner).toContain(`| ${PLUGIN_SCOPE}`);
+    expect(banner).not.toContain("| rin-gates");
+    const again = aidlc(projectDir, ["config", "project", "--plugins", PLUGIN, "--yes"]);
+    expect(again.stdout).toContain("project configuration unchanged");
   });
 
   test("keeps a core scope file someone changed, switched off, and still applies the selection", () => {

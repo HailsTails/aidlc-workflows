@@ -208,9 +208,10 @@ Two commands change the selection, at two depths:
   the marker stays and is named. Inside a removed folder, only the files the
   release or the install record put there go; a file the person added stays.
   The install record (`tools/data/aidlc-manifest.json`) lists the scope files
-  the selection leaves out, removed or kept, as `leftOutScopeFiles`, and notes
-  `selectionBanner` while the start-up banner is the selection's, until a run
-  selects `aidlc` again and clears both. The refresh's report names the
+  the selection leaves out, removed or kept, as `leftOutScopeFiles`. It notes
+  `selectionBanner` while the start-up banner is the selection's, and
+  `projectedSelection`, the selection the default scope and banner were set
+  for, until a run selects `aidlc` again and clears all three. The refresh's report names the
   exact `config project --plugins` command that puts left-out files back: the
   selection before this run when the run changed it, otherwise this
   selection, plus `aidlc` whenever the run removes core's scope files. It adds `--download` only when a copied project
@@ -230,15 +231,16 @@ Two commands change the selection, at two depths:
   selection's default until the person changes it.
 - `aidlc engine plugin select <names>` (below) toggles what is enabled without
   the release, leaving every installed file in place. When it turns `aidlc`
-  on or off it prints the `config project --plugins` command that finishes the
-  change. On a copied project it adds `--download` when `aidlc` comes back and
+  on or off, or changes a selection that leaves `aidlc` out, it prints the
+  `config project --plugins` command that finishes the change. On a copied project it adds `--download` when `aidlc` comes back and
   a scope file the selection left out is gone or the banner is the
   selection's, since the copy's own files cannot rebuild either
   (`--from <release>` uses release files at hand). That command applies the
   selection even though `plugin select` already recorded it: with `aidlc` left
   out it reports "unchanged" only when no core scope file it can remove is
-  left, and with `aidlc` selected only when the install record holds neither
-  `leftOutScopeFiles` nor `selectionBanner`. On Claude it also sets the
+  left and the install record's `projectedSelection` names this selection,
+  and with `aidlc` selected only when the install record holds no
+  `leftOutScopeFiles`, `selectionBanner` or `projectedSelection`. On Claude it also sets the
   default scope and start-up banner for the selection.
 
 The default scope follows the selection on every harness: `classic` when it is
