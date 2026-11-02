@@ -271,8 +271,46 @@ describe("whyChainSchema refuses a first why that names no symptom", () => {
   });
 });
 
+const RESTATED_REASON: WhyChain = {
+  whys: [
+    {
+      why: "Why does the audit refuse tracker ids in carve-out names?",
+      because: "The audit's matcher accepts only lowercase slugs, and tracker ids carry uppercase letters.",
+      evidence: "tools/audit/name-matcher.ts:14",
+    },
+    {
+      why: "Why does the matcher accept only lowercase slugs?",
+      because: "Its pattern allows lowercase slugs alone, so uppercase letters in tracker ids fail it.",
+      evidence: "tools/audit/name-matcher.ts:15",
+    },
+    {
+      why: "Why does the pattern allow lowercase alone?",
+      because: "The matcher was written to take lowercase slugs, which is why uppercase tracker letters fail.",
+      evidence: "tools/audit/name-matcher.ts:16",
+    },
+    {
+      why: "Why was the matcher written to take lowercase?",
+      because: "Lowercase slugs are what the matcher pattern takes; uppercase ids are refused by it.",
+      evidence: "tools/audit/name-matcher.ts:17",
+    },
+    {
+      why: "Why are uppercase ids refused by the pattern?",
+      because: "The pattern only matches lowercase slug letters, so uppercase tracker ids never match.",
+      evidence: "tools/audit/name-matcher.ts:18",
+    },
+  ],
+  rootCause: "The pattern only matches lowercase slug letters.",
+  rootCheck: "tools/audit/name-matcher.ts:14 still holds the lowercase pattern today.",
+  readback: "The pattern matches only lowercase slugs, therefore the audit refuses tracker ids in carve-out names.",
+  owner: "Helen",
+};
+
 describe("whyChainSchema refuses a chain that restates one reason", () => {
-  it("refuses an answer that rewords an earlier answer", () => {
+  it("refuses each answer that brings in fewer than a quarter new words", () => {
+    expect(issuePathsOf(RESTATED_REASON)).toEqual(["whys.2.because", "whys.3.because", "whys.4.because"]);
+  });
+
+  it("refuses an answer that reorders an earlier answer's words", () => {
     expect(
       issuePathsOf(
         withWhy({

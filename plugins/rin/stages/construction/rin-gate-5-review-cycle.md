@@ -146,10 +146,11 @@ finding stays live and a READY over it is refused with the same message an
 evidence-free disposition gets. On this surface the predicate checks the
 contract's earlier floor only: five numbered steps, whys 1 to 4 each answered
 with a parenthesised citation, a root cause that is not a symptom ("the gate was
-failing", "no time", "out of scope"), and an owner. Whether each why asks about
-the answer before it, whether an answer only restates, the root check and the
-readback are the reviewer's to judge against the contract until rin runs it here
-([#76](https://github.com/HailsTails/aidlc-workflows/issues/76)).
+failing", "no time", "out of scope"), and an owner. The contract's other
+mechanical checks don't run on this surface until rin runs the contract here
+([#76](https://github.com/HailsTails/aidlc-workflows/issues/76)); until then the
+reviewer judges whether each why asks about the answer before it, whether an
+answer only restates, the root check and the readback.
 
 **The fix-leg writes code, so the deterministic teeth fire here too.** A `fixed`
 disposition is a code change, and a review round is exactly where discipline

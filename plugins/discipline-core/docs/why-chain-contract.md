@@ -1,6 +1,6 @@
 # The why-chain contract
 
-A why-chain explains why an exception is needed. It starts at the symptom, which is the exception itself, and traces cause to cause until it reaches a root that someone owns. Every `whyChain` in `discipline-exceptions.json` follows this contract, and core refuses one that breaks a mechanical rule. Rin's DD-7 and R7 point here for the chain's shape.
+A why-chain explains why an exception is needed. It starts at the symptom, which is the exception itself, and traces cause to cause until it reaches a root that someone owns. Every new or edited `whyChain` in `discipline-exceptions.json` follows this contract, and core refuses one that breaks a mechanical rule; a chain written before it is handled as [below](#chains-written-to-the-earlier-contract). Rin's DD-7 and R7 point here for the chain's shape.
 
 The contract keeps exactly five whys. What it fixes is the shape of the chain. A chain that lists five objections ("why not X?", "why only this file?") or restates one reason five times is not a chain: each why must ask why the answer before it is true.
 
@@ -40,7 +40,7 @@ These checks work on the words of the chain. Core lowercases the text, splits ca
 
 1. **Five steps, each answered.** Core keeps the earlier floor: exactly five whys, a non-blank `why`, a `because` and `evidence` of at least 12 characters that are not one repeated character, a `rootCause` that does not open with a stock restatement, and an `owner`.
 2. **Evidence can be checked again.** Every `evidence` and the `rootCheck` must hold a path (`a/b`), a file name, a link, or a number. A file name starts a word and ends in a lowercase extension of one to ten letters or digits (`name.ext`, `vitest.config.ts`, `*.fixture.ts`), or is a dotfile (`.gitignore`); a name with no extension, such as `Makefile`, needs its path. Prose such as "the redirects documentation" is refused, and "e.g.", "i.e.", "a.k.a.", "etc.", "a.m.", "p.m.", and a standalone "and/or", "n/a", "w/o" or "yes/no" don't count. This is a floor: any path-shaped word passes, whether or not it points at the cause.
-3. **Each answer introduces a cause.** An answer's new words are the words that appear in neither why 1's question nor any earlier answer. An answer with no new words restates the symptom or an earlier answer, and is refused.
+3. **Each answer introduces a cause.** An answer's new words are the words that appear in neither why 1's question nor any earlier answer. An answer whose new words are fewer than a quarter of its content words restates the symptom or an earlier answer, and is refused. When this was set, every answer in the pilot's chains brought in at least a third new words, 4 of 496 later answers in one consumer's file fell below a quarter (each repeating the answers before it), and a chain restating one reason fell below it by its third answer.
 4. **Each why asks about the previous answer.** Why 1 must name the symptom in at least one content word. Why 2 to why 5 must each use at least one of the previous answer's new words. A question that only reuses the symptom's words, or names its subject by pronoun ("why is that enough?"), is refused, and the refusal lists the words it could have named.
 5. **The root is the fifth answer's cause.** `rootCause` must use at least one of the fifth answer's new words.
 6. **The readback runs from root to symptom.** `readback` must contain "therefore", use at least one word of `rootCause`, and use at least two words of why 1's question (all of them when it has fewer).
@@ -61,7 +61,7 @@ The checks catch a chain's shape, not whether it is true. A chain can pass every
 - whether the `rootCheck` really tests today's state, rather than citing a path that has nothing to do with the root;
 - whether a rule is being used as a cause. A rule is the test the chain is judged by, not a reason inside it;
 - whether an answer with more than one cause follows each one, or says why a branch carries no weight;
-- a restatement in different words. Check 3 catches a reworded answer only when it brings in no new word.
+- a restatement in different words. Check 3 catches an answer that mostly reuses earlier words; one reworded in fresh synonyms passes it.
 
 ## Chains written to the earlier contract
 

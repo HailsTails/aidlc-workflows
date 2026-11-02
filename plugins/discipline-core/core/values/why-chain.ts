@@ -47,6 +47,7 @@ const RESTATEMENT_OPENING = new RegExp(
 const MINIMUM_ANSWER_CHARACTERS = 12;
 const MINIMUM_OWNER_CHARACTERS = 2;
 const MINIMUM_SYMPTOM_STEMS_NAMED = 2;
+const MINIMUM_NEW_STEM_SHARE = 0.25;
 const ONE_REPEATED_CHARACTER = /^(.)\1+$/;
 const PROSE_LOOKALIKES = /\b(?:e\.g\b\.?|i\.e\b\.?|a\.k\.a\.|etc\.|[ap]\.m\.)|(?<![\w./\\-])(?:and\/or|n\/a|w\/o|yes\/no)(?![\w./\\-])/gi;
 const CHECKABLE_LOCATORS: readonly RegExp[] = [
@@ -173,14 +174,15 @@ const symptomProblems = (request: { readonly symptom: Stems }): readonly CausalP
     : [];
 
 const restatementProblems = (request: {
+  readonly answers: readonly Stems[];
   readonly introduced: readonly Stems[];
 }): readonly CausalProblem[] =>
   request.introduced.flatMap((cause, position) =>
-    cause.size === 0
+    cause.size === 0 || cause.size < MINIMUM_NEW_STEM_SHARE * (request.answers[position]?.size ?? 0)
       ? [
           {
             path: ["whys", position, "because"],
-            message: `restates ${position === 0 ? "the symptom" : "the symptom or an earlier answer"}: give the cause behind it, in words no earlier step uses`,
+            message: `restates ${position === 0 ? "the symptom" : "the symptom or an earlier answer"}: give the cause behind it, with at least a quarter of its words new to the chain`,
           },
         ]
       : [],
@@ -229,10 +231,10 @@ const readbackProblems = (request: {
       ? []
       : ["`whyChain.readback` must read from the root back to the symptom with \"therefore\""]),
     ...(root.size > 0 && stemsShared({ left: root, right: readback }).size === 0
-      ? [`\`whyChain.readback\` must start from the root (${causeNamed({ cause: root })})`]
+      ? [`\`whyChain.readback\` must name the root it starts from (${causeNamed({ cause: root })})`]
       : []),
     ...(symptomNamed < Math.min(MINIMUM_SYMPTOM_STEMS_NAMED, request.symptom.size)
-      ? [`\`whyChain.readback\` must end at the symptom why 1 asks about (${causeNamed({ cause: request.symptom })})`]
+      ? [`\`whyChain.readback\` must name the symptom why 1 asks about (${causeNamed({ cause: request.symptom })})`]
       : []),
   ].map((message) => ({ path: ["readback"], message }));
 };
@@ -246,7 +248,7 @@ export const causalProblemsOf = (request: { readonly chain: WhyChain }): readonl
   );
   return [
     ...symptomProblems({ symptom }),
-    ...restatementProblems({ introduced }),
+    ...restatementProblems({ answers, introduced }),
     ...linkProblems({ whys, introduced }),
     ...rootProblems({ rootCause, fifthCause: introduced[4] ?? new Map() }),
     ...readbackProblems({ readback, rootCause, symptom }),
