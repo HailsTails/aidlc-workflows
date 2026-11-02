@@ -168,10 +168,50 @@ describe("whyChainSchema refuses evidence that cannot be checked again", () => {
   it.each([
     ["prose naming a document", "Cloudflare Pages redirects documentation"],
     ["prose describing an assertion", "The assertion compares the whole field list with toEqual"],
+    ["prose with an e.g. abbreviation", "the redirects documentation, e.g. the wiki"],
+    ["prose with an i.e. abbreviation", "the hosting docs, i.e. the guide"],
+    ["prose with and/or", "see the docs and/or the wiki"],
   ])("refuses %s", (_label, evidence) => {
     expect(issuePathsOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([
       "whys.2.evidence",
     ]);
+  });
+});
+
+describe("whyChainSchema names the right remedy for evidence", () => {
+  const messagesOf = (chain: WhyChain): readonly string[] => {
+    const parsed = whyChainSchema.safeParse(chain);
+    return parsed.success ? [] : parsed.error.issues.map((issue) => issue.message);
+  };
+
+  it("asks for real evidence, not a locator, when the evidence is located but too short", () => {
+    expect(messagesOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: "PR #212" }))).toEqual([
+      expect.stringContaining("carries no real `evidence`"),
+    ]);
+  });
+
+  it("asks for a locator when the evidence is long enough but cites nothing checkable", () => {
+    expect(
+      messagesOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: "the redirects documentation" })),
+    ).toEqual([expect.stringContaining("carries no checkable `evidence`")]);
+  });
+});
+
+describe("whyChainSchema links through a plural and its singular", () => {
+  it("accepts a why that names the previous answer's words in their plural and a readback that names the symptom in its singular", () => {
+    const [first, second, third, fourth, fifth] = CAUSAL_CHAIN.whys;
+    const chain: WhyChain = {
+      ...CAUSAL_CHAIN,
+      whys: [
+        { ...first, because: "Each finding becomes one string, and tracker ids carry uppercase letters." },
+        { ...second, why: "Why does each of the findings become strings?" },
+        third,
+        fourth,
+        fifth,
+      ],
+      readback: CAUSAL_CHAIN.readback.replace("refuses tracker ids in carve-out names", "refuses a tracker id in a carve-out name"),
+    };
+    expect(issuePathsOf(chain)).toEqual([]);
   });
 });
 

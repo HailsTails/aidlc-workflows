@@ -495,7 +495,7 @@ describe("DD-7 exception chains — the path it must REFUSE", () => {
         { name: "rin-components.md", body: "## Boundary\n\nIt is deferred." },
       ],
     });
-    expect(findings[0]?.remedy).toContain("root cause and its owner");
+    expect(findings[0]?.remedy).toContain("why-chain-contract.md");
   });
 
   test("a chain in another section does not cover this claim", () => {

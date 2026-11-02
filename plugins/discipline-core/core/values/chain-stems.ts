@@ -18,8 +18,8 @@ const BARE_NUMBER = /^\d+$/;
 const SUFFIX_RULES: readonly (readonly [RegExp, string])[] = [
   [/ie[sd]$/, "y"],
   [/(?<=ss|x|z|ch|sh)es$/, ""],
-  [/(?:ing|ed)$/, ""],
   [/(?<![siu])s$/, ""],
+  [/(?:ing|ed)$/, ""],
   [/e$/, ""],
 ];
 

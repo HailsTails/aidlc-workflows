@@ -46,6 +46,7 @@ const MINIMUM_ANSWER_CHARACTERS = 12;
 const MINIMUM_OWNER_CHARACTERS = 2;
 const MINIMUM_SYMPTOM_STEMS_NAMED = 2;
 const ONE_REPEATED_CHARACTER = /^(.)\1+$/;
+const PROSE_LOOKALIKES = /\b(?:e\.g\.|i\.e\.|etc\.|and\/or)/gi;
 const CHECKABLE_LOCATOR = /https?:\/\/\S|[\w.-][\\/][\w.-]|\b[\w-]+\.[a-z][a-z0-9]{0,4}\b|\d/i;
 const THEREFORE = /\btherefore\b/i;
 
@@ -65,7 +66,7 @@ const answerSubstance = (request: {
     : "placeholder";
 
 const evidenceReading = (request: { readonly evidence: string }): "checkable" | "unlocated" =>
-  CHECKABLE_LOCATOR.test(request.evidence) ? "checkable" : "unlocated";
+  CHECKABLE_LOCATOR.test(request.evidence.replace(PROSE_LOOKALIKES, " ")) ? "checkable" : "unlocated";
 
 const substantiveTextSchema = (request: { readonly refusal: string }) =>
   z
@@ -74,9 +75,9 @@ const substantiveTextSchema = (request: { readonly refusal: string }) =>
       error: request.refusal,
     });
 
-const checkableTextSchema = (request: { readonly refusal: string }) =>
-  substantiveTextSchema(request).refine((evidence) => evidenceReading({ evidence }) === "checkable", {
-    error: request.refusal,
+const checkableTextSchema = (request: { readonly missing: string; readonly unlocated: string }) =>
+  substantiveTextSchema({ refusal: request.missing }).refine((evidence) => evidenceReading({ evidence }) === "checkable", {
+    error: request.unlocated,
   });
 
 const WHY_QUESTION_MISSING = "is missing its `why` question";
@@ -88,6 +89,8 @@ const ROOT_CAUSE_REQUIRED =
   "`whyChain.rootCause` is required: the fifth why names the cause, not another symptom";
 const ROOT_CHECK_REQUIRED =
   "`whyChain.rootCheck` is required beside `readback` in a causal chain: name what was run or read today that shows the root still holds, with a path, record, measurement or link";
+const ROOT_CHECK_UNLOCATED =
+  "`whyChain.rootCheck` cites nothing checkable: name the path, record, measurement or link you checked today";
 const READBACK_REQUIRED =
   "`whyChain.readback` is required beside `rootCheck` in a causal chain: read from the root back to the symptom with \"therefore\"";
 const OWNER_REQUIRED =
@@ -112,7 +115,7 @@ const causalWhySchema = z.object(
   {
     why: whyQuestionSchema,
     because: substantiveTextSchema({ refusal: BECAUSE_MISSING }),
-    evidence: checkableTextSchema({ refusal: EVIDENCE_UNLOCATED }),
+    evidence: checkableTextSchema({ missing: EVIDENCE_MISSING, unlocated: EVIDENCE_UNLOCATED }),
   },
   { error: "is not a JSON object" },
 );
@@ -239,7 +242,7 @@ export const whyChainSchema: z.ZodType<WhyChain> = z
     {
       whys: fiveWhysSchema({ why: causalWhySchema }),
       rootCause: rootCauseSchema,
-      rootCheck: checkableTextSchema({ refusal: ROOT_CHECK_REQUIRED }),
+      rootCheck: checkableTextSchema({ missing: ROOT_CHECK_REQUIRED, unlocated: ROOT_CHECK_UNLOCATED }),
       readback: substantiveTextSchema({ refusal: READBACK_REQUIRED }),
       owner: ownerSchema,
     },

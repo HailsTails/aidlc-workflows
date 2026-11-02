@@ -48,6 +48,11 @@ describe("stemsOf reads inflections of one word as one stem", () => {
     ["statuses", "status"],
     ["lowercases", "lowercase"],
     ["bases", "base"],
+    ["findings", "finding"],
+    ["strings", "string"],
+    ["settings", "setting"],
+    ["warnings", "warning"],
+    ["embeds", "embed"],
     ["Matcher", "matcher"],
   ])("reads %j and %j as one stem", (left, right) => {
     expect([...stemsOf({ text: left }).keys()]).toEqual([...stemsOf({ text: right }).keys()]);

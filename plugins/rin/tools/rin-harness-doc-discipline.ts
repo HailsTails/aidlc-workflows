@@ -326,7 +326,7 @@ const findUnchainedExceptionFindings = ({
               artefact: document.name,
               line: claim.line,
               subject: claim.text.trim().slice(0, SUBJECT_EXCERPT_LENGTH),
-              remedy: `${document.name}:${claim.line} claims an exception with no Five Whys chain in its section. Add the chain beside the claim — five answered whys, each citing evidence, ending at a root cause and its owner (project.md § R7).`,
+              remedy: `${document.name}:${claim.line} claims an exception with no Five Whys chain in its section. Add the chain beside the claim, written to discipline-core's why-chain contract (plugins/discipline-core/docs/why-chain-contract.md): five whys chained cause to cause, then the root cause and its owner, the root check and the readback.`,
             },
           ];
     }),
