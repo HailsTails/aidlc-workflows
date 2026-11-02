@@ -37,7 +37,7 @@ type ParsedJson = { readonly kind: "parsed"; readonly text: string; readonly val
 
 type StagedHookContributions =
   | { readonly kind: "parsed"; readonly value: readonly ProjectedPluginHookContributions[] }
-  | { readonly kind: "invalid" };
+  | { readonly kind: "invalid"; readonly path: string };
 
 const GENERATED_SKILL_SUFFIX = "/skills/aidlc/SKILL.md";
 const STAGE_REGION = /<!-- BEGIN: compiled stage graph[^\n]* -->[\s\S]*?<!-- END: compiled stage graph -->/g;
@@ -146,9 +146,17 @@ function sidecarHookContributions(path: string): RecordedPluginHookContributions
 function stagedHookContributions(input: SyncedProject): StagedHookContributions {
   const dataDir = join(input.stagedProject, input.harnessDir, "tools", "data");
   const sidecars = readdirSync(dataDir).filter((name) => PLUGIN_CONTRIBUTION_SIDECAR.test(name))
-    .map((name) => sidecarHookContributions(join(dataDir, name)));
-  if (sidecars.some((sidecar) => sidecar.kind === "invalid")) return { kind: "invalid" };
-  return { kind: "parsed", value: sidecars.flatMap((sidecar) => sidecar.kind === "parsed" ? [sidecar.value] : []) };
+    .map((name) => ({ name, contributions: sidecarHookContributions(join(dataDir, name)) }));
+  const invalidSidecar = sidecars.find((sidecar) => sidecar.contributions.kind === "invalid");
+  if (invalidSidecar !== undefined) return { kind: "invalid", path: `${input.harnessDir}/tools/data/${invalidSidecar.name}` };
+  return {
+    kind: "parsed",
+    value: sidecars.flatMap(({ contributions }) => contributions.kind === "parsed" ? [contributions.value] : []),
+  };
+}
+
+function unrecordedNote(path: string): string {
+  return `${path} is invalid, so synced file hashes were not recorded in the host manifest; repair it, then run sync again`;
 }
 
 function syncedFiles(input: SyncedProject & { readonly manifest: HostManifest }): readonly SyncedFile[] {
@@ -163,15 +171,11 @@ function recordSyncedManagedFiles(input: SyncedProject): SyncedManagedFilesRecor
   const manifestRelative = `${input.harnessDir}/tools/data/aidlc-manifest.json`;
   const manifestPath = join(input.stagedProject, manifestRelative);
   if (!existsSync(manifestPath)) return { kind: "absent" };
-  const invalid: SyncedManagedFilesRecording = {
-    kind: "invalid",
-    note: `${manifestRelative} was not updated for synced files: the host manifest or a plugin sidecar is invalid`,
-  };
   const parsed = parsedJsonFile(manifestPath);
-  if (parsed.kind === "invalid") return invalid;
-  const manifest = hostManifestSchema.safeParse(parsed.value);
+  const manifest = hostManifestSchema.safeParse(parsed.kind === "parsed" ? parsed.value : undefined);
+  if (parsed.kind === "invalid" || !manifest.success) return { kind: "invalid", note: unrecordedNote(manifestRelative) };
   const hookContributions = stagedHookContributions(input);
-  if (!manifest.success || hookContributions.kind === "invalid") return invalid;
+  if (hookContributions.kind === "invalid") return { kind: "invalid", note: unrecordedNote(hookContributions.path) };
   const plan = planSyncedHostManifest({
     manifest: manifest.data,
     coreBaselinePaths: coreBaselinePaths({

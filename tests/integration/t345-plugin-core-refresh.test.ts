@@ -218,8 +218,8 @@ function coreBaselineHashes(manifest: HostManifest, face: Face): Record<string, 
   return Object.fromEntries(CORE_BASELINES[face.harness].map((path) => [path, manifest.files[path]]));
 }
 
-function recordedCoreBaselines(face: Face): Record<string, unknown> {
-  return Object.fromEntries(CORE_BASELINES[face.harness].map((path) => [path, expect.stringMatching(/^sha256:/)]));
+function unrecordedCoreBaselines(manifest: HostManifest, face: Face): string[] {
+  return CORE_BASELINES[face.harness].filter((path) => !manifest.files[path]?.startsWith("sha256:"));
 }
 
 function stageTableRow(fixture: ConfiguredFixture, slug: string): string | undefined {
@@ -269,7 +269,7 @@ describe("composed root skill ownership baseline", () => {
     expect(stageTableRow(fixture, "rin-gate-3-interface-lock")).toContain(CHANGED_LEAD);
     expect(hostManifest(fixture).files[face.skillFile]).toBe(installedHash(fixture, face.skillFile));
     expect(hostManifest(fixture).generatedSkillProseHashes[face.skillFile]).toBe(manifestBeforeSync.generatedSkillProseHashes[face.skillFile]);
-    expect(coreBaselineHashes(manifestBeforeSync, face)).toEqual(recordedCoreBaselines(face));
+    expect(unrecordedCoreBaselines(manifestBeforeSync, face)).toEqual([]);
     expect(coreBaselineHashes(hostManifest(fixture), face)).toEqual(coreBaselineHashes(manifestBeforeSync, face));
   }, 180_000);
 
@@ -289,7 +289,7 @@ describe("composed root skill ownership baseline", () => {
     const synchronized = syncProject(fixture);
     expect(synchronized.status, synchronized.stdout + synchronized.stderr).toBe(0);
     expect(readFileSync(join(fixture.projectDir, face.nativeFile), "utf8")).toContain(face.navigationNeedle);
-    expect(coreBaselineHashes(manifestBeforeSync, face)).toEqual(recordedCoreBaselines(face));
+    expect(unrecordedCoreBaselines(manifestBeforeSync, face)).toEqual([]);
     expect(coreBaselineHashes(hostManifest(fixture), face)).toEqual(coreBaselineHashes(manifestBeforeSync, face));
     expect(hostManifest(fixture).files[face.skillFile]).toBe(installedHash(fixture, face.skillFile));
   }, 180_000);
