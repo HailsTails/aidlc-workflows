@@ -202,11 +202,13 @@ bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
   --project-dir /absolute/consumer
 ```
 
-The refresh removes core's `aidlc-*` scope files from `.claude/scopes/`, sets
-`AWS_AIDLC_DEFAULT_SCOPE` to `rin-gates`, and lists Rin's scopes in the
-start-up banner. Only scope files are removed: core's stage, agent and tool
-files stay installed, and the selection decides which stages run. Selecting
-`aidlc,rin` again restores core's scopes.
+The refresh removes core's `aidlc-*` scope files from `.claude/scopes/` and the
+runner skills of core's scopes and stages, sets `AWS_AIDLC_DEFAULT_SCOPE` to
+`rin-gates`, and lists Rin's scopes in the start-up banner. A file you changed
+is kept and named. Core's stage, agent and tool files stay installed, and the
+selection decides which stages run. Selecting `aidlc,rin` again restores
+core's scopes; a copied project that no longer has all of them fetches the
+release for that.
 
 ## Delivery status
 

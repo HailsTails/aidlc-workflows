@@ -27,7 +27,7 @@ import {
   selectionDefaultScope,
   stageEnabledBySelection,
 } from "../../core/tools/aidlc-lib.ts";
-import { customPlanStart, scopeSettingsOf, subgraphForScope } from "../../core/tools/aidlc-graph.ts";
+import { customPlanStart, scopeSettingsOf } from "../../core/tools/aidlc-graph.ts";
 import {
   runOrchestrateNext,
   seedAidlcMemory,
@@ -486,12 +486,6 @@ describe("t225 env-scope fallback under plugin-only selection", () => {
         substitution: "nominated freeform default",
         note: 'scope "classic" is not an enabled scope; using "rin-gates" (nominated freeform default)',
       });
-    });
-  });
-
-  test("an explicit --scope bugfix is unknown on a rin-only scope set", () => {
-    withEnvAndFreshCaches({ AIDLC_SCOPES_DIR: RIN_SCOPES }, () => {
-      expect(() => subgraphForScope("bugfix")).toThrow(/^Unknown scope: "bugfix"\. Valid scopes: rin-/);
     });
   });
 

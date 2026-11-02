@@ -194,13 +194,61 @@ describe("a selection without the core plugin installs only the selected plugins
     const projectDir = installedProject();
     const classic = join(projectDir, ".claude", "scopes", "aidlc-classic.md");
     writeFileSync(classic, `${readFileSync(classic, "utf-8")}\nOur own note.\n`);
+    const bugfixRunner = join(projectDir, ".claude", "skills", "aidlc-bugfix", "SKILL.md");
+    writeFileSync(bugfixRunner, `${readFileSync(bugfixRunner, "utf-8")}\nOur own note.\n`);
 
     const selected = selectPlugins(projectDir, PLUGIN);
 
     expect(installedScopeFiles(projectDir)).toEqual(["aidlc-classic.md", `${PLUGIN_SCOPE}.md`]);
-    expect(selected.stdout).toContain("because they were changed after AI-DLC installed them; they stay switched off.");
+    expect(existsSync(bugfixRunner)).toBe(true);
+    expect(selected.stdout).toContain(
+      "Kept 2 files that the plugin selection leaves out, because they were changed after AI-DLC installed them.",
+    );
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
     expect(helpText(projectDir)).not.toMatch(/\bclassic\b/);
+
+    const forced = aidlc(projectDir, ["config", "--from", RELEASE, "--force", "--yes"]);
+    expect(forced.status, forced.stdout + forced.stderr).toBe(0);
+    expect(existsSync(classic)).toBe(true);
+
+    const withoutRelease = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--yes"]);
+    expect(withoutRelease.status).not.toBe(0);
+    expect(withoutRelease.stdout + withoutRelease.stderr).toContain("no longer has all of core's scope files for");
+  });
+
+  test("refuses a scope the selection leaves out when a workflow names it", () => {
+    const projectDir = installedProject();
+    selectPlugins(projectDir, PLUGIN);
+
+    const graph = (scope: string): CommandResult => {
+      const result = spawnSync(BUN, [join(projectDir, ".claude", "tools", "aidlc-graph.ts"), "scope", scope], {
+        cwd: projectDir,
+        encoding: "utf-8",
+        timeout: remainingOperationTimeoutMs(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
+        env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, AIDLC_HARNESS_DIR: ".claude" },
+      });
+      return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+    };
+
+    const refused = graph("bugfix");
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain(`Unknown scope: "bugfix". Valid scopes: ${PLUGIN_SCOPE}`);
+    expect(graph(PLUGIN_SCOPE).status).toBe(0);
+  });
+
+  test("leaving a plugin out while core stays removes the plugin's runner skills as left out by the selection", () => {
+    const projectDir = installedProject();
+    const pluginRunner = join(projectDir, ".claude", "skills", PLUGIN_SCOPE, "SKILL.md");
+    expect(existsSync(pluginRunner)).toBe(true);
+
+    const selected = aidlc(projectDir, ["config", "project", "--plugins", "aidlc", "--from", RELEASE, "--yes"]);
+
+    expect(selected.status, selected.stdout + selected.stderr).toBe(0);
+    expect(existsSync(pluginRunner)).toBe(false);
+    expect(selected.stdout).toContain("that the plugin selection leaves out:");
+    expect(selected.stdout).toContain("Selecting their plugin again puts them back.");
+    expect(selected.stdout).not.toContain("no release record shows AI-DLC shipped");
+    expect(installedScopeFiles(projectDir)).toContain("aidlc-classic.md");
   });
 
   test("re-selecting the core plugin restores its scope files, classic and the shipped banner", () => {
@@ -210,7 +258,7 @@ describe("a selection without the core plugin installs only the selected plugins
     const withoutRelease = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--yes"]);
     expect(withoutRelease.status).not.toBe(0);
     expect(withoutRelease.stdout + withoutRelease.stderr).toContain(
-      "no longer has core's scope files for",
+      "no longer has all of core's scope files for",
     );
     expect(installedScopeFiles(projectDir)).toEqual([`${PLUGIN_SCOPE}.md`]);
 
@@ -243,7 +291,7 @@ describe("a selection without the core plugin installs only the selected plugins
 
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe("feature");
     expect(selected.stdout).toContain(
-      `AWS_AIDLC_DEFAULT_SCOPE in .claude/settings.json names "feature", which this plugin selection does not enable, so workflows start on "${PLUGIN_SCOPE}". To choose the default, run \`bun .claude/tools/aidlc.ts config flags --default-scope <scope> --yes\` with one of: ${PLUGIN_SCOPE}.`,
+      `AWS_AIDLC_DEFAULT_SCOPE in .claude/settings.json names "feature", which this plugin selection does not enable, so workflows start on "${PLUGIN_SCOPE}". To choose the default, run \`bun .claude/tools/aidlc.ts config flags --project --default-scope <scope> --yes\` with one of: ${PLUGIN_SCOPE}.`,
     );
     const resolved = resolvedDefaultScope(projectDir);
     expect(resolved.stdout).toBe(`scope=${PLUGIN_SCOPE}\n`);
@@ -288,8 +336,16 @@ describe("a selection without the core plugin installs only the selected plugins
     const selected = selectPlugins(projectDir, PLUGIN);
 
     expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
-    expect(selected.stdout).toContain("because no release record shows AI-DLC shipped them; they stay switched off.");
+    expect(selected.stdout).toContain(
+      `Kept ${shippedCoreScopeFiles().length} files that the plugin selection leaves out, because no release record shows AI-DLC shipped them.`,
+    );
+    expect(existsSync(join(projectDir, ".claude", "skills", "aidlc-bugfix", "SKILL.md"))).toBe(false);
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+
+    selectPlugins(projectDir, `aidlc,${PLUGIN}`);
+
+    expect(existsSync(join(projectDir, ".claude", "skills", "aidlc-bugfix", "SKILL.md"))).toBe(true);
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(shippedSettings().env.AWS_AIDLC_DEFAULT_SCOPE);
   });
 
   test("a copied project with no release record names the banner it keeps, and gives classic back when core is selected again", () => {

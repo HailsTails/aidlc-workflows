@@ -145,11 +145,14 @@ import {
   fileIdentity,
   FRAMEWORK_DEFAULT_SCOPE,
   isPluginEnabled,
+  pluginEnabledBy,
   loadScopeMetadata,
   normalizeProjectFlagsRecord,
   readScopeDirectory,
-  coreOwnedScopeFiles,
+  coreScopesWithoutFile,
+  hasRunnerGenMarker,
   installedScopeOwners,
+  type StageEntry,
   scopeEnabledBySelection,
   type SelectedDefaultScope,
   selectionDefaultScope,
@@ -178,6 +181,7 @@ import {
   type ProjectHarness,
   hasControlCharacters,
   quoteCommandArgument,
+  resolveSkillsPath,
   runtimeHarnessDir,
 } from "./aidlc-runtime-paths.ts";
 import {
@@ -342,7 +346,7 @@ type PreparedRefreshSource = {
   pluginOwnedExtras: ReadonlySet<string>;
   // Files whose merge could not be proven: a refresh replaces them only with --force.
   unproven: ReadonlySet<string>;
-  deselectedFiles: ReadonlyMap<string, readonly string[]>;
+  deselectedFiles: ReadonlyMap<string, LeftOutFile>;
   entries?: Baseline["entries"];
   notes: string[];
   readonly ruleInputs: RefreshRuleInputs;
@@ -4951,7 +4955,7 @@ function decideDefaultScope(inputs: DefaultScopeInputs): DefaultScopeDecision {
 }
 
 function chooseDefaultScopeStep(enabled: ReadonlySet<string>): string {
-  return `To choose the default, run \`${configCommand("flags --default-scope <scope> --yes")}\` with one of: ${[...enabled].join(", ")}.`;
+  return `To choose the default, run \`${configCommand("flags --project --default-scope <scope> --yes")}\` with one of: ${[...enabled].join(", ")}.`;
 }
 
 function defaultScopeNote(
@@ -5017,12 +5021,12 @@ function enabledScopeSummaries(): ScopeSummary[] {
   });
 }
 
-const RELEASE_SETTINGS_A_COPIED_PROJECT_ASSUMES: Readonly<Record<string, unknown>> = Object.freeze({
+const ASSUMED_COPY_RELEASE_SETTINGS: Readonly<Record<string, unknown>> = Object.freeze({
   env: Object.freeze({ [DEFAULT_SCOPE_VARIABLE]: FRAMEWORK_DEFAULT_SCOPE }),
 });
 
 function releaseSettings(releasePath: string | null): Readonly<Record<string, unknown>> | null {
-  if (releasePath === null) return RELEASE_SETTINGS_A_COPIED_PROJECT_ASSUMES;
+  if (releasePath === null) return ASSUMED_COPY_RELEASE_SETTINGS;
   return regularFile(releasePath) ? readJsonFile(releasePath) as Record<string, unknown> : null;
 }
 
@@ -5058,7 +5062,7 @@ function projectDefaultScope(
   if (decision.value === undefined) delete env[DEFAULT_SCOPE_VARIABLE];
   else env[DEFAULT_SCOPE_VARIABLE] = decision.value;
   staged.env = env;
-  const writtenHash = decision.owner === "aidlc" ? settingHash(decision.value) : priorWrittenHash;
+  const writtenHash = decision.owner === "person" ? priorWrittenHash : settingHash(decision.value);
   if (entries && writtenHash) entries[DEFAULT_SCOPE_ENTRY] = writtenHash;
   const note = defaultScopeNote(decision, selected, settingsRelative);
   if (note !== null) notes.push(note);
@@ -6071,11 +6075,39 @@ function unrecordedLegacyProviderMigration(
   return null;
 }
 
+interface LeftOutFile {
+  readonly provenance: "shipped" | "generated";
+  readonly proofs: readonly string[];
+}
+
+interface LeftOutFileSource {
+  readonly rel: string;
+  readonly sourceRoot: string;
+  readonly projectProjection: boolean;
+  readonly prior: Baseline | null;
+}
+
+function releaseProofs(source: LeftOutFileSource, recordedHash: string | undefined): string[] {
+  const sourceFile = join(source.sourceRoot, source.rel);
+  const releaseHash = source.projectProjection || !regularFile(sourceFile) ? undefined : sha256File(sourceFile);
+  return [releaseHash, recordedHash].filter((hash): hash is string => hash !== undefined);
+}
+
+function shippedLeftOutFile(source: LeftOutFileSource): LeftOutFile {
+  const recordedHash = source.prior?.shippedOnly ? source.prior.files[source.rel] : undefined;
+  return { provenance: "shipped", proofs: releaseProofs(source, recordedHash) };
+}
+
+function generatedLeftOutFile(source: LeftOutFileSource): LeftOutFile {
+  return { provenance: "generated", proofs: releaseProofs(source, source.prior?.files[source.rel]) };
+}
+
 function generatedRunnerFiles(root: string, stagedHarness: string): string[] {
-  return [join(stagedHarness, "skills"), join(root, ".agents", "skills")]
+  const directories = new Set([resolveSkillsPath([], { mutable: true }), join(stagedHarness, "skills"), join(root, ".agents", "skills")]);
+  return [...directories]
     .filter((directory) => existsSync(directory))
     .flatMap((directory) => walkFiles(directory).map((nested) => join(directory, nested)))
-    .filter((path) => readFileSync(path, "utf-8").includes("generated-by: aidlc-runner-gen"))
+    .filter((path) => hasRunnerGenMarker(readFileSync(path, "utf-8")))
     .map((path) => relative(root, path).replaceAll("\\", "/"));
 }
 
@@ -6297,12 +6329,7 @@ function prepareRefreshSource(input: {
   // Claude's and Codex's AI-DLC entries are refreshed in place, per entry.
   const retiredManagedFiles = new Set<string>();
   const unproven = new Set<string>();
-  const deselectedFiles = new Map<string, readonly string[]>();
-  const shippedProofs = (rel: string, recordedHash: string | undefined): string[] => {
-    const sourceFile = join(sourceRoot, rel);
-    const releaseHash = projectProjection || !regularFile(sourceFile) ? undefined : sha256File(sourceFile);
-    return [releaseHash, recordedHash].filter((hash): hash is string => hash !== undefined);
-  };
+  const deselectedFiles = new Map<string, LeftOutFile>();
   const configurationOwnershipClean = preserveUserProviderFields(
     projectDir,
     root,
@@ -6580,7 +6607,7 @@ function prepareRefreshSource(input: {
       const rel = relative(root, file).replaceAll("\\", "/");
       const sourceFile = join(sourceRoot, rel);
       if (!regularFile(sourceFile)) continue;
-      deselectedFiles.set(rel, shippedProofs(rel, prior?.shippedOnly ? prior.files[rel] : undefined));
+      deselectedFiles.set(rel, shippedLeftOutFile({ rel, sourceRoot, projectProjection, prior }));
       rmSync(file);
       regenerated.delete(rel);
       projectOverlays.delete(rel);
@@ -6602,7 +6629,9 @@ function prepareRefreshSource(input: {
     regenerateRunnerSurfaces();
     resetProjectionCaches();
     for (const rel of shippedRunnerFiles) {
-      if (!pathPresent(join(root, rel))) deselectedFiles.set(rel, shippedProofs(rel, prior?.files[rel]));
+      if (!pathPresent(join(root, rel))) {
+        deselectedFiles.set(rel, generatedLeftOutFile({ rel, sourceRoot, projectProjection, prior }));
+      }
     }
 
     const skillPath = existsSync(join(stagedHarness, "skills", "aidlc", "SKILL.md"))
@@ -6936,13 +6965,16 @@ type ReleaseNeed = {
   absent?: boolean;
 };
 
-function selectsCorePlugin(next: readonly string[] | null): boolean {
-  return next === null || next.includes("aidlc");
+function selectsCorePlugin(selection: readonly string[] | null): boolean {
+  return pluginEnabledBy(selection === null ? null : new Set(selection), "aidlc");
 }
 
 function coreScopeFilesMissing(projectDir: string, harnessDir: string): boolean {
+  const harnessRoot = join(projectDir, harnessDir);
+  const graphPath = join(harnessRoot, "tools", "data", "stage-graph.json");
+  const stages = regularFile(graphPath) ? readJsonFile(graphPath) as StageEntry[] : [];
   const composed = composedScopeNames(join(projectDir, ...COMPOSED_SCOPES_SEGMENTS));
-  return coreOwnedScopeFiles(readScopeDirectory(join(projectDir, harnessDir, "scopes")), composed).length === 0;
+  return coreScopesWithoutFile(readScopeDirectory(join(harnessRoot, "scopes")), stages, composed).length > 0;
 }
 
 // Whether a copied project's own files can apply its project choices. Plugins
@@ -7004,7 +7036,7 @@ function releaseNeedSentence(need: ReleaseNeed): string {
         ? `${dir} has no MCP server list for ${need.version}.`
         : `${dir} no longer has the MCP server list for ${need.version}.`;
     case "core-scopes":
-      return `${dir} no longer has core's scope files for ${need.version}, so selecting aidlc again needs the release files.`;
+      return `${dir} no longer has all of core's scope files for ${need.version}, so selecting aidlc needs the release files.`;
     case "from":
       return `The files passed to --from are ${need.current}, but this project is pinned to ${need.version}.`;
   }
@@ -9006,11 +9038,11 @@ function planManagedFiles(
     operations.push({ kind: "remove", path: rel, expected: expected(target) });
     actions.push({ path: rel, action: "remove", detail: NO_LONGER_SHIPPED });
   }
-  for (const [rel, proofs] of prepared.deselectedFiles) {
+  for (const [rel, file] of prepared.deselectedFiles) {
     const target = join(projectDir, rel);
     if (!pathPresent(target)) continue;
-    const plan = deselectedFilePlan(target, proofs);
-    if (plan === "release-bytes" || (plan === "changed" && force)) {
+    const plan = deselectedFilePlan(target, file);
+    if (plan === "removable") {
       operations.push({ kind: "remove", path: rel, expected: expected(target) });
       actions.push({ path: rel, action: "remove", detail: LEFT_OUT_BY_SELECTION });
     } else {
@@ -9019,16 +9051,18 @@ function planManagedFiles(
   }
 }
 
-type DeselectedFilePlan = "release-bytes" | "changed" | "unproven";
+type DeselectedFilePlan = "removable" | "changed" | "unproven";
 
-function deselectedFilePlan(target: string, proofs: readonly string[]): DeselectedFilePlan {
-  if (proofs.length === 0) return "unproven";
-  return regularFile(target) && proofs.includes(sha256FileMatching(target, proofs)) ? "release-bytes" : "changed";
+function deselectedFilePlan(target: string, file: LeftOutFile): DeselectedFilePlan {
+  if (!regularFile(target)) return "changed";
+  if (file.provenance === "generated" && !hasRunnerGenMarker(readFileSync(target, "utf-8"))) return "changed";
+  if (file.proofs.length === 0) return file.provenance === "generated" ? "removable" : "unproven";
+  return file.proofs.includes(sha256FileMatching(target, file.proofs)) ? "removable" : "changed";
 }
 
 const LEFT_OUT_BY_SELECTION = "left out by the plugin selection";
 
-const KEPT_BY_SELECTION: Readonly<Record<Exclude<DeselectedFilePlan, "release-bytes">, string>> = {
+const KEPT_BY_SELECTION: Readonly<Record<Exclude<DeselectedFilePlan, "removable">, string>> = {
   changed: "left out by the plugin selection; kept because it was changed after AI-DLC installed it",
   unproven: "left out by the plugin selection; kept because no release record shows AI-DLC shipped it",
 };
@@ -9043,8 +9077,12 @@ function fileCount(count: number): string {
 
 function restoreLeftOutStep(selection: readonly string[] | null): string {
   return selectsCorePlugin(selection)
-    ? "Selecting their plugin again puts them back (a copied project adds --download)."
-    : `\`${restoreCoreScopesCommand(selection)}\` puts them back (a copied project adds --download).`;
+    ? "Selecting their plugin again puts them back."
+    : `\`${restoreCoreScopesCommand(selection)}\` puts them back.`;
+}
+
+function referent(count: number): { readonly they: string; readonly were: string; readonly them: string } {
+  return count === 1 ? { they: "it", were: "it was", them: "it" } : { they: "they", were: "they were", them: "them" };
 }
 
 function listedPaths(paths: readonly string[]): string[] {
@@ -9064,6 +9102,8 @@ function leftOutBySelectionReport(
   const removedPaths = pathsWithDetail(actions, "remove", LEFT_OUT_BY_SELECTION);
   const changedPaths = pathsWithDetail(actions, "preserve", KEPT_BY_SELECTION.changed);
   const unprovenPaths = pathsWithDetail(actions, "preserve", KEPT_BY_SELECTION.unproven);
+  const changed = referent(changedPaths.length);
+  const unproven = referent(unprovenPaths.length);
   return [
     ...(removedPaths.length === 0 ? [] : [
       `${removed ? "Removed" : "Will remove"} ${fileCount(removedPaths.length)} that the plugin selection leaves out:`,
@@ -9071,11 +9111,11 @@ function leftOutBySelectionReport(
       restoreLeftOutStep(selection),
     ]),
     ...(changedPaths.length === 0 ? [] : [
-      `Kept ${fileCount(changedPaths.length)} that the plugin selection leaves out, because they were changed after AI-DLC installed them; they stay switched off. Delete them yourself if you no longer need them:`,
+      `Kept ${fileCount(changedPaths.length)} that the plugin selection leaves out, because ${changed.were} changed after AI-DLC installed ${changed.them}. Delete ${changed.them} yourself if you no longer need ${changed.them}:`,
       ...listedPaths(changedPaths),
     ]),
     ...(unprovenPaths.length === 0 ? [] : [
-      `Kept ${fileCount(unprovenPaths.length)} that the plugin selection leaves out, because no release record shows AI-DLC shipped them; they stay switched off. Delete them yourself if they are AI-DLC's, or refresh from the release with \`${configCommand("--download")}\`, which removes the ones that still match it:`,
+      `Kept ${fileCount(unprovenPaths.length)} that the plugin selection leaves out, because no release record shows AI-DLC shipped ${unproven.them}. Delete ${unproven.them} yourself if ${unproven.they} ${unprovenPaths.length === 1 ? "is" : "are"} AI-DLC's, or refresh from the release with \`${configCommand("--download")}\`, which removes ${unprovenPaths.length === 1 ? "it if it still matches" : "the ones that still match"} it:`,
       ...listedPaths(unprovenPaths),
     ]),
   ];

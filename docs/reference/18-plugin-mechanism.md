@@ -208,8 +208,8 @@ Two commands change the selection, at two depths:
   `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up
   banner's stage and scope tables with the enabled scopes. Every later refresh
   keeps it that way. Selecting `aidlc` again restores the files, `classic`,
-  and the stock banner; a copied project whose core scope files are gone
-  downloads the release for that. A default scope or banner the person set
+  and the stock banner; a copied project missing any scope its stage graph
+  gives core downloads the release for that. A default scope or banner the person set
   themselves stays theirs; when that default names a scope the selection does
   not enable, the refresh says so in one line and workflows start on the
   selection's default until the person changes it.

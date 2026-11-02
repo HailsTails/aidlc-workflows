@@ -763,9 +763,9 @@ export function renderHelpText(): string {
       execute === total ? `All ${total} stages` : `${execute} of ${total} stages`;
     return `  ${name.padEnd(18)}${countStr}, ${depth} depth${ts}${defaultMarker}${desc}`;
   });
-  const exampleScope = effectiveDefaultScope || ([...validScopes()][0] ?? "<scope>");
-  // Blank line before the help tail so the `Utilities:` header is visually
-  // separated from the scope list.
+  const exampleScope = validScopes().has(effectiveDefaultScope)
+    ? effectiveDefaultScope
+    : [...validScopes()][0] ?? "<scope>";
   return `${HELP_TEXT_HEAD + scopeLines.join("\n")}\n${helpTextTail(exampleScope)}`;
 }
 
@@ -1502,7 +1502,9 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
       if (nameSet.has("aidlc") !== coreWasEnabled) {
         process.stdout.write(
           `Run \`${aidlcInvocation()} config project --plugins ${names.join(",")} --yes\` to finish: it ${
-            coreWasEnabled ? "removes the scope files core ships that you have not changed" : "puts back core's scope files"
+            coreWasEnabled
+              ? "removes core's scope files and runner skills that still hold what AI-DLC installed, names any it keeps,"
+              : "puts back core's scope files and runner skills"
           } and sets the default scope and start-up banner for this selection.\n`,
         );
       }

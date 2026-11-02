@@ -207,7 +207,7 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
     const selected = runUtility(project, ["select-plugins", "test-pro"]);
     expect(selected.status).toBe(0);
     expect(selected.stdout).toContain(
-      "config project --plugins test-pro --yes` to finish: it removes the scope files core ships that you have not changed and sets the default scope and start-up banner for this selection.",
+      "config project --plugins test-pro --yes` to finish: it removes core's scope files and runner skills that still hold what AI-DLC installed, names any it keeps, and sets the default scope and start-up banner for this selection.",
     );
     const audit = readAllAuditShards(project);
     expect(auditField(audit, "PLUGIN_SELECTION_CHANGED", "Previous Selection")).toBe("all enabled (no selection)");
@@ -245,7 +245,7 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
     const both = runUtility(project, ["select-plugins", "aidlc,test-pro"]);
     expect(both.status).toBe(0);
     expect(both.stdout).toContain(
-      "config project --plugins aidlc,test-pro --yes` to finish: it puts back core's scope files",
+      "config project --plugins aidlc,test-pro --yes` to finish: it puts back core's scope files and runner skills and sets the default scope",
     );
     expect(readFileSync(graphPath(project), "utf-8")).toBe(fullGraphBefore);
   });

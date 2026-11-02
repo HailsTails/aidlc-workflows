@@ -35628,12 +35628,6 @@ export function readScopeDirectory(dir: string): ScopeDirectory {
 
 export const COMPOSED_SCOPES_SEGMENTS = ["aidlc", "scopes"] as const;
 
-/** Resolve the composed-scope record directory. AIDLC_COMPOSED_SCOPES_DIR is the
- *  env seam (mirrors AIDLC_RULES_DIR / AIDLC_SCOPE_GRID) so fixture tests can
- *  isolate from a real workspace, and so init's staged refresh can point compile
- *  at the PROJECT's records while everything else reads the staged tree. Ladder
- *  matches rulesDir(): env seam → project-dir workspace root → this tool's
- *  location → the executable's packaged distribution. Evaluated at call time. */
 export function composedScopesDir(): string {
   if (process.env.AIDLC_COMPOSED_SCOPES_DIR) return process.env.AIDLC_COMPOSED_SCOPES_DIR;
   const projectRecords = join(runtimeProjectDir(), ...COMPOSED_SCOPES_SEGMENTS);
@@ -35673,6 +35667,15 @@ export function coreOwnedScopeFiles(directory: ScopeDirectory, composed: Readonl
   return Object.values(directory.metadata)
     .filter((meta) => scopeOwner(meta) === "aidlc" && !composed.has(meta.name))
     .flatMap((meta) => directory.files.get(meta.name) ?? []);
+}
+
+export function coreScopesWithoutFile(
+  directory: ScopeDirectory,
+  stages: readonly StageEntry[],
+  composed: ReadonlySet<string>,
+): string[] {
+  const declared = new Set(stages.filter((stage) => scopeOwner(stage) === "aidlc").flatMap((stage) => stage.scopes ?? []));
+  return [...declared].filter((name) => !composed.has(name) && !directory.files.has(name)).sort();
 }
 
 export function deselectedCoreScopeFiles(): string[] {

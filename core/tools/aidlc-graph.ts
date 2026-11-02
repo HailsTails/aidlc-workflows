@@ -279,7 +279,6 @@ export interface ScopeValidation {
   creation_depth?: "minimal" | "standard" | "comprehensive";
   // The Guard Policy and settings a custom plan starts from, echoed on every
   // run that is not --matched so the composer copies them before it routes.
-  // Absent when the plugin selection names no default scope.
   custom_start?: { guard_policy: GuardPolicy; scope_settings: ScopeSettings };
 }
 
@@ -473,23 +472,6 @@ function mutableScopeGridPath(projectDir: string): string {
   return process.env.AIDLC_SCOPE_GRID
     ?? join(mutableDataDir(projectDir), "scope-grid.json");
 }
-
-// --- Composed-scope records (the durable, harness-neutral source) ---
-
-// `aidlc/scopes/` — the shared, tool-neutral home for COMPOSER-AUTHORED scopes.
-// A stock scope belongs in the harness tree because it IS engine surface,
-// regenerated from core/ on every build. A composed scope has no producer in
-// core/: it is authored by a `/aidlc compose` run, which makes it project data
-// that merely happened to be stored in a generated tree. Storing it under the
-// aidlc/ roof (beside active-space, above spaces/) gives it the same durability
-// the user's intents already have — the harness tree is a replaceable install,
-// aidlc/ is the committed workspace — and makes it readable from ANY harness, so
-// a teammate on .kiro/ can resolve a scope a teammate on .claude/ composed.
-//
-// Project-level rather than space-level on purpose: scope resolution is already
-// global (`/aidlc --scope <name>` is not space-qualified), so this placement
-// matches today's semantics exactly instead of layering a behavior change onto a
-// durability fix.
 
 // The generated region that carries a record's EXECUTE/SKIP grid. A record the
 // writer produced is exactly the harness scope `.md` plus this one appended region,
@@ -1805,10 +1787,6 @@ export function scopeSettingsOf(scope: string): ScopeSettings | null {
   };
 }
 
-/** What a custom plan starts from: the selection's default scope's Guard
- *  Policy and settings, the ceremony a person gets without composing, whichever
- *  stock scope the plan then runs on. Its stages stay the composer's own. Null
- *  when the selection names no default scope. */
 export function customPlanStart(): { guard_policy: GuardPolicy; scope_settings: ScopeSettings } | null {
   const start = selectionDefaultScope();
   if (start.error !== undefined) return null;
