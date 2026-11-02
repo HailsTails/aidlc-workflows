@@ -253,6 +253,23 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(banner).not.toContain("| classic");
   });
 
+  test("switching between two selections without core names a restore that brings core's removed files back", () => {
+    const root = mkdtempSync(join(tmpdir(), "aidlc-plugin-only-switch-"));
+    temporary.push(root);
+    const projectDir = join(root, "project");
+    composePluginFixture({ plugin: PLUGIN, harness: "claude", projectDir, pluginBuilt });
+    composePluginFixture({ plugin: "rin", harness: "claude", projectDir, pluginBuilt: rinPluginBuilt, copyInstall: false });
+    selectPlugins(projectDir, "rin");
+    expect(installedScopeFiles(projectDir)).toEqual(expect.arrayContaining(shippedCoreScopeFiles()));
+
+    const switched = aidlc(projectDir, ["config", "project", "--plugins", PLUGIN, "--from", RELEASE, "--yes"]);
+
+    expect(switched.status, switched.stdout + switched.stderr).toBe(0);
+    expect(installedScopeFiles(projectDir)).not.toContain("aidlc-classic.md");
+    expect(switched.stdout).toContain("config project --plugins aidlc,rin --download --yes` puts them back.");
+    expect(switched.stdout).not.toContain("config project --plugins rin --yes` puts them back.");
+  });
+
   test("keeps a core scope file someone changed, switched off, and still applies the selection", () => {
     const projectDir = installedProject();
     const classic = join(projectDir, ".claude", "scopes", "aidlc-classic.md");

@@ -213,7 +213,7 @@ Two commands change the selection, at two depths:
   selects `aidlc` again and clears both. The refresh's report names the
   exact `config project --plugins` command that puts left-out files back: the
   selection before this run when the run changed it, otherwise this
-  selection plus `aidlc`. It adds `--download` only when a copied project
+  selection, plus `aidlc` whenever the run removes core's scope files. It adds `--download` only when a copied project
   needs the release for it, and the run's "To undo" line does the same.
   On Claude the refresh writes the selection's default scope into
   `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up

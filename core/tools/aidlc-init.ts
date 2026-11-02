@@ -157,6 +157,7 @@ import {
   installedFromCopy,
   pluginsEnabled,
   presentUnder,
+  writesSelectionSettings,
   pluginSelectionArguments,
   readScopeSelectionRecord,
   RELEASE_AT_HAND_STEP,
@@ -6709,7 +6710,7 @@ function prepareRefreshSource(input: {
         `The recorded default scope "${projectFlags.defaultScope}" is not enabled by this plugin selection. ${chooseDefaultScopeStep(validScopes())}`,
       );
     }
-    if (modelHarness(distribution) === "claude") {
+    if (writesSelectionSettings(modelHarness(distribution))) {
       const settingsRelative = `${descriptor.harnessDir}/settings.json`;
       if (entries !== undefined) entries[settingsRelative] ??= {};
       selectionBanner = projectSelectionIntoClaudeSettings({
@@ -9126,13 +9127,20 @@ interface SelectionRestore {
   readonly fetchesRelease: boolean;
 }
 
+function removesLeftOutScopeFiles(actions: readonly PlannedAction[], leftOutScopeFiles: ReadonlySet<string>): boolean {
+  return actions.some((action) => action.action === "remove" && leftOutScopeFiles.has(action.path));
+}
+
 function restoringSelection(
   choices: ChoicesMutationContext | null,
   prepared: PreparedRefreshSource,
+  removesCoreFiles: boolean,
 ): readonly string[] | null {
-  if (choices && canonical(choices.previousPlugins) !== canonical(choices.nextPlugins)) return choices.previousPlugins;
-  if (!prepared.coreLeftOut || prepared.selectedPlugins === null) return null;
-  return [...new Set([...prepared.selectedPlugins, "aidlc"])].sort();
+  const changed = choices !== null && canonical(choices.previousPlugins) !== canonical(choices.nextPlugins);
+  const before = changed ? choices.previousPlugins : prepared.selectedPlugins === null ? null : [...prepared.selectedPlugins];
+  if (before === null) return null;
+  if (!removesCoreFiles) return changed ? before : null;
+  return [...new Set([...before, "aidlc"])].sort();
 }
 
 function selectionRestore(
@@ -12296,7 +12304,7 @@ export async function main(
       retainBaseline,
     );
     const restore = selectionRestore(
-      restoringSelection(choicesContext, prepared),
+      restoringSelection(choicesContext, prepared, removesLeftOutScopeFiles(actions, leftOutScopeFiles)),
       actions,
       { leftOutScopeFiles: [...leftOutScopeFiles], ...(prepared.selectionBanner ? { selectionBanner: true as const } : {}) },
     );

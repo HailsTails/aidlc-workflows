@@ -261,6 +261,7 @@ import {
   copyRestoreNeedsRelease,
   installedFromCopy,
   presentUnder,
+  writesSelectionSettings,
   pluginSelectionArguments,
   readScopeSelectionRecord,
   RELEASE_AT_HAND_STEP,
@@ -1407,7 +1408,7 @@ export function activeWorkflowPluginDependencies(
 }
 
 function settlesSelection(projectDir: string): string {
-  return runtimeHarnessName(projectDir, harnessDir()) === "claude"
+  return writesSelectionSettings(runtimeHarnessName(projectDir, harnessDir()))
     ? "sets the default scope and start-up banner for this selection."
     : "brings the install record in line with this selection.";
 }

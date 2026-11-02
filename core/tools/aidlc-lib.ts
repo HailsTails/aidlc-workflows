@@ -35702,6 +35702,10 @@ export function copyRestoreNeedsRelease(record: ScopeSelectionRecord, present: P
   return (record.leftOutScopeFiles ?? []).some((rel) => !present(rel)) || record.selectionBanner === true;
 }
 
+export function writesSelectionSettings(harness: string): boolean {
+  return harness === "claude";
+}
+
 export function installedFromCopy(): boolean {
   return aidlcInvocation() !== "aidlc";
 }
