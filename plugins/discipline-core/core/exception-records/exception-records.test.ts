@@ -29,7 +29,9 @@ const SELECTION: Selection = {
   uncovered: [],
 };
 
-const SHORT_CHAIN = { ...CAUSAL_WHY_CHAIN, whys: CAUSAL_WHY_CHAIN.whys.slice(0, 2) };
+const [FIRST_WHY, SECOND_WHY] = CAUSAL_WHY_CHAIN.whys;
+
+const SHORT_CHAIN = { ...CAUSAL_WHY_CHAIN, whys: [FIRST_WHY, SECOND_WHY] };
 
 const CLASS_SYNTAX = { ruleSet: "shared", discipline: "CD-14", clause: "class-syntax" };
 

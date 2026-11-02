@@ -92,7 +92,7 @@ describe("stemsOf reads inflections of one word as one stem", () => {
     ["bringing", "bring"],
     ["Matcher", "matcher"],
   ])("reads %j and %j as one stem", (left, right) => {
-    expect([...stemsOf({ text: left }).keys()]).toEqual([...stemsOf({ text: right }).keys()]);
+    expect(stemsOf({ text: `${left} ${right}` }).size).toBe(1);
   });
 
   it.each([
@@ -102,7 +102,7 @@ describe("stemsOf reads inflections of one word as one stem", () => {
     ["status"],
     ["analysis"],
   ])("keeps the final s of %j", (word) => {
-    expect([...stemsOf({ text: word }).keys()][0]?.endsWith("s")).toBe(true);
+    expect(stemsOf({ text: word })).toEqual(new Map([[word, word]]));
   });
 });
 

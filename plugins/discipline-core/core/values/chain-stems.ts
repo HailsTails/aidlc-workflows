@@ -63,8 +63,12 @@ const stemOf = (request: { readonly word: string }): string => {
   return shortenedTo({ stem, shortened: stem.replace(TRAILING_E, ""), floor: MINIMUM_STEM_LETTERS });
 };
 
-const isContentWord = (request: { readonly word: string }): boolean =>
-  request.word.length >= MINIMUM_LETTERS && !FUNCTION_WORDS.has(request.word) && !BARE_NUMBER.test(request.word);
+type WordReading = "content" | "dropped";
+
+const wordReadingOf = (request: { readonly word: string }): WordReading =>
+  request.word.length >= MINIMUM_LETTERS && !FUNCTION_WORDS.has(request.word) && !BARE_NUMBER.test(request.word)
+    ? "content"
+    : "dropped";
 
 export const stemsOf = (request: { readonly text: string }): Stems => {
   const spellings = request.text
@@ -72,7 +76,7 @@ export const stemsOf = (request: { readonly text: string }): Stems => {
     .replace(CAMEL_CASE_BOUNDARY, "$1 $2")
     .toLowerCase()
     .split(WORD_SEPARATOR)
-    .filter((word) => isContentWord({ word }))
+    .filter((word) => wordReadingOf({ word }) === "content")
     .map((word) => [stemOf({ word }), word] as const);
   return new Map(
     spellings.filter(([stem], position) => spellings.findIndex(([earlier]) => earlier === stem) === position),
