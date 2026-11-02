@@ -830,11 +830,17 @@ function emitActiveSpace(outRoot: string): void {
 // generated-file inventory rooted there, including project-root files beside
 // <harnessDir> (onboarding/config, workspace memory, emitted skills, and so on).
 // ---------------------------------------------------------------------------
-async function buildTree(
-  m: HarnessManifest,
-  outRoot: string,
+async function buildTree({
+  manifest: m,
+  outRoot,
+  runtimePort,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
-): Promise<string[]> {
+}: {
+  readonly manifest: HarnessManifest;
+  readonly outRoot: string;
+  readonly runtimePort: PluginRuntimePort;
+  readonly invoke?: string;
+}): Promise<string[]> {
   const harnessDir = m.harnessDir;
   const treeRoot = join(outRoot, harnessDir);
   // Every harness projects onto ONE of the five flavors the tier module
@@ -889,7 +895,7 @@ async function buildTree(
     pluginRoot: CORE_ROOT,
     outDir: treeRoot,
     files: Array.from(walk(treeRoot), (file) => relative(treeRoot, file).split(sep).join("/")),
-    runtimePort: createPassRuntimePort(),
+    runtimePort,
   });
   const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
   if (fmMissed.length > 0) {
@@ -1767,7 +1773,10 @@ function loadManifest(name: string): HarnessManifest {
 // ---------------------------------------------------------------------------
 // write mode: regenerate dist/<name> in place (clean-sweep).
 // ---------------------------------------------------------------------------
-async function writeHarness(name: string): Promise<void> {
+async function writeHarness({ name, runtimePort }: {
+  readonly name: string;
+  readonly runtimePort: PluginRuntimePort;
+}): Promise<void> {
   const m = loadManifest(name);
   const distDir = join(REPO_ROOT, "dist", name);
   const treeRoot = join(distDir, m.harnessDir);
@@ -1845,7 +1854,7 @@ async function writeHarness(name: string): Promise<void> {
     // seedStash here substituted a Windows temp path into every projected
     // .json and broke the parse with an invalid \U escape. The seed is
     // restored explicitly after the tree is built instead.
-    await buildTree(m, stagingDir);
+    await buildTree({ manifest: m, outRoot: stagingDir, runtimePort });
     for (const rel of COMPILED_DATA) {
       const seeded = join(seedStash, rel);
       if (!existsSync(seeded)) continue;
@@ -1879,12 +1888,15 @@ async function writeHarness(name: string): Promise<void> {
   }
 }
 
-async function writeReleaseHarness(name: string): Promise<void> {
+async function writeReleaseHarness({ name, runtimePort }: {
+  readonly name: string;
+  readonly runtimePort: PluginRuntimePort;
+}): Promise<void> {
   const m = loadManifest(name);
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  await buildTree(m, releaseDir, "aidlc");
+  await buildTree({ manifest: m, outRoot: releaseDir, runtimePort, invoke: "aidlc" });
   rewriteNativeInvocations(releaseDir, m, copyRoot);
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
@@ -2054,13 +2066,13 @@ async function bundleRuntimeDependencies(input: {
   }
 }
 
-async function buildRepositoryPluginProjection(
-  pluginName: string,
-  harnessName: string,
-  outDir: string,
-  outputBoundary = REPO_ROOT,
-  runtimePort: PluginRuntimePort = createPassRuntimePort(),
-): Promise<PluginProjectionResult> {
+async function buildRepositoryPluginProjection({ pluginName, harnessName, outDir, outputBoundary, runtimePort }: {
+  readonly pluginName: string;
+  readonly harnessName: string;
+  readonly outDir: string;
+  readonly outputBoundary: string;
+  readonly runtimePort: PluginRuntimePort;
+}): Promise<PluginProjectionResult> {
   const target = pluginTargetFor(harnessName);
   if (!target) {
     throw new Error(
@@ -2244,21 +2256,21 @@ function pluginHarnessesFor(harnesses: string[]): string[] {
   return harnesses.filter((h) => pluginTargetFor(h) !== null);
 }
 
-async function emitPlugins(
-  harnesses: string[],
-  distRoot = join(REPO_ROOT, "dist"),
-  log = true,
-): Promise<void> {
-  const runtimePort = createPassRuntimePort();
+async function emitPlugins({ harnesses, runtimePort, distRoot = join(REPO_ROOT, "dist"), output }: {
+  readonly harnesses: string[];
+  readonly runtimePort: PluginRuntimePort;
+  readonly distRoot?: string;
+  readonly output: "logged" | "quiet";
+}): Promise<void> {
   for (const pluginName of discoverPluginNames()) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
-      await buildRepositoryPluginProjection(
+      await buildRepositoryPluginProjection({
         pluginName,
         harnessName,
-        join(distRoot, "plugins", pluginName, harnessName),
-        distRoot,
+        outDir: join(distRoot, "plugins", pluginName, harnessName),
+        outputBoundary: distRoot,
         runtimePort,
-      );
+      });
       const nativeOut = join(dirname(distRoot), "dist-release", "plugins", pluginName, harnessName);
       rmSync(nativeOut, { recursive: true, force: true });
       cpSync(join(distRoot, "plugins", pluginName, harnessName), nativeOut, { recursive: true });
@@ -2268,7 +2280,7 @@ async function emitPlugins(
       const manifest = loadManifest(harnessName);
       projectNativeInvocationFiles(nativeOut, manifest);
       assertNativeInvocationFiles(nativeOut, manifest);
-      if (log) {
+      if (output === "logged") {
         console.log(`[plugin:${pluginName}] emitted copy and native projections for ${harnessName}/`);
       }
     }
@@ -2328,28 +2340,32 @@ function assertIdenticalRootIntegrations(root: string, harnesses: string[]): voi
   }
 }
 
-async function buildCheckPass(root: string, harnesses: string[]): Promise<void> {
+async function buildCheckPass({ root, harnesses, runtimePort }: {
+  readonly root: string;
+  readonly harnesses: string[];
+  readonly runtimePort: PluginRuntimePort;
+}): Promise<void> {
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
   for (const name of harnesses) {
     const manifest = loadManifest(name);
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
-    await buildTree(manifest, copyRoot);
-    await buildTree(manifest, nativeRoot, "aidlc");
+    await buildTree({ manifest, outRoot: copyRoot, runtimePort });
+    await buildTree({ manifest, outRoot: nativeRoot, runtimePort, invoke: "aidlc" });
     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
   assertIdenticalRootIntegrations(releaseRoot, harnesses);
-  await emitPlugins(harnesses, distRoot, false);
+  await emitPlugins({ harnesses, runtimePort, distRoot, output: "quiet" });
 }
 
 async function checkPackageDeterminism(harnesses: string[]): Promise<string[]> {
   const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
   const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
   try {
-    await buildCheckPass(first, harnesses);
-    await buildCheckPass(second, harnesses);
+    await buildCheckPass({ root: first, harnesses, runtimePort: createPassRuntimePort() });
+    await buildCheckPass({ root: second, harnesses, runtimePort: createPassRuntimePort() });
     return [
       ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
       ...diffTrees(
@@ -2400,12 +2416,13 @@ if (argv[0] === "plugin" && argv[1] === "build") {
   const outArg = outDir.replace(/[/\\]+$/, "") || outDir;
   const resolvedOut = isAbsolute(outArg) ? outArg : join(process.cwd(), outArg);
   try {
-    await buildRepositoryPluginProjection(
+    await buildRepositoryPluginProjection({
       pluginName,
       harnessName,
-      resolvedOut,
-      resolvedOut,
-    );
+      outDir: resolvedOut,
+      outputBoundary: resolvedOut,
+      runtimePort: createPassRuntimePort(),
+    });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
@@ -2441,14 +2458,15 @@ if (check) {
   const builtFrom = packageInputsFingerprint(REPO_ROOT);
   forgetPackagedSources(REPO_ROOT, targets);
   cleanWriteOutputs(targets, named === undefined);
+  const runtimePort = createPassRuntimePort();
   for (const n of targets) {
-    await writeHarness(n);
-    await writeReleaseHarness(n);
+    await writeHarness({ name: n, runtimePort });
+    await writeReleaseHarness({ name: n, runtimePort });
   }
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);
   // Emit plugin projections (the hybrid: per-harness host plugins from plugins/<name>/)
-  await emitPlugins(targets);
+  await emitPlugins({ harnesses: targets, runtimePort, output: "logged" });
   // Last, so only a finished build from unchanged sources is recorded as current.
   if (!recordPackagedSources(REPO_ROOT, targets, builtFrom)) {
     console.error(

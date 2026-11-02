@@ -350,29 +350,27 @@ export function createPluginRuntimePort(input: { readonly projectRoot: string })
   };
 }
 
+type PortInput = Readonly<Record<string, string | readonly string[]>>;
+
+function memoised<Input extends PortInput, Output extends object>(
+  compute: (input: Input) => Output,
+): (input: Input) => Output {
+  const computedByInput = new Map<string, Output>();
+  return (input) => {
+    const key = JSON.stringify(Object.entries(input).sort(([left], [right]) => left.localeCompare(right)));
+    const cached = computedByInput.get(key);
+    if (cached !== undefined) return cached;
+    const computed = compute(input);
+    computedByInput.set(key, computed);
+    return computed;
+  };
+}
+
 export function createSharedPluginRuntimePort(port: PluginRuntimePort): PluginRuntimePort {
-  const declarations = new Map<string, DeclarationBundle>();
-  const bundles = new Map<string, Promise<string>>();
-  const keyOf = (input: { readonly pluginRoot: string; readonly file: string }): string =>
-    JSON.stringify([input.pluginRoot, input.file]);
   return {
-    scan: port.scan,
-    declaration: (input) => {
-      const key = keyOf(input);
-      const known = declarations.get(key);
-      if (known !== undefined) return known;
-      const declaration = port.declaration(input);
-      declarations.set(key, declaration);
-      return declaration;
-    },
-    bundle: (input) => {
-      const key = JSON.stringify([input.pluginRoot, input.file, input.relativeImports]);
-      const known = bundles.get(key);
-      if (known !== undefined) return known;
-      const bundle = port.bundle(input);
-      bundles.set(key, bundle);
-      return bundle;
-    },
+    scan: memoised(port.scan),
+    declaration: memoised(port.declaration),
+    bundle: memoised(port.bundle),
   };
 }
 

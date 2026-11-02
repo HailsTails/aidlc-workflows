@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import ts from "typescript";
 import {
   createSharedPluginRuntimePort,
@@ -176,6 +176,18 @@ describe("shared plugin runtime port", () => {
 
     expect(second).toEqual(first);
     expect(compiled).toEqual({ declarations: 1, bundles: 1 });
+  });
+
+  test("scans each distinct source once however many trees project it", () => {
+    const scanResult = packagePort.scan(source);
+    const scan = mock((_input: { readonly source: string }) => scanResult);
+    const shared = createSharedPluginRuntimePort({ ...packagePort, scan });
+
+    shared.scan({ source: "first" });
+    shared.scan({ source: "second" });
+    shared.scan({ source: "first" });
+
+    expect(scan.mock.calls).toEqual([[{ source: "first" }], [{ source: "second" }]]);
   });
 
   test("compiles distinct entries separately", async () => {
