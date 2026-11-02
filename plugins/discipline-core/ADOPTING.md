@@ -32,14 +32,14 @@ git -C /tmp/discipline-core-source checkout <pinned-sha>
 
 The commands in this guide are POSIX shell; on Windows run them in Git Bash. On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
-Copy `package.json`, `README.md`, `core/`, every rule page, both mechanisms and the review methods, then remove the core's own tests:
+Copy `package.json`, `README.md`, `core/`, the docs with the why-chain contract, every rule page, both mechanisms and the review methods, then remove the core's own tests:
 
 ```bash
 SRC=/tmp/discipline-core-source/plugins/discipline-core
 DEST=tools/discipline-core
 mkdir -p "$DEST"
 cp "$SRC/package.json" "$SRC/README.md" "$DEST/"
-cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
+cp -r "$SRC/core" "$SRC/docs" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
 find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
 find "$DEST" -name '*.test.ts' -delete
 ```

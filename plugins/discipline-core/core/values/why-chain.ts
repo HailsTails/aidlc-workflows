@@ -46,8 +46,8 @@ const MINIMUM_ANSWER_CHARACTERS = 12;
 const MINIMUM_OWNER_CHARACTERS = 2;
 const MINIMUM_SYMPTOM_STEMS_NAMED = 2;
 const ONE_REPEATED_CHARACTER = /^(.)\1+$/;
-const PROSE_LOOKALIKES = /\b(?:e\.g\.|i\.e\.|etc\.|and\/or)/gi;
-const CHECKABLE_LOCATOR = /https?:\/\/\S|[\w.-][\\/][\w.-]|\b[\w-]+\.[a-z][a-z0-9]{0,4}\b|\d/i;
+const PROSE_LOOKALIKES = /\b(?:e\.g\b\.?|i\.e\b\.?|etc\.|[ap]\.m\.|and\/or|n\/a|w\/o|yes\/no)/gi;
+const CHECKABLE_LOCATORS: readonly RegExp[] = [/https?:\/\/\S/i, /[\w.-][\\/][\w.-]/, /(?:^|[\s(\x60'"])(?:\*|[\w-]+)(?:\.[\w-]+)*\.[a-z][a-z0-9]{0,4}\b/, /\d/];
 const THEREFORE = /\btherefore\b/i;
 
 const rootCauseReading = (request: {
@@ -66,7 +66,9 @@ const answerSubstance = (request: {
     : "placeholder";
 
 const evidenceReading = (request: { readonly evidence: string }): "checkable" | "unlocated" =>
-  CHECKABLE_LOCATOR.test(request.evidence.replace(PROSE_LOOKALIKES, " ")) ? "checkable" : "unlocated";
+  CHECKABLE_LOCATORS.some((locator) => locator.test(request.evidence.replace(PROSE_LOOKALIKES, " ")))
+    ? "checkable"
+    : "unlocated";
 
 const substantiveTextSchema = (request: { readonly refusal: string }) =>
   z

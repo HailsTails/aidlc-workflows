@@ -72,6 +72,8 @@ describe("whyChainSchema accepts a chain that runs cause to cause", () => {
     ["a record number", "issue #385 ruling"],
     ["a measurement", "git grep counts 3 matches"],
     ["a file name", "the matcher in name-matcher.ts"],
+    ["a dotted file name opening the text", "vitest.config.ts runs plain Vitest"],
+    ["a file name glob", "a literal *.fixture.ts beside its subject"],
   ])("accepts evidence that is %s", (_label, evidence) => {
     expect(issuePathsOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([]);
   });
@@ -171,6 +173,11 @@ describe("whyChainSchema refuses evidence that cannot be checked again", () => {
     ["prose with an e.g. abbreviation", "the redirects documentation, e.g. the wiki"],
     ["prose with an i.e. abbreviation", "the hosting docs, i.e. the guide"],
     ["prose with and/or", "see the docs and/or the wiki"],
+    ["a not-applicable note", "N/A - nothing to cite"],
+    ["a yes or no answer", "yes/no answer from team"],
+    ["an e.g. with no final dot", "e.g the redirect docs page"],
+    ["a time of day", "approx a.m. meeting with lead"],
+    ["a sentence run into the next", "the team said so.Then moved on"],
   ])("refuses %s", (_label, evidence) => {
     expect(issuePathsOf(withWhy({ chain: CAUSAL_CHAIN, position: 2, field: "evidence", text: evidence }))).toEqual([
       "whys.2.evidence",

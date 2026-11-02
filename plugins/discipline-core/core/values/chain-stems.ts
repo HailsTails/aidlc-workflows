@@ -11,23 +11,42 @@ const FUNCTION_WORDS: ReadonlySet<string> = new Set([
 ]);
 
 const MINIMUM_LETTERS = 3;
+const MINIMUM_STEM_LETTERS = 2;
 const CAMEL_CASE_BOUNDARY = /([a-z0-9])([A-Z])/g;
 const WORD_SEPARATOR = /[^a-z0-9]+/;
 const BARE_NUMBER = /^\d+$/;
 
-const SUFFIX_RULES: readonly (readonly [RegExp, string])[] = [
+const PLURAL_RULES: readonly (readonly [RegExp, string])[] = [
   [/ie[sd]$/, "y"],
   [/(?<=ss|x|z|ch|sh)es$/, ""],
   [/(?<![siu])s$/, ""],
-  [/(?:ing|ed)$/, ""],
-  [/e$/, ""],
 ];
+const INFLECTION = /(?:ing|ed)$/;
+const DOUBLED_FINAL_CONSONANT = /([bcdfghjkmnpqrtvwxy])\1$/;
+const TRAILING_E = /e$/;
 
-const stemOf = (request: { readonly word: string }): string =>
-  SUFFIX_RULES.reduce((stem, [suffix, replacement]) => {
-    const shortened = stem.replace(suffix, replacement);
-    return shortened.length >= MINIMUM_LETTERS ? shortened : stem;
-  }, request.word);
+const shortenedTo = (request: { readonly stem: string; readonly shortened: string; readonly floor: number }): string =>
+  request.shortened.length >= request.floor ? request.shortened : request.stem;
+
+const singularOf = (request: { readonly word: string }): string =>
+  PLURAL_RULES.reduce(
+    (stem, [suffix, replacement]) =>
+      shortenedTo({ stem, shortened: stem.replace(suffix, replacement), floor: MINIMUM_LETTERS }),
+    request.word,
+  );
+
+const uninflectedOf = (request: { readonly stem: string }): string => {
+  if (!INFLECTION.test(request.stem)) {
+    return request.stem;
+  }
+  const bare = shortenedTo({ stem: request.stem, shortened: request.stem.replace(INFLECTION, ""), floor: MINIMUM_STEM_LETTERS });
+  return bare === request.stem ? bare : shortenedTo({ stem: bare, shortened: bare.replace(DOUBLED_FINAL_CONSONANT, "$1"), floor: MINIMUM_LETTERS });
+};
+
+const stemOf = (request: { readonly word: string }): string => {
+  const stem = uninflectedOf({ stem: singularOf(request) });
+  return shortenedTo({ stem, shortened: stem.replace(TRAILING_E, ""), floor: MINIMUM_STEM_LETTERS });
+};
 
 const isContentWord = (request: { readonly word: string }): boolean =>
   request.word.length >= MINIMUM_LETTERS && !FUNCTION_WORDS.has(request.word) && !BARE_NUMBER.test(request.word);
