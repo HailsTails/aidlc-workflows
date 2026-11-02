@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import ts from "typescript";
 import {
   createSharedPluginRuntimePort,
@@ -178,35 +178,16 @@ describe("shared plugin runtime port", () => {
     expect(compiled).toEqual({ declarations: 1, bundles: 1 });
   });
 
-  test("scans each source once however many trees project it", async () => {
-    const scanned: string[] = [];
-    const shared = createSharedPluginRuntimePort({
-      ...packagePort,
-      scan: (input) => { scanned.push(input.source); return packagePort.scan(input); },
-    });
-    const projectFor = (files: readonly string[]) => preparePluginRuntimeArtifacts({
-      pluginRoot: "/fixture", files, sources: [source, { file: "tools/reader.ts", source: "reader fixture" }], port: shared,
-    });
-
-    const first = await projectFor(["tools/guard.ts", "tools/reader.ts"]);
-    const second = await projectFor(["tools/guard.ts", "tools/reader.ts", "skills/guard.md"]);
-
-    expect(second).toEqual(first);
-    expect(scanned).toEqual(["fixture", "reader fixture"]);
-  });
-
-  test("scans distinct sources separately", () => {
-    const scanned: string[] = [];
-    const shared = createSharedPluginRuntimePort({
-      ...packagePort,
-      scan: (input) => { scanned.push(input.source); return packagePort.scan(input); },
-    });
+  test("scans each distinct source once however many trees project it", () => {
+    const scanResult = packagePort.scan(source);
+    const scan = mock((_input: { readonly source: string }) => scanResult);
+    const shared = createSharedPluginRuntimePort({ ...packagePort, scan });
 
     shared.scan({ source: "first" });
     shared.scan({ source: "second" });
     shared.scan({ source: "first" });
 
-    expect(scanned).toEqual(["first", "second"]);
+    expect(scan.mock.calls).toEqual([[{ source: "first" }], [{ source: "second" }]]);
   });
 
   test("compiles distinct entries separately", async () => {

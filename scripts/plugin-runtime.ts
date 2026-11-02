@@ -350,24 +350,27 @@ export function createPluginRuntimePort(input: { readonly projectRoot: string })
   };
 }
 
-function memoised<Input, Output extends object>(keyOf: (input: Input) => string, compute: (input: Input) => Output) {
-  const known = new Map<string, Output>();
-  return (input: Input): Output => {
-    const key = keyOf(input);
-    const cached = known.get(key);
+type PortInput = Readonly<Record<string, string | readonly string[]>>;
+
+function memoised<Input extends PortInput, Output extends object>(
+  compute: (input: Input) => Output,
+): (input: Input) => Output {
+  const computedByInput = new Map<string, Output>();
+  return (input) => {
+    const key = JSON.stringify(Object.entries(input).sort(([left], [right]) => left.localeCompare(right)));
+    const cached = computedByInput.get(key);
     if (cached !== undefined) return cached;
-    const output = compute(input);
-    known.set(key, output);
-    return output;
+    const computed = compute(input);
+    computedByInput.set(key, computed);
+    return computed;
   };
 }
 
 export function createSharedPluginRuntimePort(port: PluginRuntimePort): PluginRuntimePort {
   return {
-    scan: memoised(({ source }) => source, port.scan),
-    declaration: memoised(({ pluginRoot, file }) => JSON.stringify([pluginRoot, file]), port.declaration),
-    bundle: memoised(({ pluginRoot, file, relativeImports }) =>
-      JSON.stringify([pluginRoot, file, relativeImports]), port.bundle),
+    scan: memoised(port.scan),
+    declaration: memoised(port.declaration),
+    bundle: memoised(port.bundle),
   };
 }
 
