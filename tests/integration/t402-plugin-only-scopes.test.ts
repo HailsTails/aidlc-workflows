@@ -164,9 +164,13 @@ describe("a selection without the core plugin installs only the selected plugins
     const projectDir = installedProject();
     expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
 
-    selectPlugins(projectDir, PLUGIN);
+    const selected = selectPlugins(projectDir, PLUGIN);
 
     expect(installedScopeFiles(projectDir)).toEqual([`${PLUGIN_SCOPE}.md`]);
+    expect(existsSync(join(projectDir, ".claude", "skills", "aidlc-bugfix", "SKILL.md"))).toBe(false);
+    expect(selected.stdout).toContain("that the plugin selection leaves out:");
+    expect(selected.stdout).toContain(".claude/skills/aidlc-bugfix/SKILL.md");
+    expect(selected.stdout).not.toContain("no longer part of AI-DLC");
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
     const resolved = resolvedDefaultScope(projectDir);
     expect(resolved.status, resolved.stdout + resolved.stderr).toBe(0);
@@ -182,7 +186,21 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(0);
     expect(installedScopeFiles(projectDir)).toEqual([`${PLUGIN_SCOPE}.md`]);
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+    expect(settings(projectDir).companyAnnouncements.join("\n")).toBe(banner);
     expect(refreshed.stdout).not.toContain("kept your companyAnnouncements");
+  });
+
+  test("keeps a core scope file someone changed, switched off, and still applies the selection", () => {
+    const projectDir = installedProject();
+    const classic = join(projectDir, ".claude", "scopes", "aidlc-classic.md");
+    writeFileSync(classic, `${readFileSync(classic, "utf-8")}\nOur own note.\n`);
+
+    const selected = selectPlugins(projectDir, PLUGIN);
+
+    expect(installedScopeFiles(projectDir)).toEqual(["aidlc-classic.md", `${PLUGIN_SCOPE}.md`]);
+    expect(selected.stdout).toContain("because they were changed after AI-DLC installed them; they stay switched off.");
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+    expect(helpText(projectDir)).not.toMatch(/\bclassic\b/);
   });
 
   test("re-selecting the core plugin restores its scope files, classic and the shipped banner", () => {
@@ -225,7 +243,7 @@ describe("a selection without the core plugin installs only the selected plugins
 
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe("feature");
     expect(selected.stdout).toContain(
-      `AWS_AIDLC_DEFAULT_SCOPE in .claude/settings.json names "feature", which this plugin selection does not enable, so workflows start on "${PLUGIN_SCOPE}" until you change it.`,
+      `AWS_AIDLC_DEFAULT_SCOPE in .claude/settings.json names "feature", which this plugin selection does not enable, so workflows start on "${PLUGIN_SCOPE}". To choose the default, run \`bun .claude/tools/aidlc.ts config flags --default-scope <scope> --yes\` with one of: ${PLUGIN_SCOPE}.`,
     );
     const resolved = resolvedDefaultScope(projectDir);
     expect(resolved.stdout).toBe(`scope=${PLUGIN_SCOPE}\n`);
@@ -250,6 +268,7 @@ describe("a selection without the core plugin installs only the selected plugins
 
     expect(help).toContain(`  ${PLUGIN_SCOPE}`);
     expect(help).toContain(`--scope ${PLUGIN_SCOPE} --depth comprehensive`);
+    expect(help).toContain(`--phase construction --scope ${PLUGIN_SCOPE} Jump to construction`);
     expect(help).not.toMatch(/\b(classic|feature|bugfix)\b/);
   });
 
@@ -271,6 +290,57 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
     expect(selected.stdout).toContain("because no release record shows AI-DLC shipped them; they stay switched off.");
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+  });
+
+  test("a copied project with no release record names the banner it keeps, and gives classic back when core is selected again", () => {
+    const root = mkdtempSync(join(tmpdir(), "aidlc-plugin-only-copy-banner-"));
+    temporary.push(root);
+    const projectDir = composePluginFixture({
+      plugin: PLUGIN,
+      harness: "claude",
+      projectDir: join(root, "project"),
+      pluginBuilt,
+    }).projectDir;
+    const banner = settings(projectDir).companyAnnouncements;
+
+    const selected = selectPlugins(projectDir, PLUGIN);
+
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+    expect(settings(projectDir).companyAnnouncements).toEqual(banner);
+    expect(selected.stdout).toContain(
+      "companyAnnouncements in .claude/settings.json has no release record showing AI-DLC wrote it, so it was kept and may list scopes this plugin selection leaves out.",
+    );
+
+    const reselected = selectPlugins(projectDir, `aidlc,${PLUGIN}`);
+
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(shippedSettings().env.AWS_AIDLC_DEFAULT_SCOPE);
+    expect(reselected.stdout).not.toContain("AWS_AIDLC_DEFAULT_SCOPE");
+  });
+
+  test("applies a selection after the person deletes the banner key from a recorded install", () => {
+    const projectDir = installedProject();
+    const current = settings(projectDir) as Partial<ClaudeSettings>;
+    delete current.companyAnnouncements;
+    writeFileSync(settingsPath(projectDir), `${JSON.stringify(current, null, 2)}\n`);
+
+    selectPlugins(projectDir, PLUGIN);
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+
+    const restored = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--from", RELEASE, "--yes"]);
+    expect(restored.status, restored.stdout + restored.stderr).toBe(0);
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(shippedSettings().env.AWS_AIDLC_DEFAULT_SCOPE);
+  });
+
+  test("names a personal default that is no scope of this install, and the step that fixes it", () => {
+    const projectDir = installedProject();
+    setDefaultScope(projectDir, "featrue");
+
+    const selected = selectPlugins(projectDir, PLUGIN);
+
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe("featrue");
+    expect(selected.stdout).toContain(
+      `AWS_AIDLC_DEFAULT_SCOPE in .claude/settings.json names "featrue", which is not a scope in this install, so a workflow needs --scope.`,
+    );
   });
 
   test("offers only the selection's scopes as the recorded default", () => {

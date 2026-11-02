@@ -148,8 +148,9 @@ import {
   loadScopeMetadata,
   normalizeProjectFlagsRecord,
   readScopeDirectory,
+  coreOwnedScopeFiles,
+  installedScopeOwners,
   scopeEnabledBySelection,
-  scopeOwner,
   type SelectedDefaultScope,
   selectionDefaultScope,
   validScopes,
@@ -230,7 +231,6 @@ import {
 import { resolveTierCap } from "./aidlc-tiers.ts";
 import {
   applyConfigDiagnosticRecords,
-  applyProjectFlagsToProjection,
   harnessOwnsModelAccess,
   providerAnswerIsTheSession,
   sessionModelAccessFact,
@@ -342,7 +342,7 @@ type PreparedRefreshSource = {
   pluginOwnedExtras: ReadonlySet<string>;
   // Files whose merge could not be proven: a refresh replaces them only with --force.
   unproven: ReadonlySet<string>;
-  deselectedFiles: ReadonlyMap<string, string | undefined>;
+  deselectedFiles: ReadonlyMap<string, readonly string[]>;
   entries?: Baseline["entries"];
   notes: string[];
   readonly ruleInputs: RefreshRuleInputs;
@@ -4727,7 +4727,6 @@ function preserveClaudeProviderFields(
   harnessDir: string,
   previousProvider: ProvidersRecord | null,
   nextProvider: ProvidersRecord | null,
-  projectFlags: ProjectFlagsRecord | null,
   prior: Baseline | null,
   notes: string[],
 ): Set<string> {
@@ -4917,56 +4916,69 @@ function preserveClaudeProviderFields(
       delete stagedEnv.AWS_REGION;
     }
   }
-  // A recorded project flag owns this value. Without one, preserve the
-  // documented direct settings.json customization during unrelated refreshes.
-  if (projectFlags?.defaultScope) {
-    delete currentEnv.AWS_AIDLC_DEFAULT_SCOPE;
-  }
+  delete currentEnv[DEFAULT_SCOPE_VARIABLE];
   staged.env = { ...stagedEnv, ...currentEnv };
   writeFileSync(stagedPath, jsonFileText(staged, currentText));
   return retiredManagedFiles;
 }
 
+const DEFAULT_SCOPE_VARIABLE = "AWS_AIDLC_DEFAULT_SCOPE";
+
 const DEFAULT_SCOPE_ENTRY = "envDefaultScope";
 
-type DefaultScopeSetting =
-  | { readonly kind: "personal" }
-  | { readonly kind: "personal-not-enabled"; readonly value: unknown; readonly fallback?: string }
-  | { readonly kind: "unresolved" }
-  | { readonly kind: "written"; readonly scope: string };
+type DefaultScopeOwner = "record" | "person" | "aidlc";
+
+interface DefaultScopeDecision {
+  readonly owner: DefaultScopeOwner;
+  readonly value: unknown;
+}
+
+interface DefaultScopeInputs {
+  readonly recorded: string | undefined;
+  readonly personal: unknown;
+  readonly release: unknown;
+  readonly priorWrittenHash: string | undefined;
+  readonly selected: SelectedDefaultScope;
+}
+
+function decideDefaultScope(inputs: DefaultScopeInputs): DefaultScopeDecision {
+  const { recorded, personal, release, priorWrittenHash, selected } = inputs;
+  if (recorded !== undefined) return { owner: "record", value: recorded };
+  if (personal !== undefined && !aidlcHoldsSetting(personal, release, priorWrittenHash)) {
+    return { owner: "person", value: personal };
+  }
+  return { owner: "aidlc", value: selected.error === undefined ? selected.scope : personal ?? release };
+}
+
+function chooseDefaultScopeStep(enabled: ReadonlySet<string>): string {
+  return `To choose the default, run \`${configCommand("flags --default-scope <scope> --yes")}\` with one of: ${[...enabled].join(", ")}.`;
+}
+
+function defaultScopeNote(
+  decision: DefaultScopeDecision,
+  selected: SelectedDefaultScope,
+  settingsRelative: string,
+): string | null {
+  const enabled = validScopes();
+  if (decision.owner === "record") return null;
+  if (typeof decision.value === "string" && enabled.has(decision.value)) return null;
+  if (decision.owner === "aidlc") {
+    return selected.error === undefined ? null : `${selected.error} ${chooseDefaultScopeStep(enabled)}`;
+  }
+  const named = `${DEFAULT_SCOPE_VARIABLE} in ${settingsRelative} names ${JSON.stringify(decision.value)}`;
+  const installed = typeof decision.value === "string" && installedScopeOwners().has(decision.value);
+  const outcome = !installed
+    ? "which is not a scope in this install, so a workflow needs --scope"
+    : selected.error === undefined
+    ? `which this plugin selection does not enable, so workflows start on "${selected.scope}"`
+    : "which this plugin selection does not enable, and the selection names no default, so a workflow needs --scope";
+  return `${named}, ${outcome}. ${chooseDefaultScopeStep(enabled)}`;
+}
 
 interface ScopeSummary {
   readonly name: string;
   readonly depth: string;
   readonly description: string;
-}
-
-function defaultScopeSetting(input: {
-  readonly current: unknown;
-  readonly release: unknown;
-  readonly priorWrittenHash: string | undefined;
-  readonly enabled: ReadonlySet<string>;
-  readonly selected: SelectedDefaultScope;
-}): DefaultScopeSetting {
-  const { current, release, priorWrittenHash, enabled, selected } = input;
-  const heldByAidlc = current === undefined || aidlcHoldsSetting(current, release, priorWrittenHash);
-  if (!heldByAidlc) {
-    if (typeof current === "string" && enabled.has(current)) return { kind: "personal" };
-    return selected.error === undefined
-      ? { kind: "personal-not-enabled", value: current, fallback: selected.scope }
-      : { kind: "personal-not-enabled", value: current };
-  }
-  return selected.error === undefined ? { kind: "written", scope: selected.scope } : { kind: "unresolved" };
-}
-
-function personalDefaultScopeNote(
-  setting: Extract<DefaultScopeSetting, { kind: "personal-not-enabled" }>,
-  settingsRelative: string,
-): string {
-  const named = `AWS_AIDLC_DEFAULT_SCOPE in ${settingsRelative} names ${JSON.stringify(setting.value)}, which this plugin selection does not enable`;
-  return setting.fallback === undefined
-    ? `${named}; set it to an enabled scope.`
-    : `${named}, so workflows start on "${setting.fallback}" until you change it.`;
 }
 
 function markdownCell(text: string): string {
@@ -5006,7 +5018,7 @@ function enabledScopeSummaries(): ScopeSummary[] {
 }
 
 const RELEASE_SETTINGS_A_COPIED_PROJECT_ASSUMES: Readonly<Record<string, unknown>> = Object.freeze({
-  env: Object.freeze({ AWS_AIDLC_DEFAULT_SCOPE: FRAMEWORK_DEFAULT_SCOPE }),
+  env: Object.freeze({ [DEFAULT_SCOPE_VARIABLE]: FRAMEWORK_DEFAULT_SCOPE }),
 });
 
 function releaseSettings(releasePath: string | null): Readonly<Record<string, unknown>> | null {
@@ -5016,6 +5028,64 @@ function releaseSettings(releasePath: string | null): Readonly<Record<string, un
 
 function settingsEnv(settings: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
   return isRecord(settings.env) ? settings.env : {};
+}
+
+interface ClaudeSettingsProjection {
+  readonly project: Readonly<Record<string, unknown>>;
+  readonly release: Readonly<Record<string, unknown>>;
+  readonly staged: Record<string, unknown>;
+  readonly priorEntries: Record<string, string> | undefined;
+  readonly entries: Record<string, string> | undefined;
+}
+
+function projectDefaultScope(
+  projection: ClaudeSettingsProjection,
+  recorded: string | undefined,
+  settingsRelative: string,
+  notes: string[],
+): void {
+  const { project, release, staged, priorEntries, entries } = projection;
+  const priorWrittenHash = priorEntries?.[DEFAULT_SCOPE_ENTRY];
+  const selected = selectionDefaultScope();
+  const decision = decideDefaultScope({
+    recorded,
+    personal: settingsEnv(project)[DEFAULT_SCOPE_VARIABLE],
+    release: settingsEnv(release)[DEFAULT_SCOPE_VARIABLE],
+    priorWrittenHash,
+    selected,
+  });
+  const env: Record<string, unknown> = { ...settingsEnv(staged) };
+  if (decision.value === undefined) delete env[DEFAULT_SCOPE_VARIABLE];
+  else env[DEFAULT_SCOPE_VARIABLE] = decision.value;
+  staged.env = env;
+  const writtenHash = decision.owner === "aidlc" ? settingHash(decision.value) : priorWrittenHash;
+  if (entries && writtenHash) entries[DEFAULT_SCOPE_ENTRY] = writtenHash;
+  const note = defaultScopeNote(decision, selected, settingsRelative);
+  if (note !== null) notes.push(note);
+}
+
+function unprovenBannerNote(settingsRelative: string): string {
+  return `companyAnnouncements in ${settingsRelative} has no release record showing AI-DLC wrote it, so it was kept and may list scopes this plugin selection leaves out. Refresh from the release with \`${configCommand("--download")}\` to take the banner for this selection.`;
+}
+
+function projectBanner(projection: ClaudeSettingsProjection, settingsRelative: string, notes: string[]): void {
+  const { project, release, staged, priorEntries, entries } = projection;
+  const banner = project.companyAnnouncements;
+  const recordedHash = priorEntries?.companyAnnouncements;
+  if (banner !== undefined && !aidlcHoldsSetting(banner, release.companyAnnouncements, recordedHash)) {
+    const unproven = release.companyAnnouncements === undefined && recordedHash === undefined;
+    if (unproven && !isPluginEnabled("aidlc")) notes.push(unprovenBannerNote(settingsRelative));
+    return;
+  }
+  const template = release.companyAnnouncements ?? staged.companyAnnouncements;
+  if (!isPluginEnabled("aidlc") && Array.isArray(template)) {
+    const scopes = enabledScopeSummaries();
+    staged.companyAnnouncements = template.map((announcement: unknown) =>
+      typeof announcement === "string" ? selectionAnnouncement(announcement, scopes) : announcement
+    );
+  }
+  const writtenHash = settingHash(staged.companyAnnouncements);
+  if (entries && writtenHash) entries.companyAnnouncements = writtenHash;
 }
 
 function projectSelectionIntoClaudeSettings(input: {
@@ -5030,41 +5100,17 @@ function projectSelectionIntoClaudeSettings(input: {
 }): void {
   const release = releaseSettings(input.releasePath);
   if (!regularFile(input.stagedPath) || release === null) return;
-  const project = regularFile(input.projectPath) ? readJsonFile(input.projectPath) as Record<string, unknown> : {};
   const stagedText = readFileSync(input.stagedPath, "utf-8");
-  const staged = JSON.parse(withoutBom(stagedText)) as Record<string, unknown>;
-  const priorDefaultScopeHash = input.priorEntries?.[DEFAULT_SCOPE_ENTRY];
-  if (input.entries && priorDefaultScopeHash !== undefined) input.entries[DEFAULT_SCOPE_ENTRY] = priorDefaultScopeHash;
-  if (input.recordedDefaultScope === undefined) {
-    const setting = defaultScopeSetting({
-      current: settingsEnv(project).AWS_AIDLC_DEFAULT_SCOPE,
-      release: settingsEnv(release).AWS_AIDLC_DEFAULT_SCOPE,
-      priorWrittenHash: priorDefaultScopeHash,
-      enabled: validScopes(),
-      selected: selectionDefaultScope(),
-    });
-    if (setting.kind === "written") {
-      staged.env = { ...settingsEnv(staged), AWS_AIDLC_DEFAULT_SCOPE: setting.scope };
-      if (input.entries) input.entries[DEFAULT_SCOPE_ENTRY] = sha256Bytes(canonical(setting.scope));
-    } else if (setting.kind === "personal-not-enabled") {
-      input.notes.push(personalDefaultScopeNote(setting, input.settingsRelative));
-    }
-  }
-  const projectBanner = project.companyAnnouncements;
-  if (
-    projectBanner === undefined ||
-    aidlcHoldsSetting(projectBanner, release.companyAnnouncements, input.priorEntries?.companyAnnouncements)
-  ) {
-    const template = release.companyAnnouncements ?? staged.companyAnnouncements;
-    if (!isPluginEnabled("aidlc") && Array.isArray(template)) {
-      const scopes = enabledScopeSummaries();
-      staged.companyAnnouncements = template.map((announcement: unknown) =>
-        typeof announcement === "string" ? selectionAnnouncement(announcement, scopes) : announcement
-      );
-    }
-    if (input.entries) input.entries.companyAnnouncements = sha256Bytes(canonical(staged.companyAnnouncements));
-  }
-  writeFileSync(input.stagedPath, jsonFileText(staged, stagedText));
+  const projection: ClaudeSettingsProjection = {
+    project: regularFile(input.projectPath) ? readJsonFile(input.projectPath) as Record<string, unknown> : {},
+    release,
+    staged: JSON.parse(withoutBom(stagedText)) as Record<string, unknown>,
+    priorEntries: input.priorEntries,
+    entries: input.entries,
+  };
+  projectDefaultScope(projection, input.recordedDefaultScope, input.settingsRelative, input.notes);
+  projectBanner(projection, input.settingsRelative, input.notes);
+  writeFileSync(input.stagedPath, jsonFileText(projection.staged, stagedText));
 }
 
 const CODEX_FRAMEWORK_TABLES = new Set([
@@ -5969,7 +6015,6 @@ function preserveUserProviderFields(
   harness: ModelHarness,
   previousProvider: ProvidersRecord | null,
   nextProvider: ProvidersRecord | null,
-  projectFlags: ProjectFlagsRecord | null,
   prior: Baseline | null,
   notes: string[],
   retiredManagedFiles: Set<string>,
@@ -5983,7 +6028,6 @@ function preserveUserProviderFields(
       harnessDir,
       previousProvider,
       nextProvider,
-      projectFlags,
       prior,
       notes,
     )) retiredManagedFiles.add(rel);
@@ -6027,6 +6071,14 @@ function unrecordedLegacyProviderMigration(
   return null;
 }
 
+function generatedRunnerFiles(root: string, stagedHarness: string): string[] {
+  return [join(stagedHarness, "skills"), join(root, ".agents", "skills")]
+    .filter((directory) => existsSync(directory))
+    .flatMap((directory) => walkFiles(directory).map((nested) => join(directory, nested)))
+    .filter((path) => readFileSync(path, "utf-8").includes("generated-by: aidlc-runner-gen"))
+    .map((path) => relative(root, path).replaceAll("\\", "/"));
+}
+
 function prepareRefreshSource(input: {
   readonly projectDir: string;
   readonly sourceRoot: string;
@@ -6042,7 +6094,7 @@ function prepareRefreshSource(input: {
   const { projectDir, sourceRoot, descriptor, prior, modelPolicy, projectFlags, recordOnly, projectProjection, workspaceMode, diagnosticsOverride } = input;
   // A copied project is not a release: never baseline the user's edits as
   // shipped entries during an in-place record mutation.
-  const entries: Baseline["entries"] = projectProjection ? prior?.entries : {};
+  const entries: Baseline["entries"] = projectProjection ? prior?.entries ?? {} : {};
   const notes: string[] = [];
   if (!projectProjection && entries && descriptor.distribution === "claude") {
     const rel = `${descriptor.harnessDir}/settings.json`;
@@ -6205,12 +6257,6 @@ function prepareRefreshSource(input: {
     modelHarness(distribution),
     modelPolicy,
   );
-  applyProjectFlagsToProjection(
-    root,
-    descriptor.harnessDir,
-    modelHarness(distribution),
-    projectFlags,
-  );
   applyConfigDiagnosticRecords(
     root,
     descriptor.harnessDir,
@@ -6251,7 +6297,12 @@ function prepareRefreshSource(input: {
   // Claude's and Codex's AI-DLC entries are refreshed in place, per entry.
   const retiredManagedFiles = new Set<string>();
   const unproven = new Set<string>();
-  const deselectedFiles = new Map<string, string | undefined>();
+  const deselectedFiles = new Map<string, readonly string[]>();
+  const shippedProofs = (rel: string, recordedHash: string | undefined): string[] => {
+    const sourceFile = join(sourceRoot, rel);
+    const releaseHash = projectProjection || !regularFile(sourceFile) ? undefined : sha256File(sourceFile);
+    return [releaseHash, recordedHash].filter((hash): hash is string => hash !== undefined);
+  };
   const configurationOwnershipClean = preserveUserProviderFields(
     projectDir,
     root,
@@ -6259,18 +6310,10 @@ function prepareRefreshSource(input: {
     modelHarness(distribution),
     previousProvider,
     normalizeProvidersRecord(staged.providers),
-    projectFlags,
     prior,
     notes,
     retiredManagedFiles,
     unproven,
-  );
-  // A recorded flag overrides a directly customized settings value.
-  applyProjectFlagsToProjection(
-    root,
-    descriptor.harnessDir,
-    modelHarness(distribution),
-    projectFlags,
   );
   // Preservation starts from project-owned fields, so apply the selected
   // provider once more to prevent the previous provider from being carried
@@ -6537,7 +6580,7 @@ function prepareRefreshSource(input: {
       const rel = relative(root, file).replaceAll("\\", "/");
       const sourceFile = join(sourceRoot, rel);
       if (!regularFile(sourceFile)) continue;
-      deselectedFiles.set(rel, projectProjection ? undefined : sha256File(sourceFile));
+      deselectedFiles.set(rel, shippedProofs(rel, prior?.shippedOnly ? prior.files[rel] : undefined));
       rmSync(file);
       regenerated.delete(rel);
       projectOverlays.delete(rel);
@@ -6555,8 +6598,12 @@ function prepareRefreshSource(input: {
     writeFileSync(process.env.AIDLC_STAGE_GRAPH, compiled.json);
     writeFileSync(stagedGrid, compiled.gridJson);
     resetProjectionCaches();
+    const shippedRunnerFiles = generatedRunnerFiles(root, stagedHarness);
     regenerateRunnerSurfaces();
     resetProjectionCaches();
+    for (const rel of shippedRunnerFiles) {
+      if (!pathPresent(join(root, rel))) deselectedFiles.set(rel, shippedProofs(rel, prior?.files[rel]));
+    }
 
     const skillPath = existsSync(join(stagedHarness, "skills", "aidlc", "SKILL.md"))
       ? join(stagedHarness, "skills", "aidlc", "SKILL.md")
@@ -6592,7 +6639,7 @@ function prepareRefreshSource(input: {
     }
     if (projectFlags?.defaultScope !== undefined && !validScopes().has(projectFlags.defaultScope)) {
       notes.push(
-        `The recorded default scope "${projectFlags.defaultScope}" is not enabled by this plugin selection; record an enabled one with \`${configCommand("flags --default-scope <scope> --yes")}\`.`,
+        `The recorded default scope "${projectFlags.defaultScope}" is not enabled by this plugin selection. ${chooseDefaultScopeStep(validScopes())}`,
       );
     }
     if (modelHarness(distribution) === "claude") {
@@ -6610,15 +6657,7 @@ function prepareRefreshSource(input: {
       });
     }
     regenerated.add(`${descriptor.harnessDir}/tools/data/stage-graph.json`);
-    for (const directory of [join(stagedHarness, "skills"), join(root, ".agents", "skills")]) {
-      if (!existsSync(directory)) continue;
-      for (const nested of walkFiles(directory)) {
-        const path = join(directory, nested);
-        if (readFileSync(path, "utf-8").includes("generated-by: aidlc-runner-gen")) {
-          regenerated.add(relative(root, path).replaceAll("\\", "/"));
-        }
-      }
-    }
+    for (const rel of generatedRunnerFiles(root, stagedHarness)) regenerated.add(rel);
   } finally {
     for (const key of envKeys) {
       const value = saved[key];
@@ -6903,8 +6942,7 @@ function selectsCorePlugin(next: readonly string[] | null): boolean {
 
 function coreScopeFilesMissing(projectDir: string, harnessDir: string): boolean {
   const composed = composedScopeNames(join(projectDir, ...COMPOSED_SCOPES_SEGMENTS));
-  return !Object.values(readScopeDirectory(join(projectDir, harnessDir, "scopes")).metadata)
-    .some((scope) => scopeOwner(scope) === "aidlc" && !composed.has(scope.name));
+  return coreOwnedScopeFiles(readScopeDirectory(join(projectDir, harnessDir, "scopes")), composed).length === 0;
 }
 
 // Whether a copied project's own files can apply its project choices. Plugins
@@ -8968,54 +9006,77 @@ function planManagedFiles(
     operations.push({ kind: "remove", path: rel, expected: expected(target) });
     actions.push({ path: rel, action: "remove", detail: NO_LONGER_SHIPPED });
   }
-  for (const [rel, releaseHash] of prepared.deselectedFiles) {
+  for (const [rel, proofs] of prepared.deselectedFiles) {
     const target = join(projectDir, rel);
     if (!pathPresent(target)) continue;
-    const recordedHash = prior?.shippedOnly ? prior.files[rel] : undefined;
-    const plan = force ? "remove" : deselectedFilePlan(target, [releaseHash, recordedHash]);
-    if (plan === "remove") {
+    const plan = deselectedFilePlan(target, proofs);
+    if (plan === "release-bytes" || (plan === "changed" && force)) {
       operations.push({ kind: "remove", path: rel, expected: expected(target) });
       actions.push({ path: rel, action: "remove", detail: LEFT_OUT_BY_SELECTION });
-    } else if (plan === "modified") {
-      actions.push({ path: rel, action: "conflict", detail: LEFT_OUT_BY_SELECTION_MODIFIED });
     } else {
-      actions.push({ path: rel, action: "preserve", detail: LEFT_OUT_BY_SELECTION_UNPROVEN });
+      actions.push({ path: rel, action: "preserve", detail: KEPT_BY_SELECTION[plan] });
     }
   }
 }
 
-type DeselectedFilePlan = "remove" | "modified" | "unproven";
+type DeselectedFilePlan = "release-bytes" | "changed" | "unproven";
 
-function deselectedFilePlan(target: string, releaseHashes: readonly (string | undefined)[]): DeselectedFilePlan {
-  const proofs = releaseHashes.filter((hash): hash is string => hash !== undefined);
+function deselectedFilePlan(target: string, proofs: readonly string[]): DeselectedFilePlan {
   if (proofs.length === 0) return "unproven";
-  return regularFile(target) && proofs.includes(sha256FileMatching(target, proofs)) ? "remove" : "modified";
+  return regularFile(target) && proofs.includes(sha256FileMatching(target, proofs)) ? "release-bytes" : "changed";
 }
 
 const LEFT_OUT_BY_SELECTION = "left out by the plugin selection";
-const LEFT_OUT_BY_SELECTION_MODIFIED = "left out by the plugin selection but locally modified";
-const LEFT_OUT_BY_SELECTION_UNPROVEN = "left out by the plugin selection; kept because no release record shows AI-DLC shipped it";
+
+const KEPT_BY_SELECTION: Readonly<Record<Exclude<DeselectedFilePlan, "release-bytes">, string>> = {
+  changed: "left out by the plugin selection; kept because it was changed after AI-DLC installed it",
+  unproven: "left out by the plugin selection; kept because no release record shows AI-DLC shipped it",
+};
 
 function pathsWithDetail(actions: readonly PlannedAction[], action: PlannedAction["action"], detail: string): string[] {
   return actions.filter((item) => item.action === action && item.detail === detail).map((item) => item.path).sort();
 }
 
-function scopeFileCount(count: number): string {
-  return count === 1 ? "1 core scope file" : `${count} core scope files`;
+function fileCount(count: number): string {
+  return count === 1 ? "1 file" : `${count} files`;
 }
 
-function leftOutBySelectionReport(actions: readonly PlannedAction[], removed: boolean): string[] {
+function restoreLeftOutStep(selection: readonly string[] | null): string {
+  return selectsCorePlugin(selection)
+    ? "Selecting their plugin again puts them back (a copied project adds --download)."
+    : `\`${restoreCoreScopesCommand(selection)}\` puts them back (a copied project adds --download).`;
+}
+
+function listedPaths(paths: readonly string[]): string[] {
+  return paths.map((path) => `  ${quoteCommandArgument(path)}`);
+}
+
+function restoreCoreScopesCommand(selection: readonly string[] | null): string {
+  const plugins = ["aidlc", ...(selection ?? []).filter((name) => name !== "aidlc")].join(",");
+  return configCommand(`project --plugins ${plugins} --yes`);
+}
+
+function leftOutBySelectionReport(
+  actions: readonly PlannedAction[],
+  removed: boolean,
+  selection: readonly string[] | null,
+): string[] {
   const removedPaths = pathsWithDetail(actions, "remove", LEFT_OUT_BY_SELECTION);
-  const keptPaths = pathsWithDetail(actions, "preserve", LEFT_OUT_BY_SELECTION_UNPROVEN);
+  const changedPaths = pathsWithDetail(actions, "preserve", KEPT_BY_SELECTION.changed);
+  const unprovenPaths = pathsWithDetail(actions, "preserve", KEPT_BY_SELECTION.unproven);
   return [
     ...(removedPaths.length === 0 ? [] : [
-      `${removed ? "Removed" : "Will remove"} ${scopeFileCount(removedPaths.length)} the plugin selection leaves out (aidlc is not selected):`,
-      ...removedPaths.map((path) => `  ${quoteCommandArgument(path)}`),
-      `Selecting aidlc again with \`${configCommand("project --plugins aidlc,<plugins> --yes")}\` puts them back.`,
+      `${removed ? "Removed" : "Will remove"} ${fileCount(removedPaths.length)} that the plugin selection leaves out:`,
+      ...listedPaths(removedPaths),
+      restoreLeftOutStep(selection),
     ]),
-    ...(keptPaths.length === 0 ? [] : [
-      `Kept ${scopeFileCount(keptPaths.length)} the plugin selection leaves out, because no release record shows AI-DLC shipped them; they stay switched off. Delete them yourself if they are core's, or refresh from the release with \`${configCommand("--from <release>")}\`:`,
-      ...keptPaths.map((path) => `  ${quoteCommandArgument(path)}`),
+    ...(changedPaths.length === 0 ? [] : [
+      `Kept ${fileCount(changedPaths.length)} that the plugin selection leaves out, because they were changed after AI-DLC installed them; they stay switched off. Delete them yourself if you no longer need them:`,
+      ...listedPaths(changedPaths),
+    ]),
+    ...(unprovenPaths.length === 0 ? [] : [
+      `Kept ${fileCount(unprovenPaths.length)} that the plugin selection leaves out, because no release record shows AI-DLC shipped them; they stay switched off. Delete them yourself if they are AI-DLC's, or refresh from the release with \`${configCommand("--download")}\`, which removes the ones that still match it:`,
+      ...listedPaths(unprovenPaths),
     ]),
   ];
 }
@@ -12226,7 +12287,7 @@ export async function main(
       // a cited file aside clears every kind of conflict; --force clears only
       // an edit to a file AI-DLC owns, so it is named only when that is all.
       const forceable = (detail: string | undefined): boolean =>
-        /^(?:managed path is not a regular file|locally modified or unowned|removed upstream but locally modified|left out by the plugin selection but locally modified|root integration is not a regular file|managed block was locally modified|managed block has no ownership baseline|retired managed block was locally modified|retired JSON entry was locally modified|retired whole-file integration was locally modified)$/
+        /^(?:managed path is not a regular file|locally modified or unowned|removed upstream but locally modified|root integration is not a regular file|managed block was locally modified|managed block has no ownership baseline|retired managed block was locally modified|retired JSON entry was locally modified|retired whole-file integration was locally modified)$/
           .test(detail ?? "") || /is missing its shipped block copy/.test(detail ?? "");
       const cited = [...new Set(conflicts.map((item) => item.path))];
       const broken = [...new Set(conflicts.filter((item) => !forceable(item.detail)).map((item) => item.path))];
@@ -12436,7 +12497,7 @@ export async function main(
       }
       if (options.mode === "human") {
         writeMenuLines("", retiredFilesReport(projectDir, actions, stamp.frameworkVersion, false, switchedRows));
-        writeMenuLines("", leftOutBySelectionReport(actions, false));
+        writeMenuLines("", leftOutBySelectionReport(actions, false, readPluginSelection(join(prepared.root, descriptor.harnessDir))));
         for (const note of prepared.notes) process.stdout.write(`  Note: ${note}\n`);
       }
       const configuredSection = diagnosticsContext?.section ??
@@ -12594,7 +12655,7 @@ export async function main(
     // Said as soon as it is done, so no later step can leave it unsaid.
     if (options.mode === "human") {
       writeMenuLines("", retiredFilesReport(projectDir, actions, stamp.frameworkVersion, true, switchedRows));
-      writeMenuLines("", leftOutBySelectionReport(actions, true));
+      writeMenuLines("", leftOutBySelectionReport(actions, true, readPluginSelection(join(projectDir, descriptor.harnessDir))));
     }
     const excludeNote = excludeLocalSettingsFromClone(settingsExclude);
     if (excludeNote) prepared.notes.push(excludeNote);

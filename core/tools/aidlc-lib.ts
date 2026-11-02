@@ -35669,13 +35669,15 @@ export function installedScopeOwners(): ReadonlyMap<string, string> {
   return owners;
 }
 
+export function coreOwnedScopeFiles(directory: ScopeDirectory, composed: ReadonlySet<string>): string[] {
+  return Object.values(directory.metadata)
+    .filter((meta) => scopeOwner(meta) === "aidlc" && !composed.has(meta.name))
+    .flatMap((meta) => directory.files.get(meta.name) ?? []);
+}
+
 export function deselectedCoreScopeFiles(): string[] {
   if (isPluginEnabled("aidlc")) return [];
-  const { metadata, files } = installedScopeDirectory();
-  const composed = composedScopeNames();
-  return Object.values(metadata)
-    .filter((meta) => scopeOwner(meta) === "aidlc" && !composed.has(meta.name))
-    .flatMap((meta) => files.get(meta.name) ?? []);
+  return coreOwnedScopeFiles(installedScopeDirectory(), composedScopeNames());
 }
 
 // --- Review-class resolution (stage-protocol-reviewer §12a) ---
@@ -35916,7 +35918,7 @@ export function selectionAwareDefaultScope(preferred: string): SelectedDefaultSc
   const mapping = loadScopeMapping();
   const scopesByPlugin = new Map<string, string[]>();
   for (const scope of scopes) {
-    const owner = mapping[scope]?.plugin ?? "aidlc";
+    const owner = scopeOwner(mapping[scope] ?? {});
     const bucket = scopesByPlugin.get(owner) ?? [];
     bucket.push(scope);
     scopesByPlugin.set(owner, bucket);

@@ -888,8 +888,8 @@ aidlc config project --reset --yes
 ```
 
 Leaving `aidlc` out of `--plugins` installs only the selected plugins'
-scopes: the refresh removes the scope files core ships that you have not
-changed (scopes you saved with `scope-save` stay), sets the default scope
+scopes: the refresh removes the scope files and runner skills core ships that
+you have not changed (scopes you saved with `scope-save` stay), sets the default scope
 (unless you set your own) and, on Claude Code, the start-up banner for the
 selection, and lists the removed files with the command that puts them back. Selecting `aidlc` again restores them. See
 [Plugin selection](../reference/18-plugin-mechanism.md).
@@ -1029,7 +1029,9 @@ part of AI-DLC <version>:` and the list, and `--dry-run` prints the same list
 as `Will remove`. Several files in one folder show as one line. When git
 tracks every removed file, config also names `git restore <path>` to get one
 back; later refreshes leave a restored file alone. In JSON these actions carry
-`detail: "no longer shipped"`.
+`detail: "no longer shipped"`. Files the plugin selection leaves out are listed
+apart, under `that the plugin selection leaves out:`, with
+`detail: "left out by the plugin selection"`.
 
 `.claude/settings.json` belongs to the project; AI-DLC contributes entries
 rather than owning the whole file. Release refreshes, including those

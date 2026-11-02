@@ -199,9 +199,12 @@ Two commands change the selection, at two depths:
 - `aidlc config project --plugins <names>` records the selection and refreshes
   the install from the release. With `aidlc` left out, that refresh removes
   the scope files core ships (`<harness-dir>/scopes/aidlc-*.md`) that still
-  hold the release's bytes; a file someone changed, a scope saved with
-  `scope-save`, or a file no release record shows AI-DLC shipped stays, and
-  the refresh names it. On Claude it writes the selection's default scope into
+  hold the release's bytes, and any selection, with or without `aidlc`,
+  removes the runner skills of the scopes and stages it leaves out under the
+  same rule; a file someone changed, a scope saved with `scope-save`, or a
+  file no release record shows AI-DLC shipped stays, and the refresh names it.
+  A copied project with no release record keeps its start-up banner too and
+  says so. On Claude it writes the selection's default scope into
   `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up
   banner's stage and scope tables with the enabled scopes. Every later refresh
   keeps it that way. Selecting `aidlc` again restores the files, `classic`,

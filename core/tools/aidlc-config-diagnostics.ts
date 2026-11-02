@@ -1730,31 +1730,6 @@ function clearOpenCodeProvider(
   writeJson(path, value);
 }
 
-function writeClaudeFlags(
-  projectionRoot: string,
-  harnessDir: string,
-  record: ProjectFlagsRecord,
-): void {
-  if (!record.defaultScope) return;
-  const path = join(projectionRoot, harnessDir, "settings.json");
-  const value = readJsonFile(path) as Record<string, unknown>;
-  const env = isRecord(value.env) ? { ...value.env } : {};
-  env.AWS_AIDLC_DEFAULT_SCOPE = record.defaultScope;
-  value.env = env;
-  writeJson(path, value);
-}
-
-export function applyProjectFlagsToProjection(
-  projectionRoot: string,
-  harnessDir: string,
-  harness: ModelHarness,
-  record: ProjectFlagsRecord | null,
-): void {
-  if (record && harness === "claude") {
-    writeClaudeFlags(projectionRoot, harnessDir, record);
-  }
-}
-
 export function applyConfigDiagnosticRecords(
   projectionRoot: string,
   harnessDir: string,

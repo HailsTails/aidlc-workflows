@@ -661,6 +661,8 @@ Usage: ${entrySkillInvocation()} [command]
 Scopes (set depth, test strategy, and stage count):
 `;
 
+const helpColumn = (text: string, width: number): string => text.padEnd(Math.max(width, text.length + 1));
+
 const helpTextTail = (exampleScope: string): string => `
 Utilities:
   --status          Show current workflow progress (read-only)
@@ -723,7 +725,7 @@ Other:
   (no arguments)    Resume existing workflow, or start fresh if none exists
 
 Examples:
-  ${entrySkillInvocation()} ${exampleScope.padEnd(39)}Start a ${exampleScope} workflow
+  ${entrySkillInvocation()} ${helpColumn(exampleScope, 39)}Start a ${exampleScope} workflow
   ${entrySkillInvocation()} Fix the login timeout bug              Scope auto-detected from the description
   ${entrySkillInvocation()} compose "harden the deploy pipeline"   Composer proposes a tailored plan
   ${entrySkillInvocation()} config list                         Show every workflow setting and fence
@@ -732,7 +734,7 @@ Examples:
   ${entrySkillInvocation()} plugin build claude                 Build its Claude projection
   ${entrySkillInvocation()}                                        Resume or begin
   ${entrySkillInvocation()} --stage code-generation                Jump to code-generation stage
-  ${entrySkillInvocation()} --phase construction --scope ${exampleScope.padEnd(9)}Jump to construction with ${exampleScope} scope
+  ${entrySkillInvocation()} --phase construction --scope ${helpColumn(exampleScope, 10)}Jump to construction with ${exampleScope} scope
   ${entrySkillInvocation()} --scope ${exampleScope} --depth comprehensive  ${exampleScope} with comprehensive depth
   ${entrySkillInvocation()} --depth minimal                       Change depth of active workflow
   ${entrySkillInvocation()} --depth standard --test-strategy minimal  Full artifacts, minimal tests
@@ -1500,8 +1502,8 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
       if (nameSet.has("aidlc") !== coreWasEnabled) {
         process.stdout.write(
           `Run \`${aidlcInvocation()} config project --plugins ${names.join(",")} --yes\` to finish: it ${
-            coreWasEnabled ? "removes" : "installs"
-          } core's scope files and sets the default scope and start-up banner for this selection.\n`,
+            coreWasEnabled ? "removes the scope files core ships that you have not changed" : "puts back core's scope files"
+          } and sets the default scope and start-up banner for this selection.\n`,
         );
       }
     } catch (err) {
