@@ -644,21 +644,21 @@ Deviations" section.
 
    The two outputs are written in the mob rounds of
    [`stage-protocol-ensemble.md` §5](../../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies),
-   from the approved plan, the Q&A file, and `requirements.md`. The pieces and
-   their authors:
+   from the approved plan, the Q&A file, and `requirements.md`. The pieces,
+   their authors and their rounds:
 
-   `<record>/inception/user-stories/personas.md` -- design:
+   `<record>/inception/user-stories/personas.md` -- design, round 1:
    - User persona definitions (name, role, goals, pain points, context)
    - Persona relationships and priority ranking
 
    `<record>/inception/user-stories/stories.md`:
-   - Lead: user stories in standard format ("As a [persona], I want [goal], so
-     that [benefit]"), each with a stable `US{group}.{seq}` ID and a priority
-     (Must Have / Should Have / Could Have / Won't Have)
-   - Quality: acceptance criteria for each story, each with an
-     `AC{story-group}.{story-seq}.{criterion-seq}` ID
-   - Developer: story dependencies and relationships, and INVEST compliance
-     notes
+   - Lead, round 1: user stories in standard format ("As a [persona], I want
+     [goal], so that [benefit]"), each with a stable `US{group}.{seq}` ID and a
+     priority (Must Have / Should Have / Could Have / Won't Have)
+   - Quality, shared round: acceptance criteria for each assembled story, each
+     with an `AC{story-group}.{story-seq}.{criterion-seq}` ID
+   - Developer, shared round: the assembled stories' dependencies and
+     relationships, and INVEST compliance notes
 
    When collaborators are off, the lead writes every piece. Maintained dissent
    is quoted at the gate.

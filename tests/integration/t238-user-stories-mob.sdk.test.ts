@@ -4,10 +4,11 @@
 //
 // The deterministic evidence guard is covered exhaustively by t236. This test
 // covers the live conductor half: a workflow seeded at user-stories must emit a
-// run-stage directive, dispatch the design/developer/quality participants with
-// mutually blind round-1 briefs, collect their identity-marked working-space
-// contribution files, assemble as the product lead, re-dispatch every
-// participant for the shared round, and approve only after that evidence is
+// run-stage directive, dispatch the design participant (the one round-1 seat)
+// with a blind brief, assemble as the product lead, dispatch every participant
+// for the shared round (developer and quality join there, since their pieces
+// answer the assembled stories), collect their identity-marked working-space
+// contribution files, and approve only after that evidence is
 // present. A preflight report on the same fixture proves the missing-evidence
 // refusal without reproducing t236's full guard matrix.
 //
@@ -57,6 +58,8 @@ const SUPPORT_AGENTS = [
   "aidlc-developer-agent",
   "aidlc-quality-agent",
 ] as const;
+const ROUND_ONE_SUPPORTS = ["aidlc-design-agent"] as const;
+const SHARED_ROUND_SUPPORTS = ["aidlc-developer-agent", "aidlc-quality-agent"] as const;
 // One distinctive token per substantive shipped rule file. A support brief
 // must carry the content marker; a path alone is the rejected legacy contract.
 // team.md/project.md ship as comment-only placeholders and are absent.
@@ -479,7 +482,7 @@ describe("t238 user-stories mob topology (Claude SDK live)", () => {
   );
 
   test(
-    "three supports write their pieces blind, revise them in the shared round, the lead assembles, and approval then succeeds",
+    "design writes its pieces blind, the lead assembles, all three supports write in the shared round, and approval then succeeds",
     async () => {
       const deadlineMs = Date.now() + TEST_TIMEOUT_MS;
       const projectDir = setupIntegrationProject({ withAudit: true });
@@ -629,18 +632,17 @@ describe("t238 user-stories mob topology (Claude SDK live)", () => {
           leadReadIndex,
         );
 
-        // Round 1 dispatched every declared support. Each brief names the
-        // outputs and inputs, carries the active-space rules delivered by the
-        // preceding load-steering sequence (content pasted into the brief;
-        // path-only briefs are not accepted), plus only that participant's
-        // contribution filename, never a sibling's contribution.
-        const roundOne = new Map<string, CapturedToolResult>();
+        // Every seat's first brief names the outputs and inputs, carries the
+        // active-space rules delivered by the preceding load-steering sequence
+        // (content pasted into the brief; path-only briefs are not accepted),
+        // and names that participant's own contribution filename.
+        const firstDispatch = new Map<string, CapturedToolResult>();
         for (const agent of SUPPORT_AGENTS) {
           const dispatch = result.toolResults.find(
             (toolResult) => dispatchedAgent(toolResult) === agent,
           );
           expect(dispatch, `missing live support dispatch for ${agent}`).toBeDefined();
-          roundOne.set(agent, dispatch as CapturedToolResult);
+          firstDispatch.set(agent, dispatch as CapturedToolResult);
 
           const prompt = String(dispatch?.input.prompt ?? "");
           expect(prompt).toContain("stories.md");
@@ -656,6 +658,11 @@ describe("t238 user-stories mob topology (Claude SDK live)", () => {
               `brief for ${agent} does not carry the "${marker}" rule content`,
             ).toBe(true);
           }
+        }
+
+        // Round 1 dispatched the seats with round-1 pieces, mutually blind.
+        for (const agent of ROUND_ONE_SUPPORTS) {
+          const prompt = String(firstDispatch.get(agent)?.input.prompt ?? "");
           for (const sibling of SUPPORT_AGENTS) {
             if (sibling === agent) continue;
             expect(
@@ -665,38 +672,49 @@ describe("t238 user-stories mob topology (Claude SDK live)", () => {
           }
         }
 
-        // After all support results return, the lead must perform a write/edit
-        // of a produced artifact (or dispatch the product lead to integrate).
-        const lastSupportResult = Math.max(
-          ...SUPPORT_AGENTS.map((agent) =>
-            result.toolResults.indexOf(roundOne.get(agent) as CapturedToolResult)
-          ),
-        );
-        const afterSupports = result.toolResults.slice(lastSupportResult + 1);
-        const leadIntegrated = afterSupports.some((toolResult) => {
+        // After every round-1 result returns, the lead assembles: it writes or
+        // edits a produced artifact, or dispatches the product lead to do so.
+        const isAssemblyStep = (toolResult: CapturedToolResult): boolean => {
           const mutatesProducedArtifact =
             (toolResult.toolName === "Write" || toolResult.toolName === "Edit") &&
             (inputMentions(toolResult, "stories.md") ||
               inputMentions(toolResult, "personas.md"));
           const productLeadIntegration =
             dispatchedAgent(toolResult) === "aidlc-product-agent" &&
-            /integrat/i.test(String(toolResult.input.prompt ?? ""));
+            /integrat|assembl/i.test(String(toolResult.input.prompt ?? ""));
           return mutatesProducedArtifact || productLeadIntegration;
-        });
+        };
+        const lastRoundOneResult = Math.max(
+          ...ROUND_ONE_SUPPORTS.map((agent) =>
+            result.toolResults.indexOf(firstDispatch.get(agent) as CapturedToolResult)
+          ),
+        );
+        const assemblyIndex = result.toolResults.findIndex(
+          (toolResult, index) => index > lastRoundOneResult && isAssemblyStep(toolResult),
+        );
         expect(
-          leadIntegrated,
+          assemblyIndex,
           "expected a lead-owned assembly step after all round-1 support results",
-        ).toBe(true);
+        ).toBeGreaterThan(lastRoundOneResult);
 
-        // The shared round re-dispatched every support with every sibling's
-        // contribution, after the lead assembled round 1.
+        // A seat with only shared-round pieces joins after that assembly.
+        for (const agent of SHARED_ROUND_SUPPORTS) {
+          expect(
+            result.toolResults.indexOf(firstDispatch.get(agent) as CapturedToolResult),
+            `${agent} was dispatched before the round-1 assembly`,
+          ).toBeGreaterThan(assemblyIndex);
+        }
+
+        // The shared round dispatched every seat after the assembly, each brief
+        // carrying every round-1 contribution other than the seat's own.
+        const afterAssembly = result.toolResults.slice(assemblyIndex + 1);
         for (const agent of SUPPORT_AGENTS) {
-          const sharedRound = afterSupports.find(
+          const sharedRound = afterAssembly.find(
             (toolResult) => dispatchedAgent(toolResult) === agent,
           );
           expect(sharedRound, `missing shared-round dispatch for ${agent}`).toBeDefined();
           const prompt = String(sharedRound?.input.prompt ?? "");
-          for (const sibling of SUPPORT_AGENTS) {
+          for (const sibling of ROUND_ONE_SUPPORTS) {
             if (sibling === agent) continue;
             expect(
               prompt,
