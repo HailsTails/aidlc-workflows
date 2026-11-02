@@ -40,4 +40,4 @@ Gate 4's test and build seats pair serially rather than in rounds; the gate's ow
 
 Every gate's review is its declared `reviewer` plus its resolved roster in `review-rosters.json`, bounded by `reviewer_max_iterations`. Where the reviewer is the board coordinator, the roster is dispatched as a decorrelated board. Seats never review.
 
-Whether review boards belong before Gate 5 is a consumer policy decision. This contract describes the configured mechanism without choosing that policy.
+Gates 1 to 3 require their board, for the reasons `decorrelated-review.md` § "Where it fires in the lifecycle" gives.

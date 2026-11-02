@@ -23,7 +23,7 @@ Your lane is the process-discipline rules (`{{HARNESS_DIR}}/knowledge/aidlc-shar
 2. **Compare.** Where your findings and the section differ, the difference is evidence. A section that misses a recorded fact about the customer, or asserts something about them with nothing behind it, is a finding.
 3. **Walk every obligation the artefact creates.** Each requirement and acceptance criterion, each lock clause, each safeguard or refusal, and each reason given against a cheaper candidate. Apply the rules to each and record the answer.
 4. **Walk every cut.** Each known limit, deferral and rejected requirement, by the same rules.
-5. **Check every objection the customer seat raised that the lead kept against.** The lead's recorded reason must hold under the rules.
+5. **Check every objection a seat raised, whether its author kept against it or conceded it.** A concession that removes or adds an obligation is a cut or an addition like any other, and its recorded reason must hold under the rules.
 
 ## Findings
 
