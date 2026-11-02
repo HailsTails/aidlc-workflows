@@ -130,11 +130,8 @@ pieces, their authors and their rounds:
 
 **`<record>/inception/user-stories/stories.md`:**
 - Lead, round 1: user stories in standard format: "As a [persona], I want [goal], so that [benefit]", each with a stable `US{group}.{seq}` ID (for example `US1.1`), and each story's priority (Must Have / Should Have / Could Have / Won't Have).
-- Quality, shared round: acceptance criteria for each assembled story, each with a three-segment `AC{story-group}.{story-seq}.{criterion-seq}` ID (for example `AC1.1.1`).
-- Developer, shared round: the assembled stories' dependencies and relationships, and INVEST compliance notes.
-
-Quality and developer write only shared-round pieces, so they join at the shared
-round (§5).
+- Quality, round 1: the acceptance conditions each requirement in `requirements.md` implies. Shared round: acceptance criteria for each assembled story, built from those conditions, each with a three-segment `AC{story-group}.{story-seq}.{criterion-seq}` ID (for example `AC1.1.1`).
+- Developer, round 1: the implementation constraints and dependencies the requirements imply. Shared round: the assembled stories' dependencies and relationships, and INVEST compliance notes.
 
 When `directive.support_agents` is empty, the lead writes every piece (§5).
 Maintained dissent is quoted verbatim in the Step 10 completion summary.

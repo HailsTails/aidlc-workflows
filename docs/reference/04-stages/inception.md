@@ -655,9 +655,11 @@ Deviations" section.
    - Lead, round 1: user stories in standard format ("As a [persona], I want
      [goal], so that [benefit]"), each with a stable `US{group}.{seq}` ID and a
      priority (Must Have / Should Have / Could Have / Won't Have)
-   - Quality, shared round: acceptance criteria for each assembled story, each
-     with an `AC{story-group}.{story-seq}.{criterion-seq}` ID
-   - Developer, shared round: the assembled stories' dependencies and
+   - Quality, round 1: the acceptance conditions each requirement implies;
+     shared round: acceptance criteria for each assembled story, each with an
+     `AC{story-group}.{story-seq}.{criterion-seq}` ID
+   - Developer, round 1: the implementation constraints and dependencies the
+     requirements imply; shared round: the assembled stories' dependencies and
      relationships, and INVEST compliance notes
 
    When collaborators are off, the lead writes every piece. Maintained dissent
