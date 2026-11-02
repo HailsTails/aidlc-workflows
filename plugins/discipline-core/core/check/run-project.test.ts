@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { requiredEntry } from "../../tests/required-entry.ts";
+import { LEGACY_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { GitPort } from "../platform-ports/git-port.ts";
@@ -317,6 +318,34 @@ describe("runProject with an embedded runner", () => {
     expect({ writes, projectCalls: runner.project.mock.calls }).toEqual({
       writes: { outcome: "ok", value: [{ path: "disciplines.eslint.mjs", effect: "written" }] },
       projectCalls: [[expect.objectContaining({ records: [WALKER_RECORD] })]],
+    });
+  });
+
+  it("projects a record whose why-chain predates the causal contract, reading no base revision", async () => {
+    const runner = {
+      exceptionPath: "embedded",
+      projectedKinds: ["config-override"],
+      run: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+      conform: vi.fn<(request: unknown) => Promise<unknown>>().mockResolvedValue({ outcome: "ok", value: [] }),
+      project: vi
+        .fn<(request: unknown) => Promise<unknown>>()
+        .mockResolvedValue({ outcome: "ok", value: { path: "disciplines.eslint.mjs", effect: "written" } }),
+    };
+    const legacyLocation = { kind: "authorised-location", clause: "CD-14#class-syntax", file: "src/walker.ts", reason: "audit location", whyChain: LEGACY_WHY_CHAIN };
+    const writes = await runProject(
+      projectRequest({
+        fileText: fileTextOver({
+          ...TWO_MECHANISM_INSTALL,
+          [EXCEPTIONS_PATH]: presentFile({ text: JSON.stringify({ version: 1, exceptions: [legacyLocation] }) }),
+        }),
+        modules: modulesByPath({ [RUNNER_PATH]: { runner }, [LINT_RUNNER_PATH]: { runner: standaloneRunner() } }),
+      }),
+    );
+    expect({ writes, projectCalls: runner.project.mock.calls }).toEqual({
+      writes: { outcome: "ok", value: [{ path: "disciplines.eslint.mjs", effect: "written" }] },
+      projectCalls: [
+        [expect.objectContaining({ records: [{ ...legacyLocation, clause: WALKER_RECORD.clause, mechanism: "audit" }] })],
+      ],
     });
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CAUSAL_WHY_CHAIN } from "../../../tests/causal-why-chain.ts";
 import type { ExceptionRecord } from "../../../core/exception-records/exception-records.ts";
 import type { FileTextPort } from "../../../core/platform-ports/file-text-port.ts";
 import {
@@ -9,7 +10,6 @@ import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { mechanismIdSchema } from "../../../core/values/identifiers.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
-import type { WhyChain } from "../../../core/values/why-chain.ts";
 import {
   escapedGlobPath,
   currentProjection,
@@ -28,18 +28,6 @@ const repoRoot = absolutePathSchema.parse("/repo");
 const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
 const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
 const windowsPath = createPathPort({ flavour: "windows", workingDirectory: () => "C:\\repo" });
-
-const why = {
-  why: "Why does this file declare a class?",
-  because: "The vendored parser exports a class the adapter must extend",
-  evidence: "vendor/parser/index.d.ts line 12",
-};
-
-const whyChain: WhyChain = {
-  whys: [why, why, why, why, why],
-  rootCause: "The vendored parser's extension point is class-based",
-  owner: "260926-vendor-divergence-untrac",
-};
 
 const cd14Piece: ProjectedPiece = {
   pluginNamespace: "discipline",
@@ -68,7 +56,7 @@ const carveOutInA: ExceptionRecord = {
   mechanism: eslint,
   file: repoPathSchema.parse("src/a.ts"),
   reason: "Inherited class awaiting paydown",
-  whyChain,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const authorisedRoute: ExceptionRecord = {
@@ -85,7 +73,7 @@ const clauseWideNoTmp: ExceptionRecord = {
   clause: noTmpFiles,
   mechanism: eslint,
   reason: "Probe clause carved out while the probe is retired",
-  whyChain,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const clauseWideClassSyntax: ExceptionRecord = {
@@ -93,7 +81,7 @@ const clauseWideClassSyntax: ExceptionRecord = {
   clause: classSyntax,
   mechanism: eslint,
   reason: "Class syntax carved out during migration",
-  whyChain,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const authorisedInBUnderEslint10: ExceptionRecord = { ...authorisedInB, mechanism: eslint10 };

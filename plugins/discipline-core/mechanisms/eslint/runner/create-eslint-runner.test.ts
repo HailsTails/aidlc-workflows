@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CAUSAL_WHY_CHAIN } from "../../../tests/causal-why-chain.ts";
 import type { ExceptionRecord } from "../../../core/exception-records/exception-records.ts";
 import type { RunnerFailure } from "../../../core/mechanism-port/runner-failure.ts";
 import type { RunnerClause } from "../../../core/mechanism-port/runner-module-schema.ts";
@@ -14,7 +15,6 @@ import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { mechanismIdSchema } from "../../../core/values/identifiers.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
-import type { WhyChain } from "../../../core/values/why-chain.ts";
 import { createEslintRunner, type EslintRunnerPorts } from "./create-eslint-runner.ts";
 import type { RuleState } from "./eslint-config-schema.ts";
 import type {
@@ -90,18 +90,6 @@ const PLUGIN_MODULES: Readonly<Record<string, unknown>> = {
   [LOOPS_MODULE_PATH]: LOOPS_PLUGIN_MODULE,
 };
 
-const WHY = {
-  why: "Why does this file declare a class?",
-  because: "The vendored parser exports a class the adapter must extend",
-  evidence: "vendor/parser/index.d.ts line 12",
-};
-
-const WHY_CHAIN: WhyChain = {
-  whys: [WHY, WHY, WHY, WHY, WHY],
-  rootCause: "The vendored parser's extension point is class-based",
-  owner: "260926-vendor-divergence-untrac",
-};
-
 const FACTORY_LOCATION: ExceptionRecord = {
   kind: "authorised-location",
   provenance: { kind: "existing-authorisation", source: "fictional unit fixture mechanisms/eslint/runner/create-eslint-runner.test.ts#FACTORY_LOCATION; not historical authorisation" },
@@ -117,7 +105,7 @@ const FACTORY_CARVE_OUT: ExceptionRecord = {
   mechanism: ESLINT,
   file: FACTORY,
   reason: "Inherited class awaiting paydown",
-  whyChain: WHY_CHAIN,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const GONE_LOCATION: ExceptionRecord = {
@@ -134,7 +122,7 @@ const CLAUSE_WIDE: ExceptionRecord = {
   clause: CLASS_SYNTAX,
   mechanism: ESLINT,
   reason: "Class syntax carved out during migration",
-  whyChain: WHY_CHAIN,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const ENABLING_PROJECTION = `import piece0 from "./node_modules/discipline-core/mechanisms/eslint/CD-14/cd14/cd14.eslint-plugin.ts";
