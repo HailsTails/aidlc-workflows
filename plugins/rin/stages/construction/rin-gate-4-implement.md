@@ -6,7 +6,7 @@ plugin: rin
 phase: construction
 execution: ALWAYS
 condition: Implements the locked Slice test-first (TDD) and runs the committed deterministic gate + constitution supervision, then reports the gate's own `report --result approved` transition — the pre-spec→construction handoff boundary. Entry is gated on the engine's `requires_stage`/`consumes` chain against Gate 3's committed artefacts. Gate 5 (review cycle) owns the merge that follows, not here.
-lead_agent: aidlc-developer-agent
+lead_agent: rin-developer-agent
 support_agents:
   - rin-test-seat-agent
   - rin-build-seat-agent
@@ -164,7 +164,7 @@ A good breakdown is the main saving. Stand-ins later replaced, decisions overtur
 
 Each seat's own definition carries its role's rules, so every seat and check is dispatched as its own agent. Never substitute a general-purpose agent.
 
-The pairing is the seats' act under the ensemble contract. Each seat records its rounds in its own contribution file: the tests or code it wrote, the commands it ran, and what they showed. Ping-pong is serial and each seat reads the other's hand-off, so the mob topology's parallel, mutually blind round does not apply at this gate.
+The pairing is this gate's form of the mob, in place of the rounds of `stage-protocol-ensemble.md` §5: ping-pong is serial and each seat reads the other's hand-off. Each seat keeps its contribution file current as working space: the tests or code it wrote, and the commands that show them failing or passing. The round-by-round narration goes in the stage's `memory.md`.
 
 #### The loop
 

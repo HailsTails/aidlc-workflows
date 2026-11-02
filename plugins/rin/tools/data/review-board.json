@@ -4,7 +4,8 @@
   "reviewer_agent_marker": "decorrelated-review",
   "model_source": "Each lens runs on the model its projected agent definition declares. Dispatch without a model override so the agent tier remains the source of its harness-specific model projection.",
   "producing_lenses": [
-    { "lens": "completeness", "agent": "aidlc-architecture-reviewer-agent" },
+    { "lens": "stage", "agent": "rin-stage-reviewer-agent" },
+    { "lens": "completeness", "agent": "rin-completeness-reviewer-agent" },
     {
       "lens": "clean-architecture",
       "agent": "rin-clean-architecture-reviewer-agent"
@@ -20,9 +21,11 @@
       "lens": "test-discipline",
       "agent": "rin-test-discipline-reviewer-agent"
     },
-    { "lens": "zod-boundary", "agent": "rin-zod-boundary-reviewer-agent" }
+    { "lens": "zod-boundary", "agent": "rin-zod-boundary-reviewer-agent" },
+    { "lens": "customer", "agent": "rin-customer-reviewer-agent" }
   ],
   "roster_dispatch_gates": [
+    "rin-gate-1-framing",
     "rin-gate-2-plan-review",
     "rin-gate-3-interface-lock",
     "rin-gate-4-implement"
