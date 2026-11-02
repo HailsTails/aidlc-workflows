@@ -10,24 +10,30 @@ A **round-1** piece is written in parallel, blind, from the gate's inputs. A **s
 |---|---|---|---|
 | Gate 1 framing | customer | 1 | the requirements' `## Customer and ordinary use` section |
 | | product (lead) | 1 | the requirements, Given/When/Then, the known limits, and the decision questions the ask raises |
-| | architect | 1 | the decision questions an alternative framing raises, each with what that framing would cost |
-| | developer | 1 | the decision questions the code raises: where the smallest implementation of the ask does not fit the framing |
-| | customer | shared | its position on every requirement, known limit and question |
+| | architect | 1 | the decision questions an alternative framing of the ask raises, each with what that framing would cost |
+| | developer | 1 | the decision questions the code raises: where the smallest implementation of the ask does not fit what the ask assumes |
 | Gate 2 solution options | architect (lead) | 1 | the decision points, its candidates on each, and the candidate it leans towards |
-| | developer | 1 | on each point, the candidate that reuses the most of what exists, with what a read-only probe of its riskiest premise showed |
-| | challenger | 1 | on each point, one genuinely different candidate, built from evidence it gathered |
+| | developer | 1 | on each decision point it finds in the requirements, the candidate that reuses the most of what exists, with what a read-only probe of its riskiest premise showed |
+| | challenger | 1 | on each decision point it finds in the requirements, one genuinely different candidate, built from evidence it gathered |
 | | challenger | shared | the strongest case for the candidate the lead leans against, and what would have to be true for it to win |
 | | quality | shared | comparison rows: the acceptance tests the leading and the challenged candidates imply, and which of them cannot satisfy one |
-| | customer | shared | comparison rows: each candidate's obligations, and each reason given against a cheaper candidate, weighed against the customer section, which it extends for any question it does not answer |
+| | customer | shared | comparison rows: each candidate's obligations, and each reason given against a cheaper candidate, weighed against the customer section. A question the section does not answer is answered from the record and measurement in the row that needs it; a requirement that must change routes back to Gate 1, as the stage says |
 | Gate 3 detailed solution design | architect (lead) | 1 | the domain model, components, contracts, External reality section and Constitution Check, after the stage's measurement step |
-| | developer | 1 | the units of work and their dependencies |
-| | developer | shared | one caller implemented against each proposed contract, and where it did not fit |
-| | quality | shared | for each refusal the lock claims, a planted violation and whether it was caught |
-| | customer | shared | its position on each lock clause, safeguard and refusal, and on each case the lock leaves out |
-| Gate 6 operate | pipeline-deploy | 1 | the deployment log's record of the deploy path, forced and read back |
-| | delivery | 1 | each operational claim in the health-check report, verified from the running system |
+| | developer | 1 | the units of work the chosen candidates imply, and their dependencies |
+| Gate 6 operate | operations (lead) | 1 | the health-check report from the deployed system, the operational runbook, and the bookkeeping close |
+| | pipeline-deploy | 1 | the deployment log, from running the deploy tool as the stage's Step 1 says, with the deploy path read back |
+| | delivery | shared | each operational claim in the assembled health-check report, verified from the running system |
 
 Gate 4's test and build seats pair serially rather than in rounds; the gate's own body defines that pairing.
+
+## Evidence behind positions
+
+In the shared round every seat records a position on each piece it has a stake in (§5). At these gates the contract names the evidence a seat builds for its positions. It builds that evidence in its working space, `contributions/<agent-slug>/`, never in the outputs, and cites it in the position it backs. A caller or a planted violation there is a probe, not the Slice's implementation: Gate 3's refusal of implementation governs its outputs. A seat with no piece at a gate joins at the shared round and writes `None` under `## Pieces`.
+
+- **Gate 1, customer:** a position on every requirement, known limit and question, each weighed against the customer section.
+- **Gate 3, developer:** one caller written against each proposed contract, and a position on each contract it did not fit.
+- **Gate 3, quality:** a planted violation of each refusal the lock claims, and a position on each refusal whose violation was not caught.
+- **Gate 3, customer:** a position on each lock clause, safeguard and refusal, and on each case of ordinary use the lock leaves out, each weighed against the customer section.
 
 ## Seat selection
 

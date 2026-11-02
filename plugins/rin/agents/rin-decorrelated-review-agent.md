@@ -23,9 +23,13 @@ points to the protocol. A marker response never satisfies the review request.
 
 - The catalogue is **data**: `{{HARNESS_DIR}}/tools/data/review-board.json` — its producing lens agents plus the `rin-intent-defense-reviewer-agent` synthesis lens. The lenses a gate dispatches are its roster in `review-rosters.json`, which is also the floor the review-scribe enforces.
 - The procedure is **prose**: `{{HARNESS_DIR}}/knowledge/rin-gates/decorrelated-review.md` — the conductor dispatches the gate's producing lenses concurrently where the harness permits (each read-only, reviewer ≠ author, blind to the others), collates, then runs the intent-defense synthesis LAST over the collated PASS claims.
-- **reviewer ≠ author is structural** — every lens carries `tools: Read, Grep,
-  Glob` + `disallowedTools: Task`, so no lens can mutate what it judges. The
-  conductor owns the fan-out; no lens or marker spawns anything.
+- **reviewer ≠ author is structural** — every lens carries `disallowedTools:
+  Task`, and every lens but two carries `tools: Read, Grep, Glob`, so it cannot
+  mutate what it judges. The completeness lens adds Bash for the git reads its
+  measurement checks need, and the stage reviewer adds Bash and Write because
+  Gates 0 and 6 dispatch it alone to run their checks and write their review
+  file; both are told never to write to what they judge. The conductor owns the
+  fan-out; no lens or marker spawns anything.
 - The stages that name this reviewer are read from the compiled stage graph, never listed here. Every other gated stage keeps its single named reviewer.
 
 The conductor writes the requested review file from the board's actual outputs

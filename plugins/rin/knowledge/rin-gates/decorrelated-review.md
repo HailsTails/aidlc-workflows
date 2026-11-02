@@ -49,7 +49,10 @@ Dispatch one subagent per producing lens resolved in Step 1, concurrently to the
   for every filesystem tool call. If the lens cannot do that, it returns
   `CANNOT-REVIEW`; the conductor treats this as NOT-READY;
 - passes ONLY: the stage definition path, the artifact/code file paths, and the
-  Q&A file path — never memory.md, never plan.md, never another lens's findings;
+  Q&A file path — never memory.md, never plan.md, never another lens's findings.
+  On a `mode: mob` gate it also passes the customer lens the path of the stage's
+  `contributions/` directory, where every seat's objections and concessions are
+  recorded, for its objection check;
 - lets the agent load its own persona + the project's `cd-*`/method rules for its
   lane.
 
