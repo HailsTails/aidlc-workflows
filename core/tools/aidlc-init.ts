@@ -142,7 +142,6 @@ import {
   composedScopeRecordNames,
   DEFAULT_SPACE,
   deselectedCoreScopeFiles,
-  fileIdentity,
   FRAMEWORK_DEFAULT_SCOPE,
   isPluginEnabled,
   pluginEnabledBy,
@@ -158,6 +157,13 @@ import {
   pluginsEnabled,
   presentUnder,
   writesSelectionSettings,
+  type ConfigCommandFor,
+  configInvocationFor,
+  namedHarness,
+  projectConfigCommand,
+  projectTarget,
+  ranFromProject,
+  setConfigTargetHarnessDir,
   pluginSelectionArguments,
   readScopeSelectionRecord,
   RELEASE_AT_HAND_STEP,
@@ -170,8 +176,6 @@ import {
   validScopes,
   RECORDABLE_PROJECT_BYPASSES,
   type ProjectFlagsRecord,
-  normalizeDriveLetter,
-  sameFileIdentity,
   withAuditLock,
   writeFileAtomic,
 } from "./aidlc-lib.ts";
@@ -188,12 +192,10 @@ import {
   aidlcInvocation,
   discoverProjectHarnesses,
   isCompiledExecutable,
-  projectedDispatcher,
   type ProjectHarness,
   hasControlCharacters,
   quoteCommandArgument,
   resolveSkillsPath,
-  runtimeHarnessDir,
 } from "./aidlc-runtime-paths.ts";
 import {
   applyKiroSessionPlan,
@@ -1117,23 +1119,10 @@ function modelStateData(
   };
 }
 
-// A printed config command about one harness of the project names that
-// harness when the project has more than one, since config would otherwise
-// ask which.
-function namedHarness(projectDir: string, harness: string | undefined): string {
-  return harness && discoverProjectHarnesses(projectDir).length > 1 ? ` --harness ${harness}` : "";
-}
-
 // A `config models` command about one harness of the project, run as shown
 // from where the user is.
 function modelsCommand(projectDir: string, harness: ModelHarness, args: string): string {
   return projectConfigCommand(projectDir, harness)(`models ${args}`);
-}
-
-type ConfigCommandFor = (args: string) => string;
-
-function projectConfigCommand(projectDir: string, harness: string | undefined): ConfigCommandFor {
-  return (args) => `${configInvocationFor(projectDir)} config ${args}${namedHarness(projectDir, harness)}${projectTarget(projectDir)}`;
 }
 
 function showModels(
@@ -2341,59 +2330,6 @@ function commandToken(value: string): string {
     : JSON.stringify(value);
 }
 
-function ranFromProject(projectDir: string): boolean {
-  return normalizeDriveLetter(resolve(projectDir)) === normalizeDriveLetter(resolve(process.cwd()));
-}
-
-// A concrete follow-up command runs from the same shell, so it names the
-// project whenever this command did not run from it.
-function projectTarget(projectDir: string): string {
-  return ranFromProject(projectDir)
-    ? ""
-    : ` --project-dir ${quoteCommandArgument(projectDir)}`;
-}
-
-// Whether two paths reach one file. File identity settles it, since one file
-// has several spellings (a link, or a Windows 8.3 short name Bun's realpath
-// keeps) and two files can differ only in case. A missing path reaches none.
-function sameFile(left: string, right: string): boolean {
-  try {
-    const identity = fileIdentity(left);
-    return identity.ino !== 0n && sameFileIdentity(identity, fileIdentity(right));
-  } catch {
-    return false;
-  }
-}
-
-// The harness this config run sets up or refreshes, once it is known. No
-// projection names one in the source tree, so the commands this run prints
-// name this harness's tool there, not the first install the project shows.
-let configTargetHarnessDir: string | null = null;
-
-// How a printed command starts so it runs from where the user is: `aidlc`, or
-// the Bun tool that ran this command. The project's own tool is named from the
-// project when run there and by its path in the project when not. Any other
-// tool (a runtime unpacked elsewhere, which may be adding a harness the project
-// does not have yet) is named by its own path, unless it is the one under the
-// working directory. In the source tree the project's own tool of the harness
-// being set up stands in.
-function configInvocationFor(projectDir = process.cwd()): string {
-  const invocation = aidlcInvocation();
-  if (invocation === "aidlc") return invocation;
-  const ran = projectedDispatcher();
-  // A projection's relative invocation names the harness directory it was
-  // built for, whatever the environment says the harness is.
-  const harnessDir = ran === null
-    ? configTargetHarnessDir ?? runtimeHarnessDir()
-    : basename(dirname(dirname(ran)));
-  const toolIn = (root: string) => join(root, harnessDir, "tools", "aidlc.ts");
-  if (ran === null || sameFile(ran, toolIn(projectDir))) {
-    return ranFromProject(projectDir)
-      ? ran === null ? `bun ${harnessDir}/tools/aidlc.ts` : invocation
-      : `bun ${quoteCommandArgument(toolIn(projectDir))}`;
-  }
-  return sameFile(ran, toolIn(process.cwd())) ? invocation : `bun ${quoteCommandArgument(ran)}`;
-}
 
 // The command the user ran, printed again with the flags that resolve it, so
 // it runs as shown from where they are.
@@ -11555,7 +11491,7 @@ export async function main(
   internal: ConfigMainInternal = {},
 ): Promise<void> {
   // A setup walk's own sections run inside the walk, for the harness it set up.
-  if (!internal.setupWalkChild) configTargetHarnessDir = null;
+  if (!internal.setupWalkChild) setConfigTargetHarnessDir(null);
   let argv = stripVerb(input);
   const options = globalOptions(argv);
   const positionals = configPositionals(argv);
@@ -12129,7 +12065,7 @@ export async function main(
       }
     }
     const { stamp, descriptor } = selected;
-    configTargetHarnessDir = descriptor.harnessDir;
+    setConfigTargetHarnessDir(descriptor.harnessDir);
     if (existing.distribution && existing.distribution !== stamp.distribution) {
       throw new Error(`project uses ${existing.distribution}; refusing ${stamp.distribution}`);
     }

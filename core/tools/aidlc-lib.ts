@@ -9,6 +9,8 @@ import { TextDecoder } from "node:util";
 import { createRequire } from "node:module";
 import { inflateSync } from "node:zlib";
 
+import type { ModelHarness } from "./aidlc-model-policy.ts";
+
 type BunFfi = typeof import("bun:ffi");
 type Pointer = import("bun:ffi").Pointer;
 const loadBunFfi = (): BunFfi | null => {
@@ -30,6 +32,8 @@ import {
   type KiroLayout,
   knownActiveSpace,
   kiroTreeLayout,
+  projectedDispatcher,
+  quoteCommandArgument,
   resolveDistributionPath,
   resolveHarnessPath,
   runtimeHarnessDir,
@@ -35702,8 +35706,55 @@ export function copyRestoreNeedsRelease(record: ScopeSelectionRecord, present: P
   return (record.leftOutScopeFiles ?? []).some((rel) => !present(rel)) || record.selectionBanner === true;
 }
 
-export function writesSelectionSettings(harness: string): boolean {
+export function writesSelectionSettings(harness: ModelHarness): boolean {
   return harness === "claude";
+}
+
+let configTargetHarnessDir: string | null = null;
+
+export function setConfigTargetHarnessDir(harnessDir: string | null): void {
+  configTargetHarnessDir = harnessDir;
+}
+
+export function ranFromProject(projectDir: string): boolean {
+  return normalizeDriveLetter(resolvePath(projectDir)) === normalizeDriveLetter(resolvePath(process.cwd()));
+}
+
+export function projectTarget(projectDir: string): string {
+  return ranFromProject(projectDir) ? "" : ` --project-dir ${quoteCommandArgument(projectDir)}`;
+}
+
+export function namedHarness(projectDir: string, harness: string | undefined): string {
+  return harness && discoverProjectHarnesses(projectDir).length > 1 ? ` --harness ${quoteCommandArgument(harness)}` : "";
+}
+
+export function sameFile(left: string, right: string): boolean {
+  try {
+    const identity = fileIdentity(left);
+    return identity.ino !== 0n && sameFileIdentity(identity, fileIdentity(right));
+  } catch {
+    return false;
+  }
+}
+
+export function configInvocationFor(projectDir = process.cwd()): string {
+  const invocation = aidlcInvocation();
+  if (invocation === "aidlc") return invocation;
+  const ran = projectedDispatcher();
+  const harnessDir = ran === null ? configTargetHarnessDir ?? runtimeHarnessDir() : basename(dirname(dirname(ran)));
+  const toolIn = (root: string) => join(root, harnessDir, "tools", "aidlc.ts");
+  if (ran === null || sameFile(ran, toolIn(projectDir))) {
+    return ranFromProject(projectDir)
+      ? ran === null ? `bun ${harnessDir}/tools/aidlc.ts` : invocation
+      : `bun ${quoteCommandArgument(toolIn(projectDir))}`;
+  }
+  return sameFile(ran, toolIn(process.cwd())) ? invocation : `bun ${quoteCommandArgument(ran)}`;
+}
+
+export type ConfigCommandFor = (args: string) => string;
+
+export function projectConfigCommand(projectDir: string, harness: string | undefined): ConfigCommandFor {
+  return (args) => `${configInvocationFor(projectDir)} config ${args}${namedHarness(projectDir, harness)}${projectTarget(projectDir)}`;
 }
 
 export function installedFromCopy(): boolean {

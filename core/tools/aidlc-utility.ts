@@ -262,6 +262,7 @@ import {
   installedFromCopy,
   presentUnder,
   writesSelectionSettings,
+  projectConfigCommand,
   pluginSelectionArguments,
   readScopeSelectionRecord,
   RELEASE_AT_HAND_STEP,
@@ -429,7 +430,7 @@ import {
   runtimeHarnessDir,
   runtimeHarnessName,
 } from "./aidlc-runtime-paths.ts";
-import { HARNESS_PRODUCT_NAMES } from "./aidlc-model-policy.ts";
+import { HARNESS_PRODUCT_NAMES, isModelHarness } from "./aidlc-model-policy.ts";
 import { copyRuntimeUrl } from "./aidlc-release.ts";
 import { type EngineInvocation, renderEngineInvocation } from "./aidlc-guard-operation.ts";
 import {
@@ -1408,15 +1409,14 @@ export function activeWorkflowPluginDependencies(
 }
 
 function settlesSelection(projectDir: string): string {
-  return writesSelectionSettings(runtimeHarnessName(projectDir, harnessDir()))
+  const harness = runtimeHarnessName(projectDir, harnessDir());
+  return isModelHarness(harness) && writesSelectionSettings(harness)
     ? "sets the default scope and start-up banner for this selection."
     : "brings the install record in line with this selection.";
 }
 
 function finishCommand(projectDir: string, names: readonly string[], fetchesRelease: boolean): string {
-  const { tool, target } = projectCommandFraming(projectDir);
-  const harness = discoverProjectHarnesses(projectDir).length > 1 ? ` --harness ${runtimeHarnessName(projectDir, harnessDir())}` : "";
-  return `${tool} config ${pluginSelectionArguments(names, fetchesRelease)}${harness}${target}`;
+  return projectConfigCommand(projectDir, runtimeHarnessName(projectDir, harnessDir()))(pluginSelectionArguments(names, fetchesRelease));
 }
 
 function finishCoreOffStep(projectDir: string, names: readonly string[]): string {
@@ -3625,21 +3625,6 @@ function harnessTreeProduct(tree: ProjectHarness): string | undefined {
 // names them and the commands that bring the others level: to the project's
 // pin when it has one, as config refreshes every tree to it; else natively to
 // the engine's release, and on a copied project to the newest tree's release.
-interface ProjectCommandFraming {
-  readonly tool: string;
-  readonly target: string;
-}
-
-function projectCommandFraming(projectDir: string): ProjectCommandFraming {
-  const fromProject = normalizeDriveLetter(resolve(projectDir)) === normalizeDriveLetter(resolve(process.cwd()));
-  return {
-    tool: aidlcInvocation() === "aidlc" || fromProject
-      ? aidlcInvocation()
-      : `bun ${quoteCommandArgument(join(projectDir, runtimeHarnessDir(), "tools", "aidlc.ts"))}`,
-    target: fromProject ? "" : ` --project-dir ${quoteCommandArgument(projectDir)}`,
-  };
-}
-
 export function harnessTreeVersionsCheck(projectDir: string): DoctorCheck | null {
   // Only directory names a harness can have reach the row and its commands.
   const trees = discoverProjectHarnesses(projectDir).filter((tree) =>
@@ -3671,7 +3656,13 @@ export function harnessTreeVersionsCheck(projectDir: string): DoctorCheck | null
   const behind = trees.filter((tree) => tree.frameworkVersion !== release);
   // The commands run through the tool running this check, which takes every
   // flag they use; an older tree's tool may not.
-  const { tool, target } = projectCommandFraming(projectDir);
+  const fromProject = normalizeDriveLetter(resolve(projectDir)) === normalizeDriveLetter(resolve(process.cwd()));
+  const target = fromProject ? "" : ` --project-dir ${quoteCommandArgument(projectDir)}`;
+  // The commands run through the tool running this check, which takes every
+  // flag they use; an older tree's tool may not.
+  const tool = native || fromProject
+    ? aidlcInvocation()
+    : `bun ${quoteCommandArgument(join(projectDir, runtimeHarnessDir(), "tools", "aidlc.ts"))}`;
   // Under a pin, config fetches the pinned release itself. Otherwise a copied
   // tree takes the newest release's file; one that no config run has recorded
   // the files of reads every file as unowned against another release, so it
