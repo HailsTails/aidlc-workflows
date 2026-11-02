@@ -155,6 +155,8 @@ import {
   scopeEnabledBySelection,
   copyRestoreNeedsRelease,
   installedFromCopy,
+  pluginsEnabled,
+  presentUnder,
   pluginSelectionArguments,
   readScopeSelectionRecord,
   RELEASE_AT_HAND_STEP,
@@ -356,6 +358,7 @@ type PreparedRefreshSource = {
   unproven: ReadonlySet<string>;
   deselectedFiles: ReadonlyMap<string, LeftOutFile>;
   coreLeftOut: boolean;
+  selectedPlugins: ReadonlySet<string> | null;
   selectionBanner: boolean;
   entries?: Baseline["entries"];
   notes: string[];
@@ -6203,7 +6206,7 @@ function prepareRefreshSource(input: {
     projectFlags === null &&
     diagnosticsOverride === undefined
   ) {
-    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), deselectedFiles: new Map(), coreLeftOut: false, selectionBanner: false, entries, notes };
+    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), deselectedFiles: new Map(), coreLeftOut: false, selectedPlugins: null, selectionBanner: false, entries, notes };
   }
   const cleanup = mkdtempSync(join(tmpdir(), "aidlc-init-refresh-"));
   try {
@@ -6361,6 +6364,7 @@ function prepareRefreshSource(input: {
   const unproven = new Set<string>();
   const deselectedFiles = new Map<string, LeftOutFile>();
   let coreLeftOut = false;
+  let selectedPlugins: ReadonlySet<string> | null = null;
   let selectionBanner = false;
   const configurationOwnershipClean = preserveUserProviderFields(
     projectDir,
@@ -6636,6 +6640,7 @@ function prepareRefreshSource(input: {
     process.env.AIDLC_AGENTS_DIR = join(stagedHarness, "agents");
     resetProjectionCaches();
     coreLeftOut = !isPluginEnabled("aidlc");
+    selectedPlugins = pluginsEnabled();
     for (const file of deselectedCoreScopeFiles()) {
       const rel = relative(root, file).replaceAll("\\", "/");
       const sourceFile = join(sourceRoot, rel);
@@ -6748,7 +6753,7 @@ function prepareRefreshSource(input: {
       }
     }
   }
-  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, deselectedFiles, coreLeftOut, selectionBanner, entries, notes };
+  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, deselectedFiles, coreLeftOut, selectedPlugins, selectionBanner, entries, notes };
   } catch (error) {
     rmSync(cleanup, { recursive: true, force: true });
     throw error;
@@ -9121,16 +9126,24 @@ interface SelectionRestore {
   readonly fetchesRelease: boolean;
 }
 
+function restoringSelection(
+  choices: ChoicesMutationContext | null,
+  prepared: PreparedRefreshSource,
+): readonly string[] | null {
+  if (choices && canonical(choices.previousPlugins) !== canonical(choices.nextPlugins)) return choices.previousPlugins;
+  if (!prepared.coreLeftOut || prepared.selectedPlugins === null) return null;
+  return [...new Set([...prepared.selectedPlugins, "aidlc"])].sort();
+}
+
 function selectionRestore(
-  previousPlugins: readonly string[] | null,
+  plugins: readonly string[] | null,
   actions: readonly PlannedAction[],
   record: ScopeSelectionRecord,
 ): SelectionRestore {
   const kept = new Set(actions.filter((action) => action.action === "preserve").map((action) => action.path));
-  const leftOutRestorable = (record.leftOutScopeFiles ?? []).some((rel) => !kept.has(rel)) || record.selectionBanner === true;
   return {
-    plugins: previousPlugins,
-    fetchesRelease: installedFromCopy() && selectsCorePlugin(previousPlugins) && leftOutRestorable,
+    plugins,
+    fetchesRelease: installedFromCopy() && selectsCorePlugin(plugins) && copyRestoreNeedsRelease(record, (rel) => kept.has(rel)),
   };
 }
 
@@ -11222,7 +11235,7 @@ function treesLeftBehindLines(
 
 // What a project choice changed, with the command that puts the earlier one
 // back when one command can say it exactly.
-function projectChangeLines(projectDir: string, context: ChoicesMutationContext): string[] {
+function projectChangeLines(projectDir: string, context: ChoicesMutationContext, undoFetchesRelease: boolean): string[] {
   const before = context.previous as ProjectChoicesRecord | null;
   const after = context.next as ProjectChoicesRecord | null;
   const pluginsChanged = canonical(context.previousPlugins) !== canonical(context.nextPlugins);
@@ -11245,6 +11258,7 @@ function projectChangeLines(projectDir: string, context: ChoicesMutationContext)
       undo = earlier ? [...undo, flag, earlier] : null;
     }
   }
+  if (undo && pluginsChanged && undoFetchesRelease) undo = [...undo, "--download"];
   if (!undo || !printableArgs(undo)) return [`Changed the project choices in ${file}.`];
   return [`Changed the project choices in ${file}. To undo: ${configInvocationFor(projectDir)} config project ${
     undo.map((arg) => quoteCommandArgument(arg)).join(" ")
@@ -11962,7 +11976,7 @@ export async function main(
           const previousMcp = normalizeProjectChoicesRecord(choicesContext?.previous)?.mcp;
           const mcpTarget = choicesContext?.mcpMode;
           const restoresCoreScopes = selectsCorePlugin(choicesContext.nextPlugins) &&
-            copyRestoreNeedsRelease(readScopeSelectionRecord(join(projectDir, harness.harnessDir, "tools", "data")), projectDir);
+            copyRestoreNeedsRelease(readScopeSelectionRecord(join(projectDir, harness.harnessDir, "tools", "data")), presentUnder(projectDir));
           if (
             !restoresCoreScopes &&
             ownFilesCoverChoices(
@@ -12282,7 +12296,7 @@ export async function main(
       retainBaseline,
     );
     const restore = selectionRestore(
-      choicesContext && canonical(choicesContext.previousPlugins) !== canonical(choicesContext.nextPlugins) ? choicesContext.previousPlugins : null,
+      restoringSelection(choicesContext, prepared),
       actions,
       { leftOutScopeFiles: [...leftOutScopeFiles], ...(prepared.selectionBanner ? { selectionBanner: true as const } : {}) },
     );
@@ -12843,7 +12857,7 @@ export async function main(
           item.action !== "preserve" && (item.path.startsWith(`${agentsDir}/`) || item.path === kiroCliSettings)
         ))
     );
-    if (choicesContext?.section === "project") changes.push(...projectChangeLines(projectDir, choicesContext));
+    if (choicesContext?.section === "project") changes.push(...projectChangeLines(projectDir, choicesContext, restore.fetchesRelease));
     const openLine = recordOnly && reachesWork && settingsMutation
       ? openWorkflowLine(
         projectDir,

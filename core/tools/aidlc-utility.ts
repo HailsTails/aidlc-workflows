@@ -260,6 +260,7 @@ import {
   installedScopeOwners,
   copyRestoreNeedsRelease,
   installedFromCopy,
+  presentUnder,
   pluginSelectionArguments,
   readScopeSelectionRecord,
   RELEASE_AT_HAND_STEP,
@@ -1405,20 +1406,26 @@ export function activeWorkflowPluginDependencies(
   return violations;
 }
 
-const SETTLES_SELECTION = "sets the default scope and start-up banner for this selection.";
+function settlesSelection(projectDir: string): string {
+  return runtimeHarnessName(projectDir, harnessDir()) === "claude"
+    ? "sets the default scope and start-up banner for this selection."
+    : "brings the install record in line with this selection.";
+}
 
 function finishCommand(names: readonly string[], fetchesRelease: boolean): string {
   return `${aidlcInvocation()} config ${pluginSelectionArguments(names, fetchesRelease)}`;
 }
 
-function finishCoreOffStep(names: readonly string[]): string {
-  return `Run \`${finishCommand(names, false)}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${SETTLES_SELECTION}`;
+function finishCoreOffStep(projectDir: string, names: readonly string[]): string {
+  return `Run \`${finishCommand(names, false)}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${settlesSelection(projectDir)}`;
 }
 
 function finishCoreOnStep(projectDir: string, names: readonly string[]): string {
   const record = readScopeSelectionRecord(resolveHarnessPath(["tools", "data"], { projectDir }));
-  if (!installedFromCopy() || !copyRestoreNeedsRelease(record, projectDir)) return `Run \`${finishCommand(names, false)}\` to finish: it ${SETTLES_SELECTION}`;
-  return `Run \`${finishCommand(names, true)}\` to finish: what your plugin selection left out can only come back from the release, so it fetches the release to put it back and ${SETTLES_SELECTION} ${RELEASE_AT_HAND_STEP}`;
+  if (!installedFromCopy() || !copyRestoreNeedsRelease(record, presentUnder(projectDir))) {
+    return `Run \`${finishCommand(names, false)}\` to finish: it ${settlesSelection(projectDir)}`;
+  }
+  return `Run \`${finishCommand(names, true)}\` to finish: what your plugin selection left out can only come back from the release, so it fetches the release to put it back and ${settlesSelection(projectDir)} ${RELEASE_AT_HAND_STEP}`;
 }
 
 function handleSelectPlugins(projectDir: string, positional: string[]): void {
@@ -1521,7 +1528,7 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
       }
       process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
       if (nameSet.has("aidlc") !== coreWasEnabled) {
-        process.stdout.write(`${coreWasEnabled ? finishCoreOffStep(names) : finishCoreOnStep(projectDir, names)}\n`);
+        process.stdout.write(`${coreWasEnabled ? finishCoreOffStep(projectDir, names) : finishCoreOnStep(projectDir, names)}\n`);
       }
     } catch (err) {
       resetSelectionSensitiveCaches();

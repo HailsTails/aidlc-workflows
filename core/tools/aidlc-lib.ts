@@ -35692,12 +35692,14 @@ export function readScopeSelectionRecord(dataDir: string): ScopeSelectionRecord 
   }
 }
 
-export function missingLeftOutScopeFiles(record: ScopeSelectionRecord, projectDir: string): string[] {
-  return (record.leftOutScopeFiles ?? []).filter((rel) => !existsSync(join(projectDir, rel))).sort();
+export type ProjectFilePresence = (rel: string) => boolean;
+
+export function presentUnder(projectDir: string): ProjectFilePresence {
+  return (rel) => existsSync(join(projectDir, rel));
 }
 
-export function copyRestoreNeedsRelease(record: ScopeSelectionRecord, projectDir: string): boolean {
-  return missingLeftOutScopeFiles(record, projectDir).length > 0 || record.selectionBanner === true;
+export function copyRestoreNeedsRelease(record: ScopeSelectionRecord, present: ProjectFilePresence): boolean {
+  return (record.leftOutScopeFiles ?? []).some((rel) => !present(rel)) || record.selectionBanner === true;
 }
 
 export function installedFromCopy(): boolean {

@@ -34,26 +34,28 @@ interface CommandResult {
 const temporary: string[] = [];
 let pluginBuilt: string;
 let codexPluginBuilt: string;
+let rinPluginBuilt: string;
 
 beforeAll(() => {
   const root = mkdtempSync(join(tmpdir(), "aidlc-plugin-only-scopes-"));
   temporary.push(root);
   pluginBuilt = buildPluginProjection(PLUGIN, "claude", join(root, "plugin", "claude"));
   codexPluginBuilt = buildPluginProjection(PLUGIN, "codex", join(root, "plugin", "codex"));
+  rinPluginBuilt = buildPluginProjection("rin", "claude", join(root, "rin", "claude"));
 }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
 afterAll(() => {
   for (const path of temporary) rmSync(path, { recursive: true, force: true });
 });
 
-function installedProject(): string {
+function installedProject(plugin: string = PLUGIN, built: string = pluginBuilt): string {
   const root = mkdtempSync(join(tmpdir(), "aidlc-plugin-only-project-"));
   temporary.push(root);
   const projectDir = composePluginFixture({
-    plugin: PLUGIN,
+    plugin,
     harness: "claude",
     projectDir: join(root, "project"),
-    pluginBuilt,
+    pluginBuilt: built,
   }).projectDir;
   const recorded = aidlc(projectDir, ["config", "--from", RELEASE, "--force", "--yes"]);
   expect(recorded.status, recorded.stdout + recorded.stderr).toBe(0);
@@ -204,6 +206,8 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(selected.stdout).toContain(
       "config project --plugins all --download --yes` puts them back. With the release files at hand, pass --from <release> instead of --download.",
     );
+    expect(selected.stdout).toContain("To undo: bun .claude/tools/aidlc.ts config project --reset --download --yes");
+    expect(selected.stdout).not.toContain("config project --reset --yes");
     const leftOut = shippedCoreScopeFiles().map((file) => `.claude/scopes/${file}`);
     expect(leftOutScopeRecord(projectDir)).toEqual(leftOut);
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
@@ -229,6 +233,24 @@ describe("a selection without the core plugin installs only the selected plugins
     const flagged = aidlc(projectDir, ["config", "flags", "--project", "--default-scope", PLUGIN_SCOPE, "--yes"]);
     expect(flagged.status, flagged.stdout + flagged.stderr).toBe(0);
     expect(leftOutScopeRecord(projectDir)).toEqual(leftOut);
+
+    const undone = aidlc(projectDir, ["config", "project", "--reset", "--from", RELEASE, "--yes"]);
+    expect(undone.status, undone.stdout + undone.stderr).toBe(0);
+    expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
+    expect(settings(projectDir).companyAnnouncements).toEqual(shippedSettings().companyAnnouncements);
+  });
+
+  test("a rin-only selection installs rin's scopes alone, starts workflows on rin-gates, and banners only rin's scopes", () => {
+    const projectDir = installedProject("rin", rinPluginBuilt);
+
+    selectPlugins(projectDir, "rin");
+
+    expect(installedScopeFiles(projectDir)).toEqual(readdirSync(join(REPO_ROOT, "plugins", "rin", "scopes")).filter((name) => name.endsWith(".md")).sort());
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe("rin-gates");
+    expect(resolvedDefaultScope(projectDir).stdout).toBe("scope=rin-gates\n");
+    const banner = settings(projectDir).companyAnnouncements.join("\n");
+    expect(banner).toContain("| rin-gates");
+    expect(banner).not.toContain("| classic");
   });
 
   test("keeps a core scope file someone changed, switched off, and still applies the selection", () => {
@@ -329,6 +351,18 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(existsSync(join(runner, "SKILL.md"))).toBe(true);
     expect(existsSync(sidecar)).toBe(true);
     expect(readdirSync(join(projectDir, ".codex", "scopes")).filter((name) => name.startsWith("aidlc-")).sort()).toEqual(shippedCoreScopeFiles());
+
+    const off = spawnSync(BUN, [join(projectDir, ".codex", "tools", "aidlc-utility.ts"), "select-plugins", PLUGIN], {
+      cwd: projectDir,
+      encoding: "utf-8",
+      timeout: remainingOperationTimeoutMs(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
+      env: { ...process.env, AIDLC_PROJECT_DIR: projectDir, AIDLC_HARNESS_DIR: ".codex" },
+    });
+    expect(off.status, `${off.stdout}${off.stderr}`).toBe(0);
+    expect(off.stdout).toContain(
+      `config project --plugins ${PLUGIN} --yes\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and brings the install record in line with this selection.`,
+    );
+    expect(off.stdout).not.toContain("start-up banner");
   });
 
   test("the step plugin select prints settles the default and record even when every left-out file was kept", () => {
@@ -384,7 +418,9 @@ describe("a selection without the core plugin installs only the selected plugins
 
     const off = utility(projectDir, ["select-plugins", PLUGIN]);
     expect(off.stdout).toContain(`config project --plugins ${PLUGIN} --yes\` to finish: it removes core's scope files`);
-    selectPlugins(projectDir, PLUGIN);
+    const finishedOff = selectPlugins(projectDir, PLUGIN);
+    expect(finishedOff.stdout).toContain(`config project --plugins aidlc,${PLUGIN} --download --yes\` puts them back.`);
+    expect(finishedOff.stdout).not.toContain("config project --plugins all");
     expect(installedScopeFiles(projectDir)).toEqual([`${PLUGIN_SCOPE}.md`]);
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
 
