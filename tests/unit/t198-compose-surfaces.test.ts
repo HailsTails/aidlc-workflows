@@ -156,6 +156,30 @@ describe("t198 cold-start compose surfaces -> composer dispatch", () => {
     expect(String(d.message)).toContain("nonblank `creationDescription`");
     expect(String(d.message)).toContain("derive it from the report's actual findings");
     expect(String(d.message)).toContain("Never approve a proposal that would continue into a scope-only creation");
+    expect(String(d.message)).toContain(
+      "compose a compact fix-and-ship grid - this often routes to the stock bugfix or security-patch scope rather than minting a new one.",
+    );
+  });
+
+  test("--report names no stock route when no enabled scope declares report_fix", () => {
+    proj = createTestProject();
+    const scopes = mkdtempSync(join(tmpdir(), "aidlc-t198-report-scopes-"));
+    try {
+      cpSync(join(AIDLC_SRC, "scopes"), scopes, { recursive: true });
+      for (const file of readdirSync(scopes)) {
+        const path = join(scopes, file);
+        writeFileSync(path, readFileSync(path, "utf-8").replace(/^report_fix: true\r?\n/m, ""));
+      }
+      const res = runOrchestrateNext(ORCH, proj, ["compose", "--report", "sonar.json"], {
+        cwd: proj,
+        env: { ...process.env, AIDLC_SCOPES_DIR: scopes },
+      });
+      const message = String(directiveOf(res.out).message);
+      expect(message).toContain("then compose a compact fix-and-ship grid.");
+      expect(message).not.toContain("often routes to the stock");
+    } finally {
+      rmSync(scopes, { recursive: true, force: true });
+    }
   });
 
 

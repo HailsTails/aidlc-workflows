@@ -258,7 +258,8 @@ import {
   loadStageGraphAll,
   loadScopeMetadata,
   installedScopeOwners,
-  scopeFilesToRestore,
+  missingLeftOutScopeFiles,
+  readScopeSelectionRecord,
   loadScopeMetadataAll,
   MERGE_SUCCEEDED_TAG_REGEX,
   migrateFlatLayout,
@@ -1407,9 +1408,9 @@ function finishCoreSelectionStep(projectDir: string, coreWasEnabled: boolean, na
   if (coreWasEnabled) {
     return `Run \`${command("")}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${settles}`;
   }
-  const removed = scopeFilesToRestore(projectDir, resolveHarnessPath(["tools", "data"], { projectDir }));
+  const removed = missingLeftOutScopeFiles(readScopeSelectionRecord(resolveHarnessPath(["tools", "data"], { projectDir })), projectDir);
   if (removed.length === 0) return `Run \`${command("")}\` to finish: it ${settles}`;
-  return `Run \`${command(" --download")}\` to finish: the core scope files your plugin selection removed are gone here, so it fetches the release to put them back and ${settles} With the release files at hand, pass --from <release> instead of --download.`;
+  return `Run \`${command(" --download")}\` to finish: the core scope files your plugin selection left out are gone here, so it fetches the release to put them back and ${settles} With the release files at hand, pass --from <release> instead of --download.`;
 }
 
 function handleSelectPlugins(projectDir: string, positional: string[]): void {

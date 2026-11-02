@@ -42,6 +42,7 @@ import {
   nearestStockScopes,
   validateGrid,
 } from "../../dist/claude/.claude/tools/aidlc-graph.ts";
+import { readScopeDirectory } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { AIDLC_SRC } from "../harness/fixtures.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -389,6 +390,17 @@ describe("t277 validate-grid --report keeps a code-findings report on a fix scop
       expect(report.body.advisories).toContain(
         "No enabled scope declares report_fix: true, so this code-findings report is ranked against every scope.",
       );
+    } finally {
+      rmSync(scopes, { recursive: true, force: true });
+    }
+  });
+
+  test("a scope whose report_fix is neither true nor false is refused by name", () => {
+    const scopes = scopesDeclaringReportFix([]);
+    try {
+      const bugfix = join(scopes, "aidlc-bugfix.md");
+      writeFileSync(bugfix, readFileSync(bugfix, "utf-8").replace(/^---\r?\n/, "---\nreport_fix: yes\n"));
+      expect(() => readScopeDirectory(scopes)).toThrow(`has invalid report_fix value "yes". Expected "true" or "false".`);
     } finally {
       rmSync(scopes, { recursive: true, force: true });
     }

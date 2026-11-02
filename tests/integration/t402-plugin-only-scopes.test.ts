@@ -199,6 +199,8 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
     expect(settings(projectDir).companyAnnouncements.join("\n")).toBe(banner);
     expect(refreshed.stdout).not.toContain("kept your companyAnnouncements");
+    const unchanged = aidlc(projectDir, ["config", "project", "--plugins", PLUGIN, "--yes"]);
+    expect(unchanged.stdout).toContain("project configuration unchanged");
   });
 
   test("keeps a core scope file someone changed, switched off, and still applies the selection", () => {
@@ -231,7 +233,12 @@ describe("a selection without the core plugin installs only the selected plugins
 
     const withoutRelease = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--yes"]);
     expect(withoutRelease.status).not.toBe(0);
-    expect(withoutRelease.stdout + withoutRelease.stderr).toContain("no longer has the core scope files its plugin selection removed");
+    expect(withoutRelease.stdout + withoutRelease.stderr).toContain("no longer has the core scope files its plugin selection left out");
+
+    const fromRelease = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--from", RELEASE, "--yes"]);
+    expect(fromRelease.status).toBe(4);
+    expect(fromRelease.stdout + fromRelease.stderr).toContain("config conflict(s): .claude/scopes/aidlc-classic.md (locally modified or unowned)");
+    expect(readFileSync(classic, "utf-8")).toContain("Our own note.");
   });
 
   test("keeps a file the person added inside a runner skill folder the selection leaves out", () => {
@@ -275,7 +282,7 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
 
     const on = utility(projectDir, ["select-plugins", `aidlc,${PLUGIN}`]);
-    expect(on.stdout).toContain(`config project --plugins aidlc,${PLUGIN} --download --yes\` to finish: the core scope files your plugin selection removed are gone here`);
+    expect(on.stdout).toContain(`config project --plugins aidlc,${PLUGIN} --download --yes\` to finish: the core scope files your plugin selection left out are gone here`);
     expect(on.stdout).toContain("pass --from <release> instead of --download.");
     const finishedOn = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--from", RELEASE, "--yes"]);
     expect(finishedOn.status, finishedOn.stdout + finishedOn.stderr).toBe(0);
@@ -327,7 +334,7 @@ describe("a selection without the core plugin installs only the selected plugins
     const withoutRelease = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--yes"]);
     expect(withoutRelease.status).not.toBe(0);
     expect(withoutRelease.stdout + withoutRelease.stderr).toContain(
-      "no longer has the core scope files its plugin selection removed",
+      "no longer has the core scope files its plugin selection left out",
     );
     expect(installedScopeFiles(projectDir)).toEqual([`${PLUGIN_SCOPE}.md`]);
 
@@ -414,6 +421,23 @@ describe("a selection without the core plugin installs only the selected plugins
     selectPlugins(projectDir, `aidlc,${PLUGIN}`);
 
     expect(existsSync(join(projectDir, ".claude", "skills", "aidlc-bugfix", "SKILL.md"))).toBe(true);
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(shippedSettings().env.AWS_AIDLC_DEFAULT_SCOPE);
+  });
+
+  test("a copied project whose kept core scope files the person deleted fetches the release to restore them", () => {
+    const root = mkdtempSync(join(tmpdir(), "aidlc-plugin-only-copy-deleted-"));
+    temporary.push(root);
+    const projectDir = composePluginFixture({ plugin: PLUGIN, harness: "claude", projectDir: join(root, "project"), pluginBuilt }).projectDir;
+    selectPlugins(projectDir, PLUGIN);
+    for (const file of shippedCoreScopeFiles()) rmSync(join(projectDir, ".claude", "scopes", file));
+
+    const withoutRelease = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--yes"]);
+    expect(withoutRelease.status).not.toBe(0);
+    expect(withoutRelease.stdout + withoutRelease.stderr).toContain("no longer has the core scope files its plugin selection left out");
+
+    const restored = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--from", RELEASE, "--yes"]);
+    expect(restored.status, restored.stdout + restored.stderr).toBe(0);
+    expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(shippedSettings().env.AWS_AIDLC_DEFAULT_SCOPE);
   });
 

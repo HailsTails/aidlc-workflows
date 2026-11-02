@@ -209,7 +209,7 @@ changed, or a runner skill whose runner-gen marker you removed, is kept and
 named, and so is any file you added inside a runner skill folder. Core's
 stage, agent and tool files stay installed, and the selection decides which
 stages run. Selecting `aidlc,rin` again restores core's scopes; a copied
-project fetches the release for the scope files the selection removed.
+project fetches the release for the scope files the selection left out.
 
 ## Delivery status
 

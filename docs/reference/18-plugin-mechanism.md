@@ -208,7 +208,7 @@ Two commands change the selection, at two depths:
   the marker stays and is named. Inside a removed folder, only the files the
   release or the install record put there go; a file the person added stays.
   The install record (`tools/data/aidlc-manifest.json`) lists the scope files
-  the selection removed as `leftOutScopeFiles`.
+  the selection leaves out, removed or kept, as `leftOutScopeFiles`.
   A copied project with no release record keeps its start-up banner too and
   says so. On Claude it writes the selection's default scope into
   `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up
@@ -224,7 +224,7 @@ Two commands change the selection, at two depths:
 - `aidlc engine plugin select <names>` (below) toggles what is enabled without
   the release, leaving every installed file in place. When it turns `aidlc`
   on or off it prints the `config project --plugins` command that finishes the
-  change, with `--download` when scope files the selection removed are gone
+  change, with `--download` when scope files the selection left out are gone
   (`--from <release>` uses release files at hand). That command applies the
   selection even though `plugin select` already recorded it: it reports
   "unchanged" only when core's scope files on disk already match the

@@ -35671,17 +35671,20 @@ export function coreOwnedScopeFiles(directory: ScopeDirectory, composed: Readonl
 
 export type ScopeSelectionRecord = { readonly leftOutScopeFiles?: readonly string[] };
 
-export function scopeFilesToRestore(projectDir: string, dataDir: string): string[] {
+export function readScopeSelectionRecord(dataDir: string): ScopeSelectionRecord {
   let manifest: unknown;
   try {
     manifest = JSON.parse(readFileSync(join(dataDir, "aidlc-manifest.json"), "utf-8"));
   } catch {
-    return [];
+    return {};
   }
-  if (typeof manifest !== "object" || manifest === null || !("leftOutScopeFiles" in manifest)) return [];
-  const recorded: unknown = manifest.leftOutScopeFiles;
-  if (!Array.isArray(recorded)) return [];
-  return recorded.filter((rel): rel is string => typeof rel === "string" && !existsSync(join(projectDir, rel))).sort();
+  if (typeof manifest !== "object" || manifest === null || !("schemaVersion" in manifest) || manifest.schemaVersion !== 1) return {};
+  if (!("leftOutScopeFiles" in manifest) || !Array.isArray(manifest.leftOutScopeFiles)) return {};
+  return { leftOutScopeFiles: manifest.leftOutScopeFiles.filter((rel): rel is string => typeof rel === "string") };
+}
+
+export function missingLeftOutScopeFiles(record: ScopeSelectionRecord, projectDir: string): string[] {
+  return (record.leftOutScopeFiles ?? []).filter((rel) => !existsSync(join(projectDir, rel))).sort();
 }
 
 export function deselectedCoreScopeFiles(): string[] {

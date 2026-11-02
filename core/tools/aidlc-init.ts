@@ -153,7 +153,8 @@ import {
   hasRunnerGenMarker,
   installedScopeOwners,
   scopeEnabledBySelection,
-  scopeFilesToRestore,
+  missingLeftOutScopeFiles,
+  readScopeSelectionRecord,
   type ScopeSelectionRecord,
   type SelectedDefaultScope,
   selectionAwareDefaultScope,
@@ -6988,12 +6989,10 @@ function selectsCorePlugin(selection: readonly string[] | null): boolean {
   return pluginEnabledBy(selection === null ? null : new Set(selection), "aidlc");
 }
 
-function leftOutScopeFilesToRestore(projectDir: string, harnessRoot: string): readonly string[] {
-  return scopeFilesToRestore(projectDir, join(harnessRoot, "tools", "data"));
-}
-
 function coreScopesMatchSelection(projectDir: string, harnessRoot: string, plugins: readonly string[] | null): boolean {
-  if (selectsCorePlugin(plugins)) return leftOutScopeFilesToRestore(projectDir, harnessRoot).length === 0;
+  if (selectsCorePlugin(plugins)) {
+    return missingLeftOutScopeFiles(readScopeSelectionRecord(join(harnessRoot, "tools", "data")), projectDir).length === 0;
+  }
   const composed = composedScopeRecordNames(join(projectDir, ...COMPOSED_SCOPES_SEGMENTS));
   return coreOwnedScopeFiles(readScopeDirectory(join(harnessRoot, "scopes")), composed).length === 0;
 }
@@ -7057,7 +7056,7 @@ function releaseNeedSentence(need: ReleaseNeed): string {
         ? `${dir} has no MCP server list for ${need.version}.`
         : `${dir} no longer has the MCP server list for ${need.version}.`;
     case "core-scopes":
-      return `${dir} no longer has the core scope files its plugin selection removed, so selecting aidlc needs the release files for ${need.version}.`;
+      return `${dir} no longer has the core scope files its plugin selection left out, so selecting aidlc needs the release files for ${need.version}.`;
     case "from":
       return `The files passed to --from are ${need.current}, but this project is pinned to ${need.version}.`;
   }
@@ -9061,13 +9060,13 @@ function planManagedFiles(
     actions.push({ path: rel, action: "remove", detail: NO_LONGER_SHIPPED });
   }
   for (const [rel, file] of prepared.deselectedFiles) {
+    if (file.provenance === "shipped") leftOutScopeFiles.add(rel);
     const target = join(projectDir, rel);
     if (!pathPresent(target)) continue;
     const plan = deselectedFilePlan(projectDir, target, file);
     if (plan === "removable") {
       operations.push({ kind: "remove", path: rel, expected: expected(target) });
       actions.push({ path: rel, action: "remove", detail: LEFT_OUT_BY_SELECTION });
-      if (file.provenance === "shipped") leftOutScopeFiles.add(rel);
       continue;
     }
     actions.push({ path: rel, action: "preserve", detail: KEPT_BY_SELECTION[plan] });
@@ -9075,7 +9074,7 @@ function planManagedFiles(
     if (plan === "changed" && installedHash !== undefined) nextHashes[rel] = installedHash;
   }
   for (const rel of prior?.leftOutScopeFiles ?? []) {
-    if (!shipped.has(rel) && !pathPresent(join(projectDir, rel))) leftOutScopeFiles.add(rel);
+    if (!shipped.has(rel)) leftOutScopeFiles.add(rel);
   }
 }
 
@@ -11939,7 +11938,7 @@ export async function main(
           const previousMcp = normalizeProjectChoicesRecord(choicesContext?.previous)?.mcp;
           const mcpTarget = choicesContext?.mcpMode;
           const restoresCoreScopes = selectsCorePlugin(choicesContext.nextPlugins) &&
-            leftOutScopeFilesToRestore(projectDir, join(projectDir, harness.harnessDir)).length > 0;
+            missingLeftOutScopeFiles(readScopeSelectionRecord(join(projectDir, harness.harnessDir, "tools", "data")), projectDir).length > 0;
           if (
             !restoresCoreScopes &&
             ownFilesCoverChoices(

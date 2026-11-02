@@ -725,7 +725,7 @@ this kind of work's usual setting. When the
 human has asked for a stricter value, keep theirs on every re-dispatch: the
 plan stays matched and creation applies it. The final `validate-grid --matched`
 run rejects only a value below the stock default. For `mode: "custom"` copy
-the validator's `custom_start.guard_policy`, the install's default scope's
+the validator's `custom_start.guard_policy`, the plugin selection's default scope's
 default (`classic`'s `off` in core), and keep it: a custom plan runs with the guards a person gets without
 composing, and the human raises the value on the gate row when they want a
 changed input to reopen an approval (keep theirs on every re-dispatch). When a
@@ -779,7 +779,7 @@ sentence `scopeSettingsRationale` naming what is off or capped and why this
 work does not need it. For `mode: "matched"` start from the stock scope's
 values (a missing ceremony line means `on`, a missing `review_cap` means
 `adversarial`). For `mode: "custom"` start from the validator's
-`custom_start.scope_settings`, the install's default scope's values, whichever stock
+`custom_start.scope_settings`, the plugin selection's default scope's values, whichever stock
 scope the plan runs on: a custom plan picks its own stages but runs the
 ceremony a person gets without composing (when the validator echoes no
 `custom_start`, start from `nearest_stock[0]`'s values). A matched proposal
