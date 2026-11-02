@@ -419,9 +419,12 @@ using the walker and the records described above, and they disagree with CI:
 - `engine` is `"rin-walker"` (the default when absent) or `"discipline-core"`.
   Any other value fails the stage gate rather than silently choosing one.
 - `baseRevision` is passed to core as `--base-revision`. Set it whenever
-  `discipline-exceptions.json` holds a file carve-out or an entry imported with
-  `provenance`; otherwise core reports `forfeiture-unmeasured` or
-  `import-unmeasured` and fails. Use a ref every worktree can resolve, such as
+  `discipline-exceptions.json` holds a file carve-out, an entry imported with
+  `provenance`, or a why-chain written before core's causal chain contract
+  (no `rootCheck` or `readback`); otherwise core reports `forfeiture-unmeasured`,
+  `import-unmeasured` or `legacy-chain-unmeasured` and fails. Set it before
+  refreshing core to a version with the causal contract (its `MIGRATING.md`
+  section 8). Use a ref every worktree can resolve, such as
   `origin/main`, not a local `main` that may lag.
 - Each `.constitution-carve-outs/cd-<id>.json` entry moves to
   `discipline-exceptions.json` as a `file-carve-out` with

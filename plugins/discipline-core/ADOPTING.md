@@ -32,13 +32,14 @@ git -C /tmp/discipline-core-source checkout <pinned-sha>
 
 The commands in this guide are POSIX shell; on Windows run them in Git Bash. On Windows, a clone without `-c core.longpaths=true` stops with `Filename too long` and leaves a half checkout that makes the `checkout` fail too; delete `/tmp/discipline-core-source` and clone again with the flag.
 
-Copy `package.json`, `README.md`, `core/`, every rule page, both mechanisms and the review methods, then remove the core's own tests:
+Copy `package.json`, `README.md`, `core/`, the why-chain contract page, every rule page, both mechanisms and the review methods, then remove the core's own tests:
 
 ```bash
 SRC=/tmp/discipline-core-source/plugins/discipline-core
 DEST=tools/discipline-core
-mkdir -p "$DEST"
+mkdir -p "$DEST/docs"
 cp "$SRC/package.json" "$SRC/README.md" "$DEST/"
+cp "$SRC/docs/why-chain-contract.md" "$DEST/docs/"
 cp -r "$SRC/core" "$SRC/rules" "$SRC/mechanisms" "$SRC/methods" "$DEST/"
 find "$DEST" -type d \( -name tests -o -name test-fixtures \) -prune -exec rm -rf {} +
 find "$DEST" -name '*.test.ts' -delete
@@ -213,11 +214,13 @@ Every entry needs a `reason` and a `whyChain` shaped like this, with exactly fiv
     { "why": "...", "because": "...", "evidence": "..." }
   ],
   "rootCause": "...",
+  "rootCheck": "...",
+  "readback": "...",
   "owner": "..."
 }
 ```
 
-Answers must be real: placeholders, and a root cause that only says the check was failing or there was no time, are refused as `invalidRecords`. `file` is an exact repository path.
+The chain runs cause to cause: each why asks why the answer before it is true, each answer cites evidence that can be checked again, the root names the fifth answer's cause and is checked against today, and the readback runs back from the root to the symptom with "therefore". [The why-chain contract](docs/why-chain-contract.md) has a worked example, the checks core runs, and what review still judges. A chain that breaks a check is refused as an `invalidRecords` entry. `file` is an exact repository path.
 
 Debt or authorisations already recorded by an earlier system, for example the old standalone route's `.constitution-carve-outs/`, can be imported with `provenance` instead of a `whyChain`, as [MIGRATING.md](MIGRATING.md#3-convert-the-old-records-into-exceptions) step 3 shows. Imported entries are checked against `--base-revision`: any entry you write or change yourself needs the full `whyChain`.
 
@@ -248,13 +251,13 @@ Each rule page names its review lens, a method under [methods/lenses/](methods/R
 2. Pin the tree under review to a commit and review that.
 3. Run each lens on its own, one concern at a time, without seeing the other lenses' findings. Follow the lens file: load the rule pages that name it, inspect the change as it says, and report findings in its output shape, citing the clause address. A lens covers mechanical rules too, beyond what their checks flag.
 4. Run [defended-on-intent](methods/lenses/defended-on-intent.md) last, over the rule text and the other lenses' findings, to catch changes that meet a rule's letter but defeat its intent.
-5. Fix each finding. A deliberate departure from a judgement rule is recorded where the review decision is kept, with the same five-step `whyChain` as step 7.
+5. Fix each finding. A deliberate departure from a judgement rule is recorded where the review decision is kept, with a `whyChain` in the same shape as step 7.
 
 To use an agent, give it the lens file, the rule pages it names, the change and the pinned commit, and ask it to follow the lens exactly. A single reviewer covering every concern at once misses what separate lenses catch.
 
 ## 10. Update and remove
 
-To update, repeat step 2 on a branch with a newer pinned SHA, compare the copied rule pages with the old ones, re-run `project-command` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages.
+To update, repeat step 2 on a branch with a newer pinned SHA, compare the copied rule pages with the old ones, re-run `project-command` if any clause is `eslint`, run the check, and commit with a message naming the new SHA. Rule text can change between pins, so read the changed pages. Before updating to a pin that has the causal why-chain contract, follow [MIGRATING.md section 8](MIGRATING.md#8-moving-to-causal-why-chains): pass `--base-revision` first, or the update's check reports `legacy-chain-unmeasured`.
 
 To remove, delete `tools/discipline-core/`, `disciplines.json`, `discipline-exceptions.json` and, with `eslint` clauses, `disciplines.eslint.mjs` and its spread in the flat config, and take the check out of the validation script.
 

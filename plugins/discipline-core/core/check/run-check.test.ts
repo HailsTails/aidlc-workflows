@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { requiredEntry } from "../../tests/required-entry.ts";
+import { CAUSAL_WHY_CHAIN, LEGACY_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 import type { LoadedRunner } from "../mechanism-port/runner-module-schema.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { BaseFileText, GitFailure, GitPort } from "../platform-ports/git-port.ts";
@@ -163,18 +164,6 @@ const SELECTION_OF_TWO_CLAUSES = JSON.stringify({
   clauses: { "CD-14#class-syntax": "audit", "CD-14#abstract-syntax": "audit" },
 });
 
-const WHY = {
-  why: "why is the exception taken",
-  because: "the matcher cannot express the tracker id",
-  evidence: "tools/why-chain-check.ts:9",
-};
-
-const CHAIN = {
-  whys: [WHY, WHY, WHY, WHY, WHY],
-  rootCause: "the audit's matcher predates the tracker id format",
-  owner: "capture 01a0b421",
-};
-
 const EXCEPTIONS_WITH_FILE_CARVE_OUT = JSON.stringify({
   version: 1,
   exceptions: [
@@ -183,7 +172,7 @@ const EXCEPTIONS_WITH_FILE_CARVE_OUT = JSON.stringify({
       clause: "CD-14#class-syntax",
       file: "src/legacy.ts",
       reason: "legacy class awaiting paydown",
-      whyChain: CHAIN,
+      whyChain: CAUSAL_WHY_CHAIN,
     },
   ],
 });
@@ -196,7 +185,20 @@ const EXCEPTIONS_WITH_FILE_CARVE_OUT_ON_GONE = JSON.stringify({
       clause: "CD-14#class-syntax",
       file: "src/gone.ts",
       reason: "legacy class awaiting paydown",
-      whyChain: CHAIN,
+      whyChain: CAUSAL_WHY_CHAIN,
+    },
+  ],
+});
+
+const EXCEPTIONS_WITH_LEGACY_CHAIN = JSON.stringify({
+  version: 1,
+  exceptions: [
+    {
+      kind: "authorised-location",
+      clause: "CD-14#class-syntax",
+      file: "src/factory.ts",
+      reason: "the wrapping factory for the library",
+      whyChain: LEGACY_WHY_CHAIN,
     },
   ],
 });
@@ -474,6 +476,60 @@ describe("runCheck forfeiture measurement", () => {
     ).resolves.toMatchObject({
       outcome: "ok",
       value: { invalidRecords: [{ index: 0, problem: { kind: "import-unverified" } }], unmeasured: [] },
+    });
+  });
+
+  it("reports legacy-chain-unmeasured when no base revision is given and an entry holds a legacy chain", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          baseRevision: undefined,
+          fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_LEGACY_CHAIN }) }),
+        }),
+      ),
+    ).resolves.toMatchObject({ outcome: "ok", value: { invalidRecords: [], unmeasured: [{ kind: "legacy-chain-unmeasured" }] } });
+  });
+
+  it("reports legacy-chain-unmeasured when git cannot read the base revision and an entry holds a legacy chain", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_LEGACY_CHAIN }) }),
+          git: gitReporting({
+            trackedPaths: { outcome: "ok", value: TRACKED_PATHS },
+            changedSince: { outcome: "ok", value: [] },
+            textInBase: { outcome: "failed", error: { kind: "git-failed", command: "git show", detail: "bad revision 'main'" } },
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({ outcome: "ok", value: { unmeasured: [{ kind: "legacy-chain-unmeasured" }] } });
+  });
+
+  it("accepts a legacy chain the base revision holds unchanged and reports nothing unmeasured", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_LEGACY_CHAIN }) }),
+          git: gitReporting({
+            trackedPaths: { outcome: "ok", value: TRACKED_PATHS },
+            changedSince: { outcome: "ok", value: [] },
+            textInBase: presentAtBase({ text: EXCEPTIONS_WITH_LEGACY_CHAIN }),
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({ outcome: "ok", value: { invalidRecords: [], unmeasured: [] } });
+  });
+
+  it("refuses a legacy chain the base revision does not hold", async () => {
+    await expect(
+      runCheck(
+        checkRequest({
+          fileText: fileTextOver({ ...INSTALL, [EXCEPTIONS_PATH]: presentFile({ text: EXCEPTIONS_WITH_LEGACY_CHAIN }) }),
+        }),
+      ),
+    ).resolves.toMatchObject({
+      outcome: "ok",
+      value: { invalidRecords: [{ index: 0, problem: { kind: "why-chain-refused" } }], unmeasured: [] },
     });
   });
 

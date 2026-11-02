@@ -9,33 +9,35 @@
       "whyChain": {
         "whys": [
           {
-            "why": "Why does src/clock.ts call Date.now()?",
-            "because": "it is the adapter that turns the platform clock into the Clock port",
-            "evidence": "src/clock.ts createSystemClock"
+            "why": "Why does src/legacy.ts still hold an any cast and a for loop?",
+            "because": "It predates the disciplines and has not been edited since they were adopted.",
+            "evidence": "src/legacy.ts:1"
           },
           {
-            "why": "Why must some file read the platform clock?",
-            "because": "basket ages are measured against real elapsed time in production",
-            "evidence": "src/basket.ts basketAge"
+            "why": "Why has src/legacy.ts not been edited since the disciplines were adopted?",
+            "because": "No change has needed it: its two helpers are called only by the yearly stock report.",
+            "evidence": "git grep -n parsed src: 1 caller"
           },
           {
-            "why": "Why not read the clock where the age is measured?",
-            "because": "domain code takes a Clock so tests can pin the time",
-            "evidence": "src/basket.test.ts clockAt"
+            "why": "Why are its helpers called only by the yearly stock report?",
+            "because": "The stock report was the first feature built, and newer features were written against the typed parser instead.",
+            "evidence": "docs/history.md:4"
           },
           {
-            "why": "Why does one adapter satisfy CD-17?",
-            "because": "CD-17 confines time reads to the clock boundary, and this file is that boundary",
-            "evidence": "rules/CD-17/README.md"
+            "why": "Why were newer features written against the typed parser instead?",
+            "because": "The typed parser arrived with the disciplines' adoption, and paying down old callers was queued, not done in the same change.",
+            "evidence": "record 261002, queue entry 3"
           },
           {
-            "why": "Why record it rather than leave the finding?",
-            "because": "an unrecorded finding fails the check, and the boundary is intentional",
-            "evidence": "discipline-exceptions.json"
+            "why": "Why was paying down the old callers queued instead of done in the adoption change?",
+            "because": "The adoption's owner chose to carve out existing debt and pay it on touch, so adoption could land in one review.",
+            "evidence": "record 261002, decision 2"
           }
         ],
-        "rootCause": "the platform clock has to be read somewhere, and the adapter is the designated place",
-        "owner": "basket team"
+        "rootCause": "The team decided at adoption to carve out existing debt and pay it when the file is next touched.",
+        "rootCheck": "record 261002 decision 2 still sets pay-on-touch for adoption debt, and src/legacy.ts:1 is unchanged.",
+        "readback": "Adoption debt is paid on touch, therefore the old callers were queued, therefore src/legacy.ts was never edited, therefore src/legacy.ts still holds an any cast and a for loop.",
+        "owner": "adoption owner"
       }
     },
     {
@@ -46,33 +48,35 @@
       "whyChain": {
         "whys": [
           {
-            "why": "Why does src/clock.ts call Date.now()?",
-            "because": "it is the adapter that turns the platform clock into the Clock port",
-            "evidence": "src/clock.ts createSystemClock"
+            "why": "Why does src/legacy.ts still hold an any cast and a for loop?",
+            "because": "It predates the disciplines and has not been edited since they were adopted.",
+            "evidence": "src/legacy.ts:1"
           },
           {
-            "why": "Why must some file read the platform clock?",
-            "because": "basket ages are measured against real elapsed time in production",
-            "evidence": "src/basket.ts basketAge"
+            "why": "Why has src/legacy.ts not been edited since the disciplines were adopted?",
+            "because": "No change has needed it: its two helpers are called only by the yearly stock report.",
+            "evidence": "git grep -n parsed src: 1 caller"
           },
           {
-            "why": "Why not read the clock where the age is measured?",
-            "because": "domain code takes a Clock so tests can pin the time",
-            "evidence": "src/basket.test.ts clockAt"
+            "why": "Why are its helpers called only by the yearly stock report?",
+            "because": "The stock report was the first feature built, and newer features were written against the typed parser instead.",
+            "evidence": "docs/history.md:4"
           },
           {
-            "why": "Why does one adapter satisfy CD-17?",
-            "because": "CD-17 confines time reads to the clock boundary, and this file is that boundary",
-            "evidence": "rules/CD-17/README.md"
+            "why": "Why were newer features written against the typed parser instead?",
+            "because": "The typed parser arrived with the disciplines' adoption, and paying down old callers was queued, not done in the same change.",
+            "evidence": "record 261002, queue entry 3"
           },
           {
-            "why": "Why record it rather than leave the finding?",
-            "because": "an unrecorded finding fails the check, and the boundary is intentional",
-            "evidence": "discipline-exceptions.json"
+            "why": "Why was paying down the old callers queued instead of done in the adoption change?",
+            "because": "The adoption's owner chose to carve out existing debt and pay it on touch, so adoption could land in one review.",
+            "evidence": "record 261002, decision 2"
           }
         ],
-        "rootCause": "the platform clock has to be read somewhere, and the adapter is the designated place",
-        "owner": "basket team"
+        "rootCause": "The team decided at adoption to carve out existing debt and pay it when the file is next touched.",
+        "rootCheck": "record 261002 decision 2 still sets pay-on-touch for adoption debt, and src/legacy.ts:1 is unchanged.",
+        "readback": "Adoption debt is paid on touch, therefore the old callers were queued, therefore src/legacy.ts was never edited, therefore src/legacy.ts still holds an any cast and a for loop.",
+        "owner": "adoption owner"
       }
     },
     {
@@ -83,33 +87,35 @@
       "whyChain": {
         "whys": [
           {
-            "why": "Why does src/clock.ts call Date.now()?",
-            "because": "it is the adapter that turns the platform clock into the Clock port",
-            "evidence": "src/clock.ts createSystemClock"
+            "why": "Why does src/legacy.ts still hold an any cast and a for loop?",
+            "because": "It predates the disciplines and has not been edited since they were adopted.",
+            "evidence": "src/legacy.ts:1"
           },
           {
-            "why": "Why must some file read the platform clock?",
-            "because": "basket ages are measured against real elapsed time in production",
-            "evidence": "src/basket.ts basketAge"
+            "why": "Why has src/legacy.ts not been edited since the disciplines were adopted?",
+            "because": "No change has needed it: its two helpers are called only by the yearly stock report.",
+            "evidence": "git grep -n parsed src: 1 caller"
           },
           {
-            "why": "Why not read the clock where the age is measured?",
-            "because": "domain code takes a Clock so tests can pin the time",
-            "evidence": "src/basket.test.ts clockAt"
+            "why": "Why are its helpers called only by the yearly stock report?",
+            "because": "The stock report was the first feature built, and newer features were written against the typed parser instead.",
+            "evidence": "docs/history.md:4"
           },
           {
-            "why": "Why does one adapter satisfy CD-17?",
-            "because": "CD-17 confines time reads to the clock boundary, and this file is that boundary",
-            "evidence": "rules/CD-17/README.md"
+            "why": "Why were newer features written against the typed parser instead?",
+            "because": "The typed parser arrived with the disciplines' adoption, and paying down old callers was queued, not done in the same change.",
+            "evidence": "record 261002, queue entry 3"
           },
           {
-            "why": "Why record it rather than leave the finding?",
-            "because": "an unrecorded finding fails the check, and the boundary is intentional",
-            "evidence": "discipline-exceptions.json"
+            "why": "Why was paying down the old callers queued instead of done in the adoption change?",
+            "because": "The adoption's owner chose to carve out existing debt and pay it on touch, so adoption could land in one review.",
+            "evidence": "record 261002, decision 2"
           }
         ],
-        "rootCause": "the platform clock has to be read somewhere, and the adapter is the designated place",
-        "owner": "basket team"
+        "rootCause": "The team decided at adoption to carve out existing debt and pay it when the file is next touched.",
+        "rootCheck": "record 261002 decision 2 still sets pay-on-touch for adoption debt, and src/legacy.ts:1 is unchanged.",
+        "readback": "Adoption debt is paid on touch, therefore the old callers were queued, therefore src/legacy.ts was never edited, therefore src/legacy.ts still holds an any cast and a for loop.",
+        "owner": "adoption owner"
       }
     }
   ]

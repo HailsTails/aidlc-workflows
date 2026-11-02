@@ -81,6 +81,21 @@ describe("the contract's documented TABLE shape is disposed", () => {
     expect(blockingFindingsIn([row])).toEqual([]);
   });
 
+  test("a row in the causal contract's shape, with a fifth why, root check and readback, is disposed", () => {
+    const causalChain = [
+      "1. Why is the cast here? — the port returns unknown (port.ts:12).",
+      "<br> 2. Why does the port return unknown? — the upstream SDK types its payload as unknown (sdk.ts:8).",
+      "<br> 3. Why does the SDK type its payload as unknown? — its schema is generated at runtime (sdk.ts:40).",
+      "<br> 4. Why is the schema generated at runtime? — the vendor publishes no static spec (PR #906).",
+      "<br> 5. Why does the vendor publish no static spec? — its API is still in beta (vendor changelog 2026-09).",
+      "<br> root cause: the vendor's beta API has no static spec. owner: capture 01a0b421 (record 01a0b421).",
+      "<br> root check: sdk.ts:40 still builds the schema at runtime today",
+      "<br> readback: the vendor's API is in beta, therefore the SDK types its payload as unknown, therefore the cast is here.",
+    ].join(" ");
+    const row = `| rin-pr-evades: cast at a.ts:12 | defer(ack:Operator 2026-11-02) | ${causalChain} |`;
+    expect(blockingFindingsIn([row])).toEqual([]);
+  });
+
   test("a backticked disposition token in the table is disposed", () => {
     const row = `| rin-pr-evades: cast at a.ts:12 | \`defer(ack:Operator 2026-09-18)\` | ${COLUMN_CHAIN} |`;
     expect(blockingFindingsIn([row])).toEqual([]);
