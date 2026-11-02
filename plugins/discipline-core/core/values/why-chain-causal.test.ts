@@ -390,7 +390,7 @@ describe("whyChainSchema refuses a root that is not checked against today", () =
   });
 });
 
-describe("whyChainSchema refuses a readback that does not run from root to symptom", () => {
+describe("whyChainSchema refuses a readback that does not name the root and the symptom with therefore", () => {
   it.each([
     ["no readback", (({ readback: _, ...rest }) => rest)(CAUSAL_WHY_CHAIN)],
     [

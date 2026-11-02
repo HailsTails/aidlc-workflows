@@ -146,7 +146,8 @@ finding stays live and a READY over it is refused with the same message an
 evidence-free disposition gets. On this surface the predicate checks rin's own
 R7 floor, which is weaker than the contract's: five numbered steps, whys 1 to 4
 each answered with a parenthesised citation, a root cause that is not a symptom
-("the gate was failing", "no time", "out of scope"), and an owner. Step 5 may be
+("the gate was failing", "no time", "out of scope"), and an owner with its own
+parenthesised citation. Step 5 may be
 the root cause itself, so a row with four whys still disposes, and why 5's
 evidence is not checked. None of the contract's mechanical checks run on this
 surface until rin runs the contract here
