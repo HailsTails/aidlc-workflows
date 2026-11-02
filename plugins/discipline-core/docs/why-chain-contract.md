@@ -70,7 +70,7 @@ A chain with neither `rootCheck` nor `readback` is a legacy chain, written befor
 - **Unchanged since the base revision:** judged by the earlier floor (check 1 only), and accepted when it passes. Reordering keys inside the chain counts as an edit.
 - **New or edited since the base revision:** judged by this contract and refused until it is rewritten. The refusal says so.
 - **No base revision, or git cannot read the base:** the record is judged by the earlier floor and accepted when it passes, and the run reports `legacy-chain-unmeasured`, which fails the verdict. Pass `--base-revision`, or rewrite every legacy chain.
-- **A base whose `discipline-exceptions.json` does not parse:** the base holds no entries, so every legacy chain counts as new and is refused, the same way imported records are.
+- **A base whose `discipline-exceptions.json` does not parse:** the base holds no entries, so every legacy chain counts as new and is refused.
 - **The `project` command** reads no base revision. It projects legacy chains as it always did, and reports nothing about them.
 
 This grace period has no end date. A legacy chain stays accepted until its entry is touched, so a repository that wants every chain causal rewrites them on purpose. Section 8 of `MIGRATING.md` in the discipline-core source gives the steps.

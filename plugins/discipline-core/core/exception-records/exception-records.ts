@@ -356,6 +356,31 @@ const selectedClauseOf = (request: {
   return { outcome: "ok", value: { clause, mechanism: selected.mechanism } };
 };
 
+const fileRecordOf = (request: {
+  readonly evidence: Unjudged<AuthorisedLocationEntry> | Unjudged<FileCarveOutEntry>;
+  readonly entry: StructuralExceptionEntry;
+  readonly clause: ClauseAddress;
+  readonly mechanism: MechanismId;
+  readonly file: RepoPath;
+  readonly baseline: ExceptionBaseline;
+}): Result<ExceptionRecord, EntryProblem> => {
+  const { evidence, entry, clause, mechanism, file, baseline } = request;
+  if (evidence.whyChain === undefined) {
+    return verifiedImport({
+      record: { ...evidence, clause, mechanism, file },
+      entry,
+      identity: { kind: evidence.kind, clause: evidence.clause, file },
+      discipline: clause.discipline,
+      provenance: evidence.provenance,
+      baseline,
+    });
+  }
+  const whyChain = judgedWhyChain({ whyChain: evidence.whyChain, entry, baseline });
+  return whyChain.outcome === "failed"
+    ? whyChain
+    : { outcome: "ok", value: { ...evidence, whyChain: whyChain.value, clause, mechanism, file } };
+};
+
 const parsedRecord = (request: {
   readonly entry: StructuralExceptionEntry;
   readonly selection: Selection;
@@ -374,24 +399,9 @@ const parsedRecord = (request: {
         return file;
       }
       const evidence = authorisedLocationSchema.safeParse(entry);
-      if (!evidence.success) {
-        return { outcome: "failed", error: { kind: "evidence-refused", detail: z.prettifyError(evidence.error) } };
-      }
-      if (evidence.data.whyChain === undefined) {
-        const record: ExceptionRecord = { ...evidence.data, clause, mechanism, file: file.value };
-        return verifiedImport({
-          record,
-          entry,
-          identity: { kind: entry.kind, clause: entry.clause, file: file.value },
-          discipline: clause.discipline,
-          provenance: evidence.data.provenance,
-          baseline: request.baseline,
-        });
-      }
-      const whyChain = judgedWhyChain({ whyChain: evidence.data.whyChain, entry, baseline: request.baseline });
-      return whyChain.outcome === "failed"
-        ? whyChain
-        : { outcome: "ok", value: { ...evidence.data, whyChain: whyChain.value, clause, mechanism, file: file.value } };
+      return evidence.success
+        ? fileRecordOf({ evidence: evidence.data, entry, clause, mechanism, file: file.value, baseline: request.baseline })
+        : { outcome: "failed", error: { kind: "evidence-refused", detail: z.prettifyError(evidence.error) } };
     }
     case "file-carve-out": {
       const file = recordedFile({ file: entry.file });
@@ -399,24 +409,9 @@ const parsedRecord = (request: {
         return file;
       }
       const evidence = fileCarveOutSchema.safeParse(entry);
-      if (!evidence.success) {
-        return { outcome: "failed", error: { kind: "evidence-refused", detail: z.prettifyError(evidence.error) } };
-      }
-      if (evidence.data.whyChain === undefined) {
-        const record: ExceptionRecord = { ...evidence.data, clause, mechanism, file: file.value };
-        return verifiedImport({
-          record,
-          entry,
-          identity: { kind: entry.kind, clause: entry.clause, file: file.value },
-          discipline: clause.discipline,
-          provenance: evidence.data.provenance,
-          baseline: request.baseline,
-        });
-      }
-      const whyChain = judgedWhyChain({ whyChain: evidence.data.whyChain, entry, baseline: request.baseline });
-      return whyChain.outcome === "failed"
-        ? whyChain
-        : { outcome: "ok", value: { ...evidence.data, whyChain: whyChain.value, clause, mechanism, file: file.value } };
+      return evidence.success
+        ? fileRecordOf({ evidence: evidence.data, entry, clause, mechanism, file: file.value, baseline: request.baseline })
+        : { outcome: "failed", error: { kind: "evidence-refused", detail: z.prettifyError(evidence.error) } };
     }
     case "clause-wide-carve-out": {
       const whyChain = judgedWhyChain({ whyChain: entry.whyChain, entry, baseline: request.baseline });
