@@ -192,23 +192,24 @@ enabled, preserving existing installs and keeping shipped core byte-identical.
 When it is present, the list is the enabled set. `aidlc` is the implicit core
 plugin; omitting it disables core stages/scopes/runners. The three
 Initialization stages are the exception: bootstrap has no plugin identity, so
-those stages are always enabled for every enabled scope. A scope saved with
-`scope-save` (a composed scope with a record under `aidlc/scopes/`) belongs to
-the project, so no selection disables it.
+those stages are always enabled for every enabled scope.
 
 Two commands change the selection, at two depths:
 
 - `aidlc config project --plugins <names>` records the selection and refreshes
   the install from the release. With `aidlc` left out, that refresh removes
-  the scope files core ships (`<harness-dir>/scopes/aidlc-*.md`, never a saved
-  scope), and on Claude it writes the selection's default scope into
+  the scope files core ships (`<harness-dir>/scopes/aidlc-*.md`) that still
+  hold the release's bytes; a file someone changed, a scope saved with
+  `scope-save`, or a file no release record shows AI-DLC shipped stays, and
+  the refresh names it. On Claude it writes the selection's default scope into
   `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up
   banner's stage and scope tables with the enabled scopes. Every later refresh
   keeps it that way. Selecting `aidlc` again restores the files, `classic`,
-  and the stock banner; a copied project with no release installed downloads
-  the release for that. A default scope or banner the person set themselves
-  stays theirs, unless it names a scope the selection no longer enables, in
-  which case the refresh replaces it and says so in one line.
+  and the stock banner; a copied project whose core scope files are gone
+  downloads the release for that. A default scope or banner the person set
+  themselves stays theirs; when that default names a scope the selection does
+  not enable, the refresh says so in one line and workflows start on the
+  selection's default until the person changes it.
 - `aidlc engine plugin select <names>` (below) toggles what is enabled without
   the release, leaving every installed file in place. When it turns `aidlc`
   on or off it prints the `config project --plugins` command that finishes the

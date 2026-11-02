@@ -361,7 +361,9 @@ projection remains deferred (doc 18 §9 Status).
   Set `freeform_default: true` to nominate a plugin scope as the fallback when
   the core `classic` default is disabled; at most one enabled scope across
   the selected core/plugin set may claim it, and graph compilation rejects an
-  ambiguous set. Membership for plugin-authored stages is their `scopes:`
+  ambiguous set. Set `report_fix: true` on a plugin scope meant for fixing
+  code findings, so `compose --report` can land a report on it when core is
+  not selected. Membership for plugin-authored stages is their `scopes:`
   frontmatter list; a contribution's `adds.scopes` (§3) adds YOUR scope to an
   existing core stage. See [Scopes](04-scopes.md).
 

@@ -1529,6 +1529,13 @@ export function subgraphForScope(scope: string): GraphStage[] {
     .sort((a, b) => numericStageOrder(a.number, b.number));
 }
 
+export function reportFixScopes(): string[] {
+  return Object.values(loadScopeMetadata())
+    .filter((meta) => meta.reportFix === true)
+    .map((meta) => meta.name)
+    .sort();
+}
+
 /** Rank every graph/plugin-authored stock scope by grid distance from the given
  *  EXECUTE/SKIP grid: `{scope, diff, differs}` sorted by diff then name.
  *  Composer-authored entries appended to scope-grid.json are deliberately
@@ -1537,13 +1544,6 @@ export function subgraphForScope(scope: string): GraphStage[] {
  *  overlap. Shared by `ars` (against the complete mechanical screen grid) and
  *  `validate-grid` (against the composer's proposal); only the latter is a
  *  front/report stock-match authority. */
-export function reportFixScopes(): string[] {
-  return Object.values(loadScopeMetadata())
-    .filter((meta) => meta.reportFix === true)
-    .map((meta) => meta.name)
-    .sort();
-}
-
 export function nearestStockScopes(
   grid: Record<string, "EXECUTE" | "SKIP">
 ): Array<{ scope: string; diff: number; differs: string[] }> {

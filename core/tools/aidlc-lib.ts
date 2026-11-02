@@ -35425,8 +35425,7 @@ interface ScopeMetadata {
 }
 
 let _scopeMetadata: Record<string, ScopeMetadata> | null = null;
-let _scopeMetadataAll: Record<string, ScopeMetadata> | null = null;
-let _scopeFileByName: ReadonlyMap<string, string> = new Map();
+let _scopeDirectory: ScopeDirectory | null = null;
 
 type ScopeGridForMapping = Record<string, { stages: Record<string, "EXECUTE" | "SKIP"> }>;
 
@@ -35480,12 +35479,13 @@ export function scopeArg(scope: string): string {
   return shellArg(scope);
 }
 
+function installedScopeDirectory(): ScopeDirectory {
+  _scopeDirectory ??= readScopeDirectory(scopesDir());
+  return _scopeDirectory;
+}
+
 export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
-  if (_scopeMetadataAll !== null) return _scopeMetadataAll;
-  const directory = readScopeDirectory(scopesDir());
-  _scopeMetadataAll = directory.metadata;
-  _scopeFileByName = directory.files;
-  return directory.metadata;
+  return installedScopeDirectory().metadata;
 }
 
 export interface ScopeDirectory {
@@ -35565,7 +35565,15 @@ export function readScopeDirectory(dir: string): ScopeDirectory {
       if (existingCode === "true") meta.existingCode = true;
     }
     if (scalarField(fm, "freeform_default") === "true") meta.freeformDefault = true;
-    if (scalarField(fm, "report_fix") === "true") meta.reportFix = true;
+    const reportFix = scalarField(fm, "report_fix");
+    if (reportFix) {
+      if (reportFix !== "true" && reportFix !== "false") {
+        throw new Error(
+          `Scope file ${filePath} has invalid report_fix value "${reportFix}". Expected "true" or "false".`
+        );
+      }
+      if (reportFix === "true") meta.reportFix = true;
+    }
     const reviewCap = scalarField(fm, "review_cap");
     if (reviewCap) {
       if (
@@ -35644,11 +35652,10 @@ export function composedScopeNames(directory: string = composedScopesDir()): Rea
 }
 
 export function scopeEnabledBySelection(
-  scope: { readonly name: string; readonly plugin?: string },
+  scope: { readonly plugin?: string },
   selected: ReadonlySet<string> | null,
-  composed: ReadonlySet<string>,
 ): boolean {
-  return composed.has(scope.name) || pluginEnabledBy(selected, scopeOwner(scope));
+  return pluginEnabledBy(selected, scopeOwner(scope));
 }
 
 export function installedScopeOwners(): ReadonlyMap<string, string> {
@@ -35663,12 +35670,12 @@ export function installedScopeOwners(): ReadonlyMap<string, string> {
 }
 
 export function deselectedCoreScopeFiles(): string[] {
-  const all = loadScopeMetadataAll();
   if (isPluginEnabled("aidlc")) return [];
+  const { metadata, files } = installedScopeDirectory();
   const composed = composedScopeNames();
-  return Object.values(all)
+  return Object.values(metadata)
     .filter((meta) => scopeOwner(meta) === "aidlc" && !composed.has(meta.name))
-    .flatMap((meta) => _scopeFileByName.get(meta.name) ?? []);
+    .flatMap((meta) => files.get(meta.name) ?? []);
 }
 
 // --- Review-class resolution (stage-protocol-reviewer §12a) ---
@@ -35721,10 +35728,9 @@ export function loadScopeMetadata(): Record<string, ScopeMetadata> {
   if (_scopeMetadata !== null) return _scopeMetadata;
   const all = loadScopeMetadataAll();
   const selected = pluginsEnabled();
-  const composed = composedScopeNames();
   const enabled: Record<string, ScopeMetadata> = {};
   for (const [name, meta] of Object.entries(all)) {
-    if (scopeEnabledBySelection(meta, selected, composed)) enabled[name] = meta;
+    if (scopeEnabledBySelection(meta, selected)) enabled[name] = meta;
   }
   const nominated = Object.values(enabled)
     .filter((meta) => meta.freeformDefault === true)
@@ -35808,7 +35814,7 @@ export function loadScopeMapping(): Record<string, ScopeDefinition> {
 export function _resetScopeMappingForTests(): void {
   _scopeMapping = null;
   _scopeMetadata = null;
-  _scopeMetadataAll = null;
+  _scopeDirectory = null;
   _validScopes = null;
 }
 
@@ -35908,9 +35914,8 @@ export function selectionAwareDefaultScope(preferred: string): SelectedDefaultSc
   }
 
   const mapping = loadScopeMapping();
-  const composed = composedScopeNames();
   const scopesByPlugin = new Map<string, string[]>();
-  for (const scope of scopes.filter((name) => !composed.has(name))) {
+  for (const scope of scopes) {
     const owner = mapping[scope]?.plugin ?? "aidlc";
     const bucket = scopesByPlugin.get(owner) ?? [];
     bucket.push(scope);

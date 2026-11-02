@@ -1861,25 +1861,6 @@ export function providerFiles(
   }));
 }
 
-export function availableScopeNames(harnessRoot: string): string[] {
-  const root = join(harnessRoot, "scopes");
-  if (!existsSync(root)) return [];
-  const names = new Set<string>();
-  for (const file of readdirSync(root).filter((name) => name.endsWith(".md")).sort()) {
-    const path = join(root, file);
-    let content = "";
-    try {
-      content = readFileSync(path, "utf-8");
-    } catch {
-      continue;
-    }
-    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1];
-    const name = frontmatter ? /^name:\s*([a-z][a-z0-9-]*)\s*$/m.exec(frontmatter)?.[1] : null;
-    if (name) names.add(name);
-  }
-  return [...names].sort();
-}
-
 const FLAG_ENV_FIELDS: Array<{
   env: string;
   field: keyof ProjectFlagsRecord;

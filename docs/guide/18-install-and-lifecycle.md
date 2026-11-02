@@ -888,10 +888,10 @@ aidlc config project --reset --yes
 ```
 
 Leaving `aidlc` out of `--plugins` installs only the selected plugins'
-scopes: the refresh removes the scope files core ships (scopes you saved with
-`scope-save` stay), sets the default scope and, on Claude Code, the start-up
-banner for the selection, and lists the removed files with the command that
-puts them back. Selecting `aidlc` again restores them. See
+scopes: the refresh removes the scope files core ships that you have not
+changed (scopes you saved with `scope-save` stay), sets the default scope
+(unless you set your own) and, on Claude Code, the start-up banner for the
+selection, and lists the removed files with the command that puts them back. Selecting `aidlc` again restores them. See
 [Plugin selection](../reference/18-plugin-mechanism.md).
 
 On a copy-channel projection, `config project` applies plugin, MCP, and

@@ -661,7 +661,7 @@ Usage: ${entrySkillInvocation()} [command]
 Scopes (set depth, test strategy, and stage count):
 `;
 
-const HELP_TEXT_TAIL = `
+const helpTextTail = (exampleScope: string): string => `
 Utilities:
   --status          Show current workflow progress (read-only)
   --config [section]  Configure models, runtime, providers, trust, flags, or project in-session
@@ -723,8 +723,8 @@ Other:
   (no arguments)    Resume existing workflow, or start fresh if none exists
 
 Examples:
-  ${entrySkillInvocation()} feature                                Start a feature workflow
-  ${entrySkillInvocation()} Fix the login timeout bug              Auto-detected as bugfix scope
+  ${entrySkillInvocation()} ${exampleScope.padEnd(39)}Start a ${exampleScope} workflow
+  ${entrySkillInvocation()} Fix the login timeout bug              Scope auto-detected from the description
   ${entrySkillInvocation()} compose "harden the deploy pipeline"   Composer proposes a tailored plan
   ${entrySkillInvocation()} config list                         Show every workflow setting and fence
   ${entrySkillInvocation()} plugin list                         Show installed plugin selection
@@ -732,8 +732,8 @@ Examples:
   ${entrySkillInvocation()} plugin build claude                 Build its Claude projection
   ${entrySkillInvocation()}                                        Resume or begin
   ${entrySkillInvocation()} --stage code-generation                Jump to code-generation stage
-  ${entrySkillInvocation()} --phase construction --scope bugfix    Jump to construction with bugfix scope
-  ${entrySkillInvocation()} --scope bugfix --depth comprehensive  Bugfix with comprehensive depth
+  ${entrySkillInvocation()} --phase construction --scope ${exampleScope.padEnd(9)}Jump to construction with ${exampleScope} scope
+  ${entrySkillInvocation()} --scope ${exampleScope} --depth comprehensive  ${exampleScope} with comprehensive depth
   ${entrySkillInvocation()} --depth minimal                       Change depth of active workflow
   ${entrySkillInvocation()} --depth standard --test-strategy minimal  Full artifacts, minimal tests
   ${entrySkillInvocation()} --review advisory                     Single-pass reviews, findings at the gate
@@ -761,9 +761,10 @@ export function renderHelpText(): string {
       execute === total ? `All ${total} stages` : `${execute} of ${total} stages`;
     return `  ${name.padEnd(18)}${countStr}, ${depth} depth${ts}${defaultMarker}${desc}`;
   });
-  // Blank line before HELP_TEXT_TAIL so the `Utilities:` header is visually
+  const exampleScope = effectiveDefaultScope || ([...validScopes()][0] ?? "<scope>");
+  // Blank line before the help tail so the `Utilities:` header is visually
   // separated from the scope list.
-  return `${HELP_TEXT_HEAD + scopeLines.join("\n")}\n${HELP_TEXT_TAIL}`;
+  return `${HELP_TEXT_HEAD + scopeLines.join("\n")}\n${helpTextTail(exampleScope)}`;
 }
 
 function handleHelp(): void {

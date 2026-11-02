@@ -624,7 +624,7 @@ export function discoverScopes(): Record<string, ScopeFront> {
   const selected = pluginsEnabled();
   for (const f of files) {
     const front = readScopeFront(join(dir, f));
-    if (!scopeEnabledBySelection(front, selected, gridNames)) continue;
+    if (!scopeEnabledBySelection(front, selected) && !gridNames.has(front.name)) continue;
     out[front.name] = front;
   }
   return out;

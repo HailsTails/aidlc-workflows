@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  FRAMEWORK_DEFAULT_SCOPE,
   loadScopeMetadata,
   scopeGuardPolicyDefault,
   selectionAwareDefaultScope,
@@ -499,6 +500,13 @@ describe("t225 env-scope fallback under plugin-only selection", () => {
     } finally {
       rmSync(scopes, { recursive: true, force: true });
     }
+  });
+
+  test("the shipped settings default scope is the framework default a copied project assumes", () => {
+    const shipped = JSON.parse(readFileSync(join(REPO_ROOT, "harness", "claude", "settings.json"), "utf-8")) as {
+      env: { AWS_AIDLC_DEFAULT_SCOPE: string };
+    };
+    expect(shipped.env.AWS_AIDLC_DEFAULT_SCOPE).toBe(FRAMEWORK_DEFAULT_SCOPE);
   });
 
   test("the shipped banner keeps the stage and scope tables between **Phases** and **Workflow**", () => {

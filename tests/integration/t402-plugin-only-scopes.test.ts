@@ -129,6 +129,17 @@ function resolvedDefaultScope(projectDir: string): CommandResult {
   return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }
 
+function helpText(projectDir: string): string {
+  const result = spawnSync(BUN, [join(projectDir, ".claude", "tools", "aidlc-utility.ts"), "help"], {
+    cwd: projectDir,
+    encoding: "utf-8",
+    timeout: remainingOperationTimeoutMs(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
+    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, AIDLC_HARNESS_DIR: ".claude", AWS_AIDLC_DEFAULT_SCOPE: settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE },
+  });
+  expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+  return result.stdout;
+}
+
 function saveComposedScope(projectDir: string): string {
   const fixture = join(REPO_ROOT, "tests", "fixtures", "composed-scope-live");
   const identity = readFileSync(join(fixture, "scope.md"), "utf-8");
@@ -206,25 +217,59 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(selected.stdout).not.toContain("AWS_AIDLC_DEFAULT_SCOPE");
   });
 
-  test("replaces a person's own default scope the selection no longer enables, and says so", () => {
+  test("keeps a person's own default scope the selection no longer enables, and says where workflows start", () => {
     const projectDir = installedProject();
     setDefaultScope(projectDir, "feature");
 
     const selected = selectPlugins(projectDir, PLUGIN);
 
-    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe("feature");
     expect(selected.stdout).toContain(
-      `AWS_AIDLC_DEFAULT_SCOPE in .claude/settings.json named "feature", which this plugin selection does not enable; it is now "${PLUGIN_SCOPE}".`,
+      `AWS_AIDLC_DEFAULT_SCOPE in .claude/settings.json names "feature", which this plugin selection does not enable, so workflows start on "${PLUGIN_SCOPE}" until you change it.`,
     );
+    const resolved = resolvedDefaultScope(projectDir);
+    expect(resolved.stdout).toBe(`scope=${PLUGIN_SCOPE}\n`);
   });
 
-  test("keeps a scope the project saved, which belongs to no plugin", () => {
+  test("keeps a scope the project saved, switched off with the rest of core", () => {
     const projectDir = installedProject();
     const savedScope = saveComposedScope(projectDir);
 
     selectPlugins(projectDir, PLUGIN);
 
     expect(installedScopeFiles(projectDir)).toEqual([`aidlc-${savedScope}.md`, `${PLUGIN_SCOPE}.md`].sort());
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+    expect(helpText(projectDir)).not.toContain(`  ${savedScope} `);
+  });
+
+  test("help lists and exemplifies only the selection's scopes", () => {
+    const projectDir = installedProject();
+    selectPlugins(projectDir, PLUGIN);
+
+    const help = helpText(projectDir);
+
+    expect(help).toContain(`  ${PLUGIN_SCOPE}`);
+    expect(help).toContain(`--scope ${PLUGIN_SCOPE} --depth comprehensive`);
+    expect(help).not.toMatch(/\b(classic|feature|bugfix)\b/);
+  });
+
+  test("a copied project with no release record keeps core's scope files it cannot prove are the release's", () => {
+    const root = mkdtempSync(join(tmpdir(), "aidlc-plugin-only-copy-"));
+    temporary.push(root);
+    const projectDir = composePluginFixture({
+      plugin: PLUGIN,
+      harness: "claude",
+      projectDir: join(root, "project"),
+      pluginBuilt,
+    }).projectDir;
+    const current = settings(projectDir) as Partial<ClaudeSettings>;
+    delete current.companyAnnouncements;
+    writeFileSync(settingsPath(projectDir), `${JSON.stringify(current, null, 2)}\n`);
+
+    const selected = selectPlugins(projectDir, PLUGIN);
+
+    expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
+    expect(selected.stdout).toContain("because no release record shows AI-DLC shipped them; they stay switched off.");
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
   });
 
