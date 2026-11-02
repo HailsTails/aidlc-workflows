@@ -35,7 +35,7 @@ In the shared round every seat records a position on each piece it has a stake i
 - **Gate 3, quality:** a planted violation of each refusal the lock claims, and a position on every refusal: `AGREE:` citing the planted violation and the check that caught it, or `OBJECT:` citing the planted violation that was not caught.
 - **Gate 3, customer:** a position on each lock clause, safeguard and refusal, and on each case of ordinary use the lock leaves out, each weighed against the customer section.
 
-A contract or refusal with no position from these seats is unprobed, never one that held.
+A contract with no position from the developer seat, or a refusal with no position from the quality seat, is unprobed, never one that held.
 
 ## Objection dispositions
 
