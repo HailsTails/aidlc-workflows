@@ -4,9 +4,9 @@ import type { Finding } from "../governance/governance.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
-import type { WhyChain } from "../values/why-chain.ts";
 import type { CheckReport } from "./check-report.ts";
 import { renderReportText } from "./report-text.ts";
+import { CAUSAL_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 
 const noClass = clauseAddressSchema.parse("CD-14#no-class-syntax");
 const probeNoTmp = clauseAddressSchema.parse("probe/PD-1#no-tmp-files");
@@ -16,17 +16,8 @@ const suppressions = repoPathSchema.parse("eslint-suppressions.json");
 const audit = mechanismIdSchema.parse("audit");
 const eslint = mechanismIdSchema.parse("eslint");
 
-const why = {
-  why: "Why does this file declare a class?",
-  because: "The vendored parser exports a class the adapter must extend",
-  evidence: "vendor/parser/index.d.ts line 12",
-};
 
-const whyChain: WhyChain = {
-  whys: [why, why, why, why, why],
-  rootCause: "The vendored parser's extension point is class-based",
-  owner: "260926-vendor-divergence-untrac",
-};
+const whyChain = CAUSAL_WHY_CHAIN;
 
 const finding: Finding = {
   clause: noClass,

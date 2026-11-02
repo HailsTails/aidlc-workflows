@@ -1,5 +1,5 @@
 import { assert, describe, expect, it, vi } from "vitest";
-import { createExceptionRepository, UNMEASURED_IMPORT_BASELINE } from "../exception-records/exception-records.ts";
+import { createExceptionRepository, UNMEASURED_EXCEPTION_BASELINE } from "../exception-records/exception-records.ts";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { FileTextPort } from "../platform-ports/file-text-port.ts";
 import type { PathPort } from "../platform-ports/path-port.ts";
@@ -8,8 +8,8 @@ import { absolutePathSchema } from "../values/absolute-path.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
-import type { WhyChain } from "../values/why-chain.ts";
 import { applyGovernance, type Finding } from "./governance.ts";
+import { CAUSAL_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 
 const noClass = clauseAddressSchema.parse("CD-14#no-class-syntax");
 const noForOf = clauseAddressSchema.parse("CD-15#no-for-of");
@@ -21,17 +21,8 @@ const suppressions = repoPathSchema.parse("eslint-suppressions.json");
 const audit = mechanismIdSchema.parse("audit");
 const eslint = mechanismIdSchema.parse("eslint");
 
-const why = {
-  why: "Why does this file declare a class?",
-  because: "The vendored parser exports a class the adapter must extend",
-  evidence: "vendor/parser/index.d.ts line 12",
-};
 
-const whyChain: WhyChain = {
-  whys: [why, why, why, why, why],
-  rootCause: "The vendored parser's extension point is class-based",
-  owner: "260926-vendor-divergence-untrac",
-};
+const whyChain = CAUSAL_WHY_CHAIN;
 
 const noClassInA: Finding = {
   clause: noClass,
@@ -146,7 +137,7 @@ describe("applyGovernance with provenance-only inherited debt", () => {
       resolve: vi.fn<PathPort["resolve"]>(),
       fromFileUrl: vi.fn<PathPort["fromFileUrl"]>(),
     };
-    const exceptionReading = createExceptionRepository({ repoRoot: absolutePathSchema.parse("/repo"), fileText, path }).read({ selection: { selected: [{ address: noClass, mechanism: audit, exceptions: "allowed" }], uncovered: [] }, baseline: UNMEASURED_IMPORT_BASELINE });
+    const exceptionReading = createExceptionRepository({ repoRoot: absolutePathSchema.parse("/repo"), fileText, path }).read({ selection: { selected: [{ address: noClass, mechanism: audit, exceptions: "allowed" }], uncovered: [] }, baseline: UNMEASURED_EXCEPTION_BASELINE });
 
     expect(exceptionReading).toMatchObject({ outcome: "ok", value: { invalid: [] } });
     assert(exceptionReading.outcome === "ok");

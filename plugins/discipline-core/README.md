@@ -29,7 +29,7 @@ A load failure prints one line, `load failure: <kind> <fields>`.
 
 The report lists the excluded paths, findings, exempted findings, uncovered clauses, stale, forfeited, unrecorded and doubly-held exceptions, invalid exception records, unmeasured checks and projection problems, each with its count. The verdict is `pass` only when every list except the excluded paths and exempted findings is empty.
 
-Without `--base-revision`, core cannot tell which files were touched, so a file carve-out cannot be forfeited; if any file carve-out exists the report lists `forfeiture-unmeasured` and the run fails.
+Without `--base-revision`, core cannot tell which files were touched, so a file carve-out cannot be forfeited; if any file carve-out exists the report lists `forfeiture-unmeasured` and the run fails. For the same reason it cannot tell whether an entry with an earlier-contract why-chain is unchanged; if one exists the report lists `legacy-chain-unmeasured` and the run fails.
 
 `project-command` writes the native configuration each embedded mechanism needs, and prints `<path> <effect>` per file (`written` or `unchanged`). The audit mechanism is standalone and writes nothing, so with only the walker selected the command prints nothing and exits `0`.
 
@@ -94,7 +94,7 @@ At the repository root; absent means no exceptions. Each entry names a selected 
 - An `authorised-location` says the clause does not apply to that file.
 - A `file-carve-out` is debt in one file. It is forfeited once the file is touched.
 - A `clause-wide-carve-out` exempts the clause everywhere.
-- Every entry needs a `whyChain`: `whys`, exactly five `{ "why", "because", "evidence" }` steps, then `rootCause` and `owner`. Placeholder answers, and a root cause that only restates the failure, are refused:
+- Every entry needs a `whyChain` that follows the [why-chain contract](docs/why-chain-contract.md): exactly five `{ "why", "because", "evidence" }` steps chained cause to cause, then `rootCause`, `rootCheck`, `readback` and `owner`. The contract lists what core refuses and what review still judges:
 
   ```json
   "whyChain": {
@@ -106,9 +106,12 @@ At the repository root; absent means no exceptions. Each entry names a selected 
       { "why": "...", "because": "...", "evidence": "..." }
     ],
     "rootCause": "...",
+    "rootCheck": "...",
+    "readback": "...",
     "owner": "..."
   }
   ```
+- A chain with neither `rootCheck` nor `readback` was written to the earlier contract. It is accepted only while the `--base-revision` holds its entry unchanged; a new or edited one is refused as `why-chain-refused`, and a run with such a chain and no `--base-revision` is `legacy-chain-unmeasured`.
 - An entry carried over from an earlier system may give `provenance` instead of a `whyChain`: `{ "kind": "inherited-debt", "source", "decision" }` on a file carve-out, `{ "kind": "existing-authorisation", "source" }` on an authorised location. `source` names the old record entry as `<directory>/cd-<id>.json#<index>`: `.constitution-carve-outs` for inherited debt, `.constitution-authorised-locations` for an existing authorisation, the old file for the record's discipline, and the entry's position in its array. Such an entry is imported, and is accepted only while the `--base-revision` already holds it unchanged, or, when the base holds no record for that kind, clause and file, while the `source` entry at that revision lists the file in its `files`. A new or edited entry without a `whyChain` is refused as `import-unverified`, and a run with imported entries and no `--base-revision` is `import-unmeasured`. The report names each imported entry it exempts by.
 - A clause whose `discipline.json` declares `"exceptions": "refused"` cannot be exempted. No shipped discipline declares it, so every shipped clause can be.
 - Files are exact repository paths, never globs.

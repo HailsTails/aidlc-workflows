@@ -13,8 +13,13 @@ import {
 import type { MechanismId } from "../values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
-import { type WhyChain, whyChainSchema } from "../values/why-chain.ts";
-import type { AuthorisedLocationEntry, ExceptionRecord, FileCarveOutEntry, InvalidRecord } from "./exception-record.ts";
+import {
+  legacyWhyChainSchema,
+  type RecordedWhyChain,
+  whyChainFormOf,
+  whyChainSchema,
+} from "../values/why-chain.ts";
+import type { ExceptionRecord, InvalidRecord } from "./exception-record.ts";
 
 export type {
   AuthorisationEvidence,
@@ -38,7 +43,7 @@ export type ExceptionReading = {
 export type ExceptionRepository = {
   readonly read: (request: {
     readonly selection: Selection;
-    readonly baseline: ImportBaseline;
+    readonly baseline: ExceptionBaseline;
   }) => Result<ExceptionReading, LoadFailure>;
 };
 
@@ -101,7 +106,7 @@ const exceptionsFileSchema = z.object({
 
 export type StructuralExceptionEntry = z.infer<typeof exceptionsFileSchema>["exceptions"][number];
 
-export type ImportBaseline =
+export type ExceptionBaseline =
   | { readonly measured: "no" }
   | {
       readonly measured: "yes";
@@ -109,7 +114,7 @@ export type ImportBaseline =
       readonly sourceTextsAtBase: ReadonlyMap<RepoPath, string>;
     };
 
-export const UNMEASURED_IMPORT_BASELINE: ImportBaseline = { measured: "no" };
+export const UNMEASURED_EXCEPTION_BASELINE: ExceptionBaseline = { measured: "no" };
 
 const LEGACY_DIRECTORY_OF = {
   "inherited-debt": ".constitution-carve-outs",
@@ -156,8 +161,10 @@ const authorisedLocationFields = {
   reason: z.string(),
 };
 
-const authorisedLocationSchema: z.ZodType<AuthorisedLocationEntry> = z.union([
-  z.strictObject({ ...authorisedLocationFields, whyChain: whyChainSchema, provenance: existingAuthorisationProvenanceSchema.optional() }),
+const unjudgedWhyChainSchema = z.custom<NonNullable<unknown>>((whyChain) => whyChain !== undefined);
+
+const authorisedLocationSchema = z.union([
+  z.strictObject({ ...authorisedLocationFields, whyChain: unjudgedWhyChainSchema, provenance: existingAuthorisationProvenanceSchema.optional() }),
   z.strictObject({ ...authorisedLocationFields, whyChain: z.never().optional(), provenance: existingAuthorisationProvenanceSchema }),
 ]);
 
@@ -168,8 +175,8 @@ const fileCarveOutFields = {
   reason: z.string(),
 };
 
-const fileCarveOutSchema: z.ZodType<FileCarveOutEntry> = z.union([
-  z.strictObject({ ...fileCarveOutFields, whyChain: whyChainSchema, provenance: inheritedDebtProvenanceSchema.optional() }),
+const fileCarveOutSchema = z.union([
+  z.strictObject({ ...fileCarveOutFields, whyChain: unjudgedWhyChainSchema, provenance: inheritedDebtProvenanceSchema.optional() }),
   z.strictObject({ ...fileCarveOutFields, whyChain: z.never().optional(), provenance: inheritedDebtProvenanceSchema }),
 ]);
 
@@ -232,7 +239,7 @@ const verifiedImport = <ImportedRecord>(request: {
   readonly identity: ImportedIdentity;
   readonly discipline: string;
   readonly provenance: { readonly kind: ImportProvenanceKind; readonly source: string };
-  readonly baseline: ImportBaseline;
+  readonly baseline: ExceptionBaseline;
 }): Result<ImportedRecord, EntryProblem> => {
   const { baseline } = request;
   if (baseline.measured === "no") {
@@ -266,16 +273,55 @@ const recordedFile = (request: {
     : { outcome: "failed", error: { kind: "file-not-repo-path", file: request.file } };
 };
 
-const recordedWhyChain = (request: {
-  readonly whyChain: unknown;
-}): Result<WhyChain, EntryProblem> => {
+const LEGACY_CHAIN_NEW_OR_EDITED =
+  "a new or edited entry's whyChain follows the causal contract (docs/why-chain-contract.md); a chain without rootCheck and readback is accepted only while --base-revision holds its entry unchanged";
+
+type LegacyChainStanding = "unchanged-since-base" | "base-unmeasured" | "new-or-edited";
+
+const legacyChainStanding = (request: {
+  readonly entry: StructuralExceptionEntry;
+  readonly baseline: ExceptionBaseline;
+}): LegacyChainStanding => {
+  if (request.baseline.measured === "no") {
+    return "base-unmeasured";
+  }
+  return request.baseline.entriesAtBase.some((baseEntry) => sameEntry({ left: baseEntry, right: request.entry }) === "same")
+    ? "unchanged-since-base"
+    : "new-or-edited";
+};
+
+const chainRefused = (request: { readonly detail: string }): Result<never, EntryProblem> => ({
+  outcome: "failed",
+  error: { kind: "why-chain-refused", detail: request.detail },
+});
+
+const causalChainOf = (request: { readonly whyChain: unknown; readonly preface: readonly string[] }): Result<RecordedWhyChain, EntryProblem> => {
   const parsed = whyChainSchema.safeParse(request.whyChain);
   return parsed.success
     ? { outcome: "ok", value: parsed.data }
-    : {
-        outcome: "failed",
-        error: { kind: "why-chain-refused", detail: z.prettifyError(parsed.error) },
-      };
+    : chainRefused({ detail: [...request.preface, z.prettifyError(parsed.error)].join("\n") });
+};
+
+const legacyChainOf = (request: { readonly whyChain: unknown }): Result<RecordedWhyChain, EntryProblem> => {
+  const parsed = legacyWhyChainSchema.safeParse(request.whyChain);
+  return parsed.success ? { outcome: "ok", value: parsed.data } : chainRefused({ detail: z.prettifyError(parsed.error) });
+};
+
+const judgedWhyChain = (request: {
+  readonly whyChain: unknown;
+  readonly entry: StructuralExceptionEntry;
+  readonly baseline: ExceptionBaseline;
+}): Result<RecordedWhyChain, EntryProblem> => {
+  if (whyChainFormOf({ chain: request.whyChain }) === "causal") {
+    return causalChainOf({ whyChain: request.whyChain, preface: [] });
+  }
+  switch (legacyChainStanding(request)) {
+    case "unchanged-since-base":
+    case "base-unmeasured":
+      return legacyChainOf(request);
+    case "new-or-edited":
+      return causalChainOf({ whyChain: request.whyChain, preface: [LEGACY_CHAIN_NEW_OR_EDITED] });
+  }
 };
 
 type ClauseSelection = { readonly clause: ClauseAddress; readonly mechanism: MechanismId };
@@ -307,7 +353,7 @@ const selectedClauseOf = (request: {
 const parsedRecord = (request: {
   readonly entry: StructuralExceptionEntry;
   readonly selection: Selection;
-  readonly baseline: ImportBaseline;
+  readonly baseline: ExceptionBaseline;
 }): Result<ExceptionRecord, EntryProblem> => {
   const { entry } = request;
   const selected = selectedClauseOf(request);
@@ -325,17 +371,21 @@ const parsedRecord = (request: {
       if (!evidence.success) {
         return { outcome: "failed", error: { kind: "evidence-refused", detail: z.prettifyError(evidence.error) } };
       }
-      const record: ExceptionRecord = { ...evidence.data, clause, mechanism, file: file.value };
-      return evidence.data.whyChain === undefined
-        ? verifiedImport({
-            record,
-            entry,
-            identity: { kind: entry.kind, clause: entry.clause, file: file.value },
-            discipline: clause.discipline,
-            provenance: evidence.data.provenance,
-            baseline: request.baseline,
-          })
-        : { outcome: "ok", value: record };
+      if (evidence.data.whyChain === undefined) {
+        const record: ExceptionRecord = { ...evidence.data, clause, mechanism, file: file.value };
+        return verifiedImport({
+          record,
+          entry,
+          identity: { kind: entry.kind, clause: entry.clause, file: file.value },
+          discipline: clause.discipline,
+          provenance: evidence.data.provenance,
+          baseline: request.baseline,
+        });
+      }
+      const whyChain = judgedWhyChain({ whyChain: evidence.data.whyChain, entry, baseline: request.baseline });
+      return whyChain.outcome === "failed"
+        ? whyChain
+        : { outcome: "ok", value: { ...evidence.data, whyChain: whyChain.value, clause, mechanism, file: file.value } };
     }
     case "file-carve-out": {
       const file = recordedFile({ file: entry.file });
@@ -344,28 +394,26 @@ const parsedRecord = (request: {
       }
       const evidence = fileCarveOutSchema.safeParse(entry);
       if (!evidence.success) {
-        const refusal = evidence.error.issues[0];
-        const invalidChain = entry.whyChain !== undefined && refusal?.code === "invalid_union" &&
-          refusal.errors[0]?.some((issue) => issue.path[0] === "whyChain");
-        return {
-          outcome: "failed",
-          error: { kind: invalidChain ? "why-chain-refused" : "evidence-refused", detail: z.prettifyError(evidence.error) },
-        };
+        return { outcome: "failed", error: { kind: "evidence-refused", detail: z.prettifyError(evidence.error) } };
       }
-      const record: ExceptionRecord = { ...evidence.data, clause, mechanism, file: file.value };
-      return evidence.data.whyChain === undefined
-        ? verifiedImport({
-            record,
-            entry,
-            identity: { kind: entry.kind, clause: entry.clause, file: file.value },
-            discipline: clause.discipline,
-            provenance: evidence.data.provenance,
-            baseline: request.baseline,
-          })
-        : { outcome: "ok", value: record };
+      if (evidence.data.whyChain === undefined) {
+        const record: ExceptionRecord = { ...evidence.data, clause, mechanism, file: file.value };
+        return verifiedImport({
+          record,
+          entry,
+          identity: { kind: entry.kind, clause: entry.clause, file: file.value },
+          discipline: clause.discipline,
+          provenance: evidence.data.provenance,
+          baseline: request.baseline,
+        });
+      }
+      const whyChain = judgedWhyChain({ whyChain: evidence.data.whyChain, entry, baseline: request.baseline });
+      return whyChain.outcome === "failed"
+        ? whyChain
+        : { outcome: "ok", value: { ...evidence.data, whyChain: whyChain.value, clause, mechanism, file: file.value } };
     }
     case "clause-wide-carve-out": {
-      const whyChain = recordedWhyChain({ whyChain: entry.whyChain });
+      const whyChain = judgedWhyChain({ whyChain: entry.whyChain, entry, baseline: request.baseline });
       if (whyChain.outcome === "failed") {
         return whyChain;
       }
@@ -444,7 +492,7 @@ const firstRecordsOf = (request: { readonly valid: readonly IndexedRecord[] }): 
 export const parseExceptionEntries = (request: {
   readonly entries: readonly StructuralExceptionEntry[];
   readonly selection: Selection;
-  readonly baseline: ImportBaseline;
+  readonly baseline: ExceptionBaseline;
 }): {
   readonly records: readonly ExceptionRecord[];
   readonly invalid: readonly InvalidRecord[];
@@ -516,6 +564,13 @@ export const importedEntriesIn = (request: {
   readonly entries: readonly StructuralExceptionEntry[];
 }): "present" | "absent" =>
   request.entries.some((entry) => importEvidenceOf({ entry }).imported === "yes") ? "present" : "absent";
+
+export const legacyChainsIn = (request: {
+  readonly entries: readonly StructuralExceptionEntry[];
+}): "present" | "absent" =>
+  request.entries.some((entry) => entry.whyChain !== undefined && whyChainFormOf({ chain: entry.whyChain }) === "legacy")
+    ? "present"
+    : "absent";
 
 export const importSourcesOf = (request: {
   readonly entries: readonly StructuralExceptionEntry[];

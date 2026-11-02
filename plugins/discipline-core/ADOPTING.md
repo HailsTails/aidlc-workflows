@@ -213,11 +213,13 @@ Every entry needs a `reason` and a `whyChain` shaped like this, with exactly fiv
     { "why": "...", "because": "...", "evidence": "..." }
   ],
   "rootCause": "...",
+  "rootCheck": "...",
+  "readback": "...",
   "owner": "..."
 }
 ```
 
-Answers must be real: placeholders, and a root cause that only says the check was failing or there was no time, are refused as `invalidRecords`. `file` is an exact repository path.
+The chain runs cause to cause: each why asks why the answer before it is true, each answer cites evidence that can be checked again, the root names the fifth answer's cause and is checked against today, and the readback runs back from the root to the symptom with "therefore". [The why-chain contract](docs/why-chain-contract.md) has a worked example, the checks core runs, and what review still judges. A chain that breaks a check is refused as an `invalidRecords` entry. `file` is an exact repository path.
 
 Debt or authorisations already recorded by an earlier system, for example the old standalone route's `.constitution-carve-outs/`, can be imported with `provenance` instead of a `whyChain`, as [MIGRATING.md](MIGRATING.md#3-convert-the-old-records-into-exceptions) step 3 shows. Imported entries are checked against `--base-revision`: any entry you write or change yourself needs the full `whyChain`.
 

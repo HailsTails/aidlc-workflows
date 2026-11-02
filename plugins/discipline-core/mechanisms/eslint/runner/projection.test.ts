@@ -9,7 +9,6 @@ import { absolutePathSchema } from "../../../core/values/absolute-path.ts";
 import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { mechanismIdSchema } from "../../../core/values/identifiers.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
-import type { WhyChain } from "../../../core/values/why-chain.ts";
 import {
   escapedGlobPath,
   currentProjection,
@@ -19,6 +18,7 @@ import {
   projectionText,
   writeProjection,
 } from "./projection.ts";
+import { CAUSAL_WHY_CHAIN } from "../../../tests/causal-why-chain.ts";
 
 const classSyntax = clauseAddressSchema.parse("CD-14#class-syntax");
 const noTmpFiles = clauseAddressSchema.parse("probe/PD-1#no-tmp-files");
@@ -29,17 +29,8 @@ const windowsRepoRoot = absolutePathSchema.parse("C:\\repo");
 const posixPath = createPathPort({ flavour: "posix", workingDirectory: () => "/repo" });
 const windowsPath = createPathPort({ flavour: "windows", workingDirectory: () => "C:\\repo" });
 
-const why = {
-  why: "Why does this file declare a class?",
-  because: "The vendored parser exports a class the adapter must extend",
-  evidence: "vendor/parser/index.d.ts line 12",
-};
 
-const whyChain: WhyChain = {
-  whys: [why, why, why, why, why],
-  rootCause: "The vendored parser's extension point is class-based",
-  owner: "260926-vendor-divergence-untrac",
-};
+const whyChain = CAUSAL_WHY_CHAIN;
 
 const cd14Piece: ProjectedPiece = {
   pluginNamespace: "discipline",

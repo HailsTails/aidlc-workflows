@@ -127,22 +127,27 @@ and the machine-diffable convergence predicate. Then re-run the decorrelated swe
 
 **When `harness.config.json` enables `rinGates.exceptionWhyChains`, a `push-back` or `defer` row carries a `why-chain` block (R7).** Those two
 dispositions leave the cited violation STANDING — one argues it away, the other
-parks it — so each is an exception judgement and carries its Five Whys chain in
-the row: five numbered whys, each answered with cited evidence, the last naming
-the root cause and its owner. `fixed@<sha>` and `withdrawn(<reason>)` carry no
-chain and that asymmetry is deliberate: a fix removes the violation and a
-withdrawal retracts the finding, so neither grants a standing exception. The
-row's shape is:
+parks it — so each is an exception judgement and carries its why-chain in the
+row. The chain follows discipline-core's why-chain contract
+(`plugins/discipline-core/docs/why-chain-contract.md`), which R7 adopts.
+`fixed@<sha>` and `withdrawn(<reason>)` carry no chain and that asymmetry is
+deliberate: a fix removes the violation and a withdrawal retracts the finding,
+so neither grants a standing exception. The row's shape is:
 
 | atom | disposition | why-chain |
 |---|---|---|
-| `<lens>: <finding>` | `defer(ack:<ref>)` | 1. `<why>` — `<because>` (`<evidence>`) <br> 2. … <br> 5. root cause: `<cause>`. owner: `<record-or-capture-id>` (`<evidence>`). |
+| `<lens>: <finding>` | `defer(ack:<ref>)` | 1. `<why>` — `<because>` (`<evidence>`) <br> 2. … <br> 5. `<why>` — `<because>` (`<evidence>`) <br> root cause: `<cause>`. owner: `<record-or-capture-id>` (`<evidence>`). <br> root check: `<what was run or read today, and what it shows>` <br> readback: `<root>`, therefore … therefore `<symptom>`. |
 
 This is enforced, not asked for: the verdict emitter's disposition predicate
 treats a `push-back`/`defer` row carrying no complete chain as UNDISPOSED, so the
 finding stays live and a READY over it is refused with the same message an
-evidence-free disposition gets. A chain that terminates at a symptom — "the gate
-was failing", "no time", "out of scope" — is not a chain (project.md § R7).
+evidence-free disposition gets. On this surface the predicate checks the
+contract's earlier floor only: five numbered steps, whys 1 to 4 each answered
+with a parenthesised citation, a root cause that is not a symptom ("the gate was
+failing", "no time", "out of scope"), and an owner. Whether each why asks about
+the answer before it, whether an answer only restates, the root check and the
+readback are the reviewer's to judge against the contract until rin runs it here
+([#76](https://github.com/HailsTails/aidlc-workflows/issues/76)).
 
 **The fix-leg writes code, so the deterministic teeth fire here too.** A `fixed`
 disposition is a code change, and a review round is exactly where discipline

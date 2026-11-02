@@ -14,7 +14,6 @@ import { clauseAddressSchema } from "../../../core/values/clause-address.ts";
 import { mechanismIdSchema } from "../../../core/values/identifiers.ts";
 import { repoPathSchema } from "../../../core/values/repo-path.ts";
 import type { Result } from "../../../core/values/result.ts";
-import type { WhyChain } from "../../../core/values/why-chain.ts";
 import { createEslintRunner, type EslintRunnerPorts } from "./create-eslint-runner.ts";
 import type { RuleState } from "./eslint-config-schema.ts";
 import type {
@@ -25,6 +24,7 @@ import type {
   LintedMessage,
   QueryInstance,
 } from "./eslint-instance.ts";
+import { CAUSAL_WHY_CHAIN } from "../../../tests/causal-why-chain.ts";
 
 type FakeFile = {
   readonly read: Result<string, { readonly kind: "unreadable"; readonly path: string; readonly detail: string }>;
@@ -90,17 +90,8 @@ const PLUGIN_MODULES: Readonly<Record<string, unknown>> = {
   [LOOPS_MODULE_PATH]: LOOPS_PLUGIN_MODULE,
 };
 
-const WHY = {
-  why: "Why does this file declare a class?",
-  because: "The vendored parser exports a class the adapter must extend",
-  evidence: "vendor/parser/index.d.ts line 12",
-};
 
-const WHY_CHAIN: WhyChain = {
-  whys: [WHY, WHY, WHY, WHY, WHY],
-  rootCause: "The vendored parser's extension point is class-based",
-  owner: "260926-vendor-divergence-untrac",
-};
+const WHY_CHAIN = CAUSAL_WHY_CHAIN;
 
 const FACTORY_LOCATION: ExceptionRecord = {
   kind: "authorised-location",

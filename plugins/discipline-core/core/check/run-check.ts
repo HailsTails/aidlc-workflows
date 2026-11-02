@@ -3,14 +3,15 @@ import { type ClauseBinding, readSelection, type Selection } from "../consumer-s
 import {
   type ExceptionRecord,
   exceptionEntriesOfText,
-  type ImportBaseline,
+  type ExceptionBaseline,
   importedEntriesIn,
   importSourcesOf,
   type InvalidRecord,
+  legacyChainsIn,
   parseExceptionEntries,
   readExceptionEntries,
   type StructuralExceptionEntry,
-  UNMEASURED_IMPORT_BASELINE,
+  UNMEASURED_EXCEPTION_BASELINE,
 } from "../exception-records/exception-records.ts";
 import { applyGovernance, type Finding } from "../governance/governance.ts";
 import type { RunnerFailure } from "../mechanism-port/runner-failure.ts";
@@ -29,6 +30,7 @@ import type { AbsolutePath } from "../values/absolute-path.ts";
 import type { MechanismId } from "../values/identifiers.ts";
 import { type RepoPath, repoPathSchema } from "../values/repo-path.ts";
 import type { Result } from "../values/result.ts";
+import { whyChainFormOf } from "../values/why-chain.ts";
 import type { CheckReport, ProjectionProblem, Unmeasured } from "../verdict/check-report.ts";
 import type { LoadFailure } from "./load-failure.ts";
 import { type MechanismRun, runMechanism } from "./mechanism-dispatch.ts";
@@ -43,12 +45,12 @@ export type CheckRequest = {
   readonly git: GitPort;
 };
 
-export type ImportBaselineReader = (request: {
+export type ExceptionBaselineReader = (request: {
   readonly entries: readonly StructuralExceptionEntry[];
-}) => ImportBaseline;
+}) => ExceptionBaseline;
 
 export type LoadRequest = Omit<CheckRequest, "baseRevision" | "git"> & {
-  readonly importBaselineOf: ImportBaselineReader;
+  readonly exceptionBaselineOf: ExceptionBaselineReader;
 };
 
 export type LoadedMechanism = {
@@ -63,7 +65,7 @@ export type LoadedInputs = {
   readonly invalidRecords: readonly InvalidRecord[];
   readonly mechanisms: readonly LoadedMechanism[];
   readonly excluded: readonly RepoPath[];
-  readonly importBaseline: ImportBaseline;
+  readonly exceptionBaseline: ExceptionBaseline;
 };
 
 const TYPESCRIPT_FILE = /\.(?:ts|tsx|mts|cts)$/;
@@ -168,8 +170,8 @@ export const loadInputs = async (request: LoadRequest): Promise<Result<LoadedInp
   if (mechanisms.outcome === "failed") {
     return mechanisms;
   }
-  const importBaseline = request.importBaselineOf({ entries: entries.value });
-  const parsed = parseExceptionEntries({ entries: entries.value, selection: reading.value.selection, baseline: importBaseline });
+  const exceptionBaseline = request.exceptionBaselineOf({ entries: entries.value });
+  const parsed = parseExceptionEntries({ entries: entries.value, selection: reading.value.selection, baseline: exceptionBaseline });
   return {
     outcome: "ok",
     value: {
@@ -178,7 +180,7 @@ export const loadInputs = async (request: LoadRequest): Promise<Result<LoadedInp
       invalidRecords: parsed.invalid,
       mechanisms: mechanisms.value,
       excluded: reading.value.excluded,
-      importBaseline,
+      exceptionBaseline,
     },
   };
 };
@@ -202,11 +204,24 @@ const importedRecords = (request: { readonly records: readonly ExceptionRecord[]
     ? "present"
     : "absent";
 
-const importUnmeasured = (request: {
-  readonly importBaseline: ImportBaseline;
+const legacyChainRecords = (request: { readonly records: readonly ExceptionRecord[] }): "present" | "absent" =>
+  request.records.some((record) => record.whyChain !== undefined && whyChainFormOf({ chain: record.whyChain }) === "legacy")
+    ? "present"
+    : "absent";
+
+const legacyChainUnmeasured = (request: {
+  readonly exceptionBaseline: ExceptionBaseline;
   readonly records: readonly ExceptionRecord[];
 }): readonly Unmeasured[] =>
-  request.importBaseline.measured === "no" && importedRecords({ records: request.records }) === "present"
+  request.exceptionBaseline.measured === "no" && legacyChainRecords({ records: request.records }) === "present"
+    ? [{ kind: "legacy-chain-unmeasured" }]
+    : [];
+
+const importUnmeasured = (request: {
+  readonly exceptionBaseline: ExceptionBaseline;
+  readonly records: readonly ExceptionRecord[];
+}): readonly Unmeasured[] =>
+  request.exceptionBaseline.measured === "no" && importedRecords({ records: request.records }) === "present"
     ? [{ kind: "import-unmeasured" }]
     : [];
 
@@ -229,13 +244,16 @@ const textsInBase = (request: {
   );
 };
 
-const importBaselineOf = (request: {
+const exceptionBaselineOf = (request: {
   readonly check: CheckRequest;
   readonly entries: readonly StructuralExceptionEntry[];
-}): ImportBaseline => {
+}): ExceptionBaseline => {
   const { baseRevision } = request.check;
-  if (baseRevision === undefined || importedEntriesIn({ entries: request.entries }) === "absent") {
-    return UNMEASURED_IMPORT_BASELINE;
+  if (
+    baseRevision === undefined ||
+    (importedEntriesIn({ entries: request.entries }) === "absent" && legacyChainsIn({ entries: request.entries }) === "absent")
+  ) {
+    return UNMEASURED_EXCEPTION_BASELINE;
   }
   const texts = textsInBase({
     check: request.check,
@@ -243,7 +261,7 @@ const importBaselineOf = (request: {
     files: [EXCEPTIONS_FILE, ...importSourcesOf({ entries: request.entries })],
   });
   if (texts === "unmeasured") {
-    return UNMEASURED_IMPORT_BASELINE;
+    return UNMEASURED_EXCEPTION_BASELINE;
   }
   const exceptionsAtBase = texts.get(EXCEPTIONS_FILE);
   return {
@@ -368,7 +386,8 @@ const checkReportOf = (request: {
     invalidRecords: request.inputs.invalidRecords,
     unmeasured: [
       ...forfeitureUnmeasured({ touched: request.touched, records: request.inputs.records }),
-      ...importUnmeasured({ importBaseline: request.inputs.importBaseline, records: request.inputs.records }),
+      ...importUnmeasured({ exceptionBaseline: request.inputs.exceptionBaseline, records: request.inputs.records }),
+      ...legacyChainUnmeasured({ exceptionBaseline: request.inputs.exceptionBaseline, records: request.inputs.records }),
       ...projections.flatMap((projection) => projection.unmeasured),
     ],
     projectionProblems: projections.flatMap((projection) => projection.problems),
@@ -378,7 +397,7 @@ const checkReportOf = (request: {
 export const runCheck = async (request: CheckRequest): Promise<Result<CheckReport, LoadFailure>> => {
   const inputs = await loadInputs({
     ...request,
-    importBaselineOf: ({ entries }) => importBaselineOf({ check: request, entries }),
+    exceptionBaselineOf: ({ entries }) => exceptionBaselineOf({ check: request, entries }),
   });
   if (inputs.outcome === "failed") {
     return inputs;
