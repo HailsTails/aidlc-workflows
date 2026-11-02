@@ -161,7 +161,7 @@ const acceptedEffectNotes: Readonly<Record<StageRefreshEffect, AcceptedEffectNot
   },
   "framing-decision-record": {
     accepts: "the reviewed #67 prose change",
-    follows: "nothing rechecks an open rin-framing-questions.md, so review those records yourself; while an [Answer]: in one is blank or underscores only, the Stop hook holds the turn for the person unless Construction Autonomy Mode is autonomous, and filling or removing it, which the new Gate 1 prose may lead the agent to do, ends that.",
+    follows: "nothing rechecks an open rin-framing-questions.md, so review those records yourself; while Gate 1 is the current in-progress stage and an [Answer]: in any of its *-questions.md files is blank or underscores only, the Stop hook lets the turn end and wait for the person unless Construction Autonomy Mode is autonomous, and filling or removing it, which the new Gate 1 prose may lead the agent to do, ends that.",
   },
 };
 

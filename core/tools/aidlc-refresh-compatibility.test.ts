@@ -82,7 +82,7 @@ test("names each accepted effect in one note that says what follows from it", ()
     work: ["gate-sensor-coverage", "plan-approval-questions"],
   } })).toEqual([
     'Open-workflow refresh accepts the engine-written questions declaration for stage "code-generation" (plan-approval-questions): Plan Approval rechecks a retained code-generation-questions.md before its answer counts.',
-    'Open-workflow refresh accepts the reviewed #67 prose change for stage "rin-gate-1-framing" (framing-decision-record): nothing rechecks an open rin-framing-questions.md, so review those records yourself; while an [Answer]: in one is blank or underscores only, the Stop hook holds the turn for the person unless Construction Autonomy Mode is autonomous, and filling or removing it, which the new Gate 1 prose may lead the agent to do, ends that.',
+    'Open-workflow refresh accepts the reviewed #67 prose change for stage "rin-gate-1-framing" (framing-decision-record): nothing rechecks an open rin-framing-questions.md, so review those records yourself; while Gate 1 is the current in-progress stage and an [Answer]: in any of its *-questions.md files is blank or underscores only, the Stop hook lets the turn end and wait for the person unless Construction Autonomy Mode is autonomous, and filling or removing it, which the new Gate 1 prose may lead the agent to do, ends that.',
     'Open-workflow refresh accepts wider advisory gate sensor coverage for stage "work" (gate-sensor-coverage): the next gate check reads the added paths.',
     'Open-workflow refresh accepts the engine-written questions declaration for stage "work" (plan-approval-questions): Plan Approval rechecks a retained code-generation-questions.md before its answer counts.',
   ]);

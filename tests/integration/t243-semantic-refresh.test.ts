@@ -277,7 +277,7 @@ const stopUnderAutonomy = (args: { readonly rin: ComposedRin; readonly statePath
   return stopped;
 };
 
-test("an open Gate 1 record waits on the person after the settlement refresh until the blank is filled or removed", () => {
+test("after the Gate 1 settlement refresh, a blank answer lets the turn end for the person unless autonomous, filled or removed", () => {
   const rin = composedRin();
   const { sourceRoot, candidateGraph } = installBeforeSettlement(rin);
   const questionsPath = openFramingRecord(rin);
