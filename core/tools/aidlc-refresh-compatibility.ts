@@ -151,7 +151,7 @@ type StageRevalidation = Readonly<Record<string, readonly StageRefreshEffect[]>>
 const revalidationNoteText: Readonly<Record<StageRefreshEffect, string>> = {
   "gate-sensor-coverage": "its advisory gate sensor now covers more paths, and the next gate check reads them.",
   "plan-approval-questions": "the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.",
-  "framing-decision-record": "Gate 1 now settles the decision-questions it can source and asks only reserved decisions; a blank [Answer]: already in an open rin-framing-questions.md still waits for the person.",
+  "framing-decision-record": "Gate 1 now settles the decision-questions it can source and asks only reserved decisions; a blank [Answer]: in an open rin-framing-questions.md holds the Stop hook only until it is filled, and the new Gate 1 prose may lead the agent to fill it, so answer open Gate 1 questions before resuming.",
 };
 
 export const refreshRevalidationNotes = (args: { readonly stageRevalidation: StageRevalidation }): readonly string[] =>

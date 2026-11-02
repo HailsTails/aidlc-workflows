@@ -49,6 +49,29 @@ function workflows(project: string): void {
   put(project, "aidlc/active-space", "default\n");
 }
 
+const engineQuestionsNote = 'Open-workflow refresh revalidates stage "code-generation" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.';
+
+function sourceBeforeEngineQuestions(): string {
+  const older = temp();
+  cpSync(RELEASE, older, { recursive: true });
+  const engineClause = "; the engine writes code-generation-questions.md)";
+  for (const path of [".claude/aidlc-common/stages/construction/code-generation.md", ".claude/tools/data/stage-graph.json"]) {
+    const shipped = readFileSync(join(older, path), "utf-8");
+    expect(shipped).toContain(engineClause);
+    put(older, path, shipped.replace(engineClause, ")"));
+  }
+  return older;
+}
+
+function openProjectFrom(source: string): string {
+  const project = temp();
+  mkdirSync(join(project, ".git"));
+  const installed = config(project, source);
+  expect(installed.status, installed.output).toBe(0);
+  workflows(project);
+  return project;
+}
+
 function config(project: string, source: string, flags: string[] = []) {
   return configText(project, source, ["--json", ...flags]);
 }
@@ -146,33 +169,32 @@ describe("compatible refresh with independent workflows", () => {
     expect(readFileSync(join(project, tool))).toEqual(toolBefore);
   }, 60_000);
 
-  test("names an accepted revalidation in a note on plan and apply without changing the plan token", () => {
-    const older = temp();
-    cpSync(RELEASE, older, { recursive: true });
-    const engineClause = "; the engine writes code-generation-questions.md)";
-    for (const path of [".claude/aidlc-common/stages/construction/code-generation.md", ".claude/tools/data/stage-graph.json"]) {
-      const shipped = readFileSync(join(older, path), "utf-8");
-      expect(shipped).toContain(engineClause);
-      put(older, path, shipped.replace(engineClause, ")"));
-    }
-    const project = temp();
-    mkdirSync(join(project, ".git"));
-    const installed = config(project, older);
-    expect(installed.status, installed.output).toBe(0);
-    workflows(project);
+  test("names an accepted revalidation in a note on the dry run, and the apply accepts the dry run's token", () => {
+    const project = openProjectFrom(sourceBeforeEngineQuestions());
     const before = workspaceBytes(project);
-    const note = 'Open-workflow refresh revalidates stage "code-generation" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.';
     const dryRun = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
     expect(dryRun.status, dryRun.output).toBe(0);
     const plan = JSON.parse(dryRun.stdout);
     expect(plan.data.refreshCompatibility.stageRevalidation).toEqual({ "code-generation": ["plan-approval-questions"] });
-    expect(plan.data.notes).toContain(note);
-    expect(configText(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]).stdout).toContain(`Note: ${note}`);
-    expect(configText(project, RELEASE, ["--refresh-open-workflows", "--dry-run", "--quiet"]).output).toContain(`Warning: ${note}`);
+    expect(plan.data.notes).toContain(engineQuestionsNote);
+    expect(configText(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]).stdout).toContain(`Note: ${engineQuestionsNote}`);
+    expect(configText(project, RELEASE, ["--refresh-open-workflows", "--dry-run", "--quiet"]).output).toContain(`Warning: ${engineQuestionsNote}`);
     const applied = config(project, RELEASE, ["--refresh-open-workflows", "--plan-token", plan.data.planToken]);
     expect(applied.status, applied.output).toBe(0);
-    expect(JSON.parse(applied.stdout).data.notes).toContain(note);
+    expect(JSON.parse(applied.stdout).data.notes).toContain(engineQuestionsNote);
     expect(JSON.parse(applied.stdout).data.planToken).toBe(plan.data.planToken);
+    expect(workspaceBytes(project)).toEqual(before);
+  }, 120_000);
+
+  test.each([
+    { mode: "human", flags: [], line: `Note: ${engineQuestionsNote}`, stream: "stdout" },
+    { mode: "quiet", flags: ["--quiet"], line: `Warning: ${engineQuestionsNote}`, stream: "output" },
+  ] as const)("names an accepted revalidation on a $mode apply", ({ flags, line, stream }) => {
+    const project = openProjectFrom(sourceBeforeEngineQuestions());
+    const before = workspaceBytes(project);
+    const applied = configText(project, RELEASE, ["--refresh-open-workflows", ...flags]);
+    expect(applied.status, applied.output).toBe(0);
+    expect(applied[stream]).toContain(line);
     expect(workspaceBytes(project)).toEqual(before);
   }, 120_000);
 

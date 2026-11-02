@@ -82,7 +82,7 @@ test("names each revalidation entry in one human-readable note", () => {
     work: ["gate-sensor-coverage", "plan-approval-questions"],
   } })).toEqual([
     'Open-workflow refresh revalidates stage "code-generation" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.',
-    'Open-workflow refresh revalidates stage "rin-gate-1-framing" (framing-decision-record): Gate 1 now settles the decision-questions it can source and asks only reserved decisions; a blank [Answer]: already in an open rin-framing-questions.md still waits for the person.',
+    'Open-workflow refresh revalidates stage "rin-gate-1-framing" (framing-decision-record): Gate 1 now settles the decision-questions it can source and asks only reserved decisions; a blank [Answer]: in an open rin-framing-questions.md holds the Stop hook only until it is filled, and the new Gate 1 prose may lead the agent to fill it, so answer open Gate 1 questions before resuming.',
     'Open-workflow refresh revalidates stage "work" (gate-sensor-coverage): its advisory gate sensor now covers more paths, and the next gate check reads them.',
     'Open-workflow refresh revalidates stage "work" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.',
   ]);
