@@ -35689,6 +35689,16 @@ export function missingLeftOutScopeFiles(record: ScopeSelectionRecord, projectDi
   return (record.leftOutScopeFiles ?? []).filter((rel) => !existsSync(join(projectDir, rel))).sort();
 }
 
+export function installedFromCopy(): boolean {
+  return aidlcInvocation() !== "aidlc";
+}
+
+export const RELEASE_AT_HAND_STEP = "With the release files at hand, pass --from <release> instead of --download.";
+
+export function pluginSelectionArguments(plugins: readonly string[] | null, fetchesRelease: boolean): string {
+  return `project --plugins ${plugins === null ? "all" : plugins.join(",")}${fetchesRelease ? " --download" : ""} --yes`;
+}
+
 export function deselectedCoreScopeFiles(): string[] {
   if (isPluginEnabled("aidlc")) return [];
   return coreOwnedScopeFiles(installedScopeDirectory(), composedScopeRecordNames());

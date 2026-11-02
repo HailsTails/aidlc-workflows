@@ -209,14 +209,16 @@ Two commands change the selection, at two depths:
   release or the install record put there go; a file the person added stays.
   The install record (`tools/data/aidlc-manifest.json`) lists the scope files
   the selection leaves out, removed or kept, as `leftOutScopeFiles`, until a
-  run selects `aidlc` again and clears it.
-  A copied project with no release record keeps its start-up banner too and
-  says so. On Claude it writes the selection's default scope into
+  run selects `aidlc` again and clears it. The refresh's report names the
+  exact `config project --plugins` command that puts left-out files back,
+  with `--download` only when a copied project needs the release for it.
+  On Claude the refresh writes the selection's default scope into
   `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up
-  banner's stage and scope tables with the enabled scopes. Every later refresh
-  keeps it that way. Selecting `aidlc` again restores the files, `classic`,
-  and the stock banner; a copied project missing a scope file that list
-  names downloads the release for that. A scope file the person deleted
+  banner's stage and scope tables with the enabled scopes; a copied project
+  with no release record keeps its start-up banner instead and says so. Every
+  later refresh keeps it that way. Selecting `aidlc` again restores the files,
+  `classic`, and the stock banner; a copied project missing a scope file that
+  list names downloads the release for that. A scope file the person deleted
   while core was on is theirs, and never makes a refresh need the release.
   A default scope or banner the person set
   themselves stays theirs; when that default names a scope the selection does

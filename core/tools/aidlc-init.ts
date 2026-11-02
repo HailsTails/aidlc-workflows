@@ -153,8 +153,11 @@ import {
   hasRunnerGenMarker,
   installedScopeOwners,
   scopeEnabledBySelection,
+  installedFromCopy,
   missingLeftOutScopeFiles,
+  pluginSelectionArguments,
   readScopeSelectionRecord,
+  RELEASE_AT_HAND_STEP,
   scopeSelectionRecordOf,
   type ScopeSelectionRecord,
   type SelectedDefaultScope,
@@ -9109,14 +9112,26 @@ function fileCount(count: number): string {
   return count === 1 ? "1 file" : `${count} files`;
 }
 
-function restoreLeftOutStep(selection: readonly string[] | null): string {
-  const selected = selection ?? [];
-  if (selectsCorePlugin(selection)) {
-    const command = configCommand(`project --plugins ${[...selected, "<plugin>"].join(",")} --yes`);
-    return `\`${command}\`, with the plugin you left out in place of <plugin>, puts them back.`;
-  }
-  const command = configCommand(`project --plugins ${["aidlc", ...selected].join(",")} --download --yes`);
-  return `\`${command}\` puts them back. To use release files at hand, pass --from <release> instead of --download; name any other plugin you left out in --plugins too.`;
+interface SelectionRestore {
+  readonly plugins: readonly string[] | null;
+  readonly fetchesRelease: boolean;
+}
+
+function selectionRestore(
+  previousPlugins: readonly string[] | null,
+  actions: readonly PlannedAction[],
+  leftOutScopeFiles: ReadonlySet<string>,
+): SelectionRestore {
+  const kept = new Set(actions.filter((action) => action.action === "preserve").map((action) => action.path));
+  return {
+    plugins: previousPlugins,
+    fetchesRelease: installedFromCopy() && selectsCorePlugin(previousPlugins) && [...leftOutScopeFiles].some((rel) => !kept.has(rel)),
+  };
+}
+
+function restoreLeftOutStep(restore: SelectionRestore): string {
+  const step = `\`${configCommand(pluginSelectionArguments(restore.plugins, restore.fetchesRelease))}\` puts them back.`;
+  return restore.fetchesRelease ? `${step} ${RELEASE_AT_HAND_STEP}` : step;
 }
 
 interface Referent {
@@ -9138,7 +9153,7 @@ function listedPaths(paths: readonly string[]): string[] {
 function leftOutBySelectionReport(
   actions: readonly PlannedAction[],
   removed: boolean,
-  selection: readonly string[] | null,
+  restore: SelectionRestore,
 ): string[] {
   const removedPaths = pathsWithDetail(actions, "remove", LEFT_OUT_BY_SELECTION);
   const changedPaths = pathsWithDetail(actions, "preserve", KEPT_BY_SELECTION.changed);
@@ -9149,7 +9164,7 @@ function leftOutBySelectionReport(
     ...(removedPaths.length === 0 ? [] : [
       `${removed ? "Removed" : "Will remove"} ${fileCount(removedPaths.length)} that the plugin selection leaves out:`,
       ...listedPaths(removedPaths),
-      restoreLeftOutStep(selection),
+      restoreLeftOutStep(restore),
     ]),
     ...(changedPaths.length === 0 ? [] : [
       `Kept ${fileCount(changedPaths.length)} that the plugin selection leaves out, because ${changed.subjectWas} changed after AI-DLC installed ${changed.object}. Delete ${changed.object} yourself if you no longer need ${changed.object}:`,
@@ -12261,6 +12276,11 @@ export async function main(
       workspaceMode,
       retainBaseline,
     );
+    const restore = selectionRestore(
+      choicesContext && canonical(choicesContext.previousPlugins) !== canonical(choicesContext.nextPlugins) ? choicesContext.previousPlugins : null,
+      actions,
+      leftOutScopeFiles,
+    );
     for (const rel of prepared.retiredManagedFiles) {
       const target = join(projectDir, rel);
       if (!pathPresent(target)) continue;
@@ -12581,7 +12601,7 @@ export async function main(
       }
       if (options.mode === "human") {
         writeMenuLines("", retiredFilesReport(projectDir, actions, stamp.frameworkVersion, false, switchedRows));
-        writeMenuLines("", leftOutBySelectionReport(actions, false, readPluginSelection(join(prepared.root, descriptor.harnessDir))));
+        writeMenuLines("", leftOutBySelectionReport(actions, false, restore));
         for (const note of prepared.notes) process.stdout.write(`  Note: ${note}\n`);
       }
       const configuredSection = diagnosticsContext?.section ??
@@ -12739,7 +12759,7 @@ export async function main(
     // Said as soon as it is done, so no later step can leave it unsaid.
     if (options.mode === "human") {
       writeMenuLines("", retiredFilesReport(projectDir, actions, stamp.frameworkVersion, true, switchedRows));
-      writeMenuLines("", leftOutBySelectionReport(actions, true, readPluginSelection(join(projectDir, descriptor.harnessDir))));
+      writeMenuLines("", leftOutBySelectionReport(actions, true, restore));
     }
     const excludeNote = excludeLocalSettingsFromClone(settingsExclude);
     if (excludeNote) prepared.notes.push(excludeNote);

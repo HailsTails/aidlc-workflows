@@ -258,8 +258,11 @@ import {
   loadStageGraphAll,
   loadScopeMetadata,
   installedScopeOwners,
+  installedFromCopy,
   missingLeftOutScopeFiles,
+  pluginSelectionArguments,
   readScopeSelectionRecord,
+  RELEASE_AT_HAND_STEP,
   loadScopeMetadataAll,
   MERGE_SUCCEEDED_TAG_REGEX,
   migrateFlatLayout,
@@ -1402,15 +1405,20 @@ export function activeWorkflowPluginDependencies(
   return violations;
 }
 
-function finishCoreSelectionStep(projectDir: string, coreWasEnabled: boolean, names: readonly string[]): string {
-  const settles = "sets the default scope and start-up banner for this selection.";
-  const command = (extra: string): string => `${aidlcInvocation()} config project --plugins ${names.join(",")}${extra} --yes`;
-  if (coreWasEnabled) {
-    return `Run \`${command("")}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${settles}`;
-  }
-  const removed = missingLeftOutScopeFiles(readScopeSelectionRecord(resolveHarnessPath(["tools", "data"], { projectDir })), projectDir);
-  if (removed.length === 0) return `Run \`${command("")}\` to finish: it ${settles}`;
-  return `Run \`${command(" --download")}\` to finish: the core scope files your plugin selection left out are gone here, so it fetches the release to put them back and ${settles} With the release files at hand, pass --from <release> instead of --download.`;
+const SETTLES_SELECTION = "sets the default scope and start-up banner for this selection.";
+
+function finishCommand(names: readonly string[], fetchesRelease: boolean): string {
+  return `${aidlcInvocation()} config ${pluginSelectionArguments(names, fetchesRelease)}`;
+}
+
+function finishCoreOffStep(names: readonly string[]): string {
+  return `Run \`${finishCommand(names, false)}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${SETTLES_SELECTION}`;
+}
+
+function finishCoreOnStep(projectDir: string, names: readonly string[]): string {
+  const missing = missingLeftOutScopeFiles(readScopeSelectionRecord(resolveHarnessPath(["tools", "data"], { projectDir })), projectDir);
+  if (!installedFromCopy() || missing.length === 0) return `Run \`${finishCommand(names, false)}\` to finish: it ${SETTLES_SELECTION}`;
+  return `Run \`${finishCommand(names, true)}\` to finish: the core scope files your plugin selection left out are gone here, so it fetches the release to put them back and ${SETTLES_SELECTION} ${RELEASE_AT_HAND_STEP}`;
 }
 
 function handleSelectPlugins(projectDir: string, positional: string[]): void {
@@ -1512,7 +1520,9 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
         );
       }
       process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
-      if (nameSet.has("aidlc") !== coreWasEnabled) process.stdout.write(`${finishCoreSelectionStep(projectDir, coreWasEnabled, names)}\n`);
+      if (nameSet.has("aidlc") !== coreWasEnabled) {
+        process.stdout.write(`${coreWasEnabled ? finishCoreOffStep(names) : finishCoreOnStep(projectDir, names)}\n`);
+      }
     } catch (err) {
       resetSelectionSensitiveCaches();
       die(`select-plugins failed: ${errorMessage(err)}`);
