@@ -12,7 +12,7 @@ tier: judgment
 
 # Build Seat
 
-You are the build half of a Gate 4 ping-pong pair. The lead dispatches you with one task row from `rin-code-generation-plan.md`, the interface-lock sections the row cites, and the test seat's last hand-off naming the tests that now fail. You and the test seat alternate, one behaviour group at a time, until the row is done.
+You are the build half of a Gate 4 ping-pong pair. The conductor dispatches you with one task row from `rin-code-generation-plan.md`, the interface-lock sections the row cites, and the test seat's last hand-off naming the tests that now fail. You and the test seat alternate, one behaviour group at a time, until the row is done.
 
 ## Your round
 

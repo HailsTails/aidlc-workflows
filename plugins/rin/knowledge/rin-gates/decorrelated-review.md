@@ -28,7 +28,7 @@ When a stage directive names `reviewer: rin-decorrelated-review-agent`, run the 
   - **For a gate listed in `roster_dispatch_gates`**, read that gate's roster from `{{HARNESS_DIR}}/hooks/review-rosters.json`, dispatch its producing lenses, then the synthesis lens last. The synthesis lens is never a producing lens, whether or not the roster names it. The roster is the required set. A lens the gate's roster comment names as optional is dispatched when the comment's condition holds, and its verdict then gates the aggregate like any roster lens.
   - **Gate 5** has its own board file and follows its own stage's dispatch. Its roster in `review-rosters.json` is the same set.
   - **An adopted core or other-plugin stage** explicitly names `rin-decorrelated-review-agent` in its stage frontmatter and declares its roster under that exact stage slug in `review-rosters.json` `byGate`. Dispatch those producing lenses and the required `rin-intent-defense-reviewer-agent` synthesis last. The scribe reads its phase from the compiled graph; no Rin stage alias or Rin scope membership is required. The default roster is not an adoption selection.
-- The review surface is the stage's produced artifacts + the code/interfaces under review (for Gate 2: the options ledger and questions; for the Gate-3 detailed solution design: the components and the interface lock, whose fenced signatures each lens reads as code — say so in the dispatch brief, and tell the completeness lens that it judges four Gate-3 invariants no sensor checks: every contract element's state is `specified` or `escalated`; every external fact a contract names is listed under the lock's `## External reality`; every key listed there that is not a chosen premise, and every premise of a record with no options ledger, has a facts.md row whose status is `live` or `corrected`; and a chosen premise whose facts.md status is `corrected` still supports its point's choice or routes back to Gate 2; for Gate 4: the generated code diff for the Slice, with its code-generation plan).
+- The review surface is the stage's produced artifacts + the code/interfaces under review (for Gate 2: the options ledger and questions; for the Gate-3 detailed solution design: the components, the decision record and the interface lock, whose fenced signatures each lens reads as code — say so in the dispatch brief, and tell the completeness lens that it judges four Gate-3 invariants no sensor checks: every contract element's state is `specified` or `escalated`; every external fact a contract names is listed under the lock's `## External reality`; every key listed there that is not a chosen premise, and every premise of a record with no options ledger, has a facts.md row whose status is `live` or `corrected`; and a chosen premise whose facts.md status is `corrected` still supports its point's choice or routes back to Gate 2; for Gate 4: the generated code diff for the Slice, with its code-generation plan).
 - **Pin the tree the lenses will read, and know its commit.** Lenses carry
   `tools: Read, Grep, Glob` — no Bash, no `gh` — so they cannot fetch, check
   out, or verify where they are: they review whatever tree they are launched
@@ -50,9 +50,12 @@ Dispatch one subagent per producing lens resolved in Step 1, concurrently to the
   `CANNOT-REVIEW`; the conductor treats this as NOT-READY;
 - passes ONLY: the stage definition path, the artifact/code file paths, and the
   Q&A file path — never memory.md, never plan.md, never another lens's findings.
-  On a `mode: mob` gate it also passes the customer lens the path of the stage's
-  `contributions/` directory, where every seat's objections and concessions are
-  recorded, for its objection check;
+  On a gate the ensemble contract gives a decision record for objection
+  dispositions (`ensemble-contract.md` § "Objection dispositions"), it also
+  passes the customer lens, for its objection check, that record's path, which
+  holds every objection raised in any round with its disposition, and the path of
+  the stage's `contributions/` directory, which holds the positions still
+  standing;
 - lets the agent load its own persona + the project's `cd-*`/method rules for its
   lane.
 
@@ -185,7 +188,7 @@ harness-specific model projection. The roster carries no per-lens model.
 
 The stages naming `rin-decorrelated-review-agent` as their reviewer are read from the compiled stage graph, and the lenses each one dispatches are its roster in `review-rosters.json`. Neither is listed here, so neither can drift from its source. Gate 5 dispatches its own board file, as its stage defines. A gate that names a single reviewer (Gates 0 and 6) runs that reviewer alone, and its roster is that one reviewer.
 
-Gates 1 to 3 require the board. They make most of a record's obligations owed, and `PD-1` has their seats cut and reopen obligations as well as add them. The board is what catches a seat's over-correction, and the customer lens on each of these rosters checks every objection a seat kept against or conceded. So these gates name `rin-decorrelated-review-agent`, their rosters carry `rin-customer-reviewer-agent`, and no rin scope that runs them lowers their review class. Each keeps `reviewer_max_iterations` at 2 or more, so the board re-runs over every fix pass: a fix can add a claim nothing enforces. Lowering the review for a piece of work is {{OPERATOR}}'s explicit call through `--review`, never a seat's or the lead's.
+Gates 1 to 3 require the board. They make most of a record's obligations owed, and `PD-1` has their seats cut and reopen obligations as well as add them. The board is what catches a seat's over-correction, and the customer lens on each of these rosters checks every objection a seat kept against or conceded, from the gate's decision record. So these gates name `rin-decorrelated-review-agent`, their rosters carry `rin-customer-reviewer-agent`, and no rin scope that runs them lowers their review class. Each keeps `reviewer_max_iterations` at 2 or more, so the board re-runs over every fix pass: a fix can add a claim nothing enforces. Lowering the review for a piece of work is {{OPERATOR}}'s explicit call through `--review`, never a seat's or the lead's.
 
 
 ## Adopting review while retaining another stage graph

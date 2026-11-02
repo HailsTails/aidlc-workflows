@@ -18,4 +18,4 @@ You find out whether a claim holds. A candidate claims it meets the requirements
 - A test that cannot fail tells nobody anything; show it failing for the right reason.
 - Report a claim that held as a result, not as silence.
 
-Your pieces at each gate are named in the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`).
+Your pieces and the evidence behind your positions at each gate are named in the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`).

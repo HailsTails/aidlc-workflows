@@ -48,7 +48,7 @@ Each gate authors its own namespaced artefacts, and each folds the content of on
 |---|---|---|
 | Gate 1 framing | `rin-requirements`, `rin-framing-questions` | requirements-analysis: the requirements and their acceptance criteria |
 | Gate 2 solution options | `rin-solution-options`, `rin-options-questions` | domain-design's options comparison: genuinely different candidates per decision point, the comparison on the rows that separate them, and the decision recorded inline with a reason for every rejected candidate |
-| Gate 3 detailed solution design | `rin-components`, `rin-interface-lock` | domain-design's domain model and components; units-generation's units and their dependencies; contract-design's contracts, with versioning and ownership policy |
+| Gate 3 detailed solution design | `rin-components`, `rin-interface-lock`, `rin-design-questions` | domain-design's domain model and components; units-generation's units and their dependencies; contract-design's contracts, with versioning and ownership policy |
 | Gate 4 implement | `rin-code-generation-plan`, `rin-code-summary` | code-generation: the plan and its summary |
 
 Do not layer a second spec→plan→tasks substrate over this chain. Two substrates for

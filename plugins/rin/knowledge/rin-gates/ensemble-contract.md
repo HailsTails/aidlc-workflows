@@ -1,10 +1,10 @@
 # rin ensemble contract — which seat writes which piece
 
-Binding on every rin-gates stage declaring `mode: mob`. How a mob runs — the rounds, the contribution file and its working-space marker, who edits the outputs — is `stage-protocol-ensemble.md` §5. This contract adds only what §5 leaves to the stage: which seat writes which piece at each gate, and how seats are chosen.
+Binding on every rin-gates stage declaring `mode: mob`. How a mob runs — the rounds, the contribution file and its working-space marker, who edits the outputs — is `stage-protocol-ensemble.md` §5. This contract adds only what §5 leaves to the stage: which seat writes which piece at each gate, the evidence behind positions, where each objection's disposition is recorded, and how seats are chosen.
 
 ## Pieces, by gate
 
-A **round-1** piece is written in parallel, blind, from the gate's inputs. A **shared-round** piece answers the assembled outputs, so it is written once they exist. Each seat's brief names its pieces.
+A **round-1** piece is written in parallel, blind, from the gate's inputs. A **shared-round** piece answers the assembled outputs, so it is written once they exist. Each seat's brief names its pieces and the evidence this contract names for its positions.
 
 | gate | seat | round | piece |
 |---|---|---|---|
@@ -31,9 +31,23 @@ Gate 4's test and build seats pair serially rather than in rounds; the gate's ow
 In the shared round every seat records a position on each piece it has a stake in (§5). At these gates the contract names the evidence a seat builds for its positions. It builds that evidence in its working space, `contributions/<agent-slug>/`, never in the outputs, and cites it in the position it backs. A caller or a planted violation there is a probe, not the Slice's implementation: Gate 3's refusal of implementation governs its outputs. A seat with no piece at a gate joins at the shared round and writes `None` under `## Pieces`.
 
 - **Gate 1, customer:** a position on every requirement, known limit and question, each weighed against the customer section.
-- **Gate 3, developer:** one caller written against each proposed contract, and a position on each contract it did not fit.
-- **Gate 3, quality:** a planted violation of each refusal the lock claims, and a position on each refusal whose violation was not caught.
+- **Gate 3, developer:** one caller written against each proposed contract, and a position on every contract: `AGREE:` citing the caller that fit it, or `OBJECT:` citing where the caller did not fit.
+- **Gate 3, quality:** a planted violation of each refusal the lock claims, and a position on every refusal: `AGREE:` citing the planted violation and the check that caught it, or `OBJECT:` citing the planted violation that was not caught.
 - **Gate 3, customer:** a position on each lock clause, safeguard and refusal, and on each case of ordinary use the lock leaves out, each weighed against the customer section.
+
+## Objection dispositions
+
+Contributions are revised in place (§5), so an objection that a seat withdrew, or that a piece's author conceded, leaves no trace in them. At Gates 1 to 3 the lead therefore records, under an `## Objection dispositions` section of the gate's decision record, one entry for every objection a seat raised in any round, naming the seat, the piece and the objection, with where it stands now and the reason that holds it there:
+
+- `accepted`: the evidence shows the objection right, and the outputs meet it, at the section named;
+- `conceded`: the outputs meet it, at the section named, on a call both positions could defend, with the reason the piece's author gave way;
+- `rejected`: the outputs stand against it, citing the evidence that answers it;
+- `contested`: the outputs carry the ruling on it, at the section named, with the maintained dissent. The ruling is the lead's, or, in a stopping class, {{OPERATOR}}'s answer as `reserved-decisions.md` records it;
+- `withdrawn`: the objecting seat no longer holds it, with the reason the seat gave.
+
+An entry whose outcome removes or adds an obligation gives its reason as `PD-1` weighs that cut or addition, never only that a seat raised it.
+
+The decision record is a declared output of the gate: Gate 1's `rin-framing-questions.md`, Gate 2's `rin-options-questions.md` and Gate 3's `rin-design-questions.md`. An entry is a decision over the outputs, not their change history (`DD-5`): it states where the objection stands and why, naming the item it bears on, never how the rounds went, which belongs in the stage's `memory.md`. A gate where no seat objected writes `None` under the section. The customer lens reads this record for its objection check (`decorrelated-review.md` Step 2).
 
 ## Seat selection
 
