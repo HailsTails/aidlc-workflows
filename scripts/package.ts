@@ -833,6 +833,7 @@ function emitActiveSpace(outRoot: string): void {
 async function buildTree(
   m: HarnessManifest,
   outRoot: string,
+  runtimePort: PluginRuntimePort,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
 ): Promise<string[]> {
   const harnessDir = m.harnessDir;
@@ -889,7 +890,7 @@ async function buildTree(
     pluginRoot: CORE_ROOT,
     outDir: treeRoot,
     files: Array.from(walk(treeRoot), (file) => relative(treeRoot, file).split(sep).join("/")),
-    runtimePort: createPassRuntimePort(),
+    runtimePort,
   });
   const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
   if (fmMissed.length > 0) {
@@ -1767,7 +1768,7 @@ function loadManifest(name: string): HarnessManifest {
 // ---------------------------------------------------------------------------
 // write mode: regenerate dist/<name> in place (clean-sweep).
 // ---------------------------------------------------------------------------
-async function writeHarness(name: string): Promise<void> {
+async function writeHarness(name: string, runtimePort: PluginRuntimePort): Promise<void> {
   const m = loadManifest(name);
   const distDir = join(REPO_ROOT, "dist", name);
   const treeRoot = join(distDir, m.harnessDir);
@@ -1845,7 +1846,7 @@ async function writeHarness(name: string): Promise<void> {
     // seedStash here substituted a Windows temp path into every projected
     // .json and broke the parse with an invalid \U escape. The seed is
     // restored explicitly after the tree is built instead.
-    await buildTree(m, stagingDir);
+    await buildTree(m, stagingDir, runtimePort);
     for (const rel of COMPILED_DATA) {
       const seeded = join(seedStash, rel);
       if (!existsSync(seeded)) continue;
@@ -1879,12 +1880,12 @@ async function writeHarness(name: string): Promise<void> {
   }
 }
 
-async function writeReleaseHarness(name: string): Promise<void> {
+async function writeReleaseHarness(name: string, runtimePort: PluginRuntimePort): Promise<void> {
   const m = loadManifest(name);
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  await buildTree(m, releaseDir, "aidlc");
+  await buildTree(m, releaseDir, runtimePort, "aidlc");
   rewriteNativeInvocations(releaseDir, m, copyRoot);
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
@@ -2058,8 +2059,8 @@ async function buildRepositoryPluginProjection(
   pluginName: string,
   harnessName: string,
   outDir: string,
-  outputBoundary = REPO_ROOT,
-  runtimePort: PluginRuntimePort = createPassRuntimePort(),
+  outputBoundary: string,
+  runtimePort: PluginRuntimePort,
 ): Promise<PluginProjectionResult> {
   const target = pluginTargetFor(harnessName);
   if (!target) {
@@ -2246,10 +2247,10 @@ function pluginHarnessesFor(harnesses: string[]): string[] {
 
 async function emitPlugins(
   harnesses: string[],
+  runtimePort: PluginRuntimePort,
   distRoot = join(REPO_ROOT, "dist"),
   log = true,
 ): Promise<void> {
-  const runtimePort = createPassRuntimePort();
   for (const pluginName of discoverPluginNames()) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
       await buildRepositoryPluginProjection(
@@ -2328,28 +2329,28 @@ function assertIdenticalRootIntegrations(root: string, harnesses: string[]): voi
   }
 }
 
-async function buildCheckPass(root: string, harnesses: string[]): Promise<void> {
+async function buildCheckPass(root: string, harnesses: string[], runtimePort: PluginRuntimePort): Promise<void> {
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
   for (const name of harnesses) {
     const manifest = loadManifest(name);
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
-    await buildTree(manifest, copyRoot);
-    await buildTree(manifest, nativeRoot, "aidlc");
+    await buildTree(manifest, copyRoot, runtimePort);
+    await buildTree(manifest, nativeRoot, runtimePort, "aidlc");
     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
   assertIdenticalRootIntegrations(releaseRoot, harnesses);
-  await emitPlugins(harnesses, distRoot, false);
+  await emitPlugins(harnesses, runtimePort, distRoot, false);
 }
 
 async function checkPackageDeterminism(harnesses: string[]): Promise<string[]> {
   const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
   const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
   try {
-    await buildCheckPass(first, harnesses);
-    await buildCheckPass(second, harnesses);
+    await buildCheckPass(first, harnesses, createPassRuntimePort());
+    await buildCheckPass(second, harnesses, createPassRuntimePort());
     return [
       ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
       ...diffTrees(
@@ -2405,6 +2406,7 @@ if (argv[0] === "plugin" && argv[1] === "build") {
       harnessName,
       resolvedOut,
       resolvedOut,
+      createPassRuntimePort(),
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -2441,14 +2443,15 @@ if (check) {
   const builtFrom = packageInputsFingerprint(REPO_ROOT);
   forgetPackagedSources(REPO_ROOT, targets);
   cleanWriteOutputs(targets, named === undefined);
+  const runtimePort = createPassRuntimePort();
   for (const n of targets) {
-    await writeHarness(n);
-    await writeReleaseHarness(n);
+    await writeHarness(n, runtimePort);
+    await writeReleaseHarness(n, runtimePort);
   }
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);
   // Emit plugin projections (the hybrid: per-harness host plugins from plugins/<name>/)
-  await emitPlugins(targets);
+  await emitPlugins(targets, runtimePort);
   // Last, so only a finished build from unchanged sources is recorded as current.
   if (!recordPackagedSources(REPO_ROOT, targets, builtFrom)) {
     console.error(

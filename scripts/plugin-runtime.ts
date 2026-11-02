@@ -350,29 +350,24 @@ export function createPluginRuntimePort(input: { readonly projectRoot: string })
   };
 }
 
+function memoised<Input, Output extends object>(keyOf: (input: Input) => string, compute: (input: Input) => Output) {
+  const known = new Map<string, Output>();
+  return (input: Input): Output => {
+    const key = keyOf(input);
+    const cached = known.get(key);
+    if (cached !== undefined) return cached;
+    const output = compute(input);
+    known.set(key, output);
+    return output;
+  };
+}
+
 export function createSharedPluginRuntimePort(port: PluginRuntimePort): PluginRuntimePort {
-  const declarations = new Map<string, DeclarationBundle>();
-  const bundles = new Map<string, Promise<string>>();
-  const keyOf = (input: { readonly pluginRoot: string; readonly file: string }): string =>
-    JSON.stringify([input.pluginRoot, input.file]);
   return {
-    scan: port.scan,
-    declaration: (input) => {
-      const key = keyOf(input);
-      const known = declarations.get(key);
-      if (known !== undefined) return known;
-      const declaration = port.declaration(input);
-      declarations.set(key, declaration);
-      return declaration;
-    },
-    bundle: (input) => {
-      const key = JSON.stringify([input.pluginRoot, input.file, input.relativeImports]);
-      const known = bundles.get(key);
-      if (known !== undefined) return known;
-      const bundle = port.bundle(input);
-      bundles.set(key, bundle);
-      return bundle;
-    },
+    scan: memoised(({ source }) => source, port.scan),
+    declaration: memoised(({ pluginRoot, file }) => JSON.stringify([pluginRoot, file]), port.declaration),
+    bundle: memoised(({ pluginRoot, file, relativeImports }) =>
+      JSON.stringify([pluginRoot, file, relativeImports]), port.bundle),
   };
 }
 
