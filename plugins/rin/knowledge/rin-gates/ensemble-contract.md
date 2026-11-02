@@ -47,7 +47,7 @@ Contributions are revised in place (§5), so an objection that a seat withdrew, 
 - `contested`: the outputs carry the ruling on it, at the section named, with the maintained dissent. The ruling is the lead's, or, in a stopping class, {{OPERATOR}}'s answer as `reserved-decisions.md` records it;
 - `withdrawn`: the objecting seat no longer holds it, with the reason the seat gave.
 
-The decision record is a declared output of the gate: Gate 1's `rin-framing-questions.md`, Gate 2's `rin-options-questions.md` and Gate 3's `rin-design-questions.md`. An entry is a decision over the outputs, not their change history (`DD-5`): it states where the objection stands and why, never what a piece said before or how the rounds went, which belong in the stage's `memory.md`. A gate where no seat objected writes `None` under the section. The customer lens reads this record for its objection check (`decorrelated-review.md` Step 2).
+The decision record is a declared output of the gate: Gate 1's `rin-framing-questions.md`, Gate 2's `rin-options-questions.md` and Gate 3's `rin-design-questions.md`. An entry is a decision over the outputs, not their change history (`DD-5`): it states where the objection stands and why, naming the item it bears on, never how the rounds went, which belongs in the stage's `memory.md`. A gate where no seat objected writes `None` under the section. The customer lens reads this record for its objection check (`decorrelated-review.md` Step 2).
 
 ## Seat selection
 
