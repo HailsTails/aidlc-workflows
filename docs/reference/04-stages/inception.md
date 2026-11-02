@@ -36,7 +36,7 @@ when collaborators are on (the `collaborators` setting, shipped on only for `ent
 With collaborators off, the engine hands each stage an empty `support_agents`
 list and the lead runs alone: the developer is the pipeline's only link and
 writes the 9 artifacts itself, Practices Discovery skips the spokes, User Stories
-skips the mob round, and no contribution files are owed. The steps below
+skips the mob rounds, and no contribution files are owed. The steps below
 describe the full roster.
 
 **Key characteristics of the Inception phase:**
@@ -551,7 +551,7 @@ Conditional gate format:
 | Condition        | CONDITIONAL -- execute for user-facing features, multiple personas, complex business logic, or cross-team work |
 | Lead Agent       | aidlc-product-agent                                                          |
 | Support Agents   | aidlc-design-agent, aidlc-developer-agent, aidlc-quality-agent               |
-| Mode             | mob (the 2.5.0 mob-elaboration showcase; lead only when collaborators are off) |
+| Mode             | mob (lead only when collaborators are off)                             |
 | Completion Emoji | :books:                                                                |
 
 ### Purpose
@@ -562,10 +562,11 @@ structure: PART 1 creates a story plan with clarifying questions, and PART 2
 generates the actual stories and personas. The plan and stories are presented
 together at the completion gate for combined review.
 
-This stage is the mob-elaboration showcase (mode: mob): the Product Manager
-leads, and the design, developer, and quality agents are dispatched as
-independent collaborators against the lead's draft - blind round, integrate,
-one bounded objection round - with the Product Leader reviewing afterwards.
+This stage runs as a mob: the Product Manager and the dispatched design,
+developer, and quality agents write the personas and stories together, in the
+rounds of
+[`stage-protocol-ensemble.md` §5](../../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies),
+and the Product Leader reviews afterwards.
 The aidlc-design-agent's user-experience perspective is a deliberate addition
 not in the upstream reference, documented in SKILL.md's "Deliberate
 Deviations" section.
@@ -583,7 +584,7 @@ Deviations" section.
    `agents/aidlc-product-agent.md` and knowledge from
    `.claude/knowledge/aidlc-product-agent/`. The support agents (design,
    developer, quality) are NOT loaded inline - this is a mob stage; they are
-   dispatched as independent collaborators during generation.
+   dispatched as independent seats during generation.
 
 2. **Validate User Stories Are Needed** -- Assess whether user stories add
    value for this project:
@@ -641,31 +642,28 @@ Deviations" section.
 
 8. **Execute Plan -- Generate Stories and Personas via the Mob**:
 
-   **Lead draft.** The aidlc-product-agent first drafts
-   `<record>/inception/user-stories/personas.md`:
+   The two outputs are written in the mob rounds of
+   [`stage-protocol-ensemble.md` §5](../../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies),
+   from the approved plan, the Q&A file, and `requirements.md`. The pieces,
+   their authors and their rounds:
+
+   `<record>/inception/user-stories/personas.md` -- design, round 1:
    - User persona definitions (name, role, goals, pain points, context)
    - Persona relationships and priority ranking
 
-   and `<record>/inception/user-stories/stories.md`:
-   - User stories in standard format: "As a [persona], I want [goal], so that
-     [benefit]"
-   - Acceptance criteria for each story
-   - Story priority (Must Have / Should Have / Could Have / Won't Have)
-   - Story dependencies and relationships
-   - INVEST compliance notes
+   `<record>/inception/user-stories/stories.md`:
+   - Lead, round 1: user stories in standard format ("As a [persona], I want
+     [goal], so that [benefit]"), each with a stable `US{group}.{seq}` ID and a
+     priority (Must Have / Should Have / Could Have / Won't Have)
+   - Quality, round 1: the acceptance conditions each requirement implies;
+     shared round: acceptance criteria for each assembled story, each with an
+     `AC{story-group}.{story-seq}.{criterion-seq}` ID
+   - Developer, round 1: the implementation constraints and dependencies the
+     requirements imply; shared round: the assembled stories' dependencies and
+     relationships, and INVEST compliance notes
 
-   **Mutually blind support contributions.** Dispatch aidlc-design-agent,
-   aidlc-developer-agent, and aidlc-quality-agent in one parallel round against
-   the lead draft. Each brief contains the draft, Q&A, and requirements paths,
-   but no sibling contribution. Each support agent writes its identity-marked
-   file under
-   `<record>/inception/user-stories/contributions/<agent-slug>.md`.
-
-   **Lead integration.** The aidlc-product-agent integrates all three
-   contributions into `personas.md` and `stories.md` before the completion
-   gate. Judgment calls go to the human mid-stage, except as the autonomous-stage
-   triage in `stage-protocol-ensemble.md` §5 settles them; knowledge disputes get one
-   bounded objection round. Maintained dissent is quoted at the gate.
+   When collaborators are off, the lead writes every piece. Maintained dissent
+   is quoted at the gate.
 
 9. **Prepare Completion** -- Verify the mob artifacts and all three
    collaborator contribution files. Do not edit state; report the gate outcome
@@ -686,7 +684,7 @@ All artifacts written to `<record>/inception/user-stories/`:
 | `personas.md`                  | User persona definitions, relationships, priority ranking    |
 | `user-stories-assessment.md`   | Execute/skip decision with rationale and factors considered   |
 | `user-stories-questions.md`    | Story plan with clarifying questions using `[Answer]:` tags (input artifact) |
-| `contributions/aidlc-{design,developer,quality}-agent.md` | Mutually blind support contributions integrated by the lead before the gate |
+| `contributions/aidlc-{design,developer,quality}-agent.md` | Each seat's working space: its pieces and positions |
 
 ### Approval Gate
 
@@ -704,8 +702,8 @@ Changes**.
 - The `user-stories-assessment.md` artifact is always produced, even when the
   stage is skipped, to document the rationale.
 - With collaborators on, the three identity-marked contribution files are
-  mandatory ensemble evidence; approval is refused until the lead has
-  integrated all three. A lead-only run owes none.
+  mandatory ensemble evidence; approval is refused while any is missing. A
+  lead-only run owes none.
 - Stories produced here are consumed by Refined Mockups (2.5), Domain
   Design (2.6), Units Generation (2.7), and Delivery Planning (2.9).
 - The aidlc-design-agent support is a deliberate addition for UX-informed

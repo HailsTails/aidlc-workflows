@@ -56,7 +56,7 @@ outputs: stories.md, personas.md, user-stories-assessment.md, traceability.json 
 
 Read every path in `directive.inline_context_paths` per the stage protocol. For
 this mob the roster contains the aidlc-product-agent persona and its shared/role
-knowledge only; the product manager owns the inline draft and integration work.
+knowledge only; the product manager writes its own pieces and assembles the outputs.
 
 This stage runs `mode: mob` (stage-protocol-ensemble.md §5 "Multi-agent stages"): the support agents (aidlc-design-agent for user experience, aidlc-developer-agent for implementability, aidlc-quality-agent for testability) are NOT voices to adopt — they are dispatched as independent participants during PART 2. Do not load their personas into your own context.
 
@@ -119,49 +119,22 @@ If the user interjects with feedback before generation completes, treat it as a 
 
 ### Step 8: Execute Plan — Generate Stories and Personas via the Mob
 
-This is the mob-elaboration ritual: the Product Manager (lead) owns the
-draft, Developers and QA (and Design) collaborate as independent
-participants, and the Product Leader reviews afterwards (`stage-protocol-reviewer.md` §12a).
+The two outputs are written in the mob rounds of stage-protocol-ensemble.md §5
+`mode: mob`, from the approved plan, the Q&A file and `requirements.md`, and the
+Product Leader reviews afterwards (`stage-protocol-reviewer.md` §12a). The
+pieces, their authors and their rounds:
 
-**Round 0 — lead drafts.** As the lead, based on the approved plan, draft:
-
-**`<record>/inception/user-stories/personas.md`:**
+**`<record>/inception/user-stories/personas.md`** — design, round 1:
 - User persona definitions (name, role, goals, pain points, context)
 - Persona relationships and priority ranking
 
 **`<record>/inception/user-stories/stories.md`:**
-- User stories in standard format: "As a [persona], I want [goal], so that [benefit]". Give each story a stable `US{group}.{seq}` ID (for example `US1.1`).
-- Acceptance criteria for each story. Give each criterion a three-segment `AC{story-group}.{story-seq}.{criterion-seq}` ID (for example `AC1.1.1`).
-- Story priority (Must Have / Should Have / Could Have / Won't Have)
-- Story dependencies and relationships
-- INVEST compliance notes
+- Lead, round 1: user stories in standard format: "As a [persona], I want [goal], so that [benefit]", each with a stable `US{group}.{seq}` ID (for example `US1.1`), and each story's priority (Must Have / Should Have / Could Have / Won't Have).
+- Quality, round 1: the acceptance conditions each requirement in `requirements.md` implies. Shared round: acceptance criteria for each assembled story, built from those conditions, each with a three-segment `AC{story-group}.{story-seq}.{criterion-seq}` ID (for example `AC1.1.1`).
+- Developer, round 1: the implementation constraints and dependencies the requirements imply. Shared round: the assembled stories' dependencies and relationships, and INVEST compliance notes.
 
-**Round 1 — dispatch the mob.** Per stage-protocol-ensemble.md §5 `mode: mob`,
-dispatch exactly the collaborators the directive lists in `support_agents`, in
-parallel against the draft (artifacts by path: the two draft artifacts, the Q&A
-file, requirements.md; rules as the accumulated steering bundle), mutually
-blind. Each WRITES its contribution file at
-`<record>/inception/user-stories/contributions/<agent-slug>.md` (§11 format:
-identity-marker first line, Contribution, Positions): design on UX and
-persona fidelity, developer on implementability and story sizing, quality on
-testability of the acceptance criteria.
-
-**If `directive.support_agents` is empty, skip Round 1 and the triage below** —
-the collaborators switch is off for this scope, so the stage runs lead-only
-(§5): your draft stands as the user stories, with no mob round to dispatch,
-integrate, or triage, and no contribution files.
-
-**Integrate and triage.** As the lead, fold the contributions into the two
-artifacts, then triage unresolved objections per stage-protocol-ensemble.md §5: a judgment call (both
-positions legitimate) goes to the user NOW as a structured question (add it
-to the questions file first, blank `[Answer]:` tag), except as §5 triage
-settles it on an autonomous stage; a knowledge dispute
-goes to **round 2** — re-dispatch only the objecting agent(s) with the
-revised draft and the other participants' positions (they update their own
-contribution files). Maintained dissent is quoted verbatim in the Step 10
-completion summary. The dispatched collaborators' contribution files are this
-stage's ensemble evidence — the engine refuses approval while any in the
-directive's effective `support_agents` is missing. A lead-only run has none.
+When `directive.support_agents` is empty, the lead writes every piece (§5).
+Maintained dissent is quoted verbatim in the Step 10 completion summary.
 
 **Write element-level traceability.** Create
 `<record>/inception/user-stories/traceability.json`. Enumerate every `FR` and

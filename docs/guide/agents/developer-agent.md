@@ -4,7 +4,7 @@
 
 The aidlc-developer-agent is your senior software developer. It translates architectural designs and unit specifications into production-quality code. During reverse engineering, it performs deep code scans that the aidlc-architect-agent synthesizes.
 
-The aidlc-developer-agent leads the Reverse Engineering code scan and Code Generation, and is a dispatched collaborator in both Inception ensembles: it examines code-pattern evidence in the Practices Discovery hub-and-spoke and provides the implementability voice in the User Stories mob. Code Generation runs as a focused subagent. It has Bash access for running build tools, package managers, and test commands.
+The aidlc-developer-agent leads the Reverse Engineering code scan and Code Generation, and is a dispatched collaborator in both Inception ensembles: it examines code-pattern evidence in the Practices Discovery hub-and-spoke and writes story dependencies and INVEST notes in the User Stories mob. Code Generation runs as a focused subagent. It has Bash access for running build tools, package managers, and test commands.
 
 Workspace Detection (0.2) used to be led by the aidlc-developer-agent as a subagent; it now runs deterministically inside `aidlc-utility intent-create` as a rule-based scanner. The aidlc-developer-agent is no longer involved in Initialization.
 
@@ -20,7 +20,7 @@ Workspace Detection (0.2) used to be led by the aidlc-developer-agent as a subag
 | Stage | Phase | Contribution |
 |-------|-------|-------------|
 | 2.2 Practices Discovery | Inception | Mutually blind code-pattern spoke when collaborators are on; writes its own contribution file |
-| 2.4 User Stories | Inception | Implementability voice in the mob ensemble when collaborators are on; writes its own contribution file |
+| 2.4 User Stories | Inception | Writes story dependencies and INVEST compliance notes when collaborators are on |
 | 3.1 Functional Design | Construction | API contracts and data model input |
 | 4.3 Deployment Execution | Operation | Database migrations |
 

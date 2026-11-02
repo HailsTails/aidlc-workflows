@@ -14,7 +14,7 @@ The aidlc-product-agent leads five stages spanning Ideation and Inception. It is
 | 1.2 Market Research | Ideation | Competitive analysis and build-vs-buy assessment |
 | 1.4 Scope Definition | Ideation | Defines scope boundaries and prioritized intent backlog |
 | 2.3 Requirements Analysis | Inception | Produces structured functional and non-functional requirements |
-| 2.4 User Stories | Inception | Creates user stories with acceptance criteria from personas |
+| 2.4 User Stories | Inception | Writes the stories and their priorities, and assembles the outputs |
 
 ## Stages Supported
 

@@ -21,7 +21,7 @@
 | market-research | Market Research and Competitive Analysis | Researches competitive landscape, market trends, build-vs-buy trade-offs, and differentiation opportunities |
 | scope-definition | Scope Definition and Prioritization | Defines scope boundaries (in/out), applies prioritization frameworks, creates the Intent Backlog |
 | requirements-analysis | Requirements Analysis | Structures and formalizes requirements from Ideation artifacts into traceable, testable specifications |
-| user-stories | User Stories | Transforms requirements into INVEST-compliant user stories with personas, acceptance criteria, and dependency mapping |
+| user-stories | User Stories | Writes the stories and their priorities in the mob, and assembles the outputs |
 
 ### Support Stages
 
