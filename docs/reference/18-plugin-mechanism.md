@@ -190,10 +190,33 @@ only the plugins named by `<harness-dir>/tools/data/harness.json`:
 The `plugins` key is optional. If it is absent, every installed plugin is
 enabled, preserving existing installs and keeping shipped core byte-identical.
 When it is present, the list is the enabled set. `aidlc` is the implicit core
-plugin; omitting it disables core stages/scopes/runners while leaving the files
-installed and re-enableable. The three Initialization stages are the exception:
-bootstrap has no plugin identity, so those stages are always enabled for every
-enabled scope.
+plugin; omitting it disables core stages/scopes/runners. The three
+Initialization stages are the exception: bootstrap has no plugin identity, so
+those stages are always enabled for every enabled scope. A scope saved with
+`scope-save` (a composed scope with a record under `aidlc/scopes/`) belongs to
+the project, so no selection disables it.
+
+Two commands change the selection, at two depths:
+
+- `aidlc config project --plugins <names>` records the selection and refreshes
+  the install from the release. With `aidlc` left out, that refresh removes
+  the scope files core ships (`<harness-dir>/scopes/aidlc-*.md`, never a saved
+  scope), and on Claude it writes the selection's default scope into
+  `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up
+  banner's stage and scope tables with the enabled scopes. Every later refresh
+  keeps it that way. Selecting `aidlc` again restores the files, `classic`,
+  and the stock banner; a copied project with no release installed downloads
+  the release for that. A default scope or banner the person set themselves
+  stays theirs, unless it names a scope the selection no longer enables, in
+  which case the refresh replaces it and says so in one line.
+- `aidlc engine plugin select <names>` (below) toggles what is enabled without
+  the release, leaving every installed file in place. When it turns `aidlc`
+  on or off it prints the `config project --plugins` command that finishes the
+  change.
+
+The default scope follows the selection on every harness: `classic` when it is
+enabled, otherwise the enabled scope that declares `freeform_default: true`
+(rin's `rin-gates`), otherwise the sole enabled plugin's first scope.
 
 Use the deterministic utility command to inspect or change the selection:
 

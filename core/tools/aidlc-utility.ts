@@ -257,6 +257,7 @@ import {
   loadStageGraph,
   loadStageGraphAll,
   loadScopeMetadata,
+  installedScopeOwners,
   loadScopeMetadataAll,
   MERGE_SUCCEEDED_TAG_REGEX,
   migrateFlatLayout,
@@ -1342,10 +1343,7 @@ export function activeWorkflowPluginDependencies(
   enabled: ReadonlySet<string>,
 ): Array<{ plugin: string; workflow: string; text: string }> {
   const violations: Array<{ plugin: string; workflow: string; text: string }> = [];
-  const scopeOwner = new Map<string, string>();
-  for (const [name, meta] of Object.entries(loadScopeMetadataAll())) {
-    scopeOwner.set(name, meta.plugin ?? "aidlc");
-  }
+  const scopeOwners = installedScopeOwners();
   // Mirror stageEnabledBySelection: initialization stages are always enabled,
   // so they can never strand a plan regardless of the selection.
   const stageOwner = new Map<string, string>();
@@ -1370,7 +1368,7 @@ export function activeWorkflowPluginDependencies(
       const where = `workflow "${intent.dirName}" (space ${space.name})`;
       const scope = getField(content, "Scope");
       if (scope) {
-        const owner = scopeOwner.get(scope);
+        const owner = scopeOwners.get(scope);
         if (owner && !enabled.has(owner)) {
           violations.push({
             plugin: owner,
@@ -1439,6 +1437,7 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
     }
 
     const previousSelection = renderPluginSelection(pluginsEnabled());
+    const coreWasEnabled = isPluginEnabled("aidlc");
     const newSelection = names.join(", ");
     const nameSet = new Set(names);
     // Plugins this change DISABLES (known but not selected; the implicit core
@@ -1497,6 +1496,13 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
         );
       }
       process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
+      if (nameSet.has("aidlc") !== coreWasEnabled) {
+        process.stdout.write(
+          `Run \`${aidlcInvocation()} config project --plugins ${names.join(",")} --yes\` to finish: it ${
+            coreWasEnabled ? "removes" : "installs"
+          } core's scope files and sets the default scope and start-up banner for this selection.\n`,
+        );
+      }
     } catch (err) {
       resetSelectionSensitiveCaches();
       die(`select-plugins failed: ${errorMessage(err)}`);
@@ -11535,7 +11541,7 @@ function handleScopeSave(projectDir: string, flags: Record<string, string>, rawA
     const scopeDef = loadScopeMapping()[scope];
     if (!scopeDef) die(`Unknown scope in state file: ${scope}.`);
     const taken =
-      Object.hasOwn(loadScopeMetadataAll(), name) || Object.hasOwn(loadScopeGrid(), name) ||
+      installedScopeOwners().has(name) || Object.hasOwn(loadScopeGrid(), name) ||
       Object.hasOwn(loadComposedScopeRecords(), name);
     if (taken) die(`A scope named ${name} already exists. Pick another name.`);
     const collisions = keywordCollisions(keywords);

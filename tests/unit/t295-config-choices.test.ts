@@ -241,7 +241,7 @@ describe("t295 flags section", () => {
       "--yes",
     ], project, runtimeEnv());
     expect(invalid.status).toBe(2);
-    expect(invalid.stdout).toContain("installed scopes");
+    expect(invalid.stdout).toContain("enabled scopes");
 
     const applied = run([
       "config",

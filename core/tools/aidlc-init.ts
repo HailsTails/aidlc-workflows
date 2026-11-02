@@ -138,9 +138,19 @@ import {
   _resetStageGraphForTests,
   activeSpace,
   activeWorkflowDescriptions,
+  COMPOSED_SCOPES_SEGMENTS,
+  composedScopeNames,
   DEFAULT_SPACE,
+  deselectedCoreScopeFiles,
   fileIdentity,
+  isPluginEnabled,
+  loadScopeMetadata,
   normalizeProjectFlagsRecord,
+  readScopeDirectory,
+  scopeEnabledBySelection,
+  type SelectedDefaultScope,
+  selectionDefaultScope,
+  validScopes,
   RECORDABLE_PROJECT_BYPASSES,
   type ProjectFlagsRecord,
   normalizeDriveLetter,
@@ -222,7 +232,6 @@ import {
   harnessOwnsModelAccess,
   providerAnswerIsTheSession,
   sessionModelAccessFact,
-  availableScopeNames,
   CODEX_HOOK_TRUST_UNMET,
   codexHookTrustStep,
   completionInstruction,
@@ -331,6 +340,7 @@ type PreparedRefreshSource = {
   pluginOwnedExtras: ReadonlySet<string>;
   // Files whose merge could not be proven: a refresh replaces them only with --force.
   unproven: ReadonlySet<string>;
+  deselectedFiles: ReadonlySet<string>;
   entries?: Baseline["entries"];
   notes: string[];
   readonly ruleInputs: RefreshRuleInputs;
@@ -3105,6 +3115,16 @@ function parseOnOff(value: string | undefined, flag: string): boolean | undefine
   return value === "on";
 }
 
+function enabledScopeNames(harnessRoot: string): string[] {
+  const selected = readPluginSelection(harnessRoot);
+  const selection = selected === null ? null : new Set(selected);
+  const composed = composedScopeNames(join(dirname(harnessRoot), ...COMPOSED_SCOPES_SEGMENTS));
+  return Object.values(readScopeDirectory(join(harnessRoot, "scopes")).metadata)
+    .filter((scope) => scopeEnabledBySelection(scope, selection, composed))
+    .map((scope) => scope.name)
+    .sort();
+}
+
 function buildFlagsRecord(
   current: ProjectFlagsRecord | null,
   argv: readonly string[],
@@ -3115,10 +3135,10 @@ function buildFlagsRecord(
   };
   const defaultScope = valueAfter(argv, "--default-scope");
   if (defaultScope) {
-    const scopes = availableScopeNames(harnessRoot);
+    const scopes = enabledScopeNames(harnessRoot);
     if (!scopes.includes(defaultScope)) {
       throw new Error(
-        `--default-scope must be one of the installed scopes: ${scopes.join(", ")}`,
+        `--default-scope must be one of the enabled scopes: ${scopes.join(", ")}`,
       );
     }
     next.defaultScope = defaultScope;
@@ -3457,7 +3477,7 @@ function choiceWizard(
   });
   if (section === "flags") {
     const args: string[] = [];
-    const scopes = availableScopeNames(selected.root);
+    const scopes = enabledScopeNames(selected.root);
     const scope = configPrompt(
       `Default scope [${scopes.join("/")}, Enter keep]:`,
     )?.trim();
@@ -4907,6 +4927,125 @@ function preserveClaudeProviderFields(
   return retiredManagedFiles;
 }
 
+const DEFAULT_SCOPE_ENTRY = "envDefaultScope";
+
+type DefaultScopeSetting =
+  | { readonly kind: "kept" }
+  | { readonly kind: "unresolved" }
+  | { readonly kind: "written"; readonly scope: string; readonly replaced?: string };
+
+interface ScopeSummary {
+  readonly name: string;
+  readonly depth: string;
+  readonly description: string;
+}
+
+function defaultScopeSetting(input: {
+  readonly current: unknown;
+  readonly shipped: unknown;
+  readonly priorWrittenHash: string | undefined;
+  readonly enabled: ReadonlySet<string>;
+  readonly selected: SelectedDefaultScope;
+}): DefaultScopeSetting {
+  const { current, shipped, priorWrittenHash, enabled, selected } = input;
+  const ownedByAidlc = current === undefined || heldByAidlc(current, shipped, priorWrittenHash);
+  if (!ownedByAidlc && typeof current === "string" && enabled.has(current)) return { kind: "kept" };
+  if (selected.error !== undefined) return { kind: "unresolved" };
+  return !ownedByAidlc && typeof current === "string"
+    ? { kind: "written", scope: selected.scope, replaced: current }
+    : { kind: "written", scope: selected.scope };
+}
+
+function markdownCell(text: string): string {
+  return text.replaceAll("|", "\\|");
+}
+
+function scopeTableSection(scopes: readonly ScopeSummary[]): string {
+  return [
+    "**Scopes**:",
+    "",
+    "| Scope | Depth | Description |",
+    "|-------|-------|-------------|",
+    ...scopes.map((scope) => `| ${markdownCell(scope.name)} | ${markdownCell(scope.depth)} | ${markdownCell(scope.description)} |`),
+  ].join("\n");
+}
+
+const SELECTION_TABLE_STARTS = ["**Phases**", "**Scopes**:"] as const;
+
+function selectionAnnouncement(announcement: string, scopes: readonly ScopeSummary[]): string {
+  const start = SELECTION_TABLE_STARTS.map((heading) => announcement.indexOf(heading)).find((index) => index >= 0);
+  const workflow = announcement.indexOf("**Workflow**");
+  if (start === undefined || workflow < start) return announcement;
+  return `${announcement.slice(0, start)}${scopeTableSection(scopes)}\n\n${announcement.slice(workflow)}`;
+}
+
+function heldByAidlc(current: unknown, release: unknown, priorHash: string | undefined): boolean {
+  return (release !== undefined && canonical(current) === canonical(release)) ||
+    sha256Bytes(canonical(current)) === priorHash;
+}
+
+function enabledScopeSummaries(): ScopeSummary[] {
+  const metadata = loadScopeMetadata();
+  return [...validScopes()].flatMap((name) => {
+    const meta = metadata[name];
+    return meta ? [{ name, depth: meta.depth, description: meta.description }] : [];
+  });
+}
+
+const COPIED_PROJECT_HAS_NO_RELEASE_SETTINGS: Readonly<Record<string, unknown>> = Object.freeze({});
+
+function releaseSettings(releasePath: string | null): Readonly<Record<string, unknown>> | null {
+  if (releasePath === null) return COPIED_PROJECT_HAS_NO_RELEASE_SETTINGS;
+  return regularFile(releasePath) ? readJsonFile(releasePath) as Record<string, unknown> : null;
+}
+
+function projectSelectionIntoClaudeSettings(input: {
+  readonly stagedPath: string;
+  readonly releasePath: string | null;
+  readonly settingsRelative: string;
+  readonly priorEntries: Record<string, string> | undefined;
+  readonly entries: Record<string, string> | undefined;
+  readonly recordedDefaultScope: string | undefined;
+  readonly notes: string[];
+}): void {
+  const shipped = releaseSettings(input.releasePath);
+  if (!regularFile(input.stagedPath) || shipped === null) return;
+  const stagedText = readFileSync(input.stagedPath, "utf-8");
+  const staged = JSON.parse(withoutBom(stagedText)) as Record<string, unknown>;
+  const stagedEnv = isRecord(staged.env) ? { ...staged.env } : {};
+  const shippedEnv = isRecord(shipped.env) ? shipped.env : {};
+  if (input.recordedDefaultScope === undefined) {
+    const setting = defaultScopeSetting({
+      current: stagedEnv.AWS_AIDLC_DEFAULT_SCOPE,
+      shipped: shippedEnv.AWS_AIDLC_DEFAULT_SCOPE,
+      priorWrittenHash: input.priorEntries?.[DEFAULT_SCOPE_ENTRY],
+      enabled: validScopes(),
+      selected: selectionDefaultScope(),
+    });
+    if (setting.kind === "written") {
+      stagedEnv.AWS_AIDLC_DEFAULT_SCOPE = setting.scope;
+      staged.env = stagedEnv;
+      if (input.entries) input.entries[DEFAULT_SCOPE_ENTRY] = sha256Bytes(canonical(setting.scope));
+      if (setting.replaced !== undefined && setting.replaced !== setting.scope) {
+        input.notes.push(
+          `AWS_AIDLC_DEFAULT_SCOPE in ${input.settingsRelative} named "${setting.replaced}", which this plugin selection does not enable; it is now "${setting.scope}".`,
+        );
+      }
+    }
+  }
+  if (heldByAidlc(staged.companyAnnouncements, shipped.companyAnnouncements, input.priorEntries?.companyAnnouncements)) {
+    const template = shipped.companyAnnouncements ?? staged.companyAnnouncements;
+    if (!isPluginEnabled("aidlc") && Array.isArray(template)) {
+      const scopes = enabledScopeSummaries();
+      staged.companyAnnouncements = template.map((announcement: unknown) =>
+        typeof announcement === "string" ? selectionAnnouncement(announcement, scopes) : announcement
+      );
+    }
+    if (input.entries) input.entries.companyAnnouncements = sha256Bytes(canonical(staged.companyAnnouncements));
+  }
+  writeFileSync(input.stagedPath, jsonFileText(staged, stagedText));
+}
+
 const CODEX_FRAMEWORK_TABLES = new Set([
   "shell_environment_policy",
   "sandbox_workspace_write",
@@ -5929,7 +6068,7 @@ function prepareRefreshSource(input: {
     projectFlags === null &&
     diagnosticsOverride === undefined
   ) {
-    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), entries, notes };
+    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), deselectedFiles: new Set(), entries, notes };
   }
   const cleanup = mkdtempSync(join(tmpdir(), "aidlc-init-refresh-"));
   try {
@@ -6091,6 +6230,7 @@ function prepareRefreshSource(input: {
   // Claude's and Codex's AI-DLC entries are refreshed in place, per entry.
   const retiredManagedFiles = new Set<string>();
   const unproven = new Set<string>();
+  const deselectedFiles = new Set<string>();
   const configurationOwnershipClean = preserveUserProviderFields(
     projectDir,
     root,
@@ -6372,6 +6512,15 @@ function prepareRefreshSource(input: {
     process.env.AIDLC_SENSORS_DIR = join(stagedHarness, "sensors");
     process.env.AIDLC_AGENTS_DIR = join(stagedHarness, "agents");
     resetProjectionCaches();
+    for (const file of deselectedCoreScopeFiles()) {
+      const rel = relative(root, file).replaceAll("\\", "/");
+      if (!regularFile(join(sourceRoot, rel))) continue;
+      rmSync(file);
+      regenerated.delete(rel);
+      projectOverlays.delete(rel);
+      deselectedFiles.add(rel);
+    }
+    resetProjectionCaches();
     // Restore any composed scope whose identity file is missing from the staged
     // projection BEFORE compiling, exactly as the `graph compile` CLI does. The
     // fold-back only resurrects a grid column whose identity file exists, so
@@ -6419,6 +6568,24 @@ function prepareRefreshSource(input: {
       }
       writeFileSync(skillPath, generated);
     }
+    if (projectFlags?.defaultScope !== undefined && !validScopes().has(projectFlags.defaultScope)) {
+      notes.push(
+        `The recorded default scope "${projectFlags.defaultScope}" is not enabled by this plugin selection; record an enabled one with \`${configCommand("flags --default-scope <scope> --yes")}\`.`,
+      );
+    }
+    if (modelHarness(distribution) === "claude") {
+      const settingsRelative = `${descriptor.harnessDir}/settings.json`;
+      if (entries !== undefined) entries[settingsRelative] ??= {};
+      projectSelectionIntoClaudeSettings({
+        stagedPath: join(root, settingsRelative),
+        releasePath: projectProjection ? null : join(sourceRoot, settingsRelative),
+        settingsRelative,
+        priorEntries: prior?.entries?.[settingsRelative],
+        entries: entries?.[settingsRelative],
+        recordedDefaultScope: projectFlags?.defaultScope,
+        notes,
+      });
+    }
     regenerated.add(`${descriptor.harnessDir}/tools/data/stage-graph.json`);
     for (const directory of [join(stagedHarness, "skills"), join(root, ".agents", "skills")]) {
       if (!existsSync(directory)) continue;
@@ -6457,7 +6624,7 @@ function prepareRefreshSource(input: {
       }
     }
   }
-  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, entries, notes };
+  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, deselectedFiles, entries, notes };
   } catch (error) {
     rmSync(cleanup, { recursive: true, force: true });
     throw error;
@@ -6700,12 +6867,16 @@ type ReleaseNeed = {
   harnessDir?: string;
   // The release those files are, when a pin asks for another.
   current?: string;
-  cause: "pin" | "pin-missing" | "add" | "switch" | "restore" | "refresh" | "mcp" | "from";
+  cause: "pin" | "pin-missing" | "add" | "switch" | "restore" | "refresh" | "mcp" | "core-scopes" | "from";
   // For "switch": the installed row the run replaces in the same directory.
   switchingFrom?: string;
   // For "mcp": the project has no .mcp.json at all, rather than an emptied one.
   absent?: boolean;
 };
+
+function selectsCorePluginAgain(previous: readonly string[] | null, next: readonly string[] | null): boolean {
+  return previous !== null && !previous.includes("aidlc") && (next === null || next.includes("aidlc"));
+}
 
 // Whether a copied project's own files can apply its project choices. Plugins
 // and completions always can. MCP defaults can only while .mcp.json still
@@ -6765,6 +6936,8 @@ function releaseNeedSentence(need: ReleaseNeed): string {
       return need.absent
         ? `${dir} has no MCP server list for ${need.version}.`
         : `${dir} no longer has the MCP server list for ${need.version}.`;
+    case "core-scopes":
+      return `${dir} no longer has core's scope files for ${need.version}, so selecting aidlc again needs the release files.`;
     case "from":
       return `The files passed to --from are ${need.current}, but this project is pinned to ${need.version}.`;
   }
@@ -6789,6 +6962,7 @@ function releaseNeedDownload(need: ReleaseNeed, host: string, form: "ask" | "sta
       return `${fetch} and ${switchTo} ${need.harnessDir} to ${need.distribution}`;
     case "restore":
     case "mcp":
+    case "core-scopes":
       return `${fetch} and ${restore} it`;
     default:
       return `${fetch} and ${update} ${need.harnessDir ?? need.distribution}`;
@@ -8757,13 +8931,36 @@ function planManagedFiles(
     ) continue;
     const target = join(projectDir, rel);
     if (!pathPresent(target)) continue;
+    const deselected = prepared.deselectedFiles.has(rel);
     if ((!regularFile(target) || sha256FileMatching(target, [priorHash]) !== priorHash) && !force) {
-      actions.push({ path: rel, action: "conflict", detail: "removed upstream but locally modified" });
+      actions.push({
+        path: rel,
+        action: "conflict",
+        detail: deselected ? LEFT_OUT_BY_SELECTION_MODIFIED : "removed upstream but locally modified",
+      });
       continue;
     }
     operations.push({ kind: "remove", path: rel, expected: expected(target) });
-    actions.push({ path: rel, action: "remove", detail: NO_LONGER_SHIPPED });
+    actions.push({ path: rel, action: "remove", detail: deselected ? LEFT_OUT_BY_SELECTION : NO_LONGER_SHIPPED });
   }
+}
+
+const LEFT_OUT_BY_SELECTION = "left out by the plugin selection";
+const LEFT_OUT_BY_SELECTION_MODIFIED = "left out by the plugin selection but locally modified";
+
+function leftOutBySelectionReport(actions: readonly PlannedAction[], removed: boolean): string[] {
+  const paths = actions
+    .filter((item) => item.action === "remove" && item.detail === LEFT_OUT_BY_SELECTION)
+    .map((item) => item.path)
+    .sort();
+  if (paths.length === 0) return [];
+  return [
+    `${removed ? "Removed" : "Will remove"} ${
+      paths.length === 1 ? "1 core scope file" : `${paths.length} core scope files`
+    } the plugin selection leaves out (aidlc is not selected):`,
+    ...paths.map((path) => `  ${quoteCommandArgument(path)}`),
+    `Selecting aidlc again with \`${configCommand("project --plugins aidlc,<plugins> --yes")}\` puts them back.`,
+  ];
 }
 
 // A refresh names every file it removes because the release no longer ships
@@ -11545,7 +11742,9 @@ export async function main(
           const own = copiedProjectSource(projectDir, error.distribution);
           const previousMcp = normalizeProjectChoicesRecord(choicesContext?.previous)?.mcp;
           const mcpTarget = choicesContext?.mcpMode;
+          const restoresCoreScopes = selectsCorePluginAgain(choicesContext.previousPlugins, choicesContext.nextPlugins);
           if (
+            !restoresCoreScopes &&
             ownFilesCoverChoices(
               projectDir,
               own.descriptor,
@@ -11557,7 +11756,7 @@ export async function main(
           } else {
             if (own.cleanup) rmSync(own.cleanup, { recursive: true, force: true });
             need = {
-              cause: "mcp",
+              cause: restoresCoreScopes ? "core-scopes" : "mcp",
               version: own.stamp.frameworkVersion,
               distribution: own.stamp.distribution,
               harnessDir: own.stamp.harnessDir,
@@ -11969,7 +12168,7 @@ export async function main(
       // a cited file aside clears every kind of conflict; --force clears only
       // an edit to a file AI-DLC owns, so it is named only when that is all.
       const forceable = (detail: string | undefined): boolean =>
-        /^(?:managed path is not a regular file|locally modified or unowned|removed upstream but locally modified|root integration is not a regular file|managed block was locally modified|managed block has no ownership baseline|retired managed block was locally modified|retired JSON entry was locally modified|retired whole-file integration was locally modified)$/
+        /^(?:managed path is not a regular file|locally modified or unowned|removed upstream but locally modified|left out by the plugin selection but locally modified|root integration is not a regular file|managed block was locally modified|managed block has no ownership baseline|retired managed block was locally modified|retired JSON entry was locally modified|retired whole-file integration was locally modified)$/
           .test(detail ?? "") || /is missing its shipped block copy/.test(detail ?? "");
       const cited = [...new Set(conflicts.map((item) => item.path))];
       const broken = [...new Set(conflicts.filter((item) => !forceable(item.detail)).map((item) => item.path))];
@@ -12179,6 +12378,7 @@ export async function main(
       }
       if (options.mode === "human") {
         writeMenuLines("", retiredFilesReport(projectDir, actions, stamp.frameworkVersion, false, switchedRows));
+        writeMenuLines("", leftOutBySelectionReport(actions, false));
         for (const note of prepared.notes) process.stdout.write(`  Note: ${note}\n`);
       }
       const configuredSection = diagnosticsContext?.section ??
@@ -12336,6 +12536,7 @@ export async function main(
     // Said as soon as it is done, so no later step can leave it unsaid.
     if (options.mode === "human") {
       writeMenuLines("", retiredFilesReport(projectDir, actions, stamp.frameworkVersion, true, switchedRows));
+      writeMenuLines("", leftOutBySelectionReport(actions, true));
     }
     const excludeNote = excludeLocalSettingsFromClone(settingsExclude);
     if (excludeNote) prepared.notes.push(excludeNote);

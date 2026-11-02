@@ -206,6 +206,9 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
 
     const selected = runUtility(project, ["select-plugins", "test-pro"]);
     expect(selected.status).toBe(0);
+    expect(selected.stdout).toContain(
+      "config project --plugins test-pro --yes` to finish: it removes core's scope files and sets the default scope and start-up banner for this selection.",
+    );
     const audit = readAllAuditShards(project);
     expect(auditField(audit, "PLUGIN_SELECTION_CHANGED", "Previous Selection")).toBe("all enabled (no selection)");
     expect(auditField(audit, "PLUGIN_SELECTION_CHANGED", "New Selection")).toBe("test-pro");
@@ -241,12 +244,16 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
 
     const both = runUtility(project, ["select-plugins", "aidlc,test-pro"]);
     expect(both.status).toBe(0);
+    expect(both.stdout).toContain(
+      "config project --plugins aidlc,test-pro --yes` to finish: it installs core's scope files",
+    );
     expect(readFileSync(graphPath(project), "utf-8")).toBe(fullGraphBefore);
   });
 
   test("selecting aidlc prunes test-pro runners while plugin files remain installed", () => {
     const selected = runUtility(project, ["select-plugins", "aidlc"]);
     expect(selected.status).toBe(0);
+    expect(selected.stdout).not.toContain("to finish:");
 
     expect(existsSync(join(project, ".claude", "skills", "test-pro-integration", "SKILL.md"))).toBe(false);
     expect(existsSync(join(project, ".claude", "skills", "test-pro-validation", "SKILL.md"))).toBe(false);

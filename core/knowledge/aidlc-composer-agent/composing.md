@@ -93,7 +93,7 @@ and each pass through a lowered fence records a `GUARD_STOOD_ASIDE` row.
   neither line is present). Adopt it and say so, and keep a stricter value
   the human asked for on every re-dispatch.
 - For a custom grid, copy the validator's `custom_start.guard_policy`, the
-  classic scope's default (`off` in core), and keep it: a custom plan runs
+  install's default scope's default (`classic`'s `off` in core), and keep it: a custom plan runs
   with the guards a person gets without composing, and the human raises it on
   the gate row if they want more (keep their value on every re-dispatch).
   Under a memory layer that declares strict, propose strict. Without a
@@ -147,9 +147,10 @@ ceremony runs inside them. Every front/report proposal names all six in its
   Policy required, and the validator checks each against the words the scope
   loader accepts.
 - For a custom grid, start from the validator's `custom_start.scope_settings`:
-  the classic scope's values (in core, summary confirmation and collaborators
-  off, reviews advisory, the rest on), whichever stock scope the plan runs on. The plan
-  picks its own stages; only the ceremony starts from classic. Without a
+  the install's default scope's values (in core, `classic`: summary
+  confirmation and collaborators off, reviews advisory, the rest on), whichever
+  stock scope the plan runs on. The plan picks its own stages; only the
+  ceremony starts from the default scope. Without a
   `custom_start` echo, start from the validator's nearest stock scope. A
   matched proposal that the human's edit turns custom keeps the Guard Policy
   and settings the gate showed, with their change applied. Either

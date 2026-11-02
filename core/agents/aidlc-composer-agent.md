@@ -49,9 +49,10 @@ entropy, failure cost, or verification weakness more than it costs.
    test); missing project infrastructure (no test suite, no CI) is
    PRE-EXISTING debt the report did not ask you to erect - it justifies
    ci-pipeline/practices-discovery only when the fix cannot ship without
-   them. A code-findings report lands in stock `bugfix` (or
-   `security-patch` when a hotspot must deploy) unless it contains work no
-   stock incremental scope covers.
+   them. A code-findings report lands in a stock fix scope (one whose scope
+   file declares `report_fix: true`; core ships `bugfix`, and
+   `security-patch` for when a hotspot must deploy) unless it contains work
+   no stock incremental scope covers.
 3. **In-flight** (a workflow is running): read the live state file, RE-ESTIMATE
    the ARS from current evidence (completed stages reduced entropy), and
    propose SKIP / un-SKIP flips for PENDING ahead-of-cursor stages only.
@@ -566,9 +567,11 @@ harnesses' file tools cannot write outside the project. Then run:
 With no `--proposal`, the validator reads `proposalPath`, so every run checks
 the grid you last wrote there.
 On the Report branch, add `--report` to every run: `nearest_stock` then ranks
-only the fix scopes (`bugfix`, `security-patch`), a custom plan's `base_scope`
-comes from them, and `--matched` with any other scope is refused, so a
-code-findings report never lands on a lighter scope whose grid sits nearer.
+only the enabled fix scopes (those declaring `report_fix: true`), a custom
+plan's `base_scope` comes from them, and `--matched` with any other scope is
+refused, so a code-findings report never lands on a lighter scope whose grid
+sits nearer. When no enabled scope declares it, the validator says so in
+`advisories` and ranks every scope.
 When the person names the scope for the report themselves, that is their
 call: run without `--report` and match the scope they named.
 When the dispatch selected a workflow explicitly, pass that same space and
@@ -722,8 +725,8 @@ this kind of work's usual setting. When the
 human has asked for a stricter value, keep theirs on every re-dispatch: the
 plan stays matched and creation applies it. The final `validate-grid --matched`
 run rejects only a value below the stock default. For `mode: "custom"` copy
-the validator's `custom_start.guard_policy`, the classic scope's default (`off`
-in core), and keep it: a custom plan runs with the guards a person gets without
+the validator's `custom_start.guard_policy`, the install's default scope's
+default (`classic`'s `off` in core), and keep it: a custom plan runs with the guards a person gets without
 composing, and the human raises the value on the gate row when they want a
 changed input to reopen an approval (keep theirs on every re-dispatch). When a
 memory layer declares strict, the validator refuses a lower value: propose
@@ -776,7 +779,7 @@ sentence `scopeSettingsRationale` naming what is off or capped and why this
 work does not need it. For `mode: "matched"` start from the stock scope's
 values (a missing ceremony line means `on`, a missing `review_cap` means
 `adversarial`). For `mode: "custom"` start from the validator's
-`custom_start.scope_settings`, the classic scope's values, whichever stock
+`custom_start.scope_settings`, the install's default scope's values, whichever stock
 scope the plan runs on: a custom plan picks its own stages but runs the
 ceremony a person gets without composing (when the validator echoes no
 `custom_start`, start from `nearest_stock[0]`'s values). A matched proposal

@@ -108,6 +108,9 @@ import {
   validScopes,
   isScopeName,
   SCOPE_NAME_RULE,
+  COMPOSED_SCOPES_SEGMENTS,
+  composedScopesDir,
+  selectionDefaultScope,
   withAuditLock,
   writeFileAtomic,
 } from "./aidlc-lib.ts";
@@ -276,7 +279,7 @@ export interface ScopeValidation {
   creation_depth?: "minimal" | "standard" | "comprehensive";
   // The Guard Policy and settings a custom plan starts from, echoed on every
   // run that is not --matched so the composer copies them before it routes.
-  // Absent when the classic scope is not enabled here.
+  // Absent when the plugin selection names no default scope.
   custom_start?: { guard_policy: GuardPolicy; scope_settings: ScopeSettings };
 }
 
@@ -487,22 +490,6 @@ function mutableScopeGridPath(projectDir: string): string {
 // global (`/aidlc --scope <name>` is not space-qualified), so this placement
 // matches today's semantics exactly instead of layering a behavior change onto a
 // durability fix.
-const COMPOSED_SCOPES_SEGMENTS = ["aidlc", "scopes"] as const;
-
-/** Resolve the composed-scope record directory. AIDLC_COMPOSED_SCOPES_DIR is the
- *  env seam (mirrors AIDLC_RULES_DIR / AIDLC_SCOPE_GRID) so fixture tests can
- *  isolate from a real workspace, and so init's staged refresh can point compile
- *  at the PROJECT's records while everything else reads the staged tree. Ladder
- *  matches rulesDir(): env seam → project-dir workspace root → this tool's
- *  location → the executable's packaged distribution. Evaluated at call time. */
-function composedScopesDir(): string {
-  if (process.env.AIDLC_COMPOSED_SCOPES_DIR) return process.env.AIDLC_COMPOSED_SCOPES_DIR;
-  const projectRecords = join(runtimeProjectDir(), ...COMPOSED_SCOPES_SEGMENTS);
-  if (existsSync(projectRecords)) return projectRecords;
-  const moduleRecords = join(__FILE_DIR, "..", "..", ...COMPOSED_SCOPES_SEGMENTS);
-  if (existsSync(moduleRecords)) return moduleRecords;
-  return resolveDistributionPath(COMPOSED_SCOPES_SEGMENTS);
-}
 
 // The generated region that carries a record's EXECUTE/SKIP grid. A record the
 // writer produced is exactly the harness scope `.md` plus this one appended region,
@@ -1550,10 +1537,12 @@ export function subgraphForScope(scope: string): GraphStage[] {
  *  overlap. Shared by `ars` (against the complete mechanical screen grid) and
  *  `validate-grid` (against the composer's proposal); only the latter is a
  *  front/report stock-match authority. */
-/** The stock scopes a code-findings report can run on (`validate-grid
- *  --report`): the composer contract's report rule, bugfix, or security-patch
- *  when a hotspot must deploy. */
-const REPORT_FIX_SCOPES: readonly string[] = ["bugfix", "security-patch"];
+export function reportFixScopes(): string[] {
+  return Object.values(loadScopeMetadata())
+    .filter((meta) => meta.reportFix === true)
+    .map((meta) => meta.name)
+    .sort();
+}
 
 export function nearestStockScopes(
   grid: Record<string, "EXECUTE" | "SKIP">
@@ -1816,14 +1805,16 @@ export function scopeSettingsOf(scope: string): ScopeSettings | null {
   };
 }
 
-/** What a custom plan starts from: the classic scope's Guard Policy and
- *  settings, the ceremony a person gets without composing, whichever stock
- *  scope the plan then runs on. Its stages stay the composer's own. Null when
- *  classic is not an enabled scope here. */
+/** What a custom plan starts from: the selection's default scope's Guard
+ *  Policy and settings, the ceremony a person gets without composing, whichever
+ *  stock scope the plan then runs on. Its stages stay the composer's own. Null
+ *  when the selection names no default scope. */
 export function customPlanStart(): { guard_policy: GuardPolicy; scope_settings: ScopeSettings } | null {
-  const settings = scopeSettingsOf("classic");
+  const start = selectionDefaultScope();
+  if (start.error !== undefined) return null;
+  const settings = scopeSettingsOf(start.scope);
   if (settings === null) return null;
-  return { guard_policy: scopeGuardPolicyDefault("classic"), scope_settings: settings };
+  return { guard_policy: scopeGuardPolicyDefault(start.scope), scope_settings: settings };
 }
 
 /** The errors for a front/report proposal that names its routing. Either route
@@ -3617,11 +3608,16 @@ const COMMANDS: Record<string, Handler> = {
     // grid happens to sit nearer (express has no reviewers or plan approval).
     const report = args.includes("--report");
     const nearestAll = r.nearest_stock ?? [];
-    if (report) {
-      r.nearest_stock = nearestAll.filter((row) => REPORT_FIX_SCOPES.includes(row.scope));
-      if (matched !== undefined && !REPORT_FIX_SCOPES.includes(matched)) {
+    const fixScopes = report ? reportFixScopes() : [];
+    if (report && fixScopes.length === 0) {
+      r.advisories.push(
+        "No enabled scope declares report_fix: true, so this code-findings report is ranked against every scope.",
+      );
+    } else if (report) {
+      r.nearest_stock = nearestAll.filter((row) => fixScopes.includes(row.scope));
+      if (matched !== undefined && !fixScopes.includes(matched)) {
         r.errors.push(
-          `A code-findings report runs on ${REPORT_FIX_SCOPES.join(" or ")}, so it cannot be matched to "${matched}". ` +
+          `A code-findings report runs on ${fixScopes.join(" or ")}, so it cannot be matched to "${matched}". ` +
             "Adopt the nearest of those, or propose it as custom.",
         );
       }
@@ -3853,7 +3849,7 @@ Common forms:
                                        (no --proposal reads the proposalPath detect --json prints;
                                        --strict rejects a starved required input;
                                        --keywords rejects keywords an existing scope claims;
-                                       --report matches a code-findings report to bugfix or security-patch only)
+                                       --report matches a code-findings report only to scopes declaring report_fix: true)
   aidlc-graph ars --iae <s> --csu <s> --ve <s> --r <s> --ua <s> [--completed <csv>] [--project-type <t>]
                                        Deterministic ARS arithmetic: composite + bands,
                                        per-stage EV screen, nearest stock scopes, and the

@@ -192,6 +192,22 @@ This removes recorded unchanged Rin registrations and owned bodies. Unknown
 files are preserved. A retained compose bootstrap respects the deselection and
 does not reinstall those bodies or registrations.
 
+To run Rin's scopes only, leave `aidlc` out of the selection:
+
+```bash
+AIDLC_RUNTIME_ROOT=/absolute/fork/dist \
+bun /absolute/consumer/.claude/tools/aidlc-init.ts config project \
+  --plugins rin --yes --project-dir /absolute/consumer
+bun /absolute/consumer/.claude/tools/aidlc-plugin.ts sync \
+  --project-dir /absolute/consumer
+```
+
+The refresh removes core's `aidlc-*` scope files from `.claude/scopes/`, sets
+`AWS_AIDLC_DEFAULT_SCOPE` to `rin-gates`, and lists Rin's scopes in the
+start-up banner. Only scope files are removed: core's stage, agent and tool
+files stay installed, and the selection decides which stages run. Selecting
+`aidlc,rin` again restores core's scopes.
+
 ## Delivery status
 
 These instructions describe the maintained source-build route and its isolated

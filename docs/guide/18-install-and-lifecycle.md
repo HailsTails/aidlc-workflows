@@ -833,7 +833,7 @@ it is answered. Passing `unlimited` removes
 the value from the selected settings layer without changing other flags.
 `AIDLC_QUESTION_RETENTION_DAYS` is the matching environment override.
 
-Default scope names are read from the installed scope files. The section does
+Default scope names are read from the scope files the plugin selection enables. The section does
 not branch on a built-in scope name, so scope renames and plugin scopes remain
 data. On Claude Code, config also rewrites the staged
 `AWS_AIDLC_DEFAULT_SCOPE` value in `.claude/settings.json`; otherwise the
@@ -886,6 +886,13 @@ aidlc config project --show --json
 aidlc config project --check
 aidlc config project --reset --yes
 ```
+
+Leaving `aidlc` out of `--plugins` installs only the selected plugins'
+scopes: the refresh removes the scope files core ships (scopes you saved with
+`scope-save` stay), sets the default scope and, on Claude Code, the start-up
+banner for the selection, and lists the removed files with the command that
+puts them back. Selecting `aidlc` again restores them. See
+[Plugin selection](../reference/18-plugin-mechanism.md).
 
 On a copy-channel projection, `config project` applies plugin, MCP, and
 completion choices from the project's own files at the release it already
