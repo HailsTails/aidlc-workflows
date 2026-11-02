@@ -208,7 +208,8 @@ Two commands change the selection, at two depths:
   the marker stays and is named. Inside a removed folder, only the files the
   release or the install record put there go; a file the person added stays.
   The install record (`tools/data/aidlc-manifest.json`) lists the scope files
-  the selection leaves out, removed or kept, as `leftOutScopeFiles`.
+  the selection leaves out, removed or kept, as `leftOutScopeFiles`, until a
+  run selects `aidlc` again and clears it.
   A copied project with no release record keeps its start-up banner too and
   says so. On Claude it writes the selection's default scope into
   `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up

@@ -155,6 +155,7 @@ import {
   scopeEnabledBySelection,
   missingLeftOutScopeFiles,
   readScopeSelectionRecord,
+  scopeSelectionRecordOf,
   type ScopeSelectionRecord,
   type SelectedDefaultScope,
   selectionAwareDefaultScope,
@@ -350,6 +351,7 @@ type PreparedRefreshSource = {
   // Files whose merge could not be proven: a refresh replaces them only with --force.
   unproven: ReadonlySet<string>;
   deselectedFiles: ReadonlyMap<string, LeftOutFile>;
+  coreLeftOut: boolean;
   entries?: Baseline["entries"];
   notes: string[];
   readonly ruleInputs: RefreshRuleInputs;
@@ -6193,7 +6195,7 @@ function prepareRefreshSource(input: {
     projectFlags === null &&
     diagnosticsOverride === undefined
   ) {
-    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), deselectedFiles: new Map(), entries, notes };
+    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), deselectedFiles: new Map(), coreLeftOut: false, entries, notes };
   }
   const cleanup = mkdtempSync(join(tmpdir(), "aidlc-init-refresh-"));
   try {
@@ -6350,6 +6352,7 @@ function prepareRefreshSource(input: {
   const retiredManagedFiles = new Set<string>();
   const unproven = new Set<string>();
   const deselectedFiles = new Map<string, LeftOutFile>();
+  let coreLeftOut = false;
   const configurationOwnershipClean = preserveUserProviderFields(
     projectDir,
     root,
@@ -6623,6 +6626,7 @@ function prepareRefreshSource(input: {
     process.env.AIDLC_SENSORS_DIR = join(stagedHarness, "sensors");
     process.env.AIDLC_AGENTS_DIR = join(stagedHarness, "agents");
     resetProjectionCaches();
+    coreLeftOut = !isPluginEnabled("aidlc");
     for (const file of deselectedCoreScopeFiles()) {
       const rel = relative(root, file).replaceAll("\\", "/");
       const sourceFile = join(sourceRoot, rel);
@@ -6735,7 +6739,7 @@ function prepareRefreshSource(input: {
       }
     }
   }
-  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, deselectedFiles, entries, notes };
+  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, deselectedFiles, coreLeftOut, entries, notes };
   } catch (error) {
     rmSync(cleanup, { recursive: true, force: true });
     throw error;
@@ -9073,8 +9077,8 @@ function planManagedFiles(
     const installedHash = file.provenance === "shipped" ? file.installedHash ?? file.releaseHash : undefined;
     if (plan === "changed" && installedHash !== undefined) nextHashes[rel] = installedHash;
   }
-  for (const rel of prior?.leftOutScopeFiles ?? []) {
-    if (!shipped.has(rel)) leftOutScopeFiles.add(rel);
+  if (prepared.coreLeftOut) {
+    for (const rel of scopeSelectionRecordOf(prior).leftOutScopeFiles ?? []) leftOutScopeFiles.add(rel);
   }
 }
 

@@ -259,6 +259,24 @@ describe("a selection without the core plugin installs only the selected plugins
     }
   });
 
+  test("re-selecting core clears the record of left-out scope files, so later choices never need the release", () => {
+    const projectDir = installedProject();
+    const own = join(projectDir, ".claude", "scopes", "team-hotfix.md");
+    writeFileSync(own, readFileSync(join(projectDir, ".claude", "scopes", "aidlc-bugfix.md"), "utf-8").replace("name: bugfix", "name: team-hotfix").replace(/keywords:[\s\S]*?description:/, "keywords:\n  - teamhot\ndescription:"));
+    selectPlugins(projectDir, PLUGIN);
+    rmSync(own);
+
+    const restored = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--from", RELEASE, "--yes"]);
+    expect(restored.status, restored.stdout + restored.stderr).toBe(0);
+    const manifest = JSON.parse(readFileSync(join(projectDir, ".claude", "tools", "data", "aidlc-manifest.json"), "utf-8")) as { leftOutScopeFiles?: string[] };
+    expect(manifest.leftOutScopeFiles).toBeUndefined();
+
+    const unrelated = aidlc(projectDir, ["config", "project", "--completions", "bash", "--yes"]);
+    expect(unrelated.status, unrelated.stdout + unrelated.stderr).toBe(0);
+    const again = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--yes"]);
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+  });
+
   test("a scope file the person deleted while core is on never makes a project choice need the release", () => {
     const projectDir = installedProject();
     rmSync(join(projectDir, ".claude", "scopes", "aidlc-security-patch.md"));
