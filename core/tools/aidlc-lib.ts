@@ -35669,12 +35669,19 @@ export function coreOwnedScopeFiles(directory: ScopeDirectory, composed: Readonl
     .flatMap((meta) => directory.files.get(meta.name) ?? []);
 }
 
-export type ScopeSelectionRecord = { readonly leftOutScopeFiles?: readonly string[] };
+export type ScopeSelectionRecord = { readonly leftOutScopeFiles?: readonly string[]; readonly selectionBanner?: true };
 
 export function scopeSelectionRecordOf(manifest: unknown): ScopeSelectionRecord {
   if (typeof manifest !== "object" || manifest === null || !("schemaVersion" in manifest) || manifest.schemaVersion !== 1) return {};
-  if (!("leftOutScopeFiles" in manifest) || !Array.isArray(manifest.leftOutScopeFiles)) return {};
-  return { leftOutScopeFiles: manifest.leftOutScopeFiles.filter((rel): rel is string => typeof rel === "string") };
+  const files = "leftOutScopeFiles" in manifest && Array.isArray(manifest.leftOutScopeFiles)
+    ? manifest.leftOutScopeFiles.filter((rel): rel is string => typeof rel === "string")
+    : [];
+  const banner = "selectionBanner" in manifest && manifest.selectionBanner === true;
+  return { ...(files.length > 0 ? { leftOutScopeFiles: files } : {}), ...(banner ? { selectionBanner: true as const } : {}) };
+}
+
+export function selectionRecordHeld(record: ScopeSelectionRecord): boolean {
+  return (record.leftOutScopeFiles?.length ?? 0) > 0 || record.selectionBanner === true;
 }
 
 export function readScopeSelectionRecord(dataDir: string): ScopeSelectionRecord {
@@ -35687,6 +35694,10 @@ export function readScopeSelectionRecord(dataDir: string): ScopeSelectionRecord 
 
 export function missingLeftOutScopeFiles(record: ScopeSelectionRecord, projectDir: string): string[] {
   return (record.leftOutScopeFiles ?? []).filter((rel) => !existsSync(join(projectDir, rel))).sort();
+}
+
+export function copyRestoreNeedsRelease(record: ScopeSelectionRecord, projectDir: string): boolean {
+  return missingLeftOutScopeFiles(record, projectDir).length > 0 || record.selectionBanner === true;
 }
 
 export function installedFromCopy(): boolean {

@@ -153,12 +153,13 @@ import {
   hasRunnerGenMarker,
   installedScopeOwners,
   scopeEnabledBySelection,
+  copyRestoreNeedsRelease,
   installedFromCopy,
-  missingLeftOutScopeFiles,
   pluginSelectionArguments,
   readScopeSelectionRecord,
   RELEASE_AT_HAND_STEP,
   scopeSelectionRecordOf,
+  selectionRecordHeld,
   type ScopeSelectionRecord,
   type SelectedDefaultScope,
   selectionAwareDefaultScope,
@@ -355,6 +356,7 @@ type PreparedRefreshSource = {
   unproven: ReadonlySet<string>;
   deselectedFiles: ReadonlyMap<string, LeftOutFile>;
   coreLeftOut: boolean;
+  selectionBanner: boolean;
   entries?: Baseline["entries"];
   notes: string[];
   readonly ruleInputs: RefreshRuleInputs;
@@ -5085,17 +5087,18 @@ function unprovenBannerNote(settingsRelative: string): string {
   return `companyAnnouncements in ${settingsRelative} has no release record showing AI-DLC wrote it, so it was kept and may list scopes this plugin selection leaves out. Refresh from the release with \`${configCommand("--download")}\` to take the banner for this selection.`;
 }
 
-function projectBanner(projection: ClaudeSettingsProjection, settingsRelative: string, notes: string[]): void {
+function projectBanner(projection: ClaudeSettingsProjection, settingsRelative: string, notes: string[]): boolean {
   const { project, release, staged, priorEntries, entries } = projection;
   const banner = project.companyAnnouncements;
   const recordedHash = priorEntries?.companyAnnouncements;
   if (banner !== undefined && !aidlcHoldsSetting(banner, release.companyAnnouncements, recordedHash)) {
     const unproven = release.companyAnnouncements === undefined && recordedHash === undefined;
     if (unproven && !isPluginEnabled("aidlc")) notes.push(unprovenBannerNote(settingsRelative));
-    return;
+    return false;
   }
   const template = release.companyAnnouncements ?? staged.companyAnnouncements;
-  if (!isPluginEnabled("aidlc") && Array.isArray(template)) {
+  const spliced = !isPluginEnabled("aidlc") && Array.isArray(template);
+  if (spliced) {
     const scopes = enabledScopeSummaries();
     staged.companyAnnouncements = template.map((announcement: unknown) =>
       typeof announcement === "string" ? selectionAnnouncement(announcement, scopes) : announcement
@@ -5103,6 +5106,7 @@ function projectBanner(projection: ClaudeSettingsProjection, settingsRelative: s
   }
   const writtenHash = settingHash(staged.companyAnnouncements);
   if (entries && writtenHash) entries.companyAnnouncements = writtenHash;
+  return spliced;
 }
 
 function projectSelectionIntoClaudeSettings(input: {
@@ -5114,9 +5118,9 @@ function projectSelectionIntoClaudeSettings(input: {
   readonly entries: Record<string, string> | undefined;
   readonly recordedDefaultScope: string | undefined;
   readonly notes: string[];
-}): void {
+}): boolean {
   const release = releaseSettings(input.releasePath);
-  if (!regularFile(input.stagedPath) || release === null) return;
+  if (!regularFile(input.stagedPath) || release === null) return false;
   const stagedText = readFileSync(input.stagedPath, "utf-8");
   const projection: ClaudeSettingsProjection = {
     project: regularFile(input.projectPath) ? readJsonFile(input.projectPath) as Record<string, unknown> : {},
@@ -5126,8 +5130,9 @@ function projectSelectionIntoClaudeSettings(input: {
     entries: input.entries,
   };
   projectDefaultScope(projection, input.recordedDefaultScope, input.settingsRelative, input.notes);
-  projectBanner(projection, input.settingsRelative, input.notes);
+  const bannerSpliced = projectBanner(projection, input.settingsRelative, input.notes);
   writeFileSync(input.stagedPath, jsonFileText(projection.staged, stagedText));
+  return bannerSpliced;
 }
 
 const CODEX_FRAMEWORK_TABLES = new Set([
@@ -6198,7 +6203,7 @@ function prepareRefreshSource(input: {
     projectFlags === null &&
     diagnosticsOverride === undefined
   ) {
-    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), deselectedFiles: new Map(), coreLeftOut: false, entries, notes };
+    return { root: sourceRoot, regenerated: new Set(), sourceHashes: new Map(), ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles: new Set(), unproven: new Set(), deselectedFiles: new Map(), coreLeftOut: false, selectionBanner: false, entries, notes };
   }
   const cleanup = mkdtempSync(join(tmpdir(), "aidlc-init-refresh-"));
   try {
@@ -6356,6 +6361,7 @@ function prepareRefreshSource(input: {
   const unproven = new Set<string>();
   const deselectedFiles = new Map<string, LeftOutFile>();
   let coreLeftOut = false;
+  let selectionBanner = false;
   const configurationOwnershipClean = preserveUserProviderFields(
     projectDir,
     root,
@@ -6701,7 +6707,7 @@ function prepareRefreshSource(input: {
     if (modelHarness(distribution) === "claude") {
       const settingsRelative = `${descriptor.harnessDir}/settings.json`;
       if (entries !== undefined) entries[settingsRelative] ??= {};
-      projectSelectionIntoClaudeSettings({
+      selectionBanner = projectSelectionIntoClaudeSettings({
         projectPath: join(projectDir, settingsRelative),
         stagedPath: join(root, settingsRelative),
         releasePath: projectProjection ? null : join(sourceRoot, settingsRelative),
@@ -6742,7 +6748,7 @@ function prepareRefreshSource(input: {
       }
     }
   }
-  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, deselectedFiles, coreLeftOut, entries, notes };
+  return { root, cleanup, regenerated, sourceHashes: beforeGeneratedWrites, ruleInputs, projectOverlays, hookCoreHashes, pluginOwnedExtras, retiredManagedFiles, unproven, deselectedFiles, coreLeftOut, selectionBanner, entries, notes };
   } catch (error) {
     rmSync(cleanup, { recursive: true, force: true });
     throw error;
@@ -6997,9 +7003,7 @@ function selectsCorePlugin(selection: readonly string[] | null): boolean {
 }
 
 function coreScopesMatchSelection(projectDir: string, harnessRoot: string, plugins: readonly string[] | null): boolean {
-  if (selectsCorePlugin(plugins)) {
-    return missingLeftOutScopeFiles(readScopeSelectionRecord(join(harnessRoot, "tools", "data")), projectDir).length === 0;
-  }
+  if (selectsCorePlugin(plugins)) return !selectionRecordHeld(readScopeSelectionRecord(join(harnessRoot, "tools", "data")));
   const composed = composedScopeRecordNames(join(projectDir, ...COMPOSED_SCOPES_SEGMENTS));
   return coreOwnedScopeFiles(readScopeDirectory(join(harnessRoot, "scopes")), composed).length === 0;
 }
@@ -7063,7 +7067,7 @@ function releaseNeedSentence(need: ReleaseNeed): string {
         ? `${dir} has no MCP server list for ${need.version}.`
         : `${dir} no longer has the MCP server list for ${need.version}.`;
     case "core-scopes":
-      return `${dir} no longer has the core scope files its plugin selection left out, so selecting aidlc needs the release files for ${need.version}.`;
+      return `${dir} can only get back what its plugin selection left out from the release files for ${need.version}, so selecting aidlc needs them.`;
     case "from":
       return `The files passed to --from are ${need.current}, but this project is pinned to ${need.version}.`;
   }
@@ -9120,12 +9124,13 @@ interface SelectionRestore {
 function selectionRestore(
   previousPlugins: readonly string[] | null,
   actions: readonly PlannedAction[],
-  leftOutScopeFiles: ReadonlySet<string>,
+  record: ScopeSelectionRecord,
 ): SelectionRestore {
   const kept = new Set(actions.filter((action) => action.action === "preserve").map((action) => action.path));
+  const leftOutRestorable = (record.leftOutScopeFiles ?? []).some((rel) => !kept.has(rel)) || record.selectionBanner === true;
   return {
     plugins: previousPlugins,
-    fetchesRelease: installedFromCopy() && selectsCorePlugin(previousPlugins) && [...leftOutScopeFiles].some((rel) => !kept.has(rel)),
+    fetchesRelease: installedFromCopy() && selectsCorePlugin(previousPlugins) && leftOutRestorable,
   };
 }
 
@@ -11856,7 +11861,7 @@ export async function main(
       choicesContext?.section === "flags",
     );
     let recordOnly = recordSection;
-    const copyChannel = aidlcInvocation() !== "aidlc";
+    const copyChannel = installedFromCopy();
     const dryRun = argv.includes("--dry-run");
     const releaseSettings = {
       baseUrl: valueAfter(argv, "--release-base-url"),
@@ -11957,7 +11962,7 @@ export async function main(
           const previousMcp = normalizeProjectChoicesRecord(choicesContext?.previous)?.mcp;
           const mcpTarget = choicesContext?.mcpMode;
           const restoresCoreScopes = selectsCorePlugin(choicesContext.nextPlugins) &&
-            missingLeftOutScopeFiles(readScopeSelectionRecord(join(projectDir, harness.harnessDir, "tools", "data")), projectDir).length > 0;
+            copyRestoreNeedsRelease(readScopeSelectionRecord(join(projectDir, harness.harnessDir, "tools", "data")), projectDir);
           if (
             !restoresCoreScopes &&
             ownFilesCoverChoices(
@@ -12279,7 +12284,7 @@ export async function main(
     const restore = selectionRestore(
       choicesContext && canonical(choicesContext.previousPlugins) !== canonical(choicesContext.nextPlugins) ? choicesContext.previousPlugins : null,
       actions,
-      leftOutScopeFiles,
+      { leftOutScopeFiles: [...leftOutScopeFiles], ...(prepared.selectionBanner ? { selectionBanner: true as const } : {}) },
     );
     for (const rel of prepared.retiredManagedFiles) {
       const target = join(projectDir, rel);
@@ -12507,6 +12512,7 @@ export async function main(
       entries: prepared.entries,
       rootContributions,
       ...(leftOutScopeFiles.size > 0 ? { leftOutScopeFiles: [...leftOutScopeFiles].sort() } : {}),
+      ...(prepared.selectionBanner ? { selectionBanner: true as const } : {}),
     };
     const baselineRel = join(descriptor.harnessDir, "tools", "data", "aidlc-manifest.json");
     operations.push(writeOperation(
@@ -13017,7 +13023,7 @@ export async function main(
       return;
     }
     const rawMessage = error instanceof Error ? error.message : String(error);
-    const copyChannel = aidlcInvocation() !== "aidlc";
+    const copyChannel = installedFromCopy();
     // A pin refusing the files named by --from wants the pinned release itself,
     // fetched instead of those files.
     const pinMismatch = error instanceof MissingInstalledSource && from ? error : null;
