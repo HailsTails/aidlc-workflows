@@ -101,7 +101,7 @@ The lead records in `rin-options-questions.md` which candidate it leans towards 
 
 ### Step 4: Dispose of every objection
 
-A falsified premise changes the comparison and usually rejects the candidate; it does not change the fact row's status, which is Gate 3's. Record in `rin-options-questions.md` a disposition for every objection a seat raised: folded, with where, or rejected, with the reason.
+A falsified premise changes the comparison and usually rejects the candidate; it does not change the fact row's status, which is Gate 3's. Record in `rin-options-questions.md` a disposition for every objection a seat raised in any round, as the ensemble contract's § "Objection dispositions" says.
 
 ### Step 5: Record the decision
 

@@ -68,7 +68,7 @@ MANDATORY: Follow stage-protocol.md — the conductor runs the gate ritual
 describes only the WORK: implement the locked Slice test-first and drive the
 committed deterministic gate. It does NOT present the gate or report.
 
-This is rin Gate 4 — TDD implement. The conductor leads and convenes a pair of seats (`mode: mob`, seats dispatched per the ensemble contract) that ping-pong each task one behaviour group at a time: the test seat writes the failing tests, the build seat writes the least code that passes them. A third agent that wrote none of the code checks each commit before it lands. The deterministic gate stays COMMITTED tooling — the automatable work is committed, not re-spawned.
+This is rin Gate 4 — TDD implement. The developer (`rin-developer-agent`) leads, and the conductor convenes a pair of seats (`mode: mob`, seats dispatched per the ensemble contract) that ping-pong each task one behaviour group at a time: the test seat writes the failing tests, the build seat writes the least code that passes them. A third agent that wrote none of the code checks each commit before it lands. The deterministic gate stays COMMITTED tooling — the automatable work is committed, not re-spawned.
 
 Small rounds are the point. Each round surfaces a mistake before the next round builds on it, so the pair reaches a correct result faster than one agent taking large steps, and rework (the largest cost in construction) stays small.
 
@@ -158,7 +158,8 @@ A good breakdown is the main saving. Stand-ins later replaced, decisions overtur
 
 #### Roles
 
-- **Lead (the conductor):** plans the tasks, dispatches the seats, settles decisions the lock leaves open, runs the per-commit check and commits. The lead does not write the code or the tests it is judging.
+- **Lead (`rin-developer-agent`):** plans the tasks and settles decisions the lock leaves open. The lead does not write the code or the tests it is judging.
+- **Conductor:** dispatches the seats and `rin-commit-check-agent`, and commits.
 - **Test seat (`rin-test-seat-agent`):** writes the failing tests for a behaviour, against the lock's interfaces.
 - **Build seat (`rin-build-seat-agent`):** writes the least code that makes those tests pass.
 
@@ -195,8 +196,8 @@ Before every hand-off, the seat holding the work runs the full checks: the packa
 #### Per-commit check and commits
 
 - One commit per pair of tasks, after both seats agree the tasks are done.
-- Before each commit, the lead dispatches `rin-commit-check-agent` against the diff, with the head sha pinned. It wrote none of the code and looks only for what both authors could miss: behaviour the lock asks for with no test, a state the code can get stuck in, and tests with no value.
-- It reports only blocking findings. The pair fixes those before the commit. Anything smaller is recorded in `rin-code-summary.md` for review, not fixed now.
+- Before each commit, the conductor dispatches `rin-commit-check-agent` against the diff, with the head sha pinned. It wrote none of the code and looks only for what both authors could miss: behaviour the lock asks for with no test, a state the code can get stuck in, and tests with no value.
+- It reports only blocking findings. The pair fixes those before the commit. Anything smaller the conductor passes to the lead, who records it in `rin-code-summary.md` for review; it is not fixed now.
 - It is not the gate's review. At stage completion the conductor runs the decorrelated board over the code diff and this plan, dispatching this gate's roster from `review-rosters.json`.
 - The Slice's PR body lists every call its gates made under a decided class, with its class and where it is recorded, for {{OPERATOR}}'s sign-off.
 

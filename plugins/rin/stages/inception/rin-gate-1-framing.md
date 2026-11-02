@@ -35,7 +35,7 @@ sensors:
 scopes:
   - rin-gates
 inputs: The Gate-0 reconcile report + readiness verdict, and the target Slice's intent
-outputs: rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions, each with the gate's answer and its source, or its stopping class and pack), under this stage's record dir, engine-resolved
+outputs: rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions, each with the gate's answer and its source, or its stopping class and pack, and the disposition of every seat objection), under this stage's record dir, engine-resolved
 ---
 
 # Gate 1 — Framing (rin)
@@ -71,6 +71,8 @@ separate DB call and no receipt artefact.
 
 ### Step 1: Write the framing in the mob rounds
 The seats and the lead write both artefacts in the mob rounds (`stage-protocol-ensemble.md` §5). Questions must be atomic, non-dominated (no question whose answer forces another), consequence-bearing, and load-bearing (the answer changes the design). The solution is never proposed here, and the artefacts are prose only: a shape written as a type, a schema or a signature is a solution, and the board judges whether the artefacts carry one. A shape the framing needs to mention is recorded as a candidate for Gate 2, never as a requirement.
+
+Record in `rin-framing-questions.md` a disposition for every objection a seat raised in any round, as the ensemble contract's § "Objection dispositions" says.
 
 ### Step 2: Settle the decisions
 Settle each decision-question on the stage. The lead answers it from the seats' evidence, the code, the upstream artefacts, the recorded decisions and the rules, and records the answer and its source in `rin-framing-questions.md`. Apply the fork test and the deciding-versus-stopping split in `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` against the active list. A question in a class the active list marks decided and recorded is decided here, naming its class, and recorded for review; it is not asked. Only a question in a stopping class goes to {{OPERATOR}}: its pack is written into `rin-framing-questions.md`, then it is asked or the gate parks as that file says, never through the interactive question picker in a scheduled or dispatched run. On resume, it is settled only under that file's resume rule. This file is the gate's decision record, not the stage protocol's question flow: no blank `[Answer]:` tags and no question-count target.

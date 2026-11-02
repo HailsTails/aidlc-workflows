@@ -22,9 +22,20 @@ const OBLIGATION_GATES = [
   "inception/rin-gate-3-interface-lock",
 ] as const;
 
+type ObligationGate = (typeof OBLIGATION_GATES)[number];
+
+const DISPOSITION_RECORDS: Readonly<Record<ObligationGate, string>> = {
+  "inception/rin-gate-1-framing": "rin-framing-questions",
+  "inception/rin-gate-2-plan-review": "rin-options-questions",
+  "inception/rin-gate-3-interface-lock": "rin-design-questions",
+};
+
 const rosterFileSchema = z.object({ byGate: z.record(z.string(), z.unknown()) });
 const rosterSchema = z.array(z.string());
-const boardSchema = z.object({ roster_dispatch_gates: z.array(z.string()) });
+const boardSchema = z.object({
+  roster_dispatch_gates: z.array(z.string()),
+  producing_lenses: z.array(z.object({ lens: z.string(), agent: z.string() })),
+});
 
 const readPluginFile = (segments: readonly string[]): string =>
   files.read(paths.join({ segments: [PLUGIN_ROOT, ...segments] }));
@@ -63,6 +74,17 @@ describe("Gates 1 to 3 keep the board that catches over-correction", () => {
   test.each(OBLIGATION_GATES)("%s seats the customer lens and closes on intent defence", (gate) => {
     expect(rosterOf(gate)).toContain(CUSTOMER_LENS);
     expect(rosterOf(gate).at(-1)).toBe(SYNTHESIS_LENS);
+  });
+
+  test("the board catalogue keeps the customer lens the gates seat", () => {
+    expect(board.producing_lenses.map((producingLens) => producingLens.agent)).toContain(CUSTOMER_LENS);
+  });
+
+  test.each(OBLIGATION_GATES)("%s declares the record of every objection's disposition", (gate) => {
+    expect(listField(stageFrontmatter(gate), "produces")).toContain(DISPOSITION_RECORDS[gate]);
+    expect(readPluginFile(["knowledge", "rin-gates", "ensemble-contract.md"])).toContain(
+      `\`${DISPOSITION_RECORDS[gate]}.md\``,
+    );
   });
 
   test.each(OBLIGATION_GATES)("%s reviews at the full class", (gate) => {
