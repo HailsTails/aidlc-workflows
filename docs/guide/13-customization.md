@@ -232,7 +232,7 @@ team re-enables collaborators deliberately.
 | `learnings` | `/aidlc --learnings on\|off` | `AIDLC_DISABLE_LEARNINGS=1` | Stage learnings read/write ritual |
 | `summary_confirmation` | `/aidlc --summary-confirmation on\|off` | `AIDLC_DISABLE_SUMMARY_CONFIRMATION=1` | The separate pre-output summary-confirmation checkpoint |
 | `plan_approval` | `/aidlc --plan-approval on\|off` | `AIDLC_DISABLE_PLAN_APPROVAL_GUARD=1` | The stop that asks you to approve each code plan before it is built ([Plan approval](#plan-approval)) |
-| `collaborators` | `/aidlc --collaborators on\|off` | `AIDLC_DISABLE_COLLABORATORS=1` | A stage's support agents: off runs every stage lead-only (no blind spokes, mob round, or pipeline support link); the reviewer is unaffected |
+| `collaborators` | `/aidlc --collaborators on\|off` | `AIDLC_DISABLE_COLLABORATORS=1` | A stage's support agents: off runs every stage lead-only (no blind spokes, mob rounds, or pipeline support link); the reviewer is unaffected |
 
 Precedence is global kill switch (`1`) → valid intent field → scope default →
 `on`. Kill switches can also be recorded with `aidlc config flags --bypass <NAME>`.

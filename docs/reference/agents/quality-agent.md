@@ -25,7 +25,7 @@
 | Stage | Name | What This Agent Contributes |
 |-------|------|-----------------------------|
 | practices-discovery | Practices Discovery | Mutually blind spoke that records testing posture, coverage floor, and CI block-or-warn behaviour in its contribution file |
-| user-stories | User Stories | Testability and acceptance-criteria voice in the mob ensemble; writes its own contribution file |
+| user-stories | User Stories | Writes each story's acceptance criteria in the mob |
 | nfr-requirements | NFR Requirements | Defines testable quality attribute scenarios and measurable NFR targets |
 
 ---

@@ -705,22 +705,20 @@ communication topology: on an `inline` stage the support agents are personas the
 conductor loads into its own context (voices, not dispatches); on `subagent`
 (hub-and-spoke), `pipeline` (chain), and `mob` (mesh as bounded rounds) each support
 agent is a real, independently dispatched collaborator. Everyone writes their own
-work: on subagent/mob each collaborator writes a contribution file (Contribution +
-Positions, §11) that the lead integrates — the lead alone edits the `produces[]`
-artifacts, and the contribution files are the engine-checked completion evidence;
-on pipeline the chain links advance the artifacts directly and the final link leaves
-them complete. Who sees what differs per topology — spokes are mutually blind, chain
-links see all upstream work, mob objectors get one confirm-or-maintain round while
-judgment-call objections surface to the human mid-stage except as the §5 triage
-settles them on an autonomous stage — but on every topology the
-conductor performs every delegation; agents never spawn subagents. See
-`stage-protocol-ensemble.md` for the full contract.
+work: on subagent/mob each collaborator writes a contribution file — the lead alone
+edits the `produces[]` artifacts, and the contribution files are the engine-checked
+completion evidence; on pipeline the chain links advance the artifacts directly and
+the final link leaves them complete. Who sees what differs per topology — spokes are
+mutually blind, chain links see all upstream work, and a mob's seats and lead write
+the outputs together in bounded rounds — but on every topology the conductor
+performs every delegation; agents never spawn subagents. See
+[`stage-protocol-ensemble.md` §5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies)
+for the full contract.
 
 Example: Feasibility uses `aidlc-architect-agent` (lead) + `aidlc-aws-platform-agent` +
 `aidlc-compliance-agent`, all inline. The mob showcase is `user-stories`: the
-`aidlc-product-agent` drafts personas and stories; design, developer, and quality
-collaborators contribute against that draft while mutually blind; then the lead
-integrates their work before the gate, with `aidlc-product-lead-agent` reviewing.
+`aidlc-product-agent` and the design, developer, and quality seats each write their
+pieces of the personas and stories, with `aidlc-product-lead-agent` reviewing.
 The hub-and-spoke showcase is `practices-discovery`: pipeline-deploy lead draft,
 mutually blind quality, developer, and devsecops contributions, human interview,
 then lead integration. Its gate offers **Approve** / **Request Changes**; after

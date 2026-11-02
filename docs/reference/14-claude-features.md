@@ -116,7 +116,7 @@ The conductor delegates to separate Claude instances via the Claude Code Task to
 |-------|---------------------------|-------|--------|
 | 2.1 Reverse Engineering | `aidlc-developer-agent` then `aidlc-architect-agent` (pipeline, 2-link chain) | aidlc-developer-agent + aidlc-architect-agent | Deep code analysis produces large intermediate output |
 | 2.2 Practices Discovery | lead, three parallel support spokes, lead integration (subagent hub-and-spoke) | pipeline-deploy + quality + developer + devsecops | Independent practice evidence, human interview, then controlled integration |
-| 2.4 User Stories | product lead plus parallel design/developer/quality mob | 4 participants | Bounded collaborative story elaboration with human judgment |
+| 2.4 User Stories | product lead plus design/developer/quality seats (mob, [§5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies)) | 4 participants | Stories written together, with human judgment |
 | 3.5 Code Generation | `aidlc-developer-agent` | aidlc-developer-agent | Code writing benefits from clean context focused on the unit specification |
 
 Workspace detection (0.2) used to be a subagent; it now runs deterministically inside `aidlc-utility intent-create`.

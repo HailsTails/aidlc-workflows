@@ -6,11 +6,11 @@ plugin: rin
 phase: inception
 execution: ALWAYS
 condition: First gate of the rin pipeline. Promotes an eligible consumer intake capture into a native engine intent record, reconciles it and any prior spec residue against deterministic ground truth, then confirms it is ready to frame. Grooms; does not frame (Gate 1), does not choose a solution (Gate 2) and does not design one (Gate 3).
-lead_agent: aidlc-delivery-agent
+lead_agent: rin-delivery-agent
 support_agents:
-  - aidlc-product-agent
+  - rin-product-agent
 mode: inline
-reviewer: aidlc-architecture-reviewer-agent
+reviewer: rin-stage-reviewer-agent
 review_artifact: rin-reconcile-report
 reviewer_max_iterations: 2
 approval_mode: autonomous

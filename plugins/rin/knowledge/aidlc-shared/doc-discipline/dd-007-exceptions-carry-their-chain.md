@@ -18,7 +18,7 @@ aidlc-enforced-by:
 
 A sentence in an official artefact that defers work, places work out of scope, classifies something inherited debt, or records a carve-out is an **exception claim**. It carries its Five Whys chain in the same artefact, adjacent to the claim.
 
-The chain's content and its refusals are R7's, not this rule's: five answered whys, each citing evidence, terminating at a root cause and an owner. DD-7 governs only *where* the chain lives — beside the claim, in the artefact that makes it — and is the artefact-side surface of the same obligation the registries and the disposition table enforce on their own surfaces.
+The chain's shape is discipline-core's why-chain contract (`plugins/discipline-core/docs/why-chain-contract.md` in this fork, `tools/discipline-core/docs/why-chain-contract.md` in a repository that installed core), which R7 adopts. Write the chain to that contract. DD-7 governs only *where* the chain lives — beside the claim, in the artefact that makes it — and is the artefact-side surface of the same obligation the registries and the disposition table carry on their own surfaces, where rin enforces its own weaker R7 floor. No tool reads an artefact's chain against the contract yet ([#76](https://github.com/HailsTails/aidlc-workflows/issues/76)), so in an artefact the contract's mechanical checks don't run; the reviewer judges the chain against the contract's checks and the judgements it leaves to review.
 
 ## Closed conditions
 

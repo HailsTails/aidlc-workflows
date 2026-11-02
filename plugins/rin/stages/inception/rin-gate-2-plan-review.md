@@ -6,11 +6,12 @@ plugin: rin
 phase: inception
 execution: ALWAYS
 condition: Third gate of the rin pipeline. Answers "which solution, among genuinely different ones, and why". Names each decision point, enumerates genuinely different solution shapes for it, writes each candidate's premises as facts.md keys, compares the candidates on the rows that separate them, and records the choice inline in the options ledger with a reason for every rejected candidate. Prose and diagrams only; contracts belong to Gate 3.
-lead_agent: aidlc-architect-agent
+lead_agent: rin-architect-agent
 support_agents:
-  - aidlc-developer-agent
-  - aidlc-quality-agent
+  - rin-developer-agent
+  - rin-quality-agent
   - rin-challenger-agent
+  - rin-customer-seat-agent
 mode: mob
 reviewer: rin-decorrelated-review-agent
 review_artifact: rin-solution-options
@@ -37,7 +38,7 @@ sensors:
 scopes:
   - rin-gates
 inputs: The Gate-1 requirements artefact, and the answered framing questions where the record holds them
-outputs: rin-solution-options.md (the options ledger — decision points, candidates with their premises, the comparison, and the decision on each point) and rin-options-questions.md (the entry-read citation, what each seat was asked and answered, and the disposition of every seat objection), under this stage's record dir, engine-resolved
+outputs: rin-solution-options.md (the options ledger — decision points, candidates with their premises, the comparison, and the decision on each point) and rin-options-questions.md (the entry-read citation, the lead's leaning on each point, and the disposition of every seat objection), under this stage's record dir, engine-resolved
 ---
 
 # Gate 2 — Solution Options (rin)
@@ -49,7 +50,7 @@ This gate answers one question: **which solution, among genuinely different ones
 ## Artefacts
 
 - **`rin-solution-options.md` — the options ledger.** The decision points, every candidate with its premises, the comparison, and the decision on each point: the candidate chosen and a reason for each one rejected. This is the artefact the reviewer judges.
-- **`rin-options-questions.md` — the gate's working record.** The entry-read citation, what each seat was asked and what it answered, and the disposition of every seat objection.
+- **`rin-options-questions.md` — the gate's working record.** The entry-read citation, the lead's leaning on each point, and the disposition of every seat objection.
 
 The ledger's grammar is fixed below, because the blocking `solution-options` sensor reads it and Gate 3's `measured-contracts` sensor reads the chosen candidates' premises from it.
 
@@ -78,6 +79,8 @@ Judge overlap with this record semantically, never by string match.
 
 ### Step 2: Enumerate the candidates
 
+The seats and the lead write the ledger in the mob rounds (`stage-protocol-ensemble.md` §5), each writing the pieces the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`) names for this gate. Steps 2 to 4 govern what the ledger says.
+
 Name each **decision point** — a place where the solution could genuinely go more than one way — as a short kebab-case name (`storage`, `identity`, `delivery-channel`). A record may have several.
 
 For each point, enumerate **genuinely different solution shapes — aim for three.** Genuinely different means they differ in shape — where the state lives, which component owns a concern, which mechanism carries the behaviour, what is built versus reused — not in a parameter of one shape. A candidate written only to be rejected is not genuine. The sensor refuses fewer than two; whether a point with two needed a third is the board's judgement, so when a third honest candidate cannot be found, say what was searched and why the space is that narrow.
@@ -94,17 +97,11 @@ For each point, enumerate **genuinely different solution shapes — aim for thre
 
 Compare the candidates in the ledger's `## Comparison` section **on the rows that separate them** — the Gate-1 requirements and invariants where the candidates differ, plus cost, reversibility and risk where they differ. A requirement every candidate meets the same way is not a row. Cite requirements by their Gate-1 ids so the comparison is traceable to `rin-requirements.md`. A requirement no candidate satisfies is a finding about the framing: record it and, if it cannot be resolved here, route back to Gate 1.
 
-Before convening the seats, write in `rin-options-questions.md` which candidate the lead is leaning towards on each point, so the challenger knows what to argue against.
+The lead records in `rin-options-questions.md` which candidate it leans towards on each point, as part of its round-1 piece, so the challenger knows what to argue against in the shared round.
 
-### Step 4: Convene the seats
+### Step 4: Dispose of every objection
 
-Each seat is dispatched with a brief naming the concrete act it performs, per the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`). Seats do work; they do not review.
-
-- **Developer** — probes the riskiest premise now, while options are cheap: runs the read-only probe the fact row names where it can, and reports what it found in its contribution. A falsified premise at this gate changes the comparison and usually rejects the candidate; it does not change the fact row's status, which is Gate 3's.
-- **Quality** — writes the acceptance tests implied by the candidate the lead is leaning towards and by the candidate the challenger argues for, as Given/When/Then prose, and reports which of the two cannot satisfy one and why.
-- **Challenger** (`rin-challenger-agent`) — builds the strongest case for the candidate the lead is leaning against, with evidence it gathered itself, and states what would have to be true for that candidate to win.
-
-Record in `rin-options-questions.md` what each seat was asked, what it answered, and a disposition for every objection it raised (folded, with where; or rejected, with the reason).
+A falsified premise changes the comparison and usually rejects the candidate; it does not change the fact row's status, which is Gate 3's. Record in `rin-options-questions.md` a disposition for every objection a seat raised: folded, with where, or rejected, with the reason.
 
 ### Step 5: Record the decision
 
@@ -114,7 +111,7 @@ A replan (a route-back from Gate 3) rewrites the point's decision in place: the 
 
 ### Step 6: The review
 
-The reviewer is the board coordinator marker (`rin-decorrelated-review-agent`). The conductor logs the normal reviewer request, then runs `{{HARNESS_DIR}}/knowledge/rin-gates/decorrelated-review.md` inline. This gate is listed in `roster_dispatch_gates` in `{{HARNESS_DIR}}/tools/data/review-board.json`, so the conductor dispatches its resolved producing roster from `review-rosters.json` (`pnpm rin-gates:review-roster --gate rin-gate-2-plan-review`): the architecture reviewer, `rin-ddd-modelling-reviewer-agent` and `rin-clean-architecture-reviewer-agent`, then the intent-defense synthesis lens last. The conductor writes the supplied review file and records the standard review receipt. The producing lenses judge whether the candidates are genuinely different, whether a point needed a third, whether the comparison covers every row that separates them, and whether the choice follows from it. A Gate 2 that wrote none of its declared artefacts dispatches no sensor, so a missing ledger is the board's to refuse. The ledger is the gate's review artefact, so without it there is nothing for the board to judge READY.
+The reviewer is the board coordinator marker (`rin-decorrelated-review-agent`). The conductor logs the normal reviewer request, then runs `{{HARNESS_DIR}}/knowledge/rin-gates/decorrelated-review.md` inline. This gate is listed in `roster_dispatch_gates` in `{{HARNESS_DIR}}/tools/data/review-board.json`, so the conductor dispatches its resolved producing roster from `review-rosters.json` (`pnpm rin-gates:review-roster --gate rin-gate-2-plan-review`), then the intent-defense synthesis lens last. The conductor writes the supplied review file and records the standard review receipt. The producing lenses judge whether the candidates are genuinely different, whether a point needed a third, whether the comparison covers every row that separates them, and whether the choice follows from it. A Gate 2 that wrote none of its declared artefacts dispatches no sensor, so a missing ledger is the board's to refuse. The ledger is the gate's review artefact, so without it there is nothing for the board to judge READY.
 
 The verdict is **READY** or **NOT-READY**, as at every gate. On NOT-READY the findings are fixed in this gate's artefacts and the board re-runs, up to `reviewer_max_iterations`. This stage does not add a second counter. A finding still unresolved at the limit is written into the stage's review diagnosis, `review-diagnosis.md` in this stage's record directory, one entry per finding naming its class: a class on the active reserved list (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`), or `problem`. A finding in a stopping class parks the record, naming the class; a finding in a decided class is decided and recorded, naming the class. Any other finding is a problem the lane fixes before it convenes again. Once the iterations are spent, the lane convenes again only through the gate's rejection-and-revision path (`stage-protocol-reviewer.md`), which restarts the review budget. Each restart is recorded in the review diagnosis, and nothing yet caps how many there are.
 

@@ -103,7 +103,7 @@ describe("constitutionGateDecisionOf", () => {
         "    CD-15#loops audit src/loop.ts:1:0 let total = 0;",
         "  forfeited (1)",
         "    CD-19#import-boundaries audit file-carve-out src/old.ts",
-        "To fix findings: change the code, or record an exception in discipline-exceptions.json with a five-step whyChain.",
+        "To fix findings: change the code, or record an exception in discipline-exceptions.json with a whyChain written to tools/discipline-core/docs/why-chain-contract.md: five whys chained cause to cause, a rootCause, its rootCheck, a readback and an owner.",
         "To fix forfeited: the carved-out file was touched, so make the whole file comply and delete its carve-out (CD-46).",
         "",
       ].join("\n"),

@@ -5,13 +5,14 @@ name: Gate 1 — Framing
 plugin: rin
 phase: inception
 execution: ALWAYS
-condition: Second gate of the rin pipeline. Turns the Slice's assumption-laden intent into atomic, non-dominated, load-bearing decision-questions, settles them with its seats, and writes back confirmed scope directly into the AIDLC requirements artefact. The lead frames; the architect and developer seats contribute work against the framing. Prose only; no solution is chosen here (Gate 2).
-lead_agent: aidlc-product-agent
+condition: Second gate of the rin pipeline. Turns the Slice's assumption-laden intent into atomic, non-dominated, load-bearing decision-questions, settles them with its seats, and writes back confirmed scope directly into the AIDLC requirements artefact. The seats and the lead draft the framing together. Prose only; no solution is chosen here (Gate 2).
+lead_agent: rin-product-agent
 support_agents:
-  - aidlc-architect-agent
-  - aidlc-developer-agent
+  - rin-architect-agent
+  - rin-developer-agent
+  - rin-customer-seat-agent
 mode: mob
-reviewer: aidlc-architecture-reviewer-agent
+reviewer: rin-decorrelated-review-agent
 review_artifact: rin-requirements
 reviewer_max_iterations: 2
 approval_mode: autonomous
@@ -45,7 +46,7 @@ stage. This file describes only the WORK: surface the load-bearing decisions,
 settle them with the seats, and write confirmed scope into the native
 requirements artefact. It does NOT present the gate or report.
 
-This is rin Gate 1 — "frame, don't solve". The lead (`aidlc-product-agent`) is the framer: it surfaces the Slice's baked-in assumptions as atomic, non-dominated, consequence-bearing decision-questions. The two seats are this stage's `support_agents`, dispatched per the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`), and each performs work rather than reviewing: the architect seat drafts the alternative framing and says what it would cost; the developer seat attempts the smallest implementation against the framing and reports where it does not fit. The lead arbitrates their evidence. The gate NEVER drafts the solution — choosing among solutions is Gate 2's — and NEVER leaves a load-bearing decision implicit. The lead and seats settle each one from evidence; only one in a stopping class reaches {{OPERATOR}} (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`).
+This is rin Gate 1 — "frame, don't solve". The lead (`rin-product-agent`) and the seats frame the Slice together: they surface its baked-in assumptions as atomic, non-dominated, consequence-bearing decision-questions, each seat writing the pieces the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`) names for this gate. The gate NEVER drafts the solution — choosing among solutions is Gate 2's — and NEVER leaves a load-bearing decision implicit. The lead and seats settle each one from evidence; only one in a stopping class reaches {{OPERATOR}} (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`).
 
 ## Native artefact chain (no Spec-Kit)
 
@@ -68,19 +69,20 @@ separate DB call and no receipt artefact.
 
 ## Steps
 
-### Step 1: Frame, and convene the seats
-The lead produces the decision-question set. The architect and developer seats perform their acts against it (above), and the lead folds what their evidence shows into the set. Questions must be atomic, non-dominated (no question whose answer forces another), consequence-bearing, and load-bearing (the answer changes the design). The solution is never proposed here, and the artefacts are prose only: a shape written as a type, a schema or a signature is a solution, and the board judges whether the artefacts carry one. A shape the framing needs to mention is recorded as a candidate for Gate 2, never as a requirement.
+### Step 1: Write the framing in the mob rounds
+The seats and the lead write both artefacts in the mob rounds (`stage-protocol-ensemble.md` §5). Questions must be atomic, non-dominated (no question whose answer forces another), consequence-bearing, and load-bearing (the answer changes the design). The solution is never proposed here, and the artefacts are prose only: a shape written as a type, a schema or a signature is a solution, and the board judges whether the artefacts carry one. A shape the framing needs to mention is recorded as a candidate for Gate 2, never as a requirement.
 
 ### Step 2: Settle the decisions
 Settle each decision-question on the stage. The lead answers it from the seats' evidence, the code, the upstream artefacts, the recorded decisions and the rules, and records the answer and its source in `rin-framing-questions.md`. Apply the fork test and the deciding-versus-stopping split in `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` against the active list. A question in a class the active list marks decided and recorded is decided here, naming its class, and recorded for review; it is not asked. Only a question in a stopping class goes to {{OPERATOR}}: its pack is written into `rin-framing-questions.md`, then it is asked or the gate parks as that file says, never through the interactive question picker in a scheduled or dispatched run. On resume, it is settled only under that file's resume rule. This file is the gate's decision record, not the stage protocol's question flow: no blank `[Answer]:` tags and no question-count target.
 
 ### Step 3: Write confirmed scope into the requirements artefact
 Fold the settled decisions into `rin-requirements.md` (the native AIDLC requirements
-artefact), Given/When/Then acceptance criteria per FR. Write
-`rin-framing-questions.md` as the answered decision record.
+artefact): a decision that changes a requirement replaces it, with
+Given/When/Then acceptance criteria per FR. `rin-framing-questions.md` is the
+answered decision record.
 
-Stop here — the conductor runs the reviewer (`aidlc-architecture-reviewer-agent`,
-this gate's whole roster), learnings, and approval.
+Stop here — the conductor runs the board (`rin-decorrelated-review-agent`: this gate's
+roster from `review-rosters.json`), learnings, and approval.
 
 ## Refuses (invariants)
 

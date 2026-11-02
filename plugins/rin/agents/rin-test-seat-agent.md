@@ -43,4 +43,4 @@ A test earns its place only if it fails without the change it covers. Never writ
 
 ## Your contribution file
 
-Keep `contributions/rin-test-seat-agent.md` in the stage directory, in the ensemble contract's shape: the identity line `**Collaborator:** rin-test-seat-agent` first, then `## What I did`, `## What that showed` and `## Positions`. Append one entry per round under `## What I did`: the row, the tests written, the command run and the failure it showed.
+Keep `contributions/rin-test-seat-agent.md` in the stage directory as working space, in the shape `stage-protocol-ensemble.md` §5 gives a contribution that records acts: the identity line, the working-space line, then `## What I did`, `## What that showed` and `## Positions`. Keep it current rather than appending: for each row done so far, the tests written, the command run and the failure it showed.

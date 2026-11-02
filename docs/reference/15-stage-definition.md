@@ -391,13 +391,12 @@ runs. Five values, four active:
   declared order, every link seeing the draft plus all earlier
   contributions. Order is the point. Requires non-empty `support_agents`, and
   every agent across the lead plus support chain must be unique.
-- `mob` — mesh, run as bounded rounds: all support agents contribute in
-  parallel against the lead's draft (mutually blind), the lead integrates,
-  and unresolved objectors get one confirm-or-maintain round with the other
-  participants' positions. Maintained dissent is quoted verbatim at the
-  gate. Requires non-empty `support_agents`. The shipped showcase is
-  `user-stories` (Product Manager lead; Design, Developer, Quality
-  collaborators; Product Lead reviewer — the mob-elaboration ritual).
+- `mob` — mesh: the seats and the lead write the stage's outputs together in
+  bounded rounds, as
+  [`stage-protocol-ensemble.md` §5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies)
+  defines. Requires non-empty `support_agents`. The shipped showcase is
+  `user-stories` (Product Manager lead; Design, Developer, Quality seats;
+  Product Lead reviewer).
 - `agent-team` — **reserved**. The future native-bus transport for mesh
   collaboration: when Anthropic's experimental
   `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` primitive stabilises, a live
@@ -408,8 +407,9 @@ On every topology the conductor is the bus: agents never invoke each other —
 only the conductor delegates. The writing model mirrors a real working
 session: everyone writes their own work, the owner collates and edits. Each
 dispatched support agent writes a contribution file
-(`contributions/<agent-slug>.md`, `stage-protocol-ensemble.md` §11 shape with the
-identity-marker first line); the lead alone edits the stage's `produces[]`
+(`contributions/<agent-slug>.md`, shaped as
+[§5](../../core/aidlc-common/protocols/stage-protocol-ensemble.md#5-multi-agent-stages-ensemble-topologies)
+defines); the lead alone edits the stage's `produces[]`
 artifacts; pipeline links advance the artifacts directly instead. On mob and
 subagent-with-supports stages the contribution files are the completion
 evidence — the engine refuses approval while one is missing. The review loop

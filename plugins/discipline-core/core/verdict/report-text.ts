@@ -77,6 +77,7 @@ const unmeasuredLine = (request: { readonly unmeasured: Unmeasured }): string =>
   switch (request.unmeasured.kind) {
     case "forfeiture-unmeasured":
     case "import-unmeasured":
+    case "legacy-chain-unmeasured":
       return request.unmeasured.kind;
     case "mechanism-not-run":
       return `${request.unmeasured.kind} ${request.unmeasured.mechanism} ${request.unmeasured.projection}`;

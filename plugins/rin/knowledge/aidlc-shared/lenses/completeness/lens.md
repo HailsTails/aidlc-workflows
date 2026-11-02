@@ -20,7 +20,11 @@ This lens defends **interface-surface completeness**: every interface element on
 the spec surface is either **fully specified** — concrete types, named errors,
 decided semantics, contracted integrations — or it is an incompleteness finding.
 There is no third state. "Reasonable default", "we'll figure it out", and "TBD"
-are the same finding expressed three ways.
+are the same finding expressed three ways. A stated decision not to support
+something is fully specified: "not supported — the customer's ordinary use does
+not reach it", citing the requirements' customer section, answers any question
+below. The lens asks that each question is decided, never that a mechanism
+exists.
 
 The concept recurs across codebases under different names (a design review, an
 interface-lock gate, a "no underspecified surface ships" rule). What stays

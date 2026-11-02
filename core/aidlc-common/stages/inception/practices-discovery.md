@@ -126,9 +126,10 @@ Each dispatched support agent writes:
 
 `<record>/inception/practices-discovery/contributions/<agent-slug>.md`
 
-The first line must be `**Collaborator:** <agent-slug>`, followed by
-`## Contribution` and `## Positions` as defined by
-`stage-protocol-ensemble.md` §11. Collect every dispatched collaborator's file
+The file takes the shape `stage-protocol-ensemble.md` §5 gives a seat that
+performs acts: the `**Collaborator:** <agent-slug>` identity line first, the
+working-space line second, then `## What I did`, `## What that showed` and
+`## Positions`. Collect every dispatched collaborator's file
 before the interview. Their presence and identity markers are deterministic
 completion evidence checked by the engine.
 

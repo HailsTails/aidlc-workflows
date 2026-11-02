@@ -1,7 +1,7 @@
 import type { ClauseAddress } from "../values/clause-address.ts";
 import type { MechanismId } from "../values/identifiers.ts";
 import type { RepoPath } from "../values/repo-path.ts";
-import type { WhyChain } from "../values/why-chain.ts";
+import type { RecordedWhyChain } from "../values/why-chain.ts";
 
 export type ExistingAuthorisationProvenance = {
   readonly kind: "existing-authorisation";
@@ -16,11 +16,11 @@ export type InheritedDebtProvenance = {
 };
 
 export type AuthorisationEvidence =
-  | { readonly whyChain: WhyChain; readonly provenance?: ExistingAuthorisationProvenance }
+  | { readonly whyChain: RecordedWhyChain; readonly provenance?: ExistingAuthorisationProvenance }
   | { readonly whyChain?: never; readonly provenance: ExistingAuthorisationProvenance };
 
 export type FileDebtEvidence =
-  | { readonly whyChain: WhyChain; readonly provenance?: InheritedDebtProvenance }
+  | { readonly whyChain: RecordedWhyChain; readonly provenance?: InheritedDebtProvenance }
   | { readonly whyChain?: never; readonly provenance: InheritedDebtProvenance };
 
 export type AuthorisedLocationEntry = AuthorisationEvidence & {
@@ -41,7 +41,7 @@ export type ClauseWideCarveOutEntry = {
   readonly kind: "clause-wide-carve-out";
   readonly clause: string;
   readonly reason: string;
-  readonly whyChain: WhyChain;
+  readonly whyChain: RecordedWhyChain;
 };
 
 export type ExceptionEntry = AuthorisedLocationEntry | FileCarveOutEntry | ClauseWideCarveOutEntry;
@@ -71,7 +71,7 @@ export type ExceptionRecord =
       readonly clause: ClauseAddress;
       readonly mechanism: MechanismId;
       readonly reason: string;
-      readonly whyChain: WhyChain;
+      readonly whyChain: RecordedWhyChain;
     };
 
 export type InvalidRecord = {

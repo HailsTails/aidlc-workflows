@@ -1208,10 +1208,10 @@ const runAutonomyHook = (
 // the fixtures' subject failing. `extra` still overrides, so A9's empty-lenses
 // case is untouched.
 const GATE_2_FLOOR: readonly string[] = [
-  "aidlc-architecture-reviewer-agent",
-  "rin-clean-architecture-reviewer-agent",
+  "rin-stage-reviewer-agent",
   "rin-ddd-modelling-reviewer-agent",
-  "rin-decomposition-reviewer-agent",
+  "rin-clean-architecture-reviewer-agent",
+  "rin-customer-reviewer-agent",
   "rin-intent-defense-reviewer-agent",
 ];
 
@@ -1915,10 +1915,10 @@ const REVIEW_SCRIBE_HOOK = paths.join({
 });
 
 const REVIEW_ROSTER: readonly string[] = [
-  "aidlc-architecture-reviewer-agent",
-  "rin-clean-architecture-reviewer-agent",
+  "rin-stage-reviewer-agent",
   "rin-ddd-modelling-reviewer-agent",
-  "rin-decomposition-reviewer-agent",
+  "rin-clean-architecture-reviewer-agent",
+  "rin-customer-reviewer-agent",
   "rin-intent-defense-reviewer-agent",
 ];
 const INCOMPLETE_ROSTER: readonly string[] = REVIEW_ROSTER.slice(

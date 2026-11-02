@@ -49,7 +49,10 @@ Dispatch one subagent per producing lens resolved in Step 1, concurrently to the
   for every filesystem tool call. If the lens cannot do that, it returns
   `CANNOT-REVIEW`; the conductor treats this as NOT-READY;
 - passes ONLY: the stage definition path, the artifact/code file paths, and the
-  Q&A file path — never memory.md, never plan.md, never another lens's findings;
+  Q&A file path — never memory.md, never plan.md, never another lens's findings.
+  On a `mode: mob` gate it also passes the customer lens the path of the stage's
+  `contributions/` directory, where every seat's objections and concessions are
+  recorded, for its objection check;
 - lets the agent load its own persona + the project's `cd-*`/method rules for its
   lane.
 
@@ -180,7 +183,9 @@ harness-specific model projection. The roster carries no per-lens model.
 
 ## Where it fires in the lifecycle
 
-The stages naming `rin-decorrelated-review-agent` as their reviewer are read from the compiled stage graph, and the lenses each one dispatches are its roster in `review-rosters.json`. Neither is listed here, so neither can drift from its source. Gate 5 dispatches its own board file, as its stage defines. A gate that names a single reviewer (Gates 0, 1 and 6) runs that reviewer alone, and its roster is that one reviewer.
+The stages naming `rin-decorrelated-review-agent` as their reviewer are read from the compiled stage graph, and the lenses each one dispatches are its roster in `review-rosters.json`. Neither is listed here, so neither can drift from its source. Gate 5 dispatches its own board file, as its stage defines. A gate that names a single reviewer (Gates 0 and 6) runs that reviewer alone, and its roster is that one reviewer.
+
+Gates 1 to 3 require the board. They make most of a record's obligations owed, and `PD-1` has their seats cut and reopen obligations as well as add them. The board is what catches a seat's over-correction, and the customer lens on each of these rosters checks every objection a seat kept against or conceded. So these gates name `rin-decorrelated-review-agent`, their rosters carry `rin-customer-reviewer-agent`, and no rin scope that runs them lowers their review class. Each keeps `reviewer_max_iterations` at 2 or more, so the board re-runs over every fix pass: a fix can add a claim nothing enforces. Lowering the review for a piece of work is {{OPERATOR}}'s explicit call through `--review`, never a seat's or the lead's.
 
 
 ## Adopting review while retaining another stage graph
