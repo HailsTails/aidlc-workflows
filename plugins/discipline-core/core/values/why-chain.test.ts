@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { whyChainSchema } from "./why-chain.ts";
+import { legacyWhyChainSchema } from "./why-chain.ts";
 
 const WHY = {
   why: "why is the exception taken",
@@ -15,18 +15,18 @@ const CHAIN = {
   owner: "capture 01a0b421",
 };
 
-describe("whyChainSchema accepts a complete chain", () => {
+describe("legacyWhyChainSchema accepts a complete chain", () => {
   it("accepts five substantive whys, a root cause and an owner", () => {
-    expect(whyChainSchema.safeParse(CHAIN).success).toBe(true);
+    expect(legacyWhyChainSchema.safeParse(CHAIN).success).toBe(true);
   });
 
   it("parses the chain to the same values", () => {
-    expect(whyChainSchema.parse(CHAIN)).toEqual(CHAIN);
+    expect(legacyWhyChainSchema.parse(CHAIN)).toEqual(CHAIN);
   });
 
   it("accepts a because of exactly twelve characters", () => {
     expect(
-      whyChainSchema.safeParse({
+      legacyWhyChainSchema.safeParse({
         ...CHAIN,
         whys: [WHY, WHY, { ...WHY, because: "twelve chars" }, WHY, WHY],
       }).success,
@@ -35,7 +35,7 @@ describe("whyChainSchema accepts a complete chain", () => {
 
   it("accepts an evidence of exactly twelve characters", () => {
     expect(
-      whyChainSchema.safeParse({
+      legacyWhyChainSchema.safeParse({
         ...CHAIN,
         whys: [WHY, WHY, { ...WHY, evidence: "twelve chars" }, WHY, WHY],
       }).success,
@@ -43,7 +43,7 @@ describe("whyChainSchema accepts a complete chain", () => {
   });
 
   it("accepts an owner of exactly two characters", () => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, owner: "HG" }).success).toBe(
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, owner: "HG" }).success).toBe(
       true,
     );
   });
@@ -59,22 +59,22 @@ describe("whyChainSchema accepts a complete chain", () => {
     "the audit predates the rule and was left out of scope by the migration that introduced it",
     "the fixture shares a module-level cache, so the second case reads the first's state and the test was failing only in suite order",
   ])("accepts the root cause %j, which only resembles a restatement", (rootCause) => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(true);
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(true);
   });
 });
 
-describe("whyChainSchema refuses a chain that is not exactly five whys", () => {
+describe("legacyWhyChainSchema refuses a chain that is not exactly five whys", () => {
   it.each([
     ["no whys", { ...CHAIN, whys: [] }],
     ["four whys", { ...CHAIN, whys: [WHY, WHY, WHY, WHY] }],
     ["six whys", { ...CHAIN, whys: [WHY, WHY, WHY, WHY, WHY, WHY] }],
     ["whys that are not a list", { ...CHAIN, whys: "five of them" }],
   ])("refuses %s", (_label, chain) => {
-    expect(whyChainSchema.safeParse(chain).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse(chain).success).toBe(false);
   });
 });
 
-describe("whyChainSchema refuses an answer that is not substantive", () => {
+describe("legacyWhyChainSchema refuses an answer that is not substantive", () => {
   it.each([
     ["a because of eleven characters", { ...WHY, because: "eleven char" }],
     ["a because of one repeated character", { ...WHY, because: "aaaaaaaaaaaaaaaa" }],
@@ -89,7 +89,7 @@ describe("whyChainSchema refuses an answer that is not substantive", () => {
     ["a why of only spaces", { ...WHY, why: "   " }],
   ])("refuses %s", (_label, why) => {
     expect(
-      whyChainSchema.safeParse({ ...CHAIN, whys: [WHY, WHY, why, WHY, WHY] })
+      legacyWhyChainSchema.safeParse({ ...CHAIN, whys: [WHY, WHY, why, WHY, WHY] })
         .success,
     ).toBe(false);
   });
@@ -101,7 +101,7 @@ describe("whyChainSchema refuses an answer that is not substantive", () => {
     ["a root cause of only spaces", "   "],
     ["a root cause of eleven characters padded with spaces", "   eleven char   "],
   ])("refuses %s", (_label, rootCause) => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
   });
 
   it.each([
@@ -109,11 +109,11 @@ describe("whyChainSchema refuses an answer that is not substantive", () => {
     ["an empty owner", ""],
     ["an owner of one character padded with spaces", "  H  "],
   ])("refuses %s", (_label, owner) => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, owner }).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, owner }).success).toBe(false);
   });
 });
 
-describe("whyChainSchema refuses a chain missing a part", () => {
+describe("legacyWhyChainSchema refuses a chain missing a part", () => {
   it.each([
     ["no root cause", { whys: CHAIN.whys, owner: CHAIN.owner }],
     ["no owner", { whys: CHAIN.whys, rootCause: CHAIN.rootCause }],
@@ -126,11 +126,11 @@ describe("whyChainSchema refuses a chain missing a part", () => {
     ["null", null],
     ["a list", [1, 2, 3, 4, 5]],
   ])("refuses %s", (_label, chain) => {
-    expect(whyChainSchema.safeParse(chain).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse(chain).success).toBe(false);
   });
 });
 
-describe("whyChainSchema refuses a root cause that restates the exception", () => {
+describe("legacyWhyChainSchema refuses a root cause that restates the exception", () => {
   it.each([
     "the gate was failing on every push",
     "the check were red on every push",
@@ -158,7 +158,7 @@ describe("whyChainSchema refuses a root cause that restates the exception", () =
     "a deadline on this record",
     "the deadline on this record",
   ])("refuses %j", (rootCause) => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
   });
 
   it.each([
@@ -174,7 +174,7 @@ describe("whyChainSchema refuses a root cause that restates the exception", () =
     "because the time constraint on this record",
     "because a deadline on this record",
   ])("refuses %j, led by because", (rootCause) => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
   });
 
   it.each([
@@ -190,7 +190,7 @@ describe("whyChainSchema refuses a root cause that restates the exception", () =
     "Because of A Time Constraint on this record",
     "BECAUSE OF THE DEADLINE ON THIS RECORD",
   ])("refuses %j, led by because of in any case", (rootCause) => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
   });
 
   it.each([
@@ -198,7 +198,7 @@ describe("whyChainSchema refuses a root cause that restates the exception", () =
     "Out Of Scope for this record",
     "The Deadline on this record",
   ])("refuses %j in any case with no leading because", (rootCause) => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
   });
 
   it.each([
@@ -224,6 +224,6 @@ describe("whyChainSchema refuses a root cause that restates the exception", () =
     "because the existing code does it this way",
     "   the gate was failing on every push",
   ])("refuses %j, as R7's validator does", (rootCause) => {
-    expect(whyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
+    expect(legacyWhyChainSchema.safeParse({ ...CHAIN, rootCause }).success).toBe(false);
   });
 });

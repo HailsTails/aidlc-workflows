@@ -9,33 +9,35 @@
       "whyChain": {
         "whys": [
           {
-            "why": "Why does src/clock.ts call Date.now()?",
-            "because": "it is the adapter that turns the platform clock into the Clock port",
-            "evidence": "src/clock.ts createSystemClock"
+            "why": "Why does src/parse.ts cast JSON.parse's result to any?",
+            "because": "Its callers read fields whose shape the payload's sender has never published, so no type describes them yet.",
+            "evidence": "src/parse.ts:1"
           },
           {
-            "why": "Why must some file read the platform clock?",
-            "because": "basket ages are measured against real elapsed time in production",
-            "evidence": "src/basket.ts basketAge"
+            "why": "Why has the payload's sender never published the shape of those fields?",
+            "because": "The sender is a partner export that is still in beta, and its schema changes weekly.",
+            "evidence": "partner ticket #31"
           },
           {
-            "why": "Why not read the clock where the age is measured?",
-            "because": "domain code takes a Clock so tests can pin the time",
-            "evidence": "src/basket.test.ts clockAt"
+            "why": "Why does the partner export's schema still change weekly in beta?",
+            "because": "The partner is adding fields as its customers ask for them, with a freeze planned for version 1.0.",
+            "evidence": "partner roadmap, version 1.0 milestone"
           },
           {
-            "why": "Why does one adapter satisfy CD-17?",
-            "because": "CD-17 confines time reads to the clock boundary, and this file is that boundary",
-            "evidence": "rules/CD-17/README.md"
+            "why": "Why do we not type the fields before the partner's version 1.0 freeze?",
+            "because": "A type written now would go stale within a week and turn every new field into a compile error at the boundary.",
+            "evidence": "src/parse.ts:1"
           },
           {
-            "why": "Why record it rather than leave the finding?",
-            "because": "an unrecorded finding fails the check, and the boundary is intentional",
-            "evidence": "discipline-exceptions.json"
+            "why": "Why would a stale type turn new fields into compile errors at the boundary?",
+            "because": "Every caller imports the parsed value's type, so a missing field fails the build until someone updates the declaration by hand.",
+            "evidence": "src/fresh.ts:1"
           }
         ],
-        "rootCause": "the platform clock has to be read somewhere, and the adapter is the designated place",
-        "owner": "basket team"
+        "rootCause": "Until the partner freezes its schema, a hand-kept declaration would fail the build weekly, so the any cast stays at this one boundary.",
+        "rootCheck": "partner ticket #31 still lists the schema freeze as planned for version 1.0, not shipped.",
+        "readback": "The partner's schema is not frozen, therefore a declared type would break the build weekly, therefore the fields stay untyped, therefore src/parse.ts casts JSON.parse's result to any.",
+        "owner": "integrations team"
       }
     }
   ]

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { CAUSAL_WHY_CHAIN } from "../../tests/causal-why-chain.ts";
 import type { ExceptionRecord } from "../exception-records/exception-records.ts";
 import type { Finding } from "../governance/governance.ts";
 import { clauseAddressSchema } from "../values/clause-address.ts";
 import { mechanismIdSchema } from "../values/identifiers.ts";
 import { repoPathSchema } from "../values/repo-path.ts";
-import type { WhyChain } from "../values/why-chain.ts";
 import type { CheckReport } from "./check-report.ts";
 import { renderReportText } from "./report-text.ts";
 
@@ -15,18 +15,6 @@ const packageJson = repoPathSchema.parse("package.json");
 const suppressions = repoPathSchema.parse("eslint-suppressions.json");
 const audit = mechanismIdSchema.parse("audit");
 const eslint = mechanismIdSchema.parse("eslint");
-
-const why = {
-  why: "Why does this file declare a class?",
-  because: "The vendored parser exports a class the adapter must extend",
-  evidence: "vendor/parser/index.d.ts line 12",
-};
-
-const whyChain: WhyChain = {
-  whys: [why, why, why, why, why],
-  rootCause: "The vendored parser's extension point is class-based",
-  owner: "260926-vendor-divergence-untrac",
-};
 
 const finding: Finding = {
   clause: noClass,
@@ -51,7 +39,7 @@ const carved: ExceptionRecord = {
   mechanism: audit,
   file: fileA,
   reason: "the parser adapter is unpaid debt",
-  whyChain,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const carvedEverywhere: ExceptionRecord = {
@@ -59,7 +47,7 @@ const carvedEverywhere: ExceptionRecord = {
   clause: noClass,
   mechanism: audit,
   reason: "the whole clause is unpaid debt",
-  whyChain,
+  whyChain: CAUSAL_WHY_CHAIN,
 };
 
 const emptyReport: CheckReport = {
@@ -391,6 +379,14 @@ exceptions[4] why-chain-refused why 2\nis empty\r
         report: { ...emptyReport, unmeasured: [{ kind: "forfeiture-unmeasured" }] },
       }),
     ).toContain("\nforfeiture-unmeasured\n");
+  });
+
+  it("renders a legacy-chain-unmeasured entry as its kind", () => {
+    expect(
+      renderReportText({
+        report: { ...emptyReport, unmeasured: [{ kind: "legacy-chain-unmeasured" }] },
+      }),
+    ).toContain("\nlegacy-chain-unmeasured\n");
   });
 
   it("renders a mechanism-not-run entry as its kind, mechanism and projection", () => {
