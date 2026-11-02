@@ -183,6 +183,7 @@ describe("accepted Gate 1 framing settlement at the real transaction boundary", 
 const framingSlug = "rin-gate-1-framing";
 const framingSession = "01995000-7a11-7000-8000-0000000001aa";
 const stageGraphPath = ".claude/tools/data/stage-graph.json";
+const stopBlockCapAboveProbeStops = "10";
 const framingQuestions = "# Gate 1 framing questions\n\n## Question 1\nWho owns the slice?\nA) The platform team\nB) The product team\n\n[Answer]: A, the person's own words\n\n## Question 2\nWhich boundary holds?\nA) The API\nB) The queue\n\n[Answer]:\n";
 type InstalledRun = { readonly status: number | null; readonly stdout: string; readonly stderr: string };
 type ComposedRin = { readonly root: string; readonly projectDir: string; readonly env: Readonly<Record<string, string | undefined>> };
@@ -194,7 +195,7 @@ const composedRin = (): ComposedRin => {
   const env = { PATH: process.env.PATH, HOME: home, TMPDIR: root };
   const pluginBuilt = buildPluginProjection("rin", "claude", join(root, "plugin"));
   const { projectDir } = composePluginFixture({ plugin: "rin", harness: "claude", projectDir: join(root, "project"), pluginBuilt, env });
-  return { root, projectDir, env: { ...env, CLAUDE_PROJECT_DIR: projectDir, AIDLC_PROJECT_DIR: projectDir } };
+  return { root, projectDir, env: { ...env, CLAUDE_PROJECT_DIR: projectDir, AIDLC_PROJECT_DIR: projectDir, CLAUDE_CODE_STOP_HOOK_BLOCK_CAP: stopBlockCapAboveProbeStops } };
 };
 const runInstalled = (args: { readonly rin: ComposedRin; readonly tool: string; readonly argv: readonly string[]; readonly input?: string }): InstalledRun => {
   const result = spawnSync(process.execPath, [join(args.rin.projectDir, ".claude/tools", args.tool), ...args.argv], {
@@ -257,7 +258,17 @@ const nextDirective = (rin: ComposedRin): Readonly<Record<string, unknown>> => {
   return JSON.parse(next.stdout.trim().split("\n")[0] ?? "{}");
 };
 
-test("an open Gate 1 record keeps its blank answer waiting on the person after the settlement refresh", () => {
+const stopDecision = (run: InstalledRun): string =>
+  run.stdout.trim() === "" ? "allow" : JSON.parse(run.stdout.trim()).decision;
+const stopUnderAutonomy = (args: { readonly rin: ComposedRin; readonly statePath: string }): InstalledRun => {
+  const state = readFileSync(args.statePath, "utf8");
+  writeFileSync(args.statePath, state.replace("## Current Status\n", "## Current Status\n- **Construction Autonomy Mode**: autonomous\n"));
+  const stopped = runHook({ rin: args.rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
+  writeFileSync(args.statePath, state);
+  return stopped;
+};
+
+test("an open Gate 1 record waits on the person after the settlement refresh until the blank is filled or removed", () => {
   const rin = composedRin();
   const { sourceRoot, candidateGraph } = installBeforeSettlement(rin);
   const questionsPath = openFramingRecord(rin);
@@ -266,6 +277,7 @@ test("an open Gate 1 record keeps its blank answer waiting on the person after t
   const workspaceKept = JSON.stringify(workspaceOf(rin.projectDir)) === JSON.stringify(before);
   const stopWithBlank = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
   const traceWithBlank = stopTrace(rin);
+  const autonomousStop = stopUnderAutonomy({ rin, statePath: join(dirname(dirname(dirname(questionsPath))), "aidlc-state.md") });
   const nextWithoutReply = nextDirective(rin);
   const selfAnswer = runInstalled({ rin, tool: "aidlc-log.ts",
     argv: ["answer", "--stage", framingSlug, "--details", "B", "--project-dir", rin.projectDir] });
@@ -273,6 +285,8 @@ test("an open Gate 1 record keeps its blank answer waiting on the person after t
   const nextWithReply = nextDirective(rin);
   writeFileSync(questionsPath, framingQuestions.replace(/^\[Answer\]:$/m, "[Answer]: B, settled without the person"));
   const stopAfterSelfFill = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
+  writeFileSync(questionsPath, framingQuestions.replace(/^\[Answer\]:\n$/m, ""));
+  const stopAfterRemoval = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
   expect({
     refreshed: refreshed.kind === "planned" ? refreshed.evidence.stageRevalidation : refreshed,
     workspaceKept,
@@ -281,7 +295,9 @@ test("an open Gate 1 record keeps its blank answer waiting on the person after t
     withoutReply: { kind: nextWithoutReply.kind, stage: nextWithoutReply.stage, keptReplies: nextWithoutReply.kept_replies ?? null },
     selfAnswer: { status: selfAnswer.status, refused: selfAnswer.stderr.includes("no new human reply has arrived") },
     withReply: { kind: nextWithReply.kind, stage: nextWithReply.stage, replies: (nextWithReply.kept_replies as { readonly replies?: readonly string[] } | undefined)?.replies ?? null },
-    stopAfterSelfFill: { status: stopAfterSelfFill.status, decision: stopAfterSelfFill.stdout.trim() === "" ? "allow" : JSON.parse(stopAfterSelfFill.stdout.trim()).decision },
+    autonomousStop: { status: autonomousStop.status, decision: stopDecision(autonomousStop) },
+    stopAfterSelfFill: { status: stopAfterSelfFill.status, decision: stopDecision(stopAfterSelfFill) },
+    stopAfterRemoval: { status: stopAfterRemoval.status, decision: stopDecision(stopAfterRemoval) },
   }).toEqual({
     refreshed: { [framingSlug]: ["framing-decision-record"] },
     workspaceKept: true,
@@ -290,7 +306,9 @@ test("an open Gate 1 record keeps its blank answer waiting on the person after t
     withoutReply: { kind: "run-stage", stage: framingSlug, keptReplies: null },
     selfAnswer: { status: 1, refused: true },
     withReply: { kind: "run-stage", stage: framingSlug, replies: ["B, the queue"] },
+    autonomousStop: { status: 0, decision: "block" },
     stopAfterSelfFill: { status: 0, decision: "block" },
+    stopAfterRemoval: { status: 0, decision: "block" },
   });
 }, 300_000);
 
