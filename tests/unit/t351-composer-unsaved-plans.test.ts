@@ -916,7 +916,7 @@ describe("t351 (8) a custom plan starts from classic's ceremony, whatever stock 
     // The evidence rules live in the knowledge file the agent defers to.
     expect(read("core/knowledge/aidlc-composer-agent/composing.md")).toContain("a custom plan turns it on only when either is HIGH");
     const dispatch = read("core/tools/aidlc-orchestrate.ts");
-    expect(dispatch).toContain("a custom one starts from the default scope's default, which the validator echoes as custom_start");
+    expect(dispatch).toContain("a custom one starts from the Guard Policy of the default scope, which the validator echoes as custom_start");
     expect(dispatch).not.toContain("a custom one the composer's choice");
   });
 });

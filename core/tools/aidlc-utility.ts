@@ -258,6 +258,9 @@ import {
   loadStageGraphAll,
   loadScopeMetadata,
   installedScopeOwners,
+  coreScopesWithoutFile,
+  composedScopeRecordNames,
+  readScopeDirectory,
   loadScopeMetadataAll,
   MERGE_SUCCEEDED_TAG_REGEX,
   migrateFlatLayout,
@@ -735,7 +738,7 @@ Examples:
   ${entrySkillInvocation()}                                        Resume or begin
   ${entrySkillInvocation()} --stage code-generation                Jump to code-generation stage
   ${entrySkillInvocation()} --phase construction --scope ${helpColumn(exampleScope, 10)}Jump to construction with ${exampleScope} scope
-  ${entrySkillInvocation()} --scope ${exampleScope} --depth comprehensive  ${exampleScope} with comprehensive depth
+  ${entrySkillInvocation()} ${helpColumn(`--scope ${exampleScope} --depth comprehensive`, 39)}Comprehensive depth on the ${exampleScope} scope
   ${entrySkillInvocation()} --depth minimal                       Change depth of active workflow
   ${entrySkillInvocation()} --depth standard --test-strategy minimal  Full artifacts, minimal tests
   ${entrySkillInvocation()} --review advisory                     Single-pass reviews, findings at the gate
@@ -1400,6 +1403,17 @@ export function activeWorkflowPluginDependencies(
   return violations;
 }
 
+function finishCoreSelectionStep(coreWasEnabled: boolean, names: readonly string[]): string {
+  const settles = "sets the default scope and start-up banner for this selection.";
+  const command = (extra: string): string => `${aidlcInvocation()} config project --plugins ${names.join(",")}${extra} --yes`;
+  if (coreWasEnabled) {
+    return `Run \`${command("")}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${settles}`;
+  }
+  const missing = coreScopesWithoutFile(readScopeDirectory(scopesDir()), loadStageGraphAll(), composedScopeRecordNames());
+  if (missing.length === 0) return `Run \`${command("")}\` to finish: it ${settles}`;
+  return `Run \`${command(" --download")}\` to finish: core's scope files are gone here, so it fetches the release to put them back and ${settles} With the release files at hand, pass --from <release> instead of --download.`;
+}
+
 function handleSelectPlugins(projectDir: string, positional: string[]): void {
   if (positional.length === 1) {
     const selection = renderPluginSelection(pluginsEnabled());
@@ -1499,15 +1513,7 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
         );
       }
       process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
-      if (nameSet.has("aidlc") !== coreWasEnabled) {
-        process.stdout.write(
-          `Run \`${aidlcInvocation()} config project --plugins ${names.join(",")} --yes\` to finish: it ${
-            coreWasEnabled
-              ? "removes core's scope files and runner skills that still hold what AI-DLC installed, names any it keeps,"
-              : "puts back core's scope files and runner skills"
-          } and sets the default scope and start-up banner for this selection.\n`,
-        );
-      }
+      if (nameSet.has("aidlc") !== coreWasEnabled) process.stdout.write(`${finishCoreSelectionStep(coreWasEnabled, names)}\n`);
     } catch (err) {
       resetSelectionSensitiveCaches();
       die(`select-plugins failed: ${errorMessage(err)}`);

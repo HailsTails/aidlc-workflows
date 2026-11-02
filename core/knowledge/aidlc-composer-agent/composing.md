@@ -93,7 +93,7 @@ and each pass through a lowered fence records a `GUARD_STOOD_ASIDE` row.
   neither line is present). Adopt it and say so, and keep a stricter value
   the human asked for on every re-dispatch.
 - For a custom grid, copy the validator's `custom_start.guard_policy`, the
-  install's default scope's default (`classic`'s `off` in core), and keep it: a custom plan runs
+  Guard Policy of the install's default scope (`classic`'s `off` in core), and keep it: a custom plan runs
   with the guards a person gets without composing, and the human raises it on
   the gate row if they want more (keep their value on every re-dispatch).
   Under a memory layer that declares strict, propose strict. Without a

@@ -199,10 +199,13 @@ Two commands change the selection, at two depths:
 - `aidlc config project --plugins <names>` records the selection and refreshes
   the install from the release. With `aidlc` left out, that refresh removes
   the scope files core ships (`<harness-dir>/scopes/aidlc-*.md`) that still
-  hold the release's bytes, and any selection, with or without `aidlc`,
-  removes the runner skills of the scopes and stages it leaves out under the
-  same rule; a file someone changed, a scope saved with `scope-save`, or a
-  file no release record shows AI-DLC shipped stays, and the refresh names it.
+  hold the release's bytes; a scope file someone changed, a scope saved with
+  `scope-save`, or a scope file no release record shows AI-DLC shipped stays,
+  and the refresh names it. Any selection, with or without `aidlc`, also
+  removes the runner skill folders of the scopes and stages it leaves out,
+  by runner-gen's own rule: a folder whose `SKILL.md` carries the runner-gen
+  marker is AI-DLC's (refreshes regenerate it the same way), and one without
+  the marker stays and is named.
   A copied project with no release record keeps its start-up banner too and
   says so. On Claude it writes the selection's default scope into
   `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up
@@ -216,7 +219,10 @@ Two commands change the selection, at two depths:
 - `aidlc engine plugin select <names>` (below) toggles what is enabled without
   the release, leaving every installed file in place. When it turns `aidlc`
   on or off it prints the `config project --plugins` command that finishes the
-  change.
+  change, with `--download` when core's scope files are gone (`--from
+  <release>` uses release files at hand). That command applies the selection
+  even though `plugin select` already recorded it: it reports "unchanged" only
+  when core's scope files on disk already match the selection.
 
 The default scope follows the selection on every harness: `classic` when it is
 enabled, otherwise the enabled scope that declares `freeform_default: true`

@@ -129,6 +129,17 @@ function resolvedDefaultScope(projectDir: string): CommandResult {
   return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }
 
+function utility(projectDir: string, args: readonly string[]): CommandResult {
+  const result = spawnSync(BUN, [join(projectDir, ".claude", "tools", "aidlc-utility.ts"), ...args], {
+    cwd: projectDir,
+    encoding: "utf-8",
+    timeout: remainingOperationTimeoutMs(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
+    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, AIDLC_HARNESS_DIR: ".claude" },
+  });
+  expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+  return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
 function helpText(projectDir: string): string {
   const result = spawnSync(BUN, [join(projectDir, ".claude", "tools", "aidlc-utility.ts"), "help"], {
     cwd: projectDir,
@@ -195,15 +206,22 @@ describe("a selection without the core plugin installs only the selected plugins
     const classic = join(projectDir, ".claude", "scopes", "aidlc-classic.md");
     writeFileSync(classic, `${readFileSync(classic, "utf-8")}\nOur own note.\n`);
     const bugfixRunner = join(projectDir, ".claude", "skills", "aidlc-bugfix", "SKILL.md");
-    writeFileSync(bugfixRunner, `${readFileSync(bugfixRunner, "utf-8")}\nOur own note.\n`);
+    writeFileSync(bugfixRunner, readFileSync(bugfixRunner, "utf-8").replace("generated-by: aidlc-runner-gen", "generated-by: our-team"));
+    const featureRunner = join(projectDir, ".claude", "skills", "aidlc-feature", "SKILL.md");
+    writeFileSync(featureRunner, `${readFileSync(featureRunner, "utf-8")}\nOur own note.\n`);
 
     const selected = selectPlugins(projectDir, PLUGIN);
 
     expect(installedScopeFiles(projectDir)).toEqual(["aidlc-classic.md", `${PLUGIN_SCOPE}.md`]);
     expect(existsSync(bugfixRunner)).toBe(true);
+    expect(existsSync(featureRunner)).toBe(false);
     expect(selected.stdout).toContain(
       "Kept 2 files that the plugin selection leaves out, because they were changed after AI-DLC installed them.",
     );
+    const again = aidlc(projectDir, ["config", "project", "--plugins", PLUGIN, "--yes"]);
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    expect(again.stdout).toContain("because they were changed after AI-DLC installed them.");
+    expect(again.stdout).not.toContain("no release record shows AI-DLC shipped");
     expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
     expect(helpText(projectDir)).not.toMatch(/\bclassic\b/);
 
@@ -214,6 +232,25 @@ describe("a selection without the core plugin installs only the selected plugins
     const withoutRelease = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--yes"]);
     expect(withoutRelease.status).not.toBe(0);
     expect(withoutRelease.stdout + withoutRelease.stderr).toContain("no longer has all of core's scope files for");
+  });
+
+  test("the step plugin select prints finishes the change after a recorded selection", () => {
+    const projectDir = installedProject();
+    selectPlugins(projectDir, `aidlc,${PLUGIN}`);
+
+    const off = utility(projectDir, ["select-plugins", PLUGIN]);
+    expect(off.stdout).toContain(`config project --plugins ${PLUGIN} --yes\` to finish: it removes core's scope files`);
+    selectPlugins(projectDir, PLUGIN);
+    expect(installedScopeFiles(projectDir)).toEqual([`${PLUGIN_SCOPE}.md`]);
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(PLUGIN_SCOPE);
+
+    const on = utility(projectDir, ["select-plugins", `aidlc,${PLUGIN}`]);
+    expect(on.stdout).toContain(`config project --plugins aidlc,${PLUGIN} --download --yes\` to finish: core's scope files are gone here`);
+    expect(on.stdout).toContain("pass --from <release> instead of --download.");
+    const finishedOn = aidlc(projectDir, ["config", "project", "--plugins", `aidlc,${PLUGIN}`, "--from", RELEASE, "--yes"]);
+    expect(finishedOn.status, finishedOn.stdout + finishedOn.stderr).toBe(0);
+    expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
+    expect(settings(projectDir).env.AWS_AIDLC_DEFAULT_SCOPE).toBe(shippedSettings().env.AWS_AIDLC_DEFAULT_SCOPE);
   });
 
   test("refuses a scope the selection leaves out when a workflow names it", () => {
@@ -246,7 +283,9 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(selected.status, selected.stdout + selected.stderr).toBe(0);
     expect(existsSync(pluginRunner)).toBe(false);
     expect(selected.stdout).toContain("that the plugin selection leaves out:");
-    expect(selected.stdout).toContain("Selecting their plugin again puts them back.");
+    expect(selected.stdout).toContain(
+      "config project --plugins aidlc,<plugin> --yes`, with the plugin you left out in place of <plugin>, puts them back.",
+    );
     expect(selected.stdout).not.toContain("no release record shows AI-DLC shipped");
     expect(installedScopeFiles(projectDir)).toContain("aidlc-classic.md");
   });

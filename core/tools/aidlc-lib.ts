@@ -35637,7 +35637,7 @@ export function composedScopesDir(): string {
   return resolveDistributionPath(COMPOSED_SCOPES_SEGMENTS);
 }
 
-export function composedScopeNames(directory: string = composedScopesDir()): ReadonlySet<string> {
+export function composedScopeRecordNames(directory: string = composedScopesDir()): ReadonlySet<string> {
   try {
     return new Set(readdirSync(directory).filter((file) => file.endsWith(".md")).map((file) => file.slice(0, -3)));
   } catch {
@@ -35669,9 +35669,11 @@ export function coreOwnedScopeFiles(directory: ScopeDirectory, composed: Readonl
     .flatMap((meta) => directory.files.get(meta.name) ?? []);
 }
 
+export type ScopeMembership = Pick<StageEntry, "plugin" | "scopes">;
+
 export function coreScopesWithoutFile(
   directory: ScopeDirectory,
-  stages: readonly StageEntry[],
+  stages: readonly ScopeMembership[],
   composed: ReadonlySet<string>,
 ): string[] {
   const declared = new Set(stages.filter((stage) => scopeOwner(stage) === "aidlc").flatMap((stage) => stage.scopes ?? []));
@@ -35680,7 +35682,7 @@ export function coreScopesWithoutFile(
 
 export function deselectedCoreScopeFiles(): string[] {
   if (isPluginEnabled("aidlc")) return [];
-  return coreOwnedScopeFiles(installedScopeDirectory(), composedScopeNames());
+  return coreOwnedScopeFiles(installedScopeDirectory(), composedScopeRecordNames());
 }
 
 // --- Review-class resolution (stage-protocol-reviewer §12a) ---
