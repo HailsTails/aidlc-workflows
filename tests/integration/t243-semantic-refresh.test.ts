@@ -8,7 +8,7 @@ import { appendAuditEntry } from "../../core/tools/aidlc-audit.ts";
 import { sha256File, walkFiles } from "../../core/tools/aidlc-distribution.ts";
 import { hooksHealthDir, parseStageFrontmatter } from "../../core/tools/aidlc-lib.ts";
 import { planCompatibleRefresh, type CompatibleRefreshValidation } from "../../core/tools/aidlc-refresh-compatibility.ts";
-import { executePlan, writeOperation, type TransactionPlan } from "../../core/tools/aidlc-transaction.ts";
+import { executePlan, writeOperation, type TransactionPlan, type TransactionRefusal } from "../../core/tools/aidlc-transaction.ts";
 import { hermeticGitEnvironment } from "../../plugins/rin/tools/hermetic-git/index.ts";
 import { buildPluginProjection, composePluginFixture } from "../harness/plugin-kit.ts";
 
@@ -160,13 +160,14 @@ describe("accepted Gate 1 framing settlement at the real transaction boundary", 
     expect(workspace(f)).toEqual(before);
   });
   test.each([
-    { name: "with another field changed", stage: { ...settledFraming, approval_mode: "explicit" } },
-    { name: "with different outputs", stage: { ...settledFraming, outputs: "rin-requirements.md and rin-framing-questions.md, engine-resolved" } },
-    { name: "with only the condition changed", stage: { ...askedFraming, condition: settledFramingCondition } },
-    { name: "outside the rin plugin", stage: { ...settledFraming, plugin: "other" } },
-  ])("refuses a Gate 1 change $name before payload writes", ({ stage }) => {
+    { name: "with another field changed", installed: askedFraming, stage: { ...settledFraming, approval_mode: "explicit" } },
+    { name: "with different outputs", installed: askedFraming, stage: { ...settledFraming, outputs: "rin-requirements.md and rin-framing-questions.md, engine-resolved" } },
+    { name: "with only the condition changed", installed: askedFraming, stage: { ...askedFraming, condition: settledFramingCondition } },
+    { name: "outside the rin plugin", installed: { ...askedFraming, plugin: "other" }, stage: { ...settledFraming, plugin: "other" } },
+    { name: "without a plugin", installed: { ...askedFraming, plugin: undefined }, stage: { ...settledFraming, plugin: undefined } },
+  ])("refuses a Gate 1 change $name before payload writes", ({ installed, stage }) => {
     const f = fixture(); openFramingQuestions(f); const before = workspace(f);
-    stageGraph({ root: f.projectDir, stage: askedFraming });
+    stageGraph({ root: f.projectDir, stage: installed });
     stageGraph({ root: f.sourceRoot, stage });
     expect(validate(f)).toMatchObject({ kind: "refused", reason: "stage-contract-changed" });
     expect(readFileSync(join(f.projectDir, ".claude/tools/payload.ts"), "utf8")).toBe("original payload\n");
@@ -241,12 +242,20 @@ const openFramingRecord = (rin: ComposedRin): string => {
   put({ root: rin.projectDir, path: relative(rin.projectDir, questionsPath), content: framingQuestions });
   return questionsPath;
 };
-const refreshToSettlement = (args: { readonly rin: ComposedRin; readonly sourceRoot: string; readonly candidateGraph: string }): CompatibleRefreshValidation => {
+type SettlementRefresh = {
+  readonly validation: CompatibleRefreshValidation;
+  readonly applied: { readonly kind: "executed"; readonly result: undefined | TransactionRefusal } | { readonly kind: "not-planned" };
+};
+const refreshToSettlement = (args: { readonly rin: ComposedRin; readonly sourceRoot: string; readonly candidateGraph: string }): SettlementRefresh => {
   const plan: TransactionPlan = { schemaVersion: 1, root: args.rin.projectDir,
     operations: [writeOperation(stageGraphPath, args.candidateGraph, sha256File(join(args.rin.projectDir, stageGraphPath)))] };
-  const result = planCompatibleRefresh({ projectDir: args.rin.projectDir, sourceRoot: args.sourceRoot, harnessDir: ".claude", plan });
-  if (result.kind === "planned") executePlan(plan, { validateLocked: result.validateLocked });
-  return result;
+  const validation = planCompatibleRefresh({ projectDir: args.rin.projectDir, sourceRoot: args.sourceRoot, harnessDir: ".claude", plan });
+  return {
+    validation,
+    applied: validation.kind === "planned"
+      ? { kind: "executed", result: executePlan(plan, { validateLocked: validation.validateLocked }) }
+      : { kind: "not-planned" },
+  };
 };
 const stopTrace = (rin: ComposedRin): string => {
   const path = join(hooksHealthDir(rin.projectDir), "continue-workflow.trace");
@@ -274,6 +283,7 @@ test("an open Gate 1 record waits on the person after the settlement refresh unt
   const questionsPath = openFramingRecord(rin);
   const before = workspaceOf(rin.projectDir);
   const refreshed = refreshToSettlement({ rin, sourceRoot, candidateGraph });
+  const installedGraphIsCandidate = readFileSync(join(rin.projectDir, stageGraphPath), "utf8") === candidateGraph;
   const workspaceKept = JSON.stringify(workspaceOf(rin.projectDir)) === JSON.stringify(before);
   const stopWithBlank = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
   const traceWithBlank = stopTrace(rin);
@@ -283,12 +293,16 @@ test("an open Gate 1 record waits on the person after the settlement refresh unt
     argv: ["answer", "--stage", framingSlug, "--details", "B", "--project-dir", rin.projectDir] });
   runHook({ rin, hook: "record-human-turn", event: "UserPromptSubmit", fields: { prompt: "B, the queue" } });
   const nextWithReply = nextDirective(rin);
+  const stopWithBlankAfterReply = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
+  const afterReplyReason = stopTrace(rin).trim().split("\n").at(-1) ?? "";
   writeFileSync(questionsPath, framingQuestions.replace(/^\[Answer\]:$/m, "[Answer]: B, settled without the person"));
   const stopAfterSelfFill = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
   writeFileSync(questionsPath, framingQuestions.replace(/^\[Answer\]:\n$/m, ""));
   const stopAfterRemoval = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
   expect({
-    refreshed: refreshed.kind === "planned" ? refreshed.evidence.stageRevalidation : refreshed,
+    refreshed: refreshed.validation.kind === "planned" ? refreshed.validation.evidence.stageRevalidation : refreshed.validation,
+    applied: refreshed.applied,
+    installedGraphIsCandidate,
     workspaceKept,
     stopWithBlank: { status: stopWithBlank.status, stdout: stopWithBlank.stdout.trim() },
     carveOut: traceWithBlank.includes(`active stage ${framingSlug} has an unanswered question; allowing the stop (pending-question carve-out)`),
@@ -296,10 +310,14 @@ test("an open Gate 1 record waits on the person after the settlement refresh unt
     selfAnswer: { status: selfAnswer.status, refused: selfAnswer.stderr.includes("no new human reply has arrived") },
     withReply: { kind: nextWithReply.kind, stage: nextWithReply.stage, replies: (nextWithReply.kept_replies as { readonly replies?: readonly string[] } | undefined)?.replies ?? null },
     autonomousStop: { status: autonomousStop.status, decision: stopDecision(autonomousStop) },
+    stopWithBlankAfterReply: { status: stopWithBlankAfterReply.status, decision: stopDecision(stopWithBlankAfterReply),
+      pendingQuestion: afterReplyReason.endsWith("allowing the stop (pending-question carve-out)") },
     stopAfterSelfFill: { status: stopAfterSelfFill.status, decision: stopDecision(stopAfterSelfFill) },
     stopAfterRemoval: { status: stopAfterRemoval.status, decision: stopDecision(stopAfterRemoval) },
   }).toEqual({
     refreshed: { [framingSlug]: ["framing-decision-record"] },
+    applied: { kind: "executed", result: undefined },
+    installedGraphIsCandidate: true,
     workspaceKept: true,
     stopWithBlank: { status: 0, stdout: "" },
     carveOut: true,
@@ -307,6 +325,7 @@ test("an open Gate 1 record waits on the person after the settlement refresh unt
     selfAnswer: { status: 1, refused: true },
     withReply: { kind: "run-stage", stage: framingSlug, replies: ["B, the queue"] },
     autonomousStop: { status: 0, decision: "block" },
+    stopWithBlankAfterReply: { status: 0, decision: "allow", pendingQuestion: true },
     stopAfterSelfFill: { status: 0, decision: "block" },
     stopAfterRemoval: { status: 0, decision: "block" },
   });

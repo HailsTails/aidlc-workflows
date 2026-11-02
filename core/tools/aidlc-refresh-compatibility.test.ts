@@ -75,16 +75,16 @@ test("a changed source after planning refuses locked validation", () => {
   expect(result.validateLocked()).toMatchObject({ kind: "refused", reason: "inputs-changed" });
 });
 
-test("names each revalidation entry in one human-readable note", () => {
+test("names each accepted effect in one note that says what follows from it", () => {
   expect(refreshRevalidationNotes({ stageRevalidation: {
     "code-generation": ["plan-approval-questions"],
     "rin-gate-1-framing": ["framing-decision-record"],
     work: ["gate-sensor-coverage", "plan-approval-questions"],
   } })).toEqual([
-    'Open-workflow refresh revalidates stage "code-generation" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.',
-    'Open-workflow refresh revalidates stage "rin-gate-1-framing" (framing-decision-record): Gate 1 now settles the decision-questions it can source and asks only reserved decisions; while an [Answer]: in an open rin-framing-questions.md is blank, the Stop hook holds the turn for the person unless Construction Autonomy Mode is autonomous; filling or removing it ends that, and the new Gate 1 prose may lead the agent to do either, so answer open Gate 1 questions before resuming.',
-    'Open-workflow refresh revalidates stage "work" (gate-sensor-coverage): its advisory gate sensor now covers more paths, and the next gate check reads them.',
-    'Open-workflow refresh revalidates stage "work" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.',
+    'Open-workflow refresh accepts the engine-written questions declaration for stage "code-generation" (plan-approval-questions): Plan Approval rechecks a retained code-generation-questions.md before its answer counts.',
+    'Open-workflow refresh accepts the reviewed #67 prose change for stage "rin-gate-1-framing" (framing-decision-record): nothing rechecks an open rin-framing-questions.md, so review those records yourself; while an [Answer]: in one is blank or underscores only, the Stop hook holds the turn for the person unless Construction Autonomy Mode is autonomous, and filling or removing it, which the new Gate 1 prose may lead the agent to do, ends that.',
+    'Open-workflow refresh accepts wider advisory gate sensor coverage for stage "work" (gate-sensor-coverage): the next gate check reads the added paths.',
+    'Open-workflow refresh accepts the engine-written questions declaration for stage "work" (plan-approval-questions): Plan Approval rechecks a retained code-generation-questions.md before its answer counts.',
   ]);
   expect(refreshRevalidationNotes({ stageRevalidation: {} })).toEqual([]);
 });

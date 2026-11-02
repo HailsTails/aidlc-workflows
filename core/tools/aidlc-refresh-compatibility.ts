@@ -148,15 +148,31 @@ export type CompatibleRefreshValidation =
 
 type StageRevalidation = Readonly<Record<string, readonly StageRefreshEffect[]>>;
 
-const revalidationNoteText: Readonly<Record<StageRefreshEffect, string>> = {
-  "gate-sensor-coverage": "its advisory gate sensor now covers more paths, and the next gate check reads them.",
-  "plan-approval-questions": "the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.",
-  "framing-decision-record": "Gate 1 now settles the decision-questions it can source and asks only reserved decisions; while an [Answer]: in an open rin-framing-questions.md is blank, the Stop hook holds the turn for the person unless Construction Autonomy Mode is autonomous; filling or removing it ends that, and the new Gate 1 prose may lead the agent to do either, so answer open Gate 1 questions before resuming.",
+type AcceptedEffectNote = { readonly accepts: string; readonly follows: string };
+
+const acceptedEffectNotes: Readonly<Record<StageRefreshEffect, AcceptedEffectNote>> = {
+  "gate-sensor-coverage": {
+    accepts: "wider advisory gate sensor coverage",
+    follows: "the next gate check reads the added paths.",
+  },
+  "plan-approval-questions": {
+    accepts: "the engine-written questions declaration",
+    follows: "Plan Approval rechecks a retained code-generation-questions.md before its answer counts.",
+  },
+  "framing-decision-record": {
+    accepts: "the reviewed #67 prose change",
+    follows: "nothing rechecks an open rin-framing-questions.md, so review those records yourself; while an [Answer]: in one is blank or underscores only, the Stop hook holds the turn for the person unless Construction Autonomy Mode is autonomous, and filling or removing it, which the new Gate 1 prose may lead the agent to do, ends that.",
+  },
+};
+
+const acceptedEffectNote = (args: { readonly stage: string; readonly effect: StageRefreshEffect }): string => {
+  const note = acceptedEffectNotes[args.effect];
+  return `Open-workflow refresh accepts ${note.accepts} for stage ${JSON.stringify(args.stage)} (${args.effect}): ${note.follows}`;
 };
 
 export const refreshRevalidationNotes = (args: { readonly stageRevalidation: StageRevalidation }): readonly string[] =>
-  Object.entries(args.stageRevalidation).flatMap(([stage, effects]) => effects.map((effect) =>
-    `Open-workflow refresh revalidates stage ${JSON.stringify(stage)} (${effect}): ${revalidationNoteText[effect]}`));
+  Object.entries(args.stageRevalidation).flatMap(([stage, effects]) =>
+    effects.map((effect) => acceptedEffectNote({ stage, effect })));
 
 export function planCompatibleRefresh(args: {
   projectDir: string;

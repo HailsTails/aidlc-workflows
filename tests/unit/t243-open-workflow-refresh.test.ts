@@ -49,7 +49,7 @@ function workflows(project: string): void {
   put(project, "aidlc/active-space", "default\n");
 }
 
-const engineQuestionsNote = 'Open-workflow refresh revalidates stage "code-generation" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.';
+const engineQuestionsNote = 'Open-workflow refresh accepts the engine-written questions declaration for stage "code-generation" (plan-approval-questions): Plan Approval rechecks a retained code-generation-questions.md before its answer counts.';
 
 function sourceBeforeEngineQuestions(): string {
   const older = temp();
