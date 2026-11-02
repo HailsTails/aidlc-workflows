@@ -35,8 +35,6 @@ In the shared round every seat records a position on each piece it has a stake i
 - **Gate 3, quality:** a planted violation of each refusal the lock claims, and a position on every refusal: `AGREE:` citing the planted violation and the check that caught it, or `OBJECT:` citing the planted violation that was not caught.
 - **Gate 3, customer:** a position on each lock clause, safeguard and refusal, and on each case of ordinary use the lock leaves out, each weighed against the customer section.
 
-A contract with no position from the developer seat, or a refusal with no position from the quality seat, is unprobed, never one that held.
-
 ## Objection dispositions
 
 Contributions are revised in place (§5), so an objection that a seat withdrew, or that a piece's author conceded, leaves no trace in them. At Gates 1 to 3 the lead therefore records, under an `## Objection dispositions` section of the gate's decision record, one entry for every objection a seat raised in any round, naming the seat, the piece and the objection, with where it stands now and the reason that holds it there:
@@ -46,6 +44,8 @@ Contributions are revised in place (§5), so an objection that a seat withdrew, 
 - `rejected`: the outputs stand against it, citing the evidence that answers it;
 - `contested`: the outputs carry the ruling on it, at the section named, with the maintained dissent. The ruling is the lead's, or, in a stopping class, {{OPERATOR}}'s answer as `reserved-decisions.md` records it;
 - `withdrawn`: the objecting seat no longer holds it, with the reason the seat gave.
+
+An entry whose outcome removes or adds an obligation gives its reason as `PD-1` weighs that cut or addition, never only that a seat raised it.
 
 The decision record is a declared output of the gate: Gate 1's `rin-framing-questions.md`, Gate 2's `rin-options-questions.md` and Gate 3's `rin-design-questions.md`. An entry is a decision over the outputs, not their change history (`DD-5`): it states where the objection stands and why, naming the item it bears on, never how the rounds went, which belongs in the stage's `memory.md`. A gate where no seat objected writes `None` under the section. The customer lens reads this record for its objection check (`decorrelated-review.md` Step 2).
 
