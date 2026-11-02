@@ -72,6 +72,13 @@ function openProjectFrom(source: string): string {
   return project;
 }
 
+function moveOpenWorkflowTo(args: { readonly project: string; readonly stage: string }): void {
+  const path = "aidlc/spaces/default/intents/open/aidlc-state.md";
+  const state = readFileSync(join(args.project, path), "utf-8");
+  expect(state).toContain("- **Current Stage**: requirements-analysis");
+  put(args.project, path, state.replace("- **Current Stage**: requirements-analysis", `- **Current Stage**: ${args.stage}`));
+}
+
 function config(project: string, source: string, flags: string[] = []) {
   return configText(project, source, ["--json", ...flags]);
 }
@@ -190,9 +197,7 @@ describe("compatible refresh with independent workflows", () => {
     const project = openProjectFrom(sourceBeforeEngineQuestions());
     const elsewhere = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
     expect(elsewhere.status, elsewhere.output).toBe(0);
-    const state = join(project, "aidlc/spaces/default/intents/open/aidlc-state.md");
-    put(project, "aidlc/spaces/default/intents/open/aidlc-state.md",
-      readFileSync(state, "utf-8").replace("- **Current Stage**: requirements-analysis", "- **Current Stage**: code-generation"));
+    moveOpenWorkflowTo({ project, stage: "code-generation" });
     const atStage = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
     expect(atStage.status, atStage.output).toBe(0);
     expect({
@@ -203,14 +208,16 @@ describe("compatible refresh with independent workflows", () => {
   }, 120_000);
 
   test.each([
-    { mode: "human", flags: [], line: `Note: ${engineQuestionsNote}`, stream: "stdout" },
-    { mode: "quiet", flags: ["--quiet"], line: `Warning: ${engineQuestionsNote}`, stream: "output" },
-  ] as const)("names an accepted revalidation on a $mode apply", ({ flags, line, stream }) => {
+    { mode: "human", flags: [], atStage: false, line: `Note: ${engineQuestionsNote}`, stream: "stdout" },
+    { mode: "quiet", flags: ["--quiet"], atStage: false, line: `Warning: ${engineQuestionsNote}`, stream: "output" },
+    { mode: "human", flags: [], atStage: true, line: `Note: ${engineQuestionsNote} Open at this stage: default/open.`, stream: "stdout" },
+  ] as const)("names an accepted revalidation on a $mode apply (workflow at the stage: $atStage)", ({ flags, atStage, line, stream }) => {
     const project = openProjectFrom(sourceBeforeEngineQuestions());
+    if (atStage) moveOpenWorkflowTo({ project, stage: "code-generation" });
     const before = workspaceBytes(project);
     const applied = configText(project, RELEASE, ["--refresh-open-workflows", ...flags]);
     expect(applied.status, applied.output).toBe(0);
-    expect(applied[stream]).toContain(line);
+    expect(applied[stream].split(/\r?\n/).map((printed) => printed.trim())).toContain(line);
     expect(workspaceBytes(project)).toEqual(before);
   }, 120_000);
 

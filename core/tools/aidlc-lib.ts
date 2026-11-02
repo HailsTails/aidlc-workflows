@@ -4134,7 +4134,7 @@ export type RunningWorkflowStage = { readonly workflow: string; readonly current
 
 const recordedCurrentStage = (args: { readonly projectDir: string; readonly space: string; readonly dirName: string }): string | null => {
   try {
-    return getField(readFileSync(stateFilePath(args.projectDir, args.dirName, args.space), "utf-8"), "Current Stage")?.trim() || null;
+    return getField(readFileSync(stateFilePath(args.projectDir, args.dirName, args.space), "utf-8"), "Current Stage") || null;
   } catch {
     return null;
   }

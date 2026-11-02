@@ -157,7 +157,7 @@ const openAtStage = ({ records }: StageRecords): string =>
 
 const framingAnswersOwed = ({ records }: StageRecords): string =>
   records.length === 0
-    ? "no open workflow is at Gate 1, so none has questions to answer before resuming."
+    ? "no open workflow records Gate 1 as its current stage, so none has questions to answer before resuming."
     : `answer the open Gate 1 questions in ${records.join(", ")} before resuming; nothing rechecks them, and a blank [Answer]: waits for the person only until it is filled or removed, and never under autonomous mode (guide 18, Refresh Safety).`;
 
 const acceptedEffectNotes: Readonly<Record<StageRefreshEffect, AcceptedEffectNote>> = {

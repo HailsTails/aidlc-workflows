@@ -80,9 +80,12 @@ test("names each accepted effect in one note that says what follows from it", ()
     "code-generation": ["plan-approval-questions"],
     "rin-gate-1-framing": ["framing-decision-record"],
     work: ["gate-sensor-coverage", "plan-approval-questions"],
-  }, openWorkflows: [{ workflow: "default/elsewhere", currentStage: "requirements-analysis" }] })).toEqual([
+  }, openWorkflows: [
+    { workflow: "default/elsewhere", currentStage: "requirements-analysis" },
+    { workflow: "other/no-state", currentStage: null },
+  ] })).toEqual([
     'Open-workflow refresh accepts the engine-written questions declaration for stage "code-generation" (plan-approval-questions): Plan Approval rechecks a retained code-generation-questions.md before its answer counts.',
-    'Open-workflow refresh accepts the reviewed #67 prose change for stage "rin-gate-1-framing" (framing-decision-record): no open workflow is at Gate 1, so none has questions to answer before resuming.',
+    'Open-workflow refresh accepts the reviewed #67 prose change for stage "rin-gate-1-framing" (framing-decision-record): no open workflow records Gate 1 as its current stage, so none has questions to answer before resuming.',
     'Open-workflow refresh accepts wider advisory gate sensor coverage for stage "work" (gate-sensor-coverage): the next gate check reads the added paths.',
     'Open-workflow refresh accepts the engine-written questions declaration for stage "work" (plan-approval-questions): Plan Approval rechecks a retained code-generation-questions.md before its answer counts.',
   ]);
