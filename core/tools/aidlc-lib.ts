@@ -4130,6 +4130,23 @@ export function activeWorkflowDescriptions(projectDir: string): string[] {
   return runningWorkflows(projectDir).map(({ space, dirName, slug }) => workflowDisplayName(space, { dirName, slug }));
 }
 
+export type RunningWorkflowStage = { readonly workflow: string; readonly currentStage: string | null };
+
+const recordedCurrentStage = (args: { readonly projectDir: string; readonly space: string; readonly dirName: string }): string | null => {
+  try {
+    return getField(readFileSync(stateFilePath(args.projectDir, args.dirName, args.space), "utf-8"), "Current Stage") || null;
+  } catch {
+    return null;
+  }
+};
+
+export function runningWorkflowStages(projectDir: string): readonly RunningWorkflowStage[] {
+  return runningWorkflows(projectDir).map(({ space, dirName, slug }) => ({
+    workflow: workflowDisplayName(space, { dirName, slug }),
+    currentStage: recordedCurrentStage({ projectDir, space, dirName }),
+  }));
+}
+
 // A workflow as `<space>/<record dir>`, printed for the person and read by
 // agents: committed names pass the model-facing name rules, else the intent's
 // slug or a placeholder stands in.

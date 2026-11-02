@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import { z } from "zod";
 import { assertProjectionPathHasNoSymlinks, sha256Bytes } from "./aidlc-distribution.ts";
+import type { RunningWorkflowStage } from "./aidlc-lib.ts";
 import { stageRefreshComparison, type StageRefreshComparisonPort, type StageRefreshEffect } from "./aidlc-stage-refresh-contract.ts";
 import type { TransactionPlan } from "./aidlc-transaction.ts";
 
@@ -141,10 +142,55 @@ export type CompatibleRefreshValidation =
         readonly scopes: number;
         readonly installed: Record<string, string>;
         readonly candidate: Record<string, string>;
-        readonly stageRevalidation: Readonly<Record<string, readonly StageRefreshEffect[]>>;
+        readonly stageRevalidation: StageRevalidation;
       };
       readonly validateLocked: () => { readonly kind: "validated" } | RefreshRefusal;
     };
+
+type StageRevalidation = Readonly<Record<string, readonly StageRefreshEffect[]>>;
+
+type StageRecords = { readonly records: readonly string[] };
+type AcceptedEffectNote = { readonly accepts: string; readonly follows: (args: StageRecords) => string };
+
+const openAtStage = ({ records }: StageRecords): string =>
+  records.length === 0 ? "" : ` Open at this stage: ${records.join(", ")}.`;
+
+const framingAnswersOwed = ({ records }: StageRecords): string =>
+  records.length === 0
+    ? "no open workflow records Gate 1 as its current stage, so none has questions to answer before resuming."
+    : `answer the open Gate 1 questions in ${records.join(", ")} before resuming; nothing rechecks them, and a blank [Answer]: waits for the person only until it is filled or removed, and never under autonomous mode (guide 18, Refresh Safety).`;
+
+const acceptedEffectNotes: Readonly<Record<StageRefreshEffect, AcceptedEffectNote>> = {
+  "gate-sensor-coverage": {
+    accepts: "wider advisory gate sensor coverage",
+    follows: (stage) => `the next gate check reads the added paths.${openAtStage(stage)}`,
+  },
+  "plan-approval-questions": {
+    accepts: "the engine-written questions declaration",
+    follows: (stage) => `Plan Approval rechecks a retained code-generation-questions.md before its answer counts.${openAtStage(stage)}`,
+  },
+  "framing-decision-record": {
+    accepts: "the reviewed #67 prose change",
+    follows: framingAnswersOwed,
+  },
+};
+
+const acceptedEffectNote = (args: { readonly stage: string; readonly effect: StageRefreshEffect; readonly records: readonly string[] }): string => {
+  const note = acceptedEffectNotes[args.effect];
+  return `Open-workflow refresh accepts ${note.accepts} for stage ${JSON.stringify(args.stage)} (${args.effect}): ${note.follows(args)}`;
+};
+
+const recordsAt = (args: { readonly stage: string; readonly openWorkflows: readonly RunningWorkflowStage[] }): readonly string[] =>
+  args.openWorkflows.filter((open) => open.currentStage === args.stage).map((open) => open.workflow);
+
+export const refreshRevalidationNotes = (args: {
+  readonly stageRevalidation: StageRevalidation;
+  readonly openWorkflows: readonly RunningWorkflowStage[];
+}): readonly string[] =>
+  Object.entries(args.stageRevalidation).flatMap(([stage, effects]) => {
+    const records = recordsAt({ stage, openWorkflows: args.openWorkflows });
+    return effects.map((effect) => acceptedEffectNote({ stage, effect, records }));
+  });
 
 export function planCompatibleRefresh(args: {
   projectDir: string;

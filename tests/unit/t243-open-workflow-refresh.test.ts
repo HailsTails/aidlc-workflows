@@ -49,8 +49,42 @@ function workflows(project: string): void {
   put(project, "aidlc/active-space", "default\n");
 }
 
+const engineQuestionsNote = 'Open-workflow refresh accepts the engine-written questions declaration for stage "code-generation" (plan-approval-questions): Plan Approval rechecks a retained code-generation-questions.md before its answer counts.';
+
+function sourceBeforeEngineQuestions(): string {
+  const older = temp();
+  cpSync(RELEASE, older, { recursive: true });
+  const engineClause = "; the engine writes code-generation-questions.md)";
+  for (const path of [".claude/aidlc-common/stages/construction/code-generation.md", ".claude/tools/data/stage-graph.json"]) {
+    const shipped = readFileSync(join(older, path), "utf-8");
+    expect(shipped).toContain(engineClause);
+    put(older, path, shipped.replace(engineClause, ")"));
+  }
+  return older;
+}
+
+function openProjectFrom(source: string): string {
+  const project = temp();
+  mkdirSync(join(project, ".git"));
+  const installed = config(project, source);
+  expect(installed.status, installed.output).toBe(0);
+  workflows(project);
+  return project;
+}
+
+function moveOpenWorkflowTo(args: { readonly project: string; readonly stage: string }): void {
+  const path = "aidlc/spaces/default/intents/open/aidlc-state.md";
+  const state = readFileSync(join(args.project, path), "utf-8");
+  expect(state).toContain("- **Current Stage**: requirements-analysis");
+  put(args.project, path, state.replace("- **Current Stage**: requirements-analysis", `- **Current Stage**: ${args.stage}`));
+}
+
 function config(project: string, source: string, flags: string[] = []) {
-  const result = spawnSync(process.execPath, [INIT, "config", "--project-dir", project, "--from", source, "--json", ...flags], {
+  return configText(project, source, ["--json", ...flags]);
+}
+
+function configText(project: string, source: string, flags: string[]) {
+  const result = spawnSync(process.execPath, [INIT, "config", "--project-dir", project, "--from", source, ...flags], {
     cwd: project, encoding: "utf-8", timeout: 60_000,
     env: { ...process.env, AIDLC_PROJECT_DIR: project, CLAUDE_PROJECT_DIR: project, AIDLC_HARNESS_DIR: ".claude", AIDLC_HARNESS_NAME: "claude" },
   });
@@ -141,6 +175,51 @@ describe("compatible refresh with independent workflows", () => {
     expect(workspaceBytes(project)).toEqual(before);
     expect(readFileSync(join(project, tool))).toEqual(toolBefore);
   }, 60_000);
+
+  test("names an accepted revalidation in a note on the dry run, and the apply accepts the dry run's token", () => {
+    const project = openProjectFrom(sourceBeforeEngineQuestions());
+    const before = workspaceBytes(project);
+    const dryRun = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
+    expect(dryRun.status, dryRun.output).toBe(0);
+    const plan = JSON.parse(dryRun.stdout);
+    expect(plan.data.refreshCompatibility.stageRevalidation).toEqual({ "code-generation": ["plan-approval-questions"] });
+    expect(plan.data.notes).toContain(engineQuestionsNote);
+    expect(configText(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]).stdout).toContain(`Note: ${engineQuestionsNote}`);
+    expect(configText(project, RELEASE, ["--refresh-open-workflows", "--dry-run", "--quiet"]).output).toContain(`Warning: ${engineQuestionsNote}`);
+    const applied = config(project, RELEASE, ["--refresh-open-workflows", "--plan-token", plan.data.planToken]);
+    expect(applied.status, applied.output).toBe(0);
+    expect(JSON.parse(applied.stdout).data.notes).toContain(engineQuestionsNote);
+    expect(JSON.parse(applied.stdout).data.planToken).toBe(plan.data.planToken);
+    expect(workspaceBytes(project)).toEqual(before);
+  }, 120_000);
+
+  test("names the open workflow at the accepted stage without changing the plan token", () => {
+    const project = openProjectFrom(sourceBeforeEngineQuestions());
+    const elsewhere = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
+    expect(elsewhere.status, elsewhere.output).toBe(0);
+    moveOpenWorkflowTo({ project, stage: "code-generation" });
+    const atStage = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
+    expect(atStage.status, atStage.output).toBe(0);
+    expect({
+      elsewhere: JSON.parse(elsewhere.stdout).data.notes.includes(engineQuestionsNote),
+      atStage: JSON.parse(atStage.stdout).data.notes.includes(`${engineQuestionsNote} Open at this stage: default/open.`),
+      sameToken: JSON.parse(atStage.stdout).data.planToken === JSON.parse(elsewhere.stdout).data.planToken,
+    }).toEqual({ elsewhere: true, atStage: true, sameToken: true });
+  }, 120_000);
+
+  test.each([
+    { mode: "human", flags: [], atStage: false, line: `Note: ${engineQuestionsNote}`, stream: "stdout" },
+    { mode: "quiet", flags: ["--quiet"], atStage: false, line: `Warning: ${engineQuestionsNote}`, stream: "output" },
+    { mode: "human", flags: [], atStage: true, line: `Note: ${engineQuestionsNote} Open at this stage: default/open.`, stream: "stdout" },
+  ] as const)("names an accepted revalidation on a $mode apply (workflow at the stage: $atStage)", ({ flags, atStage, line, stream }) => {
+    const project = openProjectFrom(sourceBeforeEngineQuestions());
+    if (atStage) moveOpenWorkflowTo({ project, stage: "code-generation" });
+    const before = workspaceBytes(project);
+    const applied = configText(project, RELEASE, ["--refresh-open-workflows", ...flags]);
+    expect(applied.status, applied.output).toBe(0);
+    expect(applied[stream].split(/\r?\n/).map((printed) => printed.trim())).toContain(line);
+    expect(workspaceBytes(project)).toEqual(before);
+  }, 120_000);
 
   test("retains ownership refusal for a locally edited installed tool", () => {
     const project = temp();

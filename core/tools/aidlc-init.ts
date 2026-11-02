@@ -90,7 +90,7 @@ import {
 } from "./aidlc-install-paths.ts";
 import { defaultHarnessPath } from "./aidlc-machine-config.ts";
 import { projectEvidence } from "./aidlc-plugin.ts";
-import { planCompatibleRefresh } from "./aidlc-refresh-compatibility.ts";
+import { planCompatibleRefresh, refreshRevalidationNotes } from "./aidlc-refresh-compatibility.ts";
 import { captureRefreshRuleInputs, type RefreshRuleInputs } from "./aidlc-refresh-rules.ts";
 import { planCodexHookTrustSeed, planPluginHookRegistrations, projectedPluginHookContributionsSchema, type ProjectedPluginHookContributions } from "./aidlc-plugin-hook-registrations.ts";
 import {
@@ -144,6 +144,7 @@ import {
   RECORDABLE_PROJECT_BYPASSES,
   type ProjectFlagsRecord,
   normalizeDriveLetter,
+  runningWorkflowStages,
   sameFileIdentity,
   withAuditLock,
   writeFileAtomic,
@@ -12115,6 +12116,11 @@ export async function main(
       emitResult(failure(compatibleRefresh.message, EXIT.integrity, configCommand("--dry-run --json")), options);
       return;
     }
+    const revalidationNotes = compatibleRefresh
+      ? refreshRevalidationNotes({ stageRevalidation: compatibleRefresh.evidence.stageRevalidation, openWorkflows: runningWorkflowStages(projectDir) })
+      : [];
+    prepared.notes.push(...revalidationNotes);
+    quietWarnings.push(...revalidationNotes);
     const approvalPlan = {
       ...plan,
       ...(compatibleRefresh ? { refreshCompatibility: compatibleRefresh.evidence } : {}),
