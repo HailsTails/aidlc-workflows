@@ -1,13 +1,16 @@
 // covers: file:core/tools/aidlc-stage-refresh-contract.ts, file:core/tools/aidlc-refresh-compatibility.ts, function:pendingRequestCurrency
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { appendAuditEntry } from "../../core/tools/aidlc-audit.ts";
 import { sha256File, walkFiles } from "../../core/tools/aidlc-distribution.ts";
+import { hooksHealthDir, parseStageFrontmatter } from "../../core/tools/aidlc-lib.ts";
 import { planCompatibleRefresh, type CompatibleRefreshValidation } from "../../core/tools/aidlc-refresh-compatibility.ts";
 import { executePlan, writeOperation, type TransactionPlan } from "../../core/tools/aidlc-transaction.ts";
 import { hermeticGitEnvironment } from "../../plugins/rin/tools/hermetic-git/index.ts";
+import { buildPluginProjection, composePluginFixture } from "../harness/plugin-kit.ts";
 
 const repositoryRoot = resolve(import.meta.dir, "../..");
 const ownedRoots = new Set<string>();
@@ -58,8 +61,9 @@ const validate = (f: SemanticRefreshFixture): CompatibleRefreshValidation =>
   planCompatibleRefresh({ projectDir: f.projectDir, sourceRoot: f.sourceRoot, harnessDir: ".claude", plan: f.plan });
 const stageGraph = (args: { readonly root: string; readonly stage: Readonly<Record<string, unknown>> }): void =>
   put({ root: args.root, path: ".claude/tools/data/stage-graph.json", content: JSON.stringify([args.stage]) });
-const workspace = (f: SemanticRefreshFixture): Readonly<Record<string, string>> =>
-  Object.fromEntries(walkFiles(join(f.projectDir, "aidlc")).map((path) => [path, sha256File(join(f.projectDir, "aidlc", path))]));
+const workspaceOf = (projectDir: string): Readonly<Record<string, string>> =>
+  Object.fromEntries(walkFiles(join(projectDir, "aidlc")).map((path) => [path, sha256File(join(projectDir, "aidlc", path))]));
+const workspace = (f: SemanticRefreshFixture): Readonly<Record<string, string>> => workspaceOf(f.projectDir);
 const apply = (f: SemanticRefreshFixture): unknown => {
   const result = validate(f);
   if (result.kind !== "planned") throw new Error(result.message);
@@ -134,6 +138,162 @@ describe("semantic compatibility at the real transaction boundary", () => {
     expect(readFileSync(join(f.projectDir, ".claude/tools/payload.ts"), "utf8")).toBe("original payload\n");
   });
 });
+const askedFramingCondition = "Second gate of the rin pipeline. Turns the Slice's assumption-laden intent into atomic, non-dominated, load-bearing decision-questions, gets the answers, and writes back confirmed scope directly into the AIDLC requirements artefact. The lead frames; the architect and developer seats contribute work against the framing. Prose only; no solution is chosen here (Gate 2).";
+const settledFramingCondition = "Second gate of the rin pipeline. Turns the Slice's assumption-laden intent into atomic, non-dominated, load-bearing decision-questions, settles them with its seats, and writes back confirmed scope directly into the AIDLC requirements artefact. The lead frames; the architect and developer seats contribute work against the framing. Prose only; no solution is chosen here (Gate 2).";
+const askedFramingOutputs = "rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions with the human's answers), under this stage's record dir, engine-resolved";
+const settledFramingOutputs = "rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions, each with the gate's answer and its source, or its stopping class and pack), under this stage's record dir, engine-resolved";
+const framingStage = { ...oldStage, slug: "rin-gate-1-framing", plugin: "rin", approval_mode: "autonomous" };
+const askedFraming = { ...framingStage, condition: askedFramingCondition, outputs: askedFramingOutputs };
+const settledFraming = { ...framingStage, condition: settledFramingCondition, outputs: settledFramingOutputs };
+const openFramingQuestions = (f: SemanticRefreshFixture): void => put({ root: f.projectDir,
+  path: "aidlc/spaces/default/intents/backlog/inception/rin-gate-1-framing/rin-framing-questions.md",
+  content: "## Question 1\nWho owns the slice?\nA) The platform team\n[Answer]: A, the person's own words\n\n## Question 2\nWhich boundary holds?\nA) The API\n[Answer]:\n" });
+
+describe("accepted Gate 1 framing settlement at the real transaction boundary", () => {
+  test("the exact framing pair refreshes the payload and keeps an open framing record byte-identical", () => {
+    const f = fixture(); openFramingQuestions(f); const before = workspace(f);
+    stageGraph({ root: f.projectDir, stage: askedFraming });
+    stageGraph({ root: f.sourceRoot, stage: settledFraming });
+    expect(validate(f)).toMatchObject({ kind: "planned", evidence: { stageRevalidation: { "rin-gate-1-framing": ["framing-decision-record"] } } });
+    apply(f);
+    expect(readFileSync(join(f.projectDir, ".claude/tools/payload.ts"), "utf8")).toBe("updated payload\n");
+    expect(workspace(f)).toEqual(before);
+  });
+  test.each([
+    { name: "with another field changed", stage: { ...settledFraming, approval_mode: "explicit" } },
+    { name: "with different outputs", stage: { ...settledFraming, outputs: "rin-requirements.md and rin-framing-questions.md, engine-resolved" } },
+    { name: "with only the condition changed", stage: { ...askedFraming, condition: settledFramingCondition } },
+    { name: "outside the rin plugin", stage: { ...settledFraming, plugin: "other" } },
+  ])("refuses a Gate 1 change $name before payload writes", ({ stage }) => {
+    const f = fixture(); openFramingQuestions(f); const before = workspace(f);
+    stageGraph({ root: f.projectDir, stage: askedFraming });
+    stageGraph({ root: f.sourceRoot, stage });
+    expect(validate(f)).toMatchObject({ kind: "refused", reason: "stage-contract-changed" });
+    expect(readFileSync(join(f.projectDir, ".claude/tools/payload.ts"), "utf8")).toBe("original payload\n");
+    expect(workspace(f)).toEqual(before);
+  });
+  test("the accepted candidate prose is Gate 1's shipped frontmatter", () => {
+    const shipped = parseStageFrontmatter(readFileSync(join(repositoryRoot, "plugins/rin/stages/inception/rin-gate-1-framing.md"), "utf8"));
+    expect({ slug: shipped.slug, plugin: shipped.plugin, condition: shipped.condition, outputs: shipped.outputs }).toEqual({
+      slug: "rin-gate-1-framing", plugin: "rin", condition: settledFramingCondition, outputs: settledFramingOutputs,
+    });
+  });
+});
+
+const framingSlug = "rin-gate-1-framing";
+const framingSession = "01995000-7a11-7000-8000-0000000001aa";
+const stageGraphPath = ".claude/tools/data/stage-graph.json";
+const framingQuestions = "# Gate 1 framing questions\n\n## Question 1\nWho owns the slice?\nA) The platform team\nB) The product team\n\n[Answer]: A, the person's own words\n\n## Question 2\nWhich boundary holds?\nA) The API\nB) The queue\n\n[Answer]:\n";
+type InstalledRun = { readonly status: number | null; readonly stdout: string; readonly stderr: string };
+type ComposedRin = { readonly root: string; readonly projectDir: string; readonly env: Readonly<Record<string, string | undefined>> };
+type GraphStage = Readonly<Record<string, unknown>> & { readonly slug: string };
+
+const composedRin = (): ComposedRin => {
+  const root = mkdtempSync(join(tmpdir(), "aidlc-gate1-refresh-")); ownedRoots.add(root);
+  const home = join(root, "home"); mkdirSync(home);
+  const env = { PATH: process.env.PATH, HOME: home, TMPDIR: root };
+  const pluginBuilt = buildPluginProjection("rin", "claude", join(root, "plugin"));
+  const { projectDir } = composePluginFixture({ plugin: "rin", harness: "claude", projectDir: join(root, "project"), pluginBuilt, env });
+  return { root, projectDir, env: { ...env, CLAUDE_PROJECT_DIR: projectDir, AIDLC_PROJECT_DIR: projectDir } };
+};
+const runInstalled = (args: { readonly rin: ComposedRin; readonly tool: string; readonly argv: readonly string[]; readonly input?: string }): InstalledRun => {
+  const result = spawnSync(process.execPath, [join(args.rin.projectDir, ".claude/tools", args.tool), ...args.argv], {
+    cwd: args.rin.projectDir, input: args.input, encoding: "utf8", timeout: 60_000,
+    env: { ...args.rin.env, AIDLC_SESSION_OVERRIDE: framingSession, AIDLC_SESSION_OVERRIDE_SOURCE: "test" },
+  });
+  if (result.error) throw result.error;
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+};
+const hookInput = (args: { readonly rin: ComposedRin; readonly event: string; readonly fields: Readonly<Record<string, unknown>> }): string =>
+  JSON.stringify({ hook_event_name: args.event, session_id: framingSession, cwd: args.rin.projectDir, ...args.fields });
+const runHook = (args: { readonly rin: ComposedRin; readonly hook: string; readonly event: string; readonly fields: Readonly<Record<string, unknown>> }): InstalledRun =>
+  runInstalled({ rin: args.rin, tool: "aidlc.ts", argv: ["engine", "hook", args.hook], input: hookInput(args) });
+const framingGraph = (args: { readonly graph: readonly GraphStage[]; readonly condition: string; readonly outputs: string }): readonly GraphStage[] =>
+  args.graph.map((stage) => stage.slug === framingSlug ? { ...stage, condition: args.condition, outputs: args.outputs } : stage);
+const installBeforeSettlement = (rin: ComposedRin): { readonly sourceRoot: string; readonly candidateGraph: string } => {
+  const candidateGraph = readFileSync(join(rin.projectDir, stageGraphPath), "utf8");
+  const sourceRoot = join(rin.root, "source");
+  [".claude/tools/aidlc-lib.ts", stageGraphPath, ".claude/tools/data/scope-grid.json"].forEach((path) => {
+    put({ root: sourceRoot, path, content: readFileSync(join(rin.projectDir, path), "utf8") });
+  });
+  const graph: readonly GraphStage[] = JSON.parse(candidateGraph);
+  put({ root: rin.projectDir, path: stageGraphPath,
+    content: JSON.stringify(framingGraph({ graph, condition: askedFramingCondition, outputs: askedFramingOutputs })) });
+  return { sourceRoot, candidateGraph };
+};
+const openFramingRecord = (rin: ComposedRin): string => {
+  runHook({ rin, hook: "session-start", event: "SessionStart", fields: { source: "startup" } });
+  const created = runInstalled({ rin, tool: "aidlc-utility.ts",
+    argv: ["intent-create", "--scope", "rin-gates", "--arguments=frame the parser slice", "--label", "framing", "--project-dir", rin.projectDir] });
+  if (created.status !== 0) throw new Error(created.stdout + created.stderr);
+  const intents = join(rin.projectDir, "aidlc/spaces/default/intents");
+  const record = readdirSync(intents).find((name) => existsSync(join(intents, name, "aidlc-state.md")));
+  if (record === undefined) throw new Error("no rin-gates record was created");
+  const statePath = join(intents, record, "aidlc-state.md");
+  writeFileSync(statePath, readFileSync(statePath, "utf8")
+    .replace("- [-] rin-gate-0-reconcile", "- [x] rin-gate-0-reconcile")
+    .replace(`- [ ] ${framingSlug}`, `- [-] ${framingSlug}`)
+    .replace("- **Current Stage**: rin-gate-0-reconcile", `- **Current Stage**: ${framingSlug}`)
+    .replace(`- **Next Stage**: ${framingSlug}`, "- **Next Stage**: rin-gate-2-plan-review"));
+  appendAuditEntry("STAGE_STARTED", { Stage: framingSlug, Agent: "aidlc-product-agent" }, rin.projectDir);
+  const questionsPath = join(intents, record, "inception", framingSlug, "rin-framing-questions.md");
+  put({ root: rin.projectDir, path: relative(rin.projectDir, questionsPath), content: framingQuestions });
+  return questionsPath;
+};
+const refreshToSettlement = (args: { readonly rin: ComposedRin; readonly sourceRoot: string; readonly candidateGraph: string }): CompatibleRefreshValidation => {
+  const plan: TransactionPlan = { schemaVersion: 1, root: args.rin.projectDir,
+    operations: [writeOperation(stageGraphPath, args.candidateGraph, sha256File(join(args.rin.projectDir, stageGraphPath)))] };
+  const result = planCompatibleRefresh({ projectDir: args.rin.projectDir, sourceRoot: args.sourceRoot, harnessDir: ".claude", plan });
+  if (result.kind === "planned") executePlan(plan, { validateLocked: result.validateLocked });
+  return result;
+};
+const stopTrace = (rin: ComposedRin): string => {
+  const path = join(hooksHealthDir(rin.projectDir), "continue-workflow.trace");
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
+};
+const nextDirective = (rin: ComposedRin): Readonly<Record<string, unknown>> => {
+  const next = runInstalled({ rin, tool: "aidlc-orchestrate.ts", argv: ["next", "--project-dir", rin.projectDir] });
+  if (next.status !== 0) throw new Error(next.stdout + next.stderr);
+  return JSON.parse(next.stdout.trim().split("\n")[0] ?? "{}");
+};
+
+test("an open Gate 1 record keeps its blank answer waiting on the person after the settlement refresh", () => {
+  const rin = composedRin();
+  const { sourceRoot, candidateGraph } = installBeforeSettlement(rin);
+  const questionsPath = openFramingRecord(rin);
+  const before = workspaceOf(rin.projectDir);
+  const refreshed = refreshToSettlement({ rin, sourceRoot, candidateGraph });
+  const workspaceKept = JSON.stringify(workspaceOf(rin.projectDir)) === JSON.stringify(before);
+  const stopWithBlank = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
+  const traceWithBlank = stopTrace(rin);
+  const nextWithoutReply = nextDirective(rin);
+  const selfAnswer = runInstalled({ rin, tool: "aidlc-log.ts",
+    argv: ["answer", "--stage", framingSlug, "--details", "B", "--project-dir", rin.projectDir] });
+  runHook({ rin, hook: "record-human-turn", event: "UserPromptSubmit", fields: { prompt: "B, the queue" } });
+  const nextWithReply = nextDirective(rin);
+  writeFileSync(questionsPath, framingQuestions.replace(/^\[Answer\]:$/m, "[Answer]: B, settled without the person"));
+  const stopAfterSelfFill = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
+  expect({
+    refreshed: refreshed.kind === "planned" ? refreshed.evidence.stageRevalidation : refreshed,
+    workspaceKept,
+    stopWithBlank: { status: stopWithBlank.status, stdout: stopWithBlank.stdout.trim() },
+    carveOut: traceWithBlank.includes(`active stage ${framingSlug} has an unanswered question; allowing the stop (pending-question carve-out)`),
+    withoutReply: { kind: nextWithoutReply.kind, stage: nextWithoutReply.stage, keptReplies: nextWithoutReply.kept_replies ?? null },
+    selfAnswer: { status: selfAnswer.status, refused: selfAnswer.stderr.includes("no new human reply has arrived") },
+    withReply: { kind: nextWithReply.kind, stage: nextWithReply.stage, replies: (nextWithReply.kept_replies as { readonly replies?: readonly string[] } | undefined)?.replies ?? null },
+    stopAfterSelfFill: { status: stopAfterSelfFill.status, decision: stopAfterSelfFill.stdout.trim() === "" ? "allow" : JSON.parse(stopAfterSelfFill.stdout.trim()).decision },
+  }).toEqual({
+    refreshed: { [framingSlug]: ["framing-decision-record"] },
+    workspaceKept: true,
+    stopWithBlank: { status: 0, stdout: "" },
+    carveOut: true,
+    withoutReply: { kind: "run-stage", stage: framingSlug, keptReplies: null },
+    selfAnswer: { status: 1, refused: true },
+    withReply: { kind: "run-stage", stage: framingSlug, replies: ["B, the queue"] },
+    stopAfterSelfFill: { status: 0, decision: "block" },
+  });
+}, 300_000);
+
 const applyPrepared = (args: { readonly fixture: SemanticRefreshFixture; readonly result: CompatibleRefreshValidation }): unknown => {
   if (args.result.kind !== "planned") throw new Error(args.result.message);
   return executePlan(args.fixture.plan, { validateLocked: args.result.validateLocked });

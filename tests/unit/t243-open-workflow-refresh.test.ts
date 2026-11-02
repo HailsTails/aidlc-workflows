@@ -50,7 +50,11 @@ function workflows(project: string): void {
 }
 
 function config(project: string, source: string, flags: string[] = []) {
-  const result = spawnSync(process.execPath, [INIT, "config", "--project-dir", project, "--from", source, "--json", ...flags], {
+  return configText(project, source, ["--json", ...flags]);
+}
+
+function configText(project: string, source: string, flags: string[]) {
+  const result = spawnSync(process.execPath, [INIT, "config", "--project-dir", project, "--from", source, ...flags], {
     cwd: project, encoding: "utf-8", timeout: 60_000,
     env: { ...process.env, AIDLC_PROJECT_DIR: project, CLAUDE_PROJECT_DIR: project, AIDLC_HARNESS_DIR: ".claude", AIDLC_HARNESS_NAME: "claude" },
   });
@@ -141,6 +145,36 @@ describe("compatible refresh with independent workflows", () => {
     expect(workspaceBytes(project)).toEqual(before);
     expect(readFileSync(join(project, tool))).toEqual(toolBefore);
   }, 60_000);
+
+  test("names an accepted revalidation in a note on plan and apply without changing the plan token", () => {
+    const older = temp();
+    cpSync(RELEASE, older, { recursive: true });
+    const engineClause = "; the engine writes code-generation-questions.md)";
+    for (const path of [".claude/aidlc-common/stages/construction/code-generation.md", ".claude/tools/data/stage-graph.json"]) {
+      const shipped = readFileSync(join(older, path), "utf-8");
+      expect(shipped).toContain(engineClause);
+      put(older, path, shipped.replace(engineClause, ")"));
+    }
+    const project = temp();
+    mkdirSync(join(project, ".git"));
+    const installed = config(project, older);
+    expect(installed.status, installed.output).toBe(0);
+    workflows(project);
+    const before = workspaceBytes(project);
+    const note = 'Open-workflow refresh revalidates stage "code-generation" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.';
+    const dryRun = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
+    expect(dryRun.status, dryRun.output).toBe(0);
+    const plan = JSON.parse(dryRun.stdout);
+    expect(plan.data.refreshCompatibility.stageRevalidation).toEqual({ "code-generation": ["plan-approval-questions"] });
+    expect(plan.data.notes).toContain(note);
+    expect(configText(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]).stdout).toContain(`Note: ${note}`);
+    expect(configText(project, RELEASE, ["--refresh-open-workflows", "--dry-run", "--quiet"]).output).toContain(`Warning: ${note}`);
+    const applied = config(project, RELEASE, ["--refresh-open-workflows", "--plan-token", plan.data.planToken]);
+    expect(applied.status, applied.output).toBe(0);
+    expect(JSON.parse(applied.stdout).data.notes).toContain(note);
+    expect(JSON.parse(applied.stdout).data.planToken).toBe(plan.data.planToken);
+    expect(workspaceBytes(project)).toEqual(before);
+  }, 120_000);
 
   test("retains ownership refusal for a locally edited installed tool", () => {
     const project = temp();

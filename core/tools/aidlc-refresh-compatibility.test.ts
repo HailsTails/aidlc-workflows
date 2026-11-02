@@ -1,6 +1,6 @@
 import { ok as assert } from "node:assert";
 import { expect, test } from "bun:test";
-import { planCompatibleRefresh, type RefreshMetadataReader } from "./aidlc-refresh-compatibility.ts";
+import { planCompatibleRefresh, refreshRevalidationNotes, type RefreshMetadataReader } from "./aidlc-refresh-compatibility.ts";
 import type { TransactionPlan } from "./aidlc-transaction.ts";
 
 const fixture = () => {
@@ -73,6 +73,20 @@ test("a changed source after planning refuses locked validation", () => {
   assert(result.kind === "planned");
   f.set({ path: "/source/.claude/tools/data/scope-grid.json", content: '{"feature":{"stages":{"work":"EXECUTE"}},"other":{}}' });
   expect(result.validateLocked()).toMatchObject({ kind: "refused", reason: "inputs-changed" });
+});
+
+test("names each revalidation entry in one human-readable note", () => {
+  expect(refreshRevalidationNotes({ stageRevalidation: {
+    "code-generation": ["plan-approval-questions"],
+    "rin-gate-1-framing": ["framing-decision-record"],
+    work: ["gate-sensor-coverage", "plan-approval-questions"],
+  } })).toEqual([
+    'Open-workflow refresh revalidates stage "code-generation" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.',
+    'Open-workflow refresh revalidates stage "rin-gate-1-framing" (framing-decision-record): Gate 1 now settles the decision-questions it can source and asks only reserved decisions; a blank [Answer]: already in an open rin-framing-questions.md still waits for the person.',
+    'Open-workflow refresh revalidates stage "work" (gate-sensor-coverage): its advisory gate sensor now covers more paths, and the next gate check reads them.',
+    'Open-workflow refresh revalidates stage "work" (plan-approval-questions): the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.',
+  ]);
+  expect(refreshRevalidationNotes({ stageRevalidation: {} })).toEqual([]);
 });
 
 test("an unrelated transaction root is refused before metadata reads", () => {

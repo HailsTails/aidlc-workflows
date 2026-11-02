@@ -141,10 +141,22 @@ export type CompatibleRefreshValidation =
         readonly scopes: number;
         readonly installed: Record<string, string>;
         readonly candidate: Record<string, string>;
-        readonly stageRevalidation: Readonly<Record<string, readonly StageRefreshEffect[]>>;
+        readonly stageRevalidation: StageRevalidation;
       };
       readonly validateLocked: () => { readonly kind: "validated" } | RefreshRefusal;
     };
+
+type StageRevalidation = Readonly<Record<string, readonly StageRefreshEffect[]>>;
+
+const revalidationNoteText: Readonly<Record<StageRefreshEffect, string>> = {
+  "gate-sensor-coverage": "its advisory gate sensor now covers more paths, and the next gate check reads them.",
+  "plan-approval-questions": "the engine now writes code-generation-questions.md, and Plan Approval rechecks a retained question before it counts.",
+  "framing-decision-record": "Gate 1 now settles the decision-questions it can source and asks only reserved decisions; a blank [Answer]: already in an open rin-framing-questions.md still waits for the person.",
+};
+
+export const refreshRevalidationNotes = (args: { readonly stageRevalidation: StageRevalidation }): readonly string[] =>
+  Object.entries(args.stageRevalidation).flatMap(([stage, effects]) => effects.map((effect) =>
+    `Open-workflow refresh revalidates stage ${JSON.stringify(stage)} (${effect}): ${revalidationNoteText[effect]}`));
 
 export function planCompatibleRefresh(args: {
   projectDir: string;

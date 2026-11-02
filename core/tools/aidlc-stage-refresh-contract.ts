@@ -44,7 +44,7 @@ export const stageRefreshContract = ({ stage }: StageContractInput): StageContra
 };
 
 
-export type StageRefreshEffect = "gate-sensor-coverage" | "plan-approval-questions";
+export type StageRefreshEffect = "gate-sensor-coverage" | "plan-approval-questions" | "framing-decision-record";
 export type StageRefreshComparison =
   | {
       readonly kind: "comparable";
@@ -58,8 +58,76 @@ export type StageRefreshComparisonPort = (args: {
   readonly candidate: unknown;
 }) => StageRefreshComparison;
 
-const originalCodeGenerationOutputs = "application code + code-generation-plan.md, code-generation-questions.md, unit-test-instructions.md, code-summary.md, traceability.json (under this stage's per-unit record dir, engine-resolved)";
-const engineCodeGenerationOutputs = "application code + code-generation-plan.md, code-generation-questions.md, unit-test-instructions.md, code-summary.md, traceability.json (under this stage's per-unit record dir, engine-resolved; the engine writes code-generation-questions.md)";
+type AcceptedProseField = "condition" | "outputs";
+type AcceptedProsePlugin = "rin";
+type AcceptedProseRewrite = { readonly installed: string; readonly candidate: string };
+type AcceptedProseFields = {
+  readonly [Field in AcceptedProseField]: Readonly<Record<Field, AcceptedProseRewrite>> &
+    Readonly<Partial<Record<Exclude<AcceptedProseField, Field>, AcceptedProseRewrite>>>;
+}[AcceptedProseField];
+type AcceptedProseChange = {
+  readonly plugin?: AcceptedProsePlugin;
+  readonly slug: string;
+  readonly fields: AcceptedProseFields;
+  readonly effect: StageRefreshEffect;
+};
+type FieldRewrite = { readonly field: AcceptedProseField; readonly rewrite: AcceptedProseRewrite };
+
+const acceptedProseFields = ["condition", "outputs"] as const satisfies readonly AcceptedProseField[];
+
+const acceptedProseChanges = [
+  {
+    slug: "code-generation",
+    fields: {
+      outputs: {
+        installed: "application code + code-generation-plan.md, code-generation-questions.md, unit-test-instructions.md, code-summary.md, traceability.json (under this stage's per-unit record dir, engine-resolved)",
+        candidate: "application code + code-generation-plan.md, code-generation-questions.md, unit-test-instructions.md, code-summary.md, traceability.json (under this stage's per-unit record dir, engine-resolved; the engine writes code-generation-questions.md)",
+      },
+    },
+    effect: "plan-approval-questions",
+  },
+  {
+    plugin: "rin",
+    slug: "rin-gate-1-framing",
+    fields: {
+      condition: {
+        installed: "Second gate of the rin pipeline. Turns the Slice's assumption-laden intent into atomic, non-dominated, load-bearing decision-questions, gets the answers, and writes back confirmed scope directly into the AIDLC requirements artefact. The lead frames; the architect and developer seats contribute work against the framing. Prose only; no solution is chosen here (Gate 2).",
+        candidate: "Second gate of the rin pipeline. Turns the Slice's assumption-laden intent into atomic, non-dominated, load-bearing decision-questions, settles them with its seats, and writes back confirmed scope directly into the AIDLC requirements artefact. The lead frames; the architect and developer seats contribute work against the framing. Prose only; no solution is chosen here (Gate 2).",
+      },
+      outputs: {
+        installed: "rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions with the human's answers), under this stage's record dir, engine-resolved",
+        candidate: "rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions, each with the gate's answer and its source, or its stopping class and pack), under this stage's record dir, engine-resolved",
+      },
+    },
+    effect: "framing-decision-record",
+  },
+] as const satisfies readonly AcceptedProseChange[];
+
+const fieldRewrites = (args: { readonly change: AcceptedProseChange }): readonly FieldRewrite[] =>
+  acceptedProseFields.flatMap((field) => {
+    const rewrite = args.change.fields[field];
+    return rewrite === undefined ? [] : [{ field, rewrite }];
+  });
+
+type ProseChangeMatch = {
+  readonly change: AcceptedProseChange;
+  readonly installed: Readonly<Record<string, unknown>>;
+  readonly candidate: Readonly<Record<string, unknown>>;
+};
+
+const sharesPlugin = (args: ProseChangeMatch): boolean =>
+  args.change.plugin === undefined ||
+  (args.installed.plugin === args.change.plugin && args.candidate.plugin === args.change.plugin);
+
+const acceptsProseChange = (args: ProseChangeMatch): boolean =>
+  args.installed.slug === args.change.slug && args.candidate.slug === args.change.slug &&
+  sharesPlugin(args) &&
+  fieldRewrites({ change: args.change }).every(({ field, rewrite }) =>
+    args.installed[field] === rewrite.installed && args.candidate[field] === rewrite.candidate);
+
+const restoredInstalledProse = (args: { readonly changes: readonly AcceptedProseChange[] }): Readonly<Record<string, string>> =>
+  Object.fromEntries(args.changes.flatMap((change) =>
+    fieldRewrites({ change }).map(({ field, rewrite }) => [field, rewrite.installed])));
 
 const literalDirectoryUnion = (args: { readonly matches: string | undefined }): readonly string[] | null => {
   const matches = args.matches;
@@ -91,17 +159,15 @@ export const stageRefreshComparison: StageRefreshComparisonPort = (args) => {
     .map((entry, index) => additiveSensorCoverage({ installed: before.value.sensors_applicable[index], candidate: entry }));
   const sensors = after.value.sensors_applicable.map((entry, index) =>
     coverageChanges[index] ? { ...entry, matches: before.value.sensors_applicable[index].matches } : entry);
-  const questionsWriter =
-    before.value.slug === "code-generation" && after.value.slug === "code-generation" &&
-    before.value.outputs === originalCodeGenerationOutputs && after.value.outputs === engineCodeGenerationOutputs;
+  const accepted: readonly AcceptedProseChange[] = acceptedProseChanges.filter((change) =>
+    acceptsProseChange({ change, installed: before.value, candidate: after.value }));
   return {
     kind: "comparable",
     installed: before.value,
-    candidate: { ...after.value, sensors_applicable: sensors,
-      ...(questionsWriter ? { outputs: originalCodeGenerationOutputs } : {}) },
+    candidate: { ...after.value, sensors_applicable: sensors, ...restoredInstalledProse({ changes: accepted }) },
     revalidation: [
       ...(coverageChanges.some(Boolean) ? ["gate-sensor-coverage" as const] : []),
-      ...(questionsWriter ? ["plan-approval-questions" as const] : []),
+      ...accepted.map((change) => change.effect),
     ],
   };
 };
