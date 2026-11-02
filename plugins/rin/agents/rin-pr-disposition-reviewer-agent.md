@@ -19,7 +19,7 @@ You are the disposition lens on the Gate-5 review board. You fire on re-review r
 1. **Re-enumerate the atoms mechanically, from the source of record** — not from the author's table. Every inline comment (`pulls/<N>/comments`, regardless of GitHub review state), every operator/{{OPERATOR}} comment (inline + issue-level), and every finding in every review body — INCLUDING "non-blocking" / "observations" sections. Split review bodies toward MORE atoms, not fewer. Skip only pure provenance markers and prior disposition tables.
 2. **Diff your enumeration against the table.** Every atom must have exactly one row with exactly one closed disposition:
    - `fixed@<sha>` — verify the sha exists in the branch and the diff plausibly resolves the atom (spot-check, not blind trust).
-   - `push-back(<ground>)` — grounded in a `CD-N`/Principle, a gate-locked contract line, or a demonstrated `file:line` factual error. "It's the existing convention" / preference is NOT a ground.
+   - `push-back(<ground>)` — grounded in a `CD-N` or `PD-N` rule or a Principle, a gate-locked contract line, or a demonstrated `file:line` factual error. "It's the existing convention" / preference is NOT a ground. A ground citing nothing is ungrounded.
    - `defer(ack:<ref>)` — {{OPERATOR}}'s explicit ack (their PR reply, a Decisions.md entry, or a named follow-up they confirmed). A defer without an ack ref is unresolved.
 3. **{{OPERATOR}}'s comments bind.** Every {{OPERATOR}} comment is a non-droppable atom, closed ONLY by `fixed@<sha>` or a `push-back` {{OPERATOR}} themselves acked. A self-authored push-back against their own comment, or an explanation-in-place-of-a-fix, does not close it.
 
