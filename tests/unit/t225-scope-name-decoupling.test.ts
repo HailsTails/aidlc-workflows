@@ -1,4 +1,4 @@
-// covers: function:loadScopeMetadata, function:selectionAwareDefaultScope, function:stageEnabledBySelection
+// covers: function:loadScopeMetadata, function:selectionAwareDefaultScope, function:stageEnabledBySelection, function:selectionDefaultScope, function:customPlanStart
 
 import {
   NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
@@ -20,10 +20,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  FRAMEWORK_DEFAULT_SCOPE,
   loadScopeMetadata,
+  scopeGuardPolicyDefault,
   selectionAwareDefaultScope,
+  selectionDefaultScope,
   stageEnabledBySelection,
 } from "../../core/tools/aidlc-lib.ts";
+import { customPlanStart, scopeSettingsOf } from "../../core/tools/aidlc-graph.ts";
 import {
   runOrchestrateNext,
   seedAidlcMemory,
@@ -37,6 +41,7 @@ const CORE_TOOLS = join(REPO_ROOT, "core", "tools");
 const CORE_SCOPES = join(REPO_ROOT, "core", "scopes");
 const DIST_CLAUDE = join(REPO_ROOT, "dist", "claude", ".claude");
 const TEST_PRO_SCOPE = join(REPO_ROOT, "plugins", "test-pro", "scopes", "test-pro-validation.md");
+const RIN_SCOPES = join(REPO_ROOT, "plugins", "rin", "scopes");
 const BUN = process.execPath;
 
 const CORE_SCOPE_NAMES = [
@@ -452,6 +457,78 @@ describe("t225 env-scope fallback under plugin-only selection", () => {
     expect(result.stderr).toContain(
       'AWS_AIDLC_DEFAULT_SCOPE="feature" is not an enabled scope; using test-pro-validation (sole enabled plugin\'s first scope)',
     );
+  });
+
+  test("AWS_AIDLC_DEFAULT_SCOPE naming a core scope whose file the selection removed still falls back", () => {
+    const project = makePluginOnlyInstall();
+    const scopes = join(project, ".claude", "scopes");
+    for (const file of readdirSync(scopes).filter((name) => name.startsWith("aidlc-"))) {
+      rmSync(join(scopes, file));
+    }
+    const tool = join(project, ".claude", "tools", "aidlc-utility.ts");
+    const result = spawnSync(BUN, [tool, "resolve-env-scope", "--project-dir", project], {
+      timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+      cwd: project,
+      encoding: "utf-8",
+      env: { ...process.env, AIDLC_HARNESS_DIR: ".claude", AWS_AIDLC_DEFAULT_SCOPE: "classic" },
+    });
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    expect(result.stdout).toBe("scope=test-pro-validation\n");
+    expect(result.stderr).toContain(
+      'AWS_AIDLC_DEFAULT_SCOPE="classic" is not an enabled scope; using test-pro-validation (sole enabled plugin\'s first scope)',
+    );
+  });
+
+  test("selectionDefaultScope names rin-gates for a rin-only selection", () => {
+    withEnvAndFreshCaches({ AIDLC_SCOPES_DIR: RIN_SCOPES }, () => {
+      expect(selectionDefaultScope()).toEqual({
+        scope: "rin-gates",
+        substitution: "nominated freeform default",
+        note: 'scope "classic" is not an enabled scope; using "rin-gates" (nominated freeform default)',
+      });
+    });
+  });
+
+  test("rin-gates' freeform_default never wins while classic is enabled", () => {
+    const scopes = mkdtempSync(join(tmpdir(), "t225-core-and-rin-"));
+    try {
+      cpSync(CORE_SCOPES, scopes, { recursive: true });
+      cpSync(RIN_SCOPES, scopes, { recursive: true });
+      withEnvAndFreshCaches({ AIDLC_SCOPES_DIR: scopes }, () => {
+        expect(selectionDefaultScope()).toEqual({ scope: "classic" });
+      });
+    } finally {
+      rmSync(scopes, { recursive: true, force: true });
+    }
+  });
+
+  test("the shipped settings default scope is the framework default a copied project assumes", () => {
+    const shipped = JSON.parse(readFileSync(join(REPO_ROOT, "harness", "claude", "settings.json"), "utf-8")) as {
+      env: { AWS_AIDLC_DEFAULT_SCOPE: string };
+    };
+    expect(shipped.env.AWS_AIDLC_DEFAULT_SCOPE).toBe(FRAMEWORK_DEFAULT_SCOPE);
+  });
+
+  test("the shipped banner keeps the stage and scope tables between **Phases** and **Workflow**", () => {
+    const shipped = JSON.parse(readFileSync(join(REPO_ROOT, "harness", "claude", "settings.json"), "utf-8")) as {
+      companyAnnouncements: string[];
+    };
+    for (const announcement of shipped.companyAnnouncements) {
+      const phases = announcement.indexOf("**Phases**");
+      expect(phases).toBeGreaterThanOrEqual(0);
+      expect(announcement.indexOf("**Workflow**")).toBeGreaterThan(phases);
+    }
+  });
+
+  test("a custom plan starts from the selection's default scope when classic is not enabled", () => {
+    withEnvAndFreshCaches({ AIDLC_SCOPES_DIR: RIN_SCOPES }, () => {
+      const rinGatesSettings = scopeSettingsOf("rin-gates");
+      expect(rinGatesSettings).not.toBeNull();
+      expect(customPlanStart()).toEqual({
+        guard_policy: scopeGuardPolicyDefault("rin-gates"),
+        scope_settings: rinGatesSettings as NonNullable<typeof rinGatesSettings>,
+      });
+    });
   });
 
   test("unknown AWS_AIDLC_DEFAULT_SCOPE still fails under plugin-only selection", () => {

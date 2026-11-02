@@ -526,7 +526,7 @@ choice.
 
 The flags record contains default scope, swarm, hook debug, sensor timeout, and
 the fixed inventory of documented bypass environment names. Scope validation
-reads the installed scope frontmatter. Claude's staged settings writer also
+reads the frontmatter of the scopes the plugin selection enables. Claude's staged settings writer also
 updates `AWS_AIDLC_DEFAULT_SCOPE`, because the shipped session environment is
 otherwise higher precedence than the record.
 

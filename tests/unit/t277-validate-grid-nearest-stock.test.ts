@@ -34,7 +34,7 @@ import {
 } from "../harness/test-budget.ts";
 import { describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -42,6 +42,7 @@ import {
   nearestStockScopes,
   validateGrid,
 } from "../../dist/claude/.claude/tools/aidlc-graph.ts";
+import { readScopeDirectory } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { AIDLC_SRC } from "../harness/fixtures.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -289,11 +290,16 @@ describe("t277 validate-grid --report keeps a code-findings report on a fix scop
   };
   type Body = {
     errors: string[];
+    advisories: string[];
     nearest_stock: Array<{ scope: string; diff: number; differs: string[] }>;
     base_scope?: string;
     routing?: string;
   };
-  function validate(proposal: unknown, extra: string[]): { status: number | null; body: Body } {
+  function validate(
+    proposal: unknown,
+    extra: string[],
+    environment: NodeJS.ProcessEnv = {},
+  ): { status: number | null; body: Body } {
     const dir = mkdtempSync(join(tmpdir(), "aidlc-t277-report-"));
     try {
       const path = join(dir, "p.json");
@@ -301,6 +307,7 @@ describe("t277 validate-grid --report keeps a code-findings report on a fix scop
       const r = spawnSync(BUN, [GRAPH_TOOL, "validate-grid", "--proposal", path, ...extra], {
         timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
         encoding: "utf-8",
+        env: { ...process.env, ...environment },
       });
       return { status: r.status, body: JSON.parse(r.stdout) as Body };
     } finally {
@@ -337,5 +344,65 @@ describe("t277 validate-grid --report keeps a code-findings report on a fix scop
     const report = validate(proposal, ["--report", "--custom"]);
     expect(report.status, report.body.errors.join("\n")).toBe(0);
     expect(FIX).toContain(report.body.base_scope ?? "");
+  });
+
+  function scopesDeclaringReportFix(declaring: readonly string[]): string {
+    const dir = mkdtempSync(join(tmpdir(), "aidlc-t277-report-scopes-"));
+    cpSync(join(AIDLC_SRC, "scopes"), dir, { recursive: true });
+    for (const file of readdirSync(dir)) {
+      const path = join(dir, file);
+      const withoutDeclaration = readFileSync(path, "utf-8").replace(/^report_fix: true\r?\n/m, "");
+      const name = /^name: (.+)$/m.exec(withoutDeclaration)?.[1]?.trim() ?? "";
+      writeFileSync(
+        path,
+        declaring.includes(name) ? withoutDeclaration.replace(/^---\r?\n/, "---\nreport_fix: true\n") : withoutDeclaration,
+      );
+    }
+    return dir;
+  }
+
+  test("the scopes a report may run on are the enabled scopes declaring report_fix", () => {
+    expect(validate(express(), ["--report"]).body.nearest_stock.map((row) => row.scope).sort()).toEqual(FIX);
+    const scopes = scopesDeclaringReportFix(["bugfix"]);
+    try {
+      const report = validate(express(), ["--report"], { AIDLC_SCOPES_DIR: scopes });
+      expect(report.status).toBe(0);
+      expect(report.body.nearest_stock.map((row) => row.scope)).toEqual(["bugfix"]);
+      const refused = validate(
+        { stages: express(), scopeSettings: SETTINGS, guardPolicy: "strict" },
+        ["--report", "--matched", "security-patch"],
+        { AIDLC_SCOPES_DIR: scopes },
+      );
+      expect(refused.body.errors.join("\n")).toContain(
+        'A code-findings report runs on bugfix, so it cannot be matched to "security-patch".',
+      );
+    } finally {
+      rmSync(scopes, { recursive: true, force: true });
+    }
+  });
+
+  test("with no enabled scope declaring report_fix, a report ranks every scope and says why", () => {
+    const scopes = scopesDeclaringReportFix([]);
+    try {
+      const report = validate(express(), ["--report"], { AIDLC_SCOPES_DIR: scopes });
+      expect(report.status).toBe(0);
+      expect(report.body.nearest_stock).toEqual(nearestStockScopes(express()));
+      expect(report.body.advisories).toContain(
+        "No enabled scope declares report_fix: true, so this code-findings report is ranked against every scope.",
+      );
+    } finally {
+      rmSync(scopes, { recursive: true, force: true });
+    }
+  });
+
+  test("a scope whose report_fix is neither true nor false is refused by name", () => {
+    const scopes = scopesDeclaringReportFix([]);
+    try {
+      const bugfix = join(scopes, "aidlc-bugfix.md");
+      writeFileSync(bugfix, readFileSync(bugfix, "utf-8").replace(/^---\r?\n/, "---\nreport_fix: yes\n"));
+      expect(() => readScopeDirectory(scopes)).toThrow(`has invalid report_fix value "yes". Expected "true" or "false".`);
+    } finally {
+      rmSync(scopes, { recursive: true, force: true });
+    }
   });
 });

@@ -9,6 +9,7 @@ keywords:
 description: CVE response
 skeleton: off
 existing_code: true
+report_fix: true
 runner: true
 guard_policy: off
 sensors: on

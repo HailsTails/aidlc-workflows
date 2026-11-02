@@ -257,6 +257,14 @@ import {
   loadStageGraph,
   loadStageGraphAll,
   loadScopeMetadata,
+  installedScopeOwners,
+  copyRestoreNeedsRelease,
+  installedFromCopy,
+  presentUnder,
+  writesSelectionSettings,
+  pluginSelectionArguments,
+  readScopeSelectionRecord,
+  RELEASE_AT_HAND_STEP,
   loadScopeMetadataAll,
   MERGE_SUCCEEDED_TAG_REGEX,
   migrateFlatLayout,
@@ -660,7 +668,9 @@ Usage: ${entrySkillInvocation()} [command]
 Scopes (set depth, test strategy, and stage count):
 `;
 
-const HELP_TEXT_TAIL = `
+const helpColumn = (text: string, width: number): string => text.padEnd(Math.max(width, text.length + 1));
+
+const helpTextTail = (exampleScope: string): string => `
 Utilities:
   --status          Show current workflow progress (read-only)
   --config [section]  Configure models, runtime, providers, trust, flags, or project in-session
@@ -722,8 +732,8 @@ Other:
   (no arguments)    Resume existing workflow, or start fresh if none exists
 
 Examples:
-  ${entrySkillInvocation()} feature                                Start a feature workflow
-  ${entrySkillInvocation()} Fix the login timeout bug              Auto-detected as bugfix scope
+  ${entrySkillInvocation()} ${helpColumn(exampleScope, 39)}Start a ${exampleScope} workflow
+  ${entrySkillInvocation()} Fix the login timeout bug              Scope auto-detected from the description
   ${entrySkillInvocation()} compose "harden the deploy pipeline"   Composer proposes a tailored plan
   ${entrySkillInvocation()} config list                         Show every workflow setting and fence
   ${entrySkillInvocation()} plugin list                         Show installed plugin selection
@@ -731,8 +741,8 @@ Examples:
   ${entrySkillInvocation()} plugin build claude                 Build its Claude projection
   ${entrySkillInvocation()}                                        Resume or begin
   ${entrySkillInvocation()} --stage code-generation                Jump to code-generation stage
-  ${entrySkillInvocation()} --phase construction --scope bugfix    Jump to construction with bugfix scope
-  ${entrySkillInvocation()} --scope bugfix --depth comprehensive  Bugfix with comprehensive depth
+  ${entrySkillInvocation()} --phase construction --scope ${helpColumn(exampleScope, 10)}Jump to construction with ${exampleScope} scope
+  ${entrySkillInvocation()} ${helpColumn(`--scope ${exampleScope} --depth comprehensive`, 39)}Comprehensive depth on the ${exampleScope} scope
   ${entrySkillInvocation()} --depth minimal                       Change depth of active workflow
   ${entrySkillInvocation()} --depth standard --test-strategy minimal  Full artifacts, minimal tests
   ${entrySkillInvocation()} --review advisory                     Single-pass reviews, findings at the gate
@@ -760,9 +770,10 @@ export function renderHelpText(): string {
       execute === total ? `All ${total} stages` : `${execute} of ${total} stages`;
     return `  ${name.padEnd(18)}${countStr}, ${depth} depth${ts}${defaultMarker}${desc}`;
   });
-  // Blank line before HELP_TEXT_TAIL so the `Utilities:` header is visually
-  // separated from the scope list.
-  return `${HELP_TEXT_HEAD + scopeLines.join("\n")}\n${HELP_TEXT_TAIL}`;
+  const exampleScope = validScopes().has(effectiveDefaultScope)
+    ? effectiveDefaultScope
+    : [...validScopes()][0] ?? "<scope>";
+  return `${HELP_TEXT_HEAD + scopeLines.join("\n")}\n${helpTextTail(exampleScope)}`;
 }
 
 function handleHelp(): void {
@@ -1342,10 +1353,7 @@ export function activeWorkflowPluginDependencies(
   enabled: ReadonlySet<string>,
 ): Array<{ plugin: string; workflow: string; text: string }> {
   const violations: Array<{ plugin: string; workflow: string; text: string }> = [];
-  const scopeOwner = new Map<string, string>();
-  for (const [name, meta] of Object.entries(loadScopeMetadataAll())) {
-    scopeOwner.set(name, meta.plugin ?? "aidlc");
-  }
+  const scopeOwners = installedScopeOwners();
   // Mirror stageEnabledBySelection: initialization stages are always enabled,
   // so they can never strand a plan regardless of the selection.
   const stageOwner = new Map<string, string>();
@@ -1370,7 +1378,7 @@ export function activeWorkflowPluginDependencies(
       const where = `workflow "${intent.dirName}" (space ${space.name})`;
       const scope = getField(content, "Scope");
       if (scope) {
-        const owner = scopeOwner.get(scope);
+        const owner = scopeOwners.get(scope);
         if (owner && !enabled.has(owner)) {
           violations.push({
             plugin: owner,
@@ -1397,6 +1405,30 @@ export function activeWorkflowPluginDependencies(
     }
   }
   return violations;
+}
+
+function settlesSelection(projectDir: string): string {
+  return writesSelectionSettings(runtimeHarnessName(projectDir, harnessDir()))
+    ? "sets the default scope and start-up banner for this selection."
+    : "brings the install record in line with this selection.";
+}
+
+function finishCommand(projectDir: string, names: readonly string[], fetchesRelease: boolean): string {
+  const { tool, target } = projectCommandFraming(projectDir);
+  const harness = discoverProjectHarnesses(projectDir).length > 1 ? ` --harness ${runtimeHarnessName(projectDir, harnessDir())}` : "";
+  return `${tool} config ${pluginSelectionArguments(names, fetchesRelease)}${harness}${target}`;
+}
+
+function finishCoreOffStep(projectDir: string, names: readonly string[]): string {
+  return `Run \`${finishCommand(projectDir, names, false)}\` to finish: it removes core's scope files that still hold what AI-DLC installed, names any it keeps, and ${settlesSelection(projectDir)}`;
+}
+
+function finishCoreOnStep(projectDir: string, names: readonly string[]): string {
+  const record = readScopeSelectionRecord(resolveHarnessPath(["tools", "data"], { projectDir }));
+  if (!installedFromCopy() || !copyRestoreNeedsRelease(record, presentUnder(projectDir))) {
+    return `Run \`${finishCommand(projectDir, names, false)}\` to finish: it ${settlesSelection(projectDir)}`;
+  }
+  return `Run \`${finishCommand(projectDir, names, true)}\` to finish: what your plugin selection left out can only come back from the release, so it fetches the release to put it back and ${settlesSelection(projectDir)} ${RELEASE_AT_HAND_STEP}`;
 }
 
 function handleSelectPlugins(projectDir: string, positional: string[]): void {
@@ -1439,6 +1471,7 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
     }
 
     const previousSelection = renderPluginSelection(pluginsEnabled());
+    const coreWasEnabled = isPluginEnabled("aidlc");
     const newSelection = names.join(", ");
     const nameSet = new Set(names);
     // Plugins this change DISABLES (known but not selected; the implicit core
@@ -1497,6 +1530,9 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
         );
       }
       process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
+      if (nameSet.has("aidlc") !== coreWasEnabled) {
+        process.stdout.write(`${coreWasEnabled ? finishCoreOffStep(projectDir, names) : finishCoreOnStep(projectDir, names)}\n`);
+      }
     } catch (err) {
       resetSelectionSensitiveCaches();
       die(`select-plugins failed: ${errorMessage(err)}`);
@@ -3589,6 +3625,21 @@ function harnessTreeProduct(tree: ProjectHarness): string | undefined {
 // names them and the commands that bring the others level: to the project's
 // pin when it has one, as config refreshes every tree to it; else natively to
 // the engine's release, and on a copied project to the newest tree's release.
+interface ProjectCommandFraming {
+  readonly tool: string;
+  readonly target: string;
+}
+
+function projectCommandFraming(projectDir: string): ProjectCommandFraming {
+  const fromProject = normalizeDriveLetter(resolve(projectDir)) === normalizeDriveLetter(resolve(process.cwd()));
+  return {
+    tool: aidlcInvocation() === "aidlc" || fromProject
+      ? aidlcInvocation()
+      : `bun ${quoteCommandArgument(join(projectDir, runtimeHarnessDir(), "tools", "aidlc.ts"))}`,
+    target: fromProject ? "" : ` --project-dir ${quoteCommandArgument(projectDir)}`,
+  };
+}
+
 export function harnessTreeVersionsCheck(projectDir: string): DoctorCheck | null {
   // Only directory names a harness can have reach the row and its commands.
   const trees = discoverProjectHarnesses(projectDir).filter((tree) =>
@@ -3618,13 +3669,9 @@ export function harnessTreeVersionsCheck(projectDir: string): DoctorCheck | null
     .sort((left, right) => compareVersions(right.frameworkVersion ?? "", left.frameworkVersion ?? ""))[0];
   const release = pinned ?? (native ? AIDLC_VERSION : newest.frameworkVersion ?? AIDLC_VERSION);
   const behind = trees.filter((tree) => tree.frameworkVersion !== release);
-  const fromProject = normalizeDriveLetter(resolve(projectDir)) === normalizeDriveLetter(resolve(process.cwd()));
-  const target = fromProject ? "" : ` --project-dir ${quoteCommandArgument(projectDir)}`;
   // The commands run through the tool running this check, which takes every
   // flag they use; an older tree's tool may not.
-  const tool = native || fromProject
-    ? aidlcInvocation()
-    : `bun ${quoteCommandArgument(join(projectDir, runtimeHarnessDir(), "tools", "aidlc.ts"))}`;
+  const { tool, target } = projectCommandFraming(projectDir);
   // Under a pin, config fetches the pinned release itself. Otherwise a copied
   // tree takes the newest release's file; one that no config run has recorded
   // the files of reads every file as unowned against another release, so it
@@ -11535,7 +11582,7 @@ function handleScopeSave(projectDir: string, flags: Record<string, string>, rawA
     const scopeDef = loadScopeMapping()[scope];
     if (!scopeDef) die(`Unknown scope in state file: ${scope}.`);
     const taken =
-      Object.hasOwn(loadScopeMetadataAll(), name) || Object.hasOwn(loadScopeGrid(), name) ||
+      installedScopeOwners().has(name) || Object.hasOwn(loadScopeGrid(), name) ||
       Object.hasOwn(loadComposedScopeRecords(), name);
     if (taken) die(`A scope named ${name} already exists. Pick another name.`);
     const collisions = keywordCollisions(keywords);

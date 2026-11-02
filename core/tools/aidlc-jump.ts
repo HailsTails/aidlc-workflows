@@ -308,7 +308,7 @@ function handleReopen(args: string[]): void {
   const from = findStageBySlug(current);
   let stagesReset: string[] = [];
   if (from && !isPerUnitStage(from) && from.phase === targetStage.phase && stageIndex(current) > stageIndex(targetSlug)) {
-    const scope = flags.scope || getField(content, "Scope") || "feature";
+    const scope = workflowScope(flags, content, "reopen");
     const scopeMapping = loadScopeMapping()[scope];
     if (!scopeMapping) error(`Unknown scope: ${scope}`);
     const suffixes = scope === (getField(content, "Scope") || "")
@@ -337,7 +337,7 @@ function handleResolve(args: string[]): void {
   const content = readStateFile(pd);
 
   // Determine scope
-  const scope = flags.scope || getField(content, "Scope") || "feature";
+  const scope = workflowScope(flags, content, "resolve the jump");
   const scopeMapping = loadScopeMapping()[scope];
   if (!scopeMapping) error(`Unknown scope: ${scope}`);
   // The live plan's per-stage suffix overrides (a recomposed plan) - every
@@ -652,7 +652,7 @@ function handleExecute(args: string[]): void {
     error(`Invalid direction: ${flags.direction}. Valid: forward, backward, redo`);
   }
 
-  const scope = flags.scope || getField(content, "Scope") || "feature";
+  const scope = workflowScope(flags, content, "execute the jump");
   const scopeMapping = loadScopeMapping()[scope];
   if (!scopeMapping) error(`Unknown scope: ${scope}`);
   // The live plan's suffix overrides - execute resolves the same EFFECTIVE
@@ -917,6 +917,12 @@ function toolError(run: { stderr: string }): string {
 }
 
 // --- Utility ---
+
+function workflowScope(flags: Readonly<Record<string, string>>, content: string, refusing: string): string {
+  const scope = flags.scope || getField(content, "Scope");
+  if (!scope) error(`State file has no Scope field. Refusing to ${refusing} - fix the state file first, or pass --scope <scope>.`);
+  return scope;
+}
 
 function error(msg: string): never {
   const pd = resolveProjectDir(projectDir);

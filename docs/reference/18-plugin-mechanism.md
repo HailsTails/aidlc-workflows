@@ -190,10 +190,60 @@ only the plugins named by `<harness-dir>/tools/data/harness.json`:
 The `plugins` key is optional. If it is absent, every installed plugin is
 enabled, preserving existing installs and keeping shipped core byte-identical.
 When it is present, the list is the enabled set. `aidlc` is the implicit core
-plugin; omitting it disables core stages/scopes/runners while leaving the files
-installed and re-enableable. The three Initialization stages are the exception:
-bootstrap has no plugin identity, so those stages are always enabled for every
-enabled scope.
+plugin; omitting it disables core stages/scopes/runners. The three
+Initialization stages are the exception: bootstrap has no plugin identity, so
+those stages are always enabled for every enabled scope.
+
+Two commands change the selection, at two depths:
+
+- `aidlc config project --plugins <names>` records the selection and refreshes
+  the install from the release. With `aidlc` left out, that refresh removes
+  the scope files core ships (`<harness-dir>/scopes/aidlc-*.md`) that still
+  hold the release's bytes; a scope file someone changed, a scope saved with
+  `scope-save`, or a scope file no release record shows AI-DLC shipped stays,
+  and the refresh names it. Any selection, with or without `aidlc`, also
+  removes the runner skill folders of the scopes and stages it leaves out,
+  by runner-gen's own rule: a folder whose `SKILL.md` carries the runner-gen
+  marker is AI-DLC's (refreshes regenerate it the same way), and one without
+  the marker stays and is named. Inside a removed folder, only the files the
+  release or the install record put there go; a file the person added stays.
+  The install record (`tools/data/aidlc-manifest.json`) lists the scope files
+  the selection leaves out, removed or kept, as `leftOutScopeFiles`, and notes
+  `selectionBanner` while the start-up banner is the selection's, until a run
+  selects `aidlc` again and clears both. The refresh's report names the
+  exact `config project --plugins` command that puts left-out files back: the
+  selection before this run when the run changed it, otherwise this
+  selection, plus `aidlc` whenever the run removes core's scope files. It adds `--download` only when a copied project
+  needs the release for it, and the run's "To undo" line does the same.
+  On Claude the refresh writes the selection's default scope into
+  `.claude/settings.json` (`AWS_AIDLC_DEFAULT_SCOPE`) and replaces the start-up
+  banner's stage and scope tables with the enabled scopes; a copied project
+  with no release record keeps its start-up banner instead and says so. Every
+  later refresh keeps it that way. Selecting `aidlc` again restores the files,
+  `classic`, and the stock banner; a copied project downloads the release for
+  that when a listed scope file is missing or the banner is the selection's,
+  since its own files cannot rebuild either. A scope file the person deleted
+  while core was on is theirs, and never makes a refresh need the release.
+  A default scope or banner the person set
+  themselves stays theirs; when that default names a scope the selection does
+  not enable, the refresh says so in one line and workflows start on the
+  selection's default until the person changes it.
+- `aidlc engine plugin select <names>` (below) toggles what is enabled without
+  the release, leaving every installed file in place. When it turns `aidlc`
+  on or off it prints the `config project --plugins` command that finishes the
+  change. On a copied project it adds `--download` when `aidlc` comes back and
+  a scope file the selection left out is gone or the banner is the
+  selection's, since the copy's own files cannot rebuild either
+  (`--from <release>` uses release files at hand). That command applies the
+  selection even though `plugin select` already recorded it: with `aidlc` left
+  out it reports "unchanged" only when no core scope file it can remove is
+  left, and with `aidlc` selected only when the install record holds neither
+  `leftOutScopeFiles` nor `selectionBanner`. On Claude it also sets the
+  default scope and start-up banner for the selection.
+
+The default scope follows the selection on every harness: `classic` when it is
+enabled, otherwise the enabled scope that declares `freeform_default: true`
+(rin's `rin-gates`), otherwise the sole enabled plugin's first scope.
 
 Use the deterministic utility command to inspect or change the selection:
 

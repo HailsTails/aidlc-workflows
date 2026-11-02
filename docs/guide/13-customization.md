@@ -96,8 +96,12 @@ With this set, implicit scope resolution uses `feature`. Alternatively, record a
 5. `classic` - the framework fallback used by unmatched-freeform resolution
    and direct `intent-create` calls without `--scope`. `/aidlc-init` with a
    description and no `--scope` shows the same plan offer as `/aidlc` instead.
+   When the plugin selection leaves `aidlc` out, the fallback is the enabled
+   scope declaring `freeform_default: true` (rin's `rin-gates`), otherwise the
+   sole enabled plugin's first scope, and `aidlc config project --plugins`
+   writes that scope into the `env` block instead of `classic`.
 
-**Valid values:** `enterprise`, `feature`, `mvp`, `poc`, `bugfix`, `refactor`, `infra`, `security-patch`, `classic`, `workshop`, `express`. An invalid value errors at invocation time with a clear message. Teams can define additional scopes by dropping a `.claude/scopes/aidlc-<name>.md` file and tagging the member stages' `scopes:` lists — see [Contributing: Adding a Scope](../reference/11-contributing.md#adding-a-scope). Teams can also define additional agents in `.claude/agents/` — see [Contributing: Adding an Agent](../reference/11-contributing.md#adding-an-agent).
+**Valid values:** every scope the plugin selection enables; with core selected that includes `enterprise`, `feature`, `mvp`, `poc`, `bugfix`, `refactor`, `infra`, `security-patch`, `classic`, `workshop`, `express`. An invalid value errors at invocation time with a clear message. Teams can define additional scopes by dropping a `.claude/scopes/aidlc-<name>.md` file and tagging the member stages' `scopes:` lists — see [Contributing: Adding a Scope](../reference/11-contributing.md#adding-a-scope). Teams can also define additional agents in `.claude/agents/` — see [Contributing: Adding an Agent](../reference/11-contributing.md#adding-an-agent).
 
 **Verifying the config:** run `/aidlc --doctor` to confirm the configured default scope is valid (environment and recorded defaults share this check):
 

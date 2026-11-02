@@ -1730,31 +1730,6 @@ function clearOpenCodeProvider(
   writeJson(path, value);
 }
 
-function writeClaudeFlags(
-  projectionRoot: string,
-  harnessDir: string,
-  record: ProjectFlagsRecord,
-): void {
-  if (!record.defaultScope) return;
-  const path = join(projectionRoot, harnessDir, "settings.json");
-  const value = readJsonFile(path) as Record<string, unknown>;
-  const env = isRecord(value.env) ? { ...value.env } : {};
-  env.AWS_AIDLC_DEFAULT_SCOPE = record.defaultScope;
-  value.env = env;
-  writeJson(path, value);
-}
-
-export function applyProjectFlagsToProjection(
-  projectionRoot: string,
-  harnessDir: string,
-  harness: ModelHarness,
-  record: ProjectFlagsRecord | null,
-): void {
-  if (record && harness === "claude") {
-    writeClaudeFlags(projectionRoot, harnessDir, record);
-  }
-}
-
 export function applyConfigDiagnosticRecords(
   projectionRoot: string,
   harnessDir: string,
@@ -1859,25 +1834,6 @@ export function providerFiles(
     ...entry,
     file: resolve(projectDir, entry.file),
   }));
-}
-
-export function availableScopeNames(harnessRoot: string): string[] {
-  const root = join(harnessRoot, "scopes");
-  if (!existsSync(root)) return [];
-  const names = new Set<string>();
-  for (const file of readdirSync(root).filter((name) => name.endsWith(".md")).sort()) {
-    const path = join(root, file);
-    let content = "";
-    try {
-      content = readFileSync(path, "utf-8");
-    } catch {
-      continue;
-    }
-    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1];
-    const name = frontmatter ? /^name:\s*([a-z][a-z0-9-]*)\s*$/m.exec(frontmatter)?.[1] : null;
-    if (name) names.add(name);
-  }
-  return [...names].sort();
 }
 
 const FLAG_ENV_FIELDS: Array<{

@@ -62,12 +62,12 @@ import {
   errorMessage,
   frontmatterBlock,
   hasRunnerGenMarker,
-  isPluginEnabled,
   isScopeName,
   loadScopeMetadataAll,
   loadStageGraphAll,
   pluginsEnabled,
   runnerFrontmatterAdditions,
+  scopeEnabledBySelection,
   scopeGridPath,
   SCOPE_NAME_RULE,
 } from "./aidlc-lib.ts";
@@ -621,9 +621,10 @@ export function discoverScopes(): Record<string, ScopeFront> {
     console.error(`Warning: scope directory not readable at ${dir}: ${errorMessage(err)}`);
     files = [];
   }
+  const selected = pluginsEnabled();
   for (const f of files) {
     const front = readScopeFront(join(dir, f));
-    if (!isPluginEnabled(front.plugin ?? "aidlc") && !gridNames.has(front.name)) continue;
+    if (!scopeEnabledBySelection(front, selected) && !gridNames.has(front.name)) continue;
     out[front.name] = front;
   }
   return out;

@@ -1,4 +1,4 @@
-// covers: function:normalizeProjectFlagsRecord, function:projectFlags, function:resolveProjectFlag, function:availableScopeNames, function:flagFiles, function:flagIssues, function:discoverInstalledPluginNames, function:readPluginSelection, function:completionInstruction, function:projectChoiceFiles, function:projectChoiceIssues, function:normalizeProjectChoicesRecord, function:flagsDoctorCheck
+// covers: function:normalizeProjectFlagsRecord, function:projectFlags, function:resolveProjectFlag, function:readScopeDirectory, function:flagFiles, function:flagIssues, function:discoverInstalledPluginNames, function:readPluginSelection, function:completionInstruction, function:projectChoiceFiles, function:projectChoiceIssues, function:normalizeProjectChoicesRecord, function:flagsDoctorCheck
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
@@ -24,13 +24,13 @@ import {
 } from "../harness/test-budget.ts";
 import {
   applyConfigDiagnosticRecords,
-  availableScopeNames,
   completionInstruction,
   flagsDoctorCheck,
   readConfigDiagnosticRecords,
 } from "../../core/tools/aidlc-config-diagnostics.ts";
 import {
   RECORDABLE_PROJECT_BYPASSES,
+  readScopeDirectory,
   resolveProjectFlag,
 } from "../../core/tools/aidlc-lib.ts";
 import {
@@ -225,7 +225,7 @@ describe("t295 config choice dispatch", () => {
 describe("t295 flags section", () => {
   test("records flags, validates scope data, rewrites Claude, and env beats record", () => {
     const project = install();
-    const scopes = availableScopeNames(join(project, ".claude"));
+    const scopes = Object.keys(readScopeDirectory(join(project, ".claude", "scopes")).metadata).sort();
     expect(scopes.length).toBeGreaterThan(1);
     const recordedScope = scopes[0];
     const envScope = scopes[1];
@@ -241,7 +241,7 @@ describe("t295 flags section", () => {
       "--yes",
     ], project, runtimeEnv());
     expect(invalid.status).toBe(2);
-    expect(invalid.stdout).toContain("installed scopes");
+    expect(invalid.stdout).toContain("enabled scopes");
 
     const applied = run([
       "config",

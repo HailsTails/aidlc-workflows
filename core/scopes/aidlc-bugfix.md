@@ -9,6 +9,7 @@ keywords:
 description: Fix a specific bug
 skeleton: off
 existing_code: true
+report_fix: true
 runner: true
 review_cap: advisory
 guard_policy: off

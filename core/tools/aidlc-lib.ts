@@ -30,9 +30,11 @@ import {
   type KiroLayout,
   knownActiveSpace,
   kiroTreeLayout,
+  resolveDistributionPath,
   resolveHarnessPath,
   runtimeHarnessDir,
   runtimeHarnessName,
+  runtimeProjectDir,
   SPACE_NAME_REGEX,
 } from "./aidlc-runtime-paths.ts";
 export { entrySkillInvocation, SPACE_NAME_REGEX } from "./aidlc-runtime-paths.ts";
@@ -754,8 +756,15 @@ export function runnerFrontmatterAdditions(): readonly string[] {
 }
 
 export function isPluginEnabled(plugin: string): boolean {
-  const selected = pluginsEnabled();
+  return pluginEnabledBy(pluginsEnabled(), plugin);
+}
+
+export function pluginEnabledBy(selected: ReadonlySet<string> | null, plugin: string): boolean {
   return selected === null || selected.has(plugin);
+}
+
+export function scopeOwner(scope: { readonly plugin?: string }): string {
+  return scope.plugin ?? "aidlc";
 }
 
 export function stageEnabledBySelection(stage: { plugin?: string; phase?: string }): boolean {
@@ -35424,6 +35433,7 @@ interface ScopeMetadata {
    *  (plugin-only installs where the core `classic` default is
    *  deselected). At most one enabled scope should set this. */
   freeformDefault?: boolean;
+  reportFix?: boolean;
   /** The scope's Guard Policy default (`guard_policy:` frontmatter, or the
    *  retired `change_control:`). Absent = strict. Resolution lives in
    *  resolveGuardPolicy. */
@@ -35432,7 +35442,7 @@ interface ScopeMetadata {
 }
 
 let _scopeMetadata: Record<string, ScopeMetadata> | null = null;
-let _scopeMetadataAll: Record<string, ScopeMetadata> | null = null;
+let _scopeDirectory: ScopeDirectory | null = null;
 
 type ScopeGridForMapping = Record<string, { stages: Record<string, "EXECUTE" | "SKIP"> }>;
 
@@ -35486,9 +35496,21 @@ export function scopeArg(scope: string): string {
   return shellArg(scope);
 }
 
+function installedScopeDirectory(): ScopeDirectory {
+  _scopeDirectory ??= readScopeDirectory(scopesDir());
+  return _scopeDirectory;
+}
+
 export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
-  if (_scopeMetadataAll !== null) return _scopeMetadataAll;
-  const dir = scopesDir();
+  return installedScopeDirectory().metadata;
+}
+
+export interface ScopeDirectory {
+  readonly metadata: Record<string, ScopeMetadata>;
+  readonly files: ReadonlyMap<string, string>;
+}
+
+export function readScopeDirectory(dir: string): ScopeDirectory {
   const out: Record<string, ScopeMetadata> = {};
   const nameToFile = new Map<string, string>();
   let files: string[];
@@ -35560,6 +35582,15 @@ export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
       if (existingCode === "true") meta.existingCode = true;
     }
     if (scalarField(fm, "freeform_default") === "true") meta.freeformDefault = true;
+    const reportFix = scalarField(fm, "report_fix");
+    if (reportFix) {
+      if (reportFix !== "true" && reportFix !== "false") {
+        throw new Error(
+          `Scope file ${filePath} has invalid report_fix value "${reportFix}". Expected "true" or "false".`
+        );
+      }
+      if (reportFix === "true") meta.reportFix = true;
+    }
     const reviewCap = scalarField(fm, "review_cap");
     if (reviewCap) {
       if (
@@ -35609,8 +35640,102 @@ export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
     }
     out[name] = meta;
   }
-  _scopeMetadataAll = out;
-  return out;
+  return { metadata: out, files: nameToFile };
+}
+
+export const COMPOSED_SCOPES_SEGMENTS = ["aidlc", "scopes"] as const;
+
+export function composedScopesDir(): string {
+  if (process.env.AIDLC_COMPOSED_SCOPES_DIR) return process.env.AIDLC_COMPOSED_SCOPES_DIR;
+  const projectRecords = join(runtimeProjectDir(), ...COMPOSED_SCOPES_SEGMENTS);
+  if (existsSync(projectRecords)) return projectRecords;
+  const moduleRecords = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ...COMPOSED_SCOPES_SEGMENTS);
+  if (existsSync(moduleRecords)) return moduleRecords;
+  return resolveDistributionPath(COMPOSED_SCOPES_SEGMENTS);
+}
+
+export function composedScopeRecordNames(directory: string = composedScopesDir()): ReadonlySet<string> {
+  try {
+    return new Set(readdirSync(directory).filter((file) => file.endsWith(".md")).map((file) => file.slice(0, -3)));
+  } catch {
+    return new Set();
+  }
+}
+
+export function scopeEnabledBySelection(
+  scope: { readonly plugin?: string },
+  selected: ReadonlySet<string> | null,
+): boolean {
+  return pluginEnabledBy(selected, scopeOwner(scope));
+}
+
+export function installedScopeOwners(): ReadonlyMap<string, string> {
+  const owners = new Map<string, string>();
+  for (const meta of Object.values(loadScopeMetadataAll())) owners.set(meta.name, scopeOwner(meta));
+  for (const stage of loadStageGraphAll()) {
+    for (const name of stage.scopes ?? []) {
+      if (!owners.has(name)) owners.set(name, scopeOwner(stage));
+    }
+  }
+  return owners;
+}
+
+export function coreOwnedScopeFiles(directory: ScopeDirectory, composed: ReadonlySet<string>): string[] {
+  return Object.values(directory.metadata)
+    .filter((meta) => scopeOwner(meta) === "aidlc" && !composed.has(meta.name))
+    .flatMap((meta) => directory.files.get(meta.name) ?? []);
+}
+
+export type ScopeSelectionRecord = { readonly leftOutScopeFiles?: readonly string[]; readonly selectionBanner?: true };
+
+export function scopeSelectionRecordOf(manifest: unknown): ScopeSelectionRecord {
+  if (typeof manifest !== "object" || manifest === null || !("schemaVersion" in manifest) || manifest.schemaVersion !== 1) return {};
+  const files = "leftOutScopeFiles" in manifest && Array.isArray(manifest.leftOutScopeFiles)
+    ? manifest.leftOutScopeFiles.filter((rel): rel is string => typeof rel === "string")
+    : [];
+  const banner = "selectionBanner" in manifest && manifest.selectionBanner === true;
+  return { ...(files.length > 0 ? { leftOutScopeFiles: files } : {}), ...(banner ? { selectionBanner: true as const } : {}) };
+}
+
+export function selectionRecordHeld(record: ScopeSelectionRecord): boolean {
+  return (record.leftOutScopeFiles?.length ?? 0) > 0 || record.selectionBanner === true;
+}
+
+export function readScopeSelectionRecord(dataDir: string): ScopeSelectionRecord {
+  try {
+    return scopeSelectionRecordOf(JSON.parse(readFileSync(join(dataDir, "aidlc-manifest.json"), "utf-8")));
+  } catch {
+    return {};
+  }
+}
+
+export type ProjectFilePresence = (rel: string) => boolean;
+
+export function presentUnder(projectDir: string): ProjectFilePresence {
+  return (rel) => existsSync(join(projectDir, rel));
+}
+
+export function copyRestoreNeedsRelease(record: ScopeSelectionRecord, present: ProjectFilePresence): boolean {
+  return (record.leftOutScopeFiles ?? []).some((rel) => !present(rel)) || record.selectionBanner === true;
+}
+
+export function writesSelectionSettings(harness: string): boolean {
+  return harness === "claude";
+}
+
+export function installedFromCopy(): boolean {
+  return aidlcInvocation() !== "aidlc";
+}
+
+export const RELEASE_AT_HAND_STEP = "With the release files at hand, pass --from <release> instead of --download.";
+
+export function pluginSelectionArguments(plugins: readonly string[] | null, fetchesRelease: boolean): string {
+  return `project --plugins ${plugins === null ? "all" : plugins.join(",")}${fetchesRelease ? " --download" : ""} --yes`;
+}
+
+export function deselectedCoreScopeFiles(): string[] {
+  if (isPluginEnabled("aidlc")) return [];
+  return coreOwnedScopeFiles(installedScopeDirectory(), composedScopeRecordNames());
 }
 
 // --- Review-class resolution (stage-protocol-reviewer §12a) ---
@@ -35665,8 +35790,7 @@ export function loadScopeMetadata(): Record<string, ScopeMetadata> {
   const selected = pluginsEnabled();
   const enabled: Record<string, ScopeMetadata> = {};
   for (const [name, meta] of Object.entries(all)) {
-    const owner = meta.plugin ?? "aidlc";
-    if (selected === null || selected.has(owner)) enabled[name] = meta;
+    if (scopeEnabledBySelection(meta, selected)) enabled[name] = meta;
   }
   const nominated = Object.values(enabled)
     .filter((meta) => meta.freeformDefault === true)
@@ -35750,7 +35874,7 @@ export function loadScopeMapping(): Record<string, ScopeDefinition> {
 export function _resetScopeMappingForTests(): void {
   _scopeMapping = null;
   _scopeMetadata = null;
-  _scopeMetadataAll = null;
+  _scopeDirectory = null;
   _validScopes = null;
 }
 
@@ -35777,6 +35901,8 @@ export function validScopes(): ReadonlySet<string> {
   return _validScopes;
 }
 
+export const FRAMEWORK_DEFAULT_SCOPE = "classic";
+
 export interface DefaultScopeResolution {
   scope: string;
   source: "env" | "default";
@@ -35790,29 +35916,49 @@ export function defaultScopeResolution(): DefaultScopeResolution {
   const raw = (resolveProjectFlag("AWS_AIDLC_DEFAULT_SCOPE") ?? "").trim();
   if (raw.length > 0) {
     if (validScopes().has(raw)) return { scope: raw, source: "env" };
-    // Only installed-but-disabled scopes participate in selection-aware rescue.
-    if (loadScopeMetadataAll()[raw] === undefined) return { scope: raw, source: "env" };
+    if (!installedScopeOwners().has(raw)) return { scope: raw, source: "env" };
     const fallback = selectionAwareDefaultScope(raw);
-    if (!fallback.error && fallback.note) {
+    if (!fallback.error && fallback.substitution) {
       process.stderr.write(
-        `AWS_AIDLC_DEFAULT_SCOPE="${raw}" is not an enabled scope; using ${fallback.scope} (sole enabled plugin's first scope)\n`,
+        `AWS_AIDLC_DEFAULT_SCOPE="${raw}" is not an enabled scope; using ${fallback.scope} (${fallback.substitution})\n`,
       );
     }
     return { scope: fallback.scope, source: "env", error: fallback.error };
   }
   try {
-    const fallback = selectionAwareDefaultScope("classic");
+    const fallback = selectionDefaultScope();
     return { scope: fallback.scope, source: "default", error: fallback.error };
   } catch {
-    return { scope: "classic", source: "default" };
+    return { scope: FRAMEWORK_DEFAULT_SCOPE, source: "default" };
   }
 }
 
-export function selectionAwareDefaultScope(preferred: string): {
+type DefaultScopeSubstitution = "nominated freeform default" | "sole enabled plugin's first scope";
+
+export interface SelectedDefaultScope {
   scope: string;
   error?: string;
   note?: string;
-} {
+  substitution?: DefaultScopeSubstitution;
+}
+
+function substitutedDefaultScope(
+  preferred: string,
+  scope: string,
+  substitution: DefaultScopeSubstitution,
+): SelectedDefaultScope {
+  return {
+    scope,
+    substitution,
+    note: `scope "${preferred}" is not an enabled scope; using "${scope}" (${substitution})`,
+  };
+}
+
+export function selectionDefaultScope(): SelectedDefaultScope {
+  return selectionAwareDefaultScope(FRAMEWORK_DEFAULT_SCOPE);
+}
+
+export function selectionAwareDefaultScope(preferred: string): SelectedDefaultScope {
   const scopes = [...validScopes()];
   if (scopes.includes(preferred)) return { scope: preferred };
 
@@ -35824,16 +35970,13 @@ export function selectionAwareDefaultScope(preferred: string): {
   const meta = loadScopeMetadata();
   const nominatedGlobal = scopes.find((s) => meta[s]?.freeformDefault === true);
   if (nominatedGlobal) {
-    return {
-      scope: nominatedGlobal,
-      note: `scope "${preferred}" is not an enabled scope; using "${nominatedGlobal}" (nominated freeform default)`,
-    };
+    return substitutedDefaultScope(preferred, nominatedGlobal, "nominated freeform default");
   }
 
   const mapping = loadScopeMapping();
   const scopesByPlugin = new Map<string, string[]>();
   for (const scope of scopes) {
-    const owner = mapping[scope]?.plugin ?? "aidlc";
+    const owner = scopeOwner(mapping[scope] ?? {});
     const bucket = scopesByPlugin.get(owner) ?? [];
     bucket.push(scope);
     scopesByPlugin.set(owner, bucket);
@@ -35845,10 +35988,7 @@ export function selectionAwareDefaultScope(preferred: string): {
   if (coreScopes.length === 0 && pluginOwners.length === 1) {
     const only = [...(scopesByPlugin.get(pluginOwners[0]) ?? [])].sort();
     if (only.length > 0) {
-      return {
-        scope: only[0],
-        note: `scope "${preferred}" is not an enabled scope; using "${only[0]}" (sole enabled plugin's first scope)`,
-      };
+      return substitutedDefaultScope(preferred, only[0], "sole enabled plugin's first scope");
     }
   }
 
