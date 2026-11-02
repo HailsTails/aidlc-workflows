@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { R7OptIn } from "./rin-harness-config.ts";
-import { recordDirectoryFor, runDdSensor } from "./rin-harness-dd-enforcement.ts";
-import type { Finding, RecordPorts } from "./rin-harness-doc-discipline.ts";
+import { type RecordInspector, recordDirectoryFor, runDdSensor } from "./rin-harness-dd-enforcement.ts";
+import type { Finding, RecordPorts, Unmeasurable } from "./rin-harness-doc-discipline.ts";
 import {
   defaultPathOperations,
   type PathFlavour,
@@ -138,7 +138,7 @@ const UNREQUESTED_FINDING: Finding = {
 
 describe("runDdSensor — in-process through its ports", () => {
   test("(a) DD-7 without the opt-in publishes one not-adopted line", () => {
-    const publish = vi.fn();
+    const publish = vi.fn<(text: string) => void>();
     runDdSensor({
       ddIds: ["DD-7"],
       ports: fakeRecordPorts(),
@@ -151,7 +151,7 @@ describe("runDdSensor — in-process through its ports", () => {
   });
 
   test("(b) DD-7 opted in reports a path outside any intent record as not a record", () => {
-    const publish = vi.fn();
+    const publish = vi.fn<(text: string) => void>();
     runDdSensor({
       ddIds: ["DD-7"],
       ports: fakeRecordPorts(),
@@ -167,7 +167,7 @@ describe("runDdSensor — in-process through its ports", () => {
   });
 
   test("(c) a malformed DD-7 opt-in fails as UNMEASURED with the config's reason", () => {
-    const publish = vi.fn();
+    const publish = vi.fn<(text: string) => void>();
     runDdSensor({
       ddIds: ["DD-7"],
       ports: fakeRecordPorts(),
@@ -189,12 +189,12 @@ describe("runDdSensor — in-process through its ports", () => {
     { configured: CLAUDE_GRAPH, measured: "/work/.claude/tools/data/stage-graph.json" },
   ])("(d) the configured $configured is the only graph inspected, and no findings pass", ({ configured, measured }) => {
     const ports = fakeRecordPorts();
-    const inspect = vi.fn().mockReturnValue({ kind: "inspected", findings: [] });
-    const publish = vi.fn();
+    const inspect = vi.fn<RecordInspector["inspect"]>().mockReturnValue({ kind: "inspected", findings: [] });
+    const publish = vi.fn<(text: string) => void>();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
       ports,
-      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
+      inspector: { inspect, describe: vi.fn<RecordInspector["describe"]>().mockReturnValue("pinned description") },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: configured }),
       process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });
@@ -208,18 +208,18 @@ describe("runDdSensor — in-process through its ports", () => {
 
   test("(e) an absent configured graph publishes UNMEASURED with the inspection's own description", () => {
     const ports = fakeRecordPorts();
-    const unmeasurable = {
+    const unmeasurable: Unmeasurable = {
       kind: "unmeasurable",
       reason: "no-stage-graph",
       path: "/work/.cursor/tools/data/stage-graph.json",
     };
-    const inspect = vi.fn().mockReturnValue(unmeasurable);
-    const describeInspection = vi.fn().mockReturnValue("pinned description of an absent graph");
-    const publish = vi.fn();
+    const inspect = vi.fn<RecordInspector["inspect"]>().mockReturnValue(unmeasurable);
+    const describeInspection = vi.fn<RecordInspector["describe"]>().mockReturnValue("pinned description of an absent graph");
+    const publish = vi.fn<(text: string) => void>();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
       ports,
-      inspection: { inspect, describe: describeInspection },
+      inspector: { inspect, describe: describeInspection },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
       process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });
@@ -236,18 +236,18 @@ describe("runDdSensor — in-process through its ports", () => {
 
   test("(f) an invalid configured graph publishes UNMEASURED, never success", () => {
     const ports = fakeRecordPorts();
-    const unmeasurable = {
+    const unmeasurable: Unmeasurable = {
       kind: "unmeasurable",
       reason: "stage-graph-malformed",
       path: "/work/.cursor/tools/data/stage-graph.json",
     };
-    const inspect = vi.fn().mockReturnValue(unmeasurable);
-    const describeInspection = vi.fn().mockReturnValue("pinned description of a malformed graph");
-    const publish = vi.fn();
+    const inspect = vi.fn<RecordInspector["inspect"]>().mockReturnValue(unmeasurable);
+    const describeInspection = vi.fn<RecordInspector["describe"]>().mockReturnValue("pinned description of a malformed graph");
+    const publish = vi.fn<(text: string) => void>();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
       ports,
-      inspection: { inspect, describe: describeInspection },
+      inspector: { inspect, describe: describeInspection },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
       process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });
@@ -264,12 +264,12 @@ describe("runDdSensor — in-process through its ports", () => {
 
   test("(g) without --project-dir the graph is inspected under the process port's working directory", () => {
     const ports = fakeRecordPorts();
-    const inspect = vi.fn().mockReturnValue({ kind: "inspected", findings: [] });
-    const publish = vi.fn();
+    const inspect = vi.fn<RecordInspector["inspect"]>().mockReturnValue({ kind: "inspected", findings: [] });
+    const publish = vi.fn<(text: string) => void>();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
       ports,
-      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
+      inspector: { inspect, describe: vi.fn<RecordInspector["describe"]>().mockReturnValue("pinned description") },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
       process: fakeProcess({ argv: ["--output-path", RECORD_ARTEFACT], publish, workingDirectory: WORK }),
     });
@@ -284,15 +284,15 @@ describe("runDdSensor — in-process through its ports", () => {
   });
 
   test("(h) only the requested rules' findings are published, failing with their count", () => {
-    const inspect = vi.fn().mockReturnValue({
+    const inspect = vi.fn<RecordInspector["inspect"]>().mockReturnValue({
       kind: "inspected",
       findings: [REQUESTED_FINDING, UNREQUESTED_FINDING],
     });
-    const publish = vi.fn();
+    const publish = vi.fn<(text: string) => void>();
     runDdSensor({
       ddIds: ["DD-1", "DD-3"],
       ports: fakeRecordPorts(),
-      inspection: { inspect, describe: vi.fn().mockReturnValue("pinned description") },
+      inspector: { inspect, describe: vi.fn<RecordInspector["describe"]>().mockReturnValue("pinned description") },
       config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
       process: fakeProcess({ argv: ["--project-dir", WORK, "--output-path", RECORD_ARTEFACT], publish }),
     });

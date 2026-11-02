@@ -183,13 +183,13 @@ const runDdSensor = ({
   ddIds,
   ports = defaultRecordPorts(),
   config = defaultSensorConfig(),
-  inspection: inspector = defaultRecordInspector(),
+  inspector = defaultRecordInspector(),
   process: runtime = defaultSensorProcess(),
 }: {
   readonly ddIds: readonly DocRule[];
   readonly ports?: RecordPorts;
   readonly config?: SensorConfig;
-  readonly inspection?: RecordInspector;
+  readonly inspector?: RecordInspector;
   readonly process?: SensorProcess;
 }): void => {
   const flags = parseFlags({ argv: runtime.arguments.slice(2) });
@@ -254,4 +254,4 @@ const runDdSensor = ({
   });
 };
 
-export { type DdSensorResult, recordDirectoryFor, runDdSensor };
+export { type DdSensorResult, type RecordInspector, recordDirectoryFor, runDdSensor };
