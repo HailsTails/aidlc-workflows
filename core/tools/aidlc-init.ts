@@ -1127,7 +1127,13 @@ function namedHarness(projectDir: string, harness: string | undefined): string {
 // A `config models` command about one harness of the project, run as shown
 // from where the user is.
 function modelsCommand(projectDir: string, harness: ModelHarness, args: string): string {
-  return `${configInvocationFor(projectDir)} config models ${args}${namedHarness(projectDir, harness)}${projectTarget(projectDir)}`;
+  return projectConfigCommand(projectDir, harness)(`models ${args}`);
+}
+
+type ConfigCommandFor = (args: string) => string;
+
+function projectConfigCommand(projectDir: string, harness: string | undefined): ConfigCommandFor {
+  return (args) => `${configInvocationFor(projectDir)} config ${args}${namedHarness(projectDir, harness)}${projectTarget(projectDir)}`;
 }
 
 function showModels(
@@ -4966,26 +4972,27 @@ function decideDefaultScope(inputs: DefaultScopeInputs): DefaultScopeDecision {
   if (personal !== undefined && !aidlcHoldsSetting(personal, release, priorWrittenHash)) {
     return { owner: "person", value: personal };
   }
-  return { owner: "aidlc", value: selected.error === undefined ? selected.scope : personal ?? release };
+  return { owner: "aidlc", value: selected.error === undefined ? selected.scope : undefined };
 }
 
-function chooseDefaultScopeStep(enabled: ReadonlySet<string>): string {
-  return `To choose the default, run \`${configCommand("flags --project --default-scope <scope> --yes")}\` with one of: ${[...enabled].join(", ")}.`;
+function chooseDefaultScopeStep(enabled: ReadonlySet<string>, command: ConfigCommandFor): string {
+  return `To choose the default, run \`${command("flags --project --default-scope <scope> --yes")}\` with one of: ${[...enabled].join(", ")}.`;
 }
 
 function defaultScopeNote(
   decision: DefaultScopeDecision,
   selected: SelectedDefaultScope,
   settingsRelative: string,
+  command: ConfigCommandFor,
 ): string | null {
   const enabled = validScopes();
   if (decision.owner === "record") return null;
   if (typeof decision.value === "string" && enabled.has(decision.value)) return null;
   if (decision.owner === "aidlc") {
-    return selected.error === undefined ? null : `${selected.error} ${chooseDefaultScopeStep(enabled)}`;
+    return selected.error === undefined ? null : `${selected.error} ${chooseDefaultScopeStep(enabled, command)}`;
   }
   const named = `${DEFAULT_SCOPE_VARIABLE} in ${settingsRelative} names ${JSON.stringify(decision.value)}`;
-  return `${named}, ${personalDefaultOutcome(decision.value)}. ${chooseDefaultScopeStep(enabled)}`;
+  return `${named}, ${personalDefaultOutcome(decision.value)}. ${chooseDefaultScopeStep(enabled, command)}`;
 }
 
 function personalDefaultOutcome(value: unknown): string {
@@ -5066,6 +5073,7 @@ function projectDefaultScope(
   recorded: string | undefined,
   settingsRelative: string,
   notes: string[],
+  command: ConfigCommandFor,
 ): void {
   const { project, release, staged, priorEntries, entries } = projection;
   const priorWrittenHash = priorEntries?.[DEFAULT_SCOPE_ENTRY];
@@ -5083,21 +5091,26 @@ function projectDefaultScope(
   staged.env = env;
   const writtenHash = decision.owner === "person" ? priorWrittenHash : settingHash(decision.value);
   if (entries && writtenHash) entries[DEFAULT_SCOPE_ENTRY] = writtenHash;
-  const note = defaultScopeNote(decision, selected, settingsRelative);
+  const note = defaultScopeNote(decision, selected, settingsRelative, command);
   if (note !== null) notes.push(note);
 }
 
-function unprovenBannerNote(settingsRelative: string): string {
-  return `companyAnnouncements in ${settingsRelative} has no release record showing AI-DLC wrote it, so it was kept and may list scopes this plugin selection leaves out. Refresh from the release with \`${configCommand("--download")}\` to take the banner for this selection.`;
+function unprovenBannerNote(settingsRelative: string, command: ConfigCommandFor): string {
+  return `companyAnnouncements in ${settingsRelative} has no release record showing AI-DLC wrote it, so it was kept and may list scopes this plugin selection leaves out. Refresh from the release with \`${command("--download")}\` to take the banner for this selection.`;
 }
 
-function projectBanner(projection: ClaudeSettingsProjection, settingsRelative: string, notes: string[]): boolean {
+function projectBanner(
+  projection: ClaudeSettingsProjection,
+  settingsRelative: string,
+  notes: string[],
+  command: ConfigCommandFor,
+): boolean {
   const { project, release, staged, priorEntries, entries } = projection;
   const banner = project.companyAnnouncements;
   const recordedHash = priorEntries?.companyAnnouncements;
   if (banner !== undefined && !aidlcHoldsSetting(banner, release.companyAnnouncements, recordedHash)) {
     const unproven = release.companyAnnouncements === undefined && recordedHash === undefined;
-    if (unproven && !isPluginEnabled("aidlc")) notes.push(unprovenBannerNote(settingsRelative));
+    if (unproven && !isPluginEnabled("aidlc")) notes.push(unprovenBannerNote(settingsRelative, command));
     return false;
   }
   const template = release.companyAnnouncements ?? staged.companyAnnouncements;
@@ -5122,6 +5135,7 @@ function projectSelectionIntoClaudeSettings(input: {
   readonly entries: Record<string, string> | undefined;
   readonly recordedDefaultScope: string | undefined;
   readonly notes: string[];
+  readonly command: ConfigCommandFor;
 }): boolean {
   const release = releaseSettings(input.releasePath);
   if (!regularFile(input.stagedPath) || release === null) return false;
@@ -5133,8 +5147,8 @@ function projectSelectionIntoClaudeSettings(input: {
     priorEntries: input.priorEntries,
     entries: input.entries,
   };
-  projectDefaultScope(projection, input.recordedDefaultScope, input.settingsRelative, input.notes);
-  const bannerSpliced = projectBanner(projection, input.settingsRelative, input.notes);
+  projectDefaultScope(projection, input.recordedDefaultScope, input.settingsRelative, input.notes, input.command);
+  const bannerSpliced = projectBanner(projection, input.settingsRelative, input.notes, input.command);
   writeFileSync(input.stagedPath, jsonFileText(projection.staged, stagedText));
   return bannerSpliced;
 }
@@ -6705,9 +6719,10 @@ function prepareRefreshSource(input: {
       }
       writeFileSync(skillPath, generated);
     }
+    const command = projectConfigCommand(projectDir, distribution);
     if (projectFlags?.defaultScope !== undefined && !validScopes().has(projectFlags.defaultScope)) {
       notes.push(
-        `The recorded default scope "${projectFlags.defaultScope}" is not enabled by this plugin selection. ${chooseDefaultScopeStep(validScopes())}`,
+        `The recorded default scope "${projectFlags.defaultScope}" is not enabled by this plugin selection. ${chooseDefaultScopeStep(validScopes(), command)}`,
       );
     }
     if (writesSelectionSettings(modelHarness(distribution))) {
@@ -6722,6 +6737,7 @@ function prepareRefreshSource(input: {
         entries: entries?.[settingsRelative],
         recordedDefaultScope: projectFlags?.defaultScope,
         notes,
+        command,
       });
     }
     regenerated.add(`${descriptor.harnessDir}/tools/data/stage-graph.json`);
@@ -9155,8 +9171,8 @@ function selectionRestore(
   };
 }
 
-function restoreLeftOutStep(restore: SelectionRestore): string {
-  const step = `\`${configCommand(pluginSelectionArguments(restore.plugins, restore.fetchesRelease))}\` puts them back.`;
+function restoreLeftOutStep(restore: SelectionRestore, command: ConfigCommandFor): string {
+  const step = `\`${command(pluginSelectionArguments(restore.plugins, restore.fetchesRelease))}\` puts them back.`;
   return restore.fetchesRelease ? `${step} ${RELEASE_AT_HAND_STEP}` : step;
 }
 
@@ -9180,6 +9196,7 @@ function leftOutBySelectionReport(
   actions: readonly PlannedAction[],
   removed: boolean,
   restore: SelectionRestore,
+  command: ConfigCommandFor,
 ): string[] {
   const removedPaths = pathsWithDetail(actions, "remove", LEFT_OUT_BY_SELECTION);
   const changedPaths = pathsWithDetail(actions, "preserve", KEPT_BY_SELECTION.changed);
@@ -9190,14 +9207,14 @@ function leftOutBySelectionReport(
     ...(removedPaths.length === 0 ? [] : [
       `${removed ? "Removed" : "Will remove"} ${fileCount(removedPaths.length)} that the plugin selection leaves out:`,
       ...listedPaths(removedPaths),
-      restoreLeftOutStep(restore),
+      restoreLeftOutStep(restore, command),
     ]),
     ...(changedPaths.length === 0 ? [] : [
       `Kept ${fileCount(changedPaths.length)} that the plugin selection leaves out, because ${changed.subjectWas} changed after AI-DLC installed ${changed.object}. Delete ${changed.object} yourself if you no longer need ${changed.object}:`,
       ...listedPaths(changedPaths),
     ]),
     ...(unprovenPaths.length === 0 ? [] : [
-      `Kept ${fileCount(unprovenPaths.length)} that the plugin selection leaves out, because no release record shows AI-DLC shipped ${unproven.object}. Delete ${unproven.object} yourself if ${unproven.subject} ${unprovenPaths.length === 1 ? "is" : "are"} AI-DLC's, or refresh from the release with \`${configCommand("--download")}\`, which removes ${unprovenPaths.length === 1 ? "it if it still matches" : "the ones that still match"} it:`,
+      `Kept ${fileCount(unprovenPaths.length)} that the plugin selection leaves out, because no release record shows AI-DLC shipped ${unproven.object}. Delete ${unproven.object} yourself if ${unproven.subject} ${unprovenPaths.length === 1 ? "is" : "are"} AI-DLC's, or refresh from the release with \`${command("--download")}\`, which removes ${unprovenPaths.length === 1 ? "it if it still matches" : "the ones that still match"} it:`,
       ...listedPaths(unprovenPaths),
     ]),
   ];
@@ -11268,9 +11285,9 @@ function projectChangeLines(projectDir: string, context: ChoicesMutationContext,
   }
   if (undo && pluginsChanged && undoFetchesRelease) undo = [...undo, "--download"];
   if (!undo || !printableArgs(undo)) return [`Changed the project choices in ${file}.`];
-  return [`Changed the project choices in ${file}. To undo: ${configInvocationFor(projectDir)} config project ${
-    undo.map((arg) => quoteCommandArgument(arg)).join(" ")
-  } --yes${namedHarness(projectDir, context.distribution)}${projectTarget(projectDir)}`];
+  return [`Changed the project choices in ${file}. To undo: ${
+    projectConfigCommand(projectDir, context.distribution)(`project ${undo.map((arg) => quoteCommandArgument(arg)).join(" ")} --yes`)
+  }`];
 }
 
 // The machine settings file lives outside the project, so its change runs as
@@ -12629,7 +12646,7 @@ export async function main(
       }
       if (options.mode === "human") {
         writeMenuLines("", retiredFilesReport(projectDir, actions, stamp.frameworkVersion, false, switchedRows));
-        writeMenuLines("", leftOutBySelectionReport(actions, false, restore));
+        writeMenuLines("", leftOutBySelectionReport(actions, false, restore, projectConfigCommand(projectDir, descriptor.distribution)));
         for (const note of prepared.notes) process.stdout.write(`  Note: ${note}\n`);
       }
       const configuredSection = diagnosticsContext?.section ??
@@ -12787,7 +12804,7 @@ export async function main(
     // Said as soon as it is done, so no later step can leave it unsaid.
     if (options.mode === "human") {
       writeMenuLines("", retiredFilesReport(projectDir, actions, stamp.frameworkVersion, true, switchedRows));
-      writeMenuLines("", leftOutBySelectionReport(actions, true, restore));
+      writeMenuLines("", leftOutBySelectionReport(actions, true, restore, projectConfigCommand(projectDir, descriptor.distribution)));
     }
     const excludeNote = excludeLocalSettingsFromClone(settingsExclude);
     if (excludeNote) prepared.notes.push(excludeNote);

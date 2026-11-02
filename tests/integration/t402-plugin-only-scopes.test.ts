@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { quoteCommandArgument } from "../../dist/claude/.claude/tools/aidlc-runtime-paths.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
 import { buildPluginProjection, composePluginFixture } from "../harness/plugin-kit.ts";
 import {
@@ -238,6 +239,34 @@ describe("a selection without the core plugin installs only the selected plugins
     expect(undone.status, undone.stdout + undone.stderr).toBe(0);
     expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
     expect(settings(projectDir).companyAnnouncements).toEqual(shippedSettings().companyAnnouncements);
+  });
+
+  test("the restore line a run prints from outside the project names the project, and runs as printed", () => {
+    const projectDir = installedProject();
+    const outside = join(projectDir, "..");
+    const tool = join(projectDir, ".claude", "tools", "aidlc.ts");
+    const fromOutside = (args: readonly string[]): CommandResult => {
+      const environment: NodeJS.ProcessEnv = { ...process.env, AIDLC_HARNESS_DIR: ".claude" };
+      delete environment.CLAUDE_PROJECT_DIR;
+      delete environment.AWS_AIDLC_DEFAULT_SCOPE;
+      const result = spawnSync(BUN, [tool, ...args], {
+        cwd: outside,
+        encoding: "utf-8",
+        timeout: remainingOperationTimeoutMs(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
+        env: environment,
+      });
+      return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+    };
+
+    const selected = fromOutside(["config", "project", "--plugins", PLUGIN, "--yes", "--project-dir", projectDir]);
+
+    expect(selected.status, selected.stdout + selected.stderr).toBe(0);
+    expect(selected.stdout).toContain(
+      `\`bun ${quoteCommandArgument(tool)} config project --plugins all --download --yes --project-dir ${quoteCommandArgument(projectDir)}\` puts them back.`,
+    );
+    const restored = fromOutside(["config", "project", "--plugins", "all", "--from", RELEASE, "--yes", "--project-dir", projectDir]);
+    expect(restored.status, restored.stdout + restored.stderr).toBe(0);
+    expect(installedScopeFiles(projectDir)).toEqual([...shippedCoreScopeFiles(), `${PLUGIN_SCOPE}.md`].sort());
   });
 
   test("a rin-only selection installs rin's scopes alone, starts workflows on rin-gates, and banners only rin's scopes", () => {

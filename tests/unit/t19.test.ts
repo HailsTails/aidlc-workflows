@@ -99,7 +99,7 @@ import {
 } from "../harness/test-budget.ts";
 import { afterAll, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readAllAuditShards } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import {
@@ -287,6 +287,15 @@ describe("t19 aidlc-jump resolve (migrated from t19-tool-jump.sh, plan 16)", () 
     );
     expect(r.status).toBe(1);
     expect(r.out).toContain("skipped for scope");
+  });
+
+  test("resolve refuses a state file with no Scope field instead of assuming one", () => {
+    const p = proj("state-mid-ideation.md");
+    writeFileSync(statePath(p), readState(p).split("\n").filter((line) => !/^- \*\*Scope\*\*:/.test(line)).join("\n"));
+    const r = jump(["resolve", "--stage", "code-generation"], p);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("State file has no Scope field. Refusing to resolve the jump - fix the state file first, or pass --scope <scope>.");
+    expect(r.out).not.toContain("Unknown scope: feature");
   });
 
   test("6: resolve returns affected stages", () => {
