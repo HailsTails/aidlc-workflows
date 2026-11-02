@@ -62,6 +62,15 @@ const rosterOf = (gate: string): readonly string[] => rosterSchema.parse(rosters
 
 const scopesRunning = (gate: string): readonly string[] => listField(stageFrontmatter(gate), "scopes");
 
+const DISPOSITIONS_HEADING = "## Objection dispositions";
+const DISPOSITIONS_REFERENCE = '§ "Objection dispositions"';
+
+const dispositionsSection = (): string => {
+  const contract = readPluginFile(["knowledge", "rin-gates", "ensemble-contract.md"]);
+  const afterHeading = contract.split(`\n${DISPOSITIONS_HEADING}\n`)[1] ?? "";
+  return afterHeading.split(/\n## /)[0] ?? "";
+};
+
 const scopeReviewCap = (scope: string): string | undefined =>
   scalarField(frontmatterOf(readPluginFile(["scopes", `${scope}.md`])), "review_cap");
 
@@ -82,8 +91,21 @@ describe("Gates 1 to 3 keep the board that catches over-correction", () => {
 
   test.each(OBLIGATION_GATES)("%s declares the record of every objection's disposition", (gate) => {
     expect(listField(stageFrontmatter(gate), "produces")).toContain(DISPOSITION_RECORDS[gate]);
-    expect(readPluginFile(["knowledge", "rin-gates", "ensemble-contract.md"])).toContain(
-      `\`${DISPOSITION_RECORDS[gate]}.md\``,
+    expect(dispositionsSection()).toContain(`\`${DISPOSITION_RECORDS[gate]}.md\``);
+    expect(readPluginFile(["stages", `${gate}.md`])).toContain(
+      `Record in \`${DISPOSITION_RECORDS[gate]}.md\` a disposition for every objection a seat raised in any round, as the ensemble contract's ${DISPOSITIONS_REFERENCE} says.`,
+    );
+  });
+
+  test("the board dispatch hands the customer lens the disposition record", () => {
+    expect(readPluginFile(["knowledge", "rin-gates", "decorrelated-review.md"])).toContain(
+      "passes the customer lens, for its objection check, that record's path",
+    );
+  });
+
+  test("the customer lens reads the disposition record for its objection check", () => {
+    expect(readPluginFile(["agents", `${CUSTOMER_LENS}.md`])).toContain(
+      `is in the gate's decision record your dispatch names (\`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md\` ${DISPOSITIONS_REFERENCE})`,
     );
   });
 

@@ -38,7 +38,7 @@ scopes:
   - rin-unit
   - rin-gates
 inputs: The Gate-2 options ledger (see "Inputs, and why the ledger is declared optional"), the record's facts.md, and the Gate-1 requirements
-outputs: rin-components.md (the domain model, components, units and their dependencies), rin-interface-lock.md (the exact contracts, the External reality section, and the single Constitution Check) and rin-design-questions.md (the gate's decision record: the calls it made in a decided class, and the disposition of every seat objection), under this stage's record dir, engine-resolved. The gate is AIDLC-native (ordered walk + approval), proven by the engine's own `report --result approved` audit event; no `.gate-lock` marker file.
+outputs: rin-components.md (the domain model, components, units and their dependencies), rin-interface-lock.md (the exact contracts, the External reality section, and the single Constitution Check) and rin-design-questions.md (the gate's decision record: the calls it made in a decided class to specify a lock element, and the disposition of every seat objection), under this stage's record dir, engine-resolved. The gate is AIDLC-native (ordered walk + approval), proven by the engine's own `report --result approved` audit event; no `.gate-lock` marker file.
 ---
 
 # Gate 3 — Detailed Solution Design (rin)
@@ -99,7 +99,7 @@ The jump resets Gate 2 and every later stage, and records `STAGE_JUMPED` with th
 
 ### Step 3: Domain model and components
 
-Once measurement holds, the seats and the lead write the components and the lock in the mob rounds (`stage-protocol-ensemble.md` §5), each writing the pieces, and building the evidence behind positions, that the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`) names for this gate. Steps 3 to 6 govern what the components and the lock say. Record in `rin-design-questions.md` a disposition for every objection a seat raised in any round, as the ensemble contract's § "Objection dispositions" says.
+Once measurement holds, the seats and the lead write the components and the lock in the mob rounds (`stage-protocol-ensemble.md` §5), each writing the pieces, and building the evidence behind positions, that the ensemble contract (`{{HARNESS_DIR}}/knowledge/rin-gates/ensemble-contract.md`) names for this gate. Steps 3 to 6 govern what the components and the lock say. In round 1 the lead also writes `rin-design-questions.md` with its two sections, `## Decided calls` and `## Objection dispositions`, each `None` until it has an entry. Record in `rin-design-questions.md` a disposition for every objection a seat raised in any round, as the ensemble contract's § "Objection dispositions" says.
 
 Write `rin-components.md` for the chosen solution: the domain model (entities, value objects, aggregates, and the invariants each holds), the components that own them, and the units of work with their dependencies — the content AIDLC's native domain-design and units-generation stages produce, folded into this gate.
 
@@ -114,7 +114,7 @@ Write `rin-interface-lock.md`: every contract the solution exposes or depends on
 Each contract element is a heading `### <element>` carrying a state line in exactly one of two forms:
 
 - `- **State:** specified` — the element is complete: nothing in it is to be decided later.
-- `- **State:** escalated — <reserved class>` — the element cannot be specified without a decision in a stopping class on the active list (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` § "Deciding versus stopping"). A decision in a class the active list marks decided and recorded is made here, naming its class, and the element is `specified`. Each such decision is recorded under a `## Decided calls` section of `rin-design-questions.md`, with its element, its class, the choice, its trade-off and the alternatives it rejected; a gate that made none writes `None` there. An escalated element's remedy is the park, which is how it reaches {{OPERATOR}}; the lock is not approvable while one exists.
+- `- **State:** escalated — <reserved class>` — the element cannot be specified without a decision in a stopping class on the active list (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md` § "Deciding versus stopping"). A decision in a class the active list marks decided and recorded is made here, naming its class, and the element is `specified`. Each such decision is recorded under the `## Decided calls` section of `rin-design-questions.md`, naming its element, as `reserved-decisions.md` § "Deciding versus stopping" says to record a decided call; a gate that made none writes `None` there. An escalated element's remedy is the park, which is how it reaches {{OPERATOR}}; the lock is not approvable while one exists.
 
 There is no third state. An element that cannot be specified for any other reason is a finding to specify here, or a route-back to Gate 2 if the chosen solution cannot support it. A deferred contract is one construction would invent. The completeness lens judges every element's state.
 
