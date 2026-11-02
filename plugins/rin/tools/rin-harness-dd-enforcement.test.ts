@@ -283,6 +283,31 @@ describe("runDdSensor — in-process through its ports", () => {
     ]);
   });
 
+  test("(i) relative --project-dir and --output-path resolve under the process port's working directory", () => {
+    const ports = fakeRecordPorts();
+    const inspect = vi.fn<RecordInspector["inspect"]>().mockReturnValue({ kind: "inspected", findings: [] });
+    const publish = vi.fn<(text: string) => void>();
+    runDdSensor({
+      ddIds: ["DD-1", "DD-3"],
+      ports,
+      inspector: { inspect, describe: vi.fn<RecordInspector["describe"]>().mockReturnValue("pinned description") },
+      config: fakeConfig({ optIn: { kind: "disabled" }, stageGraph: CURSOR_GRAPH }),
+      process: fakeProcess({
+        argv: [
+          "--project-dir",
+          ".",
+          "--output-path",
+          "aidlc/spaces/default/intents/260906-example-record/rin-requirements.md",
+        ],
+        publish,
+        workingDirectory: WORK,
+      }),
+    });
+    expect(inspect.mock.calls).toEqual([
+      [{ recordDir: RECORD, stageGraphPath: "/work/.cursor/tools/data/stage-graph.json", ports }],
+    ]);
+  });
+
   test("(h) only the requested rules' findings are published, failing with their count", () => {
     const inspect = vi.fn<RecordInspector["inspect"]>().mockReturnValue({
       kind: "inspected",

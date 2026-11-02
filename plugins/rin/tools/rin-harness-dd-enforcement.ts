@@ -194,7 +194,8 @@ const runDdSensor = ({
 }): void => {
   const flags = parseFlags({ argv: runtime.arguments.slice(2) });
   const label = ddIds.join("+");
-  const projectDir = flags.projectDir ?? runtime.workingDirectory();
+  const workingDirectory = runtime.workingDirectory();
+  const projectDir = ports.paths.resolve({ segments: [workingDirectory, flags.projectDir ?? "."] });
   const r7Result = r7SensorGate({ ddIds, label, projectDir, config });
   if (r7Result !== undefined) {
     emit({ result: r7Result, publish: runtime.publish });
@@ -204,7 +205,7 @@ const runDdSensor = ({
     flags.outputPath === undefined
       ? undefined
       : recordDirectoryFor({
-          outputPath: flags.outputPath,
+          outputPath: ports.paths.resolve({ segments: [workingDirectory, flags.outputPath] }),
           paths: ports.paths,
         });
 

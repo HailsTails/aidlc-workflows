@@ -368,7 +368,7 @@ const stageNodeSchema = z.object({
 
 const stageGraphSchema = z.union([
   z.array(stageNodeSchema),
-  z.object({ stages: z.array(stageNodeSchema).optional() }),
+  z.object({ stages: z.array(stageNodeSchema) }),
 ]);
 
 type StageGraph = z.infer<typeof stageGraphSchema>;
@@ -420,7 +420,7 @@ const officialArtefactStems = ({
       path: stageGraphPath,
     };
   }
-  const nodes = Array.isArray(graph) ? graph : (graph.stages ?? []);
+  const nodes = Array.isArray(graph) ? graph : graph.stages;
   return {
     kind: "resolved",
     stems: new Set(nodes.flatMap((node) => node.produces ?? [])),

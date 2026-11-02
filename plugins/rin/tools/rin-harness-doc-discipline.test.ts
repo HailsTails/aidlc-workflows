@@ -622,6 +622,13 @@ const stageGraphStagesNotAList = portsOver({
   directories: { "/record": [] },
 });
 
+const stageGraphWithoutStages = portsOver({
+  files: { [STAGE_GRAPH_PATH]: '{"nodes":[{"produces":["rin-requirements"]}]}' },
+  unreadable: [],
+  unlistable: [],
+  directories: { "/record": [] },
+});
+
 const unreadableFacts = portsOver({
   files: {
     [STAGE_GRAPH_PATH]: ONE_PRODUCED_STEM,
@@ -757,6 +764,20 @@ describe("inspectRecordDirectory reports an unmeasurable input", () => {
         recordDir: "/record",
         stageGraphPath: STAGE_GRAPH_PATH,
         ports: stageGraphStagesNotAList,
+      }),
+    ).toEqual({
+      kind: "unmeasurable",
+      reason: "stage-graph-malformed",
+      path: STAGE_GRAPH_PATH,
+    });
+  });
+
+  test("a stage graph object without a stages list is malformed, never an empty graph", () => {
+    expect(
+      inspectRecordDirectory({
+        recordDir: "/record",
+        stageGraphPath: STAGE_GRAPH_PATH,
+        ports: stageGraphWithoutStages,
       }),
     ).toEqual({
       kind: "unmeasurable",
