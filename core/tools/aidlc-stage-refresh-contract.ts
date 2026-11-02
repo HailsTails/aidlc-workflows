@@ -61,14 +61,14 @@ export type StageRefreshComparisonPort = (args: {
 type AcceptedProseField = "condition" | "outputs";
 type AcceptedProsePlugin = "rin";
 type AcceptedProseRewrite = { readonly installed: string; readonly candidate: string };
-type AcceptedProseFields = {
+type NonEmptyAcceptedFields = {
   readonly [Field in AcceptedProseField]: Readonly<Record<Field, AcceptedProseRewrite>> &
     Readonly<Partial<Record<Exclude<AcceptedProseField, Field>, AcceptedProseRewrite>>>;
 }[AcceptedProseField];
 type AcceptedProseChange = {
   readonly plugin?: AcceptedProsePlugin;
   readonly slug: string;
-  readonly fields: AcceptedProseFields;
+  readonly fields: NonEmptyAcceptedFields;
   readonly effect: StageRefreshEffect;
 };
 type FieldRewrite = { readonly field: AcceptedProseField; readonly rewrite: AcceptedProseRewrite };

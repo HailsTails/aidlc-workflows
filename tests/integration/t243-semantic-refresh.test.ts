@@ -3,11 +3,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { appendAuditEntry } from "../../core/tools/aidlc-audit.ts";
 import { sha256File, walkFiles } from "../../core/tools/aidlc-distribution.ts";
-import { hooksHealthDir, parseStageFrontmatter } from "../../core/tools/aidlc-lib.ts";
-import { planCompatibleRefresh, type CompatibleRefreshValidation } from "../../core/tools/aidlc-refresh-compatibility.ts";
+import { hooksHealthDir, parseStageFrontmatter, runningWorkflowStages } from "../../core/tools/aidlc-lib.ts";
+import { planCompatibleRefresh, refreshRevalidationNotes, type CompatibleRefreshValidation } from "../../core/tools/aidlc-refresh-compatibility.ts";
 import { executePlan, writeOperation, type TransactionPlan, type TransactionRefusal } from "../../core/tools/aidlc-transaction.ts";
 import { hermeticGitEnvironment } from "../../plugins/rin/tools/hermetic-git/index.ts";
 import { buildPluginProjection, composePluginFixture } from "../harness/plugin-kit.ts";
@@ -284,6 +284,11 @@ test("after the Gate 1 settlement refresh, a blank answer lets the turn end for 
   const before = workspaceOf(rin.projectDir);
   const refreshed = refreshToSettlement({ rin, sourceRoot, candidateGraph });
   const installedGraphIsCandidate = readFileSync(join(rin.projectDir, stageGraphPath), "utf8") === candidateGraph;
+  const framingRecord = `default/${basename(dirname(dirname(dirname(questionsPath))))}`;
+  const framingNotes = refreshRevalidationNotes({
+    stageRevalidation: refreshed.validation.kind === "planned" ? refreshed.validation.evidence.stageRevalidation : {},
+    openWorkflows: runningWorkflowStages(rin.projectDir),
+  });
   const workspaceKept = JSON.stringify(workspaceOf(rin.projectDir)) === JSON.stringify(before);
   const stopWithBlank = runHook({ rin, hook: "continue-workflow", event: "Stop", fields: { stop_hook_active: false } });
   const traceWithBlank = stopTrace(rin);
@@ -303,6 +308,7 @@ test("after the Gate 1 settlement refresh, a blank answer lets the turn end for 
     refreshed: refreshed.validation.kind === "planned" ? refreshed.validation.evidence.stageRevalidation : refreshed.validation,
     applied: refreshed.applied,
     installedGraphIsCandidate,
+    recordNamed: framingNotes.length === 1 && (framingNotes[0] ?? "").includes(`answer the open Gate 1 questions in ${framingRecord} before resuming`),
     workspaceKept,
     stopWithBlank: { status: stopWithBlank.status, stdout: stopWithBlank.stdout.trim() },
     carveOut: traceWithBlank.includes(`active stage ${framingSlug} has an unanswered question; allowing the stop (pending-question carve-out)`),
@@ -318,6 +324,7 @@ test("after the Gate 1 settlement refresh, a blank answer lets the turn end for 
     refreshed: { [framingSlug]: ["framing-decision-record"] },
     applied: { kind: "executed", result: undefined },
     installedGraphIsCandidate: true,
+    recordNamed: true,
     workspaceKept: true,
     stopWithBlank: { status: 0, stdout: "" },
     carveOut: true,

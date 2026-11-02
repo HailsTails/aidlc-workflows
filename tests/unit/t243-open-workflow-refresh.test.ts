@@ -186,6 +186,22 @@ describe("compatible refresh with independent workflows", () => {
     expect(workspaceBytes(project)).toEqual(before);
   }, 120_000);
 
+  test("names the open workflow at the accepted stage without changing the plan token", () => {
+    const project = openProjectFrom(sourceBeforeEngineQuestions());
+    const elsewhere = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
+    expect(elsewhere.status, elsewhere.output).toBe(0);
+    const state = join(project, "aidlc/spaces/default/intents/open/aidlc-state.md");
+    put(project, "aidlc/spaces/default/intents/open/aidlc-state.md",
+      readFileSync(state, "utf-8").replace("- **Current Stage**: requirements-analysis", "- **Current Stage**: code-generation"));
+    const atStage = config(project, RELEASE, ["--refresh-open-workflows", "--dry-run"]);
+    expect(atStage.status, atStage.output).toBe(0);
+    expect({
+      elsewhere: JSON.parse(elsewhere.stdout).data.notes.includes(engineQuestionsNote),
+      atStage: JSON.parse(atStage.stdout).data.notes.includes(`${engineQuestionsNote} Open at this stage: default/open.`),
+      sameToken: JSON.parse(atStage.stdout).data.planToken === JSON.parse(elsewhere.stdout).data.planToken,
+    }).toEqual({ elsewhere: true, atStage: true, sameToken: true });
+  }, 120_000);
+
   test.each([
     { mode: "human", flags: [], line: `Note: ${engineQuestionsNote}`, stream: "stdout" },
     { mode: "quiet", flags: ["--quiet"], line: `Warning: ${engineQuestionsNote}`, stream: "output" },

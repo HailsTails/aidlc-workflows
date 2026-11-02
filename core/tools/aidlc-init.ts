@@ -144,6 +144,7 @@ import {
   RECORDABLE_PROJECT_BYPASSES,
   type ProjectFlagsRecord,
   normalizeDriveLetter,
+  runningWorkflowStages,
   sameFileIdentity,
   withAuditLock,
   writeFileAtomic,
@@ -12115,7 +12116,9 @@ export async function main(
       emitResult(failure(compatibleRefresh.message, EXIT.integrity, configCommand("--dry-run --json")), options);
       return;
     }
-    const revalidationNotes = compatibleRefresh ? refreshRevalidationNotes(compatibleRefresh.evidence) : [];
+    const revalidationNotes = compatibleRefresh
+      ? refreshRevalidationNotes({ stageRevalidation: compatibleRefresh.evidence.stageRevalidation, openWorkflows: runningWorkflowStages(projectDir) })
+      : [];
     prepared.notes.push(...revalidationNotes);
     quietWarnings.push(...revalidationNotes);
     const approvalPlan = {
