@@ -40,6 +40,7 @@ import {
   type TransactionPlan,
 } from "./aidlc-transaction.ts";
 import { planCodexHookTrustSeed, planPluginHookRegistrations, projectedPluginHookContributionsSchema } from "./aidlc-plugin-hook-registrations.ts";
+import { recordSyncedManagedFiles } from "./aidlc-host-manifest.ts";
 
 const SAFE_PLUGIN_KEY = /^[a-z][a-z0-9-]*$/;
 const STRICT_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -1481,7 +1482,7 @@ export async function syncPlugins(
   argv: string[],
   harnessDir = runtimeHarnessDir(projectDir),
   lockRetry = 0,
-): Promise<{ synced: string[]; pruned: string[]; operations: number }> {
+): Promise<{ synced: string[]; pruned: string[]; operations: number; notes: readonly string[] }> {
   const harness = harnessKind(harnessDir);
   const inventory = discoverPluginOperationInventory(harnessDir, projectDir);
   const evidence = projectEvidence(projectDir, harnessDir);
@@ -1531,6 +1532,7 @@ export async function syncPlugins(
       synced: plugins.map((plugin) => plugin.key).sort(),
       pruned: [],
       operations: 0,
+      notes: [],
     };
   }
   const stagingRoot = mkdtempSync(join(tmpdir(), "aidlc-plugin-sync-"));
@@ -1578,6 +1580,8 @@ export async function syncPlugins(
       if (seed.kind === "invalid-document") throw new Error("Codex hook trust refused: invalid hooks.json");
       writeFileSync(join(stagedProject, harnessDir, "trust-seed.toml"), seed.text);
     }
+    const recording = recordSyncedManagedFiles({ projectDir, stagedProject, harnessDir });
+    const notes = recording.kind === "invalid" ? [recording.note] : [];
     const plan = projectDiffPlan(projectDir, stagedProject, harnessDir);
     const failAfter = Number(process.env.AIDLC_PLUGIN_SYNC_FAIL_AFTER ?? "0");
     try {
@@ -1611,6 +1615,7 @@ export async function syncPlugins(
           synced: plugins.map((plugin) => plugin.key).sort(),
           pruned: [],
           operations: 0,
+          notes,
         };
       }
       throw error;
@@ -1619,6 +1624,7 @@ export async function syncPlugins(
       synced: plugins.map((plugin) => plugin.key).sort(),
       pruned,
       operations: plan.operations.length,
+      notes,
     };
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
@@ -1660,6 +1666,7 @@ export async function main(argv: string[]): Promise<void> {
         (result.pruned.length > 0 ? `; pruned ${result.pruned.length} missing plugin(s)` : "");
       if (flags.json === "true") process.stdout.write(jsonEnvelope(0, message, result));
       else if (flags.quiet !== "true") process.stdout.write(`${message}\n`);
+      if (flags.json !== "true") result.notes.forEach((note) => { process.stderr.write(`aidlc engine plugin: ${note}\n`); });
       return;
     }
     throw new Error("usage: aidlc engine plugin <list|sync [--prune-missing]>");

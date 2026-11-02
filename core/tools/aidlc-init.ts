@@ -90,6 +90,7 @@ import {
 } from "./aidlc-install-paths.ts";
 import { defaultHarnessPath } from "./aidlc-machine-config.ts";
 import { projectEvidence } from "./aidlc-plugin.ts";
+import { generatedSkillOwned, generatedSkillProseHash, isGeneratedSkillPath } from "./aidlc-host-manifest.ts";
 import { planCompatibleRefresh, refreshRevalidationNotes } from "./aidlc-refresh-compatibility.ts";
 import { captureRefreshRuleInputs, type RefreshRuleInputs } from "./aidlc-refresh-rules.ts";
 import { planCodexHookTrustSeed, planPluginHookRegistrations, projectedPluginHookContributionsSchema, type ProjectedPluginHookContributions } from "./aidlc-plugin-hook-registrations.ts";
@@ -4410,14 +4411,6 @@ type StageContribRecord = {
   hook_registrations?: unknown;
 };
 
-function generatedSkillProseHash(input: { content: string }): string | null {
-  const normalized = input.content.replaceAll("\r\n", "\n");
-  const stageRegion = /<!-- BEGIN: compiled stage graph[^\n]* -->[\s\S]*?<!-- END: compiled stage graph -->/g;
-  const scopeRegion = /<!-- BEGIN: compiled scope grid[^\n]* -->[\s\S]*?<!-- END: compiled scope grid -->/g;
-  if ([...normalized.matchAll(stageRegion)].length !== 1 || [...normalized.matchAll(scopeRegion)].length !== 1) return null;
-  return sha256Bytes(normalized.replace(stageRegion, "<!-- compiled stage -->").replace(scopeRegion, "<!-- compiled scope -->"));
-}
-
 function resetProjectionCaches(): void {
   __resetGraphCache();
   _resetHarnessDataForTests();
@@ -6410,10 +6403,11 @@ function prepareRefreshSource(input: {
       if (skillBaseline && regularFile(currentSkill)) {
         const current = readFileSync(currentSkill, "utf-8").replaceAll("\r\n", "\n");
         const restored = replaceGeneratedRegion(replaceGeneratedRegion(current, shippedSkill, "stage"), shippedSkill, "scope");
-        const priorProseHash = prior?.generatedSkillProseHashes?.[skillRelative];
-        const currentProseHash = generatedSkillProseHash({ content: current });
-        if ([current, restored].some((text) => sha256Bytes(text) === skillBaseline) ||
-          (priorProseHash !== undefined && currentProseHash !== null && currentProseHash === priorProseHash)) {
+        if (generatedSkillOwned({
+          installed: current,
+          equivalents: [restored],
+          recorded: { hash: skillBaseline, proseHash: prior?.generatedSkillProseHashes?.[skillRelative] },
+        })) {
           regenerated.add(skillRelative);
           hookCoreHashes.set(skillRelative, sha256Bytes(generated));
         }
@@ -12077,7 +12071,7 @@ export async function main(
       mcpMode,
       files,
       generatedSkillProseHashes: Object.fromEntries(Object.entries(files).flatMap(([path, hash]) => {
-        if (!path.endsWith("/skills/aidlc/SKILL.md")) return [];
+        if (!isGeneratedSkillPath(path)) return [];
         const source = join(baselineSourceRoot, path);
         if (!regularFile(source) || sha256File(source) !== hash) return [];
         const proseHash = generatedSkillProseHash({ content: readFileSync(source, "utf-8") });

@@ -12,7 +12,8 @@ import { NATIVE_PROCESS_CLEANUP_TIMEOUT_MS } from "../harness/test-budget.ts";
 import { hermeticGitEnvironment } from "../../plugins/rin/tools/hermetic-git/hermetic-git-environment.ts";
 
 type Face = { harness: "claude" | "codex"; leaf: string; nativeFile: string; navigationNeedle: string; skillFile: string };
-type Fixture = Face & { projectDir: string; pluginRoot: string; environment: NodeJS.ProcessEnv; initialization: SpawnSyncReturns<string>; composition: PluginComposeRunResult };
+type ConfiguredFixture = Face & { projectDir: string; pluginRoot: string; environment: NodeJS.ProcessEnv; initialization: SpawnSyncReturns<string> };
+type Fixture = ConfiguredFixture & { composition: PluginComposeRunResult };
 
 const faces: Face[] = [
   { harness: "claude", leaf: ".claude", nativeFile: ".claude/settings.json", navigationNeedle: "guard-navigation.mjs", skillFile: ".claude/skills/aidlc/SKILL.md" },
@@ -23,7 +24,7 @@ const navigationTrustHash = `sha256:${createHash("sha256").update('{"event_name"
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }), NATIVE_PROCESS_CLEANUP_TIMEOUT_MS);
 
-function initializeSelected({ face, label, pluginRoot = join(REPO_ROOT, "dist/plugins/rin", face.harness) }: { face: Face; label: string; pluginRoot?: string }): Fixture {
+function configuredSelection({ face, label, pluginRoot = join(REPO_ROOT, "dist/plugins/rin", face.harness) }: { face: Face; label: string; pluginRoot?: string }): ConfiguredFixture {
   const projectDir = join(scratch, label);
   mkdirSync(join(projectDir, ".git"), { recursive: true });
   const configHome = join(scratch, `${label}-home`);
@@ -32,15 +33,20 @@ function initializeSelected({ face, label, pluginRoot = join(REPO_ROOT, "dist/pl
   const initialization = configProject({ ...face, projectDir, environment });
   const metadata = join(projectDir, face.leaf, "tools/data/harness.json");
   writeFileSync(metadata, `${JSON.stringify({ ...JSON.parse(readFileSync(metadata, "utf8")), plugins: ["aidlc", "rin"] }, null, 2)}\n`);
-  const composition = runPluginCompose({ harness: face.harness, harnessLeaf: face.leaf, projectDir, pluginBuilt: pluginRoot, env: environment });
-  return { ...face, projectDir, pluginRoot, environment, initialization, composition };
+  return { ...face, projectDir, pluginRoot, environment, initialization };
+}
+
+function initializeSelected(input: { face: Face; label: string; pluginRoot?: string }): Fixture {
+  const configured = configuredSelection(input);
+  const composition = runPluginCompose({ harness: configured.harness, harnessLeaf: configured.leaf, projectDir: configured.projectDir, pluginBuilt: configured.pluginRoot, env: configured.environment });
+  return { ...configured, composition };
 }
 
 function configProject(fixture: Face & { projectDir: string; environment: NodeJS.ProcessEnv }) {
   return spawnSync(process.execPath, [join(REPO_ROOT, "core/tools/aidlc-init.ts"), "config", "--from", join(REPO_ROOT, "dist", fixture.harness), "--project-dir", fixture.projectDir], { cwd: fixture.projectDir, env: fixture.environment, encoding: "utf8", timeout: 30_000 });
 }
 
-function syncProject(fixture: Fixture) {
+function syncProject(fixture: ConfiguredFixture) {
   return spawnSync(process.execPath, [join(fixture.projectDir, fixture.leaf, "tools/aidlc-plugin.ts"), "sync", "--project-dir", fixture.projectDir], { cwd: fixture.projectDir, env: fixture.environment, encoding: "utf8", timeout: 30_000 });
 }
 
@@ -189,6 +195,55 @@ describe("selected plugin core refresh", () => {
   }, 120_000);
 });
 
+const CHANGED_STAGE = "stages/inception/rin-gate-3-interface-lock.md";
+const ORIGINAL_LEAD = "lead_agent: rin-architect-agent";
+const CHANGED_LEAD = "aidlc-architect-agent";
+
+type HostManifest = { files: Record<string, string>; generatedSkillProseHashes: Record<string, string> };
+
+function hostManifest(fixture: ConfiguredFixture): HostManifest {
+  return JSON.parse(readFileSync(join(fixture.projectDir, fixture.leaf, "tools/data/aidlc-manifest.json"), "utf8"));
+}
+
+function installedHash(fixture: ConfiguredFixture, path: string): string {
+  return `sha256:${createHash("sha256").update(readFileSync(join(fixture.projectDir, path))).digest("hex")}`;
+}
+
+const CORE_BASELINES: Record<Face["harness"], readonly string[]> = {
+  claude: [".claude/settings.json"],
+  codex: [".codex/hooks.json", ".codex/trust-seed.toml"],
+};
+
+function coreBaselineHashes(manifest: HostManifest, face: Face): Record<string, string | undefined> {
+  return Object.fromEntries(CORE_BASELINES[face.harness].map((path) => [path, manifest.files[path]]));
+}
+
+function recordedCoreBaselines(face: Face): Record<string, unknown> {
+  return Object.fromEntries(CORE_BASELINES[face.harness].map((path) => [path, expect.stringMatching(/^sha256:/)]));
+}
+
+function stageTableRow(fixture: ConfiguredFixture, slug: string): string | undefined {
+  return readFileSync(join(fixture.projectDir, fixture.skillFile), "utf8").split("\n").find((line) => line.startsWith(`| ${slug} |`));
+}
+
+function leadChangedBeforeSync({ face, label }: { face: Face; label: string }): Fixture {
+  const pluginRoot = join(scratch, `${label}-projection`);
+  cpSync(join(REPO_ROOT, "dist/plugins/rin", face.harness), pluginRoot, { recursive: true });
+  const fixture = initializeSelected({ face, label, pluginRoot });
+  expect(fixture.initialization.status).toBe(0);
+  expect(fixture.composition.status, fixture.composition.stderr).toBe(0);
+  const configured = configProject(fixture);
+  expect(configured.status, configured.stdout + configured.stderr).toBe(0);
+  const owned = syncProject(fixture);
+  expect(owned.status, owned.stdout + owned.stderr).toBe(0);
+  const stage = join(pluginRoot, CHANGED_STAGE);
+  writeFileSync(stage, readFileSync(stage, "utf8").replace(ORIGINAL_LEAD, `lead_agent: ${CHANGED_LEAD}`));
+  const reconfigured = configProject(fixture);
+  expect(reconfigured.status, reconfigured.stdout + reconfigured.stderr).toBe(0);
+  expect(stageTableRow(fixture, "rin-gate-3-interface-lock")).not.toContain(CHANGED_LEAD);
+  return fixture;
+}
+
 describe("composed root skill ownership baseline", () => {
   test.each(faces)("$harness refresh binds the final compiled skill tables", (face) => {
     const fixture = initializeSelected({ face, label: `skill-baseline-${face.harness}` });
@@ -205,6 +260,59 @@ describe("composed root skill ownership baseline", () => {
     expect(JSON.parse(readFileSync(join(fixture.projectDir, face.leaf, "tools/data/aidlc-manifest.json"), "utf8")).files[skill]).toBe(observed);
     expect(`sha256:${createHash("sha256").update(readFileSync(join(fixture.projectDir, skill))).digest("hex")}`).toBe(observed);
   }, 120_000);
+
+  test.each(faces)("$harness sync that changes a plugin stage lead re-records the installed skill", (face) => {
+    const fixture = leadChangedBeforeSync({ face, label: `sync-lead-${face.harness}` });
+    const manifestBeforeSync = hostManifest(fixture);
+    const synchronized = syncProject(fixture);
+    expect(synchronized.status, synchronized.stdout + synchronized.stderr).toBe(0);
+    expect(stageTableRow(fixture, "rin-gate-3-interface-lock")).toContain(CHANGED_LEAD);
+    expect(hostManifest(fixture).files[face.skillFile]).toBe(installedHash(fixture, face.skillFile));
+    expect(hostManifest(fixture).generatedSkillProseHashes[face.skillFile]).toBe(manifestBeforeSync.generatedSkillProseHashes[face.skillFile]);
+    expect(coreBaselineHashes(manifestBeforeSync, face)).toEqual(recordedCoreBaselines(face));
+    expect(coreBaselineHashes(hostManifest(fixture), face)).toEqual(coreBaselineHashes(manifestBeforeSync, face));
+  }, 180_000);
+
+  test.each(faces)("$harness config after a stage-lead sync keeps the re-recorded skill owned", (face) => {
+    const fixture = leadChangedBeforeSync({ face, label: `sync-lead-config-${face.harness}` });
+    const synchronized = syncProject(fixture);
+    expect(synchronized.status, synchronized.stdout + synchronized.stderr).toBe(0);
+    const refreshed = configProject(fixture);
+    expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(0);
+    expect(hostManifest(fixture).files[face.skillFile]).toBe(installedHash(fixture, face.skillFile));
+  }, 180_000);
+
+  test.each(faces)("$harness first sync of a hook plugin keeps the core hook baselines", (face) => {
+    const fixture = configuredSelection({ face, label: `first-sync-${face.harness}` });
+    expect(fixture.initialization.status, fixture.initialization.stdout + fixture.initialization.stderr).toBe(0);
+    const manifestBeforeSync = hostManifest(fixture);
+    const synchronized = syncProject(fixture);
+    expect(synchronized.status, synchronized.stdout + synchronized.stderr).toBe(0);
+    expect(readFileSync(join(fixture.projectDir, face.nativeFile), "utf8")).toContain(face.navigationNeedle);
+    expect(coreBaselineHashes(manifestBeforeSync, face)).toEqual(recordedCoreBaselines(face));
+    expect(coreBaselineHashes(hostManifest(fixture), face)).toEqual(coreBaselineHashes(manifestBeforeSync, face));
+    expect(hostManifest(fixture).files[face.skillFile]).toBe(installedHash(fixture, face.skillFile));
+  }, 180_000);
+
+  test.each(faces)("$harness config after a first hook-plugin sync keeps the hook registration", (face) => {
+    const fixture = configuredSelection({ face, label: `first-sync-config-${face.harness}` });
+    expect(fixture.initialization.status, fixture.initialization.stdout + fixture.initialization.stderr).toBe(0);
+    const synchronized = syncProject(fixture);
+    expect(synchronized.status, synchronized.stdout + synchronized.stderr).toBe(0);
+    const refreshed = configProject(fixture);
+    expect(refreshed.status, refreshed.stdout + refreshed.stderr).toBe(0);
+    expect(readFileSync(join(fixture.projectDir, face.nativeFile), "utf8")).toContain(face.navigationNeedle);
+  }, 180_000);
+
+  test.each(faces)("$harness sync never absorbs a local skill edit into the host manifest", (face) => {
+    const fixture = leadChangedBeforeSync({ face, label: `sync-lead-edited-${face.harness}` });
+    const manifestBeforeSync = hostManifest(fixture);
+    writeFileSync(join(fixture.projectDir, face.skillFile), `${readFileSync(join(fixture.projectDir, face.skillFile), "utf8")}\nUser-owned orchestration instruction.\n`);
+    const synchronized = syncProject(fixture);
+    expect(synchronized.status, synchronized.stdout + synchronized.stderr).toBe(0);
+    expect(hostManifest(fixture).files[face.skillFile]).toBe(manifestBeforeSync.files[face.skillFile]);
+    expect(hostManifest(fixture).generatedSkillProseHashes).toEqual(manifestBeforeSync.generatedSkillProseHashes);
+  }, 180_000);
 
   test.each(faces)("$harness prose edits cannot be absorbed into the core baseline", (face) => {
     const fixture = initializeSelected({ face, label: `skill-prose-${face.harness}` });

@@ -4,6 +4,7 @@ import {
   remainingOperationTimeoutMs,
 } from "../harness/test-budget.ts";
 import { afterEach, describe, expect, test, setDefaultTimeout } from "bun:test";
+import "../../core/tools/aidlc-host-manifest.test.ts";
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
