@@ -71,8 +71,8 @@ function coreBaselinePaths(input: {
 }): ReadonlySet<string> {
   const hookDocuments = input.hookContributions.flatMap((contribution) =>
     contribution.registrations.map((registration) => registration.path));
-  const trustSeed = hookDocuments.includes(`${input.harnessDir}/hooks.json`) ? [`${input.harnessDir}/trust-seed.toml`] : [];
-  return new Set([...hookDocuments, ...trustSeed, ...Object.keys(input.manifest.entries ?? {})]);
+  const hostPathDependent = [`${input.harnessDir}/trust-seed.toml`];
+  return new Set([...hookDocuments, ...hostPathDependent, ...Object.keys(input.manifest.entries ?? {})]);
 }
 
 function ownedBeforeSync(input: { readonly file: SyncedFile; readonly manifest: HostManifest }): boolean {

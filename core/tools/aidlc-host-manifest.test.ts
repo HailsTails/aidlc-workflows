@@ -125,11 +125,11 @@ type BaselineCase = {
 
 const baselineCases: BaselineCase[] = [
   {
-    name: "a registered codex hooks document holds the trust seed",
+    name: "a registered codex hooks document holds its own baseline",
     hookContributions: [contributions([".codex/hooks.json"])],
     expected: new Set([".codex/hooks.json", ".codex/trust-seed.toml", ".codex/config.toml"]),
   },
-  { name: "without hook registrations only entries hold baselines", hookContributions: [], expected: new Set([".codex/config.toml"]) },
+  { name: "without hook registrations the host-path trust seed still holds its baseline", hookContributions: [], expected: new Set([".codex/trust-seed.toml", ".codex/config.toml"]) },
 ];
 
 describe("coreBaselinePaths", () => {

@@ -24,7 +24,7 @@ const navigationTrustHash = `sha256:${createHash("sha256").update('{"event_name"
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }), NATIVE_PROCESS_CLEANUP_TIMEOUT_MS);
 
-function configuredSelection({ face, label, pluginRoot = join(REPO_ROOT, "dist/plugins/rin", face.harness) }: { face: Face; label: string; pluginRoot?: string }): ConfiguredFixture {
+function configuredSelection({ face, label, pluginRoot = join(REPO_ROOT, "dist/plugins/rin", face.harness), plugins = ["aidlc", "rin"] }: { face: Face; label: string; pluginRoot?: string; plugins?: readonly string[] }): ConfiguredFixture {
   const projectDir = join(scratch, label);
   mkdirSync(join(projectDir, ".git"), { recursive: true });
   const configHome = join(scratch, `${label}-home`);
@@ -32,7 +32,7 @@ function configuredSelection({ face, label, pluginRoot = join(REPO_ROOT, "dist/p
   const environment: NodeJS.ProcessEnv = { ...hermeticGitEnvironment({ configHome }), CODEX_HOME: join(configHome, ".codex"), CLAUDE_CONFIG_DIR: join(configHome, ".claude"), AIDLC_PROJECT_DIR: projectDir, CLAUDE_PROJECT_DIR: projectDir, AIDLC_RUNTIME_PROJECT_DIR: projectDir, AIDLC_RUNTIME_HARNESS_ROOT: join(projectDir, face.leaf), AIDLC_STAGE_GRAPH: join(projectDir, face.leaf, "tools/data/stage-graph.json"), AIDLC_SCOPE_GRID: join(projectDir, face.leaf, "tools/data/scope-grid.json"), AIDLC_SCOPES_DIR: join(projectDir, face.leaf, "scopes"), AIDLC_SENSORS_DIR: join(projectDir, face.leaf, "sensors"), AIDLC_AGENTS_DIR: join(projectDir, face.leaf, "agents"), AIDLC_RULES_DIR: join(projectDir, "aidlc/spaces/default/memory"), AIDLC_HARNESS_DIR: face.leaf, AIDLC_HARNESS_NAME: face.harness, CLAUDE_PLUGIN_ROOT: pluginRoot, PLUGIN_ROOT: pluginRoot, AIDLC_PLUGIN_ROOT: pluginRoot };
   const initialization = configProject({ ...face, projectDir, environment });
   const metadata = join(projectDir, face.leaf, "tools/data/harness.json");
-  writeFileSync(metadata, `${JSON.stringify({ ...JSON.parse(readFileSync(metadata, "utf8")), plugins: ["aidlc", "rin"] }, null, 2)}\n`);
+  writeFileSync(metadata, `${JSON.stringify({ ...JSON.parse(readFileSync(metadata, "utf8")), plugins }, null, 2)}\n`);
   return { ...face, projectDir, pluginRoot, environment, initialization };
 }
 
@@ -292,6 +292,20 @@ describe("composed root skill ownership baseline", () => {
     expect(unrecordedCoreBaselines(manifestBeforeSync, face)).toEqual([]);
     expect(coreBaselineHashes(hostManifest(fixture), face)).toEqual(coreBaselineHashes(manifestBeforeSync, face));
     expect(hostManifest(fixture).files[face.skillFile]).toBe(installedHash(fixture, face.skillFile));
+  }, 180_000);
+
+  test("codex sync without a registered hook document keeps the trust seed hash config recorded", () => {
+    const face = faces.find((candidate) => candidate.harness === "codex");
+    if (face === undefined) throw new Error("no codex face");
+    const seed = ".codex/trust-seed.toml";
+    const fixture = configuredSelection({ face, label: "trust-seed-unhooked", pluginRoot: join(REPO_ROOT, "dist/plugins/test-pro/codex"), plugins: ["aidlc", "test-pro"] });
+    expect(fixture.initialization.status, fixture.initialization.stdout + fixture.initialization.stderr).toBe(0);
+    const recorded = hostManifest(fixture).files[seed];
+    expect(installedHash(fixture, seed)).toBe(recorded);
+    const synchronized = syncProject(fixture);
+    expect(synchronized.status, synchronized.stdout + synchronized.stderr).toBe(0);
+    expect(installedHash(fixture, seed)).not.toBe(recorded);
+    expect(hostManifest(fixture).files[seed]).toBe(recorded);
   }, 180_000);
 
   test.each(faces)("$harness config after a first hook-plugin sync keeps the hook registration", (face) => {
