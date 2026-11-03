@@ -1,21 +1,16 @@
-import {
-  copyFileSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
 import {
   bashInvocationPayload,
   permissionDecisionFrom,
   runRanHookProcess,
 } from "./run-hook-process.ts";
 
-const hooksDirectory = dirname(fileURLToPath(import.meta.url));
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+
+const hooksDirectory = paths.dirname({ path: paths.fromFileUrl({ url: import.meta.url }) });
 const RUNTIME = "node";
 const INLINE_EXEC_HOOK = "block-inline-exec.ts";
 const INLINE_EXEC_RUNTIME = "bun";
@@ -33,13 +28,14 @@ const mutantOf = (input: {
   readonly find: string;
   readonly replace: string;
 }): Mutant => {
-  const root = mkdtempSync(join(tmpdir(), "hook-mutant-"));
+  const root = files.makeTemporaryDirectory(
+    paths.join({ segments: [files.temporaryRoot(), "hook-mutant-"] }),
+  );
   mutantRoots.push(root);
-  const mutantPath = join(root, input.hookFileName);
-  copyFileSync(join(hooksDirectory, input.hookFileName), mutantPath);
-  const original = readFileSync(mutantPath, "utf8");
+  const mutantPath = paths.join({ segments: [root, input.hookFileName] });
+  const original = files.read(paths.join({ segments: [hooksDirectory, input.hookFileName] }));
   const mutated = original.replace(input.find, input.replace);
-  writeFileSync(mutantPath, mutated);
+  files.write(mutantPath, mutated);
   return {
     path: mutantPath,
     anchorFound: original.includes(input.find),
@@ -53,7 +49,7 @@ const denyDecisionFrom = (stdout: string): boolean =>
 
 afterEach(() => {
   mutantRoots.splice(0).forEach((root) => {
-    rmSync(root, { recursive: true, force: true });
+    files.remove(root, { recursive: true, force: true });
   });
 });
 
