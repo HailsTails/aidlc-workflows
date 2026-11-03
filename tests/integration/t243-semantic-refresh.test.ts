@@ -173,13 +173,29 @@ describe("accepted Gate 1 framing settlement at the real transaction boundary", 
     expect(readFileSync(join(f.projectDir, ".claude/tools/payload.ts"), "utf8")).toBe("original payload\n");
     expect(workspace(f)).toEqual(before);
   });
-  test("the accepted candidate prose is Gate 1's shipped frontmatter", () => {
+  test("the accepted Gate 1 seats candidate is Gate 1's shipped frontmatter", () => {
     const shipped = parseStageFrontmatter(readFileSync(join(repositoryRoot, "plugins/rin/stages/inception/rin-gate-1-framing.md"), "utf8"));
-    expect({ slug: shipped.slug, plugin: shipped.plugin, condition: shipped.condition, outputs: shipped.outputs }).toEqual({
-      slug: "rin-gate-1-framing", plugin: "rin", condition: settledFramingCondition, outputs: settledFramingOutputs,
-    });
+    expect({
+      slug: shipped.slug, plugin: shipped.plugin, condition: shipped.condition, outputs: shipped.outputs,
+      lead_agent: shipped.lead_agent, support_agents: shipped.support_agents, reviewer: shipped.reviewer,
+    }).toEqual({ slug: "rin-gate-1-framing", plugin: "rin", ...seatedFramingFields });
   });
 });
+
+const seatedFramingFields = {
+  condition: "Second gate of the rin pipeline. Turns the Slice's assumption-laden intent into atomic, non-dominated, load-bearing decision-questions, settles them with its seats, and writes back confirmed scope directly into the AIDLC requirements artefact. The seats and the lead draft the framing together. Prose only; no solution is chosen here (Gate 2).",
+  outputs: "rin-requirements.md (the confirmed scope, BDD Given/When/Then, as the native AIDLC requirements artefact — no spec.md) and rin-framing-questions.md (the load-bearing decision-questions, each with the gate's answer and its source, or its stopping class and pack, and the disposition of every seat objection), under this stage's record dir, engine-resolved",
+  lead_agent: "rin-product-agent",
+  support_agents: ["rin-architect-agent", "rin-developer-agent", "rin-customer-seat-agent"],
+  reviewer: "rin-decorrelated-review-agent",
+};
+const installedFramingFields = {
+  condition: askedFramingCondition,
+  outputs: askedFramingOutputs,
+  lead_agent: "aidlc-product-agent",
+  support_agents: ["aidlc-architect-agent", "aidlc-developer-agent"],
+  reviewer: "aidlc-architecture-reviewer-agent",
+};
 
 const framingSlug = "rin-gate-1-framing";
 const framingSession = "01995000-7a11-7000-8000-0000000001aa";
@@ -210,8 +226,8 @@ const hookInput = (args: { readonly rin: ComposedRin; readonly event: string; re
   JSON.stringify({ hook_event_name: args.event, session_id: framingSession, cwd: args.rin.projectDir, ...args.fields });
 const runHook = (args: { readonly rin: ComposedRin; readonly hook: string; readonly event: string; readonly fields: Readonly<Record<string, unknown>> }): InstalledRun =>
   runInstalled({ rin: args.rin, tool: "aidlc.ts", argv: ["engine", "hook", args.hook], input: hookInput(args) });
-const framingGraph = (args: { readonly graph: readonly GraphStage[]; readonly condition: string; readonly outputs: string }): readonly GraphStage[] =>
-  args.graph.map((stage) => stage.slug === framingSlug ? { ...stage, condition: args.condition, outputs: args.outputs } : stage);
+const framingGraph = (args: { readonly graph: readonly GraphStage[]; readonly fields: Readonly<Record<string, unknown>> }): readonly GraphStage[] =>
+  args.graph.map((stage) => stage.slug === framingSlug ? { ...stage, ...args.fields } : stage);
 const installBeforeSettlement = (rin: ComposedRin): { readonly sourceRoot: string; readonly candidateGraph: string } => {
   const candidateGraph = readFileSync(join(rin.projectDir, stageGraphPath), "utf8");
   const sourceRoot = join(rin.root, "source");
@@ -220,7 +236,7 @@ const installBeforeSettlement = (rin: ComposedRin): { readonly sourceRoot: strin
   });
   const graph: readonly GraphStage[] = JSON.parse(candidateGraph);
   put({ root: rin.projectDir, path: stageGraphPath,
-    content: JSON.stringify(framingGraph({ graph, condition: askedFramingCondition, outputs: askedFramingOutputs })) });
+    content: JSON.stringify(framingGraph({ graph, fields: installedFramingFields })) });
   return { sourceRoot, candidateGraph };
 };
 const openFramingRecord = (rin: ComposedRin): string => {
@@ -308,7 +324,8 @@ test("after the Gate 1 settlement refresh, a blank answer lets the turn end for 
     refreshed: refreshed.validation.kind === "planned" ? refreshed.validation.evidence.stageRevalidation : refreshed.validation,
     applied: refreshed.applied,
     installedGraphIsCandidate,
-    recordNamed: framingNotes.length === 1 && (framingNotes[0] ?? "").includes(`answer the open Gate 1 questions in ${framingRecord} before resuming`),
+    recordNamed: framingNotes.length === 2 && (framingNotes[0] ?? "").includes(`answer the open Gate 1 questions in ${framingRecord} before resuming`) &&
+      (framingNotes[1] ?? "").endsWith(`Open at this stage: ${framingRecord}.`),
     workspaceKept,
     stopWithBlank: { status: stopWithBlank.status, stdout: stopWithBlank.stdout.trim() },
     carveOut: traceWithBlank.includes(`active stage ${framingSlug} has an unanswered question; allowing the stop (pending-question carve-out)`),
@@ -321,7 +338,7 @@ test("after the Gate 1 settlement refresh, a blank answer lets the turn end for 
     stopAfterSelfFill: { status: stopAfterSelfFill.status, decision: stopDecision(stopAfterSelfFill) },
     stopAfterRemoval: { status: stopAfterRemoval.status, decision: stopDecision(stopAfterRemoval) },
   }).toEqual({
-    refreshed: { [framingSlug]: ["framing-decision-record"] },
+    refreshed: { [framingSlug]: ["framing-decision-record", "rin-gate-seats"] },
     applied: { kind: "executed", result: undefined },
     installedGraphIsCandidate: true,
     recordNamed: true,
