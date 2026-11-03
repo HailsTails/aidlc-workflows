@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fail, succeed } from "../domain/result.ts";
+import { createStorePlacementCheck } from "./credential-store-boundary.ts";
 import type { StoreLocator } from "./credential-store-port.ts";
 import { createBodyFileReader } from "./read-body-file.ts";
 import type { CanonicalPathResolver, TextFileReader } from "./text-file-port.ts";
@@ -27,8 +28,10 @@ const readerFor = ({
   const readTextFile = vi.fn<TextFileReader>().mockResolvedValue(succeed(fileText));
   const readBodyFile = createBodyFileReader({
     readTextFile,
-    resolveCanonicalPath: canonicalPaths({ [storeDirectory]: storeDirectory, ...paths }),
-    locateCredentialStore: vi.fn<StoreLocator>().mockReturnValue(succeed(storeDirectory)),
+    placeInStore: createStorePlacementCheck({
+      resolveCanonicalPath: canonicalPaths({ [storeDirectory]: storeDirectory, ...paths }),
+      locateCredentialStore: vi.fn<StoreLocator>().mockReturnValue(succeed(storeDirectory)),
+    }),
   });
   return { readBodyFile, readTextFile };
 };
@@ -82,8 +85,10 @@ describe("createBodyFileReader", () => {
   it("still guards private keys when the credential store cannot be located", async () => {
     const readBodyFile = createBodyFileReader({
       readTextFile: vi.fn<TextFileReader>().mockResolvedValue(succeed("-----BEGIN PRIVATE KEY-----")),
-      resolveCanonicalPath: canonicalPaths({ "key.txt": "H:/shop/key.txt" }),
-      locateCredentialStore: vi.fn<StoreLocator>().mockReturnValue(fail({ detail: "no home" })),
+      placeInStore: createStorePlacementCheck({
+        resolveCanonicalPath: canonicalPaths({ "key.txt": "H:/shop/key.txt" }),
+        locateCredentialStore: vi.fn<StoreLocator>().mockReturnValue(fail({ detail: "no home" })),
+      }),
     });
 
     expect(await readBodyFile("key.txt")).toEqual(

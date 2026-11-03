@@ -31,7 +31,6 @@ const contextWith = (flags: CommandFlags) => ({
         .fn<TokenMinter["mintInstallationToken"]>()
         .mockResolvedValue(succeed(secret("ghs_reviewer"))),
     },
-    connectRepository: vi.fn(),
     connectGitHubCli: vi.fn(),
     worktree: {
       readCurrentBranch: vi.fn(),
@@ -46,6 +45,7 @@ const contextWith = (flags: CommandFlags) => ({
         .mockResolvedValue(succeed(undefined)),
     },
     readBodyFile: vi.fn(),
+    placeInStore: vi.fn(),
     credentialHelperCommand,
   },
 });

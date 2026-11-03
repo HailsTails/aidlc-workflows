@@ -1,6 +1,7 @@
+import { createStorePlacementCheck } from "./application/credential-store-boundary.ts";
 import { createTokenMinter } from "./application/mint-installation-token.ts";
 import { createBodyFileReader } from "./application/read-body-file.ts";
-import { runCommand } from "./infrastructure/command-runner.ts";
+import { createCommandRunner } from "./infrastructure/command-runner.ts";
 import {
   createFileCredentialStore,
   locateUserStore,
@@ -12,8 +13,8 @@ import {
 import { createGitHubAppApi } from "./infrastructure/github-app-api.ts";
 import { createGitHubCli } from "./infrastructure/github-cli.ts";
 import { createDefaultGitHubHttp } from "./infrastructure/github-http.ts";
-import { createGitHubRepositoryApi } from "./infrastructure/github-repository-api.ts";
 import { loadIdentityConfiguration } from "./infrastructure/identity-configuration.ts";
+import { runProcess } from "./infrastructure/process-runner.ts";
 import { createRs256Signer } from "./infrastructure/rs256-signer.ts";
 import { createSystemClock } from "./infrastructure/system-clock.ts";
 import { readTextFile, resolveCanonicalPath } from "./infrastructure/text-file-reader.ts";
@@ -29,9 +30,8 @@ const CONSUMER_IDENTITY_CONFIGURATION = new URL(
 const CLI_ENTRY_PATH = `${import.meta.dirname}/cli-main.ts`;
 
 const createCliDependencies = (): CliDependencies => {
-  const worktree = createGitCliWorktree({ runCommand });
-  const http = createDefaultGitHubHttp();
   const locateCredentialStore = locateUserStore({ environment: createProcessUserEnvironment() });
+  const placeInStore = createStorePlacementCheck({ resolveCanonicalPath, locateCredentialStore });
   return {
     terminal: createProcessTerminal(),
     loadConfiguration: () =>
@@ -41,20 +41,15 @@ const createCliDependencies = (): CliDependencies => {
         locateStoreDirectory: locateCredentialStore,
         readTextFile,
       }),
-      appApi: createGitHubAppApi({ http }),
+      appApi: createGitHubAppApi({ http: createDefaultGitHubHttp() }),
       clock: createSystemClock(),
       signer: createRs256Signer(),
     }),
-    connectRepository: ({ token, repository }) =>
-      createGitHubRepositoryApi({ http, credential: token, repository }),
     connectGitHubCli: ({ token, repository }) =>
-      createGitHubCli({ runCommand, credential: token, repository }),
-    worktree,
-    readBodyFile: createBodyFileReader({
-      readTextFile,
-      resolveCanonicalPath,
-      locateCredentialStore,
-    }),
+      createGitHubCli({ runProcess, credential: token, repository }),
+    worktree: createGitCliWorktree({ runCommand: createCommandRunner(runProcess) }),
+    readBodyFile: createBodyFileReader({ readTextFile, placeInStore }),
+    placeInStore,
     credentialHelperCommand: credentialHelperCommandFor({ cliEntryPath: CLI_ENTRY_PATH }),
   };
 };

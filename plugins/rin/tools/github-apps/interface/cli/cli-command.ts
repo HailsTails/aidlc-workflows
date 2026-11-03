@@ -1,5 +1,5 @@
-import type { GitHubCliPort } from "../../application/github-cli-port.ts";
-import type { GitHubRepositoryPort } from "../../application/github-repository-port.ts";
+import type { StorePlacementCheck } from "../../application/credential-store-boundary.ts";
+import type { GhRun, GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
 import type {
   IdentityConfiguration,
@@ -7,25 +7,20 @@ import type {
 } from "../../application/identity-configuration-port.ts";
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
 import type { BodyFileReader } from "../../application/read-body-file.ts";
-import type { AgentRole } from "../../domain/agent-role.ts";
-import type { InstallationPermissions } from "../../domain/installation-permissions.ts";
-import type { RepositorySlug } from "../../domain/repository-slug.ts";
+import type { GitHubCliAccess } from "../../application/run-gh-as-bot.ts";
 import type { Result } from "../../domain/result.ts";
-import type { Secret } from "../../domain/secret.ts";
 import type { CliFailure } from "./cli-failure.ts";
 import type { CommandFlags } from "./command-flags.ts";
 import type { Terminal } from "./terminal.ts";
-
-type RepositoryAccess = { readonly token: Secret; readonly repository: RepositorySlug };
 
 type CliDependencies = {
   readonly terminal: Terminal;
   readonly loadConfiguration: IdentityConfigurationLoader;
   readonly tokenMinter: TokenMinter;
-  readonly connectRepository: (access: RepositoryAccess) => GitHubRepositoryPort;
-  readonly connectGitHubCli: (access: RepositoryAccess) => GitHubCliPort;
+  readonly connectGitHubCli: (access: GitHubCliAccess) => GitHubCliPort;
   readonly worktree: GitWorktreePort;
   readonly readBodyFile: BodyFileReader;
+  readonly placeInStore: StorePlacementCheck;
   readonly credentialHelperCommand: string;
 };
 
@@ -40,18 +35,15 @@ type StandaloneContext = {
 
 type CommandContext = StandaloneContext & { readonly configuration: IdentityConfiguration };
 
-type RepositoryCommandContext = CommandContext & {
-  readonly role: AgentRole;
-  readonly repositoryApi: GitHubRepositoryPort;
-  readonly githubCli: GitHubCliPort;
+type PassThroughContext = {
+  readonly commandArguments: readonly string[];
+  readonly configuration: IdentityConfiguration;
+  readonly dependencies: CliDependencies;
 };
 
-type RepositoryCommand = {
-  readonly access: "repository";
-  readonly role: AgentRole;
-  readonly repeatableFlags?: readonly string[];
-  readonly permissions?: InstallationPermissions;
-  readonly execute: (context: RepositoryCommandContext) => CommandOutcome;
+type PassThroughCommand = {
+  readonly access: "pass-through";
+  readonly execute: (context: PassThroughContext) => Promise<Result<GhRun, CliFailure>>;
 };
 
 type LocalCommand = {
@@ -66,7 +58,7 @@ type StandaloneCommand = {
   readonly execute: (context: StandaloneContext) => CommandOutcome;
 };
 
-type CliCommand = RepositoryCommand | LocalCommand | StandaloneCommand;
+type CliCommand = PassThroughCommand | LocalCommand | StandaloneCommand;
 
 export type {
   CliCommand,
@@ -75,9 +67,8 @@ export type {
   CommandOutcome,
   CommandReport,
   LocalCommand,
-  RepositoryAccess,
-  RepositoryCommand,
-  RepositoryCommandContext,
+  PassThroughCommand,
+  PassThroughContext,
   StandaloneCommand,
   StandaloneContext,
 };

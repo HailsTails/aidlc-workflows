@@ -53,72 +53,41 @@ const COMMAND_START = "(?:^|&&|\\|\\||[\\n;&|(`])\\s*";
 const atCommandStart = ({ tail, flags }) =>
   new RegExp(`${COMMAND_START}${tail}`, flags);
 
+const SAME_ARGUMENTS = "<the same arguments>";
+
+const GH_WRITE_VERBS = [
+  { verb: "pr create", usage: SAME_ARGUMENTS },
+  { verb: "pr edit", usage: SAME_ARGUMENTS },
+  { verb: "pr comment", usage: SAME_ARGUMENTS },
+  { verb: "pr ready", usage: SAME_ARGUMENTS },
+  { verb: "pr merge", usage: SAME_ARGUMENTS },
+  { verb: "pr close", usage: '<n> [--comment "..."] (the number right after the verb)' },
+  {
+    verb: "pr review",
+    usage:
+      '<n> --approve|--request-changes|--comment [--body "..."] [--commit-sha <sha>] (the number right after the verb)',
+  },
+  { verb: "issue create", usage: SAME_ARGUMENTS },
+  { verb: "issue edit", usage: SAME_ARGUMENTS },
+  { verb: "issue comment", usage: SAME_ARGUMENTS },
+  { verb: "issue close", usage: SAME_ARGUMENTS },
+  { verb: "issue reopen", usage: SAME_ARGUMENTS },
+];
+
+const verbPattern = (verb) => `gh\\s+${verb.split(" ").join("\\s+")}\\b`;
+
 const writeRules = [
-  {
-    pattern: atCommandStart({ tail: "gh\\s+pr\\s+create\\b" }),
-    hint: ({ cli }) =>
-      `${cli} pr --title "..." --body "..." [--label <name> ...] [--attach <file>[#alt] ...]`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+pr\\s+edit\\b" }),
-    hint: ({ cli }) =>
-      `${cli} pr-edit --pr <n> [--title "..."] [--body "..."] [--add-label <name> ...] [--remove-label <name> ...] [--attach <file>[#alt] ...]`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+pr\\s+review\\b" }),
-    hint: ({ cli }) =>
-      `${cli} review --pr <n> --event approve|request-changes|comment --body "..."`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+(?:pr|issue)\\s+comment\\b" }),
-    hint: ({ cli }) =>
-      `${cli} comment --target <n> --body "..." [--attach <file>[#alt] ...]`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+issue\\s+create\\b" }),
-    hint: ({ cli }) =>
-      `${cli} issue --title "..." --body "..." [--label <name> ...] [--attach <file>[#alt] ...]`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+issue\\s+edit\\b" }),
-    hint: ({ cli }) =>
-      `${cli} issue-edit --issue <n> [--add-label <name> ...] [--remove-label <name> ...] [--title "..."] [--body "..."] [--state open|closed] [--attach <file>[#alt] ...]`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+issue\\s+close\\b" }),
-    hint: ({ cli }) =>
-      `${cli} issue-edit --issue <n> --state closed (add a closing note with ${cli} comment --target <n> --body "...")`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+issue\\s+reopen\\b" }),
-    hint: ({ cli }) => `${cli} issue-edit --issue <n> --state open`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+pr\\s+merge\\b" }),
-    hint: ({ cli, authorLogin }) =>
-      `${cli} merge --pr <n> (squash-merges as ${authorLogin}; refuses without an APPROVED verdict)`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+pr\\s+close\\b" }),
-    hint: ({ cli }) => `${cli} close --pr <n> --reason <text>`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+pr\\s+ready\\b[^\\n]*--undo\\b" }),
-    hint: ({ cli }) =>
-      `${cli} draft --pr <n> (converts to draft so a review sweep cannot merge work in progress)`,
-  },
-  {
-    pattern: atCommandStart({ tail: "gh\\s+pr\\s+ready\\b" }),
-    hint: ({ cli }) =>
-      `${cli} ready --pr <n> (marks ready for review once the board has converged)`,
-  },
+  ...GH_WRITE_VERBS.map(({ verb, usage }) => ({
+    pattern: atCommandStart({ tail: verbPattern(verb) }),
+    hint: ({ cli }) => `${cli} gh ${verb} ${usage}`,
+  })),
   {
     pattern: atCommandStart({
       tail: "gh\\s+api\\b[^\\n]*(?:-X|--method)\\s*(?:POST|PUT|PATCH|DELETE)\\b",
       flags: "i",
     }),
     hint: ({ cli }) =>
-      `mutating gh api under the human login is blocked — use a role wrapper (${cli} pr / review / comment) or mint a scoped token with ${cli} token --role <author|reviewer>.`,
+      `${cli} gh pr|issue <verb> for pull request and issue writes; for anything else, ${cli} token --role <author|reviewer> prints a scoped bot token for GH_TOKEN.`,
   },
 ];
 
@@ -140,7 +109,7 @@ const denyReasonFor = ({ breach, identity }) => {
   return [
     opening,
     "",
-    `Use the role-scoped wrapper instead — it mints the right bot token and adds the provenance marker: ${breach.hint(identity)}`,
+    `Run the same gh command through the bot wrapper — it mints the role's bot token, pins the repository and stamps the provenance marker: ${breach.hint(identity)}`,
     "",
     `Read-only gh (gh pr view / list / checks / diff, gh api GET) is fine. git push is fine — agent worktrees push as ${identity.authorLogin} via the credential helper.`,
   ].join("\n");

@@ -1,15 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bodyFlags, issueOrPullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
-
-describe("issueOrPullNumberFlag", () => {
-  it("reads an issue or pull request number", () => {
-    expect(issueOrPullNumberFlag.parse("42")).toBe(42);
-  });
-
-  it("refuses something that is not a positive number", () => {
-    expect(issueOrPullNumberFlag.safeParse("#42").success).toBe(false);
-  });
-});
+import { sessionFlag } from "./command-flag-schemas.ts";
 
 describe("sessionFlag", () => {
   it("accepts a branch-shaped session id", () => {
@@ -18,11 +8,5 @@ describe("sessionFlag", () => {
 
   it("refuses text that could close the provenance comment early", () => {
     expect(sessionFlag.safeParse("x --> injected").success).toBe(false);
-  });
-});
-
-describe("bodyFlags", () => {
-  it("leaves both body sources optional", () => {
-    expect(bodyFlags["body-file"].parse(undefined)).toBeUndefined();
   });
 });

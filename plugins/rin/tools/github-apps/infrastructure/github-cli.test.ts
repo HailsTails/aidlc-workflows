@@ -1,173 +1,149 @@
 import { describe, expect, it, vi } from "vitest";
 import { fail, succeed } from "../domain/result.ts";
 import { secret } from "../domain/secret.ts";
-import type { CommandRunner } from "./command-runner.ts";
 import { createGitHubCli } from "./github-cli.ts";
+import type { ProcessRunner } from "./process-runner.ts";
 
 const repository = { owner: "HailsTails", name: "minutesarah-shop" };
 
-const issueUrl = "https://github.com/HailsTails/minutesarah-shop/issues/429";
+const environment = { GH_TOKEN: "ghs_bot", GH_PROMPT_DISABLED: "1" };
 
-const botEnvironment = { GH_TOKEN: "ghs_author", GH_PROMPT_DISABLED: "1" };
+const printed = (standardOutput: string) => succeed({ standardOutput, standardError: "", exitCode: 0 });
 
-const printing = (standardOutput: string) =>
-  vi.fn<CommandRunner>().mockResolvedValue(succeed(standardOutput));
+const cliWith = (runProcess: ProcessRunner) =>
+  createGitHubCli({ runProcess, credential: secret("ghs_bot"), repository });
 
-const ghCli = (runCommand: CommandRunner) =>
-  createGitHubCli({ runCommand, credential: secret("ghs_author"), repository });
+const pullRequestView = JSON.stringify({
+  id: "PR_node4",
+  number: 4,
+  headRefOid: "head4",
+  state: "OPEN",
+  isDraft: false,
+  mergeStateStatus: "CLEAN",
+  reviews: [{ state: "APPROVED", commit: { oid: "head4" }, author: { login: "rin-reviewer" } }],
+});
 
-describe("createGitHubCli", () => {
-  it("opens a pull request through gh as the bot, with the body on standard input", async () => {
-    const runCommand = printing("https://github.com/HailsTails/minutesarah-shop/pull/7\n");
+describe("createGitHubCli run", () => {
+  it("runs gh with the bot token, prompts off, pinned to the configured repository", async () => {
+    const runProcess = vi.fn<ProcessRunner>().mockResolvedValue(printed(""));
 
-    const opened = await ghCli(runCommand).openPullRequest({
-      title: "Add the basket",
-      body: "marker\n\n![Basket](./basket.png)",
-      head: "feature/basket",
-      base: "main",
-      readiness: "draft",
-      labels: ["stage:review"],
-      attachments: ["./basket.png", "./after.png#After"],
-    });
+    await cliWith(runProcess).run({ ghArguments: ["pr", "create", "--body-file", "-"], standardInput: "x" });
 
-    expect(opened).toEqual(succeed({ url: "https://github.com/HailsTails/minutesarah-shop/pull/7" }));
-    expect(runCommand).toHaveBeenCalledExactlyOnceWith({
+    expect(runProcess).toHaveBeenCalledExactlyOnceWith({
       command: "gh",
-      commandArguments: [
-        "pr",
-        "create",
-        "--title",
-        "Add the basket",
-        "--head",
-        "feature/basket",
-        "--base",
-        "main",
-        "--draft",
-        "--label",
-        "stage:review",
-        "--body-file",
-        "-",
-        "--attach",
-        "./basket.png",
-        "--attach",
-        "./after.png#After",
-        "--repo",
-        "HailsTails/minutesarah-shop",
-      ],
-      environment: botEnvironment,
-      standardInput: "marker\n\n![Basket](./basket.png)",
+      commandArguments: ["pr", "create", "--body-file", "-", "--repo", "HailsTails/minutesarah-shop"],
+      environment,
+      standardInput: "x",
     });
   });
 
-  it("edits a pull request without a body flag when the body is unchanged", async () => {
-    const runCommand = printing("https://github.com/HailsTails/minutesarah-shop/pull/7\n");
+  it("reports gh missing from PATH", async () => {
+    const runProcess = vi
+      .fn<ProcessRunner>()
+      .mockResolvedValue(fail({ kind: "process-unavailable", command: "gh", detail: "spawn gh ENOENT" }));
 
-    await ghCli(runCommand).revisePullRequest({
-      pullNumber: 7,
-      title: undefined,
-      body: undefined,
-      labels: { add: ["stage:review"], remove: ["stage:build"] },
-      attachments: ["./after.png"],
-    });
+    expect(await cliWith(runProcess).run({ ghArguments: ["pr", "ready"], standardInput: undefined })).toEqual(
+      fail({ kind: "gh-unavailable", detail: "spawn gh ENOENT" }),
+    );
+  });
+});
 
-    expect(runCommand).toHaveBeenCalledExactlyOnceWith({
+describe("createGitHubCli readPullRequest", () => {
+  it("asks gh pr view for the fields the guards read", async () => {
+    const runProcess = vi.fn<ProcessRunner>().mockResolvedValue(printed(pullRequestView));
+
+    await cliWith(runProcess).readPullRequest(4);
+
+    expect(runProcess).toHaveBeenCalledExactlyOnceWith({
       command: "gh",
       commandArguments: [
         "pr",
-        "edit",
-        "7",
-        "--add-label",
-        "stage:review",
-        "--remove-label",
-        "stage:build",
-        "--attach",
-        "./after.png",
+        "view",
+        "4",
+        "--json",
+        "id,number,headRefOid,state,isDraft,mergeStateStatus,reviews",
         "--repo",
         "HailsTails/minutesarah-shop",
       ],
-      environment: botEnvironment,
+      environment,
       standardInput: undefined,
     });
   });
 
-  it("comments through gh issue comment, which serves pull requests too", async () => {
-    const runCommand = printing(`${issueUrl}#issuecomment-9\n`);
+  it("maps what gh printed to the pull request and its reviews", async () => {
+    const runProcess = vi.fn<ProcessRunner>().mockResolvedValue(printed(pullRequestView));
 
-    const commented = await ghCli(runCommand).commentOnIssue({
-      issueNumber: 429,
-      body: "marker\n\nSee recording.",
-      attachments: ["./repro.mp4"],
-    });
-
-    expect(commented).toEqual(succeed({ url: `${issueUrl}#issuecomment-9` }));
-    expect(runCommand.mock.lastCall?.[0].commandArguments.slice(0, 3)).toEqual([
-      "issue",
-      "comment",
-      "429",
-    ]);
-  });
-
-  it("opens and edits issues through gh", async () => {
-    const runCommand = printing(`${issueUrl}\n`);
-    const cli = ghCli(runCommand);
-
-    await cli.openIssue({ title: "Basket", body: "B", labels: ["bug"], attachments: ["./a.png"] });
-    await cli.reviseIssue({
-      issueNumber: 429,
-      title: "Basket keeps items",
-      body: undefined,
-      labels: { add: [], remove: [] },
-      attachments: ["./b.png"],
-    });
-
-    expect(runCommand.mock.calls.map(([invocation]) => invocation.commandArguments)).toEqual([
-      ["issue", "create", "--title", "Basket", "--label", "bug", "--body-file", "-", "--attach", "./a.png", "--repo", "HailsTails/minutesarah-shop"],
-      ["issue", "edit", "429", "--title", "Basket keeps items", "--attach", "./b.png", "--repo", "HailsTails/minutesarah-shop"],
-    ]);
-  });
-
-  it("reports what gh still published when an attachment failed", async () => {
-    const runCommand = vi.fn<CommandRunner>().mockResolvedValue(
-      fail({
-        kind: "command-failed",
-        command: "gh issue create",
-        detail: "could not upload ./a.png",
-        standardOutput: `${issueUrl}\n`,
-      }),
-    );
-
-    expect(
-      await ghCli(runCommand).openIssue({
-        title: "Basket",
-        body: "B",
-        labels: [],
-        attachments: ["./a.png"],
-      }),
-    ).toEqual(
-      fail({
-        kind: "gh-command-failed",
-        command: "gh issue create",
-        detail: "could not upload ./a.png",
-        publishedUrl: issueUrl,
+    expect(await cliWith(runProcess).readPullRequest(4)).toEqual(
+      succeed({
+        pullRequest: {
+          pullNumber: 4,
+          nodeId: "PR_node4",
+          headSha: "head4",
+          lifecycle: "open",
+          readiness: "ready-for-review",
+          mergeState: "clean",
+        },
+        reviews: [{ stance: "approved", reviewedSha: "head4" }],
       }),
     );
   });
 
-  it("refuses a gh run that printed no url", async () => {
-    const opened = await ghCli(printing("\n")).openIssue({
-      title: "Basket",
-      body: "B",
-      labels: [],
-      attachments: ["./a.png"],
-    });
+  it("reports what gh said when the read fails", async () => {
+    const runProcess = vi
+      .fn<ProcessRunner>()
+      .mockResolvedValue(succeed({ standardOutput: "", standardError: "no such pull request\n", exitCode: 1 }));
 
-    expect(opened).toEqual(
+    expect(await cliWith(runProcess).readPullRequest(4)).toEqual(
+      fail({ kind: "gh-read-failed", operation: "read pull request", detail: "no such pull request" }),
+    );
+  });
+
+  it("reports output that is not JSON", async () => {
+    const runProcess = vi.fn<ProcessRunner>().mockResolvedValue(printed("not json"));
+
+    expect(await cliWith(runProcess).readPullRequest(4)).toEqual(
       fail({
-        kind: "gh-command-failed",
-        command: "gh issue create --title Basket",
-        detail: "gh printed no URL",
-        publishedUrl: undefined,
+        kind: "gh-read-failed",
+        operation: "read pull request",
+        detail: "gh printed something other than JSON",
       }),
     );
+  });
+});
+
+describe("createGitHubCli submitReview", () => {
+  it("binds the review to the commit through gh api graphql, with the body on standard input", async () => {
+    const runProcess = vi.fn<ProcessRunner>().mockResolvedValue(printed(""));
+
+    await cliWith(runProcess).submitReview({
+      pullRequestId: "PR_node4",
+      commitSha: "head4",
+      event: "request-changes",
+      body: "Fix it.",
+    });
+
+    expect(runProcess).toHaveBeenCalledExactlyOnceWith({
+      command: "gh",
+      commandArguments: [
+        "api",
+        "graphql",
+        "-f",
+        `query=mutation SubmitReview($pullRequestId: ID!, $event: PullRequestReviewEvent!, $commitOID: GitObjectID!, $body: String!) {
+  addPullRequestReview(input: { pullRequestId: $pullRequestId, event: $event, commitOID: $commitOID, body: $body }) { pullRequestReview { url } }
+}`,
+        "-f",
+        "pullRequestId=PR_node4",
+        "-f",
+        "event=REQUEST_CHANGES",
+        "-f",
+        "commitOID=head4",
+        "-F",
+        "body=@-",
+        "--jq",
+        ".data.addPullRequestReview.pullRequestReview.url",
+      ],
+      environment,
+      standardInput: "Fix it.",
+    });
   });
 });

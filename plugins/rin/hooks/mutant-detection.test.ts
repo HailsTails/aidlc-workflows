@@ -100,8 +100,8 @@ describe("mutant detection — the suites fail against a weakened rail", () => {
   test("a github-writes mutant with its create rule widened stops denying", async () => {
     const mutant = mutantOf({
       hookFileName: "guard-github-writes.mjs",
-      find: 'tail: "gh\\\\s+pr\\\\s+create\\\\b"',
-      replace: 'tail: "gh\\\\s+pr\\\\s+create-nothing\\\\b"',
+      find: '{ verb: "pr create", usage: SAME_ARGUMENTS }',
+      replace: '{ verb: "pr create-nothing", usage: SAME_ARGUMENTS }',
     });
     expect(mutant.anchorFound).toBe(true);
     expect(mutant.textChanged).toBe(true);

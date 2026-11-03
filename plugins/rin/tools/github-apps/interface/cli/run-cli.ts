@@ -1,18 +1,18 @@
-import type { IdentityConfiguration } from "../../application/identity-configuration-port.ts";
+import type { GhRun } from "../../application/github-cli-port.ts";
+import type { Result } from "../../domain/result.ts";
 import type {
   CliCommand,
   CliDependencies,
   CommandOutcome,
+  CommandReport,
   LocalCommand,
-  RepositoryCommand,
+  PassThroughCommand,
+  StandaloneCommand,
 } from "./cli-command.ts";
-import { describeCliFailure } from "./cli-failure.ts";
-import { parseCommandFlags, type CommandFlags } from "./command-flags.ts";
-import { conversationCommands } from "./conversation-commands.ts";
-import { issueCommands } from "./issue-commands.ts";
-import { landingCommands } from "./landing-commands.ts";
+import { describeCliFailure, type CliFailure } from "./cli-failure.ts";
+import { parseCommandFlags } from "./command-flags.ts";
+import { ghCommand } from "./gh-command.ts";
 import { localCommands } from "./local-commands.ts";
-import { pullRequestCommands } from "./pull-request-commands.ts";
 import type { Terminal } from "./terminal.ts";
 
 const EXIT_SUCCESS = 0;
@@ -21,11 +21,10 @@ const EXIT_FAILURE = 1;
 
 const EXIT_USAGE = 2;
 
+const ARGUMENT_SEPARATOR = "--";
+
 const COMMANDS = {
-  ...pullRequestCommands,
-  ...conversationCommands,
-  ...issueCommands,
-  ...landingCommands,
+  gh: ghCommand,
   ...localCommands,
 } satisfies Readonly<Record<string, CliCommand>>;
 
@@ -34,96 +33,82 @@ type CommandName = keyof typeof COMMANDS;
 const isCommandName = (commandName: string): commandName is CommandName =>
   Object.hasOwn(COMMANDS, commandName);
 
-const USAGE = `Usage: bun <harness-dir>/tools/github-apps/cli-main.ts <${Object.keys(COMMANDS).join("|")}> [--flag value ...]\n`;
+const USAGE = `Usage: bun <harness-dir>/tools/github-apps/cli-main.ts <${Object.keys(COMMANDS).join("|")}> ...\n`;
 
 type CliInvocation = {
   readonly dependencies: CliDependencies;
   readonly commandArguments: readonly string[];
 };
 
-type CommandRequest = {
-  readonly command: CliCommand;
-  readonly flags: CommandFlags;
+type CommandSelection<Command extends CliCommand> = {
+  readonly command: Command;
+  readonly commandTokens: readonly string[];
   readonly dependencies: CliDependencies;
 };
 
-type ConfiguredRun = Omit<CommandRequest, "command"> & {
-  readonly command: RepositoryCommand | LocalCommand;
-  readonly configuration: IdentityConfiguration;
+type Reported = {
+  readonly outcome: Result<CommandReport, CliFailure>;
+  readonly outputOnFailure: string;
+  readonly terminal: Terminal;
 };
 
-type CommandSelection = {
-  readonly command: CliCommand;
-  readonly flagTokens: readonly string[];
-  readonly dependencies: CliDependencies;
-};
-
-type OutcomeReport = {
-  readonly command: CliCommand;
-  readonly outcome: Awaited<CommandOutcome>;
+type PassedThrough = {
+  readonly outcome: Result<GhRun, CliFailure>;
   readonly terminal: Terminal;
 };
 
 type UnknownCommand = { readonly commandName: string; readonly terminal: Terminal };
 
-const executeCommand = async ({
-  command,
-  flags,
-  configuration,
-  dependencies,
-}: ConfiguredRun): CommandOutcome => {
-  if (command.access === "local") return command.execute({ flags, configuration, dependencies });
-  const token = await dependencies.tokenMinter.mintInstallationToken({
-    role: command.role,
-    appSlug: configuration.roles[command.role].appSlug,
-    repository: configuration.repository,
-    permissions: command.permissions,
-  });
-  if (token.kind === "failure") return token;
-  const access = { token: token.outcome, repository: configuration.repository };
-  return command.execute({
-    flags,
-    configuration,
-    dependencies,
-    role: command.role,
-    repositoryApi: dependencies.connectRepository(access),
-    githubCli: dependencies.connectGitHubCli(access),
-  });
-};
+const withoutSeparator = (tokens: readonly string[]): readonly string[] =>
+  tokens[0] === ARGUMENT_SEPARATOR ? tokens.slice(1) : tokens;
 
-const runCommand = async ({
+const runFlaggedCommand = async ({
   command,
-  flags,
+  commandTokens,
   dependencies,
-}: CommandRequest): CommandOutcome => {
-  if (command.access === "standalone") return command.execute({ flags, dependencies });
+}: CommandSelection<LocalCommand | StandaloneCommand>): CommandOutcome => {
+  const flags = parseCommandFlags({ tokens: commandTokens, repeatableFlags: [] });
+  if (flags.kind === "failure") return flags;
+  if (command.access === "standalone") return command.execute({ flags: flags.outcome, dependencies });
   const configuration = await dependencies.loadConfiguration();
   if (configuration.kind === "failure") return configuration;
-  return executeCommand({ command, flags, configuration: configuration.outcome, dependencies });
+  return command.execute({ flags: flags.outcome, configuration: configuration.outcome, dependencies });
 };
 
-const runWithFlags = async ({
+const runPassThrough = async ({
   command,
-  flagTokens,
+  commandTokens,
   dependencies,
-}: CommandSelection): CommandOutcome => {
-  const flags = parseCommandFlags({
-    tokens: flagTokens,
-    repeatableFlags: command.access === "repository" ? (command.repeatableFlags ?? []) : [],
+}: CommandSelection<PassThroughCommand>): Promise<Result<GhRun, CliFailure>> => {
+  const configuration = await dependencies.loadConfiguration();
+  if (configuration.kind === "failure") return configuration;
+  return command.execute({
+    commandArguments: withoutSeparator(commandTokens),
+    configuration: configuration.outcome,
+    dependencies,
   });
-  if (flags.kind === "failure") return flags;
-  return runCommand({ command, flags: flags.outcome, dependencies });
 };
 
-const reportOutcome = ({ command, outcome, terminal }: OutcomeReport): number => {
+const reportFailure = (terminal: Terminal, failure: CliFailure): number => {
+  terminal.writeError(`${describeCliFailure(failure)}\n`);
+  return EXIT_FAILURE;
+};
+
+const reportOutcome = ({ outcome, outputOnFailure, terminal }: Reported): number => {
   if (outcome.kind === "failure") {
-    terminal.writeOutput(command.access === "repository" ? "" : command.outputOnFailure);
-    terminal.writeError(`${describeCliFailure(outcome.reason)}\n`);
-    return EXIT_FAILURE;
+    terminal.writeOutput(outputOnFailure);
+    return reportFailure(terminal, outcome.reason);
   }
   terminal.writeOutput(outcome.outcome.standardOutput);
   terminal.writeError(outcome.outcome.standardError);
   return EXIT_SUCCESS;
+};
+
+const reportPassThrough = ({ outcome, terminal }: PassedThrough): number => {
+  if (outcome.kind === "failure") return reportFailure(terminal, outcome.reason);
+  terminal.writeOutput(outcome.outcome.standardOutput);
+  terminal.writeError(outcome.outcome.standardError);
+  return outcome.outcome.exitCode;
 };
 
 const reportUnknownCommand = ({ commandName, terminal }: UnknownCommand): number => {
@@ -133,11 +118,15 @@ const reportUnknownCommand = ({ commandName, terminal }: UnknownCommand): number
 
 const runCli = async ({ dependencies, commandArguments }: CliInvocation): Promise<number> => {
   const { terminal } = dependencies;
-  const [commandName = "", ...flagTokens] = commandArguments;
+  const [commandName = "", ...commandTokens] = commandArguments;
   if (!isCommandName(commandName)) return reportUnknownCommand({ commandName, terminal });
   const command: CliCommand = COMMANDS[commandName];
-  const outcome = await runWithFlags({ command, flagTokens, dependencies });
-  return reportOutcome({ command, outcome, terminal });
+  if (command.access === "pass-through") {
+    const outcome = await runPassThrough({ command, commandTokens, dependencies });
+    return reportPassThrough({ outcome, terminal });
+  }
+  const outcome = await runFlaggedCommand({ command, commandTokens, dependencies });
+  return reportOutcome({ outcome, outputOnFailure: command.outputOnFailure, terminal });
 };
 
 export { runCli, type CliInvocation };

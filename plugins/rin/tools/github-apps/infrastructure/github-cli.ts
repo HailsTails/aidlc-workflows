@@ -1,140 +1,127 @@
-import type { GitHubCliFailure, GitHubCliPort } from "../application/github-cli-port.ts";
-import type { PublishedLink } from "../application/github-repository-port.ts";
+import { z } from "zod";
+import type {
+  GhReadFailed,
+  GhRun,
+  GhUnavailable,
+  GitHubCliPort,
+} from "../application/github-cli-port.ts";
 import { formatRepositorySlug, type RepositorySlug } from "../domain/repository-slug.ts";
 import { fail, succeed, type Result } from "../domain/result.ts";
 import type { Secret } from "../domain/secret.ts";
-import type { CommandRunner } from "./command-runner.ts";
+import {
+  graphqlReviewEventOf,
+  pullRequestNodeSchema,
+  pullRequestSnapshotOf,
+  reviewNodeSchema,
+  reviewRecordOf,
+} from "./github-pull-request-wire.ts";
+import { parseJsonText } from "./json-text.ts";
+import type { ProcessRunner } from "./process-runner.ts";
 
 const GH = "gh";
 
-const BODY_FROM_STANDARD_INPUT = ["--body-file", "-"] as const;
+const PULL_REQUEST_FIELDS = "id,number,headRefOid,state,isDraft,mergeStateStatus,reviews";
+
+const SUBMIT_REVIEW_MUTATION = `mutation SubmitReview($pullRequestId: ID!, $event: PullRequestReviewEvent!, $commitOID: GitObjectID!, $body: String!) {
+  addPullRequestReview(input: { pullRequestId: $pullRequestId, event: $event, commitOID: $commitOID, body: $body }) { pullRequestReview { url } }
+}`;
+
+const REVIEW_URL = ".data.addPullRequestReview.pullRequestReview.url";
+
+const READ_PULL_REQUEST = "read pull request";
+
+const pullRequestViewSchema = pullRequestNodeSchema.extend({ reviews: z.array(reviewNodeSchema) });
 
 type GitHubCliConnection = {
-  readonly runCommand: CommandRunner;
+  readonly runProcess: ProcessRunner;
   readonly credential: Secret;
   readonly repository: RepositorySlug;
 };
 
-type GhWrite = {
+type GhCall = {
   readonly connection: GitHubCliConnection;
   readonly ghArguments: readonly string[];
-  readonly body: string | undefined;
-  readonly attachments: readonly string[];
+  readonly standardInput: string | undefined;
 };
-
-const repeated = (flag: string, values: readonly string[]): readonly string[] =>
-  values.flatMap((value) => [flag, value]);
-
-const optional = (flag: string, value: string | undefined): readonly string[] =>
-  value === undefined ? [] : [flag, value];
-
-const bodyArguments = (body: string | undefined): readonly string[] =>
-  body === undefined ? [] : BODY_FROM_STANDARD_INPUT;
-
-const printedUrl = (standardOutput: string): string | undefined =>
-  standardOutput
-    .split("\n")
-    .map((line) => line.trim())
-    .findLast((line) => line !== "");
 
 const runGh = async ({
   connection,
   ghArguments,
-  body,
-  attachments,
-}: GhWrite): Promise<Result<PublishedLink, GitHubCliFailure>> => {
-  const ran = await connection.runCommand({
+  standardInput,
+}: GhCall): Promise<Result<GhRun, GhUnavailable>> => {
+  const ran = await connection.runProcess({
     command: GH,
-    commandArguments: [
-      ...ghArguments,
-      ...bodyArguments(body),
-      ...repeated("--attach", attachments),
-      "--repo",
-      formatRepositorySlug(connection.repository),
-    ],
+    commandArguments: ghArguments,
     environment: { GH_TOKEN: connection.credential.reveal(), GH_PROMPT_DISABLED: "1" },
-    standardInput: body,
+    standardInput,
   });
-  if (ran.kind === "failure") {
-    return fail({
-      kind: "gh-command-failed",
-      command: ran.reason.command,
-      detail: ran.reason.detail,
-      publishedUrl: printedUrl(ran.reason.standardOutput),
-    });
-  }
-  const url = printedUrl(ran.outcome);
-  if (url === undefined) {
-    return fail({
-      kind: "gh-command-failed",
-      command: [GH, ...ghArguments].join(" "),
-      detail: "gh printed no URL",
-      publishedUrl: undefined,
-    });
-  }
-  return succeed({ url });
+  if (ran.kind === "failure") return fail({ kind: "gh-unavailable", detail: ran.reason.detail });
+  return succeed(ran.outcome);
 };
 
-const createGitHubCli = (connection: GitHubCliConnection): GitHubCliPort => ({
-  openPullRequest: ({ title, body, head, base, readiness, labels, attachments }) =>
-    runGh({
+const inRepository = (connection: GitHubCliConnection, ghArguments: readonly string[]) => [
+  ...ghArguments,
+  "--repo",
+  formatRepositorySlug(connection.repository),
+];
+
+const readFailure = (detail: string): GhReadFailed => ({
+  kind: "gh-read-failed",
+  operation: READ_PULL_REQUEST,
+  detail,
+});
+
+const readPullRequest =
+  (connection: GitHubCliConnection): GitHubCliPort["readPullRequest"] =>
+  async (pullNumber) => {
+    const viewed = await runGh({
       connection,
-      ghArguments: [
+      ghArguments: inRepository(connection, [
         "pr",
-        "create",
-        "--title",
-        title,
-        "--head",
-        head,
-        "--base",
-        base,
-        ...(readiness === "draft" ? ["--draft"] : []),
-        ...repeated("--label", labels),
-      ],
-      body,
-      attachments,
-    }),
-  revisePullRequest: ({ pullNumber, title, body, labels, attachments }) =>
-    runGh({
-      connection,
-      ghArguments: [
-        "pr",
-        "edit",
+        "view",
         String(pullNumber),
-        ...optional("--title", title),
-        ...repeated("--add-label", labels.add),
-        ...repeated("--remove-label", labels.remove),
-      ],
-      body,
-      attachments,
-    }),
-  commentOnIssue: ({ issueNumber, body, attachments }) =>
-    runGh({
-      connection,
-      ghArguments: ["issue", "comment", String(issueNumber)],
-      body,
-      attachments,
-    }),
-  openIssue: ({ title, body, labels, attachments }) =>
-    runGh({
-      connection,
-      ghArguments: ["issue", "create", "--title", title, ...repeated("--label", labels)],
-      body,
-      attachments,
-    }),
-  reviseIssue: ({ issueNumber, title, body, labels, attachments }) =>
+        "--json",
+        PULL_REQUEST_FIELDS,
+      ]),
+      standardInput: undefined,
+    });
+    if (viewed.kind === "failure") return viewed;
+    const { exitCode, standardOutput, standardError } = viewed.outcome;
+    if (exitCode !== 0) return fail(readFailure(standardError.trim()));
+    const json = parseJsonText(standardOutput);
+    if (json.kind === "failure") return fail(readFailure("gh printed something other than JSON"));
+    const view = pullRequestViewSchema.safeParse(json.outcome);
+    if (!view.success) return fail(readFailure(view.error.message));
+    return succeed({
+      pullRequest: pullRequestSnapshotOf(view.data),
+      reviews: view.data.reviews.map(reviewRecordOf),
+    });
+  };
+
+const createGitHubCli = (connection: GitHubCliConnection): GitHubCliPort => ({
+  run: ({ ghArguments, standardInput }) =>
+    runGh({ connection, ghArguments: inRepository(connection, ghArguments), standardInput }),
+  readPullRequest: readPullRequest(connection),
+  submitReview: ({ pullRequestId, commitSha, event, body }) =>
     runGh({
       connection,
       ghArguments: [
-        "issue",
-        "edit",
-        String(issueNumber),
-        ...optional("--title", title),
-        ...repeated("--add-label", labels.add),
-        ...repeated("--remove-label", labels.remove),
+        "api",
+        "graphql",
+        "-f",
+        `query=${SUBMIT_REVIEW_MUTATION}`,
+        "-f",
+        `pullRequestId=${pullRequestId}`,
+        "-f",
+        `event=${graphqlReviewEventOf(event)}`,
+        "-f",
+        `commitOID=${commitSha}`,
+        "-F",
+        "body=@-",
+        "--jq",
+        REVIEW_URL,
       ],
-      body,
-      attachments,
+      standardInput: body,
     }),
 });
 
