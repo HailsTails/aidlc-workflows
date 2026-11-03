@@ -11,6 +11,7 @@ import type {
   PullRequestRevision,
   ReadinessChange,
   ReviewSubmission,
+  RevisedLabelable,
   SquashMerge,
 } from "../application/github-repository-port.ts";
 import type {
@@ -21,6 +22,7 @@ import type {
 import { fail, succeed, type Result } from "../domain/result.ts";
 import { executeGraphql } from "./github-graphql.ts";
 import { openIssue, reviseIssue } from "./github-issue-api.ts";
+import { applyLabels, relabel, requireLabelIds, resolveLabelChange } from "./github-label-api.ts";
 import {
   graphqlReviewEventOf,
   pullRequestNodeSchema,
@@ -102,15 +104,18 @@ const listReviews = async ({
 
 const openPullRequest = async ({
   connection,
+  labels,
   ...proposal
 }: Located<PullRequestProposal>): Promise<Result<PublishedLink, GitHubFailure>> => {
   const repositoryId = await readRepositoryId({ connection });
   if (repositoryId.kind === "failure") return repositoryId;
+  const labelIds = await requireLabelIds({ connection, names: labels });
+  if (labelIds.kind === "failure") return labelIds;
   const opened = await executeGraphql({
     ...connection,
     operation: "open pull request",
     query: `mutation OpenPullRequest($repositoryId: ID!, $base: String!, $head: String!, $title: String!, $body: String!, $draft: Boolean!) {
-      createPullRequest(input: { repositoryId: $repositoryId, baseRefName: $base, headRefName: $head, title: $title, body: $body, draft: $draft }) { pullRequest { url } }
+      createPullRequest(input: { repositoryId: $repositoryId, baseRefName: $base, headRefName: $head, title: $title, body: $body, draft: $draft }) { pullRequest { id url } }
     }`,
     variables: {
       repositoryId: repositoryId.outcome,
@@ -120,16 +125,29 @@ const openPullRequest = async ({
       body: proposal.body,
       draft: proposal.readiness === "draft",
     },
-    dataSchema: z.object({ createPullRequest: z.object({ pullRequest: linkSchema }) }),
+    dataSchema: z.object({
+      createPullRequest: z.object({ pullRequest: z.object({ id: z.string(), url: z.string() }) }),
+    }),
   });
   if (opened.kind === "failure") return opened;
-  return succeed(opened.outcome.createPullRequest.pullRequest);
+  const { id: pullRequestId, url } = opened.outcome.createPullRequest.pullRequest;
+  const labelled = await applyLabels({
+    connection,
+    labelableId: pullRequestId,
+    labelIds: labelIds.outcome,
+    mutation: "add",
+  });
+  if (labelled.kind === "failure") return labelled;
+  return succeed({ url });
 };
 
 const revisePullRequest = async ({
   connection,
+  labels,
   ...revision
-}: Located<PullRequestRevision>): Promise<Result<PublishedLink, GitHubFailure>> => {
+}: Located<PullRequestRevision>): Promise<Result<RevisedLabelable, GitHubFailure>> => {
+  const resolved = await resolveLabelChange({ connection, labels });
+  if (resolved.kind === "failure") return resolved;
   const revised = await executeGraphql({
     ...connection,
     operation: "revise pull request",
@@ -140,7 +158,16 @@ const revisePullRequest = async ({
     dataSchema: z.object({ updatePullRequest: z.object({ pullRequest: linkSchema }) }),
   });
   if (revised.kind === "failure") return revised;
-  return succeed(revised.outcome.updatePullRequest.pullRequest);
+  const relabelled = await relabel({
+    connection,
+    labelableId: revision.pullRequestId,
+    resolved: resolved.outcome,
+  });
+  if (relabelled.kind === "failure") return relabelled;
+  return succeed({
+    ...revised.outcome.updatePullRequest.pullRequest,
+    missingLabels: resolved.outcome.missingLabels,
+  });
 };
 
 const submitReview = async ({

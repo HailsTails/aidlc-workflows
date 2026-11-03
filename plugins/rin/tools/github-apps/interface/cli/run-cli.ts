@@ -80,11 +80,15 @@ const executeCommand = async ({
     permissions: command.permissions,
   });
   if (token.kind === "failure") return token;
-  const repositoryApi = dependencies.connectRepository({
-    token: token.outcome,
-    repository: configuration.repository,
+  const access = { token: token.outcome, repository: configuration.repository };
+  return command.execute({
+    flags,
+    configuration,
+    dependencies,
+    role: command.role,
+    repositoryApi: dependencies.connectRepository(access),
+    githubCli: dependencies.connectGitHubCli(access),
   });
-  return command.execute({ flags, configuration, dependencies, role: command.role, repositoryApi });
 };
 
 const runCommand = async ({

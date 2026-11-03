@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { fail, succeed } from "../domain/result.ts";
+import type { GitHubCliPort } from "./github-cli-port.ts";
 import type { GitHubRepositoryPort } from "./github-repository-port.ts";
 import type { GitWorktreePort } from "./git-worktree-port.ts";
 import { openPullRequest } from "./open-pull-request.ts";
 
+const pullRequestUrl = "https://github.com/HailsTails/minutesarah-shop/pull/5";
+
 const fakeRepositoryApi = () => ({
   openPullRequest: vi
     .fn<GitHubRepositoryPort["openPullRequest"]>()
-    .mockResolvedValue(succeed({ url: "https://github.com/HailsTails/minutesarah-shop/pull/5" })),
+    .mockResolvedValue(succeed({ url: pullRequestUrl })),
   revisePullRequest: vi.fn(),
   readPullRequest: vi.fn(),
   listReviews: vi.fn(),
@@ -16,6 +19,16 @@ const fakeRepositoryApi = () => ({
   squashMerge: vi.fn(),
   closePullRequest: vi.fn(),
   changeReadiness: vi.fn(),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
+});
+
+const fakeGitHubCli = () => ({
+  openPullRequest: vi
+    .fn<GitHubCliPort["openPullRequest"]>()
+    .mockResolvedValue(succeed({ url: pullRequestUrl })),
+  revisePullRequest: vi.fn(),
+  commentOnIssue: vi.fn(),
   openIssue: vi.fn(),
   reviseIssue: vi.fn(),
 });
@@ -35,6 +48,8 @@ const opening = {
   authoredBody: "Adds the basket.",
   base: "main",
   readiness: "ready-for-review",
+  labels: [],
+  attachments: [],
 } as const;
 
 describe("openPullRequest", () => {
@@ -44,19 +59,20 @@ describe("openPullRequest", () => {
     const opened = await openPullRequest({
       ...opening,
       repositoryApi,
+      githubCli: fakeGitHubCli(),
       worktree: fakeWorktree(),
       head: undefined,
+      labels: ["stage:review"],
       session: undefined,
     });
 
-    expect(opened).toEqual(
-      succeed({ url: "https://github.com/HailsTails/minutesarah-shop/pull/5" }),
-    );
+    expect(opened).toEqual(succeed({ url: pullRequestUrl }));
     expect(repositoryApi.openPullRequest).toHaveBeenCalledExactlyOnceWith({
       title: "Add the basket",
       head: "feature/basket",
       base: "main",
       readiness: "ready-for-review",
+      labels: ["stage:review"],
       body: "<!-- rin-bot: role=author session=feature/basket -->\n\nAdds the basket.",
     });
   });
@@ -68,6 +84,7 @@ describe("openPullRequest", () => {
     await openPullRequest({
       ...opening,
       repositoryApi,
+      githubCli: fakeGitHubCli(),
       worktree,
       head: "feature/checkout",
       session: "session-9",
@@ -81,6 +98,32 @@ describe("openPullRequest", () => {
       }),
     );
   });
+
+  it("hands a pull request with attachments to gh", async () => {
+    const repositoryApi = fakeRepositoryApi();
+    const githubCli = fakeGitHubCli();
+
+    await openPullRequest({
+      ...opening,
+      repositoryApi,
+      githubCli,
+      worktree: fakeWorktree(),
+      head: undefined,
+      attachments: ["./basket.png#The basket"],
+      session: undefined,
+    });
+
+    expect(repositoryApi.openPullRequest).not.toHaveBeenCalled();
+    expect(githubCli.openPullRequest).toHaveBeenCalledExactlyOnceWith({
+      title: "Add the basket",
+      head: "feature/basket",
+      base: "main",
+      readiness: "ready-for-review",
+      labels: [],
+      body: "<!-- rin-bot: role=author session=feature/basket -->\n\nAdds the basket.",
+      attachments: ["./basket.png#The basket"],
+    });
+  });
 });
 
 describe("openPullRequest refusals", () => {
@@ -92,6 +135,7 @@ describe("openPullRequest refusals", () => {
     const opened = await openPullRequest({
       ...opening,
       repositoryApi,
+      githubCli: fakeGitHubCli(),
       worktree,
       head: undefined,
       session: undefined,

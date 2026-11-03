@@ -1,4 +1,5 @@
-import type { IssueState, LabelChange } from "../domain/issue.ts";
+import type { IssueState } from "../domain/issue.ts";
+import type { LabelChange } from "../domain/label-change.ts";
 import type {
   PullRequestReadiness,
   PullRequestSnapshot,
@@ -14,12 +15,14 @@ type PullRequestProposal = {
   readonly head: string;
   readonly base: string;
   readonly readiness: PullRequestReadiness;
+  readonly labels: readonly string[];
 };
 
 type PullRequestRevision = {
   readonly pullRequestId: string;
   readonly title: string | undefined;
   readonly body: string | undefined;
+  readonly labels: LabelChange;
 };
 
 type ReviewSubmission = {
@@ -55,7 +58,7 @@ type PullRequestIdentity = { readonly pullRequestId: string };
 
 type PublishedLink = { readonly url: string };
 
-type RevisedIssue = PublishedLink & { readonly missingLabels: readonly string[] };
+type RevisedLabelable = PublishedLink & { readonly missingLabels: readonly string[] };
 
 type MergedCommit = { readonly mergeSha: string };
 
@@ -65,7 +68,7 @@ type GitHubRepositoryPort = {
   ) => Promise<Result<PublishedLink, GitHubFailure>>;
   readonly revisePullRequest: (
     revision: PullRequestRevision,
-  ) => Promise<Result<PublishedLink, GitHubFailure>>;
+  ) => Promise<Result<RevisedLabelable, GitHubFailure>>;
   readonly readPullRequest: (
     reference: PullRequestReference,
   ) => Promise<Result<PullRequestSnapshot, GitHubFailure>>;
@@ -84,7 +87,9 @@ type GitHubRepositoryPort = {
     change: ReadinessChange,
   ) => Promise<Result<PullRequestReadiness, GitHubFailure>>;
   readonly openIssue: (proposal: IssueProposal) => Promise<Result<PublishedLink, GitHubFailure>>;
-  readonly reviseIssue: (revision: IssueRevision) => Promise<Result<RevisedIssue, GitHubFailure>>;
+  readonly reviseIssue: (
+    revision: IssueRevision,
+  ) => Promise<Result<RevisedLabelable, GitHubFailure>>;
 };
 
 export type {
@@ -100,6 +105,6 @@ export type {
   PullRequestRevision,
   ReadinessChange,
   ReviewSubmission,
-  RevisedIssue,
+  RevisedLabelable,
   SquashMerge,
 };

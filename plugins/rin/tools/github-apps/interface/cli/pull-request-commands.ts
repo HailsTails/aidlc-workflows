@@ -6,9 +6,15 @@ import type { PullRequestReadiness } from "../../domain/pull-request.ts";
 import { succeed } from "../../domain/result.ts";
 import { readOptionalBody, readRequiredBody } from "./authored-body.ts";
 import type { RepositoryCommand, RepositoryCommandContext } from "./cli-command.ts";
-import { bodyFlags, issueOrPullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
+import {
+  attachFlag,
+  bodyFlags,
+  issueOrPullNumberFlag,
+  labelsFlag,
+  sessionFlag,
+} from "./command-flag-schemas.ts";
 import { validateFlags } from "./command-flags.ts";
-import { reportLine } from "./command-report.ts";
+import { reportLabelled, reportLine } from "./command-report.ts";
 
 const openFlagsSchema = z.strictObject({
   title: z.string().min(1),
@@ -16,6 +22,8 @@ const openFlagsSchema = z.strictObject({
   base: z.string().min(1).optional(),
   head: z.string().min(1).optional(),
   draft: z.literal(true).optional(),
+  label: labelsFlag,
+  attach: attachFlag,
   session: sessionFlag.optional(),
 });
 
@@ -23,6 +31,9 @@ const reviseFlagsSchema = z.strictObject({
   pr: issueOrPullNumberFlag,
   title: z.string().min(1).optional(),
   ...bodyFlags,
+  "add-label": labelsFlag,
+  "remove-label": labelsFlag,
+  attach: attachFlag,
   session: sessionFlag.optional(),
 });
 
@@ -31,10 +42,11 @@ const readinessFlagsSchema = z.strictObject({ pr: issueOrPullNumberFlag });
 const openCommand: RepositoryCommand = {
   access: "repository",
   role: "author",
-  execute: async ({ flags, configuration, dependencies, role, repositoryApi }) => {
+  repeatableFlags: ["label", "attach"],
+  execute: async ({ flags, configuration, dependencies, role, repositoryApi, githubCli }) => {
     const openFlags = validateFlags({ flags, schema: openFlagsSchema });
     if (openFlags.kind === "failure") return openFlags;
-    const { title, body: inlineBody, base, head, draft, session } = openFlags.outcome;
+    const { title, body: inlineBody, base, head, draft, label, attach, session } = openFlags.outcome;
     const authoredBody = await readRequiredBody({
       inlineBody,
       bodyFile: openFlags.outcome["body-file"],
@@ -43,6 +55,7 @@ const openCommand: RepositoryCommand = {
     if (authoredBody.kind === "failure") return authoredBody;
     const opened = await openPullRequest({
       repositoryApi,
+      githubCli,
       worktree: dependencies.worktree,
       role,
       title,
@@ -50,6 +63,8 @@ const openCommand: RepositoryCommand = {
       base: base ?? configuration.baseBranch,
       head,
       readiness: draft === undefined ? "ready-for-review" : "draft",
+      labels: label,
+      attachments: attach,
       session,
     });
     if (opened.kind === "failure") return opened;
@@ -60,10 +75,11 @@ const openCommand: RepositoryCommand = {
 const reviseCommand: RepositoryCommand = {
   access: "repository",
   role: "author",
-  execute: async ({ flags, dependencies, role, repositoryApi }) => {
+  repeatableFlags: ["add-label", "remove-label", "attach"],
+  execute: async ({ flags, dependencies, role, repositoryApi, githubCli }) => {
     const reviseFlags = validateFlags({ flags, schema: reviseFlagsSchema });
     if (reviseFlags.kind === "failure") return reviseFlags;
-    const { pr, title, body: inlineBody, session } = reviseFlags.outcome;
+    const { pr, title, body: inlineBody, attach, session } = reviseFlags.outcome;
     const authoredBody = await readOptionalBody({
       inlineBody,
       bodyFile: reviseFlags.outcome["body-file"],
@@ -72,14 +88,22 @@ const reviseCommand: RepositoryCommand = {
     if (authoredBody.kind === "failure") return authoredBody;
     const revised = await revisePullRequest({
       repositoryApi,
+      githubCli,
       role,
       pullNumber: pr,
       title,
       authoredBody: authoredBody.outcome,
+      labels: { add: reviseFlags.outcome["add-label"], remove: reviseFlags.outcome["remove-label"] },
+      attachments: attach,
       session,
     });
     if (revised.kind === "failure") return revised;
-    return succeed(reportLine(`Revised ${revised.outcome.url}`));
+    return succeed(
+      reportLabelled({
+        line: `Revised ${revised.outcome.url}`,
+        missingLabels: revised.outcome.missingLabels,
+      }),
+    );
   },
 };
 

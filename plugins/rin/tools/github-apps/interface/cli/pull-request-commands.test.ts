@@ -1,4 +1,5 @@
 import { assert, describe, expect, it, vi } from "vitest";
+import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitHubRepositoryPort } from "../../application/github-repository-port.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
 import { fail, succeed } from "../../domain/result.ts";
@@ -20,7 +21,7 @@ const fakeRepositoryApi = () => ({
     .mockResolvedValue(succeed({ url: pullRequestUrl })),
   revisePullRequest: vi
     .fn<GitHubRepositoryPort["revisePullRequest"]>()
-    .mockResolvedValue(succeed({ url: pullRequestUrl })),
+    .mockResolvedValue(succeed({ url: pullRequestUrl, missingLabels: [] })),
   readPullRequest: vi.fn<GitHubRepositoryPort["readPullRequest"]>().mockResolvedValue(
     succeed({
       pullNumber: 5,
@@ -43,17 +44,32 @@ const fakeRepositoryApi = () => ({
   reviseIssue: vi.fn(),
 });
 
+const fakeGitHubCli = () => ({
+  openPullRequest: vi
+    .fn<GitHubCliPort["openPullRequest"]>()
+    .mockResolvedValue(succeed({ url: pullRequestUrl })),
+  revisePullRequest: vi
+    .fn<GitHubCliPort["revisePullRequest"]>()
+    .mockResolvedValue(succeed({ url: pullRequestUrl })),
+  commentOnIssue: vi.fn(),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
+});
+
 const contextWith = ({
   flags,
   repositoryApi,
+  githubCli = fakeGitHubCli(),
 }: {
   readonly flags: CommandFlags;
   readonly repositoryApi: GitHubRepositoryPort;
+  readonly githubCli?: GitHubCliPort;
 }) => ({
   flags,
   configuration,
   role: "author" as const,
   repositoryApi,
+  githubCli,
   dependencies: {
     terminal: {
       commandArguments: vi.fn(),
@@ -65,6 +81,7 @@ const contextWith = ({
     loadConfiguration: vi.fn(),
     tokenMinter: { mintInstallationToken: vi.fn() },
     connectRepository: vi.fn(),
+    connectGitHubCli: vi.fn(),
     worktree: {
       readCurrentBranch: vi
         .fn<GitWorktreePort["readCurrentBranch"]>()
@@ -95,8 +112,42 @@ describe("pr", () => {
       head: "feature/basket",
       base: "main",
       readiness: "draft",
+      labels: [],
       body: "<!-- rin-bot: role=author session=feature/basket -->\n\nBody from a file.",
     });
+  });
+
+  it("opens a labelled pull request", async () => {
+    const repositoryApi = fakeRepositoryApi();
+
+    await pullRequestCommands.pr.execute(
+      contextWith({
+        flags: { title: "Add the basket", body: "B", label: ["stage:review", "area:basket"] },
+        repositoryApi,
+      }),
+    );
+
+    expect(repositoryApi.openPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ labels: ["stage:review", "area:basket"] }),
+    );
+  });
+
+  it("hands a pull request with --attach files to gh", async () => {
+    const repositoryApi = fakeRepositoryApi();
+    const githubCli = fakeGitHubCli();
+
+    await pullRequestCommands.pr.execute(
+      contextWith({
+        flags: { title: "Add the basket", body: "B", attach: ["./basket.png"] },
+        repositoryApi,
+        githubCli,
+      }),
+    );
+
+    expect(repositoryApi.openPullRequest).not.toHaveBeenCalled();
+    expect(githubCli.openPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ attachments: ["./basket.png"] }),
+    );
   });
 
   it("refuses to open without a body", async () => {
@@ -118,6 +169,10 @@ describe("pr", () => {
     assert(opened.kind === "failure" && opened.reason.kind === "flags-invalid");
     expect(opened.reason.issues).toContain("reviewer");
   });
+
+  it("lets --label and --attach repeat", () => {
+    expect(pullRequestCommands.pr.repeatableFlags).toEqual(["label", "attach"]);
+  });
 });
 
 describe("pr-edit", () => {
@@ -135,7 +190,43 @@ describe("pr-edit", () => {
       pullRequestId: "PR_node5",
       title: "Add basket totals",
       body: undefined,
+      labels: { add: [], remove: [] },
     });
+  });
+
+  it("moves labels and warns once per label it could not remove", async () => {
+    const repositoryApi = fakeRepositoryApi();
+    repositoryApi.revisePullRequest.mockResolvedValue(
+      succeed({ url: pullRequestUrl, missingLabels: ["stage:typo"] }),
+    );
+
+    const revised = await pullRequestCommands["pr-edit"].execute(
+      contextWith({
+        flags: { pr: "5", "add-label": ["stage:review"], "remove-label": ["stage:typo"] },
+        repositoryApi,
+      }),
+    );
+
+    expect(revised).toEqual(
+      succeed({
+        standardOutput: `Revised ${pullRequestUrl}\n`,
+        standardError: 'label "stage:typo" does not exist; nothing removed\n',
+      }),
+    );
+    expect(repositoryApi.revisePullRequest).toHaveBeenCalledExactlyOnceWith({
+      pullRequestId: "PR_node5",
+      title: undefined,
+      body: undefined,
+      labels: { add: ["stage:review"], remove: ["stage:typo"] },
+    });
+  });
+
+  it("lets --add-label, --remove-label and --attach repeat", () => {
+    expect(pullRequestCommands["pr-edit"].repeatableFlags).toEqual([
+      "add-label",
+      "remove-label",
+      "attach",
+    ]);
   });
 });
 

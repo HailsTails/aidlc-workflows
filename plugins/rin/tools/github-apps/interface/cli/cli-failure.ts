@@ -2,6 +2,7 @@ import type {
   PushRemoteElsewhere,
   PushRemoteNotHttps,
 } from "../../application/adopt-worktree-git-identity.ts";
+import type { GitHubCliFailure } from "../../application/github-cli-port.ts";
 import type { GitFailure } from "../../application/git-worktree-port.ts";
 import type { ConfigurationFailure } from "../../application/identity-configuration-port.ts";
 import type { CredentialDestinationRefused } from "../../application/issue-git-credential.ts";
@@ -26,6 +27,7 @@ type CommandLineFailure =
 
 type CliFailure =
   | TokenFailure
+  | GitHubCliFailure
   | GitFailure
   | PushRemoteElsewhere
   | PushRemoteNotHttps
@@ -87,6 +89,10 @@ const describers: FailureDescribers = {
     `The GitHub App is not installed on ${formatRepositorySlug(repository)}; install it there first.`,
   "app-identity-mismatch": ({ role, expectedAppSlug, actualAppSlug }) =>
     `The ${role} credentials authenticate as ${actualAppSlug}, not ${expectedAppSlug}.`,
+  "gh-command-failed": ({ command, detail, publishedUrl }) =>
+    publishedUrl === undefined
+      ? `${command} failed: ${detail}`
+      : `${command} failed after publishing ${publishedUrl}: ${detail}`,
   "git-command-failed": ({ command, detail }) => `${command} failed: ${detail}`,
   "push-remote-elsewhere": ({ remoteUrl, repository }) =>
     `This worktree pushes to ${remoteUrl}, not ${formatRepositorySlug(repository)}; the bot only pushes to the configured repository.`,
@@ -104,9 +110,9 @@ const describers: FailureDescribers = {
   "reviewed-head-moved": ({ pullNumber, reviewedSha, headSha }) =>
     `#${String(pullNumber)} head is ${shortSha(headSha)} but this review read ${shortSha(reviewedSha)}; review the current head.`,
   "nothing-to-revise": ({ pullNumber }) =>
-    `Nothing to change on #${String(pullNumber)}; pass --title, --body or --body-file.`,
+    `Nothing to change on #${String(pullNumber)}; pass --title, --body, --body-file, --add-label, --remove-label or --attach.`,
   "issue-unchanged": ({ issueNumber }) =>
-    `Nothing to change on #${String(issueNumber)}; pass --title, --body, --body-file, --state, --add-label or --remove-label.`,
+    `Nothing to change on #${String(issueNumber)}; pass --title, --body, --body-file, --state, --add-label, --remove-label or --attach.`,
   "credential-destination-refused": ({ destination }) =>
     `Refusing to hand the author bot's credential to ${destination}; it serves only the configured repository.`,
   "configuration-unreadable": ({ location }) =>

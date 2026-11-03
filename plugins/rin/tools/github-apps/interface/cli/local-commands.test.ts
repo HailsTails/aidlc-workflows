@@ -32,6 +32,7 @@ const contextWith = (flags: CommandFlags) => ({
         .mockResolvedValue(succeed(secret("ghs_reviewer"))),
     },
     connectRepository: vi.fn(),
+    connectGitHubCli: vi.fn(),
     worktree: {
       readCurrentBranch: vi.fn(),
       readCheckoutKind: vi

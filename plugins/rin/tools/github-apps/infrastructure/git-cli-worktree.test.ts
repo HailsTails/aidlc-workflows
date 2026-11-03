@@ -148,7 +148,12 @@ describe("createGitCliWorktree push remote", () => {
       .mockResolvedValueOnce(succeed("HEAD"))
       .mockResolvedValueOnce(succeed(""))
       .mockResolvedValueOnce(
-        fail({ kind: "command-failed", command: "git remote", detail: "No such remote 'origin'" }),
+        fail({
+          kind: "command-failed",
+          command: "git remote",
+          detail: "No such remote 'origin'",
+          standardOutput: "",
+        }),
       );
 
     expect(await createGitCliWorktree({ runCommand }).readPushRemote()).toEqual(
@@ -180,6 +185,7 @@ describe("createGitCliWorktree configuration", () => {
           kind: "command-failed",
           command: "git config",
           detail: "could not lock config file",
+          standardOutput: "",
         }),
       );
 

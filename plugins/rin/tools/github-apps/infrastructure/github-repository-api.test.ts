@@ -113,7 +113,7 @@ describe("createGitHubRepositoryApi writes", () => {
   it("opens a pull request against the repository it looked up", async () => {
     const http = replyingTwice(
       { repository: { id: "R_shop" } },
-      { createPullRequest: { pullRequest: { url: pullRequestUrl } } },
+      { createPullRequest: { pullRequest: { id: "PR_node12", url: pullRequestUrl } } },
     );
 
     const opened = await createGitHubRepositoryApi({
@@ -126,6 +126,7 @@ describe("createGitHubRepositoryApi writes", () => {
       head: "feature/basket",
       base: "main",
       readiness: "draft",
+      labels: [],
     });
 
     expect(opened).toEqual(succeed({ url: pullRequestUrl }));
@@ -141,6 +142,102 @@ describe("createGitHubRepositoryApi writes", () => {
         },
       },
     });
+    expect(http.requestJson).toHaveBeenCalledTimes(2);
+  });
+
+  it("labels a pull request it opened", async () => {
+    const http = {
+      requestJson: vi
+        .fn<GitHubHttp["requestJson"]>()
+        .mockResolvedValueOnce(succeed({ data: { repository: { id: "R_shop" } } }))
+        .mockResolvedValueOnce(succeed({ data: { repository: { label: { id: "LA_review" } } } }))
+        .mockResolvedValueOnce(
+          succeed({
+            data: { createPullRequest: { pullRequest: { id: "PR_node12", url: pullRequestUrl } } },
+          }),
+        )
+        .mockResolvedValueOnce(
+          succeed({ data: { addLabelsToLabelable: { clientMutationId: null } } }),
+        ),
+    };
+
+    const opened = await createGitHubRepositoryApi({ http, credential, repository }).openPullRequest(
+      {
+        title: "Add the basket",
+        body: "Adds the basket.",
+        head: "feature/basket",
+        base: "main",
+        readiness: "ready-for-review",
+        labels: ["stage:review"],
+      },
+    );
+
+    expect(opened).toEqual(succeed({ url: pullRequestUrl }));
+    expect(lastRequest(http)).toMatchObject({
+      operation: "add labels",
+      requestBody: { variables: { labelableId: "PR_node12", labelIds: ["LA_review"] } },
+    });
+  });
+
+  it("refuses to open a pull request with a label the repository lacks", async () => {
+    const http = replyingTwice(
+      { repository: { id: "R_shop" } },
+      { repository: { label: null } },
+    );
+
+    const opened = await createGitHubRepositoryApi({ http, credential, repository }).openPullRequest(
+      {
+        title: "Add the basket",
+        body: "Adds the basket.",
+        head: "feature/basket",
+        base: "main",
+        readiness: "ready-for-review",
+        labels: ["stage:typo"],
+      },
+    );
+
+    expect(opened).toEqual(
+      fail({
+        kind: "github-rejected",
+        operation: "find label",
+        status: 404,
+        detail: 'label "stage:typo" does not exist in HailsTails/minutesarah-shop',
+      }),
+    );
+    expect(http.requestJson).toHaveBeenCalledTimes(2);
+  });
+
+  it("relabels a pull request and reports labels it could not remove", async () => {
+    const http = {
+      requestJson: vi
+        .fn<GitHubHttp["requestJson"]>()
+        .mockResolvedValueOnce(succeed({ data: { repository: { label: { id: "LA_review" } } } }))
+        .mockResolvedValueOnce(succeed({ data: { repository: { label: null } } }))
+        .mockResolvedValueOnce(
+          succeed({ data: { updatePullRequest: { pullRequest: { url: pullRequestUrl } } } }),
+        )
+        .mockResolvedValueOnce(
+          succeed({ data: { addLabelsToLabelable: { clientMutationId: null } } }),
+        ),
+    };
+
+    const revised = await createGitHubRepositoryApi({
+      http,
+      credential,
+      repository,
+    }).revisePullRequest({
+      pullRequestId: "PR_node12",
+      title: undefined,
+      body: undefined,
+      labels: { add: ["stage:review"], remove: ["stage:typo"] },
+    });
+
+    expect(revised).toEqual(succeed({ url: pullRequestUrl, missingLabels: ["stage:typo"] }));
+    expect(lastRequest(http)).toMatchObject({
+      operation: "add labels",
+      requestBody: { variables: { labelableId: "PR_node12", labelIds: ["LA_review"] } },
+    });
+    expect(http.requestJson).toHaveBeenCalledTimes(4);
   });
 });
 

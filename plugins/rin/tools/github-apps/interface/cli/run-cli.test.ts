@@ -45,6 +45,14 @@ const fakeRepositoryApi = () => ({
   reviseIssue: vi.fn(),
 });
 
+const githubCli = {
+  openPullRequest: vi.fn(),
+  revisePullRequest: vi.fn(),
+  commentOnIssue: vi.fn(),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
+};
+
 const fakeDependencies = (repositoryApi: GitHubRepositoryPort) => ({
   terminal: {
     commandArguments: vi.fn(),
@@ -62,6 +70,7 @@ const fakeDependencies = (repositoryApi: GitHubRepositoryPort) => ({
       .mockResolvedValue(succeed(reviewerToken)),
   },
   connectRepository: vi.fn<CliDependencies["connectRepository"]>().mockReturnValue(repositoryApi),
+  connectGitHubCli: vi.fn<CliDependencies["connectGitHubCli"]>().mockReturnValue(githubCli),
   worktree: {
     readCurrentBranch: vi.fn(),
     readCheckoutKind: vi.fn(),
@@ -89,6 +98,10 @@ describe("runCli", () => {
       repository,
     });
     expect(dependencies.connectRepository).toHaveBeenCalledExactlyOnceWith({
+      token: reviewerToken,
+      repository,
+    });
+    expect(dependencies.connectGitHubCli).toHaveBeenCalledExactlyOnceWith({
       token: reviewerToken,
       repository,
     });

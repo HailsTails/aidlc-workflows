@@ -50,6 +50,13 @@ const contextWith = ({
   flags,
   role: "author" as const,
   repositoryApi,
+  githubCli: {
+    openPullRequest: vi.fn(),
+    revisePullRequest: vi.fn(),
+    commentOnIssue: vi.fn(),
+    openIssue: vi.fn(),
+    reviseIssue: vi.fn(),
+  },
   configuration: {
     repository: { owner: "HailsTails", name: "minutesarah-shop" },
     baseBranch: "main",
@@ -66,6 +73,7 @@ const contextWith = ({
     loadConfiguration: vi.fn(),
     tokenMinter: { mintInstallationToken: vi.fn() },
     connectRepository: vi.fn(),
+    connectGitHubCli: vi.fn(),
     worktree: {
       readCurrentBranch: vi.fn(),
       readCheckoutKind: vi.fn(),
