@@ -2,19 +2,11 @@ import type {
   PushRemoteElsewhere,
   PushRemoteNotHttps,
 } from "../../application/adopt-worktree-git-identity.ts";
-import type { GitHubCliFailure } from "../../application/github-cli-port.ts";
-import type { GitFailure } from "../../application/git-worktree-port.ts";
 import type { ConfigurationFailure } from "../../application/identity-configuration-port.ts";
 import type { CredentialDestinationRefused } from "../../application/issue-git-credential.ts";
-import type { TokenFailure } from "../../application/mint-installation-token.ts";
-import type { IssueUnchanged } from "../../application/revise-issue.ts";
-import type { NothingToRevise } from "../../application/revise-pull-request.ts";
-import type { CloseRefusal } from "../../domain/close-guard.ts";
-import type { MergeRefusal } from "../../domain/merge-guard.ts";
-import type { PullRequestMergeState } from "../../domain/pull-request.ts";
+import type { GhAsBotFailure } from "../../application/run-gh-as-bot.ts";
+import { supportedGhVerbs } from "../../domain/gh-invocation.ts";
 import { formatRepositorySlug } from "../../domain/repository-slug.ts";
-import type { ReviewRefusal } from "../../domain/review-guard.ts";
-import type { BodyFailure } from "./authored-body.ts";
 import type { FlagFailure } from "./command-flags.ts";
 
 const SHORT_SHA_LENGTH = 8;
@@ -26,20 +18,12 @@ type CommandLineFailure =
   | { readonly kind: "credential-query-invalid"; readonly issues: string };
 
 type CliFailure =
-  | TokenFailure
-  | GitHubCliFailure
-  | GitFailure
+  | GhAsBotFailure
   | PushRemoteElsewhere
   | PushRemoteNotHttps
-  | MergeRefusal
-  | CloseRefusal
-  | ReviewRefusal
-  | NothingToRevise
-  | IssueUnchanged
   | CredentialDestinationRefused
   | ConfigurationFailure
   | FlagFailure
-  | BodyFailure
   | CommandLineFailure;
 
 type FailureKind = CliFailure["kind"];
@@ -51,18 +35,6 @@ type FailureDescribers = { readonly [Kind in FailureKind]: (failure: FailureOf<K
 type DescribedFailure<Kind extends FailureKind> = {
   readonly kind: Kind;
   readonly failure: FailureOf<Kind>;
-};
-
-const MERGE_STATE_EXPLANATIONS: {
-  readonly [State in Exclude<PullRequestMergeState, "clean">]: string;
-} = {
-  behind: "so its branch is behind the base branch and must be updated",
-  blocked: "so the ruleset is still waiting on a required approval or status check",
-  dirty: "so it conflicts with the base branch",
-  draft: "so it must be marked ready first",
-  "has-hooks": "so it is waiting on the repository's merge hooks",
-  unknown: "so GitHub has not finished computing it; try again shortly",
-  unstable: "so some status checks are failing or still pending",
 };
 
 const shortSha = (sha: string | null): string => sha?.slice(0, SHORT_SHA_LENGTH) ?? "no commit";
@@ -89,30 +61,38 @@ const describers: FailureDescribers = {
     `The GitHub App is not installed on ${formatRepositorySlug(repository)}; install it there first.`,
   "app-identity-mismatch": ({ role, expectedAppSlug, actualAppSlug }) =>
     `The ${role} credentials authenticate as ${actualAppSlug}, not ${expectedAppSlug}.`,
-  "gh-command-failed": ({ command, detail, publishedUrl }) =>
-    publishedUrl === undefined
-      ? `${command} failed: ${detail}`
-      : `${command} failed after publishing ${publishedUrl}: ${detail}`,
+  "gh-verb-unsupported": ({ verb }) =>
+    `"gh ${verb}" is not a write the bot wrapper runs. It runs: ${supportedGhVerbs().map((name) => `gh ${name}`).join(", ")}. Run reads as plain gh.`,
+  "gh-flag-refused": ({ flag }) =>
+    `${flag} is refused: the wrapper pins the repository, never bypasses rulesets, never opens a browser or editor, and never posts a body it did not stamp. Drop ${flag} and give the text with --body or --body-file.`,
+  "gh-flag-value-missing": ({ flag }) => `${flag} needs a value.`,
+  "gh-body-given-twice": () => "Pass --body or --body-file, not both.",
+  "gh-body-missing": ({ verb }) =>
+    `gh ${verb} needs its text: pass --body, --body-file, or --body-file - to read standard input.`,
+  "gh-review-event-ambiguous": () =>
+    "gh pr review needs exactly one of --approve, --request-changes or --comment.",
+  "gh-review-flag-unsupported": ({ token }) =>
+    `gh pr review through the wrapper takes the pull request number, one event flag, --body or --body-file, and optionally --commit-sha <sha>; "${token}" is not one of them.`,
+  "gh-target-required": ({ verb }) =>
+    `gh ${verb} needs the pull request number right after the verb, as in "gh ${verb} 12 ...".`,
+  "gh-unavailable": ({ detail }) =>
+    `gh could not be run: ${detail}. Install GitHub CLI 2.103.2 or later and put it on PATH.`,
+  "gh-read-failed": ({ operation, detail }) => `gh could not ${operation}: ${detail}`,
+  "attachment-refused": ({ attachment }) =>
+    `Refusing to attach ${attachment}: it is inside the bot credential store.`,
   "git-command-failed": ({ command, detail }) => `${command} failed: ${detail}`,
   "push-remote-elsewhere": ({ remoteUrl, repository }) =>
     `This worktree pushes to ${remoteUrl}, not ${formatRepositorySlug(repository)}; the bot only pushes to the configured repository.`,
   "push-remote-not-https": ({ remoteUrl, repository }) =>
     `This worktree pushes to ${remoteUrl}, which the bot's credential helper cannot serve; set the push remote to https://github.com/${formatRepositorySlug(repository)}.git.`,
-  "branch-detached": () => "HEAD is detached; check out a branch or pass --head <branch>.",
+  "branch-detached": () =>
+    "HEAD is detached, so the provenance marker has no session; check out a branch or pass --session <id>.",
   "pull-request-not-open": ({ pullNumber, lifecycle }) =>
     `#${String(pullNumber)} is already ${lifecycle}.`,
-  "pull-request-is-draft": ({ pullNumber }) =>
-    `#${String(pullNumber)} is a draft; mark it ready with the ready command before merging.`,
-  "pull-request-not-mergeable": ({ pullNumber, mergeState }) =>
-    `#${String(pullNumber)} cannot merge: GitHub reports its merge state as ${mergeState}, ${MERGE_STATE_EXPLANATIONS[mergeState]}.`,
   "approved-and-mergeable": ({ pullNumber }) =>
-    `#${String(pullNumber)} is approved and mergeable; merge it with the merge command instead of closing it.`,
+    `#${String(pullNumber)} is approved and mergeable; merge it with gh pr merge instead of closing it.`,
   "reviewed-head-moved": ({ pullNumber, reviewedSha, headSha }) =>
     `#${String(pullNumber)} head is ${shortSha(headSha)} but this review read ${shortSha(reviewedSha)}; review the current head.`,
-  "nothing-to-revise": ({ pullNumber }) =>
-    `Nothing to change on #${String(pullNumber)}; pass --title, --body, --body-file, --add-label, --remove-label or --attach.`,
-  "issue-unchanged": ({ issueNumber }) =>
-    `Nothing to change on #${String(issueNumber)}; pass --title, --body, --body-file, --state, --add-label, --remove-label or --attach.`,
   "credential-destination-refused": ({ destination }) =>
     `Refusing to hand the author bot's credential to ${destination}; it serves only the configured repository.`,
   "configuration-unreadable": ({ location }) =>
@@ -123,9 +103,7 @@ const describers: FailureDescribers = {
   "flag-repeated": ({ flag }) => `--${flag} was given more than once.`,
   "flag-value-missing": ({ flag }) => `--${flag} needs a value.`,
   "flags-invalid": ({ issues }) => `Invalid flags: ${issues}`,
-  "body-missing": () => "Provide the text with --body or --body-file.",
-  "body-given-twice": () => "Pass --body or --body-file, not both.",
-  "inline-body-refused": () => "Refusing to post the --body text: it contains a private key.",
+  "inline-body-refused": () => "Refusing to post that text: it contains a private key.",
   "body-file-unreadable": ({ location }) => `Cannot read the body file ${location}.`,
   "body-file-refused": ({ location, reason }) =>
     reason === "inside-credential-store"

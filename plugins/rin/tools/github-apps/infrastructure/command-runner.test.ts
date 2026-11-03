@@ -1,47 +1,51 @@
-import { assert, describe, expect, it } from "vitest";
-import { succeed } from "../domain/result.ts";
-import { runCommand } from "./command-runner.ts";
+import { describe, expect, it, vi } from "vitest";
+import { fail, succeed } from "../domain/result.ts";
+import { createCommandRunner } from "./command-runner.ts";
+import type { ProcessRunner } from "./process-runner.ts";
 
-describe("runCommand", () => {
-  it("returns what the command printed", async () => {
-    const ran = await runCommand({ command: process.execPath, commandArguments: ["--version"] });
+const exited = ({ standardError, exitCode }: { readonly standardError: string; readonly exitCode: number }) =>
+  succeed({ standardOutput: "main\n", standardError, exitCode });
 
-    assert(ran.kind === "success");
-    expect(ran.outcome).toMatch(/^v\d+\.\d+\.\d+/);
+describe("createCommandRunner", () => {
+  it("runs the command with nothing on standard input and no extra environment", async () => {
+    const runProcess = vi.fn<ProcessRunner>().mockResolvedValue(exited({ standardError: "", exitCode: 0 }));
+
+    await createCommandRunner(runProcess)({ command: "git", commandArguments: ["branch", "--show-current"] });
+
+    expect(runProcess).toHaveBeenCalledExactlyOnceWith({
+      command: "git",
+      commandArguments: ["branch", "--show-current"],
+      environment: {},
+      standardInput: undefined,
+    });
+  });
+
+  it("returns what a successful command printed", async () => {
+    const runProcess = vi.fn<ProcessRunner>().mockResolvedValue(exited({ standardError: "", exitCode: 0 }));
+
+    expect(await createCommandRunner(runProcess)({ command: "git", commandArguments: ["status"] })).toEqual(
+      succeed("main\n"),
+    );
+  });
+
+  it.each([
+    [{ standardError: "fatal: not a git repository\n", exitCode: 128 }, "fatal: not a git repository"],
+    [{ standardError: "", exitCode: 1 }, "exited with code 1"],
+  ])("fails a command that exits %j", async (exit, detail) => {
+    const runProcess = vi.fn<ProcessRunner>().mockResolvedValue(exited(exit));
+
+    expect(await createCommandRunner(runProcess)({ command: "git", commandArguments: ["status"] })).toEqual(
+      fail({ kind: "command-failed", command: "git status", detail }),
+    );
   });
 
   it("reports a command that cannot be run", async () => {
-    const ran = await runCommand({
-      command: "rin-no-such-command",
-      commandArguments: ["status"],
-    });
+    const runProcess = vi
+      .fn<ProcessRunner>()
+      .mockResolvedValue(fail({ kind: "process-unavailable", command: "git", detail: "spawn git ENOENT" }));
 
-    assert(ran.kind === "failure");
-    expect(ran.reason.command).toBe("rin-no-such-command status");
-    expect(ran.reason.detail).toContain("ENOENT");
-  });
-
-  it("feeds standard input and the given environment to the command", async () => {
-    const ran = await runCommand({
-      command: process.execPath,
-      commandArguments: [
-        "-e",
-        "process.stdin.on('data', (chunk) => process.stdout.write(process.env.RIN_PROBE + ':' + chunk))",
-      ],
-      environment: { RIN_PROBE: "probe" },
-      standardInput: "body",
-    });
-
-    expect(ran).toEqual(succeed("probe:body"));
-  });
-
-  it("keeps what a failing command printed before it failed", async () => {
-    const ran = await runCommand({
-      command: process.execPath,
-      commandArguments: ["-e", "process.stdout.write('partial'); process.exit(1)"],
-    });
-
-    assert(ran.kind === "failure");
-    expect(ran.reason.standardOutput).toBe("partial");
+    expect(await createCommandRunner(runProcess)({ command: "git", commandArguments: ["status"] })).toEqual(
+      fail({ kind: "command-failed", command: "git status", detail: "spawn git ENOENT" }),
+    );
   });
 });

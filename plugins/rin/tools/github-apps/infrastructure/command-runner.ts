@@ -1,59 +1,35 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { fail, succeed, type Result } from "../domain/result.ts";
+import type { ProcessExit, ProcessRunner } from "./process-runner.ts";
 
-const execFileAsync = promisify(execFile);
+const EXIT_SUCCESS = 0;
 
-type CommandInvocation = {
-  readonly command: string;
-  readonly commandArguments: readonly string[];
-  readonly environment?: Readonly<Record<string, string>>;
-  readonly standardInput?: string;
-};
+type CommandInvocation = { readonly command: string; readonly commandArguments: readonly string[] };
 
 type CommandFailed = {
   readonly kind: "command-failed";
   readonly command: string;
   readonly detail: string;
-  readonly standardOutput: string;
 };
 
 type CommandRunner = (invocation: CommandInvocation) => Promise<Result<string, CommandFailed>>;
 
-const failureDetail = (spawnError: unknown): string => {
-  if (!(spawnError instanceof Error)) return String(spawnError);
-  const standardError =
-    "stderr" in spawnError && typeof spawnError.stderr === "string" ? spawnError.stderr.trim() : "";
-  return standardError === "" ? spawnError.message : standardError;
+const exitDetail = ({ standardError, exitCode }: ProcessExit): string => {
+  const reported = standardError.trim();
+  return reported === "" ? `exited with code ${String(exitCode)}` : reported;
 };
 
-const failureOutput = (spawnError: unknown): string =>
-  spawnError instanceof Error && "stdout" in spawnError && typeof spawnError.stdout === "string"
-    ? spawnError.stdout
-    : "";
+const createCommandRunner =
+  (runProcess: ProcessRunner): CommandRunner =>
+  async ({ command, commandArguments }) => {
+    const commandLine = [command, ...commandArguments].join(" ");
+    const ran = await runProcess({ command, commandArguments, environment: {}, standardInput: undefined });
+    if (ran.kind === "failure") {
+      return fail({ kind: "command-failed", command: commandLine, detail: ran.reason.detail });
+    }
+    if (ran.outcome.exitCode !== EXIT_SUCCESS) {
+      return fail({ kind: "command-failed", command: commandLine, detail: exitDetail(ran.outcome) });
+    }
+    return succeed(ran.outcome.standardOutput);
+  };
 
-const runCommand: CommandRunner = async ({
-  command,
-  commandArguments,
-  environment,
-  standardInput,
-}) => {
-  try {
-    const running = execFileAsync(command, commandArguments, {
-      encoding: "utf8",
-      env: environment === undefined ? undefined : { ...process.env, ...environment },
-    });
-    if (standardInput !== undefined) running.child.stdin?.end(standardInput);
-    const { stdout } = await running;
-    return succeed(stdout);
-  } catch (spawnError: unknown) {
-    return fail({
-      kind: "command-failed",
-      command: [command, ...commandArguments].join(" "),
-      detail: failureDetail(spawnError),
-      standardOutput: failureOutput(spawnError),
-    });
-  }
-};
-
-export { runCommand, type CommandFailed, type CommandInvocation, type CommandRunner };
+export { createCommandRunner, type CommandFailed, type CommandInvocation, type CommandRunner };

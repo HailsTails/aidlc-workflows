@@ -390,25 +390,25 @@
   },
   {
     "files": [
-      "plugins/rin/tools/github-apps/infrastructure/command-runner.ts"
+      "plugins/rin/tools/github-apps/infrastructure/process-runner.ts"
     ],
-    "reason": "The one adapter that spawns processes for the GitHub bot tooling, behind the CommandRunner port. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy.",
+    "reason": "The one adapter that spawns processes for the GitHub bot tooling, behind the ProcessRunner port. Carried from the minutesarah-shop implementation into the rin plugin so every consumer receives one copy.",
     "whyChain": {
       "whys": [
         {
-          "why": "Why does command-runner.ts import node:child_process and node:util?",
-          "because": "It implements the CommandRunner port with a promisified execFile, returning standard output or a command-failed failure",
-          "evidence": "plugins/rin/tools/github-apps/infrastructure/command-runner.ts exports CommandRunner and runCommand"
+          "why": "Why does process-runner.ts import node:child_process?",
+          "because": "It implements the ProcessRunner port with spawn, feeding standard input and an environment and returning standard output, standard error and the exit code",
+          "evidence": "plugins/rin/tools/github-apps/infrastructure/process-runner.ts exports ProcessRunner and runProcess"
         },
         {
           "why": "Why must the bot tooling spawn a process?",
-          "because": "Adopting the bot identity, finding the primary worktree and naming the current branch are git operations with no library equivalent in the repository",
-          "evidence": "git-cli-worktree.ts implements GitWorktreePort by running git config, git rev-parse and git worktree list through runCommand"
+          "because": "Writes run the real gh as the bot, and adopting the bot identity, finding the primary worktree and naming the current branch are git operations, with no library equivalent in the repository",
+          "evidence": "github-cli.ts runs gh through runProcess; command-runner.ts adapts runProcess to the CommandRunner port git-cli-worktree.ts uses"
         },
         {
-          "why": "Why does git-cli-worktree.ts not import node:child_process itself?",
-          "because": "It takes runCommand as a dependency, so its git behaviour is tested without spawning git",
-          "evidence": "git-cli-worktree.test.ts asserts the exact git arguments against a vi.fn<CommandRunner>() fake"
+          "why": "Why do github-cli.ts and command-runner.ts not import node:child_process themselves?",
+          "because": "They take runProcess as a dependency, so their gh and git behaviour is tested without spawning either",
+          "evidence": "github-cli.test.ts and command-runner.test.ts assert the exact process invocation against a vi.fn<ProcessRunner>() fake"
         },
         {
           "why": "Why an authorised location rather than a carve-out?",
@@ -421,7 +421,7 @@
           "evidence": "CD-19 rule text: a dependency swap then touches one file and vendor types never leak inward"
         }
       ],
-      "rootCause": "The GitHub bot tooling inverts process spawning behind the CommandRunner port, and this adapter is the one place that port is implemented",
+      "rootCause": "The GitHub bot tooling inverts process spawning behind the ProcessRunner port, and this adapter is the one place that port is implemented",
       "owner": "Helen (HailsTails), carried from HailsTails/minutesarah-shop#10"
     }
   },

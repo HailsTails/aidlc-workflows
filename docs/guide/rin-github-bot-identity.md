@@ -2,10 +2,10 @@
 
 Rin's `guard-github-writes` hook blocks raw `gh` writes in agent sessions, because they would act as the operator's own GitHub login. The plugin ships the replacement: a bot CLI at `<harness-dir>/tools/github-apps/cli-main.ts`. Agent sessions act on the consumer's repository as two GitHub Apps:
 
-| Role       | Actor               | Used by           | Commands                                                                   |
-| ---------- | ------------------- | ----------------- | -------------------------------------------------------------------------- |
-| `author`   | `<author-slug>[bot]`   | author sessions   | `pr`, `pr-edit`, `comment`, `issue`, `issue-edit`, `draft`, `ready`, `merge`, `close`, `git push` |
-| `reviewer` | `<reviewer-slug>[bot]` | reviewer sessions | `review`                                                                   |
+| Role       | Actor                  | Used by           | Writes                                                                                              |
+| ---------- | ---------------------- | ----------------- | --------------------------------------------------------------------------------------------------- |
+| `author`   | `<author-slug>[bot]`   | author sessions   | `gh pr create/edit/comment/ready/merge/close`, `gh issue create/edit/comment/close/reopen`, `git push` |
+| `reviewer` | `<reviewer-slug>[bot]` | reviewer sessions | `gh pr review`                                                                                      |
 
 GitHub refuses a bot's approval of its own pull request. Splitting authoring from reviewing across two apps is what lets an agent review count. Helen's consumers use the `rin-author` and `rin-reviewer` apps.
 
@@ -13,28 +13,32 @@ GitHub refuses a bot's approval of its own pull request. Splitting authoring fro
 
 Run every command from the consumer's project root. The examples use Claude's `.claude`; substitute the harness directory you installed.
 
-| Command                                                                                                      | Does                                                                          |
-| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `bun .claude/tools/github-apps/cli-main.ts pr --title "T" --body-file body.md [--base main] [--head <branch>] [--draft] [--label <name> ...] [--attach <file>[#alt] ...] [--session <id>]` | opens a pull request as the author bot |
-| `... pr-edit --pr <n> [--title "T"] [--body "B" \| --body-file <path>] [--add-label <name> ...] [--remove-label <name> ...] [--attach <file>[#alt] ...]` | retitles, rewrites or relabels a pull request; removing a label it lacks is not an error |
-| `... comment --target <n> --body "B" [--attach <file>[#alt] ...]`                                             | comments on an issue or pull request                                          |
-| `... issue --title "T" --body "B" [--label <name> ...] [--attach <file>[#alt] ...] [--session <id>]`          | opens an issue as the author bot                                              |
-| `... issue-edit --issue <n> [--add-label <name> ...] [--remove-label <name> ...] [--title "T"] [--body "B" \| --body-file <path>] [--state open\|closed] [--attach <file>[#alt] ...]` | relabels, retitles, rewrites, closes or reopens an issue; removing a label it lacks is not an error |
-| `... draft --pr <n>` / `... ready --pr <n>`                                                                   | converts to draft / marks ready for review                                    |
-| `... review --pr <n> --event approve\|request-changes\|comment --body "B" [--commit-sha <sha>]`               | posts a review as the reviewer bot, bound to the head it read                 |
-| `... merge --pr <n>`                                                                                          | squash-merges a pull request GitHub reports as cleanly mergeable              |
-| `... close --pr <n> --reason "R"`                                                                             | closes a superseded pull request, refusing one that is approved and mergeable |
-| `... adopt-git`                                                                                               | makes this linked worktree commit and push as the author bot                  |
-| `... token --role author\|reviewer`                                                                           | prints a one-hour installation token, for `GH_TOKEN=` reads                   |
-| `... marker --role author\|reviewer --session <id>`                                                           | prints the provenance marker                                                  |
+Writes are the real `gh` command, prefixed with the CLI and `gh`:
 
-Every body an agent posts starts with a hidden marker, `<!-- rin-bot: role=<role> session=<id> -->`, so authorship can be audited and filtered. A body given with `--body` or `--body-file` that contains a private key is refused. Use `--body-file` for long or multi-line bodies; it also refuses a file inside the credential store. A flag may be given once, except `--label`, `--add-label`, `--remove-label` and `--attach`, which repeat once per value; every label must already exist in the repository, except one being removed. `pr-edit` and `issue-edit` print one warning line on stderr for each `--remove-label` the repository does not have, and still exit 0. A value that itself starts with `--` has to go through `--body-file`.
+```bash
+bun .claude/tools/github-apps/cli-main.ts gh pr create --title "T" --body-file body.md --label bug --attach shot.png#Before
+```
 
-`--attach` takes the same `<file>#<alt text>` value as `gh`'s own `--attach`. With it, the command hands the write to `gh` (2.103.2 or later) running as the bot, with the stamped body on standard input: `gh` uploads the images and videos, rewrites any `![alt](./file.png)` reference to the uploaded URL, and appends the rest. References resolve against the working directory. If `gh` publishes the write and then fails an upload, the error names the URL it published, so the write is not repeated. An `issue-edit --state` given with `--attach` changes the state after `gh` has attached the files.
+The wrapper mints the role's bot token, sets `GH_TOKEN` and `GH_PROMPT_DISABLED=1`, pins `--repo` to the configured repository, stamps the provenance marker onto the body, and runs `gh` (2.103.2 or later; earlier releases cannot use an app installation token). Every other argument, including `--attach`, `--label`, `--add-label`, `--squash` and `--auto`, goes to `gh` unchanged. The wrapper prints what `gh` printed and exits with `gh`'s exit code, so a write that publishes and then fails an upload still prints the URL it published. Reads (`gh pr view`, `gh pr list`, `gh pr checks`, `gh api` GETs) stay plain `gh`.
 
-`review` posts against the head sha it read, and refuses if `--commit-sha` names a different head. `merge` does not judge reviews itself. It refuses unless the pull request is open, not a draft, and GitHub reports its merge state as `CLEAN`, which already folds in the ruleset's required approvals and checks and any conflict. A refusal names the state GitHub returned, such as `blocked` (waiting on a review or required check), `unstable` (checks failing or pending) or `dirty` (a conflict). It passes the head it checked to GitHub as `expectedHeadOid`, so a push that lands between the check and the merge makes GitHub refuse the merge.
+| Wrapped write                                                                 | Notes                                                                                                   |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `gh pr create`, `gh issue create`, `gh pr comment`, `gh issue comment`        | need a body (`--body`, `--body-file`, or `--body-file -` for standard input) or at least one `--attach` |
+| `gh pr edit`, `gh issue edit`                                                 | stamp the body only when one is given                                                                   |
+| `gh pr ready`, `gh pr merge`, `gh issue close`, `gh issue reopen`             | pass through; a `gh pr merge --body` is passed on unstamped, as the commit body                         |
+| `gh pr close <n> [--comment "C"]`                                             | refuses a pull request that is approved and mergeable; the closing comment is stamped                   |
+| `gh pr review <n> --approve\|--request-changes\|--comment [--body "B"] [--commit-sha <sha>]` | runs as the reviewer bot and posts against the head it read, refusing if `--commit-sha` names another head |
+| `... adopt-git`                                                               | makes this linked worktree commit and push as the author bot                                            |
+| `... token --role author\|reviewer`                                           | prints a one-hour installation token, for `GH_TOKEN=` use outside the wrapped writes                    |
+| `... marker --role author\|reviewer --session <id>`                           | prints the provenance marker                                                                            |
 
-A consumer that prefers short names can add its own `package.json` scripts that call the CLI, for example `"gh:pr": "bun .claude/tools/github-apps/cli-main.ts pr"`. The hook's hints always name the CLI itself, so they never point at a script the consumer lacks.
+`gh pr close` and `gh pr review` take the pull request number right after the verb, because the wrapper reads that pull request before it acts. `gh pr review` through the wrapper takes only the number, one event flag, a body and `--commit-sha`.
+
+The wrapper refuses `--repo`/`-R` (the repository is pinned), `--admin` (it never bypasses rulesets), `--web`, `--editor`, `--fill`, `--fill-first`, `--fill-verbose`, `--template` and `--recover` (the body would not be one it stamped). `--body` and `--body-file` cannot both be given.
+
+Every body an agent posts starts with a hidden marker, `<!-- rin-bot: role=<role> session=<id> -->`, so authorship can be audited and filtered. The session is `--session <id>` when given (the wrapper takes it out before calling `gh`), otherwise the issue or pull request number after the verb, otherwise the `--head` branch, otherwise `new-issue` for `gh issue create`, otherwise the current branch. Text that contains a private key is refused, whether given with `--body`, on standard input or in a `--body-file`. A `--body-file` or `--attach` file inside the credential store is refused; for `--attach`, every reading of a `#` in the value as the end of the path is checked, so alt text cannot hide one.
+
+A consumer that prefers short names can add its own `package.json` scripts that call the CLI, for example `"gh:bot": "bun .claude/tools/github-apps/cli-main.ts gh"`. The hook's hints always name the CLI itself, so they never point at a script the consumer lacks.
 
 ## Configuration
 
@@ -51,7 +55,7 @@ Each consumer commits `aidlc/github-identity.json`:
 }
 ```
 
-A token is always scoped to that one repository. `issue` and `issue-edit` narrow it further to **Issues: write**, and `comment` to **Issues: write** and **Pull requests: write**. Minting refuses credentials that authenticate as a different app slug. Without this file the bot identity is unconfigured: the hook still blocks raw `gh` writes but says what to add, and worktree provisioning skips identity adoption without a message.
+A token is always scoped to that one repository. `gh issue create`, `gh issue edit`, `gh issue close` and `gh issue reopen` narrow it further to **Issues: write**, and `gh pr comment` and `gh issue comment` to **Issues: write** and **Pull requests: write**. Minting refuses credentials that authenticate as a different app slug. Without this file the bot identity is unconfigured: the hook still blocks raw `gh` writes but says what to add, and worktree provisioning skips identity adoption without a message.
 
 ## Credentials
 
@@ -73,6 +77,6 @@ On a new linked worktree, the plugin's `provision-worktree` hook runs `adopt-git
 ## Setting up a consumer repository
 
 1. Install each app on the consumer repository: on the app's settings page choose *Install App*, then the owning account, then *Only select repositories*, and add the repository. An installation inherits the app's permissions; it does not choose its own. Check that the author app has **Contents: read and write** (push and merge), **Pull requests: read and write** and **Issues: read and write** (comments, and opening, relabelling and closing issues), plus **Workflows: read and write** if agents change `.github/workflows/`. Check that the reviewer app has **Pull requests: read and write** and **Contents: read**. **Metadata: read** is always granted.
-2. Configure the base branch's ruleset to require a pull request with at least one approval, and to require its status checks. `merge` trusts that ruleset: without it, a clean merge state means nothing has been checked, and the merge has no gate. The reviewer bot's approval satisfies the approval rule, and GitHub never lets the author bot approve its own pull request. If the rule restricts who may push or merge to the branch, add the author app to that list.
+2. Configure the base branch's ruleset to require a pull request with at least one approval, to require its status checks, to allow only squash merges, to dismiss stale approvals when new commits are pushed, and to require approval of the most recent push. `gh pr merge` through the wrapper does not judge reviews or merge state itself: the ruleset is the merge gate, and without it nothing stops a merge. The reviewer bot's approval satisfies the approval rule, and GitHub never lets the author bot approve its own pull request. If the rule restricts who may push or merge to the branch, add the author app to that list, and do not add either app to the bypass list.
 3. Commit `aidlc/github-identity.json`.
 4. Make sure the per-user credential store holds both roles.

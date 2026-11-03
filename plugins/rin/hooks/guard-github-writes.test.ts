@@ -78,171 +78,46 @@ const denialOf = async ({
   return permissionDecisionFrom({ stdout: outcome.stdout }).hookSpecificOutput;
 };
 
+const configuredDenial = (hint: string) =>
+  [
+    "BLOCKED: raw `gh` write would act as the operator's stored gh login (a human-only account) and bypass the bot identity.",
+    "",
+    `Run the same gh command through the bot wrapper — it mints the role's bot token, pins the repository and stamps the provenance marker: ${hint}`,
+    "",
+    "Read-only gh (gh pr view / list / checks / diff, gh api GET) is fine. git push is fine — agent worktrees push as shop-author[bot] via the credential helper.",
+  ].join("\n");
+
 describe("guard-github-writes deny path", () => {
-  test("denies raw gh pr create via permissionDecision", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: 'gh pr create --title "x" --body "y"',
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(decision.hookSpecificOutput?.permissionDecisionReason).toContain(
-      `${BOT_CLI} pr `,
-    );
-  });
-
-  test("denies raw gh pr edit and names the gh:pr-edit wrapper", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: 'gh pr edit 42 --body "y"',
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(decision.hookSpecificOutput?.permissionDecisionReason).toContain(
-      `${BOT_CLI} pr-edit`,
-    );
-  });
-
-  test("denies raw gh pr review", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: "gh pr review 42 --approve",
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-  });
-
-  test("denies raw gh issue comment", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: 'gh issue comment 42 --body "x"',
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(decision.hookSpecificOutput?.permissionDecisionReason).toContain(
-      `${BOT_CLI} comment`,
-    );
-  });
-
   test.each([
-    ['gh issue create --title "x" --body "y" --label bug', `${BOT_CLI} issue --title`],
-    ["gh issue edit 42 --add-label stage:build", `${BOT_CLI} issue-edit --issue <n>`],
-    ['gh issue close 42 --comment "done"', `${BOT_CLI} issue-edit --issue <n> --state closed`],
-    ["gh issue reopen 42", `${BOT_CLI} issue-edit --issue <n> --state open`],
-  ])("denies raw %s and names the issue wrapper", async (command, wrapper) => {
-    const denial = await denialOf({ command, hookPath: configuredHook });
-    expect(denial?.permissionDecision).toBe("deny");
-    expect(denial?.permissionDecisionReason).toContain(wrapper);
-  });
-
-  test("denies raw gh pr merge", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: "gh pr merge 42 --squash",
-      runtime: RUNTIME,
+    ['gh pr create --title "x" --body "y"', `${BOT_CLI} gh pr create <the same arguments>`],
+    ['gh pr edit 42 --body "y"', `${BOT_CLI} gh pr edit <the same arguments>`],
+    ['gh pr comment 42 --body "x"', `${BOT_CLI} gh pr comment <the same arguments>`],
+    ["gh pr ready 42 --undo", `${BOT_CLI} gh pr ready <the same arguments>`],
+    ["gh pr merge 42 --squash", `${BOT_CLI} gh pr merge <the same arguments>`],
+    [
+      "gh pr close 42",
+      `${BOT_CLI} gh pr close <n> [--comment "..."] (the number right after the verb)`,
+    ],
+    [
+      "gh pr review 42 --approve",
+      `${BOT_CLI} gh pr review <n> --approve|--request-changes|--comment [--body "..."] [--commit-sha <sha>] (the number right after the verb)`,
+    ],
+    ['gh issue create --title "x" --body "y" --label bug', `${BOT_CLI} gh issue create <the same arguments>`],
+    ["gh issue edit 42 --add-label stage:build", `${BOT_CLI} gh issue edit <the same arguments>`],
+    ['gh issue comment 42 --body "x"', `${BOT_CLI} gh issue comment <the same arguments>`],
+    ['gh issue close 42 --comment "done"', `${BOT_CLI} gh issue close <the same arguments>`],
+    ["gh issue reopen 42", `${BOT_CLI} gh issue reopen <the same arguments>`],
+    ["git push && gh pr create --fill", `${BOT_CLI} gh pr create <the same arguments>`],
+    [
+      "gh api -X PATCH repos/example/shop/pulls/1",
+      `${BOT_CLI} gh pr|issue <verb> for pull request and issue writes; for anything else, ${BOT_CLI} token --role <author|reviewer> prints a scoped bot token for GH_TOKEN.`,
+    ],
+  ])("denies raw %s and names the same command through the bot CLI", async (command, hint) => {
+    expect(await denialOf({ command, hookPath: configuredHook })).toEqual({
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: configuredDenial(hint),
     });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(decision.hookSpecificOutput?.permissionDecisionReason).toContain(
-      `${BOT_CLI} merge`,
-    );
-  });
-
-  test("denies a mutating gh api call", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: "gh api -X POST repos/example/project/issues",
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-  });
-
-  test("denies raw gh pr close and names the gh:close wrapper", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: "gh pr close 42",
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(decision.hookSpecificOutput?.permissionDecisionReason).toContain(
-      `${BOT_CLI} close`,
-    );
-  });
-
-  test("denies gh pr ready --undo and names the gh:draft wrapper", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: "gh pr ready 42 --undo",
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(decision.hookSpecificOutput?.permissionDecisionReason).toContain(
-      `${BOT_CLI} draft`,
-    );
-  });
-
-  test("denies plain gh pr ready and names the gh:ready wrapper", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: "gh pr ready 42",
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-    expect(decision.hookSpecificOutput?.permissionDecisionReason).toContain(
-      `${BOT_CLI} ready`,
-    );
-  });
-
-  test("denies gh pr create chained after another command", async () => {
-    const outcome = await invokeBashHook({
-      hookFileName: HOOK,
-      hookPath: configuredHook,
-      command: "git push && gh pr create --fill",
-      runtime: RUNTIME,
-    });
-    const decision = permissionDecisionFrom({ stdout: outcome.stdout });
-    expect(decision.hookSpecificOutput?.permissionDecision).toBe("deny");
-  });
-});
-
-describe("guard-github-writes configured identity wording", () => {
-  test("names the configured author bot as the merging identity", async () => {
-    const denial = await denialOf({ command: "gh pr merge 42", hookPath: configuredHook });
-    expect(denial?.permissionDecisionReason).toContain("squash-merges as shop-author[bot]");
-  });
-
-  test("names the configured author bot as the pushing identity", async () => {
-    const denial = await denialOf({ command: "gh pr create --fill", hookPath: configuredHook });
-    expect(denial?.permissionDecisionReason).toContain(
-      "agent worktrees push as shop-author[bot] via the credential helper",
-    );
-  });
-
-  test("names the bot CLI the install actually ships for a mutating gh api call", async () => {
-    const denial = await denialOf({
-      command: "gh api -X PATCH repos/example/shop/pulls/1",
-      hookPath: configuredHook,
-    });
-    expect(denial?.permissionDecisionReason).toContain(
-      `${BOT_CLI} token --role <author|reviewer>`,
-    );
   });
 });
 
@@ -326,7 +201,7 @@ describe("guard-github-writes pass-through path", () => {
     const outcome = await invokeBashHook({
       hookFileName: HOOK,
       hookPath: configuredHook,
-      command: `${BOT_CLI} pr --title "x" --body "y"`,
+      command: `${BOT_CLI} gh pr create --title "x" --body "y"`,
       runtime: RUNTIME,
     });
     const decision = permissionDecisionFrom({ stdout: outcome.stdout });

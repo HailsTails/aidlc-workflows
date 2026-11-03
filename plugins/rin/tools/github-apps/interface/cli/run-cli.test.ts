@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { GitHubRepositoryPort } from "../../application/github-repository-port.ts";
+import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { TokenMinter } from "../../application/mint-installation-token.ts";
 import { fail, succeed } from "../../domain/result.ts";
 import { secret } from "../../domain/secret.ts";
@@ -14,46 +14,21 @@ const configuration = {
   roles: { author: { appSlug: "rin-author" }, reviewer: { appSlug: "rin-reviewer" } },
 };
 
-const reviewerToken = secret("ghs_reviewer");
+const botToken = secret("ghs_reviewer");
 
-const pullRequest = {
-  pullNumber: 4,
-  nodeId: "PR_node4",
-  headSha: "head4",
-  lifecycle: "open",
-  readiness: "ready-for-review",
-  mergeState: "clean",
-} as const;
-
-const fakeRepositoryApi = () => ({
-  openPullRequest: vi.fn(),
-  revisePullRequest: vi.fn(),
-  readPullRequest: vi
-    .fn<GitHubRepositoryPort["readPullRequest"]>()
-    .mockResolvedValue(succeed(pullRequest)),
-  listReviews: vi.fn<GitHubRepositoryPort["listReviews"]>().mockResolvedValue(succeed([])),
-  submitReview: vi
-    .fn<GitHubRepositoryPort["submitReview"]>()
-    .mockResolvedValue(succeed({ url: "https://github.com/review/1" })),
-  commentOnIssue: vi.fn(),
-  squashMerge: vi.fn(),
-  closePullRequest: vi.fn(),
-  changeReadiness: vi.fn(),
-  openIssue: vi
-    .fn<GitHubRepositoryPort["openIssue"]>()
-    .mockResolvedValue(succeed({ url: "https://github.com/issues/429" })),
-  reviseIssue: vi.fn(),
+const fakeGitHubCli = () => ({
+  run: vi.fn<GitHubCliPort["run"]>().mockResolvedValue(
+    succeed({
+      standardOutput: "https://github.com/HailsTails/minutesarah-shop/issues/429\n",
+      standardError: "",
+      exitCode: 0,
+    }),
+  ),
+  readPullRequest: vi.fn<GitHubCliPort["readPullRequest"]>(),
+  submitReview: vi.fn<GitHubCliPort["submitReview"]>(),
 });
 
-const githubCli = {
-  openPullRequest: vi.fn(),
-  revisePullRequest: vi.fn(),
-  commentOnIssue: vi.fn(),
-  openIssue: vi.fn(),
-  reviseIssue: vi.fn(),
-};
-
-const fakeDependencies = (repositoryApi: GitHubRepositoryPort) => ({
+const fakeDependencies = (githubCli: GitHubCliPort = fakeGitHubCli()) => ({
   terminal: {
     commandArguments: vi.fn(),
     writeOutput: vi.fn(),
@@ -67,9 +42,8 @@ const fakeDependencies = (repositoryApi: GitHubRepositoryPort) => ({
   tokenMinter: {
     mintInstallationToken: vi
       .fn<TokenMinter["mintInstallationToken"]>()
-      .mockResolvedValue(succeed(reviewerToken)),
+      .mockResolvedValue(succeed(botToken)),
   },
-  connectRepository: vi.fn<CliDependencies["connectRepository"]>().mockReturnValue(repositoryApi),
   connectGitHubCli: vi.fn<CliDependencies["connectGitHubCli"]>().mockReturnValue(githubCli),
   worktree: {
     readCurrentBranch: vi.fn(),
@@ -78,92 +52,132 @@ const fakeDependencies = (repositoryApi: GitHubRepositoryPort) => ({
     configureWorktree: vi.fn(),
   },
   readBodyFile: vi.fn(),
+  placeInStore: vi
+    .fn<CliDependencies["placeInStore"]>()
+    .mockResolvedValue({ kind: "outside-store", canonicalPath: "H:/shop/b.png" }),
   credentialHelperCommand: '!bun "cli-main.ts" git-credential --operation',
 });
 
-describe("runCli", () => {
-  it("runs a repository command as its role's bot, against the configured repository", async () => {
-    const repositoryApi = fakeRepositoryApi();
-    const dependencies = fakeDependencies(repositoryApi);
+describe("runCli gh", () => {
+  it("mints the author bot for a gh issue create", async () => {
+    const dependencies = fakeDependencies();
 
-    const exitCode = await runCli({
+    await runCli({
       dependencies,
-      commandArguments: ["review", "--", "--pr", "4", "--event", "approve", "--body", "Ship it."],
+      commandArguments: ["gh", "issue", "create", "--title", "Basket loses items", "-b", "Steps."],
     });
 
-    expect(exitCode).toBe(0);
-    expect(dependencies.tokenMinter.mintInstallationToken).toHaveBeenCalledExactlyOnceWith({
-      role: "reviewer",
-      appSlug: "rin-reviewer",
-      repository,
-    });
-    expect(dependencies.connectRepository).toHaveBeenCalledExactlyOnceWith({
-      token: reviewerToken,
-      repository,
-    });
-    expect(dependencies.connectGitHubCli).toHaveBeenCalledExactlyOnceWith({
-      token: reviewerToken,
-      repository,
-    });
-    expect(dependencies.terminal.writeOutput).toHaveBeenCalledExactlyOnceWith(
-      "Reviewed #4 (approve): https://github.com/review/1\n",
-    );
-  });
-
-  it("opens an issue with every --label given, as the author bot", async () => {
-    const repositoryApi = fakeRepositoryApi();
-    const dependencies = fakeDependencies(repositoryApi);
-
-    const exitCode = await runCli({
-      dependencies,
-      commandArguments: [
-        "issue",
-        "--title",
-        "Basket loses items",
-        "--body",
-        "Steps.",
-        "--label",
-        "bug",
-        "--label",
-        "stage:triage",
-      ],
-    });
-
-    expect(exitCode).toBe(0);
     expect(dependencies.tokenMinter.mintInstallationToken).toHaveBeenCalledExactlyOnceWith({
       role: "author",
       appSlug: "rin-author",
       repository,
       permissions: { issues: "write" },
     });
-    expect(repositoryApi.openIssue).toHaveBeenCalledWith(
-      expect.objectContaining({ labels: ["bug", "stage:triage"] }),
+  });
+
+  it("hands gh the stamped write", async () => {
+    const githubCli = fakeGitHubCli();
+
+    await runCli({
+      dependencies: fakeDependencies(githubCli),
+      commandArguments: ["gh", "issue", "create", "--title", "Basket loses items", "-b", "Steps."],
+    });
+
+    expect(githubCli.run).toHaveBeenCalledExactlyOnceWith({
+      ghArguments: ["issue", "create", "--title", "Basket loses items", "--body-file", "-"],
+      standardInput: "<!-- rin-bot: role=author session=new-issue -->\n\nSteps.",
+    });
+  });
+
+  it("accepts a -- before the gh arguments", async () => {
+    const githubCli = fakeGitHubCli();
+
+    await runCli({
+      dependencies: fakeDependencies(githubCli),
+      commandArguments: ["gh", "--", "pr", "ready", "4"],
+    });
+
+    expect(githubCli.run).toHaveBeenCalledExactlyOnceWith({
+      ghArguments: ["pr", "ready", "4"],
+      standardInput: undefined,
+    });
+  });
+
+  it("exits with gh's own exit code", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run.mockResolvedValue(
+      succeed({ standardOutput: "", standardError: "failed to upload b.png\n", exitCode: 3 }),
     );
+
+    expect(
+      await runCli({
+        dependencies: fakeDependencies(githubCli),
+        commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
+      }),
+    ).toBe(3);
+  });
+
+  it("relays gh's standard output even when gh fails part way", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run.mockResolvedValue(
+      succeed({
+        standardOutput: "https://github.com/HailsTails/minutesarah-shop/issues/429\n",
+        standardError: "failed to upload b.png\n",
+        exitCode: 1,
+      }),
+    );
+    const dependencies = fakeDependencies(githubCli);
+
+    await runCli({
+      dependencies,
+      commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
+    });
+
     expect(dependencies.terminal.writeOutput).toHaveBeenCalledExactlyOnceWith(
-      "https://github.com/issues/429\n",
+      "https://github.com/HailsTails/minutesarah-shop/issues/429\n",
     );
   });
 
-  it("refuses a merge the ruleset still blocks and names the merge state", async () => {
-    const repositoryApi = fakeRepositoryApi();
-    repositoryApi.readPullRequest.mockResolvedValue(
-      succeed({ ...pullRequest, mergeState: "blocked" }),
+  it("relays gh's standard error", async () => {
+    const githubCli = fakeGitHubCli();
+    githubCli.run.mockResolvedValue(
+      succeed({ standardOutput: "", standardError: "failed to upload b.png\n", exitCode: 1 }),
     );
-    const dependencies = fakeDependencies(repositoryApi);
+    const dependencies = fakeDependencies(githubCli);
 
-    const exitCode = await runCli({ dependencies, commandArguments: ["merge", "--pr", "4"] });
+    await runCli({
+      dependencies,
+      commandArguments: ["gh", "issue", "comment", "429", "-b", "x", "--attach", "b.png"],
+    });
 
-    expect(exitCode).toBe(1);
+    expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith("failed to upload b.png\n");
+  });
+
+  it("reports a refused gh flag and exits 1", async () => {
+    const dependencies = fakeDependencies();
+
+    expect(
+      await runCli({ dependencies, commandArguments: ["gh", "pr", "merge", "4", "--admin"] }),
+    ).toBe(1);
     expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(
-      "#4 cannot merge: GitHub reports its merge state as blocked, so the ruleset is still waiting on a required approval or status check.\n",
+      "--admin is refused: the wrapper pins the repository, never bypasses rulesets, never opens a browser or editor, and never posts a body it did not stamp. Drop --admin and give the text with --body or --body-file.\n",
     );
-    expect(repositoryApi.squashMerge).not.toHaveBeenCalled();
+  });
+
+  it("reports an unusable configuration before minting anything", async () => {
+    const dependencies = fakeDependencies();
+    dependencies.loadConfiguration.mockResolvedValue(
+      fail({ kind: "configuration-unreadable", location: "file:///github-identity.json" }),
+    );
+
+    expect(await runCli({ dependencies, commandArguments: ["gh", "pr", "ready", "4"] })).toBe(1);
+    expect(dependencies.tokenMinter.mintInstallationToken).not.toHaveBeenCalled();
   });
 });
 
 describe("runCli as git's credential helper", () => {
   it("tells git to stop asking when the credential helper cannot serve it", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
+    const dependencies = fakeDependencies();
     dependencies.terminal.readInput.mockResolvedValue("protocol=https\nhost=example.com\n");
 
     const exitCode = await runCli({
@@ -177,7 +191,7 @@ describe("runCli as git's credential helper", () => {
   });
 
   it("answers git with the author token for the configured repository", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
+    const dependencies = fakeDependencies();
     dependencies.terminal.readInput.mockResolvedValue(
       "protocol=https\nhost=github.com\npath=HailsTails/minutesarah-shop.git\n",
     );
@@ -195,7 +209,7 @@ describe("runCli as git's credential helper", () => {
   });
 
   it("stays silent for credential operations other than get", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
+    const dependencies = fakeDependencies();
 
     expect(
       await runCli({ dependencies, commandArguments: ["git-credential", "--operation", "store"] }),
@@ -206,7 +220,7 @@ describe("runCli as git's credential helper", () => {
 
 describe("runCli local and refused invocations", () => {
   it("prints the provenance marker without touching GitHub", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
+    const dependencies = fakeDependencies();
 
     await runCli({
       dependencies,
@@ -220,7 +234,7 @@ describe("runCli local and refused invocations", () => {
   });
 
   it("prints the provenance marker in a consumer with no identity configured", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
+    const dependencies = fakeDependencies();
     dependencies.loadConfiguration.mockResolvedValue(
       fail({ kind: "configuration-unreadable", location: "file:///github-identity.json" }),
     );
@@ -234,29 +248,22 @@ describe("runCli local and refused invocations", () => {
     expect(dependencies.loadConfiguration).not.toHaveBeenCalled();
   });
 
-  it("reports an unusable configuration before minting anything", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
-    dependencies.loadConfiguration.mockResolvedValue(
-      fail({ kind: "configuration-unreadable", location: "file:///github-identity.json" }),
-    );
-
-    expect(await runCli({ dependencies, commandArguments: ["merge", "--pr", "4"] })).toBe(1);
-    expect(dependencies.tokenMinter.mintInstallationToken).not.toHaveBeenCalled();
-  });
-
   it("refuses repeated flags", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
+    const dependencies = fakeDependencies();
 
     expect(
-      await runCli({ dependencies, commandArguments: ["merge", "--pr", "4", "--pr", "5"] }),
+      await runCli({
+        dependencies,
+        commandArguments: ["token", "--role", "author", "--role", "reviewer"],
+      }),
     ).toBe(1);
     expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(
-      "--pr was given more than once.\n",
+      "--role was given more than once.\n",
     );
   });
 
   it("prints usage for an unknown command", async () => {
-    const dependencies = fakeDependencies(fakeRepositoryApi());
+    const dependencies = fakeDependencies();
 
     expect(await runCli({ dependencies, commandArguments: ["deploy"] })).toBe(2);
     expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(
@@ -267,7 +274,7 @@ describe("runCli local and refused invocations", () => {
   it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
     "treats the inherited object key %s as an unknown command",
     async (commandName) => {
-      const dependencies = fakeDependencies(fakeRepositoryApi());
+      const dependencies = fakeDependencies();
 
       expect(await runCli({ dependencies, commandArguments: [commandName] })).toBe(2);
       expect(dependencies.terminal.writeError).toHaveBeenCalledExactlyOnceWith(

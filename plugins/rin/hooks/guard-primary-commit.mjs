@@ -45,7 +45,7 @@ const isPrimaryCheckout = ({ checkoutRoot }) =>
   primaryCheckoutRootFrom({ checkoutRoot }) === resolve(checkoutRoot);
 
 const denyReason =
-  "Agent sessions never commit at the primary checkout (stranded-artefact prevention). EnterWorktree (or create an agent worktree), commit there, push, and open the PR the same run via pnpm run gh:pr. The operator's own commits from their terminal are unaffected.";
+  "Agent sessions never commit at the primary checkout (stranded-artefact prevention). EnterWorktree (or create an agent worktree), commit there, push, and open the PR the same run through the bot CLI's gh pr create. The operator's own commits from their terminal are unaffected.";
 
 const denyCall = () => {
   process.stdout.write(

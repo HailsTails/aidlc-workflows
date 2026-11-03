@@ -1,43 +1,55 @@
-import type { LabelChange } from "../domain/label-change.ts";
-import type { Result } from "../domain/result.ts";
 import type {
-  IssueComment,
-  IssueProposal,
-  PublishedLink,
-  PullRequestProposal,
-} from "./github-repository-port.ts";
+  PullRequestSnapshot,
+  ReviewEvent,
+  ReviewRecord,
+} from "../domain/pull-request.ts";
+import type { Result } from "../domain/result.ts";
 
-type Attached<Write> = Write & { readonly attachments: readonly string[] };
-
-type PullRequestEdit = {
-  readonly pullNumber: number;
-  readonly title: string | undefined;
-  readonly body: string | undefined;
-  readonly labels: LabelChange;
+type GhRun = {
+  readonly standardOutput: string;
+  readonly standardError: string;
+  readonly exitCode: number;
 };
 
-type IssueEdit = {
-  readonly issueNumber: number;
-  readonly title: string | undefined;
-  readonly body: string | undefined;
-  readonly labels: LabelChange;
+type GhRequest = {
+  readonly ghArguments: readonly string[];
+  readonly standardInput: string | undefined;
 };
 
-type GitHubCliFailure = {
-  readonly kind: "gh-command-failed";
-  readonly command: string;
+type GhUnavailable = { readonly kind: "gh-unavailable"; readonly detail: string };
+
+type GhReadFailed = {
+  readonly kind: "gh-read-failed";
+  readonly operation: string;
   readonly detail: string;
-  readonly publishedUrl: string | undefined;
 };
 
-type GitHubCliWrite = Promise<Result<PublishedLink, GitHubCliFailure>>;
+type PullRequestReview = {
+  readonly pullRequest: PullRequestSnapshot;
+  readonly reviews: readonly ReviewRecord[];
+};
+
+type ReviewPosting = {
+  readonly pullRequestId: string;
+  readonly commitSha: string;
+  readonly event: ReviewEvent;
+  readonly body: string;
+};
 
 type GitHubCliPort = {
-  readonly openPullRequest: (proposal: Attached<PullRequestProposal>) => GitHubCliWrite;
-  readonly revisePullRequest: (edit: Attached<PullRequestEdit>) => GitHubCliWrite;
-  readonly commentOnIssue: (comment: Attached<IssueComment>) => GitHubCliWrite;
-  readonly openIssue: (proposal: Attached<IssueProposal>) => GitHubCliWrite;
-  readonly reviseIssue: (edit: Attached<IssueEdit>) => GitHubCliWrite;
+  readonly run: (request: GhRequest) => Promise<Result<GhRun, GhUnavailable>>;
+  readonly readPullRequest: (
+    pullNumber: number,
+  ) => Promise<Result<PullRequestReview, GhUnavailable | GhReadFailed>>;
+  readonly submitReview: (posting: ReviewPosting) => Promise<Result<GhRun, GhUnavailable>>;
 };
 
-export type { Attached, GitHubCliFailure, GitHubCliPort, IssueEdit, PullRequestEdit };
+export type {
+  GhReadFailed,
+  GhRequest,
+  GhRun,
+  GhUnavailable,
+  GitHubCliPort,
+  PullRequestReview,
+  ReviewPosting,
+};
