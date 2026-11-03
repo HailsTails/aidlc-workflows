@@ -1,18 +1,24 @@
 import { z } from "zod";
-import type { RevisedIssue } from "../../application/github-repository-port.ts";
 import { openIssue } from "../../application/open-issue.ts";
 import { reviseIssue } from "../../application/revise-issue.ts";
 import { succeed } from "../../domain/result.ts";
 import { readOptionalBody, readRequiredBody } from "./authored-body.ts";
-import type { CommandReport, RepositoryCommand } from "./cli-command.ts";
-import { bodyFlags, labelsFlag, issueOrPullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
+import type { RepositoryCommand } from "./cli-command.ts";
+import {
+  attachFlag,
+  bodyFlags,
+  issueOrPullNumberFlag,
+  labelsFlag,
+  sessionFlag,
+} from "./command-flag-schemas.ts";
 import { validateFlags } from "./command-flags.ts";
-import { reportLine } from "./command-report.ts";
+import { reportLabelled, reportLine } from "./command-report.ts";
 
 const openFlagsSchema = z.strictObject({
   title: z.string().min(1),
   ...bodyFlags,
   label: labelsFlag,
+  attach: attachFlag,
   session: sessionFlag.optional(),
 });
 
@@ -23,29 +29,21 @@ const reviseFlagsSchema = z.strictObject({
   state: z.enum(["open", "closed"]).optional(),
   "add-label": labelsFlag,
   "remove-label": labelsFlag,
+  attach: attachFlag,
   session: sessionFlag.optional(),
 });
 
 const ISSUES_ONLY = { issues: "write" } as const;
 
-const missingLabelWarnings = (missingLabels: readonly string[]): string =>
-  missingLabels.map((name) => `label "${name}" does not exist; nothing removed
-`).join("");
-
-const revisionReport = ({ url, missingLabels }: RevisedIssue): CommandReport => ({
-  ...reportLine(url),
-  standardError: missingLabelWarnings(missingLabels),
-});
-
 const openCommand: RepositoryCommand = {
   access: "repository",
   role: "author",
-  repeatableFlags: ["label"],
+  repeatableFlags: ["label", "attach"],
   permissions: ISSUES_ONLY,
-  execute: async ({ flags, dependencies, role, repositoryApi }) => {
+  execute: async ({ flags, dependencies, role, repositoryApi, githubCli }) => {
     const openFlags = validateFlags({ flags, schema: openFlagsSchema });
     if (openFlags.kind === "failure") return openFlags;
-    const { title, body: inlineBody, label, session } = openFlags.outcome;
+    const { title, body: inlineBody, label, attach, session } = openFlags.outcome;
     const authoredBody = await readRequiredBody({
       inlineBody,
       bodyFile: openFlags.outcome["body-file"],
@@ -54,10 +52,12 @@ const openCommand: RepositoryCommand = {
     if (authoredBody.kind === "failure") return authoredBody;
     const opened = await openIssue({
       repositoryApi,
+      githubCli,
       role,
       title,
       authoredBody: authoredBody.outcome,
       labels: label,
+      attachments: attach,
       session,
     });
     if (opened.kind === "failure") return opened;
@@ -68,12 +68,12 @@ const openCommand: RepositoryCommand = {
 const reviseCommand: RepositoryCommand = {
   access: "repository",
   role: "author",
-  repeatableFlags: ["add-label", "remove-label"],
+  repeatableFlags: ["add-label", "remove-label", "attach"],
   permissions: ISSUES_ONLY,
-  execute: async ({ flags, dependencies, role, repositoryApi }) => {
+  execute: async ({ flags, dependencies, role, repositoryApi, githubCli }) => {
     const reviseFlags = validateFlags({ flags, schema: reviseFlagsSchema });
     if (reviseFlags.kind === "failure") return reviseFlags;
-    const { issue, title, body: inlineBody, state, session } = reviseFlags.outcome;
+    const { issue, title, body: inlineBody, state, attach, session } = reviseFlags.outcome;
     const authoredBody = await readOptionalBody({
       inlineBody,
       bodyFile: reviseFlags.outcome["body-file"],
@@ -82,16 +82,20 @@ const reviseCommand: RepositoryCommand = {
     if (authoredBody.kind === "failure") return authoredBody;
     const revised = await reviseIssue({
       repositoryApi,
+      githubCli,
       role,
       issueNumber: issue,
       title,
       authoredBody: authoredBody.outcome,
       state,
       labels: { add: reviseFlags.outcome["add-label"], remove: reviseFlags.outcome["remove-label"] },
+      attachments: attach,
       session,
     });
     if (revised.kind === "failure") return revised;
-    return succeed(revisionReport(revised.outcome));
+    return succeed(
+      reportLabelled({ line: revised.outcome.url, missingLabels: revised.outcome.missingLabels }),
+    );
   },
 };
 

@@ -1,3 +1,4 @@
+import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitHubRepositoryPort } from "../../application/github-repository-port.ts";
 import type { GitWorktreePort } from "../../application/git-worktree-port.ts";
 import type {
@@ -22,6 +23,7 @@ type CliDependencies = {
   readonly loadConfiguration: IdentityConfigurationLoader;
   readonly tokenMinter: TokenMinter;
   readonly connectRepository: (access: RepositoryAccess) => GitHubRepositoryPort;
+  readonly connectGitHubCli: (access: RepositoryAccess) => GitHubCliPort;
   readonly worktree: GitWorktreePort;
   readonly readBodyFile: BodyFileReader;
   readonly credentialHelperCommand: string;
@@ -41,6 +43,7 @@ type CommandContext = StandaloneContext & { readonly configuration: IdentityConf
 type RepositoryCommandContext = CommandContext & {
   readonly role: AgentRole;
   readonly repositoryApi: GitHubRepositoryPort;
+  readonly githubCli: GitHubCliPort;
 };
 
 type RepositoryCommand = {

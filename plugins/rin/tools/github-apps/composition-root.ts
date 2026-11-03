@@ -10,6 +10,7 @@ import {
   createGitCliWorktree,
 } from "./infrastructure/git-cli-worktree.ts";
 import { createGitHubAppApi } from "./infrastructure/github-app-api.ts";
+import { createGitHubCli } from "./infrastructure/github-cli.ts";
 import { createDefaultGitHubHttp } from "./infrastructure/github-http.ts";
 import { createGitHubRepositoryApi } from "./infrastructure/github-repository-api.ts";
 import { loadIdentityConfiguration } from "./infrastructure/identity-configuration.ts";
@@ -46,6 +47,8 @@ const createCliDependencies = (): CliDependencies => {
     }),
     connectRepository: ({ token, repository }) =>
       createGitHubRepositoryApi({ http, credential: token, repository }),
+    connectGitHubCli: ({ token, repository }) =>
+      createGitHubCli({ runCommand, credential: token, repository }),
     worktree,
     readBodyFile: createBodyFileReader({
       readTextFile,

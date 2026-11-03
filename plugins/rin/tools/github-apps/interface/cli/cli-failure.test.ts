@@ -26,7 +26,26 @@ describe("describeCliFailure", () => {
 
   it("says what an issue edit needs to change something", () => {
     expect(describeCliFailure({ kind: "issue-unchanged", issueNumber: 429 })).toBe(
-      "Nothing to change on #429; pass --title, --body, --body-file, --state, --add-label or --remove-label.",
+      "Nothing to change on #429; pass --title, --body, --body-file, --state, --add-label, --remove-label or --attach.",
+    );
+  });
+
+  it("says what a pull request edit needs to change something", () => {
+    expect(describeCliFailure({ kind: "nothing-to-revise", pullNumber: 5 })).toBe(
+      "Nothing to change on #5; pass --title, --body, --body-file, --add-label, --remove-label or --attach.",
+    );
+  });
+
+  it("names what gh still published before it failed, so the write is not repeated", () => {
+    expect(
+      describeCliFailure({
+        kind: "gh-command-failed",
+        command: "gh issue create",
+        detail: "could not upload ./a.png",
+        publishedUrl: "https://github.com/HailsTails/minutesarah-shop/issues/429",
+      }),
+    ).toBe(
+      "gh issue create failed after publishing https://github.com/HailsTails/minutesarah-shop/issues/429: could not upload ./a.png",
     );
   });
 

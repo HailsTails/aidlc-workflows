@@ -11,4 +11,6 @@ const bodyFlags = { body: z.string().optional(), "body-file": z.string().optiona
 
 const labelsFlag = z.array(z.string().min(1)).default([]);
 
-export { bodyFlags, labelsFlag, issueOrPullNumberFlag, sessionFlag };
+const attachFlag = z.array(z.string().min(1)).default([]);
+
+export { attachFlag, bodyFlags, labelsFlag, issueOrPullNumberFlag, sessionFlag };

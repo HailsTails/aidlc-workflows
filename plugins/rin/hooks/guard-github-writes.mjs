@@ -56,12 +56,13 @@ const atCommandStart = ({ tail, flags }) =>
 const writeRules = [
   {
     pattern: atCommandStart({ tail: "gh\\s+pr\\s+create\\b" }),
-    hint: ({ cli }) => `${cli} pr --title "..." --body "..."`,
+    hint: ({ cli }) =>
+      `${cli} pr --title "..." --body "..." [--label <name> ...] [--attach <file>[#alt] ...]`,
   },
   {
     pattern: atCommandStart({ tail: "gh\\s+pr\\s+edit\\b" }),
     hint: ({ cli }) =>
-      `${cli} pr-edit --pr <n> [--title "..."] [--body "..."]`,
+      `${cli} pr-edit --pr <n> [--title "..."] [--body "..."] [--add-label <name> ...] [--remove-label <name> ...] [--attach <file>[#alt] ...]`,
   },
   {
     pattern: atCommandStart({ tail: "gh\\s+pr\\s+review\\b" }),
@@ -70,17 +71,18 @@ const writeRules = [
   },
   {
     pattern: atCommandStart({ tail: "gh\\s+(?:pr|issue)\\s+comment\\b" }),
-    hint: ({ cli }) => `${cli} comment --target <n> --body "..."`,
+    hint: ({ cli }) =>
+      `${cli} comment --target <n> --body "..." [--attach <file>[#alt] ...]`,
   },
   {
     pattern: atCommandStart({ tail: "gh\\s+issue\\s+create\\b" }),
     hint: ({ cli }) =>
-      `${cli} issue --title "..." --body "..." [--label <name> ...]`,
+      `${cli} issue --title "..." --body "..." [--label <name> ...] [--attach <file>[#alt] ...]`,
   },
   {
     pattern: atCommandStart({ tail: "gh\\s+issue\\s+edit\\b" }),
     hint: ({ cli }) =>
-      `${cli} issue-edit --issue <n> [--add-label <name> ...] [--remove-label <name> ...] [--title "..."] [--body "..."] [--state open|closed]`,
+      `${cli} issue-edit --issue <n> [--add-label <name> ...] [--remove-label <name> ...] [--title "..."] [--body "..."] [--state open|closed] [--attach <file>[#alt] ...]`,
   },
   {
     pattern: atCommandStart({ tail: "gh\\s+issue\\s+close\\b" }),

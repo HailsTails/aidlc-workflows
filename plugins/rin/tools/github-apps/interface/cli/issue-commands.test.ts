@@ -1,4 +1,5 @@
 import { assert, describe, expect, it, vi } from "vitest";
+import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitHubRepositoryPort } from "../../application/github-repository-port.ts";
 import { succeed } from "../../domain/result.ts";
 import type { CommandFlags } from "./command-flags.ts";
@@ -24,16 +25,27 @@ const fakeRepositoryApi = () => ({
     .mockResolvedValue(succeed({ url: issueUrl, missingLabels: [] })),
 });
 
+const fakeGitHubCli = () => ({
+  openPullRequest: vi.fn(),
+  revisePullRequest: vi.fn(),
+  commentOnIssue: vi.fn(),
+  openIssue: vi.fn<GitHubCliPort["openIssue"]>().mockResolvedValue(succeed({ url: issueUrl })),
+  reviseIssue: vi.fn<GitHubCliPort["reviseIssue"]>().mockResolvedValue(succeed({ url: issueUrl })),
+});
+
 const contextWith = ({
   flags,
   repositoryApi,
+  githubCli = fakeGitHubCli(),
 }: {
   readonly flags: CommandFlags;
   readonly repositoryApi: GitHubRepositoryPort;
+  readonly githubCli?: GitHubCliPort;
 }) => ({
   flags,
   role: "author" as const,
   repositoryApi,
+  githubCli,
   configuration: {
     repository: { owner: "HailsTails", name: "minutesarah-shop" },
     baseBranch: "main",
@@ -50,6 +62,7 @@ const contextWith = ({
     loadConfiguration: vi.fn(),
     tokenMinter: { mintInstallationToken: vi.fn() },
     connectRepository: vi.fn(),
+    connectGitHubCli: vi.fn(),
     worktree: {
       readCurrentBranch: vi.fn(),
       readCheckoutKind: vi.fn(),
@@ -98,8 +111,29 @@ describe("issue", () => {
     expect(opened).toEqual({ kind: "failure", reason: { kind: "body-missing" } });
   });
 
-  it("lets --label repeat", () => {
-    expect(issueCommands.issue.repeatableFlags).toEqual(["label"]);
+  it("hands an issue with --attach files to gh", async () => {
+    const repositoryApi = fakeRepositoryApi();
+    const githubCli = fakeGitHubCli();
+
+    await issueCommands.issue.execute(
+      contextWith({
+        flags: { title: "Basket loses items", body: "Steps.", attach: ["./repro.png#Empty basket"] },
+        repositoryApi,
+        githubCli,
+      }),
+    );
+
+    expect(repositoryApi.openIssue).not.toHaveBeenCalled();
+    expect(githubCli.openIssue).toHaveBeenCalledExactlyOnceWith({
+      title: "Basket loses items",
+      body: "<!-- rin-bot: role=author session=new-issue -->\n\nSteps.",
+      labels: [],
+      attachments: ["./repro.png#Empty basket"],
+    });
+  });
+
+  it("lets --label and --attach repeat", () => {
+    expect(issueCommands.issue.repeatableFlags).toEqual(["label", "attach"]);
   });
 });
 
@@ -186,8 +220,12 @@ describe("issue-edit", () => {
     );
   });
 
-  it("lets --add-label and --remove-label repeat", () => {
-    expect(issueCommands["issue-edit"].repeatableFlags).toEqual(["add-label", "remove-label"]);
+  it("lets --add-label, --remove-label and --attach repeat", () => {
+    expect(issueCommands["issue-edit"].repeatableFlags).toEqual([
+      "add-label",
+      "remove-label",
+      "attach",
+    ]);
   });
 });
 

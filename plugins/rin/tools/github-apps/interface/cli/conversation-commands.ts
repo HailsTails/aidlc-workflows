@@ -4,7 +4,12 @@ import { submitReview } from "../../application/submit-review.ts";
 import { succeed } from "../../domain/result.ts";
 import { readRequiredBody } from "./authored-body.ts";
 import type { RepositoryCommand } from "./cli-command.ts";
-import { bodyFlags, issueOrPullNumberFlag, sessionFlag } from "./command-flag-schemas.ts";
+import {
+  attachFlag,
+  bodyFlags,
+  issueOrPullNumberFlag,
+  sessionFlag,
+} from "./command-flag-schemas.ts";
 import { validateFlags } from "./command-flags.ts";
 import { reportLine } from "./command-report.ts";
 
@@ -22,6 +27,7 @@ const reviewFlagsSchema = z.strictObject({
 const commentFlagsSchema = z.strictObject({
   target: issueOrPullNumberFlag,
   ...bodyFlags,
+  attach: attachFlag,
   session: sessionFlag.optional(),
 });
 
@@ -55,11 +61,12 @@ const reviewCommand: RepositoryCommand = {
 const commentCommand: RepositoryCommand = {
   access: "repository",
   role: "author",
+  repeatableFlags: ["attach"],
   permissions: { issues: "write", pull_requests: "write" },
-  execute: async ({ flags, dependencies, role, repositoryApi }) => {
+  execute: async ({ flags, dependencies, role, repositoryApi, githubCli }) => {
     const commentFlags = validateFlags({ flags, schema: commentFlagsSchema });
     if (commentFlags.kind === "failure") return commentFlags;
-    const { target, body: inlineBody, session } = commentFlags.outcome;
+    const { target, body: inlineBody, attach, session } = commentFlags.outcome;
     const authoredBody = await readRequiredBody({
       inlineBody,
       bodyFile: commentFlags.outcome["body-file"],
@@ -68,9 +75,11 @@ const commentCommand: RepositoryCommand = {
     if (authoredBody.kind === "failure") return authoredBody;
     const commented = await commentOnIssue({
       repositoryApi,
+      githubCli,
       role,
       issueNumber: target,
       authoredBody: authoredBody.outcome,
+      attachments: attach,
       session,
     });
     if (commented.kind === "failure") return commented;

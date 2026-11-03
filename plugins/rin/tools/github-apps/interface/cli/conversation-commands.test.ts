@@ -1,4 +1,5 @@
 import { assert, describe, expect, it, vi } from "vitest";
+import type { GitHubCliPort } from "../../application/github-cli-port.ts";
 import type { GitHubRepositoryPort } from "../../application/github-repository-port.ts";
 import { succeed } from "../../domain/result.ts";
 import type { CommandFlags } from "./command-flags.ts";
@@ -35,18 +36,31 @@ const fakeRepositoryApi = () => ({
   reviseIssue: vi.fn(),
 });
 
+const fakeGitHubCli = () => ({
+  openPullRequest: vi.fn(),
+  revisePullRequest: vi.fn(),
+  commentOnIssue: vi
+    .fn<GitHubCliPort["commentOnIssue"]>()
+    .mockResolvedValue(succeed({ url: `${reviewUrl}-attached` })),
+  openIssue: vi.fn(),
+  reviseIssue: vi.fn(),
+});
+
 const contextWith = ({
   flags,
   repositoryApi,
+  githubCli = fakeGitHubCli(),
   role,
 }: {
   readonly flags: CommandFlags;
   readonly repositoryApi: GitHubRepositoryPort;
+  readonly githubCli?: GitHubCliPort;
   readonly role: "author" | "reviewer";
 }) => ({
   flags,
   role,
   repositoryApi,
+  githubCli,
   configuration: {
     repository: { owner: "HailsTails", name: "minutesarah-shop" },
     baseBranch: "main",
@@ -63,6 +77,7 @@ const contextWith = ({
     loadConfiguration: vi.fn(),
     tokenMinter: { mintInstallationToken: vi.fn() },
     connectRepository: vi.fn(),
+    connectGitHubCli: vi.fn(),
     worktree: {
       readCurrentBranch: vi.fn(),
       readCheckoutKind: vi.fn(),
@@ -134,6 +149,34 @@ describe("comment", () => {
       issueNumber: 6,
       body: "<!-- rin-bot: role=author session=6 -->\n\nRebased.",
     });
+  });
+
+  it("hands a comment with repeated --attach files to gh", async () => {
+    const repositoryApi = fakeRepositoryApi();
+    const githubCli = fakeGitHubCli();
+
+    const commented = await conversationCommands.comment.execute(
+      contextWith({
+        flags: { target: "6", body: "Before and after.", attach: ["./before.png", "./after.png"] },
+        repositoryApi,
+        githubCli,
+        role: "author",
+      }),
+    );
+
+    expect(commented).toEqual(
+      succeed({ standardOutput: `${reviewUrl}-attached\n`, standardError: "" }),
+    );
+    expect(repositoryApi.commentOnIssue).not.toHaveBeenCalled();
+    expect(githubCli.commentOnIssue).toHaveBeenCalledExactlyOnceWith({
+      issueNumber: 6,
+      body: "<!-- rin-bot: role=author session=6 -->\n\nBefore and after.",
+      attachments: ["./before.png", "./after.png"],
+    });
+  });
+
+  it("lets --attach repeat", () => {
+    expect(conversationCommands.comment.repeatableFlags).toEqual(["attach"]);
   });
 
   it("asks for a token that can write issue and pull request comments only", () => {
