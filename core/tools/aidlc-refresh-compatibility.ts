@@ -173,6 +173,12 @@ const acceptedEffectNotes: Readonly<Record<StageRefreshEffect, AcceptedEffectNot
     accepts: "the reviewed #67 prose change",
     follows: framingAnswersOwed,
   },
+  "rin-gate-seats": {
+    accepts: "the reviewed #82 and #96 rin gate seats and decision records",
+    follows: (stage) => "an open record keeps its place and resumes with the rin seats; before its gate is approved it owes a fresh review " +
+      "where the reviewer or required outputs changed (Gates 0, 1, 3 and 6), and notes from each named seat where a mob gate's seats changed " +
+      `(Gates 1, 2, 3 and 6).${openAtStage(stage)}`,
+  },
 };
 
 const acceptedEffectNote = (args: { readonly stage: string; readonly effect: StageRefreshEffect; readonly records: readonly string[] }): string => {

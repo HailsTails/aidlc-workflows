@@ -107,6 +107,18 @@ test("names the open workflows at an accepted stage, leading Gate 1 with the ans
   ]);
 });
 
+test("names the open workflows resuming an accepted rin gate with its new seats", () => {
+  expect(refreshRevalidationNotes({ stageRevalidation: {
+    "rin-gate-0-reconcile": ["rin-gate-seats"],
+    "rin-gate-3-interface-lock": ["rin-gate-seats"],
+  }, openWorkflows: [
+    { workflow: "default/locking", currentStage: "rin-gate-3-interface-lock" },
+  ] })).toEqual([
+    "Open-workflow refresh accepts the reviewed #82 and #96 rin gate seats and decision records for stage \"rin-gate-0-reconcile\" (rin-gate-seats): an open record keeps its place and resumes with the rin seats; before its gate is approved it owes a fresh review where the reviewer or required outputs changed (Gates 0, 1, 3 and 6), and notes from each named seat where a mob gate's seats changed (Gates 1, 2, 3 and 6).",
+    "Open-workflow refresh accepts the reviewed #82 and #96 rin gate seats and decision records for stage \"rin-gate-3-interface-lock\" (rin-gate-seats): an open record keeps its place and resumes with the rin seats; before its gate is approved it owes a fresh review where the reviewer or required outputs changed (Gates 0, 1, 3 and 6), and notes from each named seat where a mob gate's seats changed (Gates 1, 2, 3 and 6). Open at this stage: default/locking.",
+  ]);
+});
+
 test("an unrelated transaction root is refused before metadata reads", () => {
   const f = fixture();
   expect(planCompatibleRefresh({ ...f.args, plan: { ...f.args.plan, root: "/elsewhere" } }))
