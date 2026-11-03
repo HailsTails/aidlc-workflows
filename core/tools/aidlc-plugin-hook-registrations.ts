@@ -128,6 +128,20 @@ const projectedPluginHookContributionsSchema = {
   },
 };
 
+type RecordedPluginHookContributions =
+  | { readonly kind: "absent" }
+  | { readonly kind: "parsed"; readonly value: ProjectedPluginHookContributions }
+  | { readonly kind: "invalid" };
+
+function recordedPluginHookContributions(input: { readonly sidecar: unknown }): RecordedPluginHookContributions {
+  if (!registrationRecord(input.sidecar)) return { kind: "invalid" };
+  const hooks = input.sidecar["$hooks"];
+  if (hooks === undefined) return { kind: "absent" };
+  if (!registrationRecord(hooks)) return { kind: "invalid" };
+  if (hooks["hook_registrations"] === undefined) return { kind: "absent" };
+  return projectedPluginHookContributionsSchema.parse(hooks["hook_registrations"]);
+}
+
 function equalRegistrationValues(input: { left: unknown; right: unknown }): boolean {
   if (Array.isArray(input.left) && Array.isArray(input.right)) {
     const right = input.right;
@@ -251,7 +265,9 @@ export {
   type PluginHookContribution,
   type PluginHookRow,
   type ProjectedPluginHookContributions,
+  type RecordedPluginHookContributions,
   planPluginHookRegistrations,
+  recordedPluginHookContributions,
   type CodexHookTrustIdentityInput,
   codexHookTrustHash,
   codexHookTrustIdentity,

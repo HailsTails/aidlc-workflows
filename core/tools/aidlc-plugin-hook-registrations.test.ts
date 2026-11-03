@@ -3,9 +3,12 @@ import {
   type HookRegistrationPlanResult,
   type PlanPluginHookRegistrationsInput,
   type PluginHookContribution,
+  type ProjectedPluginHookContributions,
+  type RecordedPluginHookContributions,
   planPluginHookRegistrations,
   type CodexHookTrustIdentityInput,
   planCodexHookTrustSeed,
+  recordedPluginHookContributions,
 } from "./aidlc-plugin-hook-registrations.ts";
 
 const claudeContribution: PluginHookContribution = {
@@ -357,4 +360,22 @@ describe("project-specific Codex trust seed planning", () => {
     expect(hashHook).not.toHaveBeenCalled();
   });
 
+});
+
+type SidecarCase = { readonly name: string; readonly sidecar: unknown; readonly expected: RecordedPluginHookContributions };
+
+describe("recorded plugin hook contributions in a sidecar", () => {
+  const recorded: ProjectedPluginHookContributions = { schemaVersion: 1, pluginName: "rin", harness: "claude", registrations: [claudeContribution] };
+  const sidecarCases: SidecarCase[] = [
+    { name: "a sidecar without hooks", sidecar: { "code-generation": { sensors: ["linter"] } }, expected: { kind: "absent" } },
+    { name: "hooks without registrations", sidecar: { $hooks: {} }, expected: { kind: "absent" } },
+    { name: "recorded registrations", sidecar: { $hooks: { hook_registrations: recorded } }, expected: { kind: "parsed", value: recorded } },
+    { name: "a sidecar that is not an object", sidecar: [], expected: { kind: "invalid" } },
+    { name: "hooks that are not an object", sidecar: { $hooks: "settings" }, expected: { kind: "invalid" } },
+    { name: "registrations on an unexpected document", sidecar: { $hooks: { hook_registrations: { ...recorded, registrations: [{ ...claudeContribution, path: ".claude/other.json" }] } } }, expected: { kind: "invalid" } },
+  ];
+
+  test.each(sidecarCases)("reads $name", ({ sidecar, expected }) => {
+    expect(recordedPluginHookContributions({ sidecar })).toEqual(expected);
+  });
 });
