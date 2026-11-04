@@ -48,9 +48,8 @@ Dispatch one subagent per producing lens resolved in Step 1, concurrently to the
   pass the checkout's absolute path and require the lens to use it as `workdir`
   for every filesystem tool call. If the lens cannot do that, it returns
   `CANNOT-REVIEW`; the conductor treats this as NOT-READY;
-- passes ONLY: the stage definition path, the artifact/code file paths, the
-  Q&A file path, and on a delta round the items named below — never memory.md,
-  never plan.md, never another lens's findings.
+- passes ONLY: the stage definition path, the artifact/code file paths, and the
+  Q&A file path — never memory.md, never plan.md, never another lens's findings.
   On a gate the ensemble contract gives a decision record for objection
   dispositions (`ensemble-contract.md` § "Objection dispositions"), it also
   passes the customer lens, for its objection check, that record's path, which
@@ -60,12 +59,6 @@ Dispatch one subagent per producing lens resolved in Step 1, concurrently to the
 - lets the agent load its own persona + the project's `cd-*`/method rules for its
   lane;
 - states the findings rule: raise a finding only if it changes whether a requirement is met, or shows an invariant false. A constitution rule broken in new code is an invariant being false.
-
-**From round 3, a round may run on a delta brief.** Rounds 1 and 2 use the full brief. On a delta round every producing lens still runs, and its brief adds the diff since its last verdict and that lens's own open findings, taken from its report under `reports`. It judges whether each fix holds and reads every changed unit whole, including that unit's unchanged lines. It does not re-walk the rest of the surface.
-
-The disposition lens and the customer lens always use the full brief, because each walks the whole record by design. So does a lens with no earlier verdict on this surface, and every lens when the diff is empty.
-
-**A delta round never closes a review.** When a delta round leaves no finding open, run one closing round on the full brief, so every lens asserts its PASS claims over the whole surface and intent-defense tests those. A finding from the closing round is fixed and rechecked on a delta round, and that recheck may close the review, so the closing round runs once.
 
 A lens dispatched without a bound checkout may inherit a different tree. Where
 that tree is not the review surface — the Gate-5 sweep, whose rails pin it to
@@ -120,6 +113,7 @@ letter-level PASS to a VIOLATION on the owning lens.
   principled bar) AND the intent-defense pass finds zero surviving
   letter-vs-intent gaps.
 - **NOT-READY** on any surviving VIOLATION or intent gap: route the cited findings back to the builder, re-run the stage body to fix, then re-run the sweep — up to `reviewer_max_iterations`. A finding still unresolved at the iteration limit is written into the stage's review diagnosis, `review-diagnosis.md` in the stage's record directory, one entry per finding naming its class: a class on the active reserved list (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`), or `problem`. It is never carried into an approval. A finding in a stopping class parks the record, naming the class; a finding in a decided class is decided and recorded, naming the class, and that recorded decision resolves it. Any other finding is a problem the lane fixes before it convenes again. Once the iterations are spent, the lane convenes again only through the gate's rejection-and-revision path (`stage-protocol-reviewer.md`), which restarts the review budget. Each restart is recorded in the review diagnosis, and nothing yet caps how many there are.
+- **Recheck each fix before the next sweep.** Each lens that raised a finding reads the fix first, on a brief of the diff since its verdict and its own open findings from its report under `reports`. It reads every changed unit whole. A further fix repeats the recheck. This adds to the review and replaces nothing: it logs no review, uses no iteration, and the next sweep still runs every lens on the full brief, whose reports supersede the recheck's.
 
 ### Step 6 — Write the review and emit the rin-gates verdict
 
