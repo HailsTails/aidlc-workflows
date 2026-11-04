@@ -424,6 +424,93 @@ describe("a stale review", () => {
   });
 });
 
+describe("what report delivers", () => {
+  const PERSON_DIRECTED = /would you like|Tell me how|never answer it for the person|is still open|ask the person/i;
+
+  function openFeasibilityGate({ approvalMode }: { readonly approvalMode: ApprovalMode }): Fixture {
+    const fixture = feasibilityDone({ approvalMode });
+    const opened = runTool({
+      tool: ORCHESTRATE_TOOL,
+      args: ["report", "--stage", "feasibility", "--result", "awaiting-approval"],
+      fixture,
+      extra: { AIDLC_SKIP_REVIEWER_GATE_GUARD: "1" },
+    });
+    expect(opened.status, opened.out).toBe(0);
+    return fixture;
+  }
+
+  function reportApprovedWithChoice({ fixture }: { readonly fixture: Fixture }): ToolResult {
+    return runTool({
+      tool: ORCHESTRATE_TOOL,
+      args: ["report", "--stage", "feasibility", "--result", "approved", "--user-input", "Approve"],
+      fixture,
+      extra: { AIDLC_SKIP_REVIEWER_GATE_GUARD: "1" },
+    });
+  }
+
+  test("a refused approval on an autonomous stage is the agent's next step, with no question left open", () => {
+    const directive = lastDirective(reportApprovedWithChoice({ fixture: openFeasibilityGate({ approvalMode: "autonomous" }) }).stdout);
+    expect(directive.kind).toBe("print");
+    expect(JSON.stringify(directive)).toContain("report approved without --user-input");
+    expect(JSON.stringify(directive)).not.toMatch(PERSON_DIRECTED);
+  });
+
+  test("the same refusal on a human stage keeps the open question", () => {
+    const directive = lastDirective(reportApprovedWithChoice({ fixture: openFeasibilityGate({ approvalMode: "human" }) }).stdout);
+    expect(JSON.stringify(directive)).toContain("is still open");
+  });
+
+  test("a stage being revised on an autonomous stage is not told to ask a person", () => {
+    const fixture = openFeasibilityGate({ approvalMode: "autonomous" });
+    const extra = { AIDLC_SKIP_REVIEWER_GATE_GUARD: "1" };
+    const rejected = runTool({
+      tool: ORCHESTRATE_TOOL,
+      args: ["report", "--stage", "feasibility", "--result", "rejected", "--reason", "The output needs another pass."],
+      fixture,
+      extra,
+    });
+    expect(rejected.status, rejected.out).toBe(0);
+    const reopened = runTool({
+      tool: ORCHESTRATE_TOOL,
+      args: ["report", "--stage", "feasibility", "--result", "awaiting-approval"],
+      fixture,
+      extra,
+    });
+    expect(JSON.stringify(lastDirective(reopened.stdout))).toContain("--result revised");
+    expect(JSON.stringify(lastDirective(reopened.stdout))).not.toMatch(PERSON_DIRECTED);
+  });
+
+  test("a guard refusal an autonomous stage cannot clear itself asks nobody and names the park", () => {
+    const fixture = fixtureAt({
+      stateFile: join(FIXTURES_DIR, "state-mid-inception.md"),
+      stage: "requirements-analysis",
+      approvalMode: "autonomous",
+    });
+    recordReadyReview({ fixture });
+    appendAuditEntry(
+      "ARTIFACT_UPDATED",
+      {
+        File: join(seededRecordDir(fixture.project), "inception", "requirements-analysis", "requirements.md"),
+        Tool: "Edit",
+        Context: "inception > requirements-analysis > requirements.md",
+      },
+      fixture.project,
+    );
+    const report = (): Record<string, unknown> =>
+      lastDirective(
+        runTool({
+          tool: ORCHESTRATE_TOOL,
+          args: ["report", "--stage", "requirements-analysis", "--result", "awaiting-approval"],
+          fixture,
+        }).stdout,
+      );
+    const repeated = [report(), report()].at(-1) ?? {};
+    expect(repeated.kind).toBe("ask");
+    expect(String(repeated.question)).toContain("park");
+    expect(String(repeated.question)).not.toMatch(PERSON_DIRECTED);
+  });
+});
+
 describe("the engine error relay note", () => {
   test("an autonomous stage is told to park, never that a person saw the error", () => {
     const note = relayedNote({ approvalMode: "autonomous" });
