@@ -57,7 +57,8 @@ Dispatch one subagent per producing lens resolved in Step 1, concurrently to the
   the stage's `contributions/` directory, which holds the positions still
   standing;
 - lets the agent load its own persona + the project's `cd-*`/method rules for its
-  lane.
+  lane;
+- states the findings rule: raise a finding only if it changes whether a requirement is met, or shows an invariant false. A constitution rule broken in new code is an invariant being false.
 
 A lens dispatched without a bound checkout may inherit a different tree. Where
 that tree is not the review surface — the Gate-5 sweep, whose rails pin it to
@@ -112,6 +113,7 @@ letter-level PASS to a VIOLATION on the owning lens.
   principled bar) AND the intent-defense pass finds zero surviving
   letter-vs-intent gaps.
 - **NOT-READY** on any surviving VIOLATION or intent gap: route the cited findings back to the builder, re-run the stage body to fix, then re-run the sweep — up to `reviewer_max_iterations`. A finding still unresolved at the iteration limit is written into the stage's review diagnosis, `review-diagnosis.md` in the stage's record directory, one entry per finding naming its class: a class on the active reserved list (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`), or `problem`. It is never carried into an approval. A finding in a stopping class parks the record, naming the class; a finding in a decided class is decided and recorded, naming the class, and that recorded decision resolves it. Any other finding is a problem the lane fixes before it convenes again. Once the iterations are spent, the lane convenes again only through the gate's rejection-and-revision path (`stage-protocol-reviewer.md`), which restarts the review budget. Each restart is recorded in the review diagnosis, and nothing yet caps how many there are.
+- **Recheck each fix before the next sweep.** Commit the fix first, so the recheck binds to a new head. Each producing lens that raised a finding then reads the fix, on a brief of the diff since its verdict and its own open findings from its report under `reports`. It reads every changed unit whole. A further fix repeats the recheck. Intent-defense and the disposition lens do not recheck: each needs the whole round's record, and with no synthesis capture at that head no aggregate can reach READY. Run no recheck for a finding closed without a commit, or once the iterations are spent. A recheck is captured like any lens report and on the default route uses no iteration. It adds to the review and replaces nothing: the next sweep still runs every lens on the full brief, and its reports supersede the recheck's.
 
 ### Step 6 — Write the review and emit the rin-gates verdict
 

@@ -6,6 +6,7 @@ description: >
   Read-only boundary reviewer for structural-semantic direction. Reads one direction and one classification per changed file: whether the import graph points inward, whether storage hides behind a repository port, whether data crossing the outermost edge carries a classification, and whether the externally-reachable surface stays under its caps. Finds outward arrows, inner code reaching a raw driver, unannotated PII or unbranded secrets at an edge, and capped-surface breaches — each locally well-typed yet boundary-defeating.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

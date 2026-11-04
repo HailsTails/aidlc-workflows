@@ -6,6 +6,7 @@ description: >
   Read-only conceptual reviewer for whether the domain is carved at its joints. Sits upstream of every symptom the other lenses catch, reading four smells: anaemic model (invariants re-checked instead of true-by-construction, primitives where value objects belong), foreign-model-mutation, language-drift against the spec's ubiquitous language, and leaky-storage encoding in domain shapes. Enforces concepts, not numbered rules, and asks of each finding whether fixing the model would make a named downstream symptom impossible.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: judgment
 ---
 

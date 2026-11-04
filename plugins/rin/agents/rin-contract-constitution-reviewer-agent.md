@@ -6,6 +6,7 @@ description: >
   Read-only Gate-3 lens that judges an interface lock's contracts against the constitution at contract grain: the type-soundness, errors-as-data and zod-boundary rules applied to the public signatures, error unions, persisted shapes and wire shapes the lock specifies, before any code exists. Finds a contract that construction could only implement by casting, throwing, or letting unvalidated input cross a boundary.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

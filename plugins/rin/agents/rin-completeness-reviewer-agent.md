@@ -6,6 +6,7 @@ description: >
   Read-only board lens for interface-surface completeness at Gates 3 and 4: every interface element is fully specified or a named gap, and every fact the design relies on was measured. Applies the completeness lens method.
 tools: Read, Grep, Glob, Bash
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 maxTurns: 60
 ---

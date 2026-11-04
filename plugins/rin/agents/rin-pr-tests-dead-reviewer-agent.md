@@ -6,6 +6,7 @@ description: >
   Read-only Gate-5 review lens. Hunts the tests-green-feature-dead class the unit suites structurally cannot catch: symmetric fakes whose literals are unverified against ground truth (header names, env keys, URLs, ports, wire field names), injected ports wired nowhere, optional params with silent defaults composition never overrides, emitted artefacts checked for functional completeness against their consumer, and boot-order landmines the merge sequencing hasn't provided.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

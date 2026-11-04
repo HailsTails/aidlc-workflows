@@ -6,6 +6,7 @@ description: >
   Read-only reviewer for function-first composition. Runs four sweeps over the change: no authored classes (state lives in a factory closing over its data), functional iteration rather than imperative loop shape, third-party imports confined to their wrapping factories, and single-object-argument functions. Finds counted loops that are really element iteration, namespace classes dressed as objects, raw library imports escaping their factory, and positional multi-argument signatures.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

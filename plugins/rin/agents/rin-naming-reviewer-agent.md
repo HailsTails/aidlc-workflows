@@ -6,6 +6,7 @@ description: >
   Read-only reviewer for names as the documentation. Walks every added or renamed identifier, comment, file, and folder: intention-revealing names free of shorthand and filler, no prose comments (only tracker-tagged machine annotations), and no categorical or junk-drawer filenames. Finds single-letter and filler-word identifiers, untracked or forbidden annotations, and category-named files that signal a missing primitive.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 
