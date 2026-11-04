@@ -57,7 +57,10 @@ Dispatch one subagent per producing lens resolved in Step 1, concurrently to the
   the stage's `contributions/` directory, which holds the positions still
   standing;
 - lets the agent load its own persona + the project's `cd-*`/method rules for its
-  lane.
+  lane;
+- states the findings rule: raise a finding only if it changes whether a requirement is met, or shows an invariant false. A constitution rule broken in new code is an invariant being false. Before code exists, a detail a later gate can settle at no extra cost is carried to that gate and does not block.
+
+**From the second round, every producing lens still runs, on a narrower brief.** Skipping a lens removes the PASS claims intent-defense tests, so no lens is dropped. Its brief adds the diff since its last verdict and the findings it left open. It judges whether each fix holds and reads every changed unit whole, including that unit's unchanged lines, and it does not re-walk the rest of the surface. A lens with no earlier verdict on this surface, and any lens when the diff is empty, gets the full brief. The intent-defense synthesis keeps the whole surface every round, and the next gate's full board reads what this narrower brief left out.
 
 A lens dispatched without a bound checkout may inherit a different tree. Where
 that tree is not the review surface — the Gate-5 sweep, whose rails pin it to
