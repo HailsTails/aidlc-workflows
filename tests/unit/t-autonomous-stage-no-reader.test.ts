@@ -282,7 +282,7 @@ describe("the shared stage predicates", () => {
 });
 
 describe("stage narration", () => {
-  test.todo("the first stage of a workflow promises no review on an autonomous stage", () => {
+  test("the first stage of a workflow promises no review on an autonomous stage", () => {
     const directive = stageEntryDirective({ fixture: firstStageFixture({ approvalMode: "autonomous" }) });
     expect(directive.kind).toBe("run-stage");
     expect(String(directive.narration)).toContain("First step is Feasibility");
@@ -295,7 +295,7 @@ describe("stage narration", () => {
     expect(String(directive.narration)).toEndWith("and I will stop for your review before anything is final.");
   });
 
-  test.todo("an open gate says where the output is, with no review offered, on an autonomous stage", () => {
+  test("an open gate says where the output is, with no review offered, on an autonomous stage", () => {
     const fixture = feasibilityDone({ approvalMode: "autonomous" });
     const opened = runTool({
       tool: ORCHESTRATE_TOOL,

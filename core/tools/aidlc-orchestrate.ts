@@ -211,6 +211,7 @@ import {
   unitScopedLifecycleFloors,
   latestReviewRecordRefs,
   isAutonomousConstructionGate,
+  isAutonomousStage,
   isConstructionSwarmEnabled,
   isKillSwitchSource,
   installedHarnessName,
@@ -1977,10 +1978,10 @@ function narrateStageEntry(
     // Said again wherever the work is picked up, by someone who may not have
     // approved it, so it names the plan, not who approved it.
     const plan = stateContent && getField(stateContent, PLAN_FIELD) ? "the approved plan" : `the ${scope} plan`;
-    return (
-      `Starting ${plan} for this project. First step is ${stageName}, ` +
-      `and I will stop for your review before anything is final.`
-    );
+    const opening = `Starting ${plan} for this project. First step is ${stageName}`;
+    return isAutonomousStage(node)
+      ? `${opening}.`
+      : `${opening}, and I will stop for your review before anything is final.`;
   }
   // Entering the build phase names a piece of vocabulary the user is about to
   // see in their own artifacts (bolt-plan.md, and every later beat of this
@@ -1997,7 +1998,9 @@ function narrateStageEntry(
   // A non-gating stage runs straight through, so the line says so rather than
   // leaving the user waiting for a prompt that is not coming.
   if (gate === false) {
-    return `Next up: ${stageName}. This one runs through without needing your input.`;
+    return isAutonomousStage(node)
+      ? `Next up: ${stageName}.`
+      : `Next up: ${stageName}. This one runs through without needing your input.`;
   }
   // Who is in the room. On an inline stage the session adopts the lead's
   // perspective and any supports as further perspectives, and that is worth one
@@ -14830,7 +14833,8 @@ function handleReport(args: string[], projectDir: string | undefined): void {
         const folder = unitFolders && !unit
           ? ""
           : commonFolder(resolveProduces(node, unitFolders ? unit : null, engineRelativeRecordDir(pd), codekbCtxFor(pd)));
-        if (folder) gateReply.narration = `${node.name} is ready for your review: what it produced is in ${folder}/.`;
+        const readiness = isAutonomousStage(node) ? "is ready" : "is ready for your review";
+        if (folder) gateReply.narration = `${node.name} ${readiness}: what it produced is in ${folder}/.`;
       }
     }
     emit(gateReply);
