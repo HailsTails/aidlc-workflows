@@ -1239,7 +1239,9 @@ The relay needs no workflow state and never blocks: the hook still exits 0.
 - `hookSpecificOutput.additionalContext`: `ENGINE_ERROR_RELAY_NOTE`, for the
   model. It says the person has already been shown the error exactly as
   written, and tells the model not to repeat or reword it, not to retry or
-  work around it, and to end its turn.
+  work around it, and to end its turn. On a stage whose `approval_mode` is
+  `autonomous`, `engineErrorRelayNote` supplies a note that claims no person
+  saw it and tells the model to park the work instead.
 
 A `systemMessage` never reaches the model, so without the note the conductor
 could not tell the relay fired. A live Claude Code probe with only the prose

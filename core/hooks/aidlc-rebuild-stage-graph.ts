@@ -43,6 +43,7 @@ import {
   classifyRuntimeCompileCommand,
   type ClaudeCodeHookInput,
   engineErrorRelayMessage,
+  engineErrorRelayNote,
   errorMessage,
   hookChildEnv,
   hookDebug,
@@ -163,7 +164,7 @@ function relayEngineError(projectDir: string, parsed: ClaudeCodeHookInput): void
   hookDebug(projectDir, "rebuild-stage-graph", "engine-error-relay", {
     bytes: Buffer.byteLength(message, "utf-8"),
   });
-  writeEngineErrorRelay(message);
+  writeEngineErrorRelay(message, engineErrorRelayNote(projectDir));
 }
 
 export async function run(input: string): Promise<number> {

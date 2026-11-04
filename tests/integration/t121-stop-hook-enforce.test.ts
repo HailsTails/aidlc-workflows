@@ -1235,6 +1235,26 @@ describe("t121 aidlc-continue-workflow hook — forwarding-loop enforcement (mig
     }
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
+  // Nobody reads an autonomous stage, so the agent's step that says the line to
+  // the person is dropped: the plain line stays, and the matcher reads it as ever.
+  test("(a) an autonomous stage gets the plain line on every tool, with no step addressed to a person", () => {
+    const line = "AI-DLC is carrying on with Requirements Analysis.";
+    for (const tool of ["claude", "kiro", "kiro-ide", "opencode"]) {
+      const proj = makeProject();
+      seedActive(proj, "requirements-analysis");
+      const graph = join(proj, "stage-graph.json");
+      writeFileSync(
+        graph,
+        JSON.stringify([{ slug: "requirements-analysis", name: "Requirements Analysis", phase: "inception", approval_mode: "autonomous" }]),
+      );
+      const r = runHook(proj, '{"stop_hook_active":false}', "run-stage", "", "", "requirements-analysis", "", false, {
+        AIDLC_HARNESS_NAME: tool,
+        AIDLC_STAGE_GRAPH: graph,
+      });
+      expect((JSON.parse(r.out) as { reason: string }).reason, tool).toBe(line);
+    }
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
   test("(a) reason is a sanctioned continuation (names AI-DLC carrying on, no override verbs)", () => {
     const proj = makeProject();
     seedActive(proj, "requirements-analysis");

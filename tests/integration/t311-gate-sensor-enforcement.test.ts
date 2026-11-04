@@ -670,6 +670,30 @@ describe("t311 gate-bound sensor enforcement", () => {
     expect(accepted.status, accepted.out).toBe(0);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
+  test("a blocking finding on an autonomous stage still refuses, and points at a park rather than a person", () => {
+    const fixture = setupFixture("blocking");
+    const stages: Array<Record<string, unknown>> = JSON.parse(readFileSync(fixture.graph, "utf-8"));
+    writeFileSync(fixture.graph, JSON.stringify(stages.map((stage) => ({ ...stage, approval_mode: "autonomous" }))));
+
+    const refused = gate(fixture);
+
+    expect(refused.status).toBe(1);
+    expect(refused.out).toContain("Blocking gate sensor evaluation did not pass");
+    expect(refused.out).toContain("Fix the findings within the already authorized stage scope");
+    expect(refused.out).toContain("park this stage and name the blocker");
+    expect(refused.out).not.toContain("ask the person");
+    expect(refused.out).not.toContain("Only if the person requests an override");
+    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [-] probe");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("a blocking finding on a human stage keeps the person's override path", () => {
+    const refused = gate(setupFixture("blocking"));
+
+    expect(refused.status).toBe(1);
+    expect(refused.out).toContain("explain the blocker and ask the person");
+    expect(refused.out).toContain("Only if the person requests an override");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
   test("blocking dispatch exits, malformed verdicts, and dispatcher timeouts fail closed", () => {
     for (const mode of ["exit-2", "malformed", "timeout"] as const) {
       const fixture = setupFixture("blocking");

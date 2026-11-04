@@ -28775,6 +28775,23 @@ export function isAutonomousMode(stateContent: string | null): boolean {
   return !!stateContent && getField(stateContent, AUTONOMY_MODE_FIELD)?.trim() === "autonomous";
 }
 
+// A stage with no reader: its approval_mode says nobody answers it. The
+// Construction grant above is a separate state field that such a stage need not
+// set, so a stage's own text asks this, never isAutonomousMode.
+export function isAutonomousStage(stage: Pick<StageEntry, "approval_mode"> | undefined): boolean {
+  return stage?.approval_mode === "autonomous";
+}
+
+// A stage with no reader whose agent may also park it or reject it on its own.
+// Under the Construction grant a park and a spent-review reset stay the person's,
+// so that combination keeps the words that name them.
+export function stageRoutesItself(
+  stage: Pick<StageEntry, "approval_mode"> | undefined,
+  stateContent: string | null,
+): boolean {
+  return isAutonomousStage(stage) && !isAutonomousMode(stateContent);
+}
+
 export function isTeamUnitOwnership(stateContent: string | null): boolean {
   return !!stateContent && getField(stateContent, UNIT_OWNERSHIP_FIELD)?.trim() === "team";
 }
@@ -39273,6 +39290,26 @@ export const ENGINE_ERROR_RELAY_NOTE =
   "Do not repeat or reword it, and do not retry or work around it; end your turn now.";
 
 /**
+ * The note for `projectDir`'s current stage. A stage nobody reads gets the same
+ * prohibition without the claim that a person saw the error, and the park that
+ * hands the work on, since a turn ended here reaches nobody. Without that
+ * sentence the skills' `error` rule prints the message, which suits a log. An
+ * unreadable workflow keeps the plain note.
+ */
+export function engineErrorRelayNote(projectDir: string): string {
+  try {
+    const stateContent = readStateFile(projectDir);
+    const stage = findStageBySlug(getField(stateContent, "Current Stage")?.trim() ?? "");
+    if (!stageRoutesItself(stage, stateContent)) return ENGINE_ERROR_RELAY_NOTE;
+    return "AI-DLC: nobody reads this stage, so nobody will answer this engine error. " +
+      `Do not retry or work around it; park the work with \`${aidlcToolInvocation("orchestrate")} park\`, ` +
+      "naming this error as the blocker, then end your turn.";
+  } catch {
+    return ENGINE_ERROR_RELAY_NOTE;
+  }
+}
+
+/**
  * The fixed line above a relayed message, in the plain voice every
  * user-facing message uses. Engine errors can quote values from the project
  * (a scope name, a path, a setting), so the warning keeps its own words and
@@ -39292,13 +39329,14 @@ export function engineErrorRelayText(message: string): string {
 export function engineErrorRelayLine(
   message: string,
   harness: string = runtimeHarnessName(),
+  note: string = ENGINE_ERROR_RELAY_NOTE,
 ): string | null {
   if (!ENGINE_ERROR_RELAY_HARNESSES.has(harness)) return null;
   return `${JSON.stringify({
     systemMessage: engineErrorRelayText(message),
     hookSpecificOutput: {
       hookEventName: "PostToolUse",
-      additionalContext: ENGINE_ERROR_RELAY_NOTE,
+      additionalContext: note,
     },
   })}\n`;
 }
@@ -39318,8 +39356,8 @@ export function hookContextLine(event: "SessionStart" | "UserPromptSubmit", cont
 }
 
 /** Hand an engine `error` directive's exact message to the human where possible. */
-export function writeEngineErrorRelay(message: string): void {
-  const line = engineErrorRelayLine(message);
+export function writeEngineErrorRelay(message: string, note: string): void {
+  const line = engineErrorRelayLine(message, runtimeHarnessName(), note);
   if (line !== null) process.stdout.write(line);
 }
 
