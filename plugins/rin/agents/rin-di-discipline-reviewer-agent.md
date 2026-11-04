@@ -6,6 +6,7 @@ description: >
   Read-only reviewer for dependency injection through composition, on both the production and test faces. Checks that every technical binding — clock, process lifecycle, stdlib capability, third-party service — arrives through a named port on the signature rather than an ambient global or the module system, that each port ships a default factory wired once at the composition root, and that tests fake through the unit's own seam rather than mocking imports. Finds ambient bindings outside their permitted site, missing default factories, threading gaps, and module-system test interception.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

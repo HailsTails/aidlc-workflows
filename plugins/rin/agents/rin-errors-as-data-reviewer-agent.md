@@ -6,6 +6,7 @@ description: >
   Read-only reviewer for error totality and throw discipline. Reads each signature against its body: a fallible operation must enumerate every failure mode inside its result-envelope return type, throws must be confined to a closed named set of contexts, and error shapes must be plain data constructed by factory rather than authored classes. Finds result-typed functions that can throw, error unions that omit a failure the body produces, and defensive throws outside the permitted contexts.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

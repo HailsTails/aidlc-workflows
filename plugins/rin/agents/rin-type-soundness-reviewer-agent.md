@@ -6,6 +6,7 @@ description: >
   Read-only reviewer for the integrity of the type system as a source of truth. Hunts every construct that lies to the compiler or stops the type from declaring state: casts and non-null assertions, the escape-hatch top type, strict-flag overrides, `default:` arms on closed unions that mask exhaustiveness, and declarative booleans that force the reader to evaluate meaning. Finds code that type-checks cleanly while the type itself is defeated.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 
