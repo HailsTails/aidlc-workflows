@@ -6,6 +6,7 @@ description: >
   Read-only reviewer for structural test discipline — the shape of the suite, not the truth of any domain assertion. Reads five strands: co-location plus an every-file floor, zero-logic test bodies, assert only the unit's own responsibility, correct pyramid scope, and an act that invokes OUR code. Finds missing test siblings, branching or looping test bodies, delegation leaks, mis-scoped tests, and tautological-act tests that exercise a library instead of the unit.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

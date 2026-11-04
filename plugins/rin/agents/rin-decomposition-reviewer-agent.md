@@ -6,6 +6,7 @@ description: >
   Read-only reviewer for shape, not content — whether a unit is doing more than its altitude warrants. Reads orchestrator purity (compose helper calls, nothing else), unhappy-path early return (abort-first, happy path last), and no parameter-field mutation. Finds bodies that conflate abstractions under the complexity floor, early-return inversions that lint clean, and parameter mutations the audit script does not yet catch.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

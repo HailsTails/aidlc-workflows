@@ -6,6 +6,7 @@ description: >
   Read-only Gate-5 review lens. Hunts letter-passes-spirit-fails evades in the diff — suppressions without a live tracker, cast-shaped things (as/as unknown/z.custom with a vacuous predicate/satisfies doing narrowing), and discipline tripwires the audit can miss in new shapes (default: in a closed-union switch, bare process/node imports, Date.now outside clock/, vi.mock). Added lines only.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 

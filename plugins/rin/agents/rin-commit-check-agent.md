@@ -6,6 +6,7 @@ description: >
   Read-only Gate-4 check the conductor dispatches before each commit. It wrote none of the code, reads the diff at a pinned head sha, and looks only for what both authors of a ping-pong pair could miss: behaviour the interface lock asks for with no test, a state the code can get stuck in, and tests with no value. Reports blocking findings only. Not a review-board lens: it returns CLEAR or BLOCKING, never a board verdict.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: judgment
 ---
 

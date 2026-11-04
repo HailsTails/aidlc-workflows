@@ -6,6 +6,7 @@ description: >
   Read-only reviewer for boundary-validation discipline. Runs two passes: walk the boundaries (is external typeless input parsed by a schema once, at the seam, then mapped to a plain internal shape?) and walk the inner layers (is the validation library absent there?). Finds unvalidated crossings — often surfacing as a cast standing in for a missing schema — and schema imports that have leaked inward into application or domain code.
 tools: Read, Grep, Glob
 disallowedTools: Task
+omitClaudeMd: true
 tier: balanced
 ---
 
