@@ -120,6 +120,11 @@ import {
   relativeRecordDir,
   recoveryGuidance,
   requestChangesResetIsExecutable,
+  findStageBySlug,
+  isAutonomousStage,
+  personRequestedChanges,
+  spentReviewStep,
+  stageRoutesItself,
   reviewAppendedAfterRequest,
   reviewArtifactSnapshot,
   reviewAttemptId,
@@ -2437,7 +2442,9 @@ const VALID_VERDICTS = new Set(["READY", "NOT-READY"]);
 
 // The person asked for this review: they spoke since the last decision, after
 // the last request for this review. The pass cap and the one recovery bound
-// only the reviews the agent starts on its own.
+// only the reviews the agent starts on its own. An autonomous stage has no
+// reader, so any launch prompt is a turn there: only a person's Request Changes
+// counts as asking.
 function personAskedForReview(
   pd: string,
   stage: string,
@@ -2447,6 +2454,7 @@ function personAskedForReview(
   space?: string,
 ): boolean {
   if (!personSpokeSinceGate(pd, { requests: true })) return false;
+  if (isAutonomousStage(findStageBySlug(stage)) && !personRequestedChanges(pd, stage)) return false;
   let turn: AuditShardEvent | null = null;
   let request: AuditShardEvent | null = null;
   for (const row of sortAttemptEvents(readAuditShardEvents(pd, intent ?? undefined, space))) {
@@ -2459,13 +2467,19 @@ function personAskedForReview(
   return turn !== null && (request === null || attemptEventDefinitelyBefore(request, turn));
 }
 
-function reviewBudgetMessage(stage: string, ordinal: number, budget: number): string {
+function reviewBudgetMessage(
+  stage: string,
+  ordinal: number,
+  budget: number,
+  agentStep: string | null,
+): string {
+  const humanStep = budget === 1
+    ? "Do not ask the reviewer again; include the findings in the approval summary for the human."
+    : "Present the unresolved findings at the approval gate for the human instead of starting another review.";
   return (
     `Cannot request review pass ${ordinal} for "${stage}" because this stage allows ` +
     `${budget} review pass${budget === 1 ? "" : "es"}. ` +
-    (budget === 1
-      ? "Do not ask the reviewer again; include the findings in the approval summary for the human."
-      : "Present the unresolved findings at the approval gate for the human instead of starting another review.")
+    (agentStep ?? humanStep)
   );
 }
 
@@ -3461,7 +3475,12 @@ function handleReview(args: string[]): void {
           refuseAttemptGuard(
             "REVIEW_BUDGET_EXHAUSTED",
             "Review requests do not exceed the configured attempt budget.",
-            reviewBudgetMessage(flags.stage, pass, budget),
+            reviewBudgetMessage(
+              flags.stage,
+              pass,
+              budget,
+              stageRoutesItself(findStageBySlug(flags.stage), state) ? spentReviewStep(pd, state, flags.stage) : null,
+            ),
           );
         }
         if (iteration !== expected) {

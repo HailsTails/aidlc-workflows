@@ -175,7 +175,7 @@ const expectedOrdinalIn = (args: {
 // reviewRecoveryAlreadyRequestedMessage in .claude/tools/aidlc-log.ts — share
 // this phrase and nothing else does. Both mean the same thing to this bridge:
 // the one recovery pass for this review attempt is gone, so no further receipt
-// can be recorded and only a human GATE_REJECTED resets the attempt.
+// can be recorded until a GATE_REJECTED resets the attempt.
 const RECOVERY_SPENT = /the one stale-receipt recovery/;
 
 const refusalReasonIn = (output: string): ReceiptRefusalReason => {

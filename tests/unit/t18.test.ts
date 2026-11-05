@@ -226,7 +226,7 @@ describe("appendAuditEntry() — event-type heading + validation (in-process)", 
         return true;
       };
       try {
-        handleAppend("WORKFLOW_STARTED", { Scope: "feature" }, proj);
+        handleAppend("STAGE_SKIPPED", { Scope: "feature" }, proj);
       } finally {
         process.stdout.write = original;
       }
@@ -234,7 +234,7 @@ describe("appendAuditEntry() — event-type heading + validation (in-process)", 
       // The same JSON must be valid and carry the event back.
       const parsed = JSON.parse(captured.trim());
       expect(parsed.appended).toBe(true);
-      expect(parsed.event).toBe("WORKFLOW_STARTED");
+      expect(parsed.event).toBe("STAGE_SKIPPED");
     });
   });
 });
@@ -276,7 +276,7 @@ describe("aidlc-audit CLI shell (Bun.spawnSync env seam)", () => {
       const r = Bun.spawnSync({
         timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
         cmd: [
-          "bun", TOOL, "append", "WORKFLOW_STARTED",
+          "bun", TOOL, "append", "STAGE_SKIPPED",
           "--field", "Scope=feature", "--project-dir", proj,
         ],
         stdout: "pipe",

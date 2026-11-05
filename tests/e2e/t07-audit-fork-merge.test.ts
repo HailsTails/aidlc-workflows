@@ -179,7 +179,7 @@ interface CliResult {
 function runAudit(args: string[], env?: Record<string, string>): CliResult {
   const res = spawnSync(BUN, [AUDIT_TOOL, ...args], { timeout: remainingOperationTimeoutMs(NATIVE_FIXTURE_SETUP_TIMEOUT_MS),
     encoding: "utf-8",
-    env: env ? { ...process.env, ...env } : process.env,
+    env: { ...process.env, AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1", ...env },
   });
   const stdout = res.stdout ?? "";
   return { status: res.status ?? -1, out: `${stdout}${res.stderr ?? ""}`, stdout };

@@ -319,7 +319,7 @@ describe("t127 --single pointer invariant (migrated from t127-single-stage-invar
     const before = readFileSync(seededAuditShard(proj), "utf-8");
     const entries = JSON.stringify([
       {
-        eventType: "STAGE_STARTED",
+        eventType: "STAGE_SKIPPED",
         fields: {
           Stage: "code-generation",
           Workflow: "single-stage:code-generation",

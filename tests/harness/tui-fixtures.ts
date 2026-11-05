@@ -691,6 +691,7 @@ export function compileFixtureRuntimeGraph(proj: string): void {
         timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS, { phase: "TUI fixture compile" }),
         env: {
           ...process.env,
+          AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1",
           CLAUDE_PROJECT_DIR: proj,
           KIRO_PROJECT_DIR: proj,
         },

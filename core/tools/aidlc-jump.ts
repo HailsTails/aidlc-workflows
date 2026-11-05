@@ -14,7 +14,13 @@ import {
   emitError,
   errorMessage,
   extractMarkdownSection,
+  AGENT_DECIDED_FIELD,
   findStageBySlug,
+  jumpResetsReview,
+  PERSON_DECIDED_FIELD,
+  personRequestedChanges,
+  spentReviewStep,
+  stageAgentResetUsed,
   firstInScopeStageOfPhase,
   getField,
   isPerUnitStage,
@@ -682,6 +688,19 @@ function handleExecute(args: string[]): void {
     return;
   }
 
+  // A jump onto a reviewed stage restores the review budget a rejection restores,
+  // so it spends the same single reset, read from the stage and never from the
+  // direction the caller named.
+  const resetsReview = jumpResetsReview(pd, content, targetStage);
+  const personRequested = resetsReview && personRequestedChanges(pd, targetSlug);
+  if (resetsReview && !personRequested && stageAgentResetUsed(pd, targetSlug)) {
+    error(`Cannot jump to "${targetSlug}": ${spentReviewStep(pd, content, targetSlug)}`);
+  }
+  const resetReason = (flags.reason ?? "").trim();
+  if (resetsReview && !personRequested && resetReason === "") {
+    error(`Cannot jump to "${targetSlug}": this restart spends the stage's one agent reset, so --reason must give the cause.`);
+  }
+
   const graph = loadStageGraph();
   // Get current stage for audit
   const currentSlug = getField(content, "Current Stage") || "state-init";
@@ -760,6 +779,8 @@ function handleExecute(args: string[]): void {
       Target: targetSlug,
       Scope: scope,
       Details: `${direction.toUpperCase()} jump from ${currentSlug} to ${targetSlug} (${targetStage.number}). Scope: ${scope}.`,
+      ...(resetsReview ? (personRequested ? PERSON_DECIDED_FIELD : AGENT_DECIDED_FIELD) : {}),
+      ...(resetsReview && resetReason !== "" ? { Reason: resetReason } : {}),
       ...(direction === "backward"
         ? {
             "Changed Upstream Artifacts":
