@@ -235,7 +235,12 @@ function rejectWithout({ approvalMode, feedback }: { readonly approvalMode: Appr
 }
 
 function relayedNote({ approvalMode }: { readonly approvalMode: ApprovalMode }): string {
-  const fixture = fixtureAt({ stateFile: "state-mid-ideation.md", stage: "feasibility", approvalMode });
+  return relayedNoteFor({
+    fixture: fixtureAt({ stateFile: "state-mid-ideation.md", stage: "feasibility", approvalMode }),
+  });
+}
+
+function relayedNoteFor({ fixture }: { readonly fixture: Fixture }): string {
   const payload = {
     hook_event_name: "PostToolUse",
     session_id: "t-autonomous-stage-no-reader",
@@ -523,6 +528,27 @@ describe("the engine error relay note", () => {
 
   test("a human stage keeps the note the skills key on", () => {
     expect(relayedNote({ approvalMode: "human" })).toBe(ENGINE_ERROR_RELAY_NOTE);
+  });
+
+  test("an isolated run of a human stage keeps the note, though Current Stage is autonomous", () => {
+    const fixture = fixtureAt({ stateFile: "state-mid-ideation.md", stage: "feasibility", approvalMode: "autonomous" });
+    const entered = runTool({
+      tool: ORCHESTRATE_TOOL,
+      args: ["next", "--stage", "requirements-analysis", "--single"],
+      fixture,
+    });
+    expect(entered.status, entered.out).toBe(0);
+    const directive = lastDirective(entered.stdout);
+    const hops = Array.from({ length: 10 });
+    hops.reduce<Record<string, unknown>>(
+      (current) =>
+        current.kind === "load-steering"
+          ? lastDirective(runTool({ tool: ORCHESTRATE_TOOL, args: ["continue", String(current.receipt)], fixture }).stdout)
+          : current,
+      directive,
+    );
+    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("**Current Stage**: feasibility");
+    expect(relayedNoteFor({ fixture })).toBe(ENGINE_ERROR_RELAY_NOTE);
   });
 
   test("a project with no readable workflow keeps the note the skills key on", () => {

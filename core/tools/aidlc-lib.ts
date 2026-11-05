@@ -30473,7 +30473,8 @@ export function guardRefusalStreakView(
   if (ownWork !== null) {
     return { count, signature, record, ask: { ...ownWork, agent_work: true } };
   }
-  const ask = guardRecoveryAskForRefusal({ ...refusal, remedies: theirs });
+  const noReader = guardRefusalHasNoReader(projectDir, refusal);
+  const ask = noReader ? null : guardRecoveryAskForRefusal({ ...refusal, remedies: theirs });
   if (ask !== null) {
     return {
       count,
@@ -30497,8 +30498,21 @@ export function guardRefusalStreakView(
       codes,
       signature,
       atCap: count > GUARD_REFUSAL_STREAK_CAP,
+      noReader,
     }),
   };
+}
+
+// Nobody reads a stage that routes itself, so a way on that needs a person has
+// nobody to reach. A team Unit gate keeps its owner, and an unreadable workflow
+// keeps the ask.
+function guardRefusalHasNoReader(projectDir: string, refusal: GuardRefusal): boolean {
+  try {
+    const stateContent = readStateFile(projectDir);
+    return stageRoutesItself(findStageBySlug(refusal.stage), stateContent) && !isTeamUnitOwnership(stateContent);
+  } catch {
+    return false;
+  }
 }
 
 // Record one refusal against the streak for its stage and Unit, and return the
@@ -30585,6 +30599,7 @@ export function guardTerminalAskForRefusal(
     codes: string[];
     signature: string;
     atCap: boolean;
+    noReader?: boolean;
   },
 ): GuardRecoveryAskData {
   // In the person's terms: where the work stopped and that it needs them. The
@@ -30596,14 +30611,19 @@ export function guardTerminalAskForRefusal(
   const situation =
     `I stopped at ${target}: this step cannot go ahead, and there is ` +
     "nothing I can safely do about it on my own.";
+  const question = streak.noReader
+    ? `${target} cannot go ahead. Nobody reads this stage, so take the step this refusal names if it is yours. ` +
+      `Otherwise park it with \`${aidlcToolInvocation("orchestrate")} park\`, naming this refusal as the blocker.` +
+      (why ? ` ${why}` : "")
+    : streak.atCap
+    ? `${situation} It has stopped here ${streak.count} times now. Tell me how you ` +
+      `want to proceed. (To report this, include ${streak.signature}.)`
+    : `${situation} Tell me how you want to proceed.`;
   return {
     kind: "ask",
     ask_type: GUARD_RECOVERY_ASK_TYPE,
     response_route: "execute-remedy",
-    question: streak.atCap
-      ? `${situation} It has stopped here ${streak.count} times now. Tell me how you ` +
-        `want to proceed. (To report this, include ${streak.signature}.)`
-      : `${situation} Tell me how you want to proceed.`,
+    question,
     stage: refusal.stage,
     ...(refusal.unit ? { unit: refusal.unit } : {}),
     reason_codes: streak.codes,
@@ -37463,11 +37483,12 @@ function waitAtErrorEmitSelectionBarrier(selection: WorkflowSelection): void {
 // another checkout's path, on stderr while keeping the committed audit portable.
 // `agentGuidance`: the message is the agent's next step, so callers hand it to
 // the agent instead of the person: the person's question is still open, or the
-// person already decided and the agent records what they chose.
+// person already decided and the agent records what they chose, or nobody reads
+// the stage and the step is the agent's own.
 export type EmitErrorMessage = string | {
   message: string;
   auditMessage: string;
-  agentGuidance?: "question-open" | "person-decided" | "fix-sensor-findings";
+  agentGuidance?: "question-open" | "person-decided" | "fix-sensor-findings" | "stage-step";
 };
 
 export function emitError(
@@ -39299,7 +39320,8 @@ export const ENGINE_ERROR_RELAY_NOTE =
 export function engineErrorRelayNote(projectDir: string): string {
   try {
     const stateContent = readStateFile(projectDir);
-    const stage = findStageBySlug(getField(stateContent, "Current Stage")?.trim() ?? "");
+    const activeStage = readActiveDirectiveMarker(projectDir, stateContent)?.stage;
+    const stage = findStageBySlug(activeStage ?? getField(stateContent, "Current Stage")?.trim() ?? "");
     if (!stageRoutesItself(stage, stateContent)) return ENGINE_ERROR_RELAY_NOTE;
     return "AI-DLC: nobody reads this stage, so nobody will answer this engine error. " +
       `Do not retry or work around it; park the work with \`${aidlcToolInvocation("orchestrate")} park\`, ` +

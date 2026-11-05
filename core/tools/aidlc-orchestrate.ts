@@ -12826,8 +12826,9 @@ function validGuardRecoveryAsk(
 // envelope is read, never shown. A decision the person has not made is the
 // agent's next step, handed to it with the question still open, so the turn
 // may end there; one the person already made (another pick, their own words)
-// is the agent's to record now. Anything else stops the workflow with the
-// tool's plain words.
+// is the agent's to record now, and a stage nobody reads has its own step to
+// take, with no question to hold open. Anything else stops the workflow with
+// the tool's plain words.
 function stateRefusalDirective(lead: string, question: string, detail: string): PrintDirective | ErrorDirective {
   let text = detail;
   let agentGuidance: unknown = null;
@@ -12849,7 +12850,7 @@ function stateRefusalDirective(lead: string, question: string, detail: string): 
         "Show the question again if it is not on screen, and never answer it for the person.",
     );
   }
-  if (agentGuidance === "person-decided") return printDirective(text);
+  if (agentGuidance === "person-decided" || agentGuidance === "stage-step") return printDirective(text);
   if (agentGuidance === "fix-sensor-findings") {
     return { ...printDirective(text), agent_guidance: "fix-sensor-findings" };
   }
@@ -13301,7 +13302,7 @@ function checkPipelineLinkEvidence(
     message:
       `${refusal}: ${missing.join(", ")}. ` +
       `Re-run \`${aidlcToolInvocation("orchestrate")} next${singleRun ? ` --single --stage ${slug}` : ""}\` ` +
-      `and dispatch the missing pipeline links in their declared order, carrying the human's revision feedback. ` +
+      `and dispatch the missing pipeline links in their declared order, carrying ${isAutonomousStage(node) ? "the rejection reason" : "the human's revision feedback"}. ` +
       (guardPolicyAcceptsChanges(pd)
         ? ""
         : "Rejection starts a new attempt: earlier scans and receipts cannot certify this revision, even for a targeted artifact edit. ") +
@@ -14711,7 +14712,8 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       if (stageCheckbox.state === "revising") {
         emit(errorDirective(
           `Stage "${slug}" is being revised, so its gate is shown again with \`${aidlcToolInvocation("orchestrate")} ` +
-            `report --stage ${shellArg(slug)} --result revised\`: run it, then ask the person the approval question.`,
+            `report --stage ${shellArg(slug)} --result revised\`: run it` +
+            (isAutonomousStage(node) ? "." : ", then ask the person the approval question."),
         ));
         return;
       }
@@ -14805,7 +14807,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
           : flags.result === "rejected" && node.mode === "pipeline"
           ? `Recorded rejected for "${slug}". The rejection starts a new pipeline attempt; prior receipts no longer apply. ` +
             `Re-run \`${aidlcToolInvocation("orchestrate")} next\`, then dispatch every missing link in ` +
-            `directive.pipeline order with the exact human feedback. Each link must perform fresh work and return before its ` +
+            `directive.pipeline order with ${isAutonomousStage(node) ? "the rejection reason" : "the exact human feedback"}. Each link must perform fresh work and return before its ` +
             `new receipt is recorded. Preserve the configured topology and reviewer policy; a targeted artifact edit does not ` +
             `permit the conductor to replace the pipeline or reuse its previous handoffs. Report revised only after the fresh chain completes.` +
             personsFeedbackSentence(personsFeedbackFromToolOutput(res.stdout))
