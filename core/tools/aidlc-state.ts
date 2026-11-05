@@ -6877,7 +6877,7 @@ function handleReject(args: string[]): void {
   }
   const recoveryResetNeedsHuman =
     !teamGate &&
-    (agentResetUsed || (autonomousMode && !stageRoutesOwnReset && reviewRecoverySpentInCurrentAttempt(pd, content, stage)));
+    (agentResetUsed || (autonomousMode && reviewRecoverySpentInCurrentAttempt(pd, content, stage)));
 
   const rejectionNeedsHumanTurn =
     recoveryResetNeedsHuman ||
@@ -7012,7 +7012,11 @@ function handleReject(args: string[]): void {
     const rejFields: Record<string, string> = {
       Stage: slug,
       Feedback: feedback,
-      ...(personRequested ? PERSON_DECIDED_FIELD : rejectionNeedsHumanTurn ? {} : AGENT_DECIDED_FIELD),
+      ...(personRequested
+        ? PERSON_DECIDED_FIELD
+        : stageRoutesOwnReset || !rejectionNeedsHumanTurn
+          ? AGENT_DECIDED_FIELD
+          : {}),
       ...(conductorSummary ? { [CONDUCTOR_SUMMARY_FIELD]: conductorSummary } : {}),
       ...priorAcceptedSourceFields(pd, stage),
     };
