@@ -14002,7 +14002,10 @@ export function jumpResetsReview(
 // What an agent does on a stage nobody reads once its review attempt is spent.
 export function spentReviewStep(projectDir: string, stateContent: string, stageSlug: string): string {
   if (stageAgentResetUsed(projectDir, stageSlug) && !personRequestedChanges(projectDir, stageSlug)) {
-    return `This stage has used its one agent reset. Park it with \`${aidlcToolInvocation("orchestrate")} park\`, ` +
+    const leaveGrant = isAutonomousMode(stateContent)
+      ? `Run \`${aidlcToolInvocation("bolt")} set-autonomy --mode gated\` first, because the Construction autonomy grant refuses this park. `
+      : "";
+    return `This stage has used its one agent reset. ${leaveGrant}Park it with \`${aidlcToolInvocation("orchestrate")} park\`, ` +
       "naming the open findings. Only a person's Request Changes starts another review attempt.";
   }
   const once = "That resets the review attempt once; after that the stage parks until a person requests changes.";

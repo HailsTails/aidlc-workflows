@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { appendAuditEntry } from "./aidlc-audit.ts";
 import { readReviewArtifactContexts } from "./aidlc-review-brief.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
-import { isCompiledExecutable } from "./aidlc-runtime-paths.ts";
+import { aidlcToolInvocation, isCompiledExecutable } from "./aidlc-runtime-paths.ts";
 import { stageLabel } from "./aidlc-validity.ts";
 import {
   addPendingPersonLines,
@@ -16,7 +16,9 @@ import {
   extractMarkdownSection,
   AGENT_DECIDED_FIELD,
   findStageBySlug,
+  isAutonomousStage,
   jumpResetsReview,
+  stageIsTeamUnitGate,
   PERSON_DECIDED_FIELD,
   personRequestedChanges,
   spentReviewStep,
@@ -269,6 +271,19 @@ function handleReopen(args: string[]): void {
   for (const unit of units) {
     if (!UNIT_NAME_REGEX.test(unit)) error(`Invalid Unit name: ${unit}`);
   }
+  // A reopen starts a Unit's review attempt over, and the one agent reset counts
+  // only stage rows, so on a stage nobody reads a reopen is a person's alone.
+  const noReaderStages = stages.filter((slug) => {
+    const stage = findStageBySlug(slug);
+    return !!stage && isAutonomousStage(stage) && !stageIsTeamUnitGate(stage, content);
+  });
+  const unasked = noReaderStages.find((slug) => !personRequestedChanges(pd, slug));
+  if (unasked !== undefined) {
+    error(
+      `Refusing to reopen "${unasked}": nobody answers this stage, and only a person's Request Changes ` +
+        `reopens a Unit on it. Park it with \`${aidlcToolInvocation("orchestrate")} park\`, naming the open findings.`,
+    );
+  }
   const stageName = targetStage.name ?? targetSlug;
   // A change is kept in the person's own words, from the gate they answered.
   const gateStage = getField(content, "Current Stage")?.trim() ?? targetSlug;
@@ -284,6 +299,7 @@ function handleReopen(args: string[]): void {
       // Marks the row as the person's redo or jump, or the change they asked
       // for at the gate.
       Reopen: flags.via ?? "jump",
+      ...(noReaderStages.length > 0 ? PERSON_DECIDED_FIELD : {}),
       ...(flags.via === "change" ? { "User Input": "Request Changes" } : {}),
       Feedback: flags.via === "redo"
         ? `Redid ${stageName} for unit ${unit} at the person's request (redo on re-entry).`
