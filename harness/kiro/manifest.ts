@@ -140,6 +140,7 @@ const manifest: HarnessManifest = {
   // Same core projection as claude, EXCEPT: rules→steering, and the
   // orchestrator skill (skills/aidlc/) is authored, not core.
   coreDirs: [
+    { src: "workflow-evidence", dst: "workflow-evidence" },
     { src: "tools", dst: "tools" },
     { src: "aidlc-common", dst: "aidlc-common" },
     { src: "knowledge", dst: "knowledge" },

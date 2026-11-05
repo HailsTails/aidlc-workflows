@@ -1167,6 +1167,28 @@ function removeFragments(content: string, key: string, path: string): string {
   return output;
 }
 
+function removeRecordedHookRegistrations(input: {
+  stagedProject: string;
+  harnessDir: string;
+  key: string;
+  hookRecord: unknown;
+}): void {
+  const { stagedProject, harnessDir, key, hookRecord } = input;
+  const sidecar = join(harnessDataDir(stagedProject, harnessDir), "plugin-contrib-" + key + ".json");
+  if (hookRecord !== undefined) {
+    if (!hookRecord || typeof hookRecord !== "object" || Array.isArray(hookRecord)) throw new Error(sidecar + ": recorded plugin hooks are invalid");
+    const payload = projectedPluginHookContributionsSchema.parse((hookRecord as Record<string, unknown>)["hook_registrations"]);
+    if (payload.kind === "invalid" || payload.value.pluginName !== key ||
+      (payload.value.harness === "kiro-ide" ? "kiro" : payload.value.harness) !== harnessKind(harnessDir)) throw new Error(`${sidecar}: recorded plugin hooks are invalid`);
+    const paths = [...new Set(payload.value.registrations.map((registration) => registration.path))];
+    const plan = planPluginHookRegistrations({ pluginName: key, harness: payload.value.harness,
+      selection: { kind: "deselected" }, previous: payload.value.registrations, current: [],
+      documents: paths.map((path) => ({ path, text: readFileSync(assertOwnedPath(stagedProject, path), "utf-8") })) });
+    if (plan.kind === "conflict") throw new Error(`plugin hook registration refused: ${plan.error.path}: ${plan.error.reason}`);
+    plan.documents.forEach((document) => { writeFileSync(assertOwnedPath(stagedProject, document.path), document.text); });
+  }
+
+}
 function pruneContributions(stagedProject: string, harnessDir: string, key: string): void {
   const sidecar = join(harnessDataDir(stagedProject, harnessDir), `plugin-contrib-${key}.json`);
   let records: Record<string, {
@@ -1190,18 +1212,7 @@ function pruneContributions(stagedProject: string, harnessDir: string, key: stri
       throw new Error(`${sidecar}: ownership sidecar is invalid: ${errorMessage(error)}`);
     }
   }
-  const recordedHooks = records.$hooks?.hook_registrations;
-  if (recordedHooks !== undefined) {
-    const payload = projectedPluginHookContributionsSchema.parse(recordedHooks);
-    if (payload.kind === "invalid" || payload.value.pluginName !== key ||
-      (payload.value.harness === "kiro-ide" ? "kiro" : payload.value.harness) !== harnessKind(harnessDir)) throw new Error(`${sidecar}: recorded plugin hooks are invalid`);
-    const paths = [...new Set(payload.value.registrations.map((registration) => registration.path))];
-    const plan = planPluginHookRegistrations({ pluginName: key, harness: payload.value.harness,
-      selection: { kind: "deselected" }, previous: payload.value.registrations, current: [],
-      documents: paths.map((path) => ({ path, text: readFileSync(assertOwnedPath(stagedProject, path), "utf-8") })) });
-    if (plan.kind === "conflict") throw new Error(`plugin hook registration refused: ${plan.error.path}: ${plan.error.reason}`);
-    plan.documents.forEach((document) => { writeFileSync(assertOwnedPath(stagedProject, document.path), document.text); });
-  }
+  removeRecordedHookRegistrations({ stagedProject, harnessDir, key, hookRecord: records.$hooks });
   const stagesRoot = join(stagedProject, harnessDir, "aidlc-common", "stages");
   if (existsSync(stagesRoot)) {
     for (const path of regularFiles(stagesRoot).filter((value) => value.endsWith(".md"))) {
@@ -1263,6 +1274,40 @@ function pruneOwnedPlugin(
   }
 }
 
+export function deactivateSelectedPluginExecution(input: {
+  stagedProject: string;
+  liveProject: string;
+  harnessDir: string;
+  key: string;
+}): void {
+  const { stagedProject, liveProject, harnessDir, key } = input;
+  if (!SAFE_PLUGIN_KEY.test(key)) throw new Error("cannot deselect invalid plugin identity: " + key);
+  const dataDir = harnessDataDir(stagedProject, harnessDir);
+  const sidecar = join(dataDir, "plugin-contrib-" + key + ".json");
+  if (existsSync(sidecar)) {
+    const value: unknown = readJson(sidecar);
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(sidecar + ": ownership sidecar is invalid");
+    removeRecordedHookRegistrations({ stagedProject, harnessDir, key, hookRecord: (value as Record<string, unknown>)["$hooks"] });
+  }
+  const ownershipPath = join(dataDir, "plugin-owned-" + key + ".json");
+  const ownership = parseOwnership(ownershipPath);
+  if (existsSync(ownershipPath) && (!ownership || ownership.name !== key)) throw new Error(ownershipPath + ": composition ownership is invalid");
+  const rulePath = harnessDir + "/rules/aidlc-plugin-" + key + ".rules";
+  const executionFiles = (ownership?.files ?? []).filter((file) =>
+    file.path.startsWith(harnessDir + "/hooks/") || (harnessDir === ".codex" && file.path === rulePath));
+  for (const file of executionFiles) {
+    refuseLinkOnTheWay(liveProject, assertOwnedPath(liveProject, file.path));
+    const target = assertOwnedPath(stagedProject, file.path);
+    if (!existsSync(target)) continue;
+    if (!lstatSync(target).isFile() || sha256File(target) !== file.sha256) {
+      const surface = file.path === rulePath ? "permission" : "hook";
+      throw new Error("cannot deselect " + key + ": owned " + surface + " path changed since composition: " + file.path);
+    }
+    rmSync(target);
+  }
+  // Keep content and its ownership, but never treat disabled composition as current.
+  rmSync(join(dataDir, "plugin-compose-" + key + ".json"), { force: true });
+}
 function replaceOwnedPluginPrimitives(
   stagedProject: string,
   harnessDir: string,
@@ -1520,12 +1565,14 @@ export async function syncPlugins(
     plugins = inventory.installed.filter((plugin) => plugin.enabled && (selection === null || selection.has(plugin.key)));
   }
   const deselected = inventory.installed.filter((plugin) =>
-    (!plugin.enabled || (selection !== null && !selection.has(plugin.key))) && evidence.ownership.has(plugin.key)).map((plugin) => plugin.key);
+    plugin.enabled && selection !== null && !selection.has(plugin.key) && evidence.ownership.has(plugin.key)).map((plugin) => plugin.key);
+  const hostDisabled = inventory.installed.filter((plugin) =>
+    !plugin.enabled && evidence.ownership.has(plugin.key)).map((plugin) => plugin.key);
   const pruned = prune ? missing : [];
-  const removed = [...new Set([...pruned, ...deselected])];
+  const removed = [...new Set([...pruned, ...hostDisabled])];
   announcePrune(argv, pruned);
   if (
-    removed.length === 0 &&
+    removed.length === 0 && deselected.length === 0 &&
     plugins.every((plugin) => compositionIsCurrent(plugin, evidence, { projectDir, harnessDir, harness: inventory.harness }))
   ) {
     return {
@@ -1560,6 +1607,15 @@ export async function syncPlugins(
       }
       pruneOwnedPlugin(stagedProject, harnessDir, key, evidence.ownership.get(key));
     }
+    for (const key of deselected) {
+      const ownership = evidence.ownership.get(key);
+      if (!ownership) continue;
+      for (const file of ownership.files) {
+        refuseLinkOnTheWay(projectDir, assertOwnedPath(projectDir, file.path));
+      }
+      pruneContributions(stagedProject, harnessDir, key);
+      deactivateSelectedPluginExecution({ stagedProject, liveProject: projectDir, harnessDir, key });
+    }
     const claimedPaths = new Set<string>();
     for (const plugin of plugins) {
       writeCompositionRecords(
@@ -1572,7 +1628,7 @@ export async function syncPlugins(
         inventory.harness,
       );
     }
-    if (removed.length > 0) regenerateAfterPrune(stagedProject, harnessDir);
+    if (removed.length > 0 || deselected.length > 0) regenerateAfterPrune(stagedProject, harnessDir);
     if (harness === "codex") {
       const seed = planCodexHookTrustSeed({ document: readJson(join(stagedProject, harnessDir, "hooks.json")),
         hooksPath: join(projectDir, harnessDir, "hooks.json"),
@@ -1606,7 +1662,7 @@ export async function syncPlugins(
       }
       const refreshedEvidence = projectEvidence(projectDir, harnessDir);
       if (
-        removed.length === 0 &&
+        removed.length === 0 && deselected.length === 0 &&
         plugins.every((plugin) =>
           compositionIsCurrent(plugin, refreshedEvidence, { projectDir, harnessDir, harness: inventory.harness })
         )

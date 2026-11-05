@@ -125,6 +125,7 @@ const manifest: HarnessManifest = {
   // machinery (steering/aidlc-rules) still rewrites the <harness>/rules/ prose
   // mentions other core files carry, so it stays.
   coreDirs: [
+    { src: "workflow-evidence", dst: "workflow-evidence" },
     { src: "tools", dst: "tools" },
     { src: "aidlc-common", dst: "aidlc-common" },
     { src: "knowledge", dst: "knowledge" },

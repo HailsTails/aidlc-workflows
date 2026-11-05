@@ -1,3 +1,6 @@
+import { assessReplyReuse, type ReplyReuseEvidence, type ReplyConsumption } from "../workflow-evidence/answers/reply-reuse.ts";
+import { defaultRuntimePresenceAdapter } from "../workflow-evidence/adapters/runtime-presence.ts";
+import type { PresenceEvidence } from "../workflow-evidence/presence/presence-evidence.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { spawnSync } from "node:child_process";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -218,9 +221,9 @@ export function isPerUnitStage(e: { slug: string; for_each?: string }): boolean 
   return e.for_each === PER_UNIT_FOR_EACH || KNOWN_PER_UNIT_STAGES.has(e.slug);
 }
 
-export interface ScopeDefinition {
+export interface ScopeDefinition<StageAction = "EXECUTE" | "SKIP"> {
   depth: string;
-  stages: Record<string, "EXECUTE" | "SKIP">;
+  stages: Record<string, StageAction>;
   // Optional fields from scope-mapping.json. `testStrategy` can override
   // the depth-derived default; `keywords` drives NL scope inference (see
   // aidlc-utility.ts inferScopeFromText); `description` is a one-line
@@ -428,11 +431,19 @@ export function harnessDataPath(): string {
 }
 
 function readShippedHarnessData(): ShippedHarnessData {
-  if (_shippedHarnessData !== null) return _shippedHarnessData;
+  if (_shippedHarnessData === null) _shippedHarnessData = readHarnessData(harnessDataPath());
+  return _shippedHarnessData;
+}
+
+/** Uncached explicit read for staged workflow candidates. */
+export function readPluginSelection(path: string): ReadonlySet<string> | null {
+  return readHarnessData(path).plugins;
+}
+
+function readHarnessData(p: string): ShippedHarnessData {
   // tools/data/harness.json sits beside the compiled stage-graph.json in the
   // shipped tree (DATA_DIR). Absent in a dev checkout's core/ (authored source
   // carries no compiled data) → defaults, and the caller falls through.
-  const p = harnessDataPath();
   try {
     const raw = readFileSync(p, "utf-8");
     const parsed = JSON.parse(raw) as {
@@ -607,7 +618,7 @@ function readShippedHarnessData(): ShippedHarnessData {
           ...(typeof activation.agentStepEdits === "string" ? { agentStepEdits: activation.agentStepEdits } : {}),
         }
         : null;
-    _shippedHarnessData = {
+    return {
       rulesSubdir,
       plugins,
       documentExtractors,
@@ -615,12 +626,11 @@ function readShippedHarnessData(): ShippedHarnessData {
       baseRuleDelivery: declaredDelivery === "ambient" ? "ambient" : "explicit",
       hookActivation,
     };
-    return _shippedHarnessData;
   } catch (err) {
     if (err instanceof Error && err.message.startsWith(`${p}:`)) throw err;
     // no harness.json (dev core/, or a tree built before this landed) → fall through
   }
-  _shippedHarnessData = {
+  return {
     rulesSubdir: null,
     plugins: null,
     documentExtractors: null,
@@ -628,7 +638,6 @@ function readShippedHarnessData(): ShippedHarnessData {
     baseRuleDelivery: "explicit",
     hookActivation: null,
   };
-  return _shippedHarnessData;
 }
 
 export function baseRuleDelivery(): "ambient" | "explicit" {
@@ -749,8 +758,8 @@ export function isKillSwitchSource(source: string): boolean {
   return source.startsWith("env ") || /^AIDLC_[A-Z0-9_]+ in /.test(source);
 }
 
-export function runnerFrontmatterAdditions(): readonly string[] {
-  return readShippedHarnessData().runnerFrontmatterAdditions;
+export function runnerFrontmatterAdditions(path?: string): readonly string[] {
+  return (path === undefined ? readShippedHarnessData() : readHarnessData(path)).runnerFrontmatterAdditions;
 }
 
 export function isPluginEnabled(plugin: string): boolean {
@@ -759,8 +768,17 @@ export function isPluginEnabled(plugin: string): boolean {
 }
 
 export function stageEnabledBySelection(stage: { plugin?: string; phase?: string }): boolean {
+  // Keep initialization independent of reading a host configuration, as before.
   if (stage.phase === "initialization") return true;
-  return isPluginEnabled(stage.plugin ?? "aidlc");
+  return stageEnabledForPlugins(stage, pluginsEnabled());
+}
+
+/** The same selection rule for a captured workflow candidate and the runtime. */
+export function stageEnabledForPlugins(
+  stage: { readonly plugin?: string; readonly phase?: string },
+  selected: ReadonlySet<string> | null,
+): boolean {
+  return stage.phase === "initialization" || selected === null || selected.has(stage.plugin ?? "aidlc");
 }
 
 export function _resetHarnessDataForTests(): void {
@@ -11376,16 +11394,18 @@ export function personSaidProjectType(projectDir: string): boolean {
 }
 
 // With `intent` and `space`, the turns read are that work's, not the active work's.
-export function humanTurnState(
+export type HumanTurnObservation = { readonly evidence: PresenceEvidence; readonly compatibility: HumanTurnState; readonly answerReuse: ReplyReuseEvidence };
+export function inspectHumanTurn(
   projectDir: string,
   options: { replies?: boolean; requests?: boolean; intent?: string; space?: string } = {},
-): HumanTurnState {
+): HumanTurnObservation {
   // Per-shard reads (not the concatenated buffer): buffer position across
   // shards is FILENAME order, not execution order, so it can only serve as an
   // ordering tiebreak WITHIN one shard. Cross-shard same-second ties are
   // genuinely unordered (isoTimestamp is second-precision) and fail closed
   // below.
-  const shards = auditShards(projectDir, options.intent, options.space);
+  const unreadableLocations: string[] = [];
+  const shards = auditShards(projectDir, options.intent, options.space, unreadableLocations);
   const events: { ts: string; shard: number; pos: number; human: boolean; event: string }[] = [];
   // Questions logged since a turn: a later question's reply is not the one the
   // earlier answers used.
@@ -11411,7 +11431,7 @@ export function humanTurnState(
       // empty, and the empty-ledger carve-out below answered "a human
       // acted" from a ledger nobody had read.
       if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
-      return "none";
+      return { evidence: { kind: "unavailable", reason: "unreadable-shard" }, compatibility: "none", answerReuse: { kind: "unavailable", reason: "unreadable-shard" } };
     }
   }
   const copied = copiedAuditBlocks(texts, () => knownAuditShardName(projectDir));
@@ -11457,72 +11477,25 @@ export function humanTurnState(
   }
   // DocumentKB provenance does not activate human-presence tracking. Any other
   // audit event does, so a workflow ledger without HUMAN_TURN fails closed.
-  if (events.length === 0) return sawPresenceTrackingEvent ? "none" : "acted";
+  const observed = defaultRuntimePresenceAdapter().inspect({
+    tracking: sawPresenceTrackingEvent ? "active" : "inactive",
+    events: events.map((event) => ({ ...event, shard: relative(projectDir, shards[event.shard]) })),
+  });
   const humans = events.filter((event) => event.human);
-  if (humans.length === 0) return "none"; // no human turn on record
   const resolutions = events.filter((event) => !event.human);
-  if (resolutions.length === 0) return "acted";
-
-  const latestHumanTimestamp = humans.reduce(
-    (latest, event) => (event.ts > latest ? event.ts : latest),
-    "",
-  );
-  const latestResolutionTimestamp = resolutions.reduce(
-    (latest, event) => (event.ts > latest ? event.ts : latest),
-    "",
-  );
-  if (latestHumanTimestamp > latestResolutionTimestamp) return "acted";
-  if (latestHumanTimestamp < latestResolutionTimestamp) {
-    return usedOnlyByAnswers(humans, resolutions, decisions, picks, latestHumanTimestamp) ? "answered" : "consumed";
-  }
-
-  // At equal second-precision timestamps, one turn must be provably after EVERY
-  // latest resolution. A same-shard append position proves that order; a
-  // resolution in any other shard remains unordered and therefore consumes the
-  // candidate turn fail-closed.
-  const latestHumans = humans.filter(
-    (event) => event.ts === latestHumanTimestamp,
-  );
-  const latestResolutions = resolutions.filter(
-    (event) => event.ts === latestResolutionTimestamp,
-  );
-  return latestHumans.some((human) =>
-    latestResolutions.every(
-      (resolution) =>
-        resolution.shard === human.shard && resolution.pos < human.pos,
-    )
-  )
-    ? "acted"
-    : usedOnlyByAnswers(humans, resolutions, decisions, picks, latestHumanTimestamp) ? "answered" : "consumed";
+  const toReplyPosition = (event: { ts: string; shard: number; pos: number }) => ({ timestamp: event.ts, shard: relative(projectDir, shards[event.shard]), position: event.pos });
+  const replyReuse = assessReplyReuse({ history: {
+    turns: humans.map(toReplyPosition),
+    resolutions: resolutions.map((event): ReplyConsumption => ({ ...toReplyPosition(event), kind: event.event === "QUESTION_ANSWERED" ? "answer" : "other" })),
+    questions: decisions.map(toReplyPosition),
+    picks: picks.map((pick) => ({ shard: relative(projectDir, shards[pick.shard]), turnPosition: pick.turn })),
+  } });
+  const compatibility = observed.kind === "consumed" && replyReuse.kind === "reusable" ? "answered" : observed.kind;
+  const evidence: PresenceEvidence = unreadableLocations.length > 0 ? { kind: "unavailable", reason: "unreadable-location" } : observed.evidence;
+  return { evidence, compatibility, answerReuse: evidence.kind === "unavailable" ? evidence : replyReuse };
 }
-
-// True when one human turn holds the latest timestamp, every resolution
-// provably after it is a QUESTION_ANSWERED, and every logged question is
-// provably before it, or the turn was a question box's reply with a pick left
-// for this answer. A question box answers the questions it showed, whenever the
-// agent logs them, so each of its picks backs one answer and no more. An event
-// at the same second in another shard is unordered, so it proves nothing about
-// what used the turn or what was asked.
-function usedOnlyByAnswers(
-  humans: { ts: string; shard: number; pos: number }[],
-  resolutions: { ts: string; shard: number; pos: number; event: string }[],
-  decisions: { ts: string; shard: number; pos: number }[],
-  picks: { shard: number; turn: number }[],
-  latestHumanTimestamp: string,
-): boolean {
-  const latest = humans.filter((human) => human.ts === latestHumanTimestamp);
-  if (latest.length !== 1) return false;
-  const turn = latest[0];
-  if (resolutions.some((r) => r.ts === turn.ts && r.shard !== turn.shard)) return false;
-  const provablyBefore = (e: { ts: string; shard: number; pos: number }) =>
-    e.ts < turn.ts || (e.ts === turn.ts && e.shard === turn.shard && e.pos < turn.pos);
-  const after = resolutions.filter(
-    (r) => r.ts > turn.ts || (r.ts === turn.ts && r.shard === turn.shard && r.pos > turn.pos),
-  );
-  if (after.length === 0 || !after.every((r) => r.event === "QUESTION_ANSWERED")) return false;
-  if (decisions.every(provablyBefore)) return true;
-  return after.length < picks.filter((pick) => pick.shard === turn.shard && pick.turn === turn.pos).length;
-}
+export function humanTurnState(projectDir: string, options: { replies?: boolean; requests?: boolean; intent?: string; space?: string } = {}): HumanTurnState { return inspectHumanTurn(projectDir, options).compatibility; }
+export function inspectHumanPresence(projectDir: string, options: { replies?: boolean; requests?: boolean; intent?: string; space?: string } = {}): PresenceEvidence { return inspectHumanTurn(projectDir, options).evidence; }
 
 export function humanActedSinceGate(projectDir: string): boolean {
   return humanTurnState(projectDir) === "acted";
@@ -35576,22 +35549,30 @@ export function loadStageGraph(): StageEntry[] {
 }
 
 export function loadStageGraphAll(): StageEntry[] {
-  if (_stageGraphAll !== null) return _stageGraphAll;
-  const p = stageGraphPath();
+  if (_stageGraphAll === null) {
+    const path = stageGraphPath();
+    _stageGraphAll = readStageGraph(path, process.env.AIDLC_STAGE_GRAPH
+      ? `AIDLC_STAGE_GRAPH points to ${path}; unset it to use the default.`
+      : undefined);
+  }
+  return _stageGraphAll;
+}
+
+/** Read pinned graph rows without consulting or changing runtime caches. */
+export function readStageGraph(
+  p: string,
+  unreadableHint = "Reinstall the framework or re-run setup to restore the data file.",
+): StageEntry[] {
   let raw: string;
   try {
     raw = readFileSync(p, "utf-8");
   } catch (err) {
 
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
-      _stageGraphAll = [];
-      return _stageGraphAll;
+      return [];
     }
-    const hint = process.env.AIDLC_STAGE_GRAPH
-      ? `AIDLC_STAGE_GRAPH points to ${p}; unset it to use the default.`
-      : "Reinstall the framework or re-run setup to restore the data file.";
     throw new Error(
-      `Stage graph not readable at ${p}: ${errorMessage(err)}. ${hint}`
+      `Stage graph not readable at ${p}: ${errorMessage(err)}. ${unreadableHint}`
     );
   }
   let parsed: StageEntry[];
@@ -35605,7 +35586,6 @@ export function loadStageGraphAll(): StageEntry[] {
       `Stage graph at ${p} is not valid JSON: ${errorMessage(err)}`
     );
   }
-  _stageGraphAll = parsed;
   return parsed;
 }
 
@@ -35644,14 +35624,14 @@ interface ScopeMetadata {
 let _scopeMetadata: Record<string, ScopeMetadata> | null = null;
 let _scopeMetadataAll: Record<string, ScopeMetadata> | null = null;
 
-type ScopeGridForMapping = Record<string, { stages: Record<string, "EXECUTE" | "SKIP"> }>;
+export type ScopeGridForMapping = Readonly<Record<string, { readonly stages: Readonly<Record<string, "EXECUTE" | "SKIP">> }>>;
 
 function transposeScopeGridForMapping(stages: StageEntry[]): ScopeGridForMapping {
   const scopeNames = new Set<string>();
   for (const stage of stages) {
     for (const name of stage.scopes ?? []) scopeNames.add(name);
   }
-  const grid: ScopeGridForMapping = {};
+  const grid: Record<string, { stages: Record<string, "EXECUTE" | "SKIP"> }> = {};
   for (const scope of [...scopeNames].sort()) {
     const stagesMap: Record<string, "EXECUTE" | "SKIP"> = {};
     for (const stage of stages) {
@@ -35697,8 +35677,12 @@ export function scopeArg(scope: string): string {
 }
 
 export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
-  if (_scopeMetadataAll !== null) return _scopeMetadataAll;
-  const dir = scopesDir();
+  if (_scopeMetadataAll === null) _scopeMetadataAll = readScopeMetadata(scopesDir());
+  return _scopeMetadataAll;
+}
+
+/** Same scope authoring parser, with explicit input and no shared cache. */
+export function readScopeMetadata(dir: string): Record<string, ScopeMetadata> {
   const out: Record<string, ScopeMetadata> = {};
   const nameToFile = new Map<string, string>();
   let files: string[];
@@ -35819,7 +35803,6 @@ export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
     }
     out[name] = meta;
   }
-  _scopeMetadataAll = out;
   return out;
 }
 
@@ -35870,9 +35853,14 @@ export function resolveReviewClass(
 }
 
 export function loadScopeMetadata(): Record<string, ScopeMetadata> {
-  if (_scopeMetadata !== null) return _scopeMetadata;
-  const all = loadScopeMetadataAll();
-  const selected = pluginsEnabled();
+  if (_scopeMetadata === null) _scopeMetadata = selectScopeMetadata(loadScopeMetadataAll(), pluginsEnabled());
+  return _scopeMetadata;
+}
+
+export function selectScopeMetadata(
+  all: Readonly<Record<string, ScopeMetadata>>,
+  selected: ReadonlySet<string> | null,
+): Record<string, ScopeMetadata> {
   const enabled: Record<string, ScopeMetadata> = {};
   for (const [name, meta] of Object.entries(all)) {
     const owner = meta.plugin ?? "aidlc";
@@ -35888,7 +35876,6 @@ export function loadScopeMetadata(): Record<string, ScopeMetadata> {
         "At most one enabled scope may nominate the freeform default."
     );
   }
-  _scopeMetadata = enabled;
   return enabled;
 }
 
@@ -35932,12 +35919,29 @@ export function loadScopeMapping(): Record<string, ScopeDefinition> {
   const grid = loadScopeGridForMapping();
   const metadata = loadScopeMetadata();
 
-  const out: Record<string, ScopeDefinition> = {};
-  for (const name of Object.keys(metadata)) {
-    const meta = metadata[name];
-    const def: ScopeDefinition = {
+  _scopeMapping = scopeMappingFrom(metadata, grid);
+  return _scopeMapping;
+}
+
+/** Shared metadata/grid composition for runtime reads and explicit candidates. */
+export function scopeMappingFrom(
+  scopeMetadata: Readonly<Record<string, ScopeMetadata>>,
+  grid: ScopeGridForMapping,
+): Record<string, ScopeDefinition>;
+export function scopeMappingFrom(
+  scopeMetadata: Readonly<Record<string, ScopeMetadata>>,
+  grid: Readonly<Record<string, { readonly stages: object | null }>>,
+): Record<string, ScopeDefinition<unknown>>;
+export function scopeMappingFrom(
+  scopeMetadata: Readonly<Record<string, ScopeMetadata>>,
+  grid: Readonly<Record<string, { readonly stages: object | null }>>,
+): Record<string, ScopeDefinition<unknown>> {
+  const out: Record<string, ScopeDefinition<unknown>> = {};
+  for (const name of Object.keys(scopeMetadata)) {
+    const meta = scopeMetadata[name];
+    const def: ScopeDefinition<unknown> = {
       depth: meta.depth,
-      stages: grid[name]?.stages ?? {},
+      stages: { ...grid[name]?.stages },
       keywords: meta.keywords,
       description: meta.description,
     };
@@ -35950,7 +35954,6 @@ export function loadScopeMapping(): Record<string, ScopeDefinition> {
     if (meta.ceremony !== undefined) def.ceremony = meta.ceremony;
     out[name] = def;
   }
-  _scopeMapping = out;
   return out;
 }
 
@@ -35978,11 +35981,15 @@ export function _resetStageGraphForTests(): void {
 // keys instead.)
 let _validScopes: ReadonlySet<string> | null = null;
 
+export function scopeNamesFromMapping(mapping: Readonly<Record<string, ScopeDefinition<unknown>>>): string[] {
+  return Object.keys(mapping).filter(isScopeName).sort();
+}
+
 export function validScopes(): ReadonlySet<string> {
   if (!_validScopes) {
     // A name that is not a scope name (only a fixture mapping can carry one)
     // is never offered or run as a scope.
-    _validScopes = new Set(Object.keys(loadScopeMapping()).filter(isScopeName).sort());
+    _validScopes = new Set(scopeNamesFromMapping(loadScopeMapping()));
   }
   return _validScopes;
 }
@@ -36130,29 +36137,31 @@ export function foreignAgentFiles(dir: string = agentsDir()): string[] {
 }
 
 export function loadAgents(): AgentMetadata[] {
-  if (!_agents) {
-    const dir = agentsDir();
-    const slugToFile = new Map<string, string>();
-    const agents: AgentMetadata[] = [];
-    const files = readdirSync(dir)
-      .filter((f) => f.endsWith(".md") && f !== "aidlc.md")
-      .sort();
-    for (const f of files) {
-      const filePath = join(dir, f);
-      if (!isAidlcAgentFile(filePath)) continue;
-      const agent = parseAgentFrontmatter(filePath);
-      const previousFile = slugToFile.get(agent.slug);
-      if (previousFile) {
-        throw new Error(
-          `Duplicate agent slug "${agent.slug}" in ${filePath}: already declared in ${previousFile}. Rename one of them.`
-        );
-      }
-      slugToFile.set(agent.slug, filePath);
-      agents.push(agent);
-    }
-    _agents = agents.sort((a, b) => a.slug.localeCompare(b.slug));
-  }
+  if (_agents === null) _agents = readAgents(agentsDir());
   return _agents;
+}
+
+/** Same agent authoring parser, with explicit input and no shared cache. */
+export function readAgents(dir: string): AgentMetadata[] {
+  const slugToFile = new Map<string, string>();
+  const agents: AgentMetadata[] = [];
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith(".md") && f !== "aidlc.md")
+    .sort();
+  for (const f of files) {
+    const filePath = join(dir, f);
+    if (!isAidlcAgentFile(filePath)) continue;
+    const agent = parseAgentFrontmatter(filePath);
+    const previousFile = slugToFile.get(agent.slug);
+    if (previousFile) {
+      throw new Error(
+        `Duplicate agent slug "${agent.slug}" in ${filePath}: already declared in ${previousFile}. Rename one of them.`
+      );
+    }
+    slugToFile.set(agent.slug, filePath);
+    agents.push(agent);
+  }
+  return agents.sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
 export function _resetAgentsForTests(): void {

@@ -84,7 +84,7 @@ import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
 import {
-  buildPluginProjection as emitPluginProjection, writePluginHookWiring,
+  buildPluginProjection as emitPluginProjection, writePluginHookWiring, readPluginTargets,
   type PluginTarget,
   type PluginTargetTable,
   type PluginProjectionResult,
@@ -114,6 +114,7 @@ import {
   trustedCommand,
 } from "../core/tools/aidlc-command.ts";
 import { copyChannelDispatcherCommands, copyChannelToolScripts, ROUTES, TOOLS } from "../core/tools/aidlc.ts";
+import { requireSensorDocument } from "../core/tools/aidlc-sensor-projection.ts";
 import { parseSensorManifest } from "../core/tools/aidlc-sensor-schema.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
@@ -863,16 +864,22 @@ async function buildTree({
       const rel = relative(srcDir, file);
       if (/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(rel)) continue;
       if (rel.split(sep).includes("test-fixtures")) continue;
-      const outPath = join(treeRoot, finalDst, rel);
+      const destination = join(finalDst, rel).split(sep).join("/");
+      const source = readFileSync(file);
+      const sensor = src === "sensors" && file.endsWith(".md")
+        ? requireSensorDocument({
+          subject: file, body: source.toString("utf-8"), destination,
+          target: { harness: m.name, harnessDir },
+          context: {
+            harness: m.name, harnessDir, rulesSubdir: m.rulesRename ?? "rules",
+            invocation: invoke, memoryRoot: MEMORY_DST.split(sep).join("/"),
+          },
+        }) : null;
+      const outPath = join(treeRoot, sensor?.path ?? destination);
       mkdirSync(dirname(outPath), { recursive: true });
-      let out = transform(
-        file,
-        readFileSync(file),
-        harnessDir,
-        m.rulesRename,
-        harnessKind,
-        invoke,
-      );
+      let out = sensor === null ? transform(
+        file, source, harnessDir, m.rulesRename, harnessKind, invoke,
+      ) : Buffer.from(sensor.body, "utf-8");
       // Manifest keys are POSIX; normalize the platform separator so the
       // lookup works on Windows too.
       const harnessRel = join(finalDst, rel).split(sep).join("/");
@@ -1406,6 +1413,17 @@ function nativeSensorSelectorSource(input: {
     opening + fields.replace(new RegExp(`^command: ${escapeRegExp(command)}$`, "m"), "") + closing);
 }
 
+// This generated table is input to the standalone source/copy plugin builder,
+// even when that builder ships inside a native bundle. It is structured data,
+// not an executable invocation surface for the enclosing harness.
+function isPluginTargetContext(input: {
+  readonly outRoot: string;
+  readonly file: string;
+  readonly manifest: HarnessManifest;
+}): boolean {
+  return relative(input.outRoot, input.file) === join(input.manifest.harnessDir, PLUGIN_TARGETS_DST);
+}
+
 function assertNativeInvocationFiles(outRoot: string, m: HarnessManifest): void {
   const harnessDir = escapeRegExp(m.harnessDir);
   const delegateNames = Object.values(TOOLS)
@@ -1423,6 +1441,12 @@ function assertNativeInvocationFiles(outRoot: string, m: HarnessManifest): void 
   const leftovers: string[] = [];
   for (const file of walk(outRoot)) {
     if (!/\.(?:md|mdc|json|toml|hook|[cm]?[jt]s)$/.test(file)) continue;
+    if (isPluginTargetContext({ outRoot, file, manifest: m })) {
+      // Validate the actual emitted bytes after native projection. A hash or
+      // deterministic output alone does not establish consumable metadata.
+      readPluginTargets(file);
+      continue;
+    }
     const value = readFileSync(file, "utf-8");
     for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}"]) {
       if (value.includes(token)) {
@@ -1492,6 +1516,7 @@ function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
   );
   for (const file of walk(outRoot)) {
     if (!/\.(?:md|mdc|json|toml|hook|[cm]?[jt]s)$/.test(file)) continue;
+    if (isPluginTargetContext({ outRoot, file, manifest: m })) continue;
     let value = readFileSync(file, "utf-8");
     // Claude's source hook/statusline dispatcher is rooted at the project, so
     // it still loads after an application command changes cwd. JSON escapes
@@ -2033,6 +2058,11 @@ function pluginTargets(): PluginTargetTable {
       harnessLeaf: manifest.harnessDir,
       kind: manifest.plugin?.kind ?? "store",
       installRoots: [...installRoots].sort(),
+      sensorProjection: {
+        harness: manifest.name, harnessDir: manifest.harnessDir,
+        rulesSubdir: manifest.rulesRename ?? "rules",
+        invocation: `bun ${manifest.harnessDir}/tools/aidlc.ts`, memoryRoot: MEMORY_DST.split(sep).join("/"),
+      },
     };
   }
   return pluginTargetCache;
@@ -2168,7 +2198,7 @@ function projectCodexPluginAgent(
 // keeps the engine's stated contract intact.
 //
 // KNOWN LIMIT, deliberately not papered over: this fixes the PACKAGER path only.
-// A plugin built through the offline `aidlc-plugin-build` CLI still receives no
+// Non-sensor documents built through the offline `aidlc-plugin-build` CLI receive no
 // projection, because the authoring steps genuinely need a checkout — the tier
 // projection alone reads a table (core/tools/aidlc-tiers.ts), a cap layered over
 // core/memory, and throws per-harness validation. Making that offline-capable
@@ -2183,7 +2213,8 @@ function projectPluginDocuments(args: {
   const manifest = loadManifest(args.harnessName);
   const declaredTokens = pluginTokens(REPO_ROOT, args.pluginName, args.harnessName);
   for (const relativePath of args.projection.files) {
-    if (!relativePath.endsWith(".md")) continue;
+    // Sensors already crossed the shared projection boundary in the emitter.
+    if (!relativePath.endsWith(".md") || relativePath.startsWith("sensors/")) continue;
     const absolutePath = join(args.outDir, relativePath);
     const source = readFileSync(absolutePath);
     const codexAgent = args.harnessName === "codex" &&

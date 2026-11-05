@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+import { workflowStageToGraph } from "./aidlc-workflow-wire.ts";
+import { reconcileShippedFile, reconcileRetiredFile } from "./aidlc-managed-file-reconciliation.ts";
+import { compileWorkflowCandidate } from "./aidlc-workflow-candidate.ts";
+import { readWorkflowCompilationRequest } from "./aidlc-workflow-candidate-inputs.ts";
 import { LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { spawnSync } from "node:child_process";
 import {
@@ -128,15 +132,14 @@ import {
   writeOperation,
 } from "./aidlc-transaction.ts";
 import {
-  compileStageGraph,
   materializeComposedScopeIdentities,
-  __resetGraphCache,
   memoryDirFor,
 } from "./aidlc-graph.ts";
 import {
-  _resetHarnessDataForTests,
-  _resetScopeMappingForTests,
-  _resetStageGraphForTests,
+  readScopeMetadata,
+  selectScopeMetadata,
+  scopeMappingFrom,
+  runnerFrontmatterAdditions,
   activeSpace,
   activeWorkflowDescriptions,
   DEFAULT_SPACE,
@@ -150,7 +153,7 @@ import {
   withAuditLock,
   writeFileAtomic,
 } from "./aidlc-lib.ts";
-import { regenerateRunnerSurfaces } from "./aidlc-runner-gen.ts";
+import { readRunnerScopeFronts, regenerateRunnerSurfaces, runnerSurfaceRequest } from "./aidlc-runner-gen.ts";
 import { KIRO_IDE_STEERING, kiroIdeSteering, repointedIncludeText } from "./aidlc-includes.ts";
 import {
   activeWorkflowPluginDependencies,
@@ -161,6 +164,7 @@ import {
 } from "./aidlc-utility.ts";
 import {
   aidlcInvocation,
+  resolveSkillsPath,
   discoverProjectHarnesses,
   isCompiledExecutable,
   projectedDispatcher,
@@ -4411,13 +4415,6 @@ type StageContribRecord = {
   hook_registrations?: unknown;
 };
 
-function resetProjectionCaches(): void {
-  __resetGraphCache();
-  _resetHarnessDataForTests();
-  _resetScopeMappingForTests();
-  _resetStageGraphForTests();
-}
-
 function mergeListField(content: string, field: string, items: readonly string[]): string {
   if (items.length === 0) return content;
   const empty = new RegExp(`^${field}:\\s*\\[\\s*\\]\\s*$`, "m");
@@ -6327,110 +6324,101 @@ function prepareRefreshSource(input: {
     }
   }
 
-  const envKeys = [
-    "AIDLC_RUNTIME_PROJECT_DIR",
-    "AIDLC_PROJECT_DIR",
-    "AIDLC_HARNESS_DIR",
-    "AIDLC_RUNTIME_HARNESS_ROOT",
-    "AIDLC_RULES_DIR",
-    "AIDLC_STAGE_GRAPH",
-    "AIDLC_SCOPE_GRID",
-    "AIDLC_SCOPES_DIR",
-    "AIDLC_COMPOSED_SCOPES_DIR",
-    "AIDLC_SENSORS_DIR",
-    "AIDLC_AGENTS_DIR",
-    "AIDLC_HARNESS_NAME",
-  ] as const;
-  const saved = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
-  try {
-    process.env.AIDLC_RUNTIME_PROJECT_DIR = root;
-    process.env.AIDLC_PROJECT_DIR = root;
-    process.env.AIDLC_HARNESS_DIR = descriptor.harnessDir;
-    // Copilot and opencode share the .aidlc folder, so the harness is named:
-    // the regenerated scope runners then say how to start a new chat in it,
-    // as the shipped ones do.
-    process.env.AIDLC_HARNESS_NAME = descriptor.distribution;
-    process.env.AIDLC_RUNTIME_HARNESS_ROOT = stagedHarness;
-    process.env.AIDLC_RULES_DIR = join(root, "aidlc", "spaces", "default", "memory");
-    process.env.AIDLC_STAGE_GRAPH = join(stagedHarness, "tools", "data", "stage-graph.json");
-    process.env.AIDLC_SCOPE_GRID = stagedGrid;
-    process.env.AIDLC_SCOPES_DIR = join(stagedHarness, "scopes");
-    // Composed-scope records are the PROJECT's durable data, not part of the
-    // staged projection, so point the staged compile at the real ones. Without
-    // this the staged compile would fall back to the copied grid alone and could
-    // disagree with a later `graph compile` about a composed scope's cells. Paired
-    // with the materialize call below, this makes the record the source of record
-    // on this path too — reading the records is not sufficient on its own, because
-    // the fold-back also needs the identity file present.
-    process.env.AIDLC_COMPOSED_SCOPES_DIR = join(projectDir, "aidlc", "scopes");
-    process.env.AIDLC_SENSORS_DIR = join(stagedHarness, "sensors");
-    process.env.AIDLC_AGENTS_DIR = join(stagedHarness, "agents");
-    resetProjectionCaches();
-    // Restore any composed scope whose identity file is missing from the staged
-    // projection BEFORE compiling, exactly as the `graph compile` CLI does. The
-    // fold-back only resurrects a grid column whose identity file exists, so
-    // without this a record whose projection is gone — which is precisely the
-    // reinstall this recovery exists for — would be filtered out and its column
-    // silently dropped into the tree about to be installed. `root` is the staged
-    // projection, so the write lands there and never in the live project.
-    if (materializeComposedScopeIdentities(root).length > 0) resetProjectionCaches();
-    const compiled = compileStageGraph();
-    writeFileSync(process.env.AIDLC_STAGE_GRAPH, compiled.json);
-    writeFileSync(stagedGrid, compiled.gridJson);
-    resetProjectionCaches();
-    regenerateRunnerSurfaces();
-    resetProjectionCaches();
+  // Candidate admission reads an explicit snapshot, independent of the live
+  // process project and runtime caches. Recovery writes only the staging tree;
+  // the durable composed records remain read-only project inputs.
+  const graphPath = join(stagedHarness, "tools", "data", "stage-graph.json");
+  const scopesDir = join(stagedHarness, "scopes");
+  const composedScopesDir = join(projectDir, "aidlc", "scopes");
+  materializeComposedScopeIdentities(root, { scopesDir, composedScopesDir });
+  const compilationRequest = readWorkflowCompilationRequest({
+    stagesDir: join(stagedHarness, "aidlc-common", "stages"),
+    stageGraphPath: graphPath,
+    scopeGridPath: stagedGrid,
+    scopesDir,
+    composedScopesDir,
+    rulesDir: join(root, "aidlc", "spaces", "default", "memory"),
+    sensorsDir: join(stagedHarness, "sensors"),
+    agentsDir: join(stagedHarness, "agents"),
+    harnessDataPath: join(stagedHarness, "tools", "data", "harness.json"),
+    harnessDir: descriptor.harnessDir,
+  });
+  const compiled = compileWorkflowCandidate(compilationRequest);
+  for (const advisory of compiled.advisories) console.error(advisory);
+  writeFileSync(graphPath, compiled.json);
+  writeFileSync(stagedGrid, compiled.gridJson);
 
-    const skillPath = existsSync(join(stagedHarness, "skills", "aidlc", "SKILL.md"))
-      ? join(stagedHarness, "skills", "aidlc", "SKILL.md")
-      : join(root, ".agents", "skills", "aidlc", "SKILL.md");
-    if (existsSync(skillPath)) {
-      const shippedSkill = readFileSync(skillPath, "utf-8");
-      let generated = shippedSkill;
-      const skillRelative = relative(root, skillPath).replaceAll("\\", "/");
-      const currentSkill = join(projectDir, skillRelative);
-      const skillBaseline = prior?.files[skillRelative];
-      generated = replaceGeneratedRegion(
-        generated,
-        canonicalStageTableRegion(renderStageTable()),
-        "stage",
-      );
-      generated = replaceGeneratedRegion(
-        generated,
-        canonicalScopeTableRegion(renderScopeTable()),
-        "scope",
-      );
-      if (skillBaseline && regularFile(currentSkill)) {
-        const current = readFileSync(currentSkill, "utf-8").replaceAll("\r\n", "\n");
-        const restored = replaceGeneratedRegion(replaceGeneratedRegion(current, shippedSkill, "stage"), shippedSkill, "scope");
-        if (generatedSkillOwned({
-          installed: current,
-          equivalents: [restored],
-          recorded: { hash: skillBaseline, proseHash: prior?.generatedSkillProseHashes?.[skillRelative] },
-        })) {
-          regenerated.add(skillRelative);
-          hookCoreHashes.set(skillRelative, sha256Bytes(generated));
-        }
+  const allScopeMetadata = readScopeMetadata(scopesDir);
+  const selectedPlugins = compilationRequest.selectedPlugins === null
+    ? null : new Set(compilationRequest.selectedPlugins);
+  const stagedLocation = {
+    projectDir: root,
+    harnessDir: descriptor.harnessDir,
+    distribution: descriptor.distribution,
+    mutable: true,
+  };
+  const runnerRequest = runnerSurfaceRequest({
+    projectDir: root,
+    scopesDir,
+    skillsDir: resolveSkillsPath([], stagedLocation),
+    render: {
+      harnessDir: descriptor.harnessDir,
+      distribution: descriptor.distribution,
+      mode: aidlcInvocation().startsWith("bun ") ? "source" : "native",
+      frontmatter: runnerFrontmatterAdditions(stagedHarnessData),
+    },
+    allStages: compiled.stages.map(workflowStageToGraph),
+    allScopes: readRunnerScopeFronts(scopesDir, { log: () => {}, error: () => {} }),
+    allScopeOwners: allScopeMetadata,
+    gridScopeNames: Object.keys(compiled.grid),
+    selectedPlugins: compilationRequest.selectedPlugins,
+  });
+  regenerateRunnerSurfaces(runnerRequest);
+  const scopeMapping = scopeMappingFrom(
+    selectScopeMetadata(allScopeMetadata, selectedPlugins),
+    compiled.grid,
+  );
+
+  const skillPath = resolveSkillsPath(["aidlc", "SKILL.md"], stagedLocation);
+  if (existsSync(skillPath)) {
+    const shippedSkill = readFileSync(skillPath, "utf-8");
+    let generated = shippedSkill;
+    const skillRelative = relative(root, skillPath).replaceAll("\\", "/");
+    const currentSkill = join(projectDir, skillRelative);
+    const skillBaseline = prior?.files[skillRelative];
+    generated = replaceGeneratedRegion(
+      generated,
+      canonicalStageTableRegion(renderStageTable(runnerRequest.stages)),
+      "stage",
+    );
+    generated = replaceGeneratedRegion(
+      generated,
+      canonicalScopeTableRegion(renderScopeTable(scopeMapping)),
+      "scope",
+    );
+    if (skillBaseline && regularFile(currentSkill)) {
+      const current = readFileSync(currentSkill, "utf-8").replaceAll("\r\n", "\n");
+      const restored = replaceGeneratedRegion(replaceGeneratedRegion(current, shippedSkill, "stage"), shippedSkill, "scope");
+      if (generatedSkillOwned({
+        installed: current,
+        equivalents: [restored],
+        recorded: { hash: skillBaseline, proseHash: prior?.generatedSkillProseHashes?.[skillRelative] },
+      })) {
+        regenerated.add(skillRelative);
+        hookCoreHashes.set(skillRelative, sha256Bytes(generated));
       }
-      writeFileSync(skillPath, generated);
     }
-    regenerated.add(`${descriptor.harnessDir}/tools/data/stage-graph.json`);
-    for (const directory of [join(stagedHarness, "skills"), join(root, ".agents", "skills")]) {
-      if (!existsSync(directory)) continue;
-      for (const nested of walkFiles(directory)) {
-        const path = join(directory, nested);
-        if (readFileSync(path, "utf-8").includes("generated-by: aidlc-runner-gen")) {
-          regenerated.add(relative(root, path).replaceAll("\\", "/"));
-        }
+    writeFileSync(skillPath, generated);
+  }
+  regenerated.add(`${descriptor.harnessDir}/tools/data/stage-graph.json`);
+  for (const directory of new Set([join(stagedHarness, "skills"), join(root, ".agents", "skills"), runnerRequest.skillsDir])) {
+    if (!existsSync(directory)) continue;
+    for (const nested of walkFiles(directory)) {
+      const path = join(directory, nested);
+      if (readFileSync(path, "utf-8").includes("generated-by: aidlc-runner-gen")) {
+        regenerated.add(relative(root, path).replaceAll("\\", "/"));
       }
     }
-  } finally {
-    for (const key of envKeys) {
-      const value = saved[key];
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-    resetProjectionCaches();
   }
   if (recordOnly) {
     for (const directory of descriptor.managedDirectories) {
@@ -8685,7 +8673,18 @@ function planManagedFiles(
         });
         continue;
       }
-      if (targetRegular && currentHash === hash) {
+      const fileDecision = reconcileShippedFile({
+        target: !targetExists ? { kind: "absent" } : !targetRegular ? { kind: "non-regular" } : {
+          kind: "regular",
+          proposedContent: currentHash === hash ? "equal" : "different",
+          ownership: unproven.has(rel) ? "unproven"
+            : priorHash && currentHash === priorHash ? "unchanged-owned" : "unowned-or-modified",
+          adoption: !adoptedManagedFile ? "none"
+            : exactSourceProjection ? "exact-source-projection" : "legacy-signature",
+        },
+        replacement: force ? "force" : "preserve-user-changes",
+      });
+      if (fileDecision.action === "preserve") {
         actions.push({ path: rel, action: "preserve" });
         continue;
       }
@@ -8710,15 +8709,7 @@ function planManagedFiles(
           continue;
         }
       }
-      if (
-        targetExists &&
-        (
-          !targetRegular ||
-          unproven.has(rel) ||
-          (!adoptedManagedFile && (!priorHash || currentHash !== priorHash))
-        ) &&
-        !force
-      ) {
+      if (fileDecision.action === "conflict") {
         actions.push({ path: rel, action: "conflict", detail: "locally modified or unowned" });
         continue;
       }
@@ -8736,8 +8727,9 @@ function planManagedFiles(
         });
       actions.push({
         path: rel,
-        action: targetExists ? "update" : "create",
-        detail: adoptedManagedFile ? exactSourceProjection ? "adopted exact source projection" : "adopted exact copy-channel signature" : undefined,
+        action: fileDecision.action,
+        detail: fileDecision.reason === "adopted-exact-source" ? "adopted exact source projection"
+          : fileDecision.reason === "adopted-legacy-signature" ? "adopted exact copy-channel signature" : undefined,
       });
     }
   }
@@ -8751,8 +8743,15 @@ function planManagedFiles(
       rel.endsWith("/tools/data/aidlc-manifest.json")
     ) continue;
     const target = join(projectDir, rel);
-    if (!pathPresent(target)) continue;
-    if ((!regularFile(target) || sha256FileMatching(target, [priorHash]) !== priorHash) && !force) {
+    const retiredDecision = reconcileRetiredFile({
+      target: !pathPresent(target) ? { kind: "absent" } : !regularFile(target) ? { kind: "non-regular" } : {
+        kind: "regular",
+        ownership: sha256FileMatching(target, [priorHash]) === priorHash ? "unchanged-owned" : "locally-modified",
+      },
+      replacement: force ? "force" : "preserve-user-changes",
+    });
+    if (retiredDecision.action === "none") continue;
+    if (retiredDecision.action === "conflict") {
       actions.push({ path: rel, action: "conflict", detail: "removed upstream but locally modified" });
       continue;
     }

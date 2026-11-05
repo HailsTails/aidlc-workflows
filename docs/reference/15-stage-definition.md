@@ -645,3 +645,63 @@ replaces the `Reserved` marker with the real emitter path.
   agent files.
 - [State Machine](12-state-machine.md) — where stage execution emits audit
   events.
+
+## Workflow candidate compilation boundary
+
+`core/tools/aidlc-workflow-candidate.ts` owns the existing graph decisions:
+stage schema validation, numbering, dependency and consumed-artifact checks,
+rule/sensor bindings, plugin selection and scope-grid composition. Its
+`compileWorkflowCandidate` input is an explicit captured value. It returns
+frozen graph/grid data and advisories; it does not read files, bind a process
+project, clear caches, print output or write an installed workflow.
+
+`aidlc-workflow-candidate-inputs.ts` is the read-only filesystem adapter. Every
+candidate location and the sensor display prefix is explicit, and it reuses
+the existing scope, agent, rule, sensor and composed-record parsers without
+runtime caches. Two candidates can be captured and compiled in one process.
+Its `WorkflowSourceReader` contract in `aidlc-workflow-source-reader.ts` owns
+stage-directory traversal and prior-grid reads; the filesystem implementation
+keeps platform imports at that boundary. Source filename identity in the
+compiler recognizes both slash styles without consulting the host platform.
+
+Generated scope grids retain the strict EXECUTE/SKIP cell type. Preserved legacy
+grids have a distinct type: migration historically retains object-valued
+`stages`, including arrays/null, arbitrary cells and extra entry fields. A single
+admission function preserves those bytes and the identity bookkeeping without
+claiming that they validate as a new plan. Durable records still override the
+legacy projection, stock scopes still win, and orphan identities stay excluded.
+Table composition preserves the captured cells and counts only exact EXECUTE.
+
+The compiler's `WorkflowStage` and admitted `StageDefinition` values use internal
+camelCase names. `aidlc-workflow-wire.ts` explicitly translates validated YAML
+fields and sensor manifests into those values, then projects runtime `GraphStage`
+objects and canonical JSON with the established protocol names and field order.
+This is a compatibility boundary, not a protocol migration: `requires_stage`,
+`rules_in_context`, nested sensor fields and omitted optional keys remain intact.
+The compiler's scope operations take named source/selection requests; the existing
+graph facade retains positional signatures for its existing clients.
+
+The `aidlc-graph.ts` CLI remains a compatibility adapter to this same compiler.
+The refresh adapter converts compiler stages through the same wire projection
+before passing them to existing runner/table owners. Neither adapter reimplements
+numbering, rule resolution, sensor resolution or composed-scope precedence.
+
+The config-refresh caller restores missing composed identities only in its
+staging tree, captures and validates the candidate, then writes staged graph
+and grid bytes. Installation ownership, refresh compatibility, approval and
+transactional application remain with their existing owners.
+
+The same caller passes detached values to the existing runner and table owners.
+The runner request includes selected and installed stages/scopes, composed grid
+membership, plugin selection, descriptions and runner flags, native frontmatter,
+invocation mode, harness directory and distribution, and explicit staging roots.
+The existing writer retains generated/legacy ownership, unmanaged-skill pruning
+refusals and link checks. Scope-table data uses the shared metadata/grid
+composition rather than another renderer. Copilot and OpenCode remain distinct
+through their distribution identity even though both use `.aidlc`.
+
+Candidate graph compilation and runner/table regeneration do not rebind process
+environment variables, reset runtime caches or replace console functions. CLI
+and package entry points retain their process-bound adapters to these same
+owners; this boundary does not claim to replace runtime workflow execution or
+the installation transaction mechanism.

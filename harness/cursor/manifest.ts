@@ -100,6 +100,7 @@ const manifest: HarnessManifest = {
 
   // Same core projection as claude, into .cursor/.
   coreDirs: [
+    { src: "workflow-evidence", dst: "workflow-evidence" },
     { src: "tools", dst: "tools" },
     { src: "aidlc-common", dst: "aidlc-common" },
     { src: "knowledge", dst: "knowledge" },

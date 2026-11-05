@@ -120,6 +120,7 @@ const manifest: HarnessManifest = {
   // core (the conductor adopts them inline from .aidlc/agents/); the
   // opencode-native subagent copies in .opencode/agents/ are emitted.
   coreDirs: [
+    { src: "workflow-evidence", dst: "workflow-evidence" },
     { src: "tools", dst: "tools" },
     { src: "aidlc-common", dst: "aidlc-common" },
     { src: "knowledge", dst: "knowledge" },

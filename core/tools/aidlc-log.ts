@@ -1,3 +1,5 @@
+import { inspectHumanTurn } from "./aidlc-lib.ts";
+import { interpretAnswerAvailability } from "../workflow-evidence/answers/answer-availability.ts";
 // aidlc-log.ts — Interaction audit helper
 //
 // Records DECISION_RECORDED (before AskUserQuestion), QUESTION_ANSWERED
@@ -77,7 +79,6 @@ import {
   humanActedSinceLastAnswer,
   humanPresenceGuardDisabled,
   humanTurnMintAllowed,
-  humanTurnState,
   isReplyTurn,
   isAutonomousConstructionDecision,
   legacyReviewAppendixEchoFields,
@@ -2192,8 +2193,7 @@ function handleAnswer(args: string[]): void {
     } else if (humanPresenceGuardDisabled()) {
       // scoped test off-switch
     } else if (
-      !humanActedSinceLastAnswer(pd) &&
-      !(humanTurnMintAllowed() && humanTurnState(pd, { replies: true }) === "answered")
+      interpretAnswerAvailability({ observation: inspectHumanTurn(pd, { replies: true }), reusePermission: humanTurnMintAllowed() ? "allowed" : "disabled" }).kind === "refused"
     ) {
       // One reply answers every question that was open when it arrived, each
       // as its own answer ("answered": only answers used it, and nothing was

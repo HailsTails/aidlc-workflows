@@ -283,6 +283,18 @@ deletes content for a missing installed source. Explicit
 modified or unowned paths. At a terminal it asks nothing: it names the plugins
 it prunes and how to get them back, then prunes.
 
+Local selection-off is not host removal. Aggregate sync keeps a locally
+unselected plugin's content files and ownership records, while revoking recorded
+native hook registrations, hash-proven hook bodies, and the exact owned Codex
+tool permission file. The selection utility performs that execution-surface
+revocation in its own staging transaction before discarding contribution
+provenance, then strips stage contributions and generated runners. Modified
+registrations, hook bodies, or permission files are conflicts. Selection-off
+invalidates the composition receipt, so re-enable followed by sync restores
+contributions even when no sync ran while the plugin was off. Host disablement
+continues to remove the owned active installation as before; explicit removal
+of a missing host plugin still requires the full-inventory prune path above.
+
 Neither list, doctor, nor sync checks a remote plugin registry. The host remains
 responsible for published-version discovery.
 

@@ -12,6 +12,7 @@ Contributions to this implementation are welcome. This guide covers prerequisite
 
 - **Claude Code** -- native install (recommended, auto-updates): macOS/Linux/WSL `curl -fsSL https://claude.ai/install.sh | bash`; Windows PowerShell `irm https://claude.ai/install.ps1 | iex`. Or `brew install --cask claude-code`. (see [Claude Code docs](https://code.claude.com/docs/en/quickstart))
 - **bun** -- Required to build, package, test, directly run authored TypeScript sources, and use locally generated `dist/<harness>/` projections. Native release runtimes use the installed `aidlc` command. Install via `curl -fsSL https://bun.sh/install | bash`; on Windows use `powershell -c "irm bun.sh/install.ps1 | iex"`.
+- **Node.js 22.18.0 or later** -- Required by `bun run lint`, `bun run check`, and the discipline commands. The ESLint projection imports the existing TypeScript rule modules, which Node runs directly using built-in type stripping.
 - **timeout** (GNU coreutils) -- Required by the test suite for LLM test timeouts (L2/L3). Pre-installed on Linux. macOS: `brew install coreutils` then add gnubin to PATH: `export PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"` (in `~/.zshenv` or `~/.zshrc`).
 - **Bash** -- Optional for the POSIX compatibility wrapper (`tests/run-tests.sh`). The primary test runner is `bun tests/run-tests.ts`; at runtime, none of the distributable hooks require Bash.
 - **Bedrock access** -- Required for running live integration and e2e tests (L2/L3). Not needed for L1 protocol tests.
@@ -113,6 +114,43 @@ Stable and preview publication use the `release` and `preview` environments
 respectively and serialize independently. The full trust design, including
 same-day counter allocation, is [Supply-Chain
 Security](19-supply-chain-security.md).
+
+## Mechanical workflow checks
+
+`bun run check` includes `bun run lint`. Lint first runs the existing discipline
+ESLint rules over the explicit 40-path workflow compiler, capture, wire boundary, graph, runner, table,
+presence and answer evidence, installed boundary, and native-entrypoint population in `package.json` (`bun run lint:workflow`). It
+then runs `bun run lint:biome`, the unchanged whole-fork Biome command. Both must
+pass. A failing first stage does not mean the later stage passed; run either
+named command directly when inspecting both sets of findings.
+
+The workflow command has no ignore or inline-disable escape, accepts no warning
+budget, and includes the large legacy owners rather than baselining them away.
+Its red result is actionable debt, not permission to reduce the population or
+relax the rule settings. It is scoped lint, not whole-repository discipline
+acceptance. New workflow owners and their tests must be added to this population.
+
+`disciplines.json` selects 26 audit and 13 ESLint clauses using the existing
+`plugins/discipline-core` source. After changing that selection or any governed
+exceptions, run `bun run project:disciplines` and commit the regenerated
+`disciplines.eslint.mjs`. The root flat config spreads that projection last.
+`bun run check:disciplines` runs the supported full tracked-repository route,
+including configuration coverage and native-override checks. It has no added
+exclusions or debt baselines. Its real red report must remain visible; a passing
+ESLint command alone would not clear audit findings, uncovered clauses, or
+judgement duties. See [discipline adoption](../../plugins/discipline-core/ADOPTING.md).
+
+CD-19 import findings at an actual filesystem boundary are distinct from missing
+mechanisms or scattered dependency imports. The existing `authorised-location`
+mechanism can govern a deliberately owned boundary with a reviewed why-chain.
+Neither a boundary-shaped filename nor this lint integration grants that
+exception; raw findings remain until an explicit, supported disposition exists.
+
+Biome is retained because the workflow projection is not a replacement for its
+whole-fork recommended rules, file coverage, or the `aidlc-knowledge.ts`
+read-only filesystem-import guard. Its formatter and import organization stay
+disabled, as before. Removing Biome needs demonstrated protection parity, not a
+change of command name. This integration changes no Rin engine or live install.
 
 ## Markdown structure
 

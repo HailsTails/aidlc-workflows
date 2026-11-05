@@ -5,6 +5,8 @@
 // tools/data/plugin-targets.json. This module therefore contains projection
 // behavior but no framework-checkout or harness-manifest dependency.
 
+import { requireSensorDocument, sensorProjectionContextSchema, type SensorDocument } from "./aidlc-sensor-projection.ts";
+import type { TextProjectionContext } from "./aidlc-projection-text.ts";
 import { createHash } from "node:crypto";
 import {
   cpSync,
@@ -50,6 +52,7 @@ export interface PluginTarget {
   harnessLeaf: string;
   kind: PluginTargetKind;
   installRoots: string[];
+  sensorProjection?: TextProjectionContext;
 }
 
 export type PluginTargetTable = Record<string, PluginTarget>;
@@ -177,6 +180,9 @@ export function readPluginTargets(path: string): PluginTargetTable {
       harnessLeaf: value.harnessLeaf,
       kind: value.kind,
       installRoots: [...value.installRoots],
+      ...(value.sensorProjection === undefined ? {} : {
+        sensorProjection: sensorProjectionContextSchema.parse(value.sensorProjection),
+      }),
     };
   }
   return out;
@@ -442,12 +448,45 @@ export function writePluginHookWiring(input: {
   );
 }
 
+// Declaration names are evidence of required context, not another token renderer.
+// Rendering their values is intentionally outside the sensor slice.
+function declaredSensorTokens(input: {
+  readonly manifest: Record<string, unknown>;
+  readonly harness: string;
+}): readonly string[] {
+  const aidlc = input.manifest.aidlc;
+  if (!isPlainRecord(aidlc) || !isPlainRecord(aidlc.tokens)) return [];
+  const declarations = aidlc.tokens;
+  const overrides = isPlainRecord(declarations.harness) ? declarations.harness[input.harness] : undefined;
+  return [...new Set([
+    ...Object.entries(declarations).filter(([, value]) => typeof value === "string").map(([name]) => name),
+    ...(isPlainRecord(overrides) ? Object.keys(overrides) : []),
+  ])];
+}
+
+function preparePluginSensors(input: {
+  readonly pluginRoot: string;
+  readonly target: PluginTarget;
+  readonly unsupportedTokens: readonly string[];
+}): ReadonlyMap<string, SensorDocument> {
+  return new Map(walkPluginFiles(join(input.pluginRoot, "sensors"))
+    .filter((file) => file.endsWith(".md") &&
+      classifyPluginSourceFile({ pluginRoot: input.pluginRoot, file }) === "runtime")
+    .map((file) => [file, requireSensorDocument({
+      subject: file, body: readFileSync(file, "utf-8"),
+      destination: relative(input.pluginRoot, file).split(sep).join("/"),
+      context: input.target.sensorProjection, unsupportedTokens: input.unsupportedTokens,
+      target: { harness: input.target.harnessName, harnessDir: input.target.harnessLeaf },
+    })]));
+}
+
 function copyPluginContent(
   pluginRoot: string,
   outDir: string,
   target: PluginTarget,
   reviewers: ReadonlySet<string>,
   templateHooksDir: string,
+  sensors: ReadonlyMap<string, SensorDocument>,
 ): void {
   const reservedHookNames = new Set(readdirSync(templateHooksDir));
   for (const dir of CONTENT_DIRS) {
@@ -475,9 +514,11 @@ function copyPluginContent(
         target.kind === "cursor" && dir === "agents"
           ? join(outDir, "aidlc", "agents")
           : join(outDir, dir);
-      const outPath = join(outputDir, relative(sourceDir, file));
+      const sensor = sensors.get(file);
+      const outPath = sensor === undefined
+        ? join(outputDir, relative(sourceDir, file)) : join(outDir, sensor.path);
       mkdirSync(dirname(outPath), { recursive: true });
-      let content = readFileSync(file);
+      let content = sensor === undefined ? readFileSync(file) : Buffer.from(sensor.body, "utf-8");
       if (dir === "agents" && file.endsWith("-agent.md")) {
         let projected = absorbPluginReviewerKnowledge(
           content.toString("utf-8"),
@@ -626,6 +667,11 @@ export function buildPluginProjection(
     options.reviewerAgents ?? pluginReviewerAgents(pluginRoot),
   );
 
+  const sensors = preparePluginSensors({
+    pluginRoot, target: options.target,
+    unsupportedTokens: declaredSensorTokens({ manifest, harness: options.target.harnessName }),
+  });
+
   return withPluginBuildOutputLock(
     outDir,
     options.lockTimeoutMs ?? PLUGIN_BUILD_LOCK_TIMEOUT_MS,
@@ -706,6 +752,7 @@ export function buildPluginProjection(
         options.target,
         reviewers,
         options.templateHooksDir,
+        sensors,
       );
 
       return {

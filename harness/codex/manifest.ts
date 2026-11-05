@@ -115,6 +115,7 @@ const manifest: HarnessManifest = {
   // .agents/skills/ by emit). Persona .md files ARE core (the conductor reads
   // them as prose; Codex agent discovery reads only the emitted .toml).
   coreDirs: [
+    { src: "workflow-evidence", dst: "workflow-evidence" },
     { src: "tools", dst: "tools" },
     { src: "aidlc-common", dst: "aidlc-common" },
     { src: "knowledge", dst: "knowledge" },

@@ -1,3 +1,4 @@
+import { findDestinationCollision } from "./aidlc-destination-collision.ts";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
@@ -400,19 +401,21 @@ export function validateProjectionDescriptor(
     throw new Error(`${root}: projection descriptor lists are invalid`);
   }
   const declared = new Set<string>();
-  const declare = (safe: string): void => {
-    if (declared.has(safe)) throw new Error(`${root}: duplicate projected path ${safe}`);
-    const overlap = [...declared].find((prior) =>
-      safe.startsWith(`${prior}/`) || prior.startsWith(`${safe}/`)
-    );
-    if (overlap) {
-      throw new Error(`${root}: overlapping projected paths ${overlap} and ${safe}`);
+  const declareProjectionPath = (safe: string): void => {
+    const collision = findDestinationCollision({
+      candidate: safe,
+      priorPaths: [...declared],
+      casePolicy: process.platform === "win32" ? "case-insensitive" : "case-sensitive",
+    });
+    if (collision.status === "collision") {
+      if (collision.kind === "same") throw new Error(`${root}: duplicate projected path ${safe}`);
+      throw new Error(`${root}: overlapping projected paths ${collision.prior} and ${safe}`);
     }
     declared.add(safe);
   };
   for (const directory of descriptor.managedDirectories) {
     const safe = safeRelativePath(directory, "managed directory", true);
-    declare(safe);
+    declareProjectionPath(safe);
     assertProjectionPathHasNoSymlinks(root, safe);
     const path = join(root, safe);
     if (!existsSync(path) || !lstatSync(path).isDirectory()) {
@@ -458,7 +461,7 @@ export function validateProjectionDescriptor(
     ) {
       throw new Error(`${root}: ${safe} has an invalid shared mode`);
     }
-    declare(safe);
+    declareProjectionPath(safe);
     assertProjectionPathHasNoSymlinks(root, safe);
     // Checked even when the file and its copy are absent: the marker names the copy.
     if (integration.policy !== "managed-block" && integration.marker !== undefined) {

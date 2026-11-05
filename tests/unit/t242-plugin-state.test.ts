@@ -715,6 +715,67 @@ describe("t242 transactional sync and ownership-safe prune", () => {
     expect(second.operations).toBe(0);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
+  test("local deselection sync retains primitives and ownership, then restores contributions", async () => {
+    const project = installedProject();
+    withClaudeFixture(TEST_PRO);
+    await syncPlugins(project, [], ".claude");
+    const data = join(project, ".claude", "tools", "data");
+    const stage = join(project, ".claude", "aidlc-common", "stages", "construction", "test-pro-integration.md");
+    const contributed = join(project, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md");
+    const before = readFileSync(contributed, "utf-8");
+    const primitive = readFileSync(stage, "utf-8");
+    const ownership = readFileSync(join(data, "plugin-owned-test-pro.json"), "utf-8");
+    const harness = JSON.parse(readFileSync(join(data, "harness.json"), "utf-8"));
+    writeFileSync(join(data, "harness.json"), JSON.stringify({ ...harness, plugins: ["aidlc"] }));
+    await syncPlugins(project, [], ".claude");
+    expect(readFileSync(stage, "utf-8")).toBe(primitive);
+    expect(readFileSync(join(data, "plugin-owned-test-pro.json"), "utf-8")).toBe(ownership);
+    expect(existsSync(join(project, ".claude", "skills", "test-pro-integration", "SKILL.md"))).toBe(false);
+    expect(readFileSync(contributed, "utf-8")).not.toContain("Step 8a (test-pro)");
+    expect(existsSync(join(data, "plugin-compose-test-pro.json"))).toBe(false);
+    const disabled = surfaceSnapshot(project);
+    expect((await syncPlugins(project, [], ".claude")).operations).toBe(0);
+    expect(surfaceSnapshot(project)).toEqual(disabled);
+    writeFileSync(join(data, "harness.json"), JSON.stringify({ ...harness, plugins: ["aidlc", "test-pro"] }));
+    await syncPlugins(project, [], ".claude");
+    expect(readFileSync(contributed, "utf-8")).toBe(before);
+    expect(existsSync(join(project, ".claude", "skills", "test-pro-integration", "SKILL.md"))).toBe(true);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("selection off and on invalidates composition even without an intervening sync", async () => {
+    const project = installedProject();
+    withClaudeFixture(TEST_PRO);
+    await syncPlugins(project, [], ".claude");
+    const contributed = join(project, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md");
+    const before = readFileSync(contributed, "utf-8");
+    const utility = join(project, ".claude", "tools", "aidlc-utility.ts");
+    const env = { ...process.env, AIDLC_PROJECT_DIR: project, CLAUDE_PROJECT_DIR: project, AIDLC_HARNESS_DIR: ".claude" };
+    const off = spawnSync(process.execPath, [utility, "select-plugins", "aidlc"], { cwd: project, env, encoding: "utf-8", timeout: NATIVE_FIXTURE_SETUP_TIMEOUT_MS });
+    expect(off.status, off.stderr).toBe(0);
+    expect(existsSync(join(project, ".claude", "tools", "data", "plugin-compose-test-pro.json"))).toBe(false);
+    const on = spawnSync(process.execPath, [utility, "select-plugins", "aidlc,test-pro"], { cwd: project, env, encoding: "utf-8", timeout: NATIVE_FIXTURE_SETUP_TIMEOUT_MS });
+    expect(on.status, on.stderr).toBe(0);
+    await syncPlugins(project, [], ".claude");
+    expect(readFileSync(contributed, "utf-8")).toBe(before);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("local deselection retains an edited primitive while re-enable refuses to overwrite it", async () => {
+    const project = installedProject();
+    withClaudeFixture(TEST_PRO);
+    await syncPlugins(project, [], ".claude");
+    const data = join(project, ".claude", "tools", "data");
+    const stage = join(project, ".claude", "aidlc-common", "stages", "construction", "test-pro-integration.md");
+    const edited = `${readFileSync(stage, "utf-8")}\nUser edit retained.\n`;
+    writeFileSync(stage, edited);
+    const harness = JSON.parse(readFileSync(join(data, "harness.json"), "utf-8"));
+    writeFileSync(join(data, "harness.json"), JSON.stringify({ ...harness, plugins: ["aidlc"] }));
+    await syncPlugins(project, [], ".claude");
+    expect(readFileSync(stage, "utf-8")).toBe(edited);
+    writeFileSync(join(data, "harness.json"), JSON.stringify({ ...harness, plugins: ["aidlc", "test-pro"] }));
+    const before = surfaceSnapshot(project);
+    await expect(syncPlugins(project, [], ".claude")).rejects.toThrow("owned path changed since composition");
+    expect(surfaceSnapshot(project)).toEqual(before);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
   test("concurrent syncs converge and the loser replans as an idempotent no-op", async () => {
     const project = installedProject();
     withClaudeFixture(TEST_PRO);
@@ -1431,9 +1492,37 @@ describe("t242 transactional sync and ownership-safe prune", () => {
     await syncPlugins(project, [], ".codex");
     expect(existsSync(join(project, ".codex", "rules", "aidlc-plugin-test-pro.rules"))).toBe(false);
     expect(readFileSync(consumerRule, "utf-8")).toBe("# consumer-owned\n");
+    const stage = join(project, ".codex", "aidlc-common", "stages", "construction", "test-pro-integration.md");
+    expect(existsSync(stage)).toBe(true);
+    expect(existsSync(join(project, ".codex", "tools", "aidlc-sensor-coverage-threshold.ts"))).toBe(true);
+    const disabled = surfaceSnapshot(project);
+    expect((await syncPlugins(project, [], ".codex")).operations).toBe(0);
+    expect(surfaceSnapshot(project)).toEqual(disabled);
+    writeFileSync(configuration, JSON.stringify({ ...harness, plugins: ["aidlc", "test-pro"] }));
+    await syncPlugins(project, [], ".codex");
+    expect(existsSync(join(project, ".codex", "rules", "aidlc-plugin-test-pro.rules"))).toBe(true);
+    expect(existsSync(join(project, ".agents", "skills", "test-pro-integration", "SKILL.md"))).toBe(true);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });
 
+describe("Codex local selection conflicts", () => {
+  test("deselection refuses a locally modified owned permission without changing project bytes", async () => {
+    const project = temp("aidlc-codex-selection-conflict-");
+    cpSync(join(REPO_ROOT, "dist", "codex"), project, { recursive: true });
+    process.env.AIDLC_PLUGIN_ROOT = join(REPO_ROOT, "dist", "plugins", "test-pro", "codex");
+    process.env.AIDLC_HARNESS_DIR = ".codex";
+    process.env.AIDLC_CODEX_HOME = temp("aidlc-selection-conflict-home-");
+    await syncPlugins(project, [], ".codex");
+    const permission = join(project, ".codex", "rules", "aidlc-plugin-test-pro.rules");
+    writeFileSync(permission, `${readFileSync(permission, "utf-8")}\n# user edit\n`);
+    const configuration = join(project, ".codex", "tools", "data", "harness.json");
+    const harness = JSON.parse(readFileSync(configuration, "utf-8"));
+    writeFileSync(configuration, JSON.stringify({ ...harness, plugins: ["aidlc"] }));
+    const before = surfaceSnapshot(project);
+    await expect(syncPlugins(project, [], ".codex")).rejects.toThrow("owned permission path changed since composition");
+    expect(surfaceSnapshot(project)).toEqual(before);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+});
 describe("Codex plugin permission migration", () => {
   test("Codex sync upgrades a current legacy ownership record missing tool permissions", async () => {
     const project = temp("aidlc-codex-rule-migration-");

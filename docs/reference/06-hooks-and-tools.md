@@ -2449,3 +2449,13 @@ No other prerequisites: copy installs run every hook and tool through bun, while
 - [Contributing](11-contributing.md) -- adding a utility handler
 - [Harness Primitives Mapping](14-claude-features.md) -- settings.json configuration (Claude-specific section)
 - [State Machine](12-state-machine.md) -- canonical event emitter registry and audit-first atomicity rules
+
+## Presence evidence and its consequences
+
+`core/workflow-evidence/` owns the pure assessment of observed turns and answer reuse. The existing runtime collector in `aidlc-lib.ts` still owns audit discovery and event classification. The five pure modules do not read files, clocks, environment variables, host sessions or autonomy settings. All seven harness manifests project this dependency boundary alongside `tools/`; its co-located tests are not shipped.
+
+`inspectHumanTurn` exposes presence evidence, answer-reuse evidence and a separately named compatibility result from one collection. Approval and rejection interpret that evidence through their existing authority owners. Ordinary answers interpret reply availability separately from gate freshness. Autonomy can make presence not required; it cannot turn missing or consumed evidence into a human turn. Generic freshness does not establish presentation-relative rejection authority.
+
+Legacy wrappers remain for callers not yet migrated. In particular, the legacy untracked exemption is not evidence that a person acted, and unreadable-location evidence can remain unavailable while the legacy compatibility result retains its inherited value. The installed runtime must keep artifact, summary, reviewer, feedback, presentation, grant, request-standing and protected-checkpoint owners unchanged.
+
+The isolated runtime-integration qualification distinguishes actual installed CLI execution over explicit fixtures from live host delivery. No successful human approval is claimed without a genuine human reply. The absence of provider hooks must still stop orchestration, and tests must never manufacture `HUMAN_TURN` records to turn that refusal into a success.

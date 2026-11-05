@@ -766,6 +766,109 @@ describe("the governance run, step 4: the governance instance", () => {
 });
 
 describe("the governance run, step 5: messages", () => {
+
+  it("reads and splits one source snapshot for all selected messages in a file", async () => {
+    const source = projectionHolding({ text: ENABLING_PROJECTION });
+    const read = vi.fn(source.read);
+    const report = await runnerOver({
+      fileText: { ...source, read },
+      eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [
+        CLASS_MESSAGE,
+        { ruleId: RULE_ID, line: 1, column: 1, message: "first line" },
+        { ruleId: RULE_ID, line: 30, column: 4, message: "beyond source" },
+      ] }) }) }),
+    }).run(CLASS_RUN);
+    expect(report).toEqual({ outcome: "ok", value: { hits: [
+      HIT_IN_A,
+      { clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", anchor: { line: 1, column: 0 }, snippet: "const a = 1;" },
+      { clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", anchor: { line: 30, column: 3 }, snippet: "" },
+    ], nativeExceptions: [], projection: "current" } });
+    expect(read.mock.calls).toEqual([
+      [{ path: PROJECTION_PATH }], [{ path: "/repo/disciplines.json" }],
+      [{ path: "/repo/node_modules/eslint/package.json" }], [{ path: "/repo/src/a.ts" }],
+    ]);
+  });
+
+  it("keeps separate file snapshots and the existing newline and trimming semantics", async () => {
+    const source = repoHolding({ projection: ENABLING_PROJECTION, files: {
+      "/repo/src/a.ts": presentFile({ text: "  first  \r\n\tsecond\r third \u2028 fourth \u2029 fifth \n" }),
+      "/repo/src/factory.ts": presentFile({ text: "  other file  \n" }),
+    } });
+    const read = vi.fn(source.read);
+    const report = await runnerOver({
+      fileText: { ...source, read },
+      eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: [
+        { filePath: "/repo/src/a.ts", messages: [
+          { ruleId: RULE_ID, line: 1, column: 1, message: "first" },
+          { ruleId: RULE_ID, line: 2, column: 2, message: "second" },
+          { ruleId: RULE_ID, line: 3, column: 3, message: "third" },
+          { ruleId: RULE_ID, line: 4, column: 4, message: "fourth" },
+          { ruleId: RULE_ID, line: 5, column: 5, message: "fifth" },
+        ] },
+        { filePath: "/repo/src/factory.ts", messages: [{ ruleId: RULE_ID, line: 1, column: 1, message: "other" }] },
+      ] }) }),
+    }).run(CLASS_RUN);
+    expect(report).toEqual({ outcome: "ok", value: { hits: [
+      { clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", anchor: { line: 1, column: 0 }, snippet: "first" },
+      { clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", anchor: { line: 2, column: 1 }, snippet: "second" },
+      { clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", anchor: { line: 3, column: 2 }, snippet: "third" },
+      { clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", anchor: { line: 4, column: 3 }, snippet: "fourth" },
+      { clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", anchor: { line: 5, column: 4 }, snippet: "fifth" },
+      { clause: CLASS_SYNTAX_OBJECT, file: "src/factory.ts", anchor: { line: 1, column: 0 }, snippet: "other file" },
+    ], nativeExceptions: [], projection: "current" } });
+    expect(read.mock.calls).toEqual([
+      [{ path: PROJECTION_PATH }], [{ path: "/repo/disciplines.json" }],
+      [{ path: "/repo/node_modules/eslint/package.json" }], [{ path: "/repo/src/a.ts" }],
+      [{ path: "/repo/src/factory.ts" }],
+    ]);
+  });
+
+  it("does not retain source snapshots across runs of the same runner", async () => {
+    const source = projectionHolding({ text: ENABLING_PROJECTION });
+    const read = vi.fn(source.read);
+    const runner = runnerOver({
+      fileText: { ...source, read },
+      eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE] }) }) }),
+    });
+    await expect(runner.run(CLASS_RUN)).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "current" } });
+    await expect(runner.run(CLASS_RUN)).resolves.toEqual({ outcome: "ok", value: { hits: [HIT_IN_A], nativeExceptions: [], projection: "current" } });
+    expect(read.mock.calls).toEqual([
+      [{ path: PROJECTION_PATH }], [{ path: "/repo/disciplines.json" }], [{ path: "/repo/node_modules/eslint/package.json" }], [{ path: "/repo/src/a.ts" }],
+      [{ path: PROJECTION_PATH }], [{ path: "/repo/disciplines.json" }], [{ path: "/repo/node_modules/eslint/package.json" }], [{ path: "/repo/src/a.ts" }],
+    ]);
+  });
+
+  it("does not read a source when its messages are unselected or inline-only", async () => {
+    const source = projectionHolding({ text: ENABLING_PROJECTION });
+    const read = vi.fn(source.read);
+    const report = await runnerOver({
+      fileText: { ...source, read },
+      eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [
+        { ruleId: "unselected/rule", line: 1, column: 1, message: "unselected" },
+        { ruleId: "discipline-core/inline-config", messageId: "inline-disable", line: 2, column: 1, message: "// eslint-disable-next-line discipline/no-class-authoring" },
+      ] }) }) }),
+    }).run(CLASS_RUN);
+    expect(report).toEqual({ outcome: "ok", value: { hits: [], nativeExceptions: [
+      { kind: "inline-disable", clause: CLASS_SYNTAX_OBJECT, file: "src/a.ts", line: 2, text: "// eslint-disable-next-line discipline/no-class-authoring" },
+    ], projection: "current" } });
+    expect(read.mock.calls).toEqual([
+      [{ path: PROJECTION_PATH }], [{ path: "/repo/disciplines.json" }], [{ path: "/repo/node_modules/eslint/package.json" }],
+    ]);
+  });
+
+  it("keeps an unreadable source failure without repeated reads for later messages", async () => {
+    const source = repoHolding({ projection: ENABLING_PROJECTION, files: { "/repo/src/a.ts": UNREADABLE_FILE } });
+    const read = vi.fn(source.read);
+    const report = await runnerOver({
+      fileText: { ...source, read },
+      eslint: eslintOver({ lintFiles: lintResolving({ outcome: "ok", value: linted({ messagesInA: [CLASS_MESSAGE, CLASS_MESSAGE] }) }) }),
+    }).run(CLASS_RUN);
+    expect(report).toEqual({ outcome: "failed", error: { kind: "file-unreadable", file: "src/a.ts", detail: "EACCES" } });
+    expect(read.mock.calls).toEqual([
+      [{ path: PROJECTION_PATH }], [{ path: "/repo/disciplines.json" }], [{ path: "/repo/node_modules/eslint/package.json" }], [{ path: "/repo/src/a.ts" }],
+    ]);
+  });
+
   it("reports a selected rule's message as a hit on the file's repo path at its line and column minus one", async () => {
     await expect(
       runnerOver({

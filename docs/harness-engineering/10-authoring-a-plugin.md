@@ -458,6 +458,30 @@ package identity keeps exported schemas compatible with the same producer
 package version. The generated companions and declaration graph participate
 in normal projection, archive, collision, and installed-file ownership checks.
 They are generated outputs; edit the authored module and regenerate them.
+Sensor Markdown crosses the same pure projection boundary in the core packager,
+repository plugin emitter, and shipped builder. `tools/data/plugin-targets.json`
+carries each target's explicit sensor context: harness identity/directory, rules
+subdirectory, invocation, and memory root. The producer supplies the separate
+relative payload destination. Text and line endings are preserved except for
+`{{HARNESS_DIR}}`, `{{INVOKE}}`, `{{AIDLC_INVOKE}}`, `{{MEMORY_ROOT}}`, and the
+`{{HARNESS_DIR}}/rules/` path seam (preserving the native `rules/default.rules` file). Missing or inconsistent context and recognized
+unsupported tokens (`{{TOOL_PREFIX}}`, `{{TRUSTED_NAMESPACE}}`,
+`{{OPTION_LETTERS}}`) refuse sensor emission before plugin output replacement.
+Used declared custom tokens, from shared defaults or this target's overrides,
+also refuse rather than silently emitting unresolved text. Unused declarations
+and undeclared literal braces are preserved.
+Use a current tools bundle when an older target table lacks this context.
+The standalone builder emits source/copy plugin payloads even when its tools
+come from a native distribution. Both bundles intentionally carry the same
+source/copy sensor contexts. That generated table is preserved as structured
+data, excluded from native prose-command rewriting, and validated from its
+final emitted bytes. Core native sensor descriptors still use `aidlc`.
+
+This boundary does not parse sensor runtime fields, register or execute sensors,
+or replace installation ownership and legacy compose fallback. Other Markdown
+kinds, native channel rewriting, and declared custom plugin tokens are separate
+contracts; equal sensor output is not full repository/offline plugin parity.
+
 The standalone shipped builder remains a source projection and does not
 perform this repository-only dependency packaging step.
 

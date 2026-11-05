@@ -1,3 +1,4 @@
+import { findDestinationCollision } from "./aidlc-destination-collision.ts";
 import { randomUUID } from "node:crypto";
 import {
   chmodSync,
@@ -275,10 +276,12 @@ function verifyPlan(plan: TransactionPlan, root: string): void {
   const rootDevice = lstatSync(nearestExisting(root)).dev;
   for (const operation of plan.operations) {
     const rel = normalizedRelative(operation.path);
-    if (
-      seen.has(rel) ||
-      [...seen].some((other) => rel.startsWith(`${other}/`) || other.startsWith(`${rel}/`))
-    ) {
+    const collision = findDestinationCollision({
+      candidate: rel,
+      priorPaths: [...seen],
+      casePolicy: process.platform === "win32" ? "case-insensitive" : "case-sensitive",
+    });
+    if (collision.status === "collision") {
       throw new Error(`transaction operations overlap at ${rel}`);
     }
     seen.add(rel);

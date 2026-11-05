@@ -62,7 +62,6 @@ import {
   errorMessage,
   frontmatterBlock,
   hasRunnerGenMarker,
-  isPluginEnabled,
   isScopeName,
   loadScopeMetadataAll,
   loadStageGraphAll,
@@ -72,8 +71,13 @@ import {
   SCOPE_NAME_RULE,
 } from "./aidlc-lib.ts";
 import { type GraphStage, loadGraph } from "./aidlc-graph.ts";
+import { freezeWorkflowValue } from "./aidlc-workflow-candidate.ts";
 import {
   aidlcDispatcherInvocation,
+  aidlcInvocation,
+  isCompiledExecutable,
+  runtimeHarnessName,
+  type InvocationContext,
   aidlcToolInvocation,
   entrySkillInvocation,
   runtimeHarnessDir as harnessDir,
@@ -82,6 +86,83 @@ import {
   resolveSkillsPath,
   runtimeProjectDir,
 } from "./aidlc-runtime-paths.ts";
+
+export interface RunnerRenderContext extends InvocationContext {
+  readonly distribution: string;
+  readonly frontmatter: readonly string[];
+}
+
+function runtimeRenderContext(): RunnerRenderContext {
+  return {
+    harnessDir: harnessDir(),
+    distribution: runtimeHarnessName(),
+    mode: isCompiledExecutable() ? "native" : "source",
+    projectedInvocation: aidlcInvocation(),
+    frontmatter: runnerFrontmatterAdditions(),
+  };
+}
+
+export interface RunnerSurfaceInput {
+  readonly projectDir: string;
+  readonly skillsDir: string;
+  readonly scopesDir: string;
+  readonly render: RunnerRenderContext;
+  readonly allStages: readonly GraphStage[];
+  readonly allScopes: Readonly<Record<string, ScopeFront>>;
+  readonly allScopeOwners: Readonly<Record<string, { readonly plugin?: string }>>;
+  readonly gridScopeNames: readonly string[];
+  readonly selectedPlugins: readonly string[] | null;
+}
+
+export interface RunnerSurfaceRequest extends RunnerSurfaceInput {
+  readonly stages: readonly GraphStage[];
+  readonly scopes: Readonly<Record<string, ScopeFront>>;
+}
+
+/** Capture one rendering/write request without retaining mutable caller data. */
+export function runnerSurfaceRequest(input: RunnerSurfaceInput): RunnerSurfaceRequest {
+  return freezeWorkflowValue(structuredClone({
+    ...input,
+    stages: input.allStages.filter((stage) => stage.enabled !== false),
+    scopes: selectRunnerScopes(input),
+  }));
+}
+
+interface RunnerSurfaceCapture {
+  readonly access: "read" | "write";
+  readonly family: "stages" | "scopes";
+  readonly skillsTarget?: string;
+}
+
+function runtimeSurfaceRequest(
+  { access, family, skillsTarget }: RunnerSurfaceCapture,
+  messages: RunnerMessages = cliMessages,
+): RunnerSurfaceRequest {
+  const selection = pluginsEnabled();
+  return runnerSurfaceRequest({
+    projectDir: runtimeProjectDir(),
+    skillsDir: skillsTarget ?? defaultSkillsDir(access === "write"),
+    scopesDir: scopesDir(),
+    render: runtimeRenderContext(),
+    // Same compiled-graph trust boundary as loadGraph, including disabled rows
+    // here only so ownership-aware pruning recognizes legacy plugin runners.
+    allStages: family === "scopes" ? [] : loadStageGraphAll() as GraphStage[],
+    allScopes: family === "stages" ? {} : readRunnerScopeFronts(scopesDir(), messages),
+    allScopeOwners: {},
+    gridScopeNames: family === "stages" ? [] : [...scopeNamesInWrittenGrid()],
+    selectedPlugins: selection === null ? null : [...selection],
+  });
+}
+
+interface RunnerMessages {
+  log(message: string): void;
+  error(message: string): void;
+}
+const cliMessages: RunnerMessages = {
+  log: (message) => console.log(message),
+  error: (message) => console.error(message),
+};
+const quietMessages: RunnerMessages = { log: () => {}, error: () => {} };
 
 // Resolve the skills/ dir off THIS module's location (tools/ → ../skills/) so the
 // generator writes into the shipped tree regardless of the caller's cwd, mirroring
@@ -114,8 +195,8 @@ function isRunnableStage(node: GraphStage): boolean {
 // initialization stages. This is the source of truth for which stage-runners
 // exist; a runner is generated for each, and the drift guard asserts the
 // on-disk set matches it exactly.
-export function runnableStages(): GraphStage[] {
-  return loadGraph().filter(isRunnableStage);
+export function runnableStages(stages: readonly GraphStage[] = loadGraph()): GraphStage[] {
+  return stages.filter(isRunnableStage);
 }
 
 // The runnable stage-slug list (graph/topological-author order), excluding the
@@ -128,8 +209,8 @@ function stageSlugs(): string[] {
 // initialization phase via `/aidlc --init`, NOT a single stage.
 const INIT_RUNNER_DIR = "aidlc-init";
 
-function nativeRunnerFrontmatter(): string {
-  const lines = runnerFrontmatterAdditions();
+function nativeRunnerFrontmatter(context: RunnerRenderContext): string {
+  const lines = context.frontmatter;
   return lines.length > 0 ? `${lines.join("\n")}\n` : "";
 }
 
@@ -141,7 +222,7 @@ function nativeRunnerFrontmatter(): string {
 // `name` == dir (spec invariant). `description` is present and non-empty (spec
 // invariant). The `--single` invariant is named in prose so a reader of the
 // runner understands it never advances the main workflow.
-export function renderStageRunner(node: GraphStage): string {
+export function renderStageRunner(node: GraphStage, context: RunnerRenderContext = runtimeRenderContext()): string {
   const dir = runnerDirName(node);
   const descriptionLead = node.plugin
     ? `Run the ${node.plugin} plugin \`${node.slug}\` stage (${node.phase} phase) in isolation, without`
@@ -160,7 +241,7 @@ description: >
   stops. The main workflow's Current Stage is never touched.
 argument-hint: ""
 user-invocable: true
-${nativeRunnerFrontmatter()}\
+${nativeRunnerFrontmatter(context)}\
 ---
 
 # AI-DLC Stage Runner — ${node.slug}
@@ -174,7 +255,7 @@ that flag without this skill.
 1. Ask the engine for the single-stage directive:
 
    \`\`\`bash
-   ${aidlcToolInvocation("orchestrate")} next --stage ${node.slug} --single
+   ${aidlcToolInvocation("orchestrate", undefined, true, context)} next --stage ${node.slug} --single
    \`\`\`
 
    The engine emits one \`run-stage\` directive for \`${node.slug}\` (carrying the
@@ -185,7 +266,7 @@ that flag without this skill.
    first instead. For each part, apply \`directive.rules_content\` in array
    order and keep it as this stage's rules, and adopt \`conductor_persona\` when
    the part carries it. Then run
-   \`${aidlcToolInvocation("orchestrate")} continue <directive.receipt>\` (the
+   \`${aidlcToolInvocation("orchestrate", undefined, true, context)} continue <directive.receipt>\` (the
    receipt is the 8-character string printed at the top of the directive; copy
    it, never rebuild it) and act on the directive that comes back. Do not call
    \`report\` for a part or tell the user about it. Repeat until the
@@ -194,8 +275,8 @@ that flag without this skill.
    persona by hand, the engine delivers it.
 
 2. Before acting on the directive, read
-   \`${harnessDir()}/aidlc-common/protocols/stage-protocol.md\`. Then read every
-   \`${harnessDir()}/aidlc-common/protocols/stage-protocol-<module>.md\` named by
+   \`${context.harnessDir}/aidlc-common/protocols/stage-protocol.md\`. Then read every
+   \`${context.harnessDir}/aidlc-common/protocols/stage-protocol-<module>.md\` named by
    \`directive.protocol_modules\`. Load every listed module before reading the
    stage body or running its topology; skip only a module already loaded earlier
    in this session.
@@ -203,7 +284,7 @@ that flag without this skill.
 3. When the stage's work is done, commit the single-stage record:
 
    \`\`\`bash
-   ${aidlcToolInvocation("orchestrate")} report --single --stage ${node.slug} --result completed
+   ${aidlcToolInvocation("orchestrate", undefined, true, context)} report --single --stage ${node.slug} --result completed
    \`\`\`
 
    This records a STAGE_STARTED / STAGE_COMPLETED pair under a synthetic workflow
@@ -226,8 +307,8 @@ that flag without this skill.
 // no user-facing `/aidlc --init` (P4): the workspace shell ships in dist/ and
 // the engine auto-creates the first intent - this runner just makes that
 // explicit.
-export function renderInitRunner(): string {
-  const entrySkill = entrySkillInvocation();
+export function renderInitRunner(context: RunnerRenderContext = runtimeRenderContext()): string {
+  const entrySkill = entrySkillInvocation(context);
   return `---
 name: ${INIT_RUNNER_DIR}
 generated-by: aidlc-runner-gen
@@ -238,7 +319,7 @@ description: >
   packaging over that move. Pass \`--scope <name>\` to seed the initial scope. A freeform description without a scope first gets the same plan offer as \`${entrySkill}\`, then continues as \`${entrySkill}\` does.
 argument-hint: "[--scope <name>] [description]"
 user-invocable: true
-${nativeRunnerFrontmatter()}\
+${nativeRunnerFrontmatter(context)}\
 ---
 
 # AI-DLC - start a workflow (create the first intent)
@@ -270,7 +351,7 @@ no standalone meaning.
    then falls back to the scope token):
 
    \`\`\`bash
-   ${aidlcDispatcherInvocation("intent create")} --scope <scope> --arguments "<description>" --label "<2-3 word essence>"
+   ${aidlcDispatcherInvocation("intent create", context)} --scope <scope> --arguments "<description>" --label "<2-3 word essence>"
    \`\`\`
 
    Print the tool's output and stop. This does not advance a stage; run
@@ -284,12 +365,12 @@ no standalone meaning.
    Work already in progress is left as it is:
 
    \`\`\`bash
-   ${aidlcToolInvocation("orchestrate")} next --new-intent $ARGUMENTS
+   ${aidlcToolInvocation("orchestrate", undefined, true, context)} next --new-intent $ARGUMENTS
    \`\`\`
 
    Before acting on each directive, read
-   \`${harnessDir()}/aidlc-common/protocols/stage-protocol.md\` once per session,
-   then every \`${harnessDir()}/aidlc-common/protocols/stage-protocol-<module>.md\`
+   \`${context.harnessDir}/aidlc-common/protocols/stage-protocol.md\` once per session,
+   then every \`${context.harnessDir}/aidlc-common/protocols/stage-protocol-<module>.md\`
    named by \`directive.protocol_modules\`. Act on the directive exactly as the
    \`aidlc\` skill's forwarding loop describes. From here the flow IS the
    \`${entrySkill}\` flow - continue its loop until the directive says stop.
@@ -313,7 +394,7 @@ const COMPOSE_RUNNER_DIR = "aidlc-compose";
 // `/aidlc-init`, its parity is held by the packager's dist-level `--check`
 // (handleWrite is idempotent, so a stale or hand-edited copy fails the
 // byte-compare there).
-export function renderComposeRunner(): string {
+export function renderComposeRunner(context: RunnerRenderContext = runtimeRenderContext()): string {
   return `---
 name: ${COMPOSE_RUNNER_DIR}
 generated-by: aidlc-runner-gen
@@ -325,7 +406,7 @@ description: >
   composer even when a stock scope would match.
 argument-hint: "[description | --report <path> | --new-scope]"
 user-invocable: true
-${nativeRunnerFrontmatter()}\
+${nativeRunnerFrontmatter(context)}\
 ---
 
 # AI-DLC - compose a workflow plan
@@ -341,7 +422,7 @@ conductor runs the same forwarding loop as \`/aidlc\`.
    \`compose\` verb (pass \`--report <path>\` / \`--new-scope\` through as-is):
 
    \`\`\`bash
-   ${aidlcToolInvocation("orchestrate")} next compose $ARGUMENTS
+   ${aidlcToolInvocation("orchestrate", undefined, true, context)} next compose $ARGUMENTS
    \`\`\`
 
 2. Act on the directive exactly as the \`aidlc\` skill's forwarding loop
@@ -358,29 +439,29 @@ conductor runs the same forwarding loop as \`/aidlc\`.
 // stage-runner dir (aidlc-state-init, aidlc-workspace-detection,
 // aidlc-workspace-scaffold) left by an earlier generation that emitted runners
 // for all 33 stages. Returns the slugs written.
-function handleWrite(): string[] {
-  const skillsDir = defaultSkillsDir(true);
-  const slugs = stageSlugs();
+function handleWrite(request: RunnerSurfaceRequest = runtimeSurfaceRequest({ access: "write", family: "stages" }), messages: RunnerMessages = cliMessages): string[] {
+  const { skillsDir } = request;
+  refuseLinkOnTheWay(request.projectDir, skillsDir);
+  const stages = runnableStages(request.stages);
+  const slugs = stages.map((stage) => stage.slug);
   const compiledSet = new Set(slugs);
-  for (const node of runnableStages()) {
-    writeRunner(join(skillsDir, runnerDirName(node), "SKILL.md"), renderStageRunner(node));
+  for (const node of stages) {
+    writeRunner({ path: join(skillsDir, runnerDirName(node), "SKILL.md"), body: renderStageRunner(node, request.render) }, request);
   }
   // Emit the init-phase wrapper.
-  writeRunner(join(skillsDir, INIT_RUNNER_DIR, "SKILL.md"), renderInitRunner());
+  writeRunner({ path: join(skillsDir, INIT_RUNNER_DIR, "SKILL.md"), body: renderInitRunner(request.render) }, request);
   // Emit the composer shortcut.
-  writeRunner(join(skillsDir, COMPOSE_RUNNER_DIR, "SKILL.md"), renderComposeRunner());
+  writeRunner({ path: join(skillsDir, COMPOSE_RUNNER_DIR, "SKILL.md"), body: renderComposeRunner(request.render) }, request);
   // Prune stale stage-runner dirs: old per-init runners and runners for stages
   // now absent from the filtered graph because their plugin is disabled.
-  const legacyBareSlugs = pluginOwnedStageSlugsForLegacy();
+  const legacyBareSlugs = pluginOwnedStageSlugsForLegacy(request.allStages);
   for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const dir = join(skillsDir, entry.name);
-    const slug = generatedRunnerSlugForPrune(
-      join(dir, "SKILL.md"),
-      entry.name,
-      stageRunnerSlugFromBody,
-      legacyBareSlugs,
-    );
+    const slug = generatedRunnerSlugForPrune({
+      skillMdPath: join(dir, "SKILL.md"), dirName: entry.name,
+      parseSlug: stageRunnerSlugFromBody, legacyBareSlugs,
+    }, messages);
     if (slug && !compiledSet.has(slug)) rmSync(dir, { recursive: true, force: true });
   }
   return slugs;
@@ -440,26 +521,23 @@ function readRunnerSkill({
 }
 
 function generatedRunnerSlugForPrune(
-  skillMdPath: string,
-  dirName: string,
-  parseSlug: RunnerSlugParser,
-  legacyBareSlugs: ReadonlySet<string>,
+  input: RunnerSkillInput,
+  messages: RunnerMessages = cliMessages,
 ): string | null {
-  const runner = readRunnerSkill({ skillMdPath, dirName, parseSlug, legacyBareSlugs });
+  const runner = readRunnerSkill(input);
   if (runner.kind === "not-runner") return null;
   if (runner.kind === "unmanaged") {
-    console.error("unmanaged skill, not pruned: " + dirName);
+    messages.error("unmanaged skill, not pruned: " + input.dirName);
     return null;
   }
   return runner.slug;
 }
 
-function pluginOwnedStageSlugsForLegacy(): ReadonlySet<string> {
-  return new Set(loadStageGraphAll().filter((s) => s.plugin).map((s) => s.slug));
+function pluginOwnedStageSlugsForLegacy(stages: readonly Pick<GraphStage, "plugin" | "slug">[] = loadStageGraphAll()): ReadonlySet<string> {
+  return new Set(stages.filter((s) => s.plugin).map((s) => s.slug));
 }
 
-function pluginOwnedScopeSlugsForLegacy(): ReadonlySet<string> {
-  const all = loadScopeMetadataAll() as Record<string, { plugin?: string }>;
+function pluginOwnedScopeSlugsForLegacy(all: Readonly<Record<string, { readonly plugin?: string }>> = loadScopeMetadataAll()): ReadonlySet<string> {
   return new Set(Object.entries(all).filter(([, front]) => front.plugin).map(([scope]) => scope));
 }
 
@@ -539,8 +617,13 @@ function defaultSkillsDir(mutable = false): string {
 
 // A runner folder (or its SKILL.md) that is a link is left alone, like the
 // skills folder itself.
-function writeRunner(path: string, body: string): void {
-  refuseLinkOnTheWay(runtimeProjectDir(), path);
+export interface RunnerArtifact {
+  readonly path: string;
+  readonly body: string;
+}
+
+function writeRunner({ path, body }: RunnerArtifact, destination: Pick<RunnerSurfaceRequest, "projectDir">): void {
+  refuseLinkOnTheWay(destination.projectDir, path);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, body, "utf-8");
 }
@@ -564,7 +647,7 @@ function scalarField(frontmatter: string, key: string): string {
   return m[1].trim().replace(/^["']|["']$/g, "");
 }
 
-interface ScopeFront {
+export interface ScopeFront {
   name: string;
   description: string;
   plugin?: string;
@@ -588,11 +671,21 @@ function readScopeFront(path: string): ScopeFront {
   const runnerRaw = scalarField(fm, "runner");
   let runner: boolean | undefined;
   if (runnerRaw === "true" || runnerRaw === "false") runner = runnerRaw === "true";
-  let description = scalarField(fm, "description");
+  const description = runnerScopeDescription(fm);
+  const front: ScopeFront = { name, description };
+  if (plugin) front.plugin = plugin;
+  if (runner !== undefined) front.runner = runner;
+  return front;
+}
+
+// The frontmatter block remains owned by frontmatterBlock. This projection
+// preserves the runner's one-line description policy, not a second YAML parser.
+function runnerScopeDescription(frontmatter: string): string {
+  let description = scalarField(frontmatter, "description");
   // Tolerate a folded/block description ('>' or '|') by stitching the first
   // non-empty continuation line — the runner description is one line anyway.
   if (description === ">" || description === "|" || description === ">-" || description === "|-") {
-    const lines = fm.split(/\r?\n/);
+    const lines = frontmatter.split(/\r?\n/);
     const idx = lines.findIndex((l) => /^description:/.test(l));
     description = "";
     for (let j = idx + 1; j < lines.length; j++) {
@@ -601,35 +694,48 @@ function readScopeFront(path: string): ScopeFront {
       if (t.length > 0) { description = t; break; }
     }
   }
-  const front: ScopeFront = { name, description };
-  if (plugin) front.plugin = plugin;
-  if (runner !== undefined) front.runner = runner;
-  return front;
+  return description;
 }
 
 // Discover the shipped scope names (sorted, platform-independent). Each scope
 // file is `.claude/scopes/aidlc-<name>.md`; the canonical name is its `name`
 // frontmatter field (not the filename, which carries the aidlc- prefix).
-export function discoverScopes(): Record<string, ScopeFront> {
-  const dir = scopesDir();
+export function readRunnerScopeFronts(dir: string, messages: RunnerMessages = cliMessages): Record<string, ScopeFront> {
   const out: Record<string, ScopeFront> = {};
-  const gridNames = scopeNamesInWrittenGrid();
   let files: string[];
   try {
-    files = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
+    files = readdirSync(dir).filter((file) => file.endsWith(".md")).sort();
   } catch (err) {
-    console.error(`Warning: scope directory not readable at ${dir}: ${errorMessage(err)}`);
+    messages.error(`Warning: scope directory not readable at ${dir}: ${errorMessage(err)}`);
     files = [];
   }
-  for (const f of files) {
-    const front = readScopeFront(join(dir, f));
-    if (!isPluginEnabled(front.plugin ?? "aidlc") && !gridNames.has(front.name)) continue;
+  for (const file of files) {
+    const front = readScopeFront(join(dir, file));
     out[front.name] = front;
   }
   return out;
 }
 
-export function defaultScopeBatch(discovered: Record<string, ScopeFront> = discoverScopes()): string[] {
+type RunnerScopeSelection = Pick<RunnerSurfaceInput, "allScopes" | "selectedPlugins" | "gridScopeNames">;
+
+function selectRunnerScopes({ allScopes, selectedPlugins, gridScopeNames }: RunnerScopeSelection): Record<string, ScopeFront> {
+  const selected = selectedPlugins === null ? null : new Set(selectedPlugins);
+  const gridNames = new Set(gridScopeNames);
+  return Object.fromEntries(Object.entries(allScopes).filter(([, front]) =>
+    selected === null || selected.has(front.plugin ?? "aidlc") || gridNames.has(front.name)
+  ));
+}
+
+export function discoverScopes(): Record<string, ScopeFront> {
+  const selected = pluginsEnabled();
+  return selectRunnerScopes({
+    allScopes: readRunnerScopeFronts(scopesDir()),
+    selectedPlugins: selected === null ? null : [...selected],
+    gridScopeNames: [...scopeNamesInWrittenGrid()],
+  });
+}
+
+export function defaultScopeBatch(discovered: Readonly<Record<string, ScopeFront>> = discoverScopes()): string[] {
   return Object.keys(discovered)
     .filter((scope) => discovered[scope].runner === true)
     .sort();
@@ -643,10 +749,27 @@ function scopeRunnerDirName(scope: string, front: Pick<ScopeFront, "plugin">): s
 // (`name` == dir name), NO `hooks:` block (the six spine
 // hooks live in settings.json project-wide, inherited by every runner), and
 // a ~6-line shell that runs the engine forwarding loop with the scope baked in.
-export function renderRunner(scope: string, description: string): string {
-  const front = discoverScopes()[scope];
-  const dir = scopeRunnerDirName(scope, front ?? {});
-  const entrySkill = entrySkillInvocation();
+export function renderRunner(
+  scope: string,
+  description: string,
+  context: RunnerRenderContext = runtimeRenderContext(),
+  front: Pick<ScopeFront, "plugin"> = discoverScopes()[scope] ?? {},
+): string {
+  return renderScopeRunner({
+    scope: { name: scope, description, plugin: front?.plugin }, render: context,
+  });
+}
+
+/** The positional renderRunner facade remains compatible for existing callers. */
+export interface ScopeRunnerRenderRequest {
+  readonly scope: Readonly<ScopeFront>;
+  readonly render: RunnerSurfaceRequest["render"];
+}
+
+export function renderScopeRunner({ scope: front, render: context }: ScopeRunnerRenderRequest): string {
+  const { name: scope, description } = front;
+  const dir = scopeRunnerDirName(scope, front);
+  const entrySkill = entrySkillInvocation(context);
   // Normalise the scope's one-line description into a sentence (trailing period)
   // so it reads cleanly when stitched between the lead-in and the packaging note.
   const raw = (description || `Run the AI-DLC workflow with the ${scope} scope`).trim();
@@ -660,7 +783,7 @@ description: >
   without this skill.
 argument-hint: "[description | --status | --stage <slug|#> | --phase <name|#>]"
 user-invocable: true
-${nativeRunnerFrontmatter()}\
+${nativeRunnerFrontmatter(context)}\
 ---
 
 # AI-DLC — ${scope} scope
@@ -674,11 +797,11 @@ ahead of that run-stage. Adopt it for the whole run.
 
 ## The loop
 
-1. \`directive = ${aidlcToolInvocation("orchestrate")} next --scope ${scope} $ARGUMENTS\`
+1. \`directive = ${aidlcToolInvocation("orchestrate", undefined, true, context)} next --scope ${scope} $ARGUMENTS\`
 2. Before acting on each directive, read
-   \`${harnessDir()}/aidlc-common/protocols/stage-protocol.md\` once per session,
+   \`${context.harnessDir}/aidlc-common/protocols/stage-protocol.md\` once per session,
    then read every
-   \`${harnessDir()}/aidlc-common/protocols/stage-protocol-<module>.md\` named by
+   \`${context.harnessDir}/aidlc-common/protocols/stage-protocol-<module>.md\` named by
    \`directive.protocol_modules\`. Load every listed module before acting; skip
    only a module already loaded earlier in this session. Then act on
    \`directive.kind\` exactly as the orchestrator does (load-steering / run-stage /
@@ -686,7 +809,7 @@ ahead of that run-stage. Adopt it for the whole run.
    brings a stage's rules in parts ahead of its \`run-stage\` (most stages on
    GitHub Copilot): apply \`directive.rules_content\` in array order and keep it
    as that stage's rules, adopt \`conductor_persona\` when the part carries it,
-   then run \`${aidlcToolInvocation("orchestrate")} continue <directive.receipt>\`
+   then run \`${aidlcToolInvocation("orchestrate", undefined, true, context)} continue <directive.receipt>\`
    (copy the 8-character receipt printed at the top of the directive, never
    rebuild it) and act on the directive it returns. Never \`report\` a part or
    tell the user about it. Every engine \`ask\` carries \`ask_type\` and
@@ -714,9 +837,9 @@ ahead of that run-stage. Adopt it for the whole run.
    Legacy Plan Approval recovery keeps its explicit bare-\`next\` choice.
    Never use \`report\` as a fallback for an engine ask answer; a selected guard
    remedy may still explicitly name a stage report.
-3. \`${aidlcToolInvocation("orchestrate")} report --stage <directive.stage> --result <outcome> [--user-input "<text>"]\` only after acting on a stage directive. A redo, jump, or start-fresh request on re-entry is the sole non-stage report round-trip and uses \`report --result resumed --choice <redo|jump|fresh>\`.
+3. \`${aidlcToolInvocation("orchestrate", undefined, true, context)} report --stage <directive.stage> --result <outcome> [--user-input "<text>"]\` only after acting on a stage directive. A redo, jump, or start-fresh request on re-entry is the sole non-stage report round-trip and uses \`report --result resumed --choice <redo|jump|fresh>\`.
 4. Pass \`$ARGUMENTS\` only to the first \`next\` in step 1: every later pass runs
-   bare \`${aidlcToolInvocation("orchestrate")} next\`, with no \`--scope\` and no
+   bare \`${aidlcToolInvocation("orchestrate", undefined, true, context)} next\`, with no \`--scope\` and no
    \`$ARGUMENTS\` (repeating them would redo a jump or a setting the person
    already asked for). Keep going until \`directive.kind == done\`. A \`done\`
    without \`directive.workflow_continues\` is the real end: present the
@@ -724,7 +847,7 @@ ahead of that run-stage. Adopt it for the whole run.
    run that bare \`next\` at once and act on what it returns, with no completion
    summary. If the person's reply that led to that step also asked to stop the
    workflow there for now (not to pause on one decision inside the work), run
-   \`${aidlcToolInvocation("orchestrate")} park\` instead and act on its
+   \`${aidlcToolInvocation("orchestrate", undefined, true, context)} park\` instead and act on its
    \`parked\` directive.
 
 On that first \`next\`, pass \`$ARGUMENTS\` through verbatim after \`--scope ${scope}\`; the engine parses
@@ -748,7 +871,7 @@ preserving any \`--request\` id rather than rebuilding the request.
 
 - **Default to CONTINUATION.** Treat the input as new-work ONLY when it clearly
   names a distinct feature/bug/unit unrelated to the active intent's subject
-  (\`${aidlcDispatcherInvocation("intent list")} --json\` gives its \`slug\` and
+  (\`${aidlcDispatcherInvocation("intent list", context)} --json\` gives its \`slug\` and
   \`status\`). When in doubt, continue: false-positive offers are the main risk.
 - **On genuine new-work, OFFER, never auto-create.** Surface an
   \`AskUserQuestion\` showing the active intent and the proposed new one, **including
@@ -762,7 +885,7 @@ preserving any \`--request\` id rather than rebuilding the request.
   new-work text:
 
   \`\`\`bash
-  ${aidlcDispatcherInvocation("orchestrate next")} --new-intent --scope <the confirmed scope> "<the new-work description>"
+  ${aidlcDispatcherInvocation("orchestrate next", context)} --new-intent --scope <the confirmed scope> "<the new-work description>"
   \`\`\`
 
   The engine returns a \`print\` directive naming the \`intent-create\` command
@@ -775,109 +898,170 @@ preserving any \`--request\` id rather than rebuilding the request.
 `;
 }
 
-// The target SKILL.md path for one scope-runner under a skills dir.
-function scopeRunnerPath(skillsDir: string, scope: string): string {
-  const front = discoverScopes()[scope];
-  return join(skillsDir, scopeRunnerDirName(scope, front ?? {}), "SKILL.md");
+/** A scope operation uses one selected surface for both expected bytes and ownership. */
+export interface ScopeRunnerOptions {
+  readonly check?: boolean;
+  readonly all?: boolean;
+  readonly skillsDir?: string;
 }
 
-// Resolve the batch of scopes to generate: --all → every shipped scope;
-// otherwise scopes whose frontmatter declares `runner: true`.
-function resolveBatch(all: boolean, discovered: Record<string, ScopeFront>): string[] {
-  if (all) return Object.keys(discovered).sort();
-  return defaultScopeBatch(discovered);
+export interface ScopeRunnerPlan {
+  readonly surface: RunnerSurfaceRequest;
+  readonly skillsDir: string;
+  readonly mode: "check" | "write";
+  readonly names: readonly string[];
+  readonly artifacts: readonly RunnerArtifact[];
+  readonly pruning: "reconcile" | "preserve-undiscovered";
 }
 
-function parseScopeArgs(argv: string[]): { check: boolean; all: boolean; out: string | null } {
+/** Pure selection/render plan. An empty discovery never grants deletion authority. */
+export function planScopeRunners(surface: RunnerSurfaceRequest, options: ScopeRunnerOptions = {}): ScopeRunnerPlan {
+  const skillsDir = options.skillsDir ?? surface.skillsDir;
+  const names = options.all ? Object.keys(surface.scopes).sort() : defaultScopeBatch(surface.scopes);
+  const artifacts = names.map((name) => {
+    const scope = { ...surface.scopes[name], name };
+    return {
+      path: join(skillsDir, scopeRunnerDirName(name, scope), "SKILL.md"),
+      body: renderScopeRunner({ scope, render: surface.render }),
+    };
+  });
+  return freezeWorkflowValue({
+    surface, skillsDir, names, artifacts, mode: options.check ? "check" : "write",
+    pruning: names.length === 0 && surface.selectedPlugins === null ? "preserve-undiscovered" : "reconcile",
+  });
+}
+
+function parseScopeArgs(argv: string[]): ScopeRunnerOptions {
   let check = false;
   let all = false;
-  let out: string | null = null;
+  let skillsDir: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--check") check = true;
     else if (a === "--all") all = true;
-    else if (a === "--out" && i + 1 < argv.length) { out = argv[++i]; }
+    else if (a === "--out" && i + 1 < argv.length) { skillsDir = argv[++i]; }
   }
-  return { check, all, out };
+  return { check, all, skillsDir };
 }
 
-function handleScopes(rest: string[]): void {
-  const { check, all, out } = parseScopeArgs(rest);
-  const skillsDir = out ?? defaultSkillsDir(!check);
-  const discovered = discoverScopes();
-  const batch = resolveBatch(all, discovered);
+function runtimeScopePlan(options: ScopeRunnerOptions, messages: RunnerMessages = cliMessages): ScopeRunnerPlan {
+  const surface = runtimeSurfaceRequest({
+    access: options.check ? "read" : "write", family: "scopes", skillsTarget: options.skillsDir,
+  }, messages);
+  const plan = planScopeRunners(surface, options);
+  // Full metadata is solely a legacy-ownership input for reconciliation. Checks
+  // and an unselected empty discovery must not read or validate it. Capture it
+  // before the first write so malformed ownership cannot leave partial runners.
+  if (plan.mode === "check" || plan.pruning === "preserve-undiscovered") return plan;
+  if (plan.names.length === 0 && !existsSync(plan.skillsDir)) return plan;
+  return planScopeRunners(runnerSurfaceRequest({ ...surface, allScopeOwners: loadScopeMetadataAll() }), options);
+}
 
-  if (batch.length === 0) {
-    if (pluginsEnabled() === null) {
-      console.error(
-        `Warning: no scope-runner batch resolved from ${scopesDir()}. ` +
-          "No pruning performed. Likely causes: no scope files with runner:true found, " +
-          "or the scope directory is missing or mispointed.",
-      );
-      console.log("No scope files with runner:true found; nothing to generate.");
-      return;
+function scopeRunnerDrift(artifacts: readonly RunnerArtifact[]): string[] {
+  const drift: string[] = [];
+  for (const artifact of artifacts) {
+    if (!existsSync(artifact.path)) {
+      drift.push(`missing runner: ${artifact.path}`);
+    } else if (readFileSync(artifact.path, "utf-8") !== artifact.body) {
+      drift.push(`stale runner: ${artifact.path}`);
     }
-    if (!check) pruneScopeRunners(skillsDir, new Set());
-    console.log(
-      check
-        ? "No enabled scope files with runner:true; nothing to check."
-        : "No enabled scope files with runner:true; pruned stale scope-runners; nothing to generate.",
+  }
+  return drift;
+}
+
+function checkScopeRunners(plan: ScopeRunnerPlan, messages: RunnerMessages): void {
+  const drift = scopeRunnerDrift(plan.artifacts);
+  if (drift.length > 0) {
+    messages.error("Scope-runner drift detected:");
+    for (const difference of drift) messages.error(`  ${difference}`);
+    messages.error(`Re-run \`${aidlcDispatcherInvocation("gen runner-scopes")}\` to regenerate.`);
+    process.exit(1);
+  }
+  messages.log(plan.names.length === 0
+    ? "No enabled scope files with runner:true; nothing to check."
+    : `OK — ${plan.names.length} scope-runner(s) in sync: ${plan.names.join(", ")}`);
+}
+
+function writeScopeRunners(plan: ScopeRunnerPlan, messages: RunnerMessages): void {
+  for (const artifact of plan.artifacts) {
+    writeRunner(artifact, plan.surface);
+    messages.log(`wrote ${artifact.path}`);
+  }
+  pruneScopeRunners({
+    skillsDir: plan.skillsDir, keep: new Set(plan.names), allScopeOwners: plan.surface.allScopeOwners,
+  }, messages);
+  messages.log(plan.names.length === 0
+    ? "No enabled scope files with runner:true; pruned stale scope-runners; nothing to generate."
+    : `Generated ${plan.names.length} scope-runner(s): ${plan.names.join(", ")}`);
+}
+
+function executeScopePlan(plan: ScopeRunnerPlan, messages: RunnerMessages = cliMessages): void {
+  if (plan.mode === "write") refuseLinkOnTheWay(plan.surface.projectDir, plan.skillsDir);
+  if (plan.pruning === "preserve-undiscovered") {
+    messages.error(
+      `Warning: no scope-runner batch resolved from ${plan.surface.scopesDir}. ` +
+        "No pruning performed. Likely causes: no scope files with runner:true found, " +
+        "or the scope directory is missing or mispointed.",
     );
+    messages.log("No scope files with runner:true found; nothing to generate.");
     return;
   }
-
-  if (check) {
-    const drift: string[] = [];
-    for (const scope of batch) {
-      const path = scopeRunnerPath(skillsDir, scope);
-      const want = renderRunner(scope, discovered[scope].description);
-      if (!existsSync(path)) {
-        drift.push(`missing runner: ${path}`);
-        continue;
-      }
-      const got = readFileSync(path, "utf-8");
-      if (got !== want) drift.push(`stale runner: ${path}`);
-    }
-    if (drift.length > 0) {
-      console.error("Scope-runner drift detected:");
-      for (const d of drift) console.error(`  ${d}`);
-      console.error(
-        `Re-run \`${aidlcDispatcherInvocation("gen runner-scopes")}\` to regenerate.`,
-      );
-      process.exit(1);
-    }
-    console.log(`OK — ${batch.length} scope-runner(s) in sync: ${batch.join(", ")}`);
-    return;
-  }
-
-  for (const scope of batch) {
-    const path = scopeRunnerPath(skillsDir, scope);
-    writeRunner(path, renderRunner(scope, discovered[scope].description));
-    console.log(`wrote ${path}`);
-  }
-  pruneScopeRunners(skillsDir, new Set(batch));
-  console.log(`Generated ${batch.length} scope-runner(s): ${batch.join(", ")}`);
+  if (plan.mode === "check") checkScopeRunners(plan, messages);
+  else writeScopeRunners(plan, messages);
 }
 
-function scopeRunnerSlugFromBody(body: string): string | null {
-  const m = body.match(
-    /(?:aidlc\s+engine\s+orchestrate|aidlc-orchestrate\.ts)\s+next\s+--scope\s+([a-z][a-z0-9-]*)\b/,
-  );
-  return m?.[1] ?? null;
+type ScopeRunnerCommand =
+  | { readonly kind: "unrelated" }
+  | { readonly kind: "malformed" }
+  | { readonly kind: "scope"; readonly name: string };
+
+/** Decode one known generated command, without granting runner ownership. */
+function parseScopeRunnerCommand(line: string): ScopeRunnerCommand {
+  const command = line.match(/^[ \t]*(?:\d+\.[ \t]+)?(?:(`)(?:directive[ \t]*=[ \t]*)?)?(?:aidlc[ \t]+engine[ \t]+orchestrate|bun[ \t]+(?:[^\s`"'$;&|<>]+[/\\])?aidlc-orchestrate\.ts)[ \t]+next[ \t]+--scope([^\r\n]*)\r?$/);
+  if (!command) return { kind: "unrelated" };
+  if (command[2] && !/^[ \t]/.test(command[2])) return { kind: "malformed" };
+  const rawTail = command[2].trim();
+  // Inline commands pair their Markdown ticks; fenced/plain lines have neither.
+  if (command[1] ? !rawTail.endsWith("`") : rawTail.includes("`")) return { kind: "malformed" };
+  const tail = command[1] ? rawTail.slice(0, -1) : rawTail;
+  const [scope, ...forwardingArguments] = tail.trim().split(/\s+/);
+  // Only the generated forwarding placeholder may follow the fixed scope.
+  // Scope validity remains owned by the shared domain predicate.
+  if (!isScopeName(scope) || (forwardingArguments.length > 0 &&
+    (forwardingArguments.length !== 1 || forwardingArguments[0] !== "$ARGUMENTS"))) return { kind: "malformed" };
+  return { kind: "scope", name: scope };
 }
 
-function pruneScopeRunners(skillsDir: string, keep: ReadonlySet<string>): void {
+/** Agree on one complete identity, never salvage malformed or conflicting commands. */
+export function scopeRunnerSlugFromBody(body: string): string | null {
+  let identity: string | null = null;
+  for (const line of body.split(/\r?\n/)) {
+    const command = parseScopeRunnerCommand(line);
+    if (command.kind === "unrelated") continue;
+    if (command.kind === "malformed") return null;
+    if (identity !== null && identity !== command.name) return null;
+    identity = command.name;
+  }
+  return identity;
+}
+
+interface ScopeRunnerReconciliation extends Pick<RunnerSurfaceRequest, "skillsDir" | "allScopeOwners"> {
+  readonly keep: ReadonlySet<string>;
+}
+
+function pruneScopeRunners(
+  { skillsDir, keep, allScopeOwners }: ScopeRunnerReconciliation,
+  messages: RunnerMessages = cliMessages,
+): void {
   if (!existsSync(skillsDir)) return;
-  const legacyBareSlugs = pluginOwnedScopeSlugsForLegacy();
+  const legacyBareSlugs = pluginOwnedScopeSlugsForLegacy(allScopeOwners);
   for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const dir = join(skillsDir, entry.name);
-    const slug = generatedRunnerSlugForPrune(
-      join(dir, "SKILL.md"),
-      entry.name,
-      scopeRunnerSlugFromBody,
-      legacyBareSlugs,
-    );
+    const slug = generatedRunnerSlugForPrune({
+      skillMdPath: join(dir, "SKILL.md"), dirName: entry.name,
+      parseSlug: scopeRunnerSlugFromBody, legacyBareSlugs,
+    }, messages);
     if (slug && !keep.has(slug)) rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -901,7 +1085,7 @@ export function main(argv: string[]): void {
       console.log(stageSlugs().join("\n"));
       break;
     case "scopes":
-      handleScopes(rest);
+      executeScopePlan(runtimeScopePlan(parseScopeArgs(rest)));
       break;
     default:
       console.error(
@@ -912,18 +1096,9 @@ export function main(argv: string[]): void {
 }
 
 /** Regenerate both runner families without writing CLI progress to stdout. */
-export function regenerateRunnerSurfaces(): void {
-  const priorLog = console.log;
-  const priorError = console.error;
-  try {
-    console.log = () => {};
-    console.error = () => {};
-    handleWrite();
-    handleScopes([]);
-  } finally {
-    console.log = priorLog;
-    console.error = priorError;
-  }
+export function regenerateRunnerSurfaces(captured?: RunnerSurfaceRequest): void {
+  handleWrite(captured, quietMessages);
+  executeScopePlan(captured ? planScopeRunners(captured) : runtimeScopePlan({}, quietMessages), quietMessages);
 }
 
 if (import.meta.main) {

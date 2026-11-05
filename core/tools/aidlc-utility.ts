@@ -254,6 +254,7 @@ import {
   type IntentRegistryEntry,
   loadAgents,
   loadScopeMapping,
+  scopeNamesFromMapping,
   loadStageGraph,
   loadStageGraphAll,
   loadScopeMetadata,
@@ -313,6 +314,7 @@ import {
   SLUG_TAG_REGEX,
   spacesRoot,
   type StageEntry,
+  type ScopeDefinition,
   setCheckbox,
   setField,
   setOrInsertField,
@@ -404,6 +406,7 @@ import { AIDLC_VERSION } from "./aidlc-version.ts";
 import {
   copyProjectSurfaces,
   discoverPluginOperationInventory,
+  deactivateSelectedPluginExecution,
   projectDiffPlan,
 } from "./aidlc-plugin.ts";
 import { executePlan } from "./aidlc-transaction.ts";
@@ -1466,6 +1469,11 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
         resetSelectionSensitiveCaches();
         // Strip disabled contributions in staging before recompiling. The live
         // project remains byte-untouched until the shared transaction commits.
+        disabling.forEach((key) => {
+          deactivateSelectedPluginExecution({
+            stagedProject, liveProject: projectDir, harnessDir: selectedHarness, key,
+          });
+        });
         strippedPlugins = stripDisabledPluginContributions(disabling);
         writePluginSelection(stagedProject, names);
         regenerateSelectionSurfaces(stagedProject, projectDir);
@@ -11982,9 +11990,8 @@ const SCOPE_TABLE_END =
   "<!-- END: compiled scope grid -->";
 
 /** Exported for t67 unit tests. */
-export function renderScopeTable(): string {
-  const mapping = loadScopeMapping();
-  const scopes = [...validScopes()]; // alphabetical
+export function renderScopeTable(mapping: Readonly<Record<string, ScopeDefinition<unknown>>> = loadScopeMapping()): string {
+  const scopes = scopeNamesFromMapping(mapping); // alphabetical
   const lines = [
     "| Scope          | Depth         | TestStrategy | EXECUTE / Total |",
     "|----------------|---------------|--------------|-----------------|",
@@ -12115,12 +12122,12 @@ function displaySupportAgents(agents: string[] | undefined): string {
 }
 
 /** Exported for t32 integration tests. */
-export function renderStageTable(): string {
+export function renderStageTable(stages: readonly StageEntry[] = loadStageGraph()): string {
   const lines = [
     "| Slug | # | Stage | Phase | Execution | Lead Agent | Support Agents | Mode |",
     "|------|---|-------|-------|-----------|------------|----------------|------|",
   ];
-  for (const stage of loadStageGraph()) {
+  for (const stage of stages) {
     lines.push(
       `| ${stage.slug} | ${stage.number} | ${stage.name} | ${displayPhase(stage.phase)} | ${stage.execution} | ${displayLeadAgent(stage.lead_agent)} | ${displaySupportAgents(stage.support_agents)} | ${stage.mode} |`
     );

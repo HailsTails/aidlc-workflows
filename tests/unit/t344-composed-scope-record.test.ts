@@ -31,7 +31,7 @@
 // last block also runs an installed engine once, to pin what a redo prints.
 
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { createClaudeStartupHost } from "../harness/claude-startup.ts";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -47,7 +47,7 @@ import {
 import { discoverScopes } from "../../core/tools/aidlc-runner-gen.ts";
 import { loadScopeMetadataAll, scopeArg } from "../../core/tools/aidlc-lib.ts";
 import { cleanupTestProject, REPO_ROOT } from "../harness/fixtures.ts";
-import { NATIVE_STARTUP_TIMEOUT_MS, remainingOperationTimeoutMs } from "../harness/test-budget.ts";
+import { NATIVE_FIXTURE_SETUP_TIMEOUT_MS } from "../harness/test-budget.ts";
 
 const IDENTITY = [
   "---",
@@ -580,15 +580,10 @@ describe("t344 a scope name that is not one is never written or run", () => {
     const proj = mkdtempSync(join(tmpdir(), "t344-resume-"));
     try {
       cpSync(join(REPO_ROOT, "dist", "claude"), proj, { recursive: true });
-      spawnSync("git", ["init", "-q"], { cwd: proj });
-      const env: NodeJS.ProcessEnv = { ...process.env };
-      for (const key of ["AIDLC_PROJECT_DIR", "CLAUDE_PROJECT_DIR", "AIDLC_SESSION_OVERRIDE"]) delete env[key];
-      const tool = (name: string, args: string[]) => spawnSync(process.execPath, [join(proj, ".claude", "tools", name), ...args], {
-        cwd: proj,
-        env,
-        encoding: "utf-8",
-        timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
-      });
+      const host = createClaudeStartupHost(proj);
+      host.start();
+      host.prompt("/aidlc --scope bugfix fix the parser");
+      const tool = (name: string, args: string[]) => host.tool(name, args);
       const created = tool("aidlc-utility.ts", ["intent-create", "--scope", "bugfix", "--label", "redo", "--arguments", "fix the parser"]);
       expect(created.status, created.stderr).toBe(0);
       const intents = join(proj, "aidlc", "spaces", "default", "intents");
@@ -619,14 +614,9 @@ describe("t344 a scope name that is not one is never written or run", () => {
       expect(asked.status, asked.stderr).toBe(0);
       const command = /`([^`]+)`/.exec(JSON.parse(asked.stdout).message ?? "")?.[1] ?? "";
       expect(command).toEndWith("scope change --scope feature");
-      const [runner, ...argv] = command.split(" ");
+      const [runner] = command.split(" ");
       expect(runner).toBe("bun");
-      const switched = spawnSync(process.execPath, argv, {
-        cwd: proj,
-        env,
-        encoding: "utf-8",
-        timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
-      });
+      const switched = host.command(command);
       expect(switched.status, switched.stdout + switched.stderr).toBe(0);
       expect(switched.stdout).toContain("Switched to feature");
       expect(switched.stdout).not.toContain("To go back");
@@ -636,5 +626,5 @@ describe("t344 a scope name that is not one is never written or run", () => {
     } finally {
       cleanupTestProject(proj);
     }
-  });
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });

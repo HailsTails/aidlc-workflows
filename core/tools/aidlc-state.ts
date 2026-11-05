@@ -1,3 +1,5 @@
+import { inspectHumanPresence } from "./aidlc-lib.ts";
+import { interpretGatePresence } from "../workflow-evidence/presence/gate-presence.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { CHECKPOINT_GLOSS } from "./aidlc-guard-fences.ts";
 import { spawnSync } from "node:child_process";
@@ -6219,10 +6221,8 @@ function verifyApprovalDecision(
   forceHuman = false,
   unit?: string,
 ): { approvalInput: string | undefined; autonomousDecision: boolean; together: { first: string } | null } {
-  const autonomousDecision =
-    !forceHuman &&
-    (isAutonomousConstructionGate(content, stage, pd) ||
-      (stage.approval_mode === "autonomous" && !userInput?.trim()));
+  const constructionPolicyApplies = !forceHuman && isAutonomousConstructionGate(content, stage, pd);
+  const autonomousDecision = !forceHuman && (constructionPolicyApplies || (stage.approval_mode === "autonomous" && !userInput?.trim()));
   let approvalInput = userInput?.trim();
   const noReader = isAutonomousStage(stage) && !forceHuman;
   const noReaderStep = "Nobody answers this stage, so report approved without --user-input.";
@@ -6285,10 +6285,9 @@ function verifyApprovalDecision(
     approvalInput = pick ?? stageGateApproval(approvalInput, revisionCount >= 3);
   }
   if (
-    !autonomousDecision &&
     !humanPresenceGuardDisabled() &&
     together === null &&
-    !humanRepliedSinceGate(pd)
+    interpretGatePresence({ evidence: inspectHumanPresence(pd, { replies: true }), requirement: autonomousDecision ? { kind: "autonomous", authority: constructionPolicyApplies ? "construction-policy" : "stage-definition" } : { kind: "human-required" } }).kind === "refused"
   ) {
     refuseForAgent(
       noReader
@@ -6892,7 +6891,7 @@ function handleReject(args: string[]): void {
   if (
     rejectionNeedsHumanTurn &&
     !humanPresenceGuardDisabled() &&
-    (!humanRepliedSinceGate(pd) || (!autonomousDecision && !repliedToGate))
+    (interpretGatePresence({ evidence: inspectHumanPresence(pd, { replies: true }), requirement: { kind: "human-required" } }).kind === "refused" || (!autonomousDecision && !repliedToGate))
   ) {
     if (recoveryResetNeedsHuman) {
       refuseForAgent(

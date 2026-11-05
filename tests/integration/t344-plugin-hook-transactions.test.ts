@@ -81,6 +81,13 @@ function ownedFixture(face: NativeFace, name: string, environment: NodeJS.Proces
   return fixture;
 }
 
+function selectFixture(fixture: Fixture, plugins: string) {
+  return spawnSync(process.execPath, [join(fixture.projectDir, fixture.leaf, "tools", "aidlc-utility.ts"), "select-plugins", plugins], {
+    cwd: fixture.projectDir, encoding: "utf-8", timeout: 60_000,
+    env: { ...process.env, AIDLC_PROJECT_DIR: fixture.projectDir, CLAUDE_PROJECT_DIR: fixture.projectDir,
+      AIDLC_HARNESS_DIR: fixture.leaf, AIDLC_HARNESS_NAME: fixture.harness, ...fixture.environment },
+  });
+}
 function renameProjection(fixture: Fixture): void {
   cpSync(join(fixture.pluginBuilt, "hooks", "guard-navigation.mjs"), join(fixture.pluginBuilt, "hooks", "renamed-navigation.mjs"));
   rmSync(join(fixture.pluginBuilt, "hooks", "guard-navigation.mjs"));
@@ -179,6 +186,64 @@ describe("native plugin hook transactions", () => {
     expect(existsSync(join(fixture.projectDir, fixture.leaf, "hooks", "guard-navigation.mjs"))).toBe(false);
   }, 120_000);
 
+  test.each([true, false])("Claude utility selection revokes execution immediately and restores it; sync while off: %s", (syncWhileOff) => {
+    const fixture = ownedFixture({ harness: "claude", leaf: ".claude", registry: ".claude/settings.json" }, "utility-selection-" + syncWhileOff);
+    const off = selectFixture(fixture, "aidlc");
+    expect(off.status, off.stdout + off.stderr).toBe(0);
+    expect(registry(fixture)).not.toContain("guard-navigation.mjs");
+    expect(registry(fixture)).toContain("consumer-entry");
+    expect(existsSync(join(fixture.projectDir, fixture.leaf, "hooks", "guard-navigation.mjs"))).toBe(false);
+    if (syncWhileOff) {
+      const disabled = syncFixture(fixture);
+      expect(disabled.status, disabled.stdout + disabled.stderr).toBe(0);
+      expect(registry(fixture)).not.toContain("guard-navigation.mjs");
+    }
+    const on = selectFixture(fixture, "aidlc,rin");
+    expect(on.status, on.stdout + on.stderr).toBe(0);
+    const restored = syncFixture(fixture);
+    expect(restored.status, restored.stdout + restored.stderr).toBe(0);
+    expect(registry(fixture)).toContain("guard-navigation.mjs");
+    expect(registry(fixture)).toContain("consumer-entry");
+    expect(existsSync(join(fixture.projectDir, fixture.leaf, "hooks", "guard-navigation.mjs"))).toBe(true);
+  }, 120_000);
+
+  test("Claude utility deselection refuses modified hook bodies without partial changes", () => {
+    const fixture = ownedFixture({ harness: "claude", leaf: ".claude", registry: ".claude/settings.json" }, "utility-body-conflict");
+    const body = join(fixture.projectDir, fixture.leaf, "hooks", "guard-navigation.mjs");
+    writeFileSync(body, readFileSync(body, "utf-8") + "\n// user edit\n");
+    const before = snapshot(fixture.projectDir);
+    const result = selectFixture(fixture, "aidlc");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("owned hook path changed since composition");
+    expect(snapshot(fixture.projectDir)).toEqual(before);
+  }, 120_000);
+
+  test("Claude utility deselection refuses modified registrations without partial changes", () => {
+    const fixture = ownedFixture({ harness: "claude", leaf: ".claude", registry: ".claude/settings.json" }, "utility-registration-conflict");
+    writeFileSync(join(fixture.projectDir, fixture.registry), registry(fixture).replaceAll("guard-navigation.mjs", "operator-edited.mjs"));
+    const before = snapshot(fixture.projectDir);
+    const result = selectFixture(fixture, "aidlc");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("plugin hook registration refused");
+    expect(snapshot(fixture.projectDir)).toEqual(before);
+  }, 120_000);
+  test.each([
+    ["utility", "invalid-schema"], ["utility", "missing-payload"],
+    ["aggregate", "invalid-schema"], ["aggregate", "missing-payload"],
+  ] as const)("Claude %s deselection refuses %s recorded hook evidence without partial changes", (route, damage) => {
+    const fixture = ownedFixture({ harness: "claude", leaf: ".claude", registry: ".claude/settings.json" }, "evidence-conflict-" + route + "-" + damage);
+    const evidence = join(fixture.projectDir, fixture.leaf, "tools", "data", "plugin-contrib-rin.json");
+    const value = JSON.parse(readFileSync(evidence, "utf-8"));
+    if (damage === "invalid-schema") value.$hooks.hook_registrations.schemaVersion = 999;
+    else delete value.$hooks.hook_registrations;
+    writeFileSync(evidence, JSON.stringify(value));
+    if (route === "aggregate") disableSelection(fixture);
+    const before = snapshot(fixture.projectDir);
+    const result = route === "utility" ? selectFixture(fixture, "aidlc") : syncFixture(fixture);
+    expect(result.status).toBe(1);
+    expect(result.stdout + result.stderr).toContain("recorded plugin hooks are invalid");
+    expect(snapshot(fixture.projectDir)).toEqual(before);
+  }, 120_000);
   test("repeated selected composition retains prior registration ownership without changing bytes", () => {
     const fixture = ownedFixture(cursor, "repeat-cursor");
     const priorSidecar = sidecar(fixture);

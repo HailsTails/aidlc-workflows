@@ -39,7 +39,7 @@
 //     --check drift, designer export byte-identical-to-golden + counts + determinism +
 //     env-seam + export --check, concurrency (two PARALLEL compiles serialise byte-equal).
 //   GREP-THE-SOURCE (port as readFileSync + includes / regex count):
-//     'Pre-seed new rows' GONE + 'maxIndexByPhasePrefix' present (#364 auto-seed);
+//     'Pre-seed new rows' GONE; allocation itself is a literal behavior example;
 //     '${filePath}:' >= 2 sites.
 //
 // FIXTURE DISCIPLINE: every mktemp/heredoc the .sh built is rebuilt here with
@@ -78,12 +78,14 @@ import {
   withAuditLock,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { validateStageFrontmatter } from "../../dist/claude/.claude/tools/aidlc-stage-schema.ts";
+import { compileWorkflowCandidate } from "../../dist/claude/.claude/tools/aidlc-workflow-candidate.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
 // --- Paths --------------------------------------------------------------------
 const TOOLS_DIR = join(import.meta.dir, "..", "..", "dist", "claude", ".claude", "tools");
 const GRAPH_TS = join(TOOLS_DIR, "aidlc-graph.ts");
+const COMPILER_TS = join(TOOLS_DIR, "aidlc-workflow-candidate.ts");
 const STATE_TS = join(TOOLS_DIR, "aidlc-state.ts");
 const SEED_GRAPH = join(TOOLS_DIR, "data", "stage-graph.json");
 const SEED_GRID = join(TOOLS_DIR, "data", "scope-grid.json");
@@ -919,20 +921,44 @@ describe("t66 edge-local invariant (in-process)", () => {
 // Compile auto-seeds a new stage rather than requiring a pre-seeded row (#364).
 // The old pre-seed contract (compile threw "Pre-seed new rows" for a new slug)
 // was replaced by auto-seeding: a slug on disk with no JSON row gets the next
-// free per-phase index + a title-cased default name. This source-grep guards
-// that the old throw is gone and the auto-seed path is present.
+// free per-phase index + a title-cased default name. Check that behavior, not
+// the name or shape of the allocator implementation.
 // =============================================================================
 
-describe("t66 compile auto-seeds new stages (source grep)", () => {
+describe("t66 compile auto-seeds new stages (in-process + source grep)", () => {
   test("the old 'Pre-seed new rows' throw is gone from compileStageGraph", () => {
-    const src = readFileSync(GRAPH_TS, "utf8");
+    const src = readFileSync(COMPILER_TS, "utf8");
     expect(src.includes("Pre-seed new rows")).toBe(false);
   });
 
   test("compile derives the next free per-phase index for a new stage", () => {
-    const src = readFileSync(GRAPH_TS, "utf8");
-    // The auto-seed allocator lives in compileStageGraph (maxIndexByPhasePrefix).
-    expect(src.includes("maxIndexByPhasePrefix")).toBe(true);
+    const candidate = compileWorkflowCandidate({
+      stageSources: [{ path: "operation/new-stage.md", phase: "operation", text: `---
+slug: new-stage
+phase: operation
+execution: ALWAYS
+condition: Always
+inputs: none
+outputs: none
+lead_agent: aidlc-quality-agent
+support_agents: []
+mode: inline
+produces: []
+consumes: []
+requires_stage: []
+scopes: [feature]
+sensors: []
+---
+# New stage
+` }],
+      existingStages: [
+        { slug: "previous-operation", number: "4.12", name: "Pinned operation" },
+        { slug: "previous-construction", number: "3.99", name: "Pinned construction" },
+      ],
+      knownAgents: ["aidlc-quality-agent"], rules: [], sensors: [], selectedPlugins: null,
+      selectedScopeNames: null, installedScopeNames: [], composedRecords: {}, priorGridJson: null,
+    });
+    expect(candidate.stages).toEqual([expect.objectContaining({ slug: "new-stage", number: "4.13", name: "New Stage" })]);
   });
 });
 
@@ -1005,7 +1031,7 @@ describe("t66 compile error hardening (in-process + source grep)", () => {
 
   // .sh:806-811 — filePath context in compile errors (>=2 sites). GREP-THE-SOURCE.
   test("compile errors include filePath context (>=2 sites)", () => {
-    const src = readFileSync(GRAPH_TS, "utf8");
+    const src = readFileSync(COMPILER_TS, "utf8");
     const count = (src.match(/\$\{filePath\}:/g) ?? []).length;
     expect(count).toBeGreaterThanOrEqual(2);
   });

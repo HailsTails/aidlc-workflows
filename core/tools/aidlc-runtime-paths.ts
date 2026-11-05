@@ -178,7 +178,17 @@ export function quoteCommandArgument(
     : `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
-export function aidlcInvocation(): string {
+export interface InvocationContext {
+  readonly harnessDir: string;
+  readonly mode: "native" | "source";
+  readonly projectedInvocation?: string;
+}
+
+export function aidlcInvocation(context?: InvocationContext): string {
+  if (context) {
+    return context.mode === "native" ? "aidlc"
+      : context.projectedInvocation ?? `bun ${context.harnessDir}/tools/aidlc.ts`;
+  }
   if (isCompiledExecutable()) return "aidlc";
   if (!PROJECTED_INVOKE.startsWith("{{")) return PROJECTED_INVOKE;
   return `bun ${runtimeHarnessDir()}/tools/aidlc.ts`;
@@ -191,25 +201,26 @@ export function projectedDispatcher(): string | null {
   return PROJECTED_INVOKE.startsWith("{{") ? null : join(MODULE_TOOLS_DIR, "aidlc.ts");
 }
 
-export function entrySkillInvocation(): string {
-  return runtimeHarnessDir() === ".codex" ? "$aidlc" : "/aidlc";
+export function entrySkillInvocation(context?: Pick<InvocationContext, "harnessDir">): string {
+  return (context?.harnessDir ?? runtimeHarnessDir()) === ".codex" ? "$aidlc" : "/aidlc";
 }
 
-export function aidlcDispatcherInvocation(route: string): string {
-  return `${aidlcInvocation()} engine ${route}`;
+export function aidlcDispatcherInvocation(route: string, context?: InvocationContext): string {
+  return `${aidlcInvocation(context)} engine ${route}`;
 }
 
 export function aidlcToolInvocation(
   route: string,
   sourceTool?: string,
   qualifiedSource = true,
+  context?: InvocationContext,
 ): string {
-  const invoke = aidlcInvocation();
-  if (!invoke.startsWith("bun ")) return aidlcDispatcherInvocation(route);
+  const invoke = aidlcInvocation(context);
+  if (!invoke.startsWith("bun ")) return aidlcDispatcherInvocation(route, context);
   const tool = sourceTool ??
     route.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
   const path = qualifiedSource
-    ? `${runtimeHarnessDir()}/tools/aidlc-${tool}.ts`
+    ? `${context?.harnessDir ?? runtimeHarnessDir()}/tools/aidlc-${tool}.ts`
     : `aidlc-${tool}.ts`;
   return `bun ${path}`;
 }

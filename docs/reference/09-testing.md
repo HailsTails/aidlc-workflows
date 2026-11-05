@@ -114,6 +114,42 @@ Distribution coverage is split by contract:
   transaction engine and recovery paths, project init/refresh ownership,
   checksums, lifecycle, pins, offline packages, and copy/native projection
   separation.
+- `t-install-destination-collision.test.ts` and
+  `t-install-managed-reconciliation.test.ts` are native discovery entries for the
+  full suites beside `core/tools/aidlc-destination-collision.ts` and
+  `core/tools/aidlc-managed-file-reconciliation.ts`. These pure decision tests
+  perform no filesystem or process work. `t347-sensor-projection.test.ts` likewise
+  loads the real suites beside the authored-text and sensor-document modules.
+  Test bodies and fixtures live with their owners; tier entries only import them,
+  following `t243-refresh-rule-inputs.test.ts`. The existing packager excludes
+  test/spec files and test-fixtures from both copy and native distributions.
+- `tests/integration/t-install-adoption.test.ts` exercises the packaged-to-installed
+  `config` handoff with production guard bypasses off: repeat/update/conflict/force/
+  retirement, atomic refusal, preserved settings and overlays, dependency closure,
+  descriptor aliases/ancestry, and legitimate sibling destinations. The normal
+  runner discovers these tests with `--unit --integration --filter t-install-`.
+  Windows uses differently cased aliases; other hosts use exact overlaps, with
+  explicit case-sensitive/case-insensitive policies covered in the pure unit tier.
+- `t130-scope-runners.test.ts` drives seven first-stage/persona contracts through
+  copied Claude tools and their installed hook registrations. The final installed
+  case in `t344-composed-scope-record.test.ts` uses the same real hook lifecycle
+  while retaining its unsafe-saved-scope corruption and command-safety assertions.
+- `t-guarded-startup.test.ts` discovers the contract suite beside
+  `tests/harness/claude-startup.ts`. It installs the complete generated package
+  with `config --from`, reaches the first enterprise stage under its authored
+  strict policy, and retains no-hook refusal and real state-guard refusal controls.
+  The helper drives synthetic SessionStart/UserPromptSubmit and matching Bash
+  PreToolUse/PostToolUse events through the actual installed registrations and
+  hook processes. Each fixture initializes its own template-free Git repository,
+  so payload-root resolution cannot bind it to a surrounding source checkout.
+  The installed case asserts its trusted creation binding and local heartbeat,
+  and that source-checkout runtime bytes remain unchanged. It validates commands
+  before execution and honors refusals;
+  it never seeds authority records or heartbeats. Production environment bypasses
+  are off, while each scope retains its authored policy (most default to off).
+  This is an isolated no-model contract, not a live Claude host or compiled-binary
+  qualification. Select these files with `--unit --integration --production-guards`
+  and `--filter '(t130-scope-runners|t344-composed-scope-record|t-guarded-startup)'`.
 - `t244-install-management.test.ts` covers machine configuration, update
   discovery, installer harness selection, Windows lifecycle surfaces,
   completions, and release-workflow candidate continuity.
@@ -2028,3 +2064,62 @@ annotation and a row in the job summary naming the refresh command. The step
 always succeeds, so a stale weight slows CI but never fails a job or drops a
 PR from the merge queue. `t-ci-test-weights.test.ts` covers the refresh, the
 report, and the checked-in weight files.
+
+### Workflow candidate compilation
+
+`t-workflow-candidate.test.ts` enters the co-located pure compiler examples.
+It also enters `aidlc-workflow-compatibility.test.ts`, whose literal cases pin
+legacy-grid admission and identity metadata, record/stock/orphan precedence,
+numbering ties and overrides, duplicate edges, cycles and portable source paths.
+`aidlc-workflow-wire.test.ts` pins literal canonical JSON bytes, protocol spelling,
+optional omission and reviewer/sensor/conditional-consume translations.
+`t-workflow-candidate-inputs.test.ts` enters the separate capture/cache/filesystem
+suite, real source-reader port examples and fixture-lifetime checks. They cover
+detached immutable graph/grid results, distinct candidates, unchanged runtime bindings and source-context
+refusals. `t-workflow-candidate-refresh.test.ts` exercises admitted refresh and
+refused open-workflow admission separately, using an installed plugin sensor,
+retained private rules and a durable composed scope.
+
+`t-workflow-surfaces.test.ts` enters the existing runner owner's pure request and
+renderer examples. `t-workflow-surface-staging.test.ts` exercises successive A/B/A
+staged writes, plugin/composed-scope selection, legacy/unmanaged ownership, link
+protection and CLI destination/metadata boundaries. Its real installed refresh
+cases distinguish Copilot and OpenCode despite their shared `.aidlc` directory,
+for both copy and native projection invocations. The existing t123/t129/t222
+runner checks, t32 table checks, t243 refresh, t341 composed-scope, t65/t66 graph
+and t89 sensor tests remain behavioral compatibility checks. Co-located suites
+are reached through native tier entries and remain excluded from distributions.
+
+The runner owner also exposes `planScopeRunners`: one immutable plan binds the
+selected scope names, expected skill bytes, destination and pruning authority to
+its captured `RunnerSurfaceRequest`. Read-only checks compare those artifacts;
+reconciliation writes them and consults the retained ownership set. An unselected
+empty discovery preserves existing skills, while explicit plugin deselection can
+prune generated skills without taking ownership of custom playbooks. Runtime CLI
+writes capture and validate legacy ownership before their first scope artifact
+write; checks and unselected empty discovery do not load pruning-only metadata.
+Named `renderScopeRunner` requests are used internally; the positional
+`renderRunner` facade remains compatible. Tests pin scalar/folded descriptions,
+quiet runtime capture and malformed-ownership refusal without partial writes.
+
+### Runtime evidence qualification
+
+`tests/unit/t-workflow-evidence.test.ts` discovers the co-located pure evidence, gate-interpretation and answer-reuse suites. They assert unchanged evidence identity across different already-established authority requirements. Domain tests do not manufacture runtime audit records.
+
+Runtime integration is qualified separately from live host delivery. An installed CLI fixture can establish distribution closure and unchanged guard behavior, but it cannot establish that a human replied through an actual host. Synthetic provider events from the existing startup contract remain explicitly synthetic, and no fixture approval is a grant for a live workflow.
+
+`tests/integration/t-workflow-evidence-installed.test.ts` exercises the real
+packaged-to-installed CLI through `tests/harness/workflow-evidence-installation.ts`.
+It keeps production guard bypasses off, checks that required evidence modules ship,
+and compares source-runtime hashes before and after each fixture. Synthetic
+nonhuman state and questions activate tracking without supplying a human reply.
+The tests assert refused human approvals, rejections and ordinary answers, retain
+autonomous feedback, artifact and review requirements, and compare the observed
+presence before and after permitted autonomous revision. Refused controls forbid
+human-turn, reply, answer and approval events. A permitted autonomous approval
+with an ordinary fixture artifact records the engine approval and completion,
+while retaining unavailable human evidence and recording no human turn, reply,
+answer, or person-attributed approval fields. Unavailable installed evidence
+remains unavailable under both human and autonomous interpretations. Run the native tiers with `--unit --integration --production-guards`
+and `--filter "(t-workflow-evidence|t-workflow-eslint)"`; this is not live-host,
+compiled-binary or concurrent-writer qualification.

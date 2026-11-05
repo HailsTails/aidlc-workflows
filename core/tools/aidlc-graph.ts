@@ -43,8 +43,52 @@
 //
 // See docs/reference/16-artifact-vocabulary.md for artifact naming.
 
+import {
+  compileWorkflowCandidate,
+  canonicalScopeGridJson,
+  numericStageOrder,
+  stagePluginOwner,
+  stageDeclaredScopeNames,
+  transposeScopeGrid,
+  type ComposedScopeRecord,
+  type ScopeGrid,
+} from "./aidlc-workflow-candidate.ts";
+export {
+  canonicalScopeGridJson, numericStageOrder, resolveRulesForStage, transposeScopeGrid,
+  type ComposedScopeRecord, type ScopeGrid,
+} from "./aidlc-workflow-candidate.ts";
+import {
+  composedFoldBack as foldComposedScopeSources, mergeComposedScopes as mergeScopeSources,
+  resolveSensorsForStage as resolveSensorBindings,
+} from "./aidlc-workflow-candidate.ts";
+import {
+  FIELD_ORDER, sensorSourceFromFile, sensorBindingToWire, workflowStageToGraph,
+  type GraphStage, type SensorFile,
+} from "./aidlc-workflow-wire.ts";
+export {
+  canonicalStageGraphJson, type GraphStage, type SensorFile, type SensorResolution,
+  type Consume, type RuleResolution,
+} from "./aidlc-workflow-wire.ts";
+
+// Existing graph clients keep their positional API; compiler operations use
+// explicit source/selection contracts. This adapter does not own their rules.
+export function mergeComposedScopes(fresh: ScopeGrid, onDiskJson: string | null, preserveNames?: ReadonlySet<string>) {
+  return mergeScopeSources({ fresh, onDiskJson, preserveNames });
+}
+
+export function composedFoldBack(
+  records: Record<string, ComposedScopeRecord>, onDiskJson: string | null,
+  stockScopeNames: ReadonlySet<string>, installedScopeNames: ReadonlySet<string>,
+) {
+  return foldComposedScopeSources({ records, onDiskJson, stockScopeNames, installedScopeNames });
+}
+
+export function resolveSensorsForStage(stage: GraphStage, sensorsById: ReadonlyMap<string, SensorFile>) {
+  const sources = new Map([...sensorsById].map(([id, sensor]) => [id, sensorSourceFromFile(sensor)]));
+  return resolveSensorBindings(stage, sources).map(sensorBindingToWire);
+}
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   aidlcToolInvocation,
@@ -75,7 +119,6 @@ import {
   loadScopeMetadataAll,
   harnessDir,
   PHASES,
-  type Phase,
   loadStageGraph,
   loadStageGraphAll,
   pluginsEnabled,
@@ -83,7 +126,6 @@ import {
   mustGet,
   mustPop,
   mustShift,
-  parseStageFrontmatter,
   planFilePath,
   planChangesBetween,
   type PlanChanges,
@@ -102,8 +144,6 @@ import {
   type ScopeDefinition,
   scopeGuardPolicyDefault,
   scopeSettingsOffList,
-  type StageEntry,
-  stageEnabledBySelection,
   toPosix,
   validScopes,
   isScopeName,
@@ -121,114 +161,9 @@ import {
   type SensorManifest,
   validateSensorManifest,
 } from "./aidlc-sensor-schema.ts";
-import { type StageFrontmatter, validateStageFrontmatter } from "./aidlc-stage-schema.ts";
+
 
 // --- Types ---
-
-export interface Consume {
-  artifact: string;
-  required: boolean;
-  conditional_on?: "brownfield" | "greenfield";
-}
-
-// Per-rule resolution row baked into each stage's rules_in_context.
-// Shape is intentionally minimal — `{path, scope}` only. The strict-additive
-// runtime model carries no `enforcement` field: every applicable rule is
-// concatenated and ALL apply at runtime; conflicts are rejected at
-// admission gates (practices-discovery, memory gate) before they reach
-// the resolver, not by runtime drop logic.
-export interface RuleResolution {
-  path: string;
-  scope: "org" | "team" | "project" | "phase";
-}
-
-// Per-sensor resolution row baked into each stage's sensors_applicable.
-// Pull authoring: the stage's frontmatter `sensors: [<id>]` declares the
-// import; the resolver looks the manifest up by id and copies its
-// dispatch policy and capability metadata verbatim. matches is omitted when
-// the manifest declares no path filter. Runtime dispatchers read this
-// snapshotted binding off the graph node — never re-open the manifest.
-export interface SensorResolution {
-  id: string;
-  path: string;
-  fire_on: "write" | "gate";
-  default_severity: "advisory" | "blocking";
-  category?: string;
-  matches?: string;
-}
-
-// Authoritative graph stage shape — fully-populated, no optionals
-// except for genuinely-optional-per-spec fields (condition, for_each).
-// StageEntry in lib.ts carries the same fields as optional so existing
-// runtime callers stay source-compatible without caring about the
-// extended shape.
-export interface GraphStage extends StageEntry {
-  plugin?: string;
-  enabled?: false;
-  condition?: string;
-  produces: string[];
-  // optional_produces - artifacts the stage MAY write per unit (marked
-  // CONDITIONAL in the stage body). Genuinely optional per spec, like
-  // for_each: only annotated stages carry it. Exempt from the per-unit
-  // coverage check in aidlc-orchestrate.ts unitCovered, but still resolved
-  // into the run-stage directive's produces paths and unioned into the
-  // artifact registry / producersOf lookups.
-  optional_produces?: string[];
-  // produces_kinds - per-kind applicability map (artifact name to unit kinds).
-  // Lives on stage YAML, round-trips through parse/emit, and compiles into
-  // stage-graph.json. The engine's produces filter reads it to prune the
-  // per-unit construction matrix; an unlisted artifact applies to all kinds.
-  produces_kinds?: Record<string, string[]>;
-  consumes: Consume[];
-  requires_stage: string[];
-  // sensors is the stage-side pull import — a list of sensor manifest
-  // ids. Optional because most stages declare empty (initialization) or
-  // some subset; the resolver treats absent and `[]` identically. Lives
-  // on stage YAML and round-trips through parse/emit; sensors_applicable
-  // is the resolved view.
-  sensors?: string[];
-  // scopes is the stage-side scope-membership list — the transpose of the
-  // legacy scope-mapping.json EXECUTE/SKIP matrix onto stages. A scope name
-  // present here marks this stage EXECUTE under that scope. Optional because
-  // a fixture stage may declare none; resolver treats absent and `[]`
-  // identically. Lives on stage YAML, round-trips through parse/emit, and is
-  // transposed into the compiled grid (scope-grid.json) at compile time.
-  scopes?: string[];
-  inputs: string;
-  outputs: string;
-  for_each?: string;
-  // rules_in_context is REQUIRED — never undefined. The resolver always
-  // assigns an array (org+team+project minimum on populated workspaces;
-  // [] only when .claude/rules/ is empty). Lives only on the in-memory
-  // GraphStage and the compiled stage-graph.json — NOT on stage YAML.
-  // (validateStageFrontmatter at aidlc-stage-schema.ts rejects unknown
-  // stage YAML keys; introducing rules_in_context to stage frontmatter
-  // would trip that guard.)
-  rules_in_context: RuleResolution[];
-  // sensors_applicable is REQUIRED — assigned [] when stage.sensors is
-  // absent/empty. Same compile-baked discipline as rules_in_context.
-  sensors_applicable: SensorResolution[];
-  // reviewer — the agent to invoke as a quality gate after the stage body.
-  // Absent when no review step is configured. Parsed from stage frontmatter
-  // `reviewer:` field and carried through to the run-stage directive.
-  reviewer?: string;
-  // Required Markdown output that owns the appended reviewer section.
-  review_artifact?: string;
-  // reviewer_max_iterations — review cycle cap before escalating to human.
-  // Defaults to 2 when reviewer is present.
-  reviewer_max_iterations?: number;
-
-  approval_mode?: "human" | "autonomous";
-  // review_class — how the review runs: "adversarial" (refute + fix loop up
-  // to the cap, §12a classic) or "advisory" (single pass, findings quoted at
-  // the human gate, no fix loop). Defaults to "adversarial" when a reviewer
-  // is present (the pre-class behavior). Absent when no reviewer. The
-  // EFFECTIVE class at runtime may be lowered by the scope's review_cap or a
-  // run override — resolveReviewClass in aidlc-lib.ts owns that resolution.
-  review_class?: "adversarial" | "advisory";
-  // Deterministic pre-generation consolidated-summary checkpoint policy.
-  summary_confirmation?: "required" | "if-present";
-}
 
 export interface ScopeValidation {
   valid: boolean;
@@ -534,15 +469,6 @@ const COMPOSED_GRID_BEGIN =
   "<!-- BEGIN aidlc composed-scope-grid: generated by `aidlc engine graph compile` — reshape the plan through /aidlc compose, not by editing here -->";
 const COMPOSED_GRID_END = "<!-- END aidlc composed-scope-grid -->";
 
-export interface ComposedScopeRecord {
-  /** The scope name from frontmatter (the grid key and `--scope` argument). */
-  name: string;
-  /** The harness-tree projection: everything above the generated grid region. */
-  identity: string;
-  /** The EXECUTE/SKIP grid this scope resolves to. */
-  stages: Record<string, "EXECUTE" | "SKIP">;
-}
-
 export { isScopeName };
 
 /** `file` inside `dir`, or a throw when the joined path would land anywhere else. */
@@ -673,8 +599,8 @@ export function renderComposedScopeRecord(
 /** Load every composed-scope record, keyed by scope name. Absent directory → {}
  *  (the overwhelmingly common case: no scope has been composed yet). Sorted read
  *  so the derived fold-back order is platform-independent. */
-export function loadComposedScopeRecords(): Record<string, ComposedScopeRecord> {
-  const dir = composedScopesDir();
+export function loadComposedScopeRecords(args?: { readonly directory: string }): Record<string, ComposedScopeRecord> {
+  const dir = args?.directory ?? composedScopesDir();
   let files: string[];
   try {
     files = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
@@ -731,8 +657,8 @@ function composedScopeWritesEnabled(): boolean {
  *  frontmatter rather than assuming the `aidlc-<name>.md` stem, so a scope whose
  *  file was renamed still round-trips (the filename/name consistency doctor check
  *  reports the mismatch separately; losing the scope over it would be worse). */
-function harnessScopeFileFor(projectDir: string, name: string): string | null {
-  const dir = mutableScopesDir(projectDir);
+function harnessScopeFileFor(projectDir: string, name: string, directory?: string): string | null {
+  const dir = directory ?? mutableScopesDir(projectDir);
   let files: string[];
   try {
     files = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
@@ -767,13 +693,16 @@ function harnessScopeFileFor(projectDir: string, name: string): string | null {
  *  column always comes from the record (see composedFoldBack), so a divergent
  *  identity file can only drift on descriptive frontmatter (depth, keywords,
  *  description), never on which stages the scope runs. */
-export function materializeComposedScopeIdentities(projectDir: string): string[] {
-  if (!composedScopeWritesEnabled()) return [];
-  const records = loadComposedScopeRecords();
+export function materializeComposedScopeIdentities(
+  projectDir: string,
+  paths?: { readonly scopesDir: string; readonly composedScopesDir: string },
+): string[] {
+  if (!paths && !composedScopeWritesEnabled()) return [];
+  const records = loadComposedScopeRecords(paths ? { directory: paths.composedScopesDir } : undefined);
   const written: string[] = [];
   for (const name of Object.keys(records).sort()) {
-    if (harnessScopeFileFor(projectDir, name) !== null) continue;
-    const dir = mutableScopesDir(projectDir);
+    if (harnessScopeFileFor(projectDir, name, paths?.scopesDir) !== null) continue;
+    const dir = paths?.scopesDir ?? mutableScopesDir(projectDir);
     mkdirSync(dir, { recursive: true });
     writeFileAtomic(fileInside(dir, `aidlc-${name}.md`), records[name].identity);
     written.push(name);
@@ -941,39 +870,6 @@ export function loadScopeGrid(): ScopeGrid {
 
 // --- Field-order pin for canonical JSON emission ---
 
-const FIELD_ORDER = [
-  "slug",
-  "number",
-  "name",
-  "plugin",
-  "enabled",
-  "phase",
-  "execution",
-  "condition",
-  "lead_agent",
-  "support_agents",
-  "mode",
-  "for_each",
-  "workspace_requires",
-  "produces",
-  "optional_produces",
-  "produces_kinds",
-  "consumes",
-  "requires_stage",
-  "sensors",
-  "scopes",
-  "reviewer",
-  "review_artifact",
-  "reviewer_max_iterations",
-  "approval_mode",
-  "review_class",
-  "summary_confirmation",
-  "inputs",
-  "outputs",
-  "rules_in_context",
-  "sensors_applicable",
-] as const;
-
 // --- Rule resolution ---
 //
 // Strict-additive runtime model: every applicable rule is concatenated
@@ -1089,9 +985,10 @@ function parseRuleHeadings(raw: string): Map<string, string> {
  *  this same walker (single walking surface, no parser duplication).
  *  Tolerates a missing rules dir (returns []) so the zero-rules edge
  *  case stays clean. */
-export function loadRules(args?: { readonly projectDir: string }): RuleFile[] {
-  const dir = args ? memoryDirFor(args.projectDir, MEMORY_SPACE) : rulesDir();
-  if (args) refuseLinkOnTheWay(args.projectDir, dir);
+export function loadRules(args?: { readonly projectDir: string } | { readonly directory: string }): RuleFile[] {
+  const projectDir = args && "projectDir" in args ? args.projectDir : undefined;
+  const dir = args && "directory" in args ? args.directory : projectDir ? memoryDirFor(projectDir, MEMORY_SPACE) : rulesDir();
+  if (projectDir) refuseLinkOnTheWay(projectDir, dir);
   if (!existsSync(dir)) return [];
 
   // Each candidate: the absolute on-disk path to read, the display sub-path
@@ -1121,7 +1018,7 @@ export function loadRules(args?: { readonly projectDir: string }): RuleFile[] {
   // 2. Phase-scoped files nested under phases/<phase>.md.
   const phasesDir = join(dir, PHASE_RULES_SUBDIR);
   if (existsSync(phasesDir)) {
-    if (args) refuseLinkOnTheWay(args.projectDir, phasesDir);
+    if (projectDir) refuseLinkOnTheWay(projectDir, phasesDir);
     for (const f of readdirSync(phasesDir)) {
       const m = f.match(PHASE_FILE_REGEX);
       if (!m) continue;
@@ -1136,7 +1033,7 @@ export function loadRules(args?: { readonly projectDir: string }): RuleFile[] {
 
   const matched: RuleFile[] = [];
   for (const c of candidates) {
-    if (args) refuseLinkOnTheWay(args.projectDir, c.filePath);
+    if (projectDir) refuseLinkOnTheWay(projectDir, c.filePath);
     const raw = readFileSync(c.filePath, "utf-8");
     const fm = parseRuleFrontmatter(raw);
     validateRuleFrontmatter(fm, c.filePath);
@@ -1163,31 +1060,6 @@ export function loadRules(args?: { readonly projectDir: string }): RuleFile[] {
   return matched;
 }
 
-/** Build the strict-additive per-stage chain. Every applicable rule is
- *  included; nothing drops. Length 3 (org+team+project) when no phase
- *  rule applies, 4 (org+team+project+phase) when the stage's
- *  `phase: <name>` matches a phase-rule filename. Length 0 only when
- *  the rules directory is empty.
- *
- *  Pull authoring: org/team/project attach by filename to every stage
- *  (universal-default tier); the matching phase rule attaches because
- *  the stage already declared `phase: <name>` in its frontmatter — that
- *  declaration is the pull import. No glob filter on the rule side. */
-export function resolveRulesForStage(
-  stage: GraphStage,
-  rules: RuleFile[],
-): RuleResolution[] {
-  const out: RuleResolution[] = [];
-  for (const r of rules) {
-    if (r.scope === "org" || r.scope === "team" || r.scope === "project") {
-      out.push({ path: r.path, scope: r.scope });
-    } else if (r.scope === "phase" && r.phase === stage.phase) {
-      out.push({ path: r.path, scope: r.scope });
-    }
-  }
-  return out;
-}
-
 // --- Sensor resolution ---
 //
 // Pull authoring: each stage's frontmatter `sensors: [<id>]` declares
@@ -1199,14 +1071,6 @@ export function resolveRulesForStage(
 // PostToolUse hook (preserves the BGP-stability invariant for in-flight
 // workflows).
 
-export interface SensorFile {
-  id: string;
-  path: string;        // ".claude/sensors/aidlc-<id>.md"
-  manifest: SensorManifest;
-}
-
-// Filename anchor — sensor manifests live at `.claude/sensors/aidlc-<id>.md`.
-// Anything not matching the prefix is silently ignored (mirrors loadRules).
 const SENSOR_FILE_REGEX = /^aidlc-([a-z][a-z0-9-]*)\.md$/;
 
 /** Walk the sensors directory and return a Map keyed by manifest id for
@@ -1217,8 +1081,8 @@ const SENSOR_FILE_REGEX = /^aidlc-([a-z][a-z0-9-]*)\.md$/;
  *  readdirSync is filesystem-order; non-portable across macOS/Linux. The
  *  sort is the determinism contract the canonical JSON emitter relies
  *  on (mirrors loadRules above). */
-export function loadSensors(): Map<string, SensorFile> {
-  const dir = sensorsDir();
+export function loadSensors(args?: { readonly directory: string; readonly harnessDir: string }): Map<string, SensorFile> {
+  const dir = args?.directory ?? sensorsDir();
   const out = new Map<string, SensorFile>();
   if (!existsSync(dir)) return out;
 
@@ -1253,47 +1117,11 @@ export function loadSensors(): Map<string, SensorFile> {
 
     out.set(manifest.id, {
       id: manifest.id,
-      path: toPosix(join(harnessDir(), "sensors", f)),
+      path: toPosix(join(args?.harnessDir ?? harnessDir(), "sensors", f)),
       manifest,
     });
   }
 
-  return out;
-}
-
-/** Resolve a stage's `sensors:` imports against the manifest registry.
- *  Throws when an imported id has no matching manifest — authoring
- *  errors fail loud at compile, not silently at fire time. Preserves
- *  declared import order (deterministic emission for the JSON pin). */
-export function resolveSensorsForStage(
-  stage: GraphStage,
-  sensorsById: Map<string, SensorFile>,
-): SensorResolution[] {
-  const out: SensorResolution[] = [];
-  const ids = stage.sensors ?? [];
-  for (const id of ids) {
-    const sensor = sensorsById.get(id);
-    if (!sensor) {
-      const known = [...sensorsById.keys()].sort().join(", ") || "(none)";
-      throw new Error(
-        `Stage "${stage.slug}" imports unknown sensor id "${id}". ` +
-          `Known ids: ${known}`,
-      );
-    }
-    const entry: SensorResolution = {
-      id: sensor.id,
-      path: sensor.path,
-      fire_on: sensor.manifest.fire_on,
-      default_severity: sensor.manifest.default_severity,
-    };
-    if (sensor.manifest.category !== undefined) {
-      entry.category = sensor.manifest.category;
-    }
-    if (sensor.manifest.matches !== undefined) {
-      entry.matches = sensor.manifest.matches;
-    }
-    out.push(entry);
-  }
   return out;
 }
 
@@ -2092,244 +1920,9 @@ export function canonicalExportJson(b: ExportBundle): string {
 
 // --- Compile ---
 
-/** Canonical JSON emitter. The ONLY place that writes stage-graph.json
- *  bytes. Pinning the emitter in one function makes `compile --check`
- *  byte-compare robust — formatter drift is impossible when there's
- *  exactly one writer. */
-export function canonicalStageGraphJson(stages: GraphStage[]): string {
-  // Build each object with pinned key order so JSON.stringify emits
-  // keys in the canonical order regardless of construction order.
-  const ordered = stages.map((s) => {
-    const out: Record<string, unknown> = {};
-    for (const key of FIELD_ORDER) {
-      const v: unknown = s[key as keyof GraphStage];
-      if (v === undefined) continue;
-      out[key] = v;
-    }
-    return out;
-  });
-  return `${JSON.stringify(ordered, null, 2)}\n`;
-}
-
-// --- Scope grid (the transpose) ---
-//
-// The compiled scope-grid.json is the EXECUTE/SKIP matrix, derived by
-// transposing each stage's `scopes:` membership list. It is a PURE
-// transpose — no graph-closure, no predicate. Shape is
-// `{ <scope>: { stages: { <slug>: "EXECUTE" | "SKIP" } } }`, exactly the
-// `.stages` half of the legacy scope-mapping.json so the runtime
-// consumers that read `mapping[scope].stages` stay byte-for-byte
-// unchanged. The scope-prose metadata (depth/keywords/description) lives
-// in `.claude/scopes/aidlc-<name>.md`, not here.
-
-export interface ScopeGrid {
-  [scope: string]: { stages: Record<string, "EXECUTE" | "SKIP"> };
-}
-
-/** Transpose the per-stage `scopes:` lists into the EXECUTE/SKIP grid.
- *  Scope columns = the sorted union of every name any stage declares.
- *  Slug rows = stage order (the array passed in — already numeric-sorted
- *  by compileStageGraph). A stage that names a scope is EXECUTE under it;
- *  every other scope/stage cell is SKIP. Pure — no I/O. */
-export function transposeScopeGrid(
-  stages: GraphStage[],
-  allowedScopes?: ReadonlySet<string>,
-): ScopeGrid {
-  const scopeNames = new Set<string>();
-  for (const s of stages) {
-    for (const name of s.scopes ?? []) {
-      if (allowedScopes === undefined || allowedScopes.has(name)) scopeNames.add(name);
-    }
-  }
-  if (allowedScopes !== undefined) {
-    for (const name of allowedScopes) scopeNames.add(name);
-  }
-  const grid: ScopeGrid = {};
-  for (const scope of [...scopeNames].sort()) {
-    const stagesMap: Record<string, "EXECUTE" | "SKIP"> = {};
-    for (const s of stages) {
-      stagesMap[s.slug] =
-        s.phase === "initialization" || (s.scopes ?? []).includes(scope)
-          ? "EXECUTE"
-          : "SKIP";
-    }
-    grid[scope] = { stages: stagesMap };
-  }
-  return grid;
-}
-
-/** Canonical JSON emitter for the scope grid. The ONLY place that writes
- *  scope-grid.json bytes — same sole-writer discipline as
- *  canonicalStageGraphJson, so `compile --check` byte-compares are robust.
- *  Scopes are emitted in sorted order (transposeScopeGrid already sorts);
- *  per-scope stage keys follow the stages array's numeric order. */
-export function canonicalScopeGridJson(grid: ScopeGrid): string {
-  return `${JSON.stringify(grid, null, 2)}\n`;
-}
-
-/** Fold COMPOSED-scope entries from the on-disk grid into a freshly
- *  transposed one. The transpose derives only the stock scopes (those a
- *  stage's `scopes:` frontmatter names); a composed scope's grid entry is
- *  appended at approval time by the composer and has no frontmatter
- *  producer, so a bare re-transpose would silently drop it — and with the
- *  scope's `.md` still present the name stays "valid" and resolves as
- *  all-SKIP, an emptied plan with no diagnostic. Any on-disk entry whose
- *  scope name the transpose does not produce survives the recompile; keys
- *  re-sort so the canonical emitter stays deterministic. Unparseable or
- *  malformed on-disk grids contribute nothing (fresh wins). When
- *  `preserveNames` is supplied, an orphan grid column with no matching scope
- *  identity file is dropped rather than mistaken for a composed scope. */
-export function mergeComposedScopes(
-  fresh: ScopeGrid,
-  onDiskJson: string | null,
-  preserveNames?: ReadonlySet<string>,
-): ScopeGrid {
-  if (!onDiskJson) return fresh;
-  let onDisk: unknown;
-  try {
-    onDisk = JSON.parse(onDiskJson);
-  } catch {
-    return fresh;
-  }
-  if (typeof onDisk !== "object" || onDisk === null || Array.isArray(onDisk)) return fresh;
-  const merged: ScopeGrid = { ...fresh };
-  for (const [name, entry] of Object.entries(onDisk as Record<string, unknown>)) {
-    if (name in merged) continue;
-    if (preserveNames !== undefined && !preserveNames.has(name)) continue;
-    if (
-      typeof entry === "object" && entry !== null && !Array.isArray(entry) &&
-      typeof (entry as { stages?: unknown }).stages === "object"
-    ) {
-      merged[name] = entry as ScopeGrid[string];
-    }
-  }
-  const sorted: ScopeGrid = {};
-  for (const k of Object.keys(merged).sort()) sorted[k] = merged[k];
-  return sorted;
-}
-
-function composedScopeNames(
-  onDiskJson: string | null,
-  stockScopeNames: ReadonlySet<string>,
-): ReadonlySet<string> {
-  if (!onDiskJson) return new Set();
-  let onDisk: unknown;
-  try {
-    onDisk = JSON.parse(onDiskJson);
-  } catch {
-    return new Set();
-  }
-  if (typeof onDisk !== "object" || onDisk === null || Array.isArray(onDisk)) {
-    return new Set();
-  }
-  return new Set(
-    Object.keys(onDisk as Record<string, unknown>)
-      .filter((name) => !stockScopeNames.has(name))
-      .sort(),
-  );
-}
-
-/** Resolve the fold-back source for a compile: which composed scopes survive the
- *  re-transpose, and the grid JSON their columns come from.
- *
- *  Two sources, in priority order:
- *    1. `aidlc/scopes/` RECORDS — the durable, harness-neutral source of record.
- *       These win, because the harness grid is a projection of them.
- *    2. The on-disk `scope-grid.json` — the MIGRATION fallback, for an install
- *       whose scope was composed before records existed. `syncComposedScopes`
- *       back-fills a record for each of these after the compile, so the fallback
- *       is a one-time bridge rather than a permanent second source of truth.
- *
- *  Both are gated on an installed scope identity file: a grid column with no
- *  `.md` is an orphan, not a composed scope, and must not be resurrected.
- *  `recordNames` is reported separately so the caller can tell which names still
- *  need a record written. */
-export function composedFoldBack(
-  records: Record<string, ComposedScopeRecord>,
-  onDiskJson: string | null,
-  stockScopeNames: ReadonlySet<string>,
-  installedScopeNames: ReadonlySet<string>,
-): {
-  json: string;
-  names: ReadonlySet<string>;
-  recordNames: ReadonlySet<string>;
-  gridOnlyNames: ReadonlySet<string>;
-} {
-  const recordNames = new Set(
-    Object.keys(records)
-      .filter((name) => !stockScopeNames.has(name) && installedScopeNames.has(name))
-      .sort(),
-  );
-  const gridOnlyNames = new Set(
-    [...composedScopeNames(onDiskJson, stockScopeNames)].filter(
-      (name) => isScopeName(name) && installedScopeNames.has(name) && !recordNames.has(name),
-    ),
-  );
-  let onDisk: Record<string, unknown> = {};
-  if (onDiskJson) {
-    try {
-      const parsed: unknown = JSON.parse(onDiskJson);
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        onDisk = parsed as Record<string, unknown>;
-      }
-    } catch {
-      /* malformed on-disk grid contributes nothing; records still fold */
-    }
-  }
-  const merged: ScopeGrid = {};
-  for (const name of [...gridOnlyNames].sort()) {
-    const entry = onDisk[name];
-    if (
-      typeof entry === "object" && entry !== null && !Array.isArray(entry) &&
-      typeof (entry as { stages?: unknown }).stages === "object"
-    ) {
-      merged[name] = entry as ScopeGrid[string];
-    }
-  }
-  for (const name of recordNames) merged[name] = { stages: records[name].stages };
-  const sorted: ScopeGrid = {};
-  for (const k of Object.keys(merged).sort()) sorted[k] = merged[k];
-  return {
-    json: JSON.stringify(sorted),
-    names: new Set([...recordNames, ...gridOnlyNames].sort()),
-    recordNames,
-    gridOnlyNames,
-  };
-}
-
-function stageDeclaredScopeNames(stages: readonly Pick<GraphStage, "scopes">[]): ReadonlySet<string> {
-  const names = new Set<string>();
-  for (const stage of stages) {
-    for (const name of stage.scopes ?? []) names.add(name);
-  }
-  return names;
-}
-
-function filterScopeGrid(
-  grid: ScopeGrid,
-  allowedScopes: ReadonlySet<string> | null,
-  exemptScopes: ReadonlySet<string> = new Set(),
-): ScopeGrid {
-  if (allowedScopes === null) return grid;
-  const filtered: ScopeGrid = {};
-  for (const scope of Object.keys(grid).sort()) {
-    if (allowedScopes.has(scope) || exemptScopes.has(scope)) filtered[scope] = grid[scope];
-  }
-  return filtered;
-}
-
 function enabledScopeNames(): ReadonlySet<string> | null {
   if (pluginsEnabled() === null) return null;
   return new Set(Object.keys(loadScopeMetadata()).sort());
-}
-
-/** Parse a numeric stage identifier like "3.5" into a tuple [phase, index]
- *  for total-ordering comparison. Returns negative, zero, or positive. */
-export function numericStageOrder(a: string, b: string): number {
-  const [aP, aI] = a.split(".").map((x) => parseInt(x, 10));
-  const [bP, bI] = b.split(".").map((x) => parseInt(x, 10));
-  if (aP !== bP) return aP - bP;
-  return aI - bI;
 }
 
 /** Two-direction drift between the on-disk stage `.md` files and the compiled
@@ -2373,59 +1966,6 @@ export function stageGraphDrift(): {
   };
 }
 
-/** Default display name for an auto-seeded stage: title-cased slug
- *  ("my-custom-stage" -> "My Custom Stage"). A one-time default only,
- *  compile pins it into stage-graph.json, so an author can refine the name
- *  there afterwards (e.g. "NFR Requirements") and the next compile keeps it. */
-function titleCaseSlug(slug: string): string {
-  return slug
-    .split("-")
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(" ");
-}
-
-function stagePluginOwner(stage: Pick<GraphStage, "plugin">): string {
-  return stage.plugin ?? "aidlc";
-}
-
-function applyPluginSelection(stages: GraphStage[]): void {
-  for (const stage of stages) {
-    delete stage.enabled;
-    if (!stageEnabledBySelection(stage)) stage.enabled = false;
-  }
-}
-
-function validateSelectionClosure(stages: GraphStage[]): void {
-  const producersByArtifact = new Map<string, GraphStage[]>();
-  for (const stage of stages) {
-    for (const artifact of [...(stage.produces ?? []), ...(stage.optional_produces ?? [])]) {
-      const producers = producersByArtifact.get(artifact) ?? [];
-      producers.push(stage);
-      producersByArtifact.set(artifact, producers);
-    }
-  }
-
-  for (const stage of stages.filter((s) => s.enabled !== false)) {
-    for (const consume of stage.consumes ?? []) {
-      if (!consume.required) continue;
-      const producers = producersByArtifact.get(consume.artifact) ?? [];
-      if (producers.length === 0) continue;
-      const enabledProducers = producers.filter((p) => p.enabled !== false);
-      if (enabledProducers.length > 0) continue;
-      const producerList = producers
-        .map((p) => `${p.slug} (${stagePluginOwner(p)})`)
-        .sort()
-        .join(", ");
-      const disabledPlugins = [...new Set(producers.map(stagePluginOwner))].sort();
-      throw new Error(
-        `Plugin selection closure failed: enabled stage "${stage.slug}" consumes required artifact "${consume.artifact}", ` +
-          `but its only producer(s) are disabled: ${producerList}. ` +
-          `Enable plugin(s) ${disabledPlugins.join(", ")} or disable the consuming stage.`
-      );
-    }
-  }
-}
-
 /** Enabled stages whose requires_stage points at a selection-disabled stage.
  *  NOT part of the closure ERROR: an ordering edge to a never-running stage is
  *  vacuous (topoSort ignores edges outside the enabled subset), and the shipped
@@ -2456,503 +1996,47 @@ export function selectionDroppedOrderingEdges(
  *  stage's `scopes:` into the compiled scope-grid.json (gridJson) — both
  *  artifacts derive from the same in-memory stages, so a single compile
  *  keeps stage-graph.json and scope-grid.json in lockstep. */
-export function compileStageGraph(): {
-  json: string;
-  gridJson: string;
-  stages: GraphStage[];
-  /** Which composed scopes the emitted grid carries, split by the source they
-   *  folded back from. `gridOnlyNames` are the ones still lacking a durable
-   *  `aidlc/scopes/` record — the write side back-fills exactly those. */
-  composedScopes: {
-    names: ReadonlySet<string>;
-    recordNames: ReadonlySet<string>;
-    gridOnlyNames: ReadonlySet<string>;
-  };
-} {
-  // Load selected scope metadata up front so scope authoring invariants, such
-  // as a single enabled freeform default, fail during compile.
+/** Legacy process-bound adapter. Callers with explicit candidate paths use
+ * readWorkflowCompilationRequest instead; the decisions have one owner. */
+export function compileStageGraph() {
   loadScopeMetadata();
-
-  // Harvest number + name mappings from existing JSON. A slug already in the
-  // JSON keeps its pinned row; a NEW slug is auto-seeded below, with an
-  // authored name override when present.
-  // A source checkout has no compiled graph until packaging materializes one.
-  // Installed runtimes still preserve their pinned rows (including plugin
-  // stages), while a clean package build derives the core graph from YAML.
-  const existing = existsSync(stageGraphPath()) ? loadStageGraphAll() : [];
-  const numberBySlug = new Map(existing.map((s) => [s.slug, s.number]));
-  const nameBySlug = new Map(existing.map((s) => [s.slug, s.name]));
-
-  // Highest index already used in each phase (keyed by numeric prefix),
-  // so a new stage in that phase gets the next free index. Seeded from the
-  // existing JSON, then bumped as new stages in the same phase are seeded
-  // within this compile, so adding several new stages to one phase at once
-  // assigns distinct, contiguous indices rather than colliding.
-  const maxIndexByPhasePrefix = new Map<number, number>();
-  for (const s of existing) {
-    const [prefix, index] = s.number.split(".").map((n) => parseInt(n, 10));
-    if (!Number.isFinite(prefix) || !Number.isFinite(index)) continue;
-    maxIndexByPhasePrefix.set(
-      prefix,
-      Math.max(maxIndexByPhasePrefix.get(prefix) ?? 0, index)
-    );
-  }
-  const stages: GraphStage[] = [];
-  // NEW slugs (no pinned row yet), grouped by phase prefix for the
-  // topological number seed after the walk.
-  type NewStageSeed = { data: StageFrontmatter; phase: string; prefix: number; name: string };
-  const newByPrefix = new Map<number, NewStageSeed[]>();
-  // Track slug-to-first-file so duplicate-slug errors name both files.
-  const slugToFile = new Map<string, string>();
-  type StageDeclaration = { file: string; slug: string };
-  const artifactProducers = new Map<string, StageDeclaration[]>();
-  const artifactConsumers = new Map<string, StageDeclaration[]>();
-
-  // Known agent slugs (the `name:` field of each .claude/agents/*.md), passed
-  // to validateStageFrontmatter so a stage referencing a lead_agent or
-  // support_agent with no matching agent file fails the compile loudly rather
-  // than surfacing at runtime as a "subagent not registered" Task error.
-  // Hoisted once: loadAgents() is memoised, but the .map is per-call.
-  const knownAgents = loadAgents().map((a) => a.slug);
-
-  const stagesRoot = stagesDir();
-  for (const phase of readdirSync(stagesRoot)) {
-    const pdir = join(stagesRoot, phase);
-    if (!statSync(pdir).isDirectory()) continue;
-    for (const f of readdirSync(pdir).filter((f) => f.endsWith(".md")).sort()) {
-      const filePath = join(pdir, f);
-      const raw = readFileSync(filePath, "utf-8");
-
-      // Wrap parse in filename context — parseStageFrontmatter's default
-      // error messages don't include the file path, which makes debugging
-      // a bad YAML edit across 31 stage files painful.
-      let parsed: Record<string, unknown>;
-      try {
-        parsed = parseStageFrontmatter(raw) as Record<string, unknown>;
-      } catch (err) {
-        throw new Error(`${filePath}: ${errorMessage(err)}`);
-      }
-
-      // Validate frontmatter against stage-schema.ts before extracting fields
-      // — the validator returns a typed StageFrontmatter, so subsequent reads
-      // (slug, phase, etc.) need no casts. Catches missing required fields
-      // (e.g., execution: undefined would silently drop from the emitted JSON
-      // via canonicalStageGraphJson's undefined skip). Passing knownAgents
-      // activates the agent-registration cross-check (Rule 9): an unknown
-      // lead_agent / support_agent fails here, not at runtime.
-      const validation = validateStageFrontmatter(parsed, { agents: knownAgents });
-      if (!validation.valid) {
-        throw new Error(
-          `${filePath}: schema validation failed: ${validation.errors.join("; ")}`
-        );
-      }
-      const slug = validation.data.slug;
-      const plugin = validation.data.plugin;
-      if (plugin !== undefined) {
-        if (plugin === "aidlc") {
-          throw new Error(
-            `${filePath}: stage "${slug}" declares plugin "aidlc"; omit plugin for core stages.`
-          );
-        }
-        // `aidlc-` is core's namespace: runner dirs are `aidlc-<slug>` for core
-        // but the bare slug for plugin stages, so a plugin named `aidlc-<x>`
-        // generates runner paths identical to core's and silently clobbers them
-        // (/aidlc-<x>-... routes to the wrong stage).
-        if (plugin.startsWith("aidlc-")) {
-          throw new Error(
-            `${filePath}: stage "${slug}" declares plugin "${plugin}"; the "aidlc-" prefix is reserved for core (a plugin named aidlc-<x> collides with core runner paths). Rename the plugin.`
-          );
-        }
-        if (!slug.startsWith(`${plugin}-`)) {
-          throw new Error(
-            `${filePath}: stage "${slug}" declares plugin "${plugin}", but plugin-owned stage slugs must start with "${plugin}-". Rename the slug or fix the plugin field.`
-          );
-        }
-      }
-
-      const filenameStem = basename(filePath, ".md");
-      if (filenameStem !== slug) {
-        throw new Error(
-          `${filePath}: stage filename stem "${filenameStem}" does not match frontmatter slug "${slug}". Rename the file or fix the slug.`
-        );
-      }
-
-      // Duplicate-slug guard: two YAML files claiming the same slug would
-      // silently produce a corrupt graph (two rows, findStageBySlug returns
-      // only the first). Catch it loud and name both files.
-      const previousFile = slugToFile.get(slug);
-      if (previousFile) {
-        throw new Error(
-          `Duplicate stage slug "${slug}" in ${filePath} — already declared ` +
-            `in ${previousFile}. Rename one of them.`
-        );
-      }
-      slugToFile.set(slug, filePath);
-
-      const declaration = { file: filePath, slug };
-      // Match producersOf(): required and optional outputs share one artifact
-      // producer namespace. Set semantics avoid counting one stage twice if an
-      // author repeats a name across both lists.
-      for (const artifact of new Set([
-        ...(validation.data.produces ?? []),
-        ...(validation.data.optional_produces ?? []),
-      ])) {
-        const producers = artifactProducers.get(artifact) ?? [];
-        producers.push(declaration);
-        artifactProducers.set(artifact, producers);
-      }
-      for (const artifact of new Set(
-        (validation.data.consumes ?? []).map((consume) => consume.artifact),
-      )) {
-        const consumers = artifactConsumers.get(artifact) ?? [];
-        consumers.push(declaration);
-        artifactConsumers.set(artifact, consumers);
-      }
-
-      // Existing slug -> keep its pinned number + name (the "computed once,
-      // stable thereafter" contract; a pinned row missing only its name
-      // seeds the name inline). New slug -> DEFER numbering to the per-phase
-      // topological seed after the file walk (below): with several new
-      // stages arriving in one compile (a multi-stage plugin), numbering
-      // them in file-walk (alphabetical) order can contradict their own
-      // requires_stage edges and fail the lower-numbered-dependency
-      // invariant, so the batch is ordered by its edges first.
-      const prefix = PHASES.indexOf(phase as Phase);
-      if (prefix < 0) {
-        // A stage directory whose name is not one of the five canonical
-        // phases can't be placed on the numeric spine, fail loud rather
-        // than invent a prefix.
-        throw new Error(
-          `Stage "${slug}" (${filePath}) is in an unknown phase directory ` +
-            `"${phase}". Stage phase directories must be one of: ${PHASES.join(", ")}.`
-        );
-      }
-
-      const number = validation.data.number ?? numberBySlug.get(slug);
-      const name =
-        validation.data.name ?? nameBySlug.get(slug) ?? titleCaseSlug(slug);
-      if (number) {
-        stages.push(buildGraphStage(validation.data, phase, number, name));
-      } else {
-        newByPrefix.get(prefix)?.push({ data: validation.data, phase, prefix, name }) ??
-          newByPrefix.set(prefix, [{ data: validation.data, phase, prefix, name }]);
-      }
+  const stageSources: Array<{ path: string; phase: string; text: string }> = [];
+  const root = stagesDir();
+  for (const phase of readdirSync(root).sort()) {
+    const dir = join(root, phase);
+    if (!statSync(dir).isDirectory()) continue;
+    for (const file of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
+      const path = join(dir, file);
+      stageSources.push({ path, phase, text: readFileSync(path, "utf-8") });
     }
   }
-
-  for (const [artifact, producers] of artifactProducers) {
-    if (producers.length < 2) continue;
-    const consumer = artifactConsumers.get(artifact)?.[0];
-    if (!consumer) continue;
-
-    // Shared artifact names are legal when unconsumed: traceability is
-    // produced by eight stages and consumed by none, so only consumed names
-    // require a unique producer.
-    const producerList = producers
-      .map(({ file, slug }) => `${file} (stage "${slug}")`)
-      .join(", ");
-    throw new Error(
-      `Duplicate producers for consumed artifact "${artifact}" in ${producerList} — ` +
-        `consumed by stage "${consumer.slug}" in ${consumer.file}. ` +
-        `Rename one produced artifact or update the consumer.`
-    );
-  }
-
-  // Per-phase topological seed for NEW slugs. Numbers are assigned by the
-  // ENGINE, never claimed by authors: within one phase's batch of new
-  // stages, order by the batch's own requires_stage edges (Kahn), breaking
-  // ties among independent stages by the authored `number:` hint (a
-  // relative-ordering hint only — its absolute value is never used) and
-  // then slug; assign next-free contiguous indices in that order. Edges to
-  // stages OUTSIDE the batch need no handling here: an already-pinned
-  // same-phase dependency is lower-numbered by construction (new indices
-  // start past the phase max), and cross-phase edges are ordered by the
-  // phase prefix — the edge-local invariant below still backstops all of
-  // it. Uncoordinated plugins therefore cannot collide on numbers, and a
-  // batch whose file order contradicts its flow order still seeds validly.
-  for (const prefix of [...newByPrefix.keys()].sort((a, b) => a - b)) {
-    const batch = newByPrefix.get(prefix)!;
-    const inBatch = new Map(batch.map((e) => [e.data.slug, e]));
-    // Dedupe each stage's edges: the decrement below fires once per
-    // dependent, so a duplicated requires_stage entry would strand the
-    // stage at indegree > 0 and misreport a copy-paste duplicate as a
-    // cycle (the schema shape-checks the list but does not dedupe it).
-    const indegree = new Map(batch.map((e) => [e.data.slug, 0]));
-    for (const e of batch) {
-      for (const dep of new Set(e.data.requires_stage ?? [])) {
-        if (inBatch.has(dep)) indegree.set(e.data.slug, (indegree.get(e.data.slug) ?? 0) + 1);
-      }
-    }
-    const hint = (e: NewStageSeed): number => {
-      const authored = e.data.number;
-      if (!authored) return Number.POSITIVE_INFINITY;
-      const idx = parseInt(authored.split(".")[1], 10);
-      return Number.isFinite(idx) ? idx : Number.POSITIVE_INFINITY;
-    };
-    const byHintThenSlug = (a: NewStageSeed, b: NewStageSeed): number =>
-      hint(a) - hint(b) || a.data.slug.localeCompare(b.data.slug);
-    const ready = batch.filter((e) => indegree.get(e.data.slug) === 0).sort(byHintThenSlug);
-    const seeded: NewStageSeed[] = [];
-    while (ready.length > 0) {
-      const e = ready.shift()!;
-      seeded.push(e);
-      for (const other of batch) {
-        if (!(other.data.requires_stage ?? []).includes(e.data.slug)) continue;
-        const d = (indegree.get(other.data.slug) ?? 0) - 1;
-        indegree.set(other.data.slug, d);
-        if (d === 0) {
-          ready.push(other);
-          ready.sort(byHintThenSlug);
-        }
-      }
-    }
-    if (seeded.length < batch.length) {
-      // The unseeded set = the cycle's members plus anything downstream of
-      // them, so name it "stuck", not "the cycle" — a stage can appear here
-      // solely because its dependency is cyclic.
-      const stuck = batch.filter((e) => !seeded.includes(e)).map((e) => e.data.slug);
-      throw new Error(
-        `Cannot seed stage numbers for phase "${batch[0].phase}": ` +
-          `requires_stage cycle among new stages (stuck: ${stuck.join(", ")}). Break the cycle.`
-      );
-    }
-    for (const e of seeded) {
-      const nextIndex = (maxIndexByPhasePrefix.get(prefix) ?? 0) + 1;
-      maxIndexByPhasePrefix.set(prefix, nextIndex);
-      stages.push(buildGraphStage(e.data, e.phase, `${prefix}.${nextIndex}`, e.name));
-    }
-  }
-
-  // Sort by numeric order (phase-prefix.index).
-  stages.sort((a, b) => numericStageOrder(a.number, b.number));
-  const stockScopeNames = stageDeclaredScopeNames(stages);
-
-  // Resolve per-stage rule chain. Strict-additive: every applicable rule
-  // appears in rules_in_context (org+team+project + phase when stage's
-  // `phase:` matches the rule's filename suffix). The walk + parse +
-  // validate happens once per compile; downstream consumers (dispatcher,
-  // doctor) read pre-resolved arrays off graph nodes — no runtime walks
-  // of .claude/rules/.
-  const rules = loadRules();
-  for (const stage of stages) {
-    stage.rules_in_context = resolveRulesForStage(stage, rules);
-  }
-
-  // Resolve per-stage sensor imports. Pull authoring: each stage's
-  // sensors[] list is looked up against the manifest registry; dispatch
-  // policy, severity, category, and matches are copied into the resolved
-  // entry. Unknown ids throw —
-  // authoring errors fail loud at compile, not at fire time.
-  const sensorsById = loadSensors();
-  for (const stage of stages) {
-    stage.sensors_applicable = resolveSensorsForStage(stage, sensorsById);
-  }
-
-  applyPluginSelection(stages);
-  validateSelectionClosure(stages);
-
-  // Edge-local invariant: for every edge A in B.requires_stage,
-  // numericOrder(A) < numericOrder(B). Topological sort is non-unique
-  // in the presence of fan-out (Construction's NFR and functional-
-  // design branches are independent); sort-equivalence would be
-  // tautological. The edge-local check captures the real failure mode.
-  const numberLookup = new Map(stages.map((s) => [s.slug, s.number]));
-  for (const stage of stages) {
-    for (const dep of stage.requires_stage ?? []) {
-      const depNum = numberLookup.get(dep);
-      if (!depNum) {
-        throw new Error(
-          `Unknown requires_stage: "${dep}" on stage "${stage.slug}". ` +
-            `Every requires_stage entry must reference a known stage slug.`
-        );
-      }
-      if (numericStageOrder(depNum, stage.number) >= 0) {
-        throw new Error(
-          `Compile invariant violated: stage "${stage.slug}" (${stage.number}) ` +
-            `requires "${dep}" (${depNum}) — dependency must be lower-numbered. ` +
-            `Fix: either renumber in stage-graph.json to match the dependency ` +
-            `direction, or remove the offending requires_stage edge.`
-        );
-      }
-    }
-  }
-
-  // Swarm-trigger guard (advisory): the autonomous Construction swarm fires
-  // on a field match — for_each: unit-of-work + mode: subagent (see
-  // SWARM_FOR_EACH / SWARM_MODE in aidlc-orchestrate.ts). A per-unit
-  // Construction stage carrying any OTHER mode silently falls off the swarm
-  // path and builds its units serially, which is legal (the topology is the
-  // author's call) but easy to do by accident when retuning modes. Warn on
-  // stderr; never fail — warnings do not affect the emitted JSON, so
-  // compile --check parity is untouched.
-  for (const stage of stages) {
-    if (
-      stage.phase === "construction" &&
-      stage.for_each === "unit-of-work" &&
-      stage.workspace_requires === true &&
-      stage.mode !== "subagent"
-    ) {
-      console.error(
-        `[advisory] stage "${stage.slug}" is the per-unit build stage ` +
-          `(for_each: unit-of-work + workspace_requires) but mode is ` +
-          `"${stage.mode}", not "subagent" — the autonomous Construction ` +
-          `swarm will NOT fire for it; units build serially.`
-      );
-    }
-  }
-
-  // The grid transpose covers only frontmatter-declared (stock) scopes;
-  // composed scopes have no frontmatter producer, so a bare re-transpose would
-  // drop them. Fold them back from the durable aidlc/scopes/ records, falling
-  // back to the on-disk grid for an install composed before records existed —
-  // a recompile must never destroy an approved composed scope.
-  let onDiskGrid: string | null = null;
-  try {
-    onDiskGrid = readFileSync(scopeGridPath(), "utf-8");
-  } catch {
-    /* first compile: no grid on disk yet */
-  }
-  const selectedScopeNames = enabledScopeNames();
-  const installedScopeNames = new Set(Object.keys(loadScopeMetadataAll()));
-  const foldBack = composedFoldBack(
-    loadComposedScopeRecords(),
-    onDiskGrid,
-    stockScopeNames,
-    installedScopeNames,
-  );
-  const composedNames = foldBack.names;
-  const seededScopeNames =
-    selectedScopeNames === null
-      ? undefined
-      : new Set([...selectedScopeNames].filter((name) => !composedNames.has(name)));
+  let priorGridJson: string | null = null;
+  try { priorGridJson = readFileSync(scopeGridPath(), "utf-8"); } catch { /* first compile */ }
+  const selectedPlugins = pluginsEnabled();
+  const selectedScopes = enabledScopeNames();
+  const result = compileWorkflowCandidate({
+    stageSources,
+    existingStages: existsSync(stageGraphPath()) ? loadStageGraphAll() : [],
+    knownAgents: loadAgents().map((agent) => agent.slug),
+    rules: loadRules(),
+    sensors: [...loadSensors().values()].map(sensorSourceFromFile),
+    selectedPlugins: selectedPlugins === null ? null : [...selectedPlugins],
+    selectedScopeNames: selectedScopes === null ? null : [...selectedScopes],
+    installedScopeNames: Object.keys(loadScopeMetadataAll()),
+    composedRecords: loadComposedScopeRecords(),
+    priorGridJson,
+  });
+  for (const advisory of result.advisories) console.error(advisory);
   return {
-    json: canonicalStageGraphJson(stages),
-    gridJson: canonicalScopeGridJson(
-      filterScopeGrid(
-        mergeComposedScopes(
-          transposeScopeGrid(
-            stages.filter((s) => s.enabled !== false),
-            seededScopeNames,
-          ),
-          foldBack.json,
-          composedNames,
-        ),
-        selectedScopeNames,
-        composedNames,
-      ),
-    ),
-    stages,
+    json: result.json,
+    gridJson: result.gridJson,
+    stages: structuredClone(result.stages.map(workflowStageToGraph)),
     composedScopes: {
-      names: composedNames,
-      recordNames: foldBack.recordNames,
-      gridOnlyNames: foldBack.gridOnlyNames,
+      names: new Set(result.composedScopes.names),
+      recordNames: new Set(result.composedScopes.recordNames),
+      gridOnlyNames: new Set(result.composedScopes.gridOnlyNames),
     },
   };
-}
-
-function buildGraphStage(
-  parsed: StageFrontmatter,
-  phase: string,
-  number: string,
-  name: string
-): GraphStage {
-  const slug = parsed.slug;
-  // Support_agents + produces + requires_stage are always arrays
-  // (parseStageFrontmatter normalises empty).
-  const support_agents = parsed.support_agents ?? [];
-  const produces = parsed.produces ?? [];
-  // Dependency edges are set-valued. Normalize copy-paste duplicates here so
-  // every graph consumer, including topoSort's indegree accounting, observes
-  // the same edge cardinality as the compile-time number seeder.
-  const requires_stage = [...new Set(parsed.requires_stage ?? [])];
-  const consumesRaw = parsed.consumes ?? [];
-  const consumes: Consume[] = consumesRaw.map((c) => {
-    const out: Consume = {
-      artifact: c.artifact,
-      required: c.required,
-    };
-    if (c.conditional_on !== undefined) {
-      out.conditional_on = c.conditional_on;
-    }
-    return out;
-  });
-
-  const stage: GraphStage = {
-    slug,
-    number,
-    name,
-    phase: parsed.phase ?? phase,
-    execution: parsed.execution,
-    lead_agent: parsed.lead_agent,
-    support_agents,
-    mode: parsed.mode,
-    produces,
-    consumes,
-    requires_stage,
-    inputs: parsed.inputs ?? "",
-    outputs: parsed.outputs ?? "",
-    // Filled by resolveRulesForStage in compileStageGraph after the
-    // sort. The field is REQUIRED on GraphStage; assigning [] here
-    // keeps the type honest until resolution runs.
-    rules_in_context: [],
-    // Filled by resolveSensorsForStage in compileStageGraph. Same
-    // discipline as rules_in_context — REQUIRED on GraphStage.
-    sensors_applicable: [],
-  };
-  if (parsed.plugin !== undefined) {
-    stage.plugin = parsed.plugin;
-  }
-  if (parsed.condition !== undefined) {
-    stage.condition = parsed.condition;
-  }
-  if (parsed.for_each !== undefined) {
-    stage.for_each = parsed.for_each;
-  }
-  if (parsed.workspace_requires !== undefined) {
-    stage.workspace_requires = parsed.workspace_requires;
-  }
-  if (parsed.optional_produces !== undefined) {
-    stage.optional_produces = parsed.optional_produces;
-  }
-  if (parsed.produces_kinds !== undefined) {
-    stage.produces_kinds = parsed.produces_kinds;
-  }
-  if (parsed.sensors !== undefined) {
-    stage.sensors = parsed.sensors;
-  }
-  if (parsed.scopes !== undefined) {
-    stage.scopes = parsed.scopes;
-  }
-  if (parsed.reviewer !== undefined) {
-    stage.reviewer = parsed.reviewer;
-    stage.review_artifact = parsed.review_artifact;
-    // Default the cap to 2 when a reviewer is declared but no explicit cap is
-    // set. The parser (V1) now returns a real number and validateStageFrontmatter
-    // (V2) rejects a non-positive-integer cap upstream, so this should always
-    // see a valid number or undefined. Keep the coercion defensive: a value
-    // that isn't a positive integer falls back to the default 2 rather than
-    // letting NaN reach stage-graph.json.
-    const cap = Number(parsed.reviewer_max_iterations);
-    stage.reviewer_max_iterations =
-      parsed.reviewer_max_iterations !== undefined &&
-      Number.isInteger(cap) &&
-      cap >= 1
-        ? cap
-        : 2;
-    // Default the class to "adversarial" (the pre-class behavior) when a
-    // reviewer is declared without one. Schema (V2) rejects any value other
-    // than adversarial/advisory upstream; keep the coercion defensive so a
-    // bad value degrades to the strict default rather than leaking through.
-    stage.review_class =
-      parsed.review_class === "advisory" ? "advisory" : "adversarial";
-  }
-  if (parsed.summary_confirmation !== undefined) {
-    stage.summary_confirmation = parsed.summary_confirmation;
-  }
-  if (parsed.approval_mode !== undefined) {
-    stage.approval_mode = parsed.approval_mode;
-  }
-  return stage;
 }
 
 function runCompileCheck(): void {
