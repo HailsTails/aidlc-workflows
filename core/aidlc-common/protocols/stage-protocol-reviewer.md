@@ -283,7 +283,7 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
    stage (and `--unit`) at the next iteration, dispatch the reviewer, and
    record its verdict as in step 3. The engine never refuses it for want of
    passes, past the cap or a spent recovery; the cap and the one recovery
-   bound only the reviews you start on your own. Never write a review file by
+   bound only the reviews you start on your own. On a stage whose `directive.approval_mode` is `autonomous` the engine counts this only when the person's words begin with Request Changes: any other turn, such as a launch prompt, leaves the cap and the recovery in force, and the refusal names the next step. Never write a review file by
    hand, and never offer to change the Guard Policy to get a review.
 
    Under `relaxed` or `off`, the receipt stays valid and the engine asks for no
