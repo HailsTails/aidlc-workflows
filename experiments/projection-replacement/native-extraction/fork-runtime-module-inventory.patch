@@ -1,0 +1,112 @@
+diff --git a/core/tools/data/runtime-modules.json b/core/tools/data/runtime-modules.json
+new file mode 100644
+index 0000000..1d537dd
+--- /dev/null
++++ b/core/tools/data/runtime-modules.json
+@@ -0,0 +1,4 @@
++{
++  "schemaVersion": 1,
++  "modules": ["tools/aidlc-routes.ts"]
++}
+diff --git a/harness/codex/emit.ts b/harness/codex/emit.ts
+index e47be4f..3eb35c3 100644
+--- a/harness/codex/emit.ts
++++ b/harness/codex/emit.ts
+@@ -20,0 +21 @@ import { stringify } from "smol-toml";
++import { loadRuntimeModules, separateRuntimeInventory } from "../../scripts/runtime-module-inventory.ts";
+@@ -322,0 +324,2 @@ export default function emit(ctx: EmitContext): void {
++  const moduleDeclarations = loadRuntimeModules({ coreRoot: ctx.coreRoot });
++  if (moduleDeclarations.status === "invalid") throw new Error(moduleDeclarations.problems.join("; "));
+@@ -458 +461 @@ export default function emit(ctx: EmitContext): void {
+-      emitDefaultRules(harnessDir, invoke, trustedRouteNamespace, walkFiles(join(CODEX_ROOT, "tools"))),
++      emitDefaultRules(harnessDir, invoke, trustedRouteNamespace, separateRuntimeInventory({ files: walkFiles(join(CODEX_ROOT, "tools")).map((path) => `tools/${path.replaceAll("\\", "/")}`), modules: moduleDeclarations.modules }).legacyInvocationCandidates.map((path) => path.slice("tools/".length))),
+diff --git a/harness/opencode/emit.ts b/harness/opencode/emit.ts
+index 567eb2a..01beb23 100644
+--- a/harness/opencode/emit.ts
++++ b/harness/opencode/emit.ts
+@@ -22,0 +23 @@ import { dirname, join } from "node:path";
++import { loadRuntimeModules, separateRuntimeInventory } from "../../scripts/runtime-module-inventory.ts";
+@@ -90 +91 @@ function projectActiveMemoryReferences(raw: string): string {
+-function embedShippedEntrypoints(raw: string, distRoot: string): string {
++function embedShippedEntrypoints({ raw, distRoot, modules }: { readonly raw: string; readonly distRoot: string; readonly modules: readonly string[] }): string {
+@@ -102 +103 @@ function embedShippedEntrypoints(raw: string, distRoot: string): string {
+-  const rendered = JSON.stringify(entries, null, 2)
++  const rendered = JSON.stringify(separateRuntimeInventory({ files: entries, modules }).legacyInvocationCandidates, null, 2)
+@@ -109,0 +111,2 @@ export default function emit(ctx: EmitContext): void {
++  const moduleDeclarations = loadRuntimeModules({ coreRoot: ctx.coreRoot });
++  if (moduleDeclarations.status === "invalid") throw new Error(moduleDeclarations.problems.join("; "));
+@@ -163,2 +166,2 @@ export default function emit(ctx: EmitContext): void {
+-        embedShippedEntrypoints(
+-          readFileSync(join(harnessRoot, "plugin", "aidlc-opencode-adapter.ts"), "utf-8"),
++        embedShippedEntrypoints({
++          raw: readFileSync(join(harnessRoot, "plugin", "aidlc-opencode-adapter.ts"), "utf-8"),
+@@ -166 +169,2 @@ export default function emit(ctx: EmitContext): void {
+-        ),
++          modules: moduleDeclarations.modules,
++        }),
+diff --git a/scripts/runtime-module-inventory.test.ts b/scripts/runtime-module-inventory.test.ts
+new file mode 100644
+index 0000000..6dad7a5
+--- /dev/null
++++ b/scripts/runtime-module-inventory.test.ts
+@@ -0,0 +1,29 @@
++import { expect, test } from "bun:test";
++import { decodeRuntimeModules, separateRuntimeInventory, loadRuntimeModules } from "./runtime-module-inventory.ts";
++test("declared modules remain shipped files without invocation authority", () => {
++  expect(separateRuntimeInventory({ files: ["tools/aidlc-routes.ts", "tools/aidlc-state.ts", "hooks/aidlc-guard.ts"], modules: ["tools/aidlc-routes.ts"] })).toEqual({ moduleFiles: ["tools/aidlc-routes.ts"], legacyInvocationCandidates: ["tools/aidlc-state.ts", "hooks/aidlc-guard.ts"] });
++});
++test("module declarations are explicit source metadata", () => {
++  expect(decodeRuntimeModules({ text: '{"schemaVersion":1,"modules":["tools/aidlc-routes.ts"]}', entrypoints: ["tools/aidlc.ts"] })).toEqual({ status: "ok", modules: ["tools/aidlc-routes.ts"] });
++});
++test("an empty declaration preserves all legacy candidates", () => {
++  expect(separateRuntimeInventory({ files: ["tools/aidlc-state.ts", "tools/unknown-helper.ts"], modules: [] })).toEqual({ moduleFiles: [], legacyInvocationCandidates: ["tools/aidlc-state.ts", "tools/unknown-helper.ts"] });
++});
++test("an executable cannot be hidden behind a module declaration", () => {
++  expect(decodeRuntimeModules({ text: '{"schemaVersion":1,"modules":["tools/aidlc-state.ts"]}', entrypoints: ["tools/aidlc-state.ts"] })).toEqual({ status: "invalid", problems: ["runtime-modules.json cannot classify a declared dispatcher or route tool as module-only"] });
++});
++test("path aliases cannot bypass executable overlap checks", () => {
++  expect(decodeRuntimeModules({ text: '{"schemaVersion":1,"modules":["tools/../tools/aidlc-state.ts"]}', entrypoints: ["tools/aidlc-state.ts"] })).toEqual({ status: "invalid", problems: ["runtime-modules.json requires schemaVersion 1 and canonical tools/*.ts module paths"] });
++});
++test("duplicate declarations are refused", () => {
++  expect(decodeRuntimeModules({ text: '{"schemaVersion":1,"modules":["tools/aidlc-routes.ts","tools/aidlc-routes.ts"]}', entrypoints: [] })).toEqual({ status: "invalid", problems: ["runtime-modules.json module paths must be unique"] });
++});
++test("case aliases cannot conceal a declared executable on Windows", () => {
++  expect(decodeRuntimeModules({ text: '{"schemaVersion":1,"modules":["tools/AIDLC-STATE.ts"]}', entrypoints: ["tools/aidlc-state.ts"] })).toEqual({ status: "invalid", problems: ["runtime-modules.json requires schemaVersion 1 and canonical tools/*.ts module paths"] });
++});
++test("malformed metadata is a preparation finding", () => {
++  expect(decodeRuntimeModules({ text: '{"schemaVersion":', entrypoints: [] })).toEqual({ status: "invalid", problems: ["runtime-modules.json must contain valid JSON"] });
++});
++test("composition: missing source metadata cannot silently restore inventory-based grants", () => {
++  expect(loadRuntimeModules({ coreRoot: "source-without-runtime-module-declarations" })).toEqual({ status: "invalid", problems: ["runtime-modules.json and each declared module must exist as readable regular source files; restore or correct the source declarations"] });
++});
+diff --git a/scripts/runtime-module-inventory.ts b/scripts/runtime-module-inventory.ts
+new file mode 100644
+index 0000000..e145d55
+--- /dev/null
++++ b/scripts/runtime-module-inventory.ts
+@@ -0,0 +1,25 @@
++import { lstatSync, readFileSync } from "node:fs";
++import { join } from "node:path";
++import { z } from "zod";
++import { TOOLS } from "../core/tools/aidlc-routes.ts";
++const schema = z.strictObject({ schemaVersion: z.literal(1), modules: z.array(z.string().regex(/^tools\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]+\.ts$/)) });
++export type RuntimeModules = { readonly status: "ok"; readonly modules: readonly string[] } | { readonly status: "invalid"; readonly problems: readonly string[] };
++export const decodeRuntimeModules = ({ text, entrypoints }: { readonly text: string; readonly entrypoints: readonly string[] }): RuntimeModules => {
++  try {
++    const parsed = schema.safeParse(JSON.parse(text));
++    if (!parsed.success) return { status: "invalid", problems: ["runtime-modules.json requires schemaVersion 1 and canonical tools/*.ts module paths"] };
++    if (new Set(parsed.data.modules).size !== parsed.data.modules.length) return { status: "invalid", problems: ["runtime-modules.json module paths must be unique"] };
++    if (parsed.data.modules.some((path) => entrypoints.includes(path))) return { status: "invalid", problems: ["runtime-modules.json cannot classify a declared dispatcher or route tool as module-only"] };
++    return { status: "ok", modules: parsed.data.modules };
++  } catch { return { status: "invalid", problems: ["runtime-modules.json must contain valid JSON"] }; }
++};
++export const loadRuntimeModules = ({ coreRoot }: { readonly coreRoot: string }): RuntimeModules => {
++  try {
++    const declarationPath = join(coreRoot, "tools/data/runtime-modules.json");
++    if (!lstatSync(declarationPath).isFile()) return { status: "invalid", problems: ["runtime-modules.json must be a regular source file"] };
++    const parsed = decodeRuntimeModules({ text: readFileSync(declarationPath, "utf8"), entrypoints: ["tools/aidlc.ts", ...Object.values(TOOLS).map((tool) => `tools/${tool}`)] });
++    if (parsed.status === "invalid") return parsed;
++    return parsed.modules.every((path) => lstatSync(join(coreRoot, path)).isFile()) ? parsed : { status: "invalid", problems: ["runtime-modules.json declarations must identify existing regular source files"] };
++  } catch { return { status: "invalid", problems: ["runtime-modules.json and each declared module must exist as readable regular source files; restore or correct the source declarations"] }; }
++};
++export const separateRuntimeInventory = ({ files, modules }: { readonly files: readonly string[]; readonly modules: readonly string[] }): { readonly moduleFiles: readonly string[]; readonly legacyInvocationCandidates: readonly string[] } => ({ moduleFiles: files.filter((path) => modules.includes(path)), legacyInvocationCandidates: files.filter((path) => !modules.includes(path)) });

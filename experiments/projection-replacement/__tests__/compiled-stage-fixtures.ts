@@ -1,0 +1,16 @@
+import type { CompiledAgentStageCatalogue } from "../src/domain/compiled-agent-stages.ts";
+import type { SourceBasis, SourceOrigin } from "../src/domain/source-origin.ts";
+export const compiledArtifact: SourceOrigin = { source: { kind: "core", id: "framework" }, pin: "compiler-pin", path: ".claude/tools/data/stage-graph.json" };
+export const compiledBinding = { harness: "claude", directory: ".claude" } as const;
+export const coreStageBasis: SourceBasis = { source: { kind: "core", id: "framework" }, pin: "core-definition-pin" };
+export const pluginStageBasis: SourceBasis = { source: { kind: "plugin", id: "test-pro" }, pin: "plugin-definition-pin" };
+export const compiledSources = [coreStageBasis, pluginStageBasis];
+const leadKey = "lead_agent";
+export const nativeStageRow = Object.fromEntries([["slug", "test-pro-integration"], ["plugin", "test-pro"], ["mode", "pipeline"], [leadKey, "aidlc-quality-agent"], ["support_agents", ["test-pro-metrics-agent"]], ["reviewer", "aidlc-architecture-reviewer-agent"], ["outputs", "A native value: unrelated to the participation view"]]);
+export const compiledStageText = JSON.stringify([nativeStageRow]);
+export const compiledCatalogue: CompiledAgentStageCatalogue = { artifact: compiledArtifact, sources: compiledSources, stages: [{ origin: { kind: "compiled", artifact: compiledArtifact, definition: pluginStageBasis }, slug: "test-pro-integration", mode: "pipeline", lead: "aidlc-quality-agent", supports: ["test-pro-metrics-agent"], reviewer: "aidlc-architecture-reviewer-agent" }] };
+export const disabledStageText = JSON.stringify([{ ...nativeStageRow, enabled: false }]);
+export const duplicateStageText = JSON.stringify([nativeStageRow, { ...nativeStageRow, enabled: false }]);
+export const aliasedStageText = JSON.stringify([{ ...nativeStageRow, leadAgent: "another-agent" }]);
+export const missingNativeLeadText = JSON.stringify([Object.fromEntries(Object.entries({ ...nativeStageRow, leadAgent: "another-agent" }).filter(([key]) => key !== leadKey))]);
+export const futureModeText = JSON.stringify([{ ...nativeStageRow, mode: "agent-team" }]);

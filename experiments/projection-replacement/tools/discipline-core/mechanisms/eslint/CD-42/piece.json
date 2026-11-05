@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "discipline": "CD-42",
+  "mechanism": "eslint",
+  "clauses": [
+    {
+      "clause": "useless-else",
+      "settings": {
+        "pluginNamespace": "discipline-cd42",
+        "pluginModule": "cd42/cd42.eslint-plugin.ts",
+        "rule": "useless-else"
+      }
+    }
+  ]
+}

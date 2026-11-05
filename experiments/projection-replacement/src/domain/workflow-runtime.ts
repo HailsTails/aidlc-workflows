@@ -1,0 +1,13 @@
+import type { CompiledWorkflowSource } from "./workflow-compilation.ts";
+import type { DistributionSeed } from "./distribution-artifact.ts";
+import { planPreparedFileAdditions } from "./prepared-file-additions.ts";
+import { finding, sourceKey, type Outcome, type pathStatus } from "./model.ts";
+export type WorkflowRuntime = { readonly seed: DistributionSeed; readonly compiledPaths: readonly string[]; readonly addedPaths: readonly string[] };
+export const prepareWorkflowRuntime = ({ seed, workflow, mode, rules }: { readonly seed: DistributionSeed; readonly workflow: CompiledWorkflowSource; readonly mode: number; readonly rules: { readonly path: typeof pathStatus; readonly encode: (input: { readonly text: string }) => Uint8Array } }): Outcome<WorkflowRuntime> => {
+  const paths = ["stage-graph.json", "scope-grid.json"].map((name) => `${seed.binding.directory}/tools/data/${name}`);
+  const outputs = [workflow.graph, workflow.grid];
+  if (workflow.binding.harness !== seed.binding.harness || workflow.binding.directory !== seed.binding.directory) return { status: "invalid", findings: [finding({ code: "harness-mismatch", subject: "workflow-runtime", detail: "compiled workflow and native runtime must have the same harness binding" })] };
+  if (seed.basis.source.kind !== "core" || [workflow.compiler, ...outputs.map((output) => output.origin)].some((origin) => sourceKey(origin.source) !== sourceKey(seed.basis.source) || origin.pin !== seed.basis.pin) || workflow.compiler.path !== "core/tools/aidlc-graph.ts" || outputs.some((output, index) => output.origin.path !== paths[index])) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "workflow-runtime", detail: "core workflow compiler and its two declared outputs must match the native runtime source basis and destinations" })] };
+  const plan = planPreparedFileAdditions({ candidates: outputs.map((output) => ({ kind: "file", path: output.origin.path, body: output.text })), inventory: seed, mode, rules });
+  return plan.status === "invalid" ? plan : { status: "ok", value: { seed: { ...seed, files: [...seed.files, ...plan.value.additions] }, compiledPaths: paths, addedPaths: plan.value.additions.map((file) => file.path) } };
+};

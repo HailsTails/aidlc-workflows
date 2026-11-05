@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-1",
+  "mechanism": "audit",
+  "clauses": [
+    { "clause": "any-cast", "settings": { "module": "any-cast.ts" } }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "aidlc-domain-experiment",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test src examples tests scripts",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
+    "demo": "bun examples/reviewer.ts",
+    "preview:source": "bun --no-install examples/source-assembly.ts",
+    "disciplines": "node tools/discipline-core/core/check/check-command.ts --repo .",
+    "project:disciplines": "node tools/discipline-core/core/check/project-command.ts --repo .",
+    "lint": "node tools/discipline-core/node_modules/eslint/bin/eslint.js src examples __tests__ scripts --max-warnings 0",
+    "evidence": "bun scripts/check-sensor-evidence.ts",
+    "check": "npm run evidence && npm run typecheck && npm test && npm run disciplines && npm run lint"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "bun-types": "1.3.14",
+    "@types/node": "22.19.17"
+  },
+  "dependencies": {
+    "zod": "4.4.3",
+    "js-yaml": "4.3.2"
+  }
+}
