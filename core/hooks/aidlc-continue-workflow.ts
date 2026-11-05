@@ -198,6 +198,7 @@ import {
   updateCopilotStopCount,
   SESSION_INTENT_HANDOFF_TTL_MS,
   harnessDir,
+  isAutonomousStage,
   unitGateStatus,
   readAuditShardEvents,
   unitLifecycleSnapshot,
@@ -1593,11 +1594,12 @@ function stageName(slug: string): string | null {
 
 // The reason for this tool: the plain line where the tool shows it to the
 // person (Claude Code, Codex, Copilot, Cursor); the line and then the agent's
-// step where the tool hides it, read from the installed tool name.
-function reasonForTheTool(line: string, projectDir: string): string {
+// step where the tool hides it, read from the installed tool name. A stage
+// nobody reads has no person to say the line to, so it keeps the plain line.
+function reasonForTheTool(line: string, projectDir: string, stage: string): string {
   let hides = false;
   try {
-    hides = hidesStopNote(runtimeHarnessName(projectDir));
+    hides = hidesStopNote(runtimeHarnessName(projectDir)) && !isAutonomousStage(findStageBySlug(stage));
   } catch {
     // An unreadable install keeps the plain line.
   }
@@ -2174,6 +2176,7 @@ return blockStop(reasonForTheTool(
     activeUnit,
   ),
   projectDir,
+  activeStage ?? currentStageSlug(stateContent),
 ));
 }
 

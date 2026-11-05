@@ -9891,6 +9891,7 @@ const GUARD_REMEDY_ANSWER_ROUTES: Record<GuardRemedyOp, GuardRemedyAnswerPhases 
   "reconfirm-summary": { afterPick: summaryRoute("decision"), afterAnswer: summaryRoute("answer") },
   "unset-unattended": null,
   "lower-fence": null,
+  "park-stage": null,
 };
 
 function lastEngineFlag(args: readonly string[], flag: string): string | null {
@@ -28775,6 +28776,23 @@ export function isAutonomousMode(stateContent: string | null): boolean {
   return !!stateContent && getField(stateContent, AUTONOMY_MODE_FIELD)?.trim() === "autonomous";
 }
 
+// A stage with no reader: its approval_mode says nobody answers it. The
+// Construction grant above is a separate state field that such a stage need not
+// set, so a stage's own text asks this, never isAutonomousMode.
+export function isAutonomousStage(stage: Pick<StageEntry, "approval_mode"> | undefined): boolean {
+  return stage?.approval_mode === "autonomous";
+}
+
+// A stage with no reader whose agent may also park it or reject it on its own.
+// Under the Construction grant a park and a spent-review reset stay the person's,
+// so that combination keeps the words that name them.
+export function stageRoutesItself(
+  stage: Pick<StageEntry, "approval_mode"> | undefined,
+  stateContent: string | null,
+): boolean {
+  return isAutonomousStage(stage) && !isAutonomousMode(stateContent);
+}
+
 export function isTeamUnitOwnership(stateContent: string | null): boolean {
   return !!stateContent && getField(stateContent, UNIT_OWNERSHIP_FIELD)?.trim() === "team";
 }
@@ -29124,6 +29142,9 @@ export const GUARD_REMEDY_OPS = [
   // way out is printed beside the thing that stopped them, rather than left in a
   // reference page. Logged, and back on for the next piece of work.
   "lower-fence",
+  // Nobody reads this stage, so the agent takes the refusal's own step or parks
+  // it. Only ever the conductor's own work, never put to a person.
+  "park-stage",
 ] as const;
 export type GuardRemedyOp = (typeof GUARD_REMEDY_OPS)[number];
 
@@ -30450,11 +30471,18 @@ export function guardRefusalStreakView(
   // and then only with the ways on that need them.
   const own = (remedy: GuardRemedy) => (remedy.interaction ?? remedyInteraction(remedy)) === "external-work";
   const theirs = refusal.remedies.filter((remedy) => !own(remedy));
+  const noReader = guardRefusalHasNoReader(projectDir, refusal);
   const ownWork = count === 1
-    ? guardRecoveryAskForRefusal({ ...refusal, remedies: refusal.remedies.filter(own) })
+    ? guardRecoveryAskForRefusal(
+        { ...refusal, remedies: refusal.remedies.filter(own) },
+        noReader ? guardNoReaderQuestion(refusal) : undefined,
+      )
     : null;
   if (ownWork !== null) {
     return { count, signature, record, ask: { ...ownWork, agent_work: true } };
+  }
+  if (noReader) {
+    return { count, signature, record, ask: guardParkAskForRefusal(refusal, codes) };
   }
   const ask = guardRecoveryAskForRefusal({ ...refusal, remedies: theirs });
   if (ask !== null) {
@@ -30481,6 +30509,47 @@ export function guardRefusalStreakView(
       signature,
       atCap: count > GUARD_REFUSAL_STREAK_CAP,
     }),
+  };
+}
+
+// Nobody reads a stage that routes itself, so a way on that needs a person has
+// nobody to reach. A team Unit gate keeps its owner, and an unreadable workflow
+// keeps the ask.
+function guardRefusalHasNoReader(projectDir: string, refusal: GuardRefusal): boolean {
+  try {
+    const stateContent = readStateFile(projectDir);
+    return stageRoutesItself(findStageBySlug(refusal.stage), stateContent) &&
+      !(refusal.unit && isTeamUnitOwnership(stateContent));
+  } catch {
+    return false;
+  }
+}
+
+// What a stage nobody reads gets instead of a question: the refusal as the
+// conductor's own work, so no turn ends waiting on a reply that cannot come.
+function guardNoReaderQuestion(refusal: GuardRefusal): string {
+  return `${guardRefusalTarget(refusal)} cannot go ahead, and nobody reads this stage.`;
+}
+
+function guardParkAskForRefusal(refusal: GuardRefusal, codes: string[]): GuardRecoveryAskData {
+  const why = refusal.userMessage.trim();
+  return {
+    kind: "ask",
+    ask_type: GUARD_RECOVERY_ASK_TYPE,
+    response_route: "execute-remedy",
+    question: guardNoReaderQuestion(refusal),
+    stage: refusal.stage,
+    ...(refusal.unit ? { unit: refusal.unit } : {}),
+    reason_codes: codes,
+    agent_work: true,
+    remedies: [{
+      op: "park-stage",
+      action: `Take the step this refusal names if it is this stage's own. Otherwise park it with ` +
+        `\`${aidlcToolInvocation("orchestrate")} park\`, naming this refusal as the blocker.${why ? ` ${why}` : ""}`,
+      interaction: "external-work",
+      requiresHuman: false,
+      executableNow: true,
+    }],
   };
 }
 
@@ -37446,11 +37515,12 @@ function waitAtErrorEmitSelectionBarrier(selection: WorkflowSelection): void {
 // another checkout's path, on stderr while keeping the committed audit portable.
 // `agentGuidance`: the message is the agent's next step, so callers hand it to
 // the agent instead of the person: the person's question is still open, or the
-// person already decided and the agent records what they chose.
+// person already decided and the agent records what they chose, or nobody reads
+// the stage and the step is the agent's own.
 export type EmitErrorMessage = string | {
   message: string;
   auditMessage: string;
-  agentGuidance?: "question-open" | "person-decided" | "fix-sensor-findings";
+  agentGuidance?: "question-open" | "person-decided" | "fix-sensor-findings" | "stage-step";
 };
 
 export function emitError(
@@ -39273,6 +39343,27 @@ export const ENGINE_ERROR_RELAY_NOTE =
   "Do not repeat or reword it, and do not retry or work around it; end your turn now.";
 
 /**
+ * The note for `projectDir`'s current stage. A stage nobody reads gets the same
+ * prohibition without the claim that a person saw the error, and the park that
+ * hands the work on, since a turn ended here reaches nobody. Without that
+ * sentence the skills' `error` rule prints the message, which suits a log. An
+ * unreadable workflow keeps the plain note.
+ */
+export function engineErrorRelayNote(projectDir: string): string {
+  try {
+    const stateContent = readStateFile(projectDir);
+    const activeStage = readActiveDirectiveMarker(projectDir, stateContent)?.stage;
+    const stage = findStageBySlug(activeStage ?? getField(stateContent, "Current Stage")?.trim() ?? "");
+    if (!stageRoutesItself(stage, stateContent)) return ENGINE_ERROR_RELAY_NOTE;
+    return "AI-DLC: nobody reads this stage, so nobody will answer this engine error. " +
+      `Do not retry or work around it; park the work with \`${aidlcToolInvocation("orchestrate")} park\`, ` +
+      "naming this error as the blocker, then end your turn.";
+  } catch {
+    return ENGINE_ERROR_RELAY_NOTE;
+  }
+}
+
+/**
  * The fixed line above a relayed message, in the plain voice every
  * user-facing message uses. Engine errors can quote values from the project
  * (a scope name, a path, a setting), so the warning keeps its own words and
@@ -39292,13 +39383,14 @@ export function engineErrorRelayText(message: string): string {
 export function engineErrorRelayLine(
   message: string,
   harness: string = runtimeHarnessName(),
+  note: string = ENGINE_ERROR_RELAY_NOTE,
 ): string | null {
   if (!ENGINE_ERROR_RELAY_HARNESSES.has(harness)) return null;
   return `${JSON.stringify({
     systemMessage: engineErrorRelayText(message),
     hookSpecificOutput: {
       hookEventName: "PostToolUse",
-      additionalContext: ENGINE_ERROR_RELAY_NOTE,
+      additionalContext: note,
     },
   })}\n`;
 }
@@ -39318,8 +39410,8 @@ export function hookContextLine(event: "SessionStart" | "UserPromptSubmit", cont
 }
 
 /** Hand an engine `error` directive's exact message to the human where possible. */
-export function writeEngineErrorRelay(message: string): void {
-  const line = engineErrorRelayLine(message);
+export function writeEngineErrorRelay(message: string, note: string): void {
+  const line = engineErrorRelayLine(message, runtimeHarnessName(), note);
   if (line !== null) process.stdout.write(line);
 }
 

@@ -450,6 +450,7 @@ export const GUARD_REMEDY_WORDING = {
       `I'll turn ${c.fence ? `the ${checkWords(c.fence)}` : "this"} check off for this piece of work. ` +
       "It is recorded, and it comes back on for the next piece of work.",
   }),
+  "park-stage": null,
 } satisfies Record<string, GuardRemedyWording>;
 
 // A check as the person knows it ("review freeze", "reviewer read scope"), as

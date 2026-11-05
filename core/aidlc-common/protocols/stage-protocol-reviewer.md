@@ -274,7 +274,7 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
    brief below with `Why now: Re-check after the artifact changed.` If that
    recovery receipt is invalidated again, request no further review. On an
    interactive stage, present the recovery-spent refusal to the human; only
-   Request Changes (`GATE_REJECTED`) resets the attempt.
+   Request Changes (`GATE_REJECTED`) resets the attempt. On a stage whose `directive.approval_mode` is `autonomous`, nobody reads that refusal: report `rejected` with `--reason` naming what changed, which records the same reset, then run the review again.
 
    **A review the person asks for.** When the person asks for a review of a
    stage, or of a Unit they already approved, record it through AI-DLC the
@@ -373,8 +373,8 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
    becomes a revision. If a reviewed output, `source-manifest.json`, or
    claimed source path was written after the terminal receipt and voided it,
    the engine permits exactly one recovery request at the next ordinal; record
-   its verdict, stop editing those same surfaces, and present the gate using
-   the Review brief with `Why now: Re-check after the artifact changed.`
+   its verdict, stop editing those same surfaces, and clear the lifecycle gate according to directive.approval_mode: present the gate using
+   the Review brief with `Why now: Re-check after the artifact changed.`, or report approved through the engine for an autonomous stage.
 
    **On an `adversarial` review**, branch on the verdict:
    - **READY** → the receipt is terminal (above); run the §13 learnings ritual only when `directive.protocol_modules` lists `learnings`, then clear the lifecycle gate according to directive.approval_mode: present the required Review brief for human approval, or report approved through the engine for an autonomous stage
@@ -382,8 +382,10 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
      - Increment review iteration counter
      - Re-invoke the stage's lead agent ALONE, dispatched per `directive.mode` (inline in your context, or as a subagent on the dispatched modes). On an ensemble stage (pipeline/mob) the room or chain is NOT re-convened - review findings are artifact defects and the lead owns the artifacts; the repair loop is lead-reviewer ping-pong (`stage-protocol-ensemble.md` §5). The builder addresses the findings and updates the artifact.
      - Return to step 1 (re-invoke reviewer)
-   - **NOT-READY** and iterations exhausted:
+   - **NOT-READY** and iterations exhausted, on a human stage:
      - Proceed to the approval gate using the required Review brief above, with the unresolved findings table and `Why now: Revision re-checked.` The separate SAY sentence for exhausted rounds remains the only narration before that gate.
+   - **NOT-READY** and iterations exhausted, on a stage whose `directive.approval_mode` is `autonomous`:
+     - There is no gate to present and an unresolved review is not an approval. Report `rejected` with `--reason` naming the open findings, which starts a fresh review attempt, or park the stage naming them when they cannot be resolved.
 
 The reviewer also re-runs on the Part 0 revision path: when a human rejection
 leads to a revision that changes a reviewed output or bound question content, re-run this step

@@ -211,6 +211,7 @@ import {
   unitScopedLifecycleFloors,
   latestReviewRecordRefs,
   isAutonomousConstructionGate,
+  isAutonomousStage,
   isConstructionSwarmEnabled,
   isKillSwitchSource,
   installedHarnessName,
@@ -1977,10 +1978,10 @@ function narrateStageEntry(
     // Said again wherever the work is picked up, by someone who may not have
     // approved it, so it names the plan, not who approved it.
     const plan = stateContent && getField(stateContent, PLAN_FIELD) ? "the approved plan" : `the ${scope} plan`;
-    return (
-      `Starting ${plan} for this project. First step is ${stageName}, ` +
-      `and I will stop for your review before anything is final.`
-    );
+    const opening = `Starting ${plan} for this project. First step is ${stageName}`;
+    return isAutonomousStage(node)
+      ? `${opening}.`
+      : `${opening}, and I will stop for your review before anything is final.`;
   }
   // Entering the build phase names a piece of vocabulary the user is about to
   // see in their own artifacts (bolt-plan.md, and every later beat of this
@@ -1997,7 +1998,9 @@ function narrateStageEntry(
   // A non-gating stage runs straight through, so the line says so rather than
   // leaving the user waiting for a prompt that is not coming.
   if (gate === false) {
-    return `Next up: ${stageName}. This one runs through without needing your input.`;
+    return isAutonomousStage(node)
+      ? `Next up: ${stageName}.`
+      : `Next up: ${stageName}. This one runs through without needing your input.`;
   }
   // Who is in the room. On an inline stage the session adopts the lead's
   // perspective and any supports as further perspectives, and that is worth one
@@ -12823,8 +12826,9 @@ function validGuardRecoveryAsk(
 // envelope is read, never shown. A decision the person has not made is the
 // agent's next step, handed to it with the question still open, so the turn
 // may end there; one the person already made (another pick, their own words)
-// is the agent's to record now. Anything else stops the workflow with the
-// tool's plain words.
+// is the agent's to record now, and a stage nobody reads has its own step to
+// take, with no question to hold open. Anything else stops the workflow with
+// the tool's plain words.
 function stateRefusalDirective(lead: string, question: string, detail: string): PrintDirective | ErrorDirective {
   let text = detail;
   let agentGuidance: unknown = null;
@@ -12846,7 +12850,7 @@ function stateRefusalDirective(lead: string, question: string, detail: string): 
         "Show the question again if it is not on screen, and never answer it for the person.",
     );
   }
-  if (agentGuidance === "person-decided") return printDirective(text);
+  if (agentGuidance === "person-decided" || agentGuidance === "stage-step") return printDirective(text);
   if (agentGuidance === "fix-sensor-findings") {
     return { ...printDirective(text), agent_guidance: "fix-sensor-findings" };
   }
@@ -13298,7 +13302,7 @@ function checkPipelineLinkEvidence(
     message:
       `${refusal}: ${missing.join(", ")}. ` +
       `Re-run \`${aidlcToolInvocation("orchestrate")} next${singleRun ? ` --single --stage ${slug}` : ""}\` ` +
-      `and dispatch the missing pipeline links in their declared order, carrying the human's revision feedback. ` +
+      `and dispatch the missing pipeline links in their declared order, carrying ${isAutonomousStage(node) ? "the rejection reason" : "the human's revision feedback"}. ` +
       (guardPolicyAcceptsChanges(pd)
         ? ""
         : "Rejection starts a new attempt: earlier scans and receipts cannot certify this revision, even for a targeted artifact edit. ") +
@@ -14708,7 +14712,8 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       if (stageCheckbox.state === "revising") {
         emit(errorDirective(
           `Stage "${slug}" is being revised, so its gate is shown again with \`${aidlcToolInvocation("orchestrate")} ` +
-            `report --stage ${shellArg(slug)} --result revised\`: run it, then ask the person the approval question.`,
+            `report --stage ${shellArg(slug)} --result revised\`: run it` +
+            (isAutonomousStage(node) ? "." : ", then ask the person the approval question."),
         ));
         return;
       }
@@ -14802,7 +14807,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
           : flags.result === "rejected" && node.mode === "pipeline"
           ? `Recorded rejected for "${slug}". The rejection starts a new pipeline attempt; prior receipts no longer apply. ` +
             `Re-run \`${aidlcToolInvocation("orchestrate")} next\`, then dispatch every missing link in ` +
-            `directive.pipeline order with the exact human feedback. Each link must perform fresh work and return before its ` +
+            `directive.pipeline order with ${isAutonomousStage(node) ? "the rejection reason" : "the exact human feedback"}. Each link must perform fresh work and return before its ` +
             `new receipt is recorded. Preserve the configured topology and reviewer policy; a targeted artifact edit does not ` +
             `permit the conductor to replace the pipeline or reuse its previous handoffs. Report revised only after the fresh chain completes.` +
             personsFeedbackSentence(personsFeedbackFromToolOutput(res.stdout))
@@ -14830,7 +14835,8 @@ function handleReport(args: string[], projectDir: string | undefined): void {
         const folder = unitFolders && !unit
           ? ""
           : commonFolder(resolveProduces(node, unitFolders ? unit : null, engineRelativeRecordDir(pd), codekbCtxFor(pd)));
-        if (folder) gateReply.narration = `${node.name} is ready for your review: what it produced is in ${folder}/.`;
+        const readiness = isAutonomousStage(node) ? "is ready" : "is ready for your review";
+        if (folder) gateReply.narration = `${node.name} ${readiness}: what it produced is in ${folder}/.`;
       }
     }
     emit(gateReply);

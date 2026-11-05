@@ -1396,7 +1396,7 @@ closed `op` from `GUARD_REMEDY_OPS` in `aidlc-lib.ts` (`present-approval-gate`,
 `record-verdict`, `retry-pending`, `request-changes`, `finish-revision`, `redo-jump`,
 `restore-or-jump`, `restart-stage`, `redo-unit-step`, `reopen-unit-step`,
 `review-advisory-gate`, `change-scope`, `restore-scope`, `abort-bolt`, `record-unit-completion`, `repair-source-boundary`, `reconfirm-summary`,
-`unset-unattended`, `lower-fence`). Routing decisions compare `op` and never the
+`unset-unattended`, `lower-fence`, `park-stage`). Routing decisions compare `op` and never the
 remedy sentence; the directive contract refuses an unknown `op`. `lower-fence`
 is the one remedy a refusal adds LAST, and only when the refusal is a fence
 holding. It is a `command` choice: its `operation` is

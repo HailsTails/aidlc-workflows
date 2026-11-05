@@ -128,6 +128,8 @@ import {
   constructionSkeletonOn,
   isConstructionSwarmEnabled,
   isAutonomousMode,
+  isAutonomousStage,
+  stageRoutesItself,
   isAutonomousSwarmStage,
   isTeamUnitOwnership,
   isNonAnswer,
@@ -779,13 +781,13 @@ class StateAuditUnavailableError extends StateCommandError {}
 // JSON marks it and the router hands it to the agent: with the question still
 // open, or, when the person's own choice is on record, to record that choice.
 class DecisionNotMadeError extends StateCommandError {
-  constructor(msg: string, readonly personDecided: boolean) {
+  constructor(msg: string, readonly personDecided: boolean, readonly noReader: boolean) {
     super(msg);
   }
 }
 
-function refuseForAgent(msg: string, options: { personDecided?: boolean } = {}): never {
-  throw new DecisionNotMadeError(msg, options.personDecided === true);
+function refuseForAgent(msg: string, options: { personDecided?: boolean; noReader?: boolean } = {}): never {
+  throw new DecisionNotMadeError(msg, options.personDecided === true, options.noReader === true);
 }
 
 function assertWorkflowNotArchived(content: string, operation: string): void {
@@ -1043,7 +1045,7 @@ export function main(argv: string[]): void {
       exitWithError({
         message: e.message,
         auditMessage: e.message,
-        agentGuidance: e.personDecided ? "person-decided" : "question-open",
+        agentGuidance: e.noReader ? "stage-step" : e.personDecided ? "person-decided" : "question-open",
       });
     }
     if (e instanceof StateCommandError && e.agentGuidance) {
@@ -3713,6 +3715,7 @@ function enforceBlockingGateSensors(
   reportResult: "awaiting-approval" | "revised",
   issues: BlockingSensorIssue[],
   overrideRequested: boolean,
+  teamGate: boolean,
   overrideInput?: string,
 ): void {
   if (issues.length === 0) return;
@@ -3753,15 +3756,19 @@ function enforceBlockingGateSensors(
       `${sensorIds.join(", ")}. Detail paths: ${detailPaths.join(", ") || "none"}. ` +
       `Reasons: ${reasons.join("; ")}. Fix the findings within the already authorized stage scope, then retry ` +
       `${aidlcToolInvocation("orchestrate")} report --stage ${slug} --result ${reportResult} ` +
-      `without an override. If correction requires new authority or cannot proceed, explain the blocker and ask the person. ` +
-      `Only if the person requests an override, first run ` +
-      `${aidlcToolInvocation("log")} decision --stage ${slug} ` +
-      `--decision "${BLOCKING_SENSOR_OVERRIDE_DECISION}" --options ` +
-      `"${BLOCKING_SENSOR_OVERRIDE_OPTIONS.join(",")}", present those choices, and ` +
-      `after the human selects "${BLOCKING_SENSOR_OVERRIDE_CHOICE}" record it with ` +
-      `${aidlcToolInvocation("log")} answer. Then retry: ${aidlcToolInvocation("orchestrate")} ` +
-      `report --stage ${slug} --result ${reportResult} --override-blocking-sensors ` +
-      `--user-input "${BLOCKING_SENSOR_OVERRIDE_CHOICE}". Autonomous mode cannot override.`,
+      `without an override. ` +
+      (!teamGate && stageRoutesItself(findStageBySlug(slug), stateContent)
+        ? "If correction requires new authority or cannot proceed, park this stage and name the blocker: " +
+          `\`${aidlcToolInvocation("orchestrate")} park\`.`
+        : "If correction requires new authority or cannot proceed, explain the blocker and ask the person. " +
+          "Only if the person requests an override, first run " +
+          `${aidlcToolInvocation("log")} decision --stage ${slug} ` +
+          `--decision "${BLOCKING_SENSOR_OVERRIDE_DECISION}" --options ` +
+          `"${BLOCKING_SENSOR_OVERRIDE_OPTIONS.join(",")}", present those choices, and ` +
+          `after the human selects "${BLOCKING_SENSOR_OVERRIDE_CHOICE}" record it with ` +
+          `${aidlcToolInvocation("log")} answer. Then retry: ${aidlcToolInvocation("orchestrate")} ` +
+          `report --stage ${slug} --result ${reportResult} --override-blocking-sensors ` +
+          `--user-input "${BLOCKING_SENSOR_OVERRIDE_CHOICE}". Autonomous mode cannot override.`),
     "fix-sensor-findings",
   );
 }
@@ -4927,6 +4934,7 @@ function staleReviewPreconditionError(
   content: string,
   stage: {
     slug: string;
+    approval_mode?: "human" | "autonomous";
     phase: string;
     for_each?: string;
     reviewer?: string;
@@ -4969,9 +4977,12 @@ function staleReviewPreconditionError(
       `--reviewer ${reviewer} --iteration <next ordinal>\`, then record the verdict ` +
       `with the same command plus \`--verdict <READY|NOT-READY>\`. After that ` +
       `review, stop editing this stage's output documents. If the recovery pass was already ` +
-      `spent, present the situation to the human at the approval gate; a human ` +
-      `Request Changes decision resets the review attempt. Do not record a rejection ` +
-      `on the human's behalf.`;
+      (stageRoutesItself(stage, content)
+        ? "spent, report this stage rejected with --reason naming what changed; that rejection resets the " +
+          "review attempt."
+        : "spent, present the situation to the human at the approval gate; a human " +
+          "Request Changes decision resets the review attempt. Do not record a rejection " +
+          "on the human's behalf.");
   refuseStateGuard(pd, content, stage, {
     code: "ARTIFACT_REVIEW_STALE",
     blockedAction: action,
@@ -6043,6 +6054,7 @@ function handleGateStart(args: string[]): void {
     "awaiting-approval",
     gateSensorEvaluation.issues,
     overrideBlockingSensors,
+    preflightTeamGate !== null,
     overrideInput,
   );
 
@@ -6208,6 +6220,8 @@ function verifyApprovalDecision(
     (isAutonomousConstructionGate(content, stage, pd) ||
       (stage.approval_mode === "autonomous" && !userInput?.trim()));
   let approvalInput = userInput?.trim();
+  const noReader = isAutonomousStage(stage) && !forceHuman;
+  const noReaderStep = "Nobody answers this stage, so report approved without --user-input.";
   // A later stage the person's one approval listed stands on that reply.
   const together = autonomousDecision || forceHuman || humanPresenceGuardDisabled()
     ? null
@@ -6221,9 +6235,13 @@ function verifyApprovalDecision(
       `Cannot approve "${stage.slug}" because --user-input says the choice came from the ` +
         `assistant (${approvalAuthorship.category}: "${approvalAuthorship.phrase}"). ` +
         "This check looks for explicit assistant provenance; it does not prove who wrote " +
-        "the reply. Approval is the human's decision: end the turn and let them answer, " +
-        "and if something is blocking completion, explain that blocker at the gate in " +
-        "project terms instead of recording their decision.",
+        "the reply. " +
+        (noReader
+          ? noReaderStep
+          : "Approval is the human's decision: end the turn and let them answer, " +
+            "and if something is blocking completion, explain that blocker at the gate in " +
+            "project terms instead of recording their decision."),
+      { noReader },
     );
   }
   if (
@@ -6244,8 +6262,11 @@ function verifyApprovalDecision(
     if (approvalInput && isNonAnswer(approvalInput)) {
       refuseForAgent(
         `Cannot approve "${stage.slug}" because the reply ${formatReceivedReply(approvalInput)} is ` +
-          "cancellation boilerplate, not a decision. Re-present the original held gate with every offered " +
-          "choice and wait for the human to choose one.",
+          "cancellation boilerplate, not a decision. " +
+          (noReader
+            ? noReaderStep
+            : "Re-present the original held gate with every offered choice and wait for the human to choose one."),
+        { noReader },
       );
     }
     const pick = personsLatestGatePickSafe(pd, stage.slug, unit, revisionCount >= 3);
@@ -6266,9 +6287,13 @@ function verifyApprovalDecision(
     !humanRepliedSinceGate(pd)
   ) {
     refuseForAgent(
-      `Cannot approve "${stage.slug}" because no new human reply has been received for ` +
-        "this approval question. Wait for the human to type their choice, then retry the " +
-        `approval.${commandTurnHint(pd)}${unattendedHumanPresenceHint(pd)}`,
+      noReader
+        ? `Cannot approve "${stage.slug}" because --user-input names a choice and no human reply is on record. ` +
+            noReaderStep
+        : `Cannot approve "${stage.slug}" because no new human reply has been received for ` +
+            "this approval question. Wait for the human to type their choice, then retry the " +
+            `approval.${commandTurnHint(pd)}${unattendedHumanPresenceHint(pd)}`,
+      { noReader },
     );
   }
   // The conductor reports the choice the person made; a report that names none
@@ -6523,6 +6548,7 @@ function handleApprove(args: string[]): void {
       slug,
       "revised",
       backstopSensorEvaluation.issues,
+      false,
       false,
     );
     try {
@@ -6810,18 +6836,24 @@ function handleReject(args: string[]): void {
       ? conductorFeedback
       : undefined;
   if (personsWords !== null) feedback = personsWords;
+  const noReader = !teamGate && isAutonomousStage(stage);
+  const noReaderStep = "Nobody answers this stage, so pass the reason this stage needs revising.";
   if (!feedback) {
     refuseForAgent(
       `Refusing to reject "${slug}": Request Changes requires nonblank revision feedback in ` +
-        "--feedback (or --reason through aidlc-orchestrate.ts report). Ask \"What should change?\", " +
-        "end the turn, and pass their answer.",
+        "--feedback (or --reason through aidlc-orchestrate.ts report). " +
+        (noReader ? noReaderStep : "Ask \"What should change?\", end the turn, and pass their answer."),
+      { noReader },
     );
   }
   if (isNonAnswer(feedback)) {
     refuseForAgent(
       `Refusing to reject "${slug}": revision feedback ${formatReceivedReply(feedback)} is ` +
-        "cancellation boilerplate. Re-present the original held gate with every offered choice " +
-        "and wait for the human to choose one.",
+        "cancellation boilerplate. " +
+        (noReader
+          ? noReaderStep
+          : "Re-present the original held gate with every offered choice and wait for the human to choose one."),
+      { noReader },
     );
   }
   if (feedbackStatus === "mismatch") {
@@ -7057,6 +7089,7 @@ function handleRevise(args: string[]): void {
     "revised",
     gateSensorEvaluation.issues,
     overrideBlockingSensors,
+    preflightTeamGate !== null,
     overrideInput,
   );
 

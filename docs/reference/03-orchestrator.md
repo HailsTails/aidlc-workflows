@@ -1081,7 +1081,8 @@ plan change made during the stage is in it), else the run-stage directive's
 conductor never infers the next stage. The same reply's `narration` says where
 the stage's output is ("<Stage> is ready for your review: what it produced is
 in <folder>/."), so the person has a pointer even when no summary comes before
-the question.
+the question. A stage whose `approval_mode` is `autonomous` has no reader, so
+its line reads "<Stage> is ready: what it produced is in <folder>/.".
 
 ### Conditional 3-Option Gate (Ideation and Inception only)
 
