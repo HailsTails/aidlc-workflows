@@ -3479,7 +3479,7 @@ function handleReview(args: string[]): void {
               flags.stage,
               pass,
               budget,
-              stageRoutesItself(findStageBySlug(flags.stage), state) ? spentReviewStep(pd, state, flags.stage) : null,
+              isAutonomousStage(findStageBySlug(flags.stage)) ? spentReviewStep(pd, state, flags.stage) : null,
             ),
           );
         }

@@ -581,6 +581,20 @@ describe("the one agent reset", () => {
     expect(audit({ fixture })).not.toContain("**Decided By**");
   });
 
+  test("a second reset through report names the park and holds no question open", () => {
+    const fixture = openStage({ approvalMode: "autonomous" });
+    appendAuditEntry("GATE_REJECTED", agentRejection, fixture.project);
+    const refused = runTool({
+      tool: ORCHESTRATE_TOOL,
+      args: ["report", "--stage", "feasibility", "--result", "rejected", "--reason", "Spent."],
+      fixture,
+      extra: { AIDLC_SKIP_REVIEWER_GATE_GUARD: "1" },
+    });
+    const said = JSON.stringify(lastDirective(refused.stdout));
+    expect(said).toContain("used its one agent reset");
+    expect(said).not.toContain("is still open");
+  });
+
   test("a second reset is refused and names the park", () => {
     const fixture = openStage({ approvalMode: "autonomous" });
     appendAuditEntry("GATE_REJECTED", agentRejection, fixture.project);
@@ -795,6 +809,9 @@ describe("the one agent reset", () => {
     const reopened = runTool({ tool: JUMP_TOOL, args: reopenUnit, fixture });
     expect(reopened.status, reopened.out).toBe(0);
     expect(audit({ fixture })).toContain("**Decided By**: person");
+    const again = runTool({ tool: JUMP_TOOL, args: reopenUnit, fixture });
+    expect(again.status).not.toBe(0);
+    expect(again.out).toContain("only a person's Request Changes");
   });
 
   test("under the grant, a spent recovery with no turn since the gate stays refused and spends nothing", () => {
@@ -802,8 +819,14 @@ describe("the one agent reset", () => {
     const reject = ["reject", "requirements-analysis", "--reason", "Spent."];
     const rejected = runTool({ tool: STATE_TOOL, args: reject, fixture });
     expect(rejected.status).not.toBe(0);
-    expect(rejected.out).toContain("its recovery review has already been used");
+    expect(rejected.out).toContain("set-autonomy --mode gated");
     expect(stageAgentResetUsed(fixture.project, "requirements-analysis")).toBe(false);
+    const unattended = { AIDLC_UNATTENDED: "1" };
+    const gated = runTool({ tool: BOLT_TOOL, args: ["set-autonomy", "--mode", "gated"], fixture, extra: unattended });
+    expect(gated.status, gated.out).toBe(0);
+    const named = runTool({ tool: STATE_TOOL, args: reject, fixture, extra: unattended });
+    expect(named.status, named.out).toBe(0);
+    expect(stageAgentResetUsed(fixture.project, "requirements-analysis")).toBe(true);
   });
 
   test("under the grant, a spent recovery keeps the check on who wrote the feedback", () => {
