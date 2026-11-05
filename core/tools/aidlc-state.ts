@@ -130,6 +130,11 @@ import {
   isAutonomousMode,
   isAutonomousStage,
   stageRoutesItself,
+  stageAgentResetUsed,
+  personRequestedChanges,
+  spentReviewStep,
+  AGENT_DECIDED_FIELD,
+  PERSON_DECIDED_FIELD,
   isAutonomousSwarmStage,
   isTeamUnitOwnership,
   isNonAnswer,
@@ -4978,8 +4983,7 @@ function staleReviewPreconditionError(
       `with the same command plus \`--verdict <READY|NOT-READY>\`. After that ` +
       `review, stop editing this stage's output documents. If the recovery pass was already ` +
       (stageRoutesItself(stage, content)
-        ? "spent, report this stage rejected with --reason naming what changed; that rejection resets the " +
-          "review attempt."
+        ? `spent: ${spentReviewStep(pd, content, slug)}`
         : "spent, present the situation to the human at the approval gate; a human " +
           "Request Changes decision resets the review attempt. Do not record a rejection " +
           "on the human's behalf.");
@@ -6865,10 +6869,15 @@ function handleReject(args: string[]): void {
   }
 
   const autonomousMode = isAutonomousMode(content);
+  const stageRoutesOwnReset = !teamGate && isAutonomousStage(stage);
+  const agentResetUsed = stageRoutesOwnReset && stageAgentResetUsed(pd, slug);
+  const personRequested = stageRoutesOwnReset && personRequestedChanges(pd, slug);
+  if (agentResetUsed && !personRequested) {
+    refuseForAgent(`Refusing to reject "${slug}": ${spentReviewStep(pd, content, slug)}`, { noReader });
+  }
   const recoveryResetNeedsHuman =
     !teamGate &&
-    autonomousMode &&
-    reviewRecoverySpentInCurrentAttempt(pd, content, stage);
+    (agentResetUsed || (autonomousMode && reviewRecoverySpentInCurrentAttempt(pd, content, stage)));
 
   const rejectionNeedsHumanTurn =
     recoveryResetNeedsHuman ||
@@ -7003,6 +7012,11 @@ function handleReject(args: string[]): void {
     const rejFields: Record<string, string> = {
       Stage: slug,
       Feedback: feedback,
+      ...(personRequested
+        ? PERSON_DECIDED_FIELD
+        : stageRoutesOwnReset || !rejectionNeedsHumanTurn
+          ? AGENT_DECIDED_FIELD
+          : {}),
       ...(conductorSummary ? { [CONDUCTOR_SUMMARY_FIELD]: conductorSummary } : {}),
       ...priorAcceptedSourceFields(pd, stage),
     };

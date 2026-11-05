@@ -191,6 +191,9 @@ describe("t261 public audit CLI refuses authority-bearing receipts", () => {
     "WORKTREE_CREATED",
     "WORKTREE_MERGED",
     "WORKTREE_DISCARDED",
+    "STAGE_JUMPED",
+    "STAGE_STARTED",
+    "WORKFLOW_STARTED",
   ];
 
   test("append refuses every protected event type", () => {

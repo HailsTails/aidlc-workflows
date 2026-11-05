@@ -734,7 +734,11 @@ describe("t115 routed skip (report -> aidlc-state skip --route)", () => {
         "--project-dir",
         p,
       ],
-      { timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS), encoding: "utf-8" },
+      {
+        timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+        encoding: "utf-8",
+        env: { ...process.env, AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1" },
+      },
     );
     expect(started.status, `${started.stdout}${started.stderr}`).toBe(0);
 
@@ -1316,7 +1320,11 @@ function appendAudit(event: string, fields: Record<string, string>, p: string): 
   const res = spawnSync(
     BUN,
     [AUDIT_TOOL, "append", event, ...fieldArgs, "--project-dir", p],
-    { timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS), encoding: "utf-8" },
+    {
+      timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+      encoding: "utf-8",
+      env: { ...process.env, AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1" },
+    },
   );
   const stdout = res.stdout ?? "";
   return { status: res.status ?? -1, out: `${stdout}${res.stderr ?? ""}`, stdout };

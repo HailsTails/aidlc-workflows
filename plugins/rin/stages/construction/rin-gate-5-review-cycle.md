@@ -323,8 +323,10 @@ is no separate author lane, and reviewer≠author is satisfied by the Step-5
 subagent (agent separation), never by deferring to a future session. On
 NOT-READY within the iteration cap: route findings to the author leg (Step 5),
 then return to Step 3 with a FRESH reviewer subagent over the new head — never
-reuse a subagent across legs or rounds. On cap exhaustion (or a timebox hit
-mid-cycle): PARK the Slice (the never-strand protocol below), never a bare HOLD.
+reuse a subagent across legs or rounds. On cap exhaustion, take the stage's one
+agent reset if it is unused: report `rejected` with the honest cause, which starts
+a fresh review attempt. Once that reset is used (or on a timebox hit mid-cycle):
+PARK the Slice (the never-strand protocol below), never a bare HOLD.
 A residue in a stopping class on the active list
 (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`) parks with its
 pack, naming the class, or, where park is refused, has its pack recorded with

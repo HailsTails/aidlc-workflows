@@ -399,7 +399,7 @@ describe("t-audit-shard-identity: the Unit walk survives a copied audit file", (
     const started = spawnSync(
       BUN,
       [AUDIT, "append", "WORKFLOW_STARTED", "--field", "Scope=feature", "--project-dir", proj],
-      { encoding: "utf-8", env: env(), timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS) },
+      { encoding: "utf-8", env: { ...env(), AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1" }, timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS) },
     );
     expect(started.status, `${started.stdout}${started.stderr}`).toBe(0);
 

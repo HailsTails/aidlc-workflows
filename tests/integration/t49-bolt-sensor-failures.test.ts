@@ -180,6 +180,7 @@ function auditAppend(dir: string, event: string, fields: [string, string][]): vo
   spawnSync(BUN, [AUDIT_TOOL, "--project-dir", dir, "append", event, ...flagArgs], {
     cwd: dir,
     encoding: "utf-8",
+    env: { ...process.env, AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1" },
   });
 }
 

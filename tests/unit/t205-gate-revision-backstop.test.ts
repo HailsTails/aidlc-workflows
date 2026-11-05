@@ -163,7 +163,11 @@ function recordStageStarted(proj: string, slug: string): void {
   const r = spawnSync(
     BUN,
     [AUDIT, "append", "STAGE_STARTED", "--field", `Stage=${slug}`, "--project-dir", proj],
-    { timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS), encoding: "utf-8", env: process.env },
+    {
+      timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+      encoding: "utf-8",
+      env: { ...process.env, AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1" },
+    },
   );
   if ((r.status ?? -1) !== 0) {
     throw new Error(`recordStageStarted failed: ${r.stdout ?? ""}${r.stderr ?? ""}`);

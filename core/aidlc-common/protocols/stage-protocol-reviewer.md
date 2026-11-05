@@ -274,7 +274,7 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
    brief below with `Why now: Re-check after the artifact changed.` If that
    recovery receipt is invalidated again, request no further review. On an
    interactive stage, present the recovery-spent refusal to the human; only
-   Request Changes (`GATE_REJECTED`) resets the attempt. On a stage whose `directive.approval_mode` is `autonomous`, nobody reads that refusal: report `rejected` with `--reason` naming what changed, which records the same reset, then run the review again.
+   Request Changes (`GATE_REJECTED`) resets the attempt. On a stage whose `directive.approval_mode` is `autonomous`, nobody reads that refusal, and the stage has one agent reset: report `rejected` with `--reason` giving the cause, which the engine records as the agent's own, then run the review again. Once that reset is used the engine refuses another: park the stage naming the open findings, and only a person's Request Changes starts another attempt.
 
    **A review the person asks for.** When the person asks for a review of a
    stage, or of a Unit they already approved, record it through AI-DLC the
@@ -385,7 +385,7 @@ through normal recovery; do not rewrite receipts or assume a new receipt format.
    - **NOT-READY** and iterations exhausted, on a human stage:
      - Proceed to the approval gate using the required Review brief above, with the unresolved findings table and `Why now: Revision re-checked.` The separate SAY sentence for exhausted rounds remains the only narration before that gate.
    - **NOT-READY** and iterations exhausted, on a stage whose `directive.approval_mode` is `autonomous`:
-     - There is no gate to present and an unresolved review is not an approval. Report `rejected` with `--reason` naming the open findings, which starts a fresh review attempt, or park the stage naming them when they cannot be resolved.
+     - There is no gate to present and an unresolved review is not an approval. If the stage's one agent reset is unused, report `rejected` with `--reason` naming the open findings, which starts a fresh review attempt. Otherwise, or when the findings cannot be resolved, park the stage naming them.
 
 The reviewer also re-runs on the Part 0 revision path: when a human rejection
 leads to a revision that changes a reviewed output or bound question content, re-run this step

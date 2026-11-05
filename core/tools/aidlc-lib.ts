@@ -13896,22 +13896,119 @@ export function auditBlockField(block: string, fieldName: string): string | null
 
 export type GateRejectionOrigin =
   | { readonly kind: "human-decision" }
+  | { readonly kind: "agent-decision" }
   | { readonly kind: "machine-backfill" };
 
+// The row a reset carries when the engine required no person for it. A row
+// written before this field existed has no way to say so and reads as a person's.
+export const AGENT_DECIDED_FIELD = { "Decided By": "agent" } as const;
+export const PERSON_DECIDED_FIELD = { "Decided By": "person" } as const;
+
+function isAgentDecided(block: string): boolean {
+  return auditBlockField(block, "Decided By") === AGENT_DECIDED_FIELD["Decided By"];
+}
+
 export function decodeGateRejection(block: string): GateRejectionOrigin {
-  return auditBlockField(block, "Recovered") === "true"
-    ? { kind: "machine-backfill" }
-    : { kind: "human-decision" };
+  if (auditBlockField(block, "Recovered") === "true") return { kind: "machine-backfill" };
+  return isAgentDecided(block) ? { kind: "agent-decision" } : { kind: "human-decision" };
 }
 
 export function isAttemptBoundary(block: string): boolean {
   const origin = decodeGateRejection(block);
   switch (origin.kind) {
     case "human-decision":
+    case "agent-decision":
       return true;
     case "machine-backfill":
       return false;
   }
+}
+
+function isStageRejection(block: string, stageSlug: string): boolean {
+  return auditBlockField(block, "Event") === "GATE_REJECTED" &&
+    auditBlockField(block, "Stage") === stageSlug &&
+    auditBlockField(block, "Unit") === null &&
+    decodeGateRejection(block).kind !== "machine-backfill";
+}
+
+function isDecidedJumpTo(block: string, stageSlug: string): boolean {
+  return auditBlockField(block, "Event") === "STAGE_JUMPED" &&
+    auditBlockField(block, "Target") === stageSlug &&
+    auditBlockField(block, "Decided By") !== null;
+}
+
+function isEntryTo(block: string, stageSlug: string): boolean {
+  const event = auditBlockField(block, "Event");
+  return (event === "STAGE_STARTED" && auditBlockField(block, "Stage") === stageSlug) ||
+    (event === "STAGE_JUMPED" && auditBlockField(block, "Target") === stageSlug);
+}
+
+function auditRowsInOrder(
+  projectDir: string,
+  belongs: (block: string) => boolean,
+): readonly { block: string; timestamp: string }[] {
+  return readAllAuditShards(projectDir)
+    .replace(/\r\n/g, "\n")
+    .split(/\n---\n/)
+    .map((block, position) => ({ block, position, timestamp: auditBlockField(block, "Timestamp") ?? "" }))
+    .filter(({ block }) => belongs(block))
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.position - right.position);
+}
+
+function stageResetRows(projectDir: string, stageSlug: string): readonly { block: string; timestamp: string }[] {
+  return auditRowsInOrder(projectDir, (block) => isStageRejection(block, stageSlug) || isDecidedJumpTo(block, stageSlug));
+}
+
+// A stage that routes itself gets one reset the agent records for itself, so the
+// review cap still stops a stage that will not converge. A person's rejection
+// grants one more. A later reset, or a jump that would stand in for one, needs a
+// person.
+export function stageAgentResetUsed(projectDir: string, stageSlug: string): boolean {
+  const latest = stageResetRows(projectDir, stageSlug).at(-1);
+  return latest !== undefined && isAgentDecided(latest.block);
+}
+
+// A launch prompt can mint a human turn, and an agent can type any flag, so a
+// person's choice is read from the words the human-turn hook kept for their turn.
+// The words answer the attempt they were spoken in: they count only after this
+// stage's latest entry and reset, and a tie in the audit's seconds does not count.
+export function personRequestedChanges(projectDir: string, stageSlug: string): boolean {
+  const turn = latestPersonTurn(projectDir);
+  if (turn === null || turn.words === null || !/^request changes\b/i.test(turn.words.trim())) return false;
+  const latest = auditRowsInOrder(
+    projectDir,
+    (block) => isStageRejection(block, stageSlug) || isEntryTo(block, stageSlug),
+  ).at(-1);
+  return latest === undefined || latest.timestamp < turn.at;
+}
+
+// A jump onto a stage that has already been reviewed starts a new review attempt,
+// whatever direction the caller named. An approved stage is not a stage that
+// failed to converge, so going back to one is free.
+export function jumpResetsReview(
+  projectDir: string,
+  stateContent: string,
+  target: Pick<StageEntry, "slug" | "approval_mode">,
+): boolean {
+  return isAutonomousStage(target) &&
+    parseCheckboxes(stateContent).find((checkbox) => checkbox.slug === target.slug)?.state !== "completed" &&
+    readAllAuditShards(projectDir)
+      .replace(/\r\n/g, "\n")
+      .split(/\n---\n/)
+      .some((block) =>
+        auditBlockField(block, "Event") === "REVIEW_REQUESTED" && auditBlockField(block, "Stage") === target.slug);
+}
+
+// What an agent does on a stage nobody reads once its review attempt is spent.
+export function spentReviewStep(projectDir: string, stateContent: string, stageSlug: string): string {
+  if (stageAgentResetUsed(projectDir, stageSlug) && !personRequestedChanges(projectDir, stageSlug)) {
+    return `This stage has used its one agent reset. Park it with \`${aidlcToolInvocation("orchestrate")} park\`, ` +
+      "naming the open findings. Only a person's Request Changes starts another review attempt.";
+  }
+  const once = "That resets the review attempt once; after that the stage parks until a person requests changes.";
+  return guardLifecycleState(stateContent, stageSlug, undefined) === "revising"
+    ? `Restart this stage with \`${aidlcToolInvocation("jump")} execute --target ${stageSlug} --direction redo --reason "<the cause>"\`. ${once}`
+    : `Report this stage rejected with --reason giving the cause. ${once}`;
 }
 
 // The audit events that close a DECISION_RECORDED. `aidlc-log answer` answers
@@ -26645,7 +26742,7 @@ export function pickerAnswerNote(projectDir: string, details: string): string | 
 // The person's latest chat turn in this clone's ledger for the selected work:
 // when it was, and the words its chat kept right after it (null when the hook
 // kept none: a slash command, a picked option, an over-long message). Null when
-// no turn is on record. It only words a notice, so it never throws.
+// no turn is on record. It never throws: no turn reads as no person.
 export function latestPersonTurn(projectDir: string): { at: string; words: string | null } | null {
   try {
     const shardPath = auditFilePath(projectDir);
@@ -28784,8 +28881,9 @@ export function isAutonomousStage(stage: Pick<StageEntry, "approval_mode"> | und
 }
 
 // A stage with no reader whose agent may also park it or reject it on its own.
-// Under the Construction grant a park and a spent-review reset stay the person's,
-// so that combination keeps the words that name them.
+// Under the Construction grant a park stays the person's, so that combination
+// keeps the words that name it. The one agent reset is keyed on the stage alone:
+// the grant is an agent's command, so it cannot be what lifts that bound.
 export function stageRoutesItself(
   stage: Pick<StageEntry, "approval_mode"> | undefined,
   stateContent: string | null,
@@ -29662,6 +29760,9 @@ function lifecycleResetRemedies(
       input.teamGate?.resolved === true && input.unit
         ? ` for Unit "${input.unit}"`
         : "";
+    if (input.teamGate === undefined && guardStageRoutesItself(input.stage, input.stateContent)) {
+      return [spentReviewRemedy(reportStage)];
+    }
     if (input.humanAuthority.unattended) {
       return [
         {
@@ -29763,6 +29864,27 @@ function guardStageName(stage: string): string {
     return findStageBySlug(stage)?.name ?? stage;
   } catch {
     return stage;
+  }
+}
+
+// The way-on question must never fail to build, so an unreadable stage graph
+// keeps the words a person reads.
+function spentReviewRemedy(stage: string): GuardRemedy {
+  return {
+    op: "request-changes",
+    action:
+      `Report stage "${stage}" rejected with --reason giving the cause, which resets the review ` +
+      "attempt once. If this stage's one agent reset is used, park it and name the open findings.",
+    requiresHuman: false,
+    executableNow: true,
+  };
+}
+
+function guardStageRoutesItself(stage: string, stateContent: string): boolean {
+  try {
+    return stageRoutesItself(findStageBySlug(stage), stateContent);
+  } catch {
+    return false;
   }
 }
 
@@ -29926,17 +30048,19 @@ export function evaluateGuardRefusal(
         route: "orchestrate",
         args: ["next", ...(input.projectDir ? ["--project-dir", input.projectDir] : [])],
       }, { harnessDir: harnessDir() });
-      remedies.push({
-        op: "present-approval-gate",
-        action: checkpointUnit === null
-          ? "Present the unresolved review findings at the approval gate for the " +
-            "human instead of starting another review pass."
-          : `Present the unresolved review findings at unit "${checkpointUnit}"'s checkpoint ` +
-            `for the human instead of starting another review pass: run \`${showCheckpoint}\`, ` +
-            "which shows that checkpoint again, and ask it with the findings.",
-        requiresHuman: true,
-        executableNow: true,
-      });
+      remedies.push(input.teamGate === undefined && guardStageRoutesItself(input.stage, input.stateContent)
+        ? spentReviewRemedy(input.stage)
+        : {
+          op: "present-approval-gate",
+          action: checkpointUnit === null
+            ? "Present the unresolved review findings at the approval gate for the " +
+              "human instead of starting another review pass."
+            : `Present the unresolved review findings at unit "${checkpointUnit}"'s checkpoint ` +
+              `for the human instead of starting another review pass: run \`${showCheckpoint}\`, ` +
+              "which shows that checkpoint again, and ask it with the findings.",
+          requiresHuman: true,
+          executableNow: true,
+        });
     }
     const noReviewInFlight =
       !input.attempt.pendingReview &&
@@ -30035,12 +30159,15 @@ export function evaluateGuardRefusal(
   };
 }
 
+// A stage that routes itself resets through the agent's own rejection, so a
+// person's Request Changes is not the reset to name there.
 export function requestChangesResetIsExecutable(
   stateContent: string,
   stageSlug: string,
   teamGate?: TeamUnitGateResolution,
 ): boolean {
   if (teamGate?.resolved === false) return false;
+  if (!teamGate && stageRoutesItself(findStageBySlug(stageSlug), stateContent)) return false;
   const state = guardLifecycleState(stateContent, stageSlug, teamGate);
   return state === "in-progress" || state === "awaiting-approval";
 }
@@ -30518,11 +30645,18 @@ export function guardRefusalStreakView(
 function guardRefusalHasNoReader(projectDir: string, refusal: GuardRefusal): boolean {
   try {
     const stateContent = readStateFile(projectDir);
-    return stageRoutesItself(findStageBySlug(refusal.stage), stateContent) &&
-      !(refusal.unit && isTeamUnitOwnership(stateContent));
+    const stage = findStageBySlug(refusal.stage);
+    return stageRoutesItself(stage, stateContent) && !stageIsTeamUnitGate(stage, stateContent);
   } catch {
     return false;
   }
+}
+
+export function stageIsTeamUnitGate(
+  stage: Pick<StageEntry, "phase" | "for_each"> | undefined,
+  stateContent: string,
+): boolean {
+  return isTeamUnitOwnership(stateContent) && stage?.phase === "construction" && stage.for_each === "unit-of-work";
 }
 
 // What a stage nobody reads gets instead of a question: the refusal as the
@@ -30821,6 +30955,13 @@ export function recoveryGuidance(
     teamGate?: TeamUnitGateResolution;
   } = {},
 ): string {
+  if (
+    !options.teamGate &&
+    stageRoutesItself(findStageBySlug(stageSlug), stateContent) &&
+    ["in-progress", "awaiting-approval", "revising"].includes(guardLifecycleState(stateContent, stageSlug, undefined))
+  ) {
+    return spentReviewStep(projectDir, stateContent, stageSlug);
+  }
   const refusal = evaluateGuardRefusal({
     code: "REVIEW_RECOVERY_EXHAUSTED",
     blockedAction: "review",

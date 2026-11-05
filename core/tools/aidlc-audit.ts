@@ -552,6 +552,11 @@ export const CLI_PROTECTED_EVENT_TYPES = new Set([
   "GUARD_STOOD_ASIDE",
   // Ceremony provenance belongs to the setting verb, not a public audit append.
   "CEREMONY_SET",
+  // Each of these starts a new review attempt, and a Decided By on a jump speaks
+  // for the stage's one agent reset, so a forged row would restore a spent budget.
+  "STAGE_JUMPED",
+  "STAGE_STARTED",
+  "WORKFLOW_STARTED",
 ]);
 // Events a WORKTREE DELTA may never carry into the main intent shard. This is
 // deliberately an explicit enumeration, not prefix families: a Bolt/swarm

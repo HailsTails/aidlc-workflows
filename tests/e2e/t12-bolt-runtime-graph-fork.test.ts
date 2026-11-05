@@ -115,6 +115,7 @@ function run(tool: string, args: string[], proj: string): CliResult {
   const res = spawnSync(BUN, [tool, ...args, "--project-dir", proj], { timeout: remainingOperationTimeoutMs(NATIVE_FIXTURE_SETUP_TIMEOUT_MS),
     cwd: proj,
     encoding: "utf-8",
+    env: { ...process.env, AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1" },
   });
   const stdout = res.stdout ?? "";
   return { status: res.status ?? -1, out: `${stdout}${res.stderr ?? ""}`, stdout };

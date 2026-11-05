@@ -95,7 +95,7 @@ function runIn(proj: string, tool: string, args: string[]): Run {
   const res = spawnSync(BUN, [tool, "--project-dir", proj, ...args], {
     cwd: proj,
     encoding: "utf-8",
-    env: process.env,
+    env: { ...process.env, AIDLC_ALLOW_DIRECT_AUDIT_EVENTS: "1" },
   });
   const stdout = res.stdout ?? "";
   const stderr = res.stderr ?? "";
