@@ -9891,6 +9891,7 @@ const GUARD_REMEDY_ANSWER_ROUTES: Record<GuardRemedyOp, GuardRemedyAnswerPhases 
   "reconfirm-summary": { afterPick: summaryRoute("decision"), afterAnswer: summaryRoute("answer") },
   "unset-unattended": null,
   "lower-fence": null,
+  "park-stage": null,
 };
 
 function lastEngineFlag(args: readonly string[], flag: string): string | null {
@@ -29141,6 +29142,9 @@ export const GUARD_REMEDY_OPS = [
   // way out is printed beside the thing that stopped them, rather than left in a
   // reference page. Logged, and back on for the next piece of work.
   "lower-fence",
+  // Nobody reads this stage, so the agent takes the refusal's own step or parks
+  // it. Only ever the conductor's own work, never put to a person.
+  "park-stage",
 ] as const;
 export type GuardRemedyOp = (typeof GUARD_REMEDY_OPS)[number];
 
@@ -30467,14 +30471,20 @@ export function guardRefusalStreakView(
   // and then only with the ways on that need them.
   const own = (remedy: GuardRemedy) => (remedy.interaction ?? remedyInteraction(remedy)) === "external-work";
   const theirs = refusal.remedies.filter((remedy) => !own(remedy));
+  const noReader = guardRefusalHasNoReader(projectDir, refusal);
   const ownWork = count === 1
-    ? guardRecoveryAskForRefusal({ ...refusal, remedies: refusal.remedies.filter(own) })
+    ? guardRecoveryAskForRefusal(
+        { ...refusal, remedies: refusal.remedies.filter(own) },
+        noReader ? guardNoReaderQuestion(refusal) : undefined,
+      )
     : null;
   if (ownWork !== null) {
     return { count, signature, record, ask: { ...ownWork, agent_work: true } };
   }
-  const noReader = guardRefusalHasNoReader(projectDir, refusal);
-  const ask = noReader ? null : guardRecoveryAskForRefusal({ ...refusal, remedies: theirs });
+  if (noReader) {
+    return { count, signature, record, ask: guardParkAskForRefusal(refusal, codes) };
+  }
+  const ask = guardRecoveryAskForRefusal({ ...refusal, remedies: theirs });
   if (ask !== null) {
     return {
       count,
@@ -30498,7 +30508,6 @@ export function guardRefusalStreakView(
       codes,
       signature,
       atCap: count > GUARD_REFUSAL_STREAK_CAP,
-      noReader,
     }),
   };
 }
@@ -30509,10 +30518,39 @@ export function guardRefusalStreakView(
 function guardRefusalHasNoReader(projectDir: string, refusal: GuardRefusal): boolean {
   try {
     const stateContent = readStateFile(projectDir);
-    return stageRoutesItself(findStageBySlug(refusal.stage), stateContent) && !isTeamUnitOwnership(stateContent);
+    return stageRoutesItself(findStageBySlug(refusal.stage), stateContent) &&
+      !(refusal.unit && isTeamUnitOwnership(stateContent));
   } catch {
     return false;
   }
+}
+
+// What a stage nobody reads gets instead of a question: the refusal as the
+// conductor's own work, so no turn ends waiting on a reply that cannot come.
+function guardNoReaderQuestion(refusal: GuardRefusal): string {
+  return `${guardRefusalTarget(refusal)} cannot go ahead, and nobody reads this stage.`;
+}
+
+function guardParkAskForRefusal(refusal: GuardRefusal, codes: string[]): GuardRecoveryAskData {
+  const why = refusal.userMessage.trim();
+  return {
+    kind: "ask",
+    ask_type: GUARD_RECOVERY_ASK_TYPE,
+    response_route: "execute-remedy",
+    question: guardNoReaderQuestion(refusal),
+    stage: refusal.stage,
+    ...(refusal.unit ? { unit: refusal.unit } : {}),
+    reason_codes: codes,
+    agent_work: true,
+    remedies: [{
+      op: "park-stage",
+      action: `Take the step this refusal names if it is this stage's own. Otherwise park it with ` +
+        `\`${aidlcToolInvocation("orchestrate")} park\`, naming this refusal as the blocker.${why ? ` ${why}` : ""}`,
+      interaction: "external-work",
+      requiresHuman: false,
+      executableNow: true,
+    }],
+  };
 }
 
 // Record one refusal against the streak for its stage and Unit, and return the
@@ -30599,7 +30637,6 @@ export function guardTerminalAskForRefusal(
     codes: string[];
     signature: string;
     atCap: boolean;
-    noReader?: boolean;
   },
 ): GuardRecoveryAskData {
   // In the person's terms: where the work stopped and that it needs them. The
@@ -30611,19 +30648,14 @@ export function guardTerminalAskForRefusal(
   const situation =
     `I stopped at ${target}: this step cannot go ahead, and there is ` +
     "nothing I can safely do about it on my own.";
-  const question = streak.noReader
-    ? `${target} cannot go ahead. Nobody reads this stage, so take the step this refusal names if it is yours. ` +
-      `Otherwise park it with \`${aidlcToolInvocation("orchestrate")} park\`, naming this refusal as the blocker.` +
-      (why ? ` ${why}` : "")
-    : streak.atCap
-    ? `${situation} It has stopped here ${streak.count} times now. Tell me how you ` +
-      `want to proceed. (To report this, include ${streak.signature}.)`
-    : `${situation} Tell me how you want to proceed.`;
   return {
     kind: "ask",
     ask_type: GUARD_RECOVERY_ASK_TYPE,
     response_route: "execute-remedy",
-    question,
+    question: streak.atCap
+      ? `${situation} It has stopped here ${streak.count} times now. Tell me how you ` +
+        `want to proceed. (To report this, include ${streak.signature}.)`
+      : `${situation} Tell me how you want to proceed.`,
     stage: refusal.stage,
     ...(refusal.unit ? { unit: refusal.unit } : {}),
     reason_codes: streak.codes,

@@ -430,7 +430,7 @@ describe("a stale review", () => {
 });
 
 describe("what report delivers", () => {
-  const PERSON_DIRECTED = /would you like|Tell me how|never answer it for the person|is still open|ask the person/i;
+  const PERSON_DIRECTED = /would you like|Tell me how|never answer it for the person|is still open|ask the person|What should change|on the human's behalf/i;
 
   function openFeasibilityGate({ approvalMode }: { readonly approvalMode: ApprovalMode }): Fixture {
     const fixture = feasibilityDone({ approvalMode });
@@ -509,10 +509,14 @@ describe("what report delivers", () => {
           fixture,
         }).stdout,
       );
-    const repeated = [report(), report()].at(-1) ?? {};
-    expect(repeated.kind).toBe("ask");
-    expect(String(repeated.question)).toContain("park");
-    expect(String(repeated.question)).not.toMatch(PERSON_DIRECTED);
+    const [first, repeated] = [report(), report()];
+    expect(repeated.agent_work).toBe(true);
+    expect(repeated.state_signature).toBeUndefined();
+    expect(JSON.stringify(repeated)).toContain("park");
+    [first, repeated].forEach((directive) => {
+      expect(JSON.stringify(directive)).not.toMatch(PERSON_DIRECTED);
+      expect(JSON.stringify(directive)).not.toContain("This question is for the person");
+    });
   });
 });
 

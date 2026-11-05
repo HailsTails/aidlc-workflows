@@ -2367,7 +2367,8 @@ describe("AttemptView projections and refusal streaks", () => {
         expect(remedy.action.length, `${remedy.op} keeps its instruction`).toBeGreaterThan(0);
       }
     }
-    expect([...seen].sort()).toEqual([...GUARD_REMEDY_OPS].sort());
+    // park-stage comes from the refusal streak on a stage nobody reads, never from evaluateGuardRefusal.
+    expect([...seen].sort()).toEqual(GUARD_REMEDY_OPS.filter((op) => op !== "park-stage").sort());
   });
 
   test("every remedy carries a closed op and the contract rejects an unknown one", () => {
