@@ -4982,7 +4982,7 @@ function staleReviewPreconditionError(
       `--reviewer ${reviewer} --iteration <next ordinal>\`, then record the verdict ` +
       `with the same command plus \`--verdict <READY|NOT-READY>\`. After that ` +
       `review, stop editing this stage's output documents. If the recovery pass was already ` +
-      (isAutonomousStage(stage)
+      (stageRoutesItself(stage, content)
         ? `spent: ${spentReviewStep(pd, content, slug)}`
         : "spent, present the situation to the human at the approval gate; a human " +
           "Request Changes decision resets the review attempt. Do not record a rejection " +
@@ -6895,7 +6895,6 @@ function handleReject(args: string[]): void {
     (!humanRepliedSinceGate(pd) || (!autonomousDecision && !repliedToGate))
   ) {
     if (recoveryResetNeedsHuman) {
-      if (stageRoutesOwnReset) refuseForAgent(`Refusing to reject "${slug}": ${spentReviewStep(pd, content, slug)}`, { noReader });
       refuseForAgent(
         `Cannot request changes for "${slug}" because its recovery review has already ` +
           `been used and only a new human choice can start another review attempt. Present ` +

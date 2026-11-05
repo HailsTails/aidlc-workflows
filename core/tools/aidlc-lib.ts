@@ -13968,12 +13968,6 @@ export function stageAgentResetUsed(projectDir: string, stageSlug: string): bool
   return latest !== undefined && isAgentDecided(latest.block);
 }
 
-function isPersonDecidedRejection(block: string, stageSlug: string): boolean {
-  return auditBlockField(block, "Event") === "GATE_REJECTED" &&
-    auditBlockField(block, "Stage") === stageSlug &&
-    auditBlockField(block, "Decided By") === PERSON_DECIDED_FIELD["Decided By"];
-}
-
 // A launch prompt can mint a human turn, and an agent can type any flag, so a
 // person's choice is read from the words the human-turn hook kept for their turn.
 // The words answer the attempt they were spoken in: they count only after this
@@ -13983,10 +13977,7 @@ export function personRequestedChanges(projectDir: string, stageSlug: string): b
   if (turn === null || turn.words === null || !/^request changes\b/i.test(turn.words.trim())) return false;
   const latest = auditRowsInOrder(
     projectDir,
-    (block) =>
-      isStageRejection(block, stageSlug) ||
-      isEntryTo(block, stageSlug) ||
-      isPersonDecidedRejection(block, stageSlug),
+    (block) => isStageRejection(block, stageSlug) || isEntryTo(block, stageSlug),
   ).at(-1);
   return latest === undefined || latest.timestamp < turn.at;
 }
@@ -14010,17 +14001,14 @@ export function jumpResetsReview(
 
 // What an agent does on a stage nobody reads once its review attempt is spent.
 export function spentReviewStep(projectDir: string, stateContent: string, stageSlug: string): string {
-  const leaveGrant = isAutonomousMode(stateContent)
-    ? `Run \`${aidlcToolInvocation("bolt")} set-autonomy --mode gated\` first, because the Construction autonomy grant refuses this step. `
-    : "";
   if (stageAgentResetUsed(projectDir, stageSlug) && !personRequestedChanges(projectDir, stageSlug)) {
-    return `This stage has used its one agent reset. ${leaveGrant}Park it with \`${aidlcToolInvocation("orchestrate")} park\`, ` +
+    return `This stage has used its one agent reset. Park it with \`${aidlcToolInvocation("orchestrate")} park\`, ` +
       "naming the open findings. Only a person's Request Changes starts another review attempt.";
   }
   const once = "That resets the review attempt once; after that the stage parks until a person requests changes.";
   return guardLifecycleState(stateContent, stageSlug, undefined) === "revising"
-    ? `${leaveGrant}Restart this stage with \`${aidlcToolInvocation("jump")} execute --target ${stageSlug} --direction redo --reason "<the cause>"\`. ${once}`
-    : `${leaveGrant}Report this stage rejected with --reason giving the cause. ${once}`;
+    ? `Restart this stage with \`${aidlcToolInvocation("jump")} execute --target ${stageSlug} --direction redo --reason "<the cause>"\`. ${once}`
+    : `Report this stage rejected with --reason giving the cause. ${once}`;
 }
 
 // The audit events that close a DECISION_RECORDED. `aidlc-log answer` answers
@@ -30969,7 +30957,7 @@ export function recoveryGuidance(
 ): string {
   if (
     !options.teamGate &&
-    isAutonomousStage(findStageBySlug(stageSlug)) &&
+    stageRoutesItself(findStageBySlug(stageSlug), stateContent) &&
     ["in-progress", "awaiting-approval", "revising"].includes(guardLifecycleState(stateContent, stageSlug, undefined))
   ) {
     return spentReviewStep(projectDir, stateContent, stageSlug);

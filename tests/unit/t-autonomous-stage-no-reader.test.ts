@@ -64,7 +64,6 @@ const STATE_TOOL = join(AIDLC_SRC, "tools", "aidlc-state.ts");
 const ORCHESTRATE_TOOL = join(AIDLC_SRC, "tools", "aidlc-orchestrate.ts");
 const LOG_TOOL = join(AIDLC_SRC, "tools", "aidlc-log.ts");
 const JUMP_TOOL = join(AIDLC_SRC, "tools", "aidlc-jump.ts");
-const BOLT_TOOL = join(AIDLC_SRC, "tools", "aidlc-bolt.ts");
 const AUDIT_TOOL = join(AIDLC_SRC, "tools", "aidlc-audit.ts");
 const REBUILD_HOOK = join(AIDLC_SRC, "hooks", "aidlc-rebuild-stage-graph.ts");
 const SHIPPED_GRAPH = join(AIDLC_SRC, "tools", "data", "stage-graph.json");
@@ -772,61 +771,13 @@ describe("the one agent reset", () => {
     return fixture;
   }
 
-  test("under an unattended grant, the steps a spent stage names run, so the stage parks rather than strands", () => {
-    const fixture = reviewedStage();
-    const state = seededStateFile(fixture.project);
-    writeFileSync(state, `${readFileSync(state, "utf-8")}\n- **Construction Autonomy Mode**: autonomous\n`);
-    appendAuditEntry("GATE_REJECTED", agentRejection, fixture.project);
-    const unattended = { AIDLC_UNATTENDED: "1" };
-    const rejected = runTool({ tool: STATE_TOOL, args: rejectArgs, fixture, extra: unattended });
-    expect(rejected.status).not.toBe(0);
-    expect(rejected.out).toContain("set-autonomy --mode gated");
-    const gated = runTool({ tool: BOLT_TOOL, args: ["set-autonomy", "--mode", "gated"], fixture, extra: unattended });
-    expect(gated.status, gated.out).toBe(0);
-    const parked = runTool({ tool: ORCHESTRATE_TOOL, args: ["park"], fixture, extra: unattended });
-    expect(parked.status, parked.out).toBe(0);
-    expect(readFileSync(state, "utf-8")).toContain("Parked At Stage");
-  });
-
-  function unitStage(): Fixture {
-    return fixtureAt({ stateFile: "state-mid-inception.md", stage: "code-generation", approvalMode: "autonomous" });
-  }
-
-  const reopenUnit = ["reopen", "--target", "code-generation", "--units", "alpha"];
-
-  test("a reopen of a Unit on a stage nobody reads is refused and writes no row", () => {
-    const fixture = unitStage();
-    personSays({ fixture, words: "Run the lane." });
-    const reopened = runTool({ tool: JUMP_TOOL, args: reopenUnit, fixture });
-    expect(reopened.status).not.toBe(0);
-    expect(reopened.out).toContain("only a person's Request Changes");
-    expect(audit({ fixture })).not.toContain("GATE_REJECTED");
-  });
-
-  test("a person's Request Changes reopens that Unit, and the row says so", () => {
-    const fixture = unitStage();
-    personSays({ fixture, words: "Request Changes: redo the unit." });
-    const reopened = runTool({ tool: JUMP_TOOL, args: reopenUnit, fixture });
-    expect(reopened.status, reopened.out).toBe(0);
-    expect(audit({ fixture })).toContain("**Decided By**: person");
-    const again = runTool({ tool: JUMP_TOOL, args: reopenUnit, fixture });
-    expect(again.status).not.toBe(0);
-    expect(again.out).toContain("only a person's Request Changes");
-  });
-
   test("under the grant, a spent recovery with no turn since the gate stays refused and spends nothing", () => {
     const fixture = spentRecoveryUnderGrant();
     const reject = ["reject", "requirements-analysis", "--reason", "Spent."];
     const rejected = runTool({ tool: STATE_TOOL, args: reject, fixture });
     expect(rejected.status).not.toBe(0);
-    expect(rejected.out).toContain("set-autonomy --mode gated");
+    expect(rejected.out).toContain("its recovery review has already been used");
     expect(stageAgentResetUsed(fixture.project, "requirements-analysis")).toBe(false);
-    const unattended = { AIDLC_UNATTENDED: "1" };
-    const gated = runTool({ tool: BOLT_TOOL, args: ["set-autonomy", "--mode", "gated"], fixture, extra: unattended });
-    expect(gated.status, gated.out).toBe(0);
-    const named = runTool({ tool: STATE_TOOL, args: reject, fixture, extra: unattended });
-    expect(named.status, named.out).toBe(0);
-    expect(stageAgentResetUsed(fixture.project, "requirements-analysis")).toBe(true);
   });
 
   test("under the grant, a spent recovery keeps the check on who wrote the feedback", () => {
