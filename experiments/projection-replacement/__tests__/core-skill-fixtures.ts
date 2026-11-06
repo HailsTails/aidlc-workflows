@@ -1,0 +1,17 @@
+import { mock } from "bun:test";
+import type { CoreSkillSourceOperations } from "../src/adapters/core-skill-sources.ts";
+import type { CoreSkillSources } from "../src/domain/core-skill-sources.ts";
+import type { SkillContext } from "../src/domain/skill-definition.ts";
+import type { ProjectionSet, ProjectionSetRequest } from "../src/application/projection-set.ts";
+import type { DistributionProduct } from "../src/domain/distribution-products.ts";
+import type { CoreSkillProductServices } from "../examples/core-skill-products.ts";
+export const coreSkillBasis = { source: { kind: "core", id: "framework" }, pin: "1111111111111111111111111111111111111111" } as const;
+export const coreSkillOrigin = { ...coreSkillBasis, path: "core/skills/aidlc-note/SKILL.md" };
+export const coreSkillText = "---\nname: aidlc-note\ndescription: Summarize local evidence.\nuser-invocable: true\nclassification: read-only\n---\nRun {{INVOKE}} engine runtime summary --json.\n";
+export const coreSkillSources: CoreSkillSources = { skills: [{ name: "aidlc-note", origin: coreSkillOrigin, text: coreSkillText }], inputs: [{ path: "core/skills/aidlc-note/SKILL.md", sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }] };
+export const coreSkillContext: SkillContext = { harness: "claude", directory: ".claude", invocation: "bun .claude/tools/aidlc.ts", rulesSubdir: "rules", memoryRoot: "aidlc/active-memory", modelInvocation: "native-default" };
+export const coreSkillSelection: ProjectionSetRequest = { target: { harness: "claude", directory: ".claude" }, units: [{ kind: "skill", key: "skill-aidlc-note", input: { text: coreSkillText, origin: coreSkillOrigin, context: coreSkillContext } }] };
+export const coreSkillSet: ProjectionSet = { scope: "selected-surfaces", target: { harness: "claude", directory: ".claude" }, units: [{ kind: "skill", key: "skill-aidlc-note", projection: { origin: coreSkillOrigin, harness: "claude", entrypoint: ".claude/skills/aidlc-note/SKILL.md", resources: [{ kind: "file", path: ".claude/skills/aidlc-note/SKILL.md", body: "Rendered skill" }], discovery: { kind: "native-directory", root: ".claude/skills" }, modelInvocation: "native-default", userInvocation: "enabled" } }], resources: [{ kind: "file", path: ".claude/skills/aidlc-note/SKILL.md", body: "Rendered skill" }] };
+export const coreSkillProducts: readonly DistributionProduct[] = [{ key: "skill-aidlc-note", owner: coreSkillBasis, binding: { harness: "claude", directory: ".claude" }, inputs: [coreSkillOrigin], requiredByProducer: [], files: [{ path: ".claude/skills/aidlc-note/SKILL.md", bytes: new Uint8Array([1, 2]), mode: 0o644 }] }];
+export const coreSkillSourceOperations = (): CoreSkillSourceOperations => ({ inventory: mock().mockResolvedValue([{ path: "core/skills/aidlc-note/SKILL.md", text: coreSkillText }]), digest: mock().mockReturnValue("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") });
+export const coreSkillProductServices = (): CoreSkillProductServices => ({ reader: { load: mock().mockResolvedValue({ status: "ok", value: coreSkillSources }) }, select: mock().mockReturnValue({ status: "ok", value: coreSkillSelection }), project: mock().mockReturnValue({ status: "ok", value: coreSkillSet }), products: mock().mockReturnValue({ status: "ok", value: coreSkillProducts }), rules: { encode: mock().mockReturnValue(new Uint8Array([1, 2])) } });

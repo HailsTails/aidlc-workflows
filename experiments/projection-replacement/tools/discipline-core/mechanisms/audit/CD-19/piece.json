@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-19",
+  "mechanism": "audit",
+  "clauses": [
+    { "clause": "import-boundaries", "settings": { "module": "import-boundaries.ts" } }
+  ]
+}

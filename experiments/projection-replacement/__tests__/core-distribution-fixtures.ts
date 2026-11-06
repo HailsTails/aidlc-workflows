@@ -1,0 +1,17 @@
+import { mock } from "bun:test";
+import { distributionSeed, distributionLocation } from "./distribution-fixtures.ts";
+import { runtimeWorkflow, workflowArtifact } from "./workflow-runtime-fixtures.ts";
+import { scopeSet } from "./scope-fixtures.ts";
+import { stageAuthoring } from "./stage-fixtures.ts";
+import { coreAgentSet } from "./core-agent-fixtures.ts";
+import type { PreparedRuntimeAssembly, WorkflowDistributionServices } from "../examples/workflow-distribution.ts";
+import type { CoreDocumentDistributionServices } from "../examples/core-document-distribution.ts";
+import type { DistributionWorkspace } from "../src/adapters/distribution-workspace.ts";
+export const coreAssemblyRequest: PreparedRuntimeAssembly = { seed: distributionSeed, definitions: scopeSet, location: distributionLocation, mode: 0o644, modelInvocation: "native-default", workflow: runtimeWorkflow, workflowReferences: { kind: "native-supplied" }, authoring: stageAuthoring, methodRuntime: { kind: "prepared", paths: [], inputs: [] } };
+export const corePreparedDocuments = { projection: coreAgentSet, inputs: [{ path: "core/agents/aidlc-note-agent.md", sha256: "agent-source" }] };
+export const createCoreConsumingWorkspace = (): DistributionWorkspace => ({ run: mock(async ({ consume }) => consume({ root: "private-core" })) });
+export const createCoreAssembler = (): WorkflowDistributionServices["assemble"] => mock().mockResolvedValue({ status: "ok", value: workflowArtifact });
+export const createCoreDocumentDistributionFixture = (): CoreDocumentDistributionServices => ({ describe: mock().mockResolvedValue({ status: "ok", value: distributionSeed }), documents: mock().mockResolvedValue({ status: "ok", value: corePreparedDocuments }), combine: mock().mockReturnValue({ status: "ok", value: scopeSet }), digests: mock().mockReturnValue({ status: "ok", value: [{ path: "observed-source", sha256: "source-digest" }] }), admit: mock().mockReturnValue({ status: "ok", value: { additions: [], unchanged: [] } }), finish: mock().mockResolvedValue({ status: "ok", value: workflowArtifact }), assembler: mock().mockReturnValue(createCoreAssembler()), workspace: createCoreConsumingWorkspace(), rules: { path: mock().mockReturnValue("safe"), encode: mock().mockReturnValue(new Uint8Array([7])) } });
+export const coreAdmittedFile = { path: ".claude/agents/aidlc-note-agent.md", mode: 0o644, bytes: new Uint8Array([7]) };
+export const coreHydratedSeed = { ...distributionSeed, files: [...distributionSeed.files, coreAdmittedFile] };
+export const coreCombinedProjection = { scope: "selected-surfaces", target: { harness: "claude", directory: ".claude" }, units: [], resources: [] } as const;

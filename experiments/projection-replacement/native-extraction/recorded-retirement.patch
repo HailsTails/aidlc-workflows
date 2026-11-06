@@ -1,0 +1,136 @@
+diff --git a/core/tools/aidlc-init.ts b/core/tools/aidlc-init.ts
+index 7dcb830fd..ffe3b7afa 100644
+--- a/core/tools/aidlc-init.ts
++++ b/core/tools/aidlc-init.ts
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env bun
+-import { decideManagedFileChange } from "./aidlc-managed-file-decision.ts";
++import { assessRecordedRetirement, decideManagedFileChange, decideRecordedRetirement } from "./aidlc-managed-file-decision.ts";
+ import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
+ import { captureWorkflowRefreshInputs, combineRefreshChecks, planWorkflowRefresh, validateEmptyRefreshPlan } from "./aidlc-workflow-refresh.ts";
+ import type { WorkflowRefreshPolicy } from "./aidlc-workflow-refresh-contract.ts";
+@@ -10303,17 +10303,28 @@ function planManagedFiles(
+       rel.endsWith("/tools/data/aidlc-manifest.json")
+     ) continue;
+     const target = join(projectDir, rel);
+-    if (!pathPresent(target)) continue;
++    const present = pathPresent(target);
+     // An agent file Kiro upgraded from the one AI-DLC wrote, untouched since,
+     // goes with the rest; its backups stay (kiroBackupsKeptNote).
+-    const regular = regularFile(target);
+-    const recorded = regular && (provenRetired.has(rel) || sha256FileMatching(target, [priorHash]) === priorHash);
+-    const kiroUpgrade = !recorded && kiroUpgradeOfOwnFile(projectDir, rel, [priorHash], false);
+-    if (!recorded && !kiroUpgrade && !force) {
+-      actions.push({ path: rel, action: "conflict", detail: "removed upstream but locally modified" });
++    const regular = present && regularFile(target);
++    const proven = regular && provenRetired.has(rel);
++    const retirementAttribution = assessRecordedRetirement({
++      target: !present ? { kind: "absent" } : regular ? { kind: "file", hash: proven ? undefined : sha256FileMatching(target, [priorHash]) } : { kind: "other" },
++      recordedHash: priorHash,
++      proof: proven ? "proven-retired" : "unproven",
++    });
++    const kiroUpgrade = retirementAttribution.kind === "unproven" && kiroUpgradeOfOwnFile(projectDir, rel, [priorHash], false);
++    const retirement = decideRecordedRetirement({
++      attribution: retirementAttribution,
++      kiroProof: kiroUpgrade ? "attributed" : "unproven",
++      overwrite: force ? "force" : "protect",
++    });
++    if (retirement.kind === "absent") continue;
++    if (retirement.kind === "conflict") {
++      actions.push({ path: rel, action: "conflict", detail: retirement.detail });
+       continue;
+     }
+-    if (kiroUpgrade) kiroUpgradesRemoved.add(rel);
++    if (retirement.cause === "kiro-upgrade") kiroUpgradesRemoved.add(rel);
+     operations.push({ kind: "remove", path: rel, expected: expected(target) });
+     actions.push({ path: rel, action: "remove", detail: NO_LONGER_SHIPPED });
+   }
+diff --git a/core/tools/aidlc-managed-file-decision.test.ts b/core/tools/aidlc-managed-file-decision.test.ts
+index 2400dc203..102d218cf 100644
+--- a/core/tools/aidlc-managed-file-decision.test.ts
++++ b/core/tools/aidlc-managed-file-decision.test.ts
+@@ -1,7 +1,7 @@
+ // covers: function:decideManagedFileChange
+ 
+ import { expect, test } from "bun:test";
+-import { decideManagedFileChange, type ManagedFileFacts, type ManagedFileDecision } from "./aidlc-managed-file-decision.ts";
++import { assessRecordedRetirement, decideManagedFileChange, decideRecordedRetirement, type ManagedFileFacts, type ManagedFileDecision, type RecordedRetirementFacts, type RecordedRetirementAttribution, type RecordedRetirementDecision } from "./aidlc-managed-file-decision.ts";
+ 
+ const OWNED: ManagedFileFacts = Object.freeze({
+   target: Object.freeze({ kind: "file", hash: "old" }),
+@@ -40,3 +40,33 @@ test("frozen collected facts remain unchanged", () => {
+   expect(OWNED.target).toEqual({ kind: "file", hash: "old" });
+   expect(OWNED.recordedHash).toBe("old");
+ });
++
++const RETIREMENT_FACTS: readonly { name: string; facts: RecordedRetirementFacts; expected: RecordedRetirementAttribution }[] = [
++  { name: "missing target", facts: { target: { kind: "absent" }, recordedHash: "old", proof: "unproven" }, expected: { kind: "absent" } },
++  { name: "missing target ignores supplied proof", facts: { target: { kind: "absent" }, recordedHash: "old", proof: "proven-retired" }, expected: { kind: "absent" } },
++  { name: "recorded bytes", facts: { target: { kind: "file", hash: "old" }, recordedHash: "old", proof: "unproven" }, expected: { kind: "recorded" } },
++  { name: "different bytes", facts: { target: { kind: "file", hash: "user" }, recordedHash: "old", proof: "unproven" }, expected: { kind: "unproven" } },
++  { name: "proven retirement needs no observed hash", facts: { target: { kind: "file", hash: undefined }, recordedHash: "old", proof: "proven-retired" }, expected: { kind: "recorded" } },
++  { name: "nonregular target", facts: { target: { kind: "other" }, recordedHash: "old", proof: "unproven" }, expected: { kind: "unproven" } },
++  { name: "nonregular proof cannot attribute", facts: { target: { kind: "other" }, recordedHash: "old", proof: "proven-retired" }, expected: { kind: "unproven" } },
++  { name: "undefined hash does not match record", facts: { target: { kind: "file", hash: undefined }, recordedHash: "old", proof: "unproven" }, expected: { kind: "unproven" } },
++];
++
++test.each([...RETIREMENT_FACTS])("recorded retirement attribution: $name", ({ facts, expected }) => {
++  expect(assessRecordedRetirement(facts)).toEqual(expected);
++});
++
++const RETIREMENT_DECISIONS: readonly { name: string; facts: Parameters<typeof decideRecordedRetirement>[0]; expected: RecordedRetirementDecision }[] = [
++  { name: "absent no-op", facts: { attribution: { kind: "absent" }, kiroProof: "unproven", overwrite: "protect" }, expected: { kind: "absent" } },
++  { name: "absent wins over force and Kiro", facts: { attribution: { kind: "absent" }, kiroProof: "attributed", overwrite: "force" }, expected: { kind: "absent" } },
++  { name: "recorded removal", facts: { attribution: { kind: "recorded" }, kiroProof: "unproven", overwrite: "protect" }, expected: { kind: "remove", cause: "recorded" } },
++  { name: "recorded attribution precedes extra proof", facts: { attribution: { kind: "recorded" }, kiroProof: "attributed", overwrite: "force" }, expected: { kind: "remove", cause: "recorded" } },
++  { name: "unowned conflict", facts: { attribution: { kind: "unproven" }, kiroProof: "unproven", overwrite: "protect" }, expected: { kind: "conflict", detail: "removed upstream but locally modified" } },
++  { name: "Kiro attribution", facts: { attribution: { kind: "unproven" }, kiroProof: "attributed", overwrite: "protect" }, expected: { kind: "remove", cause: "kiro-upgrade" } },
++  { name: "explicit force", facts: { attribution: { kind: "unproven" }, kiroProof: "unproven", overwrite: "force" }, expected: { kind: "remove", cause: "explicit-force" } },
++  { name: "Kiro bookkeeping survives force", facts: { attribution: { kind: "unproven" }, kiroProof: "attributed", overwrite: "force" }, expected: { kind: "remove", cause: "kiro-upgrade" } },
++];
++
++test.each([...RETIREMENT_DECISIONS])("recorded retirement decision: $name", ({ facts, expected }) => {
++  expect(decideRecordedRetirement(facts)).toEqual(expected);
++});
+diff --git a/core/tools/aidlc-managed-file-decision.ts b/core/tools/aidlc-managed-file-decision.ts
+index 1e76dd7fa..fe38fb5ce 100644
+--- a/core/tools/aidlc-managed-file-decision.ts
++++ b/core/tools/aidlc-managed-file-decision.ts
+@@ -34,3 +34,37 @@ export function decideManagedFileChange({ target, sourceHash, recordedHash, rele
+     detail: attribution === "adopted-copy" ? "adopted exact copy-channel signature" : undefined,
+   };
+ }
++
++export type RecordedRetirementFacts = Readonly<{
++  target: ManagedTarget;
++  recordedHash: string;
++  proof: "proven-retired" | "unproven";
++}>;
++
++export type RecordedRetirementAttribution =
++  | Readonly<{ kind: "absent" }>
++  | Readonly<{ kind: "recorded" }>
++  | Readonly<{ kind: "unproven" }>;
++
++export type RecordedRetirementDecision =
++  | Readonly<{ kind: "absent" }>
++  | Readonly<{ kind: "conflict"; detail: "removed upstream but locally modified" }>
++  | Readonly<{ kind: "remove"; cause: "recorded" | "kiro-upgrade" | "explicit-force" }>;
++
++export function assessRecordedRetirement({ target, recordedHash, proof }: RecordedRetirementFacts): RecordedRetirementAttribution {
++  if (target.kind === "absent") return { kind: "absent" };
++  if (target.kind === "file" && (proof === "proven-retired" || target.hash === recordedHash)) return { kind: "recorded" };
++  return { kind: "unproven" };
++}
++
++export function decideRecordedRetirement({ attribution, kiroProof, overwrite }: Readonly<{
++  attribution: RecordedRetirementAttribution;
++  kiroProof: "attributed" | "unproven";
++  overwrite: "protect" | "force";
++}>): RecordedRetirementDecision {
++  if (attribution.kind === "absent") return { kind: "absent" };
++  if (attribution.kind === "recorded") return { kind: "remove", cause: "recorded" };
++  if (kiroProof === "attributed") return { kind: "remove", cause: "kiro-upgrade" };
++  if (overwrite === "force") return { kind: "remove", cause: "explicit-force" };
++  return { kind: "conflict", detail: "removed upstream but locally modified" };
++}

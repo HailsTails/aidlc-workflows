@@ -1,0 +1,219 @@
+diff --git a/scripts/native-command-context.ts b/scripts/native-command-context.ts
+new file mode 100644
+index 0000000..f082c1a
+--- /dev/null
++++ b/scripts/native-command-context.ts
+@@ -0,0 +1,13 @@
++import { scanNamespaceInvocations, TRUSTED_COMMAND_PREFIX, TRUSTED_ROUTE_NAMESPACE, trustedCommand } from "../core/tools/aidlc-command.ts";
++import { ROUTES, TOOLS } from "../core/tools/aidlc.ts";
++import type { NativeCommandContext } from "./native-command-text.ts";
++export const createNativeCommandContext = ({ harnessDir }: { readonly harnessDir: string }): NativeCommandContext => ({
++  harnessDir,
++  toolFiles: Object.values(TOOLS),
++  namespace: TRUSTED_ROUTE_NAMESPACE,
++  prefix: TRUSTED_COMMAND_PREFIX,
++  command: ({ suffix }) => trustedCommand(suffix),
++  namespaceProblems: ({ source, subject }) => scanNamespaceInvocations(subject, source, ROUTES)
++    .filter((invocation) => invocation.source === "aidlc" && !invocation.resolves)
++    .map((invocation) => `${subject}:${invocation.line}: unresolvable projected namespace invocation "${invocation.command}"`),
++});
+diff --git a/scripts/native-command-text.test.ts b/scripts/native-command-text.test.ts
+new file mode 100644
+index 0000000..9978d09
+--- /dev/null
++++ b/scripts/native-command-text.test.ts
+@@ -0,0 +1,22 @@
++import { expect, test } from "bun:test";
++import { prepareNativeDocumentText, projectNativeCommandText } from "./native-command-text.ts";
++import { createNativeCommandContext } from "./native-command-context.ts";
++const context = createNativeCommandContext({ harnessDir: ".claude" });
++test("projects verb-aware workspace commands before generic delegates", () => {
++  expect(prepareNativeDocumentText({ source: "bun .claude/tools/aidlc-utility.ts document-input --onboard --include-ignored", context, subject: "stage.md" })).toEqual({ status: "ok", text: "aidlc engine workspace document-input --onboard --include-ignored" });
++});
++test("preserves line boundaries and trailing arguments", () => {
++  expect(prepareNativeDocumentText({ source: "bun .claude/tools/aidlc-testing-posture.ts brief --unit\n  \"<directive.unit>\"", context, subject: "stage.md" })).toEqual({ status: "ok", text: "aidlc engine testing-posture brief --unit\n  \"<directive.unit>\"" });
++});
++test("retains config verb routing without editing permission data", () => {
++  expect(prepareNativeDocumentText({ source: "bun .claude/tools/aidlc-utility.ts config-change --guard.plan-approval off", context, subject: "stage.md" })).toEqual({ status: "ok", text: "aidlc engine config set guard.plan-approval off" });
++});
++test("an unknown owned tool route is refused", () => {
++  expect(prepareNativeDocumentText({ source: "bun .claude/tools/aidlc-not-a-route.ts execute", context, subject: "stage.md" })).toEqual({ status: "invalid", problems: ['stage.md:1: unresolvable projected namespace invocation "aidlc engine not-a-route execute"'] });
++});
++test("unrelated commands, prose and permission patterns are unchanged", () => {
++  expect(projectNativeCommandText({ source: 'bun example.ts\n{"allowedCommands":["bun .claude/tools/.*"]}\n- **Permissions**: retain this authored policy', context })).toBe('bun example.ts\n{"allowedCommands":["bun .claude/tools/.*"]}\n- **Permissions**: retain this authored policy');
++});
++test("an existing namespace does not acquire a second engine prefix", () => {
++  expect(prepareNativeDocumentText({ source: "bun .claude/tools/aidlc.ts engine log decision", context, subject: "stage.md" })).toEqual({ status: "ok", text: "aidlc engine log decision" });
++});
+diff --git a/scripts/native-command-text.ts b/scripts/native-command-text.ts
+new file mode 100644
+index 0000000..e13a242
+--- /dev/null
++++ b/scripts/native-command-text.ts
+@@ -0,0 +1,54 @@
++// Command spelling extracted from scripts/package.ts at d062c81e.
++// No files, permissions, trust, onboarding, descriptors or runtime registration.
++export type NativeCommandContext = {
++  readonly harnessDir: string;
++  readonly toolFiles: readonly string[];
++  readonly namespace: string;
++  readonly prefix: string;
++  readonly command: (input: { readonly suffix: string }) => string;
++  readonly namespaceProblems: (input: { readonly source: string; readonly subject: string }) => readonly string[];
++};
++type CommandPatterns = { readonly tool: RegExp; readonly bare: RegExp; readonly workspace: RegExp; readonly config: RegExp; readonly intent: RegExp; readonly dispatcher: RegExp };
++const escaped = ({ text }: { readonly text: string }): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
++const commandPatterns = ({ context }: { readonly context: NativeCommandContext }): CommandPatterns => {
++  const harnessDir = escaped({ text: context.harnessDir });
++  const delegates = context.toolFiles.map((file) => escaped({ text: file.slice("aidlc-".length, -".ts".length) })).join("|");
++  const projectPrefix = String.raw`(?:"?(?:\$\{?CLAUDE_PROJECT_DIR\}?/)?`;
++  const suffix = `"?)`;
++  return {
++    tool: new RegExp(String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc(?:-([a-z0-9-]+))?\.ts${suffix}`, "gi"),
++    bare: new RegExp(String.raw`\bbun\s+aidlc-(${delegates})\.ts`, "gi"),
++    workspace: new RegExp(String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+(codekb-path|codekb-scope-diff|codekb-snapshot|codekb-publish|project-description|document-input)\b`, "gi"),
++    config: new RegExp(String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+config-change\s+--(depth|test-strategy|review|guard-policy|change-control|sensors|learnings|summary-confirmation|guard\.(?:plan-approval|review-freeze|state-transition|reviewer-scope))\b`, "gi"),
++    intent: new RegExp(String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+intent-create\b`, "gi"),
++    dispatcher: new RegExp(String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc\.ts${suffix}\s+${context.namespace}\b`, "gi"),
++  };
++};
++export const projectNativeCommandText = ({ source, context }: { readonly source: string; readonly context: NativeCommandContext }): string => {
++  const patterns = commandPatterns({ context });
++  const routed = source
++    .replace(patterns.workspace, (_match, verb: string) => `${context.command({ suffix: "workspace" })} ${verb === "codekb-path" ? "codekb" : verb}`)
++    .replace(patterns.config, (_match, key: string) => context.command({ suffix: `config set ${key}` }))
++    .replace(patterns.intent, context.command({ suffix: "intent create" }));
++  return routed
++    .replace(patterns.dispatcher, context.prefix)
++    .replace(patterns.tool, (_match, delegate: string | undefined) => delegate ? context.command({ suffix: delegate }) : context.prefix)
++    .replace(patterns.bare, (_match, delegate: string) => context.command({ suffix: delegate }));
++};
++export const nativeCommandTextProblems = ({ source, context, subject, namespaceSource = source }: { readonly source: string; readonly context: NativeCommandContext; readonly subject: string; readonly namespaceSource?: string }): readonly string[] => {
++  const harnessDir = escaped({ text: context.harnessDir });
++  const patterns = commandPatterns({ context });
++  return [
++    ...["{{INVOKE}}", "{{TOOL_PREFIX}}"].filter((token) => source.includes(token)).map((token) => `${subject}: unexpanded ${token}`),
++    ...(new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(source) ? [`${subject}: bun invocation survived native projection`] : []),
++    ...(patterns.bare.test(source) ? [`${subject}: bare bun invocation survived native projection`] : []),
++    ...(/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(source) ? [`${subject}: retired engine alias survived native projection`] : []),
++    ...context.namespaceProblems({ source: namespaceSource, subject }),
++  ];
++};
++export type NativeDocumentText = { readonly status: "ok"; readonly text: string } | { readonly status: "invalid"; readonly problems: readonly string[] };
++export const prepareNativeDocumentText = ({ source, context, subject }: { readonly source: string; readonly context: NativeCommandContext; readonly subject: string }): NativeDocumentText => {
++  const text = projectNativeCommandText({ source, context });
++  const problems = nativeCommandTextProblems({ source: text, context, subject });
++  return problems.length > 0 ? { status: "invalid", problems } : { status: "ok", text };
++};
+diff --git a/scripts/package.ts b/scripts/package.ts
+index d90c58a..25f32ce 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -111 +110,0 @@ import {
+-  scanNamespaceInvocations,
+@@ -116 +115,3 @@ import {
+-import { copyChannelDispatcherCommands, copyChannelToolScripts, ROUTES, TOOLS } from "../core/tools/aidlc.ts";
++import { projectNativeCommandText, nativeCommandTextProblems } from "./native-command-text.ts";
++import { createNativeCommandContext } from "./native-command-context.ts";
++import { copyChannelDispatcherCommands, copyChannelToolScripts } from "../core/tools/aidlc.ts";
+@@ -1384,10 +1384,0 @@ function projectNativeRootIntegrations(outRoot: string, m: HarnessManifest): voi
+-function projectedNamespaceInvocationViolations(
+-  file: string,
+-  value: string,
+-): string[] {
+-  return scanNamespaceInvocations(file, value, ROUTES)
+-    .filter((invocation) => invocation.source === "aidlc" && !invocation.resolves)
+-    .map((invocation) =>
+-      `${file}:${invocation.line}: unresolvable projected namespace invocation "${invocation.command}"`
+-    );
+-}
+@@ -1410,5 +1401 @@ function assertNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
+-  const harnessDir = escapeRegExp(m.harnessDir);
+-  const delegateNames = Object.values(TOOLS)
+-    .map((file) => escapeRegExp(file.slice("aidlc-".length, -".ts".length)))
+-    .join("|");
+-  const bareToolCheck = new RegExp(String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`, "i");
++  const commandContext = createNativeCommandContext({ harnessDir: m.harnessDir });
+@@ -1427,14 +1413,0 @@ function assertNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
+-    for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}"]) {
+-      if (value.includes(token)) {
+-        leftovers.push(`${relative(outRoot, file)}: unexpanded ${token}`);
+-      }
+-    }
+-    if (new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(value)) {
+-      leftovers.push(`${relative(outRoot, file)}: bun invocation survived native projection`);
+-    }
+-    if (bareToolCheck.test(value)) {
+-      leftovers.push(`${relative(outRoot, file)}: bare bun invocation survived native projection`);
+-    }
+-    if (/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(value)) {
+-      leftovers.push(`${relative(outRoot, file)}: retired engine alias survived native projection`);
+-    }
+@@ -1447 +1420 @@ function assertNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
+-      ...projectedNamespaceInvocationViolations(relativeFile, withoutNativeReplacements(sensorSource)),
++      ...nativeCommandTextProblems({ source: value, context: commandContext, subject: relativeFile, namespaceSource: withoutNativeReplacements(sensorSource) }),
+@@ -1463,7 +1436 @@ function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
+-  // The hand-maintained list had drifted to 23 of 33 tools, omitting review-brief.
+-  // Deriving it from TOOLS keeps new delegates' bare bun aidlc-<name>.ts forms
+-  // covered by both the rewrite and bareToolCheck. The leftover checks below
+-  // still reject a rewrite to a non-route.
+-  const delegateNames = Object.values(TOOLS)
+-    .map((file) => escapeRegExp(file.slice("aidlc-".length, -".ts".length)))
+-    .join("|");
++  const commandContext = createNativeCommandContext({ harnessDir: m.harnessDir });
+@@ -1481,4 +1447,0 @@ function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
+-  const toolPattern = new RegExp(
+-    String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc(?:-([a-z0-9-]+))?\.ts${suffix}`,
+-    "gi",
+-  );
+@@ -1489,4 +1451,0 @@ function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
+-  const bareToolPattern = new RegExp(
+-    String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`,
+-    "gi",
+-  );
+@@ -1514,44 +1473 @@ function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
+-    // Direct utility verbs whose dispatcher route lives under the `workspace`
+-    // noun: rewrite verb-aware BEFORE the generic tool rewrite would emit the
+-    // retired `engine utility` alias.
+-    const workspaceUtilityPattern = new RegExp(
+-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+(codekb-path|codekb-scope-diff|codekb-snapshot|codekb-publish|project-description|document-input)\b`,
+-      "gi",
+-    );
+-    value = value.replace(
+-      workspaceUtilityPattern,
+-      (_match, verb: string) =>
+-        `${trustedCommand("workspace")} ${verb === "codekb-path" ? "codekb" : verb}`,
+-    );
+-    // Settings share one utility transaction; project its first setting onto
+-    // the dispatcher's config noun and preserve all trailing flags/selectors.
+-    // The key list mirrors the dispatcher's `config set` verbs: guard-policy
+-    // (with its retired spelling change-control, accepted for one release) and
+-    // the four per-fence guard.<fence> switches. A key missing here falls
+-    // through to the generic tool rewrite, which emits the retired `engine
+-    // utility` alias that the leftover check below rejects.
+-    const configUtilityPattern = new RegExp(
+-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+config-change\s+--(depth|test-strategy|review|guard-policy|change-control|sensors|learnings|summary-confirmation|guard\.(?:plan-approval|review-freeze|state-transition|reviewer-scope))\b`,
+-      "gi",
+-    );
+-    value = value.replace(
+-      configUtilityPattern,
+-      (_match, key: string) => trustedCommand(`config set ${key}`),
+-    );
+-    const intentCreatePattern = new RegExp(
+-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+intent-create\b`,
+-      "gi",
+-    );
+-    value = value.replace(intentCreatePattern, trustedCommand("intent create"));
+-    const namespacedDispatcherPattern = new RegExp(
+-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc\.ts${suffix}\s+${TRUSTED_ROUTE_NAMESPACE}\b`,
+-      "gi",
+-    );
+-    value = value.replace(namespacedDispatcherPattern, TRUSTED_COMMAND_PREFIX);
+-    value = value.replace(toolPattern, (_match, delegate: string | undefined) =>
+-      delegate ? trustedCommand(delegate) : TRUSTED_COMMAND_PREFIX
+-    );
+-    value = value.replace(
+-      bareToolPattern,
+-      (_match, delegate: string) => trustedCommand(delegate),
+-    );
++    value = projectNativeCommandText({ source: value, context: commandContext });

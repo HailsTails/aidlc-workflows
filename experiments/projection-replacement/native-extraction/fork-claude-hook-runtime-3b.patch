@@ -1,0 +1,2039 @@
+diff --git a/bun.lock b/bun.lock
+index efa3b73..5b49b42 100644
+--- a/bun.lock
++++ b/bun.lock
+@@ -12,6 +12,8 @@
+         "eslint": "10.11.0",
+         "smol-toml": "1.9.1",
+         "typescript": "^6.0.3",
++        "jsonc-parser": "3.3.1",
++        "zod": "4.4.3",
+       },
+     },
+   },
+@@ -387,6 +389,8 @@
+ 
+     "yocto-queue": ["yocto-queue@0.1.0", "", {}, "sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q=="],
+ 
++    "jsonc-parser": ["jsonc-parser@3.3.1", "", {}, "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ=="],
++
+     "zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+ 
+     "zod-to-json-schema": ["zod-to-json-schema@3.25.2", "", { "peerDependencies": { "zod": "^3.25.28 || ^4" } }, "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="],
+diff --git a/core/tools/aidlc-plugin-emit.ts b/core/tools/aidlc-plugin-emit.ts
+index 9452e33..fbbba1d 100644
+--- a/core/tools/aidlc-plugin-emit.ts
++++ b/core/tools/aidlc-plugin-emit.ts
+@@ -33,6 +33,7 @@ import {
+ import {
+   assertPluginContentHasNoSymlinks,
+   assertPluginCommands,
++  classifyPluginSourceFile,
+   assertSupportedPluginContributionPaths,
+   pluginMarketplaceIssue,
+   scanPluginFiles,
+@@ -101,6 +102,7 @@ const CONTENT_DIRS = [
+   "stages",
+   "sensors",
+   "tools",
++  "hooks",
+   "contributions",
+   "scopes",
+   "agents",
+@@ -716,11 +718,15 @@ function copyPluginContent(
+   outDir: string,
+   target: PluginTarget,
+   reviewers: ReadonlySet<string>,
++  templateHooksDir: string,
+ ): void {
++  const reservedHookNames = new Set(readdirSync(templateHooksDir));
+   for (const dir of CONTENT_DIRS) {
++    if (dir === "hooks" && target.harnessName !== "claude") continue;
+     const sourceDir = join(pluginRoot, dir);
+     if (!existsSync(sourceDir)) continue;
+-    for (const file of walkPluginFiles(sourceDir)) {
++    for (const file of walkPluginFiles(sourceDir).filter((file) => classifyPluginSourceFile({ pluginRoot, file }) === "runtime")) {
++      if (dir === "hooks" && reservedHookNames.has(basename(file))) throw new Error(`authored hook collides with compose bootstrap: ${file}`);
+       const outputDir =
+         target.kind === "cursor" && dir === "agents"
+           ? join(outDir, "aidlc", "agents")
+@@ -964,7 +970,7 @@ export function buildPluginProjection(
+         options.target,
+       );
+       writeHookWiring(pluginName, host.plugin, outDir, pluginDir, options.target);
+-      copyPluginContent(pluginRoot, pluginDir, options.target, reviewers);
++      copyPluginContent(pluginRoot, pluginDir, options.target, reviewers, options.templateHooksDir);
+ 
+       return {
+         pluginName,
+diff --git a/core/tools/aidlc-plugin-hook-composition.test.ts b/core/tools/aidlc-plugin-hook-composition.test.ts
+new file mode 100644
+index 0000000..51cc359
+--- /dev/null
++++ b/core/tools/aidlc-plugin-hook-composition.test.ts
+@@ -0,0 +1,35 @@
++import { expect, test } from 'bun:test';
++import { prepareClaudePluginHooks } from './aidlc-plugin-hook-composition.ts';
++const group = { hooks: [{ type: 'command', command: 'owned guard' }] } as const;
++const payload = { schemaVersion: 1, pluginName: 'example', harness: 'claude', registrations: [{ kind: 'group', path: '.claude/settings.json', event: 'PreToolUse', group }] } as const;
++const document = { path: '.claude/settings.json', text: '{"unrelated":1,"hooks":{"SessionStart":[]}}' };
++test('fresh hooks preserve existing settings and record their contribution', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: "selected", payload, runtime: [{ path: "hooks/guard.mjs", expected: "digest", installed: "digest" }] }, previous: undefined, document })).toEqual({ kind: 'prepared', documents: [{ path: '.claude/settings.json', text: '{\n  "unrelated": 1,\n  "hooks": {\n    "SessionStart": [],\n    "PreToolUse": [\n      {\n        "hooks": [\n          {\n            "type": "command",\n            "command": "owned guard"\n          }\n        ]\n      }\n    ]\n  }\n}\n' }], ownership: payload });
++});
++test('foreign plugin cannot borrow ownership', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'another', selection: { kind: "selected", payload, runtime: [{ path: "hooks/guard.mjs", expected: "digest", installed: "digest" }] }, previous: undefined, document })).toEqual({ kind: 'refused', message: 'authored Claude hook contributions must bind the selected plugin and harness' });
++});
++test('a missing owned group cannot be adopted as an unrelated entry', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: "selected", payload, runtime: [{ path: "hooks/guard.mjs", expected: "digest", installed: "digest" }] }, previous: payload, document })).toEqual({ kind: 'refused', message: 'plugin hook registration refused: .claude/settings.json: missing-owned-value' });
++});
++test('unknown native destination cannot redirect writes', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: "selected", payload: { ...payload, registrations: [{ ...payload.registrations[0], path: '.claude/other.json' }] }, runtime: [] }, previous: undefined, document })).toEqual({ kind: 'refused', message: 'authored Claude hook contributions must bind the selected plugin and harness' });
++});
++test('missing runtime bytes cannot acquire executable registrations', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: 'selected', payload, runtime: [{ path: 'hooks/guard.mjs', expected: 'digest', installed: null }] }, previous: undefined, document })).toEqual({ kind: 'refused', message: 'authored hook runtime unavailable or changed: hooks/guard.mjs' });
++});
++test('a changed helper cannot hide behind a present entrypoint', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: 'selected', payload, runtime: [{ path: 'hooks/guard.mjs', expected: 'digest', installed: 'digest' }, { path: 'tools/shared.runtime.js', expected: 'source', installed: 'edited' }] }, previous: undefined, document })).toEqual({ kind: 'refused', message: 'authored hook runtime unavailable or changed: tools/shared.runtime.js' });
++});
++test('empty observed runtime cannot bypass declaration binding', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: 'selected', payload, runtime: [] }, previous: undefined, document })).toEqual({ kind: 'refused', message: 'authored hook registration requires an observed executable runtime footprint' });
++});
++test('retirement removes exactly its owned group', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: 'deselected' }, previous: payload, document: { path: '.claude/settings.json', text: '{"unrelated":1,"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"owned guard"}]}]}}' } })).toEqual({ kind: 'prepared', documents: [{ path: '.claude/settings.json', text: '{\n  "unrelated": 1,\n  "hooks": {\n    "PreToolUse": []\n  }\n}\n' }], ownership: { ...payload, registrations: [] } });
++});
++test('a malformed present ownership record refuses retirement', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: 'deselected' }, previous: {}, document })).toEqual({ kind: 'refused', message: 'authored Claude hook contributions must bind the selected plugin and harness' });
++});
++test('read-only inspection cannot repair a missing owned registration', () => {
++  expect(prepareClaudePluginHooks({ pluginName: 'example', selection: { kind: 'inspect' }, previous: payload, document })).toEqual({ kind: 'refused', message: 'plugin hook registration refused: .claude/settings.json: missing-owned-value' });
++});
+diff --git a/core/tools/aidlc-plugin-hook-composition.ts b/core/tools/aidlc-plugin-hook-composition.ts
+new file mode 100644
+index 0000000..9fafb4e
+--- /dev/null
++++ b/core/tools/aidlc-plugin-hook-composition.ts
+@@ -0,0 +1,37 @@
++import { planPluginHookRegistrations, projectedPluginHookContributionsSchema, type HookRegistrationDocument, type ProjectedPluginHookContributions } from './aidlc-plugin-hook-registrations.ts';
++export type HookRuntimeFile = { readonly path: string; readonly expected: string; readonly installed: string | null };
++export type ClaudePluginHookSelection = { readonly kind: 'selected'; readonly payload: unknown; readonly runtime: readonly HookRuntimeFile[] } | { readonly kind: 'deselected' } | { readonly kind: 'inspect' };
++export type ClaudePluginHookPreparation = { readonly kind: 'prepared'; readonly documents: readonly HookRegistrationDocument[]; readonly ownership: ProjectedPluginHookContributions } | { readonly kind: 'refused'; readonly message: string };
++type HookRefusal = { readonly kind: 'refused'; readonly message: string };
++type HookOwnership = { readonly kind: 'bound'; readonly ownership: ProjectedPluginHookContributions };
++type ClaudeHookPreparationInput = { readonly pluginName: string; readonly selection: ClaudePluginHookSelection; readonly previous: unknown; readonly document: HookRegistrationDocument };
++const readOwnership = ({ pluginName, payload, documentPath }: { readonly pluginName: string; readonly payload: unknown; readonly documentPath: string }): HookOwnership | HookRefusal => {
++  const parsed = projectedPluginHookContributionsSchema.parse(payload);
++  if (parsed.kind !== 'parsed' || parsed.value.pluginName !== pluginName || parsed.value.harness !== 'claude') return { kind: 'refused', message: 'authored Claude hook contributions must bind the selected plugin and harness' };
++  if (documentPath !== '.claude/settings.json' || parsed.value.registrations.some((registration) => registration.kind !== 'group' || registration.path !== documentPath)) return { kind: 'refused', message: 'authored Claude hook contributions may update only the selected native settings document' };
++  return { kind: 'bound', ownership: parsed.value };
++};
++const admitRuntime = ({ selection, ownership }: { readonly selection: ClaudePluginHookSelection; readonly ownership: ProjectedPluginHookContributions }): { readonly kind: 'ready' } | HookRefusal => {
++  if (selection.kind !== 'selected' || ownership.registrations.length === 0) return { kind: 'ready' };
++  if (selection.runtime.length === 0) return { kind: 'refused', message: 'authored hook registration requires an observed executable runtime footprint' };
++  const unavailable = selection.runtime.find((file) => file.expected !== file.installed);
++  return unavailable === undefined ? { kind: 'ready' } : { kind: 'refused', message: `authored hook runtime unavailable or changed: ${unavailable.path}` };
++};
++const previousOwnership = ({ input, current }: { readonly input: ClaudeHookPreparationInput; readonly current: ProjectedPluginHookContributions }): { readonly kind: 'bound'; readonly ownership: ProjectedPluginHookContributions | null } | HookRefusal => {
++  if (input.previous === undefined) return { kind: 'bound', ownership: null };
++  if (input.selection.kind !== 'selected') return { kind: 'bound', ownership: current };
++  const previous = readOwnership({ pluginName: input.pluginName, payload: input.previous, documentPath: input.document.path });
++  return previous.kind === 'refused' ? { kind: 'refused', message: 'recorded Claude hook contribution ownership does not bind the selected plugin and harness' } : previous;
++};
++const planChange = ({ input, current, previous }: { readonly input: ClaudeHookPreparationInput; readonly current: ProjectedPluginHookContributions; readonly previous: ProjectedPluginHookContributions | null }): ClaudePluginHookPreparation => {
++  const plan = planPluginHookRegistrations({ pluginName: input.pluginName, harness: 'claude', selection: { kind: input.selection.kind === 'deselected' ? 'deselected' : 'selected' }, previous: previous?.registrations ?? [], current: input.selection.kind === 'deselected' ? [] : current.registrations, documents: [input.document] });
++  return plan.kind === 'conflict' ? { kind: 'refused', message: `plugin hook registration refused: ${plan.error.path}: ${plan.error.reason}` } : { kind: 'prepared', documents: plan.documents, ownership: { ...current, registrations: plan.ownedRegistrations } };
++};
++export function prepareClaudePluginHooks(input: ClaudeHookPreparationInput): ClaudePluginHookPreparation {
++  const current = readOwnership({ pluginName: input.pluginName, payload: input.selection.kind === 'selected' ? input.selection.payload : input.previous, documentPath: input.document.path });
++  if (current.kind === 'refused') return current;
++  const runtime = admitRuntime({ selection: input.selection, ownership: current.ownership });
++  if (runtime.kind === 'refused') return runtime;
++  const previous = previousOwnership({ input, current: current.ownership });
++  return previous.kind === 'refused' ? previous : planChange({ input, current: current.ownership, previous: previous.ownership });
++}
+diff --git a/core/tools/aidlc-plugin-hook-definition.test.ts b/core/tools/aidlc-plugin-hook-definition.test.ts
+new file mode 100644
+index 0000000..855ae4e
+--- /dev/null
++++ b/core/tools/aidlc-plugin-hook-definition.test.ts
+@@ -0,0 +1,15 @@
++import { expect, test } from 'bun:test';
++import { bindPluginHookSources } from './aidlc-plugin-hook-definition.ts';
++const rows = [{ pluginName: 'example', event: 'PreToolUse', target: 'guard', hookFile: 'guard.mjs' }];
++test('binds declared entrypoints to actual authored and projected modules', () => {
++  expect(bindPluginHookSources({ rows, authoredFiles: ['hooks/guard.mjs'], projectedFiles: ['hooks/guard.mjs'] })).toEqual({ kind: 'bound', rows });
++});
++test('a bootstrap output cannot stand in for an absent authored entrypoint', () => {
++  expect(bindPluginHookSources({ rows, authoredFiles: [], projectedFiles: ['hooks/guard.mjs'] })).toEqual({ kind: 'refused', message: 'plugin example: declared hook body hooks/guard.mjs must exist in both authored and projected runtime inputs' });
++});
++test('an authored entrypoint must actually be delivered', () => {
++  expect(bindPluginHookSources({ rows, authoredFiles: ['hooks/guard.mjs'], projectedFiles: [] })).toEqual({ kind: 'refused', message: 'plugin example: declared hook body hooks/guard.mjs must exist in both authored and projected runtime inputs' });
++});
++test('a plugin without declared hooks needs no invented executable', () => {
++  expect(bindPluginHookSources({ rows: [], authoredFiles: [], projectedFiles: [] })).toEqual({ kind: 'bound', rows: [] });
++});
+diff --git a/core/tools/aidlc-plugin-hook-definition.ts b/core/tools/aidlc-plugin-hook-definition.ts
+new file mode 100644
+index 0000000..f4bb194
+--- /dev/null
++++ b/core/tools/aidlc-plugin-hook-definition.ts
+@@ -0,0 +1,5 @@
++import type { PluginHookRow } from './aidlc-plugin-hook-registrations.ts';
++export function bindPluginHookSources(input: { readonly rows: readonly PluginHookRow[]; readonly authoredFiles: readonly string[]; readonly projectedFiles: readonly string[] }): { readonly kind: 'bound'; readonly rows: readonly PluginHookRow[] } | { readonly kind: 'refused'; readonly message: string } {
++  const missing = input.rows.find((row) => !input.authoredFiles.includes(`hooks/${row.hookFile}`) || !input.projectedFiles.includes(`hooks/${row.hookFile}`));
++  return missing === undefined ? { kind: 'bound', rows: input.rows } : { kind: 'refused', message: `plugin ${missing.pluginName}: declared hook body hooks/${missing.hookFile} must exist in both authored and projected runtime inputs` };
++}
+diff --git a/core/tools/aidlc-plugin-hook-registrations.test.ts b/core/tools/aidlc-plugin-hook-registrations.test.ts
+new file mode 100644
+index 0000000..9bf862a
+--- /dev/null
++++ b/core/tools/aidlc-plugin-hook-registrations.test.ts
+@@ -0,0 +1,401 @@
++import { describe, expect, mock, test } from "bun:test";
++import {
++  type HookRegistrationPlanResult,
++  type PlanPluginHookRegistrationsInput,
++  type PluginHookContribution,
++  planPluginHookRegistrations,
++  codexHookTrustIdentity,
++  planCodexHookTrustSeed,
++} from "./aidlc-plugin-hook-registrations.ts";
++
++const claudeContribution: PluginHookContribution = {
++  kind: "group",
++  path: ".claude/settings.json",
++  event: "PreToolUse",
++  group: { matcher: "Bash", hooks: [{ type: "command", command: "bun .claude/hooks/guard.ts" }] },
++};
++
++const codexContribution: PluginHookContribution = {
++  kind: "group",
++  path: ".codex/hooks.json",
++  event: "PreToolUse",
++  group: { matcher: "Bash", hooks: [{ type: "command", command: "bun .codex/tools/aidlc.ts engine adapter codex example-guard" }] },
++};
++
++const copilotContribution: PluginHookContribution = {
++  kind: "group",
++  path: ".github/hooks/aidlc.json",
++  event: "PreToolUse",
++  group: {
++    type: "command",
++    bash: "bun .aidlc/hooks/aidlc-copilot-adapter.ts example-guard",
++    powershell: "bun .aidlc/hooks/aidlc-copilot-adapter.ts example-guard",
++    timeoutSec: 30,
++  },
++};
++
++function plannedDocument(input: {
++  readonly result: HookRegistrationPlanResult;
++  readonly path: string;
++}): unknown {
++  if (input.result.kind !== "planned") return null;
++  return JSON.parse(input.result.documents.find((document) => document.path === input.path)?.text ?? "null");
++}
++
++function selectedPlan(input: {
++  readonly harness: PlanPluginHookRegistrationsInput["harness"];
++  readonly current: readonly PluginHookContribution[];
++  readonly documents: PlanPluginHookRegistrationsInput["documents"];
++}): HookRegistrationPlanResult {
++  return planPluginHookRegistrations({
++    pluginName: "example",
++    harness: input.harness,
++    selection: { kind: "selected" },
++    previous: [],
++    current: input.current,
++    documents: input.documents,
++  });
++}
++
++describe("selected native plugin hook registration planning", () => {
++  test("Claude appends its native group after user groups and preserves other settings", () => {
++    const result = selectedPlan({
++      harness: "claude",
++      current: [claudeContribution],
++      documents: [{ path: ".claude/settings.json", text: '{"model":"consumer-model","permissions":{"allow":["Bash(date)"]},"hooks":{"PreToolUse":[{"matcher":"Read","hooks":[{"type":"command","command":"user-read"}]}]}}' }],
++    });
++    expect(result.kind).toBe("planned");
++    expect(plannedDocument({ result, path: ".claude/settings.json" })).toEqual({
++      model: "consumer-model",
++      permissions: { allow: ["Bash(date)"] },
++      hooks: { PreToolUse: [
++        { matcher: "Read", hooks: [{ type: "command", command: "user-read" }] },
++        { matcher: "Bash", hooks: [{ type: "command", command: "bun .claude/hooks/guard.ts" }] },
++      ] },
++    });
++    expect(result).toMatchObject({ ownedRegistrations: [claudeContribution] });
++  });
++
++  test("Codex appends its native group and target while preserving user registrations", () => {
++    const result = selectedPlan({
++      harness: "codex",
++      current: [codexContribution, { kind: "target", path: ".codex/hooks/plugin-hook-targets.json", target: "example-guard", hookFile: "guard.ts" }],
++      documents: [
++        { path: ".codex/hooks.json", text: '{"consumer":"preserved","hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"user-check"}]}]}}' },
++        { path: ".codex/hooks/plugin-hook-targets.json", text: '{"user-guard":"user-guard.ts"}' },
++      ],
++    });
++    expect(result.kind).toBe("planned");
++    expect(plannedDocument({ result, path: ".codex/hooks.json" })).toEqual({
++      consumer: "preserved",
++      hooks: { PreToolUse: [
++        { hooks: [{ type: "command", command: "user-check" }] },
++        { matcher: "Bash", hooks: [{ type: "command", command: "bun .codex/tools/aidlc.ts engine adapter codex example-guard" }] },
++      ] },
++    });
++    expect(plannedDocument({ result, path: ".codex/hooks/plugin-hook-targets.json" })).toEqual({ "user-guard": "user-guard.ts", "example-guard": "guard.ts" });
++  });
++
++  test("Copilot preserves its flat host entry and user target without adding matchers", () => {
++    const result = selectedPlan({
++      harness: "copilot",
++      current: [copilotContribution, { kind: "target", path: ".aidlc/hooks/plugin-hook-targets.json", target: "example-guard", hookFile: "guard.ts" }],
++      documents: [
++        { path: ".github/hooks/aidlc.json", text: '{"version":1,"hooks":{"PreToolUse":[{"type":"command","bash":"user-check","powershell":"user-check","timeoutSec":10}]}}' },
++        { path: ".aidlc/hooks/plugin-hook-targets.json", text: '{"user-guard":"user-guard.ts"}' },
++      ],
++    });
++    expect(result.kind).toBe("planned");
++    expect(plannedDocument({ result, path: ".github/hooks/aidlc.json" })).toEqual({
++      version: 1,
++      hooks: { PreToolUse: [
++        { type: "command", bash: "user-check", powershell: "user-check", timeoutSec: 10 },
++        { type: "command", bash: "bun .aidlc/hooks/aidlc-copilot-adapter.ts example-guard", powershell: "bun .aidlc/hooks/aidlc-copilot-adapter.ts example-guard", timeoutSec: 30 },
++      ] },
++    });
++    expect(plannedDocument({ result, path: ".aidlc/hooks/plugin-hook-targets.json" })).toEqual({ "user-guard": "user-guard.ts", "example-guard": "guard.ts" });
++  });
++
++  test("Cursor appends an event body after the user's existing body", () => {
++    const result = selectedPlan({
++      harness: "cursor",
++      current: [{ kind: "event-body", path: ".cursor/hooks/plugin-hook-targets.json", event: "PreToolUse", hookFile: "guard.ts" }],
++      documents: [{ path: ".cursor/hooks/plugin-hook-targets.json", text: '{"PreToolUse":["user-guard.ts"],"PostToolUse":["user-after.ts"]}' }],
++    });
++    expect(result.kind).toBe("planned");
++    expect(plannedDocument({ result, path: ".cursor/hooks/plugin-hook-targets.json" })).toEqual({ PreToolUse: ["user-guard.ts", "guard.ts"], PostToolUse: ["user-after.ts"] });
++  });
++
++  test("OpenCode appends its complete row after existing user rows", () => {
++    const result = selectedPlan({
++      harness: "opencode",
++      current: [{ kind: "event-row", path: ".aidlc/hooks/plugin-hook-rows.json", row: { event: "PreToolUse", target: "example-guard", hookFile: "guard.ts", pluginName: "example", matcher: "Bash" } }],
++      documents: [{ path: ".aidlc/hooks/plugin-hook-rows.json", text: '[{"event":"PreToolUse","target":"user-guard","hookFile":"user.ts","pluginName":"user"}]' }],
++    });
++    expect(result.kind).toBe("planned");
++    expect(plannedDocument({ result, path: ".aidlc/hooks/plugin-hook-rows.json" })).toEqual([
++      { event: "PreToolUse", target: "user-guard", hookFile: "user.ts", pluginName: "user" },
++      { event: "PreToolUse", target: "example-guard", hookFile: "guard.ts", pluginName: "example", matcher: "Bash" },
++    ]);
++  });
++
++  test("an equal existing user registration is preserved without claiming ownership", () => {
++    const result = selectedPlan({
++      harness: "claude",
++      current: [claudeContribution],
++      documents: [{ path: ".claude/settings.json", text: '{ "hooks": { "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "bun .claude/hooks/guard.ts" }] }] } }\n' }],
++    });
++    expect(result).toEqual({
++      kind: "planned",
++      documents: [{ path: ".claude/settings.json", text: '{ "hooks": { "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "bun .claude/hooks/guard.ts" }] }] } }\n' }],
++      ownedRegistrations: [],
++    });
++  });
++
++  test("a missing recorded native group refuses deselection without adopting user rows", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example",
++      harness: "claude",
++      selection: { kind: "deselected" },
++      previous: [claudeContribution],
++      current: [],
++      documents: [{ path: ".claude/settings.json", text: '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"operator-edited"}]}]}}' }],
++    });
++    expect(result).toMatchObject({
++      kind: "conflict",
++      error: {
++        kind: "hook-registration-conflict",
++        pluginName: "example",
++        path: ".claude/settings.json",
++        reason: "missing-owned-value",
++      },
++    });
++    expect(result).not.toHaveProperty("documents");
++  });
++});
++
++describe("owned plugin hook registration lifecycle", () => {
++  test("a modified owned Codex target refuses the whole registration plan", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "codex", selection: { kind: "deselected" },
++      previous: [codexContribution, { kind: "target", path: ".codex/hooks/plugin-hook-targets.json", target: "example-guard", hookFile: "guard.ts" }], current: [],
++      documents: [
++        { path: ".codex/hooks.json", text: '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bun .codex/tools/aidlc.ts engine adapter codex example-guard"}]}]}}' },
++        { path: ".codex/hooks/plugin-hook-targets.json", text: '{"example-guard":"operator-edited.ts"}' },
++      ],
++    });
++    expect(result).toMatchObject({ kind: "conflict", error: { path: ".codex/hooks/plugin-hook-targets.json", reason: "modified-owned-value" } });
++    expect(result).not.toHaveProperty("documents");
++  });
++
++  test("a modified owned Cursor event body refuses without adopting the replacement", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "cursor", selection: { kind: "deselected" },
++      previous: [{ kind: "event-body", path: ".cursor/hooks/plugin-hook-targets.json", event: "PreToolUse", hookFile: "guard.ts" }], current: [],
++      documents: [{ path: ".cursor/hooks/plugin-hook-targets.json", text: '{"PreToolUse":["operator-edited.ts","user.ts"]}' }],
++    });
++    expect(result).toMatchObject({ kind: "conflict", error: { path: ".cursor/hooks/plugin-hook-targets.json", reason: "missing-owned-value" } });
++    expect(result).not.toHaveProperty("documents");
++  });
++
++  test("a modified owned OpenCode row refuses without claiming the similar replacement", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "opencode", selection: { kind: "deselected" },
++      previous: [{ kind: "event-row", path: ".aidlc/hooks/plugin-hook-rows.json", row: { event: "PreToolUse", target: "example-guard", hookFile: "guard.ts", pluginName: "example", matcher: "Bash" } }], current: [],
++      documents: [{ path: ".aidlc/hooks/plugin-hook-rows.json", text: '[{"event":"PreToolUse","target":"example-guard","hookFile":"operator-edited.ts","pluginName":"example","matcher":"Bash"}]' }],
++    });
++    expect(result).toMatchObject({ kind: "conflict", error: { path: ".aidlc/hooks/plugin-hook-rows.json", reason: "missing-owned-value" } });
++    expect(result).not.toHaveProperty("documents");
++  });
++
++  test("repeated selection preserves proven ownership and untouched document bytes", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "claude", selection: { kind: "selected" },
++      previous: [claudeContribution], current: [claudeContribution],
++      documents: [{ path: ".claude/settings.json", text: '{ "hooks": { "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "bun .claude/hooks/guard.ts" }] }] } }\n' }],
++    });
++    expect(result).toEqual({
++      kind: "planned",
++      documents: [{ path: ".claude/settings.json", text: '{ "hooks": { "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "bun .claude/hooks/guard.ts" }] }] } }\n' }],
++      ownedRegistrations: [claudeContribution],
++    });
++  });
++
++  test("renaming a Claude guard removes its prior group and preserves unrelated settings and groups", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "claude", selection: { kind: "selected" },
++      previous: [claudeContribution],
++      current: [{ kind: "group", path: ".claude/settings.json", event: "PreToolUse", group: { matcher: "Bash", hooks: [{ type: "command", command: "bun .claude/hooks/renamed-guard.ts" }] } }],
++      documents: [{ path: ".claude/settings.json", text: '{"model":"consumer","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bun .claude/hooks/guard.ts"}]},{"hooks":[{"type":"command","command":"user-check"}]}]}}' }],
++    });
++    expect(result.kind).toBe("planned");
++    expect(plannedDocument({ result, path: ".claude/settings.json" })).toEqual({
++      model: "consumer", hooks: { PreToolUse: [
++        { hooks: [{ type: "command", command: "user-check" }] },
++        { matcher: "Bash", hooks: [{ type: "command", command: "bun .claude/hooks/renamed-guard.ts" }] },
++      ] },
++    });
++  });
++
++  test("disabling a Claude guard removes one owned occurrence and preserves an equal unrecorded duplicate", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "claude", selection: { kind: "deselected" },
++      previous: [claudeContribution], current: [],
++      documents: [{ path: ".claude/settings.json", text: '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bun .claude/hooks/guard.ts"}]},{"matcher":"Bash","hooks":[{"type":"command","command":"bun .claude/hooks/guard.ts"}]}]}}' }],
++    });
++    expect(plannedDocument({ result, path: ".claude/settings.json" })).toEqual({
++      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "bun .claude/hooks/guard.ts" }] }] },
++    });
++    expect(result).toMatchObject({ kind: "planned", ownedRegistrations: [] });
++  });
++
++  test("disabling Codex removes the owned group and target while retaining user entries", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "codex", selection: { kind: "deselected" },
++      previous: [codexContribution, { kind: "target", path: ".codex/hooks/plugin-hook-targets.json", target: "example-guard", hookFile: "guard.ts" }], current: [],
++      documents: [
++        { path: ".codex/hooks.json", text: '{"consumer":"retained","hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"user-check"}]},{"matcher":"Bash","hooks":[{"type":"command","command":"bun .codex/tools/aidlc.ts engine adapter codex example-guard"}]}]}}' },
++        { path: ".codex/hooks/plugin-hook-targets.json", text: '{"user-guard":"user.ts","example-guard":"guard.ts"}' },
++      ],
++    });
++    expect(plannedDocument({ result, path: ".codex/hooks.json" })).toEqual({ consumer: "retained", hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "user-check" }] }] } });
++    expect(plannedDocument({ result, path: ".codex/hooks/plugin-hook-targets.json" })).toEqual({ "user-guard": "user.ts" });
++  });
++
++  test("disabling Copilot removes its owned flat host entry and leaves the user entry untouched", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "copilot", selection: { kind: "deselected" },
++      previous: [copilotContribution], current: [],
++      documents: [{ path: ".github/hooks/aidlc.json", text: '{"version":1,"hooks":{"PreToolUse":[{"type":"command","bash":"user-check","powershell":"user-check","timeoutSec":10},{"type":"command","bash":"bun .aidlc/hooks/aidlc-copilot-adapter.ts example-guard","powershell":"bun .aidlc/hooks/aidlc-copilot-adapter.ts example-guard","timeoutSec":30}]}}' }],
++    });
++    expect(plannedDocument({ result, path: ".github/hooks/aidlc.json" })).toEqual({ version: 1, hooks: { PreToolUse: [{ type: "command", bash: "user-check", powershell: "user-check", timeoutSec: 10 }] } });
++  });
++
++  test("renaming a Cursor event body removes only its owned prior body", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "cursor", selection: { kind: "selected" },
++      previous: [{ kind: "event-body", path: ".cursor/hooks/plugin-hook-targets.json", event: "PreToolUse", hookFile: "guard.ts" }],
++      current: [{ kind: "event-body", path: ".cursor/hooks/plugin-hook-targets.json", event: "PreToolUse", hookFile: "renamed.ts" }],
++      documents: [{ path: ".cursor/hooks/plugin-hook-targets.json", text: '{"PreToolUse":["guard.ts","user.ts"],"PostToolUse":["user-after.ts"]}' }],
++    });
++    expect(plannedDocument({ result, path: ".cursor/hooks/plugin-hook-targets.json" })).toEqual({ PreToolUse: ["user.ts", "renamed.ts"], PostToolUse: ["user-after.ts"] });
++  });
++
++  test("disabling OpenCode removes only its complete recorded row", () => {
++    const result = planPluginHookRegistrations({
++      pluginName: "example", harness: "opencode", selection: { kind: "deselected" },
++      previous: [{ kind: "event-row", path: ".aidlc/hooks/plugin-hook-rows.json", row: { event: "PreToolUse", target: "example-guard", hookFile: "guard.ts", pluginName: "example", matcher: "Bash" } }], current: [],
++      documents: [{ path: ".aidlc/hooks/plugin-hook-rows.json", text: '[{"event":"PreToolUse","target":"example-guard","hookFile":"guard.ts","pluginName":"example","matcher":"Bash"},{"event":"PreToolUse","target":"user-guard","hookFile":"user.ts","pluginName":"user"}]' }],
++    });
++    expect(plannedDocument({ result, path: ".aidlc/hooks/plugin-hook-rows.json" })).toEqual([{ event: "PreToolUse", target: "user-guard", hookFile: "user.ts", pluginName: "user" }]);
++  });
++});
++
++
++describe("normalized native Codex hook trust identity", () => {
++  test("a tool matcher belongs to the canonical single-command identity", () => {
++    expect(codexHookTrustIdentity({
++      eventSnake: "pre_tool_use", matcher: "Bash",
++      command: "bun .codex/tools/aidlc.ts engine adapter codex rin-block-inline-exec",
++    })).toBe('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"bun .codex/tools/aidlc.ts engine adapter codex rin-block-inline-exec","timeout":600,"type":"command"}],"matcher":"Bash"}');
++  });
++
++  test("an omitted matcher retains the previous unrestricted identity", () => {
++    expect(codexHookTrustIdentity({ eventSnake: "session_start", command: "guard" }))
++      .toBe('{"event_name":"session_start","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}]}');
++  });
++
++  test("an empty matcher remains an explicit identity field", () => {
++    expect(codexHookTrustIdentity({ eventSnake: "pre_tool_use", command: "guard", matcher: "" }))
++      .toBe('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":""}');
++  });
++
++  test("a match-all selector remains distinct from an omitted matcher", () => {
++    expect(codexHookTrustIdentity({ eventSnake: "post_tool_use", command: "guard", matcher: "*" }))
++      .toBe('{"event_name":"post_tool_use","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"*"}');
++  });
++
++  test("a session selector retains its exact spelling", () => {
++    expect(codexHookTrustIdentity({ eventSnake: "session_start", command: "guard", matcher: "startup|resume" }))
++      .toBe('{"event_name":"session_start","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"startup|resume"}');
++  });
++
++  test("a selector retains whitespace without normalization", () => {
++    expect(codexHookTrustIdentity({ eventSnake: "pre_tool_use", command: "guard", matcher: " Bash " }))
++      .toBe('{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":" Bash "}');
++  });
++
++  test.each([
++    { eventSnake: "permission_request", expected: '{"event_name":"permission_request","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
++    { eventSnake: "session_end", expected: '{"event_name":"session_end","hooks":[{"async":false,"command":"guard","timeout":1,"type":"command"}],"matcher":"Bash"}' },
++    { eventSnake: "subagent_start", expected: '{"event_name":"subagent_start","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
++    { eventSnake: "subagent_stop", expected: '{"event_name":"subagent_stop","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
++    { eventSnake: "pre_compact", expected: '{"event_name":"pre_compact","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
++    { eventSnake: "post_compact", expected: '{"event_name":"post_compact","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}],"matcher":"Bash"}' },
++  ])("$eventSnake retains its matcher in the native identity", ({ eventSnake, expected }) => {
++    expect(codexHookTrustIdentity({ eventSnake, command: "guard", matcher: "Bash" })).toBe(expected);
++  });
++
++  test("a prompt event discards a matcher ignored by native Codex", () => {
++    expect(codexHookTrustIdentity({ eventSnake: "user_prompt_submit", command: "guard", matcher: "^hello" }))
++      .toBe('{"event_name":"user_prompt_submit","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}]}');
++  });
++
++  test("a stop event discards a matcher ignored by native Codex", () => {
++    expect(codexHookTrustIdentity({ eventSnake: "stop", command: "guard", matcher: "*" }))
++      .toBe('{"event_name":"stop","hooks":[{"async":false,"command":"guard","timeout":600,"type":"command"}]}');
++  });
++
++  test("an interrupt event discards a matcher ignored by native Codex", () => {
++    expect(codexHookTrustIdentity({ eventSnake: "interrupt", command: "guard", matcher: "*" }))
++      .toBe('{"event_name":"interrupt","hooks":[{"async":false,"command":"guard","timeout":1,"type":"command"}]}');
++  });
++});
++
++describe("project-specific Codex trust seed planning", () => {
++  test("the final installed matcher reaches the hash port with its native identity", () => {
++    const hashIdentity = mock((_identityRequest: { identity: string }) => "sha256:baf42fc38cc3a0b4bacdf6d17c88276c8d7aae2f728be8f46e291c93a866097e");
++    const result = planCodexHookTrustSeed({
++      document: { hooks: { PreToolUse: [{
++        matcher: "Bash", hooks: [{ type: "command", command: "bun .codex/tools/aidlc.ts engine adapter codex rin-block-inline-exec" }],
++      }] } },
++      hooksPath: "/consumer/.codex/hooks.json", hashIdentity,
++    });
++    expect(hashIdentity.mock.calls).toEqual([[{
++      identity: '{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"bun .codex/tools/aidlc.ts engine adapter codex rin-block-inline-exec","timeout":600,"type":"command"}],"matcher":"Bash"}',
++    }]]);
++    expect(result).toEqual({
++      kind: "planned",
++      text: '[hooks.state."/consumer/.codex/hooks.json:pre_tool_use:0:0"]\ntrusted_hash = "sha256:baf42fc38cc3a0b4bacdf6d17c88276c8d7aae2f728be8f46e291c93a866097e"\n',
++    });
++  });
++
++  test("each handler preserves its final group and handler index", () => {
++    const hashIdentity = mock((_identityRequest: { identity: string }) => "first").mockReturnValueOnce("first").mockReturnValueOnce("second").mockReturnValueOnce("third");
++    const result = planCodexHookTrustSeed({
++      document: { hooks: { PostToolUse: [
++        { matcher: "Read", hooks: [{ type: "command", command: "one" }, { type: "command", command: "two" }] },
++        { matcher: "Write", hooks: [{ type: "command", command: "three" }] },
++      ] } },
++      hooksPath: "/consumer/.codex/hooks.json", hashIdentity,
++    });
++    expect(hashIdentity.mock.calls).toEqual([
++      [{ identity: '{"event_name":"post_tool_use","hooks":[{"async":false,"command":"one","timeout":600,"type":"command"}],"matcher":"Read"}' }],
++      [{ identity: '{"event_name":"post_tool_use","hooks":[{"async":false,"command":"two","timeout":600,"type":"command"}],"matcher":"Read"}' }],
++      [{ identity: '{"event_name":"post_tool_use","hooks":[{"async":false,"command":"three","timeout":600,"type":"command"}],"matcher":"Write"}' }],
++    ]);
++    expect(result).toEqual({
++      kind: "planned",
++      text: '[hooks.state."/consumer/.codex/hooks.json:post_tool_use:0:0"]\ntrusted_hash = "first"\n\n[hooks.state."/consumer/.codex/hooks.json:post_tool_use:0:1"]\ntrusted_hash = "second"\n\n[hooks.state."/consumer/.codex/hooks.json:post_tool_use:1:0"]\ntrusted_hash = "third"\n',
++    });
++  });
++
++  test("an invalid matcher refuses before invoking the hash port", () => {
++    const hashIdentity = mock((_identityRequest: { identity: string }) => "unused");
++    expect(planCodexHookTrustSeed({
++      document: { hooks: { PreToolUse: [{ matcher: 7, hooks: [{ type: "command", command: "guard" }] }] } },
++      hooksPath: "/consumer/.codex/hooks.json", hashIdentity,
++    })).toEqual({ kind: "invalid-document" });
++    expect(hashIdentity).not.toHaveBeenCalled();
++  });
++});
+diff --git a/core/tools/aidlc-plugin-hook-registrations.ts b/core/tools/aidlc-plugin-hook-registrations.ts
+new file mode 100644
+index 0000000..9b59ad0
+--- /dev/null
++++ b/core/tools/aidlc-plugin-hook-registrations.ts
+@@ -0,0 +1,276 @@
++import type { ModelHarness } from "./aidlc-model-policy.ts";
++import { isModelHarness } from "./aidlc-model-policy.ts";
++
++type PluginHookRow = {
++  event: string;
++  matcher?: string;
++  target: string;
++  capabilityId?: string;
++  hookFile: string;
++  pluginName: string;
++};
++
++type NativeHookGroup =
++  | {
++      readonly matcher?: string;
++      readonly hooks: readonly { readonly type: "command"; readonly command: string }[];
++    }
++  | {
++      readonly type: "command";
++      readonly bash: string;
++      readonly powershell: string;
++      readonly timeoutSec: number;
++    };
++
++type PluginHookContribution =
++  | { readonly kind: "group"; readonly path: string; readonly event: string; readonly group: NativeHookGroup }
++  | { readonly kind: "target"; readonly path: string; readonly target: string; readonly hookFile: string }
++  | { readonly kind: "event-body"; readonly path: string; readonly event: string; readonly hookFile: string }
++  | { readonly kind: "event-row"; readonly path: string; readonly row: PluginHookRow };
++
++type ProjectedPluginHookContributions = {
++  readonly schemaVersion: 1;
++  readonly pluginName: string;
++  readonly harness: ModelHarness;
++  readonly registrations: readonly PluginHookContribution[];
++};
++
++type HookRegistrationDocument = { readonly path: string; readonly text: string };
++
++type PlanPluginHookRegistrationsInput = {
++  readonly pluginName: string;
++  readonly harness: ModelHarness;
++  readonly selection: { readonly kind: "selected" } | { readonly kind: "deselected" };
++  readonly previous: readonly PluginHookContribution[];
++  readonly current: readonly PluginHookContribution[];
++  readonly documents: readonly HookRegistrationDocument[];
++};
++
++type HookRegistrationConflict = {
++  readonly kind: "hook-registration-conflict";
++  readonly pluginName: string;
++  readonly path: string;
++  readonly identity: string;
++  readonly reason: "invalid-document" | "modified-owned-value" | "missing-owned-value" | "target-collision";
++};
++
++type HookRegistrationPlanResult =
++  | {
++      readonly kind: "planned";
++      readonly documents: readonly HookRegistrationDocument[];
++      readonly ownedRegistrations: readonly PluginHookContribution[];
++    }
++  | { readonly kind: "conflict"; readonly error: HookRegistrationConflict };
++
++const registrationRecord = (value: unknown): value is Record<string, unknown> =>
++  value !== null && typeof value === "object" && !Array.isArray(value);
++
++function validPluginHookRow(value: unknown): value is PluginHookRow {
++  return registrationRecord(value) && [value["event"], value["target"], value["hookFile"], value["pluginName"]].every((field) => typeof field === "string" && field.length > 0) &&
++    (value["matcher"] === undefined || typeof value["matcher"] === "string") && (value["capabilityId"] === undefined || typeof value["capabilityId"] === "string");
++}
++
++function validNativeHookGroup(value: unknown): value is NativeHookGroup {
++  if (!registrationRecord(value)) return false;
++  if (value["type"] === "command") return typeof value["bash"] === "string" && typeof value["powershell"] === "string" && typeof value["timeoutSec"] === "number" && value["timeoutSec"] > 0;
++  return (value["matcher"] === undefined || typeof value["matcher"] === "string") && Array.isArray(value["hooks"]) && value["hooks"].length > 0 &&
++    value["hooks"].every((hook) => registrationRecord(hook) && hook["type"] === "command" && typeof hook["command"] === "string");
++}
++
++function validHookContribution(value: unknown): value is PluginHookContribution {
++  if (!registrationRecord(value) || typeof value["path"] !== "string") return false;
++  switch (value["kind"]) {
++    case "group": return typeof value["event"] === "string" && validNativeHookGroup(value["group"]);
++    case "target": return typeof value["target"] === "string" && typeof value["hookFile"] === "string";
++    case "event-body": return typeof value["event"] === "string" && typeof value["hookFile"] === "string";
++    case "event-row": return validPluginHookRow(value["row"]);
++  }
++  return false;
++}
++
++type CodexHookTrustIdentityInput = {
++  readonly eventSnake: string;
++  readonly command: string;
++  readonly matcher?: string | undefined;
++};
++
++const codexMatcherEvents = new Set([
++  "pre_tool_use", "permission_request", "post_tool_use", "session_start",
++  "session_end", "subagent_start", "subagent_stop", "pre_compact", "post_compact",
++]);
++
++function codexHookTrustIdentity(input: CodexHookTrustIdentityInput): string {
++  const matcher = codexMatcherEvents.has(input.eventSnake) ? input.matcher : undefined;
++  const timeoutSec = input.eventSnake === "session_end" || input.eventSnake === "interrupt" ? 1 : 600;
++  return JSON.stringify({ event_name: input.eventSnake,
++    hooks: [{ async: false, command: input.command, timeout: timeoutSec, type: "command" }],
++    matcher });
++}
++
++function validCommandHookGroup(value: unknown): value is Extract<NativeHookGroup, { readonly hooks: readonly unknown[] }> {
++  return validNativeHookGroup(value) && "hooks" in value;
++}
++
++function planCodexHookTrustSeed(input: {
++  document: unknown;
++  hooksPath: string;
++  hashIdentity: (input: { identity: string }) => string;
++}): { kind: "planned"; text: string } | { kind: "invalid-document" } {
++  if (!registrationRecord(input.document) || !registrationRecord(input.document["hooks"])) return { kind: "invalid-document" };
++  const events = Object.entries(input.document["hooks"]).map(([event, groups]) => ({ event,
++    groups: Array.isArray(groups) && groups.every(validCommandHookGroup) ? groups : null }));
++  if (events.some(({ groups }) => groups === null)) return { kind: "invalid-document" };
++  const entries = events.flatMap(({ event, groups }) => groups?.flatMap((group, groupIndex) =>
++    group.hooks.map((hook, hookIndex) => {
++      const eventSnake = event.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
++      const hash = input.hashIdentity({ identity: codexHookTrustIdentity({ eventSnake, command: hook.command, matcher: group.matcher }) });
++      return `[hooks.state.${JSON.stringify(`${input.hooksPath}:${eventSnake}:${groupIndex}:${hookIndex}`)}]\ntrusted_hash = ${JSON.stringify(hash)}`;
++    })) ?? []);
++  return { kind: "planned", text: entries.length > 0 ? `${entries.join("\n\n")}\n` : "[hooks.state]\n" };
++}
++
++const projectedPluginHookContributionsSchema = {
++  parse(value: unknown): { kind: "parsed"; value: ProjectedPluginHookContributions } | { kind: "invalid" } {
++    if (!registrationRecord(value) || value["schemaVersion"] !== 1 || typeof value["pluginName"] !== "string" || typeof value["harness"] !== "string" || !isModelHarness(value["harness"]) || !Array.isArray(value["registrations"])) return { kind: "invalid" };
++    const registrations = value["registrations"];
++    if (!registrations.every(validHookContribution)) return { kind: "invalid" };
++    const harnessDir = value["harness"] === "claude" ? ".claude" : value["harness"] === "codex" ? ".codex" : value["harness"] === "cursor" ? ".cursor" : value["harness"].startsWith("kiro") ? ".kiro" : ".aidlc";
++    if (!registrations.every((registration) => {
++      const expectedPath = registration.kind === "group"
++        ? value["harness"] === "claude" ? `${harnessDir}/settings.json` : value["harness"] === "codex" ? `${harnessDir}/hooks.json` : value["harness"] === "copilot" ? ".github/hooks/aidlc.json" : ""
++        : `${harnessDir}/hooks/${registration.kind === "event-row" ? "plugin-hook-rows.json" : "plugin-hook-targets.json"}`;
++      return registration.path === expectedPath && (registration.kind === "group" || /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:ts|mjs|js)$/.test(registration.kind === "event-row" ? registration.row.hookFile : registration.hookFile));
++    })) return { kind: "invalid" };
++    return { kind: "parsed", value: { schemaVersion: 1, pluginName: value["pluginName"], harness: value["harness"], registrations } };
++  },
++};
++
++function equalRegistrationValues(input: { left: unknown; right: unknown }): boolean {
++  if (Array.isArray(input.left) && Array.isArray(input.right)) {
++    const right = input.right;
++    return input.left.length === right.length && input.left.every((value, index) =>
++      equalRegistrationValues({ left: value, right: right[index] }));
++  }
++  if (registrationRecord(input.left) && registrationRecord(input.right)) {
++    const right = input.right;
++    return Object.keys(input.left).length === Object.keys(right).length &&
++      Object.entries(input.left).every(([key, value]) => Object.hasOwn(right, key) &&
++        equalRegistrationValues({ left: value, right: right[key] }));
++  }
++  return input.left === input.right;
++}
++
++function registrationEntries(input: { contribution: PluginHookContribution; document: unknown }): readonly unknown[] | null {
++  if (input.contribution.kind === "event-row") return Array.isArray(input.document) ? input.document : null;
++  if (!registrationRecord(input.document)) return null;
++  if (input.contribution.kind === "target") {
++    const value = input.document[input.contribution.target];
++    return value === undefined ? [] : [value];
++  }
++  const registry = input.contribution.kind === "group" ? input.document["hooks"] ?? {} : input.document;
++  if (!registrationRecord(registry)) return null;
++  const entries = registry[input.contribution.event] ?? [];
++  return Array.isArray(entries) ? entries : null;
++}
++
++function registrationValue(contribution: PluginHookContribution): unknown {
++  switch (contribution.kind) {
++    case "group": return contribution.group;
++    case "target": return contribution.hookFile;
++    case "event-body": return contribution.hookFile;
++    case "event-row": return contribution.row;
++  }
++}
++
++function writeRegistrationEntries(input: { contribution: PluginHookContribution; document: unknown; entries: readonly unknown[] }): unknown {
++  if (input.contribution.kind === "event-row") return input.entries;
++  if (!registrationRecord(input.document)) return input.document;
++  if (input.contribution.kind === "target") {
++    const target = input.contribution.target;
++    return input.entries.length > 0 ? { ...input.document, [target]: input.entries[0] }
++      : Object.fromEntries(Object.entries(input.document).filter(([key]) => key !== target));
++  }
++  if (input.contribution.kind === "event-body") return { ...input.document, [input.contribution.event]: input.entries };
++  const hooks = registrationRecord(input.document["hooks"]) ? input.document["hooks"] : {};
++  return { ...input.document, hooks: { ...hooks, [input.contribution.event]: input.entries } };
++}
++
++function registrationConflict(input: {
++  pluginName: string;
++  contribution: PluginHookContribution;
++  reason: HookRegistrationConflict["reason"];
++}): HookRegistrationPlanResult {
++  return { kind: "conflict", error: {
++    kind: "hook-registration-conflict", pluginName: input.pluginName,
++    path: input.contribution.path, identity: JSON.stringify(input.contribution), reason: input.reason,
++  } };
++}
++
++function planPluginHookRegistrations(input: PlanPluginHookRegistrationsInput): HookRegistrationPlanResult {
++  const parsed = new Map<string, unknown>();
++  try {
++    input.documents.forEach((document) => {
++      const value: unknown = JSON.parse(document.text);
++      parsed.set(document.path, value);
++    });
++  } catch {
++    return { kind: "conflict", error: { kind: "hook-registration-conflict", pluginName: input.pluginName, path: "", identity: "", reason: "invalid-document" } };
++  }
++  const originals = new Map(parsed);
++  const previousConflict = input.previous.map((contribution) => {
++    const entries = registrationEntries({ contribution, document: parsed.get(contribution.path) });
++    if (entries === null) return registrationConflict({ pluginName: input.pluginName, contribution, reason: "invalid-document" });
++    if (entries.some((entry) => equalRegistrationValues({ left: entry, right: registrationValue(contribution) }))) return null;
++    if (contribution.kind === "target" && entries.length === 0) return null;
++    return registrationConflict({ pluginName: input.pluginName, contribution, reason: contribution.kind === "target" ? "modified-owned-value" : "missing-owned-value" });
++  }).find((result) => result !== null);
++  if (previousConflict) return previousConflict;
++  const current = input.selection.kind === "selected" ? input.current : [];
++  const owned = input.previous.filter((previous) => current.some((contribution) =>
++    equalRegistrationValues({ left: previous, right: contribution })));
++  input.previous.filter((previous) => !owned.includes(previous)).forEach((contribution) => {
++    const document = parsed.get(contribution.path);
++    const entries = registrationEntries({ contribution, document });
++    if (entries === null) return;
++    const ownedIndex = entries.findIndex((entry) => equalRegistrationValues({ left: entry, right: registrationValue(contribution) }));
++    parsed.set(contribution.path, writeRegistrationEntries({ contribution, document,
++      entries: entries.filter((_entry, index) => index !== ownedIndex) }));
++  });
++  const currentConflict = current.map((contribution) => {
++    const document = parsed.get(contribution.path);
++    const entries = registrationEntries({ contribution, document });
++    if (entries === null) return registrationConflict({ pluginName: input.pluginName, contribution, reason: "invalid-document" });
++    if (entries.some((entry) => equalRegistrationValues({ left: entry, right: registrationValue(contribution) }))) return null;
++    if (contribution.kind === "target" && entries.length > 0) return registrationConflict({ pluginName: input.pluginName, contribution, reason: "target-collision" });
++    parsed.set(contribution.path, writeRegistrationEntries({ contribution, document,
++      entries: [...entries, registrationValue(contribution)] }));
++    owned.push(contribution);
++    return null;
++  }).find((result) => result !== null);
++  if (currentConflict) return currentConflict;
++  return {
++    kind: "planned",
++    documents: input.documents.map((document) => {
++      const value = parsed.get(document.path);
++      return equalRegistrationValues({ left: originals.get(document.path), right: value })
++        ? document : { path: document.path, text: JSON.stringify(value, null, 2) + "\n" };
++    }),
++    ownedRegistrations: owned,
++  };
++}
++
++export {
++  type HookRegistrationConflict,
++  type HookRegistrationDocument,
++  type HookRegistrationPlanResult,
++  type NativeHookGroup,
++  type PlanPluginHookRegistrationsInput,
++  type PluginHookContribution,
++  type PluginHookRow,
++  type ProjectedPluginHookContributions,
++  planPluginHookRegistrations,
++  type CodexHookTrustIdentityInput,
++  codexHookTrustIdentity,
++  planCodexHookTrustSeed,
++  projectedPluginHookContributionsSchema,
++};
+diff --git a/core/tools/aidlc-plugin-validate.ts b/core/tools/aidlc-plugin-validate.ts
+index 6a4a3e2..0c810b3 100644
+--- a/core/tools/aidlc-plugin-validate.ts
++++ b/core/tools/aidlc-plugin-validate.ts
+@@ -546,6 +546,23 @@ export function assertPluginContentHasNoSymlinks(
+   );
+ }
+ 
++export function classifyPluginSourceFile({
++  pluginRoot,
++  file,
++}: {
++  readonly pluginRoot: string;
++  readonly file: string;
++}): "runtime" | "test" | "test-fixture" | "unsupported" {
++  const segments = relative(pluginRoot, file).split(sep);
++  const filename = segments.at(-1) ?? "";
++  if (segments.includes("test-fixtures")) return "test-fixture";
++  if (segments.some((segment) => ["tests", "__tests__", "fixtures"].includes(segment))) {
++    return "unsupported";
++  }
++  return /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(filename) ? "test" : "runtime";
++}
++
++
+ export function walkPluginFiles(dir: string): string[] {
+   const scan = scanPluginFiles(dir);
+   if (scan.symlinks.length > 0) {
+diff --git a/core/tools/aidlc-plugin.ts b/core/tools/aidlc-plugin.ts
+index 0d5bc1e..ec124b5 100644
+--- a/core/tools/aidlc-plugin.ts
++++ b/core/tools/aidlc-plugin.ts
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bun
++import { prepareClaudePluginHooks } from "./aidlc-plugin-hook-composition.ts";
+ import { createHash } from "node:crypto";
+ import {
+   cpSync,
+@@ -1492,6 +1493,7 @@ export interface ConsumeContribRecord {
+ }
+ 
+ export interface StageContribRecord {
++  hook_registrations?: unknown;
+   produces?: string[];
+   sensors?: string[];
+   consumes?: Array<string | ConsumeContribRecord>;
+@@ -2327,6 +2329,22 @@ export function parseRulesLevels(argv: readonly string[]): Map<string, RulesLeve
+   return levels;
+ }
+ 
++export function inspectPluginHookRegistrations(input: { readonly projectDir: string; readonly harnessDir: string; readonly pluginName: string; readonly record: unknown }): { readonly kind: "current" } | { readonly kind: "refused"; readonly message: string } {
++  if (input.harnessDir !== ".claude") return { kind: "refused", message: "authored hook inspection has no verified native projection for " + input.harnessDir };
++  try {
++    const prepared = prepareClaudePluginHooks({ pluginName: input.pluginName, selection: { kind: "inspect" }, previous: input.record, document: { path: ".claude/settings.json", text: readFileSync(assertOwnedPath(input.projectDir, ".claude/settings.json"), "utf-8") } });
++    return prepared.kind === "refused" ? prepared : { kind: "current" };
++  } catch (error) { return { kind: "refused", message: errorMessage(error) }; }
++}
++
++export function retirePluginHookRegistrations(input: { readonly projectDir: string; readonly harnessDir: string; readonly pluginName: string; readonly record: unknown }): void {
++  if (input.harnessDir !== ".claude") throw new Error("authored hook retirement has no verified native projection for " + input.harnessDir);
++  const path = assertOwnedPath(input.projectDir, ".claude/settings.json");
++  const prepared = prepareClaudePluginHooks({ pluginName: input.pluginName, selection: { kind: "deselected" }, previous: input.record, document: { path: ".claude/settings.json", text: readFileSync(path, "utf-8") } });
++  if (prepared.kind === "refused") throw new Error(prepared.message);
++  for (const document of prepared.documents) writeFileSync(assertOwnedPath(input.projectDir, document.path), document.text);
++}
++
+ function pruneContributions(stagedProject: string, harnessDir: string, key: string): void {
+   const sidecar = join(harnessDataDir(stagedProject, harnessDir), `plugin-contrib-${key}.json`);
+   let records: Record<string, StageContribRecord> = {};
+@@ -2341,6 +2359,7 @@ function pruneContributions(stagedProject: string, harnessDir: string, key: stri
+       throw new Error(`${sidecar}: ownership sidecar is invalid: ${errorMessage(error)}`);
+     }
+   }
++  if (Object.prototype.hasOwnProperty.call(records, "$hooks")) retirePluginHookRegistrations({ projectDir: stagedProject, harnessDir, pluginName: key, record: records.$hooks?.hook_registrations });
+   // Stage sources and personas both carry composed content: structural adds
+   // and fragments on stages, fragments only on personas.
+   const stagesRoot = join(stagedProject, harnessDir, "aidlc-common", "stages");
+@@ -2580,6 +2599,7 @@ function recordedAdditionGone(projectDir: string, harnessDir: string, key: strin
+     harnessDir,
+   );
+   return Object.entries(records).some(([target, value]) => {
++    if (target === "$hooks") return inspectPluginHookRegistrations({ projectDir, harnessDir, pluginName: key, record: isPlainObject(value) ? value.hook_registrations : undefined }).kind === "refused";
+     if (contributionRecordError(value) !== undefined) return false;
+     const record = value as StageContribRecord;
+     const source = sources.get(target);
+@@ -2612,7 +2632,7 @@ function compositionIsCurrent(
+   // plugin that is off merges nothing, so it has no record to miss.
+   if (
+     (selection === null || selection.has(plugin.key)) &&
+-    regularFiles(join(plugin.root, "contributions")).some((path) => path.endsWith(".md")) &&
++    regularFiles(join(plugin.root, "contributions")).some((path) => path.endsWith(".md") || basename(path) === "hook-registrations.json") &&
+     !existsSync(join(harnessDataDir(projectDir, harnessDir), `plugin-contrib-${plugin.key}.json`))
+   ) return false;
+   if ((selection === null || selection.has(plugin.key)) && recordedAdditionGone(projectDir, harnessDir, plugin.key)) {
+diff --git a/core/tools/aidlc-utility.ts b/core/tools/aidlc-utility.ts
+index be6de3c..f217b28 100644
+--- a/core/tools/aidlc-utility.ts
++++ b/core/tools/aidlc-utility.ts
+@@ -553,6 +553,8 @@ import {
+   stripRecordedAdds,
+   rulesRecordGaps,
+   stripPluginRules,
++  retirePluginHookRegistrations,
++  inspectPluginHookRegistrations,
+   syncCommand,
+   tomlFragmentText,
+   withFileLineEndings,
+@@ -1259,9 +1261,10 @@ function stripDisabledPluginContributions(
+         const parsed = JSON.parse(readFileSync(sidecar, "utf-8"));
+         if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) manifest = parsed;
+       } catch {
+-        // Unreadable sidecar: fragments still strip below; structural adds stay.
++        throw new Error(`${sidecar}: contribution ownership is unreadable; restore it before changing plugin selection`);
+       }
+     }
++    if (Object.prototype.hasOwnProperty.call(manifest, "$hooks")) retirePluginHookRegistrations({ projectDir: runtimeProjectDir(), harnessDir: harnessDir(), pluginName: plugin, record: manifest.$hooks?.hook_registrations });
+     let pluginTouched = false;
+     for (const phase of PHASES) {
+       const dir = join(stagesRoot, phase);
+@@ -5071,6 +5074,11 @@ export async function collectDoctorReport(
+         for (const [target, record] of Object.entries(manifest).sort(([a], [b]) =>
+           a.localeCompare(b)
+         )) {
++          if (target === "$hooks") {
++            const observed = inspectPluginHookRegistrations({ projectDir: runtimeProjectDir(), harnessDir: harnessDir(), pluginName: plugin, record: record.hook_registrations });
++            if (observed.kind === "refused") missingComposition.push(plugin + ": " + observed.message);
++            continue;
++          }
+           const invalid = contributionRecordError(record);
+           if (invalid) {
+             missingComposition.push(
+diff --git a/package.json b/package.json
+index 8e677a5..18c79e2 100644
+--- a/package.json
++++ b/package.json
+@@ -22,7 +22,9 @@
+     "bun-types": "^1.3.13",
+     "eslint": "10.11.0",
+     "smol-toml": "1.9.1",
+-    "typescript": "^6.0.3"
++    "typescript": "^6.0.3",
++    "jsonc-parser": "3.3.1",
++    "zod": "4.4.3"
+   },
+   "overrides": {
+     "proxy-addr": "2.0.8"
+diff --git a/scripts/package.ts b/scripts/package.ts
+index f6e04f9..d101012 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bun
++import { walkPluginFiles } from "../core/tools/aidlc-plugin-validate.ts";
+ // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
+ //
+ //   bun scripts/package.ts            regenerate dist/ and dist-release/ for every harness, plus plugins
+@@ -60,6 +61,9 @@ import {
+ } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { spawnSync } from "node:child_process";
++import { bindPluginHookSources } from "../core/tools/aidlc-plugin-hook-definition.ts";
++import { createPluginRuntimePort, preparePluginRuntimeArtifacts } from "./plugin-runtime.ts";
++import { pluginHookRows, renderPluginHookContributions } from "./plugin-contributions.ts";
+ import type { HarnessManifest } from "./manifest-types.ts";
+ import {
+   absorbReviewerKnowledge,
+@@ -874,11 +878,11 @@ function emitActiveSpace(outRoot: string): void {
+ // generated-file inventory rooted there, including project-root files beside
+ // <harnessDir> (onboarding/config, workspace memory, emitted skills, and so on).
+ // ---------------------------------------------------------------------------
+-function buildTree(
++async function buildTree(
+   m: HarnessManifest,
+   outRoot: string,
+   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
+-): string[] {
++): Promise<string[]> {
+   const harnessDir = m.harnessDir;
+   const treeRoot = join(outRoot, harnessDir);
+   // Every harness projects onto ONE of the six flavors the tier module
+@@ -942,6 +946,7 @@ function buildTree(
+       writeFileSync(outPath, out);
+     }
+   }
++  await bundleRuntimeDependencies({ pluginRoot: CORE_ROOT, outDir: treeRoot, files: Array.from(walk(treeRoot), (file) => relative(treeRoot, file).split(sep).join("/")) });
+   const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
+   if (fmMissed.length > 0) {
+     throw new Error(
+@@ -1831,7 +1836,7 @@ function loadManifest(name: string): HarnessManifest {
+ // ---------------------------------------------------------------------------
+ // write mode: regenerate dist/<name> in place (clean-sweep).
+ // ---------------------------------------------------------------------------
+-function writeHarness(name: string): void {
++async function writeHarness(name: string): Promise<void> {
+   const m = loadManifest(name);
+   const distDir = join(REPO_ROOT, "dist", name);
+   // dist/<name>/ is one generated root. Sweep that root, not selected
+@@ -1839,16 +1844,16 @@ function writeHarness(name: string): void {
+   // Siblings at dist/ (plugins and unrelated local assets) remain outside this
+   // harness-owned boundary.
+   if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
+-  buildTree(m, distDir);
++  await buildTree(m, distDir);
+   console.log(`[${name}] regenerated dist/${name}/${m.harnessDir}`);
+ }
+ 
+-function writeReleaseHarness(name: string): void {
++async function writeReleaseHarness(name: string): Promise<void> {
+   const m = loadManifest(name);
+   const releaseDir = join(REPO_ROOT, "dist-release", name);
+   const copyRoot = join(REPO_ROOT, "dist", name);
+   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
+-  buildTree(m, releaseDir, "aidlc");
++  await buildTree(m, releaseDir, "aidlc");
+   rewriteNativeInvocations(releaseDir, m, copyRoot);
+   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
+ }
+@@ -2013,19 +2018,38 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
+   return pluginTargets()[harnessName] ?? null;
+ }
+ 
+-function buildRepositoryPluginProjection(
++async function bundleRuntimeDependencies(input: {
++  readonly pluginRoot: string;
++  readonly outDir: string;
++  readonly files: readonly string[];
++}): Promise<void> {
++  const sources = input.files.filter((file) =>
++    /\.[cm]?[jt]s$/.test(file) && !/\.d\.[cm]?ts$/.test(file) && existsSync(join(input.pluginRoot, file)),
++  ).map((file) => ({ file, source: readFileSync(join(input.pluginRoot, file), "utf-8") }));
++  const prepared = await preparePluginRuntimeArtifacts({
++    pluginRoot: input.pluginRoot, files: input.files, sources, port: createPluginRuntimePort({ projectRoot: REPO_ROOT }),
++  });
++  if (prepared.kind === "refused") throw new Error(prepared.message);
++  for (const artifact of prepared.artifacts) {
++    const path = join(input.outDir, artifact.file);
++    mkdirSync(dirname(path), { recursive: true });
++    writeFileSync(path, artifact.content);
++  }
++}
++
++async function buildRepositoryPluginProjection(
+   pluginName: string,
+   harnessName: string,
+   outDir: string,
+   outputBoundary = REPO_ROOT,
+-): void {
++): Promise<void> {
+   const target = pluginTargetFor(harnessName);
+   if (!target) {
+     throw new Error(
+       `no plugin target for harness "${harnessName}" (missing manifest)`,
+     );
+   }
+-  emitPluginProjection({
++  const projection = emitPluginProjection({
+     pluginRoot: join(PLUGINS_ROOT, pluginName),
+     target,
+     outDir,
+@@ -2035,6 +2059,18 @@ function buildRepositoryPluginProjection(
+     // This repository's own plugins/ are AI-DLC's: aidlc-<name> in aidlc-plugins.
+     firstParty: true,
+   });
++  if (harnessName === "claude") {
++    await bundleRuntimeDependencies({ pluginRoot: join(PLUGINS_ROOT, pluginName), outDir: projection.pluginRoot, files: projection.files });
++    const authoredHooks = join(PLUGINS_ROOT, pluginName, "hooks");
++    const bound = bindPluginHookSources({ rows: pluginHookRows(REPO_ROOT, harnessName).filter((row) => row.pluginName === pluginName), authoredFiles: existsSync(authoredHooks) ? walkPluginFiles(authoredHooks).map((file) => "hooks/" + relative(authoredHooks, file).split(sep).join("/")) : [], projectedFiles: projection.files });
++    if (bound.kind === "refused") throw new Error(bound.message);
++    const hookContributions = renderPluginHookContributions({ pluginName, harness: "claude", harnessDir: target.harnessLeaf, invocation: "bun .claude/tools/aidlc.ts", trustedNamespace: "engine", rows: bound.rows });
++    if (hookContributions.registrations.length > 0) {
++      const registrationPath = join(projection.pluginRoot, "contributions", "hook-registrations.json");
++      mkdirSync(dirname(registrationPath), { recursive: true });
++      writeFileSync(registrationPath, JSON.stringify(hookContributions, null, 2) + "\n");
++    }
++  }
+ }
+ 
+ // Which harnesses get a projection = every built harness with a manifest (each
+@@ -2043,14 +2079,14 @@ function pluginHarnessesFor(harnesses: string[]): string[] {
+   return harnesses.filter((h) => pluginTargetFor(h) !== null);
+ }
+ 
+-function emitPlugins(
++async function emitPlugins(
+   harnesses: string[],
+   distRoot = join(REPO_ROOT, "dist"),
+   log = true,
+-): void {
++): Promise<void> {
+   for (const pluginName of discoverPluginNames()) {
+     for (const harnessName of pluginHarnessesFor(harnesses)) {
+-      buildRepositoryPluginProjection(
++      await buildRepositoryPluginProjection(
+         pluginName,
+         harnessName,
+         join(distRoot, "plugins", pluginName, harnessName),
+@@ -2119,28 +2155,28 @@ function assertIdenticalRootIntegrations(root: string, harnesses: string[]): voi
+   }
+ }
+ 
+-function buildCheckPass(root: string, harnesses: string[]): void {
++async function buildCheckPass(root: string, harnesses: string[]): Promise<void> {
+   const distRoot = join(root, "dist");
+   const releaseRoot = join(root, "dist-release");
+   for (const name of harnesses) {
+     const manifest = loadManifest(name);
+     const copyRoot = join(distRoot, name);
+     const nativeRoot = join(releaseRoot, name);
+-    buildTree(manifest, copyRoot);
+-    buildTree(manifest, nativeRoot, "aidlc");
++    await buildTree(manifest, copyRoot);
++    await buildTree(manifest, nativeRoot, "aidlc");
+     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
+   }
+   assertIdenticalRootIntegrations(distRoot, harnesses);
+   assertIdenticalRootIntegrations(releaseRoot, harnesses);
+-  emitPlugins(harnesses, distRoot, false);
++  await emitPlugins(harnesses, distRoot, false);
+ }
+ 
+-function checkPackageDeterminism(harnesses: string[]): string[] {
++async function checkPackageDeterminism(harnesses: string[]): Promise<string[]> {
+   const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
+   const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
+   try {
+-    buildCheckPass(first, harnesses);
+-    buildCheckPass(second, harnesses);
++    await buildCheckPass(first, harnesses);
++    await buildCheckPass(second, harnesses);
+     return [
+       ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
+       ...diffTrees(
+@@ -2191,7 +2227,7 @@ if (argv[0] === "plugin" && argv[1] === "build") {
+   const outArg = outDir.replace(/[/\\]+$/, "") || outDir;
+   const resolvedOut = isAbsolute(outArg) ? outArg : join(process.cwd(), outArg);
+   try {
+-    buildRepositoryPluginProjection(
++    await buildRepositoryPluginProjection(
+       pluginName,
+       harnessName,
+       resolvedOut,
+@@ -2218,7 +2254,7 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
+ }
+ 
+ if (check) {
+-  const problems = checkPackageDeterminism(targets);
++  const problems = await checkPackageDeterminism(targets);
+   if (problems.length > 0) {
+     console.error(`\npackage --check FAILED (${problems.length} problem(s)):`);
+     for (const p of problems.slice(0, 40)) console.error("  " + p);
+@@ -2233,12 +2269,12 @@ if (check) {
+   forgetPackagedSources(REPO_ROOT, targets);
+   cleanWriteOutputs(targets, named === undefined);
+   for (const n of targets) {
+-    writeHarness(n);
+-    writeReleaseHarness(n);
++    await writeHarness(n);
++    await writeReleaseHarness(n);
+   }
+   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
+   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);
+-  emitPlugins(targets);
++  await emitPlugins(targets);
+   // Last, so only a finished build from unchanged sources is recorded as current.
+   if (!recordPackagedSources(REPO_ROOT, targets, builtFrom)) {
+     console.error(
+diff --git a/scripts/plugin-contributions.ts b/scripts/plugin-contributions.ts
+new file mode 100644
+index 0000000..2e47c56
+--- /dev/null
++++ b/scripts/plugin-contributions.ts
+@@ -0,0 +1,204 @@
++// plugin-contributions.ts — what a plugin contributes that core's declarative
++// contribution path cannot carry on its own: hook registrations, and the plugin's
++// own prose tokens.
++//
++// A plugin ships hook BODIES through the normal contribution path (they land
++// in the install's hooks dir alongside core's). What it cannot do without this
++// seam is get them REGISTERED with the harness and get its payload translated:
++// registration lives in each harness's emit (hooks.json / plugin API) and
++// translation lives in that harness's adapter, both upstream-authored surfaces.
++//
++// This reader lets a plugin declare rows in the SAME shape core's own wiring
++// table uses, so a harness emit unions them in and the adapter resolves an
++// unrecognised target to the declared body via its existing runCore. The
++// adapter's payload normalisation, replay cache and forwarding are reused
++// verbatim — a plugin never re-implements them.
++//
++// Declared in .aidlc-plugin/plugin.json:
++//
++//   "aidlc": {
++//     "hooks": {
++//       "codex":    [{ "event": "PreToolUse", "matcher": "Bash",
++//                      "target": "rin-guard-navigation",
++//                      "hookFile": "guard-navigation.ts" }],
++//       "opencode": [{ "event": "PreToolUse", "target": "rin-guard-navigation",
++//                      "hookFile": "guard-navigation.ts" }]
++//     }
++//   }
++//
++// Per-harness because the moments and matchers differ: codex matches a shell
++// tool named "Bash", opencode has no matcher concept on tool.execute.before.
++// A plugin declaring no block for a harness contributes nothing there, which is
++// how a plugin opts out of a face it has not verified.
++
++import { readPluginHookSource } from "./plugin-hook-source.ts";
++import { existsSync, readFileSync, readdirSync } from "node:fs";
++import { join } from "node:path";
++import type { PluginHookRow } from "../core/tools/aidlc-plugin-hook-registrations.ts";
++import type { PluginHookContribution, ProjectedPluginHookContributions } from "../core/tools/aidlc-plugin-hook-registrations.ts";
++import type { ModelHarness } from "../core/tools/aidlc-model-policy.ts";
++
++// `target` names the hook BODY the adapter dispatches to. `capabilityId` is
++// optional and names the capability that body implements, for plugins whose
++// adapters route by capability rather than by body: several bodies can be arms
++// of one capability (a SessionStart hook and its PostToolUse follow-up), and a
++// plugin's capability vocabulary is its own, so it cannot be derived from the
++// target string. Absent means the plugin does not route by capability, which is
++// the default and stays valid.
++export type { PluginHookRow };
++
++const isRecord = (value: unknown): value is Record<string, unknown> =>
++  typeof value === "object" && value !== null && !Array.isArray(value);
++
++const rowsFromManifest = (
++  pluginsRoot: string,
++  pluginName: string,
++  harnessName: string,
++): PluginHookRow[] => {
++  const manifestPath = join(pluginsRoot, pluginName, ".aidlc-plugin", "plugin.json");
++  if (!existsSync(manifestPath)) return [];
++  const read = readPluginHookSource({ manifest: JSON.parse(readFileSync(manifestPath, "utf-8")), pluginName, harness: harnessName });
++  if (read.kind === "invalid") throw new Error(read.message);
++  return [...read.rows];
++};
++
++/**
++ * Every enabled plugin's hook rows for one harness, in stable plugin order.
++ *
++ * Target collisions across plugins are a hard error: two plugins claiming one
++ * target name would make the adapter's dispatch ambiguous, and silently letting
++ * the last writer win is how one plugin disables another's guard.
++ */
++export function pluginHookRows(
++  repoRoot: string,
++  harnessName: string,
++): PluginHookRow[] {
++  const pluginsRoot = join(repoRoot, "plugins");
++  if (!existsSync(pluginsRoot)) return [];
++  const rows = readdirSync(pluginsRoot)
++    .filter((name) =>
++      existsSync(join(pluginsRoot, name, ".aidlc-plugin", "plugin.json")),
++    )
++    .sort()
++    .flatMap((name) => rowsFromManifest(pluginsRoot, name, harnessName));
++  const claimedBy = new Map<string, string>();
++  for (const row of rows) {
++    const previous = claimedBy.get(row.target);
++    if (previous !== undefined && previous !== row.pluginName)
++      throw new Error(
++        `hook target "${row.target}" is claimed by both plugins/${previous} and plugins/${row.pluginName}. Targets must be unique across plugins.`,
++      );
++    claimedBy.set(row.target, row.pluginName);
++  }
++  return rows;
++}
++
++// A plugin may ship hook bodies in more than one runtime — a TypeScript body
++// needs a TS-capable runner, a plain .mjs runs on node. Choosing from the file's
++// own extension keeps the row a declaration of WHAT to register rather than HOW
++// to launch it, so a plugin never restates the runtime in every row.
++const runnerFor = (hookFile: string): string =>
++  hookFile.endsWith(".mjs") || hookFile.endsWith(".js") ? "node" : "bun";
++
++export function renderPluginHookContributions(input: {
++  pluginName: string;
++  harness: ModelHarness;
++  harnessDir: string;
++  invocation: string;
++  trustedNamespace: string;
++  rows: readonly PluginHookRow[];
++}): ProjectedPluginHookContributions {
++  const registrations = input.rows.flatMap((row): PluginHookContribution[] => {
++    if (row.target === "aidlc-plugin-compose") return [];
++    if (input.harness === "cursor") return [{ kind: "event-body", path: `${input.harnessDir}/hooks/plugin-hook-targets.json`, event: row.event, hookFile: row.hookFile }];
++    if (input.harness === "opencode") return [{ kind: "event-row", path: `${input.harnessDir}/hooks/plugin-hook-rows.json`, row }];
++    if (input.harness === "claude") return [{ kind: "group", path: `${input.harnessDir}/settings.json`, event: row.event, group: {
++      ...(row.matcher === undefined ? {} : { matcher: row.matcher }),
++      hooks: [{ type: "command", command: `${runnerFor(row.hookFile)} "$CLAUDE_PROJECT_DIR/${input.harnessDir}/hooks/${row.hookFile}"` }],
++    } }];
++    if (input.harness !== "codex" && input.harness !== "copilot") return [];
++    const command = input.harness === "codex"
++      ? `${input.invocation} ${input.trustedNamespace} adapter codex ${row.target}`
++      : `bun ${input.harnessDir}/hooks/aidlc-copilot-adapter.ts ${row.target}`;
++    return [{ kind: "group", path: input.harness === "codex" ? `${input.harnessDir}/hooks.json` : ".github/hooks/aidlc.json", event: row.event, group: input.harness === "codex"
++      ? { ...(row.matcher === undefined ? {} : { matcher: row.matcher }), hooks: [{ type: "command", command }] }
++      : { type: "command", bash: command, powershell: command, timeoutSec: 30 } },
++    { kind: "target", path: `${input.harnessDir}/hooks/plugin-hook-targets.json`, target: row.target, hookFile: row.hookFile }];
++  });
++  return { schemaVersion: 1, pluginName: input.pluginName, harness: input.harness, registrations };
++}
++
++/**
++ * A plugin's own prose tokens, substituted into its projected content.
++ *
++ * Core declares exactly one transform class ({{HARNESS_DIR}}); a plugin whose
++ * prose names project-specific things — the operator, the identities it acts
++ * as, the commands it tells a reader to run — needs the same affordance or it
++ * ships either a raw token or someone's actual name. Both are wrong for an
++ * adopter: the first is broken text, the second is another project's identity.
++ *
++ * Declared in .aidlc-plugin/plugin.json as a flat token → default map:
++ *
++ *   "aidlc": { "tokens": { "{{OPERATOR}}": "the operator" } }
++ *
++ * The values are DEFAULTS, deliberately neutral. An installed project overrides
++ * them through its own config; the projection's job is only to ensure no raw
++ * token and no foreign identity reaches the adopter's tree.
++ */
++export function pluginTokens(
++  repoRoot: string,
++  pluginName: string,
++  harnessName: string,
++): Record<string, string> {
++  const manifestPath = join(repoRoot, "plugins", pluginName, ".aidlc-plugin", "plugin.json");
++  if (!existsSync(manifestPath)) return {};
++  const manifest: unknown = JSON.parse(readFileSync(manifestPath, "utf-8"));
++  if (!isRecord(manifest)) return {};
++  const aidlc = manifest.aidlc;
++  if (!isRecord(aidlc)) return {};
++  const tokens = aidlc.tokens;
++  if (!isRecord(tokens)) return {};
++
++  const flatten = (source: Record<string, unknown>, where: string) => {
++    const resolved: Record<string, string> = {};
++    for (const [token, value] of Object.entries(source)) {
++      if (typeof value !== "string")
++        throw new Error(`plugins/${pluginName}: ${where}["${token}"] must be a string.`);
++      resolved[token] = value;
++    }
++    return resolved;
++  };
++
++  // Shared defaults, then this harness's overrides. A token whose value is the
++  // SAME on every face (an identity, a command contract) is declared once;
++  // one that names a face-specific affordance is overridden per face, because
++  // a single value there would be wrong on every face but one.
++  const shared = flatten(
++    Object.fromEntries(
++      Object.entries(tokens).filter(([, value]) => typeof value === "string"),
++    ),
++    "aidlc.tokens",
++  );
++  const perHarness = tokens.harness;
++  if (perHarness === undefined) return shared;
++  if (!isRecord(perHarness))
++    throw new Error(`plugins/${pluginName}: aidlc.tokens.harness must be an object.`);
++  const overrides = perHarness[harnessName];
++  if (overrides === undefined) return shared;
++  if (!isRecord(overrides))
++    throw new Error(
++      `plugins/${pluginName}: aidlc.tokens.harness.${harnessName} must be an object.`,
++    );
++  return { ...shared, ...flatten(overrides, `aidlc.tokens.harness.${harnessName}`) };
++}
++
++/** Apply a plugin's declared tokens to one projected .md body. */
++export function substitutePluginTokens(
++  content: string,
++  tokens: Record<string, string>,
++): string {
++  return Object.entries(tokens).reduce(
++    (projected, [token, value]) => projected.replaceAll(token, value),
++    content,
++  );
++}
+diff --git a/scripts/plugin-hook-source.test.ts b/scripts/plugin-hook-source.test.ts
+new file mode 100644
+index 0000000..d042d2a
+--- /dev/null
++++ b/scripts/plugin-hook-source.test.ts
+@@ -0,0 +1,30 @@
++import { expect, test } from 'bun:test';
++import { readPluginHookSource } from './plugin-hook-source.ts';
++const manifest = { name: 'example', aidlc: { tokens: {}, hooks: { claude: [{ event: 'PreToolUse', target: 'example-guard', hookFile: 'guard.mjs', matcher: 'Bash|PowerShell' }] } } };
++test('reads explicit hook identity without treating optional metadata as permissions', () => {
++  expect(readPluginHookSource({ manifest, pluginName: 'example', harness: 'claude' })).toEqual({ kind: 'parsed', rows: [{ event: 'PreToolUse', target: 'example-guard', hookFile: 'guard.mjs', matcher: 'Bash|PowerShell', pluginName: 'example' }] });
++});
++test('an absent harness declaration is a legitimate empty contribution', () => {
++  expect(readPluginHookSource({ manifest, pluginName: 'example', harness: 'kiro' })).toEqual({ kind: 'parsed', rows: [] });
++});
++test('hook path cannot escape the runtime directory', () => {
++  expect(readPluginHookSource({ manifest: { name: 'example', aidlc: { hooks: { claude: [{ event: 'PreToolUse', target: 'example-guard', hookFile: '../guard.mjs' }] } } }, pluginName: 'example', harness: 'claude' })).toEqual({ kind: 'invalid', message: 'plugin example: invalid hook declaration at aidlc.hooks.claude.0.hookFile; require explicit native events and safe executable paths' });
++});
++test('quoting cannot turn an executable path into shell code', () => {
++  expect(readPluginHookSource({ manifest: { name: 'example', aidlc: { hooks: { claude: [{ event: 'PreToolUse', target: 'example-guard', hookFile: 'guard.mjs"; run' }] } } }, pluginName: 'example', harness: 'claude' })).toEqual({ kind: 'invalid', message: 'plugin example: invalid hook declaration at aidlc.hooks.claude.0.hookFile; require explicit native events and safe executable paths' });
++});
++test('unknown events cannot silently become a nonfiring guard', () => {
++  expect(readPluginHookSource({ manifest: { name: 'example', aidlc: { hooks: { claude: [{ event: 'BeforeAnyThing', target: 'example-guard', hookFile: 'guard.mjs' }] } } }, pluginName: 'example', harness: 'claude' })).toEqual({ kind: 'invalid', message: 'plugin example aidlc.hooks.claude[0].event: add a verified native event binding before projecting' });
++});
++test('an unrelated hook-free manifest needs no invented aidlc metadata', () => {
++  expect(readPluginHookSource({ manifest: { name: 'example', version: '1.0.0' }, pluginName: 'example', harness: 'claude' })).toEqual({ kind: 'parsed', rows: [] });
++});
++test('malformed present hook declarations cannot become an empty contribution', () => {
++  expect(readPluginHookSource({ manifest: { name: 'example', aidlc: { hooks: false } }, pluginName: 'example', harness: 'claude' })).toEqual({ kind: 'invalid', message: 'plugin example: invalid hook declaration at aidlc.hooks; require explicit native events and safe executable paths' });
++});
++test('unselected harness metadata cannot impose its grammar on Claude', () => {
++  expect(readPluginHookSource({ manifest: { ...manifest, aidlc: { hooks: { claude: [{ event: 'PreToolUse', target: 'example-guard', hookFile: 'guard.mjs' }], cursor: [{ event: 'beforeShellExecution', nativeOnly: 'uninterpreted here' }] } } }, pluginName: 'example', harness: 'claude' })).toEqual({ kind: 'parsed', rows: [{ event: 'PreToolUse', target: 'example-guard', hookFile: 'guard.mjs', pluginName: 'example' }] });
++});
++test('foreign manifest identity cannot borrow the selected runtime owner', () => {
++  expect(readPluginHookSource({ manifest, pluginName: 'another', harness: 'claude' })).toEqual({ kind: 'invalid', message: 'plugin another: manifest identity does not match the selected plugin' });
++});
+diff --git a/scripts/plugin-hook-source.ts b/scripts/plugin-hook-source.ts
+new file mode 100644
+index 0000000..11bcb9d
+--- /dev/null
++++ b/scripts/plugin-hook-source.ts
+@@ -0,0 +1,14 @@
++import { z } from 'zod';
++import type { PluginHookRow } from '../core/tools/aidlc-plugin-hook-registrations.ts';
++const hookRow = z.strictObject({ event: z.string().regex(/^[A-Z][A-Za-z]+$/), target: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/), hookFile: z.string().regex(/^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:[cm]?[jt]s)$/), matcher: z.string().optional(), capabilityId: z.string().min(1).optional() });
++const manifestSchema = ({ harness }: { readonly harness: string }) => z.looseObject({ name: z.string().min(1), aidlc: z.looseObject({ hooks: z.looseObject({ [harness]: z.array(hookRow).optional() }).optional() }).optional() });
++const claudeEvents = ['PreToolUse','PostToolUse','UserPromptSubmit','SessionStart','SessionEnd','PreCompact','SubagentStart','SubagentStop','Stop'];
++export function readPluginHookSource(input: { readonly manifest: unknown; readonly pluginName: string; readonly harness: string }): { readonly kind: 'parsed'; readonly rows: readonly PluginHookRow[] } | { readonly kind: 'invalid'; readonly message: string } {
++  const parsed = manifestSchema({ harness: input.harness }).safeParse(input.manifest);
++  if (!parsed.success) return { kind: 'invalid', message: `plugin ${input.pluginName}: invalid hook declaration at ${parsed.error.issues[0]?.path.join('.') ?? '$'}; require explicit native events and safe executable paths` };
++  if (parsed.data.name !== input.pluginName) return { kind: 'invalid', message: `plugin ${input.pluginName}: manifest identity does not match the selected plugin` };
++  const rows = parsed.data.aidlc?.hooks?.[input.harness] ?? [];
++  const unsupported = input.harness === 'claude' ? rows.findIndex((row) => !claudeEvents.includes(row.event)) : -1;
++  if (unsupported >= 0) return { kind: 'invalid', message: `plugin ${input.pluginName} aidlc.hooks.claude[${unsupported}].event: add a verified native event binding before projecting` };
++  return { kind: 'parsed', rows: rows.map((row) => ({ event: row.event, target: row.target, hookFile: row.hookFile, pluginName: input.pluginName, ...(row.matcher === undefined ? {} : { matcher: row.matcher }), ...(row.capabilityId === undefined ? {} : { capabilityId: row.capabilityId }) })) };
++}
+diff --git a/scripts/plugin-hooks-template/compose.ts b/scripts/plugin-hooks-template/compose.ts
+index 6cc2d70..93d880b 100644
+--- a/scripts/plugin-hooks-template/compose.ts
++++ b/scripts/plugin-hooks-template/compose.ts
+@@ -695,6 +695,15 @@ if (!pluginEnabledBySelection()) {
+ 
+ // --- helpers ---------------------------------------------------------------
+ 
++function pluginHookRuntimeFacts(): readonly import("../../core/tools/aidlc-plugin-hook-composition.ts").HookRuntimeFile[] {
++  return ["hooks", "tools"].flatMap((directory) => walk(join(PLUGIN_ROOT, directory)).filter((file) => directory !== "hooks" || !["compose.ts", "aidlc-plugin-compose.ts", "hooks.json"].includes(relative(join(PLUGIN_ROOT, directory), file).replace(/\\/g, "/"))).map((file) => {
++    const path = directory + "/" + relative(join(PLUGIN_ROOT, directory), file).replace(/\\/g, "/");
++    const expected = file.endsWith(".md") ? Buffer.from(projectPluginTokens(readFileSync(file, "utf-8"), HARNESS_LEAF)) : readFileSync(file);
++    const installed = join(HARNESS_DIR, path);
++    return { path, expected: sha256Of(expected), installed: existsSync(installed) ? sha256Of(readFileSync(installed)) : null };
++  }));
++}
++
+ function walk(dir: string): string[] {
+   if (!existsSync(dir)) return [];
+   const out: string[] = [];
+@@ -2419,6 +2428,16 @@ try {
+     combinePrechecks(toolsTestPayloadPrecheck(), doctorScriptOwnershipPrecheck()),
+   ) || changed;
+ 
++  const hookBootstrapFiles = new Set(["compose.ts", "aidlc-plugin-compose.ts", "hooks.json"]);
++  changed = copyTreeNoClobber(
++    join(PLUGIN_ROOT, "hooks"),
++    join(HARNESS_DIR, "hooks"),
++    "hook",
++    ({ rel }) => !hookBootstrapFiles.has(rel),
++    undefined,
++    ({ rel }) => hookBootstrapFiles.has(rel) ? "handled" : "compare",
++  ) || changed;
++
+   // Record what this plugin installed. Prior entries stay while their file
+   // exists (an edited file keeps the hash the plugin installed, so the next
+   // run can name the edit); entries for files that are gone drop out; this
+@@ -2459,7 +2478,7 @@ try {
+   // fragment records let doctor verify sentinel-marked prose after an engine
+   // reinstall. Accumulated across re-runs: structural entries are unioned, while
+   // a fragment upgrade replaces the prior hash for its (anchor, order) identity.
+-  type StageContribRecord = { produces?: string[]; sensors?: string[]; consumes?: Array<string | ConsumeEntry>; scopes?: string[]; requires_stage?: string[]; required_sections?: string[]; required_sections_created?: boolean; fragments?: FragmentRecord[] };
++  type StageContribRecord = { produces?: string[]; sensors?: string[]; consumes?: Array<string | ConsumeEntry>; scopes?: string[]; requires_stage?: string[]; required_sections?: string[]; required_sections_created?: boolean; fragments?: FragmentRecord[]; hook_registrations?: import("../../core/tools/aidlc-plugin-hook-registrations.ts").ProjectedPluginHookContributions };
+   type StringContribField = "produces" | "sensors" | "scopes" | "requires_stage" | "required_sections";
+   const contribManifestPath = join(HARNESS_DIR, "tools", "data", `plugin-contrib-${PLUGIN_KEY}.json`);
+   let contribManifestLoadError: string | null = null;
+@@ -3119,6 +3138,16 @@ try {
+     }
+   }
+ 
++  const hookPayloadPath = join(PLUGIN_ROOT, "contributions", "hook-registrations.json");
++  if (HARNESS_NAME === "claude" && pluginEnabledBySelection() && existsSync(hookPayloadPath)) {
++    if (contribManifestLoadError !== null) throw new Error("recorded plugin contributions are invalid: " + contribManifestLoadError);
++    const runtime: typeof import("../../core/tools/aidlc-plugin-hook-composition.ts") = await import(join(HARNESS_DIR, "tools", "aidlc-plugin-hook-composition.ts"));
++    const registration = runtime.prepareClaudePluginHooks({ pluginName: PLUGIN_NAME, selection: { kind: "selected", payload: JSON.parse(readFileSync(hookPayloadPath, "utf-8")), runtime: pluginHookRuntimeFacts() }, previous: contribManifest.$hooks?.hook_registrations, document: { path: ".claude/settings.json", text: readFileSync(join(HARNESS_DIR, "settings.json"), "utf-8") } });
++    if (registration.kind === "refused") throw new Error(registration.message);
++    for (const document of registration.documents) { const path = join(PROJECT_DIR, document.path); if (readFileSync(path, "utf-8") !== document.text) { writeComposeFile(path, document.text); changed = true; } }
++    if (JSON.stringify(contribManifest.$hooks?.hook_registrations) !== JSON.stringify(registration.ownership)) { contribManifest.$hooks = { hook_registrations: registration.ownership }; contribManifestDirty = true; }
++  }
++
+   // Persist structural and fragment provenance when this run changes it.
+   // A prose-only plugin therefore leaves a sidecar that doctor can verify after
+   // a fresh engine distribution overwrites the composed stage source.
+diff --git a/scripts/plugin-runtime.test.ts b/scripts/plugin-runtime.test.ts
+new file mode 100644
+index 0000000..0d2201d
+--- /dev/null
++++ b/scripts/plugin-runtime.test.ts
+@@ -0,0 +1,96 @@
++import { describe, expect, test } from "bun:test";
++import { preparePluginRuntimeArtifacts, type PluginRuntimePort } from "./plugin-runtime.ts";
++
++const source = { file: "tools/guard.ts", source: "fixture" };
++const packagePort: PluginRuntimePort = {
++  scan: () => ({ imports: ["zod", "./reader.ts"], exports: ["guard"], hasUnsupportedImportMeta: false, hasPackageImports: true }),
++  declaration: () => ({ content: "export declare const guard: () => boolean;\n", companions: [] }),
++  bundle: async () => "export const guard = () => true;\n",
++};
++
++describe("typed plugin runtime packaging", () => {
++  test("keeps the authored import path and adds runtime and declaration companions", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts"], sources: [source], port: packagePort,
++    });
++    expect(result).toEqual({ kind: "prepared", artifacts: [
++      { file: "tools/guard.ts", content: 'export * from "./guard.runtime.js";\n' },
++      { file: "tools/guard.runtime.js", content: "export const guard = () => true;\n" },
++      { file: "tools/guard.runtime.d.ts", content: "export declare const guard: () => boolean;\n" },
++    ] });
++  });
++
++  test("preserves a default export in the original import path", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts"], sources: [source],
++      port: { ...packagePort, scan: () => ({
++        imports: ["zod"], exports: ["default"], hasUnsupportedImportMeta: false, hasPackageImports: true,
++      }) },
++    });
++    expect(result).toEqual({ kind: "prepared", artifacts: [
++      { file: "tools/guard.ts", content: 'export * from "./guard.runtime.js";\nexport { default } from "./guard.runtime.js";\n' },
++      { file: "tools/guard.runtime.js", content: "export const guard = () => true;\n" },
++      { file: "tools/guard.runtime.d.ts", content: "export declare const guard: () => boolean;\n" },
++    ] });
++  });
++
++  test("leaves dependency-free runtime sources unchanged", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts"], sources: [source],
++      port: { ...packagePort, scan: () => ({
++        imports: ["node:fs", "./reader.ts"], exports: ["guard"], hasUnsupportedImportMeta: false, hasPackageImports: false,
++      }) },
++    });
++    expect(result).toEqual({ kind: "prepared", artifacts: [] });
++  });
++
++  test("refuses an authored runtime companion collision before invoking the compiler", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts", "tools/guard.runtime.js"], sources: [source],
++      port: { ...packagePort, declaration: () => { throw new Error("compiler must not run"); } },
++    });
++    expect(result).toEqual({ kind: "refused", message: "plugin runtime companion collides with projected file: tools/guard.runtime.js" });
++  });
++
++  test("refuses an authored declaration companion collision", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts", "tools/guard.runtime.d.ts"], sources: [source], port: packagePort,
++    });
++    expect(result).toEqual({ kind: "refused", message: "plugin runtime companion collides with projected file: tools/guard.runtime.d.ts" });
++  });
++
++  test("refuses collisions between generated companions for two source extensions", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts", "tools/guard.js"],
++      sources: [source, { file: "tools/guard.js", source: "second fixture" }], port: packagePort,
++    });
++    expect(result).toEqual({ kind: "refused", message: "plugin runtime companion collides with projected file: tools/guard.runtime.js" });
++  });
++
++  test("refuses entry-relative semantics instead of silently changing them", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts"], sources: [source],
++      port: { ...packagePort, scan: () => ({
++        imports: ["zod"], exports: ["guard"], hasUnsupportedImportMeta: true, hasPackageImports: true,
++      }) },
++    });
++    expect(result).toEqual({ kind: "refused", message: "plugin runtime companion would change import.meta semantics: tools/guard.ts" });
++  });
++
++  test("passes only authored relative imports to dependency bundling", async () => {
++    const requests: unknown[] = [];
++    await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts"], sources: [source],
++      port: { ...packagePort, bundle: async (request) => { requests.push(request); return "runtime"; } },
++    });
++    expect(requests).toEqual([{ pluginRoot: "/fixture", file: "tools/guard.ts", relativeImports: ["./reader.ts"] }]);
++  });
++
++  test("propagates a compiler failure before returning writable artifacts", async () => {
++    const result = preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["tools/guard.ts"], sources: [source],
++      port: { ...packagePort, declaration: () => { throw new Error("declaration rejected"); } },
++    });
++    await expect(result).rejects.toThrow("declaration rejected");
++  });
++});
+diff --git a/scripts/plugin-runtime.ts b/scripts/plugin-runtime.ts
+new file mode 100644
+index 0000000..d644867
+--- /dev/null
++++ b/scripts/plugin-runtime.ts
+@@ -0,0 +1,339 @@
++import { runtimeImportKind } from "./runtime-import.ts";
++import { basename, isAbsolute, join, posix, relative, sep } from "node:path";
++import { existsSync, readFileSync } from "node:fs";
++import { z } from "zod";
++import type { BunPlugin } from "bun";
++import ts from "typescript";
++
++type RuntimeSource = { readonly file: string; readonly source: string };
++type RuntimeArtifact = { readonly file: string; readonly content: string };
++type RuntimeScan = {
++  readonly imports: readonly string[];
++  readonly exports: readonly string[];
++  readonly hasUnsupportedImportMeta: boolean;
++  readonly hasPackageImports: boolean;
++};
++type PluginRuntimePort = {
++  readonly scan: (input: { readonly source: string }) => RuntimeScan;
++  readonly declaration: (input: { readonly pluginRoot: string; readonly file: string }) => DeclarationBundle;
++  readonly bundle: (input: {
++    readonly pluginRoot: string;
++    readonly file: string;
++    readonly relativeImports: readonly string[];
++  }) => Promise<string>;
++};
++type PreparedRuntime =
++  | { readonly kind: "prepared"; readonly artifacts: readonly RuntimeArtifact[] }
++  | { readonly kind: "refused"; readonly message: string };
++
++export async function preparePluginRuntimeArtifacts(input: {
++  readonly pluginRoot: string;
++  readonly files: readonly string[];
++  readonly sources: readonly RuntimeSource[];
++  readonly port: PluginRuntimePort;
++}): Promise<PreparedRuntime> {
++  return input.sources.reduce<Promise<PreparedRuntime>>(async (previous, entry) => {
++    const prepared = await previous;
++    if (prepared.kind === "refused") return prepared;
++    const scan = input.port.scan({ source: entry.source });
++    if (!scan.hasPackageImports) return prepared;
++    if (scan.hasUnsupportedImportMeta) return {
++      kind: "refused",
++      message: `plugin runtime companion would change import.meta semantics: ${entry.file}`,
++    };
++    const stem = entry.file.replace(/\.[cm]?[jt]s$/, "");
++    const runtimeFile = `${stem}.runtime.js`;
++    const declarationFile = `${stem}.runtime.d.ts`;
++    const occupied = [...input.files, ...prepared.artifacts.map(({ file }) => file)];
++    const collision = [runtimeFile, declarationFile].find((file) => occupied.includes(file));
++    if (collision !== undefined) return {
++      kind: "refused",
++      message: `plugin runtime companion collides with projected file: ${collision}`,
++    };
++    const declaration = input.port.declaration({ pluginRoot: input.pluginRoot, file: entry.file });
++    const declarationCollision = declaration.companions.find((artifact) =>
++      input.files.includes(artifact.file) || prepared.artifacts.some((prior) =>
++        prior.file === artifact.file && prior.content !== artifact.content));
++    if (declarationCollision !== undefined) return {
++      kind: "refused", message: `plugin declaration companion collides with projected file: ${declarationCollision.file}`,
++    };
++    const runtime = await input.port.bundle({
++      pluginRoot: input.pluginRoot,
++      file: entry.file,
++      relativeImports: scan.imports.filter((path) => path.startsWith(".")),
++    });
++    const leaf = runtimeFile.split("/").at(-1);
++    const facade = `export * from "./${leaf}";\n` +
++      (scan.exports.includes("default") ? `export { default } from "./${leaf}";\n` : "");
++    return {
++      kind: "prepared",
++      artifacts: [...prepared.artifacts,
++        { file: entry.file, content: facade },
++        { file: runtimeFile, content: runtime },
++        { file: declarationFile, content: declaration.content },
++        ...declaration.companions.filter((artifact) => !prepared.artifacts.some((prior) => prior.file === artifact.file)),
++      ],
++    };
++  }, Promise.resolve({ kind: "prepared", artifacts: [] }));
++}
++
++type DeclarationBundle = {
++  readonly content: string;
++  readonly companions: readonly RuntimeArtifact[];
++};
++
++function declarationModules(input: { readonly source: string }): readonly string[] {
++  const syntax = ts.createSourceFile("module.d.ts", input.source, ts.ScriptTarget.Latest, true);
++  if (syntax.referencedFiles.length > 0 || syntax.typeReferenceDirectives.length > 0 ||
++    syntax.libReferenceDirectives.length > 0 || syntax.hasNoDefaultLib)
++    throw new Error("plugin declaration retains unsupported reference directives");
++  const modules: string[] = [];
++  const collect = (node: ts.Node): void => {
++    if (ts.isModuleDeclaration(node) && (ts.isStringLiteral(node.name) ||
++      (node.flags & ts.NodeFlags.GlobalAugmentation) !== 0))
++      throw new Error("plugin declaration retains unsupported ambient module declarations");
++    const module = ts.isImportDeclaration(node) || ts.isExportDeclaration(node)
++      ? node.moduleSpecifier
++      : ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)
++        ? node.moduleReference.expression
++        : ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)
++          ? node.argument.literal : undefined;
++    if (module !== undefined && ts.isStringLiteral(module)) modules.push(module.text);
++    ts.forEachChild(node, collect);
++  };
++  collect(syntax);
++  return modules;
++}
++
++function ownedDeclarationBundle(input: {
++  readonly content: string;
++  readonly sourceFile: string;
++  readonly pluginRoot: string;
++  readonly file: string;
++  readonly options: ts.CompilerOptions;
++  readonly runtimeModules: readonly string[];
++}): DeclarationBundle {
++  const companions = new Map<string, RuntimeArtifact>();
++  const copied = new Set<string>();
++  const packageSchema = z.object({
++    name: z.string().regex(/^(?:@[a-zA-Z0-9._-]+\/)?[a-zA-Z0-9._-]+$/),
++    version: z.string().regex(/^[a-zA-Z0-9._+-]+$/),
++  });
++  const copyDeclaration = (sourceFile: string): string => {
++    const marker = "/node_modules/";
++    const at = sourceFile.lastIndexOf(marker);
++    if (at < 0 || !/\.d\.[cm]?ts$/.test(sourceFile))
++      throw new Error(`plugin declaration dependency is not a packaged declaration: ${sourceFile}`);
++    const parts = sourceFile.slice(at + marker.length).split("/");
++    const packageName = parts.slice(0, parts[0]?.startsWith("@") ? 2 : 1).join("/");
++    const packageRoot = sourceFile.slice(0, at + marker.length) + packageName;
++    const manifestFile = join(packageRoot, "package.json");
++    const manifest = packageSchema.parse(JSON.parse(readFileSync(manifestFile, "utf-8")));
++    const destinationRoot = posix.join("tools", `${basename(input.pluginRoot)}-runtime-types`,
++      "node_modules", manifest.name);
++    const destination = posix.join(destinationRoot, relative(packageRoot, sourceFile).split(sep).join("/"));
++    if (copied.has(sourceFile)) return destination;
++    copied.add(sourceFile);
++    const content = readFileSync(sourceFile, "utf-8");
++    companions.set(destination, { file: destination, content });
++    companions.set(posix.join(destinationRoot, "package.json"), {
++      file: posix.join(destinationRoot, "package.json"), content: readFileSync(manifestFile, "utf-8"),
++    });
++    const license = ["LICENSE", "LICENSE.md", "LICENSE.txt"].find((file) => existsSync(join(packageRoot, file)));
++    if (license === undefined) throw new Error(`plugin declaration package has no license: ${manifest.name}`);
++    companions.set(posix.join(destinationRoot, license), {
++      file: posix.join(destinationRoot, license), content: readFileSync(join(packageRoot, license), "utf-8"),
++    });
++    for (const module of declarationModules({ source: content })) {
++      if (runtimeImportKind({ specifier: module }) === "runtime-builtin") continue;
++      if (!module.startsWith(".")) throw new Error(
++        `plugin vendored declaration retains external package dependency "${module}": ${destination}`,
++      );
++      const resolved = ts.resolveModuleName(module, sourceFile, input.options, ts.sys).resolvedModule;
++      if (resolved === undefined) throw new Error(`plugin declaration dependency is unresolved: ${destination}: ${module}`);
++      const dependency = copyDeclaration(resolved.resolvedFileName);
++      const expected = posix.normalize(posix.join(posix.dirname(destination),
++        module.replace(/\.([cm]?)js$/, ".d.$1ts")));
++      if (expected !== dependency) throw new Error(
++        `plugin declaration dependency escapes its preserved package layout: ${destination}: ${module}`,
++      );
++    }
++    return destination;
++  };
++  const replacements = new Map<string, string>();
++  for (const module of [...new Set([...declarationModules({ source: input.content }), ...input.runtimeModules])]) {
++    if (module.startsWith(".") || runtimeImportKind({ specifier: module }) === "runtime-builtin") continue;
++    const resolved = ts.resolveModuleName(module, input.sourceFile, input.options, ts.sys).resolvedModule;
++    if (resolved === undefined) throw new Error(`plugin declaration package is unresolved: ${input.file}: ${module}`);
++    const destination = copyDeclaration(resolved.resolvedFileName);
++    const path = posix.relative(posix.dirname(input.file), destination)
++      .replace(/\.d\.([cm]?)ts$/, ".$1js");
++    replacements.set(module, path.startsWith(".") ? path : `./${path}`);
++  }
++  const syntax = ts.createSourceFile("runtime.d.ts", input.content, ts.ScriptTarget.Latest, true);
++  const rewritten = ts.transform(syntax, [(context) => (source) => {
++    const visit = (node: ts.Node): ts.Node => {
++      if (ts.isStringLiteral(node)) {
++        const parent = node.parent;
++        const moduleSpecifier = (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) &&
++          parent.moduleSpecifier === node;
++        const importType = ts.isLiteralTypeNode(parent) && ts.isImportTypeNode(parent.parent);
++        const importEquals = ts.isExternalModuleReference(parent) && parent.expression === node;
++        const replacement = replacements.get(node.text);
++        if ((moduleSpecifier || importType || importEquals) && replacement !== undefined)
++          return ts.factory.createStringLiteral(replacement);
++      }
++      return ts.visitEachChild(node, visit, context);
++    };
++    return ts.visitEachChild(source, visit, context);
++  }]);
++  const result = rewritten.transformed[0];
++  if (result === undefined) throw new Error(`plugin declaration transformation failed: ${input.file}`);
++  const content = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }).printFile(result);
++  rewritten.dispose();
++  return { content, companions: [...companions.values()].sort((left, right) => left.file.localeCompare(right.file)) };
++}
++
++function entrySourceForCompanion(input: { readonly source: string; readonly file: string }): string {
++  const syntax = ts.createSourceFile(input.file, input.source, ts.ScriptTarget.Latest, true);
++  const authoredUrl = ts.factory.createPropertyAccessExpression(
++    ts.factory.createNewExpression(ts.factory.createIdentifier("URL"), undefined, [
++      ts.factory.createStringLiteral(`./${encodeURIComponent(basename(input.file))}`),
++      ts.factory.createPropertyAccessExpression(
++        ts.factory.createMetaProperty(ts.SyntaxKind.ImportKeyword, ts.factory.createIdentifier("meta")), "url"),
++    ]), "href");
++  const rewritten = ts.transform(syntax, [(context) => (source) => {
++    const visit = (node: ts.Node): ts.Node => {
++      if (ts.isPropertyAccessExpression(node) && ts.isMetaProperty(node.expression) &&
++        node.expression.keywordToken === ts.SyntaxKind.ImportKeyword) {
++        if (node.name.text === "url") return authoredUrl;
++        if (node.name.text === "main") return ts.factory.createBinaryExpression(
++          ts.factory.createCallExpression(
++            ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier("Bun"), "fileURLToPath"),
++            undefined, [authoredUrl]),
++          ts.SyntaxKind.EqualsEqualsEqualsToken,
++          ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier("Bun"), "main"));
++      }
++      return ts.visitEachChild(node, visit, context);
++    };
++    return ts.visitEachChild(source, visit, context);
++  }]);
++  const result = rewritten.transformed[0];
++  if (result === undefined) throw new Error(`plugin entry metadata transformation failed: ${input.file}`);
++  const content = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }).printFile(result);
++  rewritten.dispose();
++  return content;
++}
++
++export function createPluginRuntimePort(input: { readonly projectRoot: string }): PluginRuntimePort {
++  const configFile = ts.readConfigFile(join(input.projectRoot, "tsconfig.json"), ts.sys.readFile);
++  if (configFile.error !== undefined) throw new Error(ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n"));
++  const config = ts.parseJsonConfigFileContent(configFile.config, ts.sys, input.projectRoot);
++  if (config.errors.length > 0) throw new Error(config.errors.map((entry) =>
++    ts.flattenDiagnosticMessageText(entry.messageText, "\n")).join("\n"));
++  const transpiler = new Bun.Transpiler({ loader: "ts" });
++  return {
++    scan: ({ source }) => {
++      const scanned = transpiler.scan(source);
++      const syntax = ts.createSourceFile("runtime.ts", source, ts.ScriptTarget.Latest, true);
++      const hasCapturedBinding = (name: ts.BindingName): boolean => ts.isIdentifier(name)
++        ? name.text === "URL" || name.text === "Bun"
++        : name.elements.some((element) => ts.isBindingElement(element) && hasCapturedBinding(element.name));
++      const hasMetadataBinding = (node: ts.Node): boolean => {
++        if ((ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) &&
++          hasCapturedBinding(node.name)) return true;
++        if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
++          ts.isClassDeclaration(node) || ts.isClassExpression(node) || ts.isImportClause(node) ||
++          ts.isImportSpecifier(node) || ts.isNamespaceImport(node) || ts.isEnumDeclaration(node) ||
++          ts.isModuleDeclaration(node) || ts.isImportEqualsDeclaration(node)) &&
++          node.name !== undefined && (node.name.text === "URL" || node.name.text === "Bun")) return true;
++        return ts.forEachChild(node, hasMetadataBinding) === true;
++      };
++      const isMetadataWrite = (node: ts.Node): boolean => {
++        const parent = node.parent;
++        if (parent === undefined) return false;
++        if (ts.isBinaryExpression(parent) && parent.left === node &&
++          parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
++          parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment) return true;
++        if ((ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) &&
++          (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken))
++          return true;
++        if (ts.isDeleteExpression(parent)) return true;
++        if ((ts.isForInStatement(parent) || ts.isForOfStatement(parent)) && parent.initializer === node)
++          return true;
++        return isMetadataWrite(parent);
++      };
++      const hasImportMeta = (node: ts.Node): boolean =>
++        (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) ||
++        ts.forEachChild(node, hasImportMeta) === true;
++      const hasUnsupportedImportMeta = (node: ts.Node): boolean => {
++        if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) {
++          const parent = node.parent;
++          return !ts.isPropertyAccessExpression(parent) || parent.expression !== node ||
++            (parent.name.text !== "url" && parent.name.text !== "main") || isMetadataWrite(parent);
++        }
++        return ts.forEachChild(node, hasUnsupportedImportMeta) === true;
++      };
++      return {
++        imports: scanned.imports.map(({ path }) => path),
++        exports: scanned.exports,
++        hasUnsupportedImportMeta: hasUnsupportedImportMeta(syntax) ||
++          (hasImportMeta(syntax) && hasMetadataBinding(syntax)),
++        hasPackageImports: scanned.imports.some(({ path }) =>
++          runtimeImportKind({ specifier: path }) === "external" && !isAbsolute(path)),
++      };
++    },
++    declaration: ({ pluginRoot, file }) => {
++      const sourceFile = join(pluginRoot, file);
++      const options: ts.CompilerOptions = {
++        ...config.options, noEmit: false, declaration: true, emitDeclarationOnly: true,
++        declarationMap: false, sourceMap: false, outDir: undefined,
++      };
++      const program = ts.createProgram([sourceFile], options);
++      const diagnostics = ts.getPreEmitDiagnostics(program);
++      if (diagnostics.length > 0) throw new Error(
++        `plugin runtime declaration build failed: ${file}: ${diagnostics.map((entry) =>
++          ts.flattenDiagnosticMessageText(entry.messageText, "\n")).join("\n")}`,
++      );
++      let declaration: string | undefined;
++      const emitted = program.emit(undefined, (_path, content, _bom, _error, sources) => {
++        if (sources?.some((entry) => relative(sourceFile, entry.fileName) === "")) declaration = content;
++      });
++      if (emitted.emitSkipped || declaration === undefined) throw new Error(
++        `plugin runtime declaration build produced no entry declaration: ${file}`,
++      );
++      return ownedDeclarationBundle({
++        content: declaration, sourceFile, pluginRoot, file, options,
++        runtimeModules: transpiler.scan(readFileSync(sourceFile, "utf-8")).imports.map(({ path }) => path),
++      });
++    },
++    bundle: async ({ pluginRoot, file, relativeImports }) => {
++      const sourceFile = join(pluginRoot, file);
++      const escaped = relativeImports.map((path) => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
++      const preserveAuthoredImports: BunPlugin = {
++        name: "preserve-authored-plugin-imports",
++        setup(builder) {
++          builder.onLoad({ filter: /\.[cm]?[jt]s$/ }, ({ path }) => {
++            if (relative(sourceFile, path) !== "") return undefined;
++            return { contents: entrySourceForCompanion({
++              source: readFileSync(sourceFile, "utf-8"), file,
++            }), loader: "ts" };
++          });
++          builder.onResolve({ filter: new RegExp(`^(?:${escaped.join("|")})$`) },
++            ({ path, importer }) => relative(sourceFile, importer) === "" ? { path, external: true } : undefined);
++        },
++      };
++      const result = await Bun.build({
++        entrypoints: [sourceFile], target: "bun", format: "esm",
++        minify: { whitespace: true, syntax: true, identifiers: false },
++        plugins: [preserveAuthoredImports],
++      });
++      const output = result.outputs[0];
++      if (!result.success || result.outputs.length !== 1 || output === undefined)
++        throw new Error(`plugin runtime dependency build failed: ${file}: ${result.logs.join("\n")}`);
++      return output.text();
++    },
++  };
++}
++
++export type { DeclarationBundle, PluginRuntimePort, PreparedRuntime, RuntimeArtifact, RuntimeScan, RuntimeSource };
+diff --git a/scripts/runtime-import.test.ts b/scripts/runtime-import.test.ts
+new file mode 100644
+index 0000000..d2dacae
+--- /dev/null
++++ b/scripts/runtime-import.test.ts
+@@ -0,0 +1,7 @@
++import { expect, test } from 'bun:test';
++import { runtimeImportKind } from './runtime-import.ts';
++test('Bun FFI is supplied by the runtime rather than npm', () => { expect(runtimeImportKind({ specifier: 'bun:ffi' })).toBe('runtime-builtin'); });
++test('Node protocol and Bun public module retain runtime ownership', () => { expect(runtimeImportKind({ specifier: 'node:fs' })).toBe('runtime-builtin'); expect(runtimeImportKind({ specifier: 'bun' })).toBe('runtime-builtin'); });
++test('a sibling remains an authored source dependency', () => { expect(runtimeImportKind({ specifier: './aidlc-report-target.ts' })).toBe('relative-source'); });
++test('external libraries need dependency preparation', () => { expect(runtimeImportKind({ specifier: 'jsonc-parser' })).toBe('external'); });
++test('a similarly named package cannot borrow the builtin classification', () => { expect(runtimeImportKind({ specifier: 'bun-package' })).toBe('external'); });
+diff --git a/scripts/runtime-import.ts b/scripts/runtime-import.ts
+new file mode 100644
+index 0000000..6e7ce5b
+--- /dev/null
++++ b/scripts/runtime-import.ts
+@@ -0,0 +1,5 @@
++export type RuntimeImportKind = 'runtime-builtin' | 'relative-source' | 'external';
++export const runtimeImportKind = ({ specifier }: { readonly specifier: string }): RuntimeImportKind => {
++  if (specifier === 'bun' || specifier.startsWith('node:') || specifier.startsWith('bun:')) return 'runtime-builtin';
++  return specifier.startsWith('.') ? 'relative-source' : 'external';
++};

@@ -1,0 +1,21 @@
+import { createScopeSourceReader, type ScopeSourceReader } from "../src/adapters/scope-sources.ts";
+import { createDistributionAssemblyRules } from "../src/adapters/distribution-source.ts";
+import type { DistributionAssemblyRules } from "../src/application/distribution-assembly.ts";
+import { bindScopeInputs, type ScopeContext } from "../src/domain/scope-definition.ts";
+import { prepareWorkflowDefinitions, type PreparedWorkflowDefinitions } from "../src/application/workflow-definitions.ts";
+import { projectProjectionSet } from "./projection-set.ts";
+import type { CompiledWorkflowSource } from "../src/domain/workflow-compilation.ts";
+import type { DistributionSeed } from "../src/domain/distribution-artifact.ts";
+import type { Outcome } from "../src/domain/model.ts";
+export type ScopeRuntimeServices = { readonly reader: ScopeSourceReader; readonly bind: typeof bindScopeInputs; readonly project: typeof projectProjectionSet; readonly prepare: typeof prepareWorkflowDefinitions; readonly rules: DistributionAssemblyRules };
+export const createScopeRuntimeServices = (): ScopeRuntimeServices => ({ reader: createScopeSourceReader(), bind: bindScopeInputs, project: projectProjectionSet, prepare: prepareWorkflowDefinitions, rules: createDistributionAssemblyRules() });
+export const prepareAuthoredScopes = async ({ sourceRoot, seed, workflow, mode, services = createScopeRuntimeServices() }: { readonly sourceRoot: string; readonly seed: DistributionSeed; readonly workflow: CompiledWorkflowSource; readonly mode: number; readonly services?: ScopeRuntimeServices }): Promise<Outcome<PreparedWorkflowDefinitions>> => {
+  const loaded = await services.reader.load({ sourceRoot, basis: seed.basis });
+  if (loaded.status === "invalid") return loaded;
+  const bound = services.bind({ sources: loaded.value, workflow });
+  if (bound.status === "invalid") return bound;
+  const context: ScopeContext = { ...seed.binding, invocation: seed.invocation, rulesSubdir: seed.rulesSubdir };
+  const projected = services.project({ target: seed.binding, units: bound.value.scopes.map((scope) => ({ kind: "scope", key: `scope-${scope.name}`, input: { scope, context } })) });
+  if (projected.status === "invalid") return projected;
+  return services.prepare({ seed, projection: projected.value, mode, rules: services.rules });
+};

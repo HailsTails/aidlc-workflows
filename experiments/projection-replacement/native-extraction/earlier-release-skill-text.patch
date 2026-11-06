@@ -1,0 +1,68 @@
+diff --git a/scripts/earlier-release-regions.test.ts b/scripts/earlier-release-regions.test.ts
+new file mode 100644
+index 000000000..fc8e3bad9
+--- /dev/null
++++ b/scripts/earlier-release-regions.test.ts
+@@ -0,0 +1,25 @@
++import { expect, test } from "bun:test";
++import { earlierReleasesReadSkill, prepareEarlierReleaseSkillText } from "./earlier-release-regions.ts";
++
++test.each([
++  { skillRel: ".claude/skills/aidlc/SKILL.md", harnessDir: ".claude", expected: true },
++  { skillRel: ".claude\\skills\\aidlc\\SKILL.md", harnessDir: ".claude", expected: true },
++  { skillRel: ".agents/skills/aidlc/SKILL.md", harnessDir: ".codex", expected: true },
++  { skillRel: ".kiro/skills/aidlc/SKILL.md", harnessDir: ".claude", expected: false },
++  { skillRel: ".claude/skills/other/SKILL.md", harnessDir: ".claude", expected: false },
++])("retains earlier-release skill selection for $skillRel on $harnessDir", ({ skillRel, harnessDir, expected }) => {
++  expect(earlierReleasesReadSkill(skillRel, harnessDir)).toBe(expected);
++});
++
++test.each([
++  { label: "no final newline", text: "body", skillRel: ".claude/skills/aidlc/SKILL.md", harnessDir: ".claude", expected: "body\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n" },
++  { label: "empty", text: "", skillRel: ".claude/skills/aidlc/SKILL.md", harnessDir: ".claude", expected: "\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n" },
++  { label: "multiple final LF", text: "body\n\n\n", skillRel: ".claude/skills/aidlc/SKILL.md", harnessDir: ".claude", expected: "body\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n" },
++  { label: "CRLF retains CR", text: "body\r\n", skillRel: ".claude/skills/aidlc/SKILL.md", harnessDir: ".claude", expected: "body\r\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n" },
++  { label: "other skill", text: "body\n\n", skillRel: ".claude/skills/other/SKILL.md", harnessDir: ".claude", expected: "body\n\n" },
++  { label: "cross harness", text: "body\n\n", skillRel: ".kiro/skills/aidlc/SKILL.md", harnessDir: ".claude", expected: "body\n\n" },
++  { label: "shared agents skill", text: "body\n", skillRel: ".agents/skills/aidlc/SKILL.md", harnessDir: ".codex", expected: "body\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n" },
++  { label: "existing footer appends again", text: "body\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n", skillRel: ".claude/skills/aidlc/SKILL.md", harnessDir: ".claude", expected: "body\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n\n<!-- BEGIN: compiled scope grid via an earlier release's refresh --><!-- BEGIN: compiled stage graph via --><!-- END: compiled stage graph --><!-- END: compiled scope grid -->\n" },
++])("prepares exact Native earlier-release footer text: $label", ({ text, skillRel, harnessDir, expected }) => {
++  expect(prepareEarlierReleaseSkillText({ text, skillRel, harnessDir })).toBe(expected);
++});
+diff --git a/scripts/earlier-release-regions.ts b/scripts/earlier-release-regions.ts
+index 7556fa4a9..3fbf5ca4a 100644
+--- a/scripts/earlier-release-regions.ts
++++ b/scripts/earlier-release-regions.ts
+@@ -16,3 +16,8 @@ export function earlierReleasesReadSkill(skillRel: string, harnessDir: string):
+   const rel = skillRel.split(/[\\/]/).join("/");
+   return rel === `${harnessDir}/skills/aidlc/SKILL.md` || rel === ".agents/skills/aidlc/SKILL.md";
+ }
++
++export function prepareEarlierReleaseSkillText({ text, skillRel, harnessDir }: { readonly text: string; readonly skillRel: string; readonly harnessDir: string }): string {
++  if (!earlierReleasesReadSkill(skillRel, harnessDir)) return text;
++  return `${text.replace(/\n*$/, "")}\n\n${EARLIER_RELEASE_REGIONS}\n`;
++}
+diff --git a/scripts/package.ts b/scripts/package.ts
+index e0e2224b7..951231ce7 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -85,7 +85,7 @@ import { coreFileProjection, coreProjectionCoverage, coreProjectionDeclarations
+ import { projectHarnessRuntimeData } from "./harness-runtime-data.ts";
+ import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeRequirement } from "./harness-surface-projection.ts";
+ import { keepOwnHarnessBindings } from "./harness-bindings.ts";
+-import { EARLIER_RELEASE_REGIONS, earlierReleasesReadSkill } from "./earlier-release-regions.ts";
++import { earlierReleasesReadSkill, prepareEarlierReleaseSkillText } from "./earlier-release-regions.ts";
+ import { GENERATED_SKILL_REGIONS, replaceGeneratedSkillRegion } from "./generated-skill-regions.ts";
+ import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
+ import {
+@@ -1685,8 +1685,8 @@ function refreshGeneratedSkillRegions(
+ function keepEarlierReleaseRegions(outRoot: string, manifest: HarnessManifest): void {
+   const skillPath = assembledOrchestratorSkill(outRoot, manifest);
+   if (!earlierReleasesReadSkill(relative(outRoot, skillPath), manifest.harnessDir)) return;
+-  const body = readFileSync(skillPath, "utf-8").replace(/\n*$/, "");
+-  writeFileSync(skillPath, `${body}\n\n${EARLIER_RELEASE_REGIONS}\n`, "utf-8");
++  const text = readFileSync(skillPath, "utf-8");
++  writeFileSync(skillPath, prepareEarlierReleaseSkillText({ text, skillRel: relative(outRoot, skillPath), harnessDir: manifest.harnessDir }), "utf-8");
+ }
+ 
+ // Defense-in-depth backstop: rewrite any residual "<harnessDir>/rules/" →

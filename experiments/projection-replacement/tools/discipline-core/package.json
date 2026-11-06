@@ -1,0 +1,19 @@
+{
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runs a project's selected disciplines against its own files. Self-contained so it builds and tests from this directory alone.",
+  "license": "MIT-0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@eslint/plugin-kit": "0.7.3",
+    "@typescript-eslint/eslint-plugin": "8.71.2",
+    "@typescript-eslint/parser": "8.71.2",
+    "eslint": "10.11.0",
+    "jsonc-parser": "3.3.1",
+    "typescript": "6.0.3",
+    "zod": "4.4.3"
+  }
+}

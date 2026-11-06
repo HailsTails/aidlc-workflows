@@ -1,0 +1,514 @@
+diff --git a/scripts/__tests__/projection-metadata-fixtures.ts b/scripts/__tests__/projection-metadata-fixtures.ts
+new file mode 100644
+index 000000000..7c9b34815
+--- /dev/null
++++ b/scripts/__tests__/projection-metadata-fixtures.ts
+@@ -0,0 +1,16 @@
++import type { HarnessManifest } from "../manifest-types.ts";
++import { mock, type Mock } from "bun:test";
++import type { ProjectionMetadataRules } from "../projection-metadata.ts";
++export type MetadataRuleFixture = { readonly rules: { readonly [Key in keyof ProjectionMetadataRules]: Mock<ProjectionMetadataRules[Key]> } };
++export const createMetadataRuleFixture = (): MetadataRuleFixture => ({ rules: {
++  choiceText: mock<ProjectionMetadataRules["choiceText"]>().mockReturnValue("plain"),
++  shipsRootBlock: mock<ProjectionMetadataRules["shipsRootBlock"]>().mockReturnValue("not-shipped"),
++  encodeRootIntegration: mock<ProjectionMetadataRules["encodeRootIntegration"]>().mockReturnValue({ path: "encoded", policy: "whole-file" }),
++} });
++export const metadataDeclaration: HarnessManifest = { name: "fixture", productName: "Fixture", configNextStep: "Next", harnessDir: ".engine", rootIntegrations: [], tierFlavor: "claude", coreDirs: [], harnessFiles: [], rulesRename: null, emit: null };
++export const metadataProjectionBytes = new Uint8Array([123,10,32,32,34,115,99,104,101,109,97,86,101,114,115,105,111,110,34,58,32,49,44,10,32,32,34,100,105,115,116,114,105,98,117,116,105,111,110,34,58,32,34,102,105,120,116,117,114,101,34,44,10,32,32,34,112,114,111,100,117,99,116,78,97,109,101,34,58,32,34,70,105,120,116,117,114,101,34,44,10,32,32,34,99,111,110,102,105,103,78,101,120,116,83,116,101,112,34,58,32,34,78,101,120,116,34,44,10,32,32,34,104,97,114,110,101,115,115,68,105,114,34,58,32,34,46,101,110,103,105,110,101,34,44,10,32,32,34,109,97,110,97,103,101,100,68,105,114,101,99,116,111,114,105,101,115,34,58,32,91,10,32,32,32,32,34,46,101,110,103,105,110,101,34,44,10,32,32,32,32,34,101,109,112,116,121,34,10,32,32,93,44,10,32,32,34,114,111,111,116,73,110,116,101,103,114,97,116,105,111,110,115,34,58,32,91,93,10,125,10]);
++export const metadataStampBytes = new Uint8Array([123,10,32,32,34,115,99,104,101,109,97,86,101,114,115,105,111,110,34,58,32,49,44,10,32,32,34,102,114,97,109,101,119,111,114,107,86,101,114,115,105,111,110,34,58,32,34,49,46,50,46,51,34,44,10,32,32,34,100,105,115,116,114,105,98,117,116,105,111,110,34,58,32,34,102,105,120,116,117,114,101,34,44,10,32,32,34,104,97,114,110,101,115,115,68,105,114,34,58,32,34,46,101,110,103,105,110,101,34,10,125,10]);
++export const rootProjectionBytes = new Uint8Array([123,10,32,32,34,115,99,104,101,109,97,86,101,114,115,105,111,110,34,58,32,49,44,10,32,32,34,100,105,115,116,114,105,98,117,116,105,111,110,34,58,32,34,102,105,120,116,117,114,101,34,44,10,32,32,34,112,114,111,100,117,99,116,78,97,109,101,34,58,32,34,70,105,120,116,117,114,101,34,44,10,32,32,34,99,111,110,102,105,103,78,101,120,116,83,116,101,112,34,58,32,34,78,101,120,116,34,44,10,32,32,34,104,97,114,110,101,115,115,68,105,114,34,58,32,34,46,101,110,103,105,110,101,34,44,10,32,32,34,109,97,110,97,103,101,100,68,105,114,101,99,116,111,114,105,101,115,34,58,32,91,10,32,32,32,32,34,46,101,110,103,105,110,101,34,44,10,32,32,32,32,34,101,109,112,116,121,34,10,32,32,93,44,10,32,32,34,114,111,111,116,73,110,116,101,103,114,97,116,105,111,110,115,34,58,32,91,10,32,32,32,32,123,10,32,32,32,32,32,32,34,112,97,116,104,34,58,32,34,46,103,105,116,105,103,110,111,114,101,34,44,10,32,32,32,32,32,32,34,112,111,108,105,99,121,34,58,32,34,109,97,110,97,103,101,100,45,98,108,111,99,107,34,44,10,32,32,32,32,32,32,34,109,97,114,107,101,114,34,58,32,34,103,105,116,105,103,110,111,114,101,34,44,10,32,32,32,32,32,32,34,108,101,103,97,99,121,83,105,103,110,97,116,117,114,101,115,34,58,32,123,10,32,32,32,32,32,32,32,32,34,119,104,111,108,101,70,105,108,101,72,97,115,104,101,115,34,58,32,91,10,32,32,32,32,32,32,32,32,32,32,34,115,104,97,50,53,54,58,111,108,100,34,44,10,32,32,32,32,32,32,32,32,32,32,34,115,104,97,50,53,54,58,110,101,119,34,10,32,32,32,32,32,32,32,32,93,44,10,32,32,32,32,32,32,32,32,34,106,115,111,110,69,110,116,114,121,72,97,115,104,101,115,34,58,32,123,10,32,32,32,32,32,32,32,32,32,32,34,115,99,114,105,112,116,115,34,58,32,91,10,32,32,32,32,32,32,32,32,32,32,32,32,34,115,104,97,50,53,54,58,101,110,116,114,121,34,10,32,32,32,32,32,32,32,32,32,32,93,10,32,32,32,32,32,32,32,32,125,10,32,32,32,32,32,32,125,10,32,32,32,32,125,44,10,32,32,32,32,123,10,32,32,32,32,32,32,34,112,97,116,104,34,58,32,34,46,109,99,112,46,106,115,111,110,34,44,10,32,32,32,32,32,32,34,112,111,108,105,99,121,34,58,32,34,106,115,111,110,45,109,97,112,34,44,10,32,32,32,32,32,32,34,111,112,116,105,111,110,97,108,34,58,32,116,114,117,101,10,32,32,32,32,125,44,10,32,32,32,32,123,10,32,32,32,32,32,32,34,112,97,116,104,34,58,32,34,111,112,101,110,99,111,100,101,46,106,115,111,110,34,44,10,32,32,32,32,32,32,34,112,111,108,105,99,121,34,58,32,34,119,104,111,108,101,45,102,105,108,101,34,44,10,32,32,32,32,32,32,34,101,120,116,101,110,100,101,100,80,111,108,105,99,121,34,58,32,34,106,115,111,110,45,101,110,116,114,105,101,115,34,10,32,32,32,32,125,44,10,32,32,32,32,123,10,32,32,32,32,32,32,34,112,97,116,104,34,58,32,34,46,118,115,99,111,100,101,47,115,101,116,116,105,110,103,115,46,106,115,111,110,34,44,10,32,32,32,32,32,32,34,112,111,108,105,99,121,34,58,32,34,119,104,111,108,101,45,102,105,108,101,34,44,10,32,32,32,32,32,32,34,101,120,116,101,110,100,101,100,80,111,108,105,99,121,34,58,32,34,106,115,111,110,99,45,115,101,116,116,105,110,103,115,34,10,32,32,32,32,125,10,32,32,93,10,125,10]);
++export const previewStampBytes = new Uint8Array([123,10,32,32,34,115,99,104,101,109,97,86,101,114,115,105,111,110,34,58,32,49,44,10,32,32,34,102,114,97,109,101,119,111,114,107,86,101,114,115,105,111,110,34,58,32,34,49,46,50,46,52,45,112,114,101,118,105,101,119,46,50,48,50,54,49,49,48,55,46,49,34,44,10,32,32,34,100,105,115,116,114,105,98,117,116,105,111,110,34,58,32,34,102,105,120,116,117,114,101,34,44,10,32,32,34,104,97,114,110,101,115,115,68,105,114,34,58,32,34,46,101,110,103,105,110,101,34,10,125,10]);
++export const optionalProjectionBytes = new Uint8Array([123,10,32,32,34,115,99,104,101,109,97,86,101,114,115,105,111,110,34,58,32,49,44,10,32,32,34,100,105,115,116,114,105,98,117,116,105,111,110,34,58,32,34,102,105,120,116,117,114,101,34,44,10,32,32,34,112,114,111,100,117,99,116,78,97,109,101,34,58,32,34,70,105,120,116,117,114,101,34,44,10,32,32,34,99,104,111,105,99,101,78,97,109,101,34,58,32,34,67,104,111,105,99,101,34,44,10,32,32,34,99,104,111,105,99,101,78,111,116,101,34,58,32,34,78,111,116,101,34,44,10,32,32,34,99,111,110,102,105,103,78,101,120,116,83,116,101,112,34,58,32,34,78,101,120,116,34,44,10,32,32,34,102,105,114,115,116,82,117,110,83,116,101,112,115,34,58,32,91,10,32,32,32,32,34,70,105,114,115,116,34,44,10,32,32,32,32,34,83,101,99,111,110,100,34,10,32,32,93,44,10,32,32,34,101,100,105,116,111,114,84,101,114,109,105,110,97,108,65,112,112,34,58,32,34,69,100,105,116,111,114,34,44,10,32,32,34,104,97,114,110,101,115,115,68,105,114,34,58,32,34,46,101,110,103,105,110,101,34,44,10,32,32,34,111,110,98,111,97,114,100,105,110,103,34,58,32,34,46,101,110,103,105,110,101,47,78,65,84,73,86,69,46,109,100,34,44,10,32,32,34,109,97,110,97,103,101,100,68,105,114,101,99,116,111,114,105,101,115,34,58,32,91,10,32,32,32,32,34,46,101,110,103,105,110,101,34,44,10,32,32,32,32,34,101,109,112,116,121,34,10,32,32,93,44,10,32,32,34,114,111,111,116,73,110,116,101,103,114,97,116,105,111,110,115,34,58,32,91,93,10,125,10]);
++export const localOnboardingProjectionBytes = new Uint8Array([123,10,32,32,34,115,99,104,101,109,97,86,101,114,115,105,111,110,34,58,32,49,44,10,32,32,34,100,105,115,116,114,105,98,117,116,105,111,110,34,58,32,34,102,105,120,116,117,114,101,34,44,10,32,32,34,112,114,111,100,117,99,116,78,97,109,101,34,58,32,34,70,105,120,116,117,114,101,34,44,10,32,32,34,99,111,110,102,105,103,78,101,120,116,83,116,101,112,34,58,32,34,78,101,120,116,34,44,10,32,32,34,104,97,114,110,101,115,115,68,105,114,34,58,32,34,46,101,110,103,105,110,101,34,44,10,32,32,34,111,110,98,111,97,114,100,105,110,103,34,58,32,34,46,101,110,103,105,110,101,47,76,79,67,65,76,46,109,100,34,44,10,32,32,34,109,97,110,97,103,101,100,68,105,114,101,99,116,111,114,105,101,115,34,58,32,91,10,32,32,32,32,34,46,101,110,103,105,110,101,34,44,10,32,32,32,32,34,101,109,112,116,121,34,10,32,32,93,44,10,32,32,34,114,111,111,116,73,110,116,101,103,114,97,116,105,111,110,115,34,58,32,91,93,10,125,10]);
+diff --git a/scripts/package-source-inputs.test.ts b/scripts/package-source-inputs.test.ts
+index 49befbe6f..2f5f2e7cf 100644
+--- a/scripts/package-source-inputs.test.ts
++++ b/scripts/package-source-inputs.test.ts
+@@ -11,6 +11,7 @@ test("available producer inputs are selected without unrelated scripts or tests"
+     "scripts/agent-surface-projection.ts",
+     "scripts/core-projection-contract.ts",
+     "scripts/core-runtime.ts",
++    "scripts/projection-metadata.ts",
+     "scripts/earlier-release-regions.ts",
+     "scripts/generated-skill-regions.ts",
+     "scripts/copy-era-files.json",
+@@ -48,6 +49,7 @@ test("absent producer inputs are not selected", () => {
+     ["scripts/agent-surface-projection.ts"],
+     ["scripts/core-projection-contract.ts"],
+     ["scripts/core-runtime.ts"],
++    ["scripts/projection-metadata.ts"],
+     ["scripts/earlier-release-regions.ts"],
+     ["scripts/generated-skill-regions.ts"],
+     ["scripts/copy-era-files.json"],
+diff --git a/scripts/package-source-inputs.ts b/scripts/package-source-inputs.ts
+index 695367e9d..9bb135f0d 100644
+--- a/scripts/package-source-inputs.ts
++++ b/scripts/package-source-inputs.ts
+@@ -7,6 +7,7 @@ const SOURCE_FILES = [
+   "scripts/agent-surface-projection.ts",
+   "scripts/core-projection-contract.ts",
+   "scripts/core-runtime.ts",
++  "scripts/projection-metadata.ts",
+   "scripts/earlier-release-regions.ts",
+   "scripts/generated-skill-regions.ts",
+   "scripts/copy-era-files.json",
+diff --git a/scripts/package.ts b/scripts/package.ts
+index 951231ce7..531151f5a 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -86,6 +86,7 @@ import { projectHarnessRuntimeData } from "./harness-runtime-data.ts";
+ import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeRequirement } from "./harness-surface-projection.ts";
+ import { keepOwnHarnessBindings } from "./harness-bindings.ts";
+ import { earlierReleasesReadSkill, prepareEarlierReleaseSkillText } from "./earlier-release-regions.ts";
++import { planProjectionMetadata, prepareProjectionMetadata } from "./projection-metadata.ts";
+ import { GENERATED_SKILL_REGIONS, replaceGeneratedSkillRegion } from "./generated-skill-regions.ts";
+ import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
+ import {
+@@ -119,7 +120,7 @@ import {
+ import { copyChannelDispatcherCommands, copyChannelToolScripts, ROUTES, TOOLS } from "../core/tools/aidlc.ts";
+ import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
+ import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
+-import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
++import { copyStartsWithout, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
+ import { kiroIdeSteering } from "../core/tools/aidlc-includes.ts";
+ import { SHIPPED_FORMAT_DOCS } from "../core/tools/aidlc-inline-context.ts";
+ import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
+@@ -487,7 +488,7 @@ const COMPILED_DATA = ["tools/data/stage-graph.json", "tools/data/scope-grid.jso
+ const HARNESS_DATA = "tools/data/harness.json";
+ const AGENT_TIERS_DATA = "tools/data/agent-tiers.json";
+ const SETTINGS_SCHEMA_DATA = "tools/data/aidlc-settings.schema.json";
+-const STAMP_DATA = "tools/data/aidlc-stamp.json";
++
+ const PROJECTION_DATA = "tools/data/aidlc-projection.json";
+ // The lines the plugin compose hook adds to a plugin's agent
+ // (manifest-types.ts pluginAgentFrontmatter), in Markdown so the native
+@@ -572,112 +573,29 @@ function writeSettingsSchemaData(treeRoot: string): void {
+   writeFileSync(dst, `${JSON.stringify(AIDLC_SETTINGS_SCHEMA, null, 2)}\n`);
+ }
+ 
+-function writeProjectionData(outRoot: string, treeRoot: string, m: HarnessManifest): void {
+-  if (!harnessChoiceTextIsPlain(m)) {
+-    throw new Error(`[${m.name}] choiceName or choiceNote is not text the harness lists can show`);
+-  }
+-  const rootIntegrationPaths = new Set(m.rootIntegrations.map((item) => item.path));
+-  if (rootIntegrationPaths.size !== m.rootIntegrations.length) {
+-    throw new Error(`[${m.name}] duplicate root integration path`);
+-  }
+-  for (const integration of m.rootIntegrations) {
+-    if (!existsSync(join(outRoot, integration.path))) {
+-      throw new Error(`[${m.name}] root integration is not projected: ${integration.path}`);
+-    }
+-  }
+-  // A directory that holds only root integrations (.vscode/ for settings.json)
+-  // is the project's, not a managed engine directory.
+-  const onlyRootIntegrations = (entry: string): boolean => {
+-    const files: string[] = [];
+-    const visit = (dir: string): void => {
+-      for (const name of readdirSync(join(outRoot, dir))) {
+-        const rel = `${dir}/${name}`;
+-        if (statSync(join(outRoot, rel)).isDirectory()) visit(rel);
+-        else files.push(rel);
+-      }
+-    };
+-    visit(entry);
+-    return files.length > 0 && files.every((file) => rootIntegrationPaths.has(file));
+-  };
+-  const managedDirectories = readdirSync(outRoot)
+-    .filter((entry) => statSync(join(outRoot, entry)).isDirectory())
+-    .filter((entry) => !rootIntegrationPaths.has(entry) && !onlyRootIntegrations(entry))
+-    .sort();
+-  const allowedTopLevel = new Set([
+-    ...managedDirectories,
+-    ...m.rootIntegrations.map((item) => item.path.split("/")[0]),
+-  ]);
+-  const unclassified = readdirSync(outRoot)
+-    .filter((entry) => !allowedTopLevel.has(entry))
+-    .sort();
+-  if (unclassified.length > 0) {
+-    throw new Error(`[${m.name}] unclassified projection entries: ${unclassified.join(", ")}`);
+-  }
+-  const rootIntegrations = m.rootIntegrations.map((integration) => {
+-    if (copyStartsWithout(integration) || integration.policy === "json-entries") {
+-      // A copy starts without this file (or leaves the team's own in place);
+-      // its shipped part rides along so config and the engine can add it
+-      // without a download.
+-      const dst = join(treeRoot, "tools", "data", "root-blocks", basename(integration.path));
+-      mkdirSync(dirname(dst), { recursive: true });
+-      writeFileSync(dst, readFileSync(join(outRoot, integration.path)));
+-      return integration;
+-    }
+-    if (integration.policy !== "managed-block") return integration;
+-    const bytes = readFileSync(join(outRoot, integration.path));
+-    // Every managed block ships a copy inside the harness folder: siblings
+-    // read it to combine .gitignore lines, the copy runtime leaves the root
+-    // file out, and config and the engine add AI-DLC's part from it.
+-    const dst = join(
+-      treeRoot,
+-      "tools",
+-      "data",
+-      "root-blocks",
+-      integration.marker || basename(integration.path),
+-    );
+-    mkdirSync(dirname(dst), { recursive: true });
+-    writeFileSync(dst, bytes);
+-    const currentHash = sha256Bytes(bytes);
+-    return {
+-      ...integration,
+-      legacySignatures: {
+-        ...integration.legacySignatures,
+-        wholeFileHashes: [
+-          ...new Set([
+-            ...(integration.legacySignatures?.wholeFileHashes ?? []),
+-            currentHash,
+-          ]),
+-        ],
+-      },
+-    };
++function projectionDirectories({ outRoot, directory = "" }: { readonly outRoot: string; readonly directory?: string }): readonly string[] {
++  return readdirSync(join(outRoot, directory)).flatMap((entry) => {
++    const path = directory ? `${directory}/${entry}` : entry;
++    return statSync(join(outRoot, path)).isDirectory() ? [path, ...projectionDirectories({ outRoot, directory: path })] : [];
++  });
++}
++
++function writeProjectionData({ outRoot, declaration }: { readonly outRoot: string; readonly declaration: HarnessManifest }): void {
++  const files = Array.from(walk(outRoot), (file) => relative(outRoot, file).split(sep).join("/"));
++  const directories = projectionDirectories({ outRoot });
++  const planned = planProjectionMetadata({ declaration, files, directories });
++  if (planned.kind === "refused") throw new Error(planned.message);
++  const rootFiles = planned.rootPathsToRead.map((path) => {
++    const bytes = readFileSync(join(outRoot, path));
++    return { path, fileName: basename(path), bytes: new Uint8Array(bytes), sha256: sha256Bytes(bytes) };
++  });
++  const prepared = prepareProjectionMetadata({ declaration, files, directories, rootFiles, buildVersion: BUILD_VERSION });
++  if (prepared.kind === "refused") throw new Error(prepared.message);
++  prepared.artifacts.forEach((artifact) => {
++    const destination = join(outRoot, artifact.file);
++    mkdirSync(dirname(destination), { recursive: true });
++    writeFileSync(destination, artifact.bytes);
+   });
+-  const projection = {
+-    schemaVersion: 1,
+-    distribution: m.name,
+-    productName: m.productName,
+-    ...(m.choiceName ? { choiceName: m.choiceName } : {}),
+-    ...(m.choiceNote ? { choiceNote: m.choiceNote } : {}),
+-    configNextStep: m.configNextStep,
+-    ...(m.firstRunSteps ? { firstRunSteps: m.firstRunSteps } : {}),
+-    ...(m.editorTerminalApp ? { editorTerminalApp: m.editorTerminalApp } : {}),
+-    harnessDir: m.harnessDir,
+-    ...(m.onboarding?.harnessDst
+-      ? { onboarding: `${m.harnessDir}/${m.onboarding.harnessDst}` }
+-      : m.onboarding && !m.onboarding.projectRoot
+-        ? { onboarding: `${m.harnessDir}/${m.onboarding.dst}` }
+-        : {}),
+-    managedDirectories,
+-    rootIntegrations: rootIntegrations.map(writtenRootIntegration),
+-  };
+-  const stamp = {
+-    schemaVersion: 1,
+-    frameworkVersion: BUILD_VERSION,
+-    distribution: m.name,
+-    harnessDir: m.harnessDir,
+-  };
+-  mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
+-  writeFileSync(join(treeRoot, PROJECTION_DATA), `${JSON.stringify(projection, null, 2)}\n`);
+-  writeFileSync(join(treeRoot, STAMP_DATA), `${JSON.stringify(stamp, null, 2)}\n`);
+ }
+ 
+ // Emit the method ("memory") tree at the WORKSPACE ROOT of the dist tree
+@@ -998,7 +916,7 @@ async function buildTree(
+   expandClaudeToolAllows(treeRoot, m);
+   expandKiroToolAllows(treeRoot, m);
+   expandKiroIdeConductorAllows(treeRoot, m, invoke);
+-  writeProjectionData(outRoot, treeRoot, m);
++  writeProjectionData({ outRoot, declaration: m });
+ 
+   // 6. Generated table regions are build products, not authored prose. Refresh
+   //    them only after emit(), because Codex and Copilot place the orchestrator
+diff --git a/scripts/projection-metadata.test.ts b/scripts/projection-metadata.test.ts
+new file mode 100644
+index 000000000..468c1e2f1
+--- /dev/null
++++ b/scripts/projection-metadata.test.ts
+@@ -0,0 +1,146 @@
++import { expect, test } from "bun:test";
++import { planProjectionMetadata, prepareProjectionMetadata } from "./projection-metadata.ts";
++import type { HarnessManifest, RootIntegration } from "./manifest-types.ts";
++import { createMetadataRuleFixture, metadataDeclaration, metadataProjectionBytes, metadataStampBytes, rootProjectionBytes, previewStampBytes, optionalProjectionBytes, localOnboardingProjectionBytes } from "./__tests__/projection-metadata-fixtures.ts";
++
++test("serializes the declared projection and explicit build stamp with exact Native bytes", () => {
++  const fixture = createMetadataRuleFixture();
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: metadataDeclaration, files: [".engine/tools/tool.ts"], directories: ["empty", ".engine"], rootFiles: [], buildVersion: "1.2.3" })).toEqual({ kind: "prepared", artifacts: [
++    { file: ".engine/tools/data/aidlc-projection.json", bytes: metadataProjectionBytes },
++    { file: ".engine/tools/data/aidlc-stamp.json", bytes: metadataStampBytes },
++  ] });
++  expect(fixture.rules.choiceText.mock.calls).toEqual([[{ declaration: metadataDeclaration }]]);
++  expect(fixture.rules.shipsRootBlock.mock.calls).toEqual([]);
++  expect(fixture.rules.encodeRootIntegration.mock.calls).toEqual([]);
++});
++
++test("retains optional descriptor fields and gives explicit harness onboarding priority over project-root placement", () => {
++  const fixture = createMetadataRuleFixture();
++  const declaration: HarnessManifest = { ...metadataDeclaration, choiceName: "Choice", choiceNote: "Note", firstRunSteps: ["First", "Second"], editorTerminalApp: "Editor", onboarding: { dst: "ROOT.md", harnessDst: "NATIVE.md", projectRoot: true, fills: { invoke: "/aidlc", slots: {} } } };
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration, files: [".engine/NATIVE.md"], directories: ["empty", ".engine"], rootFiles: [], buildVersion: "1.2.3" })).toEqual({ kind: "prepared", artifacts: [
++    { file: ".engine/tools/data/aidlc-projection.json", bytes: optionalProjectionBytes },
++    { file: ".engine/tools/data/aidlc-stamp.json", bytes: metadataStampBytes },
++  ] });
++  expect(fixture.rules.choiceText.mock.calls).toEqual([[{ declaration }]]);
++});
++
++test("selects ordinary harness-local onboarding when no explicit harness destination is declared", () => {
++  const fixture = createMetadataRuleFixture();
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: { ...metadataDeclaration, onboarding: { dst: "LOCAL.md", fills: { invoke: "/aidlc", slots: {} } } }, files: [".engine/LOCAL.md"], directories: ["empty", ".engine"], rootFiles: [], buildVersion: "1.2.3" })).toEqual({ kind: "prepared", artifacts: [
++    { file: ".engine/tools/data/aidlc-projection.json", bytes: localOnboardingProjectionBytes },
++    { file: ".engine/tools/data/aidlc-stamp.json", bytes: metadataStampBytes },
++  ] });
++});
++
++test("omits project-root onboarding from the engine-local onboarding descriptor", () => {
++  const fixture = createMetadataRuleFixture();
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: { ...metadataDeclaration, onboarding: { dst: "ROOT.md", projectRoot: true, fills: { invoke: "/aidlc", slots: {} } } }, files: [".engine/tool.ts"], directories: ["empty", ".engine"], rootFiles: [], buildVersion: "1.2.3" })).toEqual({ kind: "prepared", artifacts: [
++    { file: ".engine/tools/data/aidlc-projection.json", bytes: metadataProjectionBytes },
++    { file: ".engine/tools/data/aidlc-stamp.json", bytes: metadataStampBytes },
++  ] });
++});
++
++test("null onboarding leaves descriptor metadata unchanged", () => {
++  const fixture = createMetadataRuleFixture();
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: { ...metadataDeclaration, onboarding: null }, files: [".engine/tool.ts"], directories: ["empty", ".engine"], rootFiles: [], buildVersion: "1.2.3" })).toEqual({ kind: "prepared", artifacts: [
++    { file: ".engine/tools/data/aidlc-projection.json", bytes: metadataProjectionBytes },
++    { file: ".engine/tools/data/aidlc-stamp.json", bytes: metadataStampBytes },
++  ] });
++});
++
++test("root-only directories remain project-owned, while truly empty directories remain managed", () => {
++  const fixture = createMetadataRuleFixture();
++  expect(planProjectionMetadata({ rules: fixture.rules, declaration: { ...metadataDeclaration, rootIntegrations: [{ path: ".vscode/settings.json", policy: "jsonc-settings" }] }, files: [".engine/tools/tool.ts", ".vscode/settings.json"], directories: [".vscode", ".vscode/empty-child", "empty", ".engine"] })).toEqual({ kind: "planned", managedDirectories: [".engine", "empty"], rootPathsToRead: [] });
++});
++
++test("a directory with any non-root content remains a managed directory", () => {
++  const fixture = createMetadataRuleFixture();
++  expect(planProjectionMetadata({ rules: fixture.rules, declaration: { ...metadataDeclaration, rootIntegrations: [{ path: ".vscode/settings.json", policy: "jsonc-settings" }] }, files: [".engine/tools/tool.ts", ".vscode/settings.json", ".vscode/extension.txt"], directories: [".vscode", ".engine"] })).toEqual({ kind: "planned", managedDirectories: [".engine", ".vscode"], rootPathsToRead: [] });
++});
++
++const rootedDeclaration: HarnessManifest = { ...metadataDeclaration, rootIntegrations: [
++  { path: ".gitignore", policy: "managed-block", marker: "gitignore", legacySignatures: { wholeFileHashes: ["sha256:old", "sha256:new", "sha256:old"], jsonEntryHashes: { scripts: ["sha256:entry"] } } },
++  { path: ".mcp.json", policy: "json-map", optional: true },
++  { path: "opencode.json", policy: "json-entries" },
++  { path: ".vscode/settings.json", policy: "jsonc-settings" },
++] };
++
++test("plans reads only for admitted shipped-block decisions", () => {
++  const fixture = createMetadataRuleFixture();
++  fixture.rules.shipsRootBlock.mockReturnValueOnce("shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("not-shipped");
++  expect(planProjectionMetadata({ rules: fixture.rules, declaration: rootedDeclaration, files: [".engine/tools/tool.ts", ".gitignore", ".mcp.json", "opencode.json", ".vscode/settings.json"], directories: ["empty", ".vscode", ".engine"] })).toEqual({ kind: "planned", managedDirectories: [".engine", "empty"], rootPathsToRead: [".gitignore", ".mcp.json", "opencode.json"] });
++});
++
++const nonBlockIntegrations: RootIntegration[] = [
++  { path: "owned.json", policy: "whole-file" },
++  { path: "owned.json", policy: "json-array" },
++  { path: "owned.json", policy: "json-map" },
++  { path: "owned.json", policy: "json-map", optional: false },
++  { path: "owned.json", policy: "jsonc-settings" },
++];
++test.each(nonBlockIntegrations)("does not override a not-shipped rule decision using the filename or policy: $policy", (integration) => {
++  const fixture = createMetadataRuleFixture();
++  expect(planProjectionMetadata({ rules: fixture.rules, declaration: { ...metadataDeclaration, rootIntegrations: [integration] }, files: ["owned.json"], directories: [".engine"] })).toEqual({ kind: "planned", managedDirectories: [".engine"], rootPathsToRead: [] });
++  expect(fixture.rules.shipsRootBlock.mock.calls).toEqual([[{ integration }]]);
++});
++
++test("preserves opaque roots and forwards updated signatures to the encoder without changing its replies", () => {
++  const fixture = createMetadataRuleFixture();
++  fixture.rules.shipsRootBlock.mockReturnValueOnce("shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("not-shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("not-shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("shipped").mockReturnValueOnce("not-shipped");
++  fixture.rules.encodeRootIntegration.mockReturnValueOnce({ path: ".gitignore", policy: "managed-block", marker: "gitignore", legacySignatures: { wholeFileHashes: ["sha256:old", "sha256:new"], jsonEntryHashes: { scripts: ["sha256:entry"] } } }).mockReturnValueOnce({ path: ".mcp.json", policy: "json-map", optional: true }).mockReturnValueOnce({ path: "opencode.json", policy: "whole-file", extendedPolicy: "json-entries" }).mockReturnValueOnce({ path: ".vscode/settings.json", policy: "whole-file", extendedPolicy: "jsonc-settings" });
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: rootedDeclaration, files: [".engine/tools/tool.ts", ".gitignore", ".mcp.json", "opencode.json", ".vscode/settings.json"], directories: ["empty", ".vscode", ".engine"], rootFiles: [
++    { path: ".gitignore", fileName: ".gitignore", bytes: new Uint8Array([255, 0]), sha256: "sha256:new" },
++    { path: ".mcp.json", fileName: ".mcp.json", bytes: new Uint8Array([123, 125]), sha256: "sha256:unused-json" },
++    { path: "opencode.json", fileName: "opencode.json", bytes: new Uint8Array([10]), sha256: "sha256:unused-entry" },
++  ], buildVersion: "1.2.3" })).toEqual({ kind: "prepared", artifacts: [
++    { file: ".engine/tools/data/root-blocks/gitignore", bytes: new Uint8Array([255, 0]) },
++    { file: ".engine/tools/data/root-blocks/.mcp.json", bytes: new Uint8Array([123, 125]) },
++    { file: ".engine/tools/data/root-blocks/opencode.json", bytes: new Uint8Array([10]) },
++    { file: ".engine/tools/data/aidlc-projection.json", bytes: rootProjectionBytes },
++    { file: ".engine/tools/data/aidlc-stamp.json", bytes: metadataStampBytes },
++  ] });
++  expect(rootedDeclaration.rootIntegrations[0]?.legacySignatures).toEqual({ wholeFileHashes: ["sha256:old", "sha256:new", "sha256:old"], jsonEntryHashes: { scripts: ["sha256:entry"] } });
++  expect(fixture.rules.encodeRootIntegration.mock.calls).toEqual([
++    [{ integration: { path: ".gitignore", policy: "managed-block", marker: "gitignore", legacySignatures: { wholeFileHashes: ["sha256:old", "sha256:new"], jsonEntryHashes: { scripts: ["sha256:entry"] } } } }],
++    [{ integration: { path: ".mcp.json", policy: "json-map", optional: true } }],
++    [{ integration: { path: "opencode.json", policy: "json-entries" } }],
++    [{ integration: { path: ".vscode/settings.json", policy: "jsonc-settings" } }],
++  ]);
++});
++
++const refusalControls: { readonly declaration: HarnessManifest; readonly files: readonly string[]; readonly directories: readonly string[]; readonly message: string; readonly choiceDecision: "plain" | "invalid" }[] = [
++  { declaration: { ...metadataDeclaration, choiceName: "invalid\nchoice", rootIntegrations: [{ path: "missing", policy: "whole-file" }, { path: "missing", policy: "whole-file" }] }, files: [], directories: [], message: "[fixture] choiceName or choiceNote is not text the harness lists can show", choiceDecision: "invalid" },
++  { declaration: { ...metadataDeclaration, rootIntegrations: [{ path: "missing", policy: "whole-file" }, { path: "missing", policy: "whole-file" }] }, files: [], directories: [], message: "[fixture] duplicate root integration path", choiceDecision: "plain" },
++  { declaration: { ...metadataDeclaration, rootIntegrations: [{ path: "missing", policy: "whole-file" }] }, files: ["unclassified"], directories: [], message: "[fixture] root integration is not projected: missing", choiceDecision: "plain" },
++  { declaration: metadataDeclaration, files: ["z.txt", "a.txt"], directories: [], message: "[fixture] unclassified projection entries: a.txt, z.txt", choiceDecision: "plain" },
++];
++test.each(refusalControls)("preserves Native policy refusal order: $message", ({ declaration, files, directories, message, choiceDecision }) => {
++  const fixture = createMetadataRuleFixture();
++  fixture.rules.choiceText.mockReturnValue(choiceDecision);
++  expect(planProjectionMetadata({ rules: fixture.rules, declaration, files, directories })).toEqual({ kind: "refused", message });
++});
++
++test("missing projected root bytes refuse before producing any artifacts", () => {
++  const fixture = createMetadataRuleFixture();
++  fixture.rules.shipsRootBlock.mockReturnValue("shipped");
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: { ...metadataDeclaration, rootIntegrations: [{ path: ".gitignore", policy: "managed-block" }] }, files: [".gitignore"], directories: [], rootFiles: [], buildVersion: "1.2.3" })).toEqual({ kind: "refused", message: "[fixture] root integration bytes unavailable: .gitignore" });
++});
++
++test("duplicate root byte observations cannot choose a different signature or body", () => {
++  const fixture = createMetadataRuleFixture();
++  fixture.rules.shipsRootBlock.mockReturnValue("shipped");
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: { ...metadataDeclaration, rootIntegrations: [{ path: ".gitignore", policy: "managed-block" }] }, files: [".gitignore"], directories: [], rootFiles: [{ path: ".gitignore", fileName: ".gitignore", bytes: new Uint8Array([1]), sha256: "sha256:first" }, { path: ".gitignore", fileName: ".gitignore", bytes: new Uint8Array([2]), sha256: "sha256:second" }], buildVersion: "1.2.3" })).toEqual({ kind: "refused", message: "[fixture] duplicate projected root file bytes" });
++});
++
++test("explicit valid preview version is stamped without reading ambient release settings", () => {
++  const fixture = createMetadataRuleFixture();
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: metadataDeclaration, files: [".engine/tools/tool.ts"], directories: ["empty", ".engine"], rootFiles: [], buildVersion: "1.2.4-preview.20261107.1" })).toEqual({ kind: "prepared", artifacts: [
++    { file: ".engine/tools/data/aidlc-projection.json", bytes: metadataProjectionBytes },
++    { file: ".engine/tools/data/aidlc-stamp.json", bytes: previewStampBytes },
++  ] });
++});
++
++test.each(["invalid", "1.2.3\n", "1.2.3-preview.fake.1"])("Native version identifier grammar rejects invalid explicit build version: %s", (buildVersion) => {
++  const fixture = createMetadataRuleFixture();
++  expect(prepareProjectionMetadata({ rules: fixture.rules, declaration: metadataDeclaration, files: [], directories: [], rootFiles: [], buildVersion })).toEqual({ kind: "refused", message: "[fixture] invalid projection build version" });
++});
+diff --git a/scripts/projection-metadata.ts b/scripts/projection-metadata.ts
+new file mode 100644
+index 000000000..17d62d43c
+--- /dev/null
++++ b/scripts/projection-metadata.ts
+@@ -0,0 +1,128 @@
++import type { HarnessManifest, RootIntegration } from "./manifest-types.ts";
++import { harnessChoiceTextIsPlain, shipsRootBlock as nativeShipsRootBlock } from "../core/tools/aidlc-distribution.ts";
++import { encodeRootIntegration as nativeEncodeRootIntegration } from "../core/tools/aidlc-root-integration-codec.ts";
++import { VERSION_ID } from "../core/tools/aidlc-channel.ts";
++
++export type ProjectedRootFile = { readonly path: string; readonly fileName: string; readonly bytes: Uint8Array; readonly sha256: string };
++export type ProjectionMetadataArtifact = { readonly file: string; readonly bytes: Uint8Array };
++export type ProjectionRootIntegrationWire = RootIntegration & { readonly extendedPolicy?: string };
++export type ProjectionMetadataRules = {
++  readonly choiceText: (input: { readonly declaration: HarnessManifest }) => "plain" | "invalid";
++  readonly shipsRootBlock: (input: { readonly integration: RootIntegration }) => "shipped" | "not-shipped";
++  readonly encodeRootIntegration: (input: { readonly integration: RootIntegration }) => ProjectionRootIntegrationWire;
++};
++export const createProjectionMetadataRules = (): ProjectionMetadataRules => ({
++  choiceText: ({ declaration }) => harnessChoiceTextIsPlain(declaration) ? "plain" : "invalid",
++  shipsRootBlock: ({ integration }) => nativeShipsRootBlock(integration) ? "shipped" : "not-shipped",
++  encodeRootIntegration: ({ integration }) => nativeEncodeRootIntegration({ integration }),
++});
++export type ProjectionMetadataRequest = { readonly declaration: HarnessManifest; readonly files: readonly string[]; readonly directories: readonly string[]; readonly rootFiles: readonly ProjectedRootFile[]; readonly buildVersion: string; readonly rules?: ProjectionMetadataRules };
++export type ProjectionMetadataRefusal = { readonly kind: "refused"; readonly message: string };
++export type ProjectionMetadataPreparation = { readonly kind: "prepared"; readonly artifacts: readonly ProjectionMetadataArtifact[] } | ProjectionMetadataRefusal;
++export type ProjectionMetadataPlan = { readonly kind: "planned"; readonly managedDirectories: readonly string[]; readonly rootPathsToRead: readonly string[] } | ProjectionMetadataRefusal;
++type PreparedRootIntegrations = { readonly kind: "prepared"; readonly integrations: readonly RootIntegration[]; readonly artifacts: readonly ProjectionMetadataArtifact[] } | ProjectionMetadataRefusal;
++type ProjectionMetadataAssembly = { readonly request: ProjectionMetadataRequest; readonly inventory: Extract<ProjectionMetadataPlan, { readonly kind: "planned" }>; readonly roots: Extract<PreparedRootIntegrations, { readonly kind: "prepared" }>; readonly rules: ProjectionMetadataRules };
++
++function refuse({ declaration, message }: { readonly declaration: HarnessManifest; readonly message: string }): ProjectionMetadataRefusal {
++  return { kind: "refused", message: `[${declaration.name}] ${message}` };
++}
++
++function onlyRootIntegrations({ directory, files, rootPaths }: { readonly directory: string; readonly files: readonly string[]; readonly rootPaths: ReadonlySet<string> }) {
++  const children = files.filter((file) => file.startsWith(`${directory}/`));
++  return children.length > 0 && children.every((file) => rootPaths.has(file));
++}
++
++function managedProjectionDirectories({ files, directories, rootPaths }: { readonly files: readonly string[]; readonly directories: readonly string[]; readonly rootPaths: ReadonlySet<string> }): readonly string[] {
++  return directories.filter((directory) => !directory.includes("/") && !rootPaths.has(directory) && !onlyRootIntegrations({ directory, files, rootPaths })).sort();
++}
++
++export function planProjectionMetadata({ declaration, files, directories, rules = createProjectionMetadataRules() }: Pick<ProjectionMetadataRequest, "declaration" | "files" | "directories" | "rules">): ProjectionMetadataPlan {
++  if (rules.choiceText({ declaration }) === "invalid") return refuse({ declaration, message: "choiceName or choiceNote is not text the harness lists can show" });
++  const rootPaths = new Set(declaration.rootIntegrations.map((integration) => integration.path));
++  if (rootPaths.size !== declaration.rootIntegrations.length) return refuse({ declaration, message: "duplicate root integration path" });
++  const missing = declaration.rootIntegrations.find((integration) => !files.includes(integration.path) && !directories.includes(integration.path));
++  if (missing !== undefined) return refuse({ declaration, message: `root integration is not projected: ${missing.path}` });
++  const managedDirectories = managedProjectionDirectories({ files, directories, rootPaths });
++  const allowed = new Set([...managedDirectories, ...declaration.rootIntegrations.map((integration) => integration.path.split("/")[0])]);
++  const entries = Array.from(new Set([...files, ...directories].map((path) => path.split("/")[0])));
++  const unclassified = entries.filter((entry) => !allowed.has(entry)).sort();
++  if (unclassified.length > 0) return refuse({ declaration, message: `unclassified projection entries: ${unclassified.join(", ")}` });
++  return { kind: "planned", managedDirectories, rootPathsToRead: declaration.rootIntegrations.filter((integration) => rules.shipsRootBlock({ integration }) === "shipped").map((integration) => integration.path) };
++}
++
++function rootBlockName({ integration, rootFile }: { readonly integration: RootIntegration; readonly rootFile: ProjectedRootFile }): string {
++  return integration.policy === "managed-block" ? integration.marker || rootFile.fileName : rootFile.fileName;
++}
++
++function rootIntegrationWithSignature({ integration, rootFile }: { readonly integration: RootIntegration; readonly rootFile: ProjectedRootFile }): RootIntegration {
++  if (integration.policy !== "managed-block") return integration;
++  return { ...integration, legacySignatures: { ...integration.legacySignatures, wholeFileHashes: [...new Set([...(integration.legacySignatures?.wholeFileHashes ?? []), rootFile.sha256])] } };
++}
++
++function prepareRootIntegrations({ declaration, rootFiles, rules }: Pick<ProjectionMetadataRequest, "declaration" | "rootFiles"> & { readonly rules: ProjectionMetadataRules }): PreparedRootIntegrations {
++  const missing = declaration.rootIntegrations.find((integration) => rules.shipsRootBlock({ integration }) === "shipped" && !rootFiles.some((file) => file.path === integration.path));
++  if (missing !== undefined) return refuse({ declaration, message: `root integration bytes unavailable: ${missing.path}` });
++  if (new Set(rootFiles.map((file) => file.path)).size !== rootFiles.length) return refuse({ declaration, message: "duplicate projected root file bytes" });
++  const prepared = declaration.rootIntegrations.map((integration) => {
++    const rootFile = rootFiles.find((file) => file.path === integration.path);
++    if (rules.shipsRootBlock({ integration }) === "not-shipped" || rootFile === undefined) return { integration, artifacts: [] };
++    return { integration: rootIntegrationWithSignature({ integration, rootFile }), artifacts: [{ file: `${declaration.harnessDir}/tools/data/root-blocks/${rootBlockName({ integration, rootFile })}`, bytes: Uint8Array.from(rootFile.bytes) }] };
++  });
++  return { kind: "prepared", integrations: prepared.map((entry) => entry.integration), artifacts: prepared.flatMap((entry) => entry.artifacts) };
++}
++
++function onboardingDescriptor({ declaration }: { readonly declaration: HarnessManifest }): { readonly onboarding?: string } {
++  if (declaration.onboarding?.harnessDst) return { onboarding: `${declaration.harnessDir}/${declaration.onboarding.harnessDst}` };
++  if (declaration.onboarding && !declaration.onboarding.projectRoot) return { onboarding: `${declaration.harnessDir}/${declaration.onboarding.dst}` };
++  return {};
++}
++
++function metadataJson({ file, content }: { readonly file: string; readonly content: unknown }): ProjectionMetadataArtifact {
++  return { file, bytes: new TextEncoder().encode(`${JSON.stringify(content, null, 2)}\n`) };
++}
++
++function projectionDescriptor({ request, inventory, roots, rules }: ProjectionMetadataAssembly) {
++  const declaration = request.declaration;
++  return {
++    schemaVersion: 1,
++    distribution: declaration.name,
++    productName: declaration.productName,
++    ...(declaration.choiceName ? { choiceName: declaration.choiceName } : {}),
++    ...(declaration.choiceNote ? { choiceNote: declaration.choiceNote } : {}),
++    configNextStep: declaration.configNextStep,
++    ...(declaration.firstRunSteps ? { firstRunSteps: declaration.firstRunSteps } : {}),
++    ...(declaration.editorTerminalApp ? { editorTerminalApp: declaration.editorTerminalApp } : {}),
++    harnessDir: declaration.harnessDir,
++    ...onboardingDescriptor({ declaration }),
++    managedDirectories: inventory.managedDirectories,
++    rootIntegrations: roots.integrations.map((integration) => rules.encodeRootIntegration({ integration })),
++  };
++}
++
++function projectionStamp({ request }: { readonly request: ProjectionMetadataRequest }) {
++  return { schemaVersion: 1, frameworkVersion: request.buildVersion, distribution: request.declaration.name, harnessDir: request.declaration.harnessDir };
++}
++
++function preparedMetadata(input: ProjectionMetadataAssembly): ProjectionMetadataPreparation {
++  return { kind: "prepared", artifacts: [
++    ...input.roots.artifacts,
++    metadataJson({ file: `${input.request.declaration.harnessDir}/tools/data/aidlc-projection.json`, content: projectionDescriptor(input) }),
++    metadataJson({ file: `${input.request.declaration.harnessDir}/tools/data/aidlc-stamp.json`, content: projectionStamp(input) }),
++  ] };
++}
++
++function admitProjectionBuildVersion({ request }: { readonly request: ProjectionMetadataRequest }): { readonly kind: "admitted" } | ProjectionMetadataRefusal {
++  if (!VERSION_ID.test(request.buildVersion)) return refuse({ declaration: request.declaration, message: "invalid projection build version" });
++  return { kind: "admitted" };
++}
++
++export function prepareProjectionMetadata(request: ProjectionMetadataRequest): ProjectionMetadataPreparation {
++  const version = admitProjectionBuildVersion({ request });
++  if (version.kind === "refused") return version;
++  const rules = request.rules ?? createProjectionMetadataRules();
++  const inventory = planProjectionMetadata({ ...request, rules });
++  if (inventory.kind === "refused") return inventory;
++  const roots = prepareRootIntegrations({ ...request, rules });
++  if (roots.kind === "refused") return roots;
++  return preparedMetadata({ request, inventory, roots, rules });
++}

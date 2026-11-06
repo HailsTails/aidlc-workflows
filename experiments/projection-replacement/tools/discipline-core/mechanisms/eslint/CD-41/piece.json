@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "discipline": "CD-41",
+  "mechanism": "eslint",
+  "clauses": [
+    {
+      "clause": "cognitive-complexity",
+      "settings": {
+        "pluginNamespace": "discipline-cd41",
+        "pluginModule": "cd41/cd41.eslint-plugin.ts",
+        "rule": "cognitive-complexity"
+      }
+    },
+    {
+      "clause": "function-length",
+      "settings": {
+        "pluginNamespace": "discipline-cd41",
+        "pluginModule": "cd41/cd41.eslint-plugin.ts",
+        "rule": "function-length"
+      }
+    }
+  ]
+}

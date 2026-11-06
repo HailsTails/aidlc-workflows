@@ -1,0 +1,1045 @@
+diff --git a/core/tools/aidlc-compiled-tables.ts b/core/tools/aidlc-compiled-tables.ts
+new file mode 100644
+index 0000000..66dd351
+--- /dev/null
++++ b/core/tools/aidlc-compiled-tables.ts
+@@ -0,0 +1,70 @@
++import { loadScopeMapping, loadStageGraph, validScopes } from "./aidlc-lib.ts";
++import { aidlcDispatcherInvocation } from "./aidlc-runtime-paths.ts";
++
++export const SCOPE_TABLE_BEGIN =
++  `<!-- BEGIN: compiled scope grid via \`${aidlcDispatcherInvocation("gen scope-table")}\` - do NOT hand-edit -->`;
++export const SCOPE_TABLE_END =
++  "<!-- END: compiled scope grid -->";
++
++/** Exported for t67 unit tests. */
++export function renderScopeTable(): string {
++  const mapping = loadScopeMapping();
++  const scopes = [...validScopes()]; // alphabetical
++  const lines = [
++    "| Scope          | Depth         | TestStrategy | EXECUTE / Total |",
++    "|----------------|---------------|--------------|-----------------|",
++  ];
++  for (const name of scopes) {
++    const def = mapping[name];
++    const stages = def.stages;
++    const total = Object.keys(stages).length;
++    const execute = Object.values(stages).filter((v) => v === "EXECUTE").length;
++    const depth = def.depth;
++    const ts = def.testStrategy ?? "(default)";
++    lines.push(
++      `| ${name.padEnd(14)} | ${depth.padEnd(13)} | ${ts.padEnd(12)} | ${`${execute} / ${total}`.padEnd(15)} |`
++    );
++  }
++  return lines.join("\n");
++}
++
++/** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */
++export function canonicalScopeTableRegion(table: string): string {
++  return `${SCOPE_TABLE_BEGIN}\n\n${table}\n\n${SCOPE_TABLE_END}`;
++}
++
++export const STAGE_TABLE_BEGIN =
++  `<!-- BEGIN: compiled stage graph via \`${aidlcDispatcherInvocation("gen stage-table")}\` - do NOT hand-edit -->`;
++export const STAGE_TABLE_END =
++  "<!-- END: compiled stage graph -->";
++
++function displayPhase(phase: string): string {
++  return phase.charAt(0).toUpperCase() + phase.slice(1);
++}
++
++function displayLeadAgent(agent: string): string {
++  return agent === "orchestrator" ? "(orchestrator)" : agent;
++}
++
++function displaySupportAgents(agents: string[] | undefined): string {
++  return Array.isArray(agents) && agents.length > 0 ? agents.join(", ") : "—";
++}
++
++/** Exported for t32 integration tests. */
++export function renderStageTable(): string {
++  const lines = [
++    "| Slug | # | Stage | Phase | Execution | Lead Agent | Support Agents | Mode |",
++    "|------|---|-------|-------|-----------|------------|----------------|------|",
++  ];
++  for (const stage of loadStageGraph()) {
++    lines.push(
++      `| ${stage.slug} | ${stage.number} | ${stage.name} | ${displayPhase(stage.phase)} | ${stage.execution} | ${displayLeadAgent(stage.lead_agent)} | ${displaySupportAgents(stage.support_agents)} | ${stage.mode} |`
++    );
++  }
++  return lines.join("\n");
++}
++
++/** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */
++export function canonicalStageTableRegion(table: string): string {
++  return `${STAGE_TABLE_BEGIN}\n\n${table}\n\n${STAGE_TABLE_END}`;
++}
+diff --git a/core/tools/aidlc-init.ts b/core/tools/aidlc-init.ts
+index 0d6b9e3..80f76bb 100644
+--- a/core/tools/aidlc-init.ts
++++ b/core/tools/aidlc-init.ts
+@@ -177,15 +177,10 @@ import { droppedPluginRegistrations } from "./aidlc-plugin-emit.ts";
+ import { addPluginProducesKinds } from "./aidlc-plugin-produces-kinds.ts";
+ import { regenerateRunnerSurfaces } from "./aidlc-runner-gen.ts";
+ import { KIRO_IDE_STEERING, kiroIdeSteering, refreshActiveMemory } from "./aidlc-includes.ts";
+-import {
+-  activeWorkflowPluginDependencies,
+-  canonicalScopeTableRegion,
+-  canonicalStageTableRegion,
+-  renderScopeTable,
+-  renderStageTable,
+-  pluginsTurnedOff,
+-  stripPluginsTurnedOff,
+-} from "./aidlc-utility.ts";
++import { activeWorkflowPluginDependencies } from "./aidlc-workflow-plugin-dependency-reader.ts";
++import { canonicalScopeTableRegion, canonicalStageTableRegion, renderScopeTable, renderStageTable } from "./aidlc-compiled-tables.ts";
++import { pluginsTurnedOff } from "./aidlc-plugin-selection.ts";
++import { stripPluginsTurnedOff } from "./aidlc-plugin-disable.ts";
+ import {
+   aidlcInvocation,
+   discoverProjectHarnesses,
+diff --git a/core/tools/aidlc-plugin-disable.ts b/core/tools/aidlc-plugin-disable.ts
+new file mode 100644
+index 0000000..4957574
+--- /dev/null
++++ b/core/tools/aidlc-plugin-disable.ts
+@@ -0,0 +1,135 @@
++import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
++import { join } from "node:path";
++import { escapeRegex, harnessDir, PHASES } from "./aidlc-lib.ts";
++import { cutPluginFragment, personaTwinRels, type StageContribRecord, stripRecordedAdds, stripPluginRules, retirePluginHookRegistrations, withFileLineEndings } from "./aidlc-plugin.ts";
++import { pluginsTurnedOff } from "./aidlc-plugin-selection.ts";
++import { resolveHarnessPath, runtimeHarnessName, runtimeProjectDir } from "./aidlc-runtime-paths.ts";
++
++// --- disable-time contribution strip -----------------------------------------
++//
++// Compose merges a plugin's structural adds (produces/sensors/consumes/
++// scopes/required_sections) into CORE stage source, where no selection filter
++// reaches, and records what it actually added in a per-plugin sidecar
++// (tools/data/plugin-contrib-<key>.json). Prose fragments carry their own
++// sentinel markers. On disable, select-plugins strips both, so a disabled
++// plugin's contributions stop steering enabled stages; re-enabling restores
++// them at the plugin's next compose (`nextCompose` in aidlc-plugin.ts).
++
++function pluginContribSidecarPath(plugin: string): string {
++  return resolveHarnessPath(
++    ["tools", "data", `plugin-contrib-${plugin.replace(/[^\w.-]/g, "_")}.json`],
++    { mutable: true },
++  );
++}
++
++function installedStagesRoot(): string {
++  return resolveHarnessPath(["aidlc-common", "stages"], { mutable: true });
++}
++
++// Strip every sentinel-marked prose fragment this plugin spliced. The open
++// and close markers carry the plugin name, so removal needs no sidecar.
++// Anchors may themselves contain colons (after-step:9, in:Sensors), so the
++// anchor segment is matched non-greedily up to the trailing :order:hash.
++function removePluginFragments(content: string, plugin: string): string {
++  const pE = escapeRegex(plugin);
++  const openRe = new RegExp(`<!-- plugin:${pE}:.+?:\\d+:[0-9a-f]+ -->`, "g");
++  let out = content;
++  let match = openRe.exec(out);
++  while (match !== null) {
++    const close = `<!-- /${match[0].slice(5)}`;
++    const closeIdx = out.indexOf(close, match.index);
++    if (closeIdx === -1) break; // unpaired marker: leave as-is (doctor territory)
++    out = cutPluginFragment(out, match.index, closeIdx + close.length);
++    openRe.lastIndex = 0;
++    match = openRe.exec(out);
++  }
++  return out;
++}
++
++// Strip the merged contributions of every named plugin from staged stage
++// source. The caller commits the resulting staged-project diff through the
++// shared transaction engine; consumed sidecars are deleted in staging and
++// compose recreates them when the plugin is re-enabled.
++export interface PluginStripChanges {
++  plugins: string[];
++  rulesTakenOut: ReadonlySet<string>;
++}
++
++function stripDisabledPluginContributions(
++  plugins: readonly string[],
++): PluginStripChanges {
++  const rulesTakenOut = new Set<string>();
++  const stagesRoot = installedStagesRoot();
++  const stripped: string[] = [];
++  for (const plugin of plugins) {
++    const sidecar = pluginContribSidecarPath(plugin);
++    let manifest: Record<string, StageContribRecord> = {};
++    if (existsSync(sidecar)) {
++      try {
++        const parsed = JSON.parse(readFileSync(sidecar, "utf-8"));
++        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) manifest = parsed;
++      } catch {
++        throw new Error(`${sidecar}: contribution ownership is unreadable; restore it before changing plugin selection`);
++      }
++    }
++    if (Object.hasOwn(manifest, "$hooks")) retirePluginHookRegistrations({ projectDir: runtimeProjectDir(), harnessDir: harnessDir(), pluginName: plugin, record: manifest.$hooks?.hook_registrations });
++    let pluginTouched = false;
++    for (const phase of PHASES) {
++      const dir = join(stagesRoot, phase);
++      if (!existsSync(dir)) continue;
++      for (const f of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
++        const path = join(dir, f);
++        const before = readFileSync(path, "utf-8");
++        // A CRLF checkout strips as the LF text compose wrote, in its own line endings.
++        const content = withFileLineEndings(before, (text) => {
++          const record = manifest[f.replace(/\.md$/, "")];
++          return removePluginFragments(record ? stripRecordedAdds(text, record) : text, plugin);
++        });
++        if (content !== before) {
++          writeFileSync(path, content, "utf-8");
++          pluginTouched = true;
++        }
++      }
++    }
++    // Persona contributions are prose-only, so their strip needs no sidecar
++    // record: the fragment sentinels carry the plugin name. The persona's
++    // native twins carry the same fragments.
++    const personasDir = resolveHarnessPath(["agents"], { mutable: true });
++    if (existsSync(personasDir)) {
++      const projectDir = runtimeProjectDir();
++      const harness = runtimeHarnessName(projectDir, harnessDir());
++      for (const f of readdirSync(personasDir).filter((name) => name.endsWith(".md")).sort()) {
++        const twins = personaTwinRels(harness, harnessDir(), f.replace(/\.md$/, ""))
++          .map((rel) => join(projectDir, rel))
++          .filter((path) => existsSync(path) && lstatSync(path).isFile());
++        for (const path of [join(personasDir, f), ...twins]) {
++          const before = readFileSync(path, "utf-8");
++          const content = withFileLineEndings(before, (text) => removePluginFragments(text, plugin));
++          if (content !== before) {
++            writeFileSync(path, content, "utf-8");
++            pluginTouched = true;
++          }
++        }
++      }
++    }
++    if (existsSync(sidecar)) {
++      rmSync(sidecar, { force: true });
++      pluginTouched = true;
++    }
++    if (stripPluginRules(runtimeProjectDir(), plugin, true)) {
++      pluginTouched = true;
++      rulesTakenOut.add(plugin);
++    }
++    if (pluginTouched) stripped.push(plugin);
++  }
++  return { plugins: stripped, rulesTakenOut };
++}
++
++// The one turn-off rule, run in the staged tree a selection is built in by
++// plugin select and by every config refresh: a plugin that tree's selection
++// leaves off or pauses keeps nothing it merged into core stages and personas,
++// nor its record of it, so its compose merges it back once it is on again.
++// The implicit core plugin merges nothing.
++export function stripPluginsTurnedOff(): PluginStripChanges {
++  return stripDisabledPluginContributions(pluginsTurnedOff());
++}
+diff --git a/core/tools/aidlc-plugin-selection.ts b/core/tools/aidlc-plugin-selection.ts
+new file mode 100644
+index 0000000..369ec28
+--- /dev/null
++++ b/core/tools/aidlc-plugin-selection.ts
+@@ -0,0 +1,28 @@
++import { composedPluginNames } from "./aidlc-config-diagnostics.ts";
++import { loadScopeMetadataAll, loadStageGraphAll, pluginsEnabled } from "./aidlc-lib.ts";
++import { resolveHarnessPath } from "./aidlc-runtime-paths.ts";
++
++export function knownPluginNames(): string[] {
++  const names = new Set<string>(["aidlc"]);
++  try {
++    for (const stage of loadStageGraphAll()) {
++      if (stage.plugin) names.add(stage.plugin);
++    }
++  } catch {
++    // Scope files still provide known plugin identities when the graph is stale.
++  }
++  for (const meta of Object.values(loadScopeMetadataAll())) {
++    names.add(meta.plugin ?? "aidlc");
++  }
++  for (const name of composedPluginNames(resolveHarnessPath(["tools", "data"]))) {
++    names.add(name);
++  }
++  return [...names].sort();
++}
++
++// The plugins the selection leaves off or pauses.
++export function pluginsTurnedOff(): string[] {
++  const active = pluginsEnabled();
++  if (active === null) return [];
++  return knownPluginNames().filter((name) => name !== "aidlc" && !active.has(name));
++}
+diff --git a/core/tools/aidlc-plugin.ts b/core/tools/aidlc-plugin.ts
+index 4abec60..899f3b6 100644
+--- a/core/tools/aidlc-plugin.ts
++++ b/core/tools/aidlc-plugin.ts
+@@ -1506,7 +1506,7 @@ export interface StageContribRecord {
+ }
+ 
+ // The one strip of a record's structural adds from a stage's LF text, for a
+-// plugin turned off (`stripPluginsTurnedOff()` in aidlc-utility.ts), removed or
++// plugin turned off (`stripPluginsTurnedOff()` in aidlc-plugin-disable.ts), removed or
+ // updated (`pruneContributions`), and the config refresh's test of a composed
+ // file (aidlc-init.ts). Fragments carry their own markers, and each caller
+ // strips them in its own scope.
+@@ -2361,7 +2361,7 @@ function pruneContributions(stagedProject: string, harnessDir: string, key: stri
+       throw new Error(`${sidecar}: ownership sidecar is invalid: ${errorMessage(error)}`);
+     }
+   }
+-  if (Object.prototype.hasOwnProperty.call(records, "$hooks")) retirePluginHookRegistrations({ projectDir: stagedProject, harnessDir, pluginName: key, record: records.$hooks?.hook_registrations });
++  if (Object.hasOwn(records, "$hooks")) retirePluginHookRegistrations({ projectDir: stagedProject, harnessDir, pluginName: key, record: records.$hooks?.hook_registrations });
+   // Stage sources and personas both carry composed content: structural adds
+   // and fragments on stages, fragments only on personas.
+   const stagesRoot = join(stagedProject, harnessDir, "aidlc-common", "stages");
+diff --git a/core/tools/aidlc-utility.ts b/core/tools/aidlc-utility.ts
+index aa0b8d3..4e17840 100644
+--- a/core/tools/aidlc-utility.ts
++++ b/core/tools/aidlc-utility.ts
+@@ -1,3 +1,8 @@
++import { activeWorkflowPluginDependencies } from "./aidlc-workflow-plugin-dependency-reader.ts";
++import { knownPluginNames } from "./aidlc-plugin-selection.ts";
++import { stripPluginsTurnedOff } from "./aidlc-plugin-disable.ts";
++import { canonicalScopeTableRegion, canonicalStageTableRegion, renderScopeTable, renderStageTable, SCOPE_TABLE_BEGIN, SCOPE_TABLE_END, STAGE_TABLE_BEGIN, STAGE_TABLE_END } from "./aidlc-compiled-tables.ts";
++export { canonicalScopeTableRegion, canonicalStageTableRegion, renderScopeTable, renderStageTable } from "./aidlc-compiled-tables.ts";
+ import { DEFAULT_SUBPROCESS_TIMEOUT_MS, LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
+ import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
+ import { hasStoredMessages, proveMessage, requestMessageStep, type StoredMessage } from "./aidlc-message-store.ts";
+@@ -157,7 +162,6 @@ import {
+   stageWorkspaceRepo,
+ } from "./aidlc-workspace-sync.ts";
+ import {
+-  composedPluginNames,
+   copilotCliTrust,
+   insideGitRepository,
+   instructionFileDoctorCheck,
+@@ -185,7 +189,6 @@ import {
+   staleStageLine,
+   activeWorkflowDescriptions,
+   runningWorkflows,
+-  workflowDisplayName,
+   readActiveIntentCursor,
+   activeSpace,
+   authoritativeProjectDescription,
+@@ -536,7 +539,6 @@ import {
+   contributionSources,
+   copyPluginRulesToSpace,
+   copyProjectSurfaces,
+-  cutPluginFragment,
+   hostListsPlugins,
+   mergePluginRulesFromRoot,
+   movePluginRules,
+@@ -546,19 +548,14 @@ import {
+   refreshRulesCopy,
+   sayRulesPlacement,
+   noPluginListLine,
+-  personaTwinRels,
+   projectDiffPlan,
+   recordedContributionGaps,
+   skippedCommandLine,
+   type StageContribRecord,
+-  stripRecordedAdds,
+   rulesRecordGaps,
+-  stripPluginRules,
+-  retirePluginHookRegistrations,
+   inspectPluginHookRegistrations,
+   syncCommand,
+   tomlFragmentText,
+-  withFileLineEndings,
+ } from "./aidlc-plugin.ts";
+ import { pluginTestCommand, renderPluginTestHelp, resolveHookPath } from "./aidlc.ts";
+ import { projectPluginCommands } from "./aidlc-plugin-commands.ts";
+@@ -1014,24 +1011,6 @@ function requireInstalledHarness(projectDir: string): void {
+   }
+ }
+ 
+-function knownPluginNames(): string[] {
+-  const names = new Set<string>(["aidlc"]);
+-  try {
+-    for (const stage of loadStageGraphAll()) {
+-      if (stage.plugin) names.add(stage.plugin);
+-    }
+-  } catch {
+-    // Scope files still provide known plugin identities when the graph is stale.
+-  }
+-  for (const meta of Object.values(loadScopeMetadataAll())) {
+-    names.add(meta.plugin ?? "aidlc");
+-  }
+-  for (const name of composedPluginNames(resolveHarnessPath(["tools", "data"]))) {
+-    names.add(name);
+-  }
+-  return [...names].sort();
+-}
+-
+ function selectionOwner(stage: Pick<StageEntry, "plugin">): string {
+   return stage.plugin ?? "aidlc";
+ }
+@@ -1201,140 +1180,6 @@ export function regenerateSelectionSurfaces(
+   );
+ }
+ 
+-// --- disable-time contribution strip -----------------------------------------
+-//
+-// Compose merges a plugin's structural adds (produces/sensors/consumes/
+-// scopes/required_sections) into CORE stage source, where no selection filter
+-// reaches, and records what it actually added in a per-plugin sidecar
+-// (tools/data/plugin-contrib-<key>.json). Prose fragments carry their own
+-// sentinel markers. On disable, select-plugins strips both, so a disabled
+-// plugin's contributions stop steering enabled stages; re-enabling restores
+-// them at the plugin's next compose (`nextCompose` in aidlc-plugin.ts).
+-
+-function pluginContribSidecarPath(plugin: string): string {
+-  return resolveHarnessPath(
+-    ["tools", "data", `plugin-contrib-${plugin.replace(/[^\w.-]/g, "_")}.json`],
+-    { mutable: true },
+-  );
+-}
+-
+-function installedStagesRoot(): string {
+-  return resolveHarnessPath(["aidlc-common", "stages"], { mutable: true });
+-}
+-
+-// Strip every sentinel-marked prose fragment this plugin spliced. The open
+-// and close markers carry the plugin name, so removal needs no sidecar.
+-// Anchors may themselves contain colons (after-step:9, in:Sensors), so the
+-// anchor segment is matched non-greedily up to the trailing :order:hash.
+-function removePluginFragments(content: string, plugin: string): string {
+-  const pE = escapeRegex(plugin);
+-  const openRe = new RegExp(`<!-- plugin:${pE}:.+?:\\d+:[0-9a-f]+ -->`, "g");
+-  let out = content;
+-  let match = openRe.exec(out);
+-  while (match !== null) {
+-    const close = `<!-- /${match[0].slice(5)}`;
+-    const closeIdx = out.indexOf(close, match.index);
+-    if (closeIdx === -1) break; // unpaired marker: leave as-is (doctor territory)
+-    out = cutPluginFragment(out, match.index, closeIdx + close.length);
+-    openRe.lastIndex = 0;
+-    match = openRe.exec(out);
+-  }
+-  return out;
+-}
+-
+-// Strip the merged contributions of every named plugin from staged stage
+-// source. The caller commits the resulting staged-project diff through the
+-// shared transaction engine; consumed sidecars are deleted in staging and
+-// compose recreates them when the plugin is re-enabled.
+-// The plugins whose rules sections the last strip took out, for the line
+-// select says.
+-const rulesTakenOut = new Set<string>();
+-
+-function stripDisabledPluginContributions(
+-  plugins: readonly string[],
+-): string[] {
+-  const stagesRoot = installedStagesRoot();
+-  const stripped: string[] = [];
+-  for (const plugin of plugins) {
+-    const sidecar = pluginContribSidecarPath(plugin);
+-    let manifest: Record<string, StageContribRecord> = {};
+-    if (existsSync(sidecar)) {
+-      try {
+-        const parsed = JSON.parse(readFileSync(sidecar, "utf-8"));
+-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) manifest = parsed;
+-      } catch {
+-        throw new Error(`${sidecar}: contribution ownership is unreadable; restore it before changing plugin selection`);
+-      }
+-    }
+-    if (Object.prototype.hasOwnProperty.call(manifest, "$hooks")) retirePluginHookRegistrations({ projectDir: runtimeProjectDir(), harnessDir: harnessDir(), pluginName: plugin, record: manifest.$hooks?.hook_registrations });
+-    let pluginTouched = false;
+-    for (const phase of PHASES) {
+-      const dir = join(stagesRoot, phase);
+-      if (!existsSync(dir)) continue;
+-      for (const f of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
+-        const path = join(dir, f);
+-        const before = readFileSync(path, "utf-8");
+-        // A CRLF checkout strips as the LF text compose wrote, in its own line endings.
+-        const content = withFileLineEndings(before, (text) => {
+-          const record = manifest[f.replace(/\.md$/, "")];
+-          return removePluginFragments(record ? stripRecordedAdds(text, record) : text, plugin);
+-        });
+-        if (content !== before) {
+-          writeFileSync(path, content, "utf-8");
+-          pluginTouched = true;
+-        }
+-      }
+-    }
+-    // Persona contributions are prose-only, so their strip needs no sidecar
+-    // record: the fragment sentinels carry the plugin name. The persona's
+-    // native twins carry the same fragments.
+-    const personasDir = resolveHarnessPath(["agents"], { mutable: true });
+-    if (existsSync(personasDir)) {
+-      const projectDir = runtimeProjectDir();
+-      const harness = runtimeHarnessName(projectDir, harnessDir());
+-      for (const f of readdirSync(personasDir).filter((name) => name.endsWith(".md")).sort()) {
+-        const twins = personaTwinRels(harness, harnessDir(), f.replace(/\.md$/, ""))
+-          .map((rel) => join(projectDir, rel))
+-          .filter((path) => existsSync(path) && lstatSync(path).isFile());
+-        for (const path of [join(personasDir, f), ...twins]) {
+-          const before = readFileSync(path, "utf-8");
+-          const content = withFileLineEndings(before, (text) => removePluginFragments(text, plugin));
+-          if (content !== before) {
+-            writeFileSync(path, content, "utf-8");
+-            pluginTouched = true;
+-          }
+-        }
+-      }
+-    }
+-    if (existsSync(sidecar)) {
+-      rmSync(sidecar, { force: true });
+-      pluginTouched = true;
+-    }
+-    if (stripPluginRules(runtimeProjectDir(), plugin, true)) {
+-      pluginTouched = true;
+-      rulesTakenOut.add(plugin);
+-    }
+-    if (pluginTouched) stripped.push(plugin);
+-  }
+-  return stripped;
+-}
+-
+-// The one turn-off rule, run in the staged tree a selection is built in by
+-// plugin select and by every config refresh: a plugin that tree's selection
+-// leaves off or pauses keeps nothing it merged into core stages and personas,
+-// nor its record of it, so its compose merges it back once it is on again.
+-// The implicit core plugin merges nothing.
+-export function stripPluginsTurnedOff(): string[] {
+-  return stripDisabledPluginContributions(pluginsTurnedOff());
+-}
+-
+-// The plugins the selection leaves off or pauses.
+-export function pluginsTurnedOff(): string[] {
+-  const active = pluginsEnabled();
+-  if (active === null) return [];
+-  return knownPluginNames().filter((name) => name !== "aidlc" && !active.has(name));
+-}
+-
+ // A selection change must not strand a live workflow: after disable, a state
+ // file whose Scope belongs to a disabled plugin makes every later /aidlc on
+ // that workflow hard-error ("Unknown scope") with no in-band way out (the
+@@ -1349,68 +1194,6 @@ function activeWorkflowDependencyViolations(
+   return activeWorkflowPluginDependencies(projectDir, enabled).map((dependency) => dependency.text);
+ }
+ 
+-// The same check, with the plugin each dependency needs, for a command that
+-// says what a selection change stops instead of refusing it.
+-export function activeWorkflowPluginDependencies(
+-  projectDir: string,
+-  enabled: ReadonlySet<string>,
+-): Array<{ plugin: string; workflow: string; text: string }> {
+-  const violations: Array<{ plugin: string; workflow: string; text: string }> = [];
+-  const scopeOwner = new Map<string, string>();
+-  for (const [name, meta] of Object.entries(loadScopeMetadataAll())) {
+-    scopeOwner.set(name, meta.plugin ?? "aidlc");
+-  }
+-  // Mirror stageEnabledBySelection: initialization stages are always enabled,
+-  // so they can never strand a plan regardless of the selection.
+-  const stageOwner = new Map<string, string>();
+-  for (const stage of loadStageGraphAll()) {
+-    if (stage.phase === "initialization") continue;
+-    stageOwner.set(stage.slug, stage.plugin ?? "aidlc");
+-  }
+-  for (const space of listSpaces(projectDir)) {
+-    for (const intent of listIntents(projectDir, space.name)) {
+-      if (
+-        isCompletedIntent(intent) ||
+-        isArchivedIntent(intent) ||
+-        !intent.dirName
+-      ) continue;
+-      const sp = stateFilePath(projectDir, intent.dirName, space.name);
+-      if (!existsSync(sp)) continue;
+-      const content = readFileSync(sp, "utf-8");
+-      const status = getField(content, "Status") ?? "";
+-      if (status === "Completed" || status === "Archived") continue;
+-      const where = `workflow "${intent.dirName}" (space ${space.name})`;
+-      const scope = getField(content, "Scope");
+-      if (scope) {
+-        const owner = scopeOwner.get(scope);
+-        if (owner && !enabled.has(owner)) {
+-          violations.push({
+-            plugin: owner,
+-            workflow: workflowDisplayName(space.name, intent),
+-            text: `${where} runs under scope "${scope}" owned by plugin "${owner}"`,
+-          });
+-        }
+-      }
+-      // Pending/active plugin-owned stages in the plan (EXECUTE rows that are
+-      // not yet completed/skipped) - the walk would error on or silently drop
+-      // them. Completed rows are history; they don't depend on the plugin.
+-      for (const cb of parseCheckboxes(content)) {
+-        if (cb.state === "completed" || cb.state === "skipped") continue;
+-        if (!cb.suffix.startsWith("EXECUTE")) continue;
+-        const owner = stageOwner.get(cb.slug);
+-        if (owner && !enabled.has(owner)) {
+-          violations.push({
+-            plugin: owner,
+-            workflow: workflowDisplayName(space.name, intent),
+-            text: `${where} has pending stage "${cb.slug}" owned by plugin "${owner}"`,
+-          });
+-        }
+-      }
+-    }
+-  }
+-  return violations;
+-}
+-
+ function handleSelectPlugins(projectDir: string, positional: string[], rulesLevelFlag?: string): void {
+   let rulesLevels: Map<string, "org" | "team" | "project">;
+   try {
+@@ -1487,6 +1270,7 @@ function handleSelectPlugins(projectDir: string, positional: string[], rulesLeve
+       ] as const;
+       const saved = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+       let strippedPlugins: string[] = [];
++    let rulesTakenOut: ReadonlySet<string> = new Set();
+       const rulesLines: string[] = [];
+       try {
+         process.env.AIDLC_RUNTIME_PROJECT_DIR = stagedProject;
+@@ -1498,8 +1282,9 @@ function handleSelectPlugins(projectDir: string, positional: string[], rulesLeve
+         // The live project remains byte-untouched until the shared transaction
+         // commits.
+         if (!keepSelection) writePluginSelection(stagedProject, names);
+-        rulesTakenOut.clear();
+-        strippedPlugins = stripPluginsTurnedOff();
++        const stripped = stripPluginsTurnedOff();
++        strippedPlugins = stripped.plugins;
++        rulesTakenOut = stripped.rulesTakenOut;
+         for (const [plugin, level] of rulesLevels) {
+           const line = movePluginRules(stagedProject, selectedHarness, plugin, level);
+           if (line !== null) rulesLines.push(line);
+@@ -13600,38 +13385,6 @@ export function findScopeByKeyword(kw: string): string[] {
+ // AIDLC_SKILL_MD_PATH env-seam lets t67 sandbox --check against a
+ // fixture tables.md (so drift tests never mutate the real file).
+ 
+-const SCOPE_TABLE_BEGIN =
+-  `<!-- BEGIN: compiled scope grid via \`${aidlcDispatcherInvocation("gen scope-table")}\` - do NOT hand-edit -->`;
+-const SCOPE_TABLE_END =
+-  "<!-- END: compiled scope grid -->";
+-
+-/** Exported for t67 unit tests. */
+-export function renderScopeTable(): string {
+-  const mapping = loadScopeMapping();
+-  const scopes = [...validScopes()]; // alphabetical
+-  const lines = [
+-    "| Scope          | Depth         | TestStrategy | EXECUTE / Total |",
+-    "|----------------|---------------|--------------|-----------------|",
+-  ];
+-  for (const name of scopes) {
+-    const def = mapping[name];
+-    const stages = def.stages;
+-    const total = Object.keys(stages).length;
+-    const execute = Object.values(stages).filter((v) => v === "EXECUTE").length;
+-    const depth = def.depth;
+-    const ts = def.testStrategy ?? "(default)";
+-    lines.push(
+-      `| ${name.padEnd(14)} | ${depth.padEnd(13)} | ${ts.padEnd(12)} | ${`${execute} / ${total}`.padEnd(15)} |`
+-    );
+-  }
+-  return lines.join("\n");
+-}
+-
+-/** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */
+-export function canonicalScopeTableRegion(table: string): string {
+-  return `${SCOPE_TABLE_BEGIN}\n\n${table}\n\n${SCOPE_TABLE_END}`;
+-}
+-
+ // The generated scope and stage tables live beside the skill, out of its body.
+ // AIDLC_SKILL_MD_PATH names a test fixture that holds the regions.
+ function tablesMdPath(): string {
+@@ -13760,42 +13513,6 @@ function handleScopeTable(
+ // AIDLC_SKILL_MD_PATH env-seam lets tests sandbox --check against a
+ // fixture tables.md (so drift tests never mutate the real file).
+ 
+-const STAGE_TABLE_BEGIN =
+-  `<!-- BEGIN: compiled stage graph via \`${aidlcDispatcherInvocation("gen stage-table")}\` - do NOT hand-edit -->`;
+-const STAGE_TABLE_END =
+-  "<!-- END: compiled stage graph -->";
+-
+-function displayPhase(phase: string): string {
+-  return phase.charAt(0).toUpperCase() + phase.slice(1);
+-}
+-
+-function displayLeadAgent(agent: string): string {
+-  return agent === "orchestrator" ? "(orchestrator)" : agent;
+-}
+-
+-function displaySupportAgents(agents: string[] | undefined): string {
+-  return Array.isArray(agents) && agents.length > 0 ? agents.join(", ") : "—";
+-}
+-
+-/** Exported for t32 integration tests. */
+-export function renderStageTable(): string {
+-  const lines = [
+-    "| Slug | # | Stage | Phase | Execution | Lead Agent | Support Agents | Mode |",
+-    "|------|---|-------|-------|-----------|------------|----------------|------|",
+-  ];
+-  for (const stage of loadStageGraph()) {
+-    lines.push(
+-      `| ${stage.slug} | ${stage.number} | ${stage.name} | ${displayPhase(stage.phase)} | ${stage.execution} | ${displayLeadAgent(stage.lead_agent)} | ${displaySupportAgents(stage.support_agents)} | ${stage.mode} |`
+-    );
+-  }
+-  return lines.join("\n");
+-}
+-
+-/** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */
+-export function canonicalStageTableRegion(table: string): string {
+-  return `${STAGE_TABLE_BEGIN}\n\n${table}\n\n${STAGE_TABLE_END}`;
+-}
+-
+ function handleStageTable(
+   _projectDir: string,
+   _flags: Record<string, string>,
+diff --git a/core/tools/aidlc-workflow-plugin-dependencies.ts b/core/tools/aidlc-workflow-plugin-dependencies.ts
+new file mode 100644
+index 0000000..d9b3a99
+--- /dev/null
++++ b/core/tools/aidlc-workflow-plugin-dependencies.ts
+@@ -0,0 +1,56 @@
++export interface WorkflowPluginFacts {
++  readonly space: string;
++  readonly recordName: string | null;
++  readonly displayName: string;
++  readonly registryClosed: boolean;
++  readonly state: {
++    readonly status: string;
++    readonly scope: string | null;
++    readonly stages: readonly {
++      readonly slug: string;
++      readonly state: string;
++      readonly suffix: string;
++    }[];
++  } | null;
++}
++
++export interface WorkflowPluginOwnership {
++  readonly scopes: readonly { readonly name: string; readonly plugin?: string }[];
++  readonly stages: readonly { readonly slug: string; readonly phase: string; readonly plugin?: string }[];
++}
++
++export type WorkflowPluginDependency = {
++  readonly plugin: string;
++  readonly workflow: Pick<WorkflowPluginFacts, "space" | "recordName" | "displayName">;
++} & (
++  | { readonly kind: "scope"; readonly scope: string }
++  | { readonly kind: "stage"; readonly stage: string }
++);
++
++export function workflowPluginDependencies(input: {
++  readonly enabled: ReadonlySet<string>;
++  readonly ownership: WorkflowPluginOwnership;
++  readonly workflows: readonly WorkflowPluginFacts[];
++}): WorkflowPluginDependency[] {
++  const scopeOwners = new Map(input.ownership.scopes.map((scope) => [scope.name, scope.plugin ?? "aidlc"]));
++  const stageOwners = new Map(input.ownership.stages
++    .filter((stage) => stage.phase !== "initialization")
++    .map((stage) => [stage.slug, stage.plugin ?? "aidlc"]));
++
++  return input.workflows.flatMap((facts): WorkflowPluginDependency[] => {
++    if (facts.registryClosed || !facts.recordName || facts.state === null) return [];
++    if (facts.state.status === "Completed" || facts.state.status === "Archived") return [];
++    const workflow = { space: facts.space, recordName: facts.recordName, displayName: facts.displayName };
++    const scopeOwner = facts.state.scope ? scopeOwners.get(facts.state.scope) : undefined;
++    const scopes: WorkflowPluginDependency[] = facts.state.scope && scopeOwner && !input.enabled.has(scopeOwner)
++      ? [{ kind: "scope", plugin: scopeOwner, workflow, scope: facts.state.scope }]
++      : [];
++    const stages = facts.state.stages.flatMap((row): WorkflowPluginDependency[] => {
++      if (row.state === "completed" || row.state === "skipped" || !row.suffix.startsWith("EXECUTE")) return [];
++      const owner = stageOwners.get(row.slug);
++      if (!owner || input.enabled.has(owner)) return [];
++      return [{ kind: "stage", plugin: owner, workflow, stage: row.slug }];
++    });
++    return [...scopes, ...stages];
++  });
++}
+diff --git a/core/tools/aidlc-workflow-plugin-dependency-reader.ts b/core/tools/aidlc-workflow-plugin-dependency-reader.ts
+new file mode 100644
+index 0000000..85befa2
+--- /dev/null
++++ b/core/tools/aidlc-workflow-plugin-dependency-reader.ts
+@@ -0,0 +1,69 @@
++import { existsSync, readFileSync } from "node:fs";
++import {
++  getField,
++  isArchivedIntent,
++  isCompletedIntent,
++  listIntents,
++  listSpaces,
++  loadScopeMetadataAll,
++  loadStageGraphAll,
++  parseCheckboxes,
++  stateFilePath,
++  workflowDisplayName,
++} from "./aidlc-lib.ts";
++import {
++  workflowPluginDependencies,
++  type WorkflowPluginDependency,
++  type WorkflowPluginFacts,
++} from "./aidlc-workflow-plugin-dependencies.ts";
++
++export interface WorkflowPluginDiagnostic {
++  plugin: string;
++  workflow: string;
++  text: string;
++}
++
++function dependencyDiagnostic(dependency: WorkflowPluginDependency): WorkflowPluginDiagnostic {
++  const where = `workflow "${dependency.workflow.recordName}" (space ${dependency.workflow.space})`;
++  const requirement = dependency.kind === "scope"
++    ? `runs under scope "${dependency.scope}"`
++    : `has pending stage "${dependency.stage}"`;
++  return {
++    plugin: dependency.plugin,
++    workflow: dependency.workflow.displayName,
++    text: `${where} ${requirement} owned by plugin "${dependency.plugin}"`,
++  };
++}
++
++export function activeWorkflowPluginDependencies(
++  projectDir: string,
++  enabled: ReadonlySet<string>,
++): WorkflowPluginDiagnostic[] {
++  const ownership = {
++    scopes: Object.entries(loadScopeMetadataAll()).map(([name, meta]) => ({ name, plugin: meta.plugin })),
++    stages: loadStageGraphAll(),
++  };
++  const workflows = listSpaces(projectDir).flatMap((space) =>
++    listIntents(projectDir, space.name).map((intent): WorkflowPluginFacts => {
++      const identity = {
++        space: space.name,
++        recordName: intent.dirName || null,
++        displayName: workflowDisplayName(space.name, intent),
++        registryClosed: isCompletedIntent(intent) || isArchivedIntent(intent),
++      };
++      if (identity.registryClosed || !intent.dirName) return { ...identity, state: null };
++      const path = stateFilePath(projectDir, intent.dirName, space.name);
++      if (!existsSync(path)) return { ...identity, state: null };
++      const content = readFileSync(path, "utf-8");
++      return {
++        ...identity,
++        state: {
++          status: getField(content, "Status") ?? "",
++          scope: getField(content, "Scope"),
++          stages: parseCheckboxes(content),
++        },
++      };
++    }),
++  );
++  return workflowPluginDependencies({ enabled, ownership, workflows }).map(dependencyDiagnostic);
++}
+diff --git a/docs/reference/18-plugin-mechanism.md b/docs/reference/18-plugin-mechanism.md
+index 5aa646b..8775406 100644
+--- a/docs/reference/18-plugin-mechanism.md
++++ b/docs/reference/18-plugin-mechanism.md
+@@ -269,7 +269,7 @@ words from `nextCompose()`). A pause that
+ would strand open work is refused like any turn-off, naming the plugin and the
+ base. Through `aidlc config project --plugins`, a plugin turned off or paused
+ loses its merged contributions the same way: every config refresh runs the same
+-rule, `stripPluginsTurnedOff()` in `aidlc-utility.ts`, in its staged tree.
++rule, `stripPluginsTurnedOff()` in `aidlc-plugin-disable.ts`, in its staged tree.
+ 
+ ## 5a. Installed inventory, composition stamps, and sync
+ 
+@@ -848,6 +848,23 @@ wherever their scopes put them on-path.
+ - **Trust is host-native.** Org restrictions use the host's managed allowlist; AIDLC builds no trust layer.
+ - **No gatekeeping.** First- and third-party plugins are mechanically equal; provenance is the only difference.
+ 
++### Workflow requirements when selecting plugins
++
++`aidlc-workflow-plugin-dependencies.ts` classifies already-read workflow facts
++against scope and stage ownership and the effective enabled plugin set. It
++owns no filesystem, Markdown parsing, plugin-base resolution or transactions.
++`aidlc-workflow-plugin-dependency-reader.ts` reads every space with the existing
++record parser and formats the shared diagnostics for plugin selection, doctor
++and project configuration. An open parked workflow still requires its scope
++and remaining EXECUTE stages; initialization stages never require a selection.
++
++Project configuration and the utility CLI share the installed selection reader
++in `aidlc-plugin-selection.ts`, staged removal in `aidlc-plugin-disable.ts`,
++and generated tables in `aidlc-compiled-tables.ts`. Their callers retain the
++existing locks, transaction, rollback and audit ownership. The disable adapter
++returns the changes from that call, including removed rules, rather than
++retaining mutable reporting state between transactions.
++
+ ## Cross-references
+ 
+ - [Authoring a Plugin](../harness-engineering/10-authoring-a-plugin.md) — the author-facing walkthrough (build the fixture end to end).
+diff --git a/tests/integration/t224-plugin-selection.test.ts b/tests/integration/t224-plugin-selection.test.ts
+index 444b840..77a5926 100644
+--- a/tests/integration/t224-plugin-selection.test.ts
++++ b/tests/integration/t224-plugin-selection.test.ts
+@@ -309,6 +309,17 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
+     expect(readFileSync(sidecar, "utf-8")).toBe(composedSidecar);
+   });
+ 
++  test("unreadable contribution ownership refuses disable without changing installed surfaces", () => {
++    const proj = join(tmp, "unreadable-ownership");
++    composePluginFixture({ plugin: PLUGIN, harness: "claude", projectDir: proj, pluginBuilt });
++    const sidecar = join(proj, ".claude", "tools", "data", "plugin-contrib-test-pro.json");
++    writeFileSync(sidecar, "{invalid ownership\n");
++    const before = surfaceSnapshot(join(proj, ".claude"));
++    const disable = runUtility(proj, ["select-plugins", "aidlc"]);
++    expect(disable.status).not.toBe(0);
++    expect(disable.stdout + disable.stderr).toContain("contribution ownership is unreadable");
++    expect(surfaceSnapshot(join(proj, ".claude"))).toEqual(before);
++  });
+   test("compose does not merge contributions for a plugin the selection disables", () => {
+     const proj = join(tmp, "no-merge-disabled");
+     copyHarnessInstall("claude", proj);
+@@ -376,12 +387,12 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
+   // with no in-band recovery. select-plugins must refuse, and doctor must
+   // flag a selection (written before this guard, or hand-edited) that
+   // already strands one.
+-  function seedActiveWorkflow(proj: string, scope: string, extraStageRow = ""): string {
++  function seedActiveWorkflow(proj: string, scope: string, extraStageRow = "", space = "default"): string {
+     const dirName = "strand-probe-deadbeef";
+-    const intentDir = join(proj, "aidlc", "spaces", "default", "intents", dirName);
++    const intentDir = join(proj, "aidlc", "spaces", space, "intents", dirName);
+     mkdirSync(intentDir, { recursive: true });
+     writeFileSync(
+-      join(proj, "aidlc", "spaces", "default", "intents", "intents.json"),
++      join(proj, "aidlc", "spaces", space, "intents", "intents.json"),
+       `${JSON.stringify([{ uuid: "deadbeef-0000-4000-8000-000000000000", slug: "strand-probe", dirName, scope, status: "in-flight" }], null, 2)}\n`,
+     );
+     // The Stage Progress row delimiter is the em dash (parseCheckboxes'
+@@ -410,6 +421,34 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
+     return intentDir;
+   }
+ 
++  test("init uses focused owners instead of importing the utility CLI", () => {
++    const init = readFileSync(join(REPO_ROOT, "core", "tools", "aidlc-init.ts"), "utf-8");
++    expect(init).not.toContain('from "./aidlc-utility.ts"');
++    expect(init).toContain('from "./aidlc-workflow-plugin-dependency-reader.ts"');
++  });
++
++  test("selection refuses without writes and doctor reports parked dependencies across spaces", () => {
++    const proj = join(tmp, "strand-cross-space");
++    composePluginFixture({ plugin: PLUGIN, harness: "claude", projectDir: proj, pluginBuilt });
++    seedActiveWorkflow(proj, "test-pro-validation");
++    const parked = seedActiveWorkflow(proj, "feature", "- [ ] test-pro-integration \u2014 EXECUTE", "team");
++    const state = join(parked, "aidlc-state.md");
++    writeFileSync(state, readFileSync(state, "utf-8").replace("- **Status**: Running", "- **Status**: Parked"));
++    const before = surfaceSnapshot(join(proj, ".claude"));
++    const refused = runUtility(proj, ["select-plugins", "aidlc"]);
++    expect(refused.status).not.toBe(0);
++    expect(refused.stderr).toContain("2 active workflow dependency(ies)");
++    expect(refused.stderr).toContain("space default");
++    expect(refused.stderr).toContain("space team");
++    expect(refused.stderr).toContain("test-pro-integration");
++    expect(surfaceSnapshot(join(proj, ".claude"))).toEqual(before);
++    const harness = JSON.parse(readFileSync(harnessPath(proj), "utf-8"));
++    harness.plugins = ["aidlc"];
++    writeFileSync(harnessPath(proj), `${JSON.stringify(harness, null, 2)}\n`);
++    const doctor = runUtility(proj, ["doctor"]);
++    expect(doctor.stdout + doctor.stderr).toContain("Plugin selection vs active workflows: 2 stranded dependency(ies)");
++  });
++
+   test("select-plugins refuses to strand an active workflow's scope", () => {
+     const proj = join(tmp, "strand-scope");
+     composePluginFixture({
+diff --git a/tests/unit/t-workflow-plugin-dependencies.test.ts b/tests/unit/t-workflow-plugin-dependencies.test.ts
+new file mode 100644
+index 0000000..1e56497
+--- /dev/null
++++ b/tests/unit/t-workflow-plugin-dependencies.test.ts
+@@ -0,0 +1,101 @@
++import { describe, expect, test } from "bun:test";
++import { workflowPluginDependencies, type WorkflowPluginFacts, type WorkflowPluginOwnership } from "../../core/tools/aidlc-workflow-plugin-dependencies.ts";
++
++const ownership: WorkflowPluginOwnership = {
++  scopes: [{ name: "feature" }, { name: "validation", plugin: "quality" }],
++  stages: [
++    { slug: "bootstrap", phase: "initialization", plugin: "quality" },
++    { slug: "implement", phase: "construction" },
++    { slug: "check", phase: "construction", plugin: "quality" },
++  ],
++};
++const workflow: WorkflowPluginFacts = {
++  space: "team",
++  recordName: "change-deadbeef",
++  displayName: "team/change-deadbeef",
++  registryClosed: false,
++  state: { status: "Running", scope: "validation", stages: [] },
++};
++const identity = { space: "team", recordName: "change-deadbeef", displayName: "team/change-deadbeef" };
++
++describe("workflow plugin requirements", () => {
++  test("scope ownership remains required even when only a core stage is pending", () => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(["aidlc"]), ownership,
++      workflows: [{ ...workflow, state: { status: "Running", scope: "validation", stages: [{ slug: "implement", state: "pending", suffix: "EXECUTE" }] } }],
++    })).toEqual([{ kind: "scope", plugin: "quality", workflow: identity, scope: "validation" }]);
++  });
++
++  test("scope and remaining stages retain occurrence order without merging identical plugin or short-name identities", () => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(["aidlc"]), ownership,
++      workflows: [
++        { ...workflow, state: { status: "Running", scope: "validation", stages: [{ slug: "check", state: "in-progress", suffix: "EXECUTE" }] } },
++        { ...workflow, space: "other", displayName: "other/change-deadbeef" },
++      ],
++    })).toEqual([
++      { kind: "scope", plugin: "quality", workflow: identity, scope: "validation" },
++      { kind: "stage", plugin: "quality", workflow: identity, stage: "check" },
++      { kind: "scope", plugin: "quality", workflow: { space: "other", recordName: "change-deadbeef", displayName: "other/change-deadbeef" }, scope: "validation" },
++    ]);
++  });
++
++  test.each(["pending", "in-progress", "awaiting-approval", "revising"])("%s EXECUTE stages retain their plugin requirement", (state) => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(["aidlc"]), ownership,
++      workflows: [{ ...workflow, state: { status: "Running", scope: "feature", stages: [{ slug: "check", state, suffix: "EXECUTE (planned)" }] } }],
++    })).toEqual([{ kind: "stage", plugin: "quality", workflow: identity, stage: "check" }]);
++  });
++
++  test("completed, skipped, non-EXECUTE, initialization and unknown stage rows do not require plugins", () => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(["aidlc"]), ownership,
++      workflows: [{ ...workflow, state: { status: "Running", scope: "unknown", stages: [
++        { slug: "check", state: "completed", suffix: "EXECUTE" },
++        { slug: "check", state: "skipped", suffix: "EXECUTE" },
++        { slug: "check", state: "pending", suffix: "SKIP" },
++        { slug: "check", state: "pending", suffix: " EXECUTE" },
++        { slug: "bootstrap", state: "pending", suffix: "EXECUTE" },
++        { slug: "unowned", state: "pending", suffix: "EXECUTE" },
++      ] } }],
++    })).toEqual([]);
++  });
++
++  test.each(["Completed", "Archived"])("%s state closes requirements even if its registry is still open", (status) => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(), ownership,
++      workflows: [{ ...workflow, state: { status, scope: "validation", stages: [{ slug: "check", state: "pending", suffix: "EXECUTE" }] } }],
++    })).toEqual([]);
++  });
++
++  test("closed registry, absent record and absent state have no requirements", () => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(), ownership,
++      workflows: [{ ...workflow, registryClosed: true }, { ...workflow, recordName: null }, { ...workflow, state: null }],
++    })).toEqual([]);
++  });
++
++  test.each(["Parked", "completed", "", "Running"])("upstream %s status retains requirements rather than inventing a lifecycle rule", (status) => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(["aidlc"]), ownership,
++      workflows: [{ ...workflow, state: { status, scope: "validation", stages: [] } }],
++    })).toEqual([{ kind: "scope", plugin: "quality", workflow: identity, scope: "validation" }]);
++  });
++
++  test("unowned definitions belong to core and the effective enabled set is authoritative", () => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(["quality"]), ownership,
++      workflows: [{ ...workflow, state: { status: "Running", scope: "feature", stages: [{ slug: "implement", state: "pending", suffix: "EXECUTE" }, { slug: "check", state: "pending", suffix: "EXECUTE" }] } }],
++    })).toEqual([
++      { kind: "scope", plugin: "aidlc", workflow: identity, scope: "feature" },
++      { kind: "stage", plugin: "aidlc", workflow: identity, stage: "implement" },
++    ]);
++  });
++
++  test("known enabled ownership and absent ownership create no diagnostic", () => {
++    expect(workflowPluginDependencies({
++      enabled: new Set(["quality"]), ownership,
++      workflows: [workflow, { ...workflow, state: { status: "Running", scope: null, stages: [] } }],
++    })).toEqual([]);
++  });
++});

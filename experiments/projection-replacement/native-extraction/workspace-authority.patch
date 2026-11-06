@@ -1,0 +1,154 @@
+diff --git a/core/tools/aidlc-init.ts b/core/tools/aidlc-init.ts
+index a798e1914..eff8c5b22 100644
+--- a/core/tools/aidlc-init.ts
++++ b/core/tools/aidlc-init.ts
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env bun
+-import { assessRecordedRetirement, decideManagedFileChange, decideManagedFileRecord, decideRecordedRetirement } from "./aidlc-managed-file-decision.ts";
++import { assessRecordedRetirement, classifyManagedContent, decideManagedFileChange, decideManagedFileRecord, decideRecordedRetirement, decideWorkspaceSeed } from "./aidlc-managed-file-decision.ts";
+ import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
+ import { captureWorkflowRefreshInputs, combineRefreshChecks, planWorkflowRefresh, validateEmptyRefreshPlan } from "./aidlc-workflow-refresh.ts";
+ import type { WorkflowRefreshPolicy } from "./aidlc-workflow-refresh-contract.ts";
+@@ -10034,20 +10034,6 @@ function existingProject(projectDir: string, requested?: string): {
+   };
+ }
+ 
+-// The workspace directory holds the project's records and its per-machine
+-// runtime state (clone id, sessions, engine health, sensor caches). A release
+-// ships only its seeds there, so no other path under it is release content:
+-// such a path in a source tree (a runtime payload a hook once wrote into, or a
+-// copied project's own records) is never copied or baselined, and a baseline
+-// entry recorded for one is dropped rather than retired.
+-function workspaceSeed(rel: string): boolean {
+-  return rel === "aidlc/active-space" || /^aidlc\/spaces\/[^/]+\/memory\//.test(rel);
+-}
+-
+-function workspaceState(rel: string): boolean {
+-  return rel.startsWith("aidlc/") && !workspaceSeed(rel);
+-}
+-
+ // The hash a managed file counts as: its own, or the known one it equals once
+ // line endings Git rewrote (#2057) or the include paths an earlier release's
+ // space switch pointed at another space are set aside (those files are
+@@ -10121,7 +10107,8 @@ function planManagedFiles(
+     if (!existsSync(sourceDir)) throw new Error(`projection is missing managed directory ${directory}`);
+     for (const nested of walkFiles(sourceDir)) {
+       const rel = join(directory, nested).replaceAll("\\", "/");
+-      if (workspaceState(rel)) continue;
++      const authority = classifyManagedContent({ path: rel });
++      if (authority.kind === "workspace-state") continue;
+       shipped.add(rel);
+       const source = join(sourceRoot, rel);
+       const target = join(projectDir, rel);
+@@ -10145,9 +10132,10 @@ function planManagedFiles(
+             currentHash,
+           ) ?? false
+         );
+-      if (workspaceSeed(rel)) {
+-        if (targetExists) {
+-          actions.push({ path: rel, action: "preserve", detail: "project-owned seed" });
++      if (authority.kind === "workspace-seed") {
++        const seed = decideWorkspaceSeed({ target: targetExists ? "present" : "absent" });
++        if (seed.kind === "preserve") {
++          actions.push({ path: rel, action: "preserve", detail: seed.detail });
+         } else {
+           operations.push({
+             kind: "copy",
+@@ -10302,7 +10290,7 @@ function planManagedFiles(
+     // stay the tool's.
+     if (
+       shipped.has(rel) ||
+-      workspaceState(rel) ||
++      classifyManagedContent({ path: rel }).kind === "workspace-state" ||
+       hostToolPath(rel) ||
+       rel.endsWith("/tools/data/aidlc-manifest.json")
+     ) continue;
+@@ -10336,7 +10324,7 @@ function planManagedFiles(
+   // that this one no longer ships, unchanged, goes the way a recorded one does.
+   if (prior === null) {
+     for (const rel of Object.keys(descriptor.retiredCopyFileHashes ?? {})) {
+-      if (shipped.has(rel) || workspaceState(rel) || hostToolPath(rel)) continue;
++      if (shipped.has(rel) || classifyManagedContent({ path: rel }).kind === "workspace-state" || hostToolPath(rel)) continue;
+       const target = join(projectDir, rel);
+       if (!pathPresent(target) || !copyEraOwnFile(descriptor, rel, target)) continue;
+       operations.push({ kind: "remove", path: rel, expected: expected(target) });
+diff --git a/core/tools/aidlc-managed-file-decision.test.ts b/core/tools/aidlc-managed-file-decision.test.ts
+index 264e09607..08482ee7b 100644
+--- a/core/tools/aidlc-managed-file-decision.test.ts
++++ b/core/tools/aidlc-managed-file-decision.test.ts
+@@ -1,7 +1,7 @@
+ // covers: function:decideManagedFileChange
+ 
+ import { expect, test } from "bun:test";
+-import { assessRecordedRetirement, decideManagedFileChange, decideManagedFileRecord, decideRecordedRetirement, type ManagedFileFacts, type ManagedFileDecision, type ManagedFileRecordFacts, type ManagedFileRecordDecision, type RecordedRetirementFacts, type RecordedRetirementAttribution, type RecordedRetirementDecision } from "./aidlc-managed-file-decision.ts";
++import { assessRecordedRetirement, classifyManagedContent, decideManagedFileChange, decideManagedFileRecord, decideRecordedRetirement, decideWorkspaceSeed, type ManagedContentAuthority, type ManagedFileFacts, type ManagedFileDecision, type ManagedFileRecordFacts, type ManagedFileRecordDecision, type RecordedRetirementFacts, type RecordedRetirementAttribution, type RecordedRetirementDecision } from "./aidlc-managed-file-decision.ts";
+ 
+ const OWNED: ManagedFileFacts = Object.freeze({
+   target: Object.freeze({ kind: "file", hash: "old" }),
+@@ -104,3 +104,40 @@ const RECORD_CASES: readonly { name: string; facts: ManagedFileRecordFacts; expe
+ test.each([...RECORD_CASES])("managed ownership record: $name", ({ facts, expected }) => {
+   expect(decideManagedFileRecord(facts)).toEqual(expected);
+ });
++
++const CONTENT_CASES: readonly { path: string; expected: ManagedContentAuthority }[] = [
++  { path: "aidlc/active-space", expected: { kind: "workspace-seed" } },
++  { path: "aidlc/spaces/default/memory/org.md", expected: { kind: "workspace-seed" } },
++  { path: "aidlc/spaces/custom/memory/phases/construction.md", expected: { kind: "workspace-seed" } },
++  { path: "aidlc/spaces/a/memory/", expected: { kind: "workspace-seed" } },
++  { path: "aidlc/spaces/../memory/project.md", expected: { kind: "workspace-seed" } },
++  { path: "aidlc/spaces/a\\b/memory/team.md", expected: { kind: "workspace-seed" } },
++  { path: "aidlc/sessions/current.json", expected: { kind: "workspace-state" } },
++  { path: "aidlc/spaces/default/intents/current.json", expected: { kind: "workspace-state" } },
++  { path: "aidlc/active-space.extra", expected: { kind: "workspace-state" } },
++  { path: "aidlc/active-space/child", expected: { kind: "workspace-state" } },
++  { path: "aidlc/spaces/default/memory", expected: { kind: "workspace-state" } },
++  { path: "aidlc/spaces//memory/org.md", expected: { kind: "workspace-state" } },
++  { path: "aidlc/spaces/a/nested/memory/org.md", expected: { kind: "workspace-state" } },
++  { path: "aidlc/spaces/a/memory-extra/org.md", expected: { kind: "workspace-state" } },
++  { path: "aidlc/", expected: { kind: "workspace-state" } },
++  { path: ".claude/tools/aidlc.ts", expected: { kind: "release-managed" } },
++  { path: "aidlc", expected: { kind: "release-managed" } },
++  { path: "aidlc-extra/active-space", expected: { kind: "release-managed" } },
++  { path: "Aidlc/active-space", expected: { kind: "release-managed" } },
++  { path: "aidlc\\active-space", expected: { kind: "release-managed" } },
++  { path: "./aidlc/active-space", expected: { kind: "release-managed" } },
++  { path: "", expected: { kind: "release-managed" } },
++];
++
++test.each([...CONTENT_CASES])("managed content authority: $path", ({ path, expected }) => {
++  expect(classifyManagedContent({ path })).toEqual(expected);
++});
++
++test("existing workspace seed is project-owned", () => {
++  expect(decideWorkspaceSeed({ target: "present" })).toEqual({ kind: "preserve", detail: "project-owned seed" });
++});
++
++test("missing workspace seed is created", () => {
++  expect(decideWorkspaceSeed({ target: "absent" })).toEqual({ kind: "create" });
++});
+diff --git a/core/tools/aidlc-managed-file-decision.ts b/core/tools/aidlc-managed-file-decision.ts
+index 0417ff43c..85c881fff 100644
+--- a/core/tools/aidlc-managed-file-decision.ts
++++ b/core/tools/aidlc-managed-file-decision.ts
+@@ -94,3 +94,21 @@ export function decideManagedFileRecord(facts: ManagedFileRecordFacts): ManagedF
+     : facts.priorHash;
+   return hash === undefined ? { kind: "unrecorded" } : { kind: "record", hash };
+ }
++
++export type ManagedContentAuthority =
++  | Readonly<{ kind: "release-managed" }>
++  | Readonly<{ kind: "workspace-seed" }>
++  | Readonly<{ kind: "workspace-state" }>;
++
++export type WorkspaceSeedDecision =
++  | Readonly<{ kind: "preserve"; detail: "project-owned seed" }>
++  | Readonly<{ kind: "create" }>;
++
++export function classifyManagedContent({ path }: Readonly<{ path: string }>): ManagedContentAuthority {
++  if (path === "aidlc/active-space" || /^aidlc\/spaces\/[^/]+\/memory\//.test(path)) return { kind: "workspace-seed" };
++  return path.startsWith("aidlc/") ? { kind: "workspace-state" } : { kind: "release-managed" };
++}
++
++export function decideWorkspaceSeed({ target }: Readonly<{ target: "present" | "absent" }>): WorkspaceSeedDecision {
++  return target === "present" ? { kind: "preserve", detail: "project-owned seed" } : { kind: "create" };
++}

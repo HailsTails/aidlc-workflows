@@ -1,0 +1,471 @@
+diff --git a/plugins/rin/hooks/preview-runtime-contract.mjs b/plugins/rin/hooks/preview-runtime-contract.mjs
+new file mode 100644
+index 0000000..3a5297f
+--- /dev/null
++++ b/plugins/rin/hooks/preview-runtime-contract.mjs
+@@ -0,0 +1,71 @@
++export const previewFailure = ({ reason }) => {
++  switch (reason) {
++    case "missing-runtime": return { kind: "unavailable", reason };
++    case "incompatible-exports": return { kind: "invalid", reason };
++    case "load-failed":
++    case "input-failed":
++    case "execution-failed":
++    case "unexpected": return { kind: "failed", reason };
++    case "unknown-outcome": return { kind: "invalid-protocol", reason };
++  }
++  return { kind: "invalid-protocol", reason: "unknown-outcome" };
++};
++
++const outcomeFields = ({ outcome }) => {
++  if (outcome === null || typeof outcome !== "object" || !Object.hasOwn(outcome, "kind")) {
++    return { kind: undefined, reason: undefined };
++  }
++  return { kind: outcome.kind, reason: Object.hasOwn(outcome, "reason") ? outcome.reason : undefined };
++};
++
++export const isPreviewOutcome = ({ outcome }) => {
++  const candidate = outcomeFields({ outcome });
++  switch (candidate.kind) {
++    case "registered":
++    case "not-requested": return candidate.reason === undefined;
++    case "unavailable": return candidate.reason === "missing-runtime";
++    case "invalid": return candidate.reason === "incompatible-exports";
++    case "failed": return candidate.reason === "load-failed" || candidate.reason === "input-failed" || candidate.reason === "execution-failed" || candidate.reason === "unexpected";
++    case "invalid-protocol": return candidate.reason === "unknown-outcome";
++  }
++  return false;
++};
++
++export const previewRuntimeContract = ({ generator, registry }) => {
++  const generatePreviewLaunch = generator?.generatePreviewLaunch;
++  const mainRootFrom = registry?.mainRootFrom;
++  const prunedWorktrees = registry?.prunedWorktrees;
++  const readRegistry = registry?.readRegistry;
++  const writeRegistry = registry?.writeRegistry;
++  if (typeof generatePreviewLaunch !== "function") {
++    return previewFailure({ reason: "incompatible-exports" });
++  }
++  if (
++    typeof mainRootFrom !== "function" ||
++    typeof prunedWorktrees !== "function" ||
++    typeof readRegistry !== "function" ||
++    typeof writeRegistry !== "function"
++  ) {
++    return previewFailure({ reason: "incompatible-exports" });
++  }
++  return { kind: "ready", runtime: { generatePreviewLaunch, mainRootFrom, prunedWorktrees, readRegistry, writeRegistry } };
++};
++
++export const previewRegistrationDisposition = ({ outcome }) => {
++  const candidate = outcomeFields({ outcome });
++  const admitted = isPreviewOutcome({ outcome: candidate }) ? candidate : previewFailure({ reason: "unknown-outcome" });
++  switch (admitted.kind) {
++    case "registered":
++    case "not-requested": return { exitCode: 0, diagnostic: "" };
++    case "unavailable": return { exitCode: 1, diagnostic: "Rin preview registration unavailable: project scripts must provide generate-preview-launch.mjs and preview-worktree-registry.mjs.\n" };
++    case "invalid": return { exitCode: 1, diagnostic: "Rin preview registration unavailable: project preview helpers do not provide the required registration exports.\n" };
++    case "invalid-protocol": return { exitCode: 1, diagnostic: "Rin preview registration failed: the hook returned an invalid outcome.\n" };
++    case "failed":
++      switch (admitted.reason) {
++        case "load-failed": return { exitCode: 1, diagnostic: "Rin preview registration failed: project preview helpers could not be loaded.\n" };
++        case "input-failed": return { exitCode: 1, diagnostic: "Rin preview registration failed: hook input could not be read.\n" };
++        case "execution-failed":
++        case "unexpected": return { exitCode: 1, diagnostic: "Rin preview registration failed: project preview helpers could not complete registration.\n" };
++      }
++  }
++};
+diff --git a/plugins/rin/hooks/preview-runtime-contract.test.ts b/plugins/rin/hooks/preview-runtime-contract.test.ts
+new file mode 100644
+index 0000000..7c1db81
+--- /dev/null
++++ b/plugins/rin/hooks/preview-runtime-contract.test.ts
+@@ -0,0 +1,113 @@
++import { expect, mock, test } from "bun:test";
++import { previewRuntimeContract, previewRegistrationDisposition, previewFailure, isPreviewOutcome } from "./preview-runtime-contract.mjs";
++
++const generatePreviewLaunch = mock<() => undefined>().mockReturnValue(undefined);
++const mainRootFrom = mock<() => undefined>().mockReturnValue(undefined);
++const prunedWorktrees = mock<() => undefined>().mockReturnValue(undefined);
++const readRegistry = mock<() => undefined>().mockReturnValue(undefined);
++const writeRegistry = mock<() => undefined>().mockReturnValue(undefined);
++const generator = { generatePreviewLaunch };
++const registry = { mainRootFrom, prunedWorktrees, readRegistry, writeRegistry };
++const inheritedOutcome: unknown = Object.create({ kind: "registered" });
++
++export type GeneratorNamespace = { readonly generatePreviewLaunch: () => void };
++const getterGenerator = ({ readExport }: { readonly readExport: () => () => void }): GeneratorNamespace => ({ get generatePreviewLaunch() { return readExport(); } });
++
++test("a complete project capability is captured without invoking it", () => {
++  expect(previewRuntimeContract({ generator, registry })).toEqual({ kind: "ready", runtime: { generatePreviewLaunch, mainRootFrom, prunedWorktrees, readRegistry, writeRegistry } });
++  expect(generatePreviewLaunch.mock.calls).toEqual([]);
++  expect(mainRootFrom.mock.calls).toEqual([]);
++  expect(prunedWorktrees.mock.calls).toEqual([]);
++  expect(readRegistry.mock.calls).toEqual([]);
++  expect(writeRegistry.mock.calls).toEqual([]);
++});
++
++test("additional project exports do not make the existing contract incompatible", () => {
++  expect(previewRuntimeContract({ generator: { generatePreviewLaunch, anotherProjectFunction: mainRootFrom }, registry })).toEqual({ kind: "ready", runtime: { generatePreviewLaunch, mainRootFrom, prunedWorktrees, readRegistry, writeRegistry } });
++});
++
++test("a capability export is read once and its admitted reference is retained", () => {
++  const readExport = mock<() => () => void>().mockReturnValueOnce(generatePreviewLaunch).mockReturnValue(writeRegistry);
++  const generator = getterGenerator({ readExport });
++  expect(previewRuntimeContract({ generator, registry })).toEqual({ kind: "ready", runtime: { generatePreviewLaunch, mainRootFrom, prunedWorktrees, readRegistry, writeRegistry } });
++  expect(readExport.mock.calls).toEqual([[]]);
++});
++
++test.each([
++  { name: "absent generator", generator: undefined, registry },
++  { name: "nonfunction generator", generator: { generatePreviewLaunch: "not executable" }, registry },
++  { name: "absent registry", generator, registry: undefined },
++  { name: "missing main-root function", generator, registry: { prunedWorktrees, readRegistry, writeRegistry } },
++  { name: "missing prune function", generator, registry: { mainRootFrom, readRegistry, writeRegistry } },
++  { name: "missing read function", generator, registry: { mainRootFrom, prunedWorktrees, writeRegistry } },
++  { name: "missing write function", generator, registry: { mainRootFrom, prunedWorktrees, readRegistry } },
++  { name: "nonfunction write export", generator, registry: { mainRootFrom, prunedWorktrees, readRegistry, writeRegistry: true } },
++])("$name refuses before executing project capabilities", ({ generator, registry }) => {
++  expect(previewRuntimeContract({ generator, registry })).toEqual({ kind: "invalid", reason: "incompatible-exports" });
++  expect(generatePreviewLaunch.mock.calls).toEqual([]);
++  expect(mainRootFrom.mock.calls).toEqual([]);
++  expect(prunedWorktrees.mock.calls).toEqual([]);
++  expect(readRegistry.mock.calls).toEqual([]);
++  expect(writeRegistry.mock.calls).toEqual([]);
++});
++
++test.each([
++  { outcome: { kind: "registered" }, expected: { exitCode: 0, diagnostic: "" } },
++  { outcome: { kind: "not-requested" }, expected: { exitCode: 0, diagnostic: "" } },
++  { outcome: { kind: "unavailable", reason: "missing-runtime" }, expected: { exitCode: 1, diagnostic: "Rin preview registration unavailable: project scripts must provide generate-preview-launch.mjs and preview-worktree-registry.mjs.\n" } },
++  { outcome: { kind: "invalid", reason: "incompatible-exports" }, expected: { exitCode: 1, diagnostic: "Rin preview registration unavailable: project preview helpers do not provide the required registration exports.\n" } },
++  { outcome: { kind: "failed", reason: "load-failed" }, expected: { exitCode: 1, diagnostic: "Rin preview registration failed: project preview helpers could not be loaded.\n" } },
++  { outcome: { kind: "failed", reason: "input-failed" }, expected: { exitCode: 1, diagnostic: "Rin preview registration failed: hook input could not be read.\n" } },
++  { outcome: { kind: "failed", reason: "execution-failed" }, expected: { exitCode: 1, diagnostic: "Rin preview registration failed: project preview helpers could not complete registration.\n" } },
++  { outcome: { kind: "failed", reason: "unexpected" }, expected: { exitCode: 1, diagnostic: "Rin preview registration failed: project preview helpers could not complete registration.\n" } },
++  { outcome: { kind: "failed", reason: "constructor" }, expected: { exitCode: 1, diagnostic: "Rin preview registration failed: the hook returned an invalid outcome.\n" } },
++  { outcome: { kind: "failed", reason: "toString" }, expected: { exitCode: 1, diagnostic: "Rin preview registration failed: the hook returned an invalid outcome.\n" } },
++  { outcome: { kind: "failed", reason: "__proto__" }, expected: { exitCode: 1, diagnostic: "Rin preview registration failed: the hook returned an invalid outcome.\n" } },
++])("renders bounded hook disposition for $outcome.kind $outcome.reason", ({ outcome, expected }) => {
++  expect(previewRegistrationDisposition({ outcome })).toEqual(expected);
++});
++
++
++test.each([
++  { reason: "missing-runtime", expected: { kind: "unavailable", reason: "missing-runtime" } },
++  { reason: "incompatible-exports", expected: { kind: "invalid", reason: "incompatible-exports" } },
++  { reason: "load-failed", expected: { kind: "failed", reason: "load-failed" } },
++  { reason: "input-failed", expected: { kind: "failed", reason: "input-failed" } },
++  { reason: "execution-failed", expected: { kind: "failed", reason: "execution-failed" } },
++  { reason: "unexpected", expected: { kind: "failed", reason: "unexpected" } },
++  { reason: "unknown-outcome", expected: { kind: "invalid-protocol", reason: "unknown-outcome" } },
++  { reason: "constructor", expected: { kind: "invalid-protocol", reason: "unknown-outcome" } },
++])("constructs a plain tagged failure for $reason", ({ reason, expected }) => {
++  expect(previewFailure({ reason })).toEqual(expected);
++});
++
++test.each([
++  { name: "registered", outcome: { kind: "registered" }, expected: true },
++  { name: "not requested", outcome: { kind: "not-requested" }, expected: true },
++  { name: "unavailable", outcome: { kind: "unavailable", reason: "missing-runtime" }, expected: true },
++  { name: "invalid contract", outcome: { kind: "invalid", reason: "incompatible-exports" }, expected: true },
++  { name: "load failure", outcome: { kind: "failed", reason: "load-failed" }, expected: true },
++  { name: "input failure", outcome: { kind: "failed", reason: "input-failed" }, expected: true },
++  { name: "execution failure", outcome: { kind: "failed", reason: "execution-failed" }, expected: true },
++  { name: "unexpected failure", outcome: { kind: "failed", reason: "unexpected" }, expected: true },
++  { name: "invalid protocol", outcome: { kind: "invalid-protocol", reason: "unknown-outcome" }, expected: true },
++  { name: "null", outcome: null, expected: false },
++  { name: "missing kind", outcome: {}, expected: false },
++  { name: "unknown kind", outcome: { kind: "other" }, expected: false },
++  { name: "missing failure reason", outcome: { kind: "failed" }, expected: false },
++  { name: "mismatched kind and reason", outcome: { kind: "unavailable", reason: "load-failed" }, expected: false },
++  { name: "prototype reason", outcome: { kind: "failed", reason: "constructor" }, expected: false },
++  { name: "inherited kind", outcome: inheritedOutcome, expected: false },
++  { name: "success with failure reason", outcome: { kind: "registered", reason: "load-failed" }, expected: false },
++])("admits only the closed outcome protocol: $name", ({ outcome, expected }) => {
++  expect(isPreviewOutcome({ outcome })).toBe(expected);
++});
++
++test.each([
++  null,
++  {},
++  { kind: "other", reason: "load-failed" },
++  { kind: "unavailable", reason: "load-failed" },
++])("unknown outcome %p has a distinct bounded protocol diagnostic", (outcome) => {
++  expect(previewRegistrationDisposition({ outcome })).toEqual({ exitCode: 1, diagnostic: "Rin preview registration failed: the hook returned an invalid outcome.\n" });
++});
+diff --git a/plugins/rin/hooks/stamp-preview-target.mjs b/plugins/rin/hooks/stamp-preview-target.mjs
+index 730b2bb..3c2e0e5 100644
+--- a/plugins/rin/hooks/stamp-preview-target.mjs
++++ b/plugins/rin/hooks/stamp-preview-target.mjs
+@@ -1,47 +1,33 @@
+-import { lstatSync } from "node:fs";
+-import { basename, dirname, join, resolve } from "node:path";
+-import { fileURLToPath } from "node:url";
++import { lstatSync, statSync } from "node:fs";
++import { basename, dirname, join } from "node:path";
++import { fileURLToPath, pathToFileURL } from "node:url";
++import { previewRuntimeContract, previewRegistrationDisposition, previewFailure } from "./preview-runtime-contract.mjs";
+ 
+-// This file has two homes: plugins/rin/hooks/ (authored) and .claude/hooks/
+-// (projected, where the harness actually runs it). Those sit at different
+-// depths, so no single static `../` specifier reaches repo-root scripts/ from
+-// both. Resolving the repo root from the nearest ancestor that contains
+-// scripts/ makes one source correct in either location.
+-const repoRootFrom = (start) => {
+-  const ascend = (directory) => {
+-    const parent = dirname(directory);
+-    if (parent === directory) return null;
+-    return lstatSync(join(directory, "scripts"), {
+-      throwIfNoEntry: false,
+-    })?.isDirectory()
+-      ? directory
+-      : ascend(parent);
+-  };
+-  return ascend(start);
++const repoRootFrom = ({ directory }) => {
++  const parent = dirname(directory);
++  if (parent === directory) return null;
++  return lstatSync(join(directory, "scripts"), { throwIfNoEntry: false })?.isDirectory()
++    ? directory
++    : repoRootFrom({ directory: parent });
+ };
+ 
+-const pathToFileHref = (absolutePath) =>
+-  new URL(`file:///${absolutePath.replace(/\\/g, "/").replace(/^\/+/, "")}`)
+-    .href;
+-
+-const previewScript = (fileName) => {
+-  const repoRoot = repoRootFrom(
+-    resolve(dirname(fileURLToPath(import.meta.url))),
+-  );
+-  if (repoRoot === null) throw new Error("no repo root above this hook");
+-  return pathToFileHref(join(repoRoot, "scripts", fileName));
++const loadPreviewRuntime = async ({ hookDirectory }) => {
++  try {
++    const repoRoot = repoRootFrom({ directory: hookDirectory });
++    if (repoRoot === null) return previewFailure({ reason: "missing-runtime" });
++    const generatorPath = join(repoRoot, "scripts", "generate-preview-launch.mjs");
++    const registryPath = join(repoRoot, "scripts", "preview-worktree-registry.mjs");
++    if (!statSync(generatorPath, { throwIfNoEntry: false })?.isFile() || !statSync(registryPath, { throwIfNoEntry: false })?.isFile()) {
++      return previewFailure({ reason: "missing-runtime" });
++    }
++    const generator = await import(pathToFileURL(generatorPath).href);
++    const registry = await import(pathToFileURL(registryPath).href);
++    return previewRuntimeContract({ generator, registry });
++  } catch {
++    return previewFailure({ reason: "load-failed" });
++  }
+ };
+ 
+-const readStdin = () =>
+-  new Promise((resolve) => {
+-    let raw = "";
+-    process.stdin.setEncoding("utf8");
+-    process.stdin.on("data", (chunk) => {
+-      raw += chunk;
+-    });
+-    process.stdin.on("end", () => resolve(raw));
+-  });
+-
+ const isWorktreeRoot = ({ directory }) => {
+   try {
+     return lstatSync(join(directory, ".git")).isFile();
+@@ -50,53 +36,68 @@ const isWorktreeRoot = ({ directory }) => {
+   }
+ };
+ 
+-const targetDirectoryFrom = ({ invocation }) => {
++const targetDirectoryFrom = ({ invocation, sessionDirectory }) => {
+   const fromToolInput = invocation?.tool_input?.path;
+-  if (
+-    typeof fromToolInput === "string" &&
+-    isWorktreeRoot({ directory: fromToolInput })
+-  ) {
++  if (typeof fromToolInput === "string" && isWorktreeRoot({ directory: fromToolInput })) {
+     return fromToolInput;
+   }
+-  const sessionDirectory = process.cwd();
+-  return isWorktreeRoot({ directory: sessionDirectory })
+-    ? sessionDirectory
+-    : null;
+-};
+-
+-const registerWorktree = async ({ worktreeDirectory }) => {
+-  const { generatePreviewLaunch } = await import(
+-    previewScript("generate-preview-launch.mjs")
+-  );
+-  const { mainRootFrom, prunedWorktrees, readRegistry, writeRegistry } =
+-    await import(previewScript("preview-worktree-registry.mjs"));
+-  const mainRoot = mainRootFrom({ anyRepoDirectory: worktreeDirectory });
+-  const registry = readRegistry({ mainRoot });
+-  const worktreeName = basename(worktreeDirectory);
+-  const live = prunedWorktrees({ worktrees: registry.worktrees });
+-  live[worktreeName] = { path: worktreeDirectory };
+-  writeRegistry({ mainRoot, registry: { worktrees: live } });
+-  generatePreviewLaunch({ anyRepoDirectory: worktreeDirectory });
++  return isWorktreeRoot({ directory: sessionDirectory }) ? sessionDirectory : null;
+ };
+ 
+-const main = async () => {
+-  const raw = await readStdin();
+-  let invocation = {};
++const registerWorktree = async ({ worktreeDirectory, hookDirectory }) => {
++  const loaded = await loadPreviewRuntime({ hookDirectory });
++  if (loaded.kind !== "ready") return loaded;
+   try {
+-    invocation = JSON.parse(raw);
++    const { generatePreviewLaunch, mainRootFrom, prunedWorktrees, readRegistry, writeRegistry } = loaded.runtime;
++    const mainRoot = mainRootFrom({ anyRepoDirectory: worktreeDirectory });
++    const registry = readRegistry({ mainRoot });
++    const live = prunedWorktrees({ worktrees: registry.worktrees });
++    const worktrees = { ...live, [basename(worktreeDirectory)]: { path: worktreeDirectory } };
++    writeRegistry({ mainRoot, registry: { worktrees } });
++    await generatePreviewLaunch({ anyRepoDirectory: worktreeDirectory });
++    return { kind: "registered" };
+   } catch {
+-    invocation = {};
+-  }
+-  const worktreeDirectory = targetDirectoryFrom({ invocation });
+-  if (worktreeDirectory === null) {
+-    process.exit(0);
++    return previewFailure({ reason: "execution-failed" });
+   }
++};
++
++const invocationFrom = ({ raw }) => {
+   try {
+-    await registerWorktree({ worktreeDirectory });
++    return JSON.parse(raw);
+   } catch {
+-    process.exit(0);
++    return {};
+   }
+-  process.exit(0);
+ };
+ 
+-main().catch(() => process.exit(0));
++const main = async ({ processPort }) => {
++  const input = await processPort.readInput();
++  if (input.kind !== "read") return input;
++  const worktreeDirectory = targetDirectoryFrom({ invocation: invocationFrom({ raw: input.raw }), sessionDirectory: processPort.sessionDirectory });
++  return worktreeDirectory === null
++    ? { kind: "not-requested" }
++    : registerWorktree({ worktreeDirectory, hookDirectory: processPort.hookDirectory });
++};
++
++const createPreviewHookProcess = () => ({
++  sessionDirectory: process.cwd(),
++  hookDirectory: dirname(fileURLToPath(import.meta.url)),
++  readInput: () => new Promise((resolve) => {
++    let raw = "";
++    process.stdin.setEncoding("utf8");
++    process.stdin.on("data", (chunk) => { raw += chunk; });
++    process.stdin.on("end", () => resolve({ kind: "read", raw }));
++    process.stdin.on("error", () => resolve(previewFailure({ reason: "input-failed" })));
++  }),
++  finish: ({ outcome }) => {
++    const { exitCode, diagnostic } = previewRegistrationDisposition({ outcome });
++    process.stderr.write(diagnostic);
++    process.exitCode = exitCode;
++  },
++});
++
++const processPort = createPreviewHookProcess();
++main({ processPort }).then(
++  (outcome) => processPort.finish({ outcome }),
++  () => processPort.finish({ outcome: previewFailure({ reason: "unexpected" }) }),
++);
++
+diff --git a/tests/integration/t-rin-preview-runtime.test.ts b/tests/integration/t-rin-preview-runtime.test.ts
+new file mode 100644
+index 0000000..a9032ed
+--- /dev/null
++++ b/tests/integration/t-rin-preview-runtime.test.ts
+@@ -0,0 +1,86 @@
++import { afterAll, expect, test } from "bun:test";
++import { spawnSync } from "node:child_process";
++import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++
++const scratch = mkdtempSync(join(tmpdir(), "rin-preview-runtime-"));
++const childEnvironment = Object.fromEntries([
++  ["PATH", process.env["PATH"]],
++  ["SystemRoot", process.env["SystemRoot"]],
++  ["ComSpec", process.env["ComSpec"]],
++  ["HOME", scratch],
++  ["USERPROFILE", scratch],
++  ["APPDATA", scratch],
++  ["LOCALAPPDATA", scratch],
++  ["TEMP", scratch],
++  ["TMP", scratch],
++  ["TMPDIR", scratch],
++]);
++const hookSource = join(import.meta.dir, "../../plugins/rin/hooks");
++afterAll(() => rmSync(scratch, { recursive: true, force: true }));
++
++const registrySource = `export const mainRootFrom = ({ anyRepoDirectory }) => { console.log("root"); return anyRepoDirectory; };
++export const readRegistry = () => { console.log("read"); return { worktrees: {} }; };
++export const prunedWorktrees = ({ worktrees }) => { console.log("prune"); return worktrees; };
++export const writeRegistry = () => { console.log("write"); };
++`;
++const generatorSource = 'export const generatePreviewLaunch = () => { console.log("generate"); };\n';
++const incompatibleRegistrySource = `export const mainRootFrom = () => { console.log("must not run"); };
++export const readRegistry = () => ({ worktrees: {} });
++export const prunedWorktrees = ({ worktrees }) => worktrees;
++`;
++
++export type PreviewHookObservation = { readonly exitCode: number | null; readonly stdout: string; readonly stderr: string };
++export type PreviewHookFixture = { readonly directory: string; readonly hook: string };
++export type PreviewModuleInput = { readonly fixture: PreviewHookFixture; readonly generator: string; readonly registry: string };
++
++const projectFixture = ({ name }: { readonly name: string }): PreviewHookFixture => {
++  const directory = join(scratch, `${name} # fixture`);
++  const hooks = join(directory, ".claude", "hooks");
++  mkdirSync(hooks, { recursive: true });
++  cpSync(join(hookSource, "stamp-preview-target.mjs"), join(hooks, "stamp-preview-target.mjs"));
++  cpSync(join(hookSource, "preview-runtime-contract.mjs"), join(hooks, "preview-runtime-contract.mjs"));
++  return { directory, hook: join(hooks, "stamp-preview-target.mjs") };
++};
++
++const fileMarkerFixture = ({ name }: { readonly name: string }): PreviewHookFixture => {
++  const fixture = projectFixture({ name });
++  writeFileSync(join(fixture.directory, ".git"), "owned hook marker fixture\n");
++  return fixture;
++};
++
++const directoryMarkerFixture = ({ name }: { readonly name: string }): PreviewHookFixture => {
++  const fixture = projectFixture({ name });
++  mkdirSync(join(fixture.directory, ".git"));
++  return fixture;
++};
++
++const suppliedModules = ({ fixture, generator, registry }: PreviewModuleInput): void => {
++  const scripts = join(fixture.directory, "scripts");
++  mkdirSync(scripts);
++  writeFileSync(join(scripts, "generate-preview-launch.mjs"), generator);
++  writeFileSync(join(scripts, "preview-worktree-registry.mjs"), registry);
++};
++
++const absentModules = (): void => undefined;
++
++const runFixture = ({ fixture }: { readonly fixture: PreviewHookFixture }): PreviewHookObservation => {
++  const child = spawnSync("node", [fixture.hook], { cwd: fixture.directory, env: childEnvironment, input: '{"hook_event_name":"SessionStart"}', encoding: "utf8", timeout: 30000 });
++  return { exitCode: child.status, stdout: child.stdout, stderr: child.stderr };
++};
++
++test.each([
++  { name: "a directory marker makes registration not applicable", arrange: directoryMarkerFixture, supply: absentModules, generator: "", registry: "", expected: { exitCode: 0, stdout: "", stderr: "" } },
++  { name: "a non-worktree session does not evaluate supplied helpers", arrange: directoryMarkerFixture, supply: suppliedModules, generator: 'console.log("module-loaded"); export const generatePreviewLaunch = () => undefined;\n', registry: registrySource, expected: { exitCode: 0, stdout: "", stderr: "" } },
++  { name: "a file marker requests registration and exposes unavailable helpers", arrange: fileMarkerFixture, supply: absentModules, generator: "", registry: "", expected: { exitCode: 1, stdout: "", stderr: "Rin preview registration unavailable: project scripts must provide generate-preview-launch.mjs and preview-worktree-registry.mjs.\n" } },
++  { name: "project fixture helpers load from a space and hash path", arrange: fileMarkerFixture, supply: suppliedModules, generator: generatorSource, registry: registrySource, expected: { exitCode: 0, stdout: "root\nread\nprune\nwrite\ngenerate\n", stderr: "" } },
++  { name: "all exports are admitted before any helper function runs", arrange: fileMarkerFixture, supply: suppliedModules, generator: generatorSource, registry: incompatibleRegistrySource, expected: { exitCode: 1, stdout: "", stderr: "Rin preview registration unavailable: project preview helpers do not provide the required registration exports.\n" } },
++  { name: "an execution exception is visible without its private message", arrange: fileMarkerFixture, supply: suppliedModules, generator: 'export const generatePreviewLaunch = () => { throw new Error("FIXTURE_PRIVATE_TOKEN_DO_NOT_LOG"); };\n', registry: registrySource, expected: { exitCode: 1, stdout: "root\nread\nprune\nwrite\n", stderr: "Rin preview registration failed: project preview helpers could not complete registration.\n" } },
++  { name: "invalid syntax in an existing helper is a load failure", arrange: fileMarkerFixture, supply: suppliedModules, generator: "export const generatePreviewLaunch = ;\n", registry: registrySource, expected: { exitCode: 1, stdout: "", stderr: "Rin preview registration failed: project preview helpers could not be loaded.\n" } },
++  { name: "a missing transitive dependency is not an absent top-level helper", arrange: fileMarkerFixture, supply: suppliedModules, generator: 'import "./unavailable-project-dependency.mjs"; export const generatePreviewLaunch = () => undefined;\n', registry: registrySource, expected: { exitCode: 1, stdout: "", stderr: "Rin preview registration failed: project preview helpers could not be loaded.\n" } },
++])("$name", ({ name, arrange, supply, generator, registry, expected }) => {
++  const fixture = arrange({ name });
++  supply({ fixture, generator, registry });
++  expect(runFixture({ fixture })).toEqual(expected);
++});

@@ -1,0 +1,18 @@
+import { mock } from "bun:test";
+import { metricsAgent, agentOrigin } from "./agent-fixtures.ts";
+import type { PluginRoleContract, DeclaredStageRoles, RoleActorSource } from "../src/domain/plugin-role-contract.ts";
+import { createTemporaryDirectoryFixture } from "./workflow-publication-fixtures.ts";
+export const roleOwner = { source: { kind: "plugin", id: "test-pro" }, pin: agentOrigin.pin } as const;
+export const roleActor: RoleActorSource = { agent: metricsAgent, sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" };
+export const roleReference = { name: "test-pro-metrics-agent", origin: agentOrigin, sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" };
+export const roleOrigin = { ...agentOrigin, path: "plugins/test-pro/stages/construction/test-pro-integration.md" };
+export const roleStage: DeclaredStageRoles = { origin: roleOrigin, sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", slug: "test-pro-integration", mode: "inline", lead: "test-pro-metrics-agent", supports: [], reviewer: "test-pro-metrics-agent" };
+export const roleFrontendBasis = { source: { kind: "core", id: "framework" }, pin: "frontend-pin" } as const;
+export const roleFrontend = { origin: { ...roleFrontendBasis, path: "core/tools/aidlc-lib.ts" }, inputs: [{ path: "core/tools/aidlc-lib.ts", sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }, { path: "core/tools/aidlc-stage-schema.ts", sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" }] };
+export const portableRoleStage = { origin: roleOrigin, sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", slug: "test-pro-integration", mode: "inline", roles: { lead: roleReference, supports: [], reviewer: roleReference } };
+export const pluginRoleContract: PluginRoleContract = { version: 1, owner: roleOwner, sources: [roleOwner], frontend: roleFrontend, stages: [portableRoleStage] };
+export const roleUses = [{ stage: roleOrigin, slug: "test-pro-integration", mode: "inline", role: "lead", actor: roleReference, requirement: "persona" }, { stage: roleOrigin, slug: "test-pro-integration", mode: "inline", role: "reviewer", actor: roleReference, requirement: "native-surface" }] as const;
+export const roleDocument = { origin: roleOrigin, text: "native stage grammar" };
+export const roleFrontendReply = { status: "ok", inputs: roleFrontend.inputs, stages: [{ path: roleOrigin.path, sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", slug: "test-pro-integration", mode: "inline", plugin: "test-pro", lead: "test-pro-metrics-agent", supports: [], reviewer: "test-pro-metrics-agent" }] };
+export const createRoleFrontendFixture = () => ({ sourceRoot: "authored", basis: roleFrontendBasis, directories: createTemporaryDirectoryFixture(), digest: mock().mockReturnValue("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), operations: { environment: mock().mockReturnValue({}), spawn: mock().mockReturnValue({ exitCode: 0, error: null, stderr: "", stdout: JSON.stringify(roleFrontendReply) }) } });
+export const reorderedRoleContract = { ...pluginRoleContract, stages: [{ ...portableRoleStage, roles: { lead: roleReference, supports: [], reviewer: { sha256: roleReference.sha256, origin: roleReference.origin, name: roleReference.name } } }] };

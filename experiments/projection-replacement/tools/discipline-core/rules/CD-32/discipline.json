@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-32",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "pii-redaction",
+      "summary": "structured logs redact PII strings unless a field is explicitly opted in",
+      "enforcedBy": "review"
+    }
+  ]
+}

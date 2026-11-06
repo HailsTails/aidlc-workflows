@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-43",
+  "mechanism": "audit",
+  "clauses": [
+    { "clause": "boolean-signatures", "settings": { "module": "boolean-signatures.ts" } }
+  ]
+}

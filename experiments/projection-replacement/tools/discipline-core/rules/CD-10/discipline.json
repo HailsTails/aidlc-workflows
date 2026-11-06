@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "id": "CD-10",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "throws-in-tests",
+      "summary": "Throws permitted in exactly two contexts",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "throw inside a test",
+            "fileName": "src/load.test.ts",
+            "source": "it(\"loads\", () => {\n  const result = { outcome: \"ok\" };\n  if (result.outcome !== \"ok\") throw new Error(\"load failed\");\n});\n",
+            "expectedLines": [
+              3
+            ]
+          },
+          {
+            "name": "throw in a tsx test",
+            "fileName": "src/view.test.tsx",
+            "source": "const a = 1;\nthrow new Error(\"bad\");\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "assertion in a test",
+            "fileName": "src/load.test.ts",
+            "source": "it(\"loads\", () => {\n  expect(1).toBe(1);\n});\n",
+            "expectedLines": []
+          },
+          {
+            "name": "throw in production code is left to review",
+            "fileName": "src/load.ts",
+            "source": "export const load = (): never => {\n  throw new Error(\"failed\");\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "spec files are not read",
+            "fileName": "src/load.spec.ts",
+            "source": "throw new Error(\"bad\");\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "throw-only-error",
+      "summary": "Throws permitted in exactly two contexts",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "throw"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "string literal",
+            "fileName": "src/fail.ts",
+            "source": "export const fail = (): never => {\n  throw \"failed\";\n};\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "object literal",
+            "fileName": "src/fail.ts",
+            "source": "export const fail = (): never => {\n  throw { code: 1 };\n};\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "template literal",
+            "fileName": "src/fail.ts",
+            "source": "export const fail = (code: number): never => {\n  throw `failed ${code}`;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "undefined",
+            "fileName": "src/fail.ts",
+            "source": "export const fail = (): never => {\n  throw undefined;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "conditional with a literal branch",
+            "fileName": "src/fail.ts",
+            "source": "export const fail = (ready: string): never => {\n  throw ready === \"yes\" ? new Error(\"x\") : \"x\";\n};\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "new Error",
+            "fileName": "src/fail.ts",
+            "source": "export const fail = (): never => {\n  throw new Error(\"failed\");\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "an identifier",
+            "fileName": "src/fail.ts",
+            "source": "export const fail = (error: Error): never => {\n  throw error;\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "a call",
+            "fileName": "src/fail.ts",
+            "source": "export const fail = (make: () => Error): never => {\n  throw make();\n};\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

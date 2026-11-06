@@ -1,0 +1,10 @@
+import { mock } from "bun:test";
+import type { RuntimeAssetSources, PreparedRuntimeAssets } from "../src/domain/runtime-assets.ts";
+import type { RuntimeInputPreparation } from "../src/domain/runtime-inputs.ts";
+import { distributionSeed } from "./distribution-fixtures.ts";
+export const assetDeliveryInputs = [{ path: "core/tools/data/model-rates.json", sha256: "rates-source" }];
+export const assetDeliverySources: RuntimeAssetSources = { basis: distributionSeed.basis, assets: [{ origin: { ...distributionSeed.basis, path: "core/tools/data/model-rates.json" }, relativePath: "model-rates.json", bytes: new Uint8Array([255, 0, 13, 10]) }], inputs: assetDeliveryInputs };
+export const assetDeliveryFile = { path: ".claude/tools/data/model-rates.json", bytes: new Uint8Array([255, 0, 13, 10]), mode: 0o640 };
+export const assetInputPreparation: RuntimeInputPreparation = { kind: "runtime-assets", paths: [".claude/tools/data/model-rates.json"], inputs: assetDeliveryInputs };
+export const preparedAssetDelivery: PreparedRuntimeAssets = { files: [assetDeliveryFile], preparation: assetInputPreparation };
+export const createAssetDeliveryFixture = () => ({ reader: { load: mock().mockResolvedValue({ status: "ok", value: assetDeliverySources }) }, prepare: mock().mockReturnValue(preparedAssetDelivery), admit: mock().mockReturnValue({ status: "ok", value: { additions: [assetDeliveryFile], unchanged: [] } }), rules: { path: mock().mockReturnValue("safe") } });

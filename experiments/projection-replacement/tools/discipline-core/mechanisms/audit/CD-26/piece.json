@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "discipline": "CD-26",
+  "mechanism": "audit",
+  "clauses": [
+    { "clause": "module-mocking", "settings": { "module": "module-mocking.ts" } }
+  ]
+}

@@ -1,0 +1,166 @@
+diff --git a/scripts/package-source-inputs.test.ts b/scripts/package-source-inputs.test.ts
+index c65bbe377..6b729abbf 100644
+--- a/scripts/package-source-inputs.test.ts
++++ b/scripts/package-source-inputs.test.ts
+@@ -26,6 +26,7 @@ test("available producer inputs are selected without unrelated scripts or tests"
+     "scripts/plugin-runtime-projection.ts",
+     "scripts/runtime-import.ts",
+     "scripts/runtime-source.ts",
++    "scripts/runtime-module.ts",
+     "scripts/package-sources.ts",
+     "scripts/package-source-inputs.ts",
+     "package.json",
+@@ -60,6 +61,7 @@ test("absent producer inputs are not selected", () => {
+     ["scripts/plugin-runtime-projection.ts"],
+     ["scripts/runtime-import.ts"],
+     ["scripts/runtime-source.ts"],
++    ["scripts/runtime-module.ts"],
+     ["scripts/package-sources.ts"],
+     ["scripts/package-source-inputs.ts"],
+     ["package.json"],
+diff --git a/scripts/package-source-inputs.ts b/scripts/package-source-inputs.ts
+index df2917819..8c6ed2d33 100644
+--- a/scripts/package-source-inputs.ts
++++ b/scripts/package-source-inputs.ts
+@@ -22,6 +22,7 @@ const SOURCE_FILES = [
+   "scripts/plugin-runtime-projection.ts",
+   "scripts/runtime-import.ts",
+   "scripts/runtime-source.ts",
++  "scripts/runtime-module.ts",
+   "scripts/package-sources.ts",
+   "scripts/package-source-inputs.ts",
+   "package.json",
+diff --git a/scripts/package.ts b/scripts/package.ts
+index a6ab6bf9c..3e039f7d8 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -62,6 +62,7 @@ import {
+ import { fileURLToPath } from "node:url";
+ import { spawnSync } from "node:child_process";
+ import { runtimeSourceRole } from "./runtime-source.ts";
++import { prepareRuntimeModuleText, substituteRuntimeInvocation } from "./runtime-module.ts";
+ import { projectDeclaredPluginRuntime } from "./plugin-runtime-projection.ts";
+ import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
+ import { bindPluginHookSources } from "../core/tools/aidlc-plugin-hook-definition.ts";
+@@ -170,26 +171,11 @@ const BUILD_VERSION = releaseBuildVersion();
+ if (BUILD_VERSION !== AIDLC_VERSION) {
+   console.error(`[version] stamping projections with ${BUILD_VERSION_ENV}=${BUILD_VERSION}`);
+ }
+-const VERSION_ASSIGNMENT = /^export const AIDLC_VERSION = "[^"]+";$/m;
+-
+-function stampVersionModule(content: string): string {
+-  if (BUILD_VERSION === AIDLC_VERSION) return content;
+-  const matches = content.match(new RegExp(VERSION_ASSIGNMENT.source, "gm")) ?? [];
+-  if (matches.length !== 1) {
+-    throw new Error(
+-      `aidlc-version.ts must declare exactly one AIDLC_VERSION assignment, found ${matches.length}`,
+-    );
+-  }
+-  return content.replace(VERSION_ASSIGNMENT, `export const AIDLC_VERSION = "${BUILD_VERSION}";`);
+-}
+ 
+ // Neutral and native onboarding skeletons (scripts/onboarding.ts).
+ const ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding.md");
+ const HARNESS_ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding-harness.md");
+ const HARNESS_TOKEN = /\{\{HARNESS_DIR\}\}/g;
+-const INVOKE_TOKEN = /\{\{INVOKE\}\}/g;
+-const TOOL_PREFIX_TOKEN = /\{\{TOOL_PREFIX\}\}/g;
+-const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
+ const OPTION_LETTERS_TOKEN = /\{\{OPTION_LETTERS\}\}/g;
+ 
+ // Harnesses the packager builds = every harness/<name>/ that carries a
+@@ -213,11 +199,7 @@ function substituteInvocationTokens(
+   harnessDir: string,
+   invoke = `bun ${harnessDir}/tools/aidlc.ts`,
+ ): string {
+-  const toolPrefix = invoke === "aidlc" ? `${TRUSTED_COMMAND_PREFIX} ` : `bun ${harnessDir}/tools/`;
+-  return s
+-    .replace(INVOKE_TOKEN, invoke)
+-    .replace(TOOL_PREFIX_TOKEN, toolPrefix)
+-    .replace(TRUSTED_NAMESPACE_TOKEN, TRUSTED_ROUTE_NAMESPACE);
++  return substituteRuntimeInvocation({ source: s, harnessDir, invoke });
+ }
+ 
+ // The letters a questions file gives a question's options before `X. Other`:
+@@ -443,13 +425,9 @@ function transform(
+     return Buffer.from(s, "utf-8");
+   }
+   if (srcPath.endsWith(".ts")) {
+-    const source = basename(srcPath) === "aidlc-version.ts"
+-      ? stampVersionModule(content.toString("utf-8"))
+-      : content.toString("utf-8");
+-    return Buffer.from(
+-      substituteInvocationTokens(source, harnessDir, invoke),
+-      "utf-8",
+-    );
++    const prepared = prepareRuntimeModuleText({ file: basename(srcPath), source: content.toString("utf-8"), harnessDir, invoke, sourceVersion: AIDLC_VERSION, buildVersion: BUILD_VERSION });
++    if (prepared.kind === "refused") throw new Error(prepared.message);
++    return Buffer.from(prepared.content, "utf-8");
+   }
+   if (/\.(?:hook|json|toml)$/.test(srcPath)) {
+     return Buffer.from(
+diff --git a/scripts/runtime-module.test.ts b/scripts/runtime-module.test.ts
+new file mode 100644
+index 000000000..83ac20651
+--- /dev/null
++++ b/scripts/runtime-module.test.ts
+@@ -0,0 +1,25 @@
++import { expect, test } from "bun:test";
++import { prepareRuntimeModuleText, substituteRuntimeInvocation } from "./runtime-module.ts";
++
++test.each([
++  { invoke: "bun .claude/tools/aidlc.ts", expected: "bun .claude/tools/aidlc.ts|bun .claude/tools/|engine|{{HARNESS_DIR}}|{{INVOKE_SUFFIX}}" },
++  { invoke: "aidlc", expected: "aidlc|aidlc engine |engine|{{HARNESS_DIR}}|{{INVOKE_SUFFIX}}" },
++])("substitutes only the native invocation vocabulary for $invoke", ({ invoke, expected }) => {
++  expect(substituteRuntimeInvocation({ source: "{{INVOKE}}|{{TOOL_PREFIX}}|{{TRUSTED_NAMESPACE}}|{{HARNESS_DIR}}|{{INVOKE_SUFFIX}}", harnessDir: ".claude", invoke })).toBe(expected);
++});
++
++test("unchanged build version preserves authored version bytes without requiring a declaration", () => {
++  expect(prepareRuntimeModuleText({ file: "aidlc-version.ts", source: "opaque\r\n", harnessDir: ".claude", invoke: "bun .claude/tools/aidlc.ts", sourceVersion: "1.0.0", buildVersion: "1.0.0" })).toEqual({ kind: "prepared", content: "opaque\r\n" });
++});
++
++test.each([
++  { file: "aidlc-version.ts", source: 'export const AIDLC_VERSION = "1.0.0";\n', expected: { kind: "prepared", content: 'export const AIDLC_VERSION = "1.0.1-preview.1";\n' } },
++  { file: "aidlc-version.ts", source: 'export const AIDLC_VERSION = "1.0.0";\r\n{{TOOL_PREFIX}}', expected: { kind: "prepared", content: 'export const AIDLC_VERSION = "1.0.1-preview.1";\r\nbun .claude/tools/' } },
++  { file: "tools\\aidlc-version.ts", source: 'export const AIDLC_VERSION = "1.0.0";\n', expected: { kind: "prepared", content: 'export const AIDLC_VERSION = "1.0.0";\n' } },
++  { file: "aidlc-version.ts", source: "no assignment\n", expected: { kind: "refused", message: "aidlc-version.ts must declare exactly one AIDLC_VERSION assignment, found 0" } },
++  { file: "aidlc-version.ts", source: 'export const AIDLC_VERSION = "1.0.0";\nexport const AIDLC_VERSION = "1.0.0";\n', expected: { kind: "refused", message: "aidlc-version.ts must declare exactly one AIDLC_VERSION assignment, found 2" } },
++  { file: "tools/not-aidlc-version.ts", source: 'export const AIDLC_VERSION = "1.0.0";\n{{INVOKE}}', expected: { kind: "prepared", content: 'export const AIDLC_VERSION = "1.0.0";\nbun .claude/tools/aidlc.ts' } },
++  { file: "tools/aidlc-version.ts/helper.ts", source: "no assignment\n", expected: { kind: "prepared", content: "no assignment\n" } },
++])("prepares version text using exact module identity: $file", ({ file, source, expected }) => {
++  expect(prepareRuntimeModuleText({ file, source, harnessDir: ".claude", invoke: "bun .claude/tools/aidlc.ts", sourceVersion: "1.0.0", buildVersion: "1.0.1-preview.1" })).toEqual(expected);
++});
+diff --git a/scripts/runtime-module.ts b/scripts/runtime-module.ts
+new file mode 100644
+index 000000000..b52a915be
+--- /dev/null
++++ b/scripts/runtime-module.ts
+@@ -0,0 +1,28 @@
++import { TRUSTED_COMMAND_PREFIX, TRUSTED_ROUTE_NAMESPACE } from "../core/tools/aidlc-command.ts";
++
++export type RuntimeModulePreparation = { readonly kind: "prepared"; readonly content: string } | { readonly kind: "refused"; readonly message: string };
++export type RuntimeModuleTextRequest = { readonly file: string; readonly source: string; readonly harnessDir: string; readonly invoke: string; readonly sourceVersion: string; readonly buildVersion: string };
++
++export function substituteRuntimeInvocation({ source, harnessDir, invoke }: { readonly source: string; readonly harnessDir: string; readonly invoke: string }): string {
++  const toolPrefix = invoke === "aidlc" ? `${TRUSTED_COMMAND_PREFIX} ` : `bun ${harnessDir}/tools/`;
++  return source.replace(/\{\{INVOKE\}\}/g, invoke).replace(/\{\{TOOL_PREFIX\}\}/g, toolPrefix).replace(/\{\{TRUSTED_NAMESPACE\}\}/g, TRUSTED_ROUTE_NAMESPACE);
++}
++
++function stampRuntimeVersion({ source, sourceVersion, buildVersion }: Pick<RuntimeModuleTextRequest, "source" | "sourceVersion" | "buildVersion">): RuntimeModulePreparation {
++  if (buildVersion === sourceVersion) return { kind: "prepared", content: source };
++  const assignment = /^export const AIDLC_VERSION = "[^"]+";$/m;
++  const matches = source.match(new RegExp(assignment.source, "gm")) ?? [];
++  if (matches.length !== 1) return { kind: "refused", message: `aidlc-version.ts must declare exactly one AIDLC_VERSION assignment, found ${matches.length}` };
++  return { kind: "prepared", content: source.replace(assignment, `export const AIDLC_VERSION = "${buildVersion}";`) };
++}
++
++function prepareVersionedModule(input: RuntimeModuleTextRequest): RuntimeModulePreparation {
++  if (input.file !== "aidlc-version.ts") return { kind: "prepared", content: input.source };
++  return stampRuntimeVersion(input);
++}
++
++export function prepareRuntimeModuleText(input: RuntimeModuleTextRequest): RuntimeModulePreparation {
++  const versioned = prepareVersionedModule(input);
++  if (versioned.kind === "refused") return versioned;
++  return { kind: "prepared", content: substituteRuntimeInvocation({ source: versioned.content, harnessDir: input.harnessDir, invoke: input.invoke }) };
++}

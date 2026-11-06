@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-9",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "result-failures",
+      "summary": "expected operational failures are returned as a Result with a tagged error union, not thrown",
+      "enforcedBy": "review"
+    }
+  ]
+}
