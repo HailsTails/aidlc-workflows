@@ -75,6 +75,10 @@ const RAW_COMMENTS = [{
   updated_at: "2026-09-21T01:01:00Z",
 }];
 const CONVERSATION: IssueConversation = canonicalConversation(RAW_COMMENTS, ISSUE.number);
+const WORKFLOW = readFileSync(
+  join(REPO_ROOT, ".github", "workflows", "ai-issue-review.yml"),
+  "utf8",
+);
 const COMMON_PROMPT = readFileSync(
   join(REPO_ROOT, ".github", "prompts", "ai-issue-review-common.md"),
   "utf8",
@@ -900,6 +904,77 @@ if (endpoint === "repos/acme/repo/issues/1285") {
       suggestedIssueChange: "s".repeat(1000),
     }));
     expect(() => renderIssueReview(candidate)).toThrow("rendered comment exceeds 65536 bytes");
+  });
+
+  test("workflow supports iterative human conversation with debounced, bounded execution", () => {
+    const admissionGuard = WORKFLOW.slice(
+      WORKFLOW.indexOf("    if: >-"),
+      WORKFLOW.indexOf("    concurrency:"),
+    );
+    expect(WORKFLOW).toContain("issue_comment:");
+    expect(WORKFLOW).toContain("- opened");
+    expect(WORKFLOW).toContain("- created");
+    expect(WORKFLOW).toContain("github.event.comment.user.type != 'Bot'");
+    expect(WORKFLOW).toContain(
+      "!startsWith(github.event.comment.body, '<!-- ai-issue-review issue=')",
+    );
+    expect(WORKFLOW).toContain("github.event.label.name == 'ai-review'");
+    expect(admissionGuard).toContain("github.event.comment.author_association");
+    expect(admissionGuard).toContain("github.event.issue.author_association");
+    expect(admissionGuard).toContain("github.event.issue.labels.*.name, 'ai-review'");
+    expect(WORKFLOW).toContain("github.event.changes.title != null");
+    expect(WORKFLOW).toContain("github.event.changes.body != null");
+    expect(WORKFLOW).toContain('repos/$REPO/collaborators/$GITHUB_ACTOR/permission');
+    expect(WORKFLOW).toContain("admin|maintain|write");
+    expect(WORKFLOW).toContain("External issue conversation requires the ai-review");
+    expect(WORKFLOW).toContain("Coalesce rapid conversation updates");
+    expect(WORKFLOW).toContain("run: sleep 45");
+    expect(WORKFLOW).toContain("cancel-in-progress: true");
+    const jobTimeout = Number(WORKFLOW.match(/timeout-minutes: (\d+)/)?.[1]);
+    expect(jobTimeout).toBeGreaterThanOrEqual(100);
+    expect(WORKFLOW).toContain("--conversation .ai-issue-review-context/conversation.json");
+    expect(WORKFLOW).toContain("Issue conversation changed during publication");
+    expect(WORKFLOW).toContain("Bug-report classification");
+    expect(WORKFLOW).toContain("validate-triage");
+    expect(WORKFLOW).toContain('--base "$BASE_SHA"');
+    expect(WORKFLOW).toContain("unshare --net");
+    expect(WORKFLOW).toContain("env -i");
+    expect(WORKFLOW).toContain(`"$bun_bin" test "\${bug_test_files[@]}"`);
+    expect(WORKFLOW).toContain("ulimit -f 20480");
+    expect(WORKFLOW).toContain("--bug-verification .ai-issue-review-context/bug-verification.json");
+    expect(WORKFLOW).toContain(
+      "--label-state-output .ai-issue-review-final/labels.json",
+    );
+    expect(WORKFLOW).toContain("ai-issue-review.ts labels");
+    expect(WORKFLOW).toContain("--input .ai-issue-review-final/labels.json");
+    expect(WORKFLOW).toContain("Capture AIDA issue label state");
+    expect(WORKFLOW).toContain("Reconcile existing AIDA issue labels");
+    expect(WORKFLOW).toContain("--comment /tmp/existing-aida-issue-review.md");
+    expect(WORKFLOW).toContain("Restore AIDA issue labels after cancellation");
+    expect(WORKFLOW).toContain("--snapshot .ai-issue-review-context/previous-labels.json");
+    expect(WORKFLOW).toContain('stable_marker="<!-- ai-issue-review issue=$ISSUE_NUMBER -->"');
+    expect(WORKFLOW).toContain('--method PATCH "repos/$REPO/issues/comments/$existing_id"');
+    expect(WORKFLOW).toContain("already_reviewed=true");
+    expect(WORKFLOW).toContain('EVENT_NAME" != "workflow_dispatch');
+    expect(WORKFLOW).not.toContain("pull_request:");
+  });
+
+  test("workflow routes high-effort lenses without exposing provider transcripts", () => {
+    expect(WORKFLOW).toContain("SOL_MODEL: openai.gpt-5.6-sol");
+    expect(WORKFLOW).toContain("FABLE_MODEL: global.anthropic.claude-fable-5-1");
+    expect(WORKFLOW).toContain("--effort high");
+    expect(WORKFLOW).toContain("model_reasoning_effort=\"high\"");
+    expect(WORKFLOW).toContain("Prompt-injection review");
+    expect(WORKFLOW).toContain(".ai-issue-review-lenses/prompt-injection.md");
+    expect(WORKFLOW).toContain("Feasibility and contracts review");
+    expect(WORKFLOW).toContain("Intent, direction, UX, and scope review");
+    expect(WORKFLOW).toContain("Final issue-review judge");
+    expect(WORKFLOW).toMatch(
+      /run_model \\\n\s+"sol" \\\n\s+"Final issue-review judge"/,
+    );
+    expect(WORKFLOW).toContain("--output-schema");
+    expect(WORKFLOW).toContain("model transcript was suppressed");
+    expect(WORKFLOW).not.toContain('cat "$error_file"');
   });
 
   test("prompts preserve isolation and the colleague user experience", () => {

@@ -635,18 +635,13 @@ const inlineException = (request: {
   };
 };
 
-type SourceLineReader = {
-  readonly read: (request: { readonly line: number }) => Outcome<string>;
-};
-
-type SourceFileRequest = {
+const sourceLineOf = (request: {
   readonly fileText: FileTextPort;
   readonly path: PathPort;
   readonly repoRoot: AbsolutePath;
   readonly file: RepoPath;
-};
-
-const sourceLinesOf = (request: SourceFileRequest): Outcome<readonly string[]> => {
+  readonly line: number;
+}): Outcome<string> => {
   const text = request.fileText.read({
     path: request.path.join({ segments: [request.repoRoot, request.file] }),
   });
@@ -656,17 +651,7 @@ const sourceLinesOf = (request: SourceFileRequest): Outcome<readonly string[]> =
       error: { kind: "file-unreadable", file: request.file, detail: text.error.detail },
     };
   }
-  return { outcome: "ok", value: text.value.split(LINE_BREAK) };
-};
-
-const sourceLineReader = (request: SourceFileRequest): SourceLineReader => {
-  let lines: Outcome<readonly string[]> | undefined;
-  return {
-    read: ({ line }) => {
-      lines ??= sourceLinesOf(request);
-      return mappedOutcome({ outcome: lines, map: (source) => (source[line - 1] ?? "").trim() });
-    },
-  };
+  return { outcome: "ok", value: (text.value.split(LINE_BREAK)[request.line - 1] ?? "").trim() };
 };
 
 type LintFindings = { readonly hits: readonly Hit[]; readonly nativeExceptions: readonly NativeException[] };
@@ -715,10 +700,17 @@ const ruleFindings = (request: {
   readonly message: LintedMessage;
   readonly file: RepoPath;
   readonly clause: SelectedClause;
-  readonly source: SourceLineReader;
+  readonly ports: EslintRunnerPorts;
+  readonly repoRoot: AbsolutePath;
 }): Outcome<readonly LintFindings[]> =>
   mappedOutcome({
-    outcome: request.source.read({ line: request.message.line }),
+    outcome: sourceLineOf({
+      fileText: request.ports.fileText,
+      path: request.ports.path,
+      repoRoot: request.repoRoot,
+      file: request.file,
+      line: request.message.line,
+    }),
     map: (snippet): readonly LintFindings[] => [
       {
         hits: [
@@ -738,7 +730,8 @@ const messageFindings = (request: {
   readonly message: LintedMessage;
   readonly file: RepoPath;
   readonly selected: readonly SelectedClause[];
-  readonly source: SourceLineReader;
+  readonly ports: EslintRunnerPorts;
+  readonly repoRoot: AbsolutePath;
 }): Outcome<readonly LintFindings[]> => {
   if (request.message.ruleId === INLINE_CONFIG_RULE_ID) {
     return mappedOutcome({
@@ -763,15 +756,15 @@ const lintedFindings = (request: {
   if (file.outcome === "failed") {
     return file;
   }
-  const source = sourceLineReader({
-    fileText: request.ports.fileText,
-    path: request.ports.path,
-    repoRoot: request.repoRoot,
-    file: file.value,
-  });
   return collectOutcomes({
     outcomes: request.linted.messages.map((message) =>
-      messageFindings({ message, file: file.value, selected: request.selected, source }),
+      messageFindings({
+        message,
+        file: file.value,
+        selected: request.selected,
+        ports: request.ports,
+        repoRoot: request.repoRoot,
+      }),
     ),
   });
 };

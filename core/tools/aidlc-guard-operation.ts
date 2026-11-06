@@ -225,15 +225,21 @@ export function sameGuardOperation(left: unknown, right: unknown): boolean {
 
 export interface GuardRestartContinuation {
   operation: Extract<GuardRecoveryOperation, { kind: "restart-stage" }>;
-  direction: "redo" | "backward";
+  // "reopen" is the restart a checkout scoped to a team Unit makes: the Unit's
+  // own reopen of the stage and every later per-Unit stage (`stages`, `unit`).
+  direction: "redo" | "backward" | "reopen";
   scope: string;
+  stages?: string[];
+  unit?: string;
 }
 
 // next --stage returns this second command to perform the reset. Match the
 // complete native command, not a shell invocation extracted from a larger
 // program: wrappers, redirections, extra commands and flags are not a reset.
 // The hook separately checks the human selection and resolves the direction
-// against the current effective plan before admitting this continuation.
+// against the current effective plan before admitting this continuation. In a
+// checkout scoped to a team Unit the restart is that Unit's reopen,
+// `jump reopen --target <stage> --stages <list> --units <unit> --scope <scope>`.
 // A source install prints the same continuation as
 // `bun <harness>/tools/aidlc-jump.ts execute ...`; pass that harness directory
 // to accept it. Any other script path, or a harness directory not passed, is not a reset.
@@ -253,6 +259,24 @@ export function parseGuardRestartContinuationCommand(
     args = words.slice(1);
   } else {
     return null;
+  }
+  if (
+    args.length === 9 &&
+    args[0] === "reopen" &&
+    args[1] === "--target" && identifier(args[2]) &&
+    args[3] === "--stages" &&
+    args[5] === "--units" && identifier(args[6]) &&
+    args[7] === "--scope" && identifier(args[8])
+  ) {
+    const stages = args[4].split(",");
+    if (!stages.every(identifier)) return null;
+    return {
+      operation: { kind: "restart-stage", stage: args[2] },
+      direction: "reopen",
+      scope: args[8],
+      stages,
+      unit: args[6],
+    };
   }
   if (
     args.length !== 7 ||
@@ -276,7 +300,6 @@ export function parseGuardRestartContinuationCommand(
 // here would strand that offered recovery after human approval.
 // Conductor-prose-obtained abort consent remains the trust boundary; a mistaken
 // abort --discard parks work for aidlc engine worktree restore --slug <slug>.
-// A mechanical selection receipt remains a future candidate, not a check here.
 // Source installs already trust the equivalent aidlc-utility.ts config-change
 // invocation, so admitting the exact native `config set guard.<fence> off` is
 // native parity, not a new capability; `on`, extra arguments and other keys are
@@ -352,6 +375,7 @@ export const GUARD_REMEDY_WORDING = {
       `I'll bring ${c.target} to you for approval with what its review raised, instead of ` +
       "asking for another review.",
   }),
+  "present-findings-at-gate": null,
   "request-review": null,
   "start-recovery-review": null,
   "apply-repairs-then-request": null,
@@ -429,19 +453,32 @@ export const GUARD_REMEDY_WORDING = {
             `I'll finish ${c.stage} for ${c.unit ?? "this Unit"} with the review it already has. ` +
             "What the review raised comes to you when its work is up for approval.",
         },
+  "finish-unit-step": null,
+  "dispatch-pipeline-links": null,
+  "produce-stage-output": null,
+  "ask-stage-questions": null,
   "repair-source-boundary": null,
-  "reconfirm-summary": (c) => ({
-    label: "Confirm the summary again",
-    description:
-      `I'll show you the current summary of your answers for ${c.target} to confirm, then save ` +
-      "its documents again from it.",
-  }),
-  "unset-unattended": (c) => ({
-    label: "Stop working unattended",
-    description:
-      `I'll stop working on my own and ask you what should change in ${c.target}.` +
-      guardResetCost(c, "reject"),
-  }),
+  // With no questions asked yet there is no summary to show again; with no
+  // questions file for some Units, their answers were never summarized.
+  "reconfirm-summary": (c) =>
+    c.code === "SUMMARY_QUESTIONS_MISSING"
+      ? {
+          label: "Answer its questions",
+          description:
+            `I'll ask you the questions for ${c.target}, show you a summary of your answers to confirm, ` +
+            "then save its documents again from them.",
+        }
+      : c.code === "SUMMARY_UNIT_EVIDENCE_MISSING"
+      ? {
+          label: "Confirm a summary",
+          description: `I'll show you a summary of ${c.target} to confirm, then save its documents again from it.`,
+        }
+      : {
+          label: "Confirm the summary again",
+          description:
+            `I'll show you the current summary of your answers for ${c.target} to confirm, then save ` +
+            "its documents again from it.",
+        },
   // The person decides; the agent runs the setter (the remedy's command), which
   // records it as set by them. So the option says what will happen.
   "lower-fence": (c) => ({
@@ -450,7 +487,6 @@ export const GUARD_REMEDY_WORDING = {
       `I'll turn ${c.fence ? `the ${checkWords(c.fence)}` : "this"} check off for this piece of work. ` +
       "It is recorded, and it comes back on for the next piece of work.",
   }),
-  "park-stage": null,
 } satisfies Record<string, GuardRemedyWording>;
 
 // A check as the person knows it ("review freeze", "reviewer read scope"), as

@@ -42,6 +42,7 @@ const gatePorts = ({
   readonly check?: DisciplinesCheckOutcome;
   readonly checkoutRoot?: string | null;
 }): ConstitutionGatePorts => ({
+  resolveTarget: vi.fn().mockReturnValue({ kind: "resolved", projectDir: "/repo", participation: "participant", unjoined: false, mode: "main", stage: "rin-gate-4-implement", scope: "rin-gates", recordDir: "/repo/record", stateContent: "", currentStage: "rin-gate-4-implement", stageSource: "explicit", selection: { space: "default", intent: "work", sessionId: null, binding: null } }),
   checkoutRootOf: vi.fn<ConstitutionGatePorts["checkoutRootOf"]>().mockReturnValue(checkoutRoot ?? undefined),
   readEngine: vi.fn<ConstitutionGatePorts["readEngine"]>().mockReturnValue(engine),
   runWalkerGate: vi.fn<ConstitutionGatePorts["runWalkerGate"]>().mockReturnValue(walker ?? { kind: "allowed" }),
@@ -120,6 +121,8 @@ describe("constitutionGateDecisionOf", () => {
     await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports });
     expect(ports.recordGateRun).toHaveBeenCalledWith({
       command: COMPLETION_COMMAND,
+      stage: "rin-gate-4-implement",
+      result: "completed",
       checkoutRoot: "/repo",
       verdict: { pass: false, violationsCount: 1, decayPass: false, decayViolationsCount: 1 },
     });

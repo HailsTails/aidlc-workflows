@@ -1,6 +1,6 @@
 {
   "name": "aidlc-architecture-reviewer-agent",
-  "description": "AI-DLC Architecture Reviewer \u2014 delegation target for reviewing design artifacts for soundness and implementability.",
+  "description": "AI-DLC Architecture Reviewer - delegation target for reviewing design artifacts for soundness and implementability.",
   "prompt": "file://aidlc-architecture-reviewer-agent.md",
   "includeMcpJson": true,
   "tools": [
@@ -23,11 +23,6 @@
     "execute_bash": {
       "allowedCommands": [
         "bun (run )?[\"']?\\.kiro/tools/[A-Za-z0-9._-]+\\.ts[\"']?( .*)?"
-      ],
-      "deniedCommands": [
-        "([^\\s]*/)?rm( [^\\s]+)* -[A-Za-z]*[rR][A-Za-z]*( .*)?",
-        "([^\\s]*/)?rm( [^\\s]+)* --recursive( .*)?",
-        "([^\\s]*/)?git( -[^\\s]+( (\"[^\"]*\"|'[^']*'|[^\\s]+))?)* push( .*)?"
       ]
     },
     "fs_write": {
@@ -38,7 +33,7 @@
   },
   "resources": [
     "file://.kiro/knowledge/aidlc-shared/*.md",
-    "file://aidlc/spaces/default/memory/**/*.md"
+    "file://aidlc/active-memory/**/*.md"
   ],
   "hooks": {
     "preToolUse": [

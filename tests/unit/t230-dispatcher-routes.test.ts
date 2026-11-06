@@ -13,6 +13,7 @@ import {
   chmodSync,
   cpSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -40,10 +41,14 @@ import {
   renderNamespaceHelp,
   resolveAction,
   resolveHookPath,
+  normalizeTopLevelConfigVerbs,
+  routeOptions,
   routePolicyFor,
+  routePositionals,
+  SIMPLE_PUBLIC_GRAMMARS,
 } from "../../core/tools/aidlc.ts";
 import { validatePublicConfigArgs } from "../../core/tools/aidlc-init.ts";
-import { sessionsDir } from "../../core/tools/aidlc-lib.ts";
+import { PUBLIC_LIFECYCLE_GRAMMARS } from "../../core/tools/aidlc-lifecycle.ts";
 import { launcherRouteUsesPin } from "../../core/tools/aidlc-command.ts";
 import {
   projectPinTargetPath,
@@ -167,7 +172,6 @@ afterAll(() => {
 
 function makeProject(): string {
   const project = createTestProject();
-  mkdirSync(join(project, ".git"), { recursive: true });
   const dataDir = join(project, ".claude", "tools", "data");
   mkdirSync(dataDir, { recursive: true });
   cpSync(
@@ -227,7 +231,6 @@ function makeUnselectedKiroProject(): string {
     ),
     { force: true },
   );
-  rmSync(sessionsDir(project), { recursive: true, force: true });
   return project;
 }
 
@@ -447,6 +450,55 @@ describe("t230 dispatcher route parity", () => {
       fixture: true,
     },
     {
+      name: "intent add-repo maps through workspace parser with its name",
+      routerArgs: ["engine", "intent", "add-repo", "no-such-repo"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["intent", "add-repo", "no-such-repo"],
+      fixture: true,
+    },
+    {
+      name: "intent add-checkout maps through workspace parser with its path",
+      routerArgs: ["engine", "intent", "add-checkout", "no-such-checkout"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["intent", "add-checkout", "no-such-checkout"],
+      fixture: true,
+    },
+    {
+      name: "intent remove-checkout maps through workspace parser with its path",
+      routerArgs: ["engine", "intent", "remove-checkout", "no-such-checkout"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["intent", "remove-checkout", "no-such-checkout"],
+      fixture: true,
+    },
+    {
+      name: "intent remove-repo maps through workspace parser with its name",
+      routerArgs: ["engine", "intent", "remove-repo", "no-such-repo"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["intent", "remove-repo", "no-such-repo"],
+      fixture: true,
+    },
+    {
+      name: "intent set-repos maps through workspace parser with its names",
+      routerArgs: ["engine", "intent", "set-repos", "repo-a,repo-b"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["intent", "set-repos", "repo-a,repo-b"],
+      fixture: true,
+    },
+    {
+      name: "intent add-repo maps through workspace parser with every flag kept",
+      routerArgs: ["engine", "intent", "add-repo", "payments", "--url", "/x/payments.git", "--reason", "a b"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["intent", "add-repo", "payments", "--url", "/x/payments.git", "--reason", "a b"],
+      fixture: true,
+    },
+    {
+      name: "intent set-repos --all maps through workspace parser",
+      routerArgs: ["engine", "intent", "set-repos", "--all"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["intent", "set-repos", "--all"],
+      fixture: true,
+    },
+    {
       name: "intent list --all maps through workspace parser",
       routerArgs: ["engine", "intent", "list", "--all"],
       tool: "aidlc-utility.ts",
@@ -490,6 +542,29 @@ describe("t230 dispatcher route parity", () => {
       routerArgs: ["engine", "config", "get", "depth"],
       tool: "aidlc-utility.ts",
       toolArgs: ["config-get", "depth"],
+      fixture: true,
+    },
+    // The person's own terminal form: `config set|get|list` with no `engine`
+    // routes to the same utility verbs (it used to fail as an unknown section).
+    {
+      name: "top-level config get maps to config-get",
+      routerArgs: ["config", "get", "depth"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["config-get", "depth"],
+      fixture: true,
+    },
+    {
+      name: "top-level config list maps to config-list",
+      routerArgs: ["config", "list"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["config-list"],
+      fixture: true,
+    },
+    {
+      name: "top-level config set maps to config-change",
+      routerArgs: ["config", "set", "guard.review-freeze", "off"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["config-change", "--guard.review-freeze", "off"],
       fixture: true,
     },
     {
@@ -613,6 +688,13 @@ describe("t230 dispatcher route parity", () => {
       fixture: true,
     },
     {
+      name: "plugin test maps to plugin-test",
+      routerArgs: ["plugin", "test", "--help"],
+      tool: "aidlc-utility.ts",
+      toolArgs: ["plugin-test", "--help"],
+      fixture: true,
+    },
+    {
       name: "update maps to its machine lifecycle delegate",
       routerArgs: ["update"],
       tool: "aidlc-lifecycle.ts",
@@ -694,6 +776,86 @@ describe("t230 dispatcher route parity", () => {
     });
   }
 
+  test("an engine subcommand honours --help instead of running it (#3493)", () => {
+    const projectDir = makeProject();
+    const plugin = viaDispatcher(["engine", "plugin", "sync", "--help"], projectDir);
+    expect(plugin.exitCode, plugin.stdout.toString()).toBe(0);
+    expect(plugin.stdout.toString()).toContain("usage: aidlc engine plugin");
+    expect(plugin.stdout.toString()).toContain("--rules-level");
+    expect(plugin.stderr.toString()).toBe("");
+
+    const runtime = viaDispatcher(["engine", "runtime", "compile", "--help"], projectDir);
+    expect(runtime.exitCode, runtime.stdout.toString()).toBe(0);
+    expect(runtime.stdout.toString()).toContain("Usage: aidlc-runtime");
+    expect(runtime.stderr.toString()).toBe("");
+  });
+
+  // The commands Reverse Engineering's repo question hands the agent, through
+  // the entry it names: the list is recorded exactly, and --all keeps every repo.
+  test("intent set-repos through the dispatcher sets the list, and --all keeps every repo", () => {
+    const projectDir = makeProject();
+    seedStateFile(projectDir, "state-mid-inception.md");
+    const registry = join(projectDir, "aidlc", "spaces", "default", "intents", "intents.json");
+    const rows = JSON.parse(readFileSync(registry, "utf-8")) as Array<Record<string, unknown>>;
+    rows[0].repos = ["repo-a", "repo-b", "repo-c"];
+    writeFileSync(registry, `${JSON.stringify(rows, null, 2)}\n`);
+    for (const repo of ["repo-a", "repo-b", "repo-c"]) mkdirSync(join(projectDir, repo, ".git"), { recursive: true });
+    const recorded = () => JSON.parse(readFileSync(registry, "utf-8"))[0] as { repos: string[]; repos_named?: boolean };
+
+    const all = viaDispatcher(["engine", "intent", "set-repos", "--all"], projectDir);
+    expect(all.exitCode, `${all.stdout}${all.stderr}`).toBe(0);
+    expect(all.stdout.toString().trim()).toBe("This work covers all 3 of its repositories.");
+    expect(recorded()).toMatchObject({ repos: ["repo-a", "repo-b", "repo-c"], repos_named: true });
+
+    const some = viaDispatcher(["engine", "intent", "set-repos", "repo-a,repo-c"], projectDir);
+    expect(some.exitCode, `${some.stdout}${some.stderr}`).toBe(0);
+    expect(some.stdout.toString().trim()).toBe("This work now covers repo-a and repo-c. repo-b can be added back any time.");
+    expect(recorded().repos).toEqual(["repo-a", "repo-c"]);
+  });
+
+  // The person's own address and the agent's quoted reason, through the entry
+  // the agent runs: the clone lands and the words are recorded whole.
+  test("intent add-repo --url through the dispatcher clones the repo and records the quoted reason", () => {
+    const projectDir = makeProject();
+    seedStateFile(projectDir, "state-mid-inception.md");
+    const registry = join(projectDir, "aidlc", "spaces", "default", "intents", "intents.json");
+    const rows = JSON.parse(readFileSync(registry, "utf-8")) as Array<Record<string, unknown>>;
+    rows[0].repos = ["repo-a"];
+    writeFileSync(registry, `${JSON.stringify(rows, null, 2)}\n`);
+    mkdirSync(join(projectDir, "repo-a", ".git"), { recursive: true });
+    const source = mkdtempSync(join(tmpdir(), "aidlc-t230-remote-"));
+    tempProjects.add(source);
+    const gitRun = (cwd: string, args: string[]): void => {
+      const r = spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", ...args], {
+        cwd,
+        encoding: "utf-8",
+      });
+      if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+    };
+    mkdirSync(join(source, "work"));
+    writeFileSync(join(source, "work", "api.ts"), "export const api = 1;\n");
+    gitRun(join(source, "work"), ["init", "-q"]);
+    gitRun(join(source, "work"), ["add", "-A"]);
+    gitRun(join(source, "work"), ["commit", "-qm", "seed"]);
+    gitRun(source, ["clone", "-q", "--bare", "work", "payments.git"]);
+    const bare = join(source, "payments.git");
+
+    // The packaged tree: recording the new repo's listing reads the stage graph.
+    const added = viaDispatcher(
+      ["engine", "intent", "add-repo", "payments", "--url", bare, "--reason", "the consent API lives there"],
+      projectDir,
+      { AIDLC_DISPATCH_TOOLS_DIR: DIST_TOOLS_DIR },
+    );
+    expect(added.exitCode, `${added.stdout}${added.stderr}`).toBe(0);
+    expect(added.stdout.toString()).toContain(`Cloned payments from ${bare} and added it to this piece of work's repos.`);
+    expect(existsSync(join(projectDir, "payments", "api.ts"))).toBe(true);
+    expect((JSON.parse(readFileSync(registry, "utf-8"))[0] as { repos: string[] }).repos).toEqual(["payments", "repo-a"]);
+    const audit = readdirSync(join(seededRecordDir(projectDir), "audit"))
+      .map((file) => readFileSync(join(seededRecordDir(projectDir), "audit", file), "utf-8"))
+      .join("\n");
+    expect(audit).toContain("**Reason**: the consent API lives there");
+  });
+
   test("space create mutates the same observable tree as space-create", () => {
     const directProject = makeProject();
     const routedProject = makeProject();
@@ -733,8 +895,9 @@ describe("t230 dispatcher route parity", () => {
     expect(changed.exitCode, changed.stderr.toString()).toBe(0);
     const selectedState = readFileSync(join(selectedRecord, "aidlc-state.md"), "utf-8");
     for (const [field, value] of [
+      // Nobody asked for any of them, so each is the command's.
       ["Depth", "Minimal"], ["Test Strategy", "Comprehensive"], ["Review Override", "advisory"],
-      ["Guard Policy", "relaxed (set by you)"], ["Guards Off", "state-transition (set by you)"],
+      ["Guard Policy", "relaxed (set by a command)"], ["Guards Off", "state-transition (set by a command)"],
       ["Sensors", "off (set by a command)"],
       ["Learnings", "off (set by a command)"], ["Summary Confirmation", "off (set by a command)"],
     ]) expect(selectedState).toContain(`- **${field}**: ${value}\n`);
@@ -1201,6 +1364,58 @@ describe("t230 dispatcher route parity", () => {
     );
     expect(result.exitCode, result.stderr.toString()).toBe(0);
   });
+
+  // Config in that folder sets it up as a new project: the step when it is the
+  // person's project before setup, the wrong one when they meant another. So
+  // natively the refusal names config for that exact folder, then the two steps
+  // that reach another one; the copy channel has no aidlc command. Our own
+  // options are read before the person's words, so the flag goes right after
+  // the tool (Bun under the name aidlc stands in for the native command). The
+  // hook is the first-run path: its registrations run before any setup there.
+  test("a project-required command from a folder that is not a project names the step that works", () => {
+    const project = makeProject();
+    const outside = mkdtempSync(join(tmpdir(), "aidlc-t230-outside-"));
+    tempProjects.add(outside);
+    const launcherDir = mkdtempSync(join(tmpdir(), "aidlc-t230-launcher-"));
+    tempProjects.add(launcherDir);
+    const launcher = join(launcherDir, process.platform === "win32" ? "aidlc.exe" : "aidlc");
+    try {
+      linkSync(BUN, launcher);
+    } catch {
+      cpSync(BUN, launcher);
+    }
+    const env = { AIDLC_DISPATCH_TOOLS_DIR: DIST_TOOLS_DIR };
+    const payload = JSON.stringify({
+      session_id: "t230-outside",
+      cwd: outside,
+      tool_name: "bash",
+      tool_input: { command: "echo hi" },
+    });
+    for (const [tool, after] of [[BUN, "aidlc.ts"], [launcher, "aidlc"]]) {
+      const config = after === "aidlc"
+        ? `run aidlc config in ${outside} if that folder is your project; otherwise `
+        : "";
+      for (
+        const command of [
+          ["engine", "plugin", "list"],
+          ["next", "add", "a", "login", "page"],
+          ["engine", "hook", "guard-tool-call"],
+        ]
+      ) {
+        const label = `${after} ${command.join(" ")}`;
+        const stdin = command[1] === "hook" ? payload : undefined;
+        const refused = run([tool, DISPATCHER, ...command], outside, env, stdin);
+        expect(refused.exitCode, label).toBe(1);
+        expect(refused.stderr.toString(), label).toContain(
+          "requires an installed project harness or recognized project directory; " +
+            `${config}run it from the project folder, or add --project-dir <path> right after ${after}\n`,
+        );
+        if (!config) expect(refused.stderr.toString(), label).not.toContain("aidlc config");
+        const named = run([tool, DISPATCHER, "--project-dir", project, ...command], outside, env, stdin);
+        expect(named.exitCode, `${label}: ${named.stderr}`).toBe(0);
+      }
+    }
+  });
 });
 
 describe("t230 version-aware startup", () => {
@@ -1420,6 +1635,190 @@ describe("t230 version-aware startup", () => {
 });
 
 describe("t230 dispatcher global flag translation", () => {
+  // The dispatcher's own flags are its own only while it is still reading the
+  // route and the subcommand's verb. Once a word of the person's has appeared,
+  // every token is the subcommand's argv, so a flag that looks like one of ours
+  // among their words stays exactly where they typed it: nothing of theirs is
+  // taken, resolved into a path, or moved to the end of their sentence.
+  test("a flag of ours among the person's own words stays where they typed it", () => {
+    const words = ["next", "add", "a", "--project-dir", "flag", "to", "the", "CLI"];
+    expect(resolveAction(["engine", "orchestrate", ...words])).toEqual({
+      type: "delegate",
+      tool: "aidlc-orchestrate.ts",
+      args: words,
+    });
+    const global = ["next", "add", "a", "--json", "flag", "to", "the", "CLI"];
+    expect(resolveAction(["engine", "orchestrate", ...global])).toEqual({
+      type: "delegate",
+      tool: "aidlc-orchestrate.ts",
+      args: global,
+    });
+    // A sentence of theirs that opens with a workspace noun is still theirs:
+    // only that command's own shape makes the line the command.
+    const noun = ["next", "space", "is", "what", "i", "want", "--project-dir", "x"];
+    expect(resolveAction(["engine", "orchestrate", ...noun])).toEqual({
+      type: "delegate",
+      tool: "aidlc-orchestrate.ts",
+      args: noun,
+    });
+  });
+
+  // What is wrong with one of our own options is the person's to act on only
+  // where our options are read. Among their own words the same token is a word
+  // of theirs, so the line keeps the request they typed instead of answering
+  // them about an option they never used.
+  test("a mistake in one of our options is still their word among their words", () => {
+    for (const words of [
+      ["next", "add", "a", "--project-dir=/x", "flag", "to", "the", "CLI"],
+      ["next", "drop", "the", "--project-dir"],
+      ["next", "rename", "--project-dir", "/x", "and", "--project-dir", "/y"],
+    ]) {
+      expect(resolveAction(["engine", "orchestrate", ...words])).toEqual({
+        type: "delegate",
+        tool: "aidlc-orchestrate.ts",
+        args: words,
+      });
+    }
+    // Where our options are read, each one is still answered as before.
+    const said = (argv: string[]): string => {
+      const action = resolveAction(argv);
+      return action.type === "error" ? action.message : `resolved as ${action.type}`;
+    };
+    expect(said(["--project-dir=/x", "doctor"]))
+      .toBe("aidlc: --project-dir takes a separate path value; use --project-dir <path>\n");
+    expect(said(["doctor", "--project-dir"])).toBe("aidlc: --project-dir requires a path value\n");
+    expect(said(["--project-dir", "/x", "--project-dir", "/y", "doctor"]))
+      .toBe("aidlc: --project-dir may be specified only once\n");
+  });
+
+  // A flag `next` takes with no value takes no word, so the word after it is
+  // theirs and a flag of ours after it is one of their words too, on the
+  // request route and on the shortcuts that stand for it.
+  test("a flag of ours after a flag that takes no value and a word of theirs stays where they typed it", () => {
+    for (const words of [
+      ["next", "--new-intent", "fix", "--project-dir", "handling"],
+      ["next", "--resume", "fix", "--verbose", "output"],
+      ["next", "--new-intent", "help", "me", "add", "--project-dir", "handling"],
+    ]) {
+      expect(resolveAction(["engine", "orchestrate", ...words])).toEqual({
+        type: "delegate",
+        tool: "aidlc-orchestrate.ts",
+        args: words,
+      });
+    }
+    for (const shortcut of [["--resume", "fix"], ["--scope", "bugfix", "fix"]]) {
+      expect(resolveAction([...shortcut, "--project-dir", "handling"])).toEqual({
+        type: "delegate",
+        tool: "aidlc-orchestrate.ts",
+        args: ["next", ...shortcut, "--project-dir", "handling"],
+      });
+    }
+    // With no word of theirs on the line the option is still ours.
+    expect(resolveAction(["--resume", "--project-dir", "relative/project"])).toEqual({
+      type: "delegate",
+      tool: "aidlc-orchestrate.ts",
+      args: ["next", "--project-dir", resolve(process.cwd(), "relative/project"), "--resume"],
+    });
+  });
+
+  // Every reader of the line takes the same boundary, not just the resolver:
+  // the project policy and the delegate's environment read it too, and before
+  // this they resolved the person's own word as the folder to work in. Then an
+  // ordinary request came back refused as if the project were not installed,
+  // and the run wrote a folder named after their word. This drives the real
+  // dispatcher, because a resolver-level check cannot see either reader.
+  test("a request naming one of our options is not refused as a bad project", () => {
+    const project = makeProject();
+    const words = ["next", "add", "a", "--project-dir", "flag", "to", "the", "CLI"];
+    const run = viaDispatcher(words, project);
+    const output = `${run.stdout}${run.stderr}`;
+    expect(output).not.toContain("requires an installed project harness");
+    expect(output).not.toContain("recognized project directory");
+    expect(existsSync(join(project, "flag"))).toBe(false);
+    // The same line with no option-shaped word of theirs is the control.
+    const control = viaDispatcher(["next", "add", "a", "flag", "to", "the", "CLI"], project);
+    expect(run.exitCode).toBe(control.exitCode);
+  });
+
+  /** The delegate's own argv, or a loud failure when the route resolved elsewhere. */
+  const delegateArgs = (argv: string[]): string[] => {
+    const action = resolveAction(argv);
+    if (action.type !== "delegate") throw new Error(`${argv.join(" ")} resolved as ${action.type}`);
+    return action.args;
+  };
+  const projectDirOf = (argv: string[]): string | undefined => {
+    const action = resolveAction(argv);
+    return "projectDir" in action ? action.projectDir : undefined;
+  };
+
+  test("the orderings every caller uses keep working", () => {
+    // Ours before the route.
+    expect(delegateArgs(["--project-dir", "/tmp/example", "engine", "orchestrate", "next"]))
+      .toEqual(["next", "--project-dir", "/tmp/example"]);
+    // Ours inside the route, before the verb.
+    expect(delegateArgs(["engine", "config", "--project-dir", "/tmp/example", "set", "depth", "minimal"]))
+      .toEqual(["config-change", "--depth", "minimal", "--project-dir", "/tmp/example"]);
+    // Ours straight after the subcommand's verb.
+    expect(delegateArgs(["engine", "bolt", "start", "--project-dir", "relative/project"]))
+      .toEqual(["start", "--project-dir", resolve(process.cwd(), "relative/project")]);
+    // A top-level command's own flag, which follows a route word, not a word of theirs.
+    expect(delegateArgs(["doctor", "--json"])).toEqual(["doctor", "--json"]);
+    // A workspace command on the request route, whole: it is that command, so
+    // our option is ours wherever it sits and a relative path still resolves.
+    // Its own option goes right after `next`, which is where the delegate
+    // reads it: ahead of anything that could be a word of theirs.
+    expect(delegateArgs([
+      "engine", "orchestrate", "next", "space", "--project-dir", "relative/project", "create", "teamB",
+    ])).toEqual([
+      "next", "--project-dir", resolve(process.cwd(), "relative/project"), "space", "create", "teamB",
+    ]);
+    expect(delegateArgs(["next", "intent", "--project-dir", "relative/project"]))
+      .toEqual(["next", "--project-dir", resolve(process.cwd(), "relative/project"), "intent"]);
+    // A command of the engine's own in a fixed shape: no word of theirs rides
+    // on it, and its own grammar refuses an extra token, so our option is ours
+    // wherever it sits. t229 drives these two through the real dispatcher.
+    expect(delegateArgs(["engine", "intent", "switch", "archive", "--project-dir", "/tmp/example"]))
+      .toEqual(["intent", "switch", "archive", "--project-dir", "/tmp/example"]);
+    expect(delegateArgs(["engine", "space", "switch", "teamB", "--project-dir", "relative/project"]))
+      .toEqual(["space", "switch", "teamB", "--project-dir", resolve(process.cwd(), "relative/project")]);
+    // One route word that stands for two: still a route word, so the flag after
+    // it is ours and a relative path still resolves against where they are.
+    expect(delegateArgs(["compose", "--project-dir", "relative/project"]))
+      .toEqual(["next", "--project-dir", resolve(process.cwd(), "relative/project"), "compose"]);
+    // A name the person gave, with our flag after it: the delegated tool reads
+    // the flag itself, so the path reaches it whole either way.
+    expect(delegateArgs(["engine", "intent", "add-repo", "app-b", "--project-dir", "/elsewhere"]))
+      .toEqual(["intent", "add-repo", "app-b", "--project-dir", "/elsewhere"]);
+    expect(delegateArgs(["config", "models", "--agent", "developer", "--effort", "high", "--project", "--yes"]))
+      .toEqual(["config", "models", "--agent", "developer", "--effort", "high", "--project", "--yes"]);
+    // The hooks, adapters and the statusline: their argv is this engine's own.
+    expect(projectDirOf(["engine", "hook", "record-human-turn", "--project-dir", "/tmp/example"]))
+      .toBe("/tmp/example");
+    expect(projectDirOf(["engine", "adapter", "kiro-ide", "record-human-turn", "--project-dir", "/tmp/example"]))
+      .toBe("/tmp/example");
+    // `--json` on a read-only command of ours still reaches the dispatcher.
+    const version = resolveAction(["version", "--json"]) as { type: string; json?: boolean };
+    expect(version.type).toBe("version");
+    expect(version.json).toBe(true);
+  });
+
+  // A leading `compose` after `next` is the engine's own verb, as the
+  // orchestrator's launcher reads it, so both take the same folder.
+  test("a folder after `next compose` is ours in front of their words and theirs among them", () => {
+    expect(resolveAction(["engine", "orchestrate", "next", "compose", "--project-dir", "/tmp/example", "--", "their words"]))
+      .toEqual({
+        type: "delegate",
+        tool: "aidlc-orchestrate.ts",
+        args: ["next", "compose", "--project-dir", "/tmp/example", "--", "their words"],
+      });
+    const words = ["next", "compose", "fix", "the", "--project-dir", "handling"];
+    expect(resolveAction(["engine", "orchestrate", ...words])).toEqual({
+      type: "delegate",
+      tool: "aidlc-orchestrate.ts",
+      args: words,
+    });
+  });
+
   test("extracts --project-dir before noun/verb parsing and restores it for delegation", () => {
     expect(resolveAction(["engine", "space", "--project-dir", "/tmp/example", "create", "teamB"])).toEqual({
       type: "delegate",
@@ -1956,6 +2355,10 @@ describe("t230 dispatcher dev and compiled in-process modes", () => {
     expect(kiroTreeLayout(tree)).toBeNull();
     writeFileSync(join(tree, "agents", "aidlc.json"), "{}\n");
     expect(kiroTreeLayout(tree)).toBe("agent-v1");
+    writeFileSync(join(tree, "agents", "aidlc-aidlc.md"), "---\nname: aidlc\n---\n");
+    expect(kiroTreeLayout(tree)).toBe("kas");
+    // A project installed before the conductor file was renamed still reads as the same tree.
+    rmSync(join(tree, "agents", "aidlc-aidlc.md"));
     writeFileSync(join(tree, "agents", "aidlc.md"), "---\nname: aidlc\n---\n");
     expect(kiroTreeLayout(tree)).toBe("kas");
     mkdirSync(join(tree, "tools", "data"), { recursive: true });
@@ -2105,11 +2508,13 @@ describe("t230 dispatcher dev and compiled in-process modes", () => {
     const projectDir = makeUnselectedKiroProject();
     const compiled = viaImportedCompiledMain(
       [
+        // Ahead of the person's words, as the release build gate and every
+        // other caller of this engine build it.
         "next",
-        "poc",
-        "Create a tiny TypeScript command-line program that prints Hello World.",
         "--project-dir",
         projectDir,
+        "poc",
+        "Create a tiny TypeScript command-line program that prints Hello World.",
       ],
       projectDir,
     );
@@ -2223,8 +2628,10 @@ describe("t230 native review-brief dispatch", () => {
         encoding: "utf-8" as const,
         timeout: 20_000,
       };
+      // The block is for a run nobody attends (an attended, gated run ends its
+      // turn), so the native Stop is read there.
       const stopped = spawnSync(executable, ["engine", "hook", "continue-workflow"], {
-        ...options, input: "{}",
+        ...options, env: { ...options.env, AIDLC_UNATTENDED: "1" }, input: "{}",
       });
       expect(stopped.status, `${stopped.stdout}\n${stopped.stderr}`).toBe(0);
       const feedback = JSON.parse(stopped.stdout) as { decision: string; reason: string };
@@ -2295,7 +2702,7 @@ describe("t230 native review-brief dispatch", () => {
         if (command === "review") {
           expect(output).toContain("**Stage:** Requirements Analysis");
           expect(output).toContain("**Review outcome:** Concerns remain for your decision.");
-          expect(output).toContain("**Why now:** First review completed.");
+          expect(output).not.toContain("Why now");
           expect(output).toContain("**Approve**");
           expect(output).toContain("**Request Changes**");
         }
@@ -2395,6 +2802,27 @@ describe("t230 dispatcher route completeness", () => {
     });
   });
 
+  test("top-level config set|get|list are the engine's verbs for route policy and pin dispatch", () => {
+    // main() rewrites them before route policy, so in a project pinned to
+    // another release the pinned engine writes the work's settings, and the
+    // launcher's pin classification (launcherRouteUsesPin) agrees.
+    for (const argv of [
+      ["config", "set", "guard.review-freeze", "off"],
+      ["config", "get", "depth"],
+      ["config", "list"],
+      ["--project-dir", "/tmp/example", "config", "set", "depth", "minimal", "--json"],
+    ]) {
+      const normalized = normalizeTopLevelConfigVerbs(argv);
+      expect(normalized, argv.join(" ")).toEqual([...argv.slice(0, argv.indexOf("config")), "engine", ...argv.slice(argv.indexOf("config"))]);
+      expect(routePolicyFor(normalized), argv.join(" ")).toEqual(expect.objectContaining({ id: "config", pinPolicy: "pinned" }));
+      expect(launcherRouteUsesPin(normalized), argv.join(" ")).toBe(true);
+    }
+    // The install sections keep their own route.
+    for (const argv of [["config"], ["config", "models", "--show"], ["config", "--pin", "2.10.0"], ["engine", "config", "list"]]) {
+      expect(normalizeTopLevelConfigVerbs(argv), argv.join(" ")).toEqual(argv);
+    }
+  });
+
   test("aliases and system delegates resolve policy from the route registry", () => {
     expect(routePolicyFor(["--status"])?.id).toBe("top-status");
     expect(routePolicyFor(["--project-dir", "/tmp/example", "engine", "graph", "compile"]))
@@ -2432,6 +2860,7 @@ describe("t230 dispatcher route completeness", () => {
       [["engine", "status"], "top-status"],
       [["engine", "recompose"], "top-recompose"],
       [["engine", "now"], "top-now"],
+      [["engine", "skill-text"], "top-skill-text"],
     ];
     for (const [args, routeId] of semanticRoutes) {
       expect(routePolicyFor(args)?.id, args.join(" ")).toBe(routeId);
@@ -2497,6 +2926,11 @@ describe("t230 dispatcher route completeness", () => {
       type: "delegate",
       tool: TOOLS.utility,
       args: ["now"],
+    });
+    expect(resolveAction(["engine", "skill-text"])).toEqual({
+      type: "delegate",
+      tool: TOOLS.utility,
+      args: ["skill-text"],
     });
     expect(resolveAction(["engine", "recompose", "--skip", "market-research"]))
       .toEqual({
@@ -2764,6 +3198,102 @@ describe("t230 dispatcher help and errors", () => {
     }
     expect(entriesUnder(machineRoot)).toEqual([]);
   }, NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
+
+  test("every option a public command accepts is listed with a summary", () => {
+    const optionRow = (
+      rendered: string,
+      form: string,
+    ): string | undefined =>
+      rendered.split("\n").find((line) =>
+        line.startsWith(`  ${form}`) &&
+        /^\s{2,}/.test(line.slice(form.length + 2))
+      );
+    for (const command of PUBLIC_COMMANDS) {
+      // `config` keeps hand-written help: its own flags span six sections and
+      // `aidlc config <section> --help` is the full per-section reference.
+      if (command === "config") continue;
+      const route = ROUTES.find((candidate) =>
+        candidate.namespace === "public" &&
+        candidate.group === "top" &&
+        candidate.verbs.includes(command)
+      );
+      expect(route, command).toBeDefined();
+      const rendered = renderCommandHelp(command);
+      const options = routeOptions(route as Route, command);
+      expect(options.length, `${command} options`).toBeGreaterThan(0);
+      for (const option of options) {
+        const form = option.metavar
+          ? `${option.flag} <${option.metavar}>`
+          : option.flag;
+        const row = optionRow(rendered, form);
+        expect(row, `${command} help is missing a row for ${form}`)
+          .toBeDefined();
+        expect(
+          (row as string).slice(form.length + 2).trim().length,
+          `${command} ${form} has no summary`,
+        ).toBeGreaterThan(0);
+      }
+      for (const placeholder of routePositionals(route as Route, command)) {
+        const row = optionRow(rendered, placeholder);
+        expect(row, `${command} help is missing an argument row for ${placeholder}`)
+          .toBeDefined();
+        expect(
+          (row as string).slice(placeholder.length + 2).trim().length,
+          `${command} ${placeholder} has no summary`,
+        ).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  // The verb's usage form is its one list of options: help prints a row for
+  // each, with what it does, and the handler takes exactly these (t327).
+  test("plugin test help has one row per option its usage form names, each with a meaning", () => {
+    const route = ROUTES.find((candidate) => candidate.id === "plugin-author") as Route;
+    const help = viaDispatcher(["plugin", "test", "--help"], REPO_ROOT);
+    expect(help.exitCode, help.stderr.toString()).toBe(0);
+    const rows = help.stdout.toString().split("\n").filter((line) => /^ {2}--/.test(line));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.map((line) => line.trim().split(/\s{2,}/)[0]).sort()).toEqual(
+      routeOptions(route, "test").map((option) =>
+        option.metavar ? `${option.flag} <${option.metavar}>` : option.flag
+      ).sort(),
+    );
+    for (const row of rows) expect(row.trim().split(/\s{2,}/)[1]?.length ?? 0, row).toBeGreaterThan(0);
+  });
+
+  test("command help names every flag either public parser accepts", () => {
+    // `--project-dir` is dispatcher plumbing for tests and hooks. Routes do
+    // spell it (`top-config`, `workspace-sync`), but no public command's help
+    // names it, so it is excluded here deliberately rather than by oversight.
+    const plumbing = new Set(["--project-dir"]);
+    type PublicGrammar = { values: ReadonlySet<string>; bare: ReadonlySet<string> };
+    const grammars: Record<string, PublicGrammar> = {
+      ...PUBLIC_LIFECYCLE_GRAMMARS,
+      ...SIMPLE_PUBLIC_GRAMMARS,
+    };
+    // Both parsers, so neither can gain a flag help does not name.
+    expect(Object.keys(grammars).sort()).toEqual([
+      "doctor",
+      "uninstall",
+      "update",
+      "use",
+      "version",
+    ]);
+    for (const [command, grammar] of Object.entries(grammars)) {
+      const rendered = renderCommandHelp(
+        command as (typeof PUBLIC_COMMANDS)[number],
+      );
+      const rows = rendered.split("\n");
+      for (const flag of [...grammar.values, ...grammar.bare]) {
+        if (plumbing.has(flag)) continue;
+        const listed = rows.some((line) =>
+          new RegExp(`^ {2}${flag}(\\s|$)`).test(line)
+        );
+        expect(listed, `${command} help omits the accepted flag ${flag}`)
+          .toBe(true);
+      }
+    }
+  });
 
   test("top-level config help consumes every root value flag without doing work", () => {
     const sandbox = mkdtempSync(join(tmpdir(), "aidlc-t230-config-help-"));
@@ -3049,7 +3579,7 @@ describe("t230 dispatcher help and errors", () => {
     });
     expect(text).toContain("aidlc system <noun> <verb> [args]");
     expect(text).toContain(
-      "Operations on this user's aidlc installation; never a system-wide or root install:",
+      "Operations on this user's aidlc installation; never system-wide (root only with --allow-root):",
     );
     expect(text).toContain("  rollback: [<version>|--version <version>|--list]");
     expect(text).toContain("  completions: <bash|zsh|fish|powershell>");
@@ -3322,12 +3852,12 @@ describe("t230 dispatcher hook routing", () => {
       session_id: "t230-guard-deny",
       cwd: projectDir,
       tool_name: "Bash",
-      tool_input: { command: "bun .claude/tools/aidlc-state.ts approve intent-capture" },
+      tool_input: { command: "bun .claude/tools/aidlc.ts engine hook record-human-turn" },
     });
     const claude = viaDispatcher(["engine", "hook", "state-transition-guard"], projectDir, { AIDLC_HARNESS_NAME: "claude" }, input);
     expect(claude.exitCode, claude.stderr.toString("utf-8")).toBe(2);
     const reason = claude.stderr.toString("utf-8").trim();
-    expect(reason).toContain("Stage status cannot be changed");
+    expect(reason).toContain("AIDLC runtime records and hooks belong to the harness");
     expect(JSON.parse(claude.stdout.toString("utf-8"))).toEqual({
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason },
     });
@@ -3336,7 +3866,7 @@ describe("t230 dispatcher hook routing", () => {
     const kiro = viaDispatcher(["engine", "hook", "state-transition-guard"], projectDir, { AIDLC_HARNESS_NAME: "kiro" }, input);
     expect(kiro.exitCode).toBe(2);
     expect(kiro.stdout.toString("utf-8")).toBe("");
-    expect(kiro.stderr.toString("utf-8")).toContain("Stage status cannot be changed");
+    expect(kiro.stderr.toString("utf-8")).toContain("AIDLC runtime records and hooks belong to the harness");
   });
 
   test("statusline dispatches to run(input) and renders a line", () => {
@@ -3580,37 +4110,6 @@ describe("t230 dispatcher hook routing", () => {
     expect(health()).toBe(true);
   });
 
-  test.each([
-    { name: "hook", route: ["engine", "hook", "validate-state"] },
-    { name: "adapter", route: ["engine", "adapter", "codex", "validate-state"] },
-  ])("explicit project directory wins over a conflicting payload checkout for $name", ({ route }) => {
-    const cwdProject = makeProject();
-    const targetProject = makeProject();
-    writeMinimalState(cwdProject, "intent-capture");
-    writeMinimalState(targetProject, "domain-design");
-    cpSync(join(REPO_ROOT, "dist", "codex", ".codex"), join(targetProject, ".codex"), { recursive: true });
-    const result = viaDispatcher([...route, "--project-dir", targetProject], cwdProject, {}, JSON.stringify({ hook_event_name: "PreCompact", cwd: cwdProject, session_id: "t230-explicit-conflict" }));
-    expect(result.exitCode).toBe(0);
-    expect(existsSync(join(seededRecordDir(targetProject), ".aidlc-engine/hooks-health", "validate-state.last"))).toBe(true);
-    expect(existsSync(join(seededRecordDir(cwdProject), ".aidlc-engine/hooks-health", "validate-state.last"))).toBe(false);
-  });
-
-  test.each([
-    { name: "hook", route: ["engine", "hook", "validate-state"] },
-    { name: "adapter", route: ["engine", "adapter", "codex", "validate-state"] },
-  ])("without an explicit project directory the payload checkout remains authoritative for $name", ({ route }) => {
-    const cwdProject = makeProject();
-    const payloadProject = makeProject();
-    writeMinimalState(cwdProject, "intent-capture");
-    writeMinimalState(payloadProject, "domain-design");
-    cpSync(join(REPO_ROOT, "dist", "codex", ".codex"), join(cwdProject, ".codex"), { recursive: true });
-    cpSync(join(REPO_ROOT, "dist", "codex", ".codex"), join(payloadProject, ".codex"), { recursive: true });
-    const result = viaDispatcher([...route], cwdProject, {}, JSON.stringify({ hook_event_name: "PreCompact", cwd: payloadProject, session_id: "t230-default-payload" }));
-    expect(result.exitCode).toBe(0);
-    expect(existsSync(join(seededRecordDir(payloadProject), ".aidlc-engine/hooks-health", "validate-state.last"))).toBe(true);
-    expect(existsSync(join(seededRecordDir(cwdProject), ".aidlc-engine/hooks-health", "validate-state.last"))).toBe(false);
-  });
-
   test("--project-dir overrides cwd and payload project for hook, statusline, and adapter", () => {
     const cwdProject = makeProject();
     const targetProject = makeProject();
@@ -3621,7 +4120,7 @@ describe("t230 dispatcher hook routing", () => {
        ["engine", "hook", "validate-state", "--project-dir", targetProject],
       cwdProject,
       {},
-      JSON.stringify({ cwd: cwdProject, session_id: "t230-explicit-hook-project" }),
+      "{}",
     );
     expect(hook.exitCode).toBe(0);
     expect(

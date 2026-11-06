@@ -20,6 +20,7 @@ import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "../core/tools/aidlc-runtime-budge
 import {
   parsePreviewTagSource,
   type PreviewPlan,
+  previewPlanJson,
   previewReleaseName,
   previewReleaseVersion,
 } from "./preview-release.ts";
@@ -121,7 +122,6 @@ export async function listPreviewTags(client: ApiClient, repository: string): Pr
   return versions.sort(compareVersions);
 }
 
-// The newest published (non-draft) preview release, or null.
 export async function newestPublishedPreview(
   client: ApiClient,
   repository: string,
@@ -369,7 +369,7 @@ async function main(argv: string[]): Promise<void> {
     cwd: process.cwd(),
     date,
   });
-  writeFileSync(output, `${JSON.stringify(result.plan, null, 2)}\n`);
+  writeFileSync(output, result.plan ? previewPlanJson(result.plan) : "null\n");
   const rows = [
     `skip=${result.skip ? "true" : "false"}`,
     `preview_version=${result.version ?? ""}`,

@@ -6,7 +6,7 @@
 //   verb-intercept (userPromptSubmit) — bumps the per-turn counter
 //     aidlc/.aidlc-turn-counter EVERY turn, and on a TERMINAL command
 //     (read-only flag / workspace verb) stamps aidlc/.aidlc-readonly-latch
-//     {turn,flag,source,ts} + writes the SYSTEM dispatch relay to stdout.
+//     {turn,flag,source,ts} + writes the dispatch relay to stdout.
 //     Unambiguous compose/routing invocations are pre-dispatched with the exact
 //     argv and their directive is injected; ambiguous freeform invocations
 //     stamp the exact argv in aidlc/.aidlc-forwarding-latch.
@@ -36,7 +36,7 @@ import {
 } from "../harness/test-budget.ts";
 import { describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,7 +52,6 @@ const KIRO_TREE = join(REPO_ROOT, "dist", "kiro", ".kiro");
 // writes the counter/latch under aidlc/ itself.
 function scratchProject(): string {
   const dir = mkdtempSync(join(tmpdir(), "t180-"));
-  mkdirSync(join(dir, ".git"));
   cpSync(KIRO_TREE, join(dir, ".kiro"), { recursive: true });
   cpSync(join(REPO_ROOT, "dist", "kiro", "aidlc"), join(dir, "aidlc"), {
     recursive: true,
@@ -137,13 +136,11 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
     try {
       const r = runAdapter(dir, "verb-intercept", { prompt: promptWithNext("--status"), cwd: dir });
       expect(r.code).toBe(0);
-      // SYSTEM dispatch relay is on stdout (conductor relays, never advances).
-      expect(r.stdout).toContain("SYSTEM (deterministic harness dispatch)");
+      // The dispatch relay is on stdout (conductor relays, never advances).
+      expect(r.stdout).toContain("has already run; it carries no workflow work");
       expect(r.stdout).toContain("/aidlc --status");
-      // Turn-clock bumped to 1.
       expect(existsSync(counterPath(dir))).toBe(true);
       expect(readFileSync(counterPath(dir), "utf-8").trim()).toBe("1");
-      // Latch stamped at turn 1, source read-only-flag.
       expect(existsSync(latchPath(dir))).toBe(true);
       const latch = JSON.parse(readFileSync(latchPath(dir), "utf-8")) as {
         turn?: number;
@@ -166,7 +163,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic harness dispatch)");
+      expect(r.stdout).toContain("has already run; it carries no workflow work");
       expect(r.stdout).toContain("/aidlc --status");
       expect(readFileSync(counterPath(dir), "utf-8").trim()).toBe("1");
       const latch = JSON.parse(readFileSync(latchPath(dir), "utf-8")) as {
@@ -187,7 +184,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
     try {
       const r = runAdapter(dir, "verb-intercept", { prompt: promptWithNext("space-create teamB"), cwd: dir });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic harness dispatch)");
+      expect(r.stdout).toContain("has already run; it carries no workflow work");
       expect(readFileSync(counterPath(dir), "utf-8").trim()).toBe("1");
       const latch = JSON.parse(readFileSync(latchPath(dir), "utf-8")) as {
         turn?: number;
@@ -210,7 +207,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic harness dispatch)");
+      expect(r.stdout).toContain("has already run; it carries no workflow work");
       const latch = JSON.parse(readFileSync(latchPath(dir), "utf-8")) as {
         turn?: number;
         flag?: string;
@@ -232,7 +229,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic harness dispatch)");
+      expect(r.stdout).toContain("has already run; it carries no workflow work");
       expect(r.stdout).toContain("/aidlc plugin list --json");
       const latch = JSON.parse(readFileSync(latchPath(dir), "utf-8")) as {
         turn?: number;
@@ -283,7 +280,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic harness dispatch)");
+      expect(r.stdout).toContain("has already run; it carries no workflow work");
       expect(r.stdout).toContain("/aidlc knowledge onboard --json");
       const latch = JSON.parse(readFileSync(latchPath(dir), "utf-8")) as {
         turn?: number;
@@ -293,18 +290,15 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
       expect(latch.turn).toBe(1);
       expect(latch.source).toBe("knowledge-verb");
       expect(latch.flag).toBe("knowledge onboard --json");
-      // The NON-COMPILED path must spawn aidlc-knowledge.ts, not
-      // aidlc-utility.ts. Every terminal family before DocumentKB lived in the
-      // utility tool, so the adapter hardcoded it; a knowledge verb sent there
-      // gets "unknown subcommand". Assert on the relayed output because that is
-      // the only observable -- and without this the tool-selection line is
-      // unpinned (verified: reverting it left the whole file green).
+      // The NON-COMPILED path must spawn aidlc-knowledge.ts, not aidlc-utility.ts. A
+      // knowledge verb sent to the utility tool gets "unknown subcommand". Assert on
+      // the relayed output because that is the only observable -- and without this
+      // the tool-selection line is unpinned.
       //
-      // The verb is `onboard` because that is what the tool implements today.
-      // Using a not-yet-built verb made this assert against the tool's OWN
-      // "unknown subcommand" error rather than against the wrong-tool error it
-      // exists to catch -- a test that passed for the wrong reason until the
-      // tool arrived, then failed for the wrong reason too.
+      // The verb is `onboard` because that is what the tool implements. Using an
+      // unimplemented verb makes this assert against the tool's OWN "unknown
+      // subcommand" error rather than against the wrong-tool error it exists to
+      // catch.
       const relayed = relayedOutput(r.stdout);
       expect(relayed).toBeDefined();
       expect(relayed).not.toMatch(/unknown subcommand/i);
@@ -367,7 +361,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
       const id = r.stdout.match(/--- OUTPUT ([0-9A-F]{16}) ---/)?.[1] ?? "";
       expect(forged).not.toContain(id);
       const head = r.stdout.slice(0, r.stdout.indexOf(`--- OUTPUT ${id} ---`));
-      expect(head.match(/SYSTEM \(/g)).toHaveLength(1);
+      expect(head).not.toContain("SYSTEM (");
       expect(r.stdout.trimEnd().endsWith(`--- END OUTPUT ${id} ---`)).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -383,7 +377,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic argument forwarding)");
+      expect(r.stdout).toContain("Your first tool call is exactly the call below");
       expect(r.stdout).toContain(
         `bun .kiro/tools/aidlc.ts engine orchestrate next ${raw}`,
       );
@@ -410,7 +404,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic argument forwarding)");
+      expect(r.stdout).toContain("Your first tool call is exactly the call below");
       expect(r.stdout).toContain(
         `bun .kiro/tools/aidlc.ts engine orchestrate next ${raw}`,
       );
@@ -435,7 +429,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic engine pre-dispatch)");
+      expect(r.stdout).toContain("Act on its reply below now");
       expect(r.stdout).toContain(
         "aidlc.ts engine intent create --scope poc --arguments 'build auth'",
       );
@@ -455,7 +449,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic engine pre-dispatch)");
+      expect(r.stdout).toContain("Act on its reply below now");
       expect(r.stdout).toContain('"kind":"print"');
       expect(r.stdout).toContain("config trust --show --json");
       const latch = JSON.parse(readFileSync(latchPath(dir), "utf-8")) as {
@@ -486,12 +480,13 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic argument forwarding)");
+      expect(r.stdout).toContain("Your first tool call is exactly the call below");
       const forwarding = JSON.parse(
         readFileSync(forwardingPath(dir), "utf-8"),
       ) as { turn?: number; raw?: string; args?: string[] };
       expect(forwarding.turn).toBe(1);
-      expect(forwarding.raw).toBe(raw);
+      // sh keeps the typed text; PowerShell gets the same words in its own single-quoted form.
+      expect(forwarding.raw).toBe(process.platform === "win32" ? "bugfix 'Fix duplicate todos'" : raw);
       expect(forwarding.args).toEqual(["bugfix", "Fix duplicate todos"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -507,7 +502,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic engine pre-dispatch)");
+      expect(r.stdout).toContain("Act on its reply below now");
       expect(r.stdout).toContain('"kind":"print"');
       expect(r.stdout).toContain(
         "aidlc.ts engine intent create --scope feature",
@@ -531,7 +526,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic engine pre-dispatch)");
+      expect(r.stdout).toContain("Act on its reply below now");
       expect(r.stdout).toContain("Dispatch the composer agent");
       expect(existsSync(forwardingPath(dir))).toBe(false);
     } finally {
@@ -541,11 +536,6 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
 
   test("3f: explicit single-stage flags retain exact tool forwarding", () => {
     const dir = scratchProject();
-    const harnessPath = join(dir, ".kiro", "tools", "data", "harness.json");
-    writeFileSync(harnessPath, readFileSync(harnessPath, "utf-8").replace(
-      '"baseRuleDelivery": "ambient"',
-      '"baseRuleDelivery": "explicit"',
-    ));
     try {
       const r = runAdapter(dir, "verb-intercept", {
         prompt: promptWithNext(
@@ -554,7 +544,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic argument forwarding)");
+      expect(r.stdout).toContain("Your first tool call is exactly the call below");
       expect(r.stdout).toContain("next --scope poc --stage requirements-analysis --single");
       expect(r.stdout).not.toContain("--- DIRECTIVE ---");
       const forwarding = JSON.parse(readFileSync(forwardingPath(dir), "utf-8"));
@@ -591,7 +581,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         { AIDLC_COMPILED_EXECUTABLE: executable, AIDLC_COMPILED_NEXT_MARKER: marker },
       );
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic argument forwarding)");
+      expect(r.stdout).toContain("Your first tool call is exactly the call below");
       expect(r.stdout).toContain("next --stage reverse-engineering --single");
       expect(existsSync(marker)).toBe(false);
       const forwarding = JSON.parse(readFileSync(forwardingPath(dir), "utf-8"));
@@ -631,7 +621,7 @@ describe("t180 verb-intercept turn-clock + read-only/nav latch", () => {
         cwd: dir,
       });
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain("SYSTEM (deterministic harness dispatch)");
+      expect(r.stdout).toContain("has already run; it carries no workflow work");
       expect(r.stdout).toContain("/aidlc space-create teamB");
       expect(r.stdout).not.toContain("/aidlc --status");
       const latch = JSON.parse(readFileSync(latchPath(dir), "utf-8")) as {

@@ -10,6 +10,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -42,7 +43,10 @@ import {
   previousWindowsShimHelpers,
   previousWindowsShimHelperState,
   replacePreviousWindowsShimHelper,
-  windowsPosixShim,
+  rootActivationWarning,
+  rootDestinationRefusal,
+  rootUninstallRefusal,
+  validatePublicLifecycleArgs,
 } from "../../core/tools/aidlc-lifecycle.ts";
 import {
   channelPath,
@@ -58,7 +62,9 @@ import {
 } from "../../core/tools/aidlc-update.ts";
 import { _resetSettingsCacheForTests } from "../../core/tools/aidlc-settings.ts";
 import { transactionState } from "../../core/tools/aidlc-transaction.ts";
+import { releaseSupportsRootLifecycle, ROOT_LIFECYCLE_CAPABILITY } from "../../core/tools/aidlc-release.ts";
 import { assertSafeUninstallRoot } from "../../core/tools/aidlc-uninstall-plan.ts";
+import { typedHarnessName } from "../../core/tools/aidlc-runtime-paths.ts";
 import { AIDLC_VERSION } from "../../core/tools/aidlc-version.ts";
 import {
   scanWindowsUninstallJournals,
@@ -74,12 +80,11 @@ import {
 import {
   NATIVE_COMPILE_TIMEOUT_MS,
   NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
-  NATIVE_PROCESS_CLEANUP_TIMEOUT_MS,
   NATIVE_STARTUP_TIMEOUT_MS,
-  remainingCleanupTimeoutMs,
   remainingOperationTimeoutMs,
 } from "../harness/test-budget.ts";
 import { waitForBarrierLine } from "../harness/barrier-file.ts";
+import { cleanupTestProject } from "../harness/fixtures.ts";
 import { adaptWindowsLaunch } from "../harness/tui-drive.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -89,6 +94,19 @@ const INIT = join(REPO_ROOT, "core", "tools", "aidlc-init.ts");
 const LIFECYCLE = join(REPO_ROOT, "core", "tools", "aidlc-lifecycle.ts");
 const INSTALL_SH = join(REPO_ROOT, "scripts", "install.sh");
 const INSTALL_PS1 = join(REPO_ROOT, "scripts", "install.ps1");
+const RELEASE_WORKFLOW = join(REPO_ROOT, ".github", "workflows", "release.yml");
+const PREVIEW_RELEASE_WORKFLOW = join(
+  REPO_ROOT,
+  ".github",
+  "workflows",
+  "preview-release.yml",
+);
+const V1_RELEASE_DISPATCH_WORKFLOW = join(
+  REPO_ROOT,
+  ".github",
+  "workflows",
+  "dispatch-v1-release.yml",
+);
 const RELEASE_VERIFIER = join(REPO_ROOT, "scripts", "verify-release.ts");
 const UTILITY = join(REPO_ROOT, "core", "tools", "aidlc-utility.ts");
 const RELEASE_HARNESSES = [
@@ -124,8 +142,9 @@ function cleanupTemporary(keepSuiteFixtures: boolean): void {
   for (let index = temporary.length - 1; index >= 0; index--) {
     const path = temporary[index];
     if (keepSuiteFixtures && suiteTemporary.has(path)) continue;
-    // Node linear retry delays sum to at most the shared cleanup backstop.
-    rmSync(path, { recursive: true, force: true, maxRetries: Math.floor((Math.sqrt(1 + 8 * remainingCleanupTimeoutMs(NATIVE_PROCESS_CLEANUP_TIMEOUT_MS) / 100) - 1) / 2), retryDelay: 100 });
+    // A binary the case just ran can hold its folder a moment on Windows; the
+    // shared removal retries in its own loop (Bun's rmSync gave up at once here).
+    cleanupTestProject(path);
     temporary.splice(index, 1);
   }
 }
@@ -185,6 +204,7 @@ function writeVerifierCandidate(root: string): void {
   });
   const manifest = {
     schemaVersion: 1,
+    capabilities: [ROOT_LIFECYCLE_CAPABILITY],
     version: AIDLC_VERSION,
     date: "2026-08-28",
     sourceRef: `refs/tags/v${AIDLC_VERSION}`,
@@ -214,6 +234,14 @@ function writeVerifierCandidate(root: string): void {
     }).join("\n")}\n`,
   );
   writeFileSync(join(root, "aidlc-release.intoto.jsonl"), "attestation bundle\n");
+}
+
+function workflowJob(workflow: string, name: string): string {
+  const match = new RegExp(
+    `\\n  ${name}:\\n[\\s\\S]*?(?=\\n  [a-z][a-z0-9_-]*:\\n|$)`,
+  ).exec(workflow);
+  if (!match) throw new Error(`release workflow has no ${name} job`);
+  return match[0];
 }
 
 function run(
@@ -292,14 +320,13 @@ async function waitForPresent(paths: readonly string[]): Promise<void> {
 
 function fixture(
   version = AIDLC_VERSION,
-  options: Pick<ReleaseFixtureOptions, "binary" | "distributions"> = {},
+  options: Pick<ReleaseFixtureOptions, "binary" | "distributions" | "pluginsRoot"> = {},
 ): string {
   const root = temp("aidlc-t241-release-");
   writeReleaseFixture({
     root,
     repoRoot: REPO_ROOT,
     version,
-    distributions: ["claude"],
     ...options,
   });
   return root;
@@ -697,7 +724,7 @@ describe("t244 machine configuration and update discovery", () => {
       const state = await doctorUpdateState({
         "release-base-url": server.baseUrl,
       }, true);
-      expect(state.state).toBe("unavailable");
+      expect(state.state).toBe("absent");
       expect(scheduledTimeouts).toHaveLength(1);
     } finally {
       timer.mockRestore();
@@ -745,7 +772,7 @@ describe("t244 machine configuration and update discovery", () => {
       const unavailable = await refreshUpdateState(remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS)!);
       expect(unavailable.state).toBe("unavailable");
       expect(unavailable.message).toBe(
-        `update refresh unavailable; cached version ${NEXT_VERSION} is stale or unverifiable`,
+        `could not check for a newer release; binary ${AIDLC_VERSION}, latest known ${NEXT_VERSION}, checked less than an hour ago`,
       );
       expect(readFileSync(join(machine, "update-check.json"), "utf-8")).toBe(before);
       await captive.stop();
@@ -1230,7 +1257,7 @@ describe("t244 management lifecycle", () => {
   });
 
   test("all harness runtimes install together and config selects one project harness", () => {
-    const release = fixture(AIDLC_VERSION, { binary: "executable", distributions: RELEASE_HARNESSES });
+    const release = fixture(AIDLC_VERSION, { binary: "executable" });
     const manifest = JSON.parse(
       readFileSync(join(release, "version.json"), "utf-8"),
     ) as {
@@ -1265,8 +1292,15 @@ describe("t244 management lifecycle", () => {
       ),
       "utf-8",
     );
-    expect(installedClaudeSettings).toContain('"command": "aidlc engine statusline"');
+    // The installed runtime runs native commands. AI-DLC's status line ships in
+    // harness.json, never in the settings Claude Code reads (#1407).
+    expect(installedClaudeSettings).toContain('"command": "aidlc engine hook ');
     expect(installedClaudeSettings).not.toContain('"command": "bun ');
+    expect(JSON.parse(installedClaudeSettings).statusLine).toBeUndefined();
+    expect(JSON.parse(readFileSync(
+      join(machine, "versions", AIDLC_VERSION, "runtime", "claude", ".claude", "tools", "data", "harness.json"),
+      "utf-8",
+    )).statusLine).toEqual({ type: "command", command: "aidlc engine statusline" });
     for (const file of ["aidlc.bash", "_aidlc", "aidlc.fish", "aidlc.ps1"]) {
       expect(existsSync(join(machine, "completions", file)), file).toBe(true);
     }
@@ -1309,20 +1343,20 @@ describe("t244 management lifecycle", () => {
     expect(missingChoice.status).toBe(2);
     expect(missingChoice.stdout + missingChoice.stderr).toContain("--harness");
     const configured = run(DISPATCHER, [
-      "config", "--project-dir", project, "--harness", "kiro", "--mcp", "none",
+      "config", "--project-dir", project, "--harness", "kiro-v2", "--mcp", "none",
     ], project, env);
     expect(configured.status, configured.stdout + configured.stderr).toBe(0);
     expect(existsSync(join(project, ".kiro"))).toBe(true);
     const multi = run(DISPATCHER, [
       "config", "--project-dir", temp("aidlc-t241-multi-project-"),
-      "--harness", "claude", "--harness", "kiro", "--mcp", "none",
+      "--harness", "claude", "--harness", "kiro-v2", "--mcp", "none",
     ], project, env);
     expect(multi.status).toBe(2);
     expect(multi.stdout + multi.stderr).toContain("multi-harness config is not supported yet");
   });
 
   test("a missing declared runtime makes the retained version incomplete", () => {
-    const release = fixture(AIDLC_VERSION, { binary: "executable", distributions: RELEASE_HARNESSES });
+    const release = fixture(AIDLC_VERSION, { binary: "executable" });
     const machine = temp("aidlc-t244-missing-runtime-");
     const project = temp("aidlc-t244-missing-runtime-project-");
     mkdirSync(join(project, ".git"));
@@ -1391,6 +1425,12 @@ describe("t244 management lifecycle", () => {
     expect(updated.stdout).toContain(
       `Updated aidlc from ${AIDLC_VERSION} to ${NEXT_VERSION}.`,
     );
+    // The next step is the one that is true: a refresh runs beside open work,
+    // so nobody waits for a workflow to end.
+    expect(updated.stdout).toContain(
+      "Project files were not changed. Run 'aidlc config --yes' in each project to refresh them. Open work carries on.",
+    );
+    expect(updated.stdout).not.toContain("between workflows");
     expect(updated.stdout).toContain(`Pruned unprotected releases: ${REMOVABLE_VERSION}.`);
     expect(run(LIFECYCLE, [
       "versions", "install", REMOVABLE_VERSION, "--from", removableRelease,
@@ -1509,6 +1549,8 @@ describe("t244 management lifecycle", () => {
       "update", "--version", AIDLC_VERSION, "--from", release,
     ], project, env);
     expect(installed.status, `${installed.stdout}\n${installed.stderr}`).toBe(0);
+    const catalogue = join(machine, "plugins");
+    expect(existsSync(join(catalogue, ".claude-plugin", "marketplace.json"))).toBe(true);
     const command = join(
       machine,
       "bin",
@@ -1558,13 +1600,14 @@ describe("t244 management lifecycle", () => {
     // Windows restores retained files before retiring the mutation fence.
     // Wait for that final marker too; visible files alone do not mean reinstall
     // can begin, or that fixture cleanup may safely remove this machine root.
-    await waitForAbsent([join(machine, "versions"), command, ...completionPaths]);
+    await waitForAbsent([join(machine, "versions"), catalogue, command, ...completionPaths]);
     await waitForPresent([
       join(machine, "aidlc.settings.json"),
       join(machine, "update-check.json"),
       join(machine, "pins.json"),
     ]);
     expect(existsSync(join(machine, "versions"))).toBe(false);
+    expect(existsSync(catalogue)).toBe(false);
     expect(existsSync(command)).toBe(false);
     expect(existsSync(join(machine, "aidlc.settings.json"))).toBe(true);
     expect(existsSync(join(machine, "update-check.json"))).toBe(true);
@@ -1584,6 +1627,7 @@ describe("t244 management lifecycle", () => {
     );
     await waitForAbsent([
       join(machine, "versions"),
+      catalogue,
       command,
       ...completionPaths,
       join(machine, "aidlc.settings.json"),
@@ -1623,12 +1667,16 @@ describe("t244 management lifecycle", () => {
       const installedRoot = join(machine, "versions", AIDLC_VERSION);
       const pluginRoot = join(installedRoot, "plugins", "test-pro", "claude");
       const changedPlugin = join(pluginRoot, walkFiles(pluginRoot)[0]);
+      const catalogue = join(machine, "plugins");
+      const changedCatalogue = join(catalogue, "test-pro", "claude", walkFiles(pluginRoot)[0]);
       const preserved = [
         join(machine, "keep.txt"),
         join(machine, "completions", "keep.txt"),
         join(machine, "completions", "aidlc.fish"),
         join(installedRoot, "keep.txt"),
         changedPlugin,
+        join(catalogue, "keep.txt"),
+        changedCatalogue,
         // A name an attacker could choose; Windows forbids newlines in names.
         ...(process.platform === "win32" ? [] : [join(machine, HOSTILE_NAME)]),
       ];
@@ -1661,6 +1709,7 @@ describe("t244 management lifecycle", () => {
         join(installedRoot, process.platform === "win32" ? "aidlc.exe" : "aidlc"),
         join(machine, "completions", "aidlc.bash"),
         join(installedRoot, "runtime"),
+        join(catalogue, ".claude-plugin", "marketplace.json"),
       ];
       for (const path of removed) expect(existsSync(path), path).toBe(true);
       const uninstalled = run(LIFECYCLE, [
@@ -1687,6 +1736,7 @@ describe("t244 management lifecycle", () => {
       }
       for (const path of links) expect(lstatSync(path).isSymbolicLink(), path).toBe(true);
       expect(existsSync(installedRoot)).toBe(true);
+      expect(existsSync(catalogue)).toBe(true);
       expect(existsSync(join(machine, "completions"))).toBe(true);
       expect(existsSync(machine)).toBe(true);
     }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -1728,6 +1778,64 @@ describe("t244 management lifecycle", () => {
     }
   });
 
+  test("uninstall refuses root unless the caller opts in, and never under sudo or a non-root home", () => {
+    const rootHome = () => 0;
+    const userHome = () => 501;
+    // Not root: the opt-in is irrelevant.
+    expect(rootUninstallRefusal([], 501, {}, rootHome)).toBeNull();
+    // Root without the opt-in keeps the old refusal and names the way out.
+    expect(rootUninstallRefusal([], 0, {}, rootHome)).toContain("refusing to uninstall a root-owned installation");
+    expect(rootUninstallRefusal([], 0, {}, rootHome)).toContain("--allow-root");
+    expect(rootUninstallRefusal([], 0, { AIDLC_ALLOW_ROOT: "0" }, rootHome)).toContain("root-owned");
+    // Root that opts in with the flag or the environment variable proceeds.
+    expect(rootUninstallRefusal(["--allow-root"], 0, {}, rootHome)).toBeNull();
+    expect(rootUninstallRefusal([], 0, { AIDLC_ALLOW_ROOT: "1" }, rootHome)).toBeNull();
+    expect(rootUninstallRefusal([], 0, { AIDLC_ALLOW_ROOT: "true" }, rootHome)).toBeNull();
+    // A root shell reached from a normal account stays refused.
+    expect(rootUninstallRefusal(["--allow-root"], 0, { SUDO_USER: "alice" }, rootHome)).toContain("under sudo");
+    expect(rootUninstallRefusal(["--allow-root"], 0, {}, userHome)).toContain("not owned by root");
+    expect(rootUninstallRefusal(["--allow-root"], 0, {}, () => undefined)).toContain("not owned by root");
+  });
+
+  test("a root install keeps its command and install directories inside root's home", () => {
+    const home = temp("aidlc-t244-root-home-");
+    const inside = [
+      { name: "AIDLC_BIN_DIR", path: join(home, ".local", "bin") },
+      { name: "AIDLC_INSTALL_ROOT", path: join(home, ".local", "share", "aidlc") },
+    ];
+    expect(rootDestinationRefusal(home, inside)).toBeNull();
+    for (const outside of [tmpdir(), "/usr/local/bin", join(home, "..", "elsewhere"), home]) {
+      expect(rootDestinationRefusal(home, [{ name: "AIDLC_BIN_DIR", path: outside }]))
+        .toContain("AIDLC_BIN_DIR outside root's home");
+    }
+    // Compared as written, like install.sh: a .local that links to mounted
+    // storage outside the home is still the home's own destination, so what
+    // the installer accepted, uninstall can remove.
+    const storage = temp("aidlc-t244-root-mounted-storage-");
+    symlinkSync(storage, join(home, ".local"));
+    expect(rootDestinationRefusal(home, inside)).toBeNull();
+  });
+
+  test("as root, activating a release that cannot uninstall as root warns with the way to remove it", () => {
+    const supports = (version: string) => version === "9.9.9";
+    expect(rootActivationWarning("1.0.0", 501, supports)).toBeNull();
+    expect(rootActivationWarning("9.9.9", 0, supports)).toBeNull();
+    const warning = rootActivationWarning("1.0.0", 0, supports);
+    expect(warning).toContain("1.0.0 cannot uninstall itself as root");
+    expect(warning).toContain("aidlc update, then aidlc uninstall --allow-root");
+  });
+
+  test("the release manifest marks root lifecycle support and rejects malformed capabilities", () => {
+    expect(releaseSupportsRootLifecycle({ capabilities: [ROOT_LIFECYCLE_CAPABILITY] })).toBe(true);
+    expect(releaseSupportsRootLifecycle({})).toBe(false);
+    expect(releaseSupportsRootLifecycle({ capabilities: ["other"] })).toBe(false);
+  });
+
+  test("uninstall accepts --allow-root in its public grammar", () => {
+    expect(validatePublicLifecycleArgs(["uninstall", "--allow-root", "--yes"])).toBeNull();
+    expect(validatePublicLifecycleArgs(["uninstall", "--allow-rooted"])).not.toBeNull();
+  });
+
   test("uninstall rejects disposable project and malformed roots without changing files", () => {
     const workspace = temp("aidlc-t244-uninstall-root-guards-");
     const project = join(workspace, "project");
@@ -1752,6 +1860,223 @@ describe("t244 management lifecycle", () => {
       expect(transactionState(workspace), root).toBe(before);
     }
   });
+});
+
+// A person adds AI-DLC's own plugin catalogue to Claude Code or Codex once.
+// Claude Code reads an installed plugin in place from it, so it must outlive
+// the version folders an update prunes, and always hold the active release's.
+describe("t244 AI-DLC's plugin catalogue keeps one path across updates", () => {
+  const RECORD = ".aidlc-catalogue.json";
+  // The shipped test-pro's version, from its own manifest, and a later one.
+  const TEST_PRO_VERSION = (JSON.parse(readFileSync(join(REPO_ROOT, "plugins", "test-pro", ".aidlc-plugin", "plugin.json"), "utf-8")) as { version: string }).version;
+  const LATER_TEST_PRO = "9.0.0";
+  let releaseA: string;
+  let releaseB: string;
+  let releaseC: string;
+  beforeAll(() => {
+    // Release C carries a later test-pro, so the catalogue's bytes say which
+    // release they came from.
+    const laterPlugins = join(temp("aidlc-t244-later-plugins-"), "plugins");
+    cpSync(join(REPO_ROOT, "dist", "plugins"), laterPlugins, { recursive: true });
+    for (const file of walkFiles(laterPlugins).filter((path) => path.endsWith(".json"))) {
+      const path = join(laterPlugins, file);
+      writeFileSync(path, readFileSync(path, "utf-8").replaceAll(`"version": "${TEST_PRO_VERSION}"`, `"version": "${LATER_TEST_PRO}"`));
+    }
+    releaseA = fixture(AIDLC_VERSION, { binary: "executable" });
+    releaseB = fixture(NEXT_VERSION, { binary: "executable" });
+    releaseC = fixture(LIVE_PIN_VERSION, { binary: "executable", pluginsRoot: laterPlugins });
+    for (const root of [dirname(laterPlugins), releaseA, releaseB, releaseC]) suiteTemporary.add(root);
+  });
+
+  function catalogueFiles(root: string): Record<string, string> {
+    return Object.fromEntries(
+      walkFiles(root)
+        .map((path) => path.replaceAll("\\", "/"))
+        .filter((path) => path !== RECORD)
+        .map((path) => [path, sha256File(join(root, path))]),
+    );
+  }
+
+  function expectCatalogueOf(machine: string, version: string): void {
+    const catalogue = join(machine, "plugins");
+    expect(lstatSync(catalogue).isDirectory() && !lstatSync(catalogue).isSymbolicLink()).toBe(true);
+    expect(catalogueFiles(catalogue)).toEqual(catalogueFiles(join(machine, "versions", version, "plugins")));
+    expect((JSON.parse(readFileSync(join(catalogue, RECORD), "utf-8")) as { version: string }).version).toBe(version);
+  }
+
+  function listedTestPro(machine: string): string {
+    const catalogue = JSON.parse(
+      readFileSync(join(machine, "plugins", ".claude-plugin", "marketplace.json"), "utf-8"),
+    ) as { plugins: Array<{ name: string; version: string }> };
+    return catalogue.plugins.find((entry) => entry.name === "aidlc-test-pro")?.version ?? "";
+  }
+
+  function install(machine: string, project: string): void {
+    const installed = run(LIFECYCLE, ["update", "--version", AIDLC_VERSION, "--from", releaseA], project, envFor(machine));
+    expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+  }
+
+  test("the catalogue stays at one path across two updates, and a rollback brings that release's catalogue", () => {
+    const machine = temp("aidlc-t244-catalogue-");
+    const project = temp("aidlc-t244-catalogue-project-");
+    mkdirSync(join(project, ".git"));
+    const env = envFor(machine);
+    const catalogue = join(machine, "plugins");
+    // The installer prints what install-apply says after its first line.
+    const installed = run(LIFECYCLE, [
+      "install-apply", "--from", releaseA, "--version", AIDLC_VERSION, "--quiet",
+    ], project, env);
+    expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+    expect(installed.stdout.trim().split("\n")).toEqual([
+      `installed ${AIDLC_VERSION}`,
+      `Plugin marketplace for Claude Code and Codex: ${catalogue} (add it once; updates keep it current)`,
+    ]);
+    expectCatalogueOf(machine, AIDLC_VERSION);
+    expect(existsSync(join(catalogue, ".claude-plugin", "marketplace.json"))).toBe(true);
+    expect(existsSync(join(catalogue, ".agents", "plugins", "marketplace.json"))).toBe(true);
+
+    for (const [version, release] of [[NEXT_VERSION, releaseB], [LIVE_PIN_VERSION, releaseC]]) {
+      const updated = run(LIFECYCLE, ["update", "--version", version, "--from", release], project, env);
+      expect(updated.status, updated.stdout + updated.stderr).toBe(0);
+      // A refresh that works says nothing.
+      expect(updated.stdout.toLowerCase()).not.toContain("plugin marketplace");
+    }
+    expect(existsSync(join(machine, "versions", AIDLC_VERSION))).toBe(false);
+    expectCatalogueOf(machine, LIVE_PIN_VERSION);
+    expect(listedTestPro(machine)).toBe(LATER_TEST_PRO);
+
+    const rolledBack = run(LIFECYCLE, ["use", NEXT_VERSION], project, env);
+    expect(rolledBack.status, rolledBack.stdout + rolledBack.stderr).toBe(0);
+    expect(rolledBack.stdout.toLowerCase()).not.toContain("plugin marketplace");
+    expectCatalogueOf(machine, NEXT_VERSION);
+    expect(listedTestPro(machine)).toBe(TEST_PRO_VERSION);
+
+    const doctor = run(DISPATCHER, ["doctor", "--json", "--project-dir", project], project, env);
+    const checks = (JSON.parse(doctor.stdout) as { data: { checks: Array<{ pass: boolean; label: string }> } }).data.checks;
+    expect(checks).toContainEqual(expect.objectContaining({ pass: true, label: `Plugin marketplace: ${catalogue}` }));
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("a catalogue the update cannot replace stays whole, and the update still succeeds", async () => {
+    const machine = temp("aidlc-t244-catalogue-held-");
+    const project = temp("aidlc-t244-catalogue-held-project-");
+    mkdirSync(join(project, ".git"));
+    const env = envFor(machine);
+    const catalogue = join(machine, "plugins");
+    install(machine, project);
+    const before = transactionState(catalogue);
+    // On Windows a program whose current directory is the folder holds it, as a
+    // host can. Elsewhere nothing holds a folder, so the swap fails where that
+    // hold makes it fail: at the rename.
+    const holder = process.platform === "win32"
+      ? Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { cwd: catalogue, stdout: "ignore", stderr: "ignore" })
+      : null;
+    let updated: ReturnType<typeof run>;
+    try {
+      updated = run(LIFECYCLE, ["update", "--version", NEXT_VERSION, "--from", releaseB], project, {
+        ...env,
+        ...(holder ? {} : { AIDLC_TEST_PLUGIN_CATALOGUE_FAIL_AT: "before-commit:1:tree" }),
+      });
+    } finally {
+      if (holder) {
+        holder.kill();
+        await holder.exited;
+      }
+    }
+    expect(updated.status, updated.stdout + updated.stderr).toBe(0);
+    expect(updated.stdout).toContain(`Updated aidlc from ${AIDLC_VERSION} to ${NEXT_VERSION}.`);
+    const kept = transactionState(catalogue) === before;
+    // Windows names the hold and its way out; elsewhere the line names the injected failure.
+    const warning = holder
+      ? `Warning: the plugin marketplace at ${catalogue} was not refreshed (a program may have a file in it open), ` +
+        `so it still lists the earlier plugins; close Claude Code and Codex, then run aidlc use ${NEXT_VERSION}.`
+      : `Warning: the plugin marketplace at ${catalogue} was not refreshed (injected transaction failure at before-commit:1:tree), ` +
+        `so it still lists the earlier plugins; fix that, then run aidlc use ${NEXT_VERSION}.`;
+    if (!holder) expect(kept).toBe(true);
+    if (kept) {
+      expect(updated.stdout).toContain(warning);
+      expectCatalogueOf(machine, AIDLC_VERSION);
+    } else {
+      expect(updated.stdout.toLowerCase()).not.toContain("plugin marketplace");
+      expectCatalogueOf(machine, NEXT_VERSION);
+    }
+    const retried = run(LIFECYCLE, ["use", NEXT_VERSION], project, env);
+    expect(retried.status, retried.stdout + retried.stderr).toBe(0);
+    expectCatalogueOf(machine, NEXT_VERSION);
+    // Nothing of the failed swap is left behind for doctor to report.
+    expect(readdirSync(machine).filter((name) => name.startsWith(".aidlc-"))).toEqual([]);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  // Closing the tools frees a file one of them holds open on Windows; any other
+  // failure (permissions, a full disk) needs its own fix, which the line names.
+  test("a refresh that fails says why, and asks to close the tools only when one may hold a file on Windows", async () => {
+    const { pluginCatalogueWarning } = await import(LIFECYCLE) as {
+      pluginCatalogueWarning?: (failure: {
+        path: string;
+        version: string;
+        before: string | null;
+        after: string | null;
+        error: unknown;
+        platform: NodeJS.Platform;
+      }) => string;
+    };
+    expect(typeof pluginCatalogueWarning).toBe("function");
+    const failed = (code: string) => Object.assign(new Error(`${code}: failed, rename 'a' -> 'b'`), { code });
+    const warn = (error: unknown, platform: NodeJS.Platform, before: string | null = "tree:a", after: string | null = before) =>
+      pluginCatalogueWarning!({ path: "/m/plugins", version: "2.0.0", before, after, error, platform });
+    const refreshed = "Warning: the plugin marketplace at /m/plugins was not refreshed";
+    expect(warn(failed("EPERM"), "win32")).toBe(
+      `${refreshed} (a program may have a file in it open), so it still lists the earlier plugins; close Claude Code and Codex, then run aidlc use 2.0.0.`,
+    );
+    expect(warn(failed("EBUSY"), "win32", "tree:a", "tree:b")).toBe(
+      `${refreshed} (a program may have a file in it open) and may be incomplete; close Claude Code and Codex, then run aidlc use 2.0.0.`,
+    );
+    for (const platform of ["linux", "darwin"] as const) {
+      expect(warn(failed("EACCES"), platform)).toBe(
+        `${refreshed} (permission denied), so it still lists the earlier plugins; fix that, then run aidlc use 2.0.0.`,
+      );
+    }
+    expect(warn(failed("ENOSPC"), "win32")).toBe(
+      `${refreshed} (the disk is full), so it still lists the earlier plugins; fix that, then run aidlc use 2.0.0.`,
+    );
+    expect(warn(failed("ENOSPC"), "linux", "absent")).toBe(
+      "Warning: the plugin marketplace at /m/plugins was not created (the disk is full); fix that, then run aidlc use 2.0.0.",
+    );
+    expect(warn(new Error("checksum mismatch\nsecond line"), "linux", null, null)).toBe(
+      `${refreshed} (checksum mismatch) and may be incomplete; fix that, then run aidlc use 2.0.0.`,
+    );
+  });
+
+  test("a file AI-DLC did not write keeps the catalogue as it is, and the update names it", () => {
+    const machine = temp("aidlc-t244-catalogue-unowned-");
+    const project = temp("aidlc-t244-catalogue-unowned-project-");
+    mkdirSync(join(project, ".git"));
+    const env = envFor(machine);
+    const catalogue = join(machine, "plugins");
+    install(machine, project);
+    const notes = join(catalogue, "notes.txt");
+    writeFileSync(notes, "mine\n");
+    const updated = run(LIFECYCLE, ["update", "--version", NEXT_VERSION, "--from", releaseB], project, env);
+    expect(updated.status, updated.stdout + updated.stderr).toBe(0);
+    expect(updated.stdout).toContain(
+      `Warning: the plugin marketplace at ${catalogue} holds files AI-DLC did not write, so it was not refreshed: ` +
+        `${JSON.stringify(notes)}; move them out, then run aidlc use ${NEXT_VERSION}.`,
+    );
+    expect(readFileSync(notes, "utf-8")).toBe("mine\n");
+    const doctor = run(DISPATCHER, ["doctor", "--json", "--project-dir", project], project, env);
+    const checks = (JSON.parse(doctor.stdout) as {
+      data: { checks: Array<{ pass: boolean; severity?: string; label: string; fix?: string }> };
+    }).data.checks;
+    expect(checks).toContainEqual({
+      pass: false,
+      severity: "warn",
+      label: `Plugin marketplace: ${catalogue} holds files AI-DLC did not write, so updates do not refresh it: ${JSON.stringify(notes)}`,
+      fix: `move them out, then run \`aidlc use ${NEXT_VERSION}\``,
+    });
+    unlinkSync(notes);
+    expectCatalogueOf(machine, AIDLC_VERSION);
+    expect(run(LIFECYCLE, ["use", NEXT_VERSION], project, env).status).toBe(0);
+    expectCatalogueOf(machine, NEXT_VERSION);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });
 
 // The person typed the command, so at a terminal it says what it removes and
@@ -1883,9 +2208,37 @@ describe("t244 removal commands say what they remove and ask nothing", () => {
     expect(existsSync(join(machine, "versions"))).toBe(false);
   });
 
+  test("version lists name each harness as typed after --harness, and their JSON keeps the ids", () => {
+    const older = fixture(AIDLC_VERSION, { binary: "executable" });
+    const next = fixture(NEXT_VERSION, { binary: "executable" });
+    const machine = temp("aidlc-t244-typed-lists-");
+    const project = temp("aidlc-t244-typed-lists-project-");
+    mkdirSync(join(project, ".git"));
+    const env = envFor(machine);
+    const typed = `[${RELEASE_HARNESSES.map(typedHarnessName).join(",")}]`;
+    const plan = run(LIFECYCLE, ["update", "--version", AIDLC_VERSION, "--from", older, "--dry-run", "--json"], project, env);
+    expect(plan.status, plan.stdout + plan.stderr).toBe(0);
+    const planned = JSON.parse(plan.stdout) as { message: string; data: { distributions: string[] } };
+    expect(planned.message).toContain(`-> ${AIDLC_VERSION} ${typed}`);
+    expect(planned.data.distributions).toEqual([...RELEASE_HARNESSES]);
+    for (const [version, from] of [[AIDLC_VERSION, older], [NEXT_VERSION, next]]) {
+      const installed = run(LIFECYCLE, ["update", "--version", version, "--from", from], project, env);
+      expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+    }
+    const listed = run(LIFECYCLE, ["versions", "list"], project, env);
+    expect(listed.status, listed.stdout + listed.stderr).toBe(0);
+    expect(listed.stdout).toContain(`${NEXT_VERSION} active ${typed}`);
+    const targets = run(LIFECYCLE, ["rollback", "--list"], project, env);
+    expect(targets.status, targets.stdout + targets.stderr).toBe(0);
+    expect(targets.stdout).toContain(`${AIDLC_VERSION} ${typed}`);
+    const json = run(LIFECYCLE, ["versions", "list", "--json"], project, env);
+    const data = JSON.parse(json.stdout).data as { versions: Array<{ version: string; distributions: string[] }> };
+    expect(data.versions.find((item) => item.version === NEXT_VERSION)?.distributions).toEqual([...RELEASE_HARNESSES]);
+  });
+
   test("a rollback to a release without some harnesses names --allow-harness-loss, which rolls back anyway", () => {
     const fewer = fixture(AIDLC_VERSION, { binary: "executable", distributions: ["claude"] });
-    const next = fixture(NEXT_VERSION, { binary: "executable", distributions: RELEASE_HARNESSES });
+    const next = fixture(NEXT_VERSION, { binary: "executable" });
     const machine = temp("aidlc-t244-rollback-loss-");
     const project = temp("aidlc-t244-rollback-loss-project-");
     mkdirSync(join(project, ".git"));
@@ -1894,7 +2247,7 @@ describe("t244 removal commands say what they remove and ask nothing", () => {
       const installed = run(LIFECYCLE, ["update", "--version", version, "--from", from], project, env);
       expect(installed.status, installed.stdout + installed.stderr).toBe(0);
     }
-    const lost = RELEASE_HARNESSES.filter((name) => name !== "claude").join(", ");
+    const lost = RELEASE_HARNESSES.filter((name) => name !== "claude").map(typedHarnessName).join(", ");
     const refused = run(LIFECYCLE, ["rollback"], project, env);
     expect(refused.status, refused.stdout + refused.stderr).toBe(1);
     expect(refused.stdout).toContain(
@@ -2679,8 +3032,8 @@ describe("t244 Windows and completion release surfaces", () => {
         rmSync(lock);
 
         // A release from before the Git Bash launcher, updating this machine,
-        // wrote none; the first command of this one writes it with the helper,
-        // so hooks run through Git Bash find a bare `aidlc`.
+        // wrote none; the first command of this one writes aidlc.exe in bin
+        // with the helper, so hooks run through Git Bash find a bare `aidlc`.
         const gitBashLauncher = join(dirname(commandPath()), "aidlc");
         rmSync(gitBashLauncher, { force: true });
         const replaced = launch("version");
@@ -2688,7 +3041,8 @@ describe("t244 Windows and completion release surfaces", () => {
         expect(replaced.stdout).toBe(versionLine);
         expect(replaced.stderr).toBe("");
         expect(readFileSync(helperPath, "utf-8")).toBe(current);
-        expect(readFileSync(gitBashLauncher, "utf-8")).toBe(windowsPosixShim());
+        expect(existsSync(join(dirname(commandPath()), "aidlc.exe"))).toBe(true);
+        expect(existsSync(gitBashLauncher)).toBe(false);
         expect(existsSync(lock)).toBe(false);
         expect(launcherRows()).toEqual([]);
 
@@ -3307,6 +3661,31 @@ describe("t244 Windows and completion release surfaces", () => {
     expect(extraFieldResult.status).toBe(1);
     expect(extraFieldResult.stderr).toContain("has unexpected fields");
 
+    // A candidate must declare the root-lifecycle capability its installer and
+    // lifecycle rely on; one without it never reaches publication.
+    for (const capabilities of [undefined, [], ["other"]]) {
+      const candidate = temp("aidlc-t244-release-capabilities-");
+      writeVerifierCandidate(candidate);
+      const manifestPath = join(candidate, "version.json");
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
+      if (capabilities === undefined) delete manifest.capabilities;
+      else manifest.capabilities = capabilities;
+      writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      const checksumsPath = join(candidate, "checksums.txt");
+      writeFileSync(
+        checksumsPath,
+        readFileSync(checksumsPath, "utf-8").replace(
+          /^[a-f0-9]{64} {2}version\.json$/m,
+          `${createHash("sha256").update(readFileSync(manifestPath)).digest("hex")}  version.json`,
+        ),
+      );
+      const result = run(RELEASE_VERIFIER, [
+        "candidate", "--directory", candidate, "--tag", `v${AIDLC_VERSION}`,
+      ], REPO_ROOT);
+      expect(result.status, JSON.stringify(capabilities)).toBe(1);
+      expect(result.stderr).toMatch(/has unexpected fields|capabilities must be/);
+    }
+
     const extra = temp("aidlc-t244-release-extra-");
     writeVerifierCandidate(extra);
     writeFileSync(join(extra, "unlisted.txt"), "unexpected\n");
@@ -3321,7 +3700,262 @@ describe("t244 Windows and completion release surfaces", () => {
     expect(extraResult.stderr).toContain("unexpected entry unlisted.txt");
   });
 
-  test("retained installers support explicit provenance trust roots", () => {
+  test("release workflow keeps actions pinned, lints installers, and regenerates before consumers", () => {
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
+    const previewWorkflow = readFileSync(PREVIEW_RELEASE_WORKFLOW, "utf-8");
+    const fullSuiteWorkflow = readFileSync(join(REPO_ROOT, ".github/workflows/full-suite.yml"), "utf-8");
+    const deterministicWorkflow = readFileSync(join(REPO_ROOT, ".github/workflows/deterministic-tests.yml"), "utf-8");
+    const parsed = Bun.YAML.parse(workflow) as {
+      permissions?: Record<string, string>;
+      jobs: Record<string, {
+        strategy?: { "fail-fast"?: boolean };
+      }>;
+    };
+    expect(parsed.permissions).toEqual({ contents: "read" });
+    expect(parsed.jobs.test_unit).toBeUndefined();
+    expect(parsed.jobs["native-smoke"].strategy?.["fail-fast"]).toBe(false);
+    expect(parsed.jobs["musl-smoke"].strategy?.["fail-fast"]).toBe(false);
+    expect(workflow).toContain("name: Validate release tag and source");
+    expect(workflow).not.toContain("actions/create-github-app-token");
+    expect(workflow).not.toContain("AIDLC_PUBLICATION_REPOSITORY");
+    expect(workflow).not.toContain("AIDLC_RELEASE_AUTH_APP_ID");
+    expect(workflow).not.toContain("AIDLC_RELEASE_AUTH_APP_PRIVATE_KEY");
+    expect(workflow).not.toContain("bun scripts/verify-release.ts controls");
+    expect(workflow).toContain(`ref: \${{ needs.validate.outputs.sha }}`);
+    expect(workflow).toContain('"refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"');
+    expect(workflow).toContain("bun scripts/release-promotion.ts verify");
+    expect(workflow).toContain('test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"');
+    expect(workflow).toContain("\n  push:");
+    expect(workflow).toContain('test "$(git rev-parse "HEAD^{commit}")" = "$GITHUB_SHA"');
+    expect(workflow).not.toContain("origin/v2");
+    expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$AUTHORIZED_SHA"');
+    expect(workflow).toContain("AIDLC_RELEASE_SOURCE_DIGEST:");
+    // Third-party actions are pinned to a full commit SHA. A same-repository
+    // reusable workflow (`./.github/workflows/...`) is referenced by path and
+    // resolves to the commit already being run, so it carries no ref to pin.
+    const actionRefs = [workflow, previewWorkflow, fullSuiteWorkflow, deterministicWorkflow].flatMap(
+      (workflowText) =>
+        [...workflowText.matchAll(/^\s*(?:-\s+)?uses:\s+([^\s#]+)(?:\s+#.*)?$/gm)]
+          .map((match) => match[1]),
+    );
+    expect(actionRefs.length).toBeGreaterThan(0);
+    for (const ref of actionRefs) {
+      if (ref.startsWith("./.github/workflows/")) continue;
+      expect(ref).toMatch(/^[^@\s]+@[a-f0-9]{40}$/);
+    }
+    expect(workflow).not.toMatch(/^\s*(?:-\s+)?uses:\s+[^@\s]+@v\d/m);
+    expect(actionRefs).toContain("./.github/workflows/deterministic-tests.yml");
+    expect(actionRefs).not.toContain("./.github/workflows/ci.yml");
+    expect(workflow).toContain("shellcheck scripts/install.sh");
+    expect(workflow).toContain("Invoke-ScriptAnalyzer -Path scripts/install.ps1");
+    expect(workflow).toContain("unix-lifecycle:");
+    expect(workflow).not.toContain("interactive harness picker");
+    expect(workflow).not.toMatch(/install\.(?:sh|ps1)[^\n]*--harness/);
+    expect(workflow).not.toMatch(/install\.ps1[^\n]*-Harness/);
+    expect(workflow).toContain("name: release-candidate");
+    expect(workflow).toContain(`build-results-\${{ matrix.directory }}.json`);
+    expect(workflow).not.toContain("python3 -m http.server");
+    expect(workflow).toContain('env PATH="/usr/bin:/bin"');
+    expect(workflow).not.toContain("duplicate full-suite run disabled");
+
+    // Release artifacts must build from projections regenerated ON the runner,
+    // never from checkout residue: every dist-consuming job regenerates
+    // before its consuming step, and the build job keeps --check after the
+    // regen as a generator-determinism guard.
+    const regen = "run: bun scripts/package.ts\n";
+    const verifyJob = workflow.slice(
+      workflow.indexOf("  verify:"),
+      workflow.indexOf("  native-smoke:"),
+    );
+    expect(verifyJob).toContain(regen);
+    expect(verifyJob.indexOf(regen)).toBeLessThan(verifyJob.indexOf("- run: bun scripts/package.ts --check"));
+    for (const name of ["test_smoke", "test_unit", "test_deep", "test"]) {
+      expect(parsed.jobs[name], `stable release must not rerun source tier: ${name}`).toBeUndefined();
+    }
+    expect(workflow).not.toContain("Require passing full-suite evidence");
+    // Source coverage belongs to the selected preview; promotion does not repeat it.
+    expect(workflow).not.toContain("uses: ./.github/workflows/full-suite.yml");
+    expect(workflow).not.toContain("bun scripts/ci-full-suite-evidence.ts check");
+    expect(workflow).not.toContain("tests/run-tests.");
+    const nativeSmokeJob = workflow.slice(
+      workflow.indexOf("  native-smoke:"),
+      workflow.indexOf("  build:"),
+    );
+    expect(nativeSmokeJob).toContain(regen);
+    expect(nativeSmokeJob).toContain("needs: [validate, verify]");
+    expect(nativeSmokeJob).toContain(`ref: \${{ needs.validate.outputs.sha }}`);
+    expect(nativeSmokeJob.indexOf(regen))
+      .toBeLessThan(nativeSmokeJob.indexOf("t238-build-binaries.test.ts"));
+    const buildJob = workflow.slice(
+      workflow.indexOf("  build:"),
+      workflow.indexOf("  musl-smoke:"),
+    );
+    expect(buildJob).toContain(regen);
+    expect(buildJob).toContain("needs: [validate, native-smoke]");
+    expect(buildJob).toContain(`ref: \${{ needs.validate.outputs.sha }}`);
+    expect(buildJob.indexOf(regen))
+      .toBeLessThan(buildJob.indexOf("bun scripts/package.ts --check"));
+    expect(buildJob.indexOf("bun scripts/package.ts --check"))
+      .toBeLessThan(buildJob.indexOf("bun scripts/build-binaries.ts"));
+    const stageRelease = workflowJob(workflow, "stage-release");
+    expect(stageRelease).toContain("needs: [validate, build]");
+    expect(stageRelease).toContain(`ref: \${{ needs.validate.outputs.sha }}`);
+    expect(stageRelease).toContain(regen);
+    expect(stageRelease.indexOf(regen))
+      .toBeLessThan(stageRelease.indexOf("bun scripts/package-release.ts"));
+    const muslSmoke = workflowJob(workflow, "musl-smoke");
+    expect(muslSmoke).toContain("bun-linux-x64-musl");
+    expect(muslSmoke).toContain("bun-linux-arm64-musl");
+    expect(muslSmoke).toContain('-v "$PWD:/work:ro"');
+    expect(muslSmoke).toContain(
+      `alpine:3.20 sh -c "apk add libgcc libstdc++ >/dev/null && ` +
+        `/work/build/binaries/\${TARGET_DIR}/aidlc version"`,
+    );
+  });
+
+  test("release MUST 1: only publish can sign and stage-release has no provenance bundle", () => {
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
+    const parsed = Bun.YAML.parse(workflow) as {
+      jobs: Record<string, { permissions?: Record<string, string>; uses?: string; steps?: unknown[] }>;
+    };
+    const jobsWith = (permission: string) => Object.entries(parsed.jobs)
+      .filter(([, job]) => job.permissions?.[permission] === "write")
+      .map(([name]) => name);
+    expect(jobsWith("attestations")).toEqual(["publish"]);
+    expect(jobsWith("id-token")).toEqual(["publish"]);
+    expect(parsed.jobs.full_suite).toBeUndefined();
+    expect(parsed.jobs["stage-release"].permissions).toEqual({ contents: "read" });
+    expect(parsed.jobs.publish.permissions).toEqual({
+      contents: "read",
+      "id-token": "write",
+      attestations: "write",
+    });
+    const stageRelease = workflowJob(workflow, "stage-release");
+    expect(stageRelease).toContain("name: release-candidate");
+    expect(stageRelease).not.toContain("Attest staged release assets");
+    expect(stageRelease).not.toContain("aidlc-release.intoto.jsonl");
+    expect(stageRelease).not.toContain("attest-build-provenance");
+  });
+
+  test("release MUST 2: lifecycle jobs stay offline and exercise mandatory local provenance", () => {
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
+    const windows = workflowJob(workflow, "windows-lifecycle");
+    const unix = workflowJob(workflow, "unix-lifecycle");
+    expect(windows).toContain("checksums.txt");
+    expect(windows).toContain("Get-FileHash -Algorithm SHA256");
+    expect(windows).toContain("install.ps1 -From $releaseRoot -Offline");
+    expect(windows).toContain("aidlc-lifecycle-provenance-fixture");
+    expect(windows).toContain("aidlc-gh.ps1");
+    expect(windows).toContain("$env:AIDLC_GH_BIN = $ghFixture");
+    expect(windows).toContain("$Remaining.Count -ne 11");
+    expect(windows).toContain("$Remaining.Count -ne 15");
+    expect(windows).toContain("$Remaining[0] -ne 'attestation'");
+    expect(windows).toContain("$Remaining[1] -ne 'verify'");
+    expect(windows).toContain("$Remaining[2] -eq '--help'");
+    expect(windows).toContain("'--source-digest string'");
+    expect(windows).toContain(
+      "[IO.Path]::GetFileName($subject) -ne 'checksums.txt'",
+    );
+    expect(windows).toContain("$Remaining[3] -ne '--bundle'");
+    expect(windows).toContain("$bundle -ne $expectedBundle");
+    expect(windows).toContain(
+      "-not (Test-Path -LiteralPath $bundle -PathType Leaf)",
+    );
+    expect(windows).toContain(
+      "$Remaining[6] -ne $env:AIDLC_TEST_GH_REPOSITORY",
+    );
+    expect(windows).toContain(
+      "$Remaining[8] -ne $env:AIDLC_TEST_GH_WORKFLOW",
+    );
+    expect(windows).toContain("$Remaining[9] -ne '--hostname'");
+    expect(windows).toContain("$Remaining[10] -ne 'github.com'");
+    expect(windows).toContain(
+      "$Remaining[12] -ne $env:AIDLC_TEST_GH_SOURCE_REF",
+    );
+    expect(windows).toContain(
+      "$Remaining[14] -ne $env:AIDLC_TEST_GH_SOURCE_DIGEST",
+    );
+    expect(windows).toContain(
+      "$env:AIDLC_TEST_GH_CHECKSUM_SHA",
+    );
+    expect(windows).toContain("offline installer did not verify release provenance");
+    expect(windows).toContain("offline installer did not bind the trusted source digest");
+    expect(windows).toContain(
+      "$harnesses = @('claude', 'codex', 'copilot', 'cursor', 'kiro-v2', 'kiro', 'opencode')",
+    );
+    expect(windows).toContain(
+      "$env:COPILOT_HOME = Join-Path $env:RUNNER_TEMP 'aidlc-copilot-home'",
+    );
+    expect(windows).toContain("@{ trustedFolders = @($project) }");
+    expect(windows).toContain(
+      "& $command config --project-dir $project --harness $harness --mcp none --quiet",
+    );
+    expect(windows).toContain("& $command doctor --project-dir $project --quiet");
+    expect(windows).toContain("$deadline = [DateTime]::UtcNow.AddSeconds(180)");
+    expect(windows).toContain("$commandExists = Test-Path -LiteralPath $command");
+    expect(windows).toContain(
+      "$rootExists = Test-Path -LiteralPath $env:AIDLC_INSTALL_ROOT",
+    );
+    expect(windows).toContain(
+      "if (-not $commandExists -and -not $rootExists) { break }",
+    );
+    expect(windows).toContain(
+      "if (Test-Path -LiteralPath $command) { throw 'aidlc.cmd survived uninstall' }",
+    );
+    expect(windows).toContain(
+      "if (Test-Path -LiteralPath $env:AIDLC_INSTALL_ROOT) { " +
+        "throw 'install root survived purge uninstall' }",
+    );
+    expect(unix).toContain("sha256sum -c checksums.txt");
+    expect(unix).toContain("shasum -a 256 -c checksums.txt");
+    expect(unix).toContain('install.sh" --from "$release" --offline');
+    expect(unix).toContain("aidlc-lifecycle-provenance-fixture");
+    expect(unix).toContain('AIDLC_GH_BIN="$gh_bin"');
+    expect(unix).toContain(
+      '[ "$#" -eq 11 ] || [ "$#" -eq 13 ] || [ "$#" -eq 15 ]',
+    );
+    expect(unix).toContain('[ "$3" = --help ]');
+    expect(unix).toContain("'--source-digest string'");
+    expect(unix).toContain('[ "$4" = --bundle ] || exit 2');
+    expect(unix).toMatch(
+      /\[ "\$5" = "\$\{3%\/checksums\.txt\}\/aidlc-release\.intoto\.jsonl" \] \|\| exit 2/,
+    );
+    expect(unix).toMatch(/\[ "\$\{10\}" = --hostname \] \|\| exit 2/);
+    expect(unix).toMatch(/\[ "\$\{11\}" = github\.com \] \|\| exit 2/);
+    expect(unix).toContain('if [ "$#" -ge 13 ]; then');
+    expect(unix).toMatch(/\[ "\$\{12\}" = --source-ref \] \|\| exit 2/);
+    expect(unix).toMatch(
+      /\[ "\$\{13\}" = "\$AIDLC_TEST_GH_SOURCE_REF" \] \|\| exit 2/,
+    );
+    expect(unix).toMatch(/\[ "\$\{14\}" = --source-digest \] \|\| exit 2/);
+    expect(unix).toMatch(
+      /\[ "\$\{15\}" = "\$AIDLC_TEST_GH_SOURCE_DIGEST" \] \|\| exit 2/,
+    );
+    expect(unix).toContain(
+      '[ "$actual" = "$AIDLC_TEST_GH_CHECKSUM_SHA" ] || exit 2',
+    );
+    expect(unix).toContain('test -s "$gh_marker"');
+    expect(unix).toContain("grep -qx 'verified-11' \"$gh_marker\"");
+    expect(unix).toContain(
+      "for harness in claude codex copilot cursor kiro-v2 kiro opencode; do",
+    );
+    expect(unix).toContain(
+      'export COPILOT_HOME="$RUNNER_TEMP/aidlc-copilot-home"',
+    );
+    expect(unix).toContain(
+      `printf '{"trustedFolders":["%s"]}\\n' "$project" > "$COPILOT_HOME/config.json"`,
+    );
+    expect(unix).toContain(
+      '--project-dir "$project" --harness "$harness" --mcp none --quiet',
+    );
+    expect(unix).toContain(
+      'env PATH="/usr/bin:/bin" "$command" doctor',
+    );
+    for (const lifecycle of [windows, unix]) {
+      expect(lifecycle).not.toContain("attestation verify");
+      expect(lifecycle).not.toContain("AIDLC_RELEASE_REPOSITORY");
+      expect(lifecycle).not.toContain("AIDLC_RELEASE_WORKFLOW");
+    }
     const unixInstaller = readFileSync(INSTALL_SH, "utf-8");
     const windowsInstaller = readFileSync(INSTALL_PS1, "utf-8");
     for (const variable of [
@@ -3332,5 +3966,242 @@ describe("t244 Windows and completion release surfaces", () => {
       expect(windowsInstaller).toContain(variable);
     }
     expect(unixInstaller).toContain("AIDLC_GH_BIN");
+  });
+
+  test("release lifecycle jobs follow setup's git init advice for the Cursor project before doctor", () => {
+    // Doctor fails a Cursor project outside git, and setup says to run
+    // `git init`; the job runs it after config so setup still finishes outside git.
+    for (const path of [RELEASE_WORKFLOW, PREVIEW_RELEASE_WORKFLOW]) {
+      const workflow = readFileSync(path, "utf-8");
+      for (const [job, config, gitInit, doctor] of [
+        [
+          "windows-lifecycle",
+          "& $command config --project-dir $project --harness $harness --mcp none --quiet",
+          "if ($harness -eq 'cursor') {\n              git init --quiet $project\n" +
+            "              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n            }",
+          "& $command doctor --project-dir $project --quiet",
+        ],
+        [
+          "unix-lifecycle",
+          '--project-dir "$project" --harness "$harness" --mcp none --quiet',
+          'if [ "$harness" = cursor ]; then\n              git init --quiet "$project"\n            fi',
+          'env PATH="/usr/bin:/bin" "$command" doctor',
+        ],
+      ] as const) {
+        const text = workflowJob(workflow, job);
+        const at = [config, gitInit, doctor].map((line) => text.indexOf(line));
+        expect(at.every((index) => index >= 0), `${path} ${job}`).toBe(true);
+        expect(at[0] < at[1] && at[1] < at[2], `${path} ${job} order`).toBe(true);
+      }
+    }
+  });
+
+  test("release lifecycle verifier fixtures reject every missing binding", () => {
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
+    const root = temp("aidlc-t244-verifier-fixture-");
+    const subjectDirectory = join(root, "subject");
+    mkdirSync(subjectDirectory, { recursive: true });
+    const checksums = join(subjectDirectory, "checksums.txt");
+    const bundle = join(subjectDirectory, "aidlc-release.intoto.jsonl");
+    const marker = join(root, "verified");
+    writeFileSync(checksums, "checksums fixture\n");
+    writeFileSync(bundle, "bundle fixture\n");
+    const repository = "awslabs/aidlc-workflows";
+    const signerWorkflow = `${repository}/.github/workflows/release.yml`;
+    const sourceRef = `refs/tags/v${AIDLC_VERSION}`;
+    const sourceDigest = "1".repeat(40);
+    const checksumSha = createHash("sha256")
+      .update(readFileSync(checksums))
+      .digest("hex");
+    const args = [
+      "attestation",
+      "verify",
+      checksums,
+      "--bundle",
+      bundle,
+      "--repo",
+      repository,
+      "--signer-workflow",
+      signerWorkflow,
+      "--hostname",
+      "github.com",
+      "--source-ref",
+      sourceRef,
+      "--source-digest",
+      sourceDigest,
+    ];
+    const env = {
+      ...process.env,
+      AIDLC_TEST_GH_MARKER: marker,
+      AIDLC_TEST_GH_REPOSITORY: repository,
+      AIDLC_TEST_GH_WORKFLOW: signerWorkflow,
+      AIDLC_TEST_GH_SOURCE_REF: sourceRef,
+      AIDLC_TEST_GH_SOURCE_DIGEST: sourceDigest,
+      AIDLC_TEST_GH_CHECKSUM_SHA: checksumSha,
+    };
+
+    let invoke: (fixtureArgs: string[]) => ReturnType<typeof spawnSync>;
+    if (process.platform === "win32") {
+      const windows = workflowJob(workflow, "windows-lifecycle");
+      const source = /@'\n([\s\S]*?)\n\s*'@ \| Set-Content -LiteralPath \$ghFixture/
+        .exec(windows)?.[1];
+      expect(source).toBeDefined();
+      const fixture = join(root, "aidlc-gh.ps1");
+      writeFileSync(fixture, `${source}\n`);
+      const powershell = Bun.which("pwsh") ?? Bun.which("powershell");
+      expect(powershell).not.toBeNull();
+      invoke = (fixtureArgs) =>
+        spawnSync(
+          powershell as string,
+          ["-NoProfile", "-NonInteractive", "-File", fixture, ...fixtureArgs],
+          { timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS), env, encoding: "utf-8" },
+        );
+    } else {
+      const unix = workflowJob(workflow, "unix-lifecycle");
+      const source =
+        /cat >"\$gh_bin" <<'AIDLC_GH_FIXTURE'\n([\s\S]*?)\n\s*AIDLC_GH_FIXTURE/
+          .exec(unix)?.[1];
+      expect(source).toBeDefined();
+      const fixture = join(root, "aidlc-gh");
+      writeFileSync(fixture, `${source}\n`, { mode: 0o755 });
+      invoke = (fixtureArgs) =>
+        spawnSync("sh", [fixture, ...fixtureArgs], { timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS), env, encoding: "utf-8" });
+    }
+
+    const valid = invoke(args);
+    expect(valid.status, `${valid.stdout}${valid.stderr}`).toBe(0);
+    expect(existsSync(marker)).toBe(true);
+
+    for (let index = 0; index < args.length; index += 1) {
+      rmSync(marker, { force: true });
+      const missing = invoke(args.filter((_, candidate) => candidate !== index));
+      expect(missing.status).not.toBe(0);
+      expect(existsSync(marker)).toBe(false);
+    }
+
+    rmSync(marker, { force: true });
+    const duplicate = invoke([...args, "--repo", "conflicting/repository"]);
+    expect(duplicate.status).not.toBe(0);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test("release MUST 3: signing emits one attested artifact for direct publication", () => {
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
+    const parsed = Bun.YAML.parse(workflow) as {
+      jobs: Record<string, {
+        permissions?: Record<string, string>;
+        environment?: string;
+      }>;
+    };
+    expect(parsed.jobs.publish.permissions).toEqual({
+      contents: "read",
+      "id-token": "write",
+      attestations: "write",
+    });
+    expect(parsed.jobs.validate.environment).toBeUndefined();
+    expect(parsed.jobs.publish.environment).toBeUndefined();
+    const publish = workflowJob(workflow, "publish");
+    expect(publish).toContain(`ref: \${{ needs.validate.outputs.sha }}`);
+    expect(publish).toContain('"refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"');
+    expect(publish).toContain('git rev-parse "$RELEASE_TAG^{commit}"');
+    expect(publish).toContain('test "$(git rev-parse HEAD)" = "$AUTHORIZED_SHA"');
+    expect(publish).toContain("sha256sum -c checksums.txt");
+    expect(publish).toContain("name: Attest staged release assets");
+    expect(publish).toContain("name: Stage offline provenance bundle");
+    expect(publish).toContain("steps.provenance.outputs.bundle-path");
+    expect(publish).toContain("name: Validate complete attested release candidate");
+    expect(publish).toContain("bun release-tools/scripts/verify-release.ts candidate");
+    expect(publish).toContain('--source-digest "$AUTHORIZED_SHA"');
+    expect(publish).toContain("name: attested-release");
+    expect(publish).toContain(
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+    );
+    expect(publish).not.toContain("gh release create");
+    expect(publish).not.toContain("--draft");
+    expect(publish.indexOf("sha256sum -c checksums.txt"))
+      .toBeLessThan(publish.indexOf("name: Attest staged release assets"));
+    expect(publish.indexOf("name: Attest staged release assets"))
+      .toBeLessThan(publish.indexOf("name: Stage offline provenance bundle"));
+    expect(publish.indexOf("name: Stage offline provenance bundle"))
+      .toBeLessThan(publish.indexOf("bun release-tools/scripts/verify-release.ts candidate"));
+    expect(publish.indexOf("bun release-tools/scripts/verify-release.ts candidate"))
+      .toBeLessThan(publish.indexOf("name: attested-release"));
+  });
+
+  test("release publication uses the repository token and exact uploaded inventory", () => {
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
+    const parsed = Bun.YAML.parse(workflow) as {
+      jobs: Record<string, {
+        needs?: string | string[];
+        permissions?: Record<string, string>;
+        environment?: string;
+      }>;
+    };
+    expect(parsed.jobs.release.needs).toEqual(["validate", "publish"]);
+    expect(parsed.jobs.release.permissions).toEqual({ contents: "write" });
+    expect(parsed.jobs.release.environment).toBe("release");
+    const release = workflowJob(workflow, "release");
+    expect(release).toContain(`GH_TOKEN: \${{ github.token }}`);
+    expect(release).toContain('gh release create "$RELEASE_TAG" build/release/*');
+    expect(release).toContain("--verify-tag");
+    // The body is the stable page rendered from the promotion record, never
+    // GitHub's generated list, which names every contributing account by
+    // handle with no private-names scan.
+    expect(release).toContain("name: Build release notes from the promotion");
+    expect(release).toContain("bun scripts/release-promotion.ts notes");
+    expect(release).toContain('--notes-file "$RUNNER_TEMP/release-notes.md"');
+    expect(release).not.toContain("--generate-notes");
+    // The notes are written after the source recheck, so the body can only come
+    // from the commit the release was authorized for.
+    expect(release.indexOf("name: Recheck release source"))
+      .toBeLessThan(release.indexOf("name: Build release notes from the promotion"));
+    expect(release).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
+    expect(release).toContain("name: Verify uploaded asset inventory");
+    expect(release).toContain('gh release view "$RELEASE_TAG" --json assets');
+    expect(release).toContain('diff -u "$RUNNER_TEMP/local-assets.txt"');
+    expect(release).not.toContain("create-github-app-token");
+    expect(release).not.toContain("PUBLICATION_REPOSITORY");
+  });
+
+
+  test("the default branch preserves a manual v1 release forwarder", () => {
+    const workflow = readFileSync(V1_RELEASE_DISPATCH_WORKFLOW, "utf-8");
+    expect(workflow).toContain("name: Dispatch v1 Release");
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain(
+      'if [[ ! "$INPUT_TAG" =~ ^v1\\.[0-9]+\\.[0-9]+$ ]]; then',
+    );
+    expect(workflow).toContain("gh workflow run release.yml");
+    expect(workflow).toContain('--ref "$INPUT_TAG"');
+    expect(workflow).not.toContain("\n  push:");
+  });
+
+  test("CI test jobs build the projections before running their tiers", () => {
+    type Job = { uses?: string; steps?: Array<{ run?: string }> };
+    const ci = Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8")) as {
+      on: { pull_request: { branches: string[] } };
+      jobs: Record<string, Job>;
+    };
+    const shared = Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows/deterministic-tests.yml"), "utf8")) as {
+      jobs: Record<string, Job>;
+    };
+    expect(ci.on.pull_request.branches).toContain("main");
+    expect(ci.on.pull_request.branches).not.toContain("v2");
+    expect(ci.jobs.deterministic.uses).toBe("./.github/workflows/deterministic-tests.yml");
+    for (const name of ["deterministic", "test_native_terminal"]) {
+      const job = ci.jobs[name];
+      const steps = job.uses ? shared.jobs.test.steps! : job.steps!;
+      const build = steps.findIndex((step) => step.run?.trim().startsWith("bun scripts/package.ts"));
+      const run = steps.findIndex((step) => /tests\/run-tests\.(sh|ts)/.test(step.run ?? ""));
+      expect(build, `${name} must regenerate its projections`).toBeGreaterThanOrEqual(0);
+      expect(run, `${name} must invoke the test runner`).toBeGreaterThanOrEqual(0);
+      expect(build, `${name} must build before running its tier`).toBeLessThan(run);
+    }
+    const isolation = ci.jobs.test_live_isolation.steps!;
+    const build = isolation.findIndex((step) => step.run === "bun scripts/package.ts");
+    expect(build).toBeGreaterThanOrEqual(0);
+    for (const [index, step] of isolation.entries()) {
+      if (step.run?.includes("prepare-live-runtime")) expect(build).toBeLessThan(index);
+    }
   });
 });

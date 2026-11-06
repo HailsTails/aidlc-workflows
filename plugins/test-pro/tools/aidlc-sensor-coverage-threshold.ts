@@ -2,11 +2,11 @@
 //
 // Reads the machine-readable coverage summary the build-and-test contribution
 // emits (test-pro-coverage-summary.json) and reports whether branch+line
-// coverage meet their targets. ADVISORY: the framework has no blocking sensor
-// severity yet, so a failure is reported, not enforced. Targets travel INSIDE
+// coverage meet their targets. ADVISORY: its sensor manifest declares it
+// advisory, so a failure is reported, not enforced. Targets travel INSIDE
 // the JSON (`targets`), falling back to embedded defaults — so this tool needs
 // no node-derived dispatcher flag, only the --output-path the dispatcher always
-// passes. Shipped to .claude/tools/ via the plugin's contributes.tools.
+// passes. Shipped to the harness's tools/ via the plugin's contributes.tools.
 import { existsSync, readFileSync } from "node:fs";
 
 // Self-contained — no import of the framework's aidlc-lib (a plugin tool ships
@@ -51,8 +51,8 @@ function passThrough(): never {
   process.exit(0);
 }
 
-function main(): void {
-  const flags = parseFlags(process.argv.slice(2));
+export function main(argv: string[]): void {
+  const flags = parseFlags(argv);
   if (!flags.outputPath) fail("--output-path is required");
   // Only act on this sensor's own machine-readable file; any other write is a
   // clean pass-through (not a failure).
@@ -91,4 +91,4 @@ function main(): void {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
-main();
+if (import.meta.main) main(process.argv.slice(2));

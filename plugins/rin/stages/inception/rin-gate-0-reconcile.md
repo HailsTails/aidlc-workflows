@@ -5,7 +5,7 @@ name: Gate 0 — Reconcile
 plugin: rin
 phase: inception
 execution: ALWAYS
-condition: First gate of the rin pipeline. Promotes an eligible consumer intake capture into a native engine intent record, reconciles it and any prior spec residue against deterministic ground truth, then confirms it is ready to frame. Grooms; does not frame (Gate 1), does not choose a solution (Gate 2) and does not design one (Gate 3).
+condition: First gate of the rin pipeline. Reconciles selected work and any prior spec residue against deterministic ground truth, promoting an external capture when needed, then confirms it is ready to frame. Grooms; does not frame (Gate 1), does not choose a solution (Gate 2) and does not design one (Gate 3).
 lead_agent: rin-delivery-agent
 support_agents:
   - rin-product-agent
@@ -29,7 +29,7 @@ scopes:
   - rin-harness
   - rin-audit
 inputs: The target work — an eligible consumer intake capture to promote, or an existing engine intent record to reconcile — plus any prior spec/artifact residue for it
-outputs: rin-reconcile-report.md (the coherence sweep + ground-truth verdicts + the promotion applied) and rin-readiness-verdict.md (Gate-0 PASS/HOLD), under this stage's record dir, engine-resolved
+outputs: rin-reconcile-report.md (selected-work coherence, applicable intake and publication obligations, and any promotion applied) and rin-readiness-verdict.md (Gate-0 PASS/HOLD with separate obligation outcomes), under this stage's record dir, engine-resolved
 ---
 
 # Gate 0 — Reconcile (rin)
@@ -43,6 +43,43 @@ control-plane job.
 This is the pipeline's front door. Before framing hardens into requirements, Gate 0 **promotes** the target work into a native engine intent record (if it is not one already), reconciles it against **deterministic ground truth**, and confirms it is ready to enter framing. It grooms and reconciles; it does not frame (Gate 1), does not choose a solution (Gate 2) and does not design one (Gate 3).
 
 Work this gate adopts — a prescription carried in a capture, an existing draft, an approach from an earlier PR — enters the record as one candidate for Gate 2's options ledger, never as the solution.
+
+## Establish the applicable work before acting
+
+Read the active space's `memory/project.md`, its `## Gate 0` section and any
+project procedure it points to. Together with the caller's assignment, these
+identify the selected work, whether this run owns an intake sweep, and the
+publication obligation. Cite those sources in the reconcile report. See
+`{{HARNESS_DIR}}/knowledge/rin-gates/ADOPTING.md` for the project contract.
+
+Three concerns have different evidence and must not stand in for each other:
+
+- **Selected-work reconciliation, always.** An existing engine intent needs its
+  record, actual source and prior evidence reconciled. It does not need a
+  fabricated capture, promotion, or queue measurement. A selected external
+  capture additionally needs a current capture read, the sibling checks and the
+  one-way promotion/closure in Steps 1-1b. Missing required intake access holds
+  that promotion; record creation alone does not prove capture closure.
+- **Intake sweep, when assigned.** A scheduled intake lane or an explicit queue
+  grooming assignment owns the whole per-run intake contract below, including
+  reservoir work. Selecting an existing intent during that run does not remove
+  its sweep obligation. A targeted reconciliation or capture promotion is not
+  itself a whole-queue sweep. Without an assigned sweep, report intake sweep as
+  **NOT ASSIGNED** and any unavailable queue count as **UNMEASURED**, never zero.
+- **Publication, as the project requires.** The project procedure states whether
+  a local committed record is sufficient or same-run branch push and PR are
+  required, and names the applicable lane. A scheduled lane's durable-push rule
+  remains required. No publication requirement may be silently downgraded to
+  local recording because a command, credential, authority or network is absent.
+
+Missing or contradictory assignment/policy is a named **HOLD** on the unresolved
+obligation. Continue the safe reconciliation that has a basis; do not invent a
+local-completion default or pick a different scope to evade required work.
+Project policy and `approval_mode` do not authorize external actions. The active
+reserved-decision list and the user's actual instruction still govern every
+capture mutation, publication and lifecycle action. An unconfigured optional
+integration is not a failure of local coherence; an unavailable required one is
+not a completed obligation.
 
 ## The system of record this gate establishes (repo-SoR)
 
@@ -94,9 +131,9 @@ So the whole of intake judgement lands in exactly three places:
 A heuristic that would require a new field is a defective heuristic. Re-derive it
 as a judgement made from the capture text.
 
-## The per-run contract (every run, forever)
+## The intake-sweep per-run contract
 
-Grooming intake is an **ongoing obligation**: keep captured work processable and
+For a run assigned an intake sweep, grooming intake is an **ongoing obligation**: keep captured work processable and
 ensure new captures receive a disposition without disappearing into a backlog.
 
 Three consequences, each load-bearing:
@@ -114,8 +151,8 @@ Three consequences, each load-bearing:
    top. That is structural, so it needs a structural alarm, not an intention to be
    thorough.
 
-Every run — scheduled or ad-hoc, backlog-heavy or quiet week — satisfies the same
-contract. A run that cannot satisfy it reports the failure loudly rather than
+Every assigned intake sweep, scheduled or ad-hoc, backlog-heavy or quiet week,
+satisfies the same contract. A run that cannot satisfy it reports the failure loudly rather than
 completing quietly.
 
 > **CONTRACT.** measured queue IN → N dispositioned, each with its capture id,
@@ -258,7 +295,7 @@ lane-sizing question, and `CADENCE` rises. Do **not** resolve the collision by
 shrinking the aged-cohort reservation; that trades a visible failure for an
 invisible tail, which is the exact swap this section forbids.
 
-### Required report lines (every run, fixed order)
+### Required intake-sweep report lines (fixed order)
 
 Any count the run could not measure reads `UNMEASURED`, never `0`.
 
@@ -327,7 +364,10 @@ leaving the steady-state lane unproven exactly when it takes over.
 ## Steps
 
 ### Step 1: Resolve the target work, and disposition every capture you read
-The target is passed by the caller when there is one; otherwise SELECT it:
+Use the target passed by the caller. Otherwise select within the assigned work
+from the status projection and, for intake, the live capture source. An existing
+intent goes directly to Step 2 unless the run also owns an intake sweep. Capture
+dispositions and Steps 1a-1b apply only to captures actually read:
 
 - **Fresh intake** — an eligible capture in the consumer's {{BACKLOG_STORE}} not yet
   promoted (no engine record carries its id as `promoted-from` provenance). List
@@ -449,7 +489,7 @@ Captures never opened are not a gap — they are the untouched queue, whose
 remaining size the run reports from the regenerated projection, **or `UNMEASURED`
 if it ran without a live snapshot — never as a zero.**
 
-### Step 1a: Frame the problem before you promote
+### Step 1a: For a capture, frame the problem before you promote
 
 **The origin-shape lens (a reading lens, never a field).** What kind of event
 caused someone to write the capture changes what a good framing looks like. Apply
@@ -507,7 +547,7 @@ a cluster (then confirmed from bodies). Illegitimate: treating `[audit]` as "thi
 belongs to the audit lane", or letting a prefix stand in for reading the body.
 Where a prefix claims status, verify it against ground truth — several are stale.
 
-### Step 1b: Promote the intake capture into a repo record (one-way)
+### Step 1b: For a capture, promote into a repo record (one-way)
 If the target is a fresh eligible capture with no engine record, promote it with
 the tool — never hand-mint:
 
@@ -634,23 +674,51 @@ first; never re-run the gate that already produced the later-stage evidence. Thi
 is the reconcile gate's own in-band advance — fire it, do not escalate.
 
 ### Step 3: Write the two artefacts
+Record selected-work reconciliation, capture promotion/closure when applicable,
+intake-sweep outcome and publication outcome separately, with their source and
+remaining action. Queue measurements remain UNMEASURED when absent even if the
+selected work is coherent. A fired age alarm retains its existing nonblocking
+LANE FAILURE semantics; never call that intake sweep healthy. Do not let that
+separate lane-health result impersonate the selected intent's coherence verdict.
+
 - `rin-reconcile-report.md` — the coherence table (source | ground-truth |
   disposition | flags) and an **Applied this run** section, including any
   promotion performed (capture id → record dir, DB row closed) and any stage-lag
   reconcile.
-- `rin-readiness-verdict.md` — **PASS** (coherent, ready to frame) or **HOLD**
-  (name what blocks).
+- `rin-readiness-verdict.md` - **PASS** only when the selected work is coherent,
+  required capture closure and publication are complete, and no applicable
+  blocking obligation remains. Otherwise **HOLD**, naming each missing action
+  or evidence. Include the independent intake-sweep outcome, including any lane
+  failure. Local PASS means ready for the conductor's review, not approval,
+  publication, merge or delivery. After Step 4, update the publication result
+  before handing the final artifacts to the conductor. Commit any resulting
+  artifact edits and, when publication is required, push and read back that final
+  head too. Review binds to the finished work, not the earlier publication head.
 
-### Step 4: Commit, push, and open the PR — same run, never at the primary
-Commit the two artefacts (and the promotion's `promoted-from.json`) on a WORKTREE
-BRANCH, push, and open the PR the SAME RUN via `{{PR_COMMAND}}` (the affordance that
-opens a pull request for the pushed branch under the author identity). Never commit at
-the primary checkout — `guard-primary-commit` denies it deterministically. This
-scheduled lane spawns into the primary checkout by default; move onto an agent
-worktree before committing ({{WORKTREE_TOOL}}) — the session-start guide's
-Worktree protocol carries the mechanics. The PR body lists every call this gate
-made under a decided class, with its class and where it is recorded, for
-{{OPERATOR}}'s sign-off.
+### Step 4: Record the work and satisfy the declared publication obligation
+
+Commit the two artifacts and any promotion provenance on the project-approved
+working branch, preserving its worktree and author-identity rules. The engine
+continues to own state and audit; never hand-write approval or reviewer evidence.
+
+If the cited project procedure permits **local recording**, record the commit
+and **NOT REQUESTED: no push or PR performed**. No forge binding is needed for
+that outcome. This is not publication and cannot satisfy a later delivery gate.
+
+If the cited project procedure requires **same-run publication**, use its
+worktree procedure ({{WORKTREE_TOOL}}), push the intended branch and open or
+update its PR through `{{PR_COMMAND}}` under the author identity, only with the
+required authorization. Preserve any primary-checkout commit prohibition. The
+PR body records decisions requiring operator visibility and links their record.
+Read back the remote head and PR identity before reporting publication complete.
+On a missing binding, denied action or uncertain result, record **HOLD** with
+the exact action, target and next step. Read back uncertainty before retrying.
+Keep completed local work; do not claim full completion or retry blindly.
+
+Neither a local commit nor a published PR replaces the current-work reviewer
+receipt, source identity, attempt freshness, approval policy or conductor ritual.
+Do not emit a READY review verdict yourself, fabricate a human turn, or use this
+policy distinction to bypass a real negative review.
 
 ### Step 4a: Retire an obsolete-premise intent (HOLD's terminal disposition)
 A HOLD whose premise has **evaporated** — every deliverable in the framing landed
@@ -713,7 +781,7 @@ question moves past it only under the resume rule in
 `{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`.
 
 ### Step 6: Null-stage reservoir reconciliation (verify-then-act, never bulk)
-As the intake resolver, Gate 0 owns the **null/missing-stage systems captures** in
+When assigned an intake sweep, its resolver also owns the **null/missing-stage systems captures** in
 the DB that no stage-selecting lane can see (the "not my job" reservoir). A missing
 stage is itself an incompleteness to reconcile.
 
@@ -745,7 +813,7 @@ ground truth (a live `get_task` + git/PR/disk proof), never a title-alone guess.
   quick config decision is fine left as a roleless capture.
 
 Reservoir work is **not spare-capacity grooming done alongside intake** — it is the
-standing obligation itself, and its volume is bounded by the batch formula like any
+assigned sweep obligation itself, and its volume is bounded by the batch formula like any
 other capture, not by whatever time is left over. Report it through the same
 required lines; the digest names successor ids where any were minted. An incident
 report whose resolution is not verifiable from this surface (auth-dead, corruption)
@@ -757,6 +825,7 @@ gate ritual (reviewer, learnings, approval) configured on this frontmatter.
 
 ## Refuses (invariants)
 
+- **Obligations stay distinct.** NOT ASSIGNED is not measured zero; local coherence is not publication; missing required work remains HOLD.
 - **Verify before you reconcile-away.** Hard evidence or it is a proposal.
 - **Promotion is one-way.** A promoted capture's DB row is CLOSED; the pipeline
   never writes the DB stage for a systems Slice again. The engine record is the

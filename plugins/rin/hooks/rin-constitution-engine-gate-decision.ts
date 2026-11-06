@@ -4,7 +4,7 @@ import { CHECK_COMMAND_TEXT, type FailingSection, failingSectionsOf, remedyOf } 
 import type { ConstitutionEngine } from "../tools/rin-harness-config.ts";
 import type { PathOperations } from "../tools/rin-harness-path-operations.ts";
 import { CONSTITUTION_BYPASS_TOKEN, GATED_SHELL_TOOL_NAMES } from "./rin-constitution-gate-scope.ts";
-import { isCompletionReport } from "./rin-gate-invocation.ts";
+import { completionOperations, isCompletionReport, type resolveCompletionTarget } from "./rin-gate-invocation.ts";
 
 type GateDecision =
   | { readonly kind: "allow" }
@@ -32,12 +32,15 @@ type GateRunVerdict = {
 };
 
 type ConstitutionGatePorts = {
+  readonly resolveTarget: typeof resolveCompletionTarget;
   readonly checkoutRootOf: (request: { readonly commandCwd: string | undefined }) => string | undefined;
   readonly readEngine: (request: { readonly checkoutRoot: string }) => EngineReading;
   readonly runWalkerGate: (request: { readonly checkoutRoot: string; readonly hookInput: string }) => WalkerGateOutcome;
   readonly runDisciplinesCheck: (request: DisciplinesCheckRequest) => DisciplinesCheckOutcome;
   readonly recordGateRun: (request: {
     readonly command: string;
+    readonly stage: string;
+    readonly result: string;
     readonly checkoutRoot: string;
     readonly verdict: GateRunVerdict;
   }) => Promise<void>;
@@ -79,9 +82,9 @@ const gatedCompletionOf = ({ hookInput }: { readonly hookInput: string }): Gated
   if (toolName === undefined || !GATED_SHELL_TOOL_NAMES.includes(toolName)) {
     return undefined;
   }
-  const toolInput = isRecord(hookCall) ? hookCall["tool_input"] : undefined;
+  const toolInput = isRecord(hookCall) ? hookCall.tool_input : undefined;
   const command = stringFieldOf({ container: toolInput, key: "command" }) ?? "";
-  if (!isCompletionReport({ command }) || command.includes(CONSTITUTION_BYPASS_TOKEN)) {
+  if (command.includes(CONSTITUTION_BYPASS_TOKEN) || !isCompletionReport({ command })) {
     return undefined;
   }
   return { command, commandCwd: stringFieldOf({ container: hookCall, key: "cwd" }) };
@@ -175,7 +178,11 @@ const engineDecisionOf = async ({
   checkoutRoot,
   constitutionEngine,
   ports,
+  stage,
+  result,
 }: {
+  readonly stage: string;
+  readonly result: string;
   readonly hookInput: string;
   readonly completion: GatedCompletion;
   readonly checkoutRoot: string;
@@ -190,7 +197,7 @@ const engineDecisionOf = async ({
         checkoutRoot,
         baseRevision: constitutionEngine.baseRevision,
       });
-      await ports.recordGateRun({ command: completion.command, checkoutRoot, verdict: gateRunVerdictOf({ outcome }) });
+      await ports.recordGateRun({ command: completion.command, stage, result, checkoutRoot, verdict: gateRunVerdictOf({ outcome }) });
       return disciplinesDecisionOf({ outcome });
     }
   }
@@ -207,25 +214,28 @@ const constitutionGateDecisionOf = async ({
   if (completion === undefined) {
     return ALLOW;
   }
-  const checkoutRoot = ports.checkoutRootOf({ commandCwd: completion.commandCwd });
-  if (checkoutRoot === undefined) {
-    return unverifiedDenialOf({
-      reason: `no git checkout contains the command's working directory (${completion.commandCwd ?? "none given"}), so there is no tree to check`,
+  const call = parsedJsonOf({ text: hookInput });
+  const operations = completionOperations({ command: completion.command, context: {
+    cwd: completion.commandCwd ?? process.cwd(), environment: process.env,
+    sessionId: stringFieldOf({ container: call, key: "session_id" }),
+  } });
+  for (const operation of operations) {
+    const target = ports.resolveTarget(operation);
+    if (target.kind === "unavailable") return unverifiedDenialOf({ reason: target.reason });
+    if (target.unjoined) return unverifiedDenialOf({ reason: "This conversation has not joined the selected work; select it with aidlc intent first." });
+    const checkoutRoot = ports.checkoutRootOf({ commandCwd: target.projectDir });
+    if (checkoutRoot === undefined) return unverifiedDenialOf({ reason: `no git checkout contains the selected project (${target.projectDir}), so there is no tree to check` });
+    const reading = ports.readEngine({ checkoutRoot });
+    if (reading.kind === "unavailable") return unverifiedDenialOf({ reason: `constitution.engine could not be read: ${reading.reason}` });
+    const decision = await engineDecisionOf({
+      hookInput: operations.length === 1 ? hookInput : JSON.stringify({ ...(isRecord(call) ? call : {}), cwd: operation.context.cwd, tool_input: { command: operation.command } }),
+      completion: { command: operation.command, commandCwd: operation.context.cwd }, checkoutRoot,
+      stage: target.stage, result: operation.request.kind === "report" ? operation.request.flags.result ?? "unknown" : "unknown",
+      constitutionEngine: reading.constitutionEngine, ports,
     });
+    if (decision.kind === "deny") return decision;
   }
-  const reading = ports.readEngine({ checkoutRoot });
-  switch (reading.kind) {
-    case "unavailable":
-      return unverifiedDenialOf({ reason: `constitution.engine could not be read: ${reading.reason}` });
-    case "read":
-      return engineDecisionOf({
-        hookInput,
-        completion,
-        checkoutRoot,
-        constitutionEngine: reading.constitutionEngine,
-        ports,
-      });
-  }
+  return ALLOW;
 };
 
 const constitutionEngineFromWire = ({ text }: { readonly text: string }): ConstitutionEngine | undefined => {

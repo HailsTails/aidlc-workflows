@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { compareInstalledRuntimeFiles } from "./aidlc-runtime-inventory.ts";
+import { admitMachineTransactionParent, planMachineTransactionParent } from "./aidlc-machine-transaction-parent.ts";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import {
@@ -19,7 +21,7 @@ import { projectionFiles, sha256File, walkFiles } from "./aidlc-distribution.ts"
 // so equivalent spellings of the same directories (macOS /tmp and /private/tmp,
 // a symlinked XDG_DATA_HOME, a re-spelled AIDLC_INSTALL_ROOT) describe one
 // install instead of rejecting each other's launcher as tampered.
-function lexicalInstallRoot(): string {
+export function lexicalInstallRoot(): string {
   const explicit = process.env.AIDLC_INSTALL_ROOT?.trim();
   if (explicit) return isAbsolute(explicit) ? explicit : resolve(process.cwd(), explicit);
   if (platform() === "win32") {
@@ -40,7 +42,16 @@ export function versionRoot(version: string): string {
   return join(versionsRoot(), requireVersion(version));
 }
 
-function lexicalBinRoot(): string {
+// AI-DLC's own plugin catalogue keeps this one path across releases, so a
+// person adds it to Claude Code or Codex once. Its record lists the files the
+// last refresh wrote, which is what makes them AI-DLC's.
+export function pluginCatalogueRoot(): string {
+  return join(installRoot(), "plugins");
+}
+
+export const PLUGIN_CATALOGUE_RECORD = ".aidlc-catalogue.json";
+
+export function lexicalBinRoot(): string {
   const explicit = process.env.AIDLC_BIN_DIR?.trim();
   if (explicit) return isAbsolute(explicit) ? explicit : resolve(process.cwd(), explicit);
   return platform() === "win32"
@@ -103,22 +114,18 @@ export function projectPathOverlapsMachineRoots(projectDir: string): boolean {
 export function machineTransactionRoot(): string {
   const paths = [installRoot(), binRoot()].map((path) => resolve(path));
   const filesystemRoot = parse(paths[0]).root;
-  if (paths.some((path) => parse(path).root !== filesystemRoot)) {
-    throw new Error("machine install and command directories must be on one filesystem root");
-  }
-  const parts = paths.map((path) =>
-    path.slice(filesystemRoot.length).split(/[\\/]/).filter(Boolean)
-  );
-  const shared: string[] = [];
-  for (let index = 0; index < Math.min(...parts.map((value) => value.length)); index++) {
-    if (parts.some((value) => value[index] !== parts[0][index])) break;
-    shared.push(parts[0][index]);
-  }
-  const common = join(filesystemRoot, ...shared);
-  if (common === filesystemRoot) {
-    throw new Error("machine install and command directories need a writable shared parent");
-  }
-  return common;
+  const directories = paths.map((path) => ({
+    filesystemRoot: parse(path).root,
+    segments: path.slice(filesystemRoot.length).split(/[\\/]/).filter(Boolean),
+  }));
+  const parent = planMachineTransactionParent({
+    installDirectory: directories[0],
+    commandDirectory: directories[1],
+  });
+  return admitMachineTransactionParent({
+    filesystemRoot: parent.filesystemRoot,
+    parentPath: join(parent.filesystemRoot, ...parent.segments),
+  });
 }
 
 export function commandPath(): string {
@@ -126,18 +133,47 @@ export function commandPath(): string {
 }
 
 // A POSIX-shell launcher installed on Windows ALONGSIDE aidlc.cmd. CMD and
-// PowerShell resolve a bare `aidlc` through PATHEXT to aidlc.cmd, but Git Bash
+// PowerShell resolve a bare `aidlc` through PATHEXT (to aidlc.exe first), but Git Bash
 // and other MSYS shells use execvp PATH lookup and ignore PATHEXT, so a bare
-// `aidlc` there finds nothing. This extensionless sibling makes `aidlc`
-// resolve in those shells. It is null off Windows, where commandPath() is
-// already the extensionless launcher.
+// `aidlc` there finds no .cmd. This extensionless sibling makes `aidlc`
+// resolve in those shells while aidlc.exe is not beside it (they find that one
+// themselves). It is null off Windows, where commandPath() is already the
+// extensionless launcher.
 export function windowsPosixCommandPath(): string | null {
   return platform() === "win32" ? join(binRoot(), "aidlc") : null;
 }
 
+// A copy of the aidlc binary installed on Windows beside aidlc.cmd. PowerShell
+// and cmd.exe find a bare `aidlc` here before aidlc.cmd (PATHEXT), and Git Bash
+// finds it once the extensionless launcher is gone. Windows starts a .cmd only
+// through cmd.exe, which reads & | < > ^ and %NAME% in the arguments however the
+// caller quoted them; this copy hands them on as given (aidlc-native-launcher.ts).
+export function windowsExeCommandPath(): string | null {
+  return platform() === "win32" ? join(binRoot(), "aidlc.exe") : null;
+}
+
+// The sha256 of the bin\aidlc.exe AI-DLC wrote, so a file there that is not
+// that copy is left as it is.
+export function windowsExeCommandMarkerPath(): string {
+  return join(installRoot(), "launcher-sha256");
+}
+
+export function readWindowsExeCommandMarker(): string | null {
+  try {
+    return readFileSync(windowsExeCommandMarkerPath(), "utf-8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// A replaced bin\aidlc.exe that was still running (the command that replaced
+// it, mostly) is renamed aside under this name; it goes once it has stopped.
+export const WINDOWS_EXE_COMMAND_ASIDE = /^aidlc\.exe\.old-[0-9a-f-]{36}$/;
+
 // The POSIX-shell launcher installed alongside aidlc.cmd on Windows so a bare
-// `aidlc` resolves in Git Bash / MSYS shells (which ignore PATHEXT). It simply
-// forwards to its sibling aidlc.cmd, which runs the same aidlc-shim.ps1 chain.
+// `aidlc` resolves in Git Bash / MSYS shells (which ignore PATHEXT) while
+// aidlc.exe is not there. It simply forwards to its sibling aidlc.cmd, which
+// runs the same aidlc-shim.ps1 chain.
 // The body is location-independent ($0's directory), so it is a constant both
 // the install-time ownership check and the uninstall plan compare against
 // verbatim, exactly like the other shims. Lives here (not in lifecycle) so the
@@ -157,9 +193,8 @@ export function windowsPosixCommandPath(): string | null {
 // "warning: an unescaped backslash at end of string is not portable" to stderr
 // on the single-backslash operand, on EVERY launch, which would spam every hook
 // invocation. The loop also removes the external-command dependency, so the
-// forwarder works in a stripped MSYS that lacks tr. Manually spot-checked on
-// Windows Server 2022 Git Bash (MINGW64) — zero warnings, identical output;
-// CI exercises the loop via a POSIX /bin/sh test, not MINGW64 itself.
+// forwarder works in a stripped MSYS that lacks tr. CI exercises the loop via
+// a POSIX /bin/sh test, not MINGW64 itself.
 export function windowsPosixShim(): string {
   return [
     "#!/bin/sh",
@@ -197,7 +232,7 @@ export function windowsPosixShim(): string {
 export function previousWindowsPosixShims(): readonly string[] {
   return [
     // v2 — normalised backslashes via `tr "\\" "/"`, which emitted a per-launch
-    // GNU-tr stderr warning in MSYS; superseded by the v3 builtin loop.
+    // GNU-tr stderr warning in MSYS.
     [
       "#!/bin/sh",
       "# aidlc-gitbash-forwarder-v2",
@@ -224,8 +259,9 @@ export type WindowsGitBashLauncherState =
   | { ok: false; launcher: string; foreign: boolean; fix: string };
 
 // Whether Git Bash, where Claude Code runs its hooks on Windows, can run a bare
-// `aidlc` from this native install: only through the extensionless launcher
-// beside aidlc.cmd. Null off Windows and when there is no native command here.
+// `aidlc` from this native install: through the extensionless launcher beside
+// aidlc.cmd, or without it through aidlc.exe. Null off Windows and when there is
+// no native command here.
 export function windowsGitBashLauncherState(): WindowsGitBashLauncherState | null {
   const launcher = windowsPosixCommandPath();
   if (launcher === null || !existsSync(commandPath())) return null;
@@ -246,6 +282,7 @@ export function windowsGitBashLauncherState(): WindowsGitBashLauncherState | nul
     // Missing.
   }
   if (body !== null && windowsPosixLauncherBodyIsOwned(body)) return { ok: true };
+  if (!present && existsSync(join(binRoot(), "aidlc.exe"))) return { ok: true };
   return present
     ? { ok: false, launcher, foreign: true, fix: `move ${launcher} aside, then ${repair}` }
     : { ok: false, launcher, foreign: false, fix: repair };
@@ -588,44 +625,8 @@ export function inspectInstalledVersion(
         reason: error instanceof Error ? error.message : String(error),
       };
     }
-    if (baseline.files.length !== actual.files.length) {
-      return {
-        complete: false,
-        distributions: [],
-        reason: "runtime file inventory does not match the installed baseline",
-      };
-    }
-    for (let index = 0; index < actual.files.length; index++) {
-      const expected = baseline.files[index];
-      const current = actual.files[index];
-      if (
-        !expected ||
-        typeof expected.path !== "string" ||
-        !Number.isInteger(expected.mode) ||
-        typeof expected.sha256 !== "string" ||
-        !/^sha256:[a-f0-9]{64}$/.test(expected.sha256)
-      ) {
-        return {
-          complete: false,
-          distributions: [],
-          reason: "runtime integrity baseline contains an invalid file entry",
-        };
-      }
-      if (expected.path !== current.path) {
-        return {
-          complete: false,
-          distributions: [],
-          reason: "runtime file inventory does not match the installed baseline",
-        };
-      }
-      if (expected.mode !== current.mode || expected.sha256 !== current.sha256) {
-        return {
-          complete: false,
-          distributions: [],
-          reason: `runtime file ${current.path} does not match the installed baseline`,
-        };
-      }
-    }
+    const reason = compareInstalledRuntimeFiles({ expectedFiles: baseline.files, actualFiles: actual.files });
+    if (reason !== null) return { complete: false, distributions: [], reason };
   }
   const declared = new Set(
     Array.isArray(manifest.distributions)

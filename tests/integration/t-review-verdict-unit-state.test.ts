@@ -3,7 +3,7 @@
 // function:reviewAttemptAccounting, function:evaluateGuardRefusal,
 // directive:guard-recovery
 //
-// OMP F1: terminal summary refusal must use the team Unit gate, not the
+// Terminal summary refusal must use the team Unit gate, not the
 // still-in-progress global checkbox. Start/complete, rejection, summary
 // authorization, output descent, and the pending request use their owning
 // commands/hooks; no review or lifecycle audit rows are fabricated.
@@ -14,6 +14,7 @@
 
 import { NATIVE_FIXTURE_SETUP_TIMEOUT_MS } from "../harness/test-budget.ts";
 import { setDefaultTimeout, afterAll, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -23,7 +24,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
 import {
   auditBlockField,
   docsRoot,
@@ -39,10 +39,10 @@ import {
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import {
   AIDLC_SRC,
-  DEFAULT_RECORD_DIR,
   cleanupTestProject,
   createTestProject,
   recordArtifactWriteViaHook,
+  REPO_ROOT,
   seedAidlcMemory,
   seedBoltDag,
   seededRecordDir,
@@ -94,7 +94,13 @@ class UnitReview {
   readonly stageDir: string;
 
   constructor() {
-    const scratch = join(tmpdir(), "aidlc-unit-review-fixtures");
+    // Keep fixture scratch in the root checkout, including when this file runs
+    // from a worktree. No Git write or commit is needed for functional-design.
+    const commonDir = execFileSync(
+      "git", ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { cwd: REPO_ROOT, encoding: "utf-8" },
+    ).trim();
+    const scratch = join(dirname(commonDir), "tmp", "guard-recovery-contract", "omp-fixes");
     mkdirSync(scratch, { recursive: true });
     const previousTmp = process.env.TMPDIR;
     try {
@@ -113,7 +119,6 @@ class UnitReview {
       AIDLC_PROJECT_DIR: this.dir,
       AIDLC_HARNESS_DIR: ".claude",
       AIDLC_UNATTENDED: "0",
-      AIDLC_SESSION_OVERRIDE: SESSION,
     };
     // The ordinary runner supplies fixture skips. Restore enforcement for
     // every child, including request admission and the terminal verdict.
@@ -121,6 +126,9 @@ class UnitReview {
     for (const key of Object.keys(this.env)) {
       if (/^AIDLC_(?:SKIP|DISABLE|ALLOW_DIRECT)_/.test(key)) this.env[key] = "0";
     }
+    // The stage's checks before the review (completionChecksStep, advisory, no
+    // guard) are not this file's subject, and its documents are not written for them.
+    this.env.AIDLC_DISABLE_SENSORS = "1";
     for (const key of [
       "AIDLC_SKIP_ARTIFACT_GUARD",
       "AIDLC_SKIP_SUMMARY_CONFIRMATION_GUARD",
@@ -130,7 +138,6 @@ class UnitReview {
       "AIDLC_ALLOW_DIRECT_AUDIT_EVENTS",
     ]) this.env[key] = "0";
     delete this.env.AWS_AIDLC_DEFAULT_SCOPE;
-    delete this.env.AIDLC_SESSION_OVERRIDE_SOURCE;
 
     // Initial Construction state follows t335's team Unit fixture. Subsequent
     // lifecycle changes belong exclusively to state unit/orchestrate report.
@@ -171,7 +178,6 @@ class UnitReview {
     this.stageDir = join(seededRecordDir(this.dir), "construction", UNIT, STAGE);
     mkdirSync(this.stageDir, { recursive: true });
     this.questions = join(this.stageDir, `${STAGE}-questions.md`);
-    succeeded(this.tool("utility", ["intent", DEFAULT_RECORD_DIR]), "Join the fixture intent");
   }
 
   run(argv: string[], input?: Json): Run {
@@ -374,7 +380,19 @@ describe("OMP F1: terminal review refusal respects the team Unit gate", () => {
         // aidlc-log wraps the multiline refusal in its JSON error envelope.
         const error = JSON.parse(refused.stderr.trim().split("\n").at(-1)!) as Json;
         expect(typeof error.error, refused.stderr).toBe("string");
-        const ask = guardRecoveryAskFromRefusalText(error.error as string);
+        const firstAsk = guardRecoveryAskFromRefusalText(error.error as string);
+        // Questions never asked are the agent's own step the first time; the
+        // same refusal again puts the ways on to the person.
+        const ask = scenario.name === "missing questions"
+          ? (() => {
+            expect(firstAsk?.agent_work, refused.stderr).toBe(true);
+            expect(firstAsk!.remedies.map((remedy) => remedy.op)).toEqual(["ask-stage-questions"]);
+            const again = p.tool("log", [...p.reviewArgs(), "--verdict", verdict]);
+            expect(again.code, again.stdout + again.stderr).not.toBe(0);
+            const repeated = JSON.parse(again.stderr.trim().split("\n").at(-1)!) as Json;
+            return guardRecoveryAskFromRefusalText(repeated.error as string);
+          })()
+          : firstAsk;
         expect(ask, refused.stderr).not.toBeNull();
         expect(ask!.reason_codes).toContain(scenario.code);
         expect(ask).toMatchObject({
@@ -405,8 +423,8 @@ describe("OMP F1: terminal review refusal respects the team Unit gate", () => {
         expect(p.state()).toBe(stateBefore);
         expect(p.accounting().pendingRequests.get(1)).toEqual(pending.pendingRequests.get(1));
 
-        // Primary F1 assertion: before the fix this is "in-progress", inherited
-        // from the global checkbox despite the proven revising Unit gate.
+        // The refusal must not inherit "in-progress" from the global checkbox despite
+        // the proven revising Unit gate.
         expect(p.refusal()).toMatchObject({
           code: scenario.code, blockedAction: "review-verdict",
           stage: STAGE, unit: UNIT, state: "revising",

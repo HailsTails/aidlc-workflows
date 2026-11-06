@@ -1,11 +1,9 @@
-// covers: subcommand:aidlc-orchestrate:next, subcommand:aidlc-orchestrate:report, function:writeActiveDirectiveMarker
+// covers: subcommand:aidlc-orchestrate:next, subcommand:aidlc-orchestrate:report, function:writeActiveDirectiveMarker, function:statusSyncLeavesUnitCursor
 //
-// CLI-contract test for code-generation JOINING the unit-major walk (the
-// deferred follow-up of the original unit-major increment: "widening the
-// walk's block filter"). mechanism = cli.
+// CLI-contract test for code-generation in the unit-major walk. mechanism = cli.
 //
 // THE FEATURE: under `Construction Iteration: unit-major`, the walk's inner
-// block is now EVERY in-scope per-unit Construction stage in graph order -
+// block is EVERY in-scope per-unit Construction stage in graph order -
 // the four inline design stages plus code-generation (mode: subagent). For
 // each unit in Bolt DAG topo order, the engine emits design 3.1-3.4 then
 // code-generation for THAT unit before the next unit begins, so the first
@@ -19,7 +17,7 @@
 //
 // t209 pins the walk ordering + knob write path; t210 pins knob-off
 // byte-equivalence and the swarm suppression + its negative control. THIS
-// file pins the seams the widened block newly touches:
+// file pins the seams the block touches:
 //   1. one late approval covering all five stages, in order, through to
 //      Build and Test,
 //   2. a lone Code Generation gate presenting on the last unit,
@@ -63,8 +61,10 @@ import { appendAuditEntry } from "../../dist/claude/.claude/tools/aidlc-audit.ts
 import {
   artifactFilename,
   latestMainWorkflowStageRunFloorForProject,
+  readActiveDirectiveMarker,
   stateDigest,
   unitCompletedReceipts,
+  writeActiveDirectiveMarker,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import {
   renderTestingContract,
@@ -75,6 +75,11 @@ import {
   NATIVE_STARTUP_TIMEOUT_MS,
   remainingOperationTimeoutMs,
 } from "../harness/test-budget.ts";
+
+// The stage's checks run once before its review or gate, and again at the gate
+// (completionChecksStep, t-checks-before-review); this file's fixture documents
+// are not written for them and its subject is not them, so they stay off here.
+process.env.AIDLC_DISABLE_SENSORS = "1";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 resetAidlcEnv();
@@ -133,7 +138,7 @@ const REVIEW_ARTIFACTS: Record<string, string> = {
   "infrastructure-design": "cicd-pipeline",
   "code-generation": "code-generation-plan",
 };
-// The widened walk block, graph order: design stages then code-generation.
+// The walk block, graph order: design stages then code-generation.
 const BLOCK = [
   "functional-design",
   "nfr-requirements",
@@ -386,6 +391,37 @@ describe("t272 code-generation joins the unit-major walk", () => {
     expect(gate.gate).toBe(true);
   });
 
+  // A checkout that claimed a Unit (Unit Ownership: team) rests Current Stage on
+  // the Unit's own stage (sync-unit-scope-stage), while the audit tail's last
+  // STAGE_STARTED still names the block's first stage. A sync to that stage is
+  // the mirror of the case above: the cursor stays, and the issued step with it.
+  test("task sync to the block's first stage leaves a claimed Unit's cursor on its own stage", () => {
+    const proj = seedProject({
+      current: "code-generation",
+      checkboxes: `- [-] functional-design — EXECUTE
+- [-] nfr-requirements — EXECUTE
+- [-] nfr-design — EXECUTE
+- [-] infrastructure-design — EXECUTE
+- [-] code-generation — EXECUTE
+- [ ] build-and-test — EXECUTE`,
+    });
+    const before = readFileSync(seededStateFile(proj), "utf-8");
+    writeActiveDirectiveMarker(proj, {
+      kind: "run-stage",
+      stage: "code-generation",
+      unit: "alpha",
+      state_sha256: stateDigest(before),
+    });
+
+    runStatusSync(proj, "functional-design");
+
+    const after = readFileSync(seededStateFile(proj), "utf-8");
+    expect(after).toContain("- **Current Stage**: code-generation");
+    expect(stateDigest(after)).toBe(stateDigest(before));
+    // The step the engine issued is still the current one.
+    expect(readActiveDirectiveMarker(proj, after)?.stage).toBe("code-generation");
+  });
+
   // 1: the late approvals are ONE question for all five stages. From a
   // fully-covered grid (code-gen included) the first gate lists them, on the
   // last unit, and one approval approves them in order.
@@ -403,7 +439,6 @@ describe("t272 code-generation joins the unit-major walk", () => {
     const done = runReport(proj, ["--stage", "functional-design", "--result", "approved"]);
     expect(done.kind).toBe("done");
 
-    // The workflow has left the per-unit block entirely.
     const next = runNext(proj);
     expect(next.stage).toBe("build-and-test");
   });
@@ -472,7 +507,7 @@ describe("t272 code-generation joins the unit-major walk", () => {
     expect(d.message).toContain("work items are not complete");
   });
 
-  // 4: revision re-entry through the widened block. From a fully-covered
+  // 4: revision re-entry through the block. From a fully-covered
   // grid, deleting one code-generation/alpha artifact re-enters the walk at
   // exactly (code-generation, alpha), gate suppressed - the same re-entry
   // t209 case 6 pins for a design stage.

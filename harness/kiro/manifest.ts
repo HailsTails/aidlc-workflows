@@ -20,10 +20,38 @@
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
+// The personas with an agent JSON below. Kiro CLI's 3.0 engine also loads each
+// one's prompt .md as an agent of the same name, and a dispatch runs that one
+// (#1394): its frontmatter carries the tools the JSON grants on v2.
+const PERSONA_AGENTS = [
+  "aidlc-architect-agent",
+  "aidlc-developer-agent",
+  "aidlc-product-lead-agent",
+  "aidlc-architecture-reviewer-agent",
+  "aidlc-composer-agent",
+  "aidlc-product-agent",
+  "aidlc-design-agent",
+  "aidlc-delivery-agent",
+  "aidlc-aws-platform-agent",
+  "aidlc-compliance-agent",
+  "aidlc-devsecops-agent",
+  "aidlc-quality-agent",
+  "aidlc-pipeline-deploy-agent",
+  "aidlc-operations-agent",
+] as const;
+
+// The Kiro IDE row's tools and MCP lines, without its permissions: on v2 the
+// JSON still decides, and the .md is only its prompt. A plugin's agent has no
+// JSON here, so on v2 it is not dispatched; on v3 these lines are its tools.
+const PERSONA_PROMPT_LINES = [`tools: ["read", "write", "shell"]`, "includeMcpJson: true"];
+
 const manifest: HarnessManifest = {
   name: "kiro",
   productName: "Kiro CLI",
-  configNextStep: "run `kiro-cli chat`, then `/aidlc --doctor`",
+  // This tree's agents are built for Kiro CLI's v2 engine; the kiro-ide tree,
+  // listed as Kiro, is the one for Kiro IDE and Kiro CLI on v3.
+  choiceName: "Kiro CLI (V2)",
+  configNextStep: "run `kiro-cli --v2` (Kiro CLI 2.21.4 or later; for an older one, see the AI-DLC Kiro CLI guide), then `/aidlc --doctor`",
   // Kiro CLI's engines read disjoint hook registrations. This tree registers
   // its hooks in the agent JSON `hooks` block, which the v2 engine runs while
   // the aidlc agent is active. The v3 engine (KAS) reads no agent-v1 JSON and
@@ -38,6 +66,10 @@ const manifest: HarnessManifest = {
   // format whose hooks v3 does run and v2 still runs (measured on kiro-cli
   // 2.23.1), so the text says v3 does not run the file as shipped; the v2
   // advice holds either way, because v2 runs both formats.
+  // `--v2` exists from Kiro CLI 2.21.4. A plain `kiro-cli` follows the person's
+  // own engine setting, which may choose v3, so the start lines name the
+  // engine; the spellings for older releases are in the Kiro CLI guide's
+  // Prerequisites, so each line stays one command.
   // Measured live: with another agent picked, `/agent` and aidlc bring the
   // hooks back in the same chat; on the 3.0 engine only a start on v2 does,
   // and Kiro then prints its own `agent "aidlc" needs upgrading for this agent
@@ -50,8 +82,8 @@ const manifest: HarnessManifest = {
     recovery:
       "In Kiro CLI, type /agent and pick aidlc, then carry on. If Kiro says agent \"aidlc\" " +
       "needs upgrading for this agent engine, quit Kiro and start it again in this folder with: " +
-      "kiro-cli chat --agent-engine v2 --agent aidlc (from an ACP client, start " +
-      "`kiro-cli acp --agent-engine v2`).",
+      "kiro-cli --v2 --agent aidlc (Kiro CLI 2.21.4 or later; for an older one, see the AI-DLC Kiro CLI guide). " +
+      "From an ACP client, start `kiro-cli acp --agent-engine v2`.",
     // A session without the aidlc agent runs none of these hooks, even after
     // an earlier session did, so the person's reply can go unrecorded. Measured
     // live: with the hooks running, a reply typed to another agent picked in
@@ -62,29 +94,35 @@ const manifest: HarnessManifest = {
       "If the person already replied, that reply was not recorded for this question. If Kiro's own line " +
       'under your replies says `agent "aidlc" needs upgrading for this agent engine, using "default"`, ' +
       "tell them exactly this, with nothing about why: \"Your answer didn't reach AI-DLC. Quit Kiro and start " +
-      "it again in this folder with: kiro-cli chat --agent-engine v2 --agent aidlc, then give it once more.\" " +
+      "it again in this folder with: kiro-cli --v2 --agent aidlc (Kiro CLI 2.21.4 or later; for an older one, see the AI-DLC Kiro CLI guide), then give it once more.\" " +
       "Otherwise tell them exactly this, with nothing about why: \"Your answer didn't reach AI-DLC. Type /agent " +
       "and pick aidlc, then give it once more.\"",
     notRunYet:
       "This is expected before your first Kiro CLI chat in this folder. If you already started one, type /agent " +
       "and pick aidlc; if Kiro says agent \"aidlc\" needs upgrading for this agent engine, quit Kiro and start " +
-      "it again in this folder with: kiro-cli chat --agent-engine v2 --agent aidlc. Then run doctor again.",
+      "it again in this folder with: kiro-cli --v2 --agent aidlc (Kiro CLI 2.21.4 or later; for an older one, see the AI-DLC Kiro CLI guide). Then run doctor again.",
     agentStep:
       "Kiro is not running this project's aidlc agent in this session. You cannot change that " +
       "from inside it: do not approve, retry, or ask the person to answer again. If Kiro's own " +
       'line under your replies says `agent "aidlc" needs upgrading for this agent engine, using ' +
       '"default"`, show the person this line: "Quit Kiro and start it again in this folder ' +
-      'with: kiro-cli chat --agent-engine v2 --agent aidlc, then type <entry> to carry on." ' +
+      'with: kiro-cli --v2 --agent aidlc (Kiro CLI 2.21.4 or later; for an older one, see the AI-DLC Kiro CLI guide), then type <entry> to carry on." ' +
       'Otherwise show this line: "Type ' +
       '/agent and pick aidlc, then carry on." Then end your turn.',
   },
   harnessDir: ".kiro",
   orchestratorSkillPath: ".kiro/skills/aidlc/SKILL.md",
   tierFlavor: "kiro",
-  // rules → steering, and Kiro auto-loads steering: the rules ARE the
-  // always-on layer.
-  baseRuleDelivery: "ambient",
   kiroLayout: "agent-v1",
+  // Kiro CLI starts a hook as `"powershell" -Command "<command>"` on Windows and
+  // `/bin/bash -c "<command>"` on Linux (measured on kiro-cli 2.34.0), and it
+  // stops a tool call only on exit 2. Windows PowerShell's -Command hands back
+  // 1 for every native exit code but 0 and 1, so without this no refusal
+  // stopped anything there. `exit $LASTEXITCODE` is PowerShell's own way to
+  // keep the code; in bash the unset variable leaves a plain `exit`, which
+  // keeps the last command's status. tests/unit/t-kiro-hook-exit-code.test.ts
+  // runs a refusal both ways.
+  hookCommandSuffix: "; exit $LASTEXITCODE",
   rootIntegrations: [
     {
       path: ".gitignore",
@@ -102,6 +140,12 @@ const manifest: HarnessManifest = {
           "sha256:2f413414992c405c11a8bccb230574c2f58cec8fd2906cd37b7cd62bb33a97d8",
           // The variant shipped with notes above each group of lines.
           "sha256:f08d78b3e456c3a7cd7c998196c9bf6d59d24900e2ccf78cf30a1b189e766c2c",
+          // The variant shipped before the block ignored aidlc/active-memory/ (the
+          // engine's copy of the active space's method).
+          "sha256:28a69800dcac189aa2a976820db237b45bcf6dd7d7e6d4fae5c1603225b9957a",
+          // The variant shipped before the block ignored aidlc/.aidlc-request-text/
+          // (a request the engine has not read yet).
+          "sha256:99b4560aa1bd95f26077eb69a0c6c2a40f81146a212e70d876c27bb84f2b1789",
         ],
       },
     },
@@ -140,7 +184,6 @@ const manifest: HarnessManifest = {
   // Same core projection as claude, EXCEPT: rules→steering, and the
   // orchestrator skill (skills/aidlc/) is authored, not core.
   coreDirs: [
-    { src: "workflow-evidence", dst: "workflow-evidence" },
     { src: "tools", dst: "tools" },
     { src: "aidlc-common", dst: "aidlc-common" },
     { src: "knowledge", dst: "knowledge" },
@@ -161,6 +204,7 @@ const manifest: HarnessManifest = {
     { src: "skills/aidlc/SKILL.md", dst: "skills/aidlc/SKILL.md" },
     { src: "skills/aidlc/question-rendering.md", dst: "skills/aidlc/question-rendering.md" },
     { src: "skills/aidlc/composer.md", dst: "skills/aidlc/composer.md" },
+    { src: "skills/aidlc/tables.md", dst: "skills/aidlc/tables.md" },
     { src: "agents/aidlc.json", dst: "agents/aidlc.json" },
     { src: "agents/aidlc-architect-agent.json", dst: "agents/aidlc-architect-agent.json" },
     { src: "agents/aidlc-developer-agent.json", dst: "agents/aidlc-developer-agent.json" },
@@ -192,6 +236,12 @@ const manifest: HarnessManifest = {
     // determinism guard.
     { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
   ],
+
+  frontmatterAdditions: PERSONA_AGENTS.map((agent) => ({
+    file: `agents/${agent}.md`,
+    lines: PERSONA_PROMPT_LINES,
+  })),
+  pluginAgentFrontmatter: PERSONA_PROMPT_LINES,
 
   // Neutral root guidance is shared; native setup is loaded through agent resources.
   onboarding: { dst: "AGENTS.md", projectRoot: true, harnessDst: "steering/aidlc-onboarding.md", fills: onboardingFills },

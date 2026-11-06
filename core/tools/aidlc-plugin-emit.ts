@@ -5,10 +5,10 @@
 // tools/data/plugin-targets.json. This module therefore contains projection
 // behavior but no framework-checkout or harness-manifest dependency.
 
-import { requireSensorDocument, sensorProjectionContextSchema, type SensorDocument } from "./aidlc-sensor-projection.ts";
-import type { TextProjectionContext } from "./aidlc-projection-text.ts";
 import { createHash } from "node:crypto";
 import {
+  accessSync,
+  constants,
   cpSync,
   existsSync,
   lstatSync,
@@ -32,8 +32,10 @@ import {
 } from "node:path";
 import {
   assertPluginContentHasNoSymlinks,
-  assertSupportedPluginContributionPaths,
+  assertPluginCommands,
   classifyPluginSourceFile,
+  assertSupportedPluginContributionPaths,
+  pluginMarketplaceIssue,
   scanPluginFiles,
   walkPluginFiles,
 } from "./aidlc-plugin-validate.ts";
@@ -41,18 +43,22 @@ import {
   TRUSTED_ROUTE_NAMESPACE,
   trustedCommand,
 } from "./aidlc-command.ts";
-import { runWithOwnerStampedLock } from "./aidlc-lib.ts";
+import { sharedKnowledgeWithoutFormatDocs } from "./aidlc-inline-context.ts";
+import { committedTextBytes, runWithOwnerStampedLock } from "./aidlc-lib.ts";
 import { EXTENDED_SUBPROCESS_TIMEOUT_MS, LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
+import { typedHarnessName } from "./aidlc-runtime-paths.ts";
+import { authoredHookProduct, type BootstrapHookProducts } from "./aidlc-plugin-hook-definition.ts";
 
 export type PluginTargetKind = "store" | "kiro" | "kiro-ide" | "cursor";
 
 export interface PluginTarget {
   harnessName: string;
   manifestDir: string;
+  marketplaceDir: string;
+  hostCatalogue: boolean;
   harnessLeaf: string;
   kind: PluginTargetKind;
   installRoots: string[];
-  sensorProjection?: TextProjectionContext;
 }
 
 export type PluginTargetTable = Record<string, PluginTarget>;
@@ -65,14 +71,29 @@ export interface BuildPluginProjectionOptions {
   templateHooksDir: string;
   reviewerAgents?: Iterable<string>;
   lockTimeoutMs?: number;
+  // Set only by the repository packager, for this repository's own plugins/.
+  firstParty?: boolean;
 }
 
 export interface PluginProjectionResult {
   pluginName: string;
   harness: string;
   outDir: string;
+  // The plugin inside the projection: outDir, or on Kiro its own folder.
+  pluginRoot: string;
   files: string[];
+  commandScripts: string[];
 }
+
+// AI-DLC's own plugins show in the host as aidlc-<name> in this catalogue; a
+// plugin anyone else builds shows under the names its author chose.
+export const FIRST_PARTY_MARKETPLACE = "aidlc-plugins";
+const FIRST_PARTY_OWNER = { name: "AWS AIDLC" };
+const CATALOGUE_DESCRIPTION = "AIDLC plugin catalogue.";
+// Kiro has no plugin store, so a plugin is dropped into the project: each one
+// in its own folder in AI-DLC's part of .kiro, so a second plugin never lands
+// on the first.
+const DROPPED_PLUGINS_FOLDER = "aidlc-plugins";
 
 export const PLUGIN_PROJECTION_MARKER = ".aidlc-plugin-projection.json";
 const PLUGIN_PROJECTION_MARKER_SCHEMA = 1;
@@ -84,11 +105,12 @@ const CONTENT_DIRS = [
   "stages",
   "sensors",
   "tools",
+  "hooks",
   "contributions",
   "scopes",
   "agents",
   "knowledge",
-  "hooks",
+  "memory",
 ] as const;
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -116,11 +138,30 @@ function canonicalOutputPath(path: string): string {
   return join(existing, ...missing);
 }
 
+// The lock folder is created 0700. Linux shares one /tmp between users, so a
+// folder every user shared would belong to whoever built first, and nobody
+// else could take a lock in it. Windows keeps the plain name: its temp folder
+// is already the user's own.
 export function pluginBuildLockPath(outDir: string): string {
   const key = createHash("sha256")
     .update(canonicalOutputPath(outDir))
     .digest("hex");
-  return join(tmpdir(), "aidlc-plugin-build-locks", key);
+  const uid = process.getuid?.();
+  const folder = uid === undefined
+    ? "aidlc-plugin-build-locks"
+    : `aidlc-plugin-build-locks-u${uid}`;
+  return join(tmpdir(), folder, key);
+}
+
+// A lock folder this user cannot write. The plugin build and plugin test
+// commands print `fix` as the finding's Fix line in place of their generic one.
+export class PluginBuildLockFolderError extends Error {
+  readonly fix = "Set TMPDIR to a folder you own, then run the command again.";
+
+  constructor(folder: string, code: string) {
+    super(`cannot write the plugin build lock folder "${folder}" (${code})`);
+    this.name = "PluginBuildLockFolderError";
+  }
 }
 
 function withPluginBuildOutputLock<T>(
@@ -129,7 +170,23 @@ function withPluginBuildOutputLock<T>(
   action: () => T,
 ): T {
   const lockDir = pluginBuildLockPath(outDir);
-  mkdirSync(dirname(lockDir), { recursive: true, mode: 0o700 });
+  const lockFolder = dirname(lockDir);
+  // acquireOwnerStampedLock retries every create that fails, so a folder this
+  // user cannot write would wait out the whole budget and then read as a busy
+  // lock. On Windows access() does not read the ACLs that guard a folder, so it
+  // is not asked there.
+  try {
+    mkdirSync(lockFolder, { recursive: true, mode: 0o700 });
+    if (process.platform !== "win32") {
+      accessSync(lockFolder, constants.W_OK | constants.X_OK);
+    }
+  } catch (error) {
+    if (process.platform === "win32") throw error;
+    throw new PluginBuildLockFolderError(
+      lockFolder,
+      (error as NodeJS.ErrnoException).code ?? String(error),
+    );
+  }
   const result = runWithOwnerStampedLock(
     lockDir,
     Math.max(0, Math.floor(timeoutMs / PLUGIN_BUILD_LOCK_RETRY_MS)),
@@ -162,6 +219,8 @@ export function readPluginTargets(path: string): PluginTargetTable {
       !isPlainRecord(value) ||
       typeof value.harnessName !== "string" ||
       typeof value.manifestDir !== "string" ||
+      (value.marketplaceDir !== undefined && typeof value.marketplaceDir !== "string") ||
+      (value.hostCatalogue !== undefined && typeof value.hostCatalogue !== "boolean") ||
       typeof value.harnessLeaf !== "string" ||
       !Array.isArray(value.installRoots) ||
       value.installRoots.some((item) => typeof item !== "string") ||
@@ -177,12 +236,13 @@ export function readPluginTargets(path: string): PluginTargetTable {
     out[harness] = {
       harnessName: value.harnessName,
       manifestDir: value.manifestDir,
+      marketplaceDir: typeof value.marketplaceDir === "string"
+        ? value.marketplaceDir
+        : value.manifestDir,
+      hostCatalogue: value.hostCatalogue === true,
       harnessLeaf: value.harnessLeaf,
       kind: value.kind,
       installRoots: [...value.installRoots],
-      ...(value.sensorProjection === undefined ? {} : {
-        sensorProjection: sensorProjectionContextSchema.parse(value.sensorProjection),
-      }),
     };
   }
   return out;
@@ -235,7 +295,7 @@ function injectDelegatedKnowledgePreflight(
     `${marker}\n` +
     `**Delegated knowledge preflight (mandatory):** Before substantive work, ` +
     `ensure every readable Markdown file under these directories is loaded, in order: ` +
-    `\`${harnessDir}/knowledge/aidlc-shared/\`, ` +
+    `${sharedKnowledgeWithoutFormatDocs(harnessDir)}, ` +
     `\`${harnessDir}/knowledge/${agentName}/\`, ` +
     `\`aidlc/spaces/<active-space>/knowledge/aidlc-shared/\`, then ` +
     `\`aidlc/spaces/<active-space>/knowledge/${agentName}/\`. ` +
@@ -290,6 +350,93 @@ function readPluginManifest(pluginRoot: string): Record<string, unknown> {
   }
 }
 
+function pluginHostNames(
+  pluginName: string,
+  manifest: Record<string, unknown>,
+  firstParty: boolean,
+): { plugin: string; marketplace: string } {
+  if (firstParty) {
+    return { plugin: `aidlc-${pluginName}`, marketplace: FIRST_PARTY_MARKETPLACE };
+  }
+  const declared = isPlainRecord(manifest.aidlc) ? manifest.aidlc.marketplace : undefined;
+  return {
+    plugin: pluginName,
+    marketplace: typeof declared === "string" ? declared : pluginName,
+  };
+}
+
+function droppedIntoProject(kind: PluginTargetKind): boolean {
+  return kind === "kiro" || kind === "kiro-ide";
+}
+
+// The plugin's folder in a Kiro projection, as the drop puts it in the project.
+// Forward slashes: the Kiro IDE hook command names it.
+function droppedPluginFolder(harnessLeaf: string, hostName: string): string {
+  return `${harnessLeaf}/${DROPPED_PLUGINS_FOLDER}/${hostName}`;
+}
+
+type CatalogueEntry = { name: string; source: string; version: unknown; description: unknown };
+
+function catalogueText(name: string, owner: unknown, plugins: CatalogueEntry[]): string {
+  return `${JSON.stringify({ name, owner, description: CATALOGUE_DESCRIPTION, plugins }, null, 2)}\n`;
+}
+
+// A plugin someone else builds carries its own catalogue; AI-DLC's own share
+// one per host format at the root of the tree that holds them (dist/plugins,
+// the release runtime's plugins/), so a person adds that folder once and
+// installs any of them, and a second plugin of ours never brings a second
+// catalogue of the same name. Only the given hosts' catalogues are rewritten.
+export function writeFirstPartyCatalogues(
+  root: string,
+  targets: Iterable<PluginTarget>,
+): string[] {
+  const plugins = existsSync(root)
+    ? readdirSync(root)
+      .filter((name) => !name.startsWith(".") && statSync(join(root, name)).isDirectory())
+      .sort()
+    : [];
+  const written: string[] = [];
+  for (const target of targets) {
+    if (!target.hostCatalogue) continue;
+    const entries = plugins.flatMap((plugin): CatalogueEntry[] => {
+      const projection = join(root, plugin, target.harnessName);
+      if (!existsSync(join(projection, ".aidlc-plugin", "plugin.json"))) return [];
+      const manifest = readPluginManifest(projection);
+      const name = pluginNameFromManifest(projection, manifest);
+      return [{
+        name: pluginHostNames(name, manifest, true).plugin,
+        source: `./${plugin}/${target.harnessName}`,
+        version: manifest.version || "0.0.1",
+        description: manifest.description || "",
+      }];
+    });
+    const rel = `${target.marketplaceDir}/marketplace.json`;
+    if (entries.length === 0) {
+      rmSync(join(root, rel), { force: true });
+      continue;
+    }
+    mkdirSync(join(root, target.marketplaceDir), { recursive: true });
+    writeFileSync(join(root, rel), catalogueText(FIRST_PARTY_MARKETPLACE, FIRST_PARTY_OWNER, entries));
+    written.push(rel);
+  }
+  return written;
+}
+
+export function projectionPluginRoot(
+  outDir: string,
+  target: Pick<PluginTarget, "kind" | "harnessLeaf">,
+): string {
+  if (!droppedIntoProject(target.kind)) return outDir;
+  const folder = join(outDir, target.harnessLeaf, DROPPED_PLUGINS_FOLDER);
+  const names = existsSync(folder) ? readdirSync(folder) : [];
+  if (names.length !== 1) {
+    throw new Error(
+      `${outDir}: a ${target.kind} projection holds exactly one plugin folder in ${target.harnessLeaf}/${DROPPED_PLUGINS_FOLDER}/`,
+    );
+  }
+  return join(folder, names[0]);
+}
+
 function pluginNameFromManifest(
   pluginRoot: string,
   manifest: Record<string, unknown>,
@@ -300,41 +447,58 @@ function pluginNameFromManifest(
   return basename(pluginRoot);
 }
 
-function copyHookTemplates(
-  pluginRoot: string,
-  outDir: string,
-  templateHooksDir: string,
-  target: PluginTarget,
-): void {
+function copyHookTemplates({ pluginRoot, outDir, templateHooksDir, target }: {
+  readonly pluginRoot: string;
+  readonly outDir: string;
+  readonly templateHooksDir: string;
+  readonly target: PluginTarget;
+}): BootstrapHookProducts {
   const hooksDir = join(outDir, "hooks");
   mkdirSync(hooksDir, { recursive: true });
   const vendoredCompose = join(pluginRoot, "hooks", "compose.ts");
   const referenceCompose = join(templateHooksDir, "compose.ts");
+  const hasVendoredCompose = existsSync(vendoredCompose);
   if (
-    existsSync(vendoredCompose) &&
+    hasVendoredCompose &&
     !readFileSync(vendoredCompose).equals(readFileSync(referenceCompose))
   ) {
     throw new Error(
       `${vendoredCompose} differs from bundled compose template ${referenceCompose}`,
     );
   }
-  for (const file of readdirSync(templateHooksDir).sort()) {
-    if (
-      file === "aidlc-plugin-compose.ts" &&
-      target.kind !== "cursor" &&
-      target.kind !== "kiro-ide"
-    ) {
-      continue;
-    }
+  const emitted = readdirSync(templateHooksDir).sort().filter((file) =>
+    file !== "aidlc-plugin-compose.ts" || target.kind === "cursor" || target.kind === "kiro-ide",
+  );
+  const destinations = emitted.map((file) => {
     const source =
-      file === "compose.ts" && existsSync(vendoredCompose)
+      file === "compose.ts" && hasVendoredCompose
         ? vendoredCompose
         : join(templateHooksDir, file);
-    cpSync(source, join(hooksDir, file));
-  }
+    const destination = join(hooksDir, file);
+    cpSync(source, destination);
+    return realpathSync.native(destination);
+  });
+  return { destinations, matchedReference: hasVendoredCompose
+    ? { source: realpathSync.native(vendoredCompose), destination: realpathSync.native(join(hooksDir, "compose.ts")) }
+    : null };
 }
 
-function composeCommand(target: PluginTarget): string {
+// Cursor and Kiro run a plugin hook in the platform's shell (Cursor: the
+// person's shell, or PowerShell on Windows; Kiro: /bin/sh, or cmd.exe), so
+// their commands carry no sh -c. The native release runs this, the copy
+// channel the Bun launcher. It names its harness: a compiled aidlc otherwise
+// takes the first one installed in the project, .claude before the others.
+function nativePluginSync(target: PluginTarget): string {
+  return `aidlc ${TRUSTED_ROUTE_NAMESPACE} plugin sync --harness-dir ${target.harnessLeaf}`;
+}
+
+// The Bun launcher a Kiro IDE registration runs, from the plugin's folder in
+// the workspace ("" for the workspace root).
+function kiroIdeLauncher(target: PluginTarget, pluginDir: string): string {
+  return `bun ./${pluginDir}hooks/aidlc-plugin-compose.ts ${target.harnessLeaf} ${target.harnessName}`;
+}
+
+function composeCommand(target: PluginTarget, hostName: string): string {
   const rootExpr =
     target.harnessName === "claude"
       ? `\${CLAUDE_PLUGIN_ROOT}`
@@ -343,10 +507,11 @@ function composeCommand(target: PluginTarget): string {
     return `bun ./hooks/aidlc-plugin-compose.ts ${target.harnessLeaf}`;
   }
   if (target.kind === "kiro-ide") {
-    return (
-      `bun ./hooks/aidlc-plugin-compose.ts ${target.harnessLeaf} ` +
-      target.harnessName
-    );
+    // One entry, as Kiro IDE shows a card for each hook; || reads the same in
+    // /bin/sh and cmd.exe. Kiro gives a hook no plugin root, but runs it in the
+    // workspace the plugin was dropped into, where the plugin has its own folder.
+    const folder = droppedPluginFolder(target.harnessLeaf, hostName);
+    return `${nativePluginSync(target)} --plugin-root ./${folder} || ${kiroIdeLauncher(target, `${folder}/`)}`;
   }
   const composePath = `${rootExpr}/hooks/compose.ts`;
   // Probe aidlc on PATH first, then bun on PATH / ~/.bun/bin. If neither is
@@ -371,47 +536,152 @@ function composeCommand(target: PluginTarget): string {
   );
 }
 
-export function writePluginHookWiring(input: {
-  readonly pluginName: string;
-  readonly outDir: string;
-  readonly target: PluginTarget;
-  readonly channel?: "copy" | "native";
-}): void {
-  const { pluginName, outDir, target } = input;
-  const command = input.channel === "native"
-    ? `AIDLC_HARNESS_DIR=${target.harnessLeaf} AIDLC_HARNESS_NAME=${target.harnessName} ${trustedCommand("plugin sync")}`
-    : composeCommand(target);
+// The Kiro IDE session-start registration a build writes beside the plugin's
+// folder. It keeps the AI-DLC name, so a rebuilt plugin's drop replaces its
+// own earlier registration instead of running beside it.
+export function kiroIdeComposeRegistration(
+  target: PluginTarget,
+  pluginName: string,
+  hostName: string,
+): { path: string; text: string } {
+  return composeRegistration(target, pluginName, composeCommand(target, hostName));
+}
+
+// Kiro stops a hook with no timeout after 60 seconds, so the registration asks
+// for EXTENDED_SUBPROCESS_TIMEOUT_MS in seconds, as the Claude and Codex compose
+// hooks do. null renders a registration as builds wrote it before it carried one.
+function composeRegistration(
+  target: PluginTarget,
+  pluginName: string,
+  command: string,
+  timeout: number | null = EXTENDED_SUBPROCESS_TIMEOUT_MS / 1000,
+): { path: string; text: string } {
+  return {
+    path: `${target.harnessLeaf}/hooks/aidlc-${pluginName}-compose.json`,
+    text: `${JSON.stringify(
+      {
+        version: "v1",
+        hooks: [
+          {
+            name: `aidlc-${pluginName}-compose`,
+            trigger: "SessionStart",
+            description: `Composes the ${pluginName} AIDLC plugin at session start.`,
+            action: { type: "command", command },
+            ...(timeout === null ? {} : { timeout }),
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+  };
+}
+
+// The session-start registrations Kiro IDE builds have written for a plugin,
+// so a drop from an earlier build still reads as the plugin's. For a plugin in
+// its own folder: this build's; its command without a timeout, which builds
+// from 2.11.1-preview.20261019.1 wrote until the registration carried one;
+// then the launcher alone, which 2.11.1-preview.20261018.1 wrote. With no
+// folder (null): the launcher from the workspace root, which 2.11.0 and the
+// 2.11.1 previews before that one wrote, as their projection was dropped whole
+// into the workspace. No build wrote either launcher with a timeout.
+function writtenRegistrations(
+  target: PluginTarget,
+  pluginName: string,
+  hostName: string | null,
+): Array<{ path: string; text: string }> {
+  const untimed = (command: string) => composeRegistration(target, pluginName, command, null);
+  if (hostName === null) return [untimed(kiroIdeLauncher(target, ""))];
+  return [
+    kiroIdeComposeRegistration(target, pluginName, hostName),
+    untimed(composeCommand(target, hostName)),
+    untimed(kiroIdeLauncher(target, `${droppedPluginFolder(target.harnessLeaf, hostName)}/`)),
+  ];
+}
+
+// The hook files in a project that are exactly the registrations the builds of
+// its dropped plugins wrote, so config can tell them from hook files a person
+// added. An edited one is not the plugin's any more; a CRLF checkout is the
+// same file.
+export function droppedPluginRegistrations(
+  projectDir: string,
+  harnessLeaf: string,
+): string[] {
+  const target: PluginTarget = {
+    harnessName: "kiro-ide",
+    manifestDir: "",
+    marketplaceDir: "",
+    hostCatalogue: false,
+    harnessLeaf,
+    kind: "kiro-ide",
+    installRoots: [],
+  };
+  const owned: string[] = [];
+  const ownIfWritten = (pluginName: unknown, hostName: string | null): void => {
+    if (typeof pluginName !== "string" || !/^[a-z][a-z0-9-]*$/.test(pluginName)) return;
+    const written = writtenRegistrations(target, pluginName, hostName);
+    let onDisk: Buffer;
+    try {
+      onDisk = committedTextBytes(readFileSync(join(projectDir, written[0].path)));
+    } catch {
+      // No registration: a Kiro CLI projection writes none.
+      return;
+    }
+    if (written.some(({ text }) => onDisk.equals(Buffer.from(text, "utf-8")))) {
+      owned.push(written[0].path);
+    }
+  };
+  const folder = join(projectDir, harnessLeaf, DROPPED_PLUGINS_FOLDER);
+  for (const hostName of existsSync(folder) ? readdirSync(folder).sort() : []) {
+    let manifest: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(
+        readFileSync(join(folder, hostName, ".aidlc-plugin", "plugin.json"), "utf-8"),
+      );
+      if (!isPlainRecord(parsed)) continue;
+      manifest = parsed;
+    } catch {
+      continue;
+    }
+    const pluginName = manifest.name;
+    // A build names the folder after the plugin, so a folder it never names
+    // holds no drop of that plugin, whatever registration sits beside it.
+    if (
+      typeof pluginName !== "string" ||
+      ![false, true].some((firstParty) => pluginHostNames(pluginName, manifest, firstParty).plugin === hostName)
+    ) continue;
+    ownIfWritten(pluginName, hostName);
+  }
+  const marker = readProjectionMarker(projectDir);
+  if (marker?.harness === target.harnessName) ownIfWritten(marker.plugin, null);
+  return owned;
+}
+
+function writeHookWiring(
+  pluginName: string,
+  hostName: string,
+  outDir: string,
+  pluginDir: string,
+  target: PluginTarget,
+): void {
   if (target.kind === "kiro") return;
   if (target.kind === "kiro-ide") {
-    const hooksDir = join(outDir, target.harnessLeaf, "hooks");
-    mkdirSync(hooksDir, { recursive: true });
-    writeFileSync(
-      join(hooksDir, `aidlc-${pluginName}-compose.json`),
-      `${JSON.stringify(
-        {
-          version: "v1",
-          hooks: [
-            {
-              name: `aidlc-${pluginName}-compose`,
-              trigger: "SessionStart",
-              description: `Composes the ${pluginName} AIDLC plugin at session start.`,
-              action: { type: "command", command },
-            },
-          ],
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    const registration = kiroIdeComposeRegistration(target, pluginName, hostName);
+    mkdirSync(join(outDir, target.harnessLeaf, "hooks"), { recursive: true });
+    writeFileSync(join(outDir, registration.path), registration.text);
     return;
   }
+  const command = composeCommand(target, hostName);
   if (target.kind === "cursor") {
     writeFileSync(
-      join(outDir, "hooks", "hooks.json"),
+      join(pluginDir, "hooks", "hooks.json"),
       `${JSON.stringify(
         {
           version: 1,
-          hooks: { sessionStart: [{ command }] },
+          // Cursor starts every entry on its own and gives a plugin hook its
+          // root and workspace in the environment; the one whose runtime is
+          // absent fails without stopping the other.
+          hooks: { sessionStart: [{ command: nativePluginSync(target) }, { command }] },
         },
         null,
         2,
@@ -420,7 +690,7 @@ export function writePluginHookWiring(input: {
     return;
   }
   writeFileSync(
-    join(outDir, "hooks", "hooks.json"),
+    join(pluginDir, "hooks", "hooks.json"),
     `${JSON.stringify(
       {
         hooks: {
@@ -448,77 +718,30 @@ export function writePluginHookWiring(input: {
   );
 }
 
-// Declaration names are evidence of required context, not another token renderer.
-// Rendering their values is intentionally outside the sensor slice.
-function declaredSensorTokens(input: {
-  readonly manifest: Record<string, unknown>;
-  readonly harness: string;
-}): readonly string[] {
-  const aidlc = input.manifest.aidlc;
-  if (!isPlainRecord(aidlc) || !isPlainRecord(aidlc.tokens)) return [];
-  const declarations = aidlc.tokens;
-  const overrides = isPlainRecord(declarations.harness) ? declarations.harness[input.harness] : undefined;
-  return [...new Set([
-    ...Object.entries(declarations).filter(([, value]) => typeof value === "string").map(([name]) => name),
-    ...(isPlainRecord(overrides) ? Object.keys(overrides) : []),
-  ])];
-}
-
-function preparePluginSensors(input: {
+function copyPluginContent({ pluginRoot, outDir, target, reviewers, bootstrap }: {
   readonly pluginRoot: string;
+  readonly outDir: string;
   readonly target: PluginTarget;
-  readonly unsupportedTokens: readonly string[];
-}): ReadonlyMap<string, SensorDocument> {
-  return new Map(walkPluginFiles(join(input.pluginRoot, "sensors"))
-    .filter((file) => file.endsWith(".md") &&
-      classifyPluginSourceFile({ pluginRoot: input.pluginRoot, file }) === "runtime")
-    .map((file) => [file, requireSensorDocument({
-      subject: file, body: readFileSync(file, "utf-8"),
-      destination: relative(input.pluginRoot, file).split(sep).join("/"),
-      context: input.target.sensorProjection, unsupportedTokens: input.unsupportedTokens,
-      target: { harness: input.target.harnessName, harnessDir: input.target.harnessLeaf },
-    })]));
-}
-
-function copyPluginContent(
-  pluginRoot: string,
-  outDir: string,
-  target: PluginTarget,
-  reviewers: ReadonlySet<string>,
-  templateHooksDir: string,
-  sensors: ReadonlyMap<string, SensorDocument>,
-): void {
-  const reservedHookNames = new Set(readdirSync(templateHooksDir));
+  readonly reviewers: ReadonlySet<string>;
+  readonly bootstrap: BootstrapHookProducts;
+}): void {
   for (const dir of CONTENT_DIRS) {
+    if (dir === "hooks" && target.harnessName !== "claude") continue;
     const sourceDir = join(pluginRoot, dir);
     if (!existsSync(sourceDir)) continue;
-    const sourceFiles = walkPluginFiles(sourceDir).filter(
-      (file) => classifyPluginSourceFile({ pluginRoot, file }) === "runtime",
-    );
-    if (target.harnessName === "codex" && dir === "agents") {
-      const authored = new Set(sourceFiles);
-      for (const file of sourceFiles.filter((path) => path.endsWith("-agent.md"))) {
-        const native = file.replace(/\.md$/, ".toml");
-        if (authored.has(native)) {
-          throw new Error(`${file}: authored Codex TOML collides with generated ${native}`);
-        }
-      }
-    }
-    for (const file of sourceFiles) {
-      if (dir === "hooks" && reservedHookNames.has(basename(file))) {
-        throw new Error(
-          `plugin '${basename(pluginRoot)}' ships hooks/${basename(file)}, which collides with the compose bootstrap the packager emits; rename it`,
-        );
-      }
+    for (const file of walkPluginFiles(sourceDir).filter((file) => classifyPluginSourceFile({ pluginRoot, file }) === "runtime")) {
       const outputDir =
         target.kind === "cursor" && dir === "agents"
           ? join(outDir, "aidlc", "agents")
           : join(outDir, dir);
-      const sensor = sensors.get(file);
-      const outPath = sensor === undefined
-        ? join(outputDir, relative(sourceDir, file)) : join(outDir, sensor.path);
+      const outPath = join(outputDir, relative(sourceDir, file));
+      if (dir === "hooks") {
+        const product = authoredHookProduct({ source: realpathSync.native(file), destination: existsSync(outPath) ? realpathSync.native(outPath) : outPath, bootstrap });
+        if (product.kind === "conflict") throw new Error(`authored hook collides with compose bootstrap: ${file}`);
+        if (product.kind === "reuse-bootstrap") continue;
+      }
       mkdirSync(dirname(outPath), { recursive: true });
-      let content = sensor === undefined ? readFileSync(file) : Buffer.from(sensor.body, "utf-8");
+      let content = readFileSync(file);
       if (dir === "agents" && file.endsWith("-agent.md")) {
         let projected = absorbPluginReviewerKnowledge(
           content.toString("utf-8"),
@@ -592,6 +815,26 @@ function assertBuildPathHasNoSymlinks(
   );
 }
 
+// The marker a build writes at the root of its output, naming the plugin and
+// the harness it was built for; null when the folder holds none.
+function readProjectionMarker(dir: string): { plugin: string; harness: string } | null {
+  try {
+    const marker = JSON.parse(readFileSync(join(dir, PLUGIN_PROJECTION_MARKER), "utf-8")) as unknown;
+    if (
+      isPlainRecord(marker) &&
+      marker.schema === PLUGIN_PROJECTION_MARKER_SCHEMA &&
+      marker.producer === PLUGIN_PROJECTION_PRODUCER &&
+      typeof marker.plugin === "string" &&
+      typeof marker.harness === "string"
+    ) {
+      return { plugin: marker.plugin, harness: marker.harness };
+    }
+  } catch {
+    // No marker, or not JSON.
+  }
+  return null;
+}
+
 export function assertPluginBuildOutput(
   outDir: string,
   target: PluginTarget,
@@ -614,21 +857,8 @@ export function assertPluginBuildOutput(
     );
   }
   if (readdirSync(resolvedOut).length === 0) return;
-  const markerPath = join(resolvedOut, PLUGIN_PROJECTION_MARKER);
-  let marker: Record<string, unknown> | null = null;
-  try {
-    const parsed = JSON.parse(readFileSync(markerPath, "utf-8")) as unknown;
-    marker = isPlainRecord(parsed) ? parsed : null;
-  } catch {
-    marker = null;
-  }
-  if (
-    !marker ||
-    marker.schema !== PLUGIN_PROJECTION_MARKER_SCHEMA ||
-    marker.producer !== PLUGIN_PROJECTION_PRODUCER ||
-    typeof marker.plugin !== "string" ||
-    typeof marker.harness !== "string"
-  ) {
+  const marker = readProjectionMarker(resolvedOut);
+  if (!marker) {
     throw new Error(
       `refusing to build into non-empty "${outDir}" - it has no valid ${PLUGIN_PROJECTION_MARKER} ownership marker. ` +
         "Point at a fresh/empty directory.",
@@ -640,8 +870,8 @@ export function assertPluginBuildOutput(
   ) {
     throw new Error(
       `refusing to replace "${outDir}" - its ${PLUGIN_PROJECTION_MARKER} belongs to ` +
-        `plugin "${marker.plugin}" for harness "${marker.harness}", not plugin "${pluginName}" ` +
-        `for harness "${target.harnessName}".`,
+        `plugin "${marker.plugin}" for harness "${typedHarnessName(marker.harness)}", not plugin "${pluginName}" ` +
+        `for harness "${typedHarnessName(target.harnessName)}".`,
     );
   }
 }
@@ -660,17 +890,19 @@ export function buildPluginProjection(
   const manifest = readPluginManifest(pluginRoot);
   const pluginName = pluginNameFromManifest(pluginRoot, manifest);
   assertSupportedPluginContributionPaths(manifest);
+  const commands = assertPluginCommands(manifest);
+  const firstParty = options.firstParty === true;
+  const marketplaceIssue = firstParty ? null : pluginMarketplaceIssue(manifest.aidlc);
+  if (marketplaceIssue) {
+    throw new Error(`.aidlc-plugin/plugin.json: ${marketplaceIssue.message}`);
+  }
+  const host = pluginHostNames(pluginName, manifest, firstParty);
   const version = manifest.version || "0.0.1";
   const author = manifest.author || { name: "AIDLC" };
   const description = manifest.description || "";
   const reviewers = new Set(
     options.reviewerAgents ?? pluginReviewerAgents(pluginRoot),
   );
-
-  const sensors = preparePluginSensors({
-    pluginRoot, target: options.target,
-    unsupportedTokens: declaredSensorTokens({ manifest, harness: options.target.harnessName }),
-  });
 
   return withPluginBuildOutputLock(
     outDir,
@@ -685,6 +917,10 @@ export function buildPluginProjection(
 
       rmSync(outDir, { recursive: true, force: true });
       mkdirSync(outDir, { recursive: true });
+      const pluginDir = droppedIntoProject(options.target.kind)
+        ? join(outDir, droppedPluginFolder(options.target.harnessLeaf, host.plugin))
+        : outDir;
+      mkdirSync(pluginDir, { recursive: true });
       writeFileSync(
         join(outDir, PLUGIN_PROJECTION_MARKER),
         `${JSON.stringify(
@@ -699,13 +935,23 @@ export function buildPluginProjection(
         )}\n`,
       );
 
-      const hostManifestDir = join(outDir, options.target.manifestDir);
+      // The plugin's own manifest travels with every projection, because
+      // plugin sync reads the base it builds on from there. A host manifest
+      // cannot carry it: Claude Code reads a `dependencies` key there as host
+      // plugins to enable.
+      mkdirSync(join(pluginDir, ".aidlc-plugin"), { recursive: true });
+      cpSync(
+        join(pluginRoot, ".aidlc-plugin", "plugin.json"),
+        join(pluginDir, ".aidlc-plugin", "plugin.json"),
+      );
+
+      const hostManifestDir = join(pluginDir, options.target.manifestDir);
       mkdirSync(hostManifestDir, { recursive: true });
       writeFileSync(
         join(hostManifestDir, "plugin.json"),
         `${JSON.stringify(
           {
-            name: `aidlc-${pluginName}`,
+            name: host.plugin,
             version,
             description,
             author,
@@ -714,51 +960,27 @@ export function buildPluginProjection(
           2,
         )}\n`,
       );
-      const marketplaceDir = options.target.harnessName === "codex"
-        ? join(outDir, ".agents", "plugins")
-        : hostManifestDir;
-      mkdirSync(marketplaceDir, { recursive: true });
-      writeFileSync(
-        join(marketplaceDir, "marketplace.json"),
-        `${JSON.stringify(
-          {
-            name: "aidlc-plugins",
-            owner: author,
-            description: "AIDLC plugin catalogue.",
-            plugins: [
-              {
-                name: `aidlc-${pluginName}`,
-                source: ".",
-                version,
-                description,
-              },
-            ],
-          },
-          null,
-          2,
-        )}\n`,
-      );
+      if (!firstParty) {
+        const marketplaceDir = join(pluginDir, options.target.marketplaceDir);
+        mkdirSync(marketplaceDir, { recursive: true });
+        writeFileSync(
+          join(marketplaceDir, "marketplace.json"),
+          catalogueText(host.marketplace, author, [
+            { name: host.plugin, source: ".", version, description },
+          ]),
+        );
+      }
 
-      copyHookTemplates(
-        pluginRoot,
-        outDir,
-        options.templateHooksDir,
-        options.target,
-      );
-      writePluginHookWiring({ pluginName, outDir, target: options.target });
-      copyPluginContent(
-        pluginRoot,
-        outDir,
-        options.target,
-        reviewers,
-        options.templateHooksDir,
-        sensors,
-      );
+      const bootstrap = copyHookTemplates({ pluginRoot, outDir: pluginDir, templateHooksDir: options.templateHooksDir, target: options.target });
+      writeHookWiring(pluginName, host.plugin, outDir, pluginDir, options.target);
+      copyPluginContent({ pluginRoot, outDir: pluginDir, target: options.target, reviewers, bootstrap });
 
       return {
         pluginName,
         harness: options.target.harnessName,
         outDir,
+        pluginRoot: pluginDir,
+        commandScripts: Object.values(commands).map((command) => command.script),
         files: walkPluginFiles(outDir).map((file) =>
           relative(outDir, file).split(sep).join("/"),
         ),

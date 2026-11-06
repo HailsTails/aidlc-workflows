@@ -1,0 +1,41 @@
+// Finite producer input policy. The caller supplies availability; this owner does not read storage.
+const SOURCE_FILES = [
+  "scripts/package.ts",
+  "scripts/package-runtime-cli.ts",
+  "scripts/manifest-types.ts",
+  "scripts/agent-knowledge.ts",
+  "scripts/agent-surface-projection.ts",
+  "scripts/core-projection-contract.ts",
+  "scripts/core-runtime.ts",
+  "scripts/projection-metadata.ts",
+  "scripts/workspace-seed.ts",
+  "scripts/earlier-release-regions.ts",
+  "scripts/generated-skill-regions.ts",
+  "scripts/copy-era-files.json",
+  "scripts/harness-bindings.ts",
+  "scripts/harness-surface-projection.ts",
+  "scripts/harness-runtime-data.ts",
+  "scripts/onboarding.ts",
+  "scripts/onboarding-projection.ts",
+  "scripts/plugin-contributions.ts",
+  "scripts/plugin-authoring-data.ts",
+  "scripts/plugin-declaration.ts",
+  "scripts/plugin-hook-source.ts",
+  "scripts/plugin-runtime.ts",
+  "scripts/plugin-runtime-selection.ts",
+  "scripts/plugin-runtime-projection.ts",
+  "scripts/runtime-import.ts",
+  "scripts/runtime-source.ts",
+  "scripts/runtime-module.ts",
+  "scripts/authored-text.ts",
+  "scripts/claude-settings.ts",
+  "scripts/package-sources.ts",
+  "scripts/package-source-inputs.ts",
+  "package.json",
+  "bun.lock",
+  "tsconfig.json",
+];
+
+export function packageInputFiles({ fileExists }: { readonly fileExists: (path: string) => boolean }): readonly string[] {
+  return SOURCE_FILES.filter((file) => fileExists(file));
+}

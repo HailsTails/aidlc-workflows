@@ -25,8 +25,12 @@ const CORE_PROTOCOL = readFileSync(
   join(REPO_ROOT, "core/aidlc-common/protocols/stage-protocol.md"),
   "utf-8",
 );
+// The summary confirmation is its own module, named while the ceremony is on.
+const SUMMARY_PROTOCOL = readFileSync(
+  join(REPO_ROOT, "core/aidlc-common/protocols/stage-protocol-summary.md"),
+  "utf-8",
+);
 
-// Every annex that renders questions as numbered prose.
 const NUMBERED_ANNEXES = [
   ...ANNEXES,
   "harness/opencode/skills/aidlc/question-rendering.md",
@@ -80,7 +84,7 @@ describe("t328 Kiro numbered Other rendering contract", () => {
     for (const rel of ANNEXES) {
       const mode = section(readAnnex(rel), "Canonical interaction-mode rendering");
       expect(mode, rel).toContain(
-        "4. **Other** — describe what you want instead",
+        "4. **Other** - describe what you want instead",
       );
       expect(mode.match(/^4\. \*\*Other\*\*/gm) ?? [], rel).toHaveLength(1);
       expect(mode, rel).toContain(
@@ -122,7 +126,7 @@ describe("t328 Kiro numbered Other rendering contract", () => {
 
   test("summary and approval Other escape behavior agrees across core and Kiro skills", () => {
     expect(CORE_PROTOCOL).toMatch(/A harness-supplied\s+\*\*Other\*\* escape is an offered UI choice/);
-    expect(CORE_PROTOCOL).toMatch(
+    expect(SUMMARY_PROTOCOL).toMatch(
       /An \*\*Other\*\* selection with no words of their own follows the Other-escape/,
     );
     for (const rel of KIRO_SKILLS) {

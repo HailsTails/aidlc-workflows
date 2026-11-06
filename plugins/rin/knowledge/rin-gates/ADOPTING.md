@@ -22,7 +22,7 @@ Those defaults are **deliberately unusable**: they tell you what a thing must do
 | `mergeCommand` | refuses a merge whose latest review verdict is not APPROVED |
 | `reviewCommand` | posts a review verdict under an identity distinct from the authoring identity |
 | `prCommand` | opens or updates the pull request for the current branch under the authoring identity |
-| `deployCommand` | deploys the target; total and idempotent |
+| `deployCommand` | the invocation used only when the project deployment procedure requires an agent-triggered action |
 
 `authorIdentity !== reviewerIdentity` is **validated at load, not advised**. The review gate's integrity rests on the forge forbidding an actor from approving its own pull request; setting both alike produces a bot approving its own work with no error and no visible symptom. A failure invisible by construction cannot be checked advisorily.
 
@@ -33,6 +33,58 @@ The plugin ships rules that apply to **any** TypeScript project. Rules that appl
 What belongs there: your way of working, your testing posture, your deployment procedure, your resource budgets, your naming conventions — anything true of your project and not of TypeScript projects generally.
 
 What does **not** belong there: rule text copied from this plugin. Cite the rule; do not restate it. A copy drifts.
+
+### Gate 0: selected work, intake and publication
+
+In the active space's `memory/project.md`, use `## Gate 0` to state the local
+reconciliation and publication rule, or point to its authoritative project
+procedure. A small local project can say: "Reconcile the selected existing
+intent. No intake sweep is assigned. Commit the record locally; no push or PR is
+requested." This is a project decision to make explicitly, not an implicit
+fallback when a required integration fails. Existing user/reviewer/authority
+requirements remain in force.
+
+For a project with intake or scheduled lanes, the same section identifies:
+
+- Which assignments own a whole intake sweep and its snapshot source, cadence,
+  inflow window, age alarm and capture disposition procedure. Every assigned
+  sweep keeps Gate 0's measurement and totality contract, even if it also
+  reconciles an existing intent. Targeted promotion still needs current capture
+  evidence, sibling checks and confirmed closure, but is not by itself a sweep.
+- Whether each assignment permits local committed recording or requires
+  same-run branch push and PR, with worktree rules, author identity, commands,
+  destinations, required authority and readback. Retain any existing scheduled
+  durable-push obligation. Missing required bindings hold that obligation.
+
+No extra configuration format or backlog lifecycle store is needed. A
+`backlogStore` label or the local `configBacklogStore` default is not a working
+capture adapter. The status tool measures intake only from an explicit tasks
+snapshot; without one it reports UNMEASURED. Local existing-intent reconciliation
+does not need an intake adapter or forge command. This never turns a required
+integration into an optional one.
+
+Gate 0 records local coherence, intake-sweep health and publication separately.
+A local PASS is readiness for the existing review ritual, not a review receipt,
+human approval or publication. Autonomous stage approval, where selected, remains
+workflow policy; it grants no external authority. The same policy can be used
+without adding autonomy capability to upstream core. Do not change open workflow
+policy or generated installed stages by hand when adopting this correction.
+
+### Deployment procedure
+
+In the active space's `memory/project.md`, use `## Deployment` to identify your deployment procedure and its repository-relative source path. Keep one authoritative procedure, usually in the project's infrastructure documentation or subsystem knowledge; point to the actual workflow/configuration and recovery runbook instead of copying them into the plugin. Gate 6 reads that procedure before taking an action. An empty section or an unexplained command is not a deployment procedure.
+
+The procedure must identify:
+
+- **Target and currency:** environment, required source revision, build/release identity and serving runtime, and how to observe their relationship. Say whether the lane maintains whole-target currency even without a selected Slice, or verifies a selected release. Define how records-only changes, watched paths and superseded runs affect release selection.
+- **Delivery and authority:** the existing pipeline or command, what triggers it, where to observe it, when an agent invocation is necessary, and which actions require an operator decision under the active reserved list. Naming a mechanism does not authorize deployment. Observation must not manufacture an approval or bypass a production hold.
+- **Verification:** the serving-release/traffic evidence, required smoke checks, a real-path probe and its expected side effect. An upload or green build is not serving evidence, and a health endpoint alone does not prove the delivered capability. State which probes are permitted and avoid unintended customer or payment effects.
+- **Recovery:** the rollback anchor, permitted retry/rollback procedure, uncertainty readback and concurrency rules, and migration/data changes a code rollback cannot undo.
+- **Operation:** required monitoring/health signals, any true deployment prerequisites, and where the gate's bookkeeping is recorded. Optional integrations remain separate from engine completion.
+
+For merge-triggered CI/CD, Gate 6 observes and verifies the existing run first. A correctly serving release needs no duplicate deploy. Omit `projectIdentity.deployCommand` when no agent invocation is needed; it resolves to the existing unconfigured placeholder without discarding the other configured identity fields. A present value must still be a non-empty string. An unconfigured `deployCommand` does not block observation of that pipeline; it remains a blocker only for an action that actually requires that invocation. Do not add a shell wrapper merely to satisfy a token. If an invocation is needed, bind it through the existing project configuration and verify the installed instructions agree with the procedure; a configuration edit alone is not proof of projection or execution.
+
+Before adopting a generic Gate 6 update, retain any existing project-specific currency, scope, smoke and recovery requirements in the project's procedure. Validate the procedure pointer and the generated installed stage together. Do not hand-edit generated stage files or silently replace an open workflow's policy. Local procedure fixtures demonstrate the contract, not a live deployment or an adopted consumer update.
 
 ### 3. Your own decisions — `knowledge/<subsystem>/`
 

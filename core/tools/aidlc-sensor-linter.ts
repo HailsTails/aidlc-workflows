@@ -2,10 +2,9 @@
 //
 // Owns the linter check itself; the dispatcher (aidlc-sensor.ts) routes a
 // SENSOR fire to this script via the manifest's `command:` field. Self-
-// contained apart from the import-safe runtime budget policy. Wraps
-// project package.json scripts.lint when present, otherwise the pinned ESLint
-// fallback, and prints the
-// locked stdout JSON shape:
+// contained apart from the import-safe runtime budget and executable lookups.
+// Wraps the project's own eslint, else `bunx eslint@10`, with `--format json
+// --max-warnings=-1 <path>` and prints the locked stdout JSON shape:
 //
 //   {"pass": <bool>, "errorCount": <n>, "warningCount": <n>,
 //    "violations": [{file, line, column, rule, severity, message}, ...]}
@@ -19,14 +18,14 @@
 //   walk-up resolvers silently drop outer-inherited rules in monorepos
 //   with root flat config + nested legacy config.
 //
-// * "no eslint config" detection: probe `bunx eslint --print-config <path>`.
+// * "no eslint config" detection: probe `eslint --print-config <path>`.
 //   Exit non-zero with stderr matching "No ESLint configuration" /
 //   "Could not find config" → exit 127 with stderr "no-eslint-config".
 //   The dispatcher's branch b reclassifies status 127 to PASSED with
 //   Note=tool-unavailable, giving a quiet PASS for projects without
 //   eslint config rather than spamming script-error.
 //
-// * Tool-unavailable detection: `bunx eslint --version` once at startup.
+// * Tool-unavailable detection: `eslint --version` once at startup.
 //   `bunx <tool>` returns non-127 codes for several failure modes
 //   (network-fetch failure, package-resolution failure, registry timeout)
 //   so the dispatcher's `result.status === 127` check alone won't catch
@@ -36,22 +35,21 @@
 // * pass = errorCount === 0. Warnings tracked but DO NOT fail. Real
 //   eslint configs ship `no-unused-vars: warn` and similar; warning-as-
 //   failure would emit SENSOR_FAILED on every Write under the PostToolUse hook.
-//   --max-warnings -1 disables eslint's own warning-exit override so
+//   --max-warnings=-1 disables eslint's own warning-exit override so
 //   this script's errorCount test is the sole pass/fail decider.
-//
-// Package-script stdout is not parsed as ESLint JSON; its exit status owns
-// the verdict. No filename or ESLint-specific flags are appended.
 //
 // Exit codes:
 //   0   pass or fail (the JSON pass field carries the verdict)
-//   127 required project lint script absent OR ESLint/config unavailable
-//   1   invalid project lint metadata OR ESLint execution/output error
+//   127 eslint unresolvable OR no eslint config found
+//   1   execution incomplete or stdout JSON parse failed (script-error)
+//   2   malformed eslint config (script-error)
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
+import { compiledExecutable, projectPackage } from "./aidlc-runtime-paths.ts";
 
 interface ESLintMessage {
 	ruleId: string | null;
@@ -77,7 +75,7 @@ interface Violation {
 	message: string;
 }
 
-export interface SensorOutput {
+interface SensorOutput {
 	pass: boolean;
 	errorCount: number;
 	warningCount: number;
@@ -90,35 +88,17 @@ export interface SensorOutput {
 interface Args {
 	stage: string;
 	filePath: string;
-	projectDir?: string;
-	packageManager?: string;
-	runner: "auto" | "project" | "eslint";
 }
 
-export function parseArgs(argv: string[], environment: Record<string, string | undefined> = process.env): Args {
+function parseArgs(argv: string[]): Args {
 	let stage = "";
 	let filePath = "";
-	let projectDir = environment.AIDLC_LINT_PROJECT_DIR;
-	let packageManager = environment.AIDLC_LINT_PACKAGE_MANAGER;
-	let runner = environment.AIDLC_LINT_RUNNER ?? "auto";
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === "--stage") {
 			stage = argv[++i] ?? "";
 		} else if (a === "--file-path") {
 			filePath = argv[++i] ?? "";
-		} else if (a === "--project-dir") {
-			projectDir = argv[++i];
-			if (!projectDir) { process.stderr.write("missing --project-dir value\n"); process.exit(1); }
-		} else if (a === "--package-manager") {
-			packageManager = argv[++i];
-			if (!packageManager) { process.stderr.write("missing --package-manager value\n"); process.exit(1); }
-		} else if (a === "--runner") {
-			const requested = argv[++i];
-			if (requested !== "auto" && requested !== "project" && requested !== "eslint") {
-				process.stderr.write("--runner must be auto, project, or eslint\n"); process.exit(1);
-			}
-			runner = requested;
 		} else if (a === "--help" || a === "-h") {
 			printHelp();
 			process.exit(0);
@@ -135,17 +115,13 @@ export function parseArgs(argv: string[], environment: Record<string, string | u
 		process.stderr.write("missing required flag: --file-path\n");
 		process.exit(1);
 	}
-	if (runner !== "auto" && runner !== "project" && runner !== "eslint") {
-		process.stderr.write("AIDLC_LINT_RUNNER must be auto, project, or eslint\n"); process.exit(1);
-	}
-	return { stage, filePath: resolve(filePath), projectDir, packageManager, runner };
+	return { stage, filePath };
 }
 
 function printHelp(): void {
 	process.stdout.write(
 		`Usage: aidlc-sensor-linter --stage <slug> --file-path <path>\n\n` +
-			`Prefers package.json scripts.lint; otherwise uses the pinned ESLint fallback.\n` +
-			`Options: --runner auto|project|eslint --project-dir <path> --package-manager npm|pnpm|yarn|bun\n` +
+			`Wraps \`bunx eslint --format json --max-warnings -1 <path>\` and\n` +
 			`prints {pass, errorCount, warningCount, violations[]} JSON to stdout.\n`,
 	);
 }
@@ -177,48 +153,101 @@ function findProjectRoot(filePath: string): string | null {
 // the sensor quietly degrades every fire to a tool-unavailable PASS -
 // masking real lint findings. Pinning the major makes resolution
 // deterministic: bunx fetches/caches this spec and ignores PATH
-// shadowing. A version spec also bypasses local node_modules, so first resolve
-// a local install of the SAME major and run its absolute CLI path. It is already
-// provisioned and never needs the bunx download cache. Older local versions
-// still take the pinned fallback instead of silently missing flat configs.
+// shadowing. A version spec also bypasses local node_modules, so first
+// resolve the project's own install and run its absolute CLI path, whatever
+// its major: the project chose that version and its config together (an
+// ESLint 8 reads the .eslintrc.* it ships with; the pin cannot), and it is
+// already provisioned and never needs the bunx download cache. The one
+// exception keeps the case the pin was added for: a flat eslint.config.*
+// governing the linted file beside an install older than 9 takes the pin,
+// which can read it.
 const ESLINT_SPEC = "eslint@10";
+const FLAT_CONFIG_FILES = [
+	"eslint.config.js",
+	"eslint.config.mjs",
+	"eslint.config.cjs",
+	"eslint.config.ts",
+	"eslint.config.mts",
+	"eslint.config.cts",
+];
+const LEGACY_CONFIG_FILES = [
+	".eslintrc.js",
+	".eslintrc.cjs",
+	".eslintrc.json",
+	".eslintrc.yaml",
+	".eslintrc.yml",
+	".eslintrc",
+];
 
-export function localEslintPath(cwd: string): string | null {
-	try {
-		const manifestPath = createRequire(join(cwd, "package.json")).resolve("eslint/package.json");
-		const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-		if (manifest.name !== "eslint" || typeof manifest.version !== "string" ||
-			manifest.version.split(".")[0] !== ESLINT_SPEC.split("@")[1]) return null;
-		const cli = join(dirname(manifestPath), "bin", "eslint.js");
-		return existsSync(cli) ? cli : null;
-	} catch {
-		return null;
+// A flat config at dir or any ancestor governs the files under it (a monorepo
+// keeps one at its root while the sensor's project root is the package's own
+// package.json, whether ESLint is hoisted or installed per package), so a
+// pre-9 install beside it must not run and drop those rules: look up to the
+// filesystem root, as ESLint's own flat-config lookup does. In the same
+// directory ESLint prefers .js over .ts, the order FLAT_CONFIG_FILES keeps, so
+// the first name found is the config that governs dir.
+function governingFlatConfig(dir: string): string | null {
+	let current = resolve(dir);
+	for (;;) {
+		const name = FLAT_CONFIG_FILES.find((candidate) => existsSync(join(current, candidate)));
+		if (name) return join(current, name);
+		const parent = dirname(current);
+		if (parent === current) return null;
+		current = parent;
 	}
 }
 
-function invokeEslint(args: string[], cwd: string) {
-	const local = localEslintPath(cwd);
+// governing is the flat config that governs the linted file, the one the
+// runtime choice reads too; localEslintPath alone resolves it from cwd.
+function projectEslint(cwd: string, governing: string | null): string | null {
+	const own = projectPackage(cwd, "eslint");
+	if (!own || (own.major < 9 && governing)) return null;
+	const cli = join(own.root, "bin", "eslint.js");
+	return existsSync(cli) ? cli : null;
+}
+
+export function localEslintPath(cwd: string): string | null {
+	return projectEslint(cwd, governingFlatConfig(cwd));
+}
+
+function jitiBeside(cli: string): boolean {
+	try {
+		createRequire(cli).resolve("jiti");
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function invokeEslint(args: string[], cwd: string, filePath: string) {
+	const governing = governingFlatConfig(dirname(resolve(filePath)));
+	const local = projectEslint(cwd, governing);
+	// ESLint loads a TypeScript flat config through jiti under Node, which
+	// neither the pin nor a project without jiti provides, and natively under
+	// Bun. Only a copy install runs on Bun; a native one keeps Node.
+	const underBun = /\.[mc]?ts$/.test(governing ?? "") && !(local && jitiBeside(local));
 	const options = { encoding: "utf-8" as const, timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS, cwd };
 	// ESLint's published executable uses Node too. Naming its installed file
 	// avoids both PATH-shadowed eslint binaries and per-TMPDIR bunx installs.
-	if (local) return spawnSync("node", [local, ...args], options);
-	return spawnSync("bunx", [ESLINT_SPEC, ...args], options);
+	if (local) return spawnSync(underBun && !compiledExecutable() ? process.execPath : "node", [local, ...args], options);
+	const runtime = underBun ? ["--bun"] : [];
+	return spawnSync("bunx", [...runtime, ESLINT_SPEC, ...args], options);
 }
 
-// Probe `bunx eslint --version` at startup. `bunx <tool>` returns non-127
+// Probe `eslint --version` at startup. `bunx <tool>` returns non-127
 // codes for several failure modes (network-fetch failure, package-
 // resolution failure, registry timeout). The dispatcher's branch b
 // (status === 127) won't catch those — so we propagate by exiting 127
 // ourselves on any non-zero exit from this probe.
-function probeEslintAvailable(cwd: string): void {
-	const result = invokeEslint(["--version"], cwd);
+function probeEslintAvailable(filePath: string, cwd: string): void {
+	const result = invokeEslint(["--version"], cwd, filePath);
 	if (result.status !== 0) {
 		process.stderr.write("eslint-unavailable\n");
 		process.exit(127);
 	}
 }
 
-// Probe `bunx eslint --print-config <path>` to detect "no eslint config".
+// Probe `eslint --print-config <path>` to detect "no eslint config".
 // eslint exits non-zero with a stderr message containing "No ESLint
 // configuration found" or "Could not find config file" when no config is
 // resolvable from <path>. Map that to exit 127 so the dispatcher's branch
@@ -230,11 +259,11 @@ function probeEslintAvailable(cwd: string): void {
 // those as tool-unavailable masks real bugs that the user should see, so
 // we surface parse-error stderr patterns BEFORE the conservative
 // tool-unavailable fallback and exit 2 (script-error). The dispatcher's
-// branch e then emits SENSOR_PASSED with Note=script-error: exit-2,
+// branch e then emits SENSOR_COULD_NOT_RUN with Note=script-error: exit-2,
 // keeping the audit pair closed while flagging the breakage in stderr.
 function probeEslintConfig(filePath: string, cwd: string): void {
-	const result = invokeEslint(["--print-config", filePath], cwd);
-	if (result.status === 0) return; // config resolved
+	const result = invokeEslint(["--print-config", filePath], cwd, filePath);
+	if (result.status === 0) return;
 	const stderr = result.stderr ?? "";
 	// Cover both legacy (.eslintrc.*) and flat-config (eslint.config.js)
 	// diagnostics. eslint v8 says "No ESLint configuration found";
@@ -255,12 +284,16 @@ function probeEslintConfig(filePath: string, cwd: string): void {
 	// fails to load — distinct from the no-config-found case above. Order
 	// matters: "unable to load" is gated by config-file presence so it
 	// can't double-fire as a no-config case (network plugin fetch, etc.).
-	const hasConfigFile = configFilePresent(cwd);
+	const hasConfigFile = configFilePresent(filePath, cwd);
 	if (
 		/parse error/i.test(stderr) ||
 		/syntaxerror/i.test(stderr) ||
 		/unexpected token/i.test(stderr) ||
 		/configuration .* is invalid/i.test(stderr) ||
+		// Bun's own loader, which reads a TypeScript config, words its failures so.
+		/\bBuildMessage:/.test(stderr) ||
+		/errors? building "/.test(stderr) ||
+		(hasConfigFile && /\bResolveMessage:/.test(stderr)) ||
 		(hasConfigFile && /unable to load/i.test(stderr)) ||
 		(hasConfigFile && /failed to load config/i.test(stderr))
 	) {
@@ -274,38 +307,28 @@ function probeEslintConfig(filePath: string, cwd: string): void {
 	process.exit(127);
 }
 
-// Detect whether any eslint config file lives in cwd (the project root
-// resolved upstream). Not a walk — we only need to disambiguate "unable
+// Detect whether an eslint config governs the file, to disambiguate "unable
 // to load" between a present-but-broken config and a transient/unrelated
-// failure with no config at all. cwd is already the nearest package.json
-// ancestor by construction (see findProjectRoot).
-function configFilePresent(cwd: string): boolean {
-	const candidates = [
-		"eslint.config.js",
-		"eslint.config.mjs",
-		"eslint.config.cjs",
-		"eslint.config.ts",
-		".eslintrc.js",
-		".eslintrc.cjs",
-		".eslintrc.json",
-		".eslintrc.yaml",
-		".eslintrc.yml",
-		".eslintrc",
-	];
-	return candidates.some((name) => existsSync(`${cwd}/${name}`));
+// failure with no config at all. A flat config counts wherever the lookup that
+// selects it finds one, an ancestor's included; a legacy config counts in cwd,
+// already the nearest package.json ancestor by construction (see
+// findProjectRoot).
+function configFilePresent(filePath: string, cwd: string): boolean {
+	if (governingFlatConfig(dirname(resolve(filePath)))) return true;
+	return LEGACY_CONFIG_FILES.some((name) => existsSync(`${cwd}/${name}`));
 }
 
 // Pick the most diagnostic stderr line for the parse-error reason.
 // eslint v10's stderr opens with a banner ("Oops Something went wrong!")
 // and ends in a stack trace; the SyntaxError/Error line in the middle is
-// what's actionable. Prefer lines containing "Error" (case-insensitive),
-// skip stack frames ("    at …"), fall back to the first non-empty line.
+// what's actionable. Prefer lines containing "Error" (case-insensitive) or
+// Bun's "BuildMessage:"/"ResolveMessage:", skip stack frames ("    at …"), fall back to the first non-empty line.
 function firstNonEmptyLine(s: string): string {
 	const lines = s.split(/\r?\n/).map((l) => l.trim());
 	for (const t of lines) {
 		if (!t) continue;
 		if (t.startsWith("at ")) continue; // stack frame after trim
-		if (/error/i.test(t)) return t;
+		if (/error|Message:/i.test(t)) return t;
 	}
 	for (const t of lines) {
 		if (t && !t.startsWith("at ")) return t;
@@ -320,12 +343,11 @@ function runEslint(
 	stdout: string;
 	status: number | null;
 } {
-	// `--max-warnings=-1` (= form, not space-separated). eslint v10's CLI
-	// parser rejects bare `-1` as a positional value because it starts
-	// with `-` ("No -NUM option defined."). The plan-mandated
-	// "--max-warnings -1" requires the equals form to actually reach
-	// eslint as a numeric value.
-	const result = invokeEslint(["--format", "json", "--max-warnings=-1", filePath], cwd);
+	// `--max-warnings=-1` (= form, not space-separated). eslint v10's CLI parser
+	// rejects bare `-1` as a positional value because it starts with `-` ("No
+	// -NUM option defined."). The "--max-warnings -1" requires the equals form to
+	// actually reach eslint as a numeric value.
+	const result = invokeEslint(["--format", "json", "--max-warnings=-1", filePath], cwd, filePath);
 	// A killed/spawn-failed run cannot establish a verdict, even if it wrote
 	// a complete-looking JSON prefix before stopping.
 	if (result.error || result.signal || result.status === null) {
@@ -366,127 +388,6 @@ function buildViolations(results: ESLintResult[]): Violation[] {
 	return out;
 }
 
-export type ProjectLintPlan =
-	| { kind: "eslint" }
-	| { kind: "error"; reason: string }
-	| { kind: "script"; executable: string; args: string[] };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function selectProjectLint(input: {
-	manifest: unknown;
-	packageManager?: string;
-	lockfiles?: string[];
-	runner?: "auto" | "project" | "eslint";
-	platform?: string;
-}): ProjectLintPlan {
-	if (input.runner === "eslint") return { kind: "eslint" };
-	if (!isRecord(input.manifest)) return { kind: "error", reason: "invalid-package-json" };
-	const scripts = input.manifest.scripts;
-	if (scripts !== undefined && !isRecord(scripts)) return { kind: "error", reason: "invalid-lint-script" };
-	if (!scripts || scripts.lint === undefined) {
-		return input.runner === "project"
-			? { kind: "error", reason: "no-lint-script" }
-			: { kind: "eslint" };
-	}
-	if (typeof scripts.lint !== "string" || !scripts.lint.trim()) {
-		return { kind: "error", reason: "invalid-lint-script" };
-	}
-	const declared = input.packageManager ?? input.manifest.packageManager;
-	if (declared !== undefined && typeof declared !== "string") {
-		return { kind: "error", reason: "invalid-package-manager" };
-	}
-	const detected = [
-		["pnpm-lock.yaml", "pnpm"], ["yarn.lock", "yarn"],
-		["bun.lock", "bun"], ["bun.lockb", "bun"], ["package-lock.json", "npm"],
-	].filter(([lockfile]) => input.lockfiles?.includes(lockfile)).map(([, manager]) => manager);
-	const managers = [...new Set(detected)];
-	if (!declared && managers.length > 1) return { kind: "error", reason: "ambiguous-package-manager" };
-	const manager = declared?.split("@")[0] ?? managers[0] ?? "npm";
-	if (!["npm", "pnpm", "yarn", "bun"].includes(manager)) {
-		return { kind: "error", reason: "unsupported-package-manager" };
-	}
-	if (input.platform === "win32" && manager !== "bun") {
-		return { kind: "script", executable: "cmd.exe", args: ["/d", "/s", "/c", `${manager}.cmd run lint`] };
-	}
-	return { kind: "script", executable: manager, args: ["run", "lint"] };
-}
-
-export function projectLintOutput(input: {
-	filePath: string;
-	status: number | null;
-	stdout: string;
-	stderr: string;
-	error?: unknown;
-	signal?: string | null;
-}): SensorOutput {
-	const pass = input.status === 0 && !input.error && !input.signal;
-	const incomplete = input.status === null || !!input.error || !!input.signal;
-	return {
-		pass, errorCount: pass ? 0 : 1, warningCount: 0, findings_count: pass ? 0 : 1,
-		violations: pass ? [] : [{
-			file: input.filePath, line: 0, column: 0, severity: "error",
-			rule: incomplete ? "lint-execution-incomplete" : "lint-script-failed",
-			message: incomplete ? "Project lint did not complete." :
-				`Project lint exited ${input.status}.\n${input.stderr}\n${input.stdout}`.trim().slice(0, 8192),
-		}],
-	};
-}
-
-export interface ProjectLintExecution {
-	status: number | null;
-	stdout: string;
-	stderr: string;
-	error?: unknown;
-	signal?: string | null;
-}
-
-export function executeProjectLint(input: {
-	plan: Extract<ProjectLintPlan, { kind: "script" }>;
-	projectRoot: string;
-	filePath: string;
-	execute: (input: { executable: string; args: string[]; cwd: string; timeout: number }) => ProjectLintExecution;
-}): SensorOutput {
-	const execution = input.execute({ executable: input.plan.executable, args: input.plan.args,
-		cwd: input.projectRoot, timeout: DEFAULT_SUBPROCESS_TIMEOUT_MS });
-	return projectLintOutput({ ...execution, filePath: input.filePath });
-}
-
-function runConsumerLint(args: Args, projectRoot: string): boolean {
-	if (args.runner === "eslint") return false;
-	const manifestPath = join(projectRoot, "package.json");
-	if (!existsSync(manifestPath)) {
-		if (args.runner === "project") { process.stderr.write("no-lint-script\n"); process.exit(127); }
-		return false;
-	}
-	let manifest: unknown;
-	try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); }
-	catch { process.stderr.write("invalid-package-json\n"); process.exit(1); }
-	const plan = selectProjectLint({
-		manifest, packageManager: args.packageManager, runner: args.runner, platform: process.platform,
-		lockfiles: ["pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "package-lock.json"]
-			.filter((name) => existsSync(join(projectRoot, name))),
-	});
-	if (plan.kind === "eslint") return false;
-	if (plan.kind === "error") {
-		process.stderr.write(`${plan.reason}\n`);
-		process.exit(plan.reason === "no-lint-script" ? 127 : 1);
-	}
-	const output = executeProjectLint({ plan, projectRoot, filePath: args.filePath,
-		execute: (command) => {
-			const execution = spawnSync(command.executable, command.args, {
-				cwd: command.cwd, encoding: "utf-8", timeout: command.timeout,
-			});
-			return { status: execution.status, error: execution.error, signal: execution.signal,
-				stdout: execution.stdout ?? "", stderr: execution.stderr ?? "" };
-		},
-	});
-	process.stdout.write(`${JSON.stringify(output)}\n`);
-	return true;
-}
-
 // --- main -------------------------------------------------------------------
 
 export function main(argv: string[]): void {
@@ -498,20 +399,19 @@ export function main(argv: string[]): void {
 	}
 
 	const projectRoot =
-		args.projectDir ? resolve(args.projectDir) :
 		findProjectRoot(args.filePath) ?? dirname(resolve(args.filePath));
-	if (runConsumerLint(args, projectRoot)) return;
 
 	// Probe order: tool first (cheap, ~1s for cached bunx), then config
 	// (~1s for --print-config). Both gates feed dispatcher branch b
-	// (PASSED Note=tool-unavailable) on non-zero.
-	probeEslintAvailable(projectRoot);
+	// (PASSED Note=tool-unavailable) for unavailable tools or config;
+	// malformed config exits 2 (script-error).
+	probeEslintAvailable(args.filePath, projectRoot);
 	probeEslintConfig(args.filePath, projectRoot);
 
 	const { stdout } = runEslint(args.filePath, projectRoot);
 
 	// eslint exits 1 when violations exist and 0 when clean. With
-	// --max-warnings -1 the warning-exit override is disabled so we never
+	// --max-warnings=-1 the warning-exit override is disabled so we never
 	// see warning-only failure exits. We don't gate parse on result.status
 	// — eslint always writes JSON to stdout on either path.
 	let parsed: ESLintResult[];
@@ -534,9 +434,9 @@ export function main(argv: string[]): void {
 	}
 
 	const out: SensorOutput = {
-		// Per locked decision: warnings tracked but do NOT fail. Real
-		// configs ship no-unused-vars: warn; warning-as-failure spams
-		// SENSOR_FAILED on every Write under the PostToolUse hook.
+		// Warnings tracked but do NOT fail. Real configs ship no-unused-vars: warn;
+		// warning-as-failure spams SENSOR_FAILED on every Write under the
+		// PostToolUse hook.
 		pass: errorCount === 0,
 		errorCount,
 		warningCount,

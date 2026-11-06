@@ -1,7 +1,13 @@
 // The test-pro plugin's own content validation.
 //
 // Distinct from the framework compose guard: this checks the plugin's authored
-// content before packaging. Copy this shape for your own plugin.
+// content, and its doctor check in a composed install. It is this repository's
+// shape: it imports tests/harness/plugin-kit.ts and the dist/ trees by relative
+// path, so it runs only inside this checkout. A plugin in its own repository
+// runs the shipped verbs in CI instead, from a native install: `aidlc plugin
+// validate`, `aidlc plugin test --install <project>` and `aidlc plugin build
+// <harness>` (docs/harness-engineering/10-authoring-a-plugin.md, "In your
+// plugin's repository").
 //
 // Run: bun test plugins/test-pro/tests/plugin.test.ts
 
@@ -47,6 +53,54 @@ describe("test-pro plugin own content validation", () => {
       walkMarkdownFiles(join(PLUGIN_ROOT, "contributions")).length,
     ).toBeGreaterThan(0);
   });
+});
+
+describe(`${PLUGIN_NAME} plugin — sensor tools honor the main(argv) contract`, () => {
+  const SENSOR_TOOLS = [
+    "aidlc-sensor-coverage-threshold.ts",
+    "aidlc-sensor-requirement-coverage.ts",
+  ];
+
+  for (const tool of SENSOR_TOOLS) {
+    const toolPath = join(PLUGIN_ROOT, "tools", tool);
+
+    test(`${tool} exports main(argv) and does not run on import under engine argv`, () => {
+      const probe = [
+        `const mod = await import(${JSON.stringify(toolPath)});`,
+        `if (typeof mod.main !== "function") { console.error("no-main"); process.exit(3); }`,
+        `console.log("imported");`,
+      ].join("\n");
+      const result = spawnSync(
+        process.execPath,
+        ["-e", probe, "engine", "--stage", "code-generation"],
+        {
+          timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+          encoding: "utf-8",
+        },
+      );
+      expect(result.status, `${result.stdout ?? ""}${result.stderr ?? ""}`).toBe(0);
+      expect(result.stdout).toContain("imported");
+      expect(result.stdout).not.toContain('"pass"');
+    });
+
+    test(`${tool} parses the argv it is handed, not process.argv`, () => {
+      const probe = [
+        `const mod = await import(${JSON.stringify(toolPath)});`,
+        `mod.main(["--stage", "code-generation", "--output-path", "/nonexistent/other.json"]);`,
+      ].join("\n");
+      const result = spawnSync(
+        process.execPath,
+        ["-e", probe, "engine", "--unknown-engine-flag"],
+        {
+          timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+          encoding: "utf-8",
+        },
+      );
+      expect(result.status, `${result.stdout ?? ""}${result.stderr ?? ""}`).toBe(0);
+      expect(result.stdout).toContain('"pass":true');
+      expect(result.stderr).not.toContain("--output-path is required");
+    });
+  }
 });
 
 describe(`${PLUGIN_NAME} plugin — composed doctor check`, () => {

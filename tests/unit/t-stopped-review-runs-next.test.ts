@@ -32,6 +32,15 @@ import {
   artifactFilename, auditBlockField, findStageBySlug, latestMainWorkflowStageRunFloorForProject,
   readAuditShardEvents, reviewArtifactFingerprint, sourceBaselineAuditFields,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import {
+  hydrateReviewArtifactContexts, readReviewArtifactContexts, readReviewFindingDispositions,
+  REVIEW_FINDING_DISPOSITIONS_FIELD,
+} from "../../dist/claude/.claude/tools/aidlc-review-brief.ts";
+
+// The stage's checks run once before its review or gate, and again at the gate
+// (completionChecksStep, t-checks-before-review); this file's fixture documents
+// are not written for them and its subject is not them, so they stay off here.
+process.env.AIDLC_DISABLE_SENSORS = "1";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -86,7 +95,6 @@ function says(p: string, prompt: string, session = SESSION): string {
   return heard(result.stdout ?? "");
 }
 
-// The agent-facing context lines in a hook's stdout.
 function heard(stdout: string): string {
   const lines: string[] = [];
   for (const line of stdout.split("\n")) {
@@ -164,7 +172,6 @@ function recordCommand(p: string): void {
   }
 }
 
-// The Unit's Code Generation written and completed.
 function build(p: string, unit: string): void {
   const stage = findStageBySlug(CG)!;
   const output = join(seededRecordDir(p), "construction", unit, CG);
@@ -183,7 +190,6 @@ function build(p: string, unit: string): void {
 const reviewArgs = (unit: string, iteration: number) =>
   ["review", "--stage", CG, "--reviewer", REVIEWER, "--unit", unit, "--iteration", String(iteration)];
 
-// The agent asks for the Unit's review; the reviewer's answer is optional.
 function review(p: string, unit: string, verdict?: "READY" | "NOT-READY", extra: string[] = []): void {
   const requested = tool(p, "log", [...reviewArgs(unit, 1), ...extra]);
   expect(requested.status, requested.out).toBe(0);
@@ -212,7 +218,7 @@ type Directive = {
   construction_checkpoint?: {
     unit: string; ready: boolean; verified: boolean;
     rereview?: { command: string; unfinished?: string };
-    review_not_finished?: { stages: string[]; question: string };
+    review_not_finished?: { stages: string[]; question?: string; approved_in_words?: true };
   };
 };
 
@@ -229,11 +235,19 @@ function checkpoint(p: string, unit: string, action: string, extra: string[] = [
   return tool(p, "bolt", ["checkpoint", "--unit", unit, "--kind", "unit", "--action", action, "--session", SESSION, ...extra]);
 }
 
+// The approval over the unfinished review names the person's latest message
+// (--message), from the chat they said it in.
+function verifyOverReview(p: string, unit: string) {
+  const turn = readAuditShardEvents(p).filter((row) => row.event === "HUMAN_TURN" &&
+    auditBlockField(row.block, "Session") === SESSION && auditBlockField(row.block, "Message Id") !== null).at(-1);
+  const id = turn ? auditBlockField(turn.block, "Message Id") ?? "" : "";
+  return tool(p, "bolt", ["checkpoint", "--unit", unit, "--kind", "unit", "--action", "verify", "--session", SESSION,
+    "--over-unfinished-review", "--message", id], { ...agentEnv(), AIDLC_SESSION_OVERRIDE: SESSION });
+}
+
 const unitApprovals = (p: string, unit: string) => events(p, "GATE_APPROVED")
   .filter((row) => auditBlockField(row.block, "Checkpoint") === "construction-unit" && auditBlockField(row.block, "Unit") === unit);
 
-// After alpha: beta is built, reviewed and approved as usual, and one bare
-// `next` closes Code Generation.
 function walkCarriesOn(p: string): void {
   build(p, "beta");
   review(p, "beta", "READY");
@@ -295,10 +309,8 @@ describe("(a) the person writes while a review has no verdict: the agent hears t
       const first = says(p, AS_IT_IS);
       expect(first).toContain(NOTE);
       expect(first).toContain(`Run ${CLAUDE_NEXT} before retrying it or recording anything, and follow the step it prints.`);
-      // Stopped again after the one retry: the same note.
       review(p, "alpha", undefined, ["--retry-pending"]);
       expect(says(p, "no, don't run the review again, approve the unit as it is")).toContain(NOTE);
-      // `next` names the step for that review (the retry, and the person's way on).
       const step = routed(p);
       expect(step.construction_checkpoint?.rereview?.unfinished).toBe("no-verdict");
     }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -311,18 +323,16 @@ describe("(a) the person writes while a review has no verdict: the agent hears t
     expect(says(p, "looks good")).not.toContain(NOTE);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("no note on the person's reply to the question asked over the unfinished review", () => {
+  test("no note once their words approved the Unit over the unfinished review", () => {
     const p = fixture("off");
     build(p, "alpha");
     review(p, "alpha");
     expect(says(p, AS_IT_IS)).toContain(NOTE);
-    const verified = checkpoint(p, "alpha", "verify", ["--over-unfinished-review"]);
+    const verified = verifyOverReview(p, "alpha");
     expect(verified.json?.verified, verified.out).toBe(true);
-    expect(checkpoint(p, "alpha", "ask").status).toBe(0);
-    expect(says(p, "yes")).not.toContain(NOTE);
-    const approved = checkpoint(p, "alpha", "approve", ["--user-input", "yes"]);
+    // Their words are the approval: no question, no second yes.
+    const approved = checkpoint(p, "alpha", "approve");
     expect(approved.json?.approved, approved.out).toBe(true);
-    // Approved over it, the review that never finished asks for nothing more.
     expect(says(p, "carry on")).not.toContain(NOTE);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -472,18 +482,19 @@ describe("(b) the NOT-READY fallback the agent records reads as a review that di
 // The person stopped alpha's review and approved alpha as it is, but the
 // reviewer was still running (on Claude Code, Esc does not stop a helper in
 // the background). Its verdict comes in later and the agent records it: it is
-// on record, and alpha stays approved, so nothing asks about alpha again.
+// on record, and alpha stays approved, so nothing asks about alpha again. The
+// person never saw a finding it raises: the stage's own row, which nobody
+// gave, records it as Approved autonomously, and it stays open for the next
+// review.
 describe("a verdict that comes in after the person approved the Unit as it is", () => {
   function approvedAsItIs(p: string): string {
     build(p, "alpha");
     const requested = tool(p, "log", reviewArgs("alpha", 1));
     expect(requested.status, requested.out).toBe(0);
     says(p, AS_IT_IS);
-    const verified = checkpoint(p, "alpha", "verify", ["--over-unfinished-review"]);
+    const verified = verifyOverReview(p, "alpha");
     expect(verified.json?.verified, verified.out).toBe(true);
-    expect(checkpoint(p, "alpha", "ask").status).toBe(0);
-    says(p, "yes");
-    const approved = checkpoint(p, "alpha", "approve", ["--user-input", "yes"]);
+    const approved = checkpoint(p, "alpha", "approve");
     expect(approved.json?.approved, approved.out).toBe(true);
     expect(approved.json?.change_notices).toEqual([NOTICE]);
     return String(requested.json?.reviewFile);
@@ -497,6 +508,17 @@ describe("a verdict that comes in after the person approved the Unit as it is", 
         "| R-01 | Major | src/alpha.ts | It is not covered. | Cover it. | New |\n"));
     const recorded = tool(p, "log", [...reviewArgs("alpha", 1), "--verdict", verdict]);
     expect(recorded.status, recorded.out).toBe(0);
+  }
+
+  function stageDispositions(p: string): Array<{ id: string; status: string }> {
+    const rows = events(p, "GATE_APPROVED").filter((row) =>
+      auditBlockField(row.block, "Stage") === CG && auditBlockField(row.block, "Unit") === null);
+    expect(rows).toHaveLength(1);
+    const field = auditBlockField(rows[0].block, REVIEW_FINDING_DISPOSITIONS_FIELD);
+    return field === null
+      ? []
+      : (JSON.parse(field) as { dispositions: Array<{ id: string; status: string }> })
+        .dispositions.map(({ id, status }) => ({ id, status }));
   }
 
   const cases: Array<[Policy, "advisory" | "adversarial", "READY" | "NOT-READY"]> = [
@@ -515,6 +537,14 @@ describe("a verdict that comes in after the person approved the Unit as it is", 
       expect(after).toMatchObject({ stage: CG, unit: "beta" });
       walkCarriesOn(p);
       expect(unitApprovals(p, "alpha")).toHaveLength(1);
+      const late = verdict === "READY" ? [] : [{ id: "R-01", status: "New" }];
+      expect(stageDispositions(p)).toEqual(late.map(({ id }) => ({ id, status: "Approved autonomously" })));
+      const contexts = readReviewArtifactContexts(p, findStageBySlug(CG)!, "alpha");
+      const statuses = (list: typeof contexts): Array<{ id: string; status: string }> =>
+        list.flatMap((context) => context.findings).map(({ id, status }) => ({ id, status }));
+      expect(statuses(contexts)).toEqual(late);
+      expect(statuses(hydrateReviewArtifactContexts(contexts, readReviewFindingDispositions(p, CG, "alpha"))))
+        .toEqual(late);
     }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
   }
 });

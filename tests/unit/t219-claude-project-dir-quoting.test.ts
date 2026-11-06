@@ -75,7 +75,7 @@ function hasUnfilteredFoldUsageHook(
   expectedCommand: string,
 ): boolean {
   return eventHookGroups(settings, event).some((group) => {
-    if (!isRecord(group) || group.matcher !== "" || !Array.isArray(group.hooks)) {
+    if (!isRecord(group) || group.matcher !== "*" || !Array.isArray(group.hooks)) {
       return false;
     }
     return group.hooks.some(
@@ -107,11 +107,7 @@ describe("t219 Claude settings use quoted project-root dispatcher commands", () 
         commands.every((command) => command.startsWith(subject.commandPrefix)),
       ).toBe(true);
       expect(permissionEntries(settings)).toContain(EXPECTED_PERMISSION_GLOB);
-      expect(permissionEntries(settings).filter((entry) => entry.includes("$CLAUDE_PROJECT_DIR"))).toEqual([
-        'Bash(bun "$CLAUDE_PROJECT_DIR/.claude/tools/"*)',
-        'Bash(bun "$CLAUDE_PROJECT_DIR/.claude/hooks/"*)',
-        'Bash(node "$CLAUDE_PROJECT_DIR/.claude/hooks/"*)',
-      ]);
+      expect(projectDirReferenceCount(permissionEntries(settings))).toBe(0);
     });
 
     test(`${subject.label}: fold-usage is unfiltered on both tool events`, () => {

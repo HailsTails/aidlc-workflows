@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import {
@@ -14,12 +16,14 @@ import {
   statSync,
   writeSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   acquireAuditLock,
+  addPendingPersonLines,
   assertNoSymlinkInChainOrThrow,
   auditFilePath,
   auditBlockField,
+  auditShardBlocks,
   auditShardHostSegment,
   readActiveAuditShardEvents,
   UNTRUSTED_AUDIT_NOTICE,
@@ -29,13 +33,21 @@ import {
   claimAttemptFields,
   cloneIdFileContent,
   cloneIdPath,
+  ENGINE_DIR,
   entrySkillInvocation,
   errorMessage,
+  GIT_PLATFORM_ARGS,
   hasUnsafeSingleLineCharacter,
   isoTimestamp,
+  isReadOnlyEngineProbe,
+  markPersonLineHeardThisTurn,
   mergeReviewRecordsFromDelta,
   parseFieldArgs,
   holdsAuditLock,
+  readAppendOnlyFileNoFollowOrThrow,
+  readApplicableTeamUnitScopeStamp,
+  pendingPersonLines,
+  personLineHeardThisTurn,
   redactProjectDirPrefix,
   relativeRecordDir,
   readRegularFileNoFollowOrThrow,
@@ -43,9 +55,11 @@ import {
   releaseAuditLock,
   requireLiveClaimForTeamUnit,
   resolveBoltIdentity,
+  resolveInvokingSessionId,
   resolveProjectDir,
   resolveWorkflowSelection,
   validateBoltSlug,
+  validSessionId,
   validateLiveUnitScope,
   worktreeClaimBoundaryMatches,
   worktreeAuditFilePath,
@@ -64,6 +78,17 @@ const VALID_EVENT_TYPES = new Set([
   "STAGE_COMPLETED",
   "STAGE_JUMPED",
   "STAGE_SKIPPED",
+  // A finished stage AI-DLC itself now does differently: the row carries its
+  // receipt for the new definition (aidlc-validity.ts).
+  "STAGE_DEFINITION_CHANGED",
+  // A finished stage's own documents changed before the person's next message
+  // after the one that approved it: the row carries its receipt for the files
+  // as they are (aidlc-validity.ts).
+  "STAGE_OUTPUT_AMENDED",
+  // A code-producing stage's source-work check found no new code where it
+  // looked, and what it did: the agent's first report refused, the approval
+  // question put to the person, or Guard Policy off standing aside.
+  "SOURCE_WORK_NOT_FOUND",
   // Phase lifecycle
   "PHASE_STARTED",
   "PHASE_COMPLETED",
@@ -76,6 +101,11 @@ const VALID_EVENT_TYPES = new Set([
   "WORKFLOW_UNPARKED",
   "WORKFLOW_ARCHIVED",
   "WORKFLOW_UNARCHIVED",
+  // A record an earlier State Version wrote, brought up in place by the
+  // engine's state read (aidlc-state-upgrade.ts).
+  "STATE_UPGRADED",
+  "INTENT_REPOS_CHANGED",
+  "INTENT_CHECKOUTS_CHANGED",
   // Session events (hook-owned)
   "SESSION_STARTED",
   "SESSION_RESUMED",
@@ -85,6 +115,12 @@ const VALID_EVENT_TYPES = new Set([
   // approval/interview gate requires a HUMAN_TURN appended AFTER the last gate
   // resolution (in ledger order) before it commits.
   "HUMAN_TURN",
+  // Hook-owned, never a human turn: a prompt the host made for the agent (a
+  // workflow notice, a background task's notice, a brief) reached the
+  // prompt-submit seam and was not counted as the person's turn. One that names
+  // a Message Id takes back the HUMAN_TURN of that message (a Claude Code
+  // wake-up, settled once its own row was on record: settleClaudeTurns).
+  "HOST_TURN",
   // Initialization events (fire IN ADDITION TO STAGE_COMPLETED)
   "WORKSPACE_SCAFFOLDED",
   "WORKSPACE_SCANNED",
@@ -101,6 +137,11 @@ const VALID_EVENT_TYPES = new Set([
   // Engine-owned: the person sent their words to separate new work or a
   // reshape, so they answer no question the work in progress has open.
   "REQUEST_ROUTED",
+  // Engine-owned: an engine question with no row of its own when asked (the
+  // code plan question, the questions `next` asks), and an open question shown
+  // in a chat it was not shown in before, each with its Question Id.
+  "QUESTION_ASKED",
+  "QUESTION_SHOWN",
   "SUMMARY_CONFIRMATION_RECORDED",
   "VERIFICATION_COMMAND_RECORDED",
   "CONSTRUCTION_POLICY_RECORDED",
@@ -142,10 +183,18 @@ const VALID_EVENT_TYPES = new Set([
   "ARTIFACT_UPDATED",
   "ARTIFACT_REUSED",
   // Subagent (hook-emitted)
+  "SUBAGENT_DISPATCHED",
   "SUBAGENT_COMPLETED",
   // Advisory, never a HUMAN_TURN: a Copilot prompt arrived right after a
   // subagent started in that chat and matched no recorded subagent brief.
   "SUBAGENT_PROMPT_UNMATCHED",
+  // No longer written: earlier releases had the plan-approval guard record a
+  // reviewer dispatch whose brief already carried a rendered verdict line. The
+  // reviewer now says so itself (`**Verdict Dictated:**` in its review file,
+  // recorded on REVIEW_COMPLETED). Kept registered so audits and worktree
+  // deltas written before still read and merge (validateMergeDelta refuses an
+  // unknown event).
+  "REVIEW_VERDICT_DICTATED",
   // Reviewer read-scope enforcement (hook-emitted): a per-unit reviewer's
   // tool call was refused for reaching into sibling units' construction/ paths.
   "REVIEWER_SCOPE_BLOCKED",
@@ -159,6 +208,13 @@ const VALID_EVENT_TYPES = new Set([
   // developer-agent dispatch was refused because no unit had an approved
   // code-generation plan on disk (stage Steps 2-3 must precede Step 4).
   "PLAN_APPROVAL_BLOCKED",
+  "STATE_TRANSITION_BLOCKED",
+  "STAGE_RULES_BLOCKED",
+  // A system package install nobody asked for (hook-emitted): held until the
+  // person says so (BLOCKED), and run with their turn standing behind it
+  // (ALLOWED, naming their message).
+  "SYSTEM_INSTALL_BLOCKED",
+  "SYSTEM_INSTALL_ALLOWED",
   // A guard's deterministic off-switch was set while a workflow existed, so a
   // tool call passed without enforcement. One row per streak: the hook appends
   // only when the newest row in its shard is not already this event.
@@ -251,6 +307,8 @@ const VALID_EVENT_TYPES = new Set([
   "SENSOR_FIRED",
   "SENSOR_PASSED",
   "SENSOR_FAILED",
+  // A check whose script crashed, could not start or gave no verdict.
+  "SENSOR_COULD_NOT_RUN",
   "SENSOR_BUDGET_OVERRIDE",
   "GUARDRAIL_LOADED",
   // Learning Loop (MEMORY_EMPTY emitter wired by aidlc-runtime.ts compile;
@@ -268,11 +326,22 @@ const VALID_EVENT_TYPES = new Set([
   "SWARM_BATON_RETURNED",
   "SWARM_COMPLETED",
   "SWARM_DEGRADED",
+  // The person asked for files in the main checkout to change while the Units
+  // are built in parallel: `aidlc-swarm.ts allow-change` records them with the
+  // message they asked in, and the guard and the landings read it.
+  "MAIN_CHECKOUT_CHANGE_ALLOWED",
   // Commit provenance -- emitted only by `aidlc-attest.ts anchor`: a workspace
   // commit observed to land reviewed unit claims. Enrichment ONLY: attest
   // resolve derives attribution purely from committed receipts + evidence and
   // never reads these anchors, so an unanchored manual commit still resolves.
   "SOURCE_COMMITTED",
+]);
+
+// The hook-owned session events above: a host's chat starting, resuming,
+// compacting or ending. They are the host's bookkeeping, never an act on what
+// the person said (latestOwnRow in aidlc-orchestrate.ts reads past them).
+export const SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "SESSION_STARTED", "SESSION_RESUMED", "SESSION_COMPACTED", "SESSION_ENDED",
 ]);
 // --- Event type to human-readable heading ---
 
@@ -281,6 +350,9 @@ const EVENT_HEADINGS: Record<string, string> = {
   STAGE_AWAITING_APPROVAL: "Stage Awaiting Approval",
   STAGE_REVISING: "Stage Revising",
   STAGE_COMPLETED: "Stage Completion",
+  STAGE_DEFINITION_CHANGED: "Stage Definition Changed",
+  STAGE_OUTPUT_AMENDED: "Stage Output Amended",
+  SOURCE_WORK_NOT_FOUND: "Source Work Not Found",
   STAGE_JUMPED: "Stage Jump",
   STAGE_SKIPPED: "Stage Skip",
   PHASE_STARTED: "Phase Start",
@@ -293,11 +365,15 @@ const EVENT_HEADINGS: Record<string, string> = {
   WORKFLOW_UNPARKED: "Workflow Unparked",
   WORKFLOW_ARCHIVED: "Workflow Archived",
   WORKFLOW_UNARCHIVED: "Workflow Unarchived",
+  STATE_UPGRADED: "State Upgraded",
+  INTENT_REPOS_CHANGED: "Intent Repos Changed",
+  INTENT_CHECKOUTS_CHANGED: "Intent Checkouts Changed",
   SESSION_STARTED: "Session Start",
   SESSION_RESUMED: "Session Resume",
   SESSION_COMPACTED: "Session Compacted",
   SESSION_ENDED: "Session End",
   HUMAN_TURN: "Human Turn",
+  HOST_TURN: "Host Turn",
   WORKSPACE_SCAFFOLDED: "Workspace Scaffolded",
   WORKSPACE_SCANNED: "Workspace Scanned",
   WORKSPACE_INITIALISED: "Workspace Initialised",
@@ -307,6 +383,8 @@ const EVENT_HEADINGS: Record<string, string> = {
   QUESTION_ANSWERED: "Question Answered",
   QUESTION_UNANSWERED: "Question Unanswered",
   QUESTION_REPLIED: "Question Replied",
+  QUESTION_ASKED: "Question Asked",
+  QUESTION_SHOWN: "Question Shown",
   REQUEST_ROUTED: "Request Routed",
   SUMMARY_CONFIRMATION_RECORDED: "Summary Confirmation Recorded",
   VERIFICATION_COMMAND_RECORDED: "Verification Command Recorded",
@@ -326,11 +404,17 @@ const EVENT_HEADINGS: Record<string, string> = {
   ARTIFACT_CREATED: "Artifact Created",
   ARTIFACT_UPDATED: "Artifact Updated",
   ARTIFACT_REUSED: "Artifact Reused",
+  SUBAGENT_DISPATCHED: "Subagent Dispatched",
   SUBAGENT_COMPLETED: "Subagent Completed",
   SUBAGENT_PROMPT_UNMATCHED: "Subagent Prompt Unmatched",
+  REVIEW_VERDICT_DICTATED: "Review Verdict Dictated",
   REVIEWER_SCOPE_BLOCKED: "Reviewer Scope Blocked",
   REVIEW_FREEZE_BLOCKED: "Review Freeze Blocked",
   PLAN_APPROVAL_BLOCKED: "Plan Approval Blocked",
+  STATE_TRANSITION_BLOCKED: "State Transition Blocked",
+  STAGE_RULES_BLOCKED: "Stage Rules Blocked",
+  SYSTEM_INSTALL_BLOCKED: "System Install Blocked",
+  SYSTEM_INSTALL_ALLOWED: "System Install Allowed",
   GUARD_DISABLED: "Guard Disabled",
   DOCUMENT_INDEXED: "Document Indexed",
   DOCUMENT_UPDATED: "Document Updated",
@@ -379,6 +463,7 @@ const EVENT_HEADINGS: Record<string, string> = {
   SENSOR_FIRED: "Sensor Fired",
   SENSOR_PASSED: "Sensor Passed",
   SENSOR_FAILED: "Sensor Failed",
+  SENSOR_COULD_NOT_RUN: "Sensor Could Not Run",
   SENSOR_BUDGET_OVERRIDE: "Sensor Budget Override",
   GUARDRAIL_LOADED: "Guardrail Loaded",
   MEMORY_EMPTY: "Memory Empty",
@@ -387,6 +472,7 @@ const EVENT_HEADINGS: Record<string, string> = {
   SWARM_STARTED: "Swarm Started",
   SWARM_UNIT_CONVERGED: "Swarm Unit Converged",
   SWARM_SOURCE_MERGED: "Swarm Source Merged",
+  MAIN_CHECKOUT_CHANGE_ALLOWED: "Main Checkout Change Allowed",
   SWARM_UNIT_FAILED: "Swarm Unit Failed",
   SWARM_BATON_RETURNED: "Swarm Baton Returned",
   SWARM_COMPLETED: "Swarm Completed",
@@ -407,12 +493,23 @@ function jsonError(message: string): never {
 
 const CLI_RESERVED_EVENT_TYPES = new Set([
   "HUMAN_TURN",
+  // Hook-owned like HUMAN_TURN: only the hook that saw the host's prompt, or
+  // settleClaudeTurns reading Claude Code's own row for a turn the hook could
+  // not yet tell apart (aidlc-claude-turn-origin.ts), may say a turn was the host's.
+  "HOST_TURN",
   // Hook-owned like HUMAN_TURN: it spends a person's turn, so only the hook
   // that saw the empty question box may write it.
   "QUESTION_UNANSWERED",
   // Hook-owned too: it is the person's own reply, so only the hook that saw
   // the question box may write it.
   "QUESTION_REPLIED",
+  // Hook-owned like HUMAN_TURN: it says an agent finished, and a review's
+  // verdict reads its absence as "no reviewer finished" (#2427), so only the
+  // SubagentStop hook that saw the host's completion may write it.
+  "SUBAGENT_COMPLETED",
+  // Its pair: the record that a helper was sent, which a completion closes, so
+  // only the hooks that saw the dispatch may write it.
+  "SUBAGENT_DISPATCHED",
   "SUMMARY_CONFIRMATION_RECORDED",
   "VERIFICATION_COMMAND_RECORDED",
   "CONSTRUCTION_POLICY_RECORDED",
@@ -469,17 +566,31 @@ export interface AuditEntryInput {
 // (verifyReviewerPrecondition), swarm attempt/convergence (the finalize and
 // artifact-guard boundaries), and the autonomy grant. Each has exactly one owning emitter that
 // reaches appendAuditEntry through the library import (hooks, aidlc-state,
-// aidlc-log, aidlc-swarm, aidlc-bolt). The public CLI refuses them so a
+// aidlc-log, aidlc-swarm, aidlc-bolt), except HOST_TURN, which the human-turn
+// hook and settleClaudeTurns (aidlc-claude-turn-origin.ts) write from the one
+// decider of who started a Claude Code turn (claudeTranscriptOrigin). The public CLI refuses them so a
 // conductor cannot mint authority it does not have; everything else stays
 // CLI-appendable as the diagnostic escape hatch. Test fixtures that simulate
 // the owning emitters set AIDLC_ALLOW_DIRECT_AUDIT_EVENTS=1 (the same escape
 // idiom as AIDLC_ALLOW_DIRECT_STATE_TRANSITIONS in aidlc-state.ts).
 export const CLI_PROTECTED_EVENT_TYPES = new Set([
   "STAGE_COMPLETED",
+  // Its Stages added sends `next` back to a stage the work just passed over.
+  "STATE_UPGRADED",
+  "STAGE_DEFINITION_CHANGED",
+  "STAGE_OUTPUT_AMENDED",
+  // The check's own record of a first refusal opens the gate on the next
+  // report; a forged one would skip the agent's refusal.
+  "SOURCE_WORK_NOT_FOUND",
   "HUMAN_TURN",
+  "HOST_TURN",
   "QUESTION_UNANSWERED",
   "QUESTION_REPLIED",
   "REQUEST_ROUTED",
+  // The engine's record of the questions it asked; what binds an answer to
+  // its question will read them.
+  "QUESTION_ASKED",
+  "QUESTION_SHOWN",
   "GATE_APPROVED",
   "GATE_REJECTED",
   "QUESTION_ANSWERED",
@@ -493,6 +604,8 @@ export const CLI_PROTECTED_EVENT_TYPES = new Set([
   "SWARM_STARTED",
   "SWARM_UNIT_CONVERGED",
   "SWARM_SOURCE_MERGED",
+  // The person's request a strict landing keeps; a forged one would keep a change nobody asked for.
+  "MAIN_CHECKOUT_CHANGE_ALLOWED",
   "AUTONOMY_MODE_SET",
   "UNIT_OWNERSHIP_SET",
   "UNIT_GATE_RHYTHM_SET",
@@ -550,13 +663,11 @@ export const CLI_PROTECTED_EVENT_TYPES = new Set([
   // A stand-aside row is a guard's own account of what it let through; a forged
   // one would make an unauthorized action look covered.
   "GUARD_STOOD_ASIDE",
+  // The person's go-ahead for a system install; a forged one would make an
+  // install nobody asked for look like theirs.
+  "SYSTEM_INSTALL_ALLOWED",
   // Ceremony provenance belongs to the setting verb, not a public audit append.
   "CEREMONY_SET",
-  // Each of these starts a new review attempt, and a Decided By on a jump speaks
-  // for the stage's one agent reset, so a forged row would restore a spent budget.
-  "STAGE_JUMPED",
-  "STAGE_STARTED",
-  "WORKFLOW_STARTED",
 ]);
 // Events a WORKTREE DELTA may never carry into the main intent shard. This is
 // deliberately an explicit enumeration, not prefix families: a Bolt/swarm
@@ -592,6 +703,9 @@ const MERGE_PROTECTED_EVENT_TYPES = new Set([
   "PLAN_APPROVAL_RECORDED",
   "PLAN_APPROVAL_OVERRIDDEN",
   "PLAN_APPROVAL_SKIPPED",
+  // The source-work check's own record opens the main checkout's gate.
+  "SOURCE_WORK_NOT_FOUND",
+  "MAIN_CHECKOUT_CHANGE_ALLOWED",
   "AUTONOMY_MODE_SET",
   "UNIT_OWNERSHIP_SET",
   "UNIT_GATE_RHYTHM_SET",
@@ -680,6 +794,147 @@ function validateAuditEntry(entry: AuditEntryInput): void {
   }
 }
 
+// What looks like a key, a token or a password, by its shape alone: a vendor's
+// own token prefix, a private key block, a password in an address, or a name
+// that ends in a secret's word set to a value with a letter and a digit or a
+// symbol in it (so `token_limit: 128000`, `cache_key: user-123` and
+// `PASSWORD=$DB_PASSWORD` are a setting, a key name and a reference). AI-DLC's
+// committed record and the doctor bundle share this one list;
+// the bundle adds its broader rules after it. No bare long hex or base64 shape:
+// commit ids, fingerprints and hashes fill the record. A Bearer run or a value
+// with no digit or symbol ("Bearer authentication", "password: required") stays
+// as typed. `record` keeps what names the secret (`STRIPE_KEY=`, `Bearer `);
+// `doctor` is the bundle's own marker. `[masked]` matches no shape, so masking
+// twice changes nothing.
+export const SECRET_MASK = "[masked]";
+export interface SecretShape {
+  rule: string;
+  re: RegExp;
+  record: string;
+  doctor: string;
+}
+// A `$NAME`, `${NAME}` or Windows `%NAME%` reference in a value's place stays.
+const SECRET_REFERENCE = "(?!\\$|%[A-Za-z_][A-Za-z0-9_]*%)";
+const SECRET_VALUE =
+  `${SECRET_REFERENCE}(?=[A-Za-z0-9!@#$%^&*._~+/=:-]*[A-Za-z])(?=[A-Za-z0-9!@#$%^&*._~+/=:-]*[0-9!@#$%^&*~+=])[A-Za-z0-9!@#$%^&*._~+/=:-]{6,}(?<!\\.)`;
+// A password is chosen by a person and can be three or more words
+// ("correct-horse-battery-staple"); one hyphenated word after its name is prose
+// ("case-sensitive", and "case-sensitive." at a sentence's end). A value's
+// closing period is the sentence's, never masked. A token or key is made by a machine and has digits, so a
+// placeholder such as `api_key: your-api-key-here` stays.
+const PASSWORD_VALUE =
+  `${SECRET_REFERENCE}(?=[A-Za-z0-9!@#$%^&*._~+/=:-]*[A-Za-z])` +
+  "(?=[A-Za-z0-9!@#$%^&*._~+/=:-]*[0-9!@#$%^&*~+=]|[A-Za-z0-9!@#$%^&*._~+/=:-]*[._-][A-Za-z0-9!@#$%^&*._~+/=:-]*[._-](?=[A-Za-z0-9]))" +
+  "[A-Za-z0-9!@#$%^&*._~+/=:-]{6,}(?<!\\.)";
+const PASSWORD_NAME = "(?:[A-Za-z0-9]+[_.-])*(?:password|passwd|pwd|passphrase)";
+const SECRET_NAME = "(?:[A-Za-z0-9]+[_.-])*" +
+  "(?:(?:api|access|secret|private|encryption|signing|session|master|license|app)[_-]?key|secret[_-]?key[_-]?base|secret|token)";
+export const SECRET_SHAPES: readonly SecretShape[] = [
+  {
+    // The header, its own `Name: value` lines, one or more base64 runs, and
+    // the END line when the paste has one; a header named in prose stays.
+    rule: "private-key",
+    re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----(?:(?:\r?\n|\\n)[ \t]*[A-Za-z-]+: [^\r\n\\]*)*(?:[\s\\n]*[A-Za-z0-9+/=]{40,})+(?:[A-Za-z0-9+/=\s\\]*?-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----)?/g,
+    record: SECRET_MASK,
+    doctor: "<redacted-private-key>",
+  },
+  {
+    rule: "github-token",
+    re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b/g,
+    record: SECRET_MASK,
+    doctor: "<redacted-token>",
+  },
+  { rule: "gitlab-token", re: /\bglpat-[A-Za-z0-9_-]{20,}/g, record: SECRET_MASK, doctor: "<redacted-token>" },
+  { rule: "slack-token", re: /\bxox[abposr]-[A-Za-z0-9-]{10,}/g, record: SECRET_MASK, doctor: "<redacted-token>" },
+  { rule: "stripe-key", re: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,}\b/g, record: SECRET_MASK, doctor: "<redacted-key>" },
+  { rule: "anthropic-key", re: /\bsk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_-]{20,}/g, record: SECRET_MASK, doctor: "<redacted-key>" },
+  {
+    // A project key's body runs to 100 or more characters; 40 keeps a slug
+    // such as sk-proj-management-dashboard out. The legacy body has no dash.
+    rule: "openai-key",
+    re: /\bsk-(?:(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}|[A-Za-z0-9]{32,}\b)/g,
+    record: SECRET_MASK,
+    doctor: "<redacted-key>",
+  },
+  { rule: "google-api-key", re: /\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/g, record: SECRET_MASK, doctor: "<redacted-key>" },
+  { rule: "npm-token", re: /\bnpm_[A-Za-z0-9]{36}\b/g, record: SECRET_MASK, doctor: "<redacted-token>" },
+  { rule: "huggingface-token", re: /\bhf_[A-Za-z0-9]{34,}\b/g, record: SECRET_MASK, doctor: "<redacted-token>" },
+  {
+    // A `$NAME`, `${NAME}`, `%NAME%` or `{{ ... }}` reference, or a `<password>`
+    // placeholder, in its place stays.
+    rule: "address-password",
+    re: /\b([A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:/?#@]*:)(?!\$|\{\{|%[A-Za-z_][A-Za-z0-9_]*%|<)[^\s/?#@]+@/g,
+    record: `$1${SECRET_MASK}@`,
+    doctor: "$1<redacted>@",
+  },
+  { rule: "aws-access-key", re: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, record: SECRET_MASK, doctor: "<redacted-aws-key>" },
+  {
+    rule: "bearer-token",
+    re: /\bBearer\s+(?=[A-Za-z0-9._~+/=-]*[0-9])[A-Za-z0-9._~+/=-]{12,}\b/g,
+    record: `Bearer ${SECRET_MASK}`,
+    doctor: "Bearer <redacted-token>",
+  },
+  {
+    rule: "jwt",
+    re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
+    record: SECRET_MASK,
+    doctor: "<redacted-jwt>",
+  },
+  {
+    // `password=x`, `"db_password": "x"`, and the JSON-escaped
+    // `\"password\":\"x\"` a nested value takes; then the same for
+    // `GITHUB_TOKEN=x`, `AWS_SECRET_ACCESS_KEY=x` and the other names.
+    rule: "assignment-secret",
+    re: new RegExp(String.raw`(?<lead>\b(?<name>${PASSWORD_NAME})\b\\?['"]?\s*[:=]\s*\\?['"]?)${PASSWORD_VALUE}`, "gi"),
+    record: `$<lead>${SECRET_MASK}`,
+    doctor: "$<name>=<redacted>",
+  },
+  {
+    rule: "assignment-secret",
+    re: new RegExp(String.raw`(?<lead>\b(?<name>${SECRET_NAME})\b\\?['"]?\s*[:=]\s*\\?['"]?)${SECRET_VALUE}`, "gi"),
+    record: `$<lead>${SECRET_MASK}`,
+    doctor: "$<name>=<redacted>",
+  },
+];
+
+export function maskSecretShapes(text: string): string {
+  let out = text;
+  for (const { re, record } of SECRET_SHAPES) {
+    re.lastIndex = 0;
+    out = out.replace(re, record);
+  }
+  return out;
+}
+
+// The person's message held what looks like a key (SECRET_SHAPES): AI-DLC's
+// committed record keeps it masked (renderAuditBlock, append-raw, the work's
+// description), and they hear this once, with the next step the agent speaks
+// from. The human-turn hook queues it for the message it keeps; creation
+// queues it for a request whose words no hook kept. Rows that mask an agent's
+// own text, or words the engine reads back later, say nothing.
+export const SECRET_MASKED_LINE =
+  "Your message looked like it held a key or password. AI-DLC keeps it out of its committed record, " +
+  "but this chat still received it, so if it is real, change it where it was issued.";
+
+// Queue SECRET_MASKED_LINE for the chat (`session`, else the chat running
+// this command), unless it is already waiting or this turn heard it. No chat
+// named, no line; never throws, since a line the person may miss never blocks
+// a write or their turn.
+export function saySecretMaskedOnce(projectDir: string, session?: string): void {
+  if (isReadOnlyEngineProbe()) return;
+  try {
+    const chat = validSessionId(session) ?? resolveInvokingSessionId(projectDir);
+    if (chat === null) return;
+    if (personLineHeardThisTurn(projectDir, chat, SECRET_MASKED_LINE) ||
+      pendingPersonLines(projectDir, chat).lines.includes(SECRET_MASKED_LINE)) return;
+    if (addPendingPersonLines(projectDir, chat, [SECRET_MASKED_LINE])) {
+      markPersonLineHeardThisTurn(projectDir, chat, SECRET_MASKED_LINE);
+    }
+  } catch {
+    // Only the line is lost.
+  }
+}
+
 function renderAuditBlock(
   entry: AuditEntryInput,
   timestamp: string,
@@ -693,10 +948,12 @@ function renderAuditBlock(
     // The emitter already wrote these above; re-rendering one would put a
     // second identically-marked line in the block (issue #715).
     if (EMITTER_OWNED_FIELD_KEYS.has(key)) continue;
-    // Escape every JavaScript line terminator in values so a malicious or
-    // malformed input cannot forge a second audit field or event line.
+    // Key shapes are masked before the committed shard keeps a value
+    // (SECRET_SHAPES), whoever wrote it. Escape every JavaScript line
+    // terminator in values so a malicious or malformed input cannot forge a
+    // second audit field or event line.
     const safeValue = redactProjectDirPrefix(
-      String(value),
+      maskSecretShapes(String(value)),
       projectDir,
     ).replace(/\r\n?|\n|\u2028|\u2029/g, "\\n");
     block += `**${key}**: ${safeValue}\n`;
@@ -725,6 +982,26 @@ function tapAuditMetric(
     metrics.emitMetricForAuditEvent(eventType, fields, projectDir);
   } catch {
     // Metrics module missing or emit failed - never propagate.
+  }
+}
+
+// Each row a record gains goes to the open-question ledger the human-turn hook
+// stamps turns from (noteQuestionRow, aidlc-questions.ts), under the lock the
+// append holds. Lazy, like the metrics tap: a fixture without the module, or a
+// ledger that cannot be written, never blocks the row.
+function tapQuestionLedger(
+  eventType: string,
+  fields: Record<string, string>,
+  projectDir: string,
+  shardPath: string,
+): void {
+  try {
+    const questions = require("./aidlc-questions.ts") as {
+      noteQuestionRow: (projectDir: string, auditPath: string, event: string, fields: Record<string, string>) => void;
+    };
+    questions.noteQuestionRow(projectDir, shardPath, eventType, fields);
+  } catch {
+    // Bookkeeping for the hook's stamp only.
   }
 }
 
@@ -824,13 +1101,15 @@ export function appendAuditEntryUnlocked(
   const entry = { eventType, fields };
   validateAuditEntry(entry);
   const ts = isoTimestamp();
+  const shardPath = auditFilePath(projectDir, intent, space);
   appendAuditBlockAtPath(
     projectDir,
-    auditFilePath(projectDir, intent, space),
+    shardPath,
     renderAuditBlock(entry, ts, projectDir),
   );
 
   tapAuditMetric(eventType, fields, projectDir);
+  tapQuestionLedger(eventType, fields, projectDir, shardPath);
 
   return { appended: true, event: eventType, timestamp: ts };
 }
@@ -869,7 +1148,190 @@ interface AuditAppendExpectation extends AuditFileIdentity {
   prefixHash: string;
 }
 
+const AUDIT_SHARD_HEADER = "# AI-DLC Audit Log\n";
+
+function unheaded(block: string): string {
+  return block.replace(/^# AI-DLC Audit Log\r?\n/, "");
+}
+
+interface ClaimAuditRules {
+  takes(block: string): boolean;
+  baseHolds(path: string): boolean;
+}
+
+// A checkout that claimed a team Unit writes its whole log to a local record,
+// `<record>/.aidlc-engine/audit/<claim shard>` (auditFilePath), and the claim's
+// tracked shard of the same name, the one publish ships and pin reads, takes a
+// copy of each row pin accepts. The claim's rules (claimAuditRules, aidlc-unit.ts)
+// say which those are. A Bolt worktree of the Unit (aidlc-worktree create leaves
+// its .aidlc/worktree-meta.json) has no rules: it keeps only its local record,
+// since audit-merge copies the delta's rows pin takes into the main checkout's
+// tracked shard, and a second copy in the worktree's own would meet that one
+// when the Bolt lands.
+function claimOfLocalRecord(
+  projectDir: string,
+  shardPath: string,
+): { tracked: string; rules: ClaimAuditRules | null } | null {
+  const tracked = trackedTwin(shardPath);
+  if (tracked === null) return null;
+  if (insideBoltWorktree(projectDir)) return { tracked, rules: null };
+  const stamp = readApplicableTeamUnitScopeStamp(projectDir);
+  if (!stamp) return null;
+  // Loaded only here: a checkout with no claim never pays for the Unit tool.
+  const { claimAuditRules } = require("./aidlc-unit.ts") as {
+    claimAuditRules(
+      projectDir: string,
+      claim: { unit: string; generation: number; claimed_from_oid: string },
+    ): ClaimAuditRules;
+  };
+  return { tracked, rules: claimAuditRules(projectDir, stamp) };
+}
+
+// The tracked shard beside a local record, or null when the path is not one.
+function trackedTwin(shardPath: string): string | null {
+  const dir = dirname(shardPath);
+  if (basename(dir) !== "audit" || basename(dirname(dir)) !== ENGINE_DIR) return null;
+  return join(dirname(dirname(dir)), "audit", basename(shardPath));
+}
+
+function insideBoltWorktree(projectDir: string): boolean {
+  const metaPath = join(projectDir, ".aidlc", "worktree-meta.json");
+  if (!existsSync(metaPath)) return false;
+  try {
+    const meta = JSON.parse(
+      readRegularFileNoFollowOrThrow(metaPath, "worktree metadata").toString("utf-8"),
+    ) as { version?: unknown; intentRecord?: unknown };
+    return meta.version === 1 && typeof meta.intentRecord === "string";
+  } catch {
+    return false;
+  }
+}
+
+function readShardText(projectDir: string, path: string): string | null {
+  try {
+    assertNoSymlinkInChainOrThrow(realpathSync(projectDir), relative(projectDir, path));
+    return readAppendOnlyFileNoFollowOrThrow(path, "audit shard").toString("utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+// Brings a local record and the tracked shard beside it into step. A local
+// record that does not exist yet starts as the tracked shard stands: rows
+// written before the claim (a fresh clone's own shard is the one its claim
+// binds), before the local record existed (a claim, or a Bolt worktree's fork,
+// an earlier AI-DLC made), or carried in by git. One that exists takes the
+// tracked shard's rows it lacks. Then the tracked shard keeps its header and the
+// rows the claim's pin takes, so a claim taken again (the next generation)
+// leaves the last one's receipts behind; never rewritten when the claim's base
+// commit holds it, or in a Bolt worktree, and its bytes kept when nothing drops.
+// The caller holds the audit lock.
+function startLocalRecordUnlocked(
+  projectDir: string,
+  localPath: string,
+  claim: { tracked: string; rules: ClaimAuditRules | null },
+): void {
+  const text = readShardText(projectDir, claim.tracked);
+  if (text === null) return;
+  const own = readShardText(projectDir, localPath);
+  if (own === null) {
+    writeAuditBlockAtPath(projectDir, localPath, unheaded(text));
+  } else {
+    const held = new Set(auditShardBlocks(own).map(unheaded));
+    const missing = auditShardBlocks(text)
+      .filter((block) => auditBlockField(block, "Timestamp") !== null && !held.has(unheaded(block)));
+    if (missing.length > 0) {
+      writeAuditBlockAtPath(projectDir, localPath, missing.map((block) => `${unheaded(block)}\n---\n`).join(""));
+    }
+  }
+  const rules = claim.rules;
+  if (rules === null || rules.baseHolds(relative(projectDir, claim.tracked).replaceAll("\\", "/"))) return;
+  const blocks = auditShardBlocks(text);
+  const keep = blocks.map((block) => block.trim().length === 0 || rules.takes(block));
+  if (keep.every(Boolean)) return;
+  const kept = blocks.filter((_, pos) => keep[pos]).join("\n---\n");
+  const trimmed = !keep[0] && unheaded(blocks[0]) !== blocks[0] ? AUDIT_SHARD_HEADER + kept : kept;
+  if (trimmed === text.replace(/\r\n/g, "\n")) return;
+  writeBufferAtomic(claim.tracked, Buffer.from(trimmed, "utf-8"));
+}
+
+// The claim brings its checkout's local record and tracked shard into step
+// (finalizeClaimCheckout), so the rows written before it, and a last
+// generation's receipts, leave the tracked shard at once. Best-effort: the
+// first write starts a local record that is not there yet.
+export function startClaimLocalRecord(projectDir: string): void {
+  try {
+    if (!acquireAuditLock(projectDir)) return;
+    try {
+      const localPath = auditFilePath(projectDir);
+      const claim = claimOfLocalRecord(projectDir, localPath);
+      if (claim) startLocalRecordUnlocked(projectDir, localPath, claim);
+    } finally {
+      releaseAuditLock(projectDir);
+    }
+  } catch {
+    // The first write starts it.
+  }
+}
+
+// Audit fork and merge read a Bolt worktree's record by its path before
+// anything writes there: one forked before the local record existed is still
+// in the tracked shard beside it. The caller holds the audit lock.
+function startWorktreeLocalRecord(projectDir: string, wtAuditPath: string): void {
+  const tracked = trackedTwin(wtAuditPath);
+  if (tracked !== null && !existsSync(wtAuditPath)) {
+    startLocalRecordUnlocked(projectDir, wtAuditPath, { tracked, rules: null });
+  }
+}
+
+// Adopt: the local record a teammate's publication hands over joins this
+// checkout's own (its bytes, kept), as the rows it lacks, in their order; a
+// checkout with none takes the handed-over record whole. Nothing is copied to
+// the tracked shard: the claim commit already carries those rows there.
+export function takeHandedOverAuditRows(projectDir: string, localPath: string, handedOver: string): void {
+  if (!acquireAuditLock(projectDir)) throw new Error("Failed to acquire audit lock after retries");
+  try {
+    let own = "";
+    try {
+      assertNoSymlinkInChainOrThrow(realpathSync(projectDir), relative(projectDir, localPath));
+      own = readAppendOnlyFileNoFollowOrThrow(localPath, "audit shard").toString("utf-8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const held = new Set(auditShardBlocks(own).map(unheaded));
+    const missing = auditShardBlocks(handedOver)
+      .filter((block) => auditBlockField(block, "Timestamp") !== null && !held.has(unheaded(block)));
+    if (missing.length === 0) return;
+    writeAuditBlockAtPath(
+      projectDir,
+      localPath,
+      own === "" ? unheaded(handedOver) : missing.map((block) => `${unheaded(block)}\n---\n`).join(""),
+    );
+  } finally {
+    releaseAuditLock(projectDir);
+  }
+}
+
 function appendAuditBlockAtPath(
+  projectDir: string,
+  shardPath: string,
+  block: string,
+  expectedIdentity?: AuditAppendExpectation,
+): void {
+  refuseEngineObserverWrite("appendAuditBlockAtPath");
+  const claim = claimOfLocalRecord(projectDir, shardPath);
+  if (claim && !existsSync(shardPath)) startLocalRecordUnlocked(projectDir, shardPath, claim);
+  writeAuditBlockAtPath(projectDir, shardPath, block, expectedIdentity);
+  const rules = claim?.rules;
+  if (!claim || !rules) return;
+  const evidence = auditShardBlocks(block).filter((part) => rules.takes(part));
+  if (evidence.length > 0) {
+    writeAuditBlockAtPath(projectDir, claim.tracked, evidence.map((part) => `${part}\n---\n`).join(""));
+  }
+}
+
+function writeAuditBlockAtPath(
   projectDir: string,
   shardPath: string,
   block: string,
@@ -1025,6 +1487,7 @@ export function appendAuditEntryAtPathUnlocked(
     renderAuditBlock(entry, ts, projectDir),
   );
   tapAuditMetric(eventType, fields, projectDir);
+  tapQuestionLedger(eventType, fields, projectDir, shardPath);
   return { appended: true, event: eventType, timestamp: ts };
 }
 
@@ -1051,9 +1514,11 @@ export function appendAuditEntries(
         renderAuditBlock(entry, timestamps[index], projectDir)
       )
       .join("");
-    appendAuditBlockAtPath(projectDir, auditFilePath(projectDir, intent, space), payload);
+    const shardPath = auditFilePath(projectDir, intent, space);
+    appendAuditBlockAtPath(projectDir, shardPath, payload);
     for (const entry of entries) {
       tapAuditMetric(entry.eventType, entry.fields, projectDir);
+      tapQuestionLedger(entry.eventType, entry.fields, projectDir, shardPath);
     }
     return {
       appended: true,
@@ -1155,10 +1620,10 @@ function handleAppendRaw(
   // go through `append`, which validates ownership); non-taxonomy Event lines
   // (custom diagnostics) stay allowed — no query resolves them to authority.
   const expandedBody = redactProjectDirPrefix(
-    body.replace(/\\n/g, "\n"),
+    maskSecretShapes(body.replace(/\\n/g, "\n")),
     projectDir,
   );
-  const safeHeading = redactProjectDirPrefix(heading, projectDir);
+  const safeHeading = redactProjectDirPrefix(maskSecretShapes(heading), projectDir);
   for (const raw of expandedBody.split(/\r\n?|\n|\u2028|\u2029/)) {
     // The same optional bullet the field readers accept (exactAuditField).
     const line = raw.replace(/^-[ \t]*/, "");
@@ -1171,7 +1636,7 @@ function handleAppendRaw(
     }
     if (VALID_EVENT_TYPES.has(value)) {
       jsonError(
-        `append-raw refuses a body carrying **Event**: ${value} — that line would register as a ` +
+        `append-raw refuses a body carrying **Event**: ${value} - that line would register as a ` +
           "canonical audit event to every reader. Emit taxonomy events through their owning tool " +
           "(or `append` for diagnostic types); append-raw is for free-form notes only."
       );
@@ -1365,6 +1830,44 @@ function forksCorrelate(left: AuditForkRecord, right: AuditForkRecord): boolean 
   );
 }
 
+// The commit a Bolt worktree was created from, as `aidlc-worktree create` recorded
+// it beside the worktree; null when the metadata is absent or does not name one.
+function worktreeCreationCommit(wtPath: string): string | null {
+  const metaPath = join(wtPath, ".aidlc", "worktree-meta.json");
+  if (!existsSync(metaPath)) return null;
+  try {
+    const meta = JSON.parse(
+      readRegularFileNoFollowOrThrow(metaPath, "worktree metadata").toString("utf-8"),
+    ) as { baseCommit?: unknown };
+    return typeof meta.baseCommit === "string" && /^[0-9a-f]{40,64}$/.test(meta.baseCommit)
+      ? meta.baseCommit
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+// A worktree checked out from a commit that carries the parent's audit starts
+// with that file. It is the base's copy, not work the worktree did, exactly when
+// the creation commit tracks the path and the checkout has not changed it (git
+// compares after its own line-ending conversion). Anything else is the worktree's
+// own: a row it wrote, a copy committed on its branch (equal to HEAD, not to the
+// creation commit), an untracked file, or no readable creation commit.
+function worktreeAuditInheritedFromBase(wtPath: string, wtAuditPath: string): boolean {
+  const base = worktreeCreationCommit(wtPath);
+  if (base === null) return false;
+  const path = relative(wtPath, wtAuditPath).replaceAll("\\", "/");
+  // The diff walks the checkout, whose nested audit path can pass Windows
+  // MAX_PATH, so these calls opt in to long paths like the create that wrote it.
+  const git = (args: string[]) =>
+    spawnSync("git", [...GIT_PLATFORM_ARGS, "-C", wtPath, ...args], {
+      encoding: "utf-8",
+      timeout: LONG_SUBPROCESS_TIMEOUT_MS,
+    }).status;
+  return git(["cat-file", "-e", `${base}:${path}`]) === 0 &&
+    git(["diff", "--quiet", base, "--", path]) === 0;
+}
+
 function matchingAuditMerge(
   content: string,
   slug: string,
@@ -1439,6 +1942,8 @@ function handleAuditFork(args: string[], projectDir: string): void {
   const recordPrefix = relativeRecordDir(projectDir, intent, space);
 
   const mainAuditPath = auditFilePath(projectDir, intent, space);
+  // A claim an earlier AI-DLC took kept this record in the tracked shard.
+  startClaimLocalRecord(projectDir);
 
   // Pre-emit guards (fail clean before any audit side-effect).
   if (!existsSync(mainAuditPath)) {
@@ -1530,6 +2035,7 @@ function handleAuditFork(args: string[], projectDir: string): void {
       recordPrefix,
       scopeStamp ? wtPath : projectDir,
     );
+    startWorktreeLocalRecord(projectDir, wtAuditPath);
 
     const before = readAuditSnapshot(projectDir, mainAuditPath);
     if (existsSync(wtAuditPath)) {
@@ -1537,33 +2043,41 @@ function handleAuditFork(args: string[], projectDir: string): void {
       const existingContent = existing.bytes.toString("utf-8");
       const existingFork = latestAuditFork(existingContent, slug);
       if (existingFork) {
-        if (existingContent.slice(existingFork.end) !== "") {
-          throw new Error(
-            `worktree audit already exists at ${wtAuditPath} with unmerged work after ` +
-              `AUDIT_FORKED; merge the delta with audit-merge, or discard the worktree`,
-          );
-        }
         const mainContent = before.bytes.toString("utf-8");
         const mainFork = latestAuditFork(mainContent, slug);
-        if (!mainFork || !forksCorrelate(existingFork, mainFork)) {
-          throw new Error(
-            `worktree audit already exists at ${wtAuditPath}, but its AUDIT_FORKED row ` +
-              `does not match the authoritative main row; discard the worktree before re-forking`,
-          );
-        }
-        const expected = scopeStamp
-          ? before.bytes.subarray(mainFork.start, mainFork.end)
-          : before.bytes.subarray(0, mainFork.end);
-        if (!existing.bytes.equals(expected)) {
+        const expected = mainFork === null
+          ? null
+          : scopeStamp
+            ? before.bytes.subarray(mainFork.start, mainFork.end)
+            : before.bytes.subarray(0, mainFork.end);
+        const unmergedWork = existingContent.slice(existingFork.end) !== "";
+        if (!unmergedWork && mainFork && forksCorrelate(existingFork, mainFork) &&
+          expected !== null && existing.bytes.equals(expected)) {
+          boundary = existingFork.boundary;
+          sourceHash = existingFork.sourceHash;
+          auditTs = existingFork.timestamp;
+          alreadyCurrent = true;
+        } else if (!worktreeAuditInheritedFromBase(wtPath, wtAuditPath)) {
+          // The worktree's own fork, with work after it or from another attempt.
+          // A copy the checkout inherited from the base commit (a records commit
+          // that already held fork rows for this Bolt) is forked over below instead.
+          if (unmergedWork) {
+            throw new Error(
+              `worktree audit already exists at ${wtAuditPath} with unmerged work after ` +
+                `AUDIT_FORKED; merge the delta with audit-merge, or discard the worktree`,
+            );
+          }
+          if (!mainFork || !forksCorrelate(existingFork, mainFork)) {
+            throw new Error(
+              `worktree audit already exists at ${wtAuditPath}, but its AUDIT_FORKED row ` +
+                `does not match the authoritative main row; discard the worktree before re-forking`,
+            );
+          }
           throw new Error(
             `worktree audit already exists at ${wtAuditPath}, but its fork prefix differs ` +
               `from main; discard the worktree before re-forking`,
           );
         }
-        boundary = existingFork.boundary;
-        sourceHash = existingFork.sourceHash;
-        auditTs = existingFork.timestamp;
-        alreadyCurrent = true;
       }
     }
     if (!alreadyCurrent) {
@@ -1718,6 +2232,15 @@ function handleAuditMerge(args: string[], projectDir: string): void {
     recordPrefix,
     scopeStamp ? wtPath : projectDir,
   );
+  // A Bolt an earlier AI-DLC forked kept both records in the tracked shards.
+  startClaimLocalRecord(projectDir);
+  if (acquireAuditLock(projectDir, undefined, undefined, intent, space)) {
+    try {
+      startWorktreeLocalRecord(projectDir, wtAuditPath);
+    } finally {
+      releaseAuditLock(projectDir, intent, space);
+    }
+  }
 
   if (!existsSync(wtAuditPath)) {
     jsonError(`worktree audit not found at ${wtAuditPath}; nothing to merge`);
@@ -1951,14 +2474,7 @@ function handleHistory(args: string[], projectDir: string): void {
       if ("heading" in row) {
         return { ...entry, heading: row.heading, text: row.text };
       }
-      const fields: Record<string, string> = Object.create(null);
-      for (const match of row.block.matchAll(/^(?:- )?\*\*([^*\n]+)\*\*:/gm)) {
-        const name = match[1];
-        if (name !== "Timestamp" && name !== "Event") {
-          fields[name] = auditBlockField(row.block, name)!;
-        }
-      }
-      return { ...entry, fields };
+      return { ...entry, fields: rowFields(row.block) };
     }).filter(
       (entry) => (stage === undefined || ("fields" in entry && entry.fields.Stage === stage)) &&
         (events.size === 0 || events.has(entry.event)),
@@ -1972,9 +2488,75 @@ function handleHistory(args: string[], projectDir: string): void {
   }
 }
 
+function rowFields(block: string): Record<string, string> {
+  const fields: Record<string, string> = Object.create(null);
+  for (const match of block.matchAll(/^(?:- )?\*\*([^*\n]+)\*\*:/gm)) {
+    const name = match[1];
+    if (name !== "Timestamp" && name !== "Event") {
+      fields[name] = auditBlockField(block, name)!;
+    }
+  }
+  return fields;
+}
+
+// --- Subcommand: turns ---
+
+// The person's turns with what they sent. The committed audit keeps no words
+// (#1505): they live in this machine's message record, which the row names by
+// its Message Id, so they read only here. A record expires after a day and
+// never leaves the clone that wrote it, so an older turn, or one from another
+// clone, says its words are not here. A record from another chat is never
+// joined to a row. Read-only, and deliberately not a delegate's verb.
+function handleTurns(args: string[], projectDir: string): void {
+  const { readMessage } = require("./aidlc-message-store.ts") as typeof import("./aidlc-message-store.ts");
+  let limit: number | undefined;
+  for (let i = 0; i < args.length; i += 2) {
+    if (args[i] !== "--limit") jsonError(`Unknown turns argument: ${args[i]}`);
+    const value = args[i + 1];
+    if (!value || !/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value))) {
+      jsonError("--limit must be a positive integer.");
+    }
+    limit = Number(value);
+  }
+  try {
+    const rows = sortAttemptEvents(readActiveAuditShardEvents(projectDir));
+    const turns = rows.flatMap((row) => {
+      if ("heading" in row || row.event !== "HUMAN_TURN") return [];
+      const fields = rowFields(row.block);
+      const id = fields["Message Id"];
+      const record = id ? readMessage(projectDir, id) : null;
+      const sameChat = record !== null && (record.session ?? undefined) === (fields.Session || undefined);
+      return [{
+        timestamp: row.timestamp,
+        fields,
+        ...(sameChat
+          ? {
+            message: {
+              at: record.at,
+              source: record.source,
+              text: record.text,
+              words: record.words,
+              picker: record.picker,
+              ...(record.cut ? { cut: true } : {}),
+            },
+          }
+          : { message: null, message_unavailable: id ? "not on this machine, or expired" : "no message record" }),
+      }];
+    });
+    jsonSuccess({
+      data_notice: UNTRUSTED_AUDIT_NOTICE,
+      turns: limit === undefined ? turns : turns.slice(-limit),
+    });
+  } catch (e) {
+    jsonError(errorMessage(e));
+  }
+}
+
 // --- CLI entry point ---
 
 export function main(argv: string[]): void {
+  // A turn Claude Code started itself is settled before this command reads a turn.
+  settleClaudeTurnsFirst(resolveProjectDir(projectDirFlag(argv)));
   const rawArgs = argv;
 
   // Extract --project-dir before general parsing
@@ -1993,12 +2575,16 @@ export function main(argv: string[]): void {
   const subcommand = filteredArgs[0];
 
   if (!subcommand) {
-    jsonError("Usage: aidlc-audit <append|append-batch|append-raw|history|audit-fork|audit-merge> [args...]");
+    jsonError("Usage: aidlc-audit <append|append-batch|append-raw|history|turns|audit-fork|audit-merge> [args...]");
   }
 
   switch (subcommand) {
     case "history":
       handleHistory(filteredArgs.slice(1), projectDir);
+      break;
+
+    case "turns":
+      handleTurns(filteredArgs.slice(1), projectDir);
       break;
 
     case "append": {
@@ -2043,7 +2629,7 @@ export function main(argv: string[]): void {
       break;
 
     default:
-      jsonError(`Unknown subcommand: ${subcommand}. Expected: append, append-batch, append-raw, history, audit-fork, audit-merge`);
+      jsonError(`Unknown subcommand: ${subcommand}. Expected: append, append-batch, append-raw, history, turns, audit-fork, audit-merge`);
   }
 }
 

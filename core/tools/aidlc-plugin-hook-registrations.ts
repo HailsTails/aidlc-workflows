@@ -1,40 +1,9 @@
-import { codexHookTrustHash, codexHookTrustIdentity, type CodexHookTrustIdentityInput } from "./aidlc-command.ts";
 import type { ModelHarness } from "./aidlc-model-policy.ts";
 import { isModelHarness } from "./aidlc-model-policy.ts";
 
-type PluginHookRow = {
-  event: string;
-  matcher?: string;
-  target: string;
-  capabilityId?: string;
-  hookFile: string;
-  pluginName: string;
-};
+import type { PluginHookRow, NativeHookGroup, PluginHookContribution, ProjectedPluginHookContributions as ProjectedContributions } from "../projection/plugin-hook-types.ts";
 
-type NativeHookGroup =
-  | {
-      readonly matcher?: string;
-      readonly hooks: readonly { readonly type: "command"; readonly command: string; readonly timeout?: number | undefined }[];
-    }
-  | {
-      readonly type: "command";
-      readonly bash: string;
-      readonly powershell: string;
-      readonly timeoutSec: number;
-    };
-
-type PluginHookContribution =
-  | { readonly kind: "group"; readonly path: string; readonly event: string; readonly group: NativeHookGroup }
-  | { readonly kind: "target"; readonly path: string; readonly target: string; readonly hookFile: string }
-  | { readonly kind: "event-body"; readonly path: string; readonly event: string; readonly hookFile: string }
-  | { readonly kind: "event-row"; readonly path: string; readonly row: PluginHookRow };
-
-type ProjectedPluginHookContributions = {
-  readonly schemaVersion: 1;
-  readonly pluginName: string;
-  readonly harness: ModelHarness;
-  readonly registrations: readonly PluginHookContribution[];
-};
+type ProjectedPluginHookContributions = ProjectedContributions<ModelHarness>;
 
 type HookRegistrationDocument = { readonly path: string; readonly text: string };
 
@@ -75,8 +44,7 @@ function validNativeHookGroup(value: unknown): value is NativeHookGroup {
   if (!registrationRecord(value)) return false;
   if (value["type"] === "command") return typeof value["bash"] === "string" && typeof value["powershell"] === "string" && typeof value["timeoutSec"] === "number" && value["timeoutSec"] > 0;
   return (value["matcher"] === undefined || typeof value["matcher"] === "string") && Array.isArray(value["hooks"]) && value["hooks"].length > 0 &&
-    value["hooks"].every((hook) => registrationRecord(hook) && hook["type"] === "command" && typeof hook["command"] === "string" &&
-      (hook["timeout"] === undefined || (typeof hook["timeout"] === "number" && Number.isSafeInteger(hook["timeout"]) && hook["timeout"] >= 0)));
+    value["hooks"].every((hook) => registrationRecord(hook) && hook["type"] === "command" && typeof hook["command"] === "string");
 }
 
 function validHookContribution(value: unknown): value is PluginHookContribution {
@@ -90,6 +58,25 @@ function validHookContribution(value: unknown): value is PluginHookContribution 
   return false;
 }
 
+type CodexHookTrustIdentityInput = {
+  readonly eventSnake: string;
+  readonly command: string;
+  readonly matcher?: string | undefined;
+};
+
+const codexMatcherEvents = new Set([
+  "pre_tool_use", "permission_request", "post_tool_use", "session_start",
+  "session_end", "subagent_start", "subagent_stop", "pre_compact", "post_compact",
+]);
+
+function codexHookTrustIdentity(input: CodexHookTrustIdentityInput): string {
+  const matcher = codexMatcherEvents.has(input.eventSnake) ? input.matcher : undefined;
+  const timeoutSec = input.eventSnake === "session_end" || input.eventSnake === "interrupt" ? 1 : 600;
+  return JSON.stringify({ event_name: input.eventSnake,
+    hooks: [{ async: false, command: input.command, timeout: timeoutSec, type: "command" }],
+    matcher });
+}
+
 function validCommandHookGroup(value: unknown): value is Extract<NativeHookGroup, { readonly hooks: readonly unknown[] }> {
   return validNativeHookGroup(value) && "hooks" in value;
 }
@@ -97,7 +84,7 @@ function validCommandHookGroup(value: unknown): value is Extract<NativeHookGroup
 function planCodexHookTrustSeed(input: {
   document: unknown;
   hooksPath: string;
-  hashHook: (input: CodexHookTrustIdentityInput) => string;
+  hashIdentity: (input: { identity: string }) => string;
 }): { kind: "planned"; text: string } | { kind: "invalid-document" } {
   if (!registrationRecord(input.document) || !registrationRecord(input.document["hooks"])) return { kind: "invalid-document" };
   const events = Object.entries(input.document["hooks"]).map(([event, groups]) => ({ event,
@@ -106,7 +93,7 @@ function planCodexHookTrustSeed(input: {
   const entries = events.flatMap(({ event, groups }) => groups?.flatMap((group, groupIndex) =>
     group.hooks.map((hook, hookIndex) => {
       const eventSnake = event.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-      const hash = input.hashHook({ eventSnake, command: hook.command, matcher: group.matcher, timeout: hook.timeout });
+      const hash = input.hashIdentity({ identity: codexHookTrustIdentity({ eventSnake, command: hook.command, matcher: group.matcher }) });
       return `[hooks.state.${JSON.stringify(`${input.hooksPath}:${eventSnake}:${groupIndex}:${hookIndex}`)}]\ntrusted_hash = ${JSON.stringify(hash)}`;
     })) ?? []);
   return { kind: "planned", text: entries.length > 0 ? `${entries.join("\n\n")}\n` : "[hooks.state]\n" };
@@ -127,20 +114,6 @@ const projectedPluginHookContributionsSchema = {
     return { kind: "parsed", value: { schemaVersion: 1, pluginName: value["pluginName"], harness: value["harness"], registrations } };
   },
 };
-
-type RecordedPluginHookContributions =
-  | { readonly kind: "absent" }
-  | { readonly kind: "parsed"; readonly value: ProjectedPluginHookContributions }
-  | { readonly kind: "invalid" };
-
-function recordedPluginHookContributions(input: { readonly sidecar: unknown }): RecordedPluginHookContributions {
-  if (!registrationRecord(input.sidecar)) return { kind: "invalid" };
-  const hooks = input.sidecar["$hooks"];
-  if (hooks === undefined) return { kind: "absent" };
-  if (!registrationRecord(hooks)) return { kind: "invalid" };
-  if (hooks["hook_registrations"] === undefined) return { kind: "absent" };
-  return projectedPluginHookContributionsSchema.parse(hooks["hook_registrations"]);
-}
 
 function equalRegistrationValues(input: { left: unknown; right: unknown }): boolean {
   if (Array.isArray(input.left) && Array.isArray(input.right)) {
@@ -265,11 +238,8 @@ export {
   type PluginHookContribution,
   type PluginHookRow,
   type ProjectedPluginHookContributions,
-  type RecordedPluginHookContributions,
   planPluginHookRegistrations,
-  recordedPluginHookContributions,
   type CodexHookTrustIdentityInput,
-  codexHookTrustHash,
   codexHookTrustIdentity,
   planCodexHookTrustSeed,
   projectedPluginHookContributionsSchema,

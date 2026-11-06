@@ -1,26 +1,25 @@
 import { spawnSync } from "node:child_process";
+import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendAuditEntry } from "./aidlc-audit.ts";
+import { personGitNameField } from "./aidlc-git-name.ts";
+import { beforePerUnitBlock, withStageProgressRow } from "./aidlc-graph.ts";
 import { readReviewArtifactContexts } from "./aidlc-review-brief.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { isCompiledExecutable } from "./aidlc-runtime-paths.ts";
 import { stageLabel } from "./aidlc-validity.ts";
 import {
+  addedStagesPassedOver,
   addPendingPersonLines,
   type CheckboxState,
   countCheckboxes,
   emitError,
   errorMessage,
   extractMarkdownSection,
-  AGENT_DECIDED_FIELD,
   findStageBySlug,
-  jumpResetsReview,
-  PERSON_DECIDED_FIELD,
-  personRequestedChanges,
-  spentReviewStep,
-  stageAgentResetUsed,
+  isAutonomousConstructionDecision,
   firstInScopeStageOfPhase,
   getField,
   isPerUnitStage,
@@ -45,13 +44,18 @@ import {
   setPhaseProgress,
   stageIndex,
   sourceBaselineAuditFields,
+  workspaceBaselineStageSlugs,
   toPosix,
   UNIT_NAME_REGEX,
   writeStateFile,
   REDO_REUSE_SOURCE,
   answerModeStageStartedFields,
-  personsGateFeedback,
+  personsGateReply,
   resolveInvokingSessionId,
+  windowMessageIds,
+  claimAttemptFields,
+  effectiveUnitGateRhythm,
+  isTeamUnitOwnership,
 } from "./aidlc-lib.js";
 
 // The EFFECTIVE per-stage action: the live state file's EXECUTE/SKIP suffix
@@ -134,10 +138,11 @@ function stageReviewPaths(pd: string, stage: StageEntry): string[] {
 
 let projectDir: string | undefined;
 
-export function main(argv: string[]): void {
+export async function main(argv: string[]): Promise<void> {
+  // A turn Claude Code started itself is settled before this command reads a turn.
+  settleClaudeTurnsFirst(resolveProjectDir(projectDirFlag(argv)));
   const rawArgs = [...argv];
 
-  // Extract --project-dir
   const filteredArgs: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     if (rawArgs[i] === "--project-dir" && i + 1 < rawArgs.length) {
@@ -156,7 +161,7 @@ export function main(argv: string[]): void {
         handleResolve(filteredArgs.slice(1));
         break;
       case "execute":
-        handleExecute(filteredArgs.slice(1));
+        await handleExecute(filteredArgs.slice(1));
         break;
       case "reopen":
         handleReopen(filteredArgs.slice(1));
@@ -169,21 +174,60 @@ export function main(argv: string[]): void {
   }
 }
 
+// What a forward jump does to each unit of a unit-at-a-time Construction: per
+// unit, the steps it skips and the ones it starts over (forwardJumpUnitSteps).
+export interface ForwardJumpUnitSteps {
+  skipped: readonly (readonly [string, readonly string[]])[];
+  redone: readonly (readonly [string, readonly string[]])[];
+}
+
 // A forward jump says, in the person's terms, what it passed over and how to
-// come back: jumping back to where they were resets those stages again. The
-// agent repeats this as written, so a plugin's stage is named by its slug,
-// never by its own display text.
+// come back: jumping back to where they were resets those stages again. In a
+// Construction that runs one unit at a time it names, per unit, the steps it
+// skips and the ones that start over, and the way back is the earliest
+// skipped step. A plugin's stage is named by its slug, never by its own
+// display text.
 export function forwardJumpNotice(
   target: { slug: string; name: string; plugin?: string },
   skipped: readonly { slug: string; name: string; plugin?: string }[],
   cameFrom: string,
+  units: ForwardJumpUnitSteps | null = null,
 ): string {
+  const and = (names: readonly string[]): string =>
+    names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  const label = (slug: string): string => stageLabel(stageOrNone(slug), slug) ?? slug;
+  // The per-unit steps are said per unit below. With no unit sentence to say
+  // (every unit finished them, at the one late question), the jump skips those
+  // stages' approval, and the stage list names them.
+  const perUnit = units !== null && units.skipped.length + units.redone.length > 0;
   const names = skipped
+    .filter((node) => !perUnit || !isPerUnitStage(node))
     .map((node) => stageLabel(node, node.slug))
     .filter((name): name is string => name !== null);
-  const list = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-  return `Moved to ${stageLabel(target, target.slug) ?? "that stage"}${list ? `; skipped ${list}` : ""}. ` +
-    `You can go back to ${stageLabel(stageOrNone(cameFrom), cameFrom) ?? "where you were"} any time.`;
+  const list = and(names);
+  // Units with the same steps share one sentence.
+  const groups = (steps: ForwardJumpUnitSteps["skipped"]): [string, string[]][] => {
+    const byWhat = new Map<string, string[]>();
+    for (const [unit, own] of steps) {
+      const what = and(own.map(label));
+      byWhat.set(what, [...(byWhat.get(what) ?? []), unit]);
+    }
+    return [...byWhat];
+  };
+  const who = (unitNames: string[]): string => `unit${unitNames.length === 1 ? "" : "s"} ${and(unitNames)}`;
+  const sentences = units === null ? [] : [
+    ...groups(units.skipped).map(([what, unitNames]) => `Skipped for ${who(unitNames)}: ${what}.`),
+    ...(units.skipped.length > 0 ? ["Their files stay."] : []),
+    ...groups(units.redone).map(([what, unitNames]) =>
+      `Starting over for ${who(unitNames)}, which need${unitNames.length === 1 ? "s" : ""} your approval again: ${what}.`),
+  ];
+  const earliest = units?.skipped.map(([, steps]) => steps[0]).sort((a, b) => stageIndex(a) - stageIndex(b))[0];
+  const back = earliest ?? cameFrom;
+  return [
+    `Moved to ${stageLabel(target, target.slug) ?? "that stage"}${list ? `; skipped ${list}` : ""}.`,
+    ...sentences,
+    `You can go back to ${stageLabel(stageOrNone(back), back) ?? "where you were"} any time.`,
+  ].join(" ");
 }
 
 // A stage by slug, or none when the graph cannot be read: the line then says
@@ -207,8 +251,18 @@ export function backwardJumpNotice(
     `You can return to ${stageLabel(from, from.slug) ?? "where you were"} any time.`;
 }
 
+// The redo `next` names for Reverse Engineering owed behind the stage the
+// person is on (they said this is existing code) says what comes next. Kept
+// here, where it starts, so a skip asked for before it never hears it. It is
+// said before the person next replies, which is at that stage's gate while it
+// still waits on their approval, so it reads true before the documenting, at
+// the gate, and after a revise.
+export function reverseEngineeringRedoNotice(from: { slug: string; name: string; plugin?: string }): string {
+  return `Once you approve the code's documentation, we're back at ${stageLabel(from, from.slug) ?? "where we were"}.`;
+}
+
 if (import.meta.main) {
-  main(process.argv.slice(2));
+  void main(process.argv.slice(2));
 }
 
 // --- Parse named flags ---
@@ -237,8 +291,9 @@ function parseFlags(
 // through it again. Every other Unit keeps its finished, approved work. Inside
 // the walk nothing else changes: no checkbox, no Current Stage, no files. Once
 // the walk has moved on to a later stage, the work moves back to the target.
-// `--via change` is the person's change at the open late question: the rows
-// keep their words as the change.
+// `--via change` is a change the person asked for (at the open late question,
+// a recovery question's Request Changes, or a jump back the agent read as one):
+// the rows keep their words as the change, with the messages they came in.
 // The active Unit's lifecycle mirror is dropped; the next `unit start` writes
 // it again.
 
@@ -251,9 +306,9 @@ function handleReopen(args: string[]): void {
   if (!targetSlug || units.length === 0) {
     error("Usage: reopen --target <slug> [--stages <slug[,slug...]>] --units <unit[,unit...]> [--via redo|change] [--scope <scope>]");
   }
-  // `--via redo`: the person asked to redo the step on re-entry, not a jump.
-  // `--via change`: the person asked for a change at the open gate, and it
-  // belongs to these Units' step.
+  // `--via redo`: a redo of the step on re-entry, not a jump (the person's
+  // Redo, or the redo the engine hands the agent for a Unit's step).
+  // `--via change`: the person asked for a change to these Units' step.
   if (flags.via !== undefined && flags.via !== "redo" && flags.via !== "change") {
     error(`Unknown --via: ${flags.via} (only "redo" or "change")`);
   }
@@ -270,29 +325,60 @@ function handleReopen(args: string[]): void {
     if (!UNIT_NAME_REGEX.test(unit)) error(`Invalid Unit name: ${unit}`);
   }
   const stageName = targetStage.name ?? targetSlug;
-  // A change is kept in the person's own words, from the gate they answered.
+  // A change is kept in the person's own words, from the gate they answered,
+  // with the messages they came in, as a gate's Request Changes row names them.
   const gateStage = getField(content, "Current Stage")?.trim() ?? targetSlug;
-  const changeWords = flags.via === "change"
-    ? personsGateFeedback(pd, resolveInvokingSessionId(pd), { stage: gateStage })
+  const change = flags.via === "change"
+    ? personsGateReply(pd, resolveInvokingSessionId(pd), gateStage)
     : null;
+  // From a later stage of the same phase (Build and Test, say) the work moves
+  // back to the target as a backward jump moves it, but with no STAGE_JUMPED or
+  // STAGE_STARTED: only these Units start the step again. Each Unit's row names
+  // the stage the work moved back from, the one record of that move (the Kiro
+  // IDE audit-sync hook reads it).
+  const current = getField(content, "Current Stage")?.trim() ?? "";
+  const from = findStageBySlug(current);
+  // While Construction runs on its own, the loop-back from Build and Test
+  // reopens Units with nobody at the keyboard: those rows name nobody. A
+  // change stands on the person's own reply at the gate.
+  const theirs = flags.via === "change" || !isAutonomousConstructionDecision(content, targetStage.phase);
+  let stagesReset: string[] = [];
+  let movedFrom: string | undefined;
+  if (from && !isPerUnitStage(from) && from.phase === targetStage.phase && stageIndex(current) > stageIndex(targetSlug)) {
+    const scope = flags.scope || getField(content, "Scope") || "feature";
+    const scopeMapping = loadScopeMapping()[scope];
+    if (!scopeMapping) error(`Unknown scope: ${scope}`);
+    const suffixes = scope === (getField(content, "Scope") || "")
+      ? parseStateStageSuffixes(content)
+      : new Map<string, "EXECUTE" | "SKIP">();
+    const moved = movedState(content, targetSlug, targetStage, "backward", scope, suffixes, scopeMapping);
+    content = moved.content;
+    stagesReset = moved.stagesReset;
+    movedFrom = current;
+  }
   for (const unit of units) {
     emitAudit(pd, "GATE_REJECTED", {
       Stage: targetSlug,
       "Gate Stages": stages.join(", "),
-      "Gate Scope": "unit-end",
+      "Gate Scope": isTeamUnitOwnership(content) ? effectiveUnitGateRhythm(pd, content) : "unit-end",
       Unit: unit,
-      // Marks the row as the person's redo or jump, or the change they asked
+      ...claimAttemptFields(pd, unit),
+      // Marks the row as a redo or the person's jump, or the change they asked
       // for at the gate.
       Reopen: flags.via ?? "jump",
       ...(flags.via === "change" ? { "User Input": "Request Changes" } : {}),
       Feedback: flags.via === "redo"
-        ? `Redid ${stageName} for unit ${unit} at the person's request (redo on re-entry).`
+        ? `Redid ${stageName} for unit ${unit} (redo on re-entry).`
         : flags.via === "change"
-          ? changeWords ?? `Reopened ${stageName} for unit ${unit} for a change.`
+          ? change?.words ?? `Reopened ${stageName} for unit ${unit} for a change.`
           : `Reopened ${stageName} for unit ${unit} (/aidlc --stage ${targetSlug}).`,
+      ...(change?.messageId ? { "Message Id": change.messageId } : {}),
+      ...(change ? windowMessageIds(change) : {}),
+      ...(movedFrom ? { "Moved From": movedFrom } : {}),
+      ...(theirs ? personGitNameField(pd) : {}),
     });
-    // Redo is the person's answer to the re-use question for this Unit's step
-    // too: recorded here, so the reopened step redoes it without asking again.
+    // A redo answers the re-use question for this Unit's step too: recorded
+    // here, so the reopened step redoes it without asking again.
     if (flags.via === "redo") {
       emitAudit(pd, "ARTIFACT_REUSED", {
         Stage: targetSlug,
@@ -307,23 +393,6 @@ function handleReopen(args: string[]): void {
     content = removeField(content, field);
   }
   content = setField(content, "Last Updated", isoTimestamp());
-  // From a later stage of the same phase (Build and Test, say) the work moves
-  // back to the target as a backward jump moves it, but with no STAGE_JUMPED:
-  // only these Units start the step again.
-  const current = getField(content, "Current Stage")?.trim() ?? "";
-  const from = findStageBySlug(current);
-  let stagesReset: string[] = [];
-  if (from && !isPerUnitStage(from) && from.phase === targetStage.phase && stageIndex(current) > stageIndex(targetSlug)) {
-    const scope = flags.scope || getField(content, "Scope") || "feature";
-    const scopeMapping = loadScopeMapping()[scope];
-    if (!scopeMapping) error(`Unknown scope: ${scope}`);
-    const suffixes = scope === (getField(content, "Scope") || "")
-      ? parseStateStageSuffixes(content)
-      : new Map<string, "EXECUTE" | "SKIP">();
-    const moved = movedState(content, targetSlug, targetStage, "backward", scope, suffixes, scopeMapping);
-    content = moved.content;
-    stagesReset = moved.stagesReset;
-  }
   writeStateFile(pd, content);
   console.log(JSON.stringify({
     reopened: targetSlug, stages, units, ...(stagesReset.length > 0 ? { stages_reset: stagesReset } : {}),
@@ -342,7 +411,6 @@ function handleResolve(args: string[]): void {
   const pd = resolveProjectDir(projectDir);
   const content = readStateFile(pd);
 
-  // Determine scope
   const scope = flags.scope || getField(content, "Scope") || "feature";
   const scopeMapping = loadScopeMapping()[scope];
   if (!scopeMapping) error(`Unknown scope: ${scope}`);
@@ -357,7 +425,6 @@ function handleResolve(args: string[]): void {
       ? parseStateStageSuffixes(content)
       : new Map<string, "EXECUTE" | "SKIP">();
 
-  // Determine current position
   const currentSlug = getField(content, "Current Stage") || "state-init";
   const currentStage = resolveStage(currentSlug);
   if (!currentStage) error(`Cannot resolve current stage: ${currentSlug}`);
@@ -407,7 +474,6 @@ function handleResolve(args: string[]): void {
     error("Usage: resolve --stage <slug|#> [--allow-skipped] or --phase <name|#> [--scope <scope>]");
   }
 
-  // Determine direction
   const currentIdx = stageIndex(currentStage.slug);
   const targetIdx = stageIndex(targetStage.slug);
 
@@ -421,14 +487,12 @@ function handleResolve(args: string[]): void {
   const affectedSlugs: string[] = [];
 
   if (direction === "forward") {
-    // Stages between current (exclusive) and target (exclusive)
     for (let i = currentIdx + 1; i < targetIdx; i++) {
       if (effectiveAction(suffixes, scopeMapping, graph[i].slug) === "EXECUTE") {
         affectedSlugs.push(graph[i].slug);
       }
     }
   } else if (direction === "backward") {
-    // Target and all stages after (on the effective plan)
     for (let i = targetIdx; i < graph.length; i++) {
       if (effectiveAction(suffixes, scopeMapping, graph[i].slug) === "EXECUTE") {
         affectedSlugs.push(graph[i].slug);
@@ -473,6 +537,7 @@ function movedState(
   currentSlug: string;
   currentStageForPhase: StageEntry | undefined;
   crossesPhaseBoundary: boolean;
+  phasesJumpedOver: string[];
   completedCount: number;
   timestamp: string;
 } {
@@ -480,7 +545,6 @@ function movedState(
   const targetIdx = stageIndex(targetSlug);
   const checkboxes = parseCheckboxes(content);
 
-  // Build a lookup of current checkbox states
   const checkboxMap = new Map(checkboxes.map((c) => [c.slug, c.state]));
 
   const stagesSkipped: string[] = [];
@@ -536,29 +600,36 @@ function movedState(
     ];
     for (let i = targetIdx; i < graph.length; i++) {
       const slug = graph[i].slug;
+      const state = checkboxMap.get(slug);
       // Effective plan again: a recompose-ADDed stage's [x] is reset by a
       // backward jump like any on-plan stage (ADD-then-jump consistency).
-      if (effectiveAction(suffixes, scopeMapping, slug) !== "EXECUTE") continue;
-      const state = checkboxMap.get(slug);
+      if (effectiveAction(suffixes, scopeMapping, slug) !== "EXECUTE") {
+        // A stage the plan skips that the work never finished (a scope switch
+        // dropped it where the work stood, or after a jump past it) reads not
+        // started, as intent creation writes it: adding it back, returning to
+        // it or a scope that runs it then finds it ahead. Nothing of it reruns.
+        if (state && state !== "completed" && RESETTABLE.includes(state)) {
+          content = setCheckbox(content, slug, "pending");
+        }
+        continue;
+      }
       if (state && RESETTABLE.includes(state)) {
         content = setCheckbox(content, slug, "pending");
         stagesReset.push(slug);
       }
     }
   } else {
-    // redo: reset target only → [ ]
     content = setCheckbox(content, targetSlug, "pending");
     stagesReset.push(targetSlug);
   }
 
-  // Mark target [-] so state and checkbox agree. This was missing before the
-  // refactor — jump set Current Stage=target but left the checkbox at [ ]/[S]/
-  // pending, causing an orchestrator to see an inconsistent state.
-  content = setCheckbox(content, targetSlug, "in-progress");
+  // Mark target [-] so state and checkbox agree, writing its row when the
+  // record has none (a stage a newer release added).
+  content = setCheckbox(withStageProgressRow(content, targetSlug), targetSlug, "in-progress");
 
-  // Detect phase-boundary crossing. Jump asymmetry was a MAJOR finding —
-  // advance emits PHASE_COMPLETED/VERIFIED/STARTED when crossing phases,
-  // but jump did not. Now it does, matching the state machine contract.
+  // Detect phase-boundary crossing. Like advance, a forward jump records the
+  // phase it leaves as completed; any other crossing only starts the target's
+  // phase again (handleExecute).
   const currentStageForPhase = findStageBySlug(currentSlug);
   const crossesPhaseBoundary =
     !!currentStageForPhase && currentStageForPhase.phase !== targetStage.phase;
@@ -584,21 +655,29 @@ function movedState(
   content = setField(content, "In Progress", targetSlug);
   content = setField(content, "Next Action", `Execute ${targetStage.name}`);
 
-  // Count [x] checkboxes for Completed field
   const completedCount = countCheckboxes(content, "completed");
   content = setField(content, "Completed", String(completedCount));
 
-  // Phase Progress rows track the boundary crossing the audit trio below
-  // records. Forward: the source phase's remaining work was force-[S]'d and
+  // Phase Progress rows track the boundary crossing handleExecute records in
+  // the audit. Forward: the source phase's remaining work was force-[S]'d and
   // PHASE_VERIFIED is emitted, so its row reads Verified; any phase jumped
-  // over entirely reads Skipped. Backward (or a caller-mis-specified redo
-  // that crosses a boundary): every phase after the target just had its
-  // EXECUTE stages reset to pending above, so those rows return to Pending,
-  // leaving zero-EXECUTE phases in their initial Skipped state. Either way the
-  // target's phase is now the active one.
+  // over entirely reads Skipped, and each such phase the plan runs is the
+  // jump's to record as skipped (phasesJumpedOver; one the plan leaves out
+  // already has its row from intent creation). Backward (or a
+  // caller-mis-specified redo that crosses a boundary): every phase after the
+  // target just had its EXECUTE stages reset to pending above, so those rows
+  // return to Pending, leaving zero-EXECUTE phases in their initial Skipped
+  // state. Either way the target's phase is now the active one.
+  const phasesJumpedOver: string[] = [];
   if (crossesPhaseBoundary && currentStageForPhase) {
     const phaseIdx = (p: string): number =>
       (PHASES as readonly string[]).indexOf(p);
+    const runsOnPlan = (p: string): boolean =>
+      graph.some(
+        (s) =>
+          s.phase === p &&
+          effectiveAction(suffixes, scopeMapping, s.slug) === "EXECUTE"
+      );
     if (direction === "forward") {
       content = setPhaseProgress(content, currentStageForPhase.phase, "Verified");
       for (
@@ -607,22 +686,17 @@ function movedState(
         i++
       ) {
         content = setPhaseProgress(content, PHASES[i], "Skipped");
+        if (runsOnPlan(PHASES[i])) phasesJumpedOver.push(PHASES[i]);
       }
     } else {
       for (let i = phaseIdx(targetStage.phase) + 1; i < PHASES.length; i++) {
         const p = PHASES[i];
-        const hasExecute = graph.some(
-          (s) =>
-            s.phase === p &&
-            effectiveAction(suffixes, scopeMapping, s.slug) === "EXECUTE"
-        );
-        if (hasExecute) content = setPhaseProgress(content, p, "Pending");
+        if (runsOnPlan(p)) content = setPhaseProgress(content, p, "Pending");
       }
     }
     content = setPhaseProgress(content, targetStage.phase, "Active");
   }
 
-  // Find last completed stage before target
   const allCheckboxes = parseCheckboxes(content);
   let lastCompleted = "state-init";
   for (let i = targetIdx - 1; i >= 0; i--) {
@@ -635,13 +709,13 @@ function movedState(
   content = setField(content, "Last Completed Stage", lastCompleted);
   return {
     content, stagesSkipped, stagesReset, currentSlug, currentStageForPhase,
-    crossesPhaseBoundary, completedCount, timestamp,
+    crossesPhaseBoundary, phasesJumpedOver, completedCount, timestamp,
   };
 }
 
 // --- Subcommand: execute ---
 
-function handleExecute(args: string[]): void {
+async function handleExecute(args: string[]): Promise<void> {
   const flags = parseFlags(args);
   const pd = resolveProjectDir(projectDir);
   let content = readStateFile(pd);
@@ -688,22 +762,11 @@ function handleExecute(args: string[]): void {
     return;
   }
 
-  // A jump onto a reviewed stage restores the review budget a rejection restores,
-  // so it spends the same single reset, read from the stage and never from the
-  // direction the caller named.
-  const resetsReview = jumpResetsReview(pd, content, targetStage);
-  const personRequested = resetsReview && personRequestedChanges(pd, targetSlug);
-  if (resetsReview && !personRequested && stageAgentResetUsed(pd, targetSlug)) {
-    error(`Cannot jump to "${targetSlug}": ${spentReviewStep(pd, content, targetSlug)}`);
-  }
-  const resetReason = (flags.reason ?? "").trim();
-  if (resetsReview && !personRequested && resetReason === "") {
-    error(`Cannot jump to "${targetSlug}": this restart spends the stage's one agent reset, so --reason must give the cause.`);
-  }
-
   const graph = loadStageGraph();
-  // Get current stage for audit
   const currentSlug = getField(content, "Current Stage") || "state-init";
+  // While Construction runs on its own, its loop-back jump lands back inside
+  // Construction with nobody at the keyboard, so its row names nobody.
+  const theirs = !isAutonomousConstructionDecision(content, targetStage.phase);
   // Where the person was: the active Unit's own step in a unit-at-a-time walk,
   // which Current Stage does not name, or else the step the engine last put to
   // them (a Unit's code plan, say) while it still matches this state.
@@ -712,24 +775,49 @@ function handleExecute(args: string[]): void {
   const cameFrom = graph.some((node) => node.slug === unitStage)
     ? unitStage
     : shownStage !== targetSlug && graph.some((node) => node.slug === shownStage) ? shownStage : currentSlug;
+  // Back to a stage the plan added after the work had just passed over it: the
+  // person never stood at the stage the work had just entered, and either the
+  // add's own line said what changed or an update added it (the person sees it
+  // start), so the move says nothing.
+  const addedBack = direction === "backward" && addedStagesPassedOver(content, pd).includes(targetSlug);
+  // A Construction that runs one unit at a time: what this jump does to each
+  // unit, read before the jump writes the state, for the jump's own line.
+  // The orchestrator owns the walk; it is loaded only here, so the jump's
+  // other commands start without it (a compiled build takes no require() of it).
+  let unitSteps: ForwardJumpUnitSteps | null = null;
+  if (direction === "forward") {
+    try {
+      const { forwardJumpUnitSteps } = await import("./aidlc-orchestrate.ts");
+      unitSteps = forwardJumpUnitSteps(pd, scope, content, targetSlug);
+    } catch {
+      // The line names the stages instead; the jump never fails for it.
+    }
+  }
   const moved = movedState(content, targetSlug, targetStage, direction, scope, suffixes, scopeMapping);
   content = moved.content;
-  const { stagesSkipped, stagesReset, currentStageForPhase, crossesPhaseBoundary, completedCount, timestamp } = moved;
+  const { stagesSkipped, stagesReset, currentStageForPhase, crossesPhaseBoundary, phasesJumpedOver, completedCount, timestamp } = moved;
 
   // One content-addressed snapshot is shared by both rows in the jump
   // transition. The companion STAGE_STARTED repeats the SAME authority rather
   // than creating a competing snapshot or clearing the jump boundary.
   const jumpSourceBaseline = sourceBaselineAuditFields(
     pd,
-    "code-generation",
+    workspaceBaselineStageSlugs(targetSlug),
   );
   const changedUpstreamArtifacts =
     direction === "backward" ? stageArtifactPaths(pd, targetStage) : [];
+  // Under team ownership each Unit's per-Unit work belongs to its claim: going
+  // back to a stage before the per-Unit block (the Unit plan changing) keeps
+  // it, and a Unit goes back to work only by its own reopen (`jump reopen
+  // --units`). The row says so; stageJumpReaches reads it.
+  const keepsTeamUnitWork = direction === "backward" && isTeamUnitOwnership(content) &&
+    beforePerUnitBlock(graph, targetSlug);
   const downstreamStages = direction === "backward"
     ? stagesReset
       .filter((slug) => slug !== targetSlug)
       .map((slug) => findStageBySlug(slug))
       .filter((stage): stage is StageEntry => stage !== undefined)
+      .filter((stage) => !keepsTeamUnitWork || !isPerUnitStage(stage))
     : [];
   const invalidatedDownstreamArtifacts = [
     ...new Set(
@@ -744,7 +832,6 @@ function handleExecute(args: string[]): void {
 
   // Atomic audit emissions (audit-first — throws before writeStateFile if any fail)
   try {
-    // Per-stage STAGE_SKIPPED for every skipped stage (one event per [S] transition)
     for (const skippedSlug of stagesSkipped) {
       emitAudit(pd, "STAGE_SKIPPED", {
         Stage: skippedSlug,
@@ -753,18 +840,30 @@ function handleExecute(args: string[]): void {
       });
     }
 
-    // Phase boundary events (if crossing phases — matches advance's contract)
+    // Phase boundary events. Only a forward jump completes the phase it
+    // leaves (advance's contract) and records each whole phase it passes over
+    // as skipped, as the Phase Progress rows say; going back leaves that phase
+    // unfinished, so the record only starts the earlier phase again.
     if (crossesPhaseBoundary && currentStageForPhase) {
-      emitAudit(pd, "PHASE_COMPLETED", {
-        "From phase": currentStageForPhase.phase,
-        "To phase": targetStage.phase,
-        "Stages completed": String(completedCount),
-        Details: `Phase boundary crossed via ${direction} jump`,
-      });
-      emitAudit(pd, "PHASE_VERIFIED", {
-        "Phase boundary": `${currentStageForPhase.phase} → ${targetStage.phase}`,
-        Details: "Traceability verification on jump",
-      });
+      if (direction === "forward") {
+        emitAudit(pd, "PHASE_COMPLETED", {
+          "From phase": currentStageForPhase.phase,
+          "To phase": targetStage.phase,
+          "Stages completed": String(completedCount),
+          Details: "Phase boundary crossed via forward jump",
+        });
+        emitAudit(pd, "PHASE_VERIFIED", {
+          "Phase boundary": `${currentStageForPhase.phase} → ${targetStage.phase}`,
+          Details: "Traceability verification on jump",
+        });
+        for (const phase of phasesJumpedOver) {
+          emitAudit(pd, "PHASE_SKIPPED", {
+            Phase: phase,
+            Scope: scope,
+            Reason: `Skipped by jump to ${targetSlug} (forward)`,
+          });
+        }
+      }
       emitAudit(pd, "PHASE_STARTED", {
         Phase: targetStage.phase,
         Scope: scope,
@@ -779,8 +878,6 @@ function handleExecute(args: string[]): void {
       Target: targetSlug,
       Scope: scope,
       Details: `${direction.toUpperCase()} jump from ${currentSlug} to ${targetSlug} (${targetStage.number}). Scope: ${scope}.`,
-      ...(resetsReview ? (personRequested ? PERSON_DECIDED_FIELD : AGENT_DECIDED_FIELD) : {}),
-      ...(resetsReview && resetReason !== "" ? { Reason: resetReason } : {}),
       ...(direction === "backward"
         ? {
             "Changed Upstream Artifacts":
@@ -791,7 +888,9 @@ function handleExecute(args: string[]): void {
               JSON.stringify(invalidatedDownstreamReviews),
           }
         : {}),
+      ...(keepsTeamUnitWork ? { "Unit Work": "kept" } : {}),
       ...jumpSourceBaseline,
+      ...(theirs ? personGitNameField(pd) : {}),
     });
 
     // Target enters Active state — emit STAGE_STARTED so audit reflects the
@@ -808,22 +907,27 @@ function handleExecute(args: string[]): void {
 
   writeStateFile(pd, content);
 
-  // The jump is done, so the way back can never fail it. When no chat can
-  // hold the line for the next step, it rides the tool's output instead.
+  // The jump is done, so its line (what it skipped and the way back, or what
+  // comes after an owed Reverse Engineering) can never fail it. The line is
+  // kept for the next step the agent speaks from; when no chat can hold it, it
+  // rides the tool's output instead.
   const from = graph.find((node) => node.slug === cameFrom);
-  let backNotice: string | undefined;
-  if (direction === "backward" && from) {
-    backNotice = backwardJumpNotice(targetStage, from);
+  let notice: string | undefined;
+  if (direction === "forward") {
+    notice = forwardJumpNotice(targetStage, graph.filter((node) => stagesSkipped.includes(node.slug)), cameFrom, unitSteps);
+  } else if (direction === "redo" && targetSlug === "reverse-engineering" && from && from.slug !== targetSlug) {
+    notice = reverseEngineeringRedoNotice(from);
+  } else if (direction === "backward" && from && !addedBack) {
+    notice = backwardJumpNotice(targetStage, from);
+  }
+  if (notice !== undefined) {
     try {
       const session = resolveWorkflowSelection(pd).sessionId;
-      if (session && addPendingPersonLines(pd, session, [backNotice])) backNotice = undefined;
+      if (session && addPendingPersonLines(pd, session, [notice])) notice = undefined;
     } catch {
       // No chat to hold it: the output carries it.
     }
   }
-  const notice = direction === "forward"
-    ? forwardJumpNotice(targetStage, graph.filter((node) => stagesSkipped.includes(node.slug)), cameFrom)
-    : backNotice;
 
   console.log(
     JSON.stringify({

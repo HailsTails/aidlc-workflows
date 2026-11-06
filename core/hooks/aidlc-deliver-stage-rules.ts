@@ -2,14 +2,19 @@
 // PreToolUse hook: make required active-stage rules deterministic across the
 // conductor-to-subagent boundary.
 //
-// Claude, Codex, and Copilot consume the emitted updatedInput directly.
-// OpenCode's adapter consumes the same output and mutates output.args. Kiro CLI
-// has no input-rewrite channel, so its adapter observes the proposed rewrite
-// and relies on native agent resource preload. Kiro IDE does not register this
+// Codex and Copilot consume the emitted updatedInput directly. OpenCode's
+// adapter consumes the same output and mutates output.args. Kiro CLI has no
+// input-rewrite channel, so its adapter observes the proposed rewrite and
+// relies on native agent resource preload. Kiro IDE does not register this
 // hook because tool-argument delivery is not uniform across supported
 // generations; it instead preloads active memory through always-included
 // workspace steering that carries the memory text (aidlc-includes.ts).
 //
+// Claude Code gets no rewrite: in auto mode its review covers the Agent call
+// the model wrote and it refuses a call a hook changed after that review. The
+// same bundle goes to the agent as it starts instead (SubagentStart). The
+// project rules a Claude agent loads (.claude/rules/aidlc.md) are the copy read
+// when the session started, so a rule changed since reaches it only this way.
 // On Claude it also runs at PostToolUse, only to confirm a background launch
 // the PreToolUse input did not announce (see isBackgroundDispatch).
 
@@ -24,6 +29,7 @@ import {
   getField,
   isAidlcAgentFile,
   markSubagentInflight,
+  recordGuardBlockedRow,
   resolveWorkflowSelection,
   stateFilePath,
   stateFilePathForSelection,
@@ -37,8 +43,11 @@ import {
   type RuleContent,
   resolvedRuleBundle,
 } from "../tools/aidlc-steering.ts";
+import { runtimeHarnessName } from "../tools/aidlc-runtime-paths.ts";
+import { recordSubagentDispatch } from "./aidlc-log-subagent.ts";
 
 type HookInput = {
+  agent_type?: unknown;
   cwd?: string;
   hook_event_name?: string;
   session_id?: unknown;
@@ -203,16 +212,41 @@ function withPrompt(
   return input;
 }
 
+// The agent a single dispatch names, as each harness's dispatch input carries it.
+function dispatchAgent(input: Record<string, unknown>): unknown {
+  return input.subagent_type ?? input.agent_type ?? input.agent ?? input.role;
+}
+
+// Every helper one dispatch call sends, read as the rules read them: one name,
+// or a crew's roles; empty strings for names the call does not carry.
+function dispatchedAgents(toolName: string, input: Record<string, unknown>): string[] {
+  const named = (value: unknown): string => (typeof value === "string" ? value : "");
+  if (toolName.toLowerCase() === "subagent" && Array.isArray(input.stages) && input.stages.length > 0) {
+    return input.stages.map((stage) =>
+      stage && typeof stage === "object" ? named((stage as Record<string, unknown>).role) : "");
+  }
+  return [named(dispatchAgent(input))];
+}
+
+// The record that this call sends its helpers (aidlc-log-subagent.ts), on the
+// paths that let it go; a later guard that refuses it leaves the record open,
+// which reads as a doubt and never as a reviewer that did not finish.
+function recordDispatch(parsed: HookInput, projectDir: string): void {
+  try {
+    const toolName = parsed.tool_name ?? "";
+    if (!DISPATCH_TOOLS.has(toolName.toLowerCase())) return;
+    recordSubagentDispatch(projectDir, parsed.session_id, dispatchedAgents(toolName, parsed.tool_input ?? {}));
+  } catch {
+    // Evidence only: never the dispatch's output or exit code.
+  }
+}
+
 function augmentSingleDispatch(
   input: Record<string, unknown>,
   projectDir: string,
   fallbackStage: string | null,
 ): DispatchRuleResult {
-  const agent =
-    input.subagent_type ??
-    input.agent_type ??
-    input.agent ??
-    input.role;
+  const agent = dispatchAgent(input);
   if (!isAidlcAgent(agent)) return { changed: false };
   const original = promptText(input);
   if (!original) return { changed: false };
@@ -362,7 +396,42 @@ export async function run(input: string): Promise<number> {
   }
 }
 
+function recordStageRulesBlocked(parsed: HookInput, projectDir: string, reason: string): void {
+  try {
+    recordGuardBlockedRow(projectDir, {
+      eventType: "STAGE_RULES_BLOCKED",
+      hook: "deliver-stage-rules",
+      reason,
+      session: validSessionId(typeof parsed.session_id === "string" ? parsed.session_id : undefined),
+    });
+  } catch {
+    return;
+  }
+}
+
+// Claude Code shows a hook's context inline up to 10,000 characters; over
+// that it shows the agent the first 2,000 and the file it saved the whole text
+// to, and does not ask the agent to read it. So the way to the rest comes first.
+const START_LEAD =
+  "If this text was saved to a file instead of shown here in full, read that whole file before you start: " +
+  "it holds the required rules for this stage.";
+
+// Claude Code starting an agent: the bundle for the stage on record, read now,
+// as its context. Nothing is recorded (the dispatch was, at PreToolUse), and
+// nothing can be refused here: an unreadable rule already refused the dispatch.
+function deliverAtStart(parsed: HookInput, projectDir: string): number {
+  if (!isAidlcAgent(parsed.agent_type)) return 0;
+  const delivered = augmentText("", projectDir, currentStage(projectDir));
+  if (!delivered.changed) return 0;
+  const output = `${JSON.stringify({
+    hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: START_LEAD + delivered.prompt },
+  })}\n`;
+  if (Buffer.byteLength(output, "utf-8") <= DISPATCH_HOOK_OUTPUT_MAX_BYTES) process.stdout.write(output);
+  return 0;
+}
+
 function deliver(parsed: HookInput, projectDir: string): number {
+  if (parsed.hook_event_name === "SubagentStart") return deliverAtStart(parsed, projectDir);
   // The rules were delivered before the dispatch; afterwards the hook only
   // records a background launch its input did not announce.
   if (parsed.hook_event_name === "PostToolUse") {
@@ -372,10 +441,12 @@ function deliver(parsed: HookInput, projectDir: string): number {
   const result = dispatchHookOutput(parsed, projectDir);
   if (result.error) {
     process.stderr.write(`${result.error}\n`);
+    recordStageRulesBlocked(parsed, projectDir, "rules-unreadable");
     return 2;
   }
   if (!result.changed || !result.updatedInput) {
     recordAcceptedBackgroundDispatch(parsed, projectDir);
+    recordDispatch(parsed, projectDir);
     return 0;
   }
   const output = `${JSON.stringify({
@@ -394,18 +465,22 @@ function deliver(parsed: HookInput, projectDir: string): number {
           "its own active-memory preload fallback, so the work continues without them attached.\n",
       );
       recordAcceptedBackgroundDispatch(parsed, projectDir);
+      recordDispatch(parsed, projectDir);
       return 3;
     }
     process.stderr.write(
       `[aidlc] This stage's rule files add up to ${outputBytes} bytes, exceeding the safe ` +
-        `${DISPATCH_HOOK_OUTPUT_MAX_BYTES}-byte output limit for attaching them to a subagent ` +
-        "brief. The subagent was not started, and nothing partial was written. Shorten or split " +
+        `${DISPATCH_HOOK_OUTPUT_MAX_BYTES}-byte output limit for handing them to a subagent. ` +
+        "The subagent was not started, and nothing partial was written. Shorten or split " +
         "the rule files for the active stage, then start the subagent again.\n",
     );
+    recordStageRulesBlocked(parsed, projectDir, "oversize");
     return 2;
   }
   recordAcceptedBackgroundDispatch(parsed, projectDir);
-  process.stdout.write(output);
+  recordDispatch(parsed, projectDir);
+  // Claude Code runs the call as written; its agent gets the rules at start.
+  if (runtimeHarnessName(projectDir) !== "claude") process.stdout.write(output);
   return 0;
 }
 

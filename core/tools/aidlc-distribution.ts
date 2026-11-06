@@ -1,8 +1,9 @@
-import { findDestinationCollision } from "./aidlc-destination-collision.ts";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { VERSION_ID } from "./aidlc-channel.ts";
+import { decodeRootIntegrations, encodeRootIntegration } from "./aidlc-root-integration-codec.ts";
+import { checkProjectionPath } from "./aidlc-projection-path.ts";
 
 export type ProjectionStamp = {
   schemaVersion: 1;
@@ -33,30 +34,22 @@ export type RootIntegration = {
 // with "whole-file", which 2.10.0 accepts, in `policy`; reading a projection
 // puts the real policy back when this release knows it, and otherwise keeps
 // "whole-file", so this release can install a later one in turn.
-const EXTENDED_POLICIES: readonly string[] = ["jsonc-settings", "json-entries"];
-
 export function writtenRootIntegration<T extends { policy: string }>(
   integration: T,
 ): T | (Omit<T, "policy"> & { policy: "whole-file"; extendedPolicy: string }) {
-  return EXTENDED_POLICIES.includes(integration.policy)
-    ? { ...integration, policy: "whole-file", extendedPolicy: integration.policy }
-    : integration;
+  return encodeRootIntegration({ integration });
 }
 
-export function readRootIntegrations(value: unknown): unknown {
-  if (!Array.isArray(value)) return value;
-  return value.map((item: unknown) => {
-    if (!item || typeof item !== "object" || !("extendedPolicy" in item)) return item;
-    const { extendedPolicy, ...integration } = item as Record<string, unknown>;
-    if (typeof extendedPolicy !== "string" || !EXTENDED_POLICIES.includes(extendedPolicy)) return integration;
-    return { ...integration, policy: extendedPolicy };
-  });
+export function readRootIntegrations(wireIntegrations: unknown): unknown {
+  return decodeRootIntegrations({ value: wireIntegrations });
 }
 
 export type ProjectionDescriptor = {
   schemaVersion: 1;
   distribution: string;
   productName: string;
+  choiceName?: string;
+  choiceNote?: string;
   configNextStep: string;
   firstRunSteps?: string[];
   editorTerminalApp?: string;
@@ -64,6 +57,9 @@ export type ProjectionDescriptor = {
   onboarding?: string;
   managedDirectories: string[];
   legacyManagedFileHashes?: Record<string, string[]>;
+  // Files a copy-era release shipped for copying that this release no longer
+  // ships, and the bytes each was shipped with (scripts/copy-era-files.ts).
+  retiredCopyFileHashes?: Record<string, string[]>;
   rootIntegrations: RootIntegration[];
 };
 
@@ -145,6 +141,41 @@ export function aidlcHookTarget(command: string, projectDir?: string): string | 
   const dispatcher = aidlcDispatcherTarget(command, false, projectDir);
   if (dispatcher !== null) return dispatcher;
   return legacyAidlcHookTarget(command);
+}
+
+/**
+ * The AI-DLC hook targets a parsed .claude/settings.json runs ("statusline" for
+ * AI-DLC's status line), with the status line the person keeps in their own
+ * settings.local.json. Doctor's hook contract and the hooks-off step both read
+ * the file through it.
+ */
+export function claudeSettingsHookTargets(projectDir: string, settings: unknown): string[] {
+  const commands: string[] = [];
+  const collectCommands = (value: unknown): void => {
+    if (Array.isArray(value)) return void value.forEach(collectCommands);
+    if (!value || typeof value !== "object") return;
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (key === "command" && typeof item === "string") commands.push(item);
+      else collectCommands(item);
+    }
+  };
+  collectCommands(settings);
+  // AI-DLC's status line lives in the person's own settings.local.json when
+  // they chose it, so the file it runs is checked from there too.
+  try {
+    const local = JSON.parse(withoutBom(readFileSync(join(projectDir, ".claude", "settings.local.json"), "utf-8")));
+    const statusLine = local && typeof local === "object" ? (local as { statusLine?: unknown }).statusLine : undefined;
+    const command = statusLine && typeof statusLine === "object" ? (statusLine as { command?: unknown }).command : undefined;
+    if (typeof command === "string") commands.push(command);
+  } catch {
+    // No personal file, or one Claude Code itself reports.
+  }
+  const targets = new Set<string>();
+  for (const command of commands) {
+    const target = aidlcDispatcherTarget(command, true, projectDir);
+    if (target !== null) targets.add(target);
+  }
+  return [...targets];
 }
 
 export function legacyAidlcHookTarget(command: string): string | null {
@@ -257,6 +288,11 @@ export function readJsonFile(path: string): unknown {
   return JSON.parse(withoutBom(readFileSync(path, "utf-8")));
 }
 
+/** The line ending a text uses: CRLF where Git checked it out that way (#2057). */
+export function newlineOf(text: string): "\r\n" | "\n" {
+  return text.includes("\r\n") ? "\r\n" : "\n";
+}
+
 // The JSON text AI-DLC writes for a file, with the byte order mark the file
 // had (`like` is its text before the write).
 export function jsonFileText(value: unknown, like = ""): string {
@@ -271,20 +307,12 @@ function parseJson<T>(path: string): T {
   }
 }
 
-function safeRelativePath(value: unknown, label: string, topLevel = false): string {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.includes("\0") ||
-    value.includes("\\") ||
-    value.startsWith("/") ||
-    /^[A-Za-z]:/.test(value) ||
-    value.split("/").some((segment) => segment === "" || segment === "." || segment === "..") ||
-    (topLevel && value.includes("/"))
-  ) {
+function safeRelativePath(projectionPath: unknown, label: string, topLevel = false): string {
+  const admission = checkProjectionPath({ path: projectionPath, scope: topLevel ? "top-level-name" : "relative-path" });
+  if (admission.kind === "refused") {
     throw new Error(`${label} is not a safe ${topLevel ? "top-level name" : "relative path"}`);
   }
-  return value;
+  return admission.path;
 }
 
 function validateHashes(value: unknown, label: string): string[] {
@@ -353,6 +381,16 @@ export function jsonEntriesIsSafe(integration: Pick<RootIntegration, "path" | "p
   return integration.policy === "json-entries";
 }
 
+// The lists pad a name to 16 columns, so a name leaves at least one space.
+const CHOICE_NAME = /^[A-Za-z0-9][A-Za-z0-9 .,()+-]{0,14}$/;
+const CHOICE_NOTE = /^[A-Za-z0-9][A-Za-z0-9 .,()+-]{0,59}$/;
+
+/** Whether a harness-list name and note are text the lists can show; the packager and the reader both ask. */
+export function harnessChoiceTextIsPlain(text: { choiceName?: unknown; choiceNote?: unknown }): boolean {
+  return (text.choiceName === undefined || (typeof text.choiceName === "string" && CHOICE_NAME.test(text.choiceName))) &&
+    (text.choiceNote === undefined || (typeof text.choiceNote === "string" && CHOICE_NOTE.test(text.choiceNote)));
+}
+
 export function validateProjectionDescriptor(
   root: string,
   stamp: ProjectionStamp,
@@ -370,6 +408,10 @@ export function validateProjectionDescriptor(
     descriptor.configNextStep.trim().length === 0
   ) {
     throw new Error(`${root}: projection identity is invalid`);
+  }
+  // Shown in the harness lists as they are, so only plain words reach the terminal.
+  if (!harnessChoiceTextIsPlain(descriptor)) {
+    throw new Error(`${root}: projection harness-list text is invalid`);
   }
   if (
     (descriptor.firstRunSteps !== undefined &&
@@ -401,21 +443,19 @@ export function validateProjectionDescriptor(
     throw new Error(`${root}: projection descriptor lists are invalid`);
   }
   const declared = new Set<string>();
-  const declareProjectionPath = (safe: string): void => {
-    const collision = findDestinationCollision({
-      candidate: safe,
-      priorPaths: [...declared],
-      casePolicy: process.platform === "win32" ? "case-insensitive" : "case-sensitive",
-    });
-    if (collision.status === "collision") {
-      if (collision.kind === "same") throw new Error(`${root}: duplicate projected path ${safe}`);
-      throw new Error(`${root}: overlapping projected paths ${collision.prior} and ${safe}`);
+  const declare = (safe: string): void => {
+    if (declared.has(safe)) throw new Error(`${root}: duplicate projected path ${safe}`);
+    const overlap = [...declared].find((prior) =>
+      safe.startsWith(`${prior}/`) || prior.startsWith(`${safe}/`)
+    );
+    if (overlap) {
+      throw new Error(`${root}: overlapping projected paths ${overlap} and ${safe}`);
     }
     declared.add(safe);
   };
   for (const directory of descriptor.managedDirectories) {
     const safe = safeRelativePath(directory, "managed directory", true);
-    declareProjectionPath(safe);
+    declare(safe);
     assertProjectionPathHasNoSymlinks(root, safe);
     const path = join(root, safe);
     if (!existsSync(path) || !lstatSync(path).isDirectory()) {
@@ -449,6 +489,19 @@ export function validateProjectionDescriptor(
       validateHashes(hashes, `${root}: ${safe} legacy managed-file signatures`);
     }
   }
+  if (descriptor.retiredCopyFileHashes !== undefined) {
+    const retired = descriptor.retiredCopyFileHashes;
+    if (!retired || typeof retired !== "object" || Array.isArray(retired)) {
+      throw new Error(`${root}: retired copy-file signatures are invalid`);
+    }
+    for (const [file, hashes] of Object.entries(retired)) {
+      const safe = safeRelativePath(file, "retired copy file");
+      if (!descriptor.managedDirectories.some((directory) => safe.startsWith(`${directory}/`))) {
+        throw new Error(`${root}: retired copy file is outside managed directories: ${safe}`);
+      }
+      validateHashes(hashes, `${root}: ${safe} retired copy-file signatures`);
+    }
+  }
   for (const integration of descriptor.rootIntegrations) {
     if (!integration || typeof integration !== "object") {
       throw new Error(`${root}: root integration is invalid`);
@@ -461,7 +514,7 @@ export function validateProjectionDescriptor(
     ) {
       throw new Error(`${root}: ${safe} has an invalid shared mode`);
     }
-    declareProjectionPath(safe);
+    declare(safe);
     assertProjectionPathHasNoSymlinks(root, safe);
     // Checked even when the file and its copy are absent: the marker names the copy.
     if (integration.policy !== "managed-block" && integration.marker !== undefined) {
@@ -598,8 +651,6 @@ export function rootBlockPath(
   return join(harnessRoot, "tools", "data", "root-blocks", name);
 }
 
-// Where a projection holds the bytes it ships for a root integration: the root
-// file, or for one the copy runtime leaves out, its root-blocks copy.
 /**
  * The team's file a root integration lands in, relative to the project: the
  * integration's own path, except that AI-DLC's opencode.json part goes into
@@ -612,6 +663,8 @@ export function rootIntegrationTarget(projectDir: string, path: string): string 
   return existsSync(join(projectDir, "opencode.jsonc")) ? "opencode.jsonc" : path;
 }
 
+// Where a projection holds the bytes it ships for a root integration: the root
+// file, or for one the copy runtime leaves out, its root-blocks copy.
 export function shippedRootIntegrationPath(
   root: string,
   harnessDir: string,
@@ -636,6 +689,30 @@ export function managedBlockMarkers(
         begin: `# BEGIN AI-DLC:${identity}`,
         end: `# END AI-DLC:${identity}`,
       };
+}
+
+// A shared file's marked part and the person's part around it, line endings
+// and the blank lines beside the markers aside; `block` is null for a file
+// with no marked part, and the whole is null when its markers are broken.
+export function markedPart(path: string, text: string, marker: string): { block: string | null; person: string } | null {
+  const { begin, end } = managedBlockMarkers(path, marker);
+  const begins = text.split(begin).length - 1;
+  const ends = text.split(end).length - 1;
+  const plain = (part: string): string => part.replace(/\r\n/g, "\n").trim();
+  if (begins === 0 && ends === 0) return { block: null, person: plain(text) };
+  const at = text.indexOf(begin);
+  const to = text.indexOf(end);
+  if (begins !== 1 || ends !== 1 || to < at) return null;
+  const person = [plain(text.slice(0, at)), plain(text.slice(to + end.length))].filter(Boolean).join("\n");
+  return { block: text.slice(at, to + end.length), person };
+}
+
+// Whether `text` differs from `before` (git's copy of the file, empty when it
+// has none) only in AI-DLC's marked part: it has the part, and the person's
+// part around it is as it was.
+export function onlyMarkedPartChanged(path: string, text: string, before: string, marker: string): boolean {
+  const now = markedPart(path, text, marker);
+  return now?.block != null && markedPart(path, before, marker)?.person === now.person;
 }
 
 // One harness's shipped .gitignore lines combined with each sibling's: the
@@ -663,7 +740,6 @@ export function unionBlocks(contributors: Array<{ distribution: string; text: st
   return base;
 }
 
-// The ignore entries of a .gitignore part, without its comments and blank lines.
 function ignoreEntries(text: string): string {
   return text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#")).sort().join("\n");
 }
@@ -680,10 +756,9 @@ function linesAboveOwnSection(text: string, nextBody: string, newline: string): 
 }
 
 // The one rule for AI-DLC's part of a team file: replace the text between its
-// markers, adopt an unmarked file that is exactly a release's, refuse unmarked
-// AI-DLC text it cannot tell from the team's (except in .gitignore), and
-// otherwise add the marked part after the team's content (a missing file gets
-// only that part). Used by config and by the engine for a copy that was never
+// markers, adopt an unmarked file that is exactly a release's, and otherwise
+// add the marked part after the team's content (a missing file gets only that
+// part). Used by config and by the engine for a copy that was never
 // configured.
 export function mergeBlock(
   path: string,
@@ -713,9 +788,18 @@ export function mergeBlock(
   }
   const beginAt = current.indexOf(begin);
   const endAt = current.indexOf(end);
-  const newline = current.includes("\r\n") ? "\r\n" : "\n";
+  const newline = newlineOf(current);
   const body = shipped.trim().replace(/\r?\n/g, newline);
   const block = `${begin}${newline}${body}${newline}${end}`;
+  // Written in the file's own line endings, the part keeps the hash recorded
+  // for it when that is the only difference (a CRLF checkout of a part
+  // recorded from LF), so a refresh never rewrites the record for it. The
+  // records are matched in order, this harness's own first, so another
+  // harness's record of the same part in other line endings never stands in.
+  const firstMatching = (text: string, known: readonly (string | undefined)[]): string =>
+    known.find((hash): hash is string => hash !== undefined && sha256Matching(text, [hash]) === hash) ??
+      sha256Bytes(text);
+  const blockHash = firstMatching(block, recorded);
   if (beginAt >= 0) {
     if (endAt < beginAt) return { error: "managed end marker precedes its begin marker" };
     const currentBlock = current.slice(beginAt, endAt + end.length);
@@ -727,10 +811,10 @@ export function mergeBlock(
       }`,
       // A part a space switch pointed at another space is still the one written.
       currentHash: [currentBlock, withSpace(currentBlock, "default")]
-        .map((text) => sha256Matching(text, [sha256Bytes(block), ...recorded]))
-        .find((hash) => hash === sha256Bytes(block) || recorded.includes(hash)) ??
-        sha256Matching(currentBlock, [sha256Bytes(block), ...recorded]),
-      nextHash: sha256Bytes(block),
+        .map((text) => firstMatching(text, [blockHash, ...recorded]))
+        .find((hash) => hash === blockHash || recorded.includes(hash)) ??
+        sha256Matching(currentBlock, [blockHash, ...recorded]),
+      nextHash: blockHash,
       // A .gitignore part with exactly the shipped entries is a release's own,
       // whatever notes an earlier release put between them.
       currentBlockShipped: currentBody === body ||
@@ -743,20 +827,17 @@ export function mergeBlock(
     const kept = path === ".gitignore" ? linesAboveOwnSection(current.trim(), body, newline) : "";
     return {
       value: `${kept ? `${kept}${newline}${newline}` : ""}${block}${newline}`,
-      nextHash: sha256Bytes(block),
+      nextHash: blockHash,
       adoptedLegacy: true,
       ...(kept ? { keptOwnLines: true } : {}),
     };
   }
-  // Ignore rules can remain user-owned even when they mention AI-DLC. Append
-  // our marked block without claiming or rewriting that existing prefix.
-  if (path !== ".gitignore" && /\baidlc\b|AI-DLC/i.test(current)) {
-    return { error: "legacy root integration ambiguous; move or delete the unmarked AI-DLC content" };
-  }
+  // Any other unmarked text is the team's, whatever it says about AI-DLC: it
+  // stays as it is, and the marked part goes after it.
   const prefix = current.length === 0 || current.endsWith(newline) ? current : `${current}${newline}`;
   return {
     value: `${prefix}${prefix ? newline : ""}${block}${newline}`,
-    nextHash: sha256Bytes(block),
+    nextHash: blockHash,
   };
 }
 
@@ -797,12 +878,12 @@ export function projectionFiles(root: string): {
   const candidates = readdirSync(root)
     .filter((name) => existsSync(join(root, name, "tools", "data", "aidlc-stamp.json")))
     .sort();
-  const [harnessDir] = candidates;
-  if (candidates.length !== 1 || harnessDir === undefined) {
+  if (candidates.length !== 1) {
     throw new Error(
       `${root}: expected exactly one projected harness directory, found ${candidates.length}`,
     );
   }
+  const harnessDir = candidates[0];
   const data = join(root, harnessDir, "tools", "data");
   const stamp = parseJson<ProjectionStamp>(join(data, "aidlc-stamp.json"));
   const descriptor = parseJson<ProjectionDescriptor>(join(data, "aidlc-projection.json"));
@@ -852,14 +933,143 @@ export function sha256Matching(value: string | Buffer, known: readonly (string |
   return own;
 }
 
+// Whether a file, or AI-DLC's marked part of one, holds what config recorded
+// writing for it: line endings aside, or with include lines a space switch
+// pointed at another space put back. Doctor's changed-files rows and the
+// build's brought-files line both ask it.
+export function holdsRecordedWrite(content: string | Buffer, hash: string): boolean {
+  const text = typeof content === "string" ? content : content.toString("utf-8");
+  return sha256Matching(content, [hash]) === hash || sha256Matching(withSpace(text, "default"), [hash]) === hash;
+}
+
 export function sha256FileMatching(path: string, known: readonly (string | undefined)[]): string {
   return sha256Matching(readFileSync(path), known);
 }
 
-// A space switch points the tool's include files at that space's memory
-// (aidlc-includes.ts repointHarnessIncludes); every release ships them at the
-// default space. The text with each active-space memory path set to `space`,
-// never a `<space>` or `${...}` placeholder.
+// Kiro CLI's upgrade for its 3.0 engine rewrites each agent JSON in
+// .kiro/agents into Kiro's own format, which has a `permissions` block no
+// agent file AI-DLC ships has, and keeps the file it replaced beside it as
+// `<name>.json.bak`, then `.json.bak.1` and on when it upgrades a plain file
+// put back in its place (kiro-cli 2.29.0), so the shape is the sign, not a
+// backup's hash. Config keeps such a file as it is unless the release changes
+// what it allows and Kiro upgrades it again by itself, and doctor does not count
+// it as the person's change.
+export function kiroUpgradedAgentFile(projectDir: string, rel: string): boolean {
+  if (!/^\.kiro\/agents\/[^/]+\.json$/.test(rel)) return false;
+  const file = join(projectDir, rel);
+  const regular = (path: string): boolean => existsSync(path) && lstatSync(path).isFile();
+  if (!regular(file) || !regular(`${file}.bak`)) return false;
+  try {
+    const agent: unknown = JSON.parse(readFileSync(file, "utf-8"));
+    return typeof agent === "object" && agent !== null && !Array.isArray(agent) && "permissions" in agent;
+  } catch {
+    return false;
+  }
+}
+
+// The backup of the file Kiro last upgraded at `rel`: its highest numbered
+// `.json.bak.N`, else `.json.bak`.
+export function kiroUpgradeBackup(projectDir: string, rel: string): string | null {
+  const file = join(projectDir, rel);
+  const regular = (path: string): boolean => existsSync(path) && lstatSync(path).isFile();
+  const prefix = `${basename(file)}.bak.`;
+  const numbered = readdirSync(join(file, ".."))
+    .filter((name) => name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)))
+    .sort((a, b) => Number(b.slice(prefix.length)) - Number(a.slice(prefix.length)))
+    .map((name) => join(file, "..", name))
+    .find(regular);
+  return numbered ?? (regular(`${file}.bak`) ? `${file}.bak` : null);
+}
+
+// What a Kiro CLI agent file lets run and refuses, by exact entry:
+// `allowedTools` and every `toolsSettings.<tool>.allowed*` list, and every
+// `denied*` list.
+function kiroPermissionEntries(agent: unknown): { allow: Set<string>; deny: Set<string> } {
+  const allow = new Set<string>();
+  const deny = new Set<string>();
+  const record = (value: unknown): Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const entries = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  for (const entry of entries(record(agent).allowedTools)) allow.add(`allowedTools ${entry}`);
+  for (const [tool, settings] of Object.entries(record(record(agent).toolsSettings))) {
+    for (const [key, list] of Object.entries(record(settings))) {
+      const into = key.startsWith("allowed") ? allow : key.startsWith("denied") ? deny : null;
+      for (const entry of into === null ? [] : entries(list)) into!.add(`${tool}.${key} ${entry}`);
+    }
+  }
+  return { allow, deny };
+}
+
+// Whether `release` lacks an allow entry `backup` has, or has a deny entry it
+// lacks. A rewritten entry counts as well, so this marks a change in what the
+// file allows, not only a narrowing.
+export function kiroAllowChanged(backup: unknown, release: unknown): boolean {
+  const before = kiroPermissionEntries(backup);
+  const after = kiroPermissionEntries(release);
+  return [...before.allow].some((entry) => !after.allow.has(entry)) ||
+    [...after.deny].some((entry) => !before.deny.has(entry));
+}
+
+// The fields Kiro's upgrade writes into an agent file.
+const KIRO_WROTE = new Set(["tools", "hooks", "permissions"]);
+
+// Kiro's upgrade keeps every field of the file it came from as it was but
+// `tools` and `hooks`, which it rewrites, and adds `permissions` (kiro-cli
+// 2.29.0). Whether `upgraded` still holds `backup`'s kept fields unchanged. It
+// cannot see a change to the fields Kiro wrote, so it is read only for an
+// upgrade Kiro did not stamp (kiroUpgradeIntact).
+export function kiroUpgradeKeptFields(upgraded: unknown, backup: unknown): boolean {
+  const fields = (value: unknown): Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const a = fields(upgraded);
+  const b = fields(backup);
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)].filter((key) => !KIRO_WROTE.has(key)));
+  return [...keys].every((key) => JSON.stringify(a[key]) === JSON.stringify(b[key]));
+}
+
+const kiroFieldsHash = (agent: Record<string, unknown>, keep: (key: string) => boolean): string =>
+  sha256Bytes(canonical(Object.fromEntries(Object.entries(agent).filter(([key]) => keep(key)))));
+
+// Kiro CLI 2.34.2 also stamps its upgrade with `kiroUpgrade`: hashes of
+// `canonical` JSON over the fields it wrote (`fingerprint`) and over the ones
+// it kept (`source`), revision 2. The stamp Kiro writes on `agent`.
+export function kiroUpgradeStamp(agent: Record<string, unknown>): { revision: 2; fingerprint: string; source: string } {
+  return {
+    revision: 2,
+    fingerprint: kiroFieldsHash(agent, (key) => KIRO_WROTE.has(key)),
+    source: kiroFieldsHash(agent, (key) => !KIRO_WROTE.has(key) && key !== "kiroUpgrade"),
+  };
+}
+
+// Kiro reads a fingerprint that no longer matches as the person's edit and
+// leaves that file alone; this reads either hash the same way. Whether
+// `upgraded` carries Kiro's stamp and is Kiro's upgrade of `backup` with
+// nothing changed since.
+export function kiroUpgradeUntouched(upgraded: unknown, backup: unknown): boolean {
+  if (!plainObject(upgraded) || !plainObject(backup)) return false;
+  const stamp = upgraded.kiroUpgrade;
+  if (!plainObject(stamp) || stamp.revision !== 2) return false;
+  const own = kiroUpgradeStamp(upgraded);
+  return stamp.fingerprint === own.fingerprint && stamp.source === own.source &&
+    stamp.source === kiroFieldsHash(backup, (key) => !KIRO_WROTE.has(key));
+}
+
+// Whether `upgraded` is Kiro's upgrade of `backup` with nothing changed since:
+// by Kiro's stamp when it carries one, and otherwise, only when
+// `unstampedByKeptFields`, by the fields Kiro keeps (an upgrade from a Kiro CLI
+// that did not stamp it: 2.27.1 did not, 2.34.2 does).
+export function kiroUpgradeIntact(upgraded: unknown, backup: unknown, unstampedByKeptFields: boolean): boolean {
+  if (plainObject(upgraded) && "kiroUpgrade" in upgraded) return kiroUpgradeUntouched(upgraded, backup);
+  return unstampedByKeptFields && kiroUpgradeKeptFields(upgraded, backup);
+}
+
+// Earlier releases' space switch pointed the tool's include files at that
+// space's memory, and every release shipped them at the default space (the
+// includes now read the engine's copy, aidlc-includes.ts ACTIVE_MEMORY_DIR, so
+// such a file is one a refresh brings up to date). The text with each
+// active-space memory path set to `space`, never a `<space>` or `${...}`
+// placeholder.
 export function withSpace(text: string, space: string): string {
   return text.replace(/aidlc\/spaces\/(?![<$])[^/"\s]+\/memory(?=[/"])/g, `aidlc/spaces/${space}/memory`);
 }
@@ -1027,7 +1237,7 @@ export function jsoncSettingValue(text: string, key: string): unknown {
   }
 }
 
-/** Add `key` as the root object's last member, keeping every other byte. */
+/** Add `key` as the root object's last member, keeping existing members and comments. */
 export function insertJsoncSetting(text: string, key: string, valueJson: string): string | null {
   const source = text.trim() ? text : "{}\n";
   const root = jsoncRootMembers(source);
@@ -1050,7 +1260,6 @@ export function insertJsoncSetting(text: string, key: string, valueJson: string)
   return next;
 }
 
-/** Replace one top-level member's value in place. */
 export function replaceJsoncSetting(text: string, key: string, valueJson: string): string | null {
   const member = jsoncRootMembers(text)?.members.findLast((candidate) => candidate.key === key);
   if (!member) return null;
@@ -1090,9 +1299,11 @@ export function removeJsoncSetting(text: string, key: string): string | null {
 // string in a string array. AI-DLC adds each of its entries that is absent,
 // follows one it added while nobody changed it, and removes only those; every
 // other key, value, comment, and layout byte stays the team's. A permission
-// map's "*" rule is one more entry, so AI-DLC's is added only to a map that has
-// none, and first in it: opencode applies the last matching rule, so the
-// team's own rules after it still decide.
+// rule for the team's own commands (an ask before a recursive delete or a
+// push) is a default: it is added only to a map that lacks it, and first in
+// the map, because opencode applies the last matching rule, so the team's
+// own rules after it still decide. AI-DLC's rules for its own commands and
+// files go last.
 
 type JsoncNode = {
   kind: "object" | "array" | "value";
@@ -1177,6 +1388,16 @@ function jsoncNodeValue(text: string, node: JsoncNode): unknown {
   }
 }
 
+/**
+ * The value of a text that is exactly one JSONC value, comments and whitespace
+ * around it allowed; undefined otherwise. Bun.JSONC.parse alone stops at the
+ * first complete value and drops anything after it.
+ */
+export function jsoncDocumentValue(text: string): unknown {
+  const node = jsoncTree(text);
+  return node ? jsoncNodeValue(text, node) : undefined;
+}
+
 function plainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -1212,7 +1433,7 @@ function jsonValueText(value: unknown, indent: string, layout: JsonLayout, inlin
 }
 
 // Add one member to an object (first, or after the last), or one string to an
-// array, in the layout around it, keeping every other byte.
+// array, in the layout around it, keeping existing entries and comments.
 function insertJsoncEntry(
   text: string,
   layout: JsonLayout,
@@ -1252,6 +1473,14 @@ function insertJsoncEntry(
   return next;
 }
 
+/** `value` after the last item of the root object's `key` array, in the layout around it; null when there is no such array. */
+export function appendJsoncArrayItem(text: string, key: string, value: unknown): string | null {
+  const root = jsoncTree(text);
+  const array = root?.kind === "object" ? root.members.findLast((member) => member.key === key)?.node : undefined;
+  if (!root || array?.kind !== "array") return null;
+  return insertJsoncEntry(text, jsonLayout(text, root), array, false, undefined, value, false);
+}
+
 function replaceJsoncNode(text: string, layout: JsonLayout, node: JsoncNode, value: unknown): string {
   return `${text.slice(0, node.start)}${jsonValueText(value, lineIndentOf(text, node.start), layout, singleLine(text, node) && !plainObject(value))}${text.slice(node.end)}`;
 }
@@ -1279,8 +1508,10 @@ function removeJsoncEntry(text: string, entries: Array<{ start: number; valueEnd
   return `${text.slice(0, entry.start)}${text.slice(entry.end)}`;
 }
 
-// `/aidlc space <name>` points the method glob at the chosen space, so any
-// space's glob fills AI-DLC's one method entry.
+// Earlier releases' `/aidlc space <name>` pointed the method glob at the chosen
+// space, so any space's glob fills that one method entry of theirs; the glob
+// this release ships (the engine's copy, aidlc-includes.ts ACTIVE_MEMORY_DIR)
+// is an entry of its own, so a refresh adds it and retires the recorded one.
 const METHOD_INSTRUCTION = /^aidlc\/spaces\/[^/"]+\/memory\/\*\*\/\*\.md$/;
 const METHOD_SLOT = "aidlc/spaces/*/memory/**/*.md";
 
@@ -1333,7 +1564,8 @@ function entryAddress(id: string): { path: string[]; item?: string } | null {
 // Entries only AI-DLC writes: they name its own folders or commands.
 function aidlcOwnEntry(entry: Pick<JsonEntry, "path" | "item">): boolean {
   return [...entry.path, ...(entry.item === undefined ? [] : [entry.item])].some((part) =>
-    part.includes(".aidlc/") || part.startsWith("aidlc/spaces/") || part.startsWith("aidlc ")
+    part.includes(".aidlc/") || part.startsWith("aidlc/spaces/") || part.startsWith("aidlc/active-memory/") ||
+    part.startsWith("aidlc ")
   );
 }
 
@@ -1448,7 +1680,10 @@ function applyJsonEntry(
     const member = node.members.findLast((candidate) => candidate.key === key);
     if (!member) {
       next[entry.id] = entry.hash;
-      return { text: insertJsoncEntry(text, layout, node, parentInline, key, entry.value, key === "*") };
+      // A permission rule for the team's own commands or files (not AI-DLC's)
+      // goes first, so the team's rules after it still decide.
+      const teamDefault = entry.path[0] === "permission" && !aidlcOwnEntry(entry);
+      return { text: insertJsoncEntry(text, layout, node, parentInline, key, entry.value, teamDefault) };
     }
     const currentHash = sha256Bytes(canonical(jsoncNodeValue(text, member.node)));
     const priorHash = prior[entry.id];
@@ -1525,8 +1760,9 @@ export function mergeJsonEntries(
   if (!plainObject(shippedValue)) return { conflict: "shipped JSON root must be an object" };
   const shipped = jsonEntriesOf(shippedValue);
   const all = Object.fromEntries(shipped.map((entry) => [entry.id, entry.hash]));
+  // The shipped file as the team's file has it: its byte order mark and its line endings.
   const bom = current.startsWith(BOM) ? BOM : "";
-  const asShipped = `${bom}${withoutBom(shippedText)}`;
+  const asShipped = `${bom}${withoutBom(shippedText).replace(/\r?\n/g, newlineOf(current))}`;
   if (current.trim() === "") return { text: asShipped, entries: all, whole: true };
   const root = jsoncTree(current);
   const currentValue = root ? jsoncNodeValue(current, root) : undefined;
@@ -1573,14 +1809,17 @@ export function mergeJsonEntries(
     if ("conflict" in step) return step;
     text = step.text;
   }
-  // AI-DLC's entries this release no longer ships go, unless someone changed them.
+  // AI-DLC's entries this release no longer ships go, unless someone changed them and force is false.
   for (const [id, hash] of Object.entries(prior)) {
     if (all[id] === undefined) text = removeRecordedJsonEntry(text, id, hash, force);
   }
   return { text, entries: next, whole: false };
 }
 
-/** Remove every recorded entry that still has the value AI-DLC wrote; null when the file is unreadable. */
+/**
+ * Remove every recorded entry that still has the value AI-DLC wrote (any value with force);
+ * null when the file is unreadable.
+ */
 export function removeJsonEntries(current: string, entries: Record<string, string>, force = false): string | null {
   if (jsoncTree(current)?.kind !== "object") return null;
   let text = current;
@@ -1588,7 +1827,6 @@ export function removeJsonEntries(current: string, entries: Record<string, strin
   return text;
 }
 
-/** True when the text is an object with no members (whitespace and a byte order mark aside). */
 export function emptyJsonObject(text: string): boolean {
   return withoutBom(text).replace(/\s/g, "") === "{}";
 }

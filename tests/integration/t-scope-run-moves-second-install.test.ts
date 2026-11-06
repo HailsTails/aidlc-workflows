@@ -48,7 +48,7 @@ describe("a second tool installed while a Unit is open", () => {
               const res = spawnSync(process.execPath, [
                 join(REPO_ROOT, "core", "tools", "aidlc-init.ts"),
                 "config", "--project-dir", proj, "--from", join(REPO_ROOT, "dist-release", "kiro"),
-                "--harness", "kiro", "--mcp", "none",
+                "--harness", "kiro-v2", "--mcp", "none",
               ], { cwd: proj, env: host.env, encoding: "utf-8" });
               expect(res.status, res.stdout + res.stderr).toBe(0);
             }
@@ -62,7 +62,6 @@ describe("a second tool installed while a Unit is open", () => {
       ]);
       const final = agent.drive(first);
       expect(installed).toBe(true);
-      // The install wrote its own files mid-Unit.
       expect(existsSync(join(proj, "AGENTS.md"))).toBe(true);
       expect(readFileSync(join(proj, ".gitignore"), "utf-8")).not.toBe(gitignoreBefore);
       expect(final.kind).toBe("done");

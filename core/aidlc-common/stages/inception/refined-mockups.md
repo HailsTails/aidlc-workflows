@@ -1,7 +1,5 @@
 ---
 slug: refined-mockups
-number: 2.5
-name: Refined Mockups
 phase: inception
 execution: CONDITIONAL
 condition: Execute when user-facing UI exists and rough mockups were produced in Ideation; for APIs, refine interaction diagrams
@@ -105,6 +103,6 @@ Upstream targets: `wireframes`, `user-flow`, `stories`, `requirements`, `team-pr
 
 When `directive.protocol_modules` lists `learnings`, follow
 `stage-protocol-learnings.md`: keep the diary at `directive.memory_path` while
-working and run the ritual before the approval gate, applying its bootstrap,
-`single: true`, per-unit, and gate-revision exemptions. When the module is absent,
-skip both the diary and the ritual.
+working, and take the learnings step before the approval gate; that module says
+when it asks the person anything. When the module is absent, skip both the diary
+and the step.

@@ -6,7 +6,7 @@
 |-------|-------|
 | Name | aidlc-design-agent |
 | Tier | **judgment** |
-| Allowed Claude Code Tools | Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion |
+| Claude Code Tools | Inherits the full session toolset, MCP tools included (no `tools:` allowlist); expected to use Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion |
 | Disallowed Claude Code Tools | Task |
 
 ---
@@ -24,7 +24,7 @@
 
 | Stage | Name | What This Agent Contributes |
 |-------|------|-----------------------------|
-| user-stories | User Stories | Writes the personas in the mob |
+| user-stories | User Stories | Enriches stories with interaction details and UX acceptance criteria |
 | domain-design | Domain Design | Contributes UI component specifications and design system mapping |
 
 ---
@@ -63,9 +63,9 @@ Path: `.claude/knowledge/aidlc-design-agent/`
 
 ### Team (Tier 2)
 
-Path: `aidlc/knowledge/aidlc-design-agent/` (the space-level knowledge dir; user-managed)
+Path: `aidlc/spaces/<active-space>/knowledge/aidlc-design-agent/` (the space-level knowledge dir; user-managed)
 
-A space-level directory the team creates when it has content (the engine ships `aidlc/knowledge/` empty). Populated by the team with project-specific
+A space-level directory the team creates when it has content (the engine creates the space's `knowledge/` folder empty). Populated by the team with project-specific
 design assets such as existing design systems, brand guidelines, typography
 rules, or component libraries.
 

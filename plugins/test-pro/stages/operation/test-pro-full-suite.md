@@ -28,6 +28,9 @@ sensors:
 scopes:
   - enterprise
   - test-pro-validation
+ars:
+  targets: [ve]
+  cost: 5
 when:
   producer-in-plan: test-pro-regression-suite
 inputs: Deployed environment coordinates, the construction regression suite, and integration results
@@ -62,7 +65,7 @@ with any failures and the requirement each touches).
 
 ### Step 4: Open the Approval Gate
 
-Run `bun {{HARNESS_DIR}}/tools/aidlc-orchestrate.ts report --stage test-pro-full-suite --result awaiting-approval`.
+Run `{{INVOKE}} engine orchestrate report --stage test-pro-full-suite --result awaiting-approval`.
 
 ### Step 5: Present Completion & Request Approval
 
@@ -70,8 +73,8 @@ Completion emoji: :test_tube:
 Review path: this stage's engine-resolved record dir.
 Standard 2-option approval (Approve / Request Changes).
 STOP for the human response. Report Approve with
-`--result approved --user-input "<exact choice>"`; report
-Request Changes with `--result rejected --user-input "<feedback>"`, revise the
+`--result approved --user-input '<exact choice>'`; report
+Request Changes with `--result rejected --user-input '<feedback>'`, revise the
 artifacts, then report `--result revised` before re-presenting.
 
 ## Sensors

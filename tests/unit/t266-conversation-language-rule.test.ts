@@ -46,11 +46,10 @@ import {
 } from "../harness/test-budget.ts";
 import { afterEach, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AIDLC_SRC, REPO_ROOT } from "../harness/fixtures.ts";
-import { _resetHarnessDataForTests } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import { REPO_ROOT } from "../harness/fixtures.ts";
 import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
 import { augmentDispatchRules } from "../../dist/claude/.claude/hooks/aidlc-deliver-stage-rules.ts";
 
@@ -83,8 +82,8 @@ const RULE_LABELS = [
  *  All of these were found by grepping the shipped engine during an end-to-end
  *  Japanese run, and several are exact `===`/`!==` comparisons rather than
  *  advisory shapes:
- *    - `A. Accept assumptions` — aidlc-sensor-claim-sources.ts compares the
- *      filled `[Answer]:` against this literal to set assumptionsAccepted.
+ *    - `A. Accept assumptions`: aidlc-sensor-claim-sources.ts tells the two
+ *      option lines from assumption text by this literal (CONFIRMATION_SCAFFOLD_RE).
  *    - `**Collaborator:** <agent-slug>` — compared with `!==` against a
  *      contribution file's first line in aidlc-orchestrate.ts, aidlc-state.ts,
  *      and aidlc-doctor-bundle.ts; a localized marker fails the stage outright.
@@ -197,27 +196,7 @@ function orgMdProjections(): Array<{ label: string; path: string }> {
 }
 
 const tempDirs: string[] = [];
-const inheritedRuntimeRoot = process.env.AIDLC_RUNTIME_HARNESS_ROOT;
-
-function explicitDispatchProject(prefix: string): string {
-  const projectDir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(projectDir);
-  const harnessRoot = join(projectDir, ".claude");
-  cpSync(AIDLC_SRC, harnessRoot, { recursive: true });
-  const harnessMetadata = join(harnessRoot, "tools", "data", "harness.json");
-  writeFileSync(
-    harnessMetadata,
-    readFileSync(harnessMetadata, "utf-8").replace('"baseRuleDelivery": "ambient"', '"baseRuleDelivery": "explicit"'),
-  );
-  process.env.AIDLC_RUNTIME_HARNESS_ROOT = harnessRoot;
-  _resetHarnessDataForTests();
-  return projectDir;
-}
-
 afterEach(() => {
-  if (inheritedRuntimeRoot === undefined) delete process.env.AIDLC_RUNTIME_HARNESS_ROOT;
-  else process.env.AIDLC_RUNTIME_HARNESS_ROOT = inheritedRuntimeRoot;
-  _resetHarnessDataForTests();
   for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
@@ -323,7 +302,8 @@ describe("t266 conversation-language rule layer", () => {
 
   // === (c) DELEGATED EXECUTION =============================================
   test("c: a delegated dispatch is rewritten to carry all four rules", () => {
-    const proj = explicitDispatchProject("aidlc-t266-");
+    const proj = mkdtempSync(join(tmpdir(), "aidlc-t266-"));
+    tempDirs.push(proj);
     const creation = spawnSync(
       BUN,
       [UTILITY, "intent-create", "--scope", "poc", "--arguments", "x", "--project-dir", proj],
@@ -360,10 +340,11 @@ describe("t266 conversation-language rule layer", () => {
   // stops projecting the memory glob. Check the delivered artifact itself in
   // both cases rather than its mere presence.
   test("c2: every harness ships a surface that delivers active memory to delegated agents", () => {
-    // The glob Kiro agent configs must preload. Exact string, not a substring:
-    // `r.includes("memory")` would accept `file://docs/memory-notes.md` and any
-    // other path that merely has the word in it.
-    const MEMORY_GLOB = "file://aidlc/spaces/default/memory/**/*.md";
+    // The glob Kiro agent configs must preload: the engine's copy of the active
+    // space's memory (aidlc-includes.ts ACTIVE_MEMORY_DIR). Exact string, not a
+    // substring: `r.includes("memory")` would accept `file://docs/memory-notes.md`
+    // and any other path that merely has the word in it.
+    const MEMORY_GLOB = "file://aidlc/active-memory/**/*.md";
     const authoredHook = readFileSync(
       join(REPO_ROOT, "core", "hooks", "aidlc-deliver-stage-rules.ts"),
       "utf-8",
@@ -394,13 +375,13 @@ describe("t266 conversation-language rule layer", () => {
           `${harness.name}/${file} preloads the active-space memory tree`,
         ).toContain(MEMORY_GLOB);
       }
-      // A glob is only a promise; resolve it against the shipped workspace shell
-      // and confirm it actually reaches the org.md that carries the rules.
-      const globbed = MEMORY_GLOB.replace(/^file:\/\//, "").replace("**/*.md", "org.md");
+      // A glob is only a promise; the copy it reads is written from the shipped
+      // workspace shell's default space, so confirm that org.md carries the rules.
+      const globbed = "aidlc/spaces/default/memory/org.md";
       const preloaded = join(harness.distRoot, globbed);
       expect(
         existsSync(preloaded),
-        `${harness.name}'s memory glob resolves to a real org.md (${globbed})`,
+        `${harness.name}'s memory glob is written from a real org.md (${globbed})`,
       ).toBe(true);
       const preloadedBody = readFileSync(preloaded, "utf-8");
       for (const label of RULE_LABELS) {
@@ -424,6 +405,9 @@ describe("t266 conversation-language rule layer", () => {
   // obligation it never sees is an obligation it cannot honour.
   test("c3: every harness's conductor-facing memory include reaches the rules", () => {
     const MEMORY_DIR = "aidlc/spaces/default/memory";
+    // The git-ignored copy of the active space's memory every include reads
+    // (aidlc-includes.ts ACTIVE_MEMORY_DIR).
+    const COPY_DIR = "aidlc/active-memory";
     const seen = new Set<string>();
 
     for (const harness of HARNESS_MATRIX) {
@@ -445,19 +429,21 @@ describe("t266 conversation-language rule layer", () => {
           // Claude @-imports resolve relative to the importing file; from
           // .claude/rules/ the workspace root is ../../.
           surface = join(harness.engineRoot, "rules", "aidlc.md");
-          required = `@../../${MEMORY_DIR}/org.md`;
+          required = `@../../${COPY_DIR}/org.md`;
           break;
-        case "codex-env":
-          surface = join(harness.engineRoot, "config.toml");
-          required = `AIDLC_RULES_DIR = "${MEMORY_DIR}"`;
+        case "codex-engine":
+          // Codex has no ambient include: the engine hands each step the rules
+          // the compiled graph names, read from the active space.
+          surface = join(harness.engineRoot, "tools", "data", "stage-graph.json");
+          required = `"${MEMORY_DIR}/org.md"`;
           break;
         case "copilot-agents-md":
           surface = join(harness.distRoot, "AGENTS.md");
-          required = `@${MEMORY_DIR}/org.md`;
+          required = `@${COPY_DIR}/org.md`;
           break;
         case "cursor-rule":
           surface = join(harness.engineRoot, "rules", "aidlc.mdc");
-          required = `- ${MEMORY_DIR}/org.md`;
+          required = `- ${COPY_DIR}/org.md`;
           break;
         case "kiro-steering":
           // The IDE's real surface: an always-included steering file that
@@ -470,11 +456,11 @@ describe("t266 conversation-language rule layer", () => {
           // Kiro CLI: the conductor is itself an agent config, so its own
           // resources list is the include. Named explicitly, not any config.
           surface = join(harness.engineRoot, "agents", "aidlc.json");
-          required = `file://${MEMORY_DIR}/**/*.md`;
+          required = `file://${COPY_DIR}/**/*.md`;
           break;
         case "opencode-instructions":
           surface = join(harness.distRoot, "opencode.json");
-          required = `${MEMORY_DIR}/**/*.md`;
+          required = `${COPY_DIR}/**/*.md`;
           break;
         default:
           throw new Error(
@@ -886,7 +872,8 @@ describe("t266 conversation-language rule layer", () => {
     // between them, in one prompt, with the section order the tie-break needs.
     // Whether the model then writes English is model-directed and out of reach
     // of a deterministic test.
-    const proj = explicitDispatchProject("aidlc-t266-switch-");
+    const proj = mkdtempSync(join(tmpdir(), "aidlc-t266-switch-"));
+    tempDirs.push(proj);
     const creation = spawnSync(
       BUN,
       [UTILITY, "intent-create", "--scope", "poc", "--arguments", "x", "--project-dir", proj],
@@ -996,7 +983,8 @@ describe("t266 conversation-language rule layer", () => {
   // team before project, and that the delegate receives the stated precedence
   // that overrides that order.
   test("e3: a team-level language rule never outranks the project-level one it precedes", () => {
-    const proj = explicitDispatchProject("aidlc-t266-split-");
+    const proj = mkdtempSync(join(tmpdir(), "aidlc-t266-split-"));
+    tempDirs.push(proj);
     const creation = spawnSync(
       BUN,
       [UTILITY, "intent-create", "--scope", "poc", "--arguments", "x", "--project-dir", proj],

@@ -21,7 +21,19 @@ Release assets cover:
 - Windows x64
 
 Native installs are per-user. The Unix installer refuses root and does not need
-`sudo`. Windows installation targets the account running PowerShell. Run it
+`sudo`. Where root is the only user, such as a container image without `USER`,
+a CI container job, or a cloud agent sandbox whose setup script runs as root,
+pass `--allow-root` (or set `AIDLC_ALLOW_ROOT=1`) to install under root's own
+`$HOME`. The opt-in is still refused under `sudo` (`SUDO_USER` is set), when
+`$HOME` is unset or not owned by root (a symlinked home is followed), and when
+`AIDLC_BIN_DIR` or `AIDLC_INSTALL_ROOT` points outside root's home, so
+`sudo sh install.sh` from a normal account keeps failing and a root install never
+becomes system-wide. A release from before `--allow-root` cannot uninstall
+itself as root; installing it, or activating it as root with `aidlc use`,
+`update` or `rollback`, proceeds with a warning that names the way to remove it
+later: its own `aidlc update`, then `aidlc uninstall --allow-root`.
+`aidlc uninstall` takes the same `--allow-root` opt-in with the same limits.
+Windows installation targets the account running PowerShell. Run it
 from a normal PowerShell window. A window opened with "Run as administrator"
 under UAC is warned that installing as administrator is less safe, because
 another program running as the same account could interfere with files the
@@ -51,8 +63,8 @@ failure and prints the command above; it never runs `apk` or installs system
 packages. The upstream Bun tracking includes `oven-sh/bun#15829` and
 `oven-sh/bun#29681`.
 
-The installer includes `claude`, `kiro`, `kiro-ide`, `codex`, and `opencode`
-together:
+The installer includes every harness runtime together, for `--harness`
+`claude`, `codex`, `copilot`, `cursor`, `kiro`, `kiro-v2`, and `opencode`:
 
 ```bash
 tmp="$(mktemp -d)"
@@ -80,7 +92,10 @@ GitHub CLI is optional and used only when it supports the release's required
 attestation flags.
 It installs
 versions under `${XDG_DATA_HOME:-$HOME/.local/share}/aidlc/versions/` and
-links `$HOME/.local/bin/aidlc` to the active version by default.
+writes `$HOME/.local/bin/aidlc`, a small launcher that runs the active version,
+by default. AI-DLC's own plugin catalogue sits beside the versions, at
+`${XDG_DATA_HOME:-$HOME/.local/share}/aidlc/plugins/`; the installer prints its
+full path (see [Plugins](#plugins)).
 
 The installer does not edit a shell startup file unless
 `--profile <absolute-path-under-$HOME>` is explicit. That option writes or
@@ -102,20 +117,27 @@ Invoke-WebRequest `
 Remove-Item -Recurse -Force $download
 ```
 
-Windows installs versions under `%LOCALAPPDATA%\aidlc\versions\` and keeps a
-stable `%LOCALAPPDATA%\aidlc\bin\aidlc.cmd` shim. After successful verification
-and installation, the installer registers that bin directory in the current
+Windows installs versions under `%LOCALAPPDATA%\aidlc\versions\` and keeps the
+`aidlc` command in `%LOCALAPPDATA%\aidlc\bin\`: `aidlc.exe`, a copy of the AI-DLC
+binary that starts the active version, and the `aidlc.cmd` shim beside it.
+PowerShell, CMD and Git Bash all run `aidlc.exe` for a bare `aidlc`, which
+hands the active version its arguments as your shell gave them, with no cmd.exe
+in between reading `&`, `^`, `|`, `<`, `>` or `%NAME%` in them. AI-DLC's own
+plugin catalogue is in `%LOCALAPPDATA%\aidlc\plugins\`. After successful
+verification and installation, the installer registers that bin directory in the current
 account's persistent User PATH, preserving existing entries and avoiding
 duplicates on reruns. It also updates the current PowerShell process and
-notifies Windows of the environment change for new terminals. If another
-session cannot find `aidlc`, open a new terminal; restart the terminal app or
-IDE if needed.
+notifies Windows of the environment change, so programs started afterwards
+find `aidlc`. A terminal app or IDE that was already open (Kiro, VS Code,
+Cursor) keeps the PATH it started with: quit it fully and reopen it before using
+`aidlc` or AI-DLC's hooks there. A new tab or Reload Window inside it is not
+enough.
 It does not change Machine PATH or edit a PowerShell profile.
 
 Successful human output starts with `Installed`, the version, the account,
 and the installed command path. Next, run `aidlc config` from your project
-directory. Restart guidance applies only if another terminal or IDE cannot
-find the command.
+directory. When the installer added the PATH entry, it also says to quit and
+reopen any terminal app or IDE that was already open.
 
 The installer writes `windows-path.json` under the install root only when it
 adds a User PATH entry. This ownership record survives reruns, including
@@ -135,7 +157,7 @@ To skip **both persistent and current-process PATH changes**, replace
 a direct command to run without PATH registration. For the default location:
 
 ```powershell
-& "$env:LOCALAPPDATA\aidlc\bin\aidlc.cmd" config
+& "$env:LOCALAPPDATA\aidlc\bin\aidlc.exe" config
 ```
 
 Use the printed command path if you changed the install location. Rerun the
@@ -157,7 +179,7 @@ Installation asks no harness question. Human and non-interactive runs install
 the same binary plus all harness runtimes.
 
 For temporary or isolated Windows installs, pass `-NoModifyPath` and invoke
-the reported `aidlc.cmd` path directly to keep the temporary bin directory out
+the reported command path directly to keep the temporary bin directory out
 of User PATH and the current process.
 
 PowerShell `-Json` emits one result with `schemaVersion: 1`, `ok`, `code`,
@@ -195,6 +217,7 @@ installation uses `status: "failed"`, exit code 1, `data.installed: true`, and
 | `--ca-bundle <absolute-path>` | `-CaBundle <absolute-path>` | Use a custom CA bundle |
 | `--profile <absolute-path>` | Not available | Transactionally add the Unix PATH block |
 | Not available | `-NoModifyPath` | Skip persistent User PATH and current-process PATH changes; print a direct command |
+| `--allow-root` (or `AIDLC_ALLOW_ROOT=1`) | Not available | Install as root where root is the only user (container, CI job, agent sandbox). Still refused under `sudo`, with `$HOME` unset or not owned by root, and with `AIDLC_BIN_DIR` or `AIDLC_INSTALL_ROOT` outside root's home. A release from before `--allow-root` is installed with a warning, because it cannot uninstall itself as root |
 | `--yes` | `-Yes` | Automation mode; it does not bypass integrity checks. On Windows it also replaces an `aidlc` in the bin directory that AI-DLC did not write, keeping that file as a backup |
 | `--quiet` | `-Quiet` | Suppress progress and emit one result line |
 | `--json` | `-Json` | Suppress progress and emit one schema-versioned JSON result |
@@ -294,21 +317,27 @@ an explicit empty `AIDLC_BIN_DIR`.
 
 ## Configure or Refresh a Project
 
-Run config before opening the harness:
+Run config before opening the harness. [Getting Started](01-getting-started.md#2-set-up-your-project)
+shows each screen of a first setup:
 
 ```bash
 cd your-project
-aidlc config --dry-run --json
+aidlc config --harness claude --dry-run
 aidlc config
 aidlc doctor
 ```
 
-`aidlc config` is local-only and transactional. It creates the selected harness
+`aidlc config` is transactional and works from the release already on this
+machine; it downloads a release the project needs only when you agree at the
+prompt or pass `--download`. It creates the selected harness
 tree, the `aidlc/` workspace shell, root integrations, a projection stamp, and
 an ownership baseline. It does not create a workflow intent.
 
-When more than one harness is present, every `aidlc config` invocation must
-include `--harness <name>`, including previews and refreshes. The one exception
+Every harness runtime is installed, so outside a terminal a first setup or a
+preview names its harness with `--harness <name>`; at a terminal, config uses
+the one harness it detects or asks which one.
+When the project has more than one harness, a command that sets up, previews,
+or refreshes one of them names it with `--harness <name>`. The one exception
 is recording or clearing a bypass with `aidlc config flags --bypass` or
 `--clear-bypass` and nothing else to change: a bypass belongs to the project,
 not to one harness. See
@@ -320,7 +349,7 @@ harness that is on another release, with the one command that brings it to the
 release just written, whether or not work is open:
 
 ```
-  Kiro CLI (.kiro) is still on 2.9.0. To bring it to 2.10.0: `aidlc config --harness kiro`.
+  Kiro CLI (.kiro) is still on 2.9.0. To bring it to 2.10.0: `aidlc config --harness kiro-v2`.
 ```
 
 When the files passed to `--from` hold that harness, the command reuses them.
@@ -328,26 +357,41 @@ Otherwise a copied project's line says to get that release's copy runtime file
 first, because `--download` on a copied harness that is already installed
 fetches the release it already has, and a native project's line names the
 `aidlc config --pin` that installs that release.
+A git worktree of a checkout that is registered on the machine is the same
+project: its pinned commands run the release its own `.aidlc-version` names,
+when the machine holds it, and register it, so a worktree a host makes per
+session never asks for `config --pin` again, even when its branch pins a
+different release than the checkout. The main checkout itself, and another
+clone, register a changed pin only through `config --pin`, as before.
 
 After a successful scaffold or refresh, config runs a cheap installed-result
 sweep. It checks only the non-interactive hook PATH, host trust files, and
 recorded provider actions; it does not spawn the harness CLI or contact a
 provider. The transaction still exits 0. Non-TTY human output names every
 outstanding item and the exact `aidlc config runtime`, `aidlc config trust`, or
-`aidlc config providers --check` follow-up. Codex's own hook trust is the one
-item no AI-DLC command gives: its line names the step in Codex instead (type
-`/hooks`, press `t` to trust all, then press Esc). JSON includes
-`data.outstandingActions`, where such an item also carries that `step`. Quiet output stays one line when clean and appends
+`aidlc config providers --check` follow-up. Two items have no AI-DLC command
+that does them, so their line names the person's own step instead: Codex's own
+hook trust (in Codex, type `/hooks`, press `t` to trust all, then press Esc),
+and on Kiro IDE a settings file with an error (fix the error in the file it
+names; its `command`, `config trust --check`, only checks the result). JSON
+includes `data.outstandingActions`, where such an item also carries that `step`. Quiet output stays one line when clean and appends
 one outstanding-actions line when follow-up is required, plus one `Warning:`
 line for each ignore rule that hides committed records.
 
-On a human TTY, a bare first run starts with detection rather than questions:
+On a human TTY, a bare first run (`aidlc config` with no flag; a flag such as
+`--harness`, `--dry-run`, `--yes`, or `--json` skips the wizard) starts with
+detection rather than questions:
 installed harness CLIs on `PATH`, project state, local AWS credentials and
 regions, and the non-interactive hook runtime. With one detected harness, the
 wizard names it and offers three choices: recommended defaults, six-step
 customization, or exit with nothing written. Multiple detected harnesses get a
 numbered harness picker first; no detected harness gets the complete picker
-without a default.
+without a default. A Kiro CLI at 2.24.1 or later counts for both Kiro
+harnesses. The picker lists Kiro CLI (V2) (`--harness kiro-v2`): it pins no
+engine and is built for Kiro CLI's v2 engine. It lists Kiro (`--harness kiro`),
+for Kiro IDE and Kiro CLI on its v3 engine. Of the two, Kiro CLI (V2) comes first, so Enter
+takes it unless an earlier detected harness leads the list or setup runs in a
+harness editor's own terminal, whose harness comes first.
 
 Before any setup choices, the wizard probes the project filesystem using
 temporary files and directories, then removes them. It checks transaction
@@ -358,18 +402,19 @@ directory `fsync` is tolerated. These checks detect unavailable operations;
 success cannot certify atomicity or crash durability. A failed probe stops
 setup with storage remediation and nothing written (a probe that cannot be
 removed is named instead); see
-[Config fails with a hard-link error](15-troubleshooting.md#config-fails-with-a-hard-link-error).
+[Config fails with a storage error](15-troubleshooting.md#config-fails-with-a-storage-error).
 
 Recommended defaults preserve the harness's current model provider.
 Customization walks Harness, Model provider, Model effort preset, Plugins, MCP
 servers, and the model-preset settings layer. The provider step offers keeping
-the current provider first and Amazon Bedrock second. On Kiro CLI, step 2 is
-Session model instead: it lists your Kiro account's models and saves the chosen
-model, with the preset's session effort, in your personal Kiro settings, last,
-after every AI-DLC step. Under Kiro auto, recommended defaults ask that one
-model question; see
+the current provider first and Amazon Bedrock second. On the Kiro CLI (V2) row, step
+2 is Session model instead: it lists your Kiro account's models and saves the
+chosen model, with the preset's session effort, in your personal Kiro settings,
+last, after every AI-DLC step. Under Kiro auto, recommended defaults ask that
+one model question; see
 [Session model and effort](harnesses/kiro-cli.md#session-model-and-effort).
-Every numbered prompt has
+For the Kiro row, see [First run](harnesses/kiro-ide.md#first-run).
+Every numbered prompt but that complete picker has
 a bracketed default, invalid input re-asks in place, and each answer is echoed.
 A check-your-answers table accepts Enter to apply or a step number to edit. No
 files are written before that final gate. After apply, gerund receipts name the
@@ -406,8 +451,9 @@ the session's own model access (for example `model access comes with your GitHub
 Copilot session`); `aidlc config providers` records Amazon Bedrock there if you
 bring your own (on Cursor, only the IDE takes Bedrock keys). On GitHub Copilot, Cursor, and Kiro IDE the Models row
 reads `[ok]` and names the host, for example `every agent uses your GitHub
-Copilot session's model and effort`: those hosts cannot pin an agent's model or
-effort, so there is no policy to ask for, and a recorded one is named as not
+Copilot session's model and effort`: a preset changes nothing on those hosts
+(on Kiro only one agent's own model and effort apply), so there is no policy to
+ask for, and a recorded one is named as not
 applying there. See [Choosing a Model and Effort](#choosing-a-model-and-effort).
 Runtime leads with the immediate action and points to
 `aidlc config runtime --show` for diagnostics. The closing ledger is a compact
@@ -428,11 +474,17 @@ interactive wizard.
 | `--plan-token <token>` | Apply only the exact plan approved from a JSON dry run |
 | `--show` | Show settings without changing anything: with no section, every section in turn (`aidlc config --show`; `--json` prints one object keyed by section, each value what that section's `--show --json` prints); with a section, that section alone |
 | `--force` | Replace locally modified framework-owned files and managed blocks where that policy permits |
-| `--refresh-open-workflows` | Fork capability: refresh an existing installation only while retaining its state schema and every installed stage/scope contract; keeps `aidlc/` read-only and cannot combine with `--force` or `--mcp` |
 | `--yes` | Confirm an otherwise unrecognized target directory or a section mutation; it does not imply MCP consent or choose a section answer |
 | `--json` | Emit one result object with counts, actions, `data.notes`, and `data.planToken` |
 | `--quiet` | Emit one summary or remediation line |
 | `--no-color` | Disable color output |
+
+`--project-dir`, `--json`, `--quiet`, `--no-color`, `--yes`, `--offline` and
+`--verbose` are AI-DLC's own options: put them with the command you are running,
+as `aidlc config --project-dir /work/shop` or `aidlc doctor --json`. A word of
+your own that happens to look like one of them is still your word, so
+`/aidlc add a --project-dir flag to the CLI` asks for that work with every word
+you typed kept.
 
 ### Model Policy
 
@@ -471,15 +523,28 @@ aidlc config models --reviewing-effort xhigh --project --yes
 aidlc config models --agent architect --effort xhigh --model provider/raw-id --project --yes
 aidlc config models --check
 aidlc config models --reset --project --yes
+aidlc config models --keep --yes
 aidlc config models --session-model claude-opus-4.8   # Kiro CLI: your personal session model
 ```
 
 A change ends with what changed, its undo command and who picks it up (plus
 any setup step still outstanding); `--json` and `--quiet` output are unchanged.
 
+On Claude Code, Codex, opencode and Kiro CLI, while no policy is recorded, setup
+asks about models at each refresh until you answer (on Kiro IDE, Cursor and
+GitHub Copilot it never asks). Keeping the models as they are is an answer too:
+Enter at the models question, `unchanged` at first-run setup, or `--keep`
+records it in `<harness>/tools/data/harness.json` beside the providers answer,
+so setup stops asking; `--reset` clears it.
+
 `--show --json` prints every agent's effective model, effort, and provenance.
 `--check` is the CI inverse and exits non-zero when the recorded policy is not
-fully reflected in the harness surfaces.
+fully reflected in the harness surfaces. On Kiro IDE, Cursor and GitHub Copilot,
+where a preset changes nothing, a recorded effort it cannot write is left to the
+session, as in `aidlc doctor`, and does not fail the check. On Cursor and GitHub
+Copilot, where the session sets every agent's model and effort, a clean check
+says so, as `aidlc doctor` does, instead of calling the recorded policy
+reflected.
 
 Model and flag policy resolves leaf-by-leaf through this hierarchy:
 
@@ -498,7 +563,9 @@ predates that, the config command that creates it adds it to the clone's own
 `.git/info/exclude` instead. Neither file counts as the team's code. Mutations
 require exactly one of `--project`, `--local`, or `--global`, except a bypass:
 `--bypass` with no layer records in the local file, and `--clear-bypass` with
-no layer clears every file that records it. The interactive wizard asks for the
+no layer, typed at your own terminal, clears every file that records it (run by
+the agent from a chat it clears only the local file and names the project or
+machine file that still keeps the check off). The interactive wizard asks for the
 layer and recommends project policy inside a repository. Outside a recognized
 project only the machine layer is valid, so `--global` is inferred. `--show`
 labels each effective value with its winning source.
@@ -525,8 +592,8 @@ medium, `thorough` xhigh, or the model's next level down
 
 On upgrade, an install that recorded `preset: balanced` or `preset: minimal`
 picks up these efforts the next time its projections are regenerated. After
-`aidlc update`, run `aidlc config --yes` between workflows to reapply the
-recorded policy, or explicitly select it with
+`aidlc update`, run `aidlc config --yes` in each project to reapply the
+recorded policy (open work carries on), or explicitly select it with
 `aidlc config models --preset balanced --project --yes` (substitute `minimal`
 as needed). Update changes only the machine runtime; doctor and
 `aidlc config models --check` report issues without applying changes. Installs
@@ -546,21 +613,24 @@ run fails with usage guidance.
 
 Harnesses receive only settings they can read. Codex clamps `max` effort down
 to `xhigh`. opencode clamps `xhigh` down to `high`. On Kiro CLI a preset sets
-one effort for the whole session, saved with the session model in your personal
+one effort for the whole interactive session, saved with the session model in your personal
 Kiro settings
 ([Session model and effort](harnesses/kiro-cli.md#session-model-and-effort));
 explicit group dials have no Kiro surface, and a per-agent model exception
 carries its effort through the project's `chat.modelDefaults`, which then
 replaces your personal effort map in that project. An effort set on Kiro CLI
 without a model is kept for other tools, and the command says so in one line.
-Kiro IDE, Cursor, and GitHub Copilot cannot portably pin
-agent models or effort, so setup records no preset there. A model or effort you
-set anyway is kept for teammates on tools that apply it, writes no inert keys,
-and the command says in one line that this tool uses the model you choose in its
-own model picker. On those three, every agent uses the session's model and
-effort: the setup check and `aidlc doctor` say so instead of asking for a
-policy, and doctor warns only about an agent model recorded for that harness
-by name.
+Kiro IDE, Cursor, and GitHub Copilot have no surface for a preset or a group
+effort, so setup records no preset there. On Kiro, `aidlc config models --agent`
+still sets one agent's own model and effort
+([One agent on its own model and effort](harnesses/kiro-ide.md#one-agent-on-its-own-model-and-effort)).
+On Cursor and Copilot a model or effort you set anyway is kept for teammates on
+tools that apply it, writes no inert keys, and the command says in one line that
+this tool uses the model you choose in its own model picker. On those three,
+every agent uses the session's model and effort (on Kiro, unless a model or
+effort is set for that agent): the setup check and `aidlc doctor` say so
+instead of asking for a policy, and doctor warns only about an agent model
+recorded for that harness by name.
 
 Model policy is agent-scoped. Stage files never carry model or effort keys;
 scopes continue to own stage criticality.
@@ -572,10 +642,12 @@ Claude Opus 4.8. Where you set the model and effort depends on the harness:
 
 - **GitHub Copilot, Cursor, and Kiro IDE:** in the host, for the whole session.
   Every agent uses the model and effort of the chat you run `/aidlc` in, and
-  nothing AI-DLC records changes that. On Kiro IDE, a `model:` line you add
-  to an agent's `.md` file by hand changes that agent until the next refresh
-  (see [Customization](13-customization.md)); on Copilot such a pin is not
-  portable, because the CLI and VS Code read model names differently.
+  nothing AI-DLC records changes that, except on Kiro, where
+  `aidlc config models --agent` sets one agent's own model and effort
+  ([One agent on its own model and effort](harnesses/kiro-ide.md#one-agent-on-its-own-model-and-effort));
+  set it there rather than with a `model:` line by hand, which
+  `aidlc config models --check` reports as drift. On Copilot a `model:` pin in an agent's `.md` file
+  is not portable, because the CLI and VS Code read model names differently.
 - **Claude Code, Codex CLI, and opencode:** the session's model and effort
   drive the conductor and every agent that inherits; `aidlc config models`
   can set agent efforts (the `balanced` preset sets them to medium) and
@@ -583,7 +655,11 @@ Claude Opus 4.8. Where you set the model and effort depends on the harness:
 - **Kiro CLI:** the session model and its one effort. `aidlc config models`
   saves them in your personal Kiro settings (a preset sets the effort:
   `minimal` low, `balanced` medium, `thorough` extra-high); `/model` and
-  `/effort` change them inside Kiro. See
+  `/effort` change them inside Kiro. A `/model` switch reaches the agents the
+  conductor dispatches only once you save it with
+  `/model set-current-as-default`. Recommended setup keeps an effort you
+  already saved for your model. On Kiro IDE's row setup saves Kiro CLI's
+  session model only. See
   [Session model and effort](harnesses/kiro-cli.md#session-model-and-effort).
 
 If your organization offers only a mid-tier model, such as a Claude Sonnet
@@ -595,7 +671,8 @@ model, without Opus:
   what the `balanced` preset gives agents on harnesses that can set them.
 - **Raise effort only for a stage that needs it,** for example Code Generation
   on a hard Unit, then lower it again. On GitHub Copilot, Cursor, Kiro IDE,
-  and Kiro CLI that is the session's effort. On Claude Code, Codex CLI, and
+  and Kiro CLI that is the session's effort (on Kiro IDE, unless an effort is
+  set for the developer agent). On Claude Code, Codex CLI, and
   opencode, Code Generation runs on the developer agent, which follows the
   session only while no preset or effort is recorded for it. Otherwise its
   effort is the recorded one: to raise it, record it, for example
@@ -603,7 +680,8 @@ model, without Opus:
   works while a workflow is open too: config rewrites the developer agent's
   file, and the harness uses it the next time it starts the agent (Claude Code
   does so at the agent's next start; a step already running keeps what it
-  started with). The command prints the one that puts it back.
+  started with). The command prints the one that puts it back (for one
+  agent's setting, `--effort default`, which removes only that setting).
 - **Change model or effort between stages, in a new chat.** See
   [Changing Model Mid-Workflow](11-session-management.md#changing-model-mid-workflow).
 
@@ -655,7 +733,7 @@ check.
 The harness CLI check requires `claude`, `kiro-cli >= 2.6.0`, `codex >= 0.145.0`, or
 `opencode` for their matching harnesses. Copilot CLI and the Cursor `agent` CLI
 are advisory because those installs may be driven only by VS Code or the IDE.
-The `kiro-ide` distribution requires no separate CLI; `kiro-cli` is optional there, needed only to run AI-DLC from a terminal, and is checked against 2.24.1 when present.
+The Kiro distribution (`--harness kiro`) requires no separate CLI; `kiro-cli` is optional there, needed only to run AI-DLC from a terminal, and is checked against 2.24.1 when present.
 
 ### Provider Diagnostics
 
@@ -686,7 +764,7 @@ Recorded Bedrock answers apply through the normal staged config transaction:
 
 | Harness | Recorded answer application |
 |---------|-----------------------------|
-| Claude Code | Enables Bedrock and writes `AWS_REGION` plus optional `AWS_PROFILE` in `.claude/settings.json`; also keeps the AWS MCP URL and `AWS_REGION` metadata in `.mcp.json` on the same region |
+| Claude Code | Enables Bedrock and writes `AWS_REGION` plus optional `AWS_PROFILE` in your own `.claude/settings.local.json` (git ignores it; the profile is not recorded in `harness.json`); also keeps the AWS MCP URL and `AWS_REGION` metadata in `.mcp.json` on the same region |
 | Codex CLI | Records the choice and instructs the user to keep provider, credentials, and model in `~/.codex/config.toml` |
 | Kiro CLI | No provider answer; model access comes with Kiro |
 | Kiro IDE | No provider answer; model access comes with Kiro |
@@ -710,14 +788,23 @@ the configuration clean. `--provider other` records a manually configured
 non-Bedrock provider and reports that setup as pending until `--acknowledge` is
 supplied. `--reset` removes exact legacy AI-DLC Bedrock defaults or values written
 for the previous recorded answer from Claude, Codex, and opencode project files;
-unproven values are preserved.
+unproven values are preserved. On Claude Code, `--provider current`, `--provider other` and `--reset` also
+take the Bedrock switch and region out of your `.claude/settings.local.json`; an
+`AWS_PROFILE` there stays, and the command says so.
+
+On Claude Code each person's Bedrock answer is their own. A teammate's clone
+carries the project's record but none of your settings, and `aidlc config providers
+--check` and doctor warn them once that Bedrock is recorded but not turned on
+for them. A project set up by an earlier release keeps the answer in the shared
+`.claude/settings.json` until someone answers `aidlc config providers` again,
+which moves it to their own file and says so; a refresh or update leaves it.
 
 The question is worded for the harness in front of you, so each install offers
 the two paths that actually exist for it:
 
 | Harness | `amazon-bedrock` records |
 |---------|--------------------------|
-| Claude Code | the AWS region and profile in `settings.json`, and the AWS MCP region in `.mcp.json` when present |
+| Claude Code | the AWS region and profile in your own `settings.local.json`, and the AWS MCP region in `.mcp.json` when present |
 | Codex CLI | the AWS region and profile in the project record, then guides user-level provider setup in `$CODEX_HOME/config.toml` |
 | OpenCode | the AWS region and profile, and offers to write them to `opencode.json` |
 | GitHub Copilot | that you set the Copilot BYOK provider variables yourself |
@@ -726,8 +813,9 @@ the two paths that actually exist for it:
 
 Kiro CLI and Kiro IDE provide their own model access, so AI-DLC configures no
 model provider for them. `aidlc config providers` states that model access
-comes with Kiro and asks nothing; so does the first-run wizard on Kiro IDE, while
-on Kiro CLI its step 2 chooses the session model instead. Provider flags are
+comes with Kiro and asks nothing; so does the first-run wizard on Kiro IDE when
+`kiro-cli` cannot be read, while on Kiro CLI, and on Kiro IDE with a readable
+`kiro-cli`, its step 2 chooses Kiro CLI's session model instead. Provider flags are
 refused, and the Providers row reads `[ok]` regardless of a legacy record.
 `aidlc config providers --reset --yes` clears a record left by an earlier build.
 `builtin` records from the previous build still load and read as harness-managed,
@@ -760,14 +848,48 @@ actions can still be completed with `--mark-done`.
 ### Trust Diagnostics
 
 `aidlc config trust` reads and verifies host-native trust. It never regenerates
-trust seeds, permission rules, or IDE settings.
+trust seeds, permission rules, or IDE settings; its only writes outside the
+project are Kiro IDE's and Kiro CLI's Workflows switches and Kiro IDE's
+default terminal on Windows, and only when you ask for them.
 
 ```bash
 aidlc config trust --show
 aidlc config trust --check
 aidlc config trust --acknowledge --yes
 aidlc config trust --reset --yes
+aidlc config trust --kiro-workflows off --yes   # Kiro IDE; or: on
+aidlc config trust --kiro-cli-workflows off --yes   # Kiro CLI; or: on
+aidlc config trust --kiro-terminal powershell --yes   # Kiro IDE on Windows
 ```
+
+For Kiro IDE, `--show` and `--check` also read Kiro's Workflows switch
+(`kiroAgent.workflows.enabled` in Kiro's user settings, so it covers all your
+projects; while it is on, AI-DLC's reviews and helpers do not run).
+`--kiro-workflows off|on` changes that one key and keeps every other byte of
+the file. While Workflows is on and you have not answered on this computer,
+setup asks once and `aidlc config --yes` turns it off; your answer is kept in
+`kiro-ide-workflows` in the AI-DLC install folder, so no other project asks
+again. When that settings file has an error AI-DLC cannot read past, Kiro may
+still read Workflows as on, so `--show` says it could not be read, `--check`
+and setup warn until the file reads again (whatever you answered before), and
+the next Kiro IDE chat tells you once; fix the error in that file. On the same
+Kiro row, `--show` and `--check` also read Kiro CLI's own Workflows switch
+(`chat.enableWorkflows` in your Kiro CLI settings, read through `kiro-cli
+settings`), which takes the same tools away in Kiro CLI chats;
+`--kiro-cli-workflows off|on` sets it through Kiro CLI, and its answer is kept
+in `kiro-cli-workflows`, apart from Kiro IDE's. With no Kiro CLI answering, it
+is not shown. See [Kiro's Workflows feature](harnesses/kiro-ide.md#kiros-workflows-feature-stops-ai-dlcs-reviews-and-helpers).
+
+On Windows, Kiro IDE runs its agent's commands in your default terminal profile
+(`terminal.integrated.defaultProfile.windows` in Kiro's user settings). While
+it is Command Prompt (where Kiro shows a command's reply only when it finishes
+within a second, so most AI-DLC replies come back empty) and you have not
+answered on this computer, setup asks once whether to set it to PowerShell,
+`aidlc config --yes` sets it, and `--kiro-terminal powershell` sets it on its
+own (and says so when it already is PowerShell); each changes that one key and
+keeps every other byte of the file, and your answer is kept in
+`kiro-ide-terminal` in the AI-DLC install folder. See
+[Command Prompt as Kiro's terminal](harnesses/kiro-ide.md#command-prompt-as-kiros-terminal-on-windows).
 
 For Codex, the check requires the complete project-specific trust seed entry
 set in `$CODEX_HOME/config.toml`. The two supported remedies are one TUI
@@ -776,8 +898,8 @@ complete seed. Until then zero Codex hooks fire.
 `--dangerously-bypass-hook-trust` does not fire untrusted hooks, and appending
 a second seed set produces invalid TOML.
 
-For the `kiro-ide` distribution, trust ships in the conductor's `permissions`
-(`.kiro/agents/aidlc.md`), so the check adds nothing there; Kiro IDE 1.x no
+For the Kiro distribution, trust ships in the conductor's `permissions`
+(`.kiro/agents/aidlc-aidlc.md`), so the check adds nothing there; Kiro IDE 1.x no
 longer reads `.vscode/settings.json` `kiroAgent.trustedCommands`. `--show` lists
 the selected harness's trust and allowlist files.
 
@@ -944,8 +1066,9 @@ If `.aidlc-version` exists, config
 requires a source at that exact version with the matching project harness.
 
 Config recognizes directories containing `.git`, `package.json`, `Cargo.toml`,
-`go.mod`, or `pyproject.toml`. Outside those shapes, interactive mode asks for
-confirmation and non-interactive mode requires `--project-dir`.
+`go.mod`, or `pyproject.toml`, or an AI-DLC harness tree already set up there.
+Outside those shapes, interactive mode asks for confirmation and
+non-interactive mode requires `--project-dir`.
 
 Claude's optional MCP integration defaults to `none` without a TTY. A human
 TTY is prompted when no prior choice exists. `--yes` and `--json` do not grant
@@ -970,19 +1093,54 @@ the apply fails closed.
 
 ### Refresh Safety
 
-By default, config retains this fork's refusal while any workflow in any space is incomplete, including parked workflows. `--force`, `--yes` and `--plan-token` do not bypass that default. `aidlc update` and `aidlc use` change machine state only.
+Producer-side Rin compatibility checks use a separate, explicit [source composition](../../plugins/rin/README-refresh-policy.md). That entry does not change ordinary `aidlc config` behavior described below and is not an installed plugin command.
 
-This fork additionally supports `config --refresh-open-workflows` for compatible payload updates in projects running an independent pipeline of workflows. It is an explicit refresh mode, not a force override. The existing and candidate runtimes must export the same literal `CURRENT_STATE_VERSION`; every existing compiled stage and scope contract must remain identical in the candidate. Additional independent contracts are allowed. This conservative comparison includes approval policy, outputs, dependencies and gate or blocking sensor bindings. Coherently declared advisory sensors that run only on writes may change: their findings do not refuse edits or stage completion. This distinction also permits restoring the matching earlier payload; malformed or unknown sensor metadata is refused. An existing advisory gate sensor may also widen its coverage when a literal-directory union keeps every earlier directory covered. Beyond that, the refresh accepts a closed list of exact, reviewed changes, each only when every field it names matches the known old and new value together:
+Any `aidlc config` you run while work is open is done, not refused, parked
+workflows included. A settings change (`config models`, `flags`, `runtime`,
+`providers`, and `trust`) reads the project's own files and brings in no
+release. Each prints what changed and, where one command
+puts the earlier value back, that command. A model or flag change also names
+the open workflows that pick it up: a bypass, hook debug, the sensor timeout,
+and question retention apply right away, with no restart; models and swarm
+apply from the next step (a step already running keeps what it started with),
+except that on Kiro CLI a model or effort change applies from your next Kiro CLI
+session, since a running one keeps what it started with;
+a default scope applies to new work only, and a saved model profile changes
+nothing until `--from` loads it. The runtime, providers, and trust answers
+print no workflow line, and neither does a command that records or clears a
+bypass no other settings file records while its variable is set in the
+environment the command runs in, whatever else it changes: open work reads the
+environment of the editor or CLI it runs in, which the command cannot see.
 
-- Code Generation's `outputs` naming the engine as the writer of `code-generation-questions.md` (`plan-approval-questions`).
-- In this fork, the rewrite of rin Gate 1's `condition` and `outputs` together (`rin-gate-1-framing`, plugin `rin`), in which the gate settles its decision-questions itself (`framing-decision-record`). Exact text identifies that change; it does not prove it compatible, and no engine owner rechecks Gate 1. While Gate 1 is the current in-progress stage and an `[Answer]:` in any of its `*-questions.md` files, such as `rin-framing-questions.md`, is blank (empty or underscores only), the Stop hook lets the turn end and wait for the person, unless `Construction Autonomy Mode` is `autonomous`. Filling or removing that tag ends the wait, and the new Gate 1 prose, which says these files carry no blank tags, may lead the agent to do either. Answer open Gate 1 questions before resuming.
-- In this fork, the rin gates' move to rin's own seats (#82), with the decision records #96 added, one row per gate (`rin-gate-0-reconcile` to `rin-gate-6-operate`, plugin `rin`), from the agents and text an install from before #67 carries (`rin-gate-seats`). Every row names `lead_agent`; Gates 0, 1, 2, 3 and 6 also name `support_agents`, and Gates 0, 1 and 6 `reviewer`; Gate 1 adds its `condition` and `outputs`, Gate 2 its `outputs`, and Gate 3 its `produces` (adding `rin-design-questions`) and `outputs`. Gate 1's row also carries `framing-decision-record`, so the answering advice above still applies. An open record keeps its place and resumes with the new seats. Review receipts and collaborator notes are bound to agent names, so before its gate is approved an open record owes a fresh review where the reviewer or required outputs changed (Gates 0, 1, 3 and 6), and notes from each named seat where a mob gate's seats changed (Gates 1, 2, 3 and 6). The engine's existing refusals name each one. Gate 3's stage file has it write `rin-design-questions.md`; the artefact check does not refuse an open record without it. A record that already finished Gate 1 or Gate 3 may hear once that the stage changed after it finished; carrying on is safe.
+A refresh that brings in release files (a plain `aidlc config`, `--from`,
+`--download`, `config project`, or the update a pinned project needs first)
+is done too, and says so:
 
-The accepted effect is recorded in the refresh plan and result (`refreshCompatibility.stageRevalidation`) and named in a note on the dry run and the apply, in human and quiet output. The note names the open workflows whose current stage is the accepted stage; the Gate 1 note asks you to answer their open Gate 1 questions before resuming, or says that no open workflow records Gate 1 as its current stage. The effect triggers nothing by itself. It does not claim to prove arbitrary tool behavior compatible or repair already-invalid records. Any other schema or workflow-contract change needs a separately reviewed migration. An accepted row is a reviewed exception to that requirement, not a migration: it migrates no records, and the Gate 1 row asks the person to answer open Gate 1 questions instead.
+```
+  Updated. Your open work (default/add-login) carries on.
+```
 
-The mode never writes beneath `aidlc/`, including memory, record state, audit evidence and cursors; absent seed files remain absent. It still uses the existing ownership-aware plan, expected-byte checks, transaction lock and rollback, and it refuses locally modified or unowned installed files. Compatibility inputs are included in the dry-run plan token and rechecked under the transaction lock immediately before writes. It cannot combine with `--force` or `--mcp`, and is unavailable for first installation or section-specific configuration. Open or parked records do not need to be completed or archived.
+When the new release does a stage you already finished differently and nothing
+of yours changed, your work stands and nothing asks you to redo it. If the stage
+now needs a document it did not need before, your next step says so once, for
+example "AI-DLC now does Functional Design differently from when yours ran; your
+work stands, and `/aidlc --stage functional-design` goes back to it (the stages
+after it reopen too)." Otherwise it is not said, and `/aidlc --status` shows that
+line. A change to your own work keeps its usual question.
 
-This is not a promise of a whole-runtime atomic switch for already executing readers: the existing transaction replaces files individually and rolls back failed writes. Apply in an isolated worktree, inspect the installation diff and verify its consumers before accepting the updated committed payload. Plugin synchronization retains its separate ownership contract; this flag validates the core refresh with the currently composed plugin contracts, not an unrelated subsequent plugin redesign.
+When the files came from another release, the next line says how to go back:
+
+```
+  To go back: `aidlc config --pin 2.9.0 --yes` (this pins the version for everyone on the project; `aidlc config --unpin` removes the pin).
+```
+
+On a project that is already pinned it gives only the `--pin` part. On a
+copied project the line names the earlier release's file instead: get
+`aidlc-copy-runtime-2.9.0.tar.gz` and its `.sha256` into one folder, then run
+`bun .claude/tools/aidlc.ts config --from <that file> --yes`. A harness
+added beside open work comes from the files you name, and its line names the
+folder it added (`Added .codex. Your open work (...) carries on.`); no command
+removes a harness, so there is no undo line.
 
 Refresh preserves:
 
@@ -1000,6 +1158,26 @@ Refresh preserves:
   the `package.json`, `.gitignore`, and `node_modules/` (links included)
   opencode writes under `.opencode/` at its first start: config never copies,
   owns, or removes these
+- the agent files in `.kiro/agents` that Kiro CLI upgraded for its 3.0 engine
+  (Kiro keeps each file it replaced beside it as `.json.bak`, then
+  `.json.bak.1` and on): a refresh keeps them as Kiro left them, says so in one
+  line, and brings in the rest of the release; `aidlc config --harness kiro-v2
+  --force` takes the release's versions, and Kiro upgrades them again the next
+  time it starts on its 3.0 engine. When the release changes what such a file
+  allows (it drops an allow entry or adds a deny entry the file Kiro upgraded
+  from had), the refresh puts the release's version back by itself, provided
+  Kiro upgrades it again by itself at its next 3.0 start (its auto-upgrade is
+  on: `chat.enableAutoAgentUpgrade` is true in your own Kiro settings, as
+  **Enable auto-upgrade** at Kiro's first 3.0 start saves it), that file is
+  the one AI-DLC wrote there, and nobody changed Kiro's copy since Kiro wrote it
+  (the `kiroUpgrade` stamp Kiro writes into the file still matches it; for a
+  copy Kiro did not stamp, every field but `tools`, `hooks` and `permissions`
+  is still the file's own); otherwise it keeps Kiro's copy and says, in one line,
+  that the file still allows what an older release allowed and that `--force`
+  takes the release's version. When the release no longer ships such a file,
+  the file Kiro upgraded from is the one AI-DLC wrote there and its stamp still
+  matches, the refresh removes it like any file the release no longer ships,
+  keeps Kiro's backups of it, and says so in one line
 
 Under `aidlc/`, install and refresh copy only those seeds. The clone identity,
 sessions, engine health, and other per-machine state are never copied from the
@@ -1039,8 +1217,12 @@ For Claude, refresh restores AI-DLC hook registrations to their shipped
 events, matchers, and commands, then appends your own hook groups. It puts the
 shipped `permissions.allow` entries first and keeps your additional allow
 entries, `deny`, `ask`, and other permission keys. Retired shipped allow
-entries are not removed automatically. A missing or AI-DLC `statusLine` is
-refreshed; your custom non-AI-DLC statusline is kept. `companyAnnouncements`
+entries are not removed automatically. A status line your team set there is
+kept. AI-DLC's own `statusLine` is no longer shipped in this file: a refresh
+takes it out, and each clone that had it keeps it in that person's own
+`.claude/settings.local.json` (said once when it covers their own status line).
+Otherwise it appears only when someone turns it on with `--statusline on`.
+`companyAnnouncements`
 is refreshed when absent or still matching its shipped baseline, otherwise
 your value is kept. Delete either custom key and refresh to take the shipped
 one. Environment and other top-level settings (including `disableAllHooks`)
@@ -1051,14 +1233,18 @@ answers.
 settings key by key: `developer_instructions`, `sandbox_mode`,
 `suppress_unstable_features_warning`, `tool_output_token_limit`, and the keys
 it ships in the `[shell_environment_policy]`, `[sandbox_workspace_write]`, `[agents]`,
-`[features]`, `[tools]`, and `[tui]` tables. A refresh, including those
+`[features]`, and `[tools]` tables. AI-DLC's `[tui]` `status_line` is the
+project's choice (`--statusline on|off`): a refresh never ships, retires or
+changes it. A refresh, including those
 accompanying provider, scope, or model answers, changes only those keys and
 keeps every other byte: your own keys (also inside AI-DLC's tables), your own
 tables (such as `[agents.<role>]` or `[mcp_servers.<name>]`), comments, order,
 and spelling. An AI-DLC value nobody changed takes the release's value; a value
 you changed stays yours, with a note when a release ships a different one
 (delete the key and refresh to take it); a deleted AI-DLC key comes back, with
-a note. The active space's `AIDLC_RULES_DIR` stays as it is. A project that
+a note. An `AIDLC_RULES_DIR` value an earlier release shipped is emptied, at
+whichever space a switch left it, and your own keys in its table stay; a folder
+of your own there stays yours. A project that
 already has its own `.codex/config.toml` keeps it on first install, and AI-DLC
 adds its settings. A file the refresh cannot merge safely (it does not parse,
 or uses one of AI-DLC's table names for something else, such as an array of
@@ -1068,7 +1254,7 @@ source instead of the project's copy.
 
 Human output prints `Note:` when AI-DLC entries in `.claude/settings.json` or
 `.codex/config.toml` were restored or added, and when your own value for one of
-them (a custom Claude statusline or announcement, or a Codex key) was kept
+them (a custom Claude announcement, or a Codex key) was kept
 while this release ships a different one; JSON output exposes the same
 messages in `data.notes`. To restore them, use `aidlc config --harness claude`
 or `aidlc config --harness codex`, not the bare interactive setup walk.
@@ -1085,8 +1271,9 @@ the entries AI-DLC wrote.
 |---------|-----------|--------|
 | `.gitignore` | All | Own one marked AI-DLC block containing the union of installed harnesses' shipped entries; preserve every byte outside it |
 | `.mcp.json` / `mcpServers` | Claude | Add or remove only consented, baseline-owned entries; preserve user keys and overrides |
+| `.kiro/settings/mcp.json` / `mcpServers` | Kiro CLI | Per server, as `.mcp.json`: follow the release only for AI-DLC's servers you have not changed; keep the servers you add and a shipped server you turn on; a file the project already had at setup is merged, not refused |
 | `AGENTS.md` | Kiro CLI, Kiro IDE, Codex, Cursor, OpenCode, Copilot | One marked block; harness-neutral and shared (`shared: "identical"`) except Copilot, whose block carries its `@`-imports; preserve project instructions |
-| `opencode.json` | OpenCode | `json-entries`: add AI-DLC's entries (`$schema`, its `skills.paths` and `instructions` strings, its `permission` rules) only where absent, and a permission map's `"*"` rule only when the map has none, first, so the team's rules after it still decide; keep the team's model, provider, own instructions and rules, comments, and layout; record what AI-DLC wrote, follow or retire only entries still holding that value. A file AI-DLC wrote whole in an earlier release is adopted. The copy runtime leaves this file out; its setup (or the first session where setup never ran) adds AI-DLC's part |
+| `opencode.json` | OpenCode | `json-entries`: add AI-DLC's entries (`$schema`, its `skills.paths` and `instructions` strings, its `permission` rules) only where absent, its rules for the team's own commands (the asks before `rm -r...` and `git push`) first in a map so the team's rules after them still decide; keep the team's model, provider, own instructions and rules, comments, and layout; record what AI-DLC wrote, follow or retire only entries still holding that value. A file AI-DLC wrote whole in an earlier release is adopted. The copy runtime leaves this file out; its setup (or the first session where setup never ran) adds AI-DLC's part |
 | `.vscode/settings.json` | Copilot | `jsonc-settings`: add `chat.agent.maxRequests` (200) only when the project does not set it; never change a value someone else set, other keys, or comments; record only what AI-DLC added, and on retirement remove it only while it holds the value AI-DLC wrote; once added, a key the team takes out of a file it keeps is not added back. The copy runtime leaves this file out |
 
 **More than one harness in a project.** Harnesses may coexist when their engine
@@ -1101,14 +1288,25 @@ stays exclusive: pairing it with another harness that ships that block is refuse
 with `cannot coexist in one project`, regardless of which is installed first.
 Kiro CLI and Kiro IDE still share `.kiro/`, and OpenCode and Copilot share `.aidlc/`,
 so those pairs cannot coexist. Kiro CLI and Kiro IDE can replace each other
-instead: in a project that has one of them, `aidlc config --harness kiro-ide`
-(or `--harness kiro`) switches `.kiro/` to the other in place. The switch is a
+instead: in a project that has one of them, `aidlc config --harness kiro`
+(or `--harness kiro-v2`) switches `.kiro/` to the other in place. A plain
+`aidlc config` refresh keeps whichever Kiro harness the project has; on a Kiro
+CLI (V2) project, `--harness kiro` switches it to Kiro (at a terminal it asks
+first; with `--yes` it says so once and switches; without a terminal, or
+under `--quiet` or `--json`, it changes nothing and prints both commands, the
+switch with `--yes` and the refresh with `--harness kiro-v2`; a dry run's
+`--plan-token` applies the switch as planned), so a script that refreshes
+a Kiro CLI (V2) project passes `--harness kiro-v2`. The switch is a
 refresh planned from the installed row's ownership baseline: it removes the files
 only that row shipped, keeps `aidlc/`, reports a locally modified file it would
 replace or remove as a conflict, and, like any refresh, is done while work is open.
-Switching to `kiro-ide` names every `.kiro/hooks/*.json` file AI-DLC does not
-own: Kiro runs those on its v3 engine, which the switch pins in
-`.kiro/settings/cli.json`, and in Kiro IDE. When there is one, the switch applies
+An agent file in `.kiro/agents` that Kiro CLI upgraded for its 3.0 engine is not
+a local change when the file Kiro upgraded from is the one AI-DLC wrote and
+nobody changed Kiro's copy since (its `kiroUpgrade` stamp still matches it):
+switching to Kiro removes it with the rest, keeps Kiro's `.json.bak`
+backups, and says so in one line. A copy Kiro did not stamp stays a conflict.
+Switching to Kiro names every `.kiro/hooks/*.json` file AI-DLC does not
+own: Kiro runs those on its v3 engine (`kiro-cli --v3`) and in Kiro IDE. When there is one, the switch applies
 only with your approval of that exact set of files: answer the prompt in a
 terminal, or run the switch with `--dry-run`, review the files, and apply it with
 the `--plan-token` that dry run prints. A hook file added, removed, renamed, or
@@ -1176,14 +1374,12 @@ is exactly what a release shipped as its own. opencode's entries in
 `opencode.json` arrive from the same folder at the same moment.
 
 Known unmarked files and JSON entries from historical shipped projections are
-adopted only when their exact recorded SHA-256 signature matches. Unknown or
-modified unmarked `.gitignore` content remains user-owned, including AI-DLC
-comments and rules. Config preserves that
-content as a prefix and appends a fresh managed block; no rename or deletion
-is needed. Other modified legacy lookalikes, including ambiguous AI-DLC
-content in `AGENTS.md`, remain refused. A `.gitignore` that is not valid UTF-8
-also remains untouched and requires an encoding conversion before config can
-merge it safely.
+adopted only when their exact recorded SHA-256 signature matches. Any other
+unmarked content is the team's, whatever it says about AI-DLC: config preserves
+it as a prefix and appends a fresh managed block; no rename or deletion is
+needed. A root file that is not valid UTF-8 (`.gitignore`, `AGENTS.md` or any other
+AI-DLC merges into) remains untouched and requires an encoding conversion before
+config can merge it safely.
 
 Inside a Git repository, config also checks whether a user-owned rule hides
 committed workflow records, including during `--dry-run`. A rule such as
@@ -1202,7 +1398,7 @@ change doctor's exit code and is absent when no records are hidden or Git
 cannot check the project.
 
 `--force` can replace a modified, baseline-owned managed block or managed
-harness file. It cannot adopt ambiguous unmarked content or overwrite a
+harness file. It cannot overwrite a
 user-owned JSON value, including the team's own entries in `opencode.json`. Malformed JSON, malformed or duplicate
 markers, non-regular-file targets, and retired owned content whose integrity
 cannot be proved are hard conflicts.
@@ -1223,8 +1419,8 @@ Successful config prints the host-specific next step:
 | Harness | Next step |
 |---------|-----------|
 | Claude Code | Open Claude Code in this project (if it is already open in this folder, exit it and start it again) and run `/aidlc --doctor` |
-| Kiro CLI | Run `kiro-cli chat`, then `/aidlc --doctor` |
-| Kiro IDE | Open this project in Kiro IDE; if the Restricted Mode banner shows at the top of the window and you know what is in this folder, select Manage on it, then Trust; run `Developer: Reload Window` from the Command Palette (Ctrl+Shift+P, or Cmd+Shift+P on macOS), choose the aidlc agent in the chat panel's agent picker, then run `/aidlc --doctor` (in Kiro CLI, start `kiro-cli` in the project instead and run `/aidlc --doctor`) |
+| Kiro CLI | Run `kiro-cli --v2` (Kiro CLI 2.21.4 or later; for an older one, see [Kiro CLI](harnesses/kiro-cli.md#prerequisites)), then `/aidlc --doctor` |
+| Kiro IDE | Open this project in Kiro IDE; if the Restricted Mode banner shows at the top of the window and you know what is in this folder, select Manage on it, then Trust; run `Developer: Reload Window` from the Command Palette (Ctrl+Shift+P, or Cmd+Shift+P on macOS), choose the aidlc agent in the chat panel's agent picker, then run `/aidlc --doctor` (in Kiro CLI, start `kiro-cli --v3` in the project instead; if Kiro asks whether you trust this workspace and you know what is in this folder, choose "Trust, continue"; then run `/aidlc --doctor`) |
 | Codex CLI | Run `codex` (when it asks about hooks, choose Trust all and continue), then `$aidlc --doctor` |
 | OpenCode | Run `opencode`, then `/aidlc --doctor` |
 
@@ -1238,6 +1434,7 @@ Successful config prints the host-specific next step:
 | `aidlc config --channel [stable\|preview]` | Set the machine release channel, or print it when no value is given. |
 | `aidlc config --pin <version>` | Install and validate the exact version when needed, then atomically write `.aidlc-version`, record its machine-local resolved target, and register the project pin without changing the machine-active pointer. |
 | `aidlc config --unpin` | Remove `.aidlc-version`, its machine-local resolved target, and its registry entry. |
+| `aidlc config --statusline <on\|off>` | Show AI-DLC's progress in the status line, or take it out, and say so in one line. Claude Code: your own `.claude/settings.local.json`. Codex: the shared `.codex/config.toml`, for everyone in the project. `--harness <claude\|codex>` picks one when both are installed. |
 | `aidlc config ... --download` | Let any config command fetch the release the project needs when this machine lacks it: the pinned release, otherwise the one its files already have. Natively it installs and registers that release, as `--pin` does; on a copied project it downloads `aidlc-copy-runtime-X.Y.Z.tar.gz`. It verifies the checksum, and the release attestation when `gh` is installed, then finishes the command. `--release-base-url` and `--ca-bundle` choose a mirror. At a terminal config asks instead; scripts need the flag. |
 
 Human lifecycle output states each completed fact. Update reports the
@@ -1266,7 +1463,35 @@ Update downloads and fully validates a candidate before changing the active
 pointer. Failed updates automatically restore the prior consistent
 installation. A successful update retains the prior active version and every
 registered project pin, then prunes older unprotected versions automatically.
-There is no public rollback or retained-version management command.
+There is no separate rollback or retained-version management command; to go
+back, see [Go Back to an Earlier Version](#go-back-to-an-earlier-version).
+
+## Go Back to an Earlier Version
+
+To put this machine back on an earlier release, run `aidlc use <version>`, for
+example `aidlc use 2.10.0`. It downloads that release if the machine does not
+have it, then says `Now using aidlc 2.10.0 (was 2.11.0; retained locally, no
+project changes).` Every project without a pin now runs on 2.10.0; run
+`aidlc config` in a project to bring its files to 2.10.0 as well.
+`aidlc use 2.11.0` goes forward again.
+
+To put one project back for everyone on it, pin it, then refresh it:
+
+```bash
+aidlc config --pin 2.10.0 --yes
+aidlc config --yes
+git add .aidlc-version
+```
+
+The pin switches the project to 2.10.0; the refresh brings its files to that
+release and lists any file 2.10.0 does not ship. `aidlc config --unpin` makes
+the project follow the machine again ([Project Pins and CI](#project-pins-and-ci)).
+
+Releases before 2.8.0 have no native release, so `aidlc use` and
+`aidlc config --pin` cannot select them; they stop with `No published native
+release is available yet`. A copied project goes back with the earlier
+release's `aidlc-copy-runtime-X.Y.Z.tar.gz` (published from 2.9.0), as
+[Refresh Safety](#refresh-safety) shows.
 
 ## Release Channels
 
@@ -1352,7 +1577,7 @@ schema. Use the preview channel on projects you can recreate, or pin them.
 ## Project Pins and CI
 
 ```bash
-aidlc config --pin 2.5.45
+aidlc config --pin 2.10.0
 git add .aidlc-version
 ```
 
@@ -1379,10 +1604,10 @@ updated first.
 
 A pin switches the engine that serves the project at once, but the project's
 own files stay at the version they were last refreshed to until the next
-`aidlc config`. While work is open, `config --pin` and `config --unpin` are
-done as asked; when the project's files are on another version than the one it
-now follows (or on a release from before versions were recorded), the reply
-ends with "Run `aidlc config` to finish updating this project."
+`aidlc config`. `config --pin` and `config --unpin` are done as asked, also
+while work is open; when the project's files are on another version than the
+one it now follows (or on a release from before versions were recorded), the
+reply ends with "Run `aidlc config` to finish updating this project."
 
 A fresh clone or CI runner installs the committed version before config:
 
@@ -1403,6 +1628,15 @@ rm -rf "$tmp"
 aidlc config --pin "$version" --project-dir "$PWD" --quiet
 aidlc config --project-dir "$PWD" --harness claude --mcp none --quiet
 aidlc doctor --project-dir "$PWD" --quiet
+```
+
+A CI container job or agent sandbox that runs as root, with root as its only
+user, adds `--allow-root` to the installer line. The pinned version must be a
+release that ships `--allow-root`: the recipe runs that tag's own `install.sh`,
+and an older one rejects the flag as an unknown argument.
+
+```bash
+sh "$tmp/install.sh" --version "$version" --quiet --yes --allow-root
 ```
 
 ## Harness Selection
@@ -1480,9 +1714,15 @@ The native release client honors `HTTPS_PROXY` / `https_proxy` and
 `curl.exe`.
 
 Bare help and management listings never refresh the network. They may display
-a valid cached update notice. Interactive human `aidlc doctor` may refresh
-stale or absent metadata within 750 ms. Non-TTY, `--json`, and `--quiet`
-doctor runs are cache-only unless `--check-updates` is explicit.
+a valid cached update notice. Interactive human `aidlc doctor`, and
+`aidlc doctor --export` with or without a terminal, may refresh stale or
+absent metadata within 750 ms. Other non-TTY, `--json`, and `--quiet` doctor
+runs are cache-only unless `--check-updates` is explicit. A doctor update row
+read from a check older than 24 hours names the version as the latest known
+one and says how long ago it was checked. On a machine that has never checked,
+a refresh that fails inside that budget leaves the row passing as not checked
+yet, naming `aidlc update --check`; only an explicit `--check-updates` reports
+the failed check.
 `doctor --check-updates` and `update --check` use a five-minute metadata
 backstop. Preview discovery and metadata downloads share the same deadline;
 looking up the preview release does not restart the timeout.
@@ -1505,6 +1745,32 @@ activation. When a compatible GitHub CLI is available, installation also
 verifies the signed provenance and rejects a failed verification.
 
 ## Plugins
+
+AI-DLC's own plugins (test-pro and those that follow) share one `aidlc-plugins`
+catalogue, which a native install keeps at one path across releases:
+`${XDG_DATA_HOME:-$HOME/.local/share}/aidlc/plugins/` on Linux and macOS,
+`%LOCALAPPDATA%\aidlc\plugins\` on Windows. The installer prints the full path
+after it installs, and `aidlc doctor --verbose` names it under Machine. Add it
+once to your tool:
+
+```bash
+/plugin marketplace add <path>          # Claude Code
+codex plugin marketplace add <path>     # Codex CLI
+```
+
+Install, `aidlc update`, `aidlc use <version>` and `aidlc rollback` refresh the
+catalogue from the release they make active, writing it whole and then swapping
+it in, so the tool never reads half of one. After an update, the tool's own
+marketplace update (`/plugin marketplace update aidlc-plugins` in Claude Code)
+reads the new plugin versions from the same path. If the folder cannot be
+replaced, the command still succeeds, the folder keeps the earlier catalogue,
+and one line says why and what to do: on Windows, when a program may hold a
+file in it, close Claude Code and Codex and run `aidlc use <version>`; for any
+other cause, such as a full disk, fix that and run it. A file you put in the
+folder yourself is never replaced; the line names it instead. A machine that updated to this release
+with an earlier release's `aidlc update` gets the folder at its next `aidlc
+use <version>` or update. The source checkout's `dist/plugins/` and the copy
+runtime's `plugins/` are the same catalogue for the copy channel.
 
 `aidlc doctor` reports installed-versus-composed plugin state. Plugin changes
 are project configuration and converge through `aidlc config`; there is no
@@ -1551,7 +1817,11 @@ yes, and the file is kept beside it as `aidlc.bak-<time>`.
 
 `aidlc --help` prints exactly the six public commands. Each public command also
 has side-effect-free command help: `aidlc <command> --help` (or `-h`) for
-`config`, `doctor`, `version`, `update`, `use`, and `uninstall`. Config-level
+`config`, `doctor`, `version`, `update`, `use`, and `uninstall`. Command help
+names every option that command accepts, with a one-line meaning for each,
+grouped so download and mirror options and the options that only shape output
+read separately from the rest; `use` also describes the version it takes. The
+intent is that you can run a command correctly from its help alone. Config-level
 help names all six policy sections; `aidlc config <section> --help` keeps the
 section-specific help. `aidlc help --all` reveals the hidden `engine` and
 `system` namespaces and points to
@@ -1572,32 +1842,36 @@ Abandoned owner-private staging is swept only after lock and ownership checks.
 Unsupported directory `fsync` is tolerated, so a successful command alone
 cannot promise metadata durability after a crash.
 
-Transaction locking prefers hard links and automatically falls back to an
-owner-stamped directory. Both occupy `.aidlc-transaction.lock`, preserving
-exclusion with live legacy file owners. A dedicated owner-stamped gate in the
-local temporary directory serializes transactions and ownership changes.
-This supports only cooperating processes on **one continuously running mount
-on one host**, sharing the same canonical project path, local temporary
-directory (`TMPDIR` on Unix), and PID namespace. It is not distributed locking
-across hosts or independent mounts, even when they access the same bucket.
+Transaction locking uses one owner-stamped directory, `.aidlc-transaction.lock`
+in the project, made with an exclusive create on every storage; it also keeps
+out a live file lock left by an older release. A dedicated owner-stamped gate in
+the local temporary directory serializes transactions and ownership changes
+among commands that share it. Commands with different temporary directories,
+WSL beside Windows on one folder, or two computers on a shared folder are kept
+apart by the project lock itself: a lock stamped by another computer is never
+cleared from this one, and the command names the folder to delete once nothing
+is running there. AI-DLC makes no hard links: a document copy or a generated
+file is put at its name with an exclusive create and a rename, and never
+replaces a file another command put there first. This is not distributed
+locking across independent mounts that do not share one view of the folder,
+even when they access the same bucket.
 
-The first-run probe is an early capability check; directory-lock transactions
-also probe before applying changes. Neither replaces validation or real lock
-acquisition, and passing calls cannot prove atomic rename or crash durability.
+The first-run probe is the capability check, and transactions do not repeat
+it. It does not replace validation or real lock acquisition, and passing calls
+cannot prove atomic rename or crash durability. A transaction whose commit
+rename the storage does not support stops with the same storage line and fix.
 Compatibility depends on the driver and its actual semantics:
 
 | Storage | Compatibility boundary |
 | --- | --- |
 | Local ext4 or XFS, including EC2 EBS volumes | Suitable project storage for the required filesystem operations. |
-| POSIX-like mount without hard links | Config and transactions can run with directory locking if all remaining requirements hold, within the single-mount scope above. |
+| Storage without hard links, such as exFAT, network shares, or WSL `/mnt/c` | Config and transactions run as on local storage when the remaining requirements hold; AI-DLC makes no hard links. |
 | Mountpoint for Amazon S3 | Full workflows remain incompatible: directory rename and general mutable-file updates are unavailable. S3 Express single-file rename does not remove those limits. See [Mountpoint filesystem semantics](https://github.com/awslabs/mountpoint-s3/blob/5e400f788f8cbca028f3314d84ef2df2c7fcf536/doc/SEMANTICS.md). |
 | s3fs-fuse | Rename uses copy then delete and is not atomic. Passing probes does not establish support for general crash-safe AI-DLC transactions. See [s3fs limitations](https://github.com/s3fs-fuse/s3fs-fuse/blob/fc5778fe83b533a9beed9383f3ce99de76207ef9/README.md#L153-L163). |
 
-The fallback removes the transaction lock's hard-link requirement; separate
-operations can still require hard links, including workspace sync when it
-publishes generated files. Upstream semantics and simulated failures are not
-live validation of a particular S3 mount. Use compatible local/EBS project
-storage when a mount cannot meet these requirements; see [filesystem troubleshooting](15-troubleshooting.md#config-fails-with-a-hard-link-error).
+Upstream semantics and simulated failures are not live validation of a
+particular S3 mount. Use compatible local/EBS project storage when a mount
+cannot meet these requirements; see [filesystem troubleshooting](15-troubleshooting.md#config-fails-with-a-storage-error).
 For foreign or incomplete lock owners, follow [Transaction lock ownership](15-troubleshooting.md#transaction-lock-ownership)
 before any manual recovery.
 
@@ -1622,8 +1896,8 @@ again (with `--purge` if the original used it):
   again from the files on disk, so a file edited after confirmation is kept.
 - If removal had begun, the same plan resumes. Files edited since are kept.
 
-The `aidlc` command itself (`aidlc.cmd`, its shim, the active-version pointers,
-and the active `aidlc.exe`) is removed last, after every other file and the
+The `aidlc` command itself (`aidlc.cmd` and `aidlc.exe` in bin, the shim, the
+active-version pointers, and the active `aidlc.exe`) is removed last, after every other file and the
 User PATH entry, so a failed cleanup still leaves a command to retry it. Because
 the PATH entry may already be gone, run that command by its full path, which
 `aidlc doctor` prints (by default
@@ -1653,11 +1927,14 @@ the practices you affirmed, and `project.md`, where your project rules and
 learnings go) and your chosen space (`aidlc/active-space`). Copying a newer
 release, or a second harness, over a project therefore keeps them. In a fresh
 copy, AI-DLC creates the two memory files from its bundled copy the first time
-you start work. Bun is the runtime prerequisite; the native
-`aidlc` executable is not required. Markdown analysis (summary confirmation,
+you start work. Use **Bun 1.4.4 or newer**, which includes the Brotli decoder fix
+for CVE-2026-111497; the native `aidlc` executable is not required. Updating
+a copied runtime does not update the Bun installation that runs it.
+Native installations instead need an AI-DLC release built with the fixed Bun:
+updating a separate Bun installation does not replace the runtime embedded in
+the `aidlc` executable. Markdown analysis (summary confirmation,
 Plan Approval tags, and the claim-sources sensor) uses Bun's built-in
-`Bun.markdown` renderer, so it needs Bun 1.3.8 or newer and follows the installed
-Bun's rendering:
+`Bun.markdown` renderer and follows the installed Bun's rendering:
 
 ```bash
 tag=vX.Y.Z
@@ -1696,6 +1973,11 @@ script, to download that exact `aidlc-copy-runtime-X.Y.Z.tar.gz`, verify its
 command. Without network access, the error's `offline:` line names the file
 to fetch elsewhere and pass with `--from`.
 
+When a refresh (`config` with `--from` or `--download`) brings in files from a
+newer release than the project's own tool, that release's own config runs the
+command as you typed it, and a `Note:` line names the release whose tool ran
+it. A same or older release is refreshed by the project's own tool.
+
 The archive is assembled from the freshly regenerated Bun projections under
 `dist/`. Its generated hooks and tools invoke the included TypeScript through
 Bun. The native installers and lifecycle commands instead consume
@@ -1730,7 +2012,171 @@ and plugin projections locally. Neither generated root is committed. Direct
 `bun .../tools/*.ts` calls remain source/development and debugging mechanisms,
 not a second native lifecycle interface.
 
+## Remove AI-DLC from a Project
+
+No command removes AI-DLC from one project. `aidlc uninstall` removes the
+machine install, for every project on this machine, and leaves project files
+alone. The steps below take a project back
+to how it was before AI-DLC was added to it. They keep your own harness files and
+settings, which share folders and files with AI-DLC (a `.kiro/` you had before,
+your own `.claude/settings.json` entries, your part of `AGENTS.md`). Close the
+harness in the project first.
+
+### 1. Keep your records
+
+If the project is pinned (it has a `.aidlc-version` file), unpin it first,
+while AI-DLC is still installed: `aidlc config --unpin`, or in a copied project
+`bun <harness folder>/tools/aidlc.ts config --unpin`. That also clears the
+machine's record of the pin, which deleting the file does not.
+
+On Claude Code, turn AI-DLC's status line off too, while AI-DLC is still
+installed: `aidlc config --statusline off`, or in a copied project
+`bun .claude/tools/aidlc.ts config --statusline off`. When AI-DLC's status line
+replaced one of your own, that is the only step that puts yours back: AI-DLC
+keeps it in `aidlc.settings.local.json`, which you delete below.
+
+`aidlc/` holds your work: each intent's state, artifacts and audit trail, and
+the space's memory and knowledge. Archive it before you delete it. In a POSIX
+shell:
+
+```bash
+tar -czf aidlc-records.tar.gz aidlc && rm -rf aidlc
+```
+
+In PowerShell (Windows 10 and later include `tar`):
+
+```powershell
+tar -czf aidlc-records.tar.gz aidlc; if ($?) { Remove-Item -Recurse -Force aidlc }
+```
+
+Delete these too if they are there: `aidlc.settings.json`,
+`aidlc.settings.local.json`, and the `aidlc.settings.local.json` line config
+may have added to `.git/info/exclude`.
+
+### 2. Delete AI-DLC's own files
+
+`aidlc config` records what it installed in
+`<harness folder>/tools/data/aidlc-manifest.json`: every file with its SHA-256,
+and the shared files it added its part to. This script reads that record and
+deletes only the files it lists whose content still matches, counting a file
+whose only difference is its line endings (a CRLF checkout) as unchanged. It
+keeps and lists a file you changed, never deletes a file the record does not
+list apart from the few AI-DLC generates while it runs, and removes only the
+folders it emptied. Save it as `remove-aidlc.cjs` in the folder that holds the
+project, next to the project folder rather than inside it:
+
+```js
+// Usage, from the project root: node <path to>/remove-aidlc.cjs <harness folder>   (Bun works too)
+const fs = require("node:fs");
+const path = require("node:path");
+const { createHash } = require("node:crypto");
+const dir = process.argv[2];
+const manifestPath = path.join(dir, "tools", "data", "aidlc-manifest.json");
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+if (manifest.shippedOnly !== true) {
+  console.log(`${manifestPath} predates the shipped-files-only record. Refresh it first with aidlc config --harness <harness>, then run this again.`);
+  process.exit(1);
+}
+const sha = (bytes) => "sha256:" + createHash("sha256").update(bytes).digest("hex");
+// A file whose only difference is its line endings (a CRLF checkout) is unchanged.
+const unchanged = (file, hash) => {
+  const bytes = fs.readFileSync(file);
+  const lf = bytes.toString("latin1").replaceAll("\r\n", "\n");
+  return [bytes, Buffer.from(lf, "latin1"), Buffer.from(lf.replaceAll("\n", "\r\n"), "latin1")].some((form) => sha(form) === hash);
+};
+const roots = manifest.rootContributions ?? {};
+const shared = new Set([...Object.keys(manifest.entries ?? {}), ...Object.keys(roots)]);
+const owned = Object.entries(manifest.files).filter(([file]) => !shared.has(file));
+for (const [file, part] of Object.entries(roots)) if (part.policy === "whole-file") owned.push([file, part.hash]);
+const removed = [];
+for (const [file, hash] of owned) {
+  if (!fs.existsSync(file)) continue;
+  if (unchanged(file, hash)) { fs.rmSync(file); removed.push(file); }
+  else console.log(`kept, changed since install: ${file}`);
+}
+// Files AI-DLC generates while it runs, which the record does not list.
+for (const file of ["harness.json", "scope-grid.json", "stage-graph.json"].map((name) => path.join(dir, "tools", "data", name))
+  .concat(path.join(dir, "steering", "aidlc-active-memory.md"), manifestPath)) {
+  if (fs.existsSync(file)) { fs.rmSync(file); removed.push(file); }
+}
+// Remove only the folders this emptied, never one that holds anything else.
+for (const file of removed) {
+  for (let folder = path.dirname(file); folder !== "." && folder !== path.dirname(folder); folder = path.dirname(folder)) {
+    try { fs.rmdirSync(folder); } catch { break; }
+  }
+}
+for (const file of shared) if (fs.existsSync(file)) console.log(`edit by hand: ${file}`);
+```
+
+Run it from the project root with Node.js or Bun, once for each harness folder
+in the project. The same commands work in a POSIX shell and in PowerShell:
+
+| Harness | Run |
+|---------|-----|
+| Claude Code | `node ../remove-aidlc.cjs .claude` |
+| Kiro CLI, Kiro IDE | `node ../remove-aidlc.cjs .kiro` |
+| Codex CLI | `node ../remove-aidlc.cjs .codex` |
+| Cursor | `node ../remove-aidlc.cjs .cursor` |
+| OpenCode, GitHub Copilot | `node ../remove-aidlc.cjs .aidlc` |
+
+If it says the record predates the shipped-files-only record, an earlier
+release wrote it: refresh with `aidlc config --harness <name>` first (in a
+copied project, `bun <harness folder>/tools/aidlc.ts config --harness <name>`),
+then run the script again. Review any file it kept: it is an AI-DLC file you edited, so
+keep it only if you still want your edit.
+
+### 3. Take AI-DLC's part out of shared files
+
+The script lists each shared file still holding AI-DLC's part. If git has the
+project from before AI-DLC was added, restoring them from that commit is the
+quickest way, for example
+`git checkout <commit> -- .gitignore AGENTS.md .claude/settings.json`. That also
+undoes any change you made to them since, so check `git diff --cached` before
+you commit. Otherwise remove AI-DLC's part by hand. Remove a value only while it
+still holds what AI-DLC wrote; a value your team changed is yours, so keep it:
+
+| File | Remove |
+|------|--------|
+| `.gitignore` | The lines from `# BEGIN AI-DLC:gitignore` to `# END AI-DLC:gitignore`, and the blank line above them. Several harnesses share this one block. |
+| `AGENTS.md` | The lines from `<!-- BEGIN AI-DLC:agents -->` to `<!-- END AI-DLC:agents -->`, and the blank line above them. |
+| `.claude/settings.json` | `companyAnnouncements`, unless your team set its own. `statusLine` when its command runs `aidlc`. Every hook group whose command runs `aidlc` (`aidlc engine hook ...`, or `bun "$CLAUDE_PROJECT_DIR/.claude/tools/aidlc.ts" engine hook ...` in a copied project). The `permissions.allow` entries that name `aidlc`, and `Edit(/**)`, `Task` and `WebSearch` unless you added them. `env` keys that start with `AIDLC_` or `AWS_AIDLC_`, and any provider keys you chose in `aidlc config providers`. |
+| `.claude/settings.local.json` | A `statusLine` whose command runs `aidlc`; AI-DLC's status line lands here when it is turned on. Step 1's `--statusline off` takes it out. |
+| `.mcp.json` (Claude Code), `.kiro/settings/mcp.json` (Kiro CLI) | The MCP servers AI-DLC ships (`context7`, `aws-mcp`, `aws-pricing`, `aws-iac`, `aws-serverless`), unless you set one up yourself. Kiro CLI gets them by default, turned off; Claude Code gets them when you turned them on, by answering yes when `aidlc config` asked at a terminal or with `config project --mcp defaults`. |
+| `.codex/config.toml` | `developer_instructions`, `sandbox_mode`, `suppress_unstable_features_warning` and `tool_output_token_limit`; AI-DLC's keys in `[shell_environment_policy]` (`set`, holding `AIDLC_RULES_DIR`), `[sandbox_workspace_write]` (`network_access`), `[agents]` (`max_depth`), `[features]` (`default_mode_request_user_input`), `[tools]` (`experimental_request_user_input`) and `[tui]` (`status_line`); the `#` comments directly above them; and any of those tables left empty. Keep keys you set yourself, also inside those tables. |
+| `opencode.json` (or `opencode.jsonc`) | `$schema` unless it is yours; `.aidlc/skills` in `skills.paths`; the `instructions` entries under `.aidlc/` and `aidlc/`; and AI-DLC's `permission` rules: the ones naming `.aidlc/`, `"aidlc engine *": "allow"` under `bash` (a native install), its asks before `rm -r*` and `git push *`, and the `"*"` rules earlier releases added under `edit` and `bash`, unless you wrote the same rule yourself. |
+| `.vscode/settings.json` (Copilot) | `chat.agent.maxRequests` (`200`) and `chat.useHooks` (`true`), unless you set them yourself. |
+
+Delete a file when nothing of yours is left in it: AI-DLC created it. Cursor's
+root `install.ts` and the other whole files AI-DLC wrote at the project root are
+deleted by the script in step 2. Codex keeps its trust for the project's hooks
+outside the project, in `$CODEX_HOME/config.toml` (`~/.codex/config.toml` by
+default); remove the project's entries there if you want Codex to forget them.
+
+### 4. Check
+
+`git status` shows AI-DLC's files deleted and your shared files back to what they
+held before. Searching each shared file from step 3 for `AI-DLC` and `aidlc`
+should find nothing of AI-DLC's left:
+
+```bash
+grep -n "AI-DLC\|aidlc" .gitignore AGENTS.md
+```
+
+```powershell
+Select-String -Path .gitignore, AGENTS.md -Pattern 'AI-DLC|aidlc'
+```
+
+A project copied from `aidlc-copy-runtime-X.Y.Z.tar.gz` gets the manifest when
+its setup command runs (see [Copy Channel](#copy-channel)). If that command never
+ran, there is no manifest: delete the files that are byte-identical to the
+`runtime/<harness>/` folder you copied, then follow steps 3 and 4. Copying also
+replaces files of the same name that the project already had (such as your own
+`.claude/settings.json`); restore those from git or your backup.
+
 ## Uninstall
+
+`aidlc uninstall` removes the machine install. To remove AI-DLC from one
+project, see [Remove AI-DLC from a Project](#remove-ai-dlc-from-a-project).
 
 ```bash
 aidlc uninstall
@@ -1748,7 +2194,9 @@ New installations record a full per-version `installed-files.json` inventory,
 whose hash is stored in `version.json`. Older installations use their verified
 runtime inventory where available, plus the plugin folders their release
 unpacked beside it, which carry the marker the release build wrote; other files
-without ownership evidence are kept. A shell completion counts as AI-DLC's when
+without ownership evidence are kept. The plugin catalogue's own record lists
+the files its last refresh wrote: those go, and anything else you put in that
+folder is kept. A shell completion counts as AI-DLC's when
 it is exactly what an AI-DLC release renders, so the completions an earlier
 release wrote while it updated to this one are removed, and an edited one is
 kept.
@@ -1765,7 +2213,9 @@ run preserves an earlier record, so that entry is still removed on uninstall.
 At a terminal, uninstall says what it removes and keeps, then proceeds; without
 a terminal it needs `--yes`. It refuses filesystem, home, shared-system, and
 project roots, as well as root-owned, package-manager-owned, or
-mixed-ownership commands. On Windows, a bound file list and expected checksums
+mixed-ownership commands. A root install made with `--allow-root` is removed
+with `aidlc uninstall --allow-root` (or `AIDLC_ALLOW_ROOT=1`); the opt-in is
+refused under `sudo` and when `$HOME` is not owned by root. On Windows, a bound file list and expected checksums
 are recorded before cleanup is scheduled. The worker rechecks paths and hashes,
 refuses reparse points, and deletes files individually after the running command
 exits; uninstall is done when the `aidlc` command is no longer found. An

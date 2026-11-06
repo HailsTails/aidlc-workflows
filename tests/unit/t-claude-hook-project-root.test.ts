@@ -9,7 +9,7 @@ import {
 } from "../harness/test-budget.ts";
 import { describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, relative } from "node:path";
 import {
   stateDigest,
@@ -30,9 +30,12 @@ interface Settings {
 }
 
 function settings(channel: "dist" | "dist-release"): Settings {
-  return JSON.parse(
-    readFileSync(join(REPO_ROOT, channel, "claude", ".claude", "settings.json"), "utf-8"),
-  );
+  const root = join(REPO_ROOT, channel, "claude", ".claude");
+  const shared = JSON.parse(readFileSync(join(root, "settings.json"), "utf-8")) as Omit<Settings, "statusLine">;
+  // AI-DLC's status line ships in harness.json; the person's yes puts it in
+  // their own settings.local.json with the same command (#1407).
+  const { statusLine } = JSON.parse(readFileSync(join(root, "tools", "data", "harness.json"), "utf-8")) as Settings;
+  return { ...shared, statusLine };
 }
 
 const SOURCE_ENTRY = 'bun "$CLAUDE_PROJECT_DIR/.claude/tools/aidlc.ts"';
@@ -47,13 +50,8 @@ describe("Claude hook project-root anchoring", () => {
     commands.push(expectedNative.statusLine);
     expect(commands.length).toBeGreaterThan(1);
     for (const hook of commands) {
-      if (hook.command.startsWith(`${SOURCE_ENTRY} engine `)) {
-        hook.command = `aidlc${hook.command.slice(SOURCE_ENTRY.length)}`;
-      } else {
-        const pluginRoute = /^(?:node|bun) "\$CLAUDE_PROJECT_DIR\/\.claude\/hooks\/([a-z0-9-]+\.(?:ts|mjs))"$/.exec(hook.command);
-        expect(pluginRoute, hook.command).not.toBeNull();
-        expect(existsSync(join(REPO_ROOT, "dist", "plugins", "rin", "claude", "hooks", pluginRoute?.[1] ?? "missing-hook")), hook.command).toBe(true);
-      }
+      expect(hook.command.startsWith(`${SOURCE_ENTRY} engine `), hook.command).toBe(true);
+      hook.command = `aidlc${hook.command.slice(SOURCE_ENTRY.length)}`;
     }
     expect(native.hooks).toEqual(expectedNative.hooks);
     expect(native.statusLine).toEqual(expectedNative.statusLine);
@@ -65,7 +63,6 @@ describe("Claude hook project-root anchoring", () => {
     renameSync(original, project);
     try {
       cpSync(AIDLC_SRC, join(project, ".claude"), { recursive: true });
-      mkdirSync(join(project, ".git"));
       const cwd = join(project, "app", "nested directory");
       mkdirSync(cwd, { recursive: true });
       writeFileSync(join(cwd, "source.ts"), "export const value = 1;\n");
@@ -86,9 +83,12 @@ describe("Claude hook project-root anchoring", () => {
         state_sha256: stateDigest(state),
       });
       const hooks = settings("dist").hooks.PreToolUse
-        .filter((group) => new RegExp(`^(?:${group.matcher})$`).test("Bash"))
+        // Claude Code reads "*" as every tool, and any other matcher as a pattern.
+        .filter((group) => group.matcher === "*" || new RegExp(`^(?:${group.matcher})$`).test("Bash"))
         .flatMap((group) => group.hooks);
-      const entry = hooks.find((hook) => hook.command.endsWith(" engine hook plan-approval-guard"));
+      // One process runs the PreToolUse checks (#2066), so the shipped entry for
+      // a shell call is the guard group that carries the plan-approval guard.
+      const entry = hooks.find((hook) => hook.command.endsWith(" engine hook guard-tool-call"));
       expect(entry).toBeDefined();
       const env: NodeJS.ProcessEnv = {
         ...process.env,
@@ -125,7 +125,7 @@ describe("Claude hook project-root anchoring", () => {
       const blocked = run("printf changed > source.ts");
       expect(blocked.error).toBeUndefined();
       expect(blocked.status, blocked.stderr).toBe(2);
-      expect(blocked.stderr).toContain("the engine asks the person to approve it");
+      expect(blocked.stderr).toContain("plan approval is off for this work, so it starts the build without asking anyone");
       expect(blocked.stderr).toContain("Code generation cannot modify workspace paths");
       // Claude Code's own deny comes first, with the same reason: the person
       // reads only the reason, never the hook command in front of it.
@@ -137,14 +137,18 @@ describe("Claude hook project-root anchoring", () => {
       });
       expect(afterHook.join("\n").trim()).toBe(cwd);
       expect(readFileSync(join(cwd, "source.ts"), "utf-8")).toBe("export const value = 1;\n");
-      // The hook also loads for a cd-to-root recovery attempt. Preserve the
-      // guard's existing refusal of this mutation-capable compound command.
+      // The hook also loads for a cd-to-root compound command: one that writes
+      // nothing passes (a cd changes no file), one that writes code is refused.
       const rootRelative = relative(cwd, project).split("\\").join("/");
       const recover = run(`cd "${rootRelative}" && pwd`);
-      expect(recover.status, recover.stderr).toBe(2);
-      expect(recover.stderr).toContain("Code generation cannot run mutation-capable shell command");
+      expect(recover.status, recover.stderr).toBe(0);
       expect(recover.stderr).not.toContain("Module not found");
       expect(recover.stdout.trim().split("\n").at(-1)).toBe(cwd);
+      const compound = run(`cd "${rootRelative}" && printf changed > source.ts`);
+      expect(compound.status, compound.stderr).toBe(2);
+      expect(compound.stderr).toContain("Code generation cannot modify workspace paths");
+      expect(compound.stderr).not.toContain("Module not found");
+      expect(compound.stdout.trim().split("\n").at(-1)).toBe(cwd);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

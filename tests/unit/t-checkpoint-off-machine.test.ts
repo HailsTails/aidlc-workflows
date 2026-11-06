@@ -28,6 +28,11 @@ import {
   readAuditShardEvents, reviewArtifactFingerprint,
 } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 
+// The stage's checks run once before its review or gate, and again at the gate
+// (completionChecksStep, t-checks-before-review); this file's fixture documents
+// are not written for them and its subject is not them, so they stay off here.
+process.env.AIDLC_DISABLE_SENSORS = "1";
+
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
 resetAidlcEnv();
@@ -132,7 +137,6 @@ function recordCommand(p: string) {
   }
 }
 
-// Verify, ask and approve a Unit at its checkpoint.
 function approve(p: string, unit: string): void {
   recordCommand(p);
   const checkpoint = (args: string[]) => {
@@ -242,7 +246,6 @@ function writeManifest(p: string, unit: string, paths: string[]): void {
   }));
 }
 
-// What each case does to the approved Unit alpha.
 const cases: Record<string, { what: string; act: (p: string, reviews: string[]) => void }> = {
   "manifest-changed": {
     what: "a file added to alpha's list of files after its review",
@@ -309,7 +312,6 @@ describe("t-checkpoint-off-machine: an approved Unit whose reviewed evidence can
       act(p, reviews);
       const status = checkpointStatus(p, "alpha");
       expect(status.approved, `${name}: ${JSON.stringify(status)}`).toBe(false);
-      // What the person and the agent are given next.
       const next = runOrchestrateNext(join(AIDLC_SRC, "tools/aidlc-orchestrate.ts"), p, [], { env: process.env });
       console.log(`t-checkpoint-off-machine strict ${name}: status ${JSON.stringify({ errors: status.errors, rereview: status.rereview })} next ${JSON.stringify(next.directive ?? next.stderr).slice(0, 1500)}`);
     }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);

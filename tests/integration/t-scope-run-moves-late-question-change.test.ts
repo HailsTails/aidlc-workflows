@@ -58,7 +58,7 @@ function toLateQuestion(policy: Policy): { run: ScopeRun; late: Directive } {
         if (stage === "units-generation" && !off) {
           off = true;
           agent.person.say("build the Units one at a time, but do not stop after each Unit; I will approve them together at the end");
-          const set = agent.host.bash("bun .claude/tools/aidlc-state.ts set-construction-checkpoints disabled");
+          const set = agent.host.bash(`bun .claude/tools/aidlc-state.ts set-construction-checkpoints disabled --message ${agent.latestMessageId()}`);
           if (set.status !== 0) agent.fail(`checkpoints off was refused: ${set.stdout}${set.stderr}`);
         }
         return undefined;
@@ -89,7 +89,7 @@ const rowKey = (row: { shard: string; pos: number }) => `${row.shard}#${row.pos}
 const marksOf = (agent: AgentStandIn): Marks => ({
   worked: agent.worked.length, asked: agent.asked.length, rows: new Set(auditEvents(agent.host.proj).map(rowKey)),
 });
-function movesAfter(agent: AgentStandIn, marks: Marks) {
+function after(agent: AgentStandIn, marks: Marks) {
   return {
     worked: agent.worked.slice(marks.worked).map((d) => `${String(d.stage)}/${typeof d.unit === "string" ? d.unit : "-"}`)
       .filter((w) => UNITS.some((unit) => w.endsWith(`/${unit}`))),
@@ -98,7 +98,6 @@ function movesAfter(agent: AgentStandIn, marks: Marks) {
   };
 }
 
-/** The person types their words at the late question. */
 function personAsksForTheChange(agent: AgentStandIn, late: Directive): void {
   const prompt = String((late.approve_together as { prompt?: string }).prompt ?? "");
   agent.askPerson("approval", String(late.stage), prompt, ["Approve", "Request Changes"], WORDS);
@@ -121,7 +120,7 @@ describe("a change for one Unit's stage at the one late question", () => {
       expect(ran.status, ran.stdout + ran.stderr).toBe(0);
       const final = agent.drive(agent.next());
       expect(final.kind).toBe("done");
-      const moved = movesAfter(agent, marks);
+      const moved = after(agent, marks);
       expect(moved.worked).toEqual(["nfr-design/beta", "code-generation/beta"]);
       expect(moved.asked.filter((q) => q.endsWith(" for alpha"))).toEqual([]);
       // No second learnings question at the late question (Build and Test asks its own).
@@ -154,7 +153,7 @@ describe("a change for one Unit's stage at the one late question", () => {
       expect(revised.status, revised.stdout + revised.stderr).toBe(0);
       const final = agent.drive(agent.next());
       expect(final.kind).toBe("done");
-      const moved = movesAfter(agent, marks);
+      const moved = after(agent, marks);
       expect(moved.asked.filter((q) => q.startsWith("learnings at functional-design"))).toEqual([]);
       // Every refusal met on the way named the step that went on.
       for (const refusal of agent.refusalsMet) expect(refusal.took, refusal.said).not.toMatch(/^none/);

@@ -1,19 +1,20 @@
 // harness/codex/manifest.ts — the Codex CLI distribution row.
 //
-// Projects core/ into dist/codex/.codex/ (rules → aidlc-rules, D-10) and defers
-// native shell surfaces to emit.ts (config.toml, hooks.json, trust-seed,
-// 14 agent TOMLs, the .agents/skills/ tree). Onboarding uses the shared renderer.
+// Projects core/ into dist/codex/.codex/ (rules prose -> aidlc-rules, D-10)
+// and defers native shell surfaces to emit.ts (config.toml, hooks.json,
+// trust-seed, 14 agent TOMLs, the .agents/skills/ tree). Onboarding uses the
+// shared renderer.
 //
 // Codex specifics vs Claude/Kiro:
 //   - token → .codex
-//   - rules/ → aidlc-rules/ (Codex's native .codex/rules/ is Starlark
-//     permission rules; the AIDLC markdown layers live in aidlc-rules/)
+//   - rules/ prose -> aidlc-rules/ (Codex's native .codex/rules/ is Starlark
+//     permission rules; the AIDLC markdown layers live in
+//     aidlc/spaces/<space>/memory/)
 //   - skills are NOT shipped in .codex/skills/ — Codex discovers skills at
 //     <project>/.agents/skills/, so skipRunnerGen is set and emit() composes
 //     the whole skill set (orchestrator + runners + session skills) there.
-//   - the authored .codex/ files are the aidlc-codex-adapter.ts stdin shim and
-//     its aidlc-codex-patch-context.ts helper module (harnessFiles); the agent
-//     TOMLs in .codex/agents/ are emitted.
+//   - the only authored .codex/ file is the aidlc-codex-adapter.ts stdin shim
+//     (a harnessFile); the agent TOMLs in .codex/agents/ are emitted.
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import emit from "./emit.ts";
@@ -22,6 +23,11 @@ import onboardingFills from "./onboarding.fills.ts";
 const manifest: HarnessManifest = {
   name: "codex",
   productName: "Codex CLI",
+  // AI-DLC's status line items (Codex's own built-ins; task-progress is the
+  // update_plan progress the skill keeps current). They ship here, not in
+  // .codex/config.toml: Codex has no per-person project file, so the line goes
+  // into the shared config only when someone in the project chooses it (#1407).
+  statusLine: { items: ["model-with-reasoning", "git-branch", "task-progress", "context-used"] },
   configNextStep: "run `codex` (when it asks about hooks, choose Trust all and continue), then `$aidlc --doctor`",
   // Its matcher-free PreToolUse group beats in the record before each engine
   // command. Codex runs a project's hooks only once the person trusts them in
@@ -39,20 +45,16 @@ const manifest: HarnessManifest = {
       "it, inside Codex: do not edit any Codex config and do not restart Codex. Their next " +
       "message counts in this same chat. Show the person this line and end your turn: " +
       '"In Codex, type /hooks, press t to trust all, then press Esc. Then carry on here."',
+    // Measured live (0.164.0): started in a folder inside the project, Codex
+    // offers $aidlc and lists the project's hooks as trusted, but runs them
+    // from that folder, where their commands do not find AI-DLC.
+    startedInsideProject:
+      "AI-DLC's hooks work only when Codex is started in the project folder. Exit Codex, start it again in " +
+      "<folder>, then type <entry>.",
   },
   harnessDir: ".codex",
   orchestratorSkillPath: ".agents/skills/aidlc/SKILL.md",
   tierFlavor: "codex",
-  // DELIBERATELY "explicit", and the one harness where the answer is not
-  // obvious. The `AIDLC_RULES_DIR` seam in the shipped config.toml points the
-  // stage resolver at the memory tree, and the onboarding says the orchestrator
-  // "injects the active-space memory paths into context ON DEMAND" — paths, on
-  // demand, not text every turn. That is a resolver seam, not an always-on
-  // include, so treating it as ambient would drop the base layers from the only
-  // channel that carries them. If Codex later gains a genuine always-on include
-  // (the way AGENTS.md works for Copilot/opencode), flip this to "ambient" and
-  // re-verify with the two-profile mutation in check-steering-injection.ts.
-  baseRuleDelivery: "explicit",
   rootIntegrations: [
     {
       path: ".gitignore",
@@ -70,6 +72,12 @@ const manifest: HarnessManifest = {
           "sha256:007b95fb94d4a2569f4254088f0d70f4f345ff99db34e2784b6d9bc5c169f853",
           // The variant shipped with notes above each group of lines.
           "sha256:25e76c09640300e354ab34e3c67e89d2dfe473940b65bd56c227ca4d5ea92c7b",
+          // The variant shipped before the block ignored aidlc/active-memory/ (the
+          // engine's copy of the active space's method).
+          "sha256:51cb399f2257236cbf63e18cb2e317d75913f1771b5402707a2508cf5f81fa57",
+          // The variant shipped before the block ignored aidlc/.aidlc-request-text/
+          // (a request the engine has not read yet).
+          "sha256:345fbe9fe620718510ecfe9d478233ccf4a5318522884b50fc5540559ace3eed",
         ],
       },
     },
@@ -93,13 +101,12 @@ const manifest: HarnessManifest = {
           "sha256:9be9c5cc4a25e5b4c71b3ae35188e1a543504f19cbd5d0a20892777b0904800e",
           "sha256:bc41aca84970977673af3c0b8212a1f7a4d995a4b47fc7894b1c5b342e4a3601",
           "sha256:b3d4d0d178a01591629dbf79083b00e7a3ad42f59f79cbfc88d05b7615704a70",
-          // The pre-v2-sync shipped variant (2.6.123 merge changed the bytes).
+          // The pre-v2-sync shipped variant.
           "sha256:d9be36630b49183203ae4d97946c243e3b8840202ee6f080c738e0f01343e33a",
           // Keep provider-era and pre-engine-directory root files recognizable.
           "sha256:cc3212fc7335018158882cbaa141ac6fd02cee53bbceb00bd185f416fa06ff8f",
           "sha256:412776ee4595c453511a911e06c7729285bb5338b30584f8570908b273e27296",
           "sha256:dd650e54fb2e645b6f30002f91f8f6f174fe34550295582f5b6a95356edaed77",
-          "sha256:796c7b19af7d21e01bf1b877f0680dac18cf0cca2056ad8d50044ba8f060a048",
           // The 2.9.0 shipped variant (#1131 changed the onboarding record-dir shape).
           "sha256:87563548299dd2a0c1fcd3cde480b612bd1ec767a2550dbc05a6a041a3d7f522",
           // The pre-neutral shipped variant (#1268 made the root block harness-neutral).
@@ -111,11 +118,10 @@ const manifest: HarnessManifest = {
     },
   ],
 
-  // Core projection: rules→aidlc-rules, NO session skills (emitted to
-  // .agents/skills/ by emit). Persona .md files ARE core (the conductor reads
-  // them as prose; Codex agent discovery reads only the emitted .toml).
+  // Core projection: NO session skills (emitted to .agents/skills/ by emit).
+  // Persona .md files ARE core (the conductor reads them as prose; Codex agent
+  // discovery reads only the emitted .toml).
   coreDirs: [
-    { src: "workflow-evidence", dst: "workflow-evidence" },
     { src: "tools", dst: "tools" },
     { src: "aidlc-common", dst: "aidlc-common" },
     { src: "knowledge", dst: "knowledge" },
@@ -126,26 +132,16 @@ const manifest: HarnessManifest = {
     { src: "hooks", dst: "hooks" },
   ],
 
-  // The authored .codex/ surface: the stdin adapter shim. The orchestrator
+  // The one authored .codex/ surface: the stdin adapter shim. The orchestrator
   // skill is authored too but is EMITTED into .agents/skills/aidlc/ by emit().
   harnessFiles: [
     { src: "hooks/aidlc-codex-adapter.ts", dst: "hooks/aidlc-codex-adapter.ts" },
-    {
-      src: "hooks/aidlc-codex-dispatch-tool.ts",
-      dst: "hooks/aidlc-codex-dispatch-tool.ts",
-    },
-    // Side-effect-free apply_patch helpers the adapter imports by relative path.
-    {
-      src: "hooks/aidlc-codex-patch-context.ts",
-      dst: "hooks/aidlc-codex-patch-context.ts",
-    },
-    // Project-root .gitignore (beside .codex/, not inside it) — re-rooted under
-    // aidlc/spaces/* for the workspace layout (SEED): cursors + machine-local
-    // runtime ignored, the shared work (memory/codekb/registry/state/audit
-    // shards/artifacts) committed. Net-new for Codex — it shipped none before.
-    // Authored as dot-gitignore so it does not act as a live ignore inside
-    // harness/codex/. projectRoot routes it to dist/codex/.gitignore + the
-    // --check determinism guard.
+    // Project-root .gitignore (beside .codex/, not inside it) for the aidlc/
+    // workspace layout: cursors + machine-local runtime ignored, the shared work
+    // (memory/codekb/registry/state/audit shards/artifacts) committed. Authored as
+    // dot-gitignore so it does not act as a live ignore inside harness/codex/.
+    // projectRoot routes it to dist/codex/.gitignore + the --check determinism
+    // guard.
     { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
   ],
 
@@ -155,6 +151,11 @@ const manifest: HarnessManifest = {
 
   // Skills go to .agents/skills/ via emit, not <harnessDir>/skills/ via runner-gen.
   skipRunnerGen: true,
+
+  // `codex plugin marketplace add <folder>` reads only
+  // .agents/plugins/marketplace.json; a catalogue in .codex-plugin/ is refused
+  // as "does not contain a supported manifest" (codex-cli 0.160).
+  plugin: { manifestDir: ".codex-plugin", marketplaceDir: ".agents/plugins", kind: "store" },
 
   emit,
 };

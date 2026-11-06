@@ -5,10 +5,8 @@
 // outright (the vacuous-pass guards, assertAuditEvent below); the co-fire loop
 // then asserts WORKFLOW_STARTED's partners (PHASE_STARTED + STAGE_STARTED) and
 // GATE_APPROVED's partner (STAGE_COMPLETED) — so each is proven present, not
-// merely conditionally. WORKFLOW_COMPLETED / PHASE_COMPLETED are NOT claimed:
-// their pair antecedent (PHASE_COMPLETED) is checked only IF present, so the
-// claim would be conditional on an unguaranteed event — the co-fire INVARIANT
-// still holds for them, but the coverage CLAIM stays honest to what is proven.
+// merely conditionally. PHASE_COMPLETED is also asserted present outright, so
+// its partners (PHASE_VERIFIED + WORKFLOW_COMPLETED) are proven present too.
 //
 // t126-emitter-pairing-cofire.test.ts — METAMORPHIC INVARIANT (§5-D, Phase 4):
 // emitter-pairing co-fire. Drive a REAL `/aidlc <scope>` workflow
@@ -20,35 +18,33 @@
 //
 // THE SPEC (read from source, NOT guessed):
 //   The pairing taxonomy is the set of handler bodies that MUST co-emit, pinned
-//   by tests/integration/t48-audit-event-emitters.sh:304-312 (the `check_pairing`
+//   by tests/integration/t48-audit-event-emitters.sh (the `check_pairing`
 //   calls) — that is a STATIC source check (the literal appears in the handler
 //   body). THIS test is its RUNTIME complement: the partners actually LAND in
-//   audit.md across a real workflow. The handler→pair map verified at
-//   t48:304-312 and aidlc-state.ts / aidlc-utility.ts:
-//     handleApprove          (aidlc-state.ts:675)  -> GATE_APPROVED + STAGE_COMPLETED
+//   the audit shards across a real workflow. The handler->pair map verified at
+//   t48 and aidlc-state.ts / aidlc-utility.ts:
+//     handleApprove          (aidlc-state.ts)       -> GATE_APPROVED + STAGE_COMPLETED
 //     handleCompleteWorkflow (aidlc-state.ts)       -> PHASE_COMPLETED + WORKFLOW_COMPLETED
-//     handleInit             (aidlc-utility.ts)      -> WORKFLOW_STARTED + PHASE_STARTED + STAGE_STARTED
+//     handleIntentCreate     (aidlc-utility.ts)      -> WORKFLOW_STARTED + PHASE_STARTED + STAGE_STARTED
 //   (handleReject -> GATE_REJECTED + STAGE_REVISING is exercised by t128, not
 //   here: the driver approves every gate, so this golden-path run never rejects.)
 //
 //   We assert the RUNTIME pairing as a metamorphic invariant: for each pair, IF
 //   the lead event fired THEN its partner(s) fired too, in the SAME run. This is
 //   strictly stronger than "both events are in the taxonomy" — it proves the
-//   atomic co-emission the audit trail's integrity depends on actually held over
-//   a live run, not just that the literals coexist in a handler.
+//   partners were present over a live run, not just that the literals coexist
+//   in a handler.
 //
 // WHY THE GOLDEN PATH HERE (and not in t128): this invariant is about the
-// APPROVE/INIT/COMPLETE pairs, all of which fire on the golden path. The SDK
+// APPROVE/CREATE/COMPLETE pairs, all of which fire on the golden path. The SDK
 // driver answers every approval gate with "Approve" (its default answerScript),
-// so a single drive reaches WORKFLOW_COMPLETED, exercising handleInit +
-// handleApprove (per stage) + handleCompleteWorkflow — all three pair-emitting
-// handlers — deterministically.
+// so a single drive reaches WORKFLOW_COMPLETED, exercising handleIntentCreate
+// + handleApprove (per stage) + handleCompleteWorkflow - all three
+// pair-emitting handlers - deterministically.
 //
-// THE SCOPE: `poc` — a Minimal greenfield scope (scope-mapping.json "poc") whose
-// EXECUTE set is small (init×3 + reverse-engineering[->SKIP on greenfield] +
-// requirements-analysis + code-generation + build-and-test) so the run reaches
-// terminal WORKFLOW_COMPLETED within a generous budget while still crossing >=1
-// phase boundary (Ideation present for poc, unlike bugfix) — exercising
+// THE SCOPE: `poc` - a Minimal greenfield scope (scope-grid.json "poc") whose
+// EXECUTE set is small, so the run reaches terminal WORKFLOW_COMPLETED within a
+// generous budget while still crossing >=1 phase boundary - exercising
 // handleCompleteWorkflow's PHASE_COMPLETED + WORKFLOW_COMPLETED pair.
 //
 // IRON RULE: a missing partner is a real audit-integrity DEFECT (the trail would
@@ -60,14 +56,12 @@
 
 import { liveCaseTimeoutMs, LIVE_LONG_OPERATION_TIMEOUT_MS, remainingOperationTimeoutMs, fileCleanupReserveMs } from "../harness/test-budget.ts";
 import { beforeEach, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
-import { join } from "node:path";
 import { assertAuditEvent, assertResultOk } from "../harness/assert.ts";
 import {
   cleanupTestProject,
   setupIntegrationProject,
 } from "../harness/fixtures.ts";
-import { gateWitness } from "../harness/gate-witness.ts";
+import { T126_SEED, seedLiveWork } from "../harness/live-work-seed.ts";
 import { driveAidlc, readAuditText } from "../harness/sdk-drive.ts";
 
 // AIDLC_TEST_TIMEOUT bounds the entire case, including setup and cleanup.
@@ -87,44 +81,31 @@ function remainingWorkMs(): number {
 }
 
 
-/** Seed the workflow through the same project-local utility the slash command
- * delegates to. This keeps the live SDK run focused on the co-fire golden path
- * instead of spending turns recovering from an intentionally absent state file. */
-function seedPocState(proj: string): void {
-  const utility = join(proj, ".claude", "tools", "aidlc-utility.ts");
-  const res = spawnSync(
-    process.execPath,
-    [utility, "intent-create", "--scope", "poc", "--project-dir", proj],
-    { timeout: remainingWorkMs(), cwd: proj, encoding: "utf8" },
-  );
-  expect(res.status).toBe(0);
-  expect(`${res.stdout}\n${res.stderr}`).toContain("State initialized");
-}
-
 /**
- * The co-emission pairs, derived from the t48 check_pairing source spec
- * (t48:304-312). Each entry: a `lead` event and the `partners` that the SAME
- * handler emits in the same body — so over a real run, if `lead` is present in
- * audit.md, every `partner` MUST be too. Only the pairs reachable on a
- * golden path are asserted here (reject/revise -> t128).
+ * The co-emission pairs, derived from the t48 pairing tests
+ * (t48-audit-event-emitters.test.ts). Each entry: a `lead` event and the
+ * `partners` that the SAME handler emits in the same body - so over a real run,
+ * if `lead` is present in the audit shards, every `partner` MUST be too. Only
+ * the pairs reachable on a golden path are asserted here (reject/revise ->
+ * t128).
  */
 const COFIRE_PAIRS: Array<{ lead: string; partners: string[]; handler: string }> = [
-  // handleApprove (aidlc-state.ts:675): a gate approval and the stage completion
-  // it triggers are emitted atomically. (t48:304)
+  // handleApprove (aidlc-state.ts): a gate approval and the stage completion
+  // it triggers are emitted atomically. (t48 pairing tests)
   { lead: "GATE_APPROVED", partners: ["STAGE_COMPLETED"], handler: "handleApprove" },
-  // handleInit (aidlc-utility.ts): workflow start brings phase start + the first
-  // stage start. (t48:312)
+  // handleIntentCreate (aidlc-utility.ts): workflow start brings phase start +
+  // the first stage start. (t48 pairing tests)
   {
     lead: "WORKFLOW_STARTED",
     partners: ["PHASE_STARTED", "STAGE_STARTED"],
     handler: "handleInit",
   },
-  // handleCompleteWorkflow (aidlc-state.ts:520,580-585): the final phase
+  // handleCompleteWorkflow (aidlc-state.ts): the final phase
   // completion co-fires with the phase-verification AND the workflow completion.
-  // Pinned by t48:309 (`check_pairing handleCompleteWorkflow ... PHASE_COMPLETED
-  // PHASE_VERIFIED WORKFLOW_COMPLETED`). PHASE_VERIFIED is UNCONDITIONAL on this
-  // path: aidlc-state.ts:585 emits it with no branch immediately after
-  // PHASE_COMPLETED (:580) — so it is a hard co-emission partner, not advisory.
+  // Pinned by t48's pairing test for handleCompleteWorkflow: PHASE_COMPLETED,
+  // PHASE_VERIFIED, WORKFLOW_COMPLETED. PHASE_VERIFIED is UNCONDITIONAL on this
+  // path: handleCompleteWorkflow emits it with no branch immediately after
+  // PHASE_COMPLETED - so it is a hard co-emission partner, not advisory.
   // (The audit-format.md ✓-vs-blank flag marks doc-level "mandatory to assert in
   // t48", a DIFFERENT axis from whether the handler always emits it; the handler
   // always does, so the runtime co-fire MUST hold.)
@@ -135,7 +116,7 @@ const COFIRE_PAIRS: Array<{ lead: string; partners: string[]; handler: string }>
   },
 ];
 
-/** Read the ordered audit event-type list straight off audit.md (the same parse
+/** Read the audit event-type list straight off the audit shards (the same parse
  *  driveAidlc does into r.auditEvents, re-read here for an independent count). */
 function auditEventsOnDisk(proj: string): string[] {
   // Every shard: the audit folder can hold more than one file.
@@ -154,46 +135,35 @@ describe("t126 emitter-pairing co-fire (metamorphic invariant, sdk)", () => {
     async () => {
       const proj = setupIntegrationProject({ noAidlcDocs: true });
       try {
-        seedPocState(proj);
+        // The work is created up front, with the words the drive types, so the
+        // live run spends its turns on the co-fire golden path.
+        seedLiveWork(proj, T126_SEED, remainingWorkMs());
 
-        const witness = gateWitness(proj);
         // The questions are answered by the driver's menus, as a person answers
         // them: an answer chosen up front would be the agent's, not the person's.
+        // The prompt's "approve each gate" is a standing instruction, not an
+        // answer: the drive's person-turn check fails any gate resolution with
+        // no reply from the person after its gate opened (sdk-drive.ts).
         const r = await driveAidlc(
-          "/aidlc poc Build a local CLI that converts CSV input to formatted JSON output. " +
-            "Use the simplest sensible stack, and approve each gate.",
-          {
-          projectDir: proj,
-          timeoutMs: remainingWorkMs(),
-          onAskUserQuestion: witness.onAskUserQuestion,
-          },
+          `/aidlc ${T126_SEED.scope} ${T126_SEED.request}`,
+          { projectDir: proj, timeoutMs: remainingWorkMs() },
         );
 
         // The run must have terminated cleanly (structured SDK result, not an
         // exit-code guess). A timeout/crash would make the pairing check vacuous.
         assertResultOk(r);
 
-        // The prompt's "approve each gate" is a standing instruction, not an
-        // answer: every gate resolution must match an approval menu the driver
-        // answered while that stage's gate was held.
-        expect(witness.answered().length).toBeGreaterThan(0);
-        expect(
-          witness.unanswered(),
-          `gate resolutions with no answered gate menu; answered: ${JSON.stringify(witness.answered())}`,
-        ).toEqual([]);
-
         const events = auditEventsOnDisk(proj);
         const present = new Set(events);
 
         // VACUOUS-PASS GUARD: every pair LEAD this test claims to exercise MUST
         // have fired, or that pair's co-fire check is a silent no-op (the
-        // empty-antecedent trap). A completed `/aidlc poc` guarantees
-        // all three: init emits WORKFLOW_STARTED; each auto-approved gate emits
-        // GATE_APPROVED; and poc spans Ideation→Inception→Construction so the
-        // terminal handleCompleteWorkflow emits PHASE_COMPLETED (aidlc-state.ts:580
-        // — also fired at every phase boundary, :418). Guarding PHASE_COMPLETED
-        // here is what makes the handleCompleteWorkflow pair (PHASE_VERIFIED +
-        // WORKFLOW_COMPLETED) a REAL assertion rather than a conditional skip.
+        // empty-antecedent trap). A completed `/aidlc poc` guarantees all three:
+        // intent-create emits WORKFLOW_STARTED; each approved gate emits GATE_APPROVED;
+        // and the terminal handleCompleteWorkflow emits PHASE_COMPLETED (also fired at
+        // every phase boundary by handleAdvance). Guarding PHASE_COMPLETED here is what
+        // makes the handleCompleteWorkflow pair (PHASE_VERIFIED + WORKFLOW_COMPLETED) a
+        // REAL assertion rather than a conditional skip.
         assertAuditEvent(r, "WORKFLOW_STARTED");
         assertAuditEvent(r, "GATE_APPROVED");
         assertAuditEvent(r, "PHASE_COMPLETED");
@@ -202,7 +172,7 @@ describe("t126 emitter-pairing co-fire (metamorphic invariant, sdk)", () => {
         // THE METAMORPHIC INVARIANT: lead present => all partners present.
         const violations: string[] = [];
         for (const { lead, partners, handler } of COFIRE_PAIRS) {
-          if (!present.has(lead)) continue; // antecedent absent — nothing to check
+          if (!present.has(lead)) continue;
           for (const partner of partners) {
             if (!present.has(partner)) {
               violations.push(

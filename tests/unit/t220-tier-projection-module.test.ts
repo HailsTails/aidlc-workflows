@@ -60,19 +60,19 @@ const EXPECTED: Record<
   }
 > = {
   judgment: {
-    claude: { model: "opus", effort: null },
+    claude: { model: "inherit", effort: null },
     codex: { model: null, effort: null },
     cursor: { model: null },
     kiro: { model: null },
     opencode: { model: null, variant: null },
   },
   balanced: {
-    // Balanced is the reviewer tier; medium effort pinned (2.5.40) after
-    // live A/B showed a medium review pass at ~half the xhigh wall-clock
-    // with no finding-quality loss (an xhigh session pin was silently
-    // doubling every review's cost via inherit).
+    // Balanced is the reviewer tier; medium effort pinned after live A/B showed
+    // a medium review pass at ~half the xhigh wall-clock with no finding-quality
+    // loss (an xhigh session pin was silently doubling every review's cost via
+    // inherit).
     claude: { model: "sonnet", effort: "medium" },
-    codex: { model: "gpt-5.6-terra", effort: "medium" },
+    codex: { model: null, effort: "medium" },
     // Cursor never pins a model either: model availability is Cursor-plan-
     // dependent (Free rejects every named id), so all tiers inherit.
     cursor: { model: null },
@@ -83,11 +83,11 @@ const EXPECTED: Record<
     opencode: { model: null, variant: "medium" },
   },
   templated: {
-    claude: { model: "sonnet", effort: "medium" },
-    codex: { model: "gpt-5.6-terra", effort: "medium" },
+    claude: { model: "inherit", effort: null },
+    codex: { model: null, effort: null },
     cursor: { model: null },
     kiro: { model: null },
-    opencode: { model: null, variant: "medium" },
+    opencode: { model: null, variant: null },
   },
 };
 
@@ -189,9 +189,7 @@ describe("t220 tier projection module", () => {
   });
 
   test("readMemoryCap: project.md overrides org.md - lower OR raise", () => {
-    // Lowering: org says balanced, project tightens to templated.
     const lower = memoryFixture({ org: "balanced", project: "templated" });
-    // Raising: org says templated, project relaxes back to judgment.
     const raise = memoryFixture({ org: "templated", project: "judgment" });
     try {
       expect(readMemoryCap(lower)).toBe("templated");
@@ -296,16 +294,19 @@ describe("t220 tier projection module", () => {
 describe("t220 shipped projection bytes (codex TOML, kiro JSON + md)", () => {
   const dist = (...p: string[]): string => join(REPO_ROOT, "dist", ...p);
 
-  test("codex TOMLs: judgment omits model+effort; balanced and templated pin both", () => {
+  test("codex TOMLs: every tier inherits model; balanced pins medium effort", () => {
     const arch = readFileSync(dist("codex", ".codex", "agents", "aidlc-architect-agent.toml"), "utf-8");
     expect(/^model\s*=/m.test(arch), "judgment TOML must omit model").toBe(false);
     expect(/^model_reasoning_effort\s*=/m.test(arch), "judgment TOML must omit effort").toBe(false);
     const lead = readFileSync(dist("codex", ".codex", "agents", "aidlc-product-lead-agent.toml"), "utf-8");
-    expect(lead).toContain('model = "gpt-5.6-terra"');
+    expect(/^model\s*=/m.test(lead), "balanced TOML must omit model").toBe(false);
     expect(lead).toContain('model_reasoning_effort = "medium"');
     const delivery = readFileSync(dist("codex", ".codex", "agents", "aidlc-delivery-agent.toml"), "utf-8");
-    expect(delivery).toContain('model = "gpt-5.6-terra"');
-    expect(delivery).toContain('model_reasoning_effort = "medium"');
+    expect(/^model\s*=/m.test(delivery), "templated TOML must omit model").toBe(false);
+    expect(
+      /^model_reasoning_effort\s*=/m.test(delivery),
+      "templated TOML must omit effort",
+    ).toBe(false);
   });
 
   const kiroHarnesses = HARNESS_MATRIX.filter(

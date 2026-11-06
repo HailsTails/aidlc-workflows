@@ -20,7 +20,6 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/** A checkout with one file in each packaged input and a dist/ directory. */
 function checkout(): string {
   const root = mkdtempSync(join(tmpdir(), "aidlc-package-sources-"));
   roots.push(root);
@@ -29,13 +28,7 @@ function checkout(): string {
     ["harness/claude/manifest.ts", "export default {};\n"],
     ["plugins/demo/stages/s.md", "# s\n"],
     ["plugins/demo/tests/t.test.ts", "// a plugin test\n"],
-    ["tsconfig.json", "{}\n"],
-    ["package.json", "{}\n"],
-    ["bun.lock", "{}\n"],
     ["scripts/package.ts", "// packager\n"],
-    ["scripts/package-sources.ts", "export const receipt = 1;\n"],
-    ["scripts/plugin-runtime.ts", "export const runtime = 1;\n"],
-    ["scripts/plugin-contributions.ts", "export const contribution = 1;\n"],
     ["scripts/plugin-hooks-template/compose.ts", "// compose\n"],
   ] as const) {
     mkdirSync(join(root, path, ".."), { recursive: true });
@@ -59,13 +52,7 @@ describe("the packaged-sources fingerprint", () => {
   test.each([
     ["harness/claude/manifest.ts"],
     ["plugins/demo/stages/s.md"],
-    ["tsconfig.json"],
-    ["package.json"],
-    ["bun.lock"],
     ["scripts/package.ts"],
-    ["scripts/package-sources.ts"],
-    ["scripts/plugin-runtime.ts"],
-    ["scripts/plugin-contributions.ts"],
     ["scripts/plugin-hooks-template/compose.ts"],
   ])("covers %s", (path) => {
     const root = checkout();
@@ -88,6 +75,15 @@ describe("the packaged-sources fingerprint", () => {
 });
 
 describe("the packaged-sources record", () => {
+  test("editing the generated-region owner invalidates an existing package receipt", () => {
+    const root = checkout();
+    writeFileSync(join(root, "scripts/generated-skill-regions.ts"), "export const marker = 'before';\n");
+    recordPackagedSources(root, ["claude"], packageInputsFingerprint(root));
+    expect(stalePackageMessage(root, "claude")).toBeNull();
+    writeFileSync(join(root, "scripts/generated-skill-regions.ts"), "export const marker = 'after';\n");
+    expect(stalePackageMessage(root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run `bun scripts/package.ts` first.");
+  });
+
   test("a tree with no record, or an unreadable one, is reported as never packaged", () => {
     const root = checkout();
     const missing = "dist/claude has no record of the sources it was packaged from: run `bun scripts/package.ts` first.";

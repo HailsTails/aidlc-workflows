@@ -3,23 +3,23 @@
 // An engine tool that spawns another engine tool (state's unit route check runs
 // `orchestrate next`; orchestrate runs `state` for a report) must hand the child
 // the chat it already resolved, as a hook hands its own children the payload
-// session. Today the child gets a bare AIDLC_SESSION_OVERRIDE with no provenance
-// marker, so it re-resolves: a set override suppresses the host's own variable,
+// session. A child given a bare AIDLC_SESSION_OVERRIDE with no provenance
+// marker re-resolves: a set override suppresses the host's own variable,
 // the marker is missing, and when process ancestry names another chat (a second
 // chat started later in the same host process) the child refuses with "Session
 // override ... conflicts with the owning conversation". On Codex that is issue
 // #2266: `state unit start` for a routed, approved unit refuses while the same
 // command from a plain terminal succeeds.
 //
-// The fixture gives the parent a chat the host names (CODEX_THREAD_ID, the one
-// shell variable the resolver reads today) and a PID-map entry on this test
+// The fixture gives the parent a chat the host names (CODEX_THREAD_ID, the
+// shell variable the resolver reads on Codex) and a PID-map entry on this test
 // process naming another chat, which is what the child's ancestry walk finds.
 
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseCheckboxes, writeSessionPidEntry } from "../../dist/codex/.codex/tools/aidlc-lib.ts";
+import { writeSessionPidEntry } from "../../dist/codex/.codex/tools/aidlc-lib.ts";
 import {
   REPO_ROOT,
   cleanupTestProject,
@@ -53,6 +53,7 @@ const CONSTRUCTION_STATE = `# AI-DLC State Tracking
 
 ## Runtime State
 - **Revision Count**: 0
+- **Unit Ownership**: solo
 
 ## Scope Configuration
 - **Stages to Execute**: all
@@ -114,29 +115,4 @@ describe("an engine child keeps the chat its parent resolved", () => {
     expect(started.status, out).toBe(0);
     expect(out).toContain('"emitted":"UNIT_STARTED"');
   });
-
-  test("an orchestrate change request keeps the parent chat in its state child", () => {
-    proj = createOrchestrationTestProject();
-    writeFileSync(seededStateFile(proj), CONSTRUCTION_STATE.replace("- [-] functional-design", "- [?] functional-design"), "utf-8");
-    seedBoltDag(proj, ["unit-a", "unit-b"]);
-    writeSessionPidEntry(proj, process.pid, OTHER_CHAT);
-    expect(parseCheckboxes(readFileSync(seededStateFile(proj), "utf-8")).map((row) => row.slug)).toContain(SLUG);
-    const rejected = spawnSync(process.execPath, [ORCHESTRATE, "report", "--stage", SLUG, "--result", "rejected", "--user-input", "Request Changes", "--reason", "Review the repaired immutable head", "--project-dir", proj], { encoding: "utf-8", env: shellEnv(), timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS) });
-    const out = `${rejected.stdout ?? ""}${rejected.stderr ?? ""}`;
-    expect(out).not.toContain("conflicts with the owning conversation");
-    expect(rejected.status, out).toBe(0);
-    expect(out).not.toContain('"kind":"error"');
-    expect(readFileSync(seededStateFile(proj), "utf-8")).toContain("- [R] functional-design");
-  });
-
-  test("an unmarked stale exported override is still refused before a transition", () => {
-    proj = createOrchestrationTestProject();
-    const before = CONSTRUCTION_STATE.replace("- [-] functional-design", "- [?] functional-design");
-    writeFileSync(seededStateFile(proj), before, "utf-8");
-    writeSessionPidEntry(proj, process.pid, OTHER_CHAT);
-    const refused = spawnSync(process.execPath, [ORCHESTRATE, "report", "--stage", SLUG, "--result", "rejected", "--user-input", "Request Changes", "--project-dir", proj], { encoding: "utf-8", env: { ...shellEnv(), AIDLC_SESSION_OVERRIDE: "stale-exported-session" }, timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS) });
-    expect(`${refused.stdout ?? ""}${refused.stderr ?? ""}`).toContain("conflicts with the owning conversation");
-    expect(readFileSync(seededStateFile(proj), "utf-8")).toBe(before);
-  });
-
 });

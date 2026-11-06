@@ -1,6 +1,12 @@
 [
   {
     "files": [
+      "tests/harness/fixture-workspace.ts"
+    ],
+    "reason": "Structural CD19/CD20/CD21 fixture resource boundary: createFixtureWorkspace accepts plain filesystem capabilities and lexically binds destinations to its owned temporary root; copies read trusted fixture/release sources, not untrusted symlink trees. createDefaultFixtureWorkspace is the native fs/os construction site. Tests receive scoped text/copy/directory/link/disposal operations, never Node types or raw fs exports. Existing neutral path and execution ports are reused; their filesystem port lacks temporary-root, copy, removal and real junction capabilities. Co-located tests pin provider delegation, lexical containment, exact bytes, copy/removal, native links and disposal. This entry authorises only this wrapping file, not integration test logic or other helpers."
+  },
+  {
+    "files": [
       "plugins/rin/tools/rin-harness-path-operations.ts"
     ],
     "reason": "Structural CD19 location: defaultPathOperations/pathOperationsFor confines Node path and file-URL conversion behind named string-only PathOperations. Reviewer consumers use this existing adapter; no platform types are exported. The additional module-location capability is a deliberate reviewer-port paydown boundary decision."

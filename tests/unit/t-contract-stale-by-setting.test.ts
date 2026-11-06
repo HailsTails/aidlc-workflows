@@ -144,9 +144,7 @@ function askFor(proj: string): void {
  * lands in the state file and the question stays open over it, which is the seam
  * the human-turn hook uses when they type a switch
  * (`keepPlanApprovalAskOverStateWrite`). Both of these settings are part of the
- * Testing Posture, so the plan's rendered block goes out of date under it, which
- * is the state block-sweep-2's probe reached through `/aidlc --scope classic`
- * (probes-nb.md row 17).
+ * Testing Posture, so the plan's rendered block goes out of date under it.
  */
 function settingChanges(proj: string, how: "test-strategy" | "scope"): void {
   const posture = resolveTestingPosture(proj).contract_sha256;
@@ -171,7 +169,6 @@ describe("a Testing Contract left stale by a setting the person changed", () => 
       askFor(proj);
       const asked = planContractHash(proj);
       settingChanges(proj, how);
-      // "approve the plan", in their own words; the agent records their choice.
       reply(proj, "approve the plan");
       const recorded = answer(proj, "Approve Plan");
       expect(recorded.code, recorded.message).toBe(0);
@@ -180,11 +177,9 @@ describe("a Testing Contract left stale by a setting the person changed", () => 
       // The line says what that block is for, so they need no vocabulary to judge it.
       expect(recorded.message).toContain("the test rules your build follows");
       expect(recorded.message).toContain("the plan's steps are unchanged");
-      // Nothing about an edit they never made.
       expect(recorded.message).not.toContain("edited plan");
       expect(recorded.message).not.toContain("Nothing was approved");
       expect(auditText(proj)).toContain("**Event**: PLAN_APPROVAL_RECORDED");
-      // The plan now carries the current posture's block, and the build runs.
       expect(planContractHash(proj)).not.toBe(asked);
       expect(planContractHash(proj)).toBe(resolveTestingPosture(proj).contract_sha256);
       expect(readFileSync(planPath(proj), "utf-8")).toContain("- [ ] Step 1: write slugify");
@@ -208,6 +203,7 @@ describe("a Testing Contract left stale by a setting the person changed", () => 
     const proj = project();
     askFor(proj);
     reply(proj, "3");
+    expect(answer(proj, "I'll edit the files").code).toBe(0);
     expect(next(proj).plan_approval?.status).toBeUndefined();
     writeFileSync(planPath(proj), readFileSync(planPath(proj), "utf-8").replace('"version": 1', '"version": 1,,'), "utf-8");
     reply(proj, "done");
@@ -216,7 +212,7 @@ describe("a Testing Contract left stale by a setting the person changed", () => 
     expect(repair.kind).toBe("run-stage");
     expect(repair.plan_approval?.status).toBe("repair");
     writePlan(proj, "- [ ] Step 1: write slugify\n- [ ] Step 2: handle unicode\n");
-    expect(next(proj).question).toBe("I repaired the Testing Contract block. Build your edited plan?");
+    expect(next(proj).question).toBe("I repaired the plan's Testing Contract (the test rules your build follows). Build your edited plan?");
   });
 
   test("a plan with no Testing Contract section is never approved as it stands", () => {

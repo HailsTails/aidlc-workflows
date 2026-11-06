@@ -22,12 +22,9 @@
 // audit. Duplicating it here would only add false negatives (that ledger write is
 // best-effort). This hook adds exactly one condition: the review verdict.
 //
-// Resolution (IF-1, decorrelated-review-corrected): scope + record dir come from
-// the INVOKING checkout's active-intent cursor (the lane runs `report` in its own
-// worktree; the engine set that cursor to the intent being driven) — NOT the
-// primary checkout. Under repo-SoR the record dir IS the identity; there is no
-// slice-binding.json to consult. The verdict is work-bound (record dir + headSha)
-// so a stale-commit verdict from an earlier run at the same gate path cannot pass.
+// The shared core observation selects project, record, stage and attempt from
+// the actual command and invoking session. Review policy consumes that target;
+// it never selects a second record through a private cursor.
 //
 // TWO BINDING MODES. The verdict
 // carries an explicit `binding` naming what the review covered, and this hook
@@ -70,10 +67,10 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { env, stdin } from "node:process";
 import { fileURLToPath } from "node:url";
-import { gateScopeGridPathOf, isCompletionReport } from "./rin-gate-invocation.ts";
+import { completionOperations, gateScopeGridPathOf, isCompletionReport, resolveCompletionTarget } from "./rin-gate-invocation.ts";
 import {
   phaseOfGate,
   reviewVerdictSegments,
@@ -87,6 +84,7 @@ type HookInput = {
   readonly tool_name?: string;
   readonly tool_input?: { readonly command?: string };
   readonly cwd?: string;
+  readonly session_id?: string;
 };
 
 // Every shell-bearing tool this harness offers, as a closed set. An approve
@@ -240,7 +238,6 @@ const GATE_5_STAGE = "rin-gate-5-review-cycle";
 // hook reads real git — a lane cannot spoof HEAD via env (Gate-5 review H2).
 const hookDir = dirname(fileURLToPath(import.meta.url));
 const toolRoot = resolve(join(hookDir, "..", ".."));
-const space = env.RIN_GATES_SPACE ?? "default";
 
 // The minimum reviewer roster a review-scribe-emitted verdict must cover,
 // resolved PER-GATE from the SAME shared config the scribe reads
@@ -278,24 +275,6 @@ const rosterFloorRefusal = ({
   return `verdict for '${gate}' misses roster lenses [${uncovered.join(", ")}] — the minimum decorrelated roster (from ${resolution.source}) is not covered.`;
 };
 
-// The invoking checkout: the checkout the gate SESSION is operating in, resolved
-// from the hook's stdin `cwd` (the worktree running `report`) — NOT the hook
-// file's own location. A gate lane runs `report` in its worktree, where the
-// active-intent cursor + the Slice's record dir live; the primary (where this
-// hook file sits) does not carry an unmerged Slice's record, so anchoring the
-// resolution here left the gate unable to see the very intent it must check.
-// Falls back to CLAUDE_PROJECT_DIR/toolRoot when cwd is absent. Same
-// invoking-checkout resolution as the scribe/status/attest — the pipeline reads
-// the code being operated on, not the spawn dir. STATE/TRACE stay at the primary
-// (gitignored runtime, one home); only the git-tracked record resolution moves.
-const nearestCheckoutAt = (dir: string): string | undefined => {
-  if (existsSync(join(dir, ".git"))) return dir;
-  const parent = dirname(dir);
-  return parent === dir ? undefined : nearestCheckoutAt(parent);
-};
-
-const checkoutRootFromCwd = (cwd: string | undefined): string | undefined =>
-  cwd === undefined || cwd === "" ? undefined : nearestCheckoutAt(resolve(cwd));
 const fallbackCheckout = resolve(env.CLAUDE_PROJECT_DIR ?? toolRoot);
 
 const readStdin = (): Promise<string> =>
@@ -311,37 +290,6 @@ const readStdin = (): Promise<string> =>
 const deny: (message: string) => never = (message) => {
   process.stderr.write(`Blocked (rin-gates autonomy): ${message}\n`);
   process.exit(2);
-};
-
-const intentsRoot = (checkoutRoot: string): string =>
-  join(checkoutRoot, "aidlc", "spaces", space, "intents");
-
-const activeRecordDir = (checkoutRoot: string): string | null => {
-  const cursorPath = join(intentsRoot(checkoutRoot), "active-intent");
-  if (!existsSync(cursorPath)) return null;
-  const dirName = readFileSync(cursorPath, "utf8").trim();
-  if (dirName === "") return null;
-  const recordDir = join(intentsRoot(checkoutRoot), dirName);
-  return existsSync(recordDir) ? recordDir : null;
-};
-
-const fieldFrom = (content: string, label: string): string | null => {
-  const match = content.match(new RegExp(`\\*\\*${label}\\*\\*\\s*:\\s*(.+)`));
-  return match ? match[1].trim() : null;
-};
-
-const scopeOf = (recordDir: string): string | null => {
-  const statePath = join(recordDir, "aidlc-state.md");
-  if (!existsSync(statePath)) return null;
-  return fieldFrom(readFileSync(statePath, "utf8"), "Scope");
-};
-
-const gateFromCommand = (command: string, recordDir: string): string | null => {
-  const stageMatch = command.match(/--stage\s+([A-Za-z0-9._-]+)/);
-  if (stageMatch) return stageMatch[1];
-  const statePath = join(recordDir, "aidlc-state.md");
-  if (!existsSync(statePath)) return null;
-  return fieldFrom(readFileSync(statePath, "utf8"), "Current Stage");
 };
 
 const verdictPath = (recordDir: string, gate: string): string | null => {
@@ -657,9 +605,10 @@ const assertLiveBindingHolds = (input: {
   readonly gate: string;
   readonly invokingCheckout: string;
   readonly recordDirName: string;
+  readonly recordDirPrefix: string;
   readonly ports: GatePorts;
 }): void => {
-  const { binding, gate, invokingCheckout, recordDirName, ports } = input;
+  const { binding, gate, invokingCheckout, recordDirPrefix, ports } = input;
   const head = ports.resolveHeadSha({ cwd: invokingCheckout });
   if (head === null) return;
   if (binding.headSha === head) return;
@@ -688,7 +637,7 @@ const assertLiveBindingHolds = (input: {
   }
   const drift = recordsOnlyDriftVerdictOf({
     changedPaths: changed.value,
-    allowedPrefix: `aidlc/spaces/${space}/intents/${recordDirName}/`,
+    allowedPrefix: recordDirPrefix,
   });
   if (drift.tolerated) return;
   if (drift.offendingPath === UNDERIVABLE_DIFF_SENTINEL) {
@@ -760,12 +709,14 @@ const assertVerdictAuthorises = ({
   gate,
   invokingCheckout,
   recordDirName,
+  recordDirPrefix,
   ports,
 }: {
   readonly verdict: ReviewVerdict;
   readonly gate: string;
   readonly invokingCheckout: string;
   readonly recordDirName: string;
+  readonly recordDirPrefix: string;
   readonly ports: GatePorts;
 }): void => {
   assertReviewConverged({ verdict, gate });
@@ -782,6 +733,7 @@ const assertVerdictAuthorises = ({
         gate,
         invokingCheckout,
         recordDirName,
+        recordDirPrefix,
         ports,
       });
       return;
@@ -888,92 +840,45 @@ const coverageOf = (input: {
   });
 };
 
-// Returns the record dir when this approve is covered by the backstop and must be
-// gated; null when the scope is positively NOT covered, so it is not this hook's
-// concern. H1 fail-closed: an INDETERMINATE scope — no resolvable active intent,
-// a state file with no Scope, or a grid that cannot answer for the scope — must
-// NOT fail open on the very surface whose premise is "autonomy must be gated", so
-// it denies rather than passing.
-const gatedRecordDir = ({
-  invokingCheckout,
-}: {
-  readonly invokingCheckout: string;
-}): string | null => {
-  const recordDir = activeRecordDir(invokingCheckout);
-  if (recordDir === null) {
-    deny(
-      `cannot resolve the active intent's record dir for this report --result approved (recordDir=absent). ` +
-        `Refusing fail-open on the autonomy-gated surface — resolve the active-intent cursor, or set ${BYPASS_ENV}=1 to override.`,
-    );
-    return null;
-  }
-  const scope = scopeOf(recordDir);
-  if (scope === null) {
-    deny(
-      `cannot resolve the active intent's scope for this report --result approved (recordDir=present, scope=absent). ` +
-        `Refusing fail-open on the autonomy-gated surface — resolve the aidlc-state.md Scope, or set ${BYPASS_ENV}=1 to override.`,
-    );
-    return null;
-  }
-  const coverage = coverageOf({ scope, checkoutRoot: invokingCheckout });
-  if (coverage.kind === "not-covered") return null;
-  if (coverage.kind === "indeterminate") {
-    deny(
-      `cannot determine whether scope '${scope}' is covered by the autonomy backstop: ${coverage.reason}. ` +
-        `Refusing fail-open on the autonomy-gated surface — regenerate the scope grid, or set ${BYPASS_ENV}=1 to override.`,
-    );
-    return null;
-  }
-  return recordDir;
-};
-
 const main = async (): Promise<void> => {
   if (stdin.isTTY) process.exit(0);
   const raw = await readStdin();
   if (raw.trim() === "") process.exit(0);
 
+  if (bypassHonoured()) process.exit(0);
+
   const input = gatedInvocationFrom({ raw });
   if (input === null) process.exit(0);
   const command = input.tool_input?.command ?? "";
 
-  if (bypassHonoured()) process.exit(0);
-
-  const invokingCheckout = checkoutRootFromCwd(input.cwd) ?? fallbackCheckout;
-  const recordDir = gatedRecordDir({ invokingCheckout });
-  if (recordDir === null) process.exit(0);
-
-  const gate = gateFromCommand(command, recordDir);
-  if (gate === null) {
-    deny(
-      "cannot resolve the gate from the report command or Current Stage — refusing an unverifiable rin-gates approve.",
-    );
+  const operations = completionOperations({ command, context: {
+    cwd: input.cwd ?? fallbackCheckout, environment: env, sessionId: input.session_id,
+  } });
+  for (const operation of operations) {
+    const target = resolveCompletionTarget(operation);
+    if (target.kind === "unavailable") deny(`cannot resolve this report's target: ${target.reason}`);
+    if (target.unjoined) deny("This conversation has not joined the selected work; select it with aidlc intent first.");
+    const invokingCheckout = target.projectDir;
+    const scope = target.scope;
+    if (scope === null) deny("The isolated attempt did not record its scope; it cannot borrow the main workflow's review authority.");
+    const coverage = coverageOf({ scope, checkoutRoot: invokingCheckout });
+    if (coverage.kind === "not-covered") continue;
+    if (coverage.kind === "indeterminate") deny(`cannot determine whether scope '${scope}' is covered by the autonomy backstop: ${coverage.reason}`);
+    if (target.mode === "single") deny("Isolated Rin review authorization is not supported by this guard; a main-workflow verdict cannot authorize this single-stage attempt. Run this stage in its selected workflow.");
+    const recordDir = target.recordDir;
+    const gate = target.stage;
+    const path = verdictPath(recordDir, gate);
+    if (path === null) deny(`gate '${gate}' has no known phase mapping - cannot locate its review verdict.`);
+    const verdict = readVerdict(path);
+    if (verdict === null) deny(`no decorrelated-review verdict at ${path} - a rin-gates gate approve requires a review emitted by \`pnpm rin-gates:review-verdict\` (never a hand-written file).`);
+    assertVerdictAuthorises({ verdict, gate, invokingCheckout, recordDirName: basename(recordDir), recordDirPrefix: `${relative(invokingCheckout, recordDir).replace(/\\/g, "/")}/`, ports: gatePorts() });
   }
-
-  const path = verdictPath(recordDir, gate);
-  if (path === null)
-    deny(
-      `gate '${gate}' has no known phase mapping — cannot locate its review verdict.`,
-    );
-
-  const verdict = readVerdict(path);
-  if (verdict === null) {
-    deny(
-      `no decorrelated-review verdict at ${path} — a rin-gates gate approve requires a review emitted by \`pnpm rin-gates:review-verdict\` (never a hand-written file).`,
-    );
-  }
-  assertVerdictAuthorises({
-    verdict,
-    gate,
-    invokingCheckout,
-    recordDirName: basename(recordDir),
-    ports: gatePorts(),
-  });
 
   process.exit(0);
 };
 
 if (import.meta.main) {
-  main().catch(() => process.exit(0));
+  main().catch((error) => deny(`completion observation failed: ${String(error)}`));
 }
 
 export {

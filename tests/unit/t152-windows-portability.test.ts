@@ -1,6 +1,6 @@
 // covers: harness-instrument:windows-portability
 //
-// MR10 deterministic guard for the Windows runner/infrastructure handoff. The
+// Deterministic guard for the Windows runner/infrastructure handoff. The
 // live proof is the EC2 run; this test keeps the committed run path honest on
 // every platform by checking the files that make that run repeatable.
 
@@ -80,9 +80,10 @@ describe("t152 Windows portability guard", () => {
   test("Windows path separators are normalized at harness and sensor boundaries", () => {
     const sensor = read("dist/claude/.claude/tools/aidlc-sensor.ts");
     expect(sensor).toContain("normalizePathForComparison(path)");
-    expect(sensor).toContain('path.replace(/\\\\/g, "/")');
-    expect(sensor).toContain("comparisonKey(normalizedPath)");
     expect(sensor).toContain("globToRegex(v).test(normalizedPath)");
+    const sensorRecord = read("dist/claude/.claude/tools/aidlc-sensor-record.ts");
+    expect(sensorRecord).toContain('path.replace(/\\\\/g, "/")');
+    expect(sensorRecord).toContain("comparisonKey(normalizedPath)");
 
     const fixtures = read("tests/harness/fixtures.ts");
     expect(fixtures).toContain('new Set(["EBUSY", "ENOTEMPTY", "EPERM"])');
@@ -105,13 +106,12 @@ describe("t152 Windows portability guard", () => {
   });
 
   test("swarm convergence check runs via a portable shell, not a hardcoded bash argv", () => {
-    // #5: aidlc-swarm.ts checkConverged() previously launched the check command
-    // through a hardcoded `bash` argv. `bash` is ENOENT on native Windows
-    // PowerShell, so the convergence check spuriously failed there. The portable
-    // form passes the check command as the command with a shell, picking
-    // /bin/bash on POSIX where it exists (preserving the original bash
-    // interpreter so bashisms don't regress to dash) and shell:true otherwise
-    // (cmd.exe on win32, /bin/sh on bash-less POSIX).
+    // aidlc-swarm.ts checkConverged() must not launch the check command through a
+    // hardcoded `bash` argv. `bash` is ENOENT on native Windows PowerShell, so the
+    // convergence check would spuriously fail there. The portable form passes the
+    // check command as the command with a shell, picking /bin/bash on POSIX where it
+    // exists (preserving the bash interpreter so bashisms don't regress to dash) and
+    // shell:true otherwise (cmd.exe on win32, /bin/sh on bash-less POSIX).
     //
     // The needles below are split (`"spawn" + "Sync("`) on purpose: a verbatim
     // `spawnSync(` token co-occurring with the aidlc-swarm.ts literal and a
@@ -121,9 +121,7 @@ describe("t152 Windows portability guard", () => {
     // — so the split keeps the honesty ratchet (gen-coverage-registry) accurate.
     const swarm = read("dist/claude/.claude/tools/aidlc-swarm.ts");
     const spawnCall = "spawn" + "Sync(";
-    // The convergence spawn no longer hardcodes a bash -c argv.
     expect(swarm).not.toContain(`${spawnCall}"bash", ["-c", checkCmd]`);
-    // It passes the check command as the command and runs it under a shell.
     expect(swarm).toContain(`${spawnCall}checkCmd, {`);
     expect(swarm).toContain("shell,");
     // Bash is preserved where present on POSIX (no dash regression for bashisms),

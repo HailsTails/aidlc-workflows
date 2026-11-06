@@ -180,7 +180,6 @@ const HARNESSES = readdirSync(join(REPO, "harness"), { withFileTypes: true })
 // literals -- `name` arrived from upstream and had to be added in exactly this
 // many places.
 const BASE_KEYS = [
-  "baseRuleDelivery",
   "configNextStep",
   "distribution",
   "harnessDir",
@@ -202,8 +201,19 @@ const BASE_KEYS = [
 // engine, or with VS Code's Chat: Use Hooks off).
 // `directiveMaxBytes` is Copilot's (VS Code keeps 20,000 characters of a
 // terminal result). `kiroLayout` names the layout of the two Kiro trees, which
-// every other harness omits.
-const OPTIONAL_KEYS = ["directiveMaxBytes", "hookActivation", "kiroLayout", "runnerFrontmatterAdditions"] as const;
+// every other harness omits. `statusLine` is AI-DLC's status line value on the
+// two hosts that have one (Claude Code and Codex), shipped here so it reaches a
+// settings file the host reads only when someone chooses it (#1407).
+// `agentFinishRecorded` is Claude Code's (its SubagentStop row lands before a
+// helper's result, so a verdict with none since its request had no reviewer).
+const OPTIONAL_KEYS = [
+  "agentFinishRecorded",
+  "directiveMaxBytes",
+  "hookActivation",
+  "kiroLayout",
+  "runnerFrontmatterAdditions",
+  "statusLine",
+] as const;
 
 /** The base fields, plus whichever optional ones this harness actually opts into. */
 function expectedKeys(actual: string[], extra: readonly string[] = []): string[] {
@@ -259,7 +269,7 @@ describe("t294 absent by default — no harness is perturbed", () => {
 
   test("the runtime accessor returns null when nothing is configured", () => {
     // Absent is the NORMAL case, not an error: the tool then probes pdftotext on
-    // PATH and degrades to extractor_unavailable.
+    // PATH and, where it is missing, reads a PDF with AI-DLC's own reader.
     expect(documentExtractors()).toBeNull();
   });
 });

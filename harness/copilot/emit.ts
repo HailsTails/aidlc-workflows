@@ -26,7 +26,7 @@
 // it never replaces the directory. All emissions are aidlc-prefixed so the
 // merge is collision-free.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
 import {
@@ -34,14 +34,16 @@ import {
 } from "../../core/tools/aidlc-model-policy.ts";
 import { injectDelegatedKnowledgePreflight } from "../../scripts/agent-knowledge.ts";
 import { EXTENDED_SUBPROCESS_TIMEOUT_MS } from "../../core/tools/aidlc-runtime-budget.ts";
+import { LAUNCHER_PATH, launcherBody } from "../../core/tools/aidlc-launcher-voucher.ts";
 
 // ---------------------------------------------------------------------------
 // Hook wiring. PascalCase events; register ONLY events with a real core-hook
-// consumer (kiro-normative). One PreToolUse registration serves both guards
-// (state-transition + reviewer-scope) — the adapter runs them in order.
-// SessionEnd is omitted because VS Code does not document or accept that
-// event. The shared manifest must be valid on both hosts, so both use the
-// adapter's next-SessionStart reconciliation path for SESSION_ENDED.
+// consumer (kiro-normative). One PreToolUse registration serves the guards
+// (state-transition, reviewer-scope, review-freeze, plan-approval) - the
+// adapter runs them in that order. SessionEnd is omitted because VS Code does
+// not document or accept that event. The shared manifest must be valid on
+// both hosts, so both use the adapter's next-SessionStart reconciliation path
+// for SESSION_ENDED.
 // ---------------------------------------------------------------------------
 const HOOK_TIMEOUT_SECONDS = EXTENDED_SUBPROCESS_TIMEOUT_MS / 1000;
 const COMPOUND_HOOK_TIMEOUT_SECONDS = HOOK_TIMEOUT_SECONDS * 2;
@@ -160,17 +162,6 @@ export default function emit(ctx: EmitContext): void {
     content: () => emitHooksJson(harnessDir),
   });
 
-  // The adapter resolves a plugin-contributed target to its hook body through
-  // this map, the same way the codex face does — without it a contributed row
-  // registers and then dispatches to nothing. It sits beside the ADAPTER in the
-  // harness dir, not in SHELL: the adapter reads it relative to its own
-  // location, and on this face those two directories differ.
-  emissions.push({
-    path: join(distRoot, harnessDir, "hooks", "plugin-hook-targets.json"),
-    content: () =>
-      `${JSON.stringify({}, null, 2)}\n`,
-  });
-
   // Persona custom agents from core/agents/*.md (body token → .aidlc).
   const agentsDir = join(coreRoot, "agents");
   for (const f of readdirSync(agentsDir).filter((x) => x.endsWith(".md")).sort()) {
@@ -189,14 +180,14 @@ export default function emit(ctx: EmitContext): void {
           ),
         ).replaceAll(
           "aidlc/spaces/<active-space>/memory/",
-          "aidlc/spaces/default/memory/",
+          "aidlc/active-memory/",
         );
       },
     });
   }
 
   // (a) authored orchestrator shell — token-substituted from harness/copilot/.
-  for (const f of ["SKILL.md", "question-rendering.md", "composer.md"]) {
+  for (const f of ["SKILL.md", "question-rendering.md", "composer.md", "tables.md"]) {
     emissions.push({
       path: join(SKILLS_DST, "aidlc", f),
       content: () => substituteToken(readFileSync(join(harnessRoot, "skills", "aidlc", f), "utf-8")),
@@ -247,4 +238,10 @@ export default function emit(ctx: EmitContext): void {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content(), "utf-8");
   }
+  // AI-DLC's engine launcher, the command name the skill's rule allows. The
+  // native pass writes `aidlc` for the token.
+  const launcher = join(distRoot, LAUNCHER_PATH.replace(/^\.aidlc\//, `${harnessDir}/`));
+  mkdirSync(dirname(launcher), { recursive: true });
+  writeFileSync(launcher, substituteToken(launcherBody("{{INVOKE}}")), { encoding: "utf-8", mode: 0o755 });
+  chmodSync(launcher, 0o755);
 }

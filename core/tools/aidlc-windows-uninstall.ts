@@ -16,6 +16,7 @@ import {
   commandPath,
   installRoot,
   machineTransactionRoot,
+  WINDOWS_EXE_COMMAND_ASIDE,
   windowsUninstallFencePath,
 } from "./aidlc-install-paths.ts";
 import {
@@ -66,9 +67,14 @@ export type WindowsUninstallJournal = {
 // Automatic resumption is bounded: a worker that keeps dying without a result
 // needs an explicit `aidlc uninstall` rather than a relaunch on every command.
 export const WINDOWS_UNINSTALL_AUTOMATIC_ATTEMPTS = 3;
-// A launched worker waits up to a minute for its parent, then removes files.
-// Within this window it is presumed alive and is not launched a second time.
+// A launched worker waits up to a minute each for its parent and shim, then
+// removes files. Within this ten-minute window it is presumed alive and is not
+// launched a second time.
 export const WINDOWS_UNINSTALL_RUNNING_GRACE_MS = 10 * 60_000;
+// The worker's time grows with its planned files: on Windows Server with
+// Defender on, about 1 s plus 8 ms a file (23 s for one version, 45 s for two).
+// The line that says when to retry rounds that up.
+const WINDOWS_UNINSTALL_MS_PER_FILE = 10;
 
 // The installer's token query, run in a child PowerShell and emitted in
 // memory. 1 is a full token without a UAC split (the built-in Administrator,
@@ -141,6 +147,27 @@ export function windowsUninstallContinuationState(
   if (journal.status === "failed") return "failed";
   if ((journal.attempts ?? 0) >= WINDOWS_UNINSTALL_AUTOMATIC_ATTEMPTS) return "failed";
   return "resume";
+}
+
+export function windowsUninstallFinishesAt(journal: WindowsUninstallJournal): number {
+  return Date.parse(journal.launchedAt ?? "") + 1_000 +
+    (journal.files?.length ?? 0) * WINDOWS_UNINSTALL_MS_PER_FILE;
+}
+
+// What a command meets while the worker runs. Once it is done aidlc is gone,
+// so only the installer is told to run again.
+export function windowsUninstallStillFinishingLine(
+  finishesAt: number | undefined,
+  now: number,
+  command: "install" | "uninstall" | "other",
+): string {
+  const left = finishesAt !== undefined && Number.isFinite(finishesAt) ? finishesAt - now : 0;
+  const minutes = Math.max(1, Math.ceil(left / 60_000));
+  const wait = minutes === 1 ? "a minute" : `${minutes} minutes`;
+  const finishing = "the last AI-DLC uninstall is still finishing";
+  if (command === "install") return `${finishing}. Nothing was changed; run the installer again in ${wait}.`;
+  if (command === "uninstall") return `${finishing}; it needs nothing more and is done in ${wait}.`;
+  return `${finishing}, so this command was not run.`;
 }
 
 export type WindowsPathRegistration = {
@@ -240,9 +267,14 @@ function assertDeletionPlan(
   ) throw new Error("Windows uninstall requires an explicit file plan");
   const rootKey = planPathKey(root);
   // A bin directory may sit outside the root; the only files there are
-  // aidlc.cmd and the Git Bash launcher beside it.
-  const commandKeys = [planPathKey(command), planPathKey(join(dirname(command), "aidlc"))];
-  const besideCommand = (path: string): boolean => commandKeys.includes(planPathKey(path));
+  // aidlc.cmd, the Git Bash launcher and aidlc.exe beside it, and the replaced
+  // aidlc.exe copies renamed aside.
+  const commandKeys = ["aidlc", "aidlc.exe"].map((name) => planPathKey(join(dirname(command), name)));
+  commandKeys.push(planPathKey(command));
+  const besideCommand = (path: string): boolean =>
+    commandKeys.includes(planPathKey(path)) ||
+    (planPathKey(dirname(path)) === planPathKey(dirname(command)) &&
+      WINDOWS_EXE_COMMAND_ASIDE.test(basename(path)));
   const withinRoot = (path: string): boolean =>
     planPathKey(path).startsWith(`${rootKey}${sep}`);
   const absolutePath = (path: unknown): path is string =>
@@ -260,7 +292,7 @@ function assertDeletionPlan(
   }
   const files = new Set<string>();
   const settings = new Set([
-    "aidlc.settings.json", "update-check.json", "pins.json", "default-harness", "channel",
+    "aidlc.settings.json", "update-check.json", "pins.json", "default-harness", "channel", "kiro-ide-workflows", "kiro-cli-workflows", "kiro-ide-settings-error-told", "kiro-ide-terminal",
   ].map((name) => planPathKey(join(root, name))));
   for (const file of plan.files) {
     if (
@@ -370,13 +402,18 @@ function Test-UninstallPreserved([string]$Path) {
   }
   return $false
 }
+function Test-UninstallBesideCommand([string]$Path) {
+  if ($Path -eq $diskCommand -or $Path -eq $diskGitBashLauncher -or $Path -eq $diskExeLauncher) { return $true }
+  return [IO.Path]::GetDirectoryName($Path) -eq [IO.Path]::GetDirectoryName($diskCommand) -and
+    [IO.Path]::GetFileName($Path) -match '${WINDOWS_EXE_COMMAND_ASIDE.source}'
+}
 function Assert-UninstallTargetBoundary([string]$Path, [bool]$Directory) {
   if ($Path -eq (Convert-UninstallPath ([IO.Path]::GetPathRoot($Path))) -or
       $Path -eq (Convert-UninstallPath ([Environment]::GetFolderPath('UserProfile'))) -or
       $Path -match '(?:^|[\\/])\.git(?:[\\/]|$)' -or
       ($Path -eq $diskRoot -and -not $Directory) -or
       ($Path -ne $diskRoot -and -not (Test-UninstallWithin $Path $diskRoot) -and
-        ($Directory -or ($Path -ne $diskCommand -and $Path -ne $diskGitBashLauncher)))) {
+        ($Directory -or -not (Test-UninstallBesideCommand $Path)))) {
     throw "outside Windows uninstall target boundary: $Path"
   }
 }
@@ -713,6 +750,7 @@ export function windowsUninstallCleanupScript(journal: WindowsUninstallJournal):
     // The Git Bash launcher beside aidlc.cmd: the one other file a bin
     // directory outside the root holds.
     "$diskGitBashLauncher = Convert-UninstallPath ([IO.Path]::Combine([IO.Path]::GetDirectoryName($command), 'aidlc'))",
+    "$diskExeLauncher = Convert-UninstallPath ([IO.Path]::Combine([IO.Path]::GetDirectoryName($command), 'aidlc.exe'))",
     "$diskFence = Convert-UninstallPath $fence",
     "$diskJournal = Convert-UninstallPath $JournalPath",
     "$diskCleanup = Convert-UninstallPath $cleanup",
@@ -737,7 +775,7 @@ export function windowsUninstallCleanupScript(journal: WindowsUninstallJournal):
   $resuming = [string]$journal.progress -in @('removing', 'finalizing')
   $keep = @($deletionScope.preserved | ForEach-Object { Convert-UninstallPath ([string]$_) })
   foreach ($path in $keep) {
-    if ($path -ne $diskCommand -and $path -ne $diskGitBashLauncher -and -not (Test-UninstallWithin $path $diskRoot)) {
+    if (-not (Test-UninstallBesideCommand $path) -and -not (Test-UninstallWithin $path $diskRoot)) {
       throw 'invalid Windows uninstall preserved path'
     }
   }
@@ -762,10 +800,11 @@ export function windowsUninstallCleanupScript(journal: WindowsUninstallJournal):
     }
     $null = Assert-UninstallKind $path $false
   }
-  # aidlc.cmd runs aidlc-shim.ps1, which reads active-version and
-  # active-executable to start the active version's aidlc.exe. That chain is removed
-  # last, so every earlier failure leaves a command that can retry cleanup.
-  $entrypoint = @($diskCommand, (Convert-UninstallPath ([IO.Path]::Combine($root, 'aidlc-shim.ps1'))),
+  # aidlc.cmd runs aidlc-shim.ps1, and aidlc.exe in bin runs itself, each reading
+  # active-version and active-executable to start the active version's aidlc.exe.
+  # That chain is removed last, so every earlier failure leaves a command that can
+  # retry cleanup.
+  $entrypoint = @($diskCommand, $diskExeLauncher, (Convert-UninstallPath ([IO.Path]::Combine($root, 'aidlc-shim.ps1'))),
     (Convert-UninstallPath ([IO.Path]::Combine($root, 'active-version'))), (Convert-UninstallPath $pointer))
   $activeVersionFile = Convert-UninstallPath ([IO.Path]::Combine($root, 'active-version'))
   if ($null -ne (Assert-UninstallKind $activeVersionFile $false)) {
@@ -1151,6 +1190,8 @@ export type WindowsUninstallRecovery = {
   resumed: number;
   // Launched within the grace window; relaunching would race the live worker.
   running: number;
+  // When the last of those should be done, for the line that says when to retry.
+  finishesAt?: number;
   // Stopped with a recorded failure, or out of automatic attempts.
   failed: Array<{ path: string; journal: WindowsUninstallJournal }>;
   // Failed before removing anything, so retired for a fresh plan.
@@ -1262,6 +1303,7 @@ export function recoverWindowsUninstallContinuations(
   for (const item of classified) {
     if (item.state === "running") {
       recovery.running++;
+      recovery.finishesAt = Math.max(recovery.finishesAt ?? 0, windowsUninstallFinishesAt(item.journal));
     } else if (relaunches(item)) {
       // launch() clears the failure; keep it so the caller can say why.
       if (item.journal.failure) recovery.retriedFailures.push(item.journal.failure);

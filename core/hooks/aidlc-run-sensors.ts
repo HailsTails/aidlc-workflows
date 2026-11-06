@@ -14,10 +14,8 @@
 //
 // Exit-code contract (G5): always exit 0. Sensor verdicts surface
 // through the dispatcher's audit rows (SENSOR_FIRED + paired
-// SENSOR_PASSED|FAILED|BUDGET_OVERRIDE) and detail files. A failed verdict
-// carrying a sensor-supplied writer_notice is also surfaced to the writer as
-// one advisory PostToolUse additionalContext. Blocking semantics defer to
-// the future ralph driver.
+// SENSOR_PASSED|FAILED|COULD_NOT_RUN|BUDGET_OVERRIDE) and detail files. Blocking
+// semantics belong to aidlc-state.ts enforceBlockingGateSensors.
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -31,7 +29,6 @@ import {
   auditFilePath,
   type ClaudeCodeHookInput,
   getField,
-  hookPayloadCwd,
   hooksHealthDir,
   writeHookStatusFile,
   isClaudeCodeHookInput,
@@ -42,70 +39,18 @@ import {
   readStateFile,
   recordHookDrop,
   resolveCeremony,
-  resolveProjectDirFromPayload,
   resolveProjectFlag,
+  resolveProjectDirFromHook,
   sensorsDir,
   sensorsReadDir,
   stateFilePath,
   harnessDir,
 } from "../tools/aidlc-lib.ts";
-import {
-  type DispatchedVerdict,
-  verdictOfDispatcherStdout,
-} from "../tools/aidlc-sensor-verdict.ts";
-
-const WRITER_CONTEXT_CHARACTER_LIMIT = 4000;
-const DETAIL_LINE_PREFIX = "(full detail: ";
-const CUT_DETAIL_MARKER = "… more in the detail files";
-const KEPT_DETAIL_MARKER = "… more in the detail files named above";
-
-type NoticeVerdict = Extract<DispatchedVerdict, { result: "failed-with-notice" }>;
-
-function isNoticeVerdict(verdict: DispatchedVerdict): verdict is NoticeVerdict {
-  return verdict.result === "failed-with-notice";
-}
-
-function noticeLinesOf(verdict: NoticeVerdict): string[] {
-  const lines = `[${verdict.sensorId}] ${verdict.writerNotice}`.split("\n");
-  return verdict.detailFile.kind === "written"
-    ? [...lines, `${DETAIL_LINE_PREFIX}${verdict.detailFile.path})`]
-    : lines;
-}
-
-// The one advisory text for one write: a summary line naming every sensor
-// that supplied a writer notice, then each notice and its detail file, cut at
-// a line boundary so the whole text (marker included) fits the limit. The
-// notice text is the sensor's; this function never inspects it.
-export function writerContextOf(verdicts: readonly DispatchedVerdict[]): string {
-  const kept = verdicts.filter(isNoticeVerdict);
-  if (kept.length === 0) return "";
-  const lines = [
-    `Advisory sensor findings for ${kept[0].outputPath}: ${kept.map((verdict) => verdict.sensorId).join(", ")}`,
-    ...kept.flatMap(noticeLinesOf),
-  ];
-  const whole = lines.join("\n");
-  if (whole.length <= WRITER_CONTEXT_CHARACTER_LIMIT) return whole;
-  // Keep the longest prefix of whole lines that, with its marker, fits. The
-  // marker only claims the detail files are named above when no detail line
-  // was cut.
-  for (let fitting = lines.length - 1; fitting > 0; fitting--) {
-    const head = lines.slice(0, fitting);
-    const detailCut = lines
-      .slice(fitting)
-      .some((line) => line.startsWith(DETAIL_LINE_PREFIX));
-    const text = [
-      ...head,
-      detailCut ? CUT_DETAIL_MARKER : KEPT_DETAIL_MARKER,
-    ].join("\n");
-    if (text.length <= WRITER_CONTEXT_CHARACTER_LIMIT) return text;
-  }
-  return lines[0].slice(0, WRITER_CONTEXT_CHARACTER_LIMIT);
-}
 
 export async function run(input: string): Promise<number> {
   // Step 1 — Resolve project dir from import.meta.url. Mirrors
   // aidlc-write-audit-log.ts and aidlc-rebuild-stage-graph.ts precedent.
-  const projectDir = resolveProjectDirFromPayload({ importMetaUrl: import.meta.url, cwd: hookPayloadCwd(input) });
+  const projectDir = resolveProjectDirFromHook(import.meta.url);
   let payloadSession: unknown;
   try {
     payloadSession = (JSON.parse(input) as { session_id?: unknown }).session_id;
@@ -129,18 +74,18 @@ async function fireSensors(input: string, projectDir: string): Promise<number> {
 const SUBPROCESS_TIMEOUT_MS =
   Number(resolveProjectFlag("AIDLC_SENSOR_TIMEOUT_MS")) || EXTENDED_SUBPROCESS_TIMEOUT_MS;
 
-// Health-dir for the heartbeat (run-sensors.last). Read by the future
+// Health-dir for the heartbeat (run-sensors.last). Read by the
 // hook-health doctor.
 const healthDir = hooksHealthDir(projectDir);
 
 // Step 2 — TTY guard. Hook invoked outside a piped-stdin context (e.g.
 // interactive shell, test harness running under `bash -x`) has no JSON
-// to parse; exit cleanly instead of blocking on a terminal read.
+// payload to parse; exit cleanly.
 if (process.stdin.isTTY) return 0;
 
 // Step 3 — Stdin parse. Malformed JSON exits 0 silently.
 // We use the central ClaudeCodeHookInput type guard from aidlc-lib.ts;
-// the SKILL.md frontmatter pins this hook to the Write|Edit matcher,
+// the hook registration (Claude's settings.json) pins this hook to Write|Edit,
 // so we don't consult tool_name and only need tool_input.file_path.
 let parsed: ClaudeCodeHookInput;
 try {
@@ -159,7 +104,7 @@ const filePath = isAbsolute(rawFilePath)
   ? rawFilePath
   : join(projectDir, rawFilePath);
 
-// Step 5 - Recursion guard. Cover new output and the readable legacy findings
+// Step 5 - Recursion guard. Cover output and the readable legacy findings
 // directory, including the older flat aidlc-docs location. Writers always use
 // sensorsDir; resolving a legacy read never creates or moves either directory.
 // Drive letters are normalized on both sides (see normalizeDriveLetter).
@@ -174,12 +119,12 @@ if (
 }
 
 // Step 6 — Pre-init guard. No audit.md → no active workflow → no-op.
-// Mirrors aidlc-write-audit-log.ts:48-50 + aidlc-rebuild-stage-graph.ts:62-64.
+// Mirrors the no-audit exit in aidlc-write-audit-log.ts and aidlc-rebuild-stage-graph.ts.
 if (!existsSync(auditFilePath(projectDir))) return 0;
 
 // Step 7 — State-file guard.
 //
-// readStateFile throws on missing aidlc-state.md (lib.ts:169-175).
+// readStateFile throws on missing aidlc-state.md.
 // Pre-init or partially-deleted workspaces could have audit.md without
 // state.md (audit.md is write-direct; state.md is overwrite-rename).
 // G5 ("always exit 0") demands a guard before the read.
@@ -197,7 +142,7 @@ try {
 const scope = getField(stateContent, "Scope");
 if (resolveCeremony("sensors", scope, stateContent).value === "off") return 0;
 
-// Step 8 — Heartbeat (G3). The future hook-health doctor reads this
+// Step 8 - Heartbeat (G3). The hook-health doctor reads this
 // file's mtime to detect silent-hook failure. Placement: AFTER
 // input/recursion/audit/state guards but BEFORE the
 // active-stage and graph-read guards. Doctor must distinguish two
@@ -232,7 +177,8 @@ if (!existsSync(firstFiredMarker)) {
 // or stale markers fall back to Current Stage.
 const currentStage = getField(stateContent, "Current Stage") ?? "";
 if (!currentStage || currentStage === "none") return 0;
-const markedStage = readActiveDirectiveMarker(projectDir, stateContent)?.stage;
+const marker = readActiveDirectiveMarker(projectDir, stateContent);
+const markedStage = marker?.stage;
 let activeStage = markedStage ?? currentStage;
 
 // Step 10 — Stage-graph read (C4). loadGraph() returns GraphStage[]
@@ -244,7 +190,7 @@ try {
   const graph = loadGraph();
   stageNode = graph.find((s) => s.slug === activeStage);
   // A schema-valid marker can still name a stage absent from a stale or
-  // plugin-filtered graph. Treat it as unusable and preserve the historical
+  // plugin-filtered graph. Treat it as unusable and preserve the
   // Current Stage behavior instead of suppressing all sensor dispatch.
   if (!stageNode && markedStage) {
     activeStage = currentStage;
@@ -256,6 +202,9 @@ try {
 }
 // Stage missing from graph (stale state-graph mismatch) — same exit.
 if (!stageNode) return 0;
+// The Unit the directive named, when its stage is the one dispatched: under
+// unit-major the rows say whose work the sensor looked at.
+const activeUnit = activeStage === markedStage ? marker?.unit : undefined;
 
 // No applicable sensors. Empty array is the workspace-scaffold case;
 // undefined is the unlikely missing-field case (compile guarantees it).
@@ -266,7 +215,7 @@ if (applicableSensors.length === 0) return 0;
 //
 // G1 lock-in: matches IS the filter. Entries without a matches glob
 // do not fire. The framework artifact glob is `**/{aidlc-docs,intents}/**`
-// (P9 — the per-intent record tree carries an `/intents/` segment; the legacy
+// (the per-intent record tree carries an `/intents/` segment; the legacy
 // `aidlc-docs/` arm stays so a pre-migration artifact still matches). The
 // gate-fired document-shape manifests add a `codekb` arm for the space-level
 // CodeKB that reverse-engineering writes (#771). The relaxed `**/<seg>/**`
@@ -274,17 +223,14 @@ if (applicableSensors.length === 0) return 0;
 // bespoke globToRegex rejects the *.md form even though
 // Bun.Glob accepts both — both engines agree on the relaxed form.
 const sensorTs = join(projectDir, harnessDir(), "tools", "aidlc-sensor.ts");
-const verdicts: DispatchedVerdict[] = [];
 for (const entry of applicableSensors) {
-  // Gate-fired sensors run once per existing deliverable at gate-start. Older
-  // compiled graphs omit fire_on, which preserves the historical write default.
+  // Gate-fired sensors run at gate-start, not on writes. Older compiled graphs
+  // omit fire_on, which preserves the write default.
   if (entry.fire_on === "gate") continue;
   if (!entry.matches) continue;
   const glob = new Bun.Glob(entry.matches);
   if (!glob.match(filePath)) continue;
 
-  // Spawn dispatcher (C1). Bare-script form (`bun <script> ...`)
-  // matches the upstream dispatcher manifest's `command:` convention.
   // Sync subprocess; user pays wall-clock per Write inside an active
   // stage with applicable sensors.
   //
@@ -294,14 +240,18 @@ for (const entry of applicableSensors) {
   // --template-eligible (via templateEligibleArtifacts) and threads them to the
   // required-sections script. So both invocation sites (this hook and a direct
   // `aidlc-sensor fire`) converge on the dispatcher's single threading point and
-  // stay consistent; the hook passes only --stage/--output-path as before.
+  // stay consistent; the hook passes --stage/--output-path, plus --unit when the
+  // directive named a Unit.
   try {
     // A bare "bun" child does not exist in a native install, where the binary
     // carries the runtime; the dispatcher helper names the compiled executable
     // when there is one and Bun's own absolute path otherwise.
     const [command, ...args] = aidlcEngineCommand(
       "sensor",
-      ["fire", entry.id, "--stage", activeStage, "--output-path", filePath],
+      [
+        "fire", entry.id, "--stage", activeStage, "--output-path", filePath,
+        ...(activeUnit ? ["--unit", activeUnit] : []),
+      ],
       sensorTs,
     );
     const result = spawnSync(
@@ -309,27 +259,19 @@ for (const entry of applicableSensors) {
       args,
       {
         cwd: projectDir,
-        // Carry the invoking checkout to the dispatcher so a session whose
-        // project dir names another checkout (a worktree entered mid-session)
-        // still fires against the file actually written.
-        env: {
-          ...process.env,
-          AIDLC_PROJECT_DIR: projectDir,
-          CLAUDE_PROJECT_DIR: projectDir,
-        },
         timeout: SUBPROCESS_TIMEOUT_MS,
         stdio: ["ignore", "pipe", "pipe"],
       }
     );
     // Sensor outcomes stay inside the dispatcher (paired audit rows by
     // Fire id; dispatcher exits 0). Hook-level failures get recorded
-    // for `--doctor` to surface (mirrors aidlc-rebuild-stage-graph.ts:115-121):
+    // for `--doctor` to surface (mirrors aidlc-rebuild-stage-graph.ts's dispatch step):
     //   - timeout: spawnSync sets BOTH `result.error.code === "ETIMEDOUT"`
     //     and `result.signal === "SIGTERM"` on timeout. We OR-check
     //     defensively (either alone is sufficient evidence) and check
     //     timeout FIRST so it isn't misclassified as a generic spawn
     //     failure.
-    //   - true spawn failure (bun off PATH, ENOENT, EACCES):
+    //   - true spawn failure (executable missing, ENOENT, EACCES):
     //     result.error set without timeout signal.
     //   - dispatcher invocation error (unknown id, missing flags,
     //     matches-rejection): result.status !== 0, no error.
@@ -355,22 +297,9 @@ for (const entry of applicableSensors) {
         "run-sensors",
         `sensor ${entry.id} dispatcher exit ${result.status}${stderr ? `: ${stderr}` : ""}`
       );
-    } else {
-      // Status 0: read the dispatcher's verdict line so a sensor-supplied
-      // writer notice can reach the writer. An unreadable line is a drop.
-      const reading = verdictOfDispatcherStdout(result.stdout?.toString() ?? "");
-      if (reading.kind === "verdict") {
-        verdicts.push(reading.verdict);
-      } else {
-        recordHookDrop(
-          projectDir,
-          "run-sensors",
-          `${entry.id}: unreadable verdict`
-        );
-      }
     }
   } catch (e: unknown) {
-    // Thrown error from spawnSync itself — not from the child process.
+    // Thrown by aidlcEngineCommand or spawnSync itself - not by the child process.
     recordHookDrop(
       projectDir,
       "run-sensors",
@@ -379,19 +308,7 @@ for (const entry of applicableSensors) {
   }
 }
 
-// Step 12 — Surface sensor-supplied writer notices as one advisory
-// PostToolUse context. Nothing is printed when no sensor supplied one, and
-// the hook never emits a decision: the context is advisory only.
-const additionalContext = writerContextOf(verdicts);
-if (additionalContext !== "") {
-  process.stdout.write(
-    `${JSON.stringify({
-      hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext },
-    })}\n`
-  );
-}
-
-// Step 13 — exit 0 (advisory always per G5).
+// Step 12 — exit 0 (advisory always per G5).
 return 0;
 }
 

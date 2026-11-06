@@ -25,11 +25,10 @@ import {
   makeSeed,
   clone,
   prepareCandidate,
-  dispatchMerge,
   approveMerge,
   gateAndLand,
-  nextDirective,
   unitProgressRow,
+  nextPastPushOffer,
 } from "../harness/team-unit-merge.ts";
 
 // The pinned merge cases are split across four files
@@ -56,12 +55,6 @@ describe("t326 pinned team Unit merge", () => {
     );
     const alphaEvents = readAllAuditShards(seed).match(/\*\*Event\*\*: UNIT_MERGED/g) ?? [];
     expect(alphaEvents).toHaveLength(1);
-    expect(readAllAuditShards(seed)).toContain(
-      "**Event**: MERGE_DISPATCH_INVOKED",
-    );
-    expect(readAllAuditShards(seed)).toContain(
-      "**Event**: MERGE_DISPATCH_RETURNED",
-    );
     git(seed, ["push", "origin", "main"]);
 
     const status = runMergeTool(UNIT, ["status"], seed);
@@ -73,7 +66,8 @@ describe("t326 pinned team Unit merge", () => {
     expect(
       readAllAuditShards(seed).match(/\*\*Event\*\*: UNIT_MERGED/g) ?? [],
     ).toHaveLength(2);
-    expect(nextDirective(seed)).toMatchObject({
+    // The last landing is not on the remote yet: the push is offered first.
+    expect(nextPastPushOffer(seed)).toMatchObject({
       kind: "run-stage",
       stage: "build-and-test",
     });
@@ -142,6 +136,30 @@ describe("t326 pinned team Unit merge", () => {
     );
   }, 180000);
 
+  // The review read CRLF as LF, so the committed copies pin, gate and land
+  // check it against must be read the same way.
+  test("stage documents committed with CRLF line endings pin, gate and land", () => {
+    const { seed, remote } = makeSeed();
+    prepareCandidate(remote, "alpha", "crlf-team", { crlf: true });
+    expect(gateAndLand(seed, "alpha").pinnedOid).toHaveLength(40);
+    expect(readAllAuditShards(seed).match(/\*\*Event\*\*: UNIT_MERGED/g) ?? []).toHaveLength(1);
+  });
+
+  // The engine's own approvals record the label the person chose, with or
+  // without an option letter, and the merge evidence reads the approval row
+  // that pins the file's bytes, never the line's label. It once read only the
+  // exact "A. Approve Plan" line, so a Unit whose plan the person had approved
+  // was held at the merge as if they had not.
+  test.each(["[Answer]: Approve Plan", "[Answer]: a. Approve Plan"])(
+    "an approved plan recorded as %s pins, gates and lands",
+    (answerLine) => {
+      const { seed, remote } = makeSeed();
+      prepareCandidate(remote, "alpha", "label-team", { answerLine });
+      expect(gateAndLand(seed, "alpha").pinnedOid).toHaveLength(40);
+      expect(readAllAuditShards(seed).match(/\*\*Event\*\*: UNIT_MERGED/g) ?? []).toHaveLength(1);
+    },
+  );
+
   test("moved refs require re-pin", () => {
     const { seed, remote } = makeSeed();
     const first = prepareCandidate(remote, "alpha", "move-team");
@@ -163,13 +181,6 @@ describe("t326 pinned team Unit merge", () => {
     expect(movedGate.out).toContain("run aidlc-unit pin alpha again");
     const repin = runMergeTool(UNIT, ["pin", "alpha"], seed);
     expect(repin.status, repin.out).toBe(0);
-    const repinPayload = JSON.parse(repin.stdout);
-    dispatchMerge(
-      seed,
-      "alpha",
-      repinPayload.pinned_oid,
-      repinPayload.generation,
-    );
     expect(
       runMergeTool(
         UNIT,

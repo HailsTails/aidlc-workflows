@@ -201,7 +201,6 @@ describe("validateProjectIdentity", () => {
     "backlogStore",
     "mergeCommand",
     "prCommand",
-    "deployCommand",
   ])("rejects an identity missing the required %s field", (field) => {
     const { [field]: _omitted, ...withoutField } = distinctIdentity;
     expect(
@@ -428,8 +427,8 @@ describe("defaultProjectIdentity", () => {
     });
   });
 
-  test("names the idempotence precondition on the deploy command", () => {
-    expect(defaultProjectIdentity.deployCommand).toContain("idempotent");
+  test("defers an optional deploy invocation to the project procedure", () => {
+    expect(defaultProjectIdentity.deployCommand).toContain("project deployment procedure");
   });
 
   test("names the branch the pull-request command acts on", () => {
@@ -638,5 +637,37 @@ describe("vault policy privacy and consumer reads", () => {
         reader: createDefaultVaultConfigurationReader(),
       }),
     ).toEqual(expected);
+  });
+});
+
+describe("project deployment invocation", () => {
+  test("omitted deployCommand keeps configured identities usable for CI observation", () => {
+    const { deployCommand: _omitted, ...pipelineIdentity } = distinctIdentity;
+    const projectDir = createProjectDir({
+      contents: JSON.stringify({ ...minimalConfig, projectIdentity: pipelineIdentity }),
+    });
+    expect(readConfig({ projectDir })).toMatchObject({
+      source: "file",
+      failure: null,
+      config: { projectIdentity: {
+        operator: "Ada",
+        authorIdentity: "ada-author",
+        reviewerIdentity: "ada-reviewer",
+        deployCommand: defaultProjectIdentity.deployCommand,
+      } },
+    });
+    expect(resolveProjectIdentity({ projectDir })).toMatchObject({ kind: "resolved" });
+  });
+
+  test.each(["", "   ", null, 42, { command: "deploy" }])("refuses malformed present deployCommand %j", (deployCommand) => {
+    expect(validateProjectIdentity({ container: {
+      projectIdentity: { ...distinctIdentity, deployCommand },
+    } })).toStrictEqual({ ok: false, error: '"deployCommand" must be a non-empty string' });
+  });
+
+  test("keeps an explicit consumer deployment invocation unchanged", () => {
+    expect(validateProjectIdentity({ container: { projectIdentity: distinctIdentity } })).toMatchObject({
+      ok: true, value: { deployCommand: "make deploy" },
+    });
   });
 });

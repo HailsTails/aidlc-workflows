@@ -5,8 +5,20 @@
   "author": {
     "name": "HailsTails"
   },
-  "dependencies": ["core"],
+  "dependencies": [
+    "core"
+  ],
   "aidlc": {
+    "commands": {
+      "rin-config": {
+        "script": "tools/rin-config.ts",
+        "description": "Refresh core configuration using Rin's reviewed workflow compatibility policy"
+      },
+      "rin-plugin-refresh": {
+        "script": "tools/rin-plugin-refresh.ts",
+        "description": "Refresh the selected Rin plugin while preserving the reviewed open-workflow contract."
+      }
+    },
     "tokens": {
       "{{OPERATOR}}": "the operator",
       "{{AUTHOR_IDENTITY}}": "the authoring identity",
@@ -16,7 +28,7 @@
       "{{MERGE_COMMAND}}": "(unconfigured: set projectIdentity.mergeCommand to a command that refuses a merge whose latest review verdict is not APPROVED)",
       "{{REVIEW_COMMAND}}": "(unconfigured: set projectIdentity.reviewCommand to a command that posts a review verdict under an identity distinct from the authoring identity)",
       "{{PR_COMMAND}}": "(unconfigured: set projectIdentity.prCommand to a command that opens or updates the pull request for the current branch under the authoring identity)",
-      "{{DEPLOY_COMMAND}}": "(unconfigured: set projectIdentity.deployCommand to a command that deploys the target, total and idempotent)",
+      "{{DEPLOY_COMMAND}}": "(unconfigured: set projectIdentity.deployCommand only when the project deployment procedure requires an agent-triggered invocation)",
       "{{WORKTREE_TOOL}}": "creating an agent worktree with git worktree add",
       "harness": {
         "claude": {

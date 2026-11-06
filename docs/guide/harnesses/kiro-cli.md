@@ -7,6 +7,21 @@
 > IDE-targeted distribution is documented separately in
 > [Running AI-DLC on Kiro IDE](kiro-ide.md).
 
+> [!IMPORTANT]
+> This page covers the Kiro CLI (V2) harness (`aidlc config --harness
+> kiro-v2`), which pins no Kiro engine; start it with `kiro-cli --v2` (Kiro CLI 2.21.4 or later; for an older one, see
+> [Prerequisites](#prerequisites)). The
+> interactive `aidlc config` lists it as Kiro CLI (V2); when it detects Kiro
+> CLI 2.24.1 or later, it makes it the default over Kiro, except in Kiro IDE's
+> own terminal, where Kiro leads. For Kiro's v3 engine on Kiro CLI 2.24.1 or
+> later, use the Kiro harness (`--harness kiro`), listed as Kiro: it runs in
+> Kiro CLI (started with `kiro-cli --v3`) as well as Kiro IDE. In an existing
+> Kiro CLI (V2) project, `aidlc config --harness kiro` switches `.kiro/` to it
+> in place and keeps `aidlc/` (at a terminal it asks first; with `--yes` it
+> switches; without a terminal, or under `--quiet` or `--json`, it changes
+> nothing and prints the command with `--yes`); a plain `aidlc config` refresh, or
+> `--harness kiro-v2`, keeps Kiro CLI (V2).
+
 One of the framework's harnesses: the Kiro runtime runs the same AI-DLC
 methodology on [Kiro CLI](https://kiro.dev/docs/cli/). One deterministic core
 — the tools, 33 stage files, protocols, knowledge, sensors, scopes, and rules
@@ -16,11 +31,21 @@ configs, hook wiring, activation) differs.
 Harness-specific onboarding lives in `.kiro/steering/aidlc-onboarding.md`,
 loaded through the conductor agent's `resources`. The root `AGENTS.md` block
 is harness-neutral and shared with other installed harnesses; engine directories
-must still differ (Kiro CLI and Kiro IDE cannot share one `.kiro/` install).
+must still differ (the Kiro CLI (V2) and Kiro rows cannot share one `.kiro/`
+install).
 
 ## Prerequisites
 
-- **Kiro CLI ≥ 2.6** (`kiro-cli --version`), logged in (`kiro-cli login`)
+- **Kiro CLI ≥ 2.6** (`kiro-cli --version`), logged in (`kiro-cli login`). The
+  commands on this page start Kiro CLI on its V2 engine with `--v2`, which
+  needs Kiro CLI 2.21.4 or later. On an older one, see what
+  `kiro-cli chat --help` lists:
+  - with `--agent-engine` (2.19.2 has it), put `chat --agent-engine v2` in
+    place of `--v2`: `kiro-cli --v2 --agent aidlc` becomes
+    `kiro-cli chat --agent-engine v2 --agent aidlc`, and `kiro-cli chat --v2 …`
+    becomes `kiro-cli chat --agent-engine v2 …`;
+  - without it, start with `kiro-cli chat` and no engine flag (for example
+    `kiro-cli chat --agent aidlc`).
 - **bun** only when generating or running the source/development `dist/`
   projection. Native installs and versioned release runtimes are
   self-contained.
@@ -54,7 +79,7 @@ For an air-gapped package, use
 Kiro from the project root:
 
 ```bash
-kiro-cli chat
+kiro-cli --v2
 ```
 
 The native projection allows `aidlc engine *` engine commands and the exact
@@ -74,7 +99,7 @@ then set `RUNTIME_ROOT` to the extracted `runtime/` directory.
 mkdir -p your-project/.kiro your-project/aidlc
 cp -R "$RUNTIME_ROOT/kiro/.kiro/." your-project/.kiro/
 cp -R "$RUNTIME_ROOT/kiro/aidlc/." your-project/aidlc/    # the workspace shell (spaces/default/memory) — a sibling of .kiro/, not inside it
-cd your-project && bun .kiro/tools/aidlc.ts config --from "$RUNTIME_ROOT" --harness kiro
+cd your-project && bun .kiro/tools/aidlc.ts config --from "$RUNTIME_ROOT" --harness kiro-v2
 ```
 
 The `aidlc/` directory is the workspace shell — it ships the pre-built
@@ -101,18 +126,32 @@ workflow.
 Then start a session in your project:
 
 ```bash
-cd your-project && kiro-cli chat
+cd your-project && kiro-cli --v2
 ```
 
 The install ships `.kiro/settings/cli.json` with `chat.defaultAgent: "aidlc"`,
 so the AI-DLC conductor agent is active by default — `/aidlc` just works.
 **This workspace setting takes precedence over a global default agent you may
 have configured**; if you prefer your own default, remove that setting and use
-`kiro-cli chat --agent aidlc` instead.
+`kiro-cli --v2 --agent aidlc` instead.
+
+Kiro CLI cancels a helper (a reviewer, a persona, a Unit builder) that shows
+no progress for `api.subagentTimeout` seconds; its default is 3600, and AI-DLC
+does not set it. If a helper that never starts holds a stage for an hour, you
+can lower it in your own Kiro CLI settings (`~/.kiro/settings/cli.json`; `900`
+is 15 minutes). Output counts as progress, silence does not: a helper whose
+command prints nothing for longer than that is cancelled too, and the command
+keeps running on its own, so keep the deadline above your longest quiet command
+(a deploy, a test run that prints only at the end).
 
 No shipped agent pins a model: a pinned ID resolves only when that
-model is enabled on the user's Kiro install, so the conductor and all 14
-personas inherit your session model (`/model`).
+model is enabled on the user's Kiro install. A chat, and each of the 14
+personas the conductor dispatches, starts on your session model: the one
+saved in your Kiro settings (Kiro auto when you have saved none). `/model`
+changes only the chat you are in, so the conductor follows it and the
+personas still start on the saved model. To move them too, save the switch
+with `/model set-current-as-default`, or choose the model with
+`aidlc config models --session-model <id>`.
 
 ### Session model and effort
 
@@ -128,7 +167,9 @@ First-run setup's step 2, "Session model", lists the models your Kiro account
 offers, in Kiro's order, with each model's credit multiplier and a `preview` or
 `internal` tag. Under Kiro auto (Kiro's own default, where Kiro picks the model
 for each task), AI-DLC recommends choosing a model, so your effort preset
-applies to it. The preset then sets one effort for the whole session:
+applies to it. The preset then sets one effort for the whole interactive
+session (Kiro CLI 2.28.0 does not apply the saved effort to a
+`kiro-cli chat --v2 --no-interactive` run; pass `--effort` there):
 
 | Preset | Session effort |
 |--------|----------------|
@@ -137,20 +178,28 @@ applies to it. The preset then sets one effort for the whole session:
 | `thorough` | `xhigh` (extra-high) |
 
 A model without that level gets its next level down, and a model with no
-effort setting keeps only the model. `aidlc config models` offers the same
+effort setting keeps only the model. The recommended defaults fill the effort
+only where you have not saved one for your model: an effort you already saved
+stays, and setup says so in one line when it differs from the preset. Choosing
+a preset yourself (in step 3 or with `aidlc config models`) or a session model
+with `aidlc config models` sets the preset's effort; an agent or group setting
+leaves it alone. `aidlc config models` offers the same
 choice later ("1 session model, 2 preset"), and
 `aidlc config models --session-model <id>` saves a model from your account's
 list without prompts. A saved model your account no longer offers fails every
 prompt, so setup asks for another instead of keeping it. `--dry-run` shows the
 personal Kiro settings change too and writes nothing. When Kiro refuses a write,
 AI-DLC says exactly what was saved and `config models` exits 5 (action needed).
-`aidlc doctor` checks the live setting: the model is still offered, the effort
-matches the preset, and no project file overrides it. Refreshing a project set
+`aidlc doctor` checks the live setting: the model is still offered, its saved
+effort is one the model offers (when a preset is recorded and Kiro lists the
+model's effort levels), and no project file overrides it. An effort you saved
+that differs from the preset is yours: doctor names the preset's level and the
+command that applies it, without a warning. Refreshing a project set
 up by an earlier release removes AI-DLC's old effort map (`claude-opus-4.8` at
 extra-high) from `.kiro/settings/cli.json` and says so; run
 `aidlc config models` to choose the session model.
-Override one session with `/effort <level>` in chat or `kiro-cli chat --effort
-<level>` (low|medium|high|xhigh|max). The Kiro IDE does not read `cli.json`.
+Override one session with `/effort <level>` in chat or `kiro-cli chat --v2
+--effort <level>` (low|medium|high|xhigh|max; for older Kiro CLI, see Prerequisites). The Kiro IDE does not read `cli.json`.
 
 ## Refresh and version skew
 
@@ -170,7 +219,7 @@ not modify the project.
 
 ## Usage
 
-Start `kiro-cli chat` in the project, then invoke the conductor with
+Start `kiro-cli --v2` in the project, then invoke the conductor with
 `/aidlc <description>`. `/aidlc --status` reports position;
 `/aidlc --config [section]` gathers project configuration changes in-session;
 `/aidlc --doctor`, `--stage`, `--phase`, `--depth`, and `--test-strategy` all work. Workspace
@@ -206,57 +255,102 @@ ask.
 
 **What still asks you.** The developer agent and the `aidlc` agent write
 project files without asking: any path inside the project whose top-level name
-does not start with a dot. Their writes into `.kiro/` (apart from the `aidlc` agent's own
+does not start with a dot. In a side-by-side build a worker writes in a Unit's
+checkout (`.aidlc/worktrees/<unit>/`) the same way: its code and records
+there go through without asking, and the checkout's own `.git`, `.gitignore`
+and other dot entries ask. On Kiro CLI's v2 engine the checkout's dot
+folders (its `.kiro/`, `.github/`) go through too, and stay in that checkout
+until the Unit lands. Their writes into `.kiro/` (apart from the `aidlc` agent's own
 `.kiro/sensors/` files), `.git/`, or any other
 top-level dot entry, and anything outside the project, still ask. Your
 project's own test and build commands (`bun test`, `npm test`, `pytest`, and so
-on) still ask, so you see each one before it runs.
+on), a `git push` and a recursive delete still ask, so you see each one before
+it runs. In a side-by-side build the workers and reviewers run the test command
+you approved through AI-DLC's own `swarm check`, which does not ask. When a
+side-by-side build's workers or reviewers ask, Kiro gathers their requests in a
+"tool approval pending" box; choosing (f) **Approve all pending and
+auto-approve future subagent requests** there lets them run whatever they ask,
+without asking you again, for the rest of that chat, reviewers that start later
+included. Requests from the main chat still ask as before, and Kiro writes no
+setting for it.
 
 **Sessions with no approver stall rather than prompt.** Anything outside the
 pre-approved set needs an interactive answer. Under `kiro-cli chat
---no-interactive` there is nobody to ask, so Kiro refuses the command outright
+--v2 --no-interactive` there is nobody to ask, so Kiro refuses the command outright
 with `non-interactive mode (no user to approve)`. Over ACP, your client must
 answer `session/request_permission`; a client that ignores those requests looks
-exactly like a permission failure. `--trust-all-tools` bypasses both the allow
-and deny lists, including the recursive-`rm` and `git push` denials. Use it only
+exactly like a permission failure. `--trust-all-tools` runs every command
+without asking, a `git push` and a recursive delete included. Use it only
 inside a disposable sandbox where blanket shell access is acceptable.
 
 **The hooks run on Kiro CLI's v2 engine, including over ACP.** This
 distribution registers its hooks in `.kiro/agents/aidlc.json`. Kiro CLI runs
 that block on its v2 engine while the `aidlc` agent is active. `kiro-cli acp`
-picks the agent from `chat.defaultAgent`, the same way `kiro-cli chat` does.
+picks the agent from `chat.defaultAgent`, the same way `kiro-cli --v2` does.
 Kiro CLI's v3 engine does not run the file as AI-DLC ships it, so if a session
 starts on v3 (for example when a client starts `kiro-cli acp --agent-engine v3`)
 or switches to another agent, none of these hooks run. With no hooks, no
 `HUMAN_TURN` receipts are recorded, so every approval and confirmation is
 refused. No write events are recorded either, so reviews are refused.
+
+A prompt Kiro makes itself (for example the `[SYSTEM] Sub-agent synthesis:` message a newer
+kiro-cli sends after a sub-agent returns) is not counted as your turn: it is recorded as
+`HOST_TURN` and answers no question. Your own messages count whatever their words; Kiro's
+chat record says which is which, and anything unknown is yours.
 After the first workflow stage, `/aidlc --doctor` reports this as "Hooks have
 never executed". Before that, doctor warns that AI-DLC's hooks have not run in
 this project yet and names the same step. Restarting on the v3
 engine does not fix it. With another agent picked, type `/agent` and pick
 `aidlc`, then carry on in the same chat. On the 3.0 engine (Kiro prints
 `agent "aidlc" needs upgrading for this agent engine` under its replies), quit
-and start `kiro-cli chat --agent-engine v2 --agent aidlc` in this folder
+and start `kiro-cli --v2 --agent aidlc` in this folder
 instead (an ACP client starts `kiro-cli acp --agent-engine v2`). To run Kiro
 CLI on its v3 engine, use the
 [Kiro IDE](kiro-ide.md) distribution instead; in an existing project,
-`aidlc config --harness kiro-ide` switches `.kiro/` to it in place and keeps
-`aidlc/`. See
+`aidlc config --harness kiro` switches `.kiro/` to it in place and keeps
+`aidlc/` (at a terminal it asks first; with `--yes` it switches; without a terminal, or under
+`--quiet` or `--json`, it changes nothing and prints the command with `--yes`); then start `kiro-cli --v3` (when it asks to trust the folder and you know
+what is in it, choose **Trust, continue**). See
 [Kiro CLI hooks not running](../15-troubleshooting.md#kiro-cli-hooks-not-running).
+
+### When the chat fills up
+
+Kiro shows you how full the chat is, but gives AI-DLC no figure while it works.
+So AI-DLC reads the figure Kiro saves for the chat at the end of each turn
+(`~/.kiro/sessions/cli/<chat id>.json`, read only). Once it is 80% or more, the
+next approval question or Unit checkpoint carries one line saying how full the
+chat is, with an offer to pause and carry on in a new chat. Your answer
+decides: nothing pauses on its own, and the line is said once in a chat.
+
+The line cannot appear in the middle of a stage (it comes only with a question
+you are asked anyway), before Kiro has saved the chat's first turn, for a chat
+with no record on this machine, or if a Kiro update changes how Kiro saves the
+figure. When you see Kiro's own figure climb, you can do the same by hand:
+
+1. Stop at a stage boundary: approve and say you want to stop for now in the
+   same reply, or type `/aidlc park`. `/aidlc --status` now shows
+   `Paused at <stage> (you stopped it); pick it back up with /aidlc --resume`.
+2. Type `/chat new` for a new chat. Kiro keeps the old one, and `/chat resume`
+   brings it back. Use it rather than `/clear`, which resets the chat you are in.
+3. Type `/aidlc --resume`. `/aidlc --status` no longer says Paused.
+
+Anything the old chat discussed but did not write to a file does not carry
+over, which is why the end of a stage is the best moment (see
+[Changing Model Mid-Workflow](../11-session-management.md#changing-model-mid-workflow)).
 
 ## What's different on Kiro
 
 | Area | Claude Code | Kiro CLI |
 |------|-------------|----------|
 | Gates & questions | `AskUserQuestion` widget | Numbered prose options (reply with a number); the questions FILE with `[Answer]:` tags stays the source of truth |
-| Statusline | Current stage + model + context % | Not available — use `/aidlc --status` and the progress line at each gate |
+| Statusline | Current stage + model + context % | Not available: use `/aidlc --status` and the progress line at each gate; for a chat that is filling up, see [When the chat fills up](#when-the-chat-fills-up) |
 | Dispatched stages (2.1 pipeline, 2.2 subagent, 2.4 mob, 3.5 subagent) | `Task` tool | Kiro `subagent` tool → the agent configs (all 14 personas ship configs) |
 | Construction swarm | Parallel `Task` floor, optional ultracode Workflow | Subagent fan-out only; `AIDLC_USE_SWARM=1` is announced as a no-op |
 | Session audit events | `SESSION_STARTED/RESUMED/ENDED`, `SESSION_COMPACTED` | `SESSION_STARTED` only (Kiro has no session-end / pre-compaction hooks) |
 | Forwarding-loop enforcement (Stop hook) | Interactive + headless | Interactive sessions only — `--no-interactive` runs do not honor the stop-hook block |
 | Permissions | `settings.json` allowlist | Source-generated projection: AI-DLC's own project-relative workflow commands (engine, read-only dispatcher commands, AI-DLC tool scripts); native and versioned release runtimes: `aidlc engine *`. Other shell commands prompt. |
 | Welcome message | Rendered at session start from `settings.json` `companyAnnouncements` | None — Kiro has no welcome-render equivalent; the session-start hook injects resume context only |
-| MCP servers | Ships 5 (`.mcp.json`: `context7` + four AWS servers) | Ships the same 5 in `.kiro/settings/mcp.json`, all disabled by default; flip `"disabled": false` per server to enable it. Context7 is keyless on Kiro because Kiro sends configured HTTP header values verbatim instead of expanding environment placeholders. All 14 delegated personas opt in through `includeMcpJson: true` plus `@<server>` tool grants; the conductor gets none. |
+| MCP servers | Ships 5 (`.mcp.json`: `context7` + four AWS servers) | Ships the same 5 in `.kiro/settings/mcp.json`, all disabled by default; flip `"disabled": false` per server to enable it. Context7 is keyless on Kiro because Kiro sends configured HTTP header values verbatim instead of expanding environment placeholders. AI-DLC's own chat and its 14 delegated personas get every server in this file and in your `~/.kiro/settings/mcp.json` as of the last time config ran, and each call asks you first; a server you add later reaches them after you run config again. On Kiro CLI's v3 engine a persona gets every server in those files without a config run, from its second step. |
 
 Everything else — state machine, audit trail, artifacts under the intent
 record dirs (`aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`), the learnings
@@ -280,6 +374,10 @@ authored Kiro surfaces live in `harness/kiro/`: the orchestrator skill
 (`hooks/aidlc-kiro-adapter.ts`), `settings/cli.json`, `settings/mcp.json`, and `onboarding.fills.ts` — edit
 those (or `core/`), never hand-edit the generated `dist/kiro`. See
 [Porting to a New Harness](../../harness-engineering/09-porting-to-a-new-harness.md).
+The build appends `; exit $LASTEXITCODE` to every hook command of those agent
+JSONs (the manifest's `hookCommandSuffix`): Kiro CLI starts a hook in
+PowerShell on Windows and in bash elsewhere, and that shape hands a hook's exit
+2 back to Kiro in both, so a refusal stops the tool call on Windows too.
 
 A live TUI journey test exists alongside the Claude twins:
 `tests/e2e/t-tui-kiro-intent-capture.serial.test.ts` drives `kiro-cli chat`

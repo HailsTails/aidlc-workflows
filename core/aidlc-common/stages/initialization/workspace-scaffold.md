@@ -1,7 +1,5 @@
 ---
 slug: workspace-scaffold
-number: 0.1
-name: Workspace Scaffold
 phase: initialization
 execution: ALWAYS
 condition: Ensure-exists the per-intent record and in-scope phase dirs, idempotent (creates on demand, skips existing)
@@ -114,6 +112,6 @@ A customised setup report should import the relevant manifests here.
 
 When `directive.protocol_modules` lists `learnings`, follow
 `stage-protocol-learnings.md`: keep the diary at `directive.memory_path` while
-working and run the ritual before the approval gate, applying its bootstrap,
-`single: true`, per-unit, and gate-revision exemptions. When the module is absent,
-skip both the diary and the ritual.
+working, and take the learnings step before the approval gate; that module says
+when it asks the person anything. When the module is absent, skip both the diary
+and the step.

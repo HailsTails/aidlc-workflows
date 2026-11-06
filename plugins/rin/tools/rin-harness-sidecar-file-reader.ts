@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 type SidecarFileReader = {
@@ -58,6 +58,7 @@ type TextEncoding = "utf8" | "utf-8";
 type DirectoryOptions = { readonly recursive?: boolean };
 type RemovalOptions = { readonly recursive?: boolean; readonly force?: boolean };
 type FileTextPort = {
+  readonly copyTree: (args: { readonly source: string; readonly destination: string }) => void;
   readonly exists: (path: string) => boolean;
   readonly read: (path: string, encoding?: TextEncoding) => string;
   readonly write: (path: string, text: string, encoding?: TextEncoding) => void;
@@ -77,6 +78,7 @@ const fileOperation = <Value>(operation: () => Value): Value => {
 const EXECUTABLE_FILE_MODE = 0o755;
 
 const defaultFileTextPort = (): FileTextPort => ({
+  copyTree: ({ source, destination }) => fileOperation(() => cpSync(source, destination, { recursive: true })),
   exists: (path) => existsSync(path),
   read: (path, encoding = "utf8") => fileOperation(() => readFileSync(path, encoding)),
   write: (path, text, encoding = "utf8") => fileOperation(() => writeFileSync(path, text, encoding)),

@@ -5,7 +5,7 @@ name: Gate 6 — Operate
 plugin: rin
 phase: operation
 execution: ALWAYS
-condition: The operational gate — genuinely missing from the original rin gates, which stop at merge. Deploys the merged Slice, verifies it live (health-checked against the real path, not state-at-rest), wires its monitoring, and closes the bookkeeping (tend-log breadcrumb, scope-routed decisions, backlog reconcile). Converges only when the Slice is provably live AND its record is closed.
+condition: The operational gate — genuinely missing from the original rin gates, which stop at merge. Establishes delivery of the merged Slice through the project procedure, verifies it live (health-checked against the real path, not state-at-rest), wires its monitoring, and closes the bookkeeping (tend-log breadcrumb, scope-routed decisions, backlog reconcile). Converges only when the Slice is provably live AND its record is closed.
 lead_agent: rin-operations-agent
 support_agents:
   - rin-pipeline-deploy-agent
@@ -56,33 +56,16 @@ Questions and actions in a reserved class follow
 ## Three concerns
 
 ### 1. Deployment
-**This lane's FIRST duty is {{DEPLOY_TARGET}}'s currency, not Slice selection.** Before
-picking a Slice to work, read {{DEPLOY_TARGET}}'s deployed state against `origin/main` on
-**two axes** — the checkout AND the built images. Check the checkout by HEAD;
-check the images by comparing their age against the last commit touching
-buildable source, never against HEAD — most commits are records-only, and
-`up -d` correctly leaves containers untouched for those, so a HEAD-only
-comparison misses a stale-images state (a build-phase abort can leave the
-checkout current while the containers stay stale). Either axis behind means
-deploy.
 
-rin deploys via **Docker Compose on {{DEPLOY_TARGET}}**, driven by `{{DEPLOY_COMMAND}}` —
-the affordance that converges the deploy target's whole stack to current `origin/main`,
-prints a rollback anchor first, and is the only sanctioned production-deploy path
-(the codified stand-in for a remote CI/CD build step). It pulls current `origin/main`
-on the target's checkout and rebuilds + `up -d`s the WHOLE stack, converging it to main;
-migrations run at container boot; rollback = checkout the anchor the tool prints,
-rebuild, back to `main`. Gate 6 drives that deploy whenever either axis is behind
-`origin/main` — the merged Slice supplies the rollout strategy and the record, not
-the deploy's scope, and is never a precondition for running it — and logs it in
-`rin-deployment-log.md` (deployed HEAD, rollback anchor, exit code, migration
-outcome, live-verification result).
+**The project owns how a release reaches its target; this gate owns proving that the required release is live.** Read the active space's `memory/project.md`, its `## Deployment` section and the project procedure it points to before taking any deployment action. The procedure identifies the target, release selection and currency rules, delivery mechanism, allowed trigger/recovery steps, required smoke checks, rollback and monitoring. Use the actual project pipeline and infrastructure files it names. If the procedure is missing, ambiguous or contradictory, record that exact gap and hold the action rather than inventing a deploy path. See `{{HARNESS_DIR}}/knowledge/rin-gates/ADOPTING.md` for the adoption contract.
 
-Before deploying, check the deploy against the active reserved list. Rin's own
-list names this deploy as decided in advance, so under it the deploy runs. A
-project list that marks a deploy, or a production change, as a stopping class
-holds it: the deploy is a hard stop below, and the gate asks or parks with its
-pack instead of deploying.
+The procedure decides whether this lane maintains target currency independently of Slice selection or verifies the selected Slice's release. Preserve that choice, including any project-wide convergence requirement; do not replace it with a hand-computed deployment scope. Bind the desired source revision, build/release identity and serving runtime using the project's evidence. A checkout, successful build or uploaded version is not proof that it is serving traffic. Records-only changes and provider path filters are interpreted by the project's release rules, not by a generic requirement to rebuild every commit.
+
+Observe an existing CI/CD run before requesting another. When merge already triggered delivery, follow that run and its deployment/readback evidence. Do not redeploy a release already serving correctly just to perform this gate. A pending, failed, skipped, superseded or unconfirmed run is not successful delivery: establish the current state and use only the project's documented recovery when needed and authorized. Read back an uncertain result before retrying; a timeout or failed command does not prove that no external effect occurred.
+
+`{{DEPLOY_COMMAND}}` is used only when the project procedure calls for that invocation. It is not the procedure, evidence of permission, or a mandatory extra step after CI/CD. Check every proposed trigger, promotion, retry, rollback or other mutation against the active reserved list before acting. Observation of an already-running or completed delivery does not itself authorize another action. A stopping class follows the existing question/pack/park contract in `reserved-decisions.md`; a configured command and autonomous stage mode do not lift it.
+
+Record the procedure source, intended target/release, observed run or invocation, source/build/serving identities, rollback anchor, migration outcome and verification result in `rin-deployment-log.md`. Distinguish observed delivery from a newly requested deployment. If action is held, evidence is unavailable, delivery failed or rollback ran, say so without claiming the intended release is live.
 
 ### 2. Monitoring + live verification
 **Prove the live path — an entry point's success is not the system's capability.**
@@ -144,33 +127,11 @@ green entry point.
 
 ## Steps
 
-### Step 1: Deploy
-**Before selecting a Slice, check {{DEPLOY_TARGET}}'s currency against `origin/main` on
-both axes** — the checkout (HEAD) and the built images (age vs the last commit
-touching buildable source, not HEAD, since most commits are records-only). Either
-axis behind means deploy. This currency check is the lane's first duty; it does
-not wait on which Slice, if any, is selected.
+### Step 1: Establish delivery through the project procedure
 
-Run the deploy tool: `{{DEPLOY_COMMAND}}` — the affordance that converges the deploy
-target's whole stack to current `origin/main` and prints a rollback anchor, accepting
-`--dry-run` to print the plan and the pending main delta first by convention, then the
-real run. It is the only sanctioned production-deploy path.
+Load the project procedure and identify the required target/release, its currency evidence and any existing delivery run. Apply its lane-wide or Slice-specific scope and its active reserved decisions. Verify an already-delivered release without triggering it again; wait for pending delivery, or perform only the authorized documented action/recovery. Missing procedure, held action, unresolved run state or failed delivery is recorded explicitly, never converted into success.
 
-**The deploy is TOTAL and IDEMPOTENT — it converges the whole stack to current
-`origin/main`, never a computed per-Slice service delta.** Docker's layer cache
-makes unchanged services near-instant no-ops and `up -d` only recreates a container
-whose image or resolved config actually changed, so a blanket converge is cheap and
-correct. Computing an "affected services" list is the failure class every past
-operate incident belongs to (see the tool's own header) — do not reconstruct it.
-
-Because the deploy is total, **it is not gated on a Slice**: the Slice supplies
-rollout strategy (what to verify, what is risky, sequencing of sign-offs) and the
-bookkeeping record, not the deploy's scope, and is never a precondition for
-running it. If either currency axis is behind `origin/main`, the deploy runs —
-Slice or no Slice, empty pool or parked Slice included; none of those states is a
-reason to skip. Record the outcome in `rin-deployment-log.md`:
-the pre-deploy rollback anchor the tool prints, the deployed HEAD, the tool's exit
-code, and the live-verification result.
+Before a new deployment or traffic change, establish the rollback anchor and recovery limits, including migrations that rollback will not undo. Capture the actual serving release after delivery, then record the procedure, target, release identities, run/invocation outcome, migrations, rollback and live-verification evidence in `rin-deployment-log.md`. A workflow's green status alone is insufficient if the required deployment or smoke checks were skipped.
 
 ### Step 2: Verify live + wire monitoring
 Force the real path; read the side-effect. Write `rin-health-check-report.md` (live,
@@ -182,7 +143,7 @@ bookkeeping list above), and the backlog reconcile. Record them in
 `rin-bookkeeping-close.md`.
 
 ### Step 4: Commit, push, and open the PR — same run, never at the primary
-Commit the three record-dir artefacts on a WORKTREE BRANCH, push, and open the
+Commit the four record-dir artefacts on a WORKTREE BRANCH, push, and open the
 PR the SAME RUN via `{{PR_COMMAND}}` (the affordance that opens a pull request for
 the pushed branch under the author identity). Never commit at the primary checkout —
 `guard-primary-commit` denies it deterministically. This scheduled lane spawns
@@ -195,55 +156,28 @@ made under a decided class, with its class and where it is recorded, for
 Stop here — the conductor runs the reviewer, learnings, and approval; the stage's own `report --result approved` + committed audit event
 is the operational-done record.
 
-## Hard stops (no deploy, flagged digest — never a silent skip)
+## Hard stops (no new deployment action, flagged digest - never a silent skip)
 
-Stop BEFORE deploying, and name the exact failing stop in the digest, when ANY
-of these hold:
+Hold before initiating or retrying a deployment action, and name the exact failing stop in the digest, when ANY of these hold:
 
-- a life-OS rollup call (e.g. `done_check_task`) this Slice's WorkItem depends
-  on is unauthenticated (the rollup could never be recorded — the pipeline's
-  own operational-done record is unaffected, but the life-OS side would drift);
-- {{DEPLOY_TARGET}} is unreachable over ssh;
-- a known deploy landmine is flagged for the Slice or its services (check the
-  Slice body and memory notes);
-- the live verification cannot force the real path this run (a deploy that can
-  only be checked state-at-rest is not verifiable, so it does not ship);
-- the deploy falls in a stopping class on the active reserved list. Write the
-  pack into `rin-deployment-log.md` and park, or, with {{OPERATOR}} present in
-  the session, ask through the question contract
-  (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`). Deploy only
-  once {{OPERATOR}}'s own answer allows it.
+- the project procedure is missing, ambiguous or contradictory, or does not identify the required target/release and method;
+- a prerequisite the project procedure explicitly requires is missing, including access to the delivery control plane, necessary verification access or a required integration;
+- a known deploy landmine is flagged for the Slice or required release (check the Slice body and project knowledge);
+- the required live verification cannot force the real path this run, or the rollback/recovery plan is unavailable;
+- the action falls in a stopping class on the active reserved list. Write the pack into `rin-deployment-log.md` and park, or, with {{OPERATOR}} present in the session, ask through the question contract (`{{HARNESS_DIR}}/knowledge/rin-gates/reserved-decisions.md`). Act only once {{OPERATOR}}'s own answer allows it.
 
-A held deploy is a correct outcome, recorded loudly; it is never "declared
-live" and never silently dropped.
+An optional life-OS rollup failure does not block deployment or the engine's completion. Record its separate gap. Only a prerequisite the project procedure explicitly requires can hold the action on that basis.
+
+For delivery already underway or completed outside this run, record the observed state and unmet checks honestly. A held gate does not undo an external deployment, and recovery is another action subject to the same procedure and authority. Never declare the required release live from a held, failed or unconfirmed result.
 
 ## Refuses (invariants)
 
-- **Never declare operational from state-at-rest.** Force the live path first,
-  then verify against the side-effect. A green healthcheck is not the capability.
-- **Converge the whole stack; never compute an affected-services list.** The
-  deploy tool is total and idempotent by design — unchanged services are cached
-  no-ops and only genuinely-changed containers recreate. A hand-computed
-  per-Slice service list is the failure class every past operate incident belongs
-  to, and it is what made "no Slice is straightforward" read as "no deploy".
-- **{{DEPLOY_TARGET}}'s currency is never nobody's job, and it is checked on both axes.**
-  Checkout-vs-`origin/main` alone is not enough — a build-phase abort can leave
-  the checkout current while the built images stay stale, so image age is
-  compared against the last commit touching buildable source, not against HEAD.
-  A run that ends with either axis behind and no deploy-tool failure (or hard
-  stop) to show for it is a FAILED run — report it as lane failure, the same
-  honesty class as UNMEASURED. Slice state — including an empty pool or a
-  parked Slice — is never a reason not to deploy.
-- **No done-signal without a closed record.** The gate's completion (this
-  stage's `report --result approved`) requires the deploy verified live AND
-  the three bookkeeping closes written — a live deploy with an unclosed
-  record is not done.
-- **Notes-surface writes go through that surface's own interface.** Never a disk
-  write behind its back; if the interface is unavailable, keep the output inline
-  and report the gap rather than writing where it will not be seen.
-- **No DB state-transition call for this Slice.** Stage and lifecycle live in
-  the engine's own record (Current Stage + committed audit event) — the
-  operational-done fact is that committed engine record, never a DB write.
+- **Never declare operational from state-at-rest.** Force the live path first, then verify against the side-effect. A green healthcheck is not the capability; build, upload and serving traffic are distinct facts.
+- **Use the project's deployment scope and currency rules.** Do not silently narrow whole-target convergence where the project requires it, broaden an explicitly selected release, or use generic infrastructure assumptions in place of the project procedure. Record unresolved currency as a gap, not success.
+- **No duplicate deployment for ceremony.** Existing merge-triggered delivery may supply the evidence. A new invocation is required only when the documented procedure and observed state require it and the action is authorized.
+- **No done-signal without a closed record.** The gate's completion (this stage's `report --result approved`) requires the intended release verified live, its required smoke checks and monitoring satisfied, and the three bookkeeping closes written. A live release with an unclosed record is not done; rollback to a prior release does not prove the intended Slice shipped.
+- **Notes-surface writes go through that surface's own interface.** Never a disk write behind its back; if the interface is unavailable, keep the output inline and report the gap rather than writing where it will not be seen.
+- **No DB state-transition call for this Slice.** Stage and lifecycle live in the engine's own record (Current Stage + committed audit event). The operational-done fact is that committed engine record, never a DB write.
 
 ## Learn
 

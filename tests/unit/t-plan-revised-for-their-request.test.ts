@@ -1,4 +1,4 @@
-// covers: function:routeCodeGenerationPlanApproval, function:codeGenerationExecutionAllowed, function:evaluateCodeGenerationApproval, hook:aidlc-plan-approval-guard
+// covers: function:routeCodeGenerationPlanApproval, function:codeGenerationExecutionAllowed, function:evaluateCodeGenerationApproval, function:rejectionIsFreshAttempt, function:rejectionAtRunFloor, hook:aidlc-plan-approval-guard
 //
 // A change the person asks for at the Code Generation gate is not a reason to
 // ask them to approve the plan again. They say "rename the test file"; the
@@ -33,6 +33,9 @@ import {
   seededStateFile,
 } from "../harness/fixtures.ts";
 import { appendAuditEntry } from "../../dist/claude/.claude/tools/aidlc-audit.ts";
+import {
+  readAuditShardEvents, rejectionIsFreshAttempt, stateDigest, writeActiveDirectiveMarker,
+} from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { renderTestingContract, resolveTestingPosture } from "../../dist/claude/.claude/tools/aidlc-testing-posture.ts";
 
 setDefaultTimeout(120_000);
@@ -56,7 +59,6 @@ afterEach(() => {
   while (created.length > 0) cleanupTestProject(created.pop());
 });
 
-/** A poc workflow at Code Generation with plan approval on, as a scope default. */
 function project(policy: "strict" | "relaxed" | "off", guardsOn = false, planApproval: "on" | "off" = "on"): string {
   const proj = createOrchestrationTestProject();
   created.push(proj);
@@ -75,7 +77,7 @@ function project(policy: "strict" | "relaxed" | "off", guardsOn = false, planApp
 }
 
 /** A feature workflow whose Code Generation is per Unit. */
-function unitProject(policy: "strict" | "off", unit: string): string {
+function unitProject(policy: "strict" | "relaxed" | "off", unit: string): string {
   const proj = createOrchestrationTestProject();
   created.push(proj);
   writeFileSync(seededStateFile(proj), `# AI-DLC State Tracking
@@ -156,6 +158,20 @@ function reply(proj: string, prompt: string): void {
     timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
   });
   expect(result.status, result.stderr).toBe(0);
+}
+
+// The agent's record of the choice it read from the person's reply.
+function agentRecords(proj: string, choice: string): void {
+  const result = spawnSync(BUN, [
+    join(AIDLC_SRC, "tools", "aidlc-log.ts"), "answer", "--stage", "code-generation", "--checkpoint", "plan-approval",
+    "--details", choice, "--project-dir", proj,
+  ], {
+    cwd: proj,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: proj, AIDLC_PROJECT_DIR: proj, AIDLC_UNATTENDED: "0" },
+    encoding: "utf-8",
+    timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+  });
+  expect(result.status, result.stdout + result.stderr).toBe(0);
 }
 
 /** The person's own Request Changes at the gate: the row `report --result rejected` writes. */
@@ -253,13 +269,13 @@ function auditText(proj: string): string {
     .map((name) => readFileSync(join(dir, name), "utf-8")).join("\n");
 }
 
-/** Approve the plan the way the person does: the engine asks, they pick the first choice. */
 function approved(proj: string, unit: string | null = null): void {
   writePlan(proj, "", unit);
   const ask = next(proj);
   expect(ask.kind, JSON.stringify(ask)).toBe("ask");
   expect(ask.ask_type).toBe("plan-approval");
   reply(proj, "1");
+  agentRecords(proj, "Approve Plan");
   expect(auditText(proj)).toContain("**Event**: PLAN_APPROVAL_RECORDED");
   expect(next(proj).plan_approval).toEqual({ status: "approved" });
 }
@@ -269,7 +285,6 @@ describe("a plan revised only for the person's own change request", () => {
     test(`Guard Policy ${policy}: their change is built, with no second plan question`, () => {
       const proj = project(policy);
       approved(proj);
-      // At the gate: "rename the test file to price.spec.js please".
       reply(proj, "Before I approve: rename the test file to price.spec.js please.");
       rejectedAtGate(proj, "Before I approve: rename the test file to price.spec.js please.");
       const revise = next(proj);
@@ -278,13 +293,11 @@ describe("a plan revised only for the person's own change request", () => {
         status: "revise",
         feedback: "Before I approve: rename the test file to price.spec.js please.",
       });
-      // The agent revises the plan for exactly what they asked.
       writePlan(proj, "- [ ] Step 2: rename the test file to price.spec.js\n");
       const build = next(proj);
       expect(build.kind, JSON.stringify(build)).toBe("run-stage");
       expect(build.plan_approval?.status, JSON.stringify(build)).toBe("approved");
       expect(build.ask_type).toBeUndefined();
-      // The build runs: the guard admits the developer, and generation starts.
       const handed = guardAdmitsBuild(proj);
       expect(handed.code, handed.stderr).toBe(0);
       const verify = posture(proj, "verify");
@@ -292,6 +305,58 @@ describe("a plan revised only for the person's own change request", () => {
       expect(posture(proj, "begin").status, posture(proj, "verify").out).toBe(0);
     });
   }
+
+  // The second change request is judged against the plan the first revision
+  // built, not the plan they first approved: until the agent revises it again,
+  // their second words are still to be carried out.
+  for (const policy of ["off", "relaxed"] as const) {
+    test(`Guard Policy ${policy}: a second Request Changes in a row hands the agent their second words`, () => {
+      const proj = project(policy);
+      approved(proj);
+      expect(posture(proj, "begin").status).toBe(0);
+      reply(proj, "rename the test file to price.spec.js please");
+      rejectedAtGate(proj, "rename the test file to price.spec.js please");
+      expect(next(proj).plan_approval?.status).toBe("revise");
+      writePlan(proj, "- [ ] Step 2: rename the test file to price.spec.js\n");
+      expect(next(proj).plan_approval?.status).toBe("approved");
+      expect(posture(proj, "begin").status).toBe(0);
+      reply(proj, "also add a test for an empty title");
+      rejectedAtGate(proj, "also add a test for an empty title");
+      const revise = next(proj);
+      expect(revise.kind, JSON.stringify(revise)).toBe("run-stage");
+      expect(revise.plan_approval).toEqual({ status: "revise", feedback: "also add a test for an empty title" });
+      writePlan(proj, "- [ ] Step 2: rename the test file to price.spec.js\n- [ ] Step 3: test an empty title\n");
+      const build = next(proj);
+      expect(build.plan_approval?.status, JSON.stringify(build)).toBe("approved");
+      expect(build.ask_type).toBeUndefined();
+      const handed = guardAdmitsBuild(proj);
+      expect(handed.code, handed.stderr).toBe(0);
+      expect(posture(proj, "begin").status, posture(proj, "verify").out).toBe(0);
+    });
+  }
+
+  // A revision that lands back on the plan they first approved is still a
+  // revision: it builds, and their words are not handed over again.
+  test("Guard Policy off: a second change that restores the approved plan builds, with no third revise", () => {
+    const proj = project("off");
+    approved(proj);
+    expect(posture(proj, "begin").status).toBe(0);
+    reply(proj, "rename the test file to price.spec.js please");
+    rejectedAtGate(proj, "rename the test file to price.spec.js please");
+    expect(next(proj).plan_approval?.status).toBe("revise");
+    writePlan(proj, "- [ ] Step 2: rename the test file to price.spec.js\n");
+    expect(next(proj).plan_approval?.status).toBe("approved");
+    expect(posture(proj, "begin").status).toBe(0);
+    reply(proj, "actually keep the old test file name");
+    rejectedAtGate(proj, "actually keep the old test file name");
+    expect(next(proj).plan_approval).toEqual({ status: "revise", feedback: "actually keep the old test file name" });
+    writePlan(proj);
+    const build = next(proj);
+    expect(build.plan_approval?.status, JSON.stringify(build)).toBe("approved");
+    const handed = guardAdmitsBuild(proj);
+    expect(handed.code, handed.stderr).toBe(0);
+    expect(posture(proj, "begin").status, posture(proj, "verify").out).toBe(0);
+  });
 
   test("strict: the plan question comes back for the revised plan", () => {
     const proj = project("strict");
@@ -337,7 +402,6 @@ describe("a plan revised only for the person's own change request", () => {
       ),
       "utf-8",
     );
-    // At the gate they ask for a change.
     reply(proj, "rename the test file please");
     rejectedAtGate(proj, "rename the test file please");
     expect(next(proj).plan_approval?.status).toBe("revise");
@@ -345,7 +409,6 @@ describe("a plan revised only for the person's own change request", () => {
     const asked = next(proj);
     expect(asked.kind, JSON.stringify(asked)).toBe("ask");
     expect(asked.ask_type).toBe("plan-approval");
-    // Nobody ever approved a plan here, and nothing says they did.
     expect(auditText(proj)).not.toContain("**Event**: PLAN_APPROVAL_RECORDED");
   });
 
@@ -390,24 +453,104 @@ describe("one Unit's own change request and its reopen", () => {
     expect(handed.code, handed.stderr).toBe(0);
   });
 
-  // A jump back from Build and Test reopens this Unit's Code Generation. That is
-  // a fresh attempt, not a change to the built result, so its plan comes back
-  // for approval even under off: the engine asks for the rewritten plan.
+  test("off: a second change request for the Unit hands the agent their second words", () => {
+    const proj = unitProject("off", UNIT);
+    approved(proj, UNIT);
+    expect(posture(proj, "begin", UNIT).status).toBe(0);
+    reply(proj, "use a lookup table in that unit please");
+    rejectedAtGate(proj, "use a lookup table in that unit please", UNIT);
+    expect(next(proj).plan_approval?.status).toBe("revise");
+    writePlan(proj, "- [ ] Step 2: use a lookup table\n", UNIT);
+    expect(next(proj).plan_approval?.status).toBe("approved");
+    expect(posture(proj, "begin", UNIT).status).toBe(0);
+    reply(proj, "and keep the old function as an alias");
+    rejectedAtGate(proj, "and keep the old function as an alias", UNIT);
+    const revise = next(proj);
+    expect(revise.plan_approval, JSON.stringify(revise)).toEqual({
+      status: "revise", feedback: "and keep the old function as an alias",
+    });
+    writePlan(proj, "- [ ] Step 2: use a lookup table\n- [ ] Step 3: keep the old function as an alias\n", UNIT);
+    expect(next(proj).plan_approval?.status).toBe("approved");
+    const handed = guardAdmitsBuild(proj, UNIT);
+    expect(handed.code, handed.stderr).toBe(0);
+  });
+
+  // Units built side by side start their builds under the swarm's directive.
+  // The second change request is judged against the plan the first revision
+  // built there too, so the person's second words still reach the agent.
+  for (const policy of ["off", "relaxed"] as const) {
+    test(`${policy}: a second change request for a Unit built side by side hands the agent their second words`, () => {
+      const proj = unitProject(policy, UNIT);
+      const sideBySide = () => writeActiveDirectiveMarker(proj, {
+        kind: "invoke-swarm", stage: "code-generation", units: [UNIT],
+        state_sha256: stateDigest(readFileSync(seededStateFile(proj), "utf-8")),
+      });
+      approved(proj, UNIT);
+      sideBySide();
+      expect(posture(proj, "begin", UNIT).status).toBe(0);
+      reply(proj, "use a lookup table in that unit please");
+      rejectedAtGate(proj, "use a lookup table in that unit please", UNIT);
+      expect(next(proj).plan_approval?.status).toBe("revise");
+      writePlan(proj, "- [ ] Step 2: use a lookup table\n", UNIT);
+      expect(next(proj).plan_approval?.status).toBe("approved");
+      sideBySide();
+      expect(posture(proj, "begin", UNIT).status, posture(proj, "verify", UNIT).out).toBe(0);
+      reply(proj, "and keep the old function as an alias");
+      rejectedAtGate(proj, "and keep the old function as an alias", UNIT);
+      const revise = next(proj);
+      expect(revise.plan_approval, JSON.stringify(revise)).toEqual({
+        status: "revise", feedback: "and keep the old function as an alias",
+      });
+    });
+  }
+
+  // A jump back from Build and Test, or a Redo, reopens this Unit's Code
+  // Generation. That is a fresh attempt, not a change to the built result, so
+  // its plan comes back for approval even under off. The person asked for no
+  // change, so the plan is asked about as it stands: never sent back for a
+  // revision nobody asked for, which an unchanged plan could never clear.
+  // Neither a jump nor a Redo inherits approval from the previous attempt.
+  test("a reopen or a Redo is a fresh attempt; a change request is not", () => {
+    const row = (reopen?: string): string =>
+      `**Event**: GATE_REJECTED\n**Stage**: code-generation\n${reopen ? `**Reopen**: ${reopen}\n` : ""}**Feedback**: x\n`;
+    expect(rejectionIsFreshAttempt(row("jump"))).toBe(true);
+    expect(rejectionIsFreshAttempt(row("redo"))).toBe(true);
+    expect(rejectionIsFreshAttempt(row("change"))).toBe(false);
+    expect(rejectionIsFreshAttempt(row())).toBe(false);
+  });
   for (const how of ["jump", "redo"] as const) {
     test(`off: a one-Unit reopen (${how}) brings the plan question back`, () => {
       const proj = unitProject("off", UNIT);
       approved(proj, UNIT);
       reopened(proj, UNIT, how);
-      // The reopened step writes its plan again, as any fresh attempt does.
-      const reopen = next(proj);
-      expect(reopen.kind, JSON.stringify(reopen)).toBe("run-stage");
-      expect(reopen.plan_approval?.status).toBe("revise");
-      writePlan(proj, "- [ ] Step 2: a different approach\n", UNIT);
       const asked = next(proj);
       expect(asked.kind, JSON.stringify(asked)).toBe("ask");
       expect(asked.ask_type).toBe("plan-approval");
+      expect(asked.plan_approval?.status, JSON.stringify(asked)).not.toBe("revise");
     });
   }
+
+  test("a change request after a jump in the same second still revises the plan", () => {
+    const proj = unitProject("strict", UNIT);
+    approved(proj, UNIT);
+    reopened(proj, UNIT, "jump");
+    changedAtLateQuestion(proj, UNIT, "add a null check please");
+    const rows = readAuditShardEvents(proj).filter((row) => row.event === "GATE_REJECTED").slice(-2);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].shard).toBe(rows[1].shard);
+    let text = readFileSync(rows[0].shard, "utf-8");
+    for (const row of rows) {
+      text = text.replace(row.block, row.block.replace(
+        /\*\*Timestamp\*\*:[^\n]*/, `**Timestamp**: ${rows[1].timestamp}`,
+      ));
+    }
+    writeFileSync(rows[0].shard, text);
+    const revise = next(proj);
+    expect(revise.plan_approval, JSON.stringify(revise)).toEqual({
+      status: "revise", feedback: "add a null check please",
+    });
+  });
+
   // A change asked for at a late question reopens this Unit's earlier stages for
   // exactly that change. Their approval of the plan still stands under a lowered
   // fence; strict asks once, as it does for any other change request.

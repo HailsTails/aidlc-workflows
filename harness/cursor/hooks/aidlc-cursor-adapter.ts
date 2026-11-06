@@ -17,7 +17,9 @@
 //      sessionStart context is {"additional_context"} (snake_case), and stop
 //      cannot block at all — only {"followup_message"} (advisory nudge).
 //   2. The shell tool is named "Shell" (tool_input.command, like Bash).
-//      Read/Write/Edit/Task already match Claude's names and input shapes.
+//      Read/Write/Edit/Task already match Claude's names and input shapes;
+//      an edit reported as "StrReplace" (tool_input.path, never captured
+//      live) is handed on as Edit.
 //   3. No duplicate delivery (unlike Codex) and a REAL sessionEnd event
 //      (unlike Codex/Copilot) — no replay cache, no heartbeat reconcile.
 //   4. subagentStart/subagentStop are documented but NEVER fire on the CLI
@@ -60,57 +62,13 @@ import {
   engineDirFor,
   enterHookWorkflow,
   promptMovesSelection,
+  recordHookDrop,
   takeSessionSelectionNotice,
 } from "../tools/aidlc-lib.ts";
 import { aidlcInvocation, knownActiveSpace } from "../tools/aidlc-runtime-paths.ts";
-import { hookContextOf } from "../tools/aidlc-hook-context.ts";
-import { cursorNativeTaskCompletion } from "../tools/aidlc-subagent-completion.ts";
-
-function emitContext({ outputs, allowPlainText }: { outputs: string[]; allowPlainText: boolean }): void {
-  const additionalContext = outputs.map((stdout) => hookContextOf({ stdout, allowPlainText })).filter(Boolean).join("\n");
-  if (!additionalContext) return;
-  process.stdout.write(`${JSON.stringify({ additional_context: additionalContext })}\n`);
-}
-
+import { TRUSTED_ROUTE_NAMESPACE } from "../tools/aidlc-command.ts";
 
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
-
-// The nearest enclosing git checkout at or above `cwd`, or undefined when the
-// path names none. Mirrors core's `invokingCheckoutFromCwd`; this adapter
-// imports nothing from the core lib, so the walk is inlined rather than
-// reaching across the tree for four lines.
-function invokingCheckoutFromCwd(cwd: string | undefined): string | undefined {
-  if (cwd === undefined || cwd === "") return undefined;
-  let candidate = resolve(cwd);
-  for (;;) {
-    if (existsSync(join(candidate, ".git"))) return candidate;
-    const parent = dirname(candidate);
-    if (parent === candidate) return undefined;
-    candidate = parent;
-  }
-}
-
-// Plugin-contributed hook bodies, grouped by event, written beside this adapter
-// by emit.ts. Cursor's hooks.json is static and cannot carry a contributed row,
-// so each contributed hook joins the chain this adapter already runs for its
-// event. The map is keyed by event precisely so a PostToolUse sensor is never
-// run as a PreToolUse guard. Read lazily and tolerantly: a plugin wiring problem
-// must never break core's own hooks.
-function pluginHooksFor(event: string): string[] {
-  const mapPath = join(HOOKS_DIR, "plugin-hook-targets.json");
-  if (!existsSync(mapPath)) return [];
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(mapPath, "utf-8"));
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
-      return [];
-    const forEvent = (parsed as Record<string, unknown>)[event];
-    return Array.isArray(forEvent)
-      ? forEvent.filter((f): f is string => typeof f === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
 
 interface CursorHookInput {
   hook_event_name?: string;
@@ -155,19 +113,20 @@ export async function run(
       return 0;
     }
   }
+  // A Cursor IDE report has the edit tool arriving as "StrReplace" with the
+  // file in tool_input.path (never captured live). The core hooks know that
+  // call as "Edit" with tool_input.file_path, so it is handed on as one here,
+  // before any check or the audit reads it.
+  if (cursor.tool_name === "StrReplace") {
+    const toolInput = cursor.tool_input ?? {};
+    cursor = {
+      ...cursor,
+      tool_name: "Edit",
+      tool_input: { ...toolInput, file_path: toolInput.file_path ?? toolInput.path },
+    };
+  }
 
-  // Ordering matches core's `resolveProjectDirFromPayload`: the per-event cwd
-  // binds to the INVOKING checkout, which is what a worktree session needs — an
-  // env var pinned at session start names the tree the session began in, so a
-  // hook resolving a record dir from it writes into the primary's record rather
-  // than the one being worked on.
-  //
-  // It wins only when cwd resolves to a real checkout. AIDLC_PROJECT_DIR is a
-  // deliberate operator override for pointing AIDLC at a project dir that is
-  // NOT the cwd, such as multi-repo work where the workspace sits outside the
-  // repo being edited. A non-checkout cwd must not outrank it.
   const projectDirRaw =
-    invokingCheckoutFromCwd(cursor.cwd) ??
     process.env.AIDLC_PROJECT_DIR ??
     process.env.CURSOR_PROJECT_DIR ??
     process.env.CLAUDE_PROJECT_DIR ??
@@ -213,53 +172,10 @@ export async function run(
     return { stdout: r.stdout?.toString() ?? "", code: r.exitCode ?? 0 };
   }
 
-  // A hook may deny through EITHER protocol: exit code 2 with the reason on
-  // stderr, or exit 0 carrying {"hookSpecificOutput":{"permissionDecision":
-  // "deny","permissionDecisionReason":…}} on stdout. Claude Code honours both
-  // natively; this face reaches its hooks through the runner below, so the JSON
-  // form is normalised to the exit-2 form there — once — rather than at each
-  // call site. Reading only the exit code silently discards the JSON denials
-  // (inline-exec, gh-write and destructive-git all use that form), which reads
-  // as an installed rail that permits what it forbids.
-  function structuredDenialReason(stdout: string): string | null {
-    const trimmed = stdout.trim();
-    if (trimmed.length === 0 || !trimmed.startsWith("{")) return null;
-    try {
-      const parsed = JSON.parse(trimmed) as {
-        hookSpecificOutput?: {
-          permissionDecision?: unknown;
-          permissionDecisionReason?: unknown;
-        };
-      };
-      if (parsed.hookSpecificOutput?.permissionDecision !== "deny") return null;
-      const reason = parsed.hookSpecificOutput?.permissionDecisionReason;
-      return typeof reason === "string" && reason.trim().length > 0
-        ? reason
-        : "Blocked by an AIDLC guard hook.";
-    } catch {
-      return null;
-    }
-  }
-
-  function normalisedHookResult(result: {
-    stdout: string;
-    stderr: string;
-    code: number;
-  }): { stdout: string; stderr: string; code: number } {
-    if (result.code === 2) return result;
-    const reason = structuredDenialReason(result.stdout);
-    if (reason === null) return result;
-    return {
-      stdout: result.stdout,
-      stderr: result.stderr.trim().length > 0 ? result.stderr : reason,
-      code: 2,
-    };
-  }
-
   function runCoreWithStderr(
     hookFile: string,
     stdinText: string,
-  ): { stdout: string; stderr: string; code: number } {
+  ): { stdout: string; stderr: string; code: number; signal: string | null } {
     const executable = process.env.AIDLC_COMPILED_EXECUTABLE;
     const hook = hookFile.replace(/^aidlc-|\.ts$/g, "");
     const authorityToken = hook === "record-human-turn" ? randomUUID() : "";
@@ -284,11 +200,12 @@ export async function run(
         ? { ...projectEnv, AIDLC_INTERNAL_HUMAN_TURN_TOKEN: authorityToken }
         : projectEnv,
     });
-    return normalisedHookResult({
+    return {
       stdout: r.stdout?.toString() ?? "",
       stderr: r.stderr?.toString() ?? "",
       code: r.exitCode ?? 1,
-    });
+      signal: r.exitCode === null ? (r.signalCode ?? "a signal") : null,
+    };
   }
 
   // --- Subagent-identity ledger -------------------------------------------------
@@ -538,6 +455,21 @@ export async function run(
       renameSync(pendingWitness, witness);
       writeFileSync(pending, JSON.stringify(record), "utf-8");
       renameSync(pending, path);
+      // The record that this helper was sent, which its completion closes:
+      // Cursor runs no dispatch hook of AI-DLC's, so it is forwarded here, once
+      // the Task is let through. Evidence only: it never stops the Task.
+      try {
+        runCore(
+          "aidlc-log-subagent.ts",
+          JSON.stringify({
+            hook_event_name: "SubagentStart",
+            agent_type: subagentType,
+            ...(sessionId ? { session_id: sessionId } : {}),
+          }),
+        );
+      } catch {
+        // The verdict reads a missing record as nothing sent: no line.
+      }
       return true;
     } catch {
       removeLedger(pending);
@@ -651,13 +583,9 @@ export async function run(
   }
 
   // Cursor's shell tool is "Shell"; the core hooks key on Claude's "Bash".
-  // Everything else (Read/Write/Edit/Grep/Glob/Task/...) already matches.
-  const toolName = cursor.tool_name === "Shell"
-    ? "Bash"
-    : cursor.tool_name === "StrReplace" ? "Edit" : (cursor.tool_name ?? "");
-  const toolInput = cursor.tool_input && typeof cursor.tool_input.path === "string"
-    ? { ...cursor.tool_input, file_path: cursor.tool_input.file_path ?? cursor.tool_input.path }
-    : cursor.tool_input;
+  // Everything else (Read/Write/Edit/Grep/Glob/Task/...) already matches, and
+  // a "StrReplace" edit was handed on as Edit when the payload was read.
+  const toolName = cursor.tool_name === "Shell" ? "Bash" : (cursor.tool_name ?? "");
 
   // Cursor is the first harness with a FIRST-CLASS file-deletion tool
   // ("Delete", tool_input.file_path; probe-verified). Every other harness
@@ -724,7 +652,6 @@ export async function run(
       ...cursor,
       hook_event_name: eventName,
       tool_name: nameOverride ?? toolName,
-      tool_input: toolInput,
       cwd: effectiveCwd(),
       ...(agent && agent !== AMBIGUOUS_REVIEWER ? { agent_type: agent } : {}),
     });
@@ -850,6 +777,42 @@ export async function run(
     }
     push();
     return { words, ambiguous: quote !== null };
+  }
+
+  // What the host's shell reads as its own in a command: everything outside
+  // quotes, and the "$" and backtick it still expands inside double quotes.
+  // Each shell's quoting is read its own way (shellWords keeps one quote state
+  // for both, and ends a double-quoted word at \" where a POSIX shell goes on):
+  // a POSIX shell escapes with a backslash; PowerShell escapes with a backtick,
+  // keeps a doubled quote inside the word and reads typographic quotes as
+  // quotes. Null when a quote is left open.
+  function shellActiveText(command: string, flavor: PathFlavor): string | null {
+    const singles = flavor === "win32" ? "'\u2018\u2019\u201a\u201b" : "'";
+    const doubles = flavor === "win32" ? '"\u201c\u201d\u201e' : '"';
+    const escapeChar = flavor === "win32" ? "`" : "\\";
+    let active = "";
+    let quote = "";
+    for (let i = 0; i < command.length; i++) {
+      const ch = command[i];
+      if (quote === "") {
+        if (singles.includes(ch)) quote = singles;
+        else if (doubles.includes(ch)) quote = doubles;
+        else {
+          active += ch;
+          if (ch === escapeChar) active += command[++i] ?? "";
+        }
+        continue;
+      }
+      if (quote.includes(ch)) {
+        const next = command[i + 1];
+        if (flavor === "win32" && next !== undefined && quote.includes(next)) i++;
+        else quote = "";
+      } else if (quote === doubles) {
+        if (ch === "$" || ch === "`") active += ch;
+        if (ch === escapeChar) i++;
+      }
+    }
+    return quote === "" ? active : null;
   }
 
   interface ShellCommandPart {
@@ -2175,203 +2138,36 @@ export async function run(
     return { disposition: "unsafe", command: alias };
   }
 
-  function gitPagerMode(
-    prefix: readonly string[],
-    env: Record<string, string | undefined>,
-  ): "default" | "disabled" | "enabled" {
-    const pager = (env.GIT_PAGER ?? env.PAGER ?? "").trim();
-    let mode: "default" | "disabled" | "enabled" =
-      pager.length === 0
-        ? "default"
-        : /^(?:cat|false)$/i.test(pager)
-          ? "disabled"
-          : "enabled";
-    for (const arg of prefix) {
-      if (arg === "--no-pager" || arg === "-P") mode = "disabled";
-      else if (arg === "--paginate" || arg === "-p") mode = "enabled";
-    }
-    return mode;
-  }
-
-  function gitStatusUsesExternalCommand(
-    args: readonly string[],
-    env: Record<string, string | undefined>,
-    cwd: string,
-  ): boolean {
+  // The person's own git settings apply to a helper's `git status`, exactly as
+  // they do in their terminal: a pager they configured, or a file-system
+  // monitor they set up to make a large repository fast, is theirs to choose
+  // and AI-DLC reads a repository here, it does not decide how their git runs.
+  // What stays denied is a program the AGENT names in the command AI-DLC lets
+  // through: `-c core.fsmonitor=<program>` (and the `--config-env` form, whose
+  // value arrives through a variable) makes git run that program, which is the
+  // delegated agent reaching for an interpreter by another route.
+  function gitStatusUsesExternalCommand(args: readonly string[]): boolean {
     const invocation = gitInvocation(args);
     const prefix = invocation.prefix.filter((arg) => arg !== "--");
-    const pagerMode = gitPagerMode(prefix, env);
-    if (pagerMode === "enabled") return true;
-    const commandArgs = args.slice(invocation.subcommandIndex + 1);
-    const boundary = commandArgs.indexOf("--");
-    const optionArgs = boundary === -1 ? commandArgs : commandArgs.slice(0, boundary);
-    const positionalPathspecs = (): string[] => {
-      for (let i = 0; i < commandArgs.length; i++) {
-        const arg = commandArgs[i];
-        if (!arg.startsWith("-") || arg === "-") {
-          const pathspecs = commandArgs.slice(i);
-          return pathspecs.some((pathspec) => pathspec.startsWith("-"))
-            ? []
-            : pathspecs;
-        }
-        if (
-          /^-[vsbz]+$/.test(arg) ||
-          /^-u(?:all|normal|no)?$/.test(arg) ||
-          /^-M(?:\d+%?)?$/.test(arg) ||
-          /^--(?:no-)?(?:verbose|short|branch|show-stash|ahead-behind|porcelain|long|null|untracked-files|ignored|ignore-submodules|column)(?:=.*)?$/.test(
-            arg,
-          ) ||
-          arg === "--renames" ||
-          arg === "--no-renames" ||
-          /^--find-renames(?:=.*)?$/.test(arg)
-        ) {
-          continue;
-        }
-        return [];
+    for (let index = 0; index < prefix.length; index++) {
+      const arg = prefix[index];
+      const inline = (flag: string): string | undefined =>
+        arg === flag ? prefix[index + 1] : arg.startsWith(`${flag}=`) ? arg.slice(flag.length + 1) : undefined;
+      const configured = inline("-c");
+      if (configured !== undefined) {
+        const equals = configured.indexOf("=");
+        const key = (equals === -1 ? configured : configured.slice(0, equals)).toLowerCase();
+        if (key !== "core.fsmonitor") continue;
+        // `-c core.fsmonitor` with no value reads as true, and true or false
+        // names no program.
+        const value = equals === -1 ? "true" : configured.slice(equals + 1).trim();
+        if (!/^(?:true|false)$/i.test(value)) return true;
+        continue;
       }
-      return [];
-    };
-    const pathspecs =
-      boundary === -1 ? positionalPathspecs() : commandArgs.slice(boundary + 1);
-    const configuredCommand = (key: string, safeValues: RegExp): boolean => {
-      const result = Bun.spawnSync(
-        ["git", ...prefix, "config", "--get-all", key],
-        {
-          cwd,
-          env,
-          stdout: "pipe",
-          stderr: "ignore",
-        },
-      );
-      if (result.exitCode === 1) return false;
-      if (result.exitCode !== 0) return true;
-      return (result.stdout?.toString() ?? "")
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .some((value) => !safeValues.test(value.trim()));
-    };
-    if (configuredCommand("core.fsmonitor", /^(?:true|false)$/i)) return true;
-    if (
-      pagerMode !== "disabled" &&
-      (configuredCommand("core.pager", /^(?:cat|false)$/i) ||
-        configuredCommand("pager.status", /^(?:cat|false)$/i))
-    ) return true;
-    let submoduleMode: string | undefined;
-    for (const arg of optionArgs) {
-      if (arg === "--ignore-submodules") submoduleMode = "all";
-      else if (arg.startsWith("--ignore-submodules=")) {
-        submoduleMode = arg.slice("--ignore-submodules=".length).toLowerCase();
-      }
-    }
-    if (submoduleMode === "all") return false;
-
-    const rootResult = Bun.spawnSync(
-      ["git", ...prefix, "rev-parse", "--show-toplevel"],
-      {
-        cwd,
-        env,
-        stdout: "pipe",
-        stderr: "ignore",
-      },
-    );
-    if (rootResult.exitCode !== 0) return false;
-    const root = rootResult.stdout?.toString().trim();
-    if (!root) return true;
-    const visited = new Set<string>();
-    const childEnv: Record<string, string | undefined> = { ...env };
-    for (const name of [
-      "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-      "GIT_OBJECT_DIRECTORY",
-      "GIT_DIR",
-      "GIT_WORK_TREE",
-      "GIT_IMPLICIT_WORK_TREE",
-      "GIT_GRAFT_FILE",
-      "GIT_INDEX_FILE",
-      "GIT_NAMESPACE",
-      "GIT_PREFIX",
-      "GIT_INTERNAL_SUPER_PREFIX",
-      "GIT_QUARANTINE_PATH",
-      "GIT_REPLACE_REF_BASE",
-      "GIT_SHALLOW_FILE",
-      "GIT_COMMON_DIR",
-    ]) {
-      deleteEnvironmentName(childEnv, name);
-    }
-    const indexedGitlinks = (
-      repository: string,
-      repositoryEnv: Record<string, string | undefined>,
-      repositoryPathspecs: readonly string[] = [],
-      useRootInvocation = false,
-    ): string[] | null => {
-      const command = useRootInvocation
-        ? ["git", ...prefix, "ls-files", "--stage", "--full-name", "-z"]
-        : ["git", "-C", repository, "ls-files", "--stage", "--full-name", "-z"];
-      const result = Bun.spawnSync(
-        [
-          ...command,
-          ...(repositoryPathspecs.length > 0 ? ["--", ...repositoryPathspecs] : []),
-        ],
-        {
-          ...(useRootInvocation ? { cwd } : {}),
-          env: repositoryEnv,
-          stdout: "pipe",
-          stderr: "ignore",
-        },
-      );
-      if (result.exitCode !== 0) return null;
-      const paths: string[] = [];
-      for (const record of (result.stdout?.toString() ?? "").split("\0")) {
-        if (!record) continue;
-        const tab = record.indexOf("\t");
-        if (tab === -1 || !record.slice(0, tab).startsWith("160000 ")) continue;
-        const path = record.slice(tab + 1);
-        if (path) paths.push(path);
-      }
-      return paths;
-    };
-    const unsafeSubmodule = (repository: string, depth: number): boolean => {
-      if (depth > 16 || visited.size >= 64) return true;
-      let identity: string;
-      try {
-        identity = realpathSync.native(repository);
-      } catch {
+      const fromVariable = inline("--config-env");
+      if (fromVariable !== undefined && fromVariable.split("=")[0]?.toLowerCase() === "core.fsmonitor") {
         return true;
       }
-      if (visited.has(identity)) return false;
-      visited.add(identity);
-      const fsmonitor = Bun.spawnSync(
-        ["git", "-C", repository, "config", "--get-all", "core.fsmonitor"],
-        {
-          env: childEnv,
-          stdout: "pipe",
-          stderr: "ignore",
-        },
-      );
-      if (fsmonitor.exitCode !== 0 && fsmonitor.exitCode !== 1) return true;
-      if (
-        fsmonitor.exitCode === 0 &&
-        (fsmonitor.stdout?.toString() ?? "")
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .some((value) => !/^(?:true|false)$/i.test(value.trim()))
-      ) {
-        return true;
-      }
-      const gitlinks = indexedGitlinks(repository, childEnv);
-      if (gitlinks === null) return true;
-      for (const path of gitlinks) {
-        const submodule = resolve(repository, path);
-        if (!existsSync(join(submodule, ".git"))) continue;
-        if (unsafeSubmodule(submodule, depth + 1)) return true;
-      }
-      return false;
-    };
-    const gitlinks = indexedGitlinks(root, env, pathspecs, true);
-    if (gitlinks === null) return true;
-    for (const path of gitlinks) {
-      const submodule = resolve(root, path);
-      if (!existsSync(join(submodule, ".git"))) continue;
-      if (unsafeSubmodule(submodule, 1)) return true;
     }
     return false;
   }
@@ -2417,15 +2213,11 @@ export async function run(
     const commandArgs = args.slice(invocation.subcommandIndex + 1);
     const boundary = commandArgs.indexOf("--");
     const optionArgs = boundary === -1 ? commandArgs : commandArgs.slice(0, boundary);
-    const pagerDisabled = gitPagerMode(invocation.prefix, env) === "disabled";
     if (folded === "branch") {
-      return !(pagerDisabled && optionArgs.includes("--list"));
+      return !optionArgs.includes("--list");
     }
     if (folded === "tag") {
-      return !(
-        pagerDisabled &&
-        (optionArgs.includes("--list") || optionArgs.includes("-l"))
-      );
+      return !(optionArgs.includes("--list") || optionArgs.includes("-l"));
     }
     if (folded === "diff") {
       let cached = false;
@@ -2445,7 +2237,6 @@ export async function run(
         }
       }
       return !(
-        pagerDisabled &&
         cached &&
         externalDiff === false &&
         textconv === false &&
@@ -2468,7 +2259,7 @@ export async function run(
       "version",
     ]);
     if (!safeBuiltins.has(folded)) return true;
-    return folded === "status" && gitStatusUsesExternalCommand(args, env, cwd);
+    return folded === "status" && gitStatusUsesExternalCommand(args);
   }
 
   function gitInvocationUsesDynamicEvaluation(
@@ -2777,6 +2568,68 @@ export async function run(
     }
   }
 
+  // AI-DLC's own command, as its prose spells it (`aidlc engine ...`, or one of
+  // this project's tool scripts under bun), naming a command the core admits
+  // this delegate (delegateAdmittedVerbs), such as Reverse Engineering's scope
+  // fingerprint mint and check and its publish. It is fixed code that leaves
+  // the attribution records alone, so the interpreter and attribution-path
+  // denies stand aside for it; the core guards still run. One plain call only:
+  // nothing chained, redirected, expanded, globbed or set before it.
+  async function runsAdmittedAidlcCommand(command: string, agent: string): Promise<boolean> {
+    // A POSIX shell reads a line that ends in a backslash as going on (the
+    // stage writes its publish that way); PowerShell ends the command there.
+    const joined = process.platform === "win32" ? command : command.replace(/\\\r?\n/g, " ");
+    const flavor: PathFlavor = process.platform === "win32" ? "win32" : "posix";
+    // These stay refused inside quotes too: on a native Windows install
+    // aidlc.cmd's cmd.exe reads "&" and "%" again whatever the quotes, and a
+    // repo name holds none of them.
+    if (agent === AMBIGUOUS_REVIEWER || /[&|<>%*?\r\n]/.test(joined)) return false;
+    const active = shellActiveText(joined, flavor);
+    if (active === null || /[;(){}[\]`$]/.test(active)) return false;
+    // A call this cannot read keeps the denies.
+    try {
+      const parsed = shellWords(joined);
+      if (parsed.ambiguous) return false;
+      // The host's own shell reads the words: PowerShell keeps a backslash, a
+      // POSIX shell reads it as an escape.
+      const words = parsed.words.map(({ variants }) =>
+        variants.find((variant) => variant.flavor === flavor)?.value ?? ""
+      );
+      const program = (words[0] ?? "").replace(/\.(?:exe|com|cmd|bat)$/i, "").toLowerCase();
+      let script = "aidlc.ts";
+      let rest = words.slice(1);
+      if (program === "bun") {
+        script = (flavor === "win32" ? win32 : posix).basename(words[1] ?? "");
+        if (!/^aidlc(?:-[a-z0-9-]+)?\.ts$/.test(script)) return false;
+        const own = canonicalPathVariants(join(HOOKS_DIR, "..", "tools", script), projectDir, flavor);
+        const named = canonicalPathVariants(words[1], effectiveCwd(), flavor);
+        if (
+          own.ambiguous || named.ambiguous ||
+          !named.paths.some((path) => own.paths.some((ownPath) => ownPath.value === path.value))
+        ) {
+          return false;
+        }
+        rest = words.slice(2);
+      } else if (program !== "aidlc") {
+        return false;
+      }
+      if (script === "aidlc.ts" && rest[0] !== TRUSTED_ROUTE_NAMESPACE) return false;
+      // Loaded only here: the guard is its own member, and one that cannot load
+      // leaves this call refused as before instead of breaking every call.
+      const guard: typeof import("./aidlc-state-transition-guard.ts") = await import(
+        join(HOOKS_DIR, "aidlc-state-transition-guard.ts")
+      );
+      const admitted = guard.delegateAdmittedVerbs(agent);
+      if (script !== "aidlc.ts") return (admitted[script] ?? []).includes(rest[0] ?? "");
+      const dispatcher: typeof import("../tools/aidlc.ts") = await import(
+        join(HOOKS_DIR, "..", "tools", "aidlc.ts")
+      );
+      return dispatcher.admittedEngineRoute(admitted, rest.slice(1));
+    } catch {
+      return false;
+    }
+  }
+
   async function touchesProtectedReviewerState(): Promise<boolean> {
     const toolInput = cursor.tool_input ?? {};
     const serialized = JSON.stringify(toolInput).replaceAll("\\", "/");
@@ -2952,17 +2805,27 @@ export async function run(
     );
   }
 
+  // Exit 2 is a guard's refusal. A guard that fails on its own (it throws, its
+  // file is missing, it is killed) refuses nothing, as in the core hook group;
+  // its error line goes where doctor reads hook drops, with a severity tag in
+  // it neutralized so only the hook that writes a drop decides doctor's verdict.
   function blockedByGuard(file: string, input: string): boolean {
     const r = runCoreWithStderr(file, input);
     if (r.code === 0) return false;
-    const reason =
-      r.code === 2
-        ? r.stderr.trim() || "blocked by AIDLC guard hook"
-        : `AIDLC guard ${file} failed with exit ${r.code}, so its safety checks could not complete and the ` +
-          "call was stopped. Retry it once; if it is stopped again, tell the person to run " +
-          `\`${aidlcInvocation()} config --harness cursor\` in a terminal, which puts AI-DLC's Cursor files ` +
-          "back, then try again.";
-    process.stdout.write(`${JSON.stringify({ permission: "deny", agent_message: reason })}\n`);
+    if (r.code !== 2) {
+      const hook = file.replace(/^aidlc-|\.ts$/g, "");
+      const lines = r.stderr.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+      const line = (lines.find((entry) => entry.startsWith("error:")) ??
+        lines.filter((entry) => !/^Bun v\d/.test(entry)).at(-1) ?? "no error output")
+        .replace(/\[(degraded|advisory)\]/gi, "($1)");
+      const how = r.signal === null ? `exited ${r.code}` : `was stopped by ${r.signal}`;
+      recordHookDrop(projectDir, hook, `${hook} ${how} under the Cursor adapter: ${line.slice(0, 240)}`);
+      return false;
+    }
+    process.stdout.write(`${JSON.stringify({
+      permission: "deny",
+      agent_message: r.stderr.trim() || "blocked by AIDLC guard hook",
+    })}\n`);
     return true;
   }
 
@@ -3002,13 +2865,17 @@ export async function run(
         source: cursor.source ?? "startup",
         ...(sessionId ? { session_id: sessionId } : {}),
       });
-      emitContext({
-        outputs: [
-          runCore("aidlc-session-start.ts", fwd).stdout,
-          ...pluginHooksFor("SessionStart").map((file) => runCore(file, fwd).stdout),
-        ],
-        allowPlainText: true,
-      });
+      const r = runCore("aidlc-session-start.ts", fwd);
+      // Core prints {"additionalContext"} (Claude's key); Cursor consumes
+      // {"additional_context"} (live-verified injection channel).
+      try {
+        const parsed = JSON.parse(r.stdout) as { additionalContext?: string };
+        if (parsed.additionalContext) {
+          process.stdout.write(`${JSON.stringify({ additional_context: parsed.additionalContext })}\n`);
+        }
+      } catch {
+        // no context payload — silent
+      }
       return 0;
     }
 
@@ -3153,8 +3020,12 @@ export async function run(
       }
       const agent = attributed();
       const command = cursor.tool_input?.command;
+      const ownCommand =
+        agent !== "" && toolName === "Bash" && typeof command === "string" &&
+        await runsAdmittedAidlcCommand(command, agent);
       if (
         agent &&
+        !ownCommand &&
         toolName === "Bash" &&
         typeof command === "string" &&
         await shellInvokesDynamicEvaluation(command, effectiveCwd()) &&
@@ -3170,7 +3041,7 @@ export async function run(
         })}\n`);
         return 0;
       }
-      if (agent && await touchesProtectedReviewerState() && !delegateChecksStandAside()) {
+      if (agent && !ownCommand && await touchesProtectedReviewerState() && !delegateChecksStandAside()) {
         process.stdout.write(`${JSON.stringify({
           permission: "deny",
           agent_message:
@@ -3220,14 +3091,6 @@ export async function run(
           input: claudeShaped("PreToolUse", planToolName),
         });
       }
-      // Contributed guards run AFTER core's own, on the same block contract.
-      // They receive the unmodified Claude-shaped payload and self-filter by
-      // tool, exactly as core's do. Re-expressed as pushes when upstream turned
-      // this array literal into incremental pushes; the AFTER-core ordering is
-      // the load-bearing part and is preserved by appending last.
-      for (const file of pluginHooksFor("PreToolUse")) {
-        guards.push({ file, input: claudeShaped("PreToolUse") });
-      }
       for (const guard of guards) {
         if (blockedByGuard(guard.file, guard.input)) return 0;
       }
@@ -3236,42 +3099,22 @@ export async function run(
     }
 
     case "audit-and-sensors": {
-      const contextOutputs: string[] = [];
       // postToolUse Write|Edit → audit THEN sensors (Claude registration
       // order); postToolUse Task → subagent completion (log + ledger clear).
       if (toolName === "Write" || toolName === "Edit") {
         const fwd = claudeShaped("PostToolUse");
         runCore("aidlc-write-audit-log.ts", fwd);
-        contextOutputs.push(runCore("aidlc-run-sensors.ts", fwd).stdout);
+        runCore("aidlc-run-sensors.ts", fwd);
       } else if (toolName === "Task") {
         const sub = cursor.tool_input?.subagent_type;
-        // cwd travels with the payload: a hook that resolves a record dir or a
-        // checkout root from it would otherwise fall back to its own process
-        // cwd, which in a worktree is the wrong tree.
-        const completion = cursorNativeTaskCompletion({ toolOutput: cursor.tool_output });
-        if (completion.status === "failed") clearSpawn();
-        if (completion.status === "completed") {
-          const fwd = JSON.stringify({
-            hook_event_name: "SubagentStop",
-            cwd: effectiveCwd(),
-            ...(typeof sub === "string" && sub.length > 0 ? { agent_type: sub } : {}),
-            ...(sessionId ? { session_id: sessionId } : {}),
-            ...completion.fields,
-          });
-          runCore("aidlc-log-subagent.ts", fwd);
-          for (const file of pluginHooksFor("SubagentStop")) {
-            runCore(file, fwd);
-          }
-          clearSpawn();
-        }
+        const fwd = JSON.stringify({
+          hook_event_name: "SubagentStop",
+          ...(typeof sub === "string" && sub.length > 0 ? { agent_type: sub } : {}),
+          ...(sessionId ? { session_id: sessionId } : {}),
+        });
+        runCore("aidlc-log-subagent.ts", fwd);
+        clearSpawn();
       }
-      emitContext({
-        outputs: [
-          ...contextOutputs,
-          ...pluginHooksFor("PostToolUse").map((file) => runCore(file, claudeShaped("PostToolUse")).stdout),
-        ],
-        allowPlainText: false,
-      });
       return 0;
     }
 
@@ -3298,7 +3141,6 @@ export async function run(
       }));
       return 0;
     }
-
 
     case "stop": {
       // A background agent's stop never enters the forwarding loop: the nudge

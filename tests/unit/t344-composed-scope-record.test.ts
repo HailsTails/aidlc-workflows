@@ -31,7 +31,7 @@
 // last block also runs an installed engine once, to pin what a redo prints.
 
 import { describe, expect, test } from "bun:test";
-import { createClaudeStartupHost } from "../harness/claude-startup.ts";
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -47,7 +47,7 @@ import {
 import { discoverScopes } from "../../core/tools/aidlc-runner-gen.ts";
 import { loadScopeMetadataAll, scopeArg } from "../../core/tools/aidlc-lib.ts";
 import { cleanupTestProject, REPO_ROOT } from "../harness/fixtures.ts";
-import { NATIVE_FIXTURE_SETUP_TIMEOUT_MS } from "../harness/test-budget.ts";
+import { NATIVE_STARTUP_TIMEOUT_MS, remainingOperationTimeoutMs } from "../harness/test-budget.ts";
 
 const IDENTITY = [
   "---",
@@ -125,12 +125,9 @@ describe("t344 record format round-trip", () => {
     const record = RECORD + trailing;
     const parsed = parseComposedScopeRecord(record, "aidlc/scopes/lean-feature.md");
 
-    // The grid and the identity above the region are unaffected by it.
     expect(parsed.stages).toEqual(STAGES);
     expect(parsed.identity.trimEnd()).toBe(IDENTITY.trimEnd());
-    // The projection does NOT carry it — this is the asymmetry.
     expect(parsed.identity).not.toContain("My own appendix");
-    // Nor does it leak into the grid region on the way back out.
     expect(renderComposedScopeRecord(parsed.identity, parsed.stages)).not.toContain(
       "My own appendix",
     );
@@ -195,7 +192,6 @@ describe("t344 round-trip over a real composer-authored scope", () => {
     // Keys a hand-written imitation would not have thought to include.
     expect(liveMd).toContain("skeleton:");
     expect(liveMd).toContain("change_control:");
-    // A full 33-stage grid, and a prose body with its own `##` headings.
     expect(Object.keys(liveStages).length).toBeGreaterThan(30);
     expect(liveMd).toMatch(/^## /m);
   });
@@ -205,19 +201,16 @@ describe("t344 round-trip over a real composer-authored scope", () => {
     const parsed = parseComposedScopeRecord(record, "aidlc/scopes/live.md");
     expect(parsed.name).toBe("pipeline-hardening-observability");
     expect(parsed.stages).toEqual(liveStages);
-    // The projection is the composer's file back, untouched — every frontmatter
-    // key and every prose heading, with no re-rendering.
     expect(parsed.identity.trimEnd()).toBe(liveMd.trimEnd());
     expect(parsed.identity).not.toContain(BEGIN);
-    // And it is stable across repeated compiles.
     expect(renderComposedScopeRecord(parsed.identity, parsed.stages)).toBe(record);
   });
 });
 
 // The identity half of a record is PROSE THE USER WROTE, so the boundary between
-// it and the generated grid must be something they cannot write by accident. An
-// earlier draft split on a `## Stage Grid` heading; a scope author documenting
-// their own plan with that heading made the parser adopt the first ```json fence
+// it and the generated grid must be something they cannot write by accident.
+// Splitting on a `## Stage Grid` heading would let a scope author documenting
+// their own plan with that heading make the parser adopt the first ```json fence
 // in their prose as the grid — resolving the scope to a DIFFERENT set of executed
 // stages — and drop every authored line after the collision on the next
 // write-back. These cases pin that the sentinel boundary is immune.
@@ -412,8 +405,8 @@ describe("t344 record parse failures name the file and never degrade silently", 
     }
     expect(message).toContain(BEGIN);
     expect(message).toContain(END);
-    // Not the elided form it used to print. (A bare "..." check would be wrong:
-    // the message legitimately carries a `{"stages": {...}}` placeholder.)
+    // (A bare "..." check would be wrong: the message legitimately carries a
+    // `{"stages": {...}}` placeholder.)
     expect(message).not.toContain(`${BEGIN.slice(0, 42)}...`);
     // And the sentinels quoted are the ones the emitter actually writes.
     expect(renderComposedScopeRecord(IDENTITY, STAGES)).toContain(BEGIN);
@@ -580,16 +573,21 @@ describe("t344 a scope name that is not one is never written or run", () => {
     const proj = mkdtempSync(join(tmpdir(), "t344-resume-"));
     try {
       cpSync(join(REPO_ROOT, "dist", "claude"), proj, { recursive: true });
-      const host = createClaudeStartupHost(proj);
-      host.start();
-      host.prompt("/aidlc --scope bugfix fix the parser");
-      const tool = (name: string, args: string[]) => host.tool(name, args);
+      spawnSync("git", ["init", "-q"], { cwd: proj });
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      for (const key of ["AIDLC_PROJECT_DIR", "CLAUDE_PROJECT_DIR", "AIDLC_SESSION_OVERRIDE"]) delete env[key];
+      const tool = (name: string, args: string[]) => spawnSync(process.execPath, [join(proj, ".claude", "tools", name), ...args], {
+        cwd: proj,
+        env,
+        encoding: "utf-8",
+        timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+      });
       const created = tool("aidlc-utility.ts", ["intent-create", "--scope", "bugfix", "--label", "redo", "--arguments", "fix the parser"]);
       expect(created.status, created.stderr).toBe(0);
       const intents = join(proj, "aidlc", "spaces", "default", "intents");
       const intent = readdirSync(intents).find((name) => existsSync(join(intents, name, "aidlc-state.md")));
       const state = join(intents, String(intent), "aidlc-state.md");
-      const redo = () => tool("aidlc-orchestrate.ts", ["report", "--result", "resumed", "--user-input", "2"]);
+      const redo = () => tool("aidlc-orchestrate.ts", ["report", "--result", "resumed", "--choice", "redo"]);
       const kept = redo();
       expect(kept.status, kept.stderr).toBe(0);
       expect(kept.stdout).toContain("--direction redo --scope bugfix");
@@ -603,7 +601,6 @@ describe("t344 a scope name that is not one is never written or run", () => {
       const newWork = tool("aidlc-orchestrate.ts", ["next", "--new-intent", "--scope", "feature", "add billing"]);
       expect(newWork.stdout).not.toContain("scope change");
       expect(readFileSync(state, "utf-8")).toContain("- **Scope**: x%USERNAME%");
-      // A switch with a plan change typed alongside carries both.
       const withPlan = tool("aidlc-orchestrate.ts", ["next", "--scope", "feature", "--skip", "user-stories"]);
       expect(withPlan.status, withPlan.stderr).toBe(0);
       expect(JSON.parse(withPlan.stdout).message).toContain("scope change --scope feature");
@@ -614,9 +611,14 @@ describe("t344 a scope name that is not one is never written or run", () => {
       expect(asked.status, asked.stderr).toBe(0);
       const command = /`([^`]+)`/.exec(JSON.parse(asked.stdout).message ?? "")?.[1] ?? "";
       expect(command).toEndWith("scope change --scope feature");
-      const [runner] = command.split(" ");
+      const [runner, ...argv] = command.split(" ");
       expect(runner).toBe("bun");
-      const switched = host.command(command);
+      const switched = spawnSync(process.execPath, argv, {
+        cwd: proj,
+        env,
+        encoding: "utf-8",
+        timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS),
+      });
       expect(switched.status, switched.stdout + switched.stderr).toBe(0);
       expect(switched.stdout).toContain("Switched to feature");
       expect(switched.stdout).not.toContain("To go back");
@@ -626,5 +628,5 @@ describe("t344 a scope name that is not one is never written or run", () => {
     } finally {
       cleanupTestProject(proj);
     }
-  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+  });
 });
