@@ -1,0 +1,191 @@
+diff --git a/scripts/core-runtime.test.ts b/scripts/core-runtime.test.ts
+new file mode 100644
+index 000000000..562fb4d30
+--- /dev/null
++++ b/scripts/core-runtime.test.ts
+@@ -0,0 +1,85 @@
++import { expect, mock, test, type Mock } from "bun:test";
++import { prepareCoreRuntimeArtifacts, type CoreRuntimePreparationOperations } from "./core-runtime.ts";
++import type { PluginRuntimeSourcePort, RuntimeCompilerPort, ProjectedPluginRuntime } from "./plugin-runtime.ts";
++
++type CoreRuntimeFixture = {
++  readonly operations: { readonly declare: Mock<CoreRuntimePreparationOperations["declare"]>; readonly prepare: Mock<CoreRuntimePreparationOperations["prepare"]> };
++  readonly sourcePort: PluginRuntimeSourcePort;
++  readonly runtimePort: RuntimeCompilerPort;
++};
++const fixture = (): CoreRuntimeFixture => ({
++  operations: {
++    declare: mock<CoreRuntimePreparationOperations["declare"]>().mockResolvedValue({ kind: "prepared", artifacts: [{ file: "projection/plugin-hook-types.d.ts", content: "declaration" }] }),
++    prepare: mock<CoreRuntimePreparationOperations["prepare"]>().mockResolvedValue({ kind: "prepared", artifacts: [{ file: "hooks/guard.ts", content: "compiled guard" }, { file: "tools/check.runtime.js", content: "runtime" }] }),
++  },
++  sourcePort: { read: mock<PluginRuntimeSourcePort["read"]>().mockResolvedValue({ kind: "missing" }) },
++  runtimePort: {
++    scan: mock<RuntimeCompilerPort["scan"]>().mockReturnValue({ imports: [], exports: [], hasUnsupportedImportMeta: false, hasPackageImports: false }),
++    declaration: mock<RuntimeCompilerPort["declaration"]>().mockReturnValue({ content: "unused", companions: [] }),
++    bundle: mock<RuntimeCompilerPort["bundle"]>().mockResolvedValue("unused"),
++  },
++});
++
++test("prepares the Core declaration and runtime closure together with exact dependency requests", async () => {
++  const dependencies = fixture();
++  expect(await prepareCoreRuntimeArtifacts({ pluginRoot: "/source/core", files: ["tools/check.ts", "hooks/guard.ts"], ...dependencies })).toEqual({ kind: "prepared", artifacts: [
++    { file: "projection/plugin-hook-types.d.ts", content: "declaration" },
++    { file: "hooks/guard.ts", content: "compiled guard" },
++    { file: "tools/check.runtime.js", content: "runtime" },
++  ] });
++  expect(dependencies.operations.declare.mock.calls).toEqual([[{ pluginRoot: "/source/core", file: "projection/plugin-hook-types.ts", files: ["tools/check.ts", "hooks/guard.ts"], port: dependencies.runtimePort }]]);
++  expect(dependencies.operations.prepare.mock.calls).toEqual([[{ pluginRoot: "/source/core", files: ["tools/check.ts", "hooks/guard.ts", "projection/plugin-hook-types.d.ts"], sourcePort: dependencies.sourcePort, runtimePort: dependencies.runtimePort }]]);
++});
++
++test("declaration companions become runtime occupancy before compilation", async () => {
++  const dependencies = fixture();
++  dependencies.operations.declare.mockResolvedValue({ kind: "prepared", artifacts: [{ file: "projection/plugin-hook-types.d.ts", content: "declaration" }, { file: "tools/core-runtime-types/package.json", content: "package" }] });
++  dependencies.operations.prepare.mockResolvedValue({ kind: "prepared", artifacts: [] });
++  expect(await prepareCoreRuntimeArtifacts({ pluginRoot: "/source/core", files: ["tools/check.ts"], ...dependencies })).toEqual({ kind: "prepared", artifacts: [{ file: "projection/plugin-hook-types.d.ts", content: "declaration" }, { file: "tools/core-runtime-types/package.json", content: "package" }] });
++  expect(dependencies.operations.prepare.mock.calls).toEqual([[{ pluginRoot: "/source/core", files: ["tools/check.ts", "projection/plugin-hook-types.d.ts", "tools/core-runtime-types/package.json"], sourcePort: dependencies.sourcePort, runtimePort: dependencies.runtimePort }]]);
++});
++
++const declarationFailures: Exclude<ProjectedPluginRuntime, { readonly kind: "prepared" }>[] = [
++  { kind: "refused", message: "declaration collision" },
++  { kind: "unavailable", error: { kind: "runtime-declaration-failed", pluginRoot: "/source/core", file: "projection/plugin-hook-types.ts", cause: null, message: "compiler unavailable" } },
++];
++test.each(declarationFailures)("declaration failure suppresses runtime preparation: $kind", async (failure) => {
++  const dependencies = fixture();
++  dependencies.operations.declare.mockResolvedValue(failure);
++  expect(await prepareCoreRuntimeArtifacts({ pluginRoot: "/source/core", files: ["tools/check.ts"], ...dependencies })).toEqual(failure);
++  expect(dependencies.operations.prepare.mock.calls).toEqual([]);
++});
++
++const runtimeFailures: Exclude<ProjectedPluginRuntime, { readonly kind: "prepared" }>[] = [
++  { kind: "refused", message: "runtime collision" },
++  { kind: "unavailable", error: { kind: "runtime-bundle-failed", pluginRoot: "/source/core", file: "hooks/guard.ts", cause: null, message: "bundle unavailable" } },
++];
++test.each(runtimeFailures)("runtime failure produces no partially prepared declaration result: $kind", async (failure) => {
++  const dependencies = fixture();
++  dependencies.operations.prepare.mockResolvedValue(failure);
++  expect(await prepareCoreRuntimeArtifacts({ pluginRoot: "/source/core", files: ["tools/check.ts"], ...dependencies })).toEqual(failure);
++});
++
++test("identical shared artifacts are retained once", async () => {
++  const dependencies = fixture();
++  dependencies.operations.prepare.mockResolvedValue({ kind: "prepared", artifacts: [{ file: "projection/plugin-hook-types.d.ts", content: "declaration" }, { file: "tools/extra.d.ts", content: "extra" }] });
++  expect(await prepareCoreRuntimeArtifacts({ pluginRoot: "/source/core", files: ["tools/check.ts"], ...dependencies })).toEqual({ kind: "prepared", artifacts: [{ file: "projection/plugin-hook-types.d.ts", content: "declaration" }, { file: "tools/extra.d.ts", content: "extra" }] });
++});
++
++test("different content cannot override a declaration artifact", async () => {
++  const dependencies = fixture();
++  dependencies.operations.prepare.mockResolvedValue({ kind: "prepared", artifacts: [{ file: "projection/plugin-hook-types.d.ts", content: "override" }] });
++  expect(await prepareCoreRuntimeArtifacts({ pluginRoot: "/source/core", files: ["tools/check.ts"], ...dependencies })).toEqual({ kind: "refused", message: "core runtime artifact collision: projection/plugin-hook-types.d.ts" });
++});
++
++test("same basename at a different destination is a legitimate separate product", async () => {
++  const dependencies = fixture();
++  dependencies.operations.prepare.mockResolvedValue({ kind: "prepared", artifacts: [{ file: "tools/plugin-hook-types.d.ts", content: "separate" }] });
++  expect(await prepareCoreRuntimeArtifacts({ pluginRoot: "/source/core", files: ["tools/check.ts"], ...dependencies })).toEqual({ kind: "prepared", artifacts: [{ file: "projection/plugin-hook-types.d.ts", content: "declaration" }, { file: "tools/plugin-hook-types.d.ts", content: "separate" }] });
++});
++
++test("conflicting duplicates within runtime artifacts cannot bypass collision admission", async () => {
++  const dependencies = fixture();
++  dependencies.operations.prepare.mockResolvedValue({ kind: "prepared", artifacts: [{ file: "tools/check.runtime.js", content: "first" }, { file: "tools/check.runtime.js", content: "second" }] });
++  expect(await prepareCoreRuntimeArtifacts({ pluginRoot: "/source/core", files: ["tools/check.ts"], ...dependencies })).toEqual({ kind: "refused", message: "core runtime artifact collision: tools/check.runtime.js" });
++});
+diff --git a/scripts/core-runtime.ts b/scripts/core-runtime.ts
+new file mode 100644
+index 000000000..99a8283e4
+--- /dev/null
++++ b/scripts/core-runtime.ts
+@@ -0,0 +1,29 @@
++import { preparePluginDeclarationRuntime } from "./plugin-declaration.ts";
++import { prepareProjectedPluginRuntimeArtifacts, type PluginRuntimeSourcePort, type ProjectedPluginRuntime, type RuntimeArtifact, type RuntimeCompilerPort } from "./plugin-runtime.ts";
++
++export type CoreDeclarationRequest = { readonly pluginRoot: string; readonly file: string; readonly files: readonly string[]; readonly port: Pick<RuntimeCompilerPort, "declaration"> };
++export type CoreRuntimeRequest = { readonly pluginRoot: string; readonly files: readonly string[]; readonly sourcePort: PluginRuntimeSourcePort; readonly runtimePort: RuntimeCompilerPort };
++export type CoreRuntimePreparationOperations = {
++  readonly declare: (input: CoreDeclarationRequest) => Promise<ProjectedPluginRuntime>;
++  readonly prepare: (input: CoreRuntimeRequest) => Promise<ProjectedPluginRuntime>;
++};
++export const createCoreRuntimePreparationOperations = (): CoreRuntimePreparationOperations => ({ declare: preparePluginDeclarationRuntime, prepare: prepareProjectedPluginRuntimeArtifacts });
++
++function runtimeInventory({ files, artifacts }: { readonly files: readonly string[]; readonly artifacts: readonly RuntimeArtifact[] }): readonly string[] {
++  return Array.from(new Set([...files, ...artifacts.map((artifact) => artifact.file)]));
++}
++
++function combineCoreArtifacts({ declared, runtime }: { readonly declared: readonly RuntimeArtifact[]; readonly runtime: ProjectedPluginRuntime }): ProjectedPluginRuntime {
++  if (runtime.kind !== "prepared") return runtime;
++  const artifacts = [...declared, ...runtime.artifacts];
++  const collision = artifacts.find((artifact) => artifacts.some((other) => other.file === artifact.file && other.content !== artifact.content));
++  if (collision !== undefined) return { kind: "refused", message: `core runtime artifact collision: ${collision.file}` };
++  return { kind: "prepared", artifacts: artifacts.filter((artifact, index) => artifacts.findIndex((other) => other.file === artifact.file) === index) };
++}
++
++export async function prepareCoreRuntimeArtifacts({ pluginRoot, files, sourcePort, runtimePort, operations = createCoreRuntimePreparationOperations() }: CoreRuntimeRequest & { readonly operations?: CoreRuntimePreparationOperations }): Promise<ProjectedPluginRuntime> {
++  const declared = await operations.declare({ pluginRoot, file: "projection/plugin-hook-types.ts", files, port: runtimePort });
++  if (declared.kind !== "prepared") return declared;
++  const runtime = await operations.prepare({ pluginRoot, files: runtimeInventory({ files, artifacts: declared.artifacts }), sourcePort, runtimePort });
++  return combineCoreArtifacts({ declared: declared.artifacts, runtime });
++}
+diff --git a/scripts/package-source-inputs.test.ts b/scripts/package-source-inputs.test.ts
+index 6b729abbf..3856a42a6 100644
+--- a/scripts/package-source-inputs.test.ts
++++ b/scripts/package-source-inputs.test.ts
+@@ -10,6 +10,7 @@ test("available producer inputs are selected without unrelated scripts or tests"
+     "scripts/agent-knowledge.ts",
+     "scripts/agent-surface-projection.ts",
+     "scripts/core-projection-contract.ts",
++    "scripts/core-runtime.ts",
+     "scripts/earlier-release-regions.ts",
+     "scripts/generated-skill-regions.ts",
+     "scripts/copy-era-files.json",
+@@ -45,6 +46,7 @@ test("absent producer inputs are not selected", () => {
+     ["scripts/agent-knowledge.ts"],
+     ["scripts/agent-surface-projection.ts"],
+     ["scripts/core-projection-contract.ts"],
++    ["scripts/core-runtime.ts"],
+     ["scripts/earlier-release-regions.ts"],
+     ["scripts/generated-skill-regions.ts"],
+     ["scripts/copy-era-files.json"],
+diff --git a/scripts/package-source-inputs.ts b/scripts/package-source-inputs.ts
+index 8c6ed2d33..7694a7942 100644
+--- a/scripts/package-source-inputs.ts
++++ b/scripts/package-source-inputs.ts
+@@ -6,6 +6,7 @@ const SOURCE_FILES = [
+   "scripts/agent-knowledge.ts",
+   "scripts/agent-surface-projection.ts",
+   "scripts/core-projection-contract.ts",
++  "scripts/core-runtime.ts",
+   "scripts/earlier-release-regions.ts",
+   "scripts/generated-skill-regions.ts",
+   "scripts/copy-era-files.json",
+diff --git a/scripts/package.ts b/scripts/package.ts
+index 3e039f7d8..7184c415c 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -68,7 +68,7 @@ import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-p
+ import { bindPluginHookSources } from "../core/tools/aidlc-plugin-hook-definition.ts";
+ import { createPluginRuntimeCompiler, createPluginRuntimeSourcePort, createPluginRuntimeArtifactPort, prepareProjectedPluginRuntimeArtifacts, publishPluginRuntimeArtifacts, type RuntimePreparationFailure, type RuntimePublication } from "./plugin-runtime.ts";
+ import { createPackageRuntimeCliPort, reportPackageRuntimeFailure } from "./package-runtime-cli.ts";
+-import { preparePluginDeclarationRuntime } from "./plugin-declaration.ts";
++import { prepareCoreRuntimeArtifacts } from "./core-runtime.ts";
+ import { pluginHookRows, renderPluginHookContributions } from "./plugin-contributions.ts";
+ import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
+ import {
+@@ -1920,15 +1920,12 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
+ async function projectCoreRuntime(input: { readonly treeRoot: string }): Promise<RuntimePublication> {
+   const compiler = await createPluginRuntimeCompiler({ projectRoot: REPO_ROOT });
+   if (compiler.kind === "unavailable") return compiler;
+-  const declared = await preparePluginDeclarationRuntime({
+-    pluginRoot: CORE_ROOT, file: "projection/plugin-hook-types.ts",
++  const prepared = await prepareCoreRuntimeArtifacts({
++    pluginRoot: CORE_ROOT,
+     files: Array.from(walk(input.treeRoot), (file) => relative(input.treeRoot, file).split(sep).join("/")),
+-    port: compiler.port,
++    sourcePort: createPluginRuntimeSourcePort(), runtimePort: compiler.port,
+   });
+-  const declarations = await publishPluginRuntimeArtifacts({ outDir: input.treeRoot, prepared: declared, port: createPluginRuntimeArtifactPort() });
+-  if (declarations.kind !== "published") return declarations;
+-  const runtime = await bundleRuntimeDependencies({ pluginRoot: CORE_ROOT, outDir: input.treeRoot, files: Array.from(walk(input.treeRoot), (file) => relative(input.treeRoot, file).split(sep).join("/")) });
+-  return runtime;
++  return publishPluginRuntimeArtifacts({ outDir: input.treeRoot, prepared, port: createPluginRuntimeArtifactPort() });
+ }
+ 
+ async function bundleRuntimeDependencies(input: {

@@ -1,7 +1,28 @@
 import { expect, test } from "bun:test";
-import { prepareWorkflowRuntime } from "./workflow-runtime.ts";
+import { prepareWorkflowRuntime, describeWorkflowFileSupply } from "./workflow-runtime.ts";
 import { workflowRuntimeRequest, hydratedWorkflowSeed, graphRuntimeFile, conflictingWorkflowSeed } from "../../__tests__/workflow-runtime-fixtures.ts";
 import { distributionSeed } from "../../__tests__/distribution-fixtures.ts";
+test("retention does not classify freshly compiled workflow data as supplied runtime", () => {
+  expect(describeWorkflowFileSupply({ projectedPaths: [".claude/scopes/aidlc-bugfix.md"], compiledPaths: [".claude/tools/data/stage-graph.json", ".claude/tools/data/scope-grid.json"], retainedPaths: [".claude/tools/aidlc.ts", ".claude/tools/data/stage-graph.json", ".claude/tools/data/scope-grid.json"] })).toEqual({ projectedPaths: [".claude/scopes/aidlc-bugfix.md"], compiledPaths: [".claude/tools/data/stage-graph.json", ".claude/tools/data/scope-grid.json"], preparedPaths: [], suppliedPaths: [".claude/tools/aidlc.ts"] });
+});
+test("an absent compiler output cannot inflate the published source-compiled count", () => {
+  expect(describeWorkflowFileSupply({ projectedPaths: [], compiledPaths: [".claude/tools/data/stage-graph.json"], retainedPaths: [".claude/tools/aidlc.ts"] })).toEqual({ projectedPaths: [], compiledPaths: [], preparedPaths: [], suppliedPaths: [".claude/tools/aidlc.ts"] });
+});
+test("similarly named runtime files are not mistaken for compiler outputs", () => {
+  expect(describeWorkflowFileSupply({ projectedPaths: [], compiledPaths: [".claude/tools/data/stage-graph.json"], retainedPaths: [".claude/tools/data/stage-graph.json.backup"] })).toEqual({ projectedPaths: [], compiledPaths: [], preparedPaths: [], suppliedPaths: [".claude/tools/data/stage-graph.json.backup"] });
+});
+test("a projected replacement is not double-counted as retained compilation", () => {
+  expect(describeWorkflowFileSupply({ projectedPaths: [".claude/tools/data/stage-graph.json"], compiledPaths: [".claude/tools/data/stage-graph.json"], retainedPaths: [] })).toEqual({ projectedPaths: [".claude/tools/data/stage-graph.json"], compiledPaths: [], preparedPaths: [], suppliedPaths: [] });
+});
+test("source-prepared runtime is separate from compilation and supplied files", () => {
+  expect(describeWorkflowFileSupply({ projectedPaths: [], compiledPaths: [".claude/tools/data/stage-graph.json"], preparedPaths: [".claude/tools/data/memory-seed/org.md"], retainedPaths: [".claude/tools/data/stage-graph.json", ".claude/tools/data/memory-seed/org.md", ".claude/tools/aidlc.ts"] })).toEqual({ projectedPaths: [], compiledPaths: [".claude/tools/data/stage-graph.json"], preparedPaths: [".claude/tools/data/memory-seed/org.md"], suppliedPaths: [".claude/tools/aidlc.ts"] });
+});
+test("missing or similarly named files cannot inflate source-prepared totals", () => {
+  expect(describeWorkflowFileSupply({ projectedPaths: [], compiledPaths: [], preparedPaths: [".claude/tools/data/memory-seed/org.md"], retainedPaths: [".claude/tools/data/memory-seed/org.md.backup"] })).toEqual({ projectedPaths: [], compiledPaths: [], preparedPaths: [], suppliedPaths: [".claude/tools/data/memory-seed/org.md.backup"] });
+});
+test("a compiled or projected path cannot be double-counted as prepared runtime", () => {
+  expect(describeWorkflowFileSupply({ projectedPaths: ["projected"], compiledPaths: ["compiled"], preparedPaths: ["projected", "compiled"], retainedPaths: ["compiled"] })).toEqual({ projectedPaths: ["projected"], compiledPaths: ["compiled"], preparedPaths: [], suppliedPaths: [] });
+});
 test("prepares only compiler graph and grid without claiming native runtime products", () => {
   expect(prepareWorkflowRuntime(workflowRuntimeRequest)).toEqual({ status: "ok", value: { seed: hydratedWorkflowSeed, compiledPaths: [".claude/tools/data/stage-graph.json", ".claude/tools/data/scope-grid.json"], addedPaths: [".claude/tools/data/stage-graph.json", ".claude/tools/data/scope-grid.json"] } });
 });

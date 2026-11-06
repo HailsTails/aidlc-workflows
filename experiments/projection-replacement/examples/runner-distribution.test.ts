@@ -1,46 +1,36 @@
 import { expect, mock, test } from "bun:test";
 import { assembleRunnerDistribution, createRunnerDistributionServices } from "./runner-distribution.ts";
-import { createRunnerDistributionServicesFixture, issuedCoreDistribution, ownershipRecord, ownedProduct } from "../__tests__/projection-ownership-fixtures.ts";
-import { distributionLocation } from "../__tests__/distribution-fixtures.ts";
+import { completeProjectionDistribution } from "./projection-distribution.ts";
+import { createRunnerDistributionServicesFixture, ownedSeed, runnerProjectionSet, runnerIssuedArtifact } from "../__tests__/projection-ownership-fixtures.ts";
+import { distributionLocation, distributionProjection } from "../__tests__/distribution-fixtures.ts";
 import { runnerFailure } from "../__tests__/runner-fixtures.ts";
-import { successful } from "../__tests__/support.ts";
-import { distributionProjection } from "../__tests__/distribution-fixtures.ts";
-test("issues a native archive and ownership only after final artifact verification", async () => {
+test("runner discovery delegates one prepared projection to final issuance", async () => {
   const services = createRunnerDistributionServicesFixture();
-  const issued = successful(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", services }));
-  expect(issued.archive).toEqual(new Uint8Array([31, 139]));
-  expect(issued.ownershipJson).toBe("issued-record");
-  expect(services.issue).toHaveBeenCalledWith({ distribution: issuedCoreDistribution, products: [ownedProduct], digest: services.digest });
-  expect(services.codec.write).toHaveBeenCalledWith({ ownership: ownershipRecord });
+  expect(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", services })).toEqual({ status: "ok", value: runnerIssuedArtifact });
+  expect(services.prepare).toHaveBeenCalledWith({ seed: ownedSeed, location: distributionLocation, modelInvocation: "native-default" });
+  expect(services.finish).toHaveBeenCalledWith({ sourceRoot: "source", seed: ownedSeed, projection: runnerProjectionSet, mode: 0o644, services });
 });
-test("native input refusal stops generation", async () => {
+test("native input refusal stops generation and completion", async () => {
   const services = createRunnerDistributionServicesFixture();
   expect(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", services: { ...services, source: { ...services.source, load: mock().mockResolvedValue(runnerFailure) } } })).toEqual(runnerFailure);
   expect(services.prepare).not.toHaveBeenCalled();
-  expect(services.source.archive).not.toHaveBeenCalled();
+  expect(services.finish).not.toHaveBeenCalled();
 });
-test("changed prepared output cannot be silently adopted into a fresh record", async () => {
+test("runner preparation refusal prevents completion", async () => {
   const services = createRunnerDistributionServicesFixture();
-  expect(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", services: { ...services, admit: mock().mockReturnValue(runnerFailure) } })).toEqual(runnerFailure);
-  expect(services.assembler.assemble).not.toHaveBeenCalled();
-  expect(services.issue).not.toHaveBeenCalled();
+  expect(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", services: { ...services, prepare: mock().mockResolvedValue(runnerFailure) } })).toEqual(runnerFailure);
+  expect(services.finish).not.toHaveBeenCalled();
 });
-test("final product mismatch stops archive production", async () => {
-  const services = createRunnerDistributionServicesFixture();
-  expect(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", services: { ...services, issue: mock().mockReturnValue(runnerFailure) } })).toEqual(runnerFailure);
-  expect(services.source.archive).not.toHaveBeenCalled();
-  expect(services.codec.write).not.toHaveBeenCalled();
+test("completion refusal is returned unchanged", async () => {
+  const services = { ...createRunnerDistributionServicesFixture(), finish: mock().mockResolvedValue(runnerFailure) };
+  expect(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", services })).toEqual(runnerFailure);
+  expect(services.finish).toHaveBeenCalledWith({ sourceRoot: "source", seed: ownedSeed, projection: runnerProjectionSet, mode: 0o644, services });
 });
-test("archive failure does not expose a successor ownership record", async () => {
-  const services = createRunnerDistributionServicesFixture();
-  expect(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", services: { ...services, source: { ...services.source, archive: mock().mockResolvedValue(runnerFailure) } } })).toEqual(runnerFailure);
-  expect(services.codec.write).not.toHaveBeenCalled();
+test("production factory wires the shared final issuer", () => {
+  expect(createRunnerDistributionServices()).toMatchObject({ source: { load: expect.any(Function), archive: expect.any(Function) }, prepare: expect.any(Function), finish: completeProjectionDistribution });
 });
-test("production factory composes existing preparation, assembly and ownership ports", () => {
-  expect(createRunnerDistributionServices()).toMatchObject({ source: { load: expect.any(Function), archive: expect.any(Function) }, prepare: expect.any(Function), assembler: { assemble: expect.any(Function) }, admit: expect.any(Function), products: expect.any(Function), issue: expect.any(Function), codec: { write: expect.any(Function) } });
-});
-test("scope composition cannot smuggle another projected capability into the runner producer", async () => {
+test("workflow definitions cannot smuggle another capability through the runner compatibility entry", async () => {
   const services = createRunnerDistributionServicesFixture();
   expect(await assembleRunnerDistribution({ location: distributionLocation, mode: 0o644, modelInvocation: "native-default", definitions: distributionProjection, services })).toEqual({ status: "invalid", findings: [{ code: "foreign-content", subject: "runner-distribution", detail: "additional authored projection must contain only stage/scope definitions targeting this runtime binding" }] });
-  expect(services.source.archive).not.toHaveBeenCalled();
+  expect(services.finish).not.toHaveBeenCalled();
 });

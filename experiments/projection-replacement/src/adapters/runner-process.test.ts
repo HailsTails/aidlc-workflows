@@ -39,3 +39,11 @@ test("a successful exit with native discovery warnings is not accepted as comple
   const fixture = createProcessFixture({ reply: { exitCode: 0, stdout: "[]", stderr: "Warning: scope directory not readable", error: null } });
   expect(createRunnerProcess({ operations: fixture.operations }).execute({ runtime: runnerRuntime, requests: [], intent: "discover" })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "claude", detail: "native runner discovery reported diagnostics; no complete requirement set was accepted: Warning: scope directory not readable" }] });
 });
+
+test.each([
+  ['{"status":"unavailable","detail":"native runner input is not a directory: .claude/skills"}', { status: "ok", value: { status: "unavailable", detail: "native runner input is not a directory: .claude/skills" } }],
+  ['{"status":"unavailable","detail":"native runner input directory observation unavailable: .claude/scopes"}', { status: "ok", value: { status: "unavailable", detail: "native runner input directory observation unavailable: .claude/scopes" } }],
+] as const)("native discovery refusals remain explicit data across transport", (stdout, expected) => {
+  const fixture = createProcessFixture({ reply: { exitCode: 0, stdout, stderr: "", error: null } });
+  expect(createRunnerProcess({ operations: fixture.operations }).execute({ runtime: runnerRuntime, requests: [], intent: "discover" })).toEqual(expected);
+});

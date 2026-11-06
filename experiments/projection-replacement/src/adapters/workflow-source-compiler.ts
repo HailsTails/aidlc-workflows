@@ -11,12 +11,17 @@ const preparationRefusal = async () => {
   const present = await Promise.all(prohibited.map(async name => await Bun.file(input.source + "/core/tools/data/" + name).exists() ? name : null));
   const blockedSource = present.find(name => name !== null);
   if (blockedSource) return { status: "unavailable", detail: "raw workflow compilation requires authored core inputs, without native harness configuration or compiled distribution data: " + blockedSource };
-  const previous = await Promise.all([process.env.AIDLC_STAGE_GRAPH, process.env.AIDLC_SCOPE_GRID, process.env.AIDLC_COMPOSED_SCOPES_DIR].map(async path => {
-    try { await Bun.file(path).stat(); return path; }
-    catch (error) { if (error?.code !== "ENOENT") throw error; return null; }
-  }));
-  const blockedContext = previous.find(path => path !== null);
-  if (blockedContext) return { status: "unavailable", detail: "source-only compilation requires a fresh context without previous graph/grid or composed-scope inputs: " + blockedContext };
+  const observeContextInput = async ({ path }) => {
+    try { await Bun.file(path).stat(); return { status: "ok", path }; }
+    catch (error) {
+      return error?.code === "ENOENT" ? { status: "ok", path: null } : { status: "unavailable", detail: "source-only compilation context observation unavailable; no workflow data was prepared" };
+    }
+  };
+  const previous = await Promise.all([process.env.AIDLC_STAGE_GRAPH, process.env.AIDLC_SCOPE_GRID, process.env.AIDLC_COMPOSED_SCOPES_DIR].map(path => observeContextInput({ path })));
+  const unavailableContext = previous.find(observed => observed.status !== "ok");
+  if (unavailableContext) return unavailableContext;
+  const blockedContext = previous.find(observed => observed.path !== null);
+  if (blockedContext) return { status: "unavailable", detail: "source-only compilation requires a fresh context without previous graph/grid or composed-scope inputs: " + blockedContext.path };
   return null;
 };
 const compile = async () => {

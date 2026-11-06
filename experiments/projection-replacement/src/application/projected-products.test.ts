@@ -1,9 +1,37 @@
 import { expect, mock, test } from "bun:test";
+import { guidanceSet, guidanceBasis, guidanceProducts } from "../../__tests__/core-guidance-fixtures.ts";
 import { prepareProjectedProducts, requiredProjectedRunnerPaths } from "./projected-products.ts";
 import { hiddenRegistrationProjection, pluginProductInput, pluginProductBasis, projectedProductInput, staleCompilerProjection } from "../../__tests__/distribution-product-fixtures.ts";
 import { distributionBasis } from "../../__tests__/distribution-fixtures.ts";
 import { shortcutProductInput } from "../../__tests__/distribution-product-fixtures.ts";
 import { scopeSet, scopeOrigin } from "../../__tests__/scope-fixtures.ts";
+import { coreAgentSet, coreAgentBasis, coreAgentProducts } from "../../__tests__/core-agent-fixtures.ts";
+import { entrySet, entryBasis, entryMainOrigin, entryManifestOrigin, entryHelperOrigin } from "../../__tests__/harness-document-fixtures.ts";
+import { coreSensorSet } from "../../__tests__/core-sensor-fixtures.ts";
+test("sensor descriptors retain their own product identity and authored origin", () => {
+  const encode = mock().mockReturnValue(new Uint8Array([83]));
+  expect(prepareProjectedProducts({ projection: coreSensorSet, sources: [entryBasis], compiler: entryBasis, mode: 0o644, rules: { encode } })).toEqual({ status: "ok", value: [{ key: "sensor-example", owner: entryBasis, binding: { harness: "claude", directory: ".claude" }, inputs: [{ ...entryBasis, path: "core/sensors/aidlc-example.md" }], requiredByProducer: [], files: [{ path: ".claude/sensors/aidlc-example.md", bytes: new Uint8Array([83]), mode: 0o644 }] }] });
+  expect(encode.mock.calls).toEqual([[{ text: "Rendered sensor\n" }]]);
+});
+
+test("harness products retain raw document, manifest and text preparation provenance", () => {
+  const encode = mock().mockReturnValue(new Uint8Array([69]));
+  expect(prepareProjectedProducts({ projection: entrySet, sources: [entryBasis], compiler: entryBasis, mode: 0o640, rules: { encode } })).toEqual({ status: "ok", value: [{ key: "harness-main-skill", owner: entryBasis, binding: { harness: "claude", directory: ".claude" }, inputs: [entryMainOrigin, entryManifestOrigin, entryHelperOrigin], requiredByProducer: [".claude/skills/aidlc/SKILL.md"], files: [{ path: ".claude/skills/aidlc/SKILL.md", bytes: new Uint8Array([69]), mode: 0o640 }] }] });
+  expect(encode).toHaveBeenCalledWith({ text: "Rendered main\n\nNative compatibility\n" });
+});
+
+test("guidance products retain authored and selector provenance without inventing native requirements", () => {
+  const encode = mock().mockReturnValue(new Uint8Array([82]));
+  expect(prepareProjectedProducts({ projection: guidanceSet, sources: [guidanceBasis], compiler: guidanceBasis, mode: 0o644, rules: { encode } })).toEqual({ status: "ok", value: guidanceProducts });
+  expect(encode).toHaveBeenNthCalledWith(1, { text: "Rendered\n" });
+  expect(encode).toHaveBeenNthCalledWith(2, { text: "Rendered\n" });
+});
+
+test("independent agent products retain catalogue and absorbed-knowledge inputs without taking library ownership", () => {
+  const encode = mock().mockReturnValue(new Uint8Array([1, 2]));
+  expect(prepareProjectedProducts({ projection: coreAgentSet, sources: [coreAgentBasis], compiler: coreAgentBasis, mode: 0o644, rules: { encode } })).toEqual({ status: "ok", value: coreAgentProducts });
+  expect(encode).toHaveBeenCalledWith({ text: "Prepared agent" });
+});
 test("an authored scope product carries its own producer dependency and source provenance", () => {
   expect(prepareProjectedProducts({ ...projectedProductInput, projection: scopeSet, rules: { encode: mock().mockReturnValue(new Uint8Array([9, 8])) } })).toEqual({ status: "ok", value: [{ key: "scope-bugfix", owner: distributionBasis, binding: { harness: "claude", directory: ".claude" }, inputs: [scopeOrigin], requiredByProducer: [".claude/scopes/aidlc-bugfix.md"], files: [{ path: ".claude/scopes/aidlc-bugfix.md", bytes: new Uint8Array([9, 8]), mode: 0o644 }] }] });
 });

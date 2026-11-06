@@ -1,11 +1,11 @@
 import { z } from "zod";
+import { harnessBindingSchema as binding } from "./harness-binding-schema.ts";
 import type { ProjectionOwnership, OwnedProductRecord, OwnershipDigest } from "../domain/projection-ownership.ts";
 import { finding, pathStatus, sourceKey, type Outcome } from "../domain/model.ts";
 const slug = z.string().regex(/^[a-z][a-z0-9-]*$/);
 const source = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("core"), id: slug }), z.strictObject({ kind: z.literal("plugin"), id: slug })]);
 const basis = z.strictObject({ source, pin: z.string().min(1) });
 const path = z.string().refine((path) => pathStatus({ path }) === "safe");
-const binding = z.discriminatedUnion("harness", [z.strictObject({ harness: z.literal("claude"), directory: z.literal(".claude") }), z.strictObject({ harness: z.literal("cursor"), directory: z.literal(".cursor") }), z.strictObject({ harness: z.literal("codex"), directory: z.literal(".codex") }), z.strictObject({ harness: z.literal("copilot"), directory: z.literal(".aidlc") }), z.strictObject({ harness: z.literal("opencode"), directory: z.literal(".aidlc") }), z.strictObject({ harness: z.literal("kiro"), directory: z.literal(".kiro") }), z.strictObject({ harness: z.literal("kiro-ide"), directory: z.literal(".kiro") })]);
 const product = z.strictObject({ key: slug, owner: basis, binding, inputs: z.array(basis.extend({ path })), requiredByProducer: z.array(path), files: z.array(z.strictObject({ path, mode: z.number().int().min(0).max(0o777), sha256: z.string().regex(/^[a-f0-9]{64}$/) })).min(1) });
 const schema = z.strictObject({ schemaVersion: z.literal(1), binding, products: z.array(product) });
 const recordKey = ({ record }: { readonly record: OwnedProductRecord }): string => `${sourceKey(record.owner.source)}/${record.key}`;

@@ -14,9 +14,12 @@ test("native diagnostics do not become successful prepared workflow data", () =>
   const operations = createWorkflowCompilerFixture();
   expect(createWorkflowSourceCompiler({ operations: { ...operations, spawn: mock().mockReturnValue({ exitCode: 0, stdout: JSON.stringify(workflowReply), stderr: "unsupported source declaration", error: null }) } }).compile({ location: workflowLocation })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "workflow-source-compiler", detail: "native workflow compilation unavailable or reported diagnostics: unsupported source declaration" }] });
 });
-test("explicit source preparation unavailability retains useful guidance", () => {
+test.each([
+  ['{"status":"unavailable","detail":"use a fresh context"}', "use a fresh context"],
+  ['{"status":"unavailable","detail":"source-only compilation context observation unavailable; no workflow data was prepared"}', "source-only compilation context observation unavailable; no workflow data was prepared"],
+] as const)("source preparation unavailability retains its guidance", (stdout, detail) => {
   const operations = createWorkflowCompilerFixture();
-  expect(createWorkflowSourceCompiler({ operations: { ...operations, spawn: mock().mockReturnValue({ exitCode: 0, stdout: '{"status":"unavailable","detail":"use a fresh context"}', stderr: "", error: null }) } }).compile({ location: workflowLocation })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "workflow-source-compiler", detail: "use a fresh context" }] });
+  expect(createWorkflowSourceCompiler({ operations: { ...operations, spawn: mock().mockReturnValue({ exitCode: 0, stdout, stderr: "", error: null }) } }).compile({ location: workflowLocation })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "workflow-source-compiler", detail }] });
 });
 test("a native declaration refusal is distinct from unavailable process capability", () => {
   const operations = createWorkflowCompilerFixture();

@@ -7,6 +7,16 @@ test("source text preparation binds exact documents and every source witness", (
 test("source API absence remains an explicit capability gap", () => {
   expect(createNativeStageCommandPreparer({ operations: createNativeStageOperations({ reply: { status: "unavailable", detail: "source API absent" } }) }).prepare(nativeStageRequest)).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "native-stage-commands", detail: "source API absent" }] });
 });
+test.each([
+  [{ exitCode: 1, stderr: "compiler failed" }, "source-owned native text process unavailable or reported diagnostics: compiler failed"],
+  [{ error: "launch unavailable" }, "source-owned native text process unavailable or reported diagnostics: launch unavailable"],
+  [{ stderr: "unexpected diagnostics" }, "source-owned native text process unavailable or reported diagnostics: unexpected diagnostics"],
+] as const)("apparently valid output cannot override a failed process: %s", (transport, detail) => {
+  expect(createNativeStageCommandPreparer({ operations: createNativeStageOperations({ transport }) }).prepare(nativeStageRequest)).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "native-stage-commands", detail }] });
+});
+test("a healthy process still needs a decodable response", () => {
+  expect(createNativeStageCommandPreparer({ operations: createNativeStageOperations({ transport: { stdout: "{" } }) }).prepare(nativeStageRequest)).toEqual({ status: "invalid", findings: [{ code: "invalid-json", subject: "native-stage-commands", detail: "native text process must return one JSON response" }] });
+});
 test("unknown native routes retain the source refusal", () => {
   expect(createNativeStageCommandPreparer({ operations: createNativeStageOperations({ reply: { status: "refused", detail: "unknown owned route" } }) }).prepare(nativeStageRequest)).toEqual({ status: "invalid", findings: [{ code: "invalid-input", subject: "native-stage-commands", detail: "unknown owned route" }] });
 });

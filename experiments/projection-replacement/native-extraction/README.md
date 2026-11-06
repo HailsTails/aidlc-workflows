@@ -1,11 +1,9 @@
-# Native source extraction proposals
+# Native boundary patches
 
-These patches target fork base `d062c81e5678c9f92162542b425b8a5f095e46e1` in this order:
+These patches preserve source-owned boundary extractions from the experiment. They have different historical bases and qualification scopes and are not an ordered installation script.
 
-1. `fork-native-command-text.patch`: separates source-owned native command text preparation from the packager.
-2. `fork-static-route-contract.patch`: separates authoritative route declarations from the executable dispatcher.
-3. `fork-runtime-module-inventory.patch`: separates declared modules from invocation candidates in the Codex and OpenCode emitters.
+The completed aggregate native tree for this snapshot is `760ade07a4be3176a22c0d3857b6caac13fd52d3`, available through draft PR 114. Review the actual integrated source there rather than assuming every older patch applies to current upstream.
 
-Apply each only in a separate review checkout with `git apply --unidiff-zero <patch>`. The patches are proposals, not changes applied to this branch's main runtime. Run `bun test scripts/native-command-text.test.ts` and the source package checks after application.
+`json-map-ownership.patch` is the bounded ownership extraction integrated in that native pin. `deferred-json-map-own-members.patch` is a separate, unapplied own-member/prototype-key correction. Its application was checked against the parity candidate, but no special-key installed-consumer qualification is claimed.
 
-This snapshot includes the corresponding experimental consumer. It does not establish native host activation, all-harness parity, or release readiness. Generated distributions and local verification outputs are not included.
+Patches contain source and test changes, not generated distributions or authority to install into a live project. Workstation-specific provenance and private review records are intentionally excluded from this publication.

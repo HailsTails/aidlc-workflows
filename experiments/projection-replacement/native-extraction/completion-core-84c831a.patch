@@ -1,0 +1,2441 @@
+diff --git a/core/tools/aidlc-attempt-boundary.ts b/core/tools/aidlc-attempt-boundary.ts
+new file mode 100644
+index 000000000..77570f4f1
+--- /dev/null
++++ b/core/tools/aidlc-attempt-boundary.ts
+@@ -0,0 +1,123 @@
++// Pure attempt boundaries over captured, ordered audit rows. No record selection or policy decision.
++import type { AuditShardEvent } from "./aidlc-record-core.ts";
++import { auditBlockField } from "./aidlc-markdown.ts";
++type OrderedPipelineEvidenceEvent = AuditShardEvent;
++
++export interface PipelineAttemptFloor {
++  timestamp: string;
++  rows: OrderedPipelineEvidenceEvent[];
++}
++
++export function pipelineAttemptFloorIn(
++  events: OrderedPipelineEvidenceEvent[],
++  stageSlug: string,
++  singleRun: boolean,
++  rejectionKeepsReceipts: boolean,
++  stageJumpReaches: (block: string, slug: string) => boolean,
++): PipelineAttemptFloor | null {
++  const workflow = `single-stage:${stageSlug}`;
++  const boundaries = events.filter((entry) => {
++    const eventWorkflow = auditBlockField(entry.block, "Workflow");
++    if (
++      !singleRun &&
++      (
++        entry.event === "WORKFLOW_STARTED" ||
++        (entry.event === "STAGE_JUMPED" && stageJumpReaches(entry.block, stageSlug)) ||
++        (
++          entry.event === "GATE_REJECTED" &&
++          !rejectionKeepsReceipts &&
++          auditBlockField(entry.block, "Stage") === stageSlug
++        )
++      ) &&
++      !eventWorkflow?.startsWith("single-stage:")
++    ) {
++      return true;
++    }
++    return (
++      entry.event === "STAGE_STARTED" &&
++      auditBlockField(entry.block, "Stage") === stageSlug &&
++      (
++        singleRun
++          ? eventWorkflow === workflow
++          : !eventWorkflow?.startsWith("single-stage:")
++      )
++    );
++  });
++  if (boundaries.length === 0) return null;
++  const timestamp = boundaries[boundaries.length - 1].timestamp;
++  return {
++    timestamp,
++    rows: boundaries.filter((entry) => entry.timestamp === timestamp),
++  };
++}
++
++export function pipelineEventAfterFloor(
++  entry: OrderedPipelineEvidenceEvent,
++  floor: PipelineAttemptFloor | null,
++): boolean {
++  if (floor === null) return true;
++  if (entry.timestamp !== floor.timestamp) {
++    return entry.timestamp > floor.timestamp;
++  }
++  const shards = new Set(floor.rows.map((row) => row.shard));
++  if (shards.size !== 1) return false;
++  const shard = floor.rows[0].shard;
++  if (entry.shard !== shard) return false;
++  const maxPos = Math.max(...floor.rows.map((row) => row.pos));
++  return entry.pos > maxPos;
++}
++
++export function singleStageAttemptOpenIn(
++  events: OrderedPipelineEvidenceEvent[],
++  stageSlug: string,
++): boolean {
++  const workflow = `single-stage:${stageSlug}`;
++  const floor = pipelineAttemptFloorIn(events, stageSlug, true, false, () => false);
++  if (floor === null) return false;
++  const floorShards = new Set(floor.rows.map((row) => row.shard));
++  if (floorShards.size !== 1) return false;
++  const floorShard = floor.rows[0].shard;
++  const floorPos = Math.max(...floor.rows.map((row) => row.pos));
++  for (const entry of events) {
++    if (
++      entry.event !== "STAGE_COMPLETED" ||
++      auditBlockField(entry.block, "Stage") !== stageSlug ||
++      auditBlockField(entry.block, "Workflow") !== workflow
++    ) {
++      continue;
++    }
++    if (pipelineEventAfterFloor(entry, floor)) return false;
++    if (
++      entry.timestamp === floor.timestamp &&
++      entry.shard !== floorShard
++    ) {
++      return false;
++    }
++    if (
++      entry.timestamp === floor.timestamp &&
++      entry.shard === floorShard &&
++      entry.pos > floorPos
++    ) {
++      return false;
++    }
++  }
++  return true;
++}
++
++export function singleStageAttemptFieldIn(events: readonly AuditShardEvent[], slug: string, field: string): string | null {
++  const workflow = `single-stage:${slug}`;
++  const attemptStart = events
++    .filter((entry) =>
++      entry.event === "STAGE_STARTED" &&
++      auditBlockField(entry.block, "Stage") === slug &&
++      auditBlockField(entry.block, "Workflow") === workflow
++    )
++    .sort((a, b) => {
++      if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
++      if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
++      return a.pos - b.pos;
++    })
++    .pop();
++  return attemptStart ? auditBlockField(attemptStart.block, field) : null;
++}
++
+diff --git a/core/tools/aidlc-command.ts b/core/tools/aidlc-command.ts
+index a21e565a3..9e8d380ce 100644
+--- a/core/tools/aidlc-command.ts
++++ b/core/tools/aidlc-command.ts
+@@ -1,3 +1,4 @@
++export { NEXT_VALUELESS_FLAGS, nextFlagTakesFollowing } from "./aidlc-orchestrator-request.ts";
+ import { createHash } from "node:crypto";
+ import { readSync } from "node:fs";
+ import {
+@@ -176,29 +177,6 @@ export const CONFIG_SECTIONS = ["models", "runtime", "providers", "trust", "flag
+  * from here, and the dispatcher, which does not load that module, reads the
+  * same list where it finds the person's words on a `next` line.
+  */
+-export const NEXT_VALUELESS_FLAGS: ReadonlySet<string> = new Set([
+-  "--resume",
+-  "--single",
+-  "--new-intent",
+-  "--new-scope",
+-  "--continue",
+-  "--change",
+-  "--every-unit",
+-  "--unit-plan",
+-  // Retired, still taken so the token never becomes task text.
+-  "--init",
+-  "--force",
+-]);
+-
+-/**
+- * Whether the token after a flag on a `next` line is that flag's value rather
+- * than a word of the person's: the next token that is not flag-shaped, unless
+- * `next` takes the flag with no value.
+- */
+-export function nextFlagTakesFollowing(flag: string, following: string | undefined): boolean {
+-  return following !== undefined && !following.startsWith("-") && !NEXT_VALUELESS_FLAGS.has(flag);
+-}
+-
+ /**
+  * The `unit` noun's verbs, each with whether it takes the Unit's name, as the
+  * Unit tool runs them (aidlc-unit.ts main). The dispatcher's `unit` route and
+diff --git a/core/tools/aidlc-lib.ts b/core/tools/aidlc-lib.ts
+index 9436d023f..8070de188 100644
+--- a/core/tools/aidlc-lib.ts
++++ b/core/tools/aidlc-lib.ts
+@@ -1,3 +1,10 @@
++import { resolveProjectDirectory, isHarnessDirName } from "./aidlc-project-dir.ts";
++export { isHarnessDirName } from "./aidlc-project-dir.ts";
++import { pipelineAttemptFloorIn, pipelineEventAfterFloor, singleStageAttemptOpenIn, singleStageAttemptFieldIn, type PipelineAttemptFloor } from "./aidlc-attempt-boundary.ts";
++import { parseLiteralShellInvocation, shellCommandSegments } from "./aidlc-shell-invocation.ts";
++export { parseLiteralShellInvocation } from "./aidlc-shell-invocation.ts";
++import { requestWordsBeginAt, readOrchestratorLauncherOptions } from "./aidlc-orchestrator-request.ts";
++export { CONFIG_KEYS, ORCHESTRATOR_VERBS, WORKSPACE_VERBS, requestWordsBeginAt, readOrchestratorLauncherOptions, stripOrchestratorLauncherOptions, ORCHESTRATOR_LAUNCHER_OPTIONS } from "./aidlc-orchestrator-request.ts";
+ import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
+ import { lockFolderHeldGiveUpMs, lockFolderHeldLine } from "./aidlc-lock-line.ts";
+ import { reviewManifestForms } from "./aidlc-review-manifest.ts";
+@@ -56,7 +63,6 @@ import {
+   type GuardFence,
+   type SwitchableGuardFence,
+   isSwitchableGuardFence,
+-  guardFenceConfigKey,
+   guardFenceFromConfigKey,
+   delegatedAgentOf,
+ } from "./aidlc-guard-fences.ts";
+@@ -674,9 +680,7 @@ export const KNOWN_HARNESS_DIRS = [".claude", ".kiro", ".codex", ".aidlc", ".cur
+ // / ".kiro" / ".gemini". Guards the script-path derivation so an unexpected
+ // layout (lib copied loose in a test, a non-dotted parent) falls through to the
+ // CWD probe instead of returning a bogus harness dir.
+-export function isHarnessDirName(name: string): boolean {
+-  return /^\.[a-z0-9][a-z0-9._-]*$/i.test(name);
+-}
++
+ 
+ /** Where a harness shell announces itself, relative to the shell dir. */
+ export const HARNESS_SHELL_MANIFEST_REL = "tools/data/harness.json";
+@@ -1247,109 +1251,13 @@ export function rulesSubdir(): string {
+ // --- Project dir resolution ---
+ 
+ export function resolveProjectDir(explicitDir?: string): string {
+-  // 1. Explicit --project-dir argument
+-  if (explicitDir) {
+-    return isAbsolute(explicitDir) ? explicitDir : resolvePath(process.cwd(), explicitDir);
+-  }
+-
+-  // 2. Dispatcher/plugin explicit project environment
+-  if (process.env.AIDLC_PROJECT_DIR) {
+-    return isAbsolute(process.env.AIDLC_PROJECT_DIR)
+-      ? process.env.AIDLC_PROJECT_DIR
+-      : resolvePath(process.cwd(), process.env.AIDLC_PROJECT_DIR);
+-  }
+-
+-  // 3. CLAUDE_PROJECT_DIR env var
+-  if (process.env.CLAUDE_PROJECT_DIR) {
+-    return isAbsolute(process.env.CLAUDE_PROJECT_DIR)
+-      ? process.env.CLAUDE_PROJECT_DIR
+-      : resolvePath(process.cwd(), process.env.CLAUDE_PROJECT_DIR);
+-  }
+-
+-  // 4. Script path derivation (open-set): this module ships at
+-  //    <project>/<harness>/tools/, so strip "<harness>/tools" for ANY harness
+-  //    dir name — the project root is the dir two levels up.
+-  const scriptDir = dirname(fileURLToPath(import.meta.url));
+-  const fromScript = scriptProjectDir(scriptDir, "tools");
+-  if (fromScript) return fromScript;
+-
+-  // 5. CWD has a known harness directory (dev repo).
+-  const cwd = process.cwd();
+-  for (const h of KNOWN_HARNESS_DIRS) {
+-    if (existsSync(join(cwd, h))) {
+-      return cwd;
+-    }
+-  }
+-
+-  // Fallback to CWD
+-  return cwd;
+-}
+-
+-// If `dir` is "<root>/<harness>/<leaf>" with <harness> a harness-dir name and
+-// <leaf> the given segment (tools | hooks), return <root>; else null. Open-set:
+-// the harness segment is validated by SHAPE (isHarnessDirName), not membership
+-// in a fixed list, so a new harness needs no edit here.
+-function stripHarnessLeaf(dir: string, leaf: string): string | null {
+-  if (basename(dir) !== leaf) return null;
+-  const harnessDirPath = dirname(dir);
+-  if (!isHarnessDirName(basename(harnessDirPath))) return null;
+-  return dirname(harnessDirPath);
++  return resolveProjectDirectory({ explicitDir, cwd: process.cwd(), environment: process.env,
++    sourceFile: fileURLToPath(import.meta.url), native: isCompiledExecutable(), execPath: process.execPath });
+ }
+ 
+-// A compiled executable loads hooks and tools from the runtime payload beside
+-// it (<install>/runtime/<distribution>/<harness>/), which has the same shape as
+-// a project install. That tree is the install, never a project, so a root
+-// derived from a payload path is dropped and the host's working directory
+-// decides instead. Both spellings are checked because a linked runtime
+-// directory can surface the module under its real path.
+-function scriptProjectDir(scriptDir: string, leaf: string): string | null {
+-  const root = stripHarnessLeaf(scriptDir, leaf);
+-  if (root === null || !isCompiledExecutable()) return root;
+-  const payload = join(dirname(process.execPath), "runtime");
+-  const real = (path: string): string => {
+-    try {
+-      return realpathSync(path);
+-    } catch {
+-      return path;
+-    }
+-  };
+-  return pathContainedBy(payload, root) || pathContainedBy(real(payload), real(root))
+-    ? null
+-    : root;
+-}
+-
+-// --- Hook project dir resolution ---
+-
+ export function resolveProjectDirFromHook(importMetaUrl: string): string {
+-  // 1. Dispatcher/plugin explicit project environment
+-  if (process.env.AIDLC_PROJECT_DIR) {
+-    return isAbsolute(process.env.AIDLC_PROJECT_DIR)
+-      ? process.env.AIDLC_PROJECT_DIR
+-      : resolvePath(process.cwd(), process.env.AIDLC_PROJECT_DIR);
+-  }
+-
+-  // 2. CLAUDE_PROJECT_DIR env var
+-  if (process.env.CLAUDE_PROJECT_DIR) {
+-    return isAbsolute(process.env.CLAUDE_PROJECT_DIR)
+-      ? process.env.CLAUDE_PROJECT_DIR
+-      : resolvePath(process.cwd(), process.env.CLAUDE_PROJECT_DIR);
+-  }
+-
+-  // 3. Script path derivation (open-set): hooks ship at
+-  //    <project>/<harness>/hooks/, so strip "<harness>/hooks" for ANY harness.
+-  const scriptDir = dirname(fileURLToPath(importMetaUrl));
+-  const fromScript = scriptProjectDir(scriptDir, "hooks");
+-  if (fromScript) return fromScript;
+-
+-  // 4. CWD has a known harness directory (dev repo).
+-  const cwd = process.cwd();
+-  for (const h of KNOWN_HARNESS_DIRS) {
+-    if (existsSync(join(cwd, h))) {
+-      return cwd;
+-    }
+-  }
+-
+-  return cwd;
++  return resolveProjectDirectory({ cwd: process.cwd(), environment: process.env,
++    sourceFile: fileURLToPath(importMetaUrl), leaf: "hooks", native: isCompiledExecutable(), execPath: process.execPath });
+ }
+ 
+ // --- File paths ---
+@@ -1406,22 +1314,12 @@ export function nextArgsCarryRequestWords(args: readonly string[]): boolean {
+   }
+   return false;
+ }
+-export const WORKSPACE_VERBS: ReadonlySet<string> = new Set([
+-  "space",
+-  "space-create",
+-  "intent",
+-]);
+ // The orchestrator's own public verbs (`aidlc park`, `aidlc team-board`). A
+ // sole `park` or leading `team-board` is routed as a print naming that command
+ // (routeNext Branch 1c); it is NOT a terminal utility for a harness seam to run
+ // off-band, because park mutates workflow state and team-board lives on the
+ // orchestrator, not aidlc-utility. classifyTerminalCommand returns null for
+ // them so they stay on the engine + conductor path, like `compose`.
+-export const ORCHESTRATOR_VERBS: ReadonlySet<string> = new Set([
+-  "park",
+-  "team-board",
+-]);
+-
+ export type OrchestratorVerb = "park" | "team-board";
+ // The ONE rule for whether a `next` argv is an orchestrator-verb route: a SOLE
+ // `park` (park mutates, so `park` inside a longer description stays freeform,
+@@ -1555,115 +1453,6 @@ export function isReadOnlyNextArgv(argv: readonly string[]): boolean {
+  * opens with one of these carries no word of theirs, so its options are its own
+  * wherever they sit.
+  */
+-const NEXT_OWN_COMMAND_WORDS: ReadonlySet<string> = new Set([
+-  ...WORKSPACE_VERBS,
+-  ...ORCHESTRATOR_VERBS,
+-  "config",
+-  "help",
+-]);
+-
+-/**
+- * Where a request of the person's own begins on a `next` line: at its first
+- * bare word (past a leading `compose`, this engine's own verb, as readNextTokens
+- * reads it). This engine's own launcher options ride ahead of that word, which
+- * is where every caller puts them, so among their words the same token is a
+- * word of their request and nothing of theirs is read as a folder to work in or
+- * an attempt to claim. The `--` mark already separates their words itself. The
+- * dispatcher reads its own options to the same boundary (aidlc.ts
+- * theirWordsBegin), so the launcher's two layers take the same tokens.
+- */
+-export function requestWordsBeginAt(rawArgs: readonly string[]): number {
+-  if (rawArgs[0] !== "next") return Number.POSITIVE_INFINITY;
+-  // After a flag that takes no value the next word is theirs, whatever it is.
+-  let theirsNext = false;
+-  for (let i = 1; i < rawArgs.length; i++) {
+-    const token = rawArgs[i];
+-    if (i === 1 && token === "compose") continue;
+-    if (token === "--") return Number.POSITIVE_INFINITY;
+-    if (token.startsWith("-")) {
+-      // A flag's value is never a word of theirs; a flag that takes none takes no word.
+-      if (nextFlagTakesFollowing(token, rawArgs[i + 1])) i++;
+-      else if (NEXT_VALUELESS_FLAGS.has(token)) theirsNext = true;
+-      continue;
+-    }
+-    return !theirsNext && NEXT_OWN_COMMAND_WORDS.has(token) ? Number.POSITIVE_INFINITY : i;
+-  }
+-  return Number.POSITIVE_INFINITY;
+-}
+-
+-/** The options the orchestrator's launcher takes off the line before the subcommand reads it. */
+-export const ORCHESTRATOR_LAUNCHER_OPTIONS = ["--project-dir", "--aidlc-attempt-id"] as const;
+-
+-/**
+- * The orchestrator's launcher options, taken off `[subcommand, ...args]` the
+- * one way aidlc-orchestrate's main() does: each with the token after it, only
+- * in front of the `--` mark and of the person's own words (requestWordsBeginAt),
+- * and never with the mark as its value. A Copilot claim and the engine hash the
+- * line that is left, so both read it here, as do the other hooks that need it.
+- */
+-export function readOrchestratorLauncherOptions(rawArgs: readonly string[]): {
+-  args: string[];
+-  /** Where each option it took stands in `rawArgs` (its value is the next token). */
+-  taken: number[];
+-  /** Where the subcommand stands, after the options in front of it. */
+-  verbAt: number;
+-  /** Where an option stands that it would take but nothing it can take follows. */
+-  dangling?: number;
+-  projectDir?: string;
+-  attemptId?: string;
+-  conflictingAttemptId: boolean;
+-} {
+-  const isOption = (token: string | undefined) =>
+-    (ORCHESTRATOR_LAUNCHER_OPTIONS as readonly (string | undefined)[]).includes(token);
+-  let verbAt = 0;
+-  while (isOption(rawArgs[verbAt]) && rawArgs[verbAt + 1] !== undefined && rawArgs[verbAt + 1] !== "--") verbAt += 2;
+-  const requestFrom = verbAt + requestWordsBeginAt(rawArgs.slice(verbAt));
+-  const args: string[] = [];
+-  const taken: number[] = [];
+-  let dangling: number | undefined;
+-  let projectDir: string | undefined;
+-  let attemptId: string | undefined;
+-  let conflictingAttemptId = false;
+-  let literal = false;
+-  for (let i = 0; i < rawArgs.length; i++) {
+-    const arg = rawArgs[i];
+-    const value = rawArgs[i + 1];
+-    if (arg === "--") literal = true;
+-    const launcher = !literal && i < requestFrom && value !== undefined && value !== "--";
+-    if (!literal && i < requestFrom && !launcher && isOption(arg)) dangling ??= i;
+-    if (launcher && arg === "--project-dir") {
+-      projectDir = value;
+-      taken.push(i++);
+-    } else if (launcher && arg === "--aidlc-attempt-id") {
+-      if (/^[A-Za-z0-9._:-]{1,128}$/.test(value)) {
+-        if (attemptId !== undefined && attemptId !== value) conflictingAttemptId = true;
+-        attemptId = value;
+-      }
+-      taken.push(i++);
+-    } else {
+-      args.push(arg);
+-    }
+-  }
+-  return {
+-    args,
+-    taken,
+-    verbAt,
+-    ...(dangling === undefined ? {} : { dangling }),
+-    ...(projectDir === undefined ? {} : { projectDir }),
+-    ...(attemptId === undefined ? {} : { attemptId }),
+-    conflictingAttemptId,
+-  };
+-}
+-
+-// aidlc-orchestrate.main's launcher-option extraction before subcommand
+-// routing (readOrchestratorLauncherOptions); the literal delimiter preserves
+-// all following intent text. A trailing option without a value stays, as in
+-// main(). Its one caller (the Kiro CLI agent-v1 row) passes the words after
+-// `next` without the verb, so their unmarked words are not told apart here.
+-export function stripOrchestratorLauncherOptions(args: readonly string[]): string[] {
+-  return readOrchestratorLauncherOptions(args).args;
+-}
+-
+ export const WORKSPACE_NOUNS = ["intent", "space"] as const;
+ export type WorkspaceNoun = (typeof WORKSPACE_NOUNS)[number];
+ 
+@@ -3116,76 +2905,6 @@ function canonicalEngineCommand(text: string): string {
+  * ASCII blanks delimit words; NBSP is data. Backslash-newline is unsupported,
+  * rather than being mistaken for either whitespace or a preserved backslash.
+  */
+-export function parseLiteralShellInvocation(text: string): {
+-  directory: string | null;
+-  command: string;
+-  argv: string[];
+-  rawWords: string[];
+-} | null {
+-  if (/[\0\r\n]|\$\(|`/.test(text)) return null;
+-  text = text.replace(/^[ \t]+|[ \t]+$/g, "").replace(/[ \t]+2>&1$/, "");
+-  const tokens: Array<{ value: string; raw: string; start: number; and: boolean }> = [];
+-  for (let i = 0; i < text.length;) {
+-    if (text[i] === " " || text[i] === "\t") { i++; continue; }
+-    if (text.slice(i, i + 2) === "&&") {
+-      tokens.push({ value: "&&", raw: "&&", start: i, and: true });
+-      i += 2;
+-      continue;
+-    }
+-    const start = i;
+-    let value = "";
+-    let quote: "'" | '"' | null = null;
+-    while (i < text.length) {
+-      const ch = text[i];
+-      if (quote === "'") {
+-        if (ch === "'") quote = null;
+-        else value += ch;
+-        i++;
+-      } else if (quote === '"') {
+-        if (ch === '"') { quote = null; i++; }
+-        else if (ch === "$") return null;
+-        else if (ch === "\\" && /["\\$`]/.test(text[i + 1] ?? "")) {
+-          value += text[i + 1];
+-          i += 2;
+-        } else { value += ch; i++; }
+-      } else {
+-        if (ch === " " || ch === "\t" || text.slice(i, i + 2) === "&&") break;
+-        if (ch === "'" || ch === '"') { quote = ch; i++; }
+-        else if (ch === "\\" || "()[]{}*?;|<>&$#".includes(ch) || (ch === "~" && i === start)) return null;
+-        else { value += ch; i++; }
+-      }
+-    }
+-    if (quote !== null) return null;
+-    tokens.push({ value, raw: text.slice(start, i), start, and: false });
+-  }
+-  const separators = tokens.flatMap((token, i) => token.and ? [i] : []);
+-  let directory: string | null = null;
+-  let words = tokens;
+-  if (separators.length > 0) {
+-    if (separators.length !== 1) return null;
+-    const at = separators[0];
+-    const prefix = tokens.slice(0, at);
+-    if (
+-      prefix[0]?.raw !== "cd" ||
+-      !(prefix.length === 2 || (prefix.length === 3 && prefix[1].raw === "--"))
+-    ) return null;
+-    directory = prefix.at(-1)!.value;
+-    if (
+-      !directory.startsWith("/") &&
+-      !/^[A-Za-z]:[/\\]/.test(directory) &&
+-      !/^\\\\[^/\\]+[/\\][^/\\]+/.test(directory)
+-    ) return null;
+-    words = tokens.slice(at + 1);
+-  }
+-  if (words.length === 0 || words.some((word) => word.and)) return null;
+-  return {
+-    directory,
+-    command: text.slice(words[0].start),
+-    argv: words.map((word) => word.value),
+-    rawWords: words.map((word) => word.raw),
+-  };
+-}
+-
+ // Detection only: Bash removes an ordinary unquoted escape before looking up an
+ // executable. Keep quoted backslashes intact (notably native Windows paths).
+ // This representation must never supply argv for a terminal-output exemption.
+@@ -3514,21 +3233,6 @@ export function messageFill(projectDir: string, settings: readonly string[] = []
+ // The per-work settings `config set` takes, by their flag names: the setter
+ // (aidlc-guard-switch.ts) and a decision's own command (settingsBesideDecision)
+ // read this one list.
+-const GUARD_FENCE_CONFIG_KEYS = SWITCHABLE_GUARD_FENCES.map((fence) => guardFenceConfigKey(fence)) as
+-  ["guard.plan-approval", "guard.review-freeze", "guard.state-transition", "guard.reviewer-scope"];
+-export const CONFIG_KEYS = [
+-  "depth",
+-  "test-strategy",
+-  "review",
+-  "guard-policy",
+-  "sensors",
+-  "learnings",
+-  "summary-confirmation",
+-  "plan-approval",
+-  "collaborators",
+-  ...GUARD_FENCE_CONFIG_KEYS,
+-] as const;
+-
+ // The settings the person asked for in the reply that gives a decision ride
+ // that decision's own command (`report --result approved`, the plan answer):
+ // the setter runs first, on that reply's message, so the message still stands
+@@ -3906,45 +3610,6 @@ export function isEngineEngagementSegment(
+   return false;
+ }
+ 
+-function shellCommandSegments(command: string): string[] {
+-  const segments: string[] = [];
+-  let start = 0;
+-  let quote: "'" | '"' | null = null;
+-  let escaped = false;
+-
+-  for (let i = 0; i < command.length; i++) {
+-    const char = command[i];
+-    if (escaped) {
+-      escaped = false;
+-      continue;
+-    }
+-    if (char === "\\" && quote !== "'") {
+-      escaped = true;
+-      continue;
+-    }
+-    if (quote) {
+-      if (char === quote) quote = null;
+-      continue;
+-    }
+-    if (char === "'" || char === '"') {
+-      quote = char;
+-      continue;
+-    }
+-
+-    const separatorWidth =
+-      char === "&" && command[i + 1] === "&"
+-        ? 2
+-        : char === "|" || char === ";" || char === "\n" ? 1 : 0;
+-    if (separatorWidth === 0) continue;
+-    segments.push(command.slice(start, i));
+-    i += separatorWidth - 1;
+-    start = i + 1;
+-  }
+-
+-  segments.push(command.slice(start));
+-  return segments;
+-}
+-
+ // Classify commands for the rebuild-stage-graph hook's cheap PostToolUse gate.
+ // Transition matching stays intentionally lexical, but the recursion guard
+ // only examines real unquoted shell-command segments.
+@@ -13014,7 +12679,7 @@ export function constructionPolicyReceipt(
+   return receipt.event === "CONSTRUCTION_POLICY_RECORDED" &&
+     attemptEventDefinitelyBefore(workflows[0], receipt) &&
+     auditBlockField(receipt.block, "Value") === value &&
+-    !!auditBlockField(receipt.block, "Session")?.trim() &&
++    auditBlockField(receipt.block, "Session")?.trim() &&
+     auditBlockField(receipt.block, "User Input") === "Approve"
+     ? receipt
+     : null;
+@@ -34143,67 +33808,8 @@ function orderedPipelineEvidenceEvents(
+   });
+ }
+ 
+-interface PipelineAttemptFloor {
+-  timestamp: string;
+-  rows: OrderedPipelineEvidenceEvent[];
+-}
+-
+-function pipelineAttemptFloor(
+-  events: OrderedPipelineEvidenceEvent[],
+-  stageSlug: string,
+-  singleRun: boolean,
+-  rejectionKeepsReceipts = false,
+-): PipelineAttemptFloor | null {
+-  const workflow = `single-stage:${stageSlug}`;
+-  const boundaries = events.filter((entry) => {
+-    const eventWorkflow = auditBlockField(entry.block, "Workflow");
+-    if (
+-      !singleRun &&
+-      (
+-        entry.event === "WORKFLOW_STARTED" ||
+-        (entry.event === "STAGE_JUMPED" && stageJumpReaches(entry.block, stageSlug)) ||
+-        (
+-          entry.event === "GATE_REJECTED" &&
+-          !rejectionKeepsReceipts &&
+-          auditBlockField(entry.block, "Stage") === stageSlug
+-        )
+-      ) &&
+-      !eventWorkflow?.startsWith("single-stage:")
+-    ) {
+-      return true;
+-    }
+-    return (
+-      entry.event === "STAGE_STARTED" &&
+-      auditBlockField(entry.block, "Stage") === stageSlug &&
+-      (
+-        singleRun
+-          ? eventWorkflow === workflow
+-          : !eventWorkflow?.startsWith("single-stage:")
+-      )
+-    );
+-  });
+-  if (boundaries.length === 0) return null;
+-  const timestamp = boundaries[boundaries.length - 1].timestamp;
+-  return {
+-    timestamp,
+-    rows: boundaries.filter((entry) => entry.timestamp === timestamp),
+-  };
+-}
+-
+-function pipelineEventAfterFloor(
+-  entry: OrderedPipelineEvidenceEvent,
+-  floor: PipelineAttemptFloor | null,
+-): boolean {
+-  if (floor === null) return true;
+-  if (entry.timestamp !== floor.timestamp) {
+-    return entry.timestamp > floor.timestamp;
+-  }
+-  const shards = new Set(floor.rows.map((row) => row.shard));
+-  if (shards.size !== 1) return false;
+-  const shard = floor.rows[0].shard;
+-  if (entry.shard !== shard) return false;
+-  const maxPos = Math.max(...floor.rows.map((row) => row.pos));
+-  return entry.pos > maxPos;
++function pipelineAttemptFloor(events: OrderedPipelineEvidenceEvent[], stageSlug: string, singleRun: boolean, rejectionKeepsReceipts = false): PipelineAttemptFloor | null {
++  return pipelineAttemptFloorIn(events, stageSlug, singleRun, rejectionKeepsReceipts, stageJumpReaches);
+ }
+ 
+ export function pipelineAttemptStartedAt(
+@@ -34230,20 +33836,7 @@ export function singleStageAttemptScope(projectDir: string, slug: string): strin
+ // A field the latest isolated start of <slug> recorded (Scope, Depth, Test
+ // Strategy), or null when that start did not record it.
+ export function singleStageAttemptField(projectDir: string, slug: string, field: string): string | null {
+-  const workflow = `single-stage:${slug}`;
+-  const attemptStart = readAuditShardEvents(projectDir)
+-    .filter((entry) =>
+-      entry.event === "STAGE_STARTED" &&
+-      auditBlockField(entry.block, "Stage") === slug &&
+-      auditBlockField(entry.block, "Workflow") === workflow
+-    )
+-    .sort((a, b) => {
+-      if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
+-      if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
+-      return a.pos - b.pos;
+-    })
+-    .pop();
+-  return attemptStart ? auditBlockField(attemptStart.block, field) : null;
++  return singleStageAttemptFieldIn(readAuditShardEvents(projectDir), slug, field);
+ }
+ 
+ // The Test Strategy an isolated Code Generation run took for itself, while the
+@@ -34371,43 +33964,6 @@ export function singleRunRequest(projectDir: string): { stage: string; descripti
+   }
+ }
+ 
+-function singleStageAttemptOpenIn(
+-  events: OrderedPipelineEvidenceEvent[],
+-  stageSlug: string,
+-): boolean {
+-  const workflow = `single-stage:${stageSlug}`;
+-  const floor = pipelineAttemptFloor(events, stageSlug, true);
+-  if (floor === null) return false;
+-  const floorShards = new Set(floor.rows.map((row) => row.shard));
+-  if (floorShards.size !== 1) return false;
+-  const floorShard = floor.rows[0].shard;
+-  const floorPos = Math.max(...floor.rows.map((row) => row.pos));
+-  for (const entry of events) {
+-    if (
+-      entry.event !== "STAGE_COMPLETED" ||
+-      auditBlockField(entry.block, "Stage") !== stageSlug ||
+-      auditBlockField(entry.block, "Workflow") !== workflow
+-    ) {
+-      continue;
+-    }
+-    if (pipelineEventAfterFloor(entry, floor)) return false;
+-    if (
+-      entry.timestamp === floor.timestamp &&
+-      entry.shard !== floorShard
+-    ) {
+-      return false;
+-    }
+-    if (
+-      entry.timestamp === floor.timestamp &&
+-      entry.shard === floorShard &&
+-      entry.pos > floorPos
+-    ) {
+-      return false;
+-    }
+-  }
+-  return true;
+-}
+-
+ // Current-attempt pipeline receipts are scoped to either the main workflow or
+ // one isolated `--single` stream. A later matching STAGE_STARTED resets that
+ // scope; main runs also reset on workflow starts, jumps, and gate rejection.
+diff --git a/core/tools/aidlc-markdown.ts b/core/tools/aidlc-markdown.ts
+index 04069ec1e..5f4f9685d 100644
+--- a/core/tools/aidlc-markdown.ts
++++ b/core/tools/aidlc-markdown.ts
+@@ -1158,3 +1158,13 @@ export function replaceSection(
+   const bodyEnd = nextMatch ? bodyStart + nextMatch.index : content.length;
+   return content.slice(0, bodyStart) + newContent + content.slice(bodyEnd);
+ }
++
++// Audit fields preserve their first occurrence; uniqueness is the verifier's contract.
++export function auditBlockField(block: string, fieldName: string): string | null {
++  const prefix = `**${fieldName}**:`;
++  for (const raw of block.split("\n")) {
++    const line = raw.startsWith("- ") ? raw.slice(2) : raw;
++    if (line.startsWith(prefix)) return line.slice(prefix.length).trim();
++  }
++  return null;
++}
+diff --git a/core/tools/aidlc-orchestrate.ts b/core/tools/aidlc-orchestrate.ts
+index c3a9805ea..928778c54 100644
+--- a/core/tools/aidlc-orchestrate.ts
++++ b/core/tools/aidlc-orchestrate.ts
+@@ -1,3 +1,5 @@
++import { workflowIsUnjoined } from "./aidlc-workflow-participation.ts";
++import { parseReportFlags, type ReportFlags, FORWARD_RESULTS, COMPLETION_RESULTS, GATE_RESULTS, RESUME_RESULTS, SOLO_DECISION_RESULTS, SKIP_RESULT, REPORT_RESULTS } from "./aidlc-orchestrator-request.ts";
+ // The orchestration engine — the deterministic "what's next?" answerer that
+ // stands BESIDE the prose orchestrator (skills/aidlc/SKILL.md), not inside it.
+ // Nothing in SKILL.md calls this file yet; it is exercised only by its own
+@@ -78,7 +80,7 @@
+ // per the tool/agent/human split (routing string-building to an LLM would
+ // invert the whole thesis).
+ 
+-import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
++import { settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
+ import {
+   createHash,
+   randomBytes,
+@@ -356,7 +358,6 @@ import {
+   MESSAGE_SLOT,
+   messageFill,
+   settingsBesideDecision,
+-  CONFIG_KEYS,
+   plannedStages,
+   resolveGuardPolicy,
+   guardPolicyAcceptsChanges,
+@@ -18752,9 +18753,6 @@ function canonicalisePhase(input: string): string | null {
+ // at a gate and "completed" for a non-gated stage). The engine — not the
+ // caller — picks the committing subcommand from gate status + finality, so the
+ // two synonyms are interchangeable; what matters is that a verdict was given.
+-const FORWARD_RESULTS = new Set(["approved", "completed", "complete", "done"]);
+-// The forward results that claim completion rather than name an approval.
+-const COMPLETION_RESULTS = new Set(["completed", "complete", "done"]);
+ // What the agent does after Request Changes on a pipeline stage, read from the
+ // rule that decides it (guardPolicyAcceptsChanges, which pipelineAttemptFloor
+ // reads too): under strict the rejection starts a fresh chain; under relaxed or
+@@ -18783,18 +18781,6 @@ function completionOpensGateMessage(target: string): string {
+   return `${target} has not asked for approval yet, so it now waits for the person's answer. ` +
+     "Ask the person its approval question now and report their reply; nothing is approved until they answer.";
+ }
+-const GATE_RESULTS = new Set(["awaiting-approval", "rejected", "revised"]);
+-const RESUME_RESULTS = new Set(["resume", "resumed"]);
+-// The results that carry the person's decision at a gate.
+-const SOLO_DECISION_RESULTS = new Set(["approved", "rejected", "revised"]);
+-const SKIP_RESULT = "skipped";
+-const REPORT_RESULTS = new Set([
+-  ...FORWARD_RESULTS,
+-  ...GATE_RESULTS,
+-  ...RESUME_RESULTS,
+-  SKIP_RESULT,
+-]);
+-
+ function isConcreteIsoInstant(value: string | null): boolean {
+   if (!value) return false;
+   const isoInstant =
+@@ -18883,170 +18869,6 @@ function hasFreshPracticesAffirmationReceipt(
+       );
+ }
+ 
+-interface ReportFlags {
+-  result?: string;
+-  userInput?: string;
+-  reason?: string;
+-  rejectFindings?: string[];
+-  reopenFindings?: string[];
+-  fixFindings?: string[]; // --fix-finding: an open finding the person asked to have fixed as they approved
+-  skeletonStance?: string; // the classify round-trip's classified stance
+-  single?: boolean; // --single: complete the synthetic attempt opened by next --single, never the main pointer
+-  stage?: string; // --stage <slug>: the acted stage (required under --single; preferred for main workflow reports)
+-  overrideBlockingSensors?: boolean;
+-  unit?: string; // --unit <name>: required for team-owned per-unit gates
+-  park?: boolean; // --park: the person also asked to stop here for now
+-  message?: string; // --message <id>: the one message of the person's the agent read the decision from
+-  // --<setting> <value>: a `config set` setting the same reply asked for, written
+-  // before the approval (settingsBesideDecision).
+-  settings?: Array<[string, string]>;
+-  // A re-entry request (--result resumed): the choice the conductor read from
+-  // the person's words, the stage they named for a jump, and the Units it is
+-  // for when they named one (--unit) or said every Unit (--every-unit).
+-  choice?: string;
+-  target?: string;
+-  everyUnit?: boolean;
+-  parseError?: string; // an argument report cannot act on (see parseReportFlags)
+-}
+-
+-// Every argument report accepts. Listed in the refusal below so a mistyped
+-// flag points at the real one instead of vanishing.
+-const REPORT_FLAGS = [
+-  "--result",
+-  "--stage",
+-  "--unit",
+-  "--user-input",
+-  "--reason",
+-  "--reject-finding",
+-  "--reopen-finding",
+-  "--fix-finding",
+-  "--skeleton-stance",
+-  "--single",
+-  "--override-blocking-sensors",
+-  "--park",
+-  "--message",
+-  "--choice",
+-  "--target",
+-  "--every-unit",
+-] as const;
+-
+-// Extract report's flags. --result is the verdict; --user-input carries the
+-// choice the conductor read from the person's reply, while --reason carries
+-// rejection feedback or an early completion reason. --park records that the
+-// person also asked to stop for now. --message names the one message of theirs
+-// the decision was read from, when it is not every reply since the last one.
+-// --skeleton-stance carries the conductor's classified walking-skeleton stance
+-// (the classify round-trip): it does NOT commit a transition — it records the
+-// stance so the next `next` resolves the deferred gate.
+-//
+-// Anything else is refused through parseError rather than dropped. A dropped
+-// argument is the worst outcome available: a report carrying a mistyped flag
+-// (or a flag whose value never arrived) would otherwise commit a DIFFERENT
+-// transition than the one the operator wrote, silently — a rejection reported
+-// without its feedback, or a per-unit gate closed against the wrong unit.
+-function parseReportFlags(args: string[]): ReportFlags {
+-  const flags: ReportFlags = {};
+-  // Keep the FIRST problem: it is the one the operator introduced.
+-  const refuse = (message: string): void => {
+-    flags.parseError ??= message;
+-  };
+-  const missingValue = (flag: string, value: string): void =>
+-    refuse(
+-      `report ${flag} requires ${value}, and none followed it. ` +
+-        `Re-run the same report with the value supplied.`,
+-    );
+-  for (let i = 0; i < args.length; i++) {
+-    const a = args[i];
+-    if (a === "--result" && i + 1 < args.length) {
+-      flags.result = args[i + 1];
+-      i++;
+-    } else if (a === "--user-input" && i + 1 < args.length) {
+-      flags.userInput = args[i + 1];
+-      i++;
+-    } else if (a === "--reason" && i + 1 < args.length) {
+-      flags.reason = args[i + 1];
+-      i++;
+-    } else if (a === "--reject-finding" && i + 1 < args.length) {
+-      flags.rejectFindings ??= [];
+-      flags.rejectFindings.push(args[i + 1]);
+-      i++;
+-    } else if (a === "--reopen-finding" && i + 1 < args.length) {
+-      flags.reopenFindings ??= [];
+-      flags.reopenFindings.push(args[i + 1]);
+-      i++;
+-    } else if (a === "--fix-finding" && i + 1 < args.length) {
+-      flags.fixFindings ??= [];
+-      flags.fixFindings.push(args[i + 1]);
+-      i++;
+-    } else if (a === "--skeleton-stance" && i + 1 < args.length) {
+-      flags.skeletonStance = args[i + 1];
+-      i++;
+-    } else if (a === "--stage" && i + 1 < args.length) {
+-      flags.stage = args[i + 1];
+-      i++;
+-    } else if (a === "--unit" && i + 1 < args.length) {
+-      flags.unit = args[i + 1];
+-      i++;
+-    } else if (a === "--choice" && i + 1 < args.length) {
+-      flags.choice = args[i + 1];
+-      i++;
+-    } else if (a === "--message" && i + 1 < args.length) {
+-      flags.message = args[i + 1];
+-      i++;
+-    } else if (a === "--target" && i + 1 < args.length) {
+-      flags.target = args[i + 1];
+-      i++;
+-    } else if (a === "--single") {
+-      flags.single = true;
+-    } else if (a === "--every-unit") {
+-      flags.everyUnit = true;
+-    } else if (a === "--override-blocking-sensors") {
+-      flags.overrideBlockingSensors = true;
+-    } else if (a === "--park") {
+-      flags.park = true;
+-    } else if (a === "--result") {
+-      missingValue(a, "an outcome");
+-    } else if (a === "--user-input") {
+-      missingValue(a, "the choice the person made");
+-    } else if (a === "--reason") {
+-      missingValue(a, "the reason text");
+-    } else if (a === "--reject-finding") {
+-      missingValue(a, "a finding id");
+-    } else if (a === "--reopen-finding") {
+-      missingValue(a, "a finding id and reason");
+-    } else if (a === "--fix-finding") {
+-      missingValue(a, "a finding id");
+-    } else if (a === "--skeleton-stance") {
+-      missingValue(a, "<on|off|scope-dependent>");
+-    } else if (a === "--stage") {
+-      missingValue(a, "a stage name");
+-    } else if (a === "--unit") {
+-      missingValue(a, "a unit name");
+-    } else if (a === "--choice") {
+-      missingValue(a, "<resume|redo|jump|fresh>");
+-    } else if (a === "--message") {
+-      missingValue(a, "the id of the person's message");
+-    } else if (a === "--target") {
+-      missingValue(a, "a stage name");
+-
+-    } else if (a.startsWith("--") && (CONFIG_KEYS as readonly string[]).includes(a.slice(2))) {
+-      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+-        flags.settings ??= [];
+-        flags.settings.push([a.slice(2), args[i + 1]]);
+-        i++;
+-      } else {
+-        missingValue(a, "the value the person asked for");
+-      }
+-    } else if (a !== "--") {
+-      refuse(
+-        `report does not accept "${a}". It accepts ${REPORT_FLAGS.join(", ")}, and with an approval the ` +
+-          `\`config set\` settings the same reply asked for (--plan-approval off). Rejection feedback belongs in --reason.`,
+-      );
+-    }
+-  }
+-  return flags;
+-}
+-
+ // Run an aidlc-state.ts subcommand through the sibling source tool or the
+ // compiled dispatcher's `state` noun. Returns the child's exitCode + captured
+ // streams; a non-zero exitCode means aidlc-state.ts rejected the transition via
+@@ -22608,7 +22430,6 @@ function nextArgsWithRequestFile(
+ 
+ export function main(argv: string[]): void {
+   // A turn Claude Code started itself is settled before this command reads a turn.
+-  settleClaudeTurnsFirst(resolveProjectDir(projectDirFlag(argv)));
+   const rawArgs = argv;
+   // Every route answers for the workflow unless it is an isolated Code
+   // Generation run (emitSingleRunStage, handleContinue say so).
+@@ -22627,6 +22448,7 @@ export function main(argv: string[]): void {
+   let subArgs = filteredArgs.slice(1);
+   if (engineInvocation !== null) throw new Error("Nested aidlc-orchestrate dispatch is not supported");
+   const resolvedProjectDir = resolveProjectDir(projectDir);
++  settleClaudeTurnsFirst(resolvedProjectDir);
+   const commandKind = (["next", "continue", "report", "park"] as const).find((kind) => kind === subcommand);
+   // The conductor's workflow commands run in a Unit's worktree (a shell left
+   // there after a `cd`, which Claude Code keeps) would read the copy of the
+@@ -22675,10 +22497,9 @@ export function main(argv: string[]): void {
+   // stage refuse instead of advancing someone else's workflow.
+   // SessionStart binds such a conversation to no record and says why in the
+   // binding's source, so the same holds on its later engine calls.
+-  const boundOutside = resolvedSelection.intent === null &&
+-    resolvedSelection.binding?.source === "unjoined";
+-  const unjoined = commandKind !== undefined && (boundOutside || (resolvedSelection.intent !== null &&
+-    workflowParticipation(resolvedProjectDir, resolvedSelection) !== "participant"));
++  const unjoined = commandKind !== undefined && workflowIsUnjoined(
++    resolvedSelection, workflowParticipation(resolvedProjectDir, resolvedSelection),
++  );
+   engineUnjoined = unjoined;
+   if (unjoined) {
+     if (commandKind !== "next") {
+diff --git a/core/tools/aidlc-orchestrator-request.ts b/core/tools/aidlc-orchestrator-request.ts
+new file mode 100644
+index 000000000..237a186cb
+--- /dev/null
++++ b/core/tools/aidlc-orchestrator-request.ts
+@@ -0,0 +1,356 @@
++// Pure command grammar. This module observes syntax, never authority or workflow state.
++import { SWITCHABLE_GUARD_FENCES, guardFenceConfigKey } from "./aidlc-guard-fences.ts";
++
++export const WORKSPACE_VERBS: ReadonlySet<string> = new Set([
++  "space",
++  "space-create",
++  "intent",
++]);
++export const ORCHESTRATOR_VERBS: ReadonlySet<string> = new Set([
++  "park",
++  "team-board",
++]);
++
++export const NEXT_VALUELESS_FLAGS: ReadonlySet<string> = new Set([
++  "--resume",
++  "--single",
++  "--new-intent",
++  "--new-scope",
++  "--continue",
++  "--change",
++  "--every-unit",
++  "--unit-plan",
++  // Retired, still taken so the token never becomes task text.
++  "--init",
++  "--force",
++]);
++
++/**
++ * Whether the token after a flag on a `next` line is that flag's value rather
++ * than a word of the person's: the next token that is not flag-shaped, unless
++ * `next` takes the flag with no value.
++ */
++export function nextFlagTakesFollowing(flag: string, following: string | undefined): boolean {
++  return following !== undefined && !following.startsWith("-") && !NEXT_VALUELESS_FLAGS.has(flag);
++}
++
++const NEXT_OWN_COMMAND_WORDS: ReadonlySet<string> = new Set([
++  ...WORKSPACE_VERBS,
++  ...ORCHESTRATOR_VERBS,
++  "config",
++  "help",
++]);
++
++/**
++ * Where a request of the person's own begins on a `next` line: at its first
++ * bare word (past a leading `compose`, this engine's own verb, as readNextTokens
++ * reads it). This engine's own launcher options ride ahead of that word, which
++ * is where every caller puts them, so among their words the same token is a
++ * word of their request and nothing of theirs is read as a folder to work in or
++ * an attempt to claim. The `--` mark already separates their words itself. The
++ * dispatcher reads its own options to the same boundary (aidlc.ts
++ * theirWordsBegin), so the launcher's two layers take the same tokens.
++ */
++export function requestWordsBeginAt(rawArgs: readonly string[]): number {
++  if (rawArgs[0] !== "next") return Number.POSITIVE_INFINITY;
++  // After a flag that takes no value the next word is theirs, whatever it is.
++  let theirsNext = false;
++  for (let i = 1; i < rawArgs.length; i++) {
++    const token = rawArgs[i];
++    if (i === 1 && token === "compose") continue;
++    if (token === "--") return Number.POSITIVE_INFINITY;
++    if (token.startsWith("-")) {
++      // A flag's value is never a word of theirs; a flag that takes none takes no word.
++      if (nextFlagTakesFollowing(token, rawArgs[i + 1])) i++;
++      else if (NEXT_VALUELESS_FLAGS.has(token)) theirsNext = true;
++      continue;
++    }
++    return !theirsNext && NEXT_OWN_COMMAND_WORDS.has(token) ? Number.POSITIVE_INFINITY : i;
++  }
++  return Number.POSITIVE_INFINITY;
++}
++
++/** The options the orchestrator's launcher takes off the line before the subcommand reads it. */
++export const ORCHESTRATOR_LAUNCHER_OPTIONS = ["--project-dir", "--aidlc-attempt-id"] as const;
++
++/**
++ * The orchestrator's launcher options, taken off `[subcommand, ...args]` the
++ * one way aidlc-orchestrate's main() does: each with the token after it, only
++ * in front of the `--` mark and of the person's own words (requestWordsBeginAt),
++ * and never with the mark as its value. A Copilot claim and the engine hash the
++ * line that is left, so both read it here, as do the other hooks that need it.
++ */
++export function readOrchestratorLauncherOptions(rawArgs: readonly string[]): {
++  args: string[];
++  /** Where each option it took stands in `rawArgs` (its value is the next token). */
++  taken: number[];
++  /** Where the subcommand stands, after the options in front of it. */
++  verbAt: number;
++  /** Where an option stands that it would take but nothing it can take follows. */
++  dangling?: number;
++  projectDir?: string;
++  attemptId?: string;
++  conflictingAttemptId: boolean;
++} {
++  const isOption = (token: string | undefined) =>
++    (ORCHESTRATOR_LAUNCHER_OPTIONS as readonly (string | undefined)[]).includes(token);
++  let verbAt = 0;
++  while (isOption(rawArgs[verbAt]) && rawArgs[verbAt + 1] !== undefined && rawArgs[verbAt + 1] !== "--") verbAt += 2;
++  const requestFrom = verbAt + requestWordsBeginAt(rawArgs.slice(verbAt));
++  const args: string[] = [];
++  const taken: number[] = [];
++  let dangling: number | undefined;
++  let projectDir: string | undefined;
++  let attemptId: string | undefined;
++  let conflictingAttemptId = false;
++  let literal = false;
++  for (let i = 0; i < rawArgs.length; i++) {
++    const arg = rawArgs[i];
++    const value = rawArgs[i + 1];
++    if (arg === "--") literal = true;
++    const launcher = !literal && i < requestFrom && value !== undefined && value !== "--";
++    if (!literal && i < requestFrom && !launcher && isOption(arg)) dangling ??= i;
++    if (launcher && arg === "--project-dir") {
++      projectDir = value;
++      taken.push(i++);
++    } else if (launcher && arg === "--aidlc-attempt-id") {
++      if (/^[A-Za-z0-9._:-]{1,128}$/.test(value)) {
++        if (attemptId !== undefined && attemptId !== value) conflictingAttemptId = true;
++        attemptId = value;
++      }
++      taken.push(i++);
++    } else {
++      args.push(arg);
++    }
++  }
++  return {
++    args,
++    taken,
++    verbAt,
++    ...(dangling === undefined ? {} : { dangling }),
++    ...(projectDir === undefined ? {} : { projectDir }),
++    ...(attemptId === undefined ? {} : { attemptId }),
++    conflictingAttemptId,
++  };
++}
++
++// aidlc-orchestrate.main's launcher-option extraction before subcommand
++// routing (readOrchestratorLauncherOptions); the literal delimiter preserves
++// all following intent text. A trailing option without a value stays, as in
++// main(). Its one caller (the Kiro CLI agent-v1 row) passes the words after
++// `next` without the verb, so their unmarked words are not told apart here.
++export function stripOrchestratorLauncherOptions(args: readonly string[]): string[] {
++  return readOrchestratorLauncherOptions(args).args;
++}
++
++const GUARD_FENCE_CONFIG_KEYS = SWITCHABLE_GUARD_FENCES.map((fence) => guardFenceConfigKey(fence)) as
++  ["guard.plan-approval", "guard.review-freeze", "guard.state-transition", "guard.reviewer-scope"];
++export const CONFIG_KEYS = [
++  "depth",
++  "test-strategy",
++  "review",
++  "guard-policy",
++  "sensors",
++  "learnings",
++  "summary-confirmation",
++  "plan-approval",
++  "collaborators",
++  ...GUARD_FENCE_CONFIG_KEYS,
++] as const;
++
++export const FORWARD_RESULTS = new Set(["approved", "completed", "complete", "done"]);
++// The forward results that claim completion rather than name an approval.
++export const COMPLETION_RESULTS = new Set(["completed", "complete", "done"]);
++export const GATE_RESULTS = new Set(["awaiting-approval", "rejected", "revised"]);
++export const RESUME_RESULTS = new Set(["resume", "resumed"]);
++// The results that carry the person's decision at a gate.
++export const SOLO_DECISION_RESULTS = new Set(["approved", "rejected", "revised"]);
++export const SKIP_RESULT = "skipped";
++export const REPORT_RESULTS = new Set([
++  ...FORWARD_RESULTS,
++  ...GATE_RESULTS,
++  ...RESUME_RESULTS,
++  SKIP_RESULT,
++]);
++
++export interface ReportFlags {
++  result?: string;
++  userInput?: string;
++  reason?: string;
++  rejectFindings?: string[];
++  reopenFindings?: string[];
++  fixFindings?: string[]; // --fix-finding: an open finding the person asked to have fixed as they approved
++  skeletonStance?: string; // the classify round-trip's classified stance
++  single?: boolean; // --single: complete the synthetic attempt opened by next --single, never the main pointer
++  stage?: string; // --stage <slug>: the acted stage (required under --single; preferred for main workflow reports)
++  overrideBlockingSensors?: boolean;
++  unit?: string; // --unit <name>: required for team-owned per-unit gates
++  park?: boolean; // --park: the person also asked to stop here for now
++  message?: string; // --message <id>: the one message of the person's the agent read the decision from
++  // --<setting> <value>: a `config set` setting the same reply asked for, written
++  // before the approval (settingsBesideDecision).
++  settings?: Array<[string, string]>;
++  // A re-entry request (--result resumed): the choice the conductor read from
++  // the person's words, the stage they named for a jump, and the Units it is
++  // for when they named one (--unit) or said every Unit (--every-unit).
++  choice?: string;
++  target?: string;
++  everyUnit?: boolean;
++  parseError?: string; // an argument report cannot act on (see parseReportFlags)
++}
++
++// Every argument report accepts. Listed in the refusal below so a mistyped
++// flag points at the real one instead of vanishing.
++const REPORT_FLAGS = [
++  "--result",
++  "--stage",
++  "--unit",
++  "--user-input",
++  "--reason",
++  "--reject-finding",
++  "--reopen-finding",
++  "--fix-finding",
++  "--skeleton-stance",
++  "--single",
++  "--override-blocking-sensors",
++  "--park",
++  "--message",
++  "--choice",
++  "--target",
++  "--every-unit",
++] as const;
++
++// Extract report's flags. --result is the verdict; --user-input carries the
++// choice the conductor read from the person's reply, while --reason carries
++// rejection feedback or an early completion reason. --park records that the
++// person also asked to stop for now. --message names the one message of theirs
++// the decision was read from, when it is not every reply since the last one.
++// --skeleton-stance carries the conductor's classified walking-skeleton stance
++// (the classify round-trip): it does NOT commit a transition — it records the
++// stance so the next `next` resolves the deferred gate.
++//
++// Anything else is refused through parseError rather than dropped. A dropped
++// argument is the worst outcome available: a report carrying a mistyped flag
++// (or a flag whose value never arrived) would otherwise commit a DIFFERENT
++// transition than the one the operator wrote, silently — a rejection reported
++// without its feedback, or a per-unit gate closed against the wrong unit.
++export function parseReportFlags(args: readonly string[]): ReportFlags {
++  const flags: ReportFlags = {};
++  // Keep the FIRST problem: it is the one the operator introduced.
++  const refuse = (message: string): void => {
++    flags.parseError ??= message;
++  };
++  const missingValue = (flag: string, value: string): void =>
++    refuse(
++      `report ${flag} requires ${value}, and none followed it. ` +
++        `Re-run the same report with the value supplied.`,
++    );
++  for (let i = 0; i < args.length; i++) {
++    const a = args[i];
++    if (a === "--result" && i + 1 < args.length) {
++      flags.result = args[i + 1];
++      i++;
++    } else if (a === "--user-input" && i + 1 < args.length) {
++      flags.userInput = args[i + 1];
++      i++;
++    } else if (a === "--reason" && i + 1 < args.length) {
++      flags.reason = args[i + 1];
++      i++;
++    } else if (a === "--reject-finding" && i + 1 < args.length) {
++      flags.rejectFindings ??= [];
++      flags.rejectFindings.push(args[i + 1]);
++      i++;
++    } else if (a === "--reopen-finding" && i + 1 < args.length) {
++      flags.reopenFindings ??= [];
++      flags.reopenFindings.push(args[i + 1]);
++      i++;
++    } else if (a === "--fix-finding" && i + 1 < args.length) {
++      flags.fixFindings ??= [];
++      flags.fixFindings.push(args[i + 1]);
++      i++;
++    } else if (a === "--skeleton-stance" && i + 1 < args.length) {
++      flags.skeletonStance = args[i + 1];
++      i++;
++    } else if (a === "--stage" && i + 1 < args.length) {
++      flags.stage = args[i + 1];
++      i++;
++    } else if (a === "--unit" && i + 1 < args.length) {
++      flags.unit = args[i + 1];
++      i++;
++    } else if (a === "--choice" && i + 1 < args.length) {
++      flags.choice = args[i + 1];
++      i++;
++    } else if (a === "--message" && i + 1 < args.length) {
++      flags.message = args[i + 1];
++      i++;
++    } else if (a === "--target" && i + 1 < args.length) {
++      flags.target = args[i + 1];
++      i++;
++    } else if (a === "--single") {
++      flags.single = true;
++    } else if (a === "--every-unit") {
++      flags.everyUnit = true;
++    } else if (a === "--override-blocking-sensors") {
++      flags.overrideBlockingSensors = true;
++    } else if (a === "--park") {
++      flags.park = true;
++    } else if (a === "--result") {
++      missingValue(a, "an outcome");
++    } else if (a === "--user-input") {
++      missingValue(a, "the choice the person made");
++    } else if (a === "--reason") {
++      missingValue(a, "the reason text");
++    } else if (a === "--reject-finding") {
++      missingValue(a, "a finding id");
++    } else if (a === "--reopen-finding") {
++      missingValue(a, "a finding id and reason");
++    } else if (a === "--fix-finding") {
++      missingValue(a, "a finding id");
++    } else if (a === "--skeleton-stance") {
++      missingValue(a, "<on|off|scope-dependent>");
++    } else if (a === "--stage") {
++      missingValue(a, "a stage name");
++    } else if (a === "--unit") {
++      missingValue(a, "a unit name");
++    } else if (a === "--choice") {
++      missingValue(a, "<resume|redo|jump|fresh>");
++    } else if (a === "--message") {
++      missingValue(a, "the id of the person's message");
++    } else if (a === "--target") {
++      missingValue(a, "a stage name");
++
++    } else if (a.startsWith("--") && (CONFIG_KEYS as readonly string[]).includes(a.slice(2))) {
++      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
++        flags.settings ??= [];
++        flags.settings.push([a.slice(2), args[i + 1]]);
++        i++;
++      } else {
++        missingValue(a, "the value the person asked for");
++      }
++    } else if (a !== "--") {
++      refuse(
++        `report does not accept "${a}". It accepts ${REPORT_FLAGS.join(", ")}, and with an approval the ` +
++          `\`config set\` settings the same reply asked for (--plan-approval off). Rejection feedback belongs in --reason.`,
++      );
++    }
++  }
++  return flags;
++}
++
++export type OrchestratorRequest =
++  | { kind: "report"; launcher: ReturnType<typeof readOrchestratorLauncherOptions>; flags: ReportFlags; branch: "single" | "stance" | "resume" | "outcome"; forward: "approval" | "completion" | null }
++  | { kind: "invalid"; launcher: ReturnType<typeof readOrchestratorLauncherOptions>; diagnostic: string }
++  | { kind: "other"; launcher: ReturnType<typeof readOrchestratorLauncherOptions> };
++
++export function decodeOrchestratorRequest({ argv }: { argv: readonly string[] }): OrchestratorRequest {
++  const launcher = readOrchestratorLauncherOptions(argv);
++  if (launcher.args[0] !== "report") return { kind: "other", launcher };
++  const flags = parseReportFlags(launcher.args.slice(1));
++  if (flags.parseError) return { kind: "invalid", launcher, diagnostic: flags.parseError };
++  const branch = flags.single ? "single" : flags.skeletonStance !== undefined ? "stance"
++    : flags.result && RESUME_RESULTS.has(flags.result) ? "resume" : "outcome";
++  const forward = branch === "stance" || branch === "resume" ? null
++    : flags.result === "approved" ? "approval"
++    : flags.result && COMPLETION_RESULTS.has(flags.result) ? "completion" : null;
++  return { kind: "report", launcher, flags, branch, forward };
++}
+diff --git a/core/tools/aidlc-project-dir.ts b/core/tools/aidlc-project-dir.ts
+new file mode 100644
+index 000000000..c0b22746a
+--- /dev/null
++++ b/core/tools/aidlc-project-dir.ts
+@@ -0,0 +1,55 @@
++import { realpathSync } from "node:fs";
++import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
++
++export interface ProjectDirectoryContext {
++  explicitDir?: string;
++  cwd: string;
++  environment?: Readonly<Record<string, string | undefined>>;
++  sourceFile?: string;
++  leaf?: "tools" | "hooks";
++  native?: boolean;
++  execPath?: string;
++}
++
++export function isHarnessDirName(name: string): boolean {
++  return /^\.[a-z0-9][a-z0-9._-]*$/i.test(name);
++}
++
++function pathContainedBy(root: string, candidate: string): boolean {
++  const rel = relative(root, candidate);
++  return rel === "" || (
++    rel !== ".." &&
++    !rel.startsWith(`..${sep}`) &&
++    !isAbsolute(rel)
++  );
++}
++
++function realPathOrOriginal(path: string): string {
++  try {
++    return realpathSync(path);
++  } catch {
++    return path;
++  }
++}
++
++/** The launcher and read-only observers resolve the same project without changing process state. */
++export function resolveProjectDirectory(context: ProjectDirectoryContext): string {
++  const explicit = context.explicitDir || context.environment?.AIDLC_PROJECT_DIR ||
++    context.environment?.CLAUDE_PROJECT_DIR;
++  if (explicit) return isAbsolute(explicit) ? explicit : resolve(context.cwd, explicit);
++
++  if (context.sourceFile) {
++    const scriptDir = dirname(context.sourceFile);
++    const harness = dirname(scriptDir);
++    if (basename(scriptDir) === (context.leaf ?? "tools") && isHarnessDirName(basename(harness))) {
++      const root = dirname(harness);
++      // A native runtime payload has a project's shape, but belongs to the install.
++      const payload = context.native && context.execPath ? join(dirname(context.execPath), "runtime") : null;
++      if (payload === null || (
++        !pathContainedBy(payload, root) &&
++        !pathContainedBy(realPathOrOriginal(payload), realPathOrOriginal(root))
++      )) return root;
++    }
++  }
++  return context.cwd;
++}
+diff --git a/core/tools/aidlc-record-core.ts b/core/tools/aidlc-record-core.ts
+index 6c1dd1660..de27d216d 100644
+--- a/core/tools/aidlc-record-core.ts
++++ b/core/tools/aidlc-record-core.ts
+@@ -1,3 +1,5 @@
++import { auditBlockField } from "./aidlc-markdown.ts";
++export { auditBlockField } from "./aidlc-markdown.ts";
+ // The audit and state core: where a piece of work's record lives (the record
+ // folder, the intent registry, the active intent, which work and which chat a
+ // command is for, the session bindings and the process ancestry behind them),
+@@ -1338,7 +1340,7 @@ export function delegatedWorktreeIntent(projectDir: string): {
+   if ((meta.intentId8 !== undefined &&
+     (typeof meta.intentId8 !== "string" || !BOLT_INTENT_ID8_REGEX.test(meta.intentId8))) ||
+     canonicalPathKey(expectedDir) !== child ||
+-    relativeRecordDir(parent) !== meta.intentRecord) {
++    relativeRecordDirForSelection(resolveWorkflowSelection(parent, { bind: false })) !== meta.intentRecord) {
+     throw new Error("Delegated worktree does not match the active parent intent record");
+   }
+   assertNoSymlinkInChainOrThrow(parent, relative(parent, projectDir));
+@@ -1349,7 +1351,8 @@ export function delegatedWorktreeIntent(projectDir: string): {
+     throw new Error("Delegated worktree does not match the active parent intent record");
+   }
+   const unreadable: string[] = [];
+-  const creations = maximalAttemptEvents(readAuditShardEvents(parent, intent, space, unreadable).filter(
++  // Provenance inspection must not settle the parent conversation's first binding.
++  const creations = maximalAttemptEvents(readAuditShardEvents(parent, intent, space, unreadable, false).filter(
+     (row) => row.event === "WORKTREE_CREATED" && auditBlockField(row.block, "Bolt slug") === meta.boltSlug,
+   ));
+   const creation = creations.length === 1 ? creations[0] : null;
+@@ -1695,15 +1698,6 @@ export interface AuditMark {
+ // they mean. Callers that require uniqueness must reject duplicates separately.
+ // Mirrors the per-tool private auditField readers; shared here for
+ // humanActedSinceGate.
+-export function auditBlockField(block: string, fieldName: string): string | null {
+-  const prefix = `**${fieldName}**:`;
+-  for (const raw of block.split("\n")) {
+-    const line = raw.startsWith("- ") ? raw.slice(2) : raw;
+-    if (line.startsWith(prefix)) return line.slice(prefix.length).trim();
+-  }
+-  return null;
+-}
+-
+ export function gateStagesFromBlock(block: string): string[] {
+   const explicit = auditBlockField(block, "Gate Stages");
+   if (explicit) {
+diff --git a/core/tools/aidlc-report-command.ts b/core/tools/aidlc-report-command.ts
+new file mode 100644
+index 000000000..40c32d7e3
+--- /dev/null
++++ b/core/tools/aidlc-report-command.ts
+@@ -0,0 +1,148 @@
++import { resolve } from "node:path";
++import { resolveAction, TOOLS, withoutProjectDirFlag } from "./aidlc.ts";
++import { decodeOrchestratorRequest, type OrchestratorRequest } from "./aidlc-orchestrator-request.ts";
++import { parseLiteralShellInvocation, shellCommandSegments } from "./aidlc-shell-invocation.ts";
++
++export type ReportCommandContext = {
++  cwd: string;
++  sessionId?: string;
++  environment?: Readonly<Record<string, string | undefined>>;
++  sourceFile?: string;
++  native?: boolean;
++};
++export type ObservedReportCommand = {
++  command: string;
++  context: ReportCommandContext;
++  request: OrchestratorRequest;
++};
++
++const executableName = (word: string | undefined): string =>
++  word?.replace(/\\/g, "/").split("/").at(-1)?.toLowerCase() ?? "";
++const BUN_VALUE_OPTIONS = new Set(["--preload", "--require", "--import", "--title", "--cwd", "--define", "--env-file", "--conditions", "--tsconfig-override"]);
++const BUN_SWITCHES = new Set(["--smol", "--watch", "--hot", "--no-clear-screen", "--no-macros", "--no-env-file", "--silent"]);
++
++// Wrapper options are host syntax, not report syntax. In particular a preload
++// value naming aidlc.ts is not the script Bun executes.
++function scriptInvocation(words: readonly string[], context: ReportCommandContext): {
++  source?: string; args: string[]; context: ReportCommandContext; runtimeMutation: boolean;
++} | null {
++  let at = 1;
++  let cwd = context.cwd;
++  let runtimeMutation = false;
++  for (; at < words.length; at++) {
++    const word = words[at];
++    if (word === "run" || word === "--" || BUN_SWITCHES.has(word)) continue;
++    const [option, inline] = word.split(/=(.*)/s);
++    if (BUN_VALUE_OPTIONS.has(option)) {
++      const value = inline ?? words[++at];
++      if (value === undefined) return null;
++      if (option === "--cwd") cwd = resolve(cwd, value);
++      if (["--preload", "--require", "--import", "--env-file"].includes(option)) runtimeMutation = true;
++      continue;
++    }
++    if (word.startsWith("-")) return null;
++    const name = executableName(word);
++    if (name !== "aidlc.ts" && name !== "aidlc-orchestrate.ts") return null;
++    return { source: resolve(cwd, word), args: words.slice(at + 1), context: { ...context, cwd }, runtimeMutation };
++  }
++  return null;
++}
++
++function unwrap(words: readonly string[], context: ReportCommandContext): {
++  words: string[]; context: ReportCommandContext; identityChanged: boolean;
++} {
++  let at = 0;
++  const environment = { ...context.environment };
++  let identityChanged = false;
++  while (at < words.length) {
++    const word = words[at];
++    if (["env", "command", "exec", "--"].includes(word)) { at++; continue; }
++    const assignment = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s.exec(word);
++    if (!assignment) break;
++    if (["AIDLC_SESSION_OVERRIDE", "AIDLC_SESSION_OVERRIDE_SOURCE", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "KIRO_SESSION_ID", "AIDLC_HARNESS_DIR"].includes(assignment[1]) && assignment[2] !== context.environment?.[assignment[1]]) identityChanged = true;
++    environment[assignment[1]] = assignment[2];
++    at++;
++  }
++  return { words: words.slice(at), context: { ...context, environment }, identityChanged };
++}
++
++function observeSegment(command: string, argv: readonly string[], invocationContext: ReportCommandContext): ObservedReportCommand | null {
++  const unwrapped = unwrap(argv, invocationContext);
++  const executable = executableName(unwrapped.words[0]);
++  let args = unwrapped.words.slice(1);
++  let context = unwrapped.context;
++  let direct = false;
++  let runtimeMutation = false;
++  if (executable === "bun" || executable === "bun.exe") {
++    const script = scriptInvocation(unwrapped.words, context);
++    if (!script) return null;
++    args = script.args;
++    runtimeMutation = script.runtimeMutation;
++    context = { ...script.context, sourceFile: script.source, native: false };
++    direct = executableName(script.source) === "aidlc-orchestrate.ts";
++  } else if (executable === "aidlc" || executable === "aidlc.exe") {
++    context = { ...context, native: true };
++  } else {
++    return null;
++  }
++  if (!direct) {
++    const action = resolveAction(args, context.native, context.cwd, context.environment);
++    if (action.type === "error") {
++      // A refused launcher still names its real route. Use the dispatcher's
++      // existing option stripper only to classify it, never to execute it or
++      // resolve a target with repaired arguments.
++      const route = resolveAction(withoutProjectDirFlag(args).filter((word) => !word.startsWith("--project-dir=")), context.native, context.cwd, context.environment);
++      if (route.type !== "delegate" || route.tool !== TOOLS.orchestrate || decodeOrchestratorRequest({ argv: route.args }).kind === "other") return null;
++      return { command, context, request: { kind: "invalid", launcher: { args, taken: [], verbAt: 0, conflictingAttemptId: false }, diagnostic: action.message } };
++    }
++    if (action.type !== "delegate" || action.tool !== TOOLS.orchestrate) return null;
++    args = action.args;
++  }
++  const request = decodeOrchestratorRequest({ argv: args });
++  if (request.kind === "other") return null;
++  return { command, context, request: runtimeMutation ? { kind: "invalid", launcher: request.launcher, diagnostic: "The Bun launcher loads code or an environment file before this report, so its execution context is unresolved. Run the report directly without that loader." } : unwrapped.identityChanged ? { kind: "invalid", launcher: request.launcher, diagnostic: "The report changes its session identity in the shell prefix; select the work in this conversation and run the report directly." } : request };
++}
++
++/** Capture literal operations separately; never combine selectors from two commands. */
++export function observeReportCommands(input: { command: string; context: ReportCommandContext }): ObservedReportCommand[] {
++  const operations: ObservedReportCommand[] = [];
++  let context = { ...input.context, environment: input.context.environment ?? process.env };
++  let directoryUnresolved = false;
++  // The established literal parser handles the supported cd ... && command form.
++  const whole = parseLiteralShellInvocation(input.command.replace(/^\s*&\s*/, ""), true);
++  if (whole?.directory) {
++    const observed = observeSegment(whole.command, whole.argv, { ...context, cwd: whole.directory });
++    return observed ? [observed] : [];
++  }
++  for (const segment of shellCommandSegments(input.command, true)) {
++    const text = segment.replace(/^\s*&\s*/, "");
++    if (/^\s*\$env:[A-Za-z_][A-Za-z0-9_]*\s*=/.test(text)) directoryUnresolved = true;
++    const literal = parseLiteralShellInvocation(text, true);
++    if (!literal) {
++      // Only inspect a literal executable/route prefix. Never search a quoted
++      // script or echo argument for report-shaped words.
++      for (let end = text.length - 1; end > 0; end--) {
++        if (text[end] !== " " && text[end] !== "\t") continue;
++        const prefix = parseLiteralShellInvocation(text.slice(0, end), true);
++        if (!prefix) continue;
++        if (["cd", "pushd", "Set-Location", "sl", "source", ".", "eval"].includes(prefix.argv[0])) directoryUnresolved = true;
++        const partial = observeSegment(text, prefix.argv, context);
++        if (partial) operations.push({ ...partial, request: { kind: "invalid", launcher: partial.request.launcher, diagnostic: "The report uses dynamic or unsupported shell syntax; run its literal command directly so the completion target can be checked." } });
++        break;
++      }
++      continue;
++    }
++    if (literal.argv[0] === "cd" && literal.argv.length === 2 && !literal.argv[1].startsWith("-")) {
++      context = { ...context, cwd: resolve(context.cwd, literal.argv[1]) };
++      continue;
++    }
++    if (["cd", "pushd", "popd", "Set-Location", "Push-Location", "Pop-Location", "sl", "source", ".", "eval", "export", "set", "unset"].includes(literal.argv[0]) || (literal.argv.length === 1 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(literal.argv[0]))) directoryUnresolved = true;
++    const observed = observeSegment(text, literal.argv, context);
++    if (observed) operations.push(directoryUnresolved ? { ...observed, request: { kind: "invalid", launcher: observed.request.launcher, diagnostic: "A preceding shell operation changes the report context in a way this guard cannot resolve. Run the report directly in its project." } } : observed);
++  }
++  return operations;
++}
++
++export function completionCommands(input: { command: string; context: ReportCommandContext }): ObservedReportCommand[] {
++  return observeReportCommands(input).filter(({ request }) => request.kind === "invalid" || (request.kind === "report" && request.forward !== null));
++}
+diff --git a/core/tools/aidlc-report-target.ts b/core/tools/aidlc-report-target.ts
+new file mode 100644
+index 000000000..d0baadd89
+--- /dev/null
++++ b/core/tools/aidlc-report-target.ts
+@@ -0,0 +1,114 @@
++import { workflowIsUnjoined } from "./aidlc-workflow-participation.ts";
++import { readFileSync } from "node:fs";
++import { join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { singleStageAttemptFieldIn, singleStageAttemptOpenIn } from "./aidlc-attempt-boundary.ts";
++import { spaceRecordRoot } from "./aidlc-locks.ts";
++import type { OrchestratorRequest } from "./aidlc-orchestrator-request.ts";
++import { type ProjectDirectoryContext, resolveProjectDirectory } from "./aidlc-project-dir.ts";
++import {
++  getField,
++  readAuditShardEvents,
++  relativeRecordDirForSelection,
++  resolveWorkflowSelection,
++  type WorkflowParticipation,
++  type WorkflowSelection,
++  workflowParticipation,
++} from "./aidlc-record-core.ts";
++import { isCompiledExecutable } from "./aidlc-runtime-paths.ts";
++
++export interface ReportTargetContext extends Omit<ProjectDirectoryContext, "explicitDir" | "leaf"> {
++  sessionId?: string;
++}
++
++interface ReportTargetBase {
++  kind: "resolved";
++  projectDir: string;
++  selection: WorkflowSelection;
++  participation: WorkflowParticipation;
++  unjoined: boolean;
++  recordDir: string;
++  stage: string;
++  unit?: string;
++}
++
++export type ReportTarget =
++  | (ReportTargetBase & {
++    mode: "main";
++    stateContent: string;
++    stageSource: "explicit" | "current";
++    currentStage: string;
++    scope: string;
++  })
++  | (ReportTargetBase & {
++    mode: "single";
++    stateContent: null;
++    stageSource: "explicit";
++    scope: string | null;
++    workflow: string;
++  })
++  | { kind: "unavailable"; reason: string };
++
++/** Resolve facts only. Callers retain authority checks; observing a report never joins its work. */
++export function resolveReportTarget({ request, context }: {
++  request: Extract<OrchestratorRequest, { kind: "report" }>;
++  context: ReportTargetContext;
++}): ReportTarget {
++  try {
++    const projectDir = resolveProjectDirectory({
++      ...context,
++      explicitDir: request.launcher.projectDir,
++      environment: context.environment ?? process.env,
++      // A native command runs in its own runtime, not this observing hook's install.
++      sourceFile: context.sourceFile ?? (context.native === true ? undefined : fileURLToPath(import.meta.url)),
++      native: context.native ?? isCompiledExecutable(),
++      execPath: context.execPath ?? process.execPath,
++    });
++    const selection = resolveWorkflowSelection(projectDir, { sessionId: context.sessionId, bind: false });
++    const participation = workflowParticipation(projectDir, selection);
++    const relativeRecord = relativeRecordDirForSelection(selection);
++    const recordDir = relativeRecord === null
++      ? spaceRecordRoot(projectDir, selection.space)
++      : join(projectDir, relativeRecord);
++    const base = {
++      kind: "resolved" as const, projectDir, selection, participation, recordDir,
++      unjoined: workflowIsUnjoined(selection, participation),
++      ...(request.flags.unit === undefined ? {} : { unit: request.flags.unit }),
++    };
++
++    if (request.branch === "single") {
++      const stage = request.flags.stage;
++      if (!stage) return { kind: "unavailable", reason: "A single-stage report requires an explicit stage." };
++      const unreadable: string[] = [];
++      // Empty intent pins the space's own record; undefined would select work again.
++      const events = readAuditShardEvents(projectDir, selection.intent ?? "", selection.space, unreadable, false)
++        .sort((a, b) => a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 :
++          a.shardIndex - b.shardIndex || a.pos - b.pos);
++      if (unreadable.length > 0) {
++        return { kind: "unavailable", reason: "The selected record's isolated-attempt evidence could not be read." };
++      }
++      if (!singleStageAttemptOpenIn(events, stage)) {
++        return { kind: "unavailable", reason: `No open single-stage:${stage} attempt exists in the selected record.` };
++      }
++      return {
++        ...base, mode: "single", stage, stageSource: "explicit", stateContent: null,
++        scope: singleStageAttemptFieldIn(events, stage, "Scope"), workflow: `single-stage:${stage}`,
++      };
++    }
++
++    const stateContent = readFileSync(join(recordDir, "aidlc-state.md"), "utf-8");
++    const currentStage = getField(stateContent, "Current Stage");
++    if (!currentStage) {
++      return { kind: "unavailable", reason: "The selected state has no Current Stage field." };
++    }
++    const scope = getField(stateContent, "Scope");
++    if (!scope) return { kind: "unavailable", reason: "The selected state has no Scope field." };
++    const explicitStage = request.flags.stage?.trim();
++    return {
++      ...base, mode: "main", stateContent, currentStage, scope,
++      stage: explicitStage || currentStage, stageSource: explicitStage ? "explicit" : "current",
++    };
++  } catch (error) {
++    return { kind: "unavailable", reason: error instanceof Error ? error.message : String(error) };
++  }
++}
+diff --git a/core/tools/aidlc-shell-invocation.ts b/core/tools/aidlc-shell-invocation.ts
+new file mode 100644
+index 000000000..2edf86178
+--- /dev/null
++++ b/core/tools/aidlc-shell-invocation.ts
+@@ -0,0 +1,110 @@
++// Literal shell syntax only. Never execute or expand a word to inspect a command.
++export function parseLiteralShellInvocation(text: string, windowsPaths = false): {
++  directory: string | null;
++  command: string;
++  argv: string[];
++  rawWords: string[];
++} | null {
++  if (/[\0\r\n]|\$\(|`/.test(text)) return null;
++  text = text.replace(/^[ \t]+|[ \t]+$/g, "").replace(/[ \t]+2>&1$/, "");
++  const tokens: Array<{ value: string; raw: string; start: number; and: boolean }> = [];
++  for (let i = 0; i < text.length;) {
++    if (text[i] === " " || text[i] === "\t") { i++; continue; }
++    if (text.slice(i, i + 2) === "&&") {
++      tokens.push({ value: "&&", raw: "&&", start: i, and: true });
++      i += 2;
++      continue;
++    }
++    const start = i;
++    let value = "";
++    let quote: "'" | '"' | null = null;
++    while (i < text.length) {
++      const ch = text[i];
++      if (quote === "'") {
++        if (ch === "'") quote = null;
++        else value += ch;
++        i++;
++      } else if (quote === '"') {
++        if (ch === '"') { quote = null; i++; }
++        else if (ch === "$") return null;
++        else if (ch === "\\" && /["\\$`]/.test(text[i + 1] ?? "")) {
++          value += text[i + 1];
++          i += 2;
++        } else { value += ch; i++; }
++      } else {
++        if (ch === " " || ch === "\t" || text.slice(i, i + 2) === "&&") break;
++        if (ch === "'" || ch === '"') { quote = ch; i++; }
++        else if ((!windowsPaths && ch === "\\") || "()[]{}*?;|<>&$#".includes(ch) || (ch === "~" && i === start)) return null;
++        else { value += ch; i++; }
++      }
++    }
++    if (quote !== null) return null;
++    tokens.push({ value, raw: text.slice(start, i), start, and: false });
++  }
++  const separators = tokens.flatMap((token, i) => token.and ? [i] : []);
++  let directory: string | null = null;
++  let words = tokens;
++  if (separators.length > 0) {
++    if (separators.length !== 1) return null;
++    const at = separators[0];
++    const prefix = tokens.slice(0, at);
++    if (
++      prefix[0]?.raw !== "cd" ||
++      !(prefix.length === 2 || (prefix.length === 3 && prefix[1].raw === "--"))
++    ) return null;
++    directory = prefix.at(-1)!.value;
++    if (
++      !directory.startsWith("/") &&
++      !/^[A-Za-z]:[/\\]/.test(directory) &&
++      !/^\\\\[^/\\]+[/\\][^/\\]+/.test(directory)
++    ) return null;
++    words = tokens.slice(at + 1);
++  }
++  if (words.length === 0 || words.some((word) => word.and)) return null;
++  return {
++    directory,
++    command: text.slice(words[0].start),
++    argv: words.map((word) => word.value),
++    rawWords: words.map((word) => word.raw),
++  };
++}
++
++export function shellCommandSegments(command: string, background = false): string[] {
++  const segments: string[] = [];
++  let start = 0;
++  let quote: "'" | '"' | null = null;
++  let escaped = false;
++
++  for (let i = 0; i < command.length; i++) {
++    const char = command[i];
++    if (escaped) {
++      escaped = false;
++      continue;
++    }
++    if (char === "\\" && quote !== "'") {
++      escaped = true;
++      continue;
++    }
++    if (quote) {
++      if (char === quote) quote = null;
++      continue;
++    }
++    if (char === "'" || char === '"') {
++      quote = char;
++      continue;
++    }
++
++    const separatorWidth =
++      char === "&" && command[i + 1] === "&"
++        ? 2
++        : char === "|" || char === ";" || char === "\n" || (background && char === "&") ? 1 : 0;
++    if (separatorWidth === 0) continue;
++    segments.push(command.slice(start, i));
++    i += separatorWidth - 1;
++    start = i + 1;
++  }
++
++  segments.push(command.slice(start));
++  return segments;
++}
++
+diff --git a/core/tools/aidlc-workflow-participation.ts b/core/tools/aidlc-workflow-participation.ts
+new file mode 100644
+index 000000000..48e3c2081
+--- /dev/null
++++ b/core/tools/aidlc-workflow-participation.ts
+@@ -0,0 +1,7 @@
++// Pure interpretation of observed selection and participation, independent of guard policy.
++import type { WorkflowParticipation, WorkflowSelection } from "./aidlc-record-core.ts";
++
++export function workflowIsUnjoined(selection: WorkflowSelection, participation: WorkflowParticipation): boolean {
++  return (selection.intent === null && selection.binding?.source === "unjoined") ||
++    (selection.intent !== null && participation !== "participant");
++}
+diff --git a/core/tools/aidlc.ts b/core/tools/aidlc.ts
+index 7c9d7bc64..a334f4bf4 100644
+--- a/core/tools/aidlc.ts
++++ b/core/tools/aidlc.ts
+@@ -2460,8 +2460,10 @@ export function admittedEngineRoute(
+ export function resolveAction(
+   rawArgv: string[],
+   compiled = isCompiledExecutable(),
++  cwd = process.cwd(),
++  environment: Readonly<Record<string, string | undefined>> = process.env,
+ ): Action {
+-  const first = resolveActionFrom(rawArgv, compiled, Number.POSITIVE_INFINITY);
++  const first = resolveActionFrom(rawArgv, compiled, Number.POSITIVE_INFINITY, cwd, environment);
+   const words = first.words;
+   // What is wrong with one of our own options is the person's to act on only
+   // where our options are read. Among their own words that token is their word,
+@@ -2475,7 +2477,7 @@ export function resolveAction(
+   if (first.ourFlagsFrom === undefined || first.ourFlagsFrom < words) {
+     return first.action;
+   }
+-  return resolveActionFrom(rawArgv, compiled, words).action;
++  return resolveActionFrom(rawArgv, compiled, words, cwd, environment).action;
+ }
+ 
+ /**
+@@ -2541,6 +2543,8 @@ function resolveActionFrom(
+   rawArgv: string[],
+   compiled: boolean,
+   limit: number,
++  cwd = process.cwd(),
++  environment: Readonly<Record<string, string | undefined>> = process.env,
+ ): ResolvedWithRoute {
+   const argv = canonicalizeLegacyCopilotHookArgv(rawArgv);
+   const clean: string[] = [];
+@@ -2612,7 +2616,7 @@ function resolveActionFrom(
+   if (projectDir) {
+     const absoluteProjectDir = isAbsolute(projectDir)
+       ? projectDir
+-      : resolve(process.cwd(), projectDir);
++      : resolve(cwd, projectDir);
+     if (action.type === "delegate") {
+       const delimiter = action.args.indexOf("--");
+       // Right after `next`, never after their sentence: the delegate reads its
+@@ -2652,10 +2656,10 @@ function resolveActionFrom(
+     // project. Pin the host's project: its project environment, else the
+     // directory it launched the command in. The statusline and the adapters
+     // resolve a project from their host first and hand it to what they run.
+-    action.projectDir = dispatcherProjectDirFrom(argv, limit);
++    action.projectDir = dispatcherProjectDirFrom(argv, limit, cwd, environment);
+     if (action.type === "hook" || action.type === "hook-group") {
+       action.hostResolved =
+-        !projectDirFlag(argv.slice(0, limit)).value && !process.env.AIDLC_PROJECT_DIR;
++        !projectDirFlag(argv.slice(0, limit)).value && !environment.AIDLC_PROJECT_DIR;
+     }
+   }
+   if (action.type === "delegate") {
+@@ -2665,7 +2669,7 @@ function resolveActionFrom(
+     // so when the caller gave none the resolved directory is pinned ahead of
+     // the delimiter. The literal text stays byte-for-byte intact.
+     if (delimiter >= 0 && !projectDir) {
+-      action.args.splice(delimiter, 0, "--project-dir", dispatcherProjectDirFrom(argv, limit));
++      action.args.splice(delimiter, 0, "--project-dir", dispatcherProjectDirFrom(argv, limit, cwd, environment));
+     }
+     if (delimiter >= 0) action.args.splice(action.args.indexOf("--"), 0, ...globalFlags);
+     else action.args.push(...globalFlags);
+@@ -3641,17 +3645,19 @@ function routePinPolicy(argv: readonly string[]): PinPolicy {
+ function dispatcherProjectDirFrom(
+   argv: readonly string[],
+   limit = ourFlagLimit([...argv]),
++  cwd = process.cwd(),
++  environment: Readonly<Record<string, string | undefined>> = process.env,
+ ): string {
+   // Only where our own options are read. A token of the person's own that looks
+   // like this one is a word of their request, never a folder to work in: every
+   // reader of the line takes the same slice, so none of them can answer them
+   // about an option they did not use.
+   const explicit = projectDirFlag(argv.slice(0, limit)).value;
+-  const value = explicit || process.env.AIDLC_PROJECT_DIR ||
+-    process.env.CLAUDE_PROJECT_DIR || process.env.KIRO_PROJECT_DIR;
++  const value = explicit || environment.AIDLC_PROJECT_DIR ||
++    environment.CLAUDE_PROJECT_DIR || environment.KIRO_PROJECT_DIR;
+   return value
+-    ? (isAbsolute(value) ? value : resolve(process.cwd(), value))
+-    : process.cwd();
++    ? (isAbsolute(value) ? value : resolve(cwd, value))
++    : cwd;
+ }
+ 
+ // Whether the dispatcher's project directory comes from the host (its
+diff --git a/docs/reference/03-orchestrator.md b/docs/reference/03-orchestrator.md
+index d09c511e3..cc6859468 100644
+--- a/docs/reference/03-orchestrator.md
++++ b/docs/reference/03-orchestrator.md
+@@ -31,6 +31,37 @@ This chapter documents the workflow behaviour from the conductor's side — entr
+ 
+ ---
+ 
++## Completion observation boundary
++
++The executable and completion hooks read one command grammar in
++`core/tools/aidlc-orchestrator-request.ts`. It owns the existing launcher and
++report options, duplicate-option behavior, literal result values, and report
++branch selection. `aidlc.ts` still owns the outer dispatcher route. The shell
++adapter in `aidlc-report-command.ts` captures supported literal invocations and
++passes their argv, directory and environment to those same owners; it does not
++interpret feedback text as options or invent intent/space report flags.
++
++`aidlc-report-target.ts` resolves the decoded request through record-core with
++binding disabled. It returns the selected project, session, record, stage and
++attempt facts. Isolated attempts read only their own start and completion
++history, including valid space-only attempts; they never borrow a main
++workflow's state or review. Project precedence and audit attempt boundaries
++have independent helpers, shared with runtime readers.
++
++These core modules have no Rin dependency or autonomy mode. A build omitting
++Rin's autonomy hook uses the same request, selection and report behavior. The
++constitution and review hooks consume the observation separately and retain
++their own evidence and refusal policies. The Rin review guard currently has no
++isolated-attempt authorization path, so a covered isolated attempt is refused
++explicitly rather than borrowing a main-workflow verdict.
++
++The observer supports native `aidlc`/`aidlc.exe`, copied dispatcher, and direct
++orchestrator commands. It is not a general shell evaluator. Known reports with
++unresolved dynamic context, session-changing prefixes or code-loading wrappers
++are refused with a diagnostic. A projection must deliver the command observer
++with the guard and the corresponding target/runtime modules; source tests or
++an explicitly assembled payload do not prove host hook registration.
++
+ ## Entry Points
+ 
+ The conductor passes `$ARGUMENTS` to the engine's first `next` verbatim — it never pre-parses them. The engine parses the flags and freeform text and resolves which of the invocation patterns below applies, emitting the matching directive. The patterns are engine-resolved inputs, not conductor-side branches.
+diff --git a/tests/unit/t-orchestrator-request.test.ts b/tests/unit/t-orchestrator-request.test.ts
+new file mode 100644
+index 000000000..edc539d2e
+--- /dev/null
++++ b/tests/unit/t-orchestrator-request.test.ts
+@@ -0,0 +1,91 @@
++import { describe, expect, test } from "bun:test";
++import { readOrchestratorLauncherOptions, decodeOrchestratorRequest, parseReportFlags } from "../../core/tools/aidlc-orchestrator-request.ts";
++import { completionCommands, observeReportCommands } from "../../core/tools/aidlc-report-command.ts";
++
++const context = { cwd: process.cwd() };
++const decoded = (command: string) => observeReportCommands({ command, context }).map((operation) => operation.request);
++
++describe("one orchestrator report grammar", () => {
++  test.each(["approved", "completed", "complete", "done"])("retains the %s lexeme", (result) => {
++    expect(decodeOrchestratorRequest({ argv: ["report", "--result", result] })).toMatchObject({ kind: "report", flags: { result }, forward: result === "approved" ? "approval" : "completion" });
++  });
++  test("duplicate scalars use the last and repeated evidence keeps order", () => {
++    expect(parseReportFlags(["--result", "approved", "--result", "rejected", "--stage", "A", "--stage", "B", "--fix-finding", "1", "--fix-finding", "2"])).toEqual({ result: "rejected", stage: "B", fixFindings: ["1", "2"] });
++    expect(completionCommands({ command: "aidlc engine orchestrate report --result approved --result rejected", context })).toHaveLength(0);
++    expect(completionCommands({ command: "aidlc engine orchestrate report --result rejected --result approved", context })).toHaveLength(1);
++  });
++  test.each(["--intent", "--space", "--unknown"])("%s remains invalid, not a selector", (flag) => {
++    expect(decodeOrchestratorRequest({ argv: ["report", flag, "other", "--result", "approved"] })).toMatchObject({ kind: "invalid" });
++  });
++  test("malformed flags retain the original diagnostic", () => {
++    expect(parseReportFlags(["--stage"]).parseError).toContain("requires a stage name");
++    expect(parseReportFlags(["--result", "--stage", "B"]).parseError).toContain('does not accept "B"');
++  });
++  test("stance precedes outcome but single precedes stance", () => {
++    expect(decodeOrchestratorRequest({ argv: ["report", "--skeleton-stance", "off", "--result", "approved"] })).toMatchObject({ kind: "report", branch: "stance", forward: null });
++    expect(decodeOrchestratorRequest({ argv: ["report", "--single", "--skeleton-stance", "off", "--result", "done"] })).toMatchObject({ kind: "report", branch: "single", forward: "completion" });
++  });
++  test("launcher last-value semantics and next literal text are shared with settlement", () => {
++    expect(readOrchestratorLauncherOptions(["report", "--project-dir", "A", "--project-dir", "B"]).projectDir).toBe("B");
++    expect(readOrchestratorLauncherOptions(["next", "--", "explain", "--project-dir", "B"]).projectDir).toBeUndefined();
++    expect(readOrchestratorLauncherOptions(["next", "explain", "--project-dir", "B"]).projectDir).toBeUndefined();
++  });
++});
++
++describe("literal host adapters use the real dispatcher", () => {
++  test.each([
++    "aidlc engine orchestrate report", "aidlc.exe engine orchestrate report", '"C:\\Program Files\\aidlc.exe" engine orchestrate report',
++    "bun .claude/tools/aidlc.ts engine orchestrate report", "bun .claude/tools/aidlc-orchestrate.ts report", "& aidlc.exe engine orchestrate report",
++  ])("%s decodes exact quoted values", (prefix) => {
++    expect(decoded(prefix + ' --stage "rin-gate-4-implement" --reason "--stage rin-gate-0-reconcile" --result done')[0]).toMatchObject({ kind: "report", flags: { stage: "rin-gate-4-implement", reason: "--stage rin-gate-0-reconcile", result: "done" } });
++  });
++  test("a preload path is not the executed script", () => {
++    expect(decoded("bun --require .claude/tools/aidlc.ts other.ts engine orchestrate report --result approved")).toHaveLength(0);
++    expect(decoded("bun --require .claude/tools/aidlc.ts .codex/tools/aidlc-orchestrate.ts report --result done")[0]).toMatchObject({ kind: "invalid" });
++  });
++  test("quoted traffic and other segments cannot supply a verdict", () => {
++    expect(decoded("echo 'aidlc engine orchestrate report --result approved'")).toHaveLength(0);
++    expect(completionCommands({ command: "aidlc engine orchestrate report --result rejected; echo --result approved", context })).toHaveLength(0);
++    expect(completionCommands({ command: "aidlc engine orchestrate report --result rejected; aidlc engine orchestrate report --result done", context })).toHaveLength(1);
++  });
++  test("dispatcher refuses equals/duplicate project options while direct keeps its grammar", () => {
++    expect(decoded("aidlc --project-dir=other engine orchestrate report --result done")[0]).toMatchObject({ kind: "invalid" });
++    expect(decoded("aidlc --project-dir A --project-dir B engine orchestrate report --result done")[0]).toMatchObject({ kind: "invalid" });
++    expect(decoded("bun .claude/tools/aidlc-orchestrate.ts report --project-dir A --project-dir B --result done")[0]).toMatchObject({ kind: "report", launcher: { projectDir: "B" } });
++  });
++});
++
++test("context mutations are explicit unresolved operations, not another target", () => {
++  for (const command of [
++    "AIDLC_SESSION_OVERRIDE=other aidlc engine orchestrate report --result done",
++    "export AIDLC_PROJECT_DIR=other; aidlc engine orchestrate report --result done",
++    "AIDLC_PROJECT_DIR=other; aidlc engine orchestrate report --result done",
++    "$env:AIDLC_PROJECT_DIR='other'; aidlc engine orchestrate report --result done",
++    "cd $OTHER; aidlc engine orchestrate report --result done",
++    "aidlc engine orchestrate report --reason $REASON --result done",
++  ]) expect(decoded(command)[0]).toMatchObject({ kind: "invalid" });
++});
++
++test("dispatcher delimiter uses captured project environment, never the observer's ambient root", () => {
++  const operation = observeReportCommands({
++    command: "AIDLC_PROJECT_DIR=other aidlc engine orchestrate report --result done --",
++    context: { cwd: process.cwd(), environment: { AIDLC_PROJECT_DIR: "ambient" } },
++  })[0];
++  expect(operation.request).toMatchObject({ kind: "report", launcher: { projectDir: require("node:path").resolve(process.cwd(), "other") } });
++});
++
++test("relative directory prefixes are resolved from captured command cwd", () => {
++  const operation = observeReportCommands({ command: "cd ../other && aidlc engine orchestrate report --result done", context: { cwd: process.cwd(), environment: {} } })[0];
++  expect(operation.context.cwd).toBe(require("node:path").resolve(process.cwd(), "../other"));
++});
++test("omitted environment captures the same ambient project as runtime", () => {
++  const prior = process.env.AIDLC_PROJECT_DIR;
++  process.env.AIDLC_PROJECT_DIR = "ambient-project";
++  try {
++    const operation = observeReportCommands({ command: "aidlc engine orchestrate report --result done --", context: { cwd: process.cwd() } })[0];
++    expect(operation.request).toMatchObject({ kind: "report", launcher: { projectDir: require("node:path").resolve(process.cwd(), "ambient-project") } });
++  } finally {
++    if (prior === undefined) delete process.env.AIDLC_PROJECT_DIR;
++    else process.env.AIDLC_PROJECT_DIR = prior;
++  }
++});
+diff --git a/tests/unit/t-report-target.test.ts b/tests/unit/t-report-target.test.ts
+new file mode 100644
+index 000000000..e4a103e9b
+--- /dev/null
++++ b/tests/unit/t-report-target.test.ts
+@@ -0,0 +1,316 @@
++// covers: function:resolveReportTarget, function:resolveProjectDirectory
++// Real records exercise selection and attempt isolation without joining, claiming, or writing them.
++import { afterEach, describe, expect, test } from "bun:test";
++import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join, relative } from "node:path";
++import { fileURLToPath, pathToFileURL } from "node:url";
++import { decodeOrchestratorRequest } from "../../core/tools/aidlc-orchestrator-request.ts";
++import { resolveProjectDirectory } from "../../core/tools/aidlc-project-dir.ts";
++import { helperSessionPath, readSessionBinding, writeSessionBinding } from "../../core/tools/aidlc-record-core.ts";
++import { resolveReportTarget } from "../../core/tools/aidlc-report-target.ts";
++
++const CHAT = "report-target-chat";
++const CURSOR = "cursor-00000001";
++const BOUND = "bound-00000002";
++const roots: string[] = [];
++afterEach(() => {
++  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
++});
++
++function project(): string {
++  const root = realpathSync(mkdtempSync(join(tmpdir(), "aidlc-report-target-")));
++  roots.push(root);
++  return root;
++}
++
++function write(path: string, content: string): void {
++  mkdirSync(join(path, ".."), { recursive: true });
++  writeFileSync(path, content);
++}
++
++function record(root: string, name: string, stage = "code-generation", scope = "feature", space = "default"): string {
++  const dir = join(root, "aidlc", "spaces", space, "intents", name);
++  write(join(dir, "aidlc-state.md"), `- **Scope**: ${scope}\n- **Current Stage**: ${stage}\n`);
++  return dir;
++}
++
++function cursor(root: string, name: string, space = "default"): void {
++  write(join(root, "aidlc", "active-space"), space);
++  write(join(root, "aidlc", "spaces", space, "intents", "active-intent"), name);
++}
++
++function resolve(root: string, args: string[] = [], sessionId = CHAT) {
++  const request = decodeOrchestratorRequest({ argv: ["report", "--result", "completed", ...args] });
++  if (request.kind !== "report") throw new Error("Test request did not decode as report");
++  return resolveReportTarget({ request, context: { cwd: root, environment: {}, sessionId } });
++}
++
++function snapshot(root: string): Record<string, string> {
++  const files: Record<string, string> = {};
++  const walk = (dir: string): void => {
++    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
++      const path = join(dir, entry.name);
++      files[relative(root, path)] = entry.isDirectory() ? "directory" : readFileSync(path).toString("base64");
++      if (entry.isDirectory()) walk(path);
++    }
++  };
++  walk(root);
++  return files;
++}
++
++function event(eventName: string, { stage = "code-generation", workflow = `single-stage:${stage}`, scope,
++  time = "2026-11-05T12:00:00Z" }: { stage?: string; workflow?: string; scope?: string; time?: string } = {}): string {
++  return `---\n**Event**: ${eventName}\n**Timestamp**: ${time}\n**Stage**: ${stage}\n**Workflow**: ${workflow}\n` +
++    (scope === undefined ? "" : `**Scope**: ${scope}\n`);
++}
++
++describe("read-only report target", () => {
++  test("session binding wins over a different space and cursor, preserving explicit stage and unit", () => {
++    const root = project();
++    record(root, CURSOR, "requirements-analysis");
++    const selected = record(root, BOUND, "functional-design", "bugfix", "other");
++    cursor(root, CURSOR);
++    writeSessionBinding(root, CHAT, "other", BOUND, "switch");
++    const before = snapshot(root);
++    const result = resolve(root, ["--stage", " code-generation ", "--unit", "checkout"]);
++    expect(result).toMatchObject({
++      kind: "resolved", mode: "main", recordDir: selected, participation: "participant",
++      selection: { intent: BOUND, space: "other", sessionId: CHAT }, stage: "code-generation",
++      stageSource: "explicit", currentStage: "functional-design", scope: "bugfix", unit: "checkout",
++    });
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test("an unknown session observes the cursor and never settles its first binding", () => {
++    const root = project();
++    record(root, CURSOR);
++    record(root, BOUND);
++    cursor(root, CURSOR);
++    const before = snapshot(root);
++    expect(resolve(root)).toMatchObject({ kind: "resolved", stage: "code-generation", stageSource: "current" });
++    expect(readSessionBinding(root, CHAT)).toBeNull();
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test("a helper session uses its root chat without copying the root binding", () => {
++    const root = project();
++    record(root, CURSOR);
++    record(root, BOUND, "unit-test-generation");
++    cursor(root, CURSOR);
++    writeSessionBinding(root, CHAT, "default", BOUND, "switch");
++    write(helperSessionPath(root, "report-target-helper"), CHAT);
++    const before = snapshot(root);
++    expect(resolve(root, [], "report-target-helper")).toMatchObject({
++      kind: "resolved", stage: "unit-test-generation", selection: { sessionId: CHAT, intent: BOUND },
++    });
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test("the lone-record fallback remains an outsider rather than inventing participation", () => {
++    const root = project();
++    record(root, CURSOR);
++    const before = snapshot(root);
++    expect(resolve(root)).toMatchObject({ kind: "resolved", participation: "outsider", selection: { intent: CURSOR } });
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test("an unjoined binding does not borrow the lone record's state", () => {
++    const root = project();
++    record(root, CURSOR);
++    writeSessionBinding(root, CHAT, "default", null, "unjoined");
++    const before = snapshot(root);
++    expect(resolve(root).kind).toBe("unavailable");
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test.each(["", "- **Scope**: feature\n", "- **Current Stage**: code-generation\n"])(
++    "missing required state fields refuse even an explicit stage: %s", (content) => {
++      const root = project();
++      const dir = record(root, CURSOR);
++      cursor(root, CURSOR);
++      write(join(dir, "aidlc-state.md"), content);
++      const before = snapshot(root);
++      expect(resolve(root, ["--stage", "unit-test-generation"]).kind).toBe("unavailable");
++      expect(snapshot(root)).toEqual(before);
++    },
++  );
++
++  test("a stale binding follows record-core's cursor fallback without rewriting the binding", () => {
++    const root = project();
++    record(root, CURSOR);
++    cursor(root, CURSOR);
++    writeSessionBinding(root, CHAT, "default", BOUND, "switch");
++    const before = snapshot(root);
++    expect(resolve(root)).toMatchObject({ kind: "resolved", selection: { intent: CURSOR, binding: null } });
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test("malformed delegated-worktree provenance refuses instead of guessing a target", () => {
++    const root = project();
++    write(join(root, ".aidlc", "worktree-meta.json"), JSON.stringify({ version: 0, swarmUnit: "unit" }));
++    const before = snapshot(root);
++    expect(resolve(root)).toMatchObject({ kind: "unavailable", reason: "Invalid delegated worktree intent provenance" });
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test("delegated worktree resolution reads parent provenance without binding an ambient session", () => {
++    const root = project();
++    const parentRecord = record(root, CURSOR);
++    cursor(root, CURSOR);
++    write(join(root, "aidlc", "spaces", "default", "intents", "intents.json"), JSON.stringify([
++      { uuid: "00000000-0000-7000-8000-000000000001", slug: "cursor", dirName: CURSOR, status: "in-flight" },
++    ]));
++    const child = join(root, ".aidlc", "worktrees", "bolt-00000001_unit");
++    const childRecord = record(child, CURSOR, "unit-test-generation");
++    const intentRecord = `aidlc/spaces/default/intents/${CURSOR}`;
++    write(join(child, ".aidlc", "worktree-meta.json"), JSON.stringify({
++      version: 1, intentRecord, intentId8: "00000001", repoSelector: null, swarmUnit: "unit", boltSlug: "unit",
++    }));
++    write(join(parentRecord, "audit", "one.md"),
++      event("WORKTREE_CREATED") + `**Bolt slug**: unit\n**Worktree path**: ${child}\n` +
++      `**Intent record**: ${intentRecord}\n**Repo**: -\n**Swarm Unit**: unit\n`);
++    const previous = { ...process.env };
++    process.env.AIDLC_SESSION_OVERRIDE = "report-target-ambient";
++    delete process.env.AIDLC_SESSION_OVERRIDE_SOURCE;
++    try {
++      const before = snapshot(root);
++      expect(resolve(child)).toMatchObject({
++        kind: "resolved", recordDir: childRecord, stage: "unit-test-generation", participation: "participant",
++        selection: { intent: CURSOR, sessionId: null },
++      });
++      expect(snapshot(root)).toEqual(before);
++    } finally {
++      process.env = previous;
++    }
++  });
++
++  test("single reports require an explicit stage and an open synthetic attempt", () => {
++    const root = project();
++    const dir = record(root, CURSOR);
++    cursor(root, CURSOR);
++    write(join(dir, "audit", "one.md"), event("STAGE_STARTED", { workflow: "main", scope: "feature" }));
++    const before = snapshot(root);
++    expect(resolve(root, ["--single"]).kind).toBe("unavailable");
++    expect(resolve(root, ["--single", "--stage", "code-generation"]).kind).toBe("unavailable");
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test("single scope comes only from the bound record's latest isolated start", () => {
++    const root = project();
++    const current = record(root, CURSOR);
++    const selected = record(root, BOUND, "functional-design", "feature");
++    cursor(root, CURSOR);
++    writeSessionBinding(root, CHAT, "default", BOUND, "switch");
++    write(join(current, "audit", "one.md"), event("STAGE_STARTED", { scope: "wrong-record" }));
++    write(join(selected, "audit", "one.md"), event("STAGE_STARTED", { scope: "bugfix" }));
++    const before = snapshot(root);
++    expect(resolve(root, ["--single", "--stage", "code-generation"])).toMatchObject({
++      kind: "resolved", mode: "single", recordDir: selected, stage: "code-generation", stageSource: "explicit",
++      scope: "bugfix", stateContent: null, workflow: "single-stage:code-generation", selection: { intent: BOUND },
++    });
++    expect(snapshot(root)).toEqual(before);
++    write(join(selected, "audit", "one.md"), event("STAGE_STARTED"));
++    expect(resolve(root, ["--single", "--stage", "code-generation"])).toMatchObject({ kind: "resolved", scope: null });
++  });
++
++  test("a space-only single run never borrows the cursor's state or attempt", () => {
++    const root = project();
++    const current = record(root, CURSOR);
++    cursor(root, CURSOR);
++    writeSessionBinding(root, CHAT, "default", null, "switch");
++    const spaceDir = join(root, "aidlc", "spaces", "default", "intents");
++    write(join(current, "audit", "one.md"), event("STAGE_STARTED", { scope: "feature" }));
++    expect(resolve(root, ["--single", "--stage", "code-generation"]).kind).toBe("unavailable");
++    write(join(spaceDir, "audit", "one.md"), event("STAGE_STARTED", { scope: "spike" }));
++    const before = snapshot(root);
++    expect(resolve(root, ["--single", "--stage", "code-generation"])).toMatchObject({
++      kind: "resolved", mode: "single", recordDir: spaceDir, scope: "spike", stateContent: null, selection: { intent: null },
++    });
++    expect(snapshot(root)).toEqual(before);
++  });
++
++  test("closed, cross-shard ambiguous, and unreadable single attempts refuse", () => {
++    const root = project();
++    const dir = record(root, CURSOR);
++    cursor(root, CURSOR);
++    const first = join(dir, "audit", "one.md");
++    write(first, event("STAGE_STARTED", { scope: "feature" }) + event("STAGE_COMPLETED"));
++    expect(resolve(root, ["--single", "--stage", "code-generation"]).kind).toBe("unavailable");
++    write(first, event("STAGE_STARTED", { scope: "feature" }));
++    const second = join(dir, "audit", "two.md");
++    write(second, event("STAGE_STARTED", { scope: "bugfix" }));
++    expect(resolve(root, ["--single", "--stage", "code-generation"]).kind).toBe("unavailable");
++    write(second, event("STAGE_STARTED", { scope: "bugfix", time: "2026-11-05T13:00:00Z" }));
++    expect(resolve(root, ["--single", "--stage", "code-generation"])).toMatchObject({ kind: "resolved", scope: "bugfix" });
++    mkdirSync(join(dir, "audit", "unreadable.md"));
++    const before = snapshot(root);
++    expect(resolve(root, ["--single", "--stage", "code-generation"])).toMatchObject({
++      kind: "unavailable", reason: "The selected record's isolated-attempt evidence could not be read.",
++    });
++    expect(snapshot(root)).toEqual(before);
++  });
++});
++
++describe("project directory context", () => {
++  test("explicit and environment selectors resolve against the command's cwd in order", () => {
++    const cwd = project();
++    const environment = { AIDLC_PROJECT_DIR: "aidlc-project", CLAUDE_PROJECT_DIR: "claude-project" };
++    expect(resolveProjectDirectory({ cwd, explicitDir: "explicit", environment })).toBe(join(cwd, "explicit"));
++    expect(resolveProjectDirectory({ cwd, environment })).toBe(join(cwd, "aidlc-project"));
++    expect(resolveProjectDirectory({ cwd, environment: { CLAUDE_PROJECT_DIR: "claude-project" } })).toBe(join(cwd, "claude-project"));
++    expect(resolveProjectDirectory({ cwd, explicitDir: cwd, environment })).toBe(cwd);
++  });
++
++  test("installed tools and hooks use an open-set harness name; source checkouts use cwd", () => {
++    const cwd = project();
++    const root = join(cwd, "installed");
++    expect(resolveProjectDirectory({ cwd, sourceFile: join(root, ".new-harness", "tools", "aidlc.ts") })).toBe(root);
++    expect(resolveProjectDirectory({ cwd, sourceFile: join(root, ".new-harness", "hooks", "guard.ts"), leaf: "hooks" })).toBe(root);
++    expect(resolveProjectDirectory({ cwd, sourceFile: join(root, "core", "tools", "aidlc.ts") })).toBe(cwd);
++  });
++
++  test("native runtime payloads use cwd without discarding a similarly named project", () => {
++    const cwd = project();
++    const install = join(cwd, "install");
++    const execPath = join(install, "aidlc.exe");
++    const sourceFile = join(install, "runtime", "claude", ".claude", "tools", "aidlc.ts");
++    expect(resolveProjectDirectory({ cwd, sourceFile, native: true, execPath })).toBe(cwd);
++    expect(resolveProjectDirectory({ cwd, sourceFile, native: false, execPath })).toBe(join(install, "runtime", "claude"));
++    const sibling = join(install, "runtime-other", ".claude", "tools", "aidlc.ts");
++    expect(resolveProjectDirectory({ cwd, sourceFile: sibling, native: true, execPath })).toBe(join(install, "runtime-other"));
++  });
++
++  test("a native report observed from another project's install uses the command's cwd", async () => {
++    const installed = project();
++    const target = project();
++    record(installed, CURSOR, "functional-design");
++    cursor(installed, CURSOR);
++    record(target, CURSOR, "code-generation");
++    cursor(target, CURSOR);
++    const outdir = join(installed, ".test-harness", "tools");
++    const built = await Bun.build({
++      entrypoints: [fileURLToPath(new URL("../../core/tools/aidlc-report-target.ts", import.meta.url))],
++      outdir, target: "bun",
++    });
++    expect(built.success, built.logs.map(String).join("\n")).toBe(true);
++    const observer = await import(pathToFileURL(join(outdir, "aidlc-report-target.js")).href);
++    const request = decodeOrchestratorRequest({ argv: ["report", "--result", "completed"] });
++    const context = { cwd: target, environment: {}, sessionId: CHAT };
++    expect(observer.resolveReportTarget({ request, context: { ...context, native: true } })).toMatchObject({
++      kind: "resolved", projectDir: target, stage: "code-generation",
++    });
++    expect(observer.resolveReportTarget({ request, context: { ...context, native: false } })).toMatchObject({
++      kind: "resolved", projectDir: installed, stage: "functional-design",
++    });
++  });
++});
++
++test("a space-only attempt is not an unjoined main workflow", () => {
++  const root = project();
++  write(join(root, "aidlc", "active-space"), "default");
++  write(join(root, "aidlc", "spaces", "default", "intents", "audit", "single.md"), event("STAGE_STARTED", { scope: "feature" }));
++  expect(resolve(root, ["--single", "--stage", "code-generation"])).toMatchObject({ kind: "resolved", mode: "single", participation: "outsider", unjoined: false });
++  writeSessionBinding(root, CHAT, "default", null, "unjoined");
++  expect(resolve(root, ["--single", "--stage", "code-generation"])).toMatchObject({ kind: "resolved", unjoined: true });
++});

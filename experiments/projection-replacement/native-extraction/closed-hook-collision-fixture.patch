@@ -1,0 +1,116 @@
+diff --git a/tests/harness/collision-hook.test.ts b/tests/harness/collision-hook.test.ts
+new file mode 100644
+index 0000000..1be4c30
+--- /dev/null
++++ b/tests/harness/collision-hook.test.ts
+@@ -0,0 +1,6 @@
++import { expect, test } from "bun:test";
++import { installCollisionHook } from "./collision-hook.ts";
++
++test("invalid allocation refuses before accessing the fixture destination", async () => {
++  await expect(installCollisionHook({ projectDir: "\0", messageId: "../escape" })).rejects.toThrow("Invalid fixture message ID");
++});
+diff --git a/tests/harness/collision-hook.ts b/tests/harness/collision-hook.ts
+new file mode 100644
+index 0000000..ffca16a
+--- /dev/null
++++ b/tests/harness/collision-hook.ts
+@@ -0,0 +1,38 @@
++import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
++import { join } from "node:path";
++import { createPluginRuntimePort, preparePluginRuntimeArtifacts } from "../../scripts/plugin-runtime.ts";
++
++/** Test-only source injection: the installed hook closes its allocator at build time. */
++export async function installCollisionHook(input: {
++  readonly projectDir: string;
++  readonly messageId: string;
++}): Promise<void> {
++  if (!/^[0-9a-f]{8}$/.test(input.messageId)) throw new Error("Invalid fixture message ID");
++  const repository = join(import.meta.dir, "..", "..");
++  const fixture = mkdtempSync(join(repository, "tmp-collision-hook-"));
++  const sourceRoot = join(fixture, "core");
++  try {
++    cpSync(join(repository, "core"), sourceRoot, { recursive: true });
++    const store = join(sourceRoot, "tools", "aidlc-message-store.ts");
++    const source = readFileSync(store, "utf8");
++    const allocation = "const id = candidate();";
++    if (source.split(allocation).length !== 2) throw new Error("Fixture allocator source seam changed");
++    writeFileSync(store, source.replace(allocation, `const id = ${JSON.stringify(input.messageId)};`));
++    const file = "hooks/aidlc-record-human-turn.ts";
++    const prepared = await preparePluginRuntimeArtifacts({
++      pluginRoot: sourceRoot,
++      files: [file],
++      sources: [{ file, source: readFileSync(join(sourceRoot, file), "utf8") }],
++      closedModules: [file],
++      port: createPluginRuntimePort({ projectRoot: repository }),
++    });
++    if (prepared.kind === "refused") throw new Error(prepared.message);
++    const artifact = prepared.artifacts[0];
++    if (prepared.artifacts.length !== 1 || artifact?.file !== file) throw new Error("Unexpected collision hook products");
++    const destination = join(input.projectDir, ".claude", file);
++    mkdirSync(join(input.projectDir, ".claude", "hooks"), { recursive: true });
++    writeFileSync(destination, artifact.content);
++  } finally {
++    rmSync(fixture, { recursive: true, force: true });
++  }
++}
+diff --git a/tests/unit/t-host-turns-not-the-persons.test.ts b/tests/unit/t-host-turns-not-the-persons.test.ts
+index a91d193..11d5cb0 100644
+--- a/tests/unit/t-host-turns-not-the-persons.test.ts
++++ b/tests/unit/t-host-turns-not-the-persons.test.ts
+@@ -46,6 +46,7 @@ import * as originLib from "../../core/tools/aidlc-lib.ts";
+ import * as originMessages from "../../core/tools/aidlc-message-store.ts";
+ import { settleClaudeTurns } from "../../core/tools/aidlc-claude-turn-origin.ts";
+ import { hostTurnFactRel } from "../../core/tools/aidlc-turn-origin-evidence.ts";
++import { installCollisionHook } from "../harness/collision-hook.ts";
+ import { setGuardPolicyLine } from "../../core/tools/aidlc-lib.ts";
+ import { kiroCliPrompt, kiroCliRecord, kiroCliToolResults, kiroCliToolUse, kiroCliSteerText } from "../harness/kiro-cli-record.ts";
+ 
+@@ -1139,7 +1140,11 @@ test("durable Claude origin: legacy plan reply command does not call a scheduled
+     expect(reply.out).toContain("the person has not replied");
+   } finally { rmSync(project.dir, { recursive: true, force: true }); }
+ });
+-test("durable Claude origin: a same-ID row from another clone is not withdrawn", () => {
++function firstHumanTurnField(input: { projectDir: string; field: string }): string | null {
++  return originLib.auditBlockField(rows(input.projectDir, "HUMAN_TURN")[0] ?? "", input.field);
++}
++
++test("durable Claude origin: a same-ID row from another clone is not withdrawn", async () => {
+   const human = scratchProject("claude");
+   const host = scratchProject("claude");
+   const humanSession = "7da13b82-7e1f-4a4b-8d2c-3f8e9a0b1c2d";
+@@ -1152,24 +1157,26 @@ test("durable Claude origin: a same-ID row from another clone is not withdrawn",
+     run(project, [join(project.dir, ".claude", "tools", "aidlc.ts"), "engine", "hook", "record-human-turn"],
+       JSON.stringify({ hook_event_name: "UserPromptSubmit", session_id: session, cwd: project.dir, permission_mode: "default",
+         prompt, prompt_id: "collision-target", transcript_path: transcript }), { CLAUDE_PROJECT_DIR: project.dir });
++  const id = "1234abcd";
+   let failure: { mockRestore(): void } | undefined;
+   try {
++    // Instrument only allocation before the shared production closure compiler.
++    // Both hooks emit the fixed ID in genuinely distinct disposable clones.
++    await installCollisionHook({ projectDir: human.dir, messageId: id });
++    cpSync(join(human.dir, ".claude", "hooks", "aidlc-record-human-turn.ts"),
++      join(host.dir, ".claude", "hooks", "aidlc-record-human-turn.ts"));
++    writeFileSync(join(host.dir, "aidlc", ".aidlc-clone-id"), "testcloneidhostcollision\n");
+     writeFileSync(humanTranscript, JSON.stringify({ type: "user", promptId: "collision-target",
+       message: { role: "user", content: humanText }, turnOrigin: "human", promptSource: "typed", origin: { kind: "human" } }) + "\n");
+     const first = capture(human, humanSession, humanText, humanTranscript);
+     expect(first.code, first.out).toBe(0);
+     const row = originLib.readAuditShardEvents(human.dir).find(row => row.event === "HUMAN_TURN")!;
+-    const id = originLib.auditBlockField(row.block, "Message Id")!;
+-    expect(id).toMatch(/^[0-9a-f]{8}$/);
+-    // Test-only deterministic allocator, in this disposable installed copy.
+-    // Both audit rows are still emitted by their actual hook, never fabricated.
+-    const store = join(host.dir, ".claude", "tools", "aidlc-message-store.ts");
+-    const source = readFileSync(store, "utf8");
+-    expect(source).toContain("const id = candidate();");
+-    writeFileSync(store, source.replace("const id = candidate();", `const id = ${JSON.stringify(id)};`));
++    expect(originLib.auditBlockField(row.block, "Message Id")).toBe("1234abcd");
+     writeFileSync(hostTranscript, "");
+     const second = capture(host, hostSession, hostText, hostTranscript);
+     expect(second.code, second.out).toBe(0);
++    expect(firstHumanTurnField({ projectDir: host.dir, field: "Message Id" })).toBe("1234abcd");
++    expect(firstHumanTurnField({ projectDir: host.dir, field: "Session" })).toBe("8da13b82-7e1f-4a4b-8d2c-3f8e9a0b1c2d");
+     cpSync(row.shard, join(seededAuditDir(host.dir), "other-clone-human.md"));
+     expect(originLib.readAuditShardEvents(host.dir).filter(row => row.event === "HUMAN_TURN")).toHaveLength(2);
+     appendFileSync(hostTranscript, JSON.stringify({ type: "user", promptId: "collision-target",

@@ -6,7 +6,7 @@ import type { RunnerCompiler, RunnerRequest, GeneratedRunnerContext, GeneratedRu
 import type { NativeResource } from "../domain/native-rendering.ts";
 import type { CompiledAgentStageCatalogue } from "../domain/compiled-agent-stages.ts";
 
-export type AgentDefinitionProjection = AgentPreparationInput & { readonly emitter?: AgentNativeEmitter };
+export type AgentDefinitionProjection = AgentPreparationInput & { readonly emitter?: AgentNativeEmitter; readonly footprint?: "bundle" | "definition" };
 export type AuthoredSkillProjection = { readonly text: string; readonly origin: SourceOrigin; readonly context: SkillContext };
 export type GeneratedRunnerProjectionRequest = { readonly compiler: RunnerCompiler; readonly requests: readonly RunnerRequest[]; readonly context: GeneratedRunnerContext };
 export type GeneratedRunnerSet = { readonly runners: readonly GeneratedRunnerProjection[]; readonly resources: readonly NativeResource[] };

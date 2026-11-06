@@ -3,6 +3,8 @@ import type { DistributionSeed } from "./distribution-artifact.ts";
 import { planPreparedFileAdditions } from "./prepared-file-additions.ts";
 import { finding, sourceKey, type Outcome, type pathStatus } from "./model.ts";
 export type WorkflowRuntime = { readonly seed: DistributionSeed; readonly compiledPaths: readonly string[]; readonly addedPaths: readonly string[] };
+export type WorkflowFileSupply = { readonly projectedPaths: readonly string[]; readonly compiledPaths: readonly string[]; readonly preparedPaths: readonly string[]; readonly suppliedPaths: readonly string[] };
+export const describeWorkflowFileSupply = ({ projectedPaths, compiledPaths, preparedPaths = [], retainedPaths }: { readonly projectedPaths: readonly string[]; readonly compiledPaths: readonly string[]; readonly preparedPaths?: readonly string[]; readonly retainedPaths: readonly string[] }): WorkflowFileSupply => ({ projectedPaths: [...projectedPaths], compiledPaths: retainedPaths.filter((path) => compiledPaths.includes(path)), preparedPaths: retainedPaths.filter((path) => preparedPaths.includes(path) && !compiledPaths.includes(path)), suppliedPaths: retainedPaths.filter((path) => !compiledPaths.includes(path) && !preparedPaths.includes(path)) });
 export const prepareWorkflowRuntime = ({ seed, workflow, mode, rules }: { readonly seed: DistributionSeed; readonly workflow: CompiledWorkflowSource; readonly mode: number; readonly rules: { readonly path: typeof pathStatus; readonly encode: (input: { readonly text: string }) => Uint8Array } }): Outcome<WorkflowRuntime> => {
   const paths = ["stage-graph.json", "scope-grid.json"].map((name) => `${seed.binding.directory}/tools/data/${name}`);
   const outputs = [workflow.graph, workflow.grid];

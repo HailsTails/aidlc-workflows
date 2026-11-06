@@ -1,0 +1,44 @@
+diff --git a/core/tools/aidlc-init.ts b/core/tools/aidlc-init.ts
+index fd0595afb..42b3b4c37 100644
+--- a/core/tools/aidlc-init.ts
++++ b/core/tools/aidlc-init.ts
+@@ -10507,23 +10507,23 @@ function mergeJsonMapEntries({ targetMap, sourceMap, priorEntries, shippedHashes
+   const nextEntries: Record<string, string> = {};
+   for (const [entry, value] of Object.entries(sourceMap)) {
+     const desiredHash = sha256Bytes(canonical(value));
+-    const currentHash = entry in map ? sha256Bytes(canonical(map[entry])) : undefined;
+-    const priorHash = priorEntries[entry];
++    const currentHash = Object.hasOwn(map, entry) ? sha256Bytes(canonical(map[entry])) : undefined;
++    const priorHash = Object.hasOwn(priorEntries, entry) ? priorEntries[entry] : undefined;
+     const decision = decideJsonMapEntry({
+       incoming: { kind: "present", hash: desiredHash },
+       current: currentHash === undefined ? { kind: "absent" } : { kind: "present", hash: currentHash },
+       recordedHash: priorHash,
+-      legacySignature: !priorHash && currentHash !== undefined && (shippedHashes[entry] ?? []).includes(currentHash) ? "matched" : "unmatched",
++      legacySignature: !priorHash && currentHash !== undefined && Object.hasOwn(shippedHashes, entry) && (shippedHashes[entry] ?? []).includes(currentHash) ? "matched" : "unmatched",
+       overwrite,
+       addition,
+     });
+     if (decision.kind === "set") {
+-      map[entry] = value;
+-      nextEntries[entry] = decision.recordHash;
+-    } else if (decision.kind === "record") nextEntries[entry] = decision.hash;
++      Object.defineProperty(map, entry, { value, enumerable: true, configurable: true, writable: true });
++      Object.defineProperty(nextEntries, entry, { value: decision.recordHash, enumerable: true, configurable: true, writable: true });
++    } else if (decision.kind === "record") Object.defineProperty(nextEntries, entry, { value: decision.hash, enumerable: true, configurable: true, writable: true });
+   }
+   for (const [entry, priorHash] of Object.entries(priorEntries)) {
+-    if (entry in sourceMap || !(entry in map)) continue;
++    if (Object.hasOwn(sourceMap, entry) || !Object.hasOwn(map, entry)) continue;
+     const decision = decideJsonMapEntry({
+       incoming: { kind: "absent" },
+       current: { kind: "present", hash: sha256Bytes(canonical(map[entry])) },
+@@ -10832,7 +10832,7 @@ function planRootIntegrations(
+       } else if (mcpMode === "defaults") {
+         const reconciliation = mergeJsonMapEntries({ targetMap, sourceMap, priorEntries, shippedHashes, overwrite: force ? "force" : "protect", addition: keepPresent ? "present-only" : "allow" });
+         targetMap = reconciliation.map;
+-        Object.assign(nextEntries, reconciliation.entries);
++        Object.defineProperties(nextEntries, Object.getOwnPropertyDescriptors(reconciliation.entries));
+       } else {
+         for (const [entry, priorHash] of Object.entries(priorEntries)) {
+           if (!(entry in targetMap)) continue;

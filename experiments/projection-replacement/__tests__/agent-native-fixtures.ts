@@ -169,7 +169,7 @@ export const rendererExpectedEmitterInput = {
   nativeModel: { model: "sonnet", effort: null },
 } as const;
 
-export const rendererExpectedTextCalls = [
+export const rendererDefinitionTextCalls = [
   [
     {
       text: "\n# Metrics\nRead {{HARNESS_DIR}}/rules/.\n",
@@ -206,6 +206,10 @@ export const rendererExpectedTextCalls = [
       },
     },
   ],
+];
+
+export const rendererExpectedTextCalls = [
+  ...rendererDefinitionTextCalls,
   [
     {
       text: "# Methodology\nCompare release evidence.\n",

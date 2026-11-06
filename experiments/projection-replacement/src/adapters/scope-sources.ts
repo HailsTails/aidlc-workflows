@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { parseScopeSource } from "./scope-source.ts";
 import { createOwnershipDigest } from "./projection-ownership.ts";
-import { createWorkflowSourceInventory } from "./workflow-source-inventory.ts";
+import { createAuthoredSourceInventory } from "./authored-source-inventory.ts";
 import type { ScopeSources } from "../domain/scope-definition.ts";
 import type { SourceBasis } from "../domain/source-origin.ts";
 import { finding, type Outcome } from "../domain/model.ts";
@@ -9,7 +9,7 @@ const inventory = z.array(z.strictObject({ path: z.string().regex(/^core\/scopes
 export type ScopeSourceReader = { readonly load: (input: { readonly sourceRoot: string; readonly basis: SourceBasis }) => Promise<Outcome<ScopeSources>> };
 export type ScopeSourceOperations = { readonly inventory: (input: { readonly sourceRoot: string }) => Promise<unknown>; readonly digest: (input: { readonly bytes: Uint8Array }) => string };
 export const createScopeSourceOperations = (): ScopeSourceOperations => {
-  const source = createWorkflowSourceInventory();
+  const source = createAuthoredSourceInventory();
   return { digest: createOwnershipDigest(), inventory: ({ sourceRoot }) => source.read({ sourceRoot, directory: "core/scopes" }) };
 };
 const admitSources = ({ files, basis, operations }: { readonly files: z.infer<typeof inventory>; readonly basis: SourceBasis; readonly operations: ScopeSourceOperations }): Outcome<ScopeSources> => {

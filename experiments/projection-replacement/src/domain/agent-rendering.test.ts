@@ -1,12 +1,23 @@
 import {
   rendererExpectedEmitterInput,
+  rendererDefinitionTextCalls,
   rendererExpectedTextCalls,
   rendererExpectedProjection,
   rendererExpectedResidueCalls,
 } from "../../__tests__/agent-native-fixtures.ts";
 import { expect, mock, test } from "bun:test";
 import { claudeAgentContext, preparedMetrics } from "../../__tests__/agent-fixtures.ts";
-import { createAgentRenderer, delegatedAgentPreflight } from "./agent-rendering.ts";
+import { createAgentRenderer, createAgentDefinitionRenderer, delegatedAgentPreflight } from "./agent-rendering.ts";
+
+test("definition footprint emits the prepared native profile without claiming independent knowledge files", () => {
+  const text = mock().mockReturnValueOnce("projected body").mockReturnValueOnce("projected frontmatter").mockReturnValueOnce("projected description");
+  const residue = mock().mockReturnValue([]);
+  const emit = mock().mockReturnValue({ status: "ok", value: [{ kind: "file", path: ".claude/agents/test-pro-metrics-agent.md", body: "native persona" }] });
+  expect(createAgentDefinitionRenderer({ rules: { text, residue }, emitter: { emit } }).render(preparedMetrics)).toEqual({ status: "ok", value: { origin: preparedMetrics.agent.origin, harness: "claude", resources: [{ kind: "file", path: ".claude/agents/test-pro-metrics-agent.md", body: "native persona" }], participation: preparedMetrics.participation } });
+  expect(emit).toHaveBeenCalledWith(rendererExpectedEmitterInput);
+  expect(text.mock.calls).toEqual(rendererDefinitionTextCalls);
+  expect(residue).toHaveBeenCalledWith({ text: "native persona", subject: ".claude/agents/test-pro-metrics-agent.md" });
+});
 
 test("renderer supplies projected content to a native emitter and collects knowledge", () => {
   const text = mock()

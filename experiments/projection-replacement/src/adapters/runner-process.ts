@@ -30,17 +30,24 @@ const compile = async () => {
     const graph = process.env.AIDLC_STAGE_GRAPH;
     if (!graph || !await Bun.file(graph).exists()) return { status: "unavailable", detail: "compiled stage graph is unavailable" };
     const scopeRoot = paths.resolveHarnessPath(["scopes"]);
-    const directoryFingerprint = async () => Promise.all([input.binding.directory + "/skills", input.binding.directory + "/scopes"].map(async relative => {
+    const observeDirectory = async ({ relative }) => {
       try {
         const stat = await Bun.file(input.root + "/" + relative).stat();
-        if (!stat.isDirectory()) throw new Error("native runner input is not a directory: " + relative);
-        return { path: relative, status: "present" };
+        return stat.isDirectory()
+          ? { status: "ok", directory: { path: relative, status: "present" } }
+          : { status: "unavailable", detail: "native runner input is not a directory: " + relative };
       } catch (error) {
-        if (error?.code === "ENOENT") return { path: relative, status: "absent" };
-        throw error;
+        return error?.code === "ENOENT"
+          ? { status: "ok", directory: { path: relative, status: "absent" } }
+          : { status: "unavailable", detail: "native runner input directory observation unavailable: " + relative };
       }
-    }));
+    };
+    const directoryFingerprint = async () => {
+      const observed = await Promise.all([input.binding.directory + "/skills", input.binding.directory + "/scopes"].map(relative => observeDirectory({ relative })));
+      return observed.find(entry => entry.status !== "ok") ?? { status: "ok", directories: observed.map(entry => entry.directory) };
+    };
     const beforeDirectories = await directoryFingerprint();
+    if (beforeDirectories.status !== "ok") return beforeDirectories;
     const artifact = await import(Bun.pathToFileURL(input.root + "/" + input.binding.directory + "/tools/aidlc-distribution.ts").href);
     const scopeNames = () => artifact.walkFiles(scopeRoot).map(name => name.replaceAll("\\\\", "/")).filter(name => !name.includes("/") && name.endsWith(".md")).sort().map(name => "scopes/" + name);
     const inputPaths = ["tools/data/harness.json", "tools/data/stage-graph.json", "tools/data/scope-grid.json", ...scopeNames()];
@@ -57,8 +64,9 @@ const compile = async () => {
     const after = await fingerprint();
     const afterNames = scopeNames();
     const afterDirectories = await directoryFingerprint();
-    if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(inputPaths.slice(3)) !== JSON.stringify(afterNames) || JSON.stringify(beforeDirectories) !== JSON.stringify(afterDirectories)) return { status: "unavailable", detail: "native runner inputs changed during discovery; retry from a stable prepared runtime" };
-    return { status: "ok", scope: "native-generated-runners", skillRoot, entries, inputs: after, directoryInputs: afterDirectories };
+    if (afterDirectories.status !== "ok") return afterDirectories;
+    if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(inputPaths.slice(3)) !== JSON.stringify(afterNames) || JSON.stringify(beforeDirectories.directories) !== JSON.stringify(afterDirectories.directories)) return { status: "unavailable", detail: "native runner inputs changed during discovery; retry from a stable prepared runtime" };
+    return { status: "ok", scope: "native-generated-runners", skillRoot, entries, inputs: after, directoryInputs: afterDirectories.directories };
   }
   if (!matches) return unavailable({ detail: "prepared runtime does not declare the requested harness binding" });
   const generator = await import(input.moduleUrl);

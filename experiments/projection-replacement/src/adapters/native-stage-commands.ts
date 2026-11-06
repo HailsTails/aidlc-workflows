@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createNativeCompilerProcessOperations, compilerSystemEnvironment, type NativeCompilerProcessOperations } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, compilerSystemEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnInput, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 import type { NativeStageCommandPreparer, NativeStageCommandRequest, NativeStageCommands } from "../domain/native-stage-commands.ts";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 const modules = ["scripts/native-command-text.ts", "scripts/native-command-context.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts", "core/tools/aidlc-color.ts"] as const;
@@ -35,13 +35,25 @@ const admitReply = ({ decoded, request }: { readonly decoded: unknown; readonly 
   const origins = reply.inputs.map((input) => ({ ...request.basis, path: input.path }));
   return { status: "ok", value: { binding: request.binding, compiler: { ...request.basis, path: "scripts/native-command-text.ts" }, inputs: reply.inputs, documents: reply.documents.map((document) => ({ ...document, origins })) } };
 };
-export const createNativeStageCommandPreparer = ({ binary = "bun", operations = createNativeCompilerProcessOperations() }: { readonly binary?: string; readonly operations?: NativeCompilerProcessOperations } = {}): NativeStageCommandPreparer => ({ prepare: (request) => {
+const admitStageRequest = ({ request }: { readonly request: NativeStageCommandRequest }): Outcome<NativeStageCommandRequest> => {
   const prefix = `${request.binding.directory}/aidlc-common/stages/`;
-  if (request.basis.source.kind !== "core" || request.documents.length === 0 || new Set(request.documents.map((document) => document.path)).size !== request.documents.length || request.documents.some((document) => pathStatus({ path: document.path }) === "unsafe" || !document.path.startsWith(prefix) || !/^(initialization|ideation|inception|construction|operation)\/[a-z][a-z0-9-]*\.md$/.test(document.path.slice(prefix.length)))) return { status: "invalid", findings: [finding({ code: "invalid-input", subject: "native-stage-commands", detail: "prepare nonempty unique core stage documents within the selected harness's native phase/slug layout" })] };
+  return request.basis.source.kind !== "core" || request.documents.length === 0 || new Set(request.documents.map((document) => document.path)).size !== request.documents.length || request.documents.some((document) => pathStatus({ path: document.path }) === "unsafe" || !document.path.startsWith(prefix) || !/^(initialization|ideation|inception|construction|operation)\/[a-z][a-z0-9-]*\.md$/.test(document.path.slice(prefix.length)))
+    ? { status: "invalid", findings: [finding({ code: "invalid-input", subject: "native-stage-commands", detail: "prepare nonempty unique core stage documents within the selected harness's native phase/slug layout" })] } : { status: "ok", value: request };
+};
+const stageProcessEnvironment = ({ root, request, inherited }: { readonly root: string; readonly request: NativeStageCommandRequest; readonly inherited: Readonly<Record<string, string | undefined>> }): Readonly<Record<string, string | undefined>> => ({
+  ...compilerSystemEnvironment({ inherited }), ...Object.fromEntries([["HOME", `${root}/.native-text-home`], ["USERPROFILE", `${root}/.native-text-home`], ["APPDATA", `${root}/.native-text-home`], ["LOCALAPPDATA", `${root}/.native-text-home`], ["AIDLC_RUNTIME_PROJECT_DIR", root], ["AIDLC_PROJECT_DIR", root], ["AIDLC_HARNESS_DIR", request.binding.directory], ["AIDLC_HARNESS_NAME", request.binding.harness]]),
+});
+const stageProcessInput = ({ request, binary, operations }: { readonly request: NativeStageCommandRequest; readonly binary: string; readonly operations: NativeCompilerProcessOperations }): NativeCompilerSpawnInput => {
   const root = Bun.fileURLToPath(Bun.pathToFileURL(request.sourceRoot));
-  const env = { ...compilerSystemEnvironment({ inherited: operations.environment() }), ...Object.fromEntries([["HOME", `${root}/.native-text-home`], ["USERPROFILE", `${root}/.native-text-home`], ["APPDATA", `${root}/.native-text-home`], ["LOCALAPPDATA", `${root}/.native-text-home`], ["AIDLC_RUNTIME_PROJECT_DIR", root], ["AIDLC_PROJECT_DIR", root], ["AIDLC_HARNESS_DIR", request.binding.directory], ["AIDLC_HARNESS_NAME", request.binding.harness]]) };
-  const reply = operations.spawn({ binary, args: ["--no-install", "--eval", nativeProgram], cwd: root, env, input: JSON.stringify({ root, binding: request.binding, documents: request.documents }) });
-  if (reply.error !== null || reply.exitCode !== 0 || reply.stderr.trim().length > 0) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "native-stage-commands", detail: `source-owned native text process unavailable or reported diagnostics: ${reply.error ?? reply.stderr.trim()}` })] };
-  try { return admitReply({ decoded: JSON.parse(reply.stdout), request }); }
+  return { binary, args: ["--no-install", "--eval", nativeProgram], cwd: root, env: stageProcessEnvironment({ root, request, inherited: operations.environment() }), input: JSON.stringify({ root, binding: request.binding, documents: request.documents }) };
+};
+const decodeStageReply = ({ stdout, request }: { readonly stdout: string; readonly request: NativeStageCommandRequest }): Outcome<NativeStageCommands> => {
+  try { return admitReply({ decoded: JSON.parse(stdout), request }); }
   catch { return { status: "invalid", findings: [finding({ code: "invalid-json", subject: "native-stage-commands", detail: "native text process must return one JSON response" })] }; }
-} });
+};
+const stageProcessOutcome = ({ reply, request }: { readonly reply: NativeCompilerSpawnReply; readonly request: NativeStageCommandRequest }): Outcome<NativeStageCommands> => reply.error !== null || reply.exitCode !== 0 || reply.stderr.trim().length > 0
+  ? { status: "invalid", findings: [finding({ code: "capability-gap", subject: "native-stage-commands", detail: `source-owned native text process unavailable or reported diagnostics: ${reply.error ?? reply.stderr.trim()}` })] }
+  : decodeStageReply({ stdout: reply.stdout, request });
+const executeStagePreparation = ({ request, binary, operations }: { readonly request: NativeStageCommandRequest; readonly binary: string; readonly operations: NativeCompilerProcessOperations }): Outcome<NativeStageCommands> => stageProcessOutcome({ reply: operations.spawn(stageProcessInput({ request, binary, operations })), request });
+const continueStageRequest = ({ admitted, consume }: { readonly admitted: Outcome<NativeStageCommandRequest>; readonly consume: (request: NativeStageCommandRequest) => Outcome<NativeStageCommands> }): Outcome<NativeStageCommands> => admitted.status === "invalid" ? admitted : consume(admitted.value);
+export const createNativeStageCommandPreparer = ({ binary = "bun", operations = createNativeCompilerProcessOperations() }: { readonly binary?: string; readonly operations?: NativeCompilerProcessOperations } = {}): NativeStageCommandPreparer => ({ prepare: (request) => continueStageRequest({ admitted: admitStageRequest({ request }), consume: (admitted) => executeStagePreparation({ request: admitted, binary, operations }) }) });

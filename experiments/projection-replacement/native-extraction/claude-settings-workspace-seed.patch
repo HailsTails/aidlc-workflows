@@ -1,0 +1,354 @@
+diff --git a/scripts/authored-text.test.ts b/scripts/authored-text.test.ts
+new file mode 100644
+index 000000000..2e5b34d07
+--- /dev/null
++++ b/scripts/authored-text.test.ts
+@@ -0,0 +1,23 @@
++import { expect, mock, test } from "bun:test";
++import { substituteAuthoredTokens, type AuthoredInvocationPort } from "./authored-text.ts";
++
++test("authored harness tokens are replaced before the isolated invocation delegate", () => {
++  const substitute = mock<AuthoredInvocationPort["substitute"]>().mockReturnValue("delegated");
++  expect(substituteAuthoredTokens({ source: "{{HARNESS_DIR}}/{{HARNESS_DIR}} {{OPTION_LETTERS}} {{INVOKE}} {{TOOL_PREFIX}} {{TRUSTED_NAMESPACE}}", harnessDir: ".renamed", invoke: "bun .renamed/tools/aidlc.ts", invocation: { substitute } })).toBe("delegated");
++  expect(substitute.mock.calls).toEqual([[{ source: ".renamed/.renamed {{OPTION_LETTERS}} {{INVOKE}} {{TOOL_PREFIX}} {{TRUSTED_NAMESPACE}}", harnessDir: ".renamed", invoke: "bun .renamed/tools/aidlc.ts" }]]);
++});
++
++test.each([
++  { letters: "A-D", expected: ".kiro A-D A-D {{INVOKE}}" },
++  { letters: "", expected: ".kiro   {{INVOKE}}" },
++])("explicit option letters are supplied before Native invocation projection: $letters", ({ letters, expected }) => {
++  const substitute = mock<AuthoredInvocationPort["substitute"]>().mockReturnValue("native reply");
++  expect(substituteAuthoredTokens({ source: "{{HARNESS_DIR}} {{OPTION_LETTERS}} {{OPTION_LETTERS}} {{INVOKE}}", harnessDir: ".kiro", invoke: "aidlc", letters, invocation: { substitute } })).toBe("native reply");
++  expect(substitute.mock.calls).toEqual([[{ source: expected, harnessDir: ".kiro", invoke: "aidlc" }]]);
++});
++
++test("unknown authored tokens and shell environment substitutions are untouched before delegation", () => {
++  const substitute = mock<AuthoredInvocationPort["substitute"]>().mockReturnValue("native reply");
++  expect(substituteAuthoredTokens({ source: "${CONTEXT7_API_KEY} {{UNKNOWN}} {{HARNESS_DIRECTORY}}", harnessDir: ".claude", invoke: "bun .claude/tools/aidlc.ts", invocation: { substitute } })).toBe("native reply");
++  expect(substitute.mock.calls).toEqual([[{ source: "${CONTEXT7_API_KEY} {{UNKNOWN}} {{HARNESS_DIRECTORY}}", harnessDir: ".claude", invoke: "bun .claude/tools/aidlc.ts" }]]);
++});
+diff --git a/scripts/authored-text.ts b/scripts/authored-text.ts
+new file mode 100644
+index 000000000..35c2cbb82
+--- /dev/null
++++ b/scripts/authored-text.ts
+@@ -0,0 +1,15 @@
++import { substituteRuntimeInvocation } from "./runtime-module.ts";
++
++export type AuthoredInvocationRequest = { readonly source: string; readonly harnessDir: string; readonly invoke: string };
++export type AuthoredInvocationPort = { readonly substitute: (input: AuthoredInvocationRequest) => string };
++export type AuthoredTextRequest = AuthoredInvocationRequest & { readonly letters?: string; readonly invocation?: AuthoredInvocationPort };
++export const createAuthoredInvocationPort = (): AuthoredInvocationPort => ({ substitute: substituteRuntimeInvocation });
++
++function authoredDirectoryText({ source, harnessDir, letters }: AuthoredTextRequest): string {
++  const lettered = letters === undefined ? source : source.replace(/\{\{OPTION_LETTERS\}\}/g, letters);
++  return lettered.replace(/\{\{HARNESS_DIR\}\}/g, harnessDir);
++}
++
++export function substituteAuthoredTokens({ invocation = createAuthoredInvocationPort(), ...request }: AuthoredTextRequest): string {
++  return invocation.substitute({ source: authoredDirectoryText(request), harnessDir: request.harnessDir, invoke: request.invoke });
++}
+diff --git a/scripts/claude-settings.test.ts b/scripts/claude-settings.test.ts
+new file mode 100644
+index 000000000..7cde5c1d4
+--- /dev/null
++++ b/scripts/claude-settings.test.ts
+@@ -0,0 +1,33 @@
++import { expect, test } from "bun:test";
++import { prepareClaudeSettingsText } from "./claude-settings.ts";
++
++test("expands the first authored glob using explicit ordered capabilities while retaining unrelated JSON", () => {
++  expect(prepareClaudeSettingsText({ text: '{"z":1,"permissions":{"deny":["Secret"],"allow":["Read","Bash(bun .authored/tools/aidlc-*)",null,{"custom":true},"Bash(bun .other/tools/aidlc-*)"],"extra":"keep"},"tail":"${CONTEXT7_API_KEY}"}', dispatcherCommands: ["doctor", "config --show", "doctor"], toolScripts: ["aidlc-doc.ts", "aidlc-doc.ts"] })).toEqual({ kind: "prepared", content: "{\n  \"z\": 1,\n  \"permissions\": {\n    \"deny\": [\n      \"Secret\"\n    ],\n    \"allow\": [\n      \"Read\",\n      \"Bash(bun .authored/tools/aidlc.ts doctor)\",\n      \"Bash(bun .authored/tools/aidlc.ts config --show)\",\n      \"Bash(bun .authored/tools/aidlc.ts doctor)\",\n      \"Bash(bun .authored/tools/aidlc-doc.ts)\",\n      \"Bash(bun .authored/tools/aidlc-doc.ts *)\",\n      \"Bash(bun .authored/tools/aidlc-doc.ts)\",\n      \"Bash(bun .authored/tools/aidlc-doc.ts *)\",\n      null,\n      {\n        \"custom\": true\n      },\n      \"Bash(bun .other/tools/aidlc-*)\"\n    ],\n    \"extra\": \"keep\"\n  },\n  \"tail\": \"${CONTEXT7_API_KEY}\"\n}\n" });
++});
++
++test("every duplicate equal to the first glob expands while a different matching glob remains authored", () => {
++  expect(prepareClaudeSettingsText({ text: '{"permissions":{"allow":["Bash(bun .x/tools/aidlc-*)","Bash(bun .y/tools/aidlc-*)","Bash(bun .x/tools/aidlc-*)"]}}', dispatcherCommands: ["status"], toolScripts: [] })).toEqual({ kind: "prepared", content: "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(bun .x/tools/aidlc.ts status)\",\n      \"Bash(bun .y/tools/aidlc-*)\",\n      \"Bash(bun .x/tools/aidlc.ts status)\"\n    ]\n  }\n}\n" });
++});
++
++test("empty capability lists remove authored expansion slots without inventing grants", () => {
++  expect(prepareClaudeSettingsText({ text: '{"permissions":{"allow":[false,17,"Bash(bun .x/tools/aidlc-*)","WebFetch"]}}', dispatcherCommands: [], toolScripts: [] })).toEqual({ kind: "prepared", content: "{\n  \"permissions\": {\n    \"allow\": [\n      false,\n      17,\n      \"WebFetch\"\n    ]\n  }\n}\n" });
++});
++
++test("unrelated prototype-like JSON keys survive admission and serialization", () => {
++  expect(prepareClaudeSettingsText({ text: '{"__proto__":{"root":"keep"},"permissions":{"__proto__":"inner","allow":["Bash(bun .x/tools/aidlc-*)"]},"constructor":"keep"}', dispatcherCommands: ["status"], toolScripts: [] })).toEqual({ kind: "prepared", content: "{\n  \"__proto__\": {\n    \"root\": \"keep\"\n  },\n  \"permissions\": {\n    \"__proto__\": \"inner\",\n    \"allow\": [\n      \"Bash(bun .x/tools/aidlc.ts status)\"\n    ]\n  },\n  \"constructor\": \"keep\"\n}\n" });
++});
++
++test.each([
++  "null", "[]", "{}", '{"permissions":null}', '{"permissions":{"allow":"Bash(bun .x/tools/aidlc-*)"}}',
++  '{"permissions":{"allow":["Bash(bun .x/tools/aidlc-*.ts)"]}}',
++  '{"permissions":{"allow":["Bash(bun .x/tools/aidlc*)"]}}',
++  '{"permissions":{"allow":["Bash(bun .space dir/tools/aidlc-*)"]}}',
++  '{"permissions":{"allow":["Bash(bun .x/tools/aidlc-*) extra"]}}',
++  '{"permissions":{"allow":[{"value":"Bash(bun .x/tools/aidlc-*)"}]}}',
++])("retains the exact no-glob refusal for nonmatching or malformed settings: %s", (text) => {
++  expect(prepareClaudeSettingsText({ text, dispatcherCommands: ["status"], toolScripts: [] })).toEqual({ kind: "refused", message: "[claude] settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand" });
++});
++
++test.each(["", "{", '{"permissions":{},}'])("JSON syntax failure is bounded refusal data: %s", (text) => {
++  expect(prepareClaudeSettingsText({ text, dispatcherCommands: [], toolScripts: [] })).toEqual({ kind: "refused", message: "[claude] settings.json must contain valid JSON" });
++});
+diff --git a/scripts/claude-settings.ts b/scripts/claude-settings.ts
+new file mode 100644
+index 000000000..498dd9e28
+--- /dev/null
++++ b/scripts/claude-settings.ts
+@@ -0,0 +1,53 @@
++import { z } from "zod";
++
++export type ClaudeSettingsPreparation = { readonly kind: "prepared"; readonly content: string } | { readonly kind: "refused"; readonly message: string };
++export type ClaudeSettingsRequest = { readonly text: string; readonly dispatcherCommands: readonly string[]; readonly toolScripts: readonly string[] };
++const entrySchema = z.tuple([z.string(), z.unknown()]);
++const settingsSchema = z.strictObject({ settingsEntries: z.array(entrySchema), permissionEntries: z.array(entrySchema), allow: z.array(z.unknown()) });
++type AdmittedSettings = z.infer<typeof settingsSchema>;
++type SettingsAdmission = { readonly kind: "admitted"; readonly settings: AdmittedSettings; readonly glob: string };
++const noGlob = (): Extract<ClaudeSettingsPreparation, { readonly kind: "refused" }> => ({ kind: "refused", message: "[claude] settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand" });
++
++function recordEntries({ candidate }: { readonly candidate: unknown }): readonly (readonly [string, unknown])[] | null {
++  return typeof candidate === "object" && candidate !== null && !Array.isArray(candidate) ? Object.entries(candidate) : null;
++}
++
++function settingsObservation({ candidate }: { readonly candidate: unknown }) {
++  const settingsEntries = recordEntries({ candidate });
++  const permissionEntries = recordEntries({ candidate: settingsEntries?.find(([key]) => key === "permissions")?.[1] });
++  return { settingsEntries, permissionEntries, allow: permissionEntries?.find(([key]) => key === "allow")?.[1] };
++}
++
++function readSettings({ text }: { readonly text: string }): SettingsAdmission | Extract<ClaudeSettingsPreparation, { readonly kind: "refused" }> {
++  let candidate: unknown;
++  try { candidate = JSON.parse(text); }
++  catch { return { kind: "refused", message: "[claude] settings.json must contain valid JSON" }; }
++  const parsed = settingsSchema.safeParse(settingsObservation({ candidate }));
++  if (!parsed.success) return noGlob();
++  const glob = parsed.data.allow.find((entry): entry is string => typeof entry === "string" && /^Bash\(bun \S+\/tools\/aidlc-\*\)$/.test(entry));
++  if (glob === undefined) return noGlob();
++  return { kind: "admitted", settings: parsed.data, glob };
++}
++
++function expandedPermissions({ glob, dispatcherCommands, toolScripts }: { readonly glob: string } & Pick<ClaudeSettingsRequest, "dispatcherCommands" | "toolScripts">): readonly string[] {
++  const toolsDir = glob.slice("Bash(bun ".length, -"/aidlc-*)".length);
++  const tool = ({ script }: { readonly script: string }) => `Bash(bun ${toolsDir}/${script}`;
++  return [...dispatcherCommands.map((command) => `${tool({ script: "aidlc.ts" })} ${command})`), ...toolScripts.flatMap((script) => [`${tool({ script })})`, `${tool({ script })} *)`])];
++}
++
++function expandedSettings({ settings, glob, permissions }: { readonly settings: AdmittedSettings; readonly glob: string; readonly permissions: readonly string[] }): Readonly<Record<string, unknown>> {
++  const allow = settings.allow.flatMap((entry) => entry === glob ? permissions : [entry]);
++  const permissionRecord = Object.fromEntries(settings.permissionEntries.map(([key, content]) => [key, key === "allow" ? allow : content]));
++  return Object.fromEntries(settings.settingsEntries.map(([key, content]) => [key, key === "permissions" ? permissionRecord : content]));
++}
++
++function preparedSettings({ admitted, request }: { readonly admitted: SettingsAdmission; readonly request: ClaudeSettingsRequest }): ClaudeSettingsPreparation {
++  const permissions = expandedPermissions({ glob: admitted.glob, dispatcherCommands: request.dispatcherCommands, toolScripts: request.toolScripts });
++  return { kind: "prepared", content: `${JSON.stringify(expandedSettings({ settings: admitted.settings, glob: admitted.glob, permissions }), null, 2)}\n` };
++}
++
++export function prepareClaudeSettingsText(request: ClaudeSettingsRequest): ClaudeSettingsPreparation {
++  const admitted = readSettings(request);
++  if (admitted.kind === "refused") return admitted;
++  return preparedSettings({ admitted, request });
++}
+diff --git a/scripts/package-source-inputs.test.ts b/scripts/package-source-inputs.test.ts
+index 2f5f2e7cf..c15818c16 100644
+--- a/scripts/package-source-inputs.test.ts
++++ b/scripts/package-source-inputs.test.ts
+@@ -12,6 +12,7 @@ test("available producer inputs are selected without unrelated scripts or tests"
+     "scripts/core-projection-contract.ts",
+     "scripts/core-runtime.ts",
+     "scripts/projection-metadata.ts",
++    "scripts/workspace-seed.ts",
+     "scripts/earlier-release-regions.ts",
+     "scripts/generated-skill-regions.ts",
+     "scripts/copy-era-files.json",
+@@ -30,6 +31,8 @@ test("available producer inputs are selected without unrelated scripts or tests"
+     "scripts/runtime-import.ts",
+     "scripts/runtime-source.ts",
+     "scripts/runtime-module.ts",
++    "scripts/authored-text.ts",
++    "scripts/claude-settings.ts",
+     "scripts/package-sources.ts",
+     "scripts/package-source-inputs.ts",
+     "package.json",
+@@ -50,6 +53,7 @@ test("absent producer inputs are not selected", () => {
+     ["scripts/core-projection-contract.ts"],
+     ["scripts/core-runtime.ts"],
+     ["scripts/projection-metadata.ts"],
++    ["scripts/workspace-seed.ts"],
+     ["scripts/earlier-release-regions.ts"],
+     ["scripts/generated-skill-regions.ts"],
+     ["scripts/copy-era-files.json"],
+@@ -68,6 +72,8 @@ test("absent producer inputs are not selected", () => {
+     ["scripts/runtime-import.ts"],
+     ["scripts/runtime-source.ts"],
+     ["scripts/runtime-module.ts"],
++    ["scripts/authored-text.ts"],
++    ["scripts/claude-settings.ts"],
+     ["scripts/package-sources.ts"],
+     ["scripts/package-source-inputs.ts"],
+     ["package.json"],
+diff --git a/scripts/package-source-inputs.ts b/scripts/package-source-inputs.ts
+index 9bb135f0d..5bf0781de 100644
+--- a/scripts/package-source-inputs.ts
++++ b/scripts/package-source-inputs.ts
+@@ -8,6 +8,7 @@ const SOURCE_FILES = [
+   "scripts/core-projection-contract.ts",
+   "scripts/core-runtime.ts",
+   "scripts/projection-metadata.ts",
++  "scripts/workspace-seed.ts",
+   "scripts/earlier-release-regions.ts",
+   "scripts/generated-skill-regions.ts",
+   "scripts/copy-era-files.json",
+@@ -26,6 +27,8 @@ const SOURCE_FILES = [
+   "scripts/runtime-import.ts",
+   "scripts/runtime-source.ts",
+   "scripts/runtime-module.ts",
++  "scripts/authored-text.ts",
++  "scripts/claude-settings.ts",
+   "scripts/package-sources.ts",
+   "scripts/package-source-inputs.ts",
+   "package.json",
+diff --git a/scripts/package.ts b/scripts/package.ts
+index 531151f5a..9e8d257a0 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -63,6 +63,8 @@ import { fileURLToPath } from "node:url";
+ import { spawnSync } from "node:child_process";
+ import { runtimeSourceRole } from "./runtime-source.ts";
+ import { prepareRuntimeModuleText, substituteRuntimeInvocation } from "./runtime-module.ts";
++import { substituteAuthoredTokens } from "./authored-text.ts";
++import { prepareClaudeSettingsText } from "./claude-settings.ts";
+ import { projectDeclaredPluginRuntime } from "./plugin-runtime-projection.ts";
+ import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
+ import { bindPluginHookSources } from "../core/tools/aidlc-plugin-hook-definition.ts";
+@@ -87,6 +89,7 @@ import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeR
+ import { keepOwnHarnessBindings } from "./harness-bindings.ts";
+ import { earlierReleasesReadSkill, prepareEarlierReleaseSkillText } from "./earlier-release-regions.ts";
+ import { planProjectionMetadata, prepareProjectionMetadata } from "./projection-metadata.ts";
++import { freshWorkspaceSeed } from "./workspace-seed.ts";
+ import { GENERATED_SKILL_REGIONS, replaceGeneratedSkillRegion } from "./generated-skill-regions.ts";
+ import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
+ import {
+@@ -177,8 +180,6 @@ if (BUILD_VERSION !== AIDLC_VERSION) {
+ // Neutral and native onboarding skeletons (scripts/onboarding.ts).
+ const ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding.md");
+ const HARNESS_ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding-harness.md");
+-const HARNESS_TOKEN = /\{\{HARNESS_DIR\}\}/g;
+-const OPTION_LETTERS_TOKEN = /\{\{OPTION_LETTERS\}\}/g;
+ 
+ // Harnesses the packager builds = every harness/<name>/ that carries a
+ // manifest.ts. DISCOVERED, not hardcoded: adding harness #N is one harness/<n>/
+@@ -223,8 +224,7 @@ function substituteToken(
+   invoke = `bun ${harnessDir}/tools/aidlc.ts`,
+   letters?: string,
+ ): string {
+-  const lettered = letters === undefined ? s : s.replace(OPTION_LETTERS_TOKEN, letters);
+-  return substituteInvocationTokens(lettered.replace(HARNESS_TOKEN, harnessDir), harnessDir, invoke);
++  return substituteAuthoredTokens({ source: s, harnessDir, invoke, ...(letters === undefined ? {} : { letters }) });
+ }
+ 
+ // Rewrite in-prose `<harnessDir>/rules/` → `<harnessDir>/<rulesRename>/` for a
+@@ -527,19 +527,6 @@ const PLUGIN_HOOKS_TEMPLATE_SRC = join(
+   "plugin-hooks-template",
+ );
+ 
+-// The active-space CURSOR shipped as part of the workspace shell (SEED). It
+-// lives at aidlc/active-space (ABOVE spaces/, not inside memory/) and holds the
+-// name of the space the next /aidlc resolves against. Ships pointed at the
+-// always-present "default" space so a fresh copy resolves with zero ceremony.
+-// NOTE: it is GITIGNORED in the user's workspace (a per-user session cursor,
+-// vision 5.1 - teammates legitimately point at different spaces at once), yet
+-// dist must SHIP it as part of the shell. The two reconcile: the projected
+-// .gitignore ignores aidlc/active-space for the END USER; a clone's first
+-// SessionStart or active-intent write atomically recreates the missing pointer
+-// and keeps it untracked. The local dist root itself is ignored.
+-const ACTIVE_SPACE_REL = join("aidlc", "active-space");
+-const ACTIVE_SPACE_VALUE = "default\n";
+-
+ // Write tools/data/harness.json from manifest data. The runtime reads the
+ // rules-subdir and any host-native generated-runner frontmatter from this
+ // open-set descriptor. Pretty-printed + trailing newline keeps output
+@@ -676,9 +663,10 @@ function emitPluginAuthoringData(treeRoot: string): void {
+ // value for every harness (the resolver follows it identically). The projected
+ // .gitignore ignores this path for the END USER's workspace.
+ function emitActiveSpace(outRoot: string): void {
+-  const outPath = join(outRoot, ACTIVE_SPACE_REL);
++  const seed = freshWorkspaceSeed();
++  const outPath = join(outRoot, seed.file);
+   mkdirSync(dirname(outPath), { recursive: true });
+-  writeFileSync(outPath, ACTIVE_SPACE_VALUE);
++  writeFileSync(outPath, seed.content);
+ }
+ 
+ function writeAgentSurface(input: {
+@@ -913,7 +901,7 @@ async function buildTree(
+     });
+   }
+   expandCursorToolAllows(treeRoot, m);
+-  expandClaudeToolAllows(treeRoot, m);
++  expandClaudeToolAllows({ treeRoot, manifest: m });
+   expandKiroToolAllows(treeRoot, m);
+   expandKiroIdeConductorAllows(treeRoot, m, invoke);
+   writeProjectionData({ outRoot, declaration: m });
+@@ -1040,32 +1028,12 @@ function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): vo
+ // command, and any config command but the read-only forms, then shows Claude
+ // Code's own prompt. Both trees get it; the native rewrite then drops every
+ // bun entry.
+-function expandClaudeToolAllows(treeRoot: string, m: HarnessManifest): void {
+-  if (m.tierFlavor !== "claude") return;
++function expandClaudeToolAllows({ treeRoot, manifest }: { readonly treeRoot: string; readonly manifest: HarnessManifest }): void {
++  if (manifest.tierFlavor !== "claude") return;
+   const settingsPath = join(treeRoot, "settings.json");
+-  const value = JSON.parse(readFileSync(settingsPath, "utf-8")) as { permissions?: { allow?: unknown } };
+-  const allow = value.permissions?.allow;
+-  // The authored entries name the tools folder as written (`.claude`), which
+-  // a renamed harness folder keeps, so the expansion uses the same spelling.
+-  const glob = Array.isArray(allow)
+-    ? allow.find((entry): entry is string =>
+-      typeof entry === "string" && /^Bash\(bun \S+\/tools\/aidlc-\*\)$/.test(entry)
+-    )
+-    : undefined;
+-  if (!Array.isArray(allow) || glob === undefined) {
+-    throw new Error("[claude] settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand");
+-  }
+-  const toolsDir = glob.slice("Bash(bun ".length, -"/aidlc-*)".length);
+-  const tool = (script: string) => `Bash(bun ${toolsDir}/${script}`;
+-  value.permissions!.allow = allow.flatMap((entry) =>
+-    entry === glob
+-      ? [
+-        ...copyChannelDispatcherCommands().map((command) => `${tool("aidlc.ts")} ${command})`),
+-        ...copyChannelToolScripts().flatMap((script) => [`${tool(script)})`, `${tool(script)} *)`]),
+-      ]
+-      : [entry]
+-  );
+-  writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
++  const prepared = prepareClaudeSettingsText({ text: readFileSync(settingsPath, "utf-8"), dispatcherCommands: copyChannelDispatcherCommands(), toolScripts: copyChannelToolScripts() });
++  if (prepared.kind === "refused") throw new Error(prepared.message);
++  writeFileSync(settingsPath, prepared.content);
+ }
+ 
+ // Kiro CLI's authored agents name AI-DLC's tool scripts with one pattern
+diff --git a/scripts/workspace-seed.test.ts b/scripts/workspace-seed.test.ts
+new file mode 100644
+index 000000000..178220a15
+--- /dev/null
++++ b/scripts/workspace-seed.test.ts
+@@ -0,0 +1,6 @@
++import { expect, test } from "bun:test";
++import { freshWorkspaceSeed } from "./workspace-seed.ts";
++
++test("fresh workspace seed declares the relative cursor and exact default plus LF", () => {
++  expect(freshWorkspaceSeed()).toEqual({ file: "aidlc/active-space", content: "default\n" });
++});
+diff --git a/scripts/workspace-seed.ts b/scripts/workspace-seed.ts
+new file mode 100644
+index 000000000..d169c1eea
+--- /dev/null
++++ b/scripts/workspace-seed.ts
+@@ -0,0 +1,9 @@
++export type FreshWorkspaceSeed = {
++  readonly file: "aidlc/active-space";
++  readonly content: "default\n";
++};
++
++// Release-tree seed data; runtime fallback, copy omissions and a person's existing cursor have separate owners.
++export function freshWorkspaceSeed(): FreshWorkspaceSeed {
++  return { file: "aidlc/active-space", content: "default\n" };
++}

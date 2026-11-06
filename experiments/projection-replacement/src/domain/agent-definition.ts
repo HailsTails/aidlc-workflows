@@ -69,6 +69,7 @@ export type PreparedAgent = {
   readonly participation: readonly AgentParticipation[];
 };
 export type AgentProjection = {
+  readonly dependencies?: readonly SourceOrigin[];
   readonly origin: AgentOrigin;
   readonly harness: AgentHarness;
   readonly resources: readonly NativeResource[];

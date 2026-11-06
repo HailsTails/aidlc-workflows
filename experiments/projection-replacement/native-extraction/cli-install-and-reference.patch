@@ -1,0 +1,686 @@
+diff --git a/core/tools/aidlc-copy-preapproval.test.ts b/core/tools/aidlc-copy-preapproval.test.ts
+new file mode 100644
+index 000000000..c249d01aa
+--- /dev/null
++++ b/core/tools/aidlc-copy-preapproval.test.ts
+@@ -0,0 +1,56 @@
++// covers: function:machineReachingToolScripts, function:preapprovedCopyToolScripts, function:preapprovedDispatcherCommands
++
++import { expect, test } from "bun:test";
++import { machineReachingToolScripts, preapprovedCopyToolScripts, preapprovedDispatcherCommands } from "./aidlc-copy-preapproval.ts";
++
++test("any machine route excludes its shared script, sorted and once", () => {
++  expect(machineReachingToolScripts({ routes: [
++    { mutationScope: "project", tool: "shared.ts" },
++    { mutationScope: "machine", tool: "z.ts" },
++    { mutationScope: "project-and-machine", tool: "shared.ts" },
++    { mutationScope: "machine", tool: "z.ts" },
++    { mutationScope: "machine" },
++  ] })).toEqual(["shared.ts", "z.ts"]);
++});
++
++test.each(["none", "project", "user-home", "future-scope"])("%s does not acquire machine authority by inference", (mutationScope) => {
++  expect(machineReachingToolScripts({ routes: [{ mutationScope, tool: "tool.ts" }] })).toEqual([]);
++});
++
++test("copy scripts exclude machine tools and retain unclassified tools", () => {
++  expect(preapprovedCopyToolScripts({
++    machineToolScripts: ["machine.ts", "shared.ts"],
++    toolScripts: ["z.ts", "machine.ts", "a.ts", "shared.ts", "z.ts", "unclassified.ts"],
++  })).toEqual(["a.ts", "unclassified.ts", "z.ts"]);
++});
++
++test("empty catalogs do not invent tools", () => {
++  expect(preapprovedCopyToolScripts({ machineToolScripts: [], toolScripts: [] })).toEqual([]);
++  expect(machineReachingToolScripts({ routes: [] })).toEqual([]);
++});
++
++test("only explicit utility spellings are approved without configuration facts", () => {
++  expect(preapprovedDispatcherCommands({ configSections: [], recordableProjectBypasses: [] })).toEqual([
++    "doctor", "doctor --verbose", "version", "--doctor", "--doctor --verbose", "--version",
++    "status", "--status", "config --help", "config --show", "config --show --json",
++  ]);
++});
++
++test("declared sections and check restorations retain ordering and duplicates", () => {
++  expect(preapprovedDispatcherCommands({ configSections: ["z", "a", "z"], recordableProjectBypasses: ["second", "first", "second"] })).toEqual([
++    "doctor", "doctor --verbose", "version", "--doctor", "--doctor --verbose", "--version",
++    "status", "--status", "config --help", "config --show", "config --show --json",
++    "config z --show", "config z --show --json", "config z --help",
++    "config a --show", "config a --show --json", "config a --help",
++    "config z --show", "config z --show --json", "config z --help",
++    "config flags --clear-bypass second --yes", "config flags --clear-bypass first --yes", "config flags --clear-bypass second --yes",
++  ]);
++});
++
++test("policy accepts frozen input facts and returns independent results", () => {
++  const toolScripts = Object.freeze(["z.ts", "a.ts", "z.ts"]);
++  const machineToolScripts = Object.freeze(["z.ts"]);
++  expect(preapprovedCopyToolScripts({ machineToolScripts, toolScripts })).toEqual(["a.ts"]);
++  expect(toolScripts).toEqual(["z.ts", "a.ts", "z.ts"]);
++  expect(machineToolScripts).toEqual(["z.ts"]);
++});
+diff --git a/core/tools/aidlc-copy-preapproval.ts b/core/tools/aidlc-copy-preapproval.ts
+new file mode 100644
+index 000000000..31dabb46a
+--- /dev/null
++++ b/core/tools/aidlc-copy-preapproval.ts
+@@ -0,0 +1,50 @@
++/** Inputs describe authority; this policy neither discovers routes nor grants host permissions. */
++type CopyPreapprovalRoute = Readonly<{
++  mutationScope: string;
++  tool?: string;
++}>;
++
++/** A script shared with any machine-changing route always needs the host's prompt. */
++export function machineReachingToolScripts({ routes }: {
++  readonly routes: readonly CopyPreapprovalRoute[];
++}): string[] {
++  return [...new Set(routes
++    .filter((route) => route.mutationScope === "machine" || route.mutationScope === "project-and-machine")
++    .map((route) => route.tool)
++    .filter((tool) => tool !== undefined))].sort();
++}
++
++export function preapprovedCopyToolScripts({ machineToolScripts, toolScripts }: {
++  readonly machineToolScripts: readonly string[];
++  readonly toolScripts: readonly string[];
++}): string[] {
++  const machineScripts = new Set(machineToolScripts);
++  return [...new Set(toolScripts)].filter((tool) => !machineScripts.has(tool)).sort();
++}
++
++/** Exact spellings matter to hosts; config writes stay interactive except raising a check. */
++export function preapprovedDispatcherCommands({ configSections, recordableProjectBypasses }: {
++  readonly configSections: readonly string[];
++  readonly recordableProjectBypasses: readonly string[];
++}): string[] {
++  return [
++    "doctor",
++    "doctor --verbose",
++    "version",
++    "--doctor",
++    "--doctor --verbose",
++    "--version",
++    "status",
++    "--status",
++    "config --help",
++    // Top-level show reads sections, which may report an unavailable project harness.
++    "config --show",
++    "config --show --json",
++    ...configSections.flatMap((section) => [
++      `config ${section} --show`,
++      `config ${section} --show --json`,
++      `config ${section} --help`,
++    ]),
++    ...recordableProjectBypasses.map((name) => `config flags --clear-bypass ${name} --yes`),
++  ];
++}
+diff --git a/core/tools/aidlc-hook-location-policy.test.ts b/core/tools/aidlc-hook-location-policy.test.ts
+new file mode 100644
+index 000000000..e5405335c
+--- /dev/null
++++ b/core/tools/aidlc-hook-location-policy.test.ts
+@@ -0,0 +1,34 @@
++// covers: function:planHookLocation
++
++import { expect, test } from "bun:test";
++import { planHookLocation } from "./aidlc-hook-location-policy.ts";
++
++test.each(["aidlc-human-turn.ts", "aidlc-codex-adapter.ts", "custom-hook.ts", "AIDLC-STATUSLINE.ts", "nested/aidlc-statusline.ts"])("native %s has no project or source fallback", (hookFile) => {
++  expect(planHookLocation({ execution: "native", hookFile, moduleHookPath: "source/hook.ts", projectHookPaths: ["project/hook.ts"], packagedHookPath: "runtime/hook.ts" })).toEqual({ kind: "fixed", path: "runtime/hook.ts" });
++});
++
++test("a damaged native runtime does not switch to project authority", () => {
++  expect(planHookLocation({ execution: "native", hookFile: "aidlc-human-turn.ts", moduleHookPath: "source/hook.ts", projectHookPaths: ["project/hook.ts"], packagedHookPath: "" })).toEqual({ kind: "fixed", path: "" });
++});
++
++test("native statusline customization searches project paths in discovery order", () => {
++  expect(planHookLocation({ execution: "native", hookFile: "aidlc-statusline.ts", moduleHookPath: "source/statusline.ts", projectHookPaths: ["second/statusline.ts", "first/statusline.ts"], packagedHookPath: "runtime/statusline.ts" })).toEqual({ kind: "search", candidates: ["second/statusline.ts", "first/statusline.ts", "runtime/statusline.ts"], fallback: "runtime/statusline.ts" });
++});
++
++test("native statusline with no project candidates retains its runtime fallback", () => {
++  expect(planHookLocation({ execution: "native", hookFile: "aidlc-statusline.ts", moduleHookPath: "source/statusline.ts", projectHookPaths: [], packagedHookPath: "" })).toEqual({ kind: "search", candidates: [""], fallback: "" });
++});
++
++test.each(["aidlc-human-turn.ts", "aidlc-statusline.ts"])("copy %s searches source, project, then packaged paths", (hookFile) => {
++  expect(planHookLocation({ execution: "copy", hookFile, moduleHookPath: "source/hook.ts", projectHookPaths: ["project/hook.ts", "other/hook.ts"], packagedHookPath: "runtime/hook.ts" })).toEqual({ kind: "search", candidates: ["source/hook.ts", "project/hook.ts", "other/hook.ts", "runtime/hook.ts"], fallback: "source/hook.ts" });
++});
++
++test("lookup planning preserves duplicates and empty candidate spellings", () => {
++  expect(planHookLocation({ execution: "copy", hookFile: "hook.ts", moduleHookPath: "same.ts", projectHookPaths: ["same.ts", "", "same.ts"], packagedHookPath: "" })).toEqual({ kind: "search", candidates: ["same.ts", "same.ts", "", "same.ts", ""], fallback: "same.ts" });
++});
++
++test("lookup planning leaves frozen discovery facts unchanged", () => {
++  const projectHookPaths = Object.freeze(["project/hook.ts"]);
++  expect(planHookLocation({ execution: "copy", hookFile: "hook.ts", moduleHookPath: "source/hook.ts", projectHookPaths, packagedHookPath: "runtime/hook.ts" })).toEqual({ kind: "search", candidates: ["source/hook.ts", "project/hook.ts", "runtime/hook.ts"], fallback: "source/hook.ts" });
++  expect(projectHookPaths).toEqual(["project/hook.ts"]);
++});
+diff --git a/core/tools/aidlc-hook-location-policy.ts b/core/tools/aidlc-hook-location-policy.ts
+new file mode 100644
+index 000000000..d5bbc18af
+--- /dev/null
++++ b/core/tools/aidlc-hook-location-policy.ts
+@@ -0,0 +1,23 @@
++type HookLocationPlan =
++  | Readonly<{ kind: "fixed"; path: string }>
++  | Readonly<{ kind: "search"; candidates: readonly string[]; fallback: string }>;
++
++/** Native hooks carry installed authority; only the customizable statusline searches project files. */
++export function planHookLocation({ execution, hookFile, moduleHookPath, projectHookPaths, packagedHookPath }: {
++  readonly execution: "native" | "copy";
++  readonly hookFile: string;
++  readonly moduleHookPath: string;
++  readonly projectHookPaths: readonly string[];
++  readonly packagedHookPath: string;
++}): HookLocationPlan {
++  if (execution === "native") {
++    return hookFile === "aidlc-statusline.ts"
++      ? { kind: "search", candidates: [...projectHookPaths, packagedHookPath], fallback: packagedHookPath }
++      : { kind: "fixed", path: packagedHookPath };
++  }
++  return {
++    kind: "search",
++    candidates: [moduleHookPath, ...projectHookPaths, packagedHookPath],
++    fallback: moduleHookPath,
++  };
++}
+diff --git a/core/tools/aidlc-install-paths.ts b/core/tools/aidlc-install-paths.ts
+index 4c26b8341..b93cdb095 100644
+--- a/core/tools/aidlc-install-paths.ts
++++ b/core/tools/aidlc-install-paths.ts
+@@ -1,4 +1,5 @@
+ import { createHash } from "node:crypto";
++import { admitMachineTransactionParent, planMachineTransactionParent } from "./aidlc-machine-transaction-parent.ts";
+ import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+ import { homedir, platform } from "node:os";
+ import {
+@@ -112,22 +113,18 @@ export function projectPathOverlapsMachineRoots(projectDir: string): boolean {
+ export function machineTransactionRoot(): string {
+   const paths = [installRoot(), binRoot()].map((path) => resolve(path));
+   const filesystemRoot = parse(paths[0]).root;
+-  if (paths.some((path) => parse(path).root !== filesystemRoot)) {
+-    throw new Error("machine install and command directories must be on one filesystem root");
+-  }
+-  const parts = paths.map((path) =>
+-    path.slice(filesystemRoot.length).split(/[\\/]/).filter(Boolean)
+-  );
+-  const shared: string[] = [];
+-  for (let index = 0; index < Math.min(...parts.map((value) => value.length)); index++) {
+-    if (parts.some((value) => value[index] !== parts[0][index])) break;
+-    shared.push(parts[0][index]);
+-  }
+-  const common = join(filesystemRoot, ...shared);
+-  if (common === filesystemRoot) {
+-    throw new Error("machine install and command directories need a writable shared parent");
+-  }
+-  return common;
++  const directories = paths.map((path) => ({
++    filesystemRoot: parse(path).root,
++    segments: path.slice(filesystemRoot.length).split(/[\\/]/).filter(Boolean),
++  }));
++  const parent = planMachineTransactionParent({
++    installDirectory: directories[0],
++    commandDirectory: directories[1],
++  });
++  return admitMachineTransactionParent({
++    filesystemRoot: parent.filesystemRoot,
++    parentPath: join(parent.filesystemRoot, ...parent.segments),
++  });
+ }
+ 
+ export function commandPath(): string {
+diff --git a/core/tools/aidlc-machine-transaction-parent.test.ts b/core/tools/aidlc-machine-transaction-parent.test.ts
+new file mode 100644
+index 000000000..f3de42e3a
+--- /dev/null
++++ b/core/tools/aidlc-machine-transaction-parent.test.ts
+@@ -0,0 +1,58 @@
++// covers: function:planMachineTransactionParent, function:admitMachineTransactionParent
++
++import { expect, test } from "bun:test";
++import { admitMachineTransactionParent, planMachineTransactionParent } from "./aidlc-machine-transaction-parent.ts";
++
++test.each([
++  { install: ["home", "team", "aidlc"], command: ["home", "team", "bin"], shared: ["home", "team"] },
++  { install: ["home", "team", "aidlc"], command: ["home", "team", "aidlc", "bin"], shared: ["home", "team", "aidlc"] },
++  { install: ["home", "team", "aidlc", "versions"], command: ["home", "team", "aidlc"], shared: ["home", "team", "aidlc"] },
++  { install: ["home", "team", "aidlc"], command: ["home", "team", "aidlc"], shared: ["home", "team", "aidlc"] },
++  { install: ["home", "team", "a"], command: ["home", "teammate", "b"], shared: ["home"] },
++])("transaction parent uses whole shared segments: %s", ({ install, command, shared }) => {
++  expect(planMachineTransactionParent({ installDirectory: { filesystemRoot: "/", segments: install }, commandDirectory: { filesystemRoot: "/", segments: command } })).toEqual({ filesystemRoot: "/", segments: shared });
++});
++
++test.each(["H:\\", "\\\\server\\share\\"])("Windows root spelling survives unchanged: %s", (filesystemRoot) => {
++  expect(planMachineTransactionParent({ installDirectory: { filesystemRoot, segments: ["team", "aidlc"] }, commandDirectory: { filesystemRoot, segments: ["team", "bin"] } })).toEqual({ filesystemRoot, segments: ["team"] });
++});
++
++test.each([
++  { install: [], command: ["home", "team"] },
++  { install: ["home"], command: [] },
++  { install: ["install"], command: ["bin"] },
++  { install: ["Team", "aidlc"], command: ["team", "bin"] },
++])("filesystem-root-only parents remain refused: %s", ({ install, command }) => {
++  expect(() => planMachineTransactionParent({ installDirectory: { filesystemRoot: "H:\\", segments: install }, commandDirectory: { filesystemRoot: "H:\\", segments: command } })).toThrow("machine install and command directories need a writable shared parent");
++});
++
++test.each([
++  { install: "H:\\", command: "D:\\" },
++  { install: "H:\\", command: "h:\\" },
++  { install: "\\\\server\\one\\", command: "\\\\server\\two\\" },
++])("different root spellings remain refused: %s", ({ install, command }) => {
++  expect(() => planMachineTransactionParent({ installDirectory: { filesystemRoot: install, segments: ["team", "aidlc"] }, commandDirectory: { filesystemRoot: command, segments: ["team", "bin"] } })).toThrow("machine install and command directories must be on one filesystem root");
++});
++
++test("frozen decoded facts remain unchanged", () => {
++  const segments = Object.freeze(["team", "aidlc"]);
++  const directory = Object.freeze({ filesystemRoot: "H:\\", segments });
++  expect(planMachineTransactionParent({ installDirectory: directory, commandDirectory: directory })).toEqual({ filesystemRoot: "H:\\", segments: ["team", "aidlc"] });
++  expect(directory).toEqual({ filesystemRoot: "H:\\", segments: ["team", "aidlc"] });
++});
++
++test("platform-sensitive segments remain facts for the final native path check", () => {
++  expect(planMachineTransactionParent({ installDirectory: { filesystemRoot: "/", segments: ["a", ".."] }, commandDirectory: { filesystemRoot: "/", segments: ["a", ".."] } })).toEqual({ filesystemRoot: "/", segments: ["a", ".."] });
++});
++
++test.each(["/", "H:\\", "\\\\server\\share\\"])("a final native join cannot admit the filesystem root: %s", (filesystemRoot) => {
++  expect(() => admitMachineTransactionParent({ filesystemRoot, parentPath: filesystemRoot })).toThrow("machine install and command directories need a writable shared parent");
++});
++
++test.each([
++  { filesystemRoot: "/", parentPath: "/home/team" },
++  { filesystemRoot: "H:\\", parentPath: "H:\\team" },
++  { filesystemRoot: "\\\\server\\share\\", parentPath: "\\\\server\\share\\team" },
++])("a final non-root parent retains its platform spelling: %s", ({ filesystemRoot, parentPath }) => {
++  expect(admitMachineTransactionParent({ filesystemRoot, parentPath })).toBe(parentPath);
++});
+diff --git a/core/tools/aidlc-machine-transaction-parent.ts b/core/tools/aidlc-machine-transaction-parent.ts
+new file mode 100644
+index 000000000..c6c1ad2ce
+--- /dev/null
++++ b/core/tools/aidlc-machine-transaction-parent.ts
+@@ -0,0 +1,32 @@
++type MachineDirectory = Readonly<{
++  filesystemRoot: string;
++  segments: readonly string[];
++}>;
++
++/** Discovery and path decoding stay with the platform; transaction scope follows these resolved facts. */
++export function planMachineTransactionParent({ installDirectory, commandDirectory }: {
++  readonly installDirectory: MachineDirectory;
++  readonly commandDirectory: MachineDirectory;
++}): Readonly<{ filesystemRoot: string; segments: readonly string[] }> {
++  if (installDirectory.filesystemRoot !== commandDirectory.filesystemRoot) {
++    throw new Error("machine install and command directories must be on one filesystem root");
++  }
++  const candidates = installDirectory.segments.slice(0, Math.min(installDirectory.segments.length, commandDirectory.segments.length));
++  const divergence = candidates.findIndex((segment, index) => segment !== commandDirectory.segments[index]);
++  const shared = divergence < 0 ? candidates : candidates.slice(0, divergence);
++  if (shared.length === 0) {
++    throw new Error("machine install and command directories need a writable shared parent");
++  }
++  return { filesystemRoot: installDirectory.filesystemRoot, segments: shared };
++}
++
++/** Native joining may collapse nonempty decoded segments; admit only its final non-root result. */
++export function admitMachineTransactionParent({ filesystemRoot, parentPath }: {
++  readonly filesystemRoot: string;
++  readonly parentPath: string;
++}): string {
++  if (parentPath === filesystemRoot) {
++    throw new Error("machine install and command directories need a writable shared parent");
++  }
++  return parentPath;
++}
+diff --git a/core/tools/aidlc.ts b/core/tools/aidlc.ts
+index a334f4bf4..8bfbc1d8c 100644
+--- a/core/tools/aidlc.ts
++++ b/core/tools/aidlc.ts
+@@ -1,4 +1,6 @@
+ #!/usr/bin/env bun
++import { planHookLocation } from "./aidlc-hook-location-policy.ts";
++import { machineReachingToolScripts, preapprovedCopyToolScripts, preapprovedDispatcherCommands } from "./aidlc-copy-preapproval.ts";
+ import { settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
+ import { existsSync, readdirSync, readFileSync, realpathSync, writeSync } from "node:fs";
+ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+@@ -1362,13 +1364,16 @@ export function resolveHookPath(
+       );
+   const installed = leaves.map((leaf) => join(projectDir, leaf, "hooks", file));
+   const executableRelative = packagedHookPath(file, runtimeLeaf, harness);
+-  if (compiled) {
+-    if (file !== "aidlc-statusline.ts") return executableRelative;
+-    return [...installed, executableRelative].find((candidate) => existsSync(candidate)) ??
+-      executableRelative;
+-  }
+-  const candidates = [moduleRelative, ...installed, executableRelative];
+-  return candidates.find((candidate) => existsSync(candidate)) ?? moduleRelative;
++  const location = planHookLocation({
++    execution: compiled ? "native" : "copy",
++    hookFile: file,
++    moduleHookPath: moduleRelative,
++    projectHookPaths: installed,
++    packagedHookPath: executableRelative,
++  });
++  return location.kind === "fixed"
++    ? location.path
++    : location.candidates.find((candidate) => existsSync(candidate)) ?? location.fallback;
+ }
+ 
+ function routeForms(route: Route): string[] {
+@@ -1435,17 +1440,13 @@ export function routePositionals(route: Route, verb: string): string[] {
+ // AI-DLC's other tool scripts, never these, so running one directly shows the
+ // host's own prompt.
+ export function machineReachingTools(): string[] {
+-  return [...new Set(
+-    ROUTES.filter((route) => route.mutationScope === "machine" || route.mutationScope === "project-and-machine")
+-      .map((route) => route.tool)
+-      .filter((tool): tool is string => tool !== undefined),
+-  )].sort();
++  return machineReachingToolScripts({ routes: ROUTES });
+ }
+ 
+ // AI-DLC's tool scripts a copy channel pre-approves: every one but those.
+ export function copyChannelToolScripts(): string[] {
+-  const machine = new Set(machineReachingTools());
+-  return [...new Set(Object.values(TOOLS))].filter((tool) => !machine.has(tool)).sort();
++  const machineToolScripts = machineReachingTools();
++  return preapprovedCopyToolScripts({ machineToolScripts, toolScripts: Object.values(TOOLS) });
+ }
+ 
+ // The dispatcher's public commands, outside its engine namespace, that every
+@@ -1463,27 +1464,10 @@ export function copyChannelDispatcherCommands(): string[] {
+   // Only the packager and the tests ask for this list, so the settings reader
+   // loads here and the dispatcher's own start stays as light as before.
+   const { RECORDABLE_PROJECT_BYPASSES } = require("./aidlc-settings.ts") as typeof import("./aidlc-settings.ts");
+-  return [
+-    "doctor",
+-    "doctor --verbose",
+-    "version",
+-    "--doctor",
+-    "--doctor --verbose",
+-    "--version",
+-    "status",
+-    "--status",
+-    "config --help",
+-    // An unknown option there, answered with the config usage line and no
+-    // change; agents run it first for "show my settings".
+-    "config --show",
+-    "config --show --json",
+-    ...CONFIG_SECTIONS.flatMap((section) => [
+-      `config ${section} --show`,
+-      `config ${section} --show --json`,
+-      `config ${section} --help`,
+-    ]),
+-    ...RECORDABLE_PROJECT_BYPASSES.map((name) => `config flags --clear-bypass ${name} --yes`),
+-  ];
++  return preapprovedDispatcherCommands({
++    configSections: CONFIG_SECTIONS,
++    recordableProjectBypasses: RECORDABLE_PROJECT_BYPASSES,
++  });
+ }
+ 
+ export function renderHumanHelp(): string {
+diff --git a/docs/reference/06-hooks-and-tools.md b/docs/reference/06-hooks-and-tools.md
+index 0e734a411..8268ddb42 100644
+--- a/docs/reference/06-hooks-and-tools.md
++++ b/docs/reference/06-hooks-and-tools.md
+@@ -6,6 +6,48 @@ This chapter documents the hook system architecture, all seventeen hook scripts,
+ 
+ ---
+ 
++## Copy-channel preapproval policy
++
++`core/tools/aidlc-copy-preapproval.ts` owns the pure selection of tool scripts
++and exact dispatcher command spellings that a copy-channel install preapproves.
++The dispatcher supplies route mutation scopes, tool names, configuration sections
++and recorded project bypass names; it retains route discovery and lazy settings
++loading. Host-specific permission rendering stays with each harness.
++
++A script used by any machine or project-and-machine route is excluded even when
++another route uses it for project work. Dispatcher approval includes the declared
++read-only utility forms and restoring a recorded check with `--clear-bypass`;
++guided configuration and other configuration writes still use the host's prompt.
++Selection does not itself execute commands or grant host authority. Co-located
++tests cover this contract through the standard unit runner.
++
++## Hook runtime location policy
++
++`core/tools/aidlc-hook-location-policy.ts` plans which runtime locations may
++supply a hook. Native hooks use the packaged path even when that runtime is
++damaged; the caller reports the missing file rather than executing a project
++copy. The customizable statusline searches project locations first. Copy-channel
++hooks search beside the dispatcher, then project locations, then the packaged
++location. The dispatcher retains path discovery and probes candidates in order,
++stopping at the first existing file. The policy performs no filesystem reads.
++
++## Machine transaction parent
++
++`core/tools/aidlc-machine-transaction-parent.ts` selects the shared parent for
++machine transaction locks, journals and rollback records from decoded install
++and command directory roots and segments, without platform dependencies. The
++install-path facade retains configured-root discovery, canonicalization, path
++decoding and joining. Different parsed filesystem roots, or a common parent equal
++to the filesystem root, retain their existing refusals. Windows drive, share and
++segment comparisons retain their existing case-sensitive spelling rules.
++The facade also checks the joined path: legal POSIX backslash names can decode
++into segments that native joining collapses to the filesystem root.
++
++This selects a transaction scope; it does not establish writability, prove that
++paths are on the same physical device, or authorize mutations of other files
++under the shared parent. Existing operation checks and transaction execution
++retain those responsibilities.
++
+ ## Claude origin settlement and compatibility
+ 
+ Settlement does not discard a pending Claude key merely because its retained
+diff --git a/scripts/generated-skill-regions.test.ts b/scripts/generated-skill-regions.test.ts
+new file mode 100644
+index 000000000..dc43b47a8
+--- /dev/null
++++ b/scripts/generated-skill-regions.test.ts
+@@ -0,0 +1,47 @@
++import { expect, test } from "bun:test";
++import { GENERATED_SKILL_REGIONS, replaceGeneratedSkillRegion } from "./generated-skill-regions.ts";
++
++test("generated references retain stage-before-scope rendering order and invocation-independent prefixes", () => {
++  expect(GENERATED_SKILL_REGIONS).toEqual([
++    { verb: "stage-table", begin: "<!-- BEGIN: compiled stage graph via ", end: "<!-- END: compiled stage graph -->" },
++    { verb: "scope-table", begin: "<!-- BEGIN: compiled scope grid via ", end: "<!-- END: compiled scope grid -->" },
++  ]);
++});
++
++test("replaces the complete stage region while preserving surrounding prose and line endings", () => {
++  expect(replaceGeneratedSkillRegion({ text: "Before\r\n<!-- BEGIN: compiled stage graph via `old command` -->\nstale\n<!-- END: compiled stage graph -->\r\nAfter\n", rendered: "<!-- BEGIN: compiled stage graph via `new command` -->\nfresh\n<!-- END: compiled stage graph -->", region: GENERATED_SKILL_REGIONS[0], path: "tables.md" })).toEqual({ status: "ok", text: "Before\r\n<!-- BEGIN: compiled stage graph via `new command` -->\nfresh\n<!-- END: compiled stage graph -->\r\nAfter\n" });
++});
++
++test("replaces the complete scope region without interpreting its generated contents", () => {
++  expect(replaceGeneratedSkillRegion({ text: "<!-- BEGIN: compiled scope grid via `bun .claude/tools/aidlc.ts engine gen scope-table` -->\nstale\n<!-- END: compiled scope grid -->", rendered: "<!-- BEGIN: compiled scope grid via `aidlc gen scope-table` -->\n| fresh |\n<!-- END: compiled scope grid -->", region: GENERATED_SKILL_REGIONS[1], path: "tables.md" })).toEqual({ status: "ok", text: "<!-- BEGIN: compiled scope grid via `aidlc gen scope-table` -->\n| fresh |\n<!-- END: compiled scope grid -->" });
++});
++
++test("an absent region leaves the document unchanged", () => {
++  expect(replaceGeneratedSkillRegion({ text: "Authored guide\n", rendered: "unused", region: GENERATED_SKILL_REGIONS[0], path: "tables.md" })).toEqual({ status: "ok", text: "Authored guide\n" });
++});
++
++test("the other table's marker pair is not mistaken for the selected region", () => {
++  expect(replaceGeneratedSkillRegion({ text: "<!-- BEGIN: compiled scope grid via another command -->\nkept\n<!-- END: compiled scope grid -->", rendered: "unused", region: GENERATED_SKILL_REGIONS[0], path: "tables.md" })).toEqual({ status: "ok", text: "<!-- BEGIN: compiled scope grid via another command -->\nkept\n<!-- END: compiled scope grid -->" });
++});
++
++test("similar prose that is not an exact marker prefix remains unchanged", () => {
++  expect(replaceGeneratedSkillRegion({ text: "BEGIN: compiled stage graph via example\n<!-- END: compiled stage graphs -->", rendered: "unused", region: GENERATED_SKILL_REGIONS[0], path: "tables.md" })).toEqual({ status: "ok", text: "BEGIN: compiled stage graph via example\n<!-- END: compiled stage graphs -->" });
++});
++
++test.each([
++  { text: "<!-- BEGIN: compiled stage graph via command -->\nmissing end" },
++  { text: "missing begin\n<!-- END: compiled stage graph -->" },
++  { text: "<!-- END: compiled stage graph -->\n<!-- BEGIN: compiled stage graph via command -->" },
++  { text: "<!-- BEGIN: compiled stage graph via first -->\n<!-- BEGIN: compiled stage graph via second -->\n<!-- END: compiled stage graph -->" },
++  { text: "<!-- BEGIN: compiled stage graph via command -->\n<!-- END: compiled stage graph -->\n<!-- END: compiled stage graph -->" },
++])("incomplete, reversed or repeated stage markers refuse without partial text", ({ text }) => {
++  expect(replaceGeneratedSkillRegion({ text, rendered: "fresh", region: GENERATED_SKILL_REGIONS[0], path: "nested/tables.md" })).toEqual({ status: "refused", detail: "packager: malformed stage-table markers in nested/tables.md" });
++});
++
++test("changing a command suffix cannot hide a second begin marker", () => {
++  expect(replaceGeneratedSkillRegion({ text: "<!-- BEGIN: compiled scope grid via `bun .claude/tools/aidlc.ts engine gen scope-table` -->\n<!-- END: compiled scope grid -->\n<!-- BEGIN: compiled scope grid via `aidlc gen scope-table` -->", rendered: "fresh", region: GENERATED_SKILL_REGIONS[1], path: "tables.md" })).toEqual({ status: "refused", detail: "packager: malformed scope-table markers in tables.md" });
++});
++
++test("marker recognition retains the native text grammar inside fenced prose", () => {
++  expect(replaceGeneratedSkillRegion({ text: "```text\n<!-- BEGIN: compiled stage graph via example -->\nold\n<!-- END: compiled stage graph -->\n```", rendered: "fresh", region: GENERATED_SKILL_REGIONS[0], path: "tables.md" })).toEqual({ status: "ok", text: "```text\nfresh\n```" });
++});
+diff --git a/scripts/generated-skill-regions.ts b/scripts/generated-skill-regions.ts
+new file mode 100644
+index 000000000..219143b72
+--- /dev/null
++++ b/scripts/generated-skill-regions.ts
+@@ -0,0 +1,39 @@
++export const GENERATED_SKILL_REGIONS = [
++  {
++    verb: "stage-table",
++    begin: "<!-- BEGIN: compiled stage graph via ",
++    end: "<!-- END: compiled stage graph -->",
++  },
++  {
++    verb: "scope-table",
++    begin: "<!-- BEGIN: compiled scope grid via ",
++    end: "<!-- END: compiled scope grid -->",
++  },
++] as const;
++
++export type GeneratedSkillRegion = (typeof GENERATED_SKILL_REGIONS)[number];
++export type GeneratedSkillRegionReplacement =
++  | { readonly status: "ok"; readonly text: string }
++  | { readonly status: "refused"; readonly detail: string };
++
++export function replaceGeneratedSkillRegion({ text, rendered, region, path }: {
++  readonly text: string;
++  readonly rendered: string;
++  readonly region: GeneratedSkillRegion;
++  readonly path: string;
++}): GeneratedSkillRegionReplacement {
++  const beginIndex = text.indexOf(region.begin);
++  const endIndex = text.indexOf(region.end);
++  if (beginIndex === -1 && endIndex === -1) return { status: "ok", text };
++  if (
++    beginIndex === -1 ||
++    endIndex === -1 ||
++    endIndex < beginIndex ||
++    text.lastIndexOf(region.begin) !== beginIndex ||
++    text.lastIndexOf(region.end) !== endIndex
++  ) return { status: "refused", detail: `packager: malformed ${region.verb} markers in ${path}` };
++  return {
++    status: "ok",
++    text: text.slice(0, beginIndex) + rendered + text.slice(endIndex + region.end.length),
++  };
++}
+diff --git a/scripts/package-source-inputs.test.ts b/scripts/package-source-inputs.test.ts
+index 3ab680c07..c65bbe377 100644
+--- a/scripts/package-source-inputs.test.ts
++++ b/scripts/package-source-inputs.test.ts
+@@ -11,6 +11,7 @@ test("available producer inputs are selected without unrelated scripts or tests"
+     "scripts/agent-surface-projection.ts",
+     "scripts/core-projection-contract.ts",
+     "scripts/earlier-release-regions.ts",
++    "scripts/generated-skill-regions.ts",
+     "scripts/copy-era-files.json",
+     "scripts/harness-bindings.ts",
+     "scripts/harness-surface-projection.ts",
+@@ -44,6 +45,7 @@ test("absent producer inputs are not selected", () => {
+     ["scripts/agent-surface-projection.ts"],
+     ["scripts/core-projection-contract.ts"],
+     ["scripts/earlier-release-regions.ts"],
++    ["scripts/generated-skill-regions.ts"],
+     ["scripts/copy-era-files.json"],
+     ["scripts/harness-bindings.ts"],
+     ["scripts/harness-surface-projection.ts"],
+diff --git a/scripts/package-source-inputs.ts b/scripts/package-source-inputs.ts
+index 42f561704..df2917819 100644
+--- a/scripts/package-source-inputs.ts
++++ b/scripts/package-source-inputs.ts
+@@ -7,6 +7,7 @@ const SOURCE_FILES = [
+   "scripts/agent-surface-projection.ts",
+   "scripts/core-projection-contract.ts",
+   "scripts/earlier-release-regions.ts",
++  "scripts/generated-skill-regions.ts",
+   "scripts/copy-era-files.json",
+   "scripts/harness-bindings.ts",
+   "scripts/harness-surface-projection.ts",
+diff --git a/scripts/package.ts b/scripts/package.ts
+index 56713aad1..a6ab6bf9c 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -84,6 +84,7 @@ import { projectHarnessRuntimeData } from "./harness-runtime-data.ts";
+ import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeRequirement } from "./harness-surface-projection.ts";
+ import { keepOwnHarnessBindings } from "./harness-bindings.ts";
+ import { EARLIER_RELEASE_REGIONS, earlierReleasesReadSkill } from "./earlier-release-regions.ts";
++import { GENERATED_SKILL_REGIONS, replaceGeneratedSkillRegion } from "./generated-skill-regions.ts";
+ import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
+ import {
+   buildPluginProjection as emitPluginProjection,
+@@ -190,20 +191,6 @@ const INVOKE_TOKEN = /\{\{INVOKE\}\}/g;
+ const TOOL_PREFIX_TOKEN = /\{\{TOOL_PREFIX\}\}/g;
+ const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
+ const OPTION_LETTERS_TOKEN = /\{\{OPTION_LETTERS\}\}/g;
+-// Matched by PREFIX (mirroring aidlc-init.ts's marker scan): the begin marker
+-// embeds the harness-projected invocation, so its tail varies per channel.
+-const GENERATED_SKILL_REGIONS = [
+-  {
+-    verb: "stage-table",
+-    begin: "<!-- BEGIN: compiled stage graph via ",
+-    end: "<!-- END: compiled stage graph -->",
+-  },
+-  {
+-    verb: "scope-table",
+-    begin: "<!-- BEGIN: compiled scope grid via ",
+-    end: "<!-- END: compiled scope grid -->",
+-  },
+-] as const;
+ 
+ // Harnesses the packager builds = every harness/<name>/ that carries a
+ // manifest.ts. DISCOVERED, not hardcoded: adding harness #N is one harness/<n>/
+@@ -1725,24 +1712,9 @@ function refreshGeneratedSkillRegions(
+       manifest.name,
+       ["tools/aidlc-utility.ts", region.verb],
+     ).trimEnd();
+-    const beginIdx = body.indexOf(region.begin);
+-    const endIdx = body.indexOf(region.end);
+-    if (beginIdx === -1 && endIdx === -1) continue;
+-    if (
+-      beginIdx === -1 ||
+-      endIdx === -1 ||
+-      endIdx < beginIdx ||
+-      body.lastIndexOf(region.begin) !== beginIdx ||
+-      body.lastIndexOf(region.end) !== endIdx
+-    ) {
+-      throw new Error(
+-        `packager: malformed ${region.verb} markers in ${skillPath}`,
+-      );
+-    }
+-    body =
+-      body.slice(0, beginIdx) +
+-      rendered +
+-      body.slice(endIdx + region.end.length);
++    const replacement = replaceGeneratedSkillRegion({ text: body, rendered, region, path: skillPath });
++    if (replacement.status === "refused") throw new Error(replacement.detail);
++    body = replacement.text;
+   }
+ 
+   writeFileSync(skillPath, body, "utf-8");
+diff --git a/tests/unit/t-package-sources.test.ts b/tests/unit/t-package-sources.test.ts
+index f7140a413..288e577ea 100644
+--- a/tests/unit/t-package-sources.test.ts
++++ b/tests/unit/t-package-sources.test.ts
+@@ -75,6 +75,15 @@ describe("the packaged-sources fingerprint", () => {
+ });
+ 
+ describe("the packaged-sources record", () => {
++  test("editing the generated-region owner invalidates an existing package receipt", () => {
++    const root = checkout();
++    writeFileSync(join(root, "scripts/generated-skill-regions.ts"), "export const marker = 'before';\n");
++    recordPackagedSources(root, ["claude"], packageInputsFingerprint(root));
++    expect(stalePackageMessage(root, "claude")).toBeNull();
++    writeFileSync(join(root, "scripts/generated-skill-regions.ts"), "export const marker = 'after';\n");
++    expect(stalePackageMessage(root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run `bun scripts/package.ts` first.");
++  });
++
+   test("a tree with no record, or an unreadable one, is reported as never packaged", () => {
+     const root = checkout();
+     const missing = "dist/claude has no record of the sources it was packaged from: run `bun scripts/package.ts` first.";

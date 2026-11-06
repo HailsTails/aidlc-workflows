@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { parseStageSource } from "./stage-source.ts";
 import { createOwnershipDigest } from "./projection-ownership.ts";
-import { createWorkflowSourceInventory } from "./workflow-source-inventory.ts";
+import { createAuthoredSourceInventory } from "./authored-source-inventory.ts";
 import type { StageSources } from "../domain/stage-definition.ts";
 import type { SourceBasis } from "../domain/source-origin.ts";
 import { finding, type Outcome } from "../domain/model.ts";
@@ -9,7 +9,7 @@ const inventory = z.array(z.strictObject({ path: z.string().regex(/^core\/aidlc-
 export type StageSourceReader = { readonly load: (input: { readonly sourceRoot: string; readonly basis: SourceBasis }) => Promise<Outcome<StageSources>> };
 export type StageSourceOperations = { readonly inventory: (input: { readonly sourceRoot: string }) => Promise<unknown>; readonly digest: (input: { readonly bytes: Uint8Array }) => string };
 export const createStageSourceOperations = (): StageSourceOperations => {
-  const source = createWorkflowSourceInventory();
+  const source = createAuthoredSourceInventory();
   return { digest: createOwnershipDigest(), inventory: ({ sourceRoot }) => source.read({ sourceRoot, directory: "core/aidlc-common/stages" }) };
 };
 const admitSources = ({ files, basis, operations }: { readonly files: z.infer<typeof inventory>; readonly basis: SourceBasis; readonly operations: StageSourceOperations }): Outcome<StageSources> => {

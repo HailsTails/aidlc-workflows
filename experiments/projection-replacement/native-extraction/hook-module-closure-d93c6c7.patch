@@ -1,0 +1,88 @@
+diff --git a/scripts/package.ts b/scripts/package.ts
+index d101012..4a1c000 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -2028,6 +2028,7 @@ async function bundleRuntimeDependencies(input: {
+   ).map((file) => ({ file, source: readFileSync(join(input.pluginRoot, file), "utf-8") }));
+   const prepared = await preparePluginRuntimeArtifacts({
+     pluginRoot: input.pluginRoot, files: input.files, sources, port: createPluginRuntimePort({ projectRoot: REPO_ROOT }),
++    closedModules: sources.filter(({ file }) => file.startsWith("hooks/") && file.endsWith(".ts")).map(({ file }) => file),
+   });
+   if (prepared.kind === "refused") throw new Error(prepared.message);
+   for (const artifact of prepared.artifacts) {
+diff --git a/scripts/plugin-runtime.test.ts b/scripts/plugin-runtime.test.ts
+index 0d2201d..f000a35 100644
+--- a/scripts/plugin-runtime.test.ts
++++ b/scripts/plugin-runtime.test.ts
+@@ -9,6 +9,28 @@ const packagePort: PluginRuntimePort = {
+ };
+ 
+ describe("typed plugin runtime packaging", () => {
++  test("closes an explicitly selected module without a package import and preserves its filename", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["hooks/guard.ts"], sources: [{ file: "hooks/guard.ts", source: "fixture" }],
++      closedModules: ["hooks/guard.ts"], port: { ...packagePort, scan: () => ({
++        imports: ["../../../core/tools/observer.ts"], exports: [], hasUnsupportedImportMeta: false, hasPackageImports: false,
++      }) },
++    });
++    expect(result).toEqual({ kind: "prepared", artifacts: [
++      { file: "hooks/guard.ts", content: "export const guard = () => true;\n" },
++    ] });
++  });
++
++  test("refuses unsupported metadata for a closed dependency-free module", async () => {
++    const result = await preparePluginRuntimeArtifacts({
++      pluginRoot: "/fixture", files: ["hooks/guard.ts"], sources: [{ file: "hooks/guard.ts", source: "fixture" }],
++      closedModules: ["hooks/guard.ts"], port: { ...packagePort, scan: () => ({
++        imports: [], exports: [], hasUnsupportedImportMeta: true, hasPackageImports: false,
++      }) },
++    });
++    expect(result).toEqual({ kind: "refused", message: "plugin runtime closure would change import.meta semantics: hooks/guard.ts" });
++  });
++
+   test("keeps the authored import path and adds runtime and declaration companions", async () => {
+     const result = await preparePluginRuntimeArtifacts({
+       pluginRoot: "/fixture", files: ["tools/guard.ts"], sources: [source], port: packagePort,
+diff --git a/scripts/plugin-runtime.ts b/scripts/plugin-runtime.ts
+index d644867..2fbe049 100644
+--- a/scripts/plugin-runtime.ts
++++ b/scripts/plugin-runtime.ts
+@@ -31,11 +31,15 @@ export async function preparePluginRuntimeArtifacts(input: {
+   readonly files: readonly string[];
+   readonly sources: readonly RuntimeSource[];
+   readonly port: PluginRuntimePort;
++  readonly closedModules?: readonly string[];
+ }): Promise<PreparedRuntime> {
+   return input.sources.reduce<Promise<PreparedRuntime>>(async (previous, entry) => {
+     const prepared = await previous;
+     if (prepared.kind === "refused") return prepared;
+     const scan = input.port.scan({ source: entry.source });
++    if (input.closedModules?.includes(entry.file)) return prepareClosedModule({
++      pluginRoot: input.pluginRoot, entry, scan, prepared, port: input.port,
++    });
+     if (!scan.hasPackageImports) return prepared;
+     if (scan.hasUnsupportedImportMeta) return {
+       kind: "refused",
+@@ -77,6 +81,22 @@ export async function preparePluginRuntimeArtifacts(input: {
+   }, Promise.resolve({ kind: "prepared", artifacts: [] }));
+ }
+ 
++async function prepareClosedModule(input: {
++  readonly pluginRoot: string;
++  readonly entry: RuntimeSource;
++  readonly scan: RuntimeScan;
++  readonly prepared: Extract<PreparedRuntime, { readonly kind: "prepared" }>;
++  readonly port: PluginRuntimePort;
++}): Promise<PreparedRuntime> {
++  if (input.scan.hasUnsupportedImportMeta) return {
++    kind: "refused", message: `plugin runtime closure would change import.meta semantics: ${input.entry.file}`,
++  };
++  const content = await input.port.bundle({
++    pluginRoot: input.pluginRoot, file: input.entry.file, relativeImports: [],
++  });
++  return { kind: "prepared", artifacts: [...input.prepared.artifacts, { file: input.entry.file, content }] };
++}
++
+ type DeclarationBundle = {
+   readonly content: string;
+   readonly companions: readonly RuntimeArtifact[];

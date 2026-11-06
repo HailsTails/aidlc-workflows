@@ -9,7 +9,7 @@ const versionSchema = z.object({ schemaVersion: z.number().int() });
 const journalSchema = z.object({ journalMode: z.string() });
 const tablesSchema = z.array(z.object({ name: z.string(), sql: z.string() }));
 const rowSchema = z.array(z.strictObject({ revision: z.number().int().positive(), previous: z.string().regex(/^[a-f0-9]{64}$/).nullable(), token: z.string().regex(/^[a-f0-9]{64}$/), archive: z.instanceof(Uint8Array).refine((bytes) => bytes.length > 0), ownershipJson: z.string().min(1) }));
-export type PublicationSession = { readonly rows: () => unknown; readonly append: (input: { readonly publication: ProjectionPublication }) => void };
+export type PublicationSession = { readonly rows: () => unknown; readonly append: (input: { readonly publication: ProjectionPublication }) => Outcome<"appended"> };
 export type PublicationOperations = { readonly run: (input: { readonly mode: "read" | "write"; readonly action: (input: { readonly session: PublicationSession }) => Outcome<PublicationSnapshot> }) => Promise<Outcome<PublicationSnapshot>> };
 const inspectSchema = ({ database, mode }: { readonly database: Database; readonly mode: "read" | "write" }): Outcome<"ready" | "empty"> => {
   const stamp = stampSchema.parse(database.query("SELECT application_id AS applicationId FROM pragma_application_id").get());
@@ -25,9 +25,15 @@ const inspectSchema = ({ database, mode }: { readonly database: Database; readon
 const executeSession = ({ database, mode, action }: { readonly database: Database; readonly mode: "read" | "write"; readonly action: (input: { readonly session: PublicationSession }) => Outcome<PublicationSnapshot> }): Outcome<PublicationSnapshot> => {
   const schema = inspectSchema({ database, mode });
   if (schema.status === "invalid") return schema;
-  return schema.value === "empty" ? action({ session: createEmptyPublicationSession() }) : action({ session: { rows: () => database.query("SELECT revision, previous, token, archive, ownershipJson FROM projection_publications ORDER BY revision").all(), append: ({ publication }) => { database.query("INSERT INTO projection_publications (revision, previous, token, archive, ownershipJson) VALUES (?, ?, ?, ?, ?)").run(publication.revision, publication.previous, publication.token, publication.archive, publication.ownershipJson); } } });
+  return schema.value === "empty" ? action({ session: createEmptyPublicationSession() }) : action({ session: { rows: () => database.query("SELECT revision, previous, token, archive, ownershipJson FROM projection_publications ORDER BY revision").all(), append: ({ publication }) => appendSqlitePublication({ database, mode, publication }) } });
 };
-const createEmptyPublicationSession = (): PublicationSession => ({ rows: () => [], append: () => { throw new Error("an uninitialized read-only publication cannot append"); } });
+const readOnlyPublicationAppend = (): Outcome<"appended"> => ({ status: "invalid", findings: [finding({ code: "invalid-input", subject: "projection-publication", detail: "read-only publication sessions cannot append" })] });
+const appendSqlitePublication = ({ database, mode, publication }: { readonly database: Database; readonly mode: "read" | "write"; readonly publication: ProjectionPublication }): Outcome<"appended"> => {
+  if (mode === "read") return readOnlyPublicationAppend();
+  database.query("INSERT INTO projection_publications (revision, previous, token, archive, ownershipJson) VALUES (?, ?, ?, ?, ?)").run(publication.revision, publication.previous, publication.token, publication.archive, publication.ownershipJson);
+  return { status: "ok", value: "appended" };
+};
+const createEmptyPublicationSession = (): PublicationSession => ({ rows: () => [], append: readOnlyPublicationAppend });
 const openPublicationSession = ({ path, mode, action }: { readonly path: string; readonly mode: "read" | "write"; readonly action: Parameters<PublicationOperations["run"]>[0]["action"] }): Outcome<PublicationSnapshot> => {
   const database = new Database(path, (mode === "read" ? constants.SQLITE_OPEN_READWRITE : constants.SQLITE_OPEN_READWRITE | constants.SQLITE_OPEN_CREATE) | constants.SQLITE_OPEN_NOFOLLOW);
   try {
@@ -54,7 +60,8 @@ const appendPublication = ({ session, rules, expectedHead, artifactPair }: { rea
   if (snapshot.status === "invalid") return snapshot;
   const prepared = preparePublication({ snapshot: snapshot.value, expectedHead, artifactPair, rules });
   if (prepared.status === "invalid") return prepared;
-  session.append({ publication: prepared.value });
+  const appended = session.append({ publication: prepared.value });
+  if (appended.status === "invalid") return appended;
   return { status: "ok", value: { head: prepared.value.token, publication: prepared.value } };
 };
 export const createPublicationRules = (): PublicationRules => ({ digest: ({ bytes }) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex"), encode: ({ text }) => new TextEncoder().encode(text) });

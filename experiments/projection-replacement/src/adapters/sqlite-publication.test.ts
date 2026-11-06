@@ -1,6 +1,7 @@
 import { expect, mock, test } from "bun:test";
 import { createSqlitePublicationRepository, createPublicationRules, createSqlitePublicationOperations } from "./sqlite-publication.ts";
 import { createPublicationRuleFixture, createPublicationOperationsFixture, createPublicationSession, firstPublication, firstSnapshot, publicationPayload } from "../../__tests__/publication-fixtures.ts";
+import { observeSqlitePublicationRead, observeSqlitePublicationRollback } from "../../__tests__/sqlite-publication-fixtures.ts";
 test("reads native rows through the injected repository transaction", async () => {
   expect(await createSqlitePublicationRepository({ path: "unused", operations: createPublicationOperationsFixture(), rules: createPublicationRuleFixture() }).read()).toEqual({ status: "ok", value: firstSnapshot });
 });
@@ -18,6 +19,25 @@ test("inserts a complete first pair inside the injected transaction", async () =
   const session = { ...createPublicationSession(), rows: mock().mockReturnValue([]) };
   expect(await createSqlitePublicationRepository({ path: "unused", operations: createPublicationOperationsFixture({ session }), rules: createPublicationRuleFixture() }).publish({ expectedHead: null, artifactPair: publicationPayload })).toEqual({ status: "ok", value: firstSnapshot });
   expect(session.append).toHaveBeenCalledWith({ publication: firstPublication });
+  expect(session.append).toHaveBeenCalledTimes(1);
+});
+
+test("an explicit session append refusal cannot issue a successful publication snapshot", async () => {
+  const session = { rows: mock().mockReturnValue([]), append: mock().mockReturnValue({ status: "invalid", findings: [{ code: "invalid-input", subject: "projection-publication", detail: "read-only publication sessions cannot append" }] }) };
+  expect(await createSqlitePublicationRepository({ path: "unused", operations: createPublicationOperationsFixture({ session }), rules: createPublicationRuleFixture() }).publish({ expectedHead: null, artifactPair: publicationPayload })).toEqual({ status: "invalid", findings: [{ code: "invalid-input", subject: "projection-publication", detail: "read-only publication sessions cannot append" }] });
+  expect(session.append).toHaveBeenCalledWith({ publication: firstPublication });
+});
+
+test.each([
+  { initialization: "missing", store: "absent", retained: { status: "ok", value: { head: null, publication: null } } },
+  { initialization: "empty", store: "present", retained: { status: "ok", value: { head: null, publication: null } } },
+  { initialization: "published", store: "present", retained: { status: "ok", value: firstSnapshot } },
+] as const)("composition: $initialization read refuses append without changing publication", async ({ initialization, store, retained }) => {
+  expect(await observeSqlitePublicationRead({ initialization })).toEqual({ status: "ok", value: { attempted: { status: "invalid", findings: [{ code: "invalid-input", subject: "projection-publication", detail: "read-only publication sessions cannot append" }] }, retained, store } });
+});
+
+test("composition: SQLite insertion failure still rolls back the preceding insertion", async () => {
+  expect(await observeSqlitePublicationRollback()).toEqual({ status: "ok", value: { attempted: { status: "invalid", findings: [{ code: "capability-gap", subject: "projection-publication", detail: "publication transaction unavailable or rolled back: UNIQUE constraint failed: projection_publications.revision" }] }, retained: { status: "ok", value: { head: null, publication: null } }, store: "present" } });
 });
 test("the production content rules reproduce the independent abc digest", () => {
   expect(createPublicationRules().digest({ bytes: new Uint8Array([97, 98, 99]) })).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");

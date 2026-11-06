@@ -1,0 +1,433 @@
+diff --git a/core/tools/aidlc-plugin-emit.ts b/core/tools/aidlc-plugin-emit.ts
+index 439b4dd..7264396 100644
+--- a/core/tools/aidlc-plugin-emit.ts
++++ b/core/tools/aidlc-plugin-emit.ts
+@@ -47,6 +47,7 @@ import { sharedKnowledgeWithoutFormatDocs } from "./aidlc-inline-context.ts";
+ import { committedTextBytes, runWithOwnerStampedLock } from "./aidlc-lib.ts";
+ import { EXTENDED_SUBPROCESS_TIMEOUT_MS, LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
+ import { typedHarnessName } from "./aidlc-runtime-paths.ts";
++import { authoredHookProduct, type BootstrapHookProducts } from "./aidlc-plugin-hook-definition.ts";
+ 
+ export type PluginTargetKind = "store" | "kiro" | "kiro-ide" | "cursor";
+ 
+@@ -445,38 +446,40 @@ function pluginNameFromManifest(
+   return basename(pluginRoot);
+ }
+ 
+-function copyHookTemplates(
+-  pluginRoot: string,
+-  outDir: string,
+-  templateHooksDir: string,
+-  target: PluginTarget,
+-): void {
++function copyHookTemplates({ pluginRoot, outDir, templateHooksDir, target }: {
++  readonly pluginRoot: string;
++  readonly outDir: string;
++  readonly templateHooksDir: string;
++  readonly target: PluginTarget;
++}): BootstrapHookProducts {
+   const hooksDir = join(outDir, "hooks");
+   mkdirSync(hooksDir, { recursive: true });
+   const vendoredCompose = join(pluginRoot, "hooks", "compose.ts");
+   const referenceCompose = join(templateHooksDir, "compose.ts");
++  const hasVendoredCompose = existsSync(vendoredCompose);
+   if (
+-    existsSync(vendoredCompose) &&
++    hasVendoredCompose &&
+     !readFileSync(vendoredCompose).equals(readFileSync(referenceCompose))
+   ) {
+     throw new Error(
+       `${vendoredCompose} differs from bundled compose template ${referenceCompose}`,
+     );
+   }
+-  for (const file of readdirSync(templateHooksDir).sort()) {
+-    if (
+-      file === "aidlc-plugin-compose.ts" &&
+-      target.kind !== "cursor" &&
+-      target.kind !== "kiro-ide"
+-    ) {
+-      continue;
+-    }
++  const emitted = readdirSync(templateHooksDir).sort().filter((file) =>
++    file !== "aidlc-plugin-compose.ts" || target.kind === "cursor" || target.kind === "kiro-ide",
++  );
++  const destinations = emitted.map((file) => {
+     const source =
+-      file === "compose.ts" && existsSync(vendoredCompose)
++      file === "compose.ts" && hasVendoredCompose
+         ? vendoredCompose
+         : join(templateHooksDir, file);
+-    cpSync(source, join(hooksDir, file));
+-  }
++    const destination = join(hooksDir, file);
++    cpSync(source, destination);
++    return realpathSync.native(destination);
++  });
++  return { destinations, matchedReference: hasVendoredCompose
++    ? { source: realpathSync.native(vendoredCompose), destination: realpathSync.native(join(hooksDir, "compose.ts")) }
++    : null };
+ }
+ 
+ // Cursor and Kiro run a plugin hook in the platform's shell (Cursor: the
+@@ -714,25 +717,28 @@ function writeHookWiring(
+   );
+ }
+ 
+-function copyPluginContent(
+-  pluginRoot: string,
+-  outDir: string,
+-  target: PluginTarget,
+-  reviewers: ReadonlySet<string>,
+-  templateHooksDir: string,
+-): void {
+-  const reservedHookNames = new Set(readdirSync(templateHooksDir));
++function copyPluginContent({ pluginRoot, outDir, target, reviewers, bootstrap }: {
++  readonly pluginRoot: string;
++  readonly outDir: string;
++  readonly target: PluginTarget;
++  readonly reviewers: ReadonlySet<string>;
++  readonly bootstrap: BootstrapHookProducts;
++}): void {
+   for (const dir of CONTENT_DIRS) {
+     if (dir === "hooks" && target.harnessName !== "claude") continue;
+     const sourceDir = join(pluginRoot, dir);
+     if (!existsSync(sourceDir)) continue;
+     for (const file of walkPluginFiles(sourceDir).filter((file) => classifyPluginSourceFile({ pluginRoot, file }) === "runtime")) {
+-      if (dir === "hooks" && reservedHookNames.has(basename(file))) throw new Error(`authored hook collides with compose bootstrap: ${file}`);
+       const outputDir =
+         target.kind === "cursor" && dir === "agents"
+           ? join(outDir, "aidlc", "agents")
+           : join(outDir, dir);
+       const outPath = join(outputDir, relative(sourceDir, file));
++      if (dir === "hooks") {
++        const product = authoredHookProduct({ source: realpathSync.native(file), destination: existsSync(outPath) ? realpathSync.native(outPath) : outPath, bootstrap });
++        if (product.kind === "conflict") throw new Error(`authored hook collides with compose bootstrap: ${file}`);
++        if (product.kind === "reuse-bootstrap") continue;
++      }
+       mkdirSync(dirname(outPath), { recursive: true });
+       let content = readFileSync(file);
+       if (dir === "agents" && file.endsWith("-agent.md")) {
+@@ -964,14 +970,9 @@ export function buildPluginProjection(
+         );
+       }
+ 
+-      copyHookTemplates(
+-        pluginRoot,
+-        pluginDir,
+-        options.templateHooksDir,
+-        options.target,
+-      );
++      const bootstrap = copyHookTemplates({ pluginRoot, outDir: pluginDir, templateHooksDir: options.templateHooksDir, target: options.target });
+       writeHookWiring(pluginName, host.plugin, outDir, pluginDir, options.target);
+-      copyPluginContent(pluginRoot, pluginDir, options.target, reviewers, options.templateHooksDir);
++      copyPluginContent({ pluginRoot, outDir: pluginDir, target: options.target, reviewers, bootstrap });
+ 
+       return {
+         pluginName,
+diff --git a/core/tools/aidlc-plugin-hook-definition.test.ts b/core/tools/aidlc-plugin-hook-definition.test.ts
+index 855ae4e..653d3c9 100644
+--- a/core/tools/aidlc-plugin-hook-definition.test.ts
++++ b/core/tools/aidlc-plugin-hook-definition.test.ts
+@@ -1,5 +1,5 @@
+ import { expect, test } from 'bun:test';
+-import { bindPluginHookSources } from './aidlc-plugin-hook-definition.ts';
++import { authoredHookProduct, bindPluginHookSources, type AuthoredHookProductInput, type AuthoredHookProductDecision } from './aidlc-plugin-hook-definition.ts';
+ const rows = [{ pluginName: 'example', event: 'PreToolUse', target: 'guard', hookFile: 'guard.mjs' }];
+ test('binds declared entrypoints to actual authored and projected modules', () => {
+   expect(bindPluginHookSources({ rows, authoredFiles: ['hooks/guard.mjs'], projectedFiles: ['hooks/guard.mjs'] })).toEqual({ kind: 'bound', rows });
+@@ -13,3 +13,17 @@ test('an authored entrypoint must actually be delivered', () => {
+ test('a plugin without declared hooks needs no invented executable', () => {
+   expect(bindPluginHookSources({ rows: [], authoredFiles: [], projectedFiles: [] })).toEqual({ kind: 'bound', rows: [] });
+ });
++
++test.each([
++  { name: 'reuses the exact validated vendored reference at its emitted destination', input: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/compose.ts', bootstrap: { destinations: ['output/hooks/compose.ts'], matchedReference: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/compose.ts' } } }, expected: { kind: 'reuse-bootstrap' } },
++  { name: 'refuses an emitted bootstrap destination without a matched reference', input: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/compose.ts', bootstrap: { destinations: ['output/hooks/compose.ts'], matchedReference: null } }, expected: { kind: 'conflict' } },
++  { name: 'copies a nested hook with the same basename at a different destination', input: { source: 'plugin/hooks/sub/compose.ts', destination: 'output/hooks/sub/compose.ts', bootstrap: { destinations: ['output/hooks/compose.ts'], matchedReference: null } }, expected: { kind: 'copy' } },
++  { name: 'copies a template helper name which the host did not emit', input: { source: 'plugin/hooks/aidlc-plugin-compose.ts', destination: 'output/hooks/aidlc-plugin-compose.ts', bootstrap: { destinations: ['output/hooks/compose.ts'], matchedReference: null } }, expected: { kind: 'copy' } },
++  { name: 'refuses another bootstrap destination even for the matched source', input: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/helper.ts', bootstrap: { destinations: ['output/hooks/compose.ts', 'output/hooks/helper.ts'], matchedReference: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/compose.ts' } } }, expected: { kind: 'conflict' } },
++  { name: 'refuses a different source claiming a matched bootstrap destination', input: { source: 'plugin/hooks/other.ts', destination: 'output/hooks/compose.ts', bootstrap: { destinations: ['output/hooks/compose.ts'], matchedReference: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/compose.ts' } } }, expected: { kind: 'conflict' } },
++  { name: 'canonical destination alias facts still refuse an unmatched source', input: { source: 'plugin/hooks/COMPOSE.ts', destination: 'output/hooks/compose.ts', bootstrap: { destinations: ['output/hooks/compose.ts'], matchedReference: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/compose.ts' } } }, expected: { kind: 'conflict' } },
++  { name: 'copies an ordinary authored hook', input: { source: 'plugin/hooks/guard.ts', destination: 'output/hooks/guard.ts', bootstrap: { destinations: ['output/hooks/compose.ts'], matchedReference: null } }, expected: { kind: 'copy' } },
++  { name: 'an un-emitted matched path has no bootstrap ownership to reuse', input: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/compose.ts', bootstrap: { destinations: [], matchedReference: { source: 'plugin/hooks/compose.ts', destination: 'output/hooks/compose.ts' } } }, expected: { kind: 'copy' } },
++] satisfies readonly { readonly name: string; readonly input: AuthoredHookProductInput; readonly expected: AuthoredHookProductDecision }[])('$name', ({ input, expected }) => {
++  expect(authoredHookProduct(input)).toEqual(expected);
++});
+diff --git a/core/tools/aidlc-plugin-hook-definition.ts b/core/tools/aidlc-plugin-hook-definition.ts
+index f4bb194..fa9c2d5 100644
+--- a/core/tools/aidlc-plugin-hook-definition.ts
++++ b/core/tools/aidlc-plugin-hook-definition.ts
+@@ -1,4 +1,21 @@
+ import type { PluginHookRow } from './aidlc-plugin-hook-registrations.ts';
++export type BootstrapHookProducts = {
++  readonly destinations: readonly string[];
++  readonly matchedReference: { readonly source: string; readonly destination: string } | null;
++};
++export type AuthoredHookProductInput = {
++  readonly source: string;
++  readonly destination: string;
++  readonly bootstrap: BootstrapHookProducts;
++};
++export type AuthoredHookProductDecision = { readonly kind: 'copy' } | { readonly kind: 'reuse-bootstrap' } | { readonly kind: 'conflict' };
++export function authoredHookProduct(input: AuthoredHookProductInput): AuthoredHookProductDecision {
++  if (!input.bootstrap.destinations.includes(input.destination)) return { kind: 'copy' };
++  const reference = input.bootstrap.matchedReference;
++  return reference !== null && reference.source === input.source && reference.destination === input.destination
++    ? { kind: 'reuse-bootstrap' }
++    : { kind: 'conflict' };
++}
+ export function bindPluginHookSources(input: { readonly rows: readonly PluginHookRow[]; readonly authoredFiles: readonly string[]; readonly projectedFiles: readonly string[] }): { readonly kind: 'bound'; readonly rows: readonly PluginHookRow[] } | { readonly kind: 'refused'; readonly message: string } {
+   const missing = input.rows.find((row) => !input.authoredFiles.includes(`hooks/${row.hookFile}`) || !input.projectedFiles.includes(`hooks/${row.hookFile}`));
+   return missing === undefined ? { kind: 'bound', rows: input.rows } : { kind: 'refused', message: `plugin ${missing.pluginName}: declared hook body hooks/${missing.hookFile} must exist in both authored and projected runtime inputs` };
+diff --git a/scripts/package-source-inputs.test.ts b/scripts/package-source-inputs.test.ts
+new file mode 100644
+index 0000000..91269d6
+--- /dev/null
++++ b/scripts/package-source-inputs.test.ts
+@@ -0,0 +1,51 @@
++import { expect, mock, test } from "bun:test";
++import { packageInputFiles } from "./package-source-inputs.ts";
++
++test("available producer inputs are selected without unrelated scripts or tests", () => {
++  const fileExists = mock<(path: string) => boolean>().mockReturnValue(true);
++  expect(packageInputFiles({ fileExists })).toEqual([
++    "scripts/package.ts",
++    "scripts/manifest-types.ts",
++    "scripts/agent-knowledge.ts",
++    "scripts/earlier-release-regions.ts",
++    "scripts/copy-era-files.json",
++    "scripts/harness-bindings.ts",
++    "scripts/onboarding.ts",
++    "scripts/plugin-contributions.ts",
++    "scripts/plugin-declaration.ts",
++    "scripts/plugin-hook-source.ts",
++    "scripts/plugin-runtime.ts",
++    "scripts/runtime-import.ts",
++    "scripts/runtime-source.ts",
++    "scripts/package-sources.ts",
++    "scripts/package-source-inputs.ts",
++    "package.json",
++    "bun.lock",
++    "tsconfig.json",
++  ]);
++});
++
++test("absent producer inputs are not selected", () => {
++  const fileExists = mock<(path: string) => boolean>().mockReturnValue(false);
++  expect(packageInputFiles({ fileExists })).toEqual([]);
++  expect(fileExists.mock.calls).toEqual([
++    ["scripts/package.ts"],
++    ["scripts/manifest-types.ts"],
++    ["scripts/agent-knowledge.ts"],
++    ["scripts/earlier-release-regions.ts"],
++    ["scripts/copy-era-files.json"],
++    ["scripts/harness-bindings.ts"],
++    ["scripts/onboarding.ts"],
++    ["scripts/plugin-contributions.ts"],
++    ["scripts/plugin-declaration.ts"],
++    ["scripts/plugin-hook-source.ts"],
++    ["scripts/plugin-runtime.ts"],
++    ["scripts/runtime-import.ts"],
++    ["scripts/runtime-source.ts"],
++    ["scripts/package-sources.ts"],
++    ["scripts/package-source-inputs.ts"],
++    ["package.json"],
++    ["bun.lock"],
++    ["tsconfig.json"],
++  ]);
++});
+diff --git a/scripts/package-source-inputs.ts b/scripts/package-source-inputs.ts
+new file mode 100644
+index 0000000..f251238
+--- /dev/null
++++ b/scripts/package-source-inputs.ts
+@@ -0,0 +1,25 @@
++// Finite producer input policy. The caller supplies availability; this owner does not read storage.
++const SOURCE_FILES = [
++  "scripts/package.ts",
++  "scripts/manifest-types.ts",
++  "scripts/agent-knowledge.ts",
++  "scripts/earlier-release-regions.ts",
++  "scripts/copy-era-files.json",
++  "scripts/harness-bindings.ts",
++  "scripts/onboarding.ts",
++  "scripts/plugin-contributions.ts",
++  "scripts/plugin-declaration.ts",
++  "scripts/plugin-hook-source.ts",
++  "scripts/plugin-runtime.ts",
++  "scripts/runtime-import.ts",
++  "scripts/runtime-source.ts",
++  "scripts/package-sources.ts",
++  "scripts/package-source-inputs.ts",
++  "package.json",
++  "bun.lock",
++  "tsconfig.json",
++];
++
++export function packageInputFiles({ fileExists }: { readonly fileExists: (path: string) => boolean }): readonly string[] {
++  return SOURCE_FILES.filter((file) => fileExists(file));
++}
+diff --git a/scripts/package-sources.ts b/scripts/package-sources.ts
+index 076434e..02398cd 100644
+--- a/scripts/package-sources.ts
++++ b/scripts/package-sources.ts
+@@ -4,6 +4,7 @@
+ // reports on code that has since changed.
+ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+ import { join, relative } from "node:path";
++import { packageInputFiles } from "./package-source-inputs.ts";
+ 
+ /** Written by `bun scripts/package.ts` after each build, beside the harness trees. */
+ export const PACKAGE_SOURCES_FILE = join("dist", ".package-sources.json");
+@@ -12,15 +13,7 @@ export const PACKAGE_SOURCES_FILE = join("dist", ".package-sources.json");
+ // it ships, and its own modules. Plugin tests are never packaged, so editing
+ // one leaves dist/ current.
+ const INPUT_DIRS = ["core", "harness", "plugins", "scripts/plugin-hooks-template"];
+-const INPUT_FILES = [
+-  "scripts/package.ts",
+-  "scripts/manifest-types.ts",
+-  "scripts/agent-knowledge.ts",
+-  "scripts/earlier-release-regions.ts",
+-  "scripts/copy-era-files.json",
+-  "scripts/harness-bindings.ts",
+-  "scripts/onboarding.ts",
+-];
++
+ 
+ function inputFiles(repoRoot: string): string[] {
+   const files: string[] = [];
+@@ -36,7 +29,7 @@ function inputFiles(repoRoot: string): string[] {
+     }
+   };
+   for (const dir of INPUT_DIRS) if (existsSync(join(repoRoot, dir))) walk(join(repoRoot, dir));
+-  for (const file of INPUT_FILES) if (existsSync(join(repoRoot, file))) files.push(file);
++  files.push(...packageInputFiles({ fileExists: (file) => existsSync(join(repoRoot, file)) }));
+   return files.sort();
+ }
+ 
+diff --git a/tests/integration/t-plugin-hook-bootstrap-products.test.ts b/tests/integration/t-plugin-hook-bootstrap-products.test.ts
+new file mode 100644
+index 0000000..c83c4a0
+--- /dev/null
++++ b/tests/integration/t-plugin-hook-bootstrap-products.test.ts
+@@ -0,0 +1,77 @@
++import { afterAll, expect, test } from "bun:test";
++import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
++import { dirname, join } from "node:path";
++import { buildPluginProjection, readPluginTargets } from "../../dist/claude/.claude/tools/aidlc-plugin-emit.ts";
++import type { BuildPluginProjectionOptions } from "../../dist/claude/.claude/tools/aidlc-plugin-emit.ts";
++import { createTestProject, cleanupTestProject, REPO_ROOT } from "../harness/fixtures.ts";
++
++const scratch = createTestProject();
++const templates = join(REPO_ROOT, "dist", "claude", ".claude", "tools", "data", "plugin-hooks-template");
++const target = readPluginTargets(join(REPO_ROOT, "dist", "claude", ".claude", "tools", "data", "plugin-targets.json")).claude;
++
++export type HookProductFixture = {
++  readonly options: BuildPluginProjectionOptions;
++  readonly authoredOutputPath: string;
++  readonly bootstrapOutputPath: string;
++};
++export type AliasHookProductFixture = HookProductFixture & { readonly caseAliasExists: boolean };
++
++afterAll(() => cleanupTestProject(scratch));
++
++const pluginFixture = ({ name, hookFile, hookText }: { readonly name: string; readonly hookFile: string; readonly hookText: string }): HookProductFixture => {
++  const pluginRoot = join(scratch, name);
++  const templateHooksDir = join(scratch, `${name}-templates`);
++  const outDir = join(scratch, `${name}-output`);
++  cpSync(join(REPO_ROOT, "plugins", "test-pro"), pluginRoot, { recursive: true });
++  cpSync(templates, templateHooksDir, { recursive: true });
++  writeFileSync(join(templateHooksDir, "compose.ts"), 'export const composeBootstrap = "owned";\n');
++  const authoredPath = join(pluginRoot, "hooks", hookFile);
++  mkdirSync(dirname(authoredPath), { recursive: true });
++  writeFileSync(authoredPath, hookText);
++  return {
++    options: { pluginRoot, target, templateHooksDir, outDir },
++    authoredOutputPath: join(outDir, "hooks", hookFile),
++    bootstrapOutputPath: join(outDir, "hooks", "compose.ts"),
++  };
++};
++
++const helperFixture = ({ name, authoredName }: { readonly name: string; readonly authoredName: string }): HookProductFixture => {
++  const fixture = pluginFixture({ name, hookFile: authoredName, hookText: 'export const bootstrapHelper = "owned";\n' });
++  writeFileSync(join(fixture.options.templateHooksDir, "bootstrap-helper.ts"), 'export const bootstrapHelper = "owned";\n');
++  return fixture;
++};
++
++const aliasFixture = (): AliasHookProductFixture => {
++  const fixture = helperFixture({ name: "aliased-bootstrap-helper", authoredName: "BOOTSTRAP-HELPER.ts" });
++  writeFileSync(join(scratch, "bootstrap-case-alias-probe"), "owned test file\n");
++  return { ...fixture, caseAliasExists: existsSync(join(scratch, "BOOTSTRAP-CASE-ALIAS-PROBE")) };
++};
++
++test("a mismatched vendored compose hook still refuses the build", () => {
++  const fixture = pluginFixture({ name: "mismatched-vendored-hook", hookFile: "compose.ts", hookText: 'console.log("not the bootstrap");\n' });
++  expect(() => buildPluginProjection(fixture.options)).toThrow("differs from bundled compose template");
++});
++
++test("a nested compose basename does not claim the bootstrap destination", () => {
++  const fixture = pluginFixture({ name: "nested-compose-hook", hookFile: "sub/compose.ts", hookText: 'export const nestedHook = "authored";\n' });
++  buildPluginProjection(fixture.options);
++  expect(readFileSync(fixture.authoredOutputPath, "utf-8")).toBe('export const nestedHook = "authored";\n');
++  expect(readFileSync(fixture.bootstrapOutputPath, "utf-8")).toBe('export const composeBootstrap = "owned";\n');
++});
++
++test("a host-unemitted bootstrap helper name remains an authored hook", () => {
++  const fixture = pluginFixture({ name: "unemitted-helper-hook", hookFile: "aidlc-plugin-compose.ts", hookText: 'export const authoredHelper = "claude";\n' });
++  buildPluginProjection(fixture.options);
++  expect(readFileSync(fixture.authoredOutputPath, "utf-8")).toBe('export const authoredHelper = "claude";\n');
++});
++
++test("an authored hook cannot claim another emitted bootstrap helper", () => {
++  const fixture = helperFixture({ name: "claimed-bootstrap-helper", authoredName: "bootstrap-helper.ts" });
++  expect(() => buildPluginProjection(fixture.options)).toThrow("authored hook collides with compose bootstrap");
++});
++
++test("a filesystem case alias cannot replace an emitted bootstrap helper", () => {
++  const fixture = aliasFixture();
++  expect(fixture.caseAliasExists, "Fixture requires case-insensitive scratch storage").toBe(true);
++  expect(() => buildPluginProjection(fixture.options)).toThrow("authored hook collides with compose bootstrap");
++});
+diff --git a/tests/integration/t-projection-input-freshness.test.ts b/tests/integration/t-projection-input-freshness.test.ts
+new file mode 100644
+index 0000000..19d83ee
+--- /dev/null
++++ b/tests/integration/t-projection-input-freshness.test.ts
+@@ -0,0 +1,37 @@
++import { afterAll, expect, test } from "bun:test";
++import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { dirname, join } from "node:path";
++import { packageInputsFingerprint, recordPackagedSources, stalePackageMessage } from "../../scripts/package-sources.ts";
++
++const scratch = mkdtempSync(join(tmpdir(), "projection-input-freshness-"));
++afterAll(() => rmSync(scratch, { recursive: true, force: true }));
++
++const inputFixture = ({ path, name }: { readonly path: string; readonly name: string }) => {
++  const root = join(scratch, name);
++  const inputPath = join(root, path);
++  mkdirSync(dirname(inputPath), { recursive: true });
++  mkdirSync(join(root, "dist"), { recursive: true });
++  writeFileSync(inputPath, "// source before\n");
++  recordPackagedSources(root, ["claude"], packageInputsFingerprint(root));
++  return { root, inputPath };
++};
++
++test("a changed producer input invalidates the persisted consumer record", () => {
++  const fixture = inputFixture({ path: "scripts/plugin-runtime.ts", name: "changed-runtime" });
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++  writeFileSync(fixture.inputPath, "// source changed\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run \u0060bun scripts/package.ts\u0060 first.");
++});
++
++test("rewriting identical producer bytes leaves the output current", () => {
++  const fixture = inputFixture({ path: "scripts/plugin-runtime.ts", name: "identical" });
++  writeFileSync(fixture.inputPath, "// source before\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++});
++
++test("an unrelated test module does not invalidate runtime output", () => {
++  const fixture = inputFixture({ path: "scripts/plugin-runtime.test.ts", name: "test-module" });
++  writeFileSync(fixture.inputPath, "// test changed\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++});

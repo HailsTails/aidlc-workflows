@@ -19,7 +19,7 @@ export type DistributionSourceOperations = {
   readonly inspect: (input: { readonly sourceRoot: string; readonly root: string }) => Promise<unknown>;
   readonly context: (input: { readonly root: string; readonly binding: HarnessBinding }) => Promise<unknown>;
   readonly read: (input: { readonly root: string; readonly path: string }) => Promise<{ readonly bytes: Uint8Array; readonly mode: number }>;
-  readonly pack: (input: { readonly sourceRoot: string; readonly files: readonly DistributionFile[]; readonly directories: readonly DistributionDirectory[] }) => Promise<Uint8Array>;
+  readonly pack: (input: { readonly sourceRoot: string; readonly files: readonly DistributionFile[]; readonly directories: readonly DistributionDirectory[] }) => Promise<unknown>;
 };
 export const createDistributionSourceOperations = (): DistributionSourceOperations => ({
   skill: ({ sourceRoot }) => Bun.file(`${sourceRoot}/core/skills/aidlc-session-cost/SKILL.md`).text(),
@@ -44,12 +44,11 @@ export const createDistributionSourceOperations = (): DistributionSourceOperatio
   pack: async ({ sourceRoot, files, directories }) => {
     const imported: unknown = await import(Bun.pathToFileURL(`${sourceRoot}/core/tools/aidlc-archive.ts`).href);
     const api = archiveFunctions.parse(imported);
-    const packed: unknown = api.createTarGz([...directories.map((directory) => ({ path: directory.path, type: "directory", mode: directory.mode, data: Buffer.alloc(0) })), ...files.map((file) => ({ path: file.path, type: "file", mode: file.mode, data: Buffer.from(file.bytes) }))]);
-    if (!(packed instanceof Uint8Array)) throw new Error("native archive producer did not return bytes");
-    return packed;
+    return api.createTarGz([...directories.map((directory) => ({ path: directory.path, type: "directory", mode: directory.mode, data: Buffer.alloc(0) })), ...files.map((file) => ({ path: file.path, type: "file", mode: file.mode, data: Buffer.from(file.bytes) }))]);
   },
 });
-export type DistributionSource = { readonly skill: (input: { readonly sourceRoot: string }) => Promise<Outcome<string>>; readonly load: (input: DistributionSourceLocation) => Promise<Outcome<DistributionSeed>>; readonly archive: (input: { readonly sourceRoot: string; readonly distribution: AssembledDistribution }) => Promise<Outcome<Uint8Array>> };
+export type DistributionSource = { readonly skill: (input: { readonly sourceRoot: string }) => Promise<Outcome<string>>; readonly load: (input: DistributionSourceLocation) => Promise<Outcome<DistributionSeed>>; readonly archive: (input: { readonly sourceRoot: string; readonly distribution: Pick<AssembledDistribution, "files" | "directories"> }) => Promise<Outcome<Uint8Array>> };
+const admitArchiveBytes = ({ packed }: { readonly packed: unknown }): Outcome<Uint8Array> => packed instanceof Uint8Array ? { status: "ok", value: packed } : { status: "invalid", findings: [finding({ code: "invalid-input", subject: "distribution-archive", detail: "native archive producer must return byte contents" })] };
 export const createDistributionSource = ({ operations = createDistributionSourceOperations() }: { readonly operations?: DistributionSourceOperations } = {}): DistributionSource => ({
   skill: async ({ sourceRoot }) => {
     try { return { status: "ok", value: await operations.skill({ sourceRoot }) }; }
@@ -71,7 +70,7 @@ export const createDistributionSource = ({ operations = createDistributionSource
     } catch (error) { return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "distribution-seed", detail: `native seed unavailable: ${error instanceof Error ? error.message : String(error)}` })] }; }
   },
   archive: async ({ sourceRoot, distribution }) => {
-    try { return { status: "ok", value: await operations.pack({ sourceRoot, files: distribution.files, directories: distribution.directories }) }; }
+    try { return admitArchiveBytes({ packed: await operations.pack({ sourceRoot, files: distribution.files, directories: distribution.directories }) }); }
     catch (error) { return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "distribution-archive", detail: `native archive producer unavailable: ${error instanceof Error ? error.message : String(error)}` })] }; }
   },
 });

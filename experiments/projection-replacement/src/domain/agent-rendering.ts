@@ -112,34 +112,20 @@ const emissionFindings = ({
       : []),
     ...rules.residue({ text: resource.body, subject: resource.path }),
   ]);
-export const createAgentRenderer = ({
-  rules = createAgentRenderingRules(),
-  emitter = createMarkdownAgentEmitter(),
-}: {
-  readonly rules?: AgentRenderingRules;
-  readonly emitter?: AgentNativeEmitter;
-} = {}): AgentRenderer => ({
-  render: (prepared) => {
-    const input = renderedEmission({ prepared, rules });
-    const native = emitter.emit(input);
-    if (native.status === "invalid") return native;
-    const persona = nativePersona({ resources: native.value, subject: prepared.agent.name });
-    if (persona.status === "invalid") return persona;
-    const knowledge = renderedKnowledge({ prepared, rules });
-    const resources = [...native.value, ...knowledge];
-    const findings = emissionFindings({ resources, rules });
-    if (findings.length > 0) return { status: "invalid", findings };
-    return {
-      status: "ok",
-      value: {
-        origin: prepared.agent.origin,
-        harness: prepared.context.harness,
-        resources,
-        participation: prepared.participation,
-      },
-    };
-  },
-});
+type AgentFootprint = "bundle" | "definition";
+const renderAgentFootprint = ({ prepared, rules, emitter, footprint }: { readonly prepared: PreparedAgent; readonly rules: AgentRenderingRules; readonly emitter: AgentNativeEmitter; readonly footprint: AgentFootprint }): Outcome<AgentProjection> => {
+  const native = emitter.emit(renderedEmission({ prepared, rules }));
+  if (native.status === "invalid") return native;
+  const persona = nativePersona({ resources: native.value, subject: prepared.agent.name });
+  if (persona.status === "invalid") return persona;
+  const knowledge = footprint === "bundle" ? renderedKnowledge({ prepared, rules }) : [];
+  const resources = [...native.value, ...knowledge];
+  const findings = emissionFindings({ resources, rules });
+  return findings.length > 0 ? { status: "invalid", findings } : { status: "ok", value: { origin: prepared.agent.origin, harness: prepared.context.harness, resources, participation: prepared.participation } };
+};
+const createFootprintRenderer = ({ rules, emitter, footprint }: { readonly rules: AgentRenderingRules; readonly emitter: AgentNativeEmitter; readonly footprint: AgentFootprint }): AgentRenderer => ({ render: (prepared) => renderAgentFootprint({ prepared, rules, emitter, footprint }) });
+export const createAgentRenderer = ({ rules = createAgentRenderingRules(), emitter = createMarkdownAgentEmitter() }: { readonly rules?: AgentRenderingRules; readonly emitter?: AgentNativeEmitter } = {}): AgentRenderer => createFootprintRenderer({ rules, emitter, footprint: "bundle" });
+export const createAgentDefinitionRenderer = ({ rules = createAgentRenderingRules(), emitter = createMarkdownAgentEmitter() }: { readonly rules?: AgentRenderingRules; readonly emitter?: AgentNativeEmitter } = {}): AgentRenderer => createFootprintRenderer({ rules, emitter, footprint: "definition" });
 const nativePersona = ({
   resources,
   subject,

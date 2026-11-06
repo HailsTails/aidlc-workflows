@@ -1,0 +1,887 @@
+diff --git a/plugins/rin/hooks/rin-constitution-engine-gate-decision.test.ts b/plugins/rin/hooks/rin-constitution-engine-gate-decision.test.ts
+index 773976185..24032b4b7 100644
+--- a/plugins/rin/hooks/rin-constitution-engine-gate-decision.test.ts
++++ b/plugins/rin/hooks/rin-constitution-engine-gate-decision.test.ts
+@@ -42,6 +42,7 @@ const gatePorts = ({
+   readonly check?: DisciplinesCheckOutcome;
+   readonly checkoutRoot?: string | null;
+ }): ConstitutionGatePorts => ({
++  resolveTarget: vi.fn().mockReturnValue({ kind: "resolved", projectDir: "/repo", participation: "participant", unjoined: false, mode: "main", stage: "rin-gate-4-implement", scope: "rin-gates", recordDir: "/repo/record", stateContent: "", currentStage: "rin-gate-4-implement", stageSource: "explicit", selection: { space: "default", intent: "work", sessionId: null, binding: null } }),
+   checkoutRootOf: vi.fn<ConstitutionGatePorts["checkoutRootOf"]>().mockReturnValue(checkoutRoot ?? undefined),
+   readEngine: vi.fn<ConstitutionGatePorts["readEngine"]>().mockReturnValue(engine),
+   runWalkerGate: vi.fn<ConstitutionGatePorts["runWalkerGate"]>().mockReturnValue(walker ?? { kind: "allowed" }),
+@@ -120,6 +121,8 @@ describe("constitutionGateDecisionOf", () => {
+     await constitutionGateDecisionOf({ hookInput: COMPLETION_INPUT, ports });
+     expect(ports.recordGateRun).toHaveBeenCalledWith({
+       command: COMPLETION_COMMAND,
++      stage: "rin-gate-4-implement",
++      result: "completed",
+       checkoutRoot: "/repo",
+       verdict: { pass: false, violationsCount: 1, decayPass: false, decayViolationsCount: 1 },
+     });
+diff --git a/plugins/rin/hooks/rin-constitution-engine-gate-decision.ts b/plugins/rin/hooks/rin-constitution-engine-gate-decision.ts
+index d9f4e1788..c583a42ee 100644
+--- a/plugins/rin/hooks/rin-constitution-engine-gate-decision.ts
++++ b/plugins/rin/hooks/rin-constitution-engine-gate-decision.ts
+@@ -4,7 +4,7 @@ import { CHECK_COMMAND_TEXT, type FailingSection, failingSectionsOf, remedyOf }
+ import type { ConstitutionEngine } from "../tools/rin-harness-config.ts";
+ import type { PathOperations } from "../tools/rin-harness-path-operations.ts";
+ import { CONSTITUTION_BYPASS_TOKEN, GATED_SHELL_TOOL_NAMES } from "./rin-constitution-gate-scope.ts";
+-import { isCompletionReport } from "./rin-gate-invocation.ts";
++import { completionOperations, isCompletionReport, type resolveCompletionTarget } from "./rin-gate-invocation.ts";
+ 
+ type GateDecision =
+   | { readonly kind: "allow" }
+@@ -32,12 +32,15 @@ type GateRunVerdict = {
+ };
+ 
+ type ConstitutionGatePorts = {
++  readonly resolveTarget: typeof resolveCompletionTarget;
+   readonly checkoutRootOf: (request: { readonly commandCwd: string | undefined }) => string | undefined;
+   readonly readEngine: (request: { readonly checkoutRoot: string }) => EngineReading;
+   readonly runWalkerGate: (request: { readonly checkoutRoot: string; readonly hookInput: string }) => WalkerGateOutcome;
+   readonly runDisciplinesCheck: (request: DisciplinesCheckRequest) => DisciplinesCheckOutcome;
+   readonly recordGateRun: (request: {
+     readonly command: string;
++    readonly stage: string;
++    readonly result: string;
+     readonly checkoutRoot: string;
+     readonly verdict: GateRunVerdict;
+   }) => Promise<void>;
+@@ -79,9 +82,9 @@ const gatedCompletionOf = ({ hookInput }: { readonly hookInput: string }): Gated
+   if (toolName === undefined || !GATED_SHELL_TOOL_NAMES.includes(toolName)) {
+     return undefined;
+   }
+-  const toolInput = isRecord(hookCall) ? hookCall["tool_input"] : undefined;
++  const toolInput = isRecord(hookCall) ? hookCall.tool_input : undefined;
+   const command = stringFieldOf({ container: toolInput, key: "command" }) ?? "";
+-  if (!isCompletionReport({ command }) || command.includes(CONSTITUTION_BYPASS_TOKEN)) {
++  if (command.includes(CONSTITUTION_BYPASS_TOKEN) || !isCompletionReport({ command })) {
+     return undefined;
+   }
+   return { command, commandCwd: stringFieldOf({ container: hookCall, key: "cwd" }) };
+@@ -175,7 +178,11 @@ const engineDecisionOf = async ({
+   checkoutRoot,
+   constitutionEngine,
+   ports,
++  stage,
++  result,
+ }: {
++  readonly stage: string;
++  readonly result: string;
+   readonly hookInput: string;
+   readonly completion: GatedCompletion;
+   readonly checkoutRoot: string;
+@@ -190,7 +197,7 @@ const engineDecisionOf = async ({
+         checkoutRoot,
+         baseRevision: constitutionEngine.baseRevision,
+       });
+-      await ports.recordGateRun({ command: completion.command, checkoutRoot, verdict: gateRunVerdictOf({ outcome }) });
++      await ports.recordGateRun({ command: completion.command, stage, result, checkoutRoot, verdict: gateRunVerdictOf({ outcome }) });
+       return disciplinesDecisionOf({ outcome });
+     }
+   }
+@@ -207,25 +214,28 @@ const constitutionGateDecisionOf = async ({
+   if (completion === undefined) {
+     return ALLOW;
+   }
+-  const checkoutRoot = ports.checkoutRootOf({ commandCwd: completion.commandCwd });
+-  if (checkoutRoot === undefined) {
+-    return unverifiedDenialOf({
+-      reason: `no git checkout contains the command's working directory (${completion.commandCwd ?? "none given"}), so there is no tree to check`,
++  const call = parsedJsonOf({ text: hookInput });
++  const operations = completionOperations({ command: completion.command, context: {
++    cwd: completion.commandCwd ?? process.cwd(), environment: process.env,
++    sessionId: stringFieldOf({ container: call, key: "session_id" }),
++  } });
++  for (const operation of operations) {
++    const target = ports.resolveTarget(operation);
++    if (target.kind === "unavailable") return unverifiedDenialOf({ reason: target.reason });
++    if (target.unjoined) return unverifiedDenialOf({ reason: "This conversation has not joined the selected work; select it with aidlc intent first." });
++    const checkoutRoot = ports.checkoutRootOf({ commandCwd: target.projectDir });
++    if (checkoutRoot === undefined) return unverifiedDenialOf({ reason: `no git checkout contains the selected project (${target.projectDir}), so there is no tree to check` });
++    const reading = ports.readEngine({ checkoutRoot });
++    if (reading.kind === "unavailable") return unverifiedDenialOf({ reason: `constitution.engine could not be read: ${reading.reason}` });
++    const decision = await engineDecisionOf({
++      hookInput: operations.length === 1 ? hookInput : JSON.stringify({ ...(isRecord(call) ? call : {}), cwd: operation.context.cwd, tool_input: { command: operation.command } }),
++      completion: { command: operation.command, commandCwd: operation.context.cwd }, checkoutRoot,
++      stage: target.stage, result: operation.request.kind === "report" ? operation.request.flags.result ?? "unknown" : "unknown",
++      constitutionEngine: reading.constitutionEngine, ports,
+     });
++    if (decision.kind === "deny") return decision;
+   }
+-  const reading = ports.readEngine({ checkoutRoot });
+-  switch (reading.kind) {
+-    case "unavailable":
+-      return unverifiedDenialOf({ reason: `constitution.engine could not be read: ${reading.reason}` });
+-    case "read":
+-      return engineDecisionOf({
+-        hookInput,
+-        completion,
+-        checkoutRoot,
+-        constitutionEngine: reading.constitutionEngine,
+-        ports,
+-      });
+-  }
++  return ALLOW;
+ };
+ 
+ const constitutionEngineFromWire = ({ text }: { readonly text: string }): ConstitutionEngine | undefined => {
+diff --git a/plugins/rin/hooks/rin-constitution-engine-gate-ports.ts b/plugins/rin/hooks/rin-constitution-engine-gate-ports.ts
+index 4d64c32b9..42398252c 100644
+--- a/plugins/rin/hooks/rin-constitution-engine-gate-ports.ts
++++ b/plugins/rin/hooks/rin-constitution-engine-gate-ports.ts
+@@ -1,3 +1,4 @@
++import { resolveCompletionTarget } from "./rin-gate-invocation.ts";
+ import { nearestCheckoutRootOf } from "../tools/rin-checkout-root.ts";
+ import { runDisciplinesCheck } from "../tools/rin-disciplines-check.ts";
+ import { defaultReviewProcessPort, type ReviewProcessPort } from "../tools/rin-gates/review-process-port.ts";
+@@ -91,12 +92,6 @@ const runWalkerGate =
+     return walkerGateOutcomeOf({ walkerGatePath, output });
+   };
+ 
+-const stageOf = ({ command }: { readonly command: string }): string =>
+-  command.match(/--stage\s+([A-Za-z0-9._-]+)/)?.[1] ?? "ungrouped";
+-
+-const stageResultOf = ({ command }: { readonly command: string }): string =>
+-  command.match(/--result\s+(approved|completed)/)?.[1] ?? "unknown";
+-
+ const checkoutAppendGateRunOf = async ({
+   runtime,
+   checkoutRoot,
+@@ -112,13 +107,13 @@ const checkoutAppendGateRunOf = async ({
+ 
+ const recordGateRun =
+   (runtime: GateRuntime): ConstitutionGatePorts["recordGateRun"] =>
+-  async ({ command, checkoutRoot, verdict }) => {
++  async ({ command, stage, result, checkoutRoot, verdict }) => {
+     try {
+       const appendGateRun = await checkoutAppendGateRunOf({ runtime, checkoutRoot });
+       appendGateRun({
+         projectDir: checkoutRoot,
+-        stage: stageOf({ command }),
+-        result: stageResultOf({ command }),
++        stage,
++        result,
+         command,
+         verdict,
+         timestamp: runtime.process.timestamp(),
+@@ -137,6 +132,7 @@ const defaultConstitutionGatePorts = ({ hookModuleUrl }: { readonly hookModuleUr
+     hookDirectory: pathOperations.dirname({ path: pathOperations.fromFileUrl({ url: hookModuleUrl }) }),
+   };
+   return {
++    resolveTarget: resolveCompletionTarget,
+     checkoutRootOf: checkoutRootOf(runtime),
+     readEngine: readEngine(runtime),
+     runWalkerGate: runWalkerGate(runtime),
+diff --git a/plugins/rin/hooks/rin-constitution-engine-gate.ts b/plugins/rin/hooks/rin-constitution-engine-gate.ts
+index 36e1a8e03..3b3cbf68f 100644
+--- a/plugins/rin/hooks/rin-constitution-engine-gate.ts
++++ b/plugins/rin/hooks/rin-constitution-engine-gate.ts
+@@ -11,25 +11,16 @@ const gateDecisionOf = async ({ hookInput }: { readonly hookInput: string }): Pr
+   });
+ };
+ 
+-const gateFailureDecisionOf = ({
+-  hookInput,
+-  failure,
+-}: {
+-  readonly hookInput: string;
+-  readonly failure: unknown;
+-}): GateDecision =>
+-  hookInput.includes("report") && hookInput.includes("--result")
+-    ? {
+-        kind: "deny",
+-        reason: `Blocked: stage completion refused. The constitution gate failed before it reached a verdict, so this stage is unverified, not passing: ${String(failure)}\n`,
+-      }
+-    : { kind: "allow" };
++const gateFailureDecisionOf = ({ failure }: { readonly failure: unknown }): GateDecision => ({
++  kind: "deny",
++  reason: `Blocked: the completion command contract could not be inspected: ${String(failure)}. Refresh the runtime and Rin plugin together.\n`,
++});
+ 
+ const decisionOrGateFailureOf = async ({ hookInput }: { readonly hookInput: string }): Promise<GateDecision> => {
+   try {
+     return await gateDecisionOf({ hookInput });
+   } catch (failure) {
+-    return gateFailureDecisionOf({ hookInput, failure });
++    return gateFailureDecisionOf({ failure });
+   }
+ };
+ 
+diff --git a/plugins/rin/hooks/rin-constitution-gate.ts b/plugins/rin/hooks/rin-constitution-gate.ts
+index 48ae1aa38..83466acbc 100644
+--- a/plugins/rin/hooks/rin-constitution-gate.ts
++++ b/plugins/rin/hooks/rin-constitution-gate.ts
+@@ -1,15 +1,16 @@
+ import { type SpawnSyncReturns, spawnSync } from "node:child_process";
+ import { existsSync } from "node:fs";
+-import { dirname, join, resolve } from "node:path";
++import { dirname, join } from "node:path";
+ import { env, stdin } from "node:process";
+ import { fileURLToPath } from "node:url";
+-import { gateToolsDirectoryOf, isCompletionReport } from "./rin-gate-invocation.ts";
++import { completionOperations, gateToolsDirectoryOf, isCompletionReport, resolveCompletionTarget } from "./rin-gate-invocation.ts";
+ import { appendGateRun } from "../tools/rin-harness-gate-runs.ts";
+ 
+ type HookInput = {
+   readonly tool_name?: string;
+   readonly tool_input?: { readonly command?: string };
+   readonly cwd?: string;
++  readonly session_id?: string;
+ };
+ 
+ // Every shell-bearing tool this harness offers, as a closed set. This gate owns
+@@ -175,39 +176,7 @@ const describeElapsed = ({
+ }): string =>
+   warmMs === null ? `${coldMs}ms` : `${coldMs}ms cold then ${warmMs}ms warm`;
+ 
+-const isGitCheckout = ({ root }: { readonly root: string }): boolean =>
+-  existsSync(join(root, ".git"));
+-
+-const nearestCheckoutAt = (candidate: string): string | undefined => {
+-  if (isGitCheckout({ root: candidate })) return candidate;
+-  const parent = dirname(candidate);
+-  return parent === candidate ? undefined : nearestCheckoutAt(parent);
+-};
+-
+ const hookDir = dirname(fileURLToPath(import.meta.url));
+-const checkoutRootFromCommandCwd = (
+-  cwd: string | undefined,
+-): string | undefined => {
+-  if (cwd === undefined || cwd === "") return undefined;
+-  return nearestCheckoutAt(resolve(cwd));
+-};
+-const hookFileCheckout = (): string => {
+-  const fromHookFile = resolve(join(hookDir, "..", ".."));
+-  return isGitCheckout({ root: fromHookFile })
+-    ? fromHookFile
+-    : resolve(env.CLAUDE_PROJECT_DIR ?? fromHookFile);
+-};
+-const resolveAuditRoot = ({
+-  commandCwd,
+-}: {
+-  readonly commandCwd: string | undefined;
+-}): string => {
+-  const explicitOverride = env.RIN_CONSTITUTION_GATE_TOOL_ROOT;
+-  if (explicitOverride !== undefined && explicitOverride !== "") {
+-    return resolve(explicitOverride);
+-  }
+-  return checkoutRootFromCommandCwd(commandCwd) ?? hookFileCheckout();
+-};
+ 
+ const readStdin = (): Promise<string> =>
+   new Promise((resolvePromise) => {
+@@ -342,10 +311,10 @@ const gatedInvocationFrom = ({
+   }
+   if (!isShellToolName(input.tool_name)) return null;
+   const command = input.tool_input?.command ?? "";
++  if (command.includes(BYPASS_TOKEN)) return null;
+   if (!isCompletionReport({ command })) {
+     return null;
+   }
+-  if (command.includes(BYPASS_TOKEN)) return null;
+   return { command, commandCwd: input.cwd };
+ };
+ 
+@@ -374,12 +343,16 @@ const denyOnFindings = ({
+ 
+ const recordGateRun = ({
+   command,
++  stage,
++  result,
+   audit,
+   decay,
+   auditRoot,
+   clock,
+ }: {
+   readonly command: string;
++  readonly stage: string;
++  readonly result: string;
+   readonly audit: AuditJson | null;
+   readonly decay: AuditJson | null;
+   readonly auditRoot: string;
+@@ -388,9 +361,8 @@ const recordGateRun = ({
+   try {
+     appendGateRun({
+       projectDir: auditRoot,
+-      stage: command.match(/--stage\s+([A-Za-z0-9._-]+)/)?.[1] ?? "ungrouped",
+-      result:
+-        command.match(/--result\s+(approved|completed)/)?.[1] ?? "unknown",
++      stage,
++      result,
+       command,
+       verdict: {
+         pass: audit?.pass ?? false,
+@@ -459,7 +431,13 @@ const main = async (): Promise<void> => {
+   if (invocation === null) process.exit(0);
+   const { command, commandCwd } = invocation;
+ 
+-  const auditRoot = resolveAuditRoot({ commandCwd });
++  const payload = JSON.parse(raw) as HookInput;
++  const operations = completionOperations({ command, context: { cwd: commandCwd ?? process.cwd(), environment: env, sessionId: payload.session_id } });
++  for (const operation of operations) {
++  const target = resolveCompletionTarget(operation);
++  if (target.kind === "unavailable") deny(`Blocked: completion target unavailable: ${target.reason}`);
++  if (target.unjoined) deny("Blocked: this conversation has not joined the selected work; select it with aidlc intent first.");
++  const auditRoot = target.projectDir;
+ 
+   const ports = verdictToolPorts();
+   const windows = resolveSpawnWindows({
+@@ -469,7 +447,7 @@ const main = async (): Promise<void> => {
+ 
+   const { audit, decay } = gatherVerdicts({ auditRoot, windows, ports });
+ 
+-  recordGateRun({ command, audit, decay, auditRoot, clock: ports.clock });
++  recordGateRun({ command: operation.command, stage: target.stage, result: operation.request.kind === "report" ? operation.request.flags.result ?? "unknown" : "unknown", audit, decay, auditRoot, clock: ports.clock });
+ 
+   if (audit && !audit.pass) {
+     denyOnFindings({
+@@ -501,11 +479,12 @@ const main = async (): Promise<void> => {
+     });
+   }
+ 
++  }
+   process.exit(0);
+ };
+ 
+ if (import.meta.main) {
+-  main().catch(() => process.exit(0));
++  main().catch((error) => deny(`Blocked: completion observation failed: ${String(error)}`));
+ }
+ 
+ export {
+diff --git a/plugins/rin/hooks/rin-gate-invocation.test.ts b/plugins/rin/hooks/rin-gate-invocation.test.ts
+index eb0c03894..2edde9504 100644
+--- a/plugins/rin/hooks/rin-gate-invocation.test.ts
++++ b/plugins/rin/hooks/rin-gate-invocation.test.ts
+@@ -1,3 +1,4 @@
++import { join, resolve } from "node:path";
+ import { describe, expect, test } from "vitest";
+ import { gateScopeGridPathOf, gateToolsDirectoryOf, isCompletionReport } from "./rin-gate-invocation.ts";
+ import { gatedInvocationFrom as constitutionInvocation, runVerdictTool } from "./rin-constitution-gate.ts";
+@@ -97,10 +98,10 @@ describe("Rin completion command recognition", () => {
+ 
+ describe("required-host gate assets", () => {
+   test.each([".claude", ".codex"])("resolves %s sibling assets while auditing the invoking checkout", (host) => {
+-    const hookDirectory = "/producer/" + host + "/hooks";
++    const hookDirectory = `/producer/${host}/hooks`;
+     const tools = gateToolsDirectoryOf({ hookDirectory, checkoutRoot: "/invoking" });
+-    expect(tools).toBe("/producer/" + host + "/tools");
+-    expect(gateScopeGridPathOf({ hookDirectory, checkoutRoot: "/invoking" })).toBe("/invoking/" + host + "/tools/data/scope-grid.json");
++    expect(tools).toBe(resolve("/producer", host, "tools"));
++    expect(gateScopeGridPathOf({ hookDirectory, checkoutRoot: "/invoking" })).toBe(join("/invoking", host, "tools", "data", "scope-grid.json"));
+     const seat = verdictSeat();
+     const outcome = runVerdictTool({
+       scriptName: "rin-harness-constitution-audit.ts", auditRoot: "/invoking", hookDirectory,
+@@ -108,7 +109,7 @@ describe("required-host gate assets", () => {
+       ports: seat.ports,
+     });
+     expect(outcome.kind).toBe("spoke");
+-    expect(seat.requests).toEqual([{ scriptPath: tools + "/rin-harness-constitution-audit.ts", auditRoot: "/invoking", timeoutMs: 1 }]);
++    expect(seat.requests).toEqual([{ scriptPath: join(tools, "rin-harness-constitution-audit.ts"), auditRoot: "/invoking", timeoutMs: 1 }]);
+   });
+   test("missing installed assets refuse before spawning instead of borrowing Claude assets", () => {
+     const seat = verdictSeat();
+@@ -117,7 +118,7 @@ describe("required-host gate assets", () => {
+       windows: { coldMs: 1, warmMs: 2 }, assetExists: () => false,
+       ports: seat.ports,
+     });
+-    expect(outcome).toEqual({ kind: "unavailable", scriptName: "rin-harness-constitution-audit.ts", reason: "not found at /producer/.codex/tools/rin-harness-constitution-audit.ts" });
++    expect(outcome).toEqual({ kind: "unavailable", scriptName: "rin-harness-constitution-audit.ts", reason: `not found at ${resolve("/producer", ".codex", "tools", "rin-harness-constitution-audit.ts")}` });
+     expect(seat.requests).toEqual([]);
+   });
+ });
+diff --git a/plugins/rin/hooks/rin-gate-invocation.ts b/plugins/rin/hooks/rin-gate-invocation.ts
+index 06bbfe54b..82bcd69d5 100644
+--- a/plugins/rin/hooks/rin-gate-invocation.ts
++++ b/plugins/rin/hooks/rin-gate-invocation.ts
+@@ -1,55 +1,40 @@
+ import { basename, dirname, join, resolve } from "node:path";
++import { existsSync } from "node:fs";
++import { fileURLToPath } from "node:url";
++import { completionCommands, type ObservedReportCommand, type ReportCommandContext } from "../../../core/tools/aidlc-report-command.ts";
++import type { resolveReportTarget } from "../../../core/tools/aidlc-report-target.ts";
+ 
+-const shellTokensOf = (command: string): readonly string[] =>
+-  [...command.matchAll(/"(?:\\.|[^"\\])*"|'[^']*'|&&|\|\||[;|&\n]|[^\s;|&]+/g)]
+-    .map((match) => match[0]);
++type TargetContract = { resolveReportTarget: typeof resolveReportTarget };
+ 
+-const unquoted = (token: string): string =>
+-  /^["']/.test(token) ? token.slice(1, -1) : token;
++// The installed sibling module is authoritative. The source fallback is a
++// relative development layout, never a portable manifest-supplied executable.
++function coreModulePath(name: string): string {
++  const here = dirname(fileURLToPath(import.meta.url));
++  const installed = resolve(here, "../tools", name);
++  if (basename(dirname(here)).startsWith(".")) return installed;
++  return resolve(here, "../../../core/tools", name);
++}
+ 
+-const completionRoute = (input: {
+-  readonly executable: string | undefined;
+-  readonly sourceName: string | undefined;
+-  readonly args: readonly string[];
+-}): boolean => {
+-  const args = input.args.filter((token, index, all) =>
+-    !["--json", "--quiet", "--no-color", "--yes", "--offline", "--verbose", "--project-dir"].includes(token) && all[index - 1] !== "--project-dir" && !token.startsWith("--project-dir="));
+-  const route = input.sourceName === "aidlc-orchestrate.ts"
+-    ? ["report"]
+-    : input.executable === "aidlc" || input.sourceName === "aidlc.ts"
+-      ? ["engine", "orchestrate", "report"]
+-      : [];
+-  return route.length > 0 &&
+-    route.every((token, index) => args[index] === token) &&
+-    args.slice(route.length).some((token, index, args) =>
+-      token === "--result" && ["approved", "completed"].includes(args[index + 1] ?? ""));
+-};
++export function completionOperations(input: { command: string; context: ReportCommandContext }): ObservedReportCommand[] {
++  // The projector bundles this static import with the hook. Relevance remains
++  // available even when the separately installed target/runtime needs repair.
++  return completionCommands(input);
++}
+ 
+-const completionSegment = (tokens: readonly string[]): boolean => {
+-  const executableIndex = tokens.findIndex((token, index) => !["env", "command", "exec"].includes(token) && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token) && !(token === "--" && tokens.slice(0, index).some((prefix) => ["env", "command", "exec"].includes(prefix))));
+-  const invocation = tokens.slice(executableIndex).map(unquoted);
+-  const executable = invocation[0]?.replace(/\\/g, "/").split("/").at(-1);
+-  if (executable !== "bun" && executable !== "bun.exe") {
+-    return completionRoute({ executable, sourceName: undefined, args: invocation.slice(1) });
++export function resolveCompletionTarget(operation: ObservedReportCommand): ReturnType<typeof resolveReportTarget> {
++  if (operation.request.kind !== "report") return { kind: "unavailable", reason: operation.request.kind === "invalid" ? operation.request.diagnostic : "Not a report operation" };
++  const path = coreModulePath("aidlc-report-target.ts");
++  if (!existsSync(path)) return { kind: "unavailable", reason: `Installed completion target contract unavailable at ${path}; refresh the runtime and Rin plugin together.` };
++  const contract: TargetContract = require(path);
++  const target = contract.resolveReportTarget({ request: operation.request, context: operation.context });
++  if (target.kind === "resolved" && typeof target.unjoined !== "boolean") {
++    return { kind: "unavailable", reason: "The installed completion target contract is incompatible; refresh the runtime and Rin plugin together." };
+   }
+-  return invocation.some((source, sourceIndex) => {
+-    const sourceName = source.replace(/\\/g, "/").split("/").at(-1);
+-    return ["aidlc.ts", "aidlc-orchestrate.ts"].includes(sourceName ?? "") &&
+-      completionRoute({ executable, sourceName, args: invocation.slice(sourceIndex + 1) });
+-  });
+-};
++  return target;
++}
+ 
+-export const isCompletionReport = (input: { readonly command: string }): boolean => {
+-  const segments: string[][] = [[]];
+-  shellTokensOf(input.command).forEach((token) => {
+-    if ([";", "|", "&", "&&", "||", "\n"].includes(token)) {
+-      segments.push([]);
+-    } else {
+-      segments.at(-1)?.push(token);
+-    }
+-  });
+-  return segments.some(completionSegment);
+-};
++export const isCompletionReport = (input: { readonly command: string }): boolean =>
++  completionOperations({ ...input, context: { cwd: process.cwd(), environment: process.env } }).length > 0;
+ 
+ export const gateToolsDirectoryOf = (input: {
+   readonly hookDirectory: string;
+diff --git a/plugins/rin/hooks/rin-gates-autonomy-gate.ts b/plugins/rin/hooks/rin-gates-autonomy-gate.ts
+index c14ed01a2..681e5b0ac 100644
+--- a/plugins/rin/hooks/rin-gates-autonomy-gate.ts
++++ b/plugins/rin/hooks/rin-gates-autonomy-gate.ts
+@@ -22,12 +22,9 @@
+ // audit. Duplicating it here would only add false negatives (that ledger write is
+ // best-effort). This hook adds exactly one condition: the review verdict.
+ //
+-// Resolution (IF-1, decorrelated-review-corrected): scope + record dir come from
+-// the INVOKING checkout's active-intent cursor (the lane runs `report` in its own
+-// worktree; the engine set that cursor to the intent being driven) — NOT the
+-// primary checkout. Under repo-SoR the record dir IS the identity; there is no
+-// slice-binding.json to consult. The verdict is work-bound (record dir + headSha)
+-// so a stale-commit verdict from an earlier run at the same gate path cannot pass.
++// The shared core observation selects project, record, stage and attempt from
++// the actual command and invoking session. Review policy consumes that target;
++// it never selects a second record through a private cursor.
+ //
+ // TWO BINDING MODES. The verdict
+ // carries an explicit `binding` naming what the review covered, and this hook
+@@ -70,10 +67,10 @@ import {
+   rmSync,
+ } from "node:fs";
+ import { tmpdir } from "node:os";
+-import { basename, dirname, join, resolve } from "node:path";
++import { basename, dirname, join, relative, resolve } from "node:path";
+ import { env, stdin } from "node:process";
+ import { fileURLToPath } from "node:url";
+-import { gateScopeGridPathOf, isCompletionReport } from "./rin-gate-invocation.ts";
++import { completionOperations, gateScopeGridPathOf, isCompletionReport, resolveCompletionTarget } from "./rin-gate-invocation.ts";
+ import {
+   phaseOfGate,
+   reviewVerdictSegments,
+@@ -87,6 +84,7 @@ type HookInput = {
+   readonly tool_name?: string;
+   readonly tool_input?: { readonly command?: string };
+   readonly cwd?: string;
++  readonly session_id?: string;
+ };
+ 
+ // Every shell-bearing tool this harness offers, as a closed set. An approve
+@@ -240,7 +238,6 @@ const GATE_5_STAGE = "rin-gate-5-review-cycle";
+ // hook reads real git — a lane cannot spoof HEAD via env (Gate-5 review H2).
+ const hookDir = dirname(fileURLToPath(import.meta.url));
+ const toolRoot = resolve(join(hookDir, "..", ".."));
+-const space = env.RIN_GATES_SPACE ?? "default";
+ 
+ // The minimum reviewer roster a review-scribe-emitted verdict must cover,
+ // resolved PER-GATE from the SAME shared config the scribe reads
+@@ -278,24 +275,6 @@ const rosterFloorRefusal = ({
+   return `verdict for '${gate}' misses roster lenses [${uncovered.join(", ")}] — the minimum decorrelated roster (from ${resolution.source}) is not covered.`;
+ };
+ 
+-// The invoking checkout: the checkout the gate SESSION is operating in, resolved
+-// from the hook's stdin `cwd` (the worktree running `report`) — NOT the hook
+-// file's own location. A gate lane runs `report` in its worktree, where the
+-// active-intent cursor + the Slice's record dir live; the primary (where this
+-// hook file sits) does not carry an unmerged Slice's record, so anchoring the
+-// resolution here left the gate unable to see the very intent it must check.
+-// Falls back to CLAUDE_PROJECT_DIR/toolRoot when cwd is absent. Same
+-// invoking-checkout resolution as the scribe/status/attest — the pipeline reads
+-// the code being operated on, not the spawn dir. STATE/TRACE stay at the primary
+-// (gitignored runtime, one home); only the git-tracked record resolution moves.
+-const nearestCheckoutAt = (dir: string): string | undefined => {
+-  if (existsSync(join(dir, ".git"))) return dir;
+-  const parent = dirname(dir);
+-  return parent === dir ? undefined : nearestCheckoutAt(parent);
+-};
+-
+-const checkoutRootFromCwd = (cwd: string | undefined): string | undefined =>
+-  cwd === undefined || cwd === "" ? undefined : nearestCheckoutAt(resolve(cwd));
+ const fallbackCheckout = resolve(env.CLAUDE_PROJECT_DIR ?? toolRoot);
+ 
+ const readStdin = (): Promise<string> =>
+@@ -313,37 +292,6 @@ const deny: (message: string) => never = (message) => {
+   process.exit(2);
+ };
+ 
+-const intentsRoot = (checkoutRoot: string): string =>
+-  join(checkoutRoot, "aidlc", "spaces", space, "intents");
+-
+-const activeRecordDir = (checkoutRoot: string): string | null => {
+-  const cursorPath = join(intentsRoot(checkoutRoot), "active-intent");
+-  if (!existsSync(cursorPath)) return null;
+-  const dirName = readFileSync(cursorPath, "utf8").trim();
+-  if (dirName === "") return null;
+-  const recordDir = join(intentsRoot(checkoutRoot), dirName);
+-  return existsSync(recordDir) ? recordDir : null;
+-};
+-
+-const fieldFrom = (content: string, label: string): string | null => {
+-  const match = content.match(new RegExp(`\\*\\*${label}\\*\\*\\s*:\\s*(.+)`));
+-  return match ? match[1].trim() : null;
+-};
+-
+-const scopeOf = (recordDir: string): string | null => {
+-  const statePath = join(recordDir, "aidlc-state.md");
+-  if (!existsSync(statePath)) return null;
+-  return fieldFrom(readFileSync(statePath, "utf8"), "Scope");
+-};
+-
+-const gateFromCommand = (command: string, recordDir: string): string | null => {
+-  const stageMatch = command.match(/--stage\s+([A-Za-z0-9._-]+)/);
+-  if (stageMatch) return stageMatch[1];
+-  const statePath = join(recordDir, "aidlc-state.md");
+-  if (!existsSync(statePath)) return null;
+-  return fieldFrom(readFileSync(statePath, "utf8"), "Current Stage");
+-};
+-
+ const verdictPath = (recordDir: string, gate: string): string | null => {
+   const segments = reviewVerdictSegments(gate);
+   return segments === null ? null : join(recordDir, ...segments);
+@@ -657,9 +605,10 @@ const assertLiveBindingHolds = (input: {
+   readonly gate: string;
+   readonly invokingCheckout: string;
+   readonly recordDirName: string;
++  readonly recordDirPrefix: string;
+   readonly ports: GatePorts;
+ }): void => {
+-  const { binding, gate, invokingCheckout, recordDirName, ports } = input;
++  const { binding, gate, invokingCheckout, recordDirPrefix, ports } = input;
+   const head = ports.resolveHeadSha({ cwd: invokingCheckout });
+   if (head === null) return;
+   if (binding.headSha === head) return;
+@@ -688,7 +637,7 @@ const assertLiveBindingHolds = (input: {
+   }
+   const drift = recordsOnlyDriftVerdictOf({
+     changedPaths: changed.value,
+-    allowedPrefix: `aidlc/spaces/${space}/intents/${recordDirName}/`,
++    allowedPrefix: recordDirPrefix,
+   });
+   if (drift.tolerated) return;
+   if (drift.offendingPath === UNDERIVABLE_DIFF_SENTINEL) {
+@@ -760,12 +709,14 @@ const assertVerdictAuthorises = ({
+   gate,
+   invokingCheckout,
+   recordDirName,
++  recordDirPrefix,
+   ports,
+ }: {
+   readonly verdict: ReviewVerdict;
+   readonly gate: string;
+   readonly invokingCheckout: string;
+   readonly recordDirName: string;
++  readonly recordDirPrefix: string;
+   readonly ports: GatePorts;
+ }): void => {
+   assertReviewConverged({ verdict, gate });
+@@ -782,6 +733,7 @@ const assertVerdictAuthorises = ({
+         gate,
+         invokingCheckout,
+         recordDirName,
++        recordDirPrefix,
+         ports,
+       });
+       return;
+@@ -888,92 +840,45 @@ const coverageOf = (input: {
+   });
+ };
+ 
+-// Returns the record dir when this approve is covered by the backstop and must be
+-// gated; null when the scope is positively NOT covered, so it is not this hook's
+-// concern. H1 fail-closed: an INDETERMINATE scope — no resolvable active intent,
+-// a state file with no Scope, or a grid that cannot answer for the scope — must
+-// NOT fail open on the very surface whose premise is "autonomy must be gated", so
+-// it denies rather than passing.
+-const gatedRecordDir = ({
+-  invokingCheckout,
+-}: {
+-  readonly invokingCheckout: string;
+-}): string | null => {
+-  const recordDir = activeRecordDir(invokingCheckout);
+-  if (recordDir === null) {
+-    deny(
+-      `cannot resolve the active intent's record dir for this report --result approved (recordDir=absent). ` +
+-        `Refusing fail-open on the autonomy-gated surface — resolve the active-intent cursor, or set ${BYPASS_ENV}=1 to override.`,
+-    );
+-    return null;
+-  }
+-  const scope = scopeOf(recordDir);
+-  if (scope === null) {
+-    deny(
+-      `cannot resolve the active intent's scope for this report --result approved (recordDir=present, scope=absent). ` +
+-        `Refusing fail-open on the autonomy-gated surface — resolve the aidlc-state.md Scope, or set ${BYPASS_ENV}=1 to override.`,
+-    );
+-    return null;
+-  }
+-  const coverage = coverageOf({ scope, checkoutRoot: invokingCheckout });
+-  if (coverage.kind === "not-covered") return null;
+-  if (coverage.kind === "indeterminate") {
+-    deny(
+-      `cannot determine whether scope '${scope}' is covered by the autonomy backstop: ${coverage.reason}. ` +
+-        `Refusing fail-open on the autonomy-gated surface — regenerate the scope grid, or set ${BYPASS_ENV}=1 to override.`,
+-    );
+-    return null;
+-  }
+-  return recordDir;
+-};
+-
+ const main = async (): Promise<void> => {
+   if (stdin.isTTY) process.exit(0);
+   const raw = await readStdin();
+   if (raw.trim() === "") process.exit(0);
+ 
++  if (bypassHonoured()) process.exit(0);
++
+   const input = gatedInvocationFrom({ raw });
+   if (input === null) process.exit(0);
+   const command = input.tool_input?.command ?? "";
+ 
+-  if (bypassHonoured()) process.exit(0);
+-
+-  const invokingCheckout = checkoutRootFromCwd(input.cwd) ?? fallbackCheckout;
+-  const recordDir = gatedRecordDir({ invokingCheckout });
+-  if (recordDir === null) process.exit(0);
+-
+-  const gate = gateFromCommand(command, recordDir);
+-  if (gate === null) {
+-    deny(
+-      "cannot resolve the gate from the report command or Current Stage — refusing an unverifiable rin-gates approve.",
+-    );
++  const operations = completionOperations({ command, context: {
++    cwd: input.cwd ?? fallbackCheckout, environment: env, sessionId: input.session_id,
++  } });
++  for (const operation of operations) {
++    const target = resolveCompletionTarget(operation);
++    if (target.kind === "unavailable") deny(`cannot resolve this report's target: ${target.reason}`);
++    if (target.unjoined) deny("This conversation has not joined the selected work; select it with aidlc intent first.");
++    const invokingCheckout = target.projectDir;
++    const scope = target.scope;
++    if (scope === null) deny("The isolated attempt did not record its scope; it cannot borrow the main workflow's review authority.");
++    const coverage = coverageOf({ scope, checkoutRoot: invokingCheckout });
++    if (coverage.kind === "not-covered") continue;
++    if (coverage.kind === "indeterminate") deny(`cannot determine whether scope '${scope}' is covered by the autonomy backstop: ${coverage.reason}`);
++    if (target.mode === "single") deny("Isolated Rin review authorization is not supported by this guard; a main-workflow verdict cannot authorize this single-stage attempt. Run this stage in its selected workflow.");
++    const recordDir = target.recordDir;
++    const gate = target.stage;
++    const path = verdictPath(recordDir, gate);
++    if (path === null) deny(`gate '${gate}' has no known phase mapping - cannot locate its review verdict.`);
++    const verdict = readVerdict(path);
++    if (verdict === null) deny(`no decorrelated-review verdict at ${path} - a rin-gates gate approve requires a review emitted by \`pnpm rin-gates:review-verdict\` (never a hand-written file).`);
++    assertVerdictAuthorises({ verdict, gate, invokingCheckout, recordDirName: basename(recordDir), recordDirPrefix: `${relative(invokingCheckout, recordDir).replace(/\\/g, "/")}/`, ports: gatePorts() });
+   }
+ 
+-  const path = verdictPath(recordDir, gate);
+-  if (path === null)
+-    deny(
+-      `gate '${gate}' has no known phase mapping — cannot locate its review verdict.`,
+-    );
+-
+-  const verdict = readVerdict(path);
+-  if (verdict === null) {
+-    deny(
+-      `no decorrelated-review verdict at ${path} — a rin-gates gate approve requires a review emitted by \`pnpm rin-gates:review-verdict\` (never a hand-written file).`,
+-    );
+-  }
+-  assertVerdictAuthorises({
+-    verdict,
+-    gate,
+-    invokingCheckout,
+-    recordDirName: basename(recordDir),
+-    ports: gatePorts(),
+-  });
+-
+   process.exit(0);
+ };
+ 
+ if (import.meta.main) {
+-  main().catch(() => process.exit(0));
++  main().catch((error) => deny(`completion observation failed: ${String(error)}`));
+ }
+ 
+ export {
+diff --git a/tests/unit/t-completion-guard-process.test.ts b/tests/unit/t-completion-guard-process.test.ts
+new file mode 100644
+index 000000000..9149942b9
+--- /dev/null
++++ b/tests/unit/t-completion-guard-process.test.ts
+@@ -0,0 +1,124 @@
++// covers: function:completionOperations, function:resolveCompletionTarget
++// Explicitly assembled payload: this is not a test of installer delivery or host registration.
++import { afterAll, beforeAll, expect, test } from "bun:test";
++import { spawnSync } from "node:child_process";
++import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { dirname, join, resolve } from "node:path";
++import { writeSessionBinding } from "../../core/tools/aidlc-record-core.ts";
++const stage = "rin-gate-3-interface-lock";
++const chat = "completion-process-chat";
++const root = mkdtempSync(join(tmpdir(), "aidlc-completion-consumer-"));
++const tools = join(root, ".claude", "tools");
++const hooks = join(root, ".claude", "hooks");
++const record = join(root, "aidlc", "spaces", "selected", "intents", "bound-00000002");
++const environment = { ...process.env };
++for (const key of ["AIDLC_PROJECT_DIR", "CLAUDE_PROJECT_DIR", "AIDLC_SESSION_OVERRIDE", "AIDLC_SESSION_OVERRIDE_SOURCE", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "KIRO_SESSION_ID", "AIDLC_HARNESS_DIR", "AIDLC_RIN_GATES_AUTONOMY_BYPASS", "RIN_GATES_TEST_MODE", "RIN_GATES_HEAD_SHA", "RIN_GATES_ROSTER_CONFIG"]) delete environment[key];
++environment.AIDLC_SESSION_OVERRIDE = chat;
++const write = (path: string, content: string) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content); };
++function hook(name: string, command: string) {
++  return spawnSync(process.execPath, [join(hooks, name)], { cwd: root, env: environment, encoding: "utf8", timeout: 30_000,
++    input: JSON.stringify({ tool_name: "Bash", cwd: root, session_id: chat, tool_input: { command } }) });
++}
++const autonomy = (command: string) => hook("rin-gates-autonomy-gate.ts", command);
++const report = (args = "--result done") => `aidlc engine orchestrate report ${args}`;
++let verdictPath: string;
++let verdict: string;
++beforeAll(async () => {
++  cpSync(resolve("dist/claude/.claude/tools"), tools, { recursive: true });
++  mkdirSync(hooks, { recursive: true });
++  cpSync(resolve("plugins/rin/hooks/review-rosters.json"), join(hooks, "review-rosters.json"));
++  const bundle = await Bun.build({
++    entrypoints: ["rin-gates-autonomy-gate.ts", "rin-constitution-gate.ts"].map((name) => resolve("plugins/rin/hooks", name)),
++    outdir: hooks, target: "bun", naming: "[name].ts",
++  });
++  if (!bundle.success) throw new Error(bundle.logs.map(String).join("\n"));
++  write(join(tools, "data/scope-grid.json"), JSON.stringify({ "rin-gates": { stages: { "rin-gate-5-review-cycle": "EXECUTE" } } }));
++  write(join(record, "aidlc-state.md"), `- **Scope**: rin-gates\n- **Current Stage**: ${stage}\n`);
++  write(join(root, "aidlc/active-space"), "default");
++  write(join(root, "aidlc/spaces/default/intents/active-intent"), "cursor-00000001");
++  write(join(root, "aidlc/spaces/default/intents/cursor-00000001/aidlc-state.md"), "- **Scope**: classic\n- **Current Stage**: requirements-analysis\n");
++  writeSessionBinding(root, chat, "selected", "bound-00000002", "switch");
++  write(join(root, "README.md"), "Isolated completion consumer test.\n");
++  for (const args of [["init", "--quiet"], ["add", "README.md"], ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "fixture"]]) {
++    const result = spawnSync("git", args, { cwd: root, encoding: "utf8" }); if (result.status !== 0) throw new Error(result.stderr);
++  }
++  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).stdout.trim();
++  const rosters = JSON.parse(readFileSync(join(hooks, "review-rosters.json"), "utf8"));
++  verdictPath = join(record, "inception", stage, "review-verdict.json");
++  verdict = JSON.stringify({ gate: stage, emittedBy: "rin-gates-review-verdict", verdict: "READY", headSha: head, lenses: rosters.byGate[stage] ?? rosters.defaultRoster, blockingFindings: [] });
++});
++afterAll(() => rmSync(root, { recursive: true, force: true }));
++test("assembled guard rejects missing review in session-selected record, not cursor", () => {
++  const result = autonomy(report()); expect(result.status).toBe(2); expect(result.stderr).toContain("no decorrelated-review verdict"); expect(result.stderr).toContain("bound-00000002");
++});
++test("assembled guard accepts all forward lexemes with git-bound fixture evidence", () => {
++  write(verdictPath, verdict);
++  for (const result of ["approved", "completed", "complete", "done"]) { const output = autonomy(report(`--result ${result}`)); expect(output.stderr).toBe(""); expect(output.status).toBe(0); }
++});
++test("native spelling, copied dispatcher and direct source consume same target", () => {
++  for (const prefix of ["aidlc.exe engine orchestrate", "bun .claude/tools/aidlc.ts engine orchestrate", "bun .claude/tools/aidlc-orchestrate.ts"]) {
++    const output = autonomy(`${prefix} report --result done --reason "--stage ignored --result rejected"`); expect(output.stderr).toBe(""); expect(output.status).toBe(0);
++  }
++});
++test("duplicate selectors use runtime last-value semantics", () => {
++  const output = autonomy(report(`--stage unknown --stage ${stage} --result rejected --result done`)); expect(output.stderr).toBe(""); expect(output.status).toBe(0);
++  const refusal = autonomy(report(`--stage ${stage} --stage rin-gate-4-implement --result done`)); expect(refusal.status).toBe(2); expect(refusal.stderr).toContain("rin-gate-4-implement");
++});
++test("both assembled guard processes refuse malformed or unresolved commands", () => {
++  for (const name of ["rin-gates-autonomy-gate.ts", "rin-constitution-gate.ts"]) {
++    for (const command of [report("--intent other --result done"), report("--stage"), `AIDLC_SESSION_OVERRIDE=other ${report()}`]) {
++      const output = hook(name, command); expect(output.status, output.stderr).toBe(2); expect(output.stderr).not.toBe("");
++    }
++  }
++});
++test("closed single-stage work cannot borrow main verdict", () => {
++  const output = autonomy(report(`--single --stage ${stage} --result done`)); expect(output.status).toBe(2); expect(output.stderr).toContain(`No open single-stage:${stage}`);
++});
++
++test("bundled classifier survives a missing target module without trapping unrelated commands", () => {
++  const targetModule = join(tools, "aidlc-report-target.ts");
++  const original = readFileSync(targetModule);
++  rmSync(targetModule);
++  try {
++    for (const name of ["rin-gates-autonomy-gate.ts", "rin-constitution-gate.ts"]) {
++      for (const command of ["git status", "aidlc update"]) {
++        const output = hook(name, command);
++        expect(output.stderr).toBe(""); expect(output.status).toBe(0);
++      }
++      const refusal = hook(name, report());
++      expect(refusal.status, refusal.stderr).toBe(2);
++      expect(refusal.stderr).toContain("target contract unavailable");
++    }
++    const bypass = hook("rin-constitution-gate.ts", `AIDLC_CONSTITUTION_BYPASS=1 ${report()}`);
++    expect(bypass.status, bypass.stderr).toBe(0);
++    environment.AIDLC_RIN_GATES_AUTONOMY_BYPASS = "1";
++    const autonomyBypass = autonomy(report());
++    expect(autonomyBypass.status, autonomyBypass.stderr).toBe(0);
++  } finally {
++    delete environment.AIDLC_RIN_GATES_AUTONOMY_BYPASS;
++    writeFileSync(targetModule, original);
++  }
++});
++
++test("core request and target remain usable with the autonomy capability absent", () => {
++  const guard = join(hooks, "rin-gates-autonomy-gate.ts");
++  const original = readFileSync(guard);
++  rmSync(guard);
++  try {
++    const source = `const {decodeOrchestratorRequest}=await import(${JSON.stringify(join(tools, "aidlc-orchestrator-request.ts"))}); const {resolveReportTarget}=await import(${JSON.stringify(join(tools, "aidlc-report-target.ts"))}); const request=decodeOrchestratorRequest({argv:["report","--result","done"]}); console.log(JSON.stringify(resolveReportTarget({request,context:{cwd:process.cwd(),native:true,sessionId:${JSON.stringify(chat)},environment:process.env}})));`;
++    const output = spawnSync(process.execPath, ["-e", source], { cwd: root, env: environment, encoding: "utf8", timeout: 30_000 });
++    expect(output.status, output.stderr).toBe(0);
++    expect(JSON.parse(output.stdout)).toMatchObject({ kind: "resolved", stage, recordDir: record, unjoined: false });
++  } finally { writeFileSync(guard, original); }
++});
++test("an older target contract cannot silently bypass participation admission", () => {
++  const targetModule = join(tools, "aidlc-report-target.ts");
++  const original = readFileSync(targetModule);
++  writeFileSync(targetModule, 'export const resolveReportTarget = () => ({ kind: "resolved" });');
++  try {
++    const output = autonomy(report());
++    expect(output.status, output.stderr).toBe(2);
++    expect(output.stderr).toContain("target contract is incompatible");
++  } finally { writeFileSync(targetModule, original); }
++});

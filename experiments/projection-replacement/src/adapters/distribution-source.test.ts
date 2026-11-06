@@ -34,6 +34,14 @@ test("uses the native archive producer over complete bytes and modes", async () 
 test("native archive unavailability remains a failure", async () => {
   expect(await createDistributionSource({ operations: { ...createDistributionSourceOperationsFixture(), pack: mock().mockRejectedValue(new Error("archive unavailable")) } }).archive({ sourceRoot: "source", distribution: assembledDistribution })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "distribution-archive", detail: "native archive producer unavailable: archive unavailable" }] });
 });
+test.each([
+  [null],
+  [[31, 139]],
+  [{ bytes: new Uint8Array([31, 139]) }],
+  ["not archive bytes"],
+])("a malformed native archive return is explicit failure data", async (packed) => {
+  expect(await createDistributionSource({ operations: { ...createDistributionSourceOperationsFixture(), pack: mock().mockResolvedValue(packed) } }).archive({ sourceRoot: "source", distribution: assembledDistribution })).toEqual({ status: "invalid", findings: [{ code: "invalid-input", subject: "distribution-archive", detail: "native archive producer must return byte contents" }] });
+});
 test("reads authored skill through the storage boundary", async () => {
   expect(await createDistributionSource({ operations: createDistributionSourceOperationsFixture() }).skill({ sourceRoot: "source" })).toEqual({ status: "ok", value: "authored skill" });
 });

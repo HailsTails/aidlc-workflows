@@ -1,0 +1,148 @@
+diff --git a/core/tools/aidlc-init.ts b/core/tools/aidlc-init.ts
+index d200c384a..7dcb830fd 100644
+--- a/core/tools/aidlc-init.ts
++++ b/core/tools/aidlc-init.ts
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bun
++import { decideManagedFileChange } from "./aidlc-managed-file-decision.ts";
+ import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
+ import { captureWorkflowRefreshInputs, combineRefreshChecks, planWorkflowRefresh, validateEmptyRefreshPlan } from "./aidlc-workflow-refresh.ts";
+ import type { WorkflowRefreshPolicy } from "./aidlc-workflow-refresh-contract.ts";
+@@ -10207,7 +10208,16 @@ function planManagedFiles(
+         });
+         continue;
+       }
+-      if (targetRegular && currentHash === hash) {
++      const managedDecision = decideManagedFileChange({
++        target: !targetExists ? { kind: "absent" } : targetRegular ? { kind: "file", hash: currentHash } : { kind: "other" },
++        sourceHash: hash,
++        recordedHash: priorHash,
++        releaseHash,
++        attribution: adoptedManagedFile ? "adopted-copy" : "not-adopted",
++        proof: unproven.has(rel) ? "unproven" : "available",
++        overwrite: force ? "force" : "protect",
++      });
++      if (managedDecision.kind === "preserve") {
+         actions.push({ path: rel, action: "preserve" });
+         continue;
+       }
+@@ -10264,16 +10274,8 @@ function planManagedFiles(
+         actions.push({ path: rel, action: "update" });
+         continue;
+       }
+-      if (
+-        targetExists &&
+-        (
+-          !targetRegular ||
+-          unproven.has(rel) ||
+-          (!adoptedManagedFile && currentHash !== releaseHash && (!priorHash || currentHash !== priorHash))
+-        ) &&
+-        !force
+-      ) {
+-        actions.push({ path: rel, action: "conflict", detail: "locally modified or unowned" });
++      if (managedDecision.kind === "conflict") {
++        actions.push({ path: rel, action: "conflict", detail: managedDecision.detail });
+         continue;
+       }
+       operations.push({
+@@ -10286,8 +10288,8 @@ function planManagedFiles(
+       });
+       actions.push({
+         path: rel,
+-        action: targetExists ? "update" : "create",
+-        detail: adoptedManagedFile ? "adopted exact copy-channel signature" : undefined,
++        action: managedDecision.action,
++        detail: managedDecision.detail,
+       });
+     }
+   }
+diff --git a/core/tools/aidlc-managed-file-decision.test.ts b/core/tools/aidlc-managed-file-decision.test.ts
+new file mode 100644
+index 000000000..2400dc203
+--- /dev/null
++++ b/core/tools/aidlc-managed-file-decision.test.ts
+@@ -0,0 +1,42 @@
++// covers: function:decideManagedFileChange
++
++import { expect, test } from "bun:test";
++import { decideManagedFileChange, type ManagedFileFacts, type ManagedFileDecision } from "./aidlc-managed-file-decision.ts";
++
++const OWNED: ManagedFileFacts = Object.freeze({
++  target: Object.freeze({ kind: "file", hash: "old" }),
++  sourceHash: "new",
++  recordedHash: "old",
++  releaseHash: undefined,
++  attribution: "not-adopted",
++  proof: "available",
++  overwrite: "protect",
++});
++const CASES: readonly { name: string; facts: ManagedFileFacts; expected: ManagedFileDecision }[] = [
++  { name: "fresh absent file", facts: { ...OWNED, target: { kind: "absent" }, recordedHash: undefined }, expected: { kind: "copy", action: "create", detail: undefined } },
++  { name: "identical incoming file", facts: { ...OWNED, target: { kind: "file", hash: "new" } }, expected: { kind: "preserve" } },
++  { name: "unchanged recorded file advances", facts: OWNED, expected: { kind: "copy", action: "update", detail: undefined } },
++  { name: "model release proves ownership", facts: { ...OWNED, recordedHash: undefined, releaseHash: "old" }, expected: { kind: "copy", action: "update", detail: undefined } },
++  { name: "exact copy-era adoption", facts: { ...OWNED, recordedHash: undefined, attribution: "adopted-copy" }, expected: { kind: "copy", action: "update", detail: "adopted exact copy-channel signature" } },
++  { name: "user edit is protected", facts: { ...OWNED, target: { kind: "file", hash: "user" } }, expected: { kind: "conflict", detail: "locally modified or unowned" } },
++  { name: "unowned existing file is protected", facts: { ...OWNED, target: { kind: "file", hash: "user" }, recordedHash: undefined }, expected: { kind: "conflict", detail: "locally modified or unowned" } },
++  { name: "directory at managed file is protected", facts: { ...OWNED, target: { kind: "other" } }, expected: { kind: "conflict", detail: "locally modified or unowned" } },
++  { name: "unproven merge blocks recorded ownership", facts: { ...OWNED, proof: "unproven" }, expected: { kind: "conflict", detail: "locally modified or unowned" } },
++  { name: "unproven merge blocks copy-era attribution", facts: { ...OWNED, proof: "unproven", attribution: "adopted-copy" }, expected: { kind: "conflict", detail: "locally modified or unowned" } },
++  { name: "identical bytes precede unproven proof", facts: { ...OWNED, target: { kind: "file", hash: "new" }, proof: "unproven" }, expected: { kind: "preserve" } },
++  { name: "force explicitly replaces an edit", facts: { ...OWNED, target: { kind: "file", hash: "user" }, overwrite: "force" }, expected: { kind: "copy", action: "update", detail: undefined } },
++  { name: "force preserves legacy non-file replacement", facts: { ...OWNED, target: { kind: "other" }, overwrite: "force" }, expected: { kind: "copy", action: "update", detail: undefined } },
++  { name: "force bypasses unproven merge hold", facts: { ...OWNED, proof: "unproven", overwrite: "force" }, expected: { kind: "copy", action: "update", detail: undefined } },
++  { name: "absent destination needs no prior ownership", facts: { ...OWNED, target: { kind: "absent" }, proof: "unproven" }, expected: { kind: "copy", action: "create", detail: undefined } },
++  { name: "empty record is not new ownership proof", facts: { ...OWNED, target: { kind: "file", hash: "" }, recordedHash: "", releaseHash: "other" }, expected: { kind: "conflict", detail: "locally modified or unowned" } },
++];
++
++test.each([...CASES])("ordinary managed-file policy: $name", ({ facts, expected }) => {
++  expect(decideManagedFileChange(facts)).toEqual(expected);
++});
++
++test("frozen collected facts remain unchanged", () => {
++  expect(decideManagedFileChange(OWNED)).toEqual({ kind: "copy", action: "update", detail: undefined });
++  expect(OWNED.target).toEqual({ kind: "file", hash: "old" });
++  expect(OWNED.recordedHash).toBe("old");
++});
+diff --git a/core/tools/aidlc-managed-file-decision.ts b/core/tools/aidlc-managed-file-decision.ts
+new file mode 100644
+index 000000000..1e76dd7fa
+--- /dev/null
++++ b/core/tools/aidlc-managed-file-decision.ts
+@@ -0,0 +1,36 @@
++type ManagedTarget =
++  | Readonly<{ kind: "absent" }>
++  | Readonly<{ kind: "other" }>
++  | Readonly<{ kind: "file"; hash: string | undefined }>;
++
++export type ManagedFileFacts = Readonly<{
++  target: ManagedTarget;
++  sourceHash: string;
++  recordedHash: string | undefined;
++  releaseHash: string | undefined;
++  attribution: "adopted-copy" | "not-adopted";
++  proof: "available" | "unproven";
++  overwrite: "protect" | "force";
++}>;
++
++export type ManagedFileDecision =
++  | Readonly<{ kind: "preserve" }>
++  | Readonly<{ kind: "conflict"; detail: "locally modified or unowned" }>
++  | Readonly<{ kind: "copy"; action: "create" | "update"; detail: "adopted exact copy-channel signature" | undefined }>;
++
++/** Ordinary managed-file reconciliation after native ownership proofs; special file policies stay separate. */
++export function decideManagedFileChange({ target, sourceHash, recordedHash, releaseHash, attribution, proof, overwrite }: ManagedFileFacts): ManagedFileDecision {
++  if (target.kind === "file" && target.hash === sourceHash) return { kind: "preserve" };
++  if (
++    target.kind !== "absent" && overwrite !== "force" &&
++    (target.kind !== "file" || proof === "unproven" ||
++      (attribution !== "adopted-copy" && target.hash !== releaseHash && (!recordedHash || target.hash !== recordedHash)))
++  ) {
++    return { kind: "conflict", detail: "locally modified or unowned" };
++  }
++  return {
++    kind: "copy",
++    action: target.kind === "absent" ? "create" : "update",
++    detail: attribution === "adopted-copy" ? "adopted exact copy-channel signature" : undefined,
++  };
++}

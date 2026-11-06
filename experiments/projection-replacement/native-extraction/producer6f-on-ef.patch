@@ -1,0 +1,1426 @@
+diff --git a/core/tools/aidlc-distribution.ts b/core/tools/aidlc-distribution.ts
+index 29fd44cfc..b7f40c190 100644
+--- a/core/tools/aidlc-distribution.ts
++++ b/core/tools/aidlc-distribution.ts
+@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
+ import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
+ import { basename, join, relative } from "node:path";
+ import { VERSION_ID } from "./aidlc-channel.ts";
++import { decodeRootIntegrations, encodeRootIntegration } from "./aidlc-root-integration-codec.ts";
++import { checkProjectionPath } from "./aidlc-projection-path.ts";
+ 
+ export type ProjectionStamp = {
+   schemaVersion: 1;
+@@ -32,24 +34,14 @@ export type RootIntegration = {
+ // with "whole-file", which 2.10.0 accepts, in `policy`; reading a projection
+ // puts the real policy back when this release knows it, and otherwise keeps
+ // "whole-file", so this release can install a later one in turn.
+-const EXTENDED_POLICIES: readonly string[] = ["jsonc-settings", "json-entries"];
+-
+ export function writtenRootIntegration<T extends { policy: string }>(
+   integration: T,
+ ): T | (Omit<T, "policy"> & { policy: "whole-file"; extendedPolicy: string }) {
+-  return EXTENDED_POLICIES.includes(integration.policy)
+-    ? { ...integration, policy: "whole-file", extendedPolicy: integration.policy }
+-    : integration;
++  return encodeRootIntegration({ integration });
+ }
+ 
+-export function readRootIntegrations(value: unknown): unknown {
+-  if (!Array.isArray(value)) return value;
+-  return value.map((item: unknown) => {
+-    if (!item || typeof item !== "object" || !("extendedPolicy" in item)) return item;
+-    const { extendedPolicy, ...integration } = item as Record<string, unknown>;
+-    if (typeof extendedPolicy !== "string" || !EXTENDED_POLICIES.includes(extendedPolicy)) return integration;
+-    return { ...integration, policy: extendedPolicy };
+-  });
++export function readRootIntegrations(wireIntegrations: unknown): unknown {
++  return decodeRootIntegrations({ value: wireIntegrations });
+ }
+ 
+ export type ProjectionDescriptor = {
+@@ -315,20 +307,12 @@ function parseJson<T>(path: string): T {
+   }
+ }
+ 
+-function safeRelativePath(value: unknown, label: string, topLevel = false): string {
+-  if (
+-    typeof value !== "string" ||
+-    value.length === 0 ||
+-    value.includes("\0") ||
+-    value.includes("\\") ||
+-    value.startsWith("/") ||
+-    /^[A-Za-z]:/.test(value) ||
+-    value.split("/").some((segment) => segment === "" || segment === "." || segment === "..") ||
+-    (topLevel && value.includes("/"))
+-  ) {
++function safeRelativePath(projectionPath: unknown, label: string, topLevel = false): string {
++  const admission = checkProjectionPath({ path: projectionPath, scope: topLevel ? "top-level-name" : "relative-path" });
++  if (admission.kind === "refused") {
+     throw new Error(`${label} is not a safe ${topLevel ? "top-level name" : "relative path"}`);
+   }
+-  return value;
++  return admission.path;
+ }
+ 
+ function validateHashes(value: unknown, label: string): string[] {
+diff --git a/core/tools/aidlc-projection-path.test.ts b/core/tools/aidlc-projection-path.test.ts
+new file mode 100644
+index 000000000..f5f57560d
+--- /dev/null
++++ b/core/tools/aidlc-projection-path.test.ts
+@@ -0,0 +1,28 @@
++// covers: function:checkProjectionPath
++
++import { expect, test } from "bun:test";
++import { checkProjectionPath } from "./aidlc-projection-path.ts";
++
++test.each([".claude", "tools/aidlc.ts", "aidlc/spaces/default", "folder/a..b", "file:stream", "1:odd", " name with spaces ", "中文/条目", "CON"])("relative metadata retains its declared spelling: %s", (path) => {
++  expect(checkProjectionPath({ path })).toEqual({ kind: "accepted", path });
++});
++
++test.each(["", "a\0b", "\\absolute", "folder\\file", "/absolute", "//server/share", "C:relative", "C:/absolute", "z:", "a//b", "./a", "a/./b", "a/../b", "a/", "../a", ".", ".."])("unsafe relative metadata is refused: %s", (path) => {
++  expect(checkProjectionPath({ path })).toEqual({ kind: "refused" });
++});
++
++test.each([{ path: null }, { path: undefined }, { path: 0 }, { path: 1 }, { path: true }, { path: false }, { path: {} }, { path: [] }])("non-string metadata is refused without conversion: %s", ({ path }) => {
++  expect(checkProjectionPath({ path })).toEqual({ kind: "refused" });
++});
++
++test.each([".claude", "name with spaces", "中文", "file:stream", "a..b"])("top-level names retain their declared spelling: %s", (path) => {
++  expect(checkProjectionPath({ path, scope: "top-level-name" })).toEqual({ kind: "accepted", path });
++});
++
++test.each(["folder/file", ".claude/rules/x.md", "a/b/c"])("nested paths cannot be top-level names: %s", (path) => {
++  expect(checkProjectionPath({ path, scope: "top-level-name" })).toEqual({ kind: "refused" });
++});
++
++test("an explicit relative-path scope keeps nested metadata accepted", () => {
++  expect(checkProjectionPath({ path: "folder/file", scope: "relative-path" })).toEqual({ kind: "accepted", path: "folder/file" });
++});
+diff --git a/core/tools/aidlc-projection-path.ts b/core/tools/aidlc-projection-path.ts
+new file mode 100644
+index 000000000..073d8f664
+--- /dev/null
++++ b/core/tools/aidlc-projection-path.ts
+@@ -0,0 +1,21 @@
++export type ProjectionPathAdmission =
++  | { readonly kind: "accepted"; readonly path: string }
++  | { readonly kind: "refused" };
++
++// Projection metadata uses relative slash-separated paths; filesystem checks follow elsewhere.
++export function checkProjectionPath({ path, scope = "relative-path" }: {
++  readonly path: unknown;
++  readonly scope?: "relative-path" | "top-level-name";
++}): ProjectionPathAdmission {
++  if (
++    typeof path !== "string" ||
++    path.length === 0 ||
++    path.includes("\0") ||
++    path.includes("\\") ||
++    path.startsWith("/") ||
++    /^[A-Za-z]:/.test(path) ||
++    path.split("/").some((segment) => segment === "" || segment === "." || segment === "..") ||
++    (scope === "top-level-name" && path.includes("/"))
++  ) return { kind: "refused" };
++  return { kind: "accepted", path };
++}
+diff --git a/core/tools/aidlc-root-integration-codec.test.ts b/core/tools/aidlc-root-integration-codec.test.ts
+new file mode 100644
+index 000000000..e1ee98934
+--- /dev/null
++++ b/core/tools/aidlc-root-integration-codec.test.ts
+@@ -0,0 +1,52 @@
++// covers: function:encodeRootIntegration, function:decodeRootIntegrations
++
++import { expect, test } from "bun:test";
++import { decodeRootIntegrations, encodeRootIntegration } from "./aidlc-root-integration-codec.ts";
++
++test.each(["jsonc-settings", "json-entries"])("%s ships over the older whole-file policy", (policy) => {
++  expect(encodeRootIntegration({ integration: { path: "root.json", policy, optional: true } })).toEqual({ path: "root.json", policy: "whole-file", optional: true, extendedPolicy: policy });
++});
++
++test.each(["whole-file", "managed-block", "json-map", "json-array", "future-policy"])("other policies retain their declaration identity: %s", (policy) => {
++  const integration = { path: "root.json", policy };
++  expect(encodeRootIntegration({ integration })).toBe(integration);
++  expect(integration).toEqual({ path: "root.json", policy });
++});
++
++test("an extended declaration gets a fresh shallow record with nested references retained", () => {
++  const legacySignatures = { wholeFileHashes: ["retained-hash"] };
++  const integration = { path: "root.json", policy: "json-entries", legacySignatures };
++  const encoded = encodeRootIntegration({ integration });
++  expect(encoded).not.toBe(integration);
++  expect(encoded.legacySignatures).toBe(legacySignatures);
++  expect(integration).toEqual({ path: "root.json", policy: "json-entries", legacySignatures: { wholeFileHashes: ["retained-hash"] } });
++});
++
++test("the encoded policy replaces an existing extension without changing field order", () => {
++  expect(JSON.stringify(encodeRootIntegration({ integration: { extendedPolicy: "retired", policy: "json-entries", path: "root.json" } }))).toBe('{"extendedPolicy":"json-entries","policy":"whole-file","path":"root.json"}');
++});
++
++test.each(["jsonc-settings", "json-entries"])("a reader restores the recognized %s extension", (policy) => {
++  expect(decodeRootIntegrations({ value: [{ path: "root.json", policy: "whole-file", extendedPolicy: policy, optional: true }] })).toEqual([{ path: "root.json", policy, optional: true }]);
++});
++
++test.each(["future-policy", null, 7, false])("an unrecognized extension is removed while retaining its base policy: %s", (extendedPolicy) => {
++  expect(decodeRootIntegrations({ value: [{ path: "root.json", policy: "whole-file", extendedPolicy }] })).toEqual([{ path: "root.json", policy: "whole-file" }]);
++});
++
++test("the codec restores a recognized extension without adding base-policy validation", () => {
++  expect(decodeRootIntegrations({ value: [{ path: "root.json", policy: "other-base", extendedPolicy: "json-entries" }] })).toEqual([{ path: "root.json", policy: "json-entries" }]);
++});
++
++test("direct declarations without an extension retain their object identity", () => {
++  const integration = { path: "root.json", policy: "jsonc-settings" };
++  expect(decodeRootIntegrations({ value: [integration] })).toContain(integration);
++});
++
++test.each([null, undefined, 42, "raw", true, { policy: "jsonc-settings" }])("non-array input is left to the caller's existing validation: %s", (wireIntegrations) => {
++  expect(decodeRootIntegrations({ value: wireIntegrations })).toBe(wireIntegrations);
++});
++
++test("list positions and opaque non-object entries are preserved", () => {
++  expect(decodeRootIntegrations({ value: [null, false, "raw", { policy: "whole-file" }, { policy: "whole-file", extendedPolicy: "json-entries" }] })).toEqual([null, false, "raw", { policy: "whole-file" }, { policy: "json-entries" }]);
++});
+diff --git a/core/tools/aidlc-root-integration-codec.ts b/core/tools/aidlc-root-integration-codec.ts
+new file mode 100644
+index 000000000..12f9c5375
+--- /dev/null
++++ b/core/tools/aidlc-root-integration-codec.ts
+@@ -0,0 +1,20 @@
++// Older installers accept the base policy; readers restore only extensions they know.
++const EXTENDED_POLICIES: readonly string[] = ["jsonc-settings", "json-entries"];
++
++export function encodeRootIntegration<T extends { readonly policy: string }>({ integration }: {
++  readonly integration: T;
++}): T | (Omit<T, "policy"> & { policy: "whole-file"; extendedPolicy: string }) {
++  return EXTENDED_POLICIES.includes(integration.policy)
++    ? { ...integration, policy: "whole-file", extendedPolicy: integration.policy }
++    : integration;
++}
++
++export function decodeRootIntegrations({ value: wireIntegrations }: { readonly value: unknown }): unknown {
++  if (!Array.isArray(wireIntegrations)) return wireIntegrations;
++  return wireIntegrations.map((wireIntegration: unknown) => {
++    if (!wireIntegration || typeof wireIntegration !== "object" || !("extendedPolicy" in wireIntegration)) return wireIntegration;
++    const { extendedPolicy, ...integration } = wireIntegration;
++    if (typeof extendedPolicy !== "string" || !EXTENDED_POLICIES.includes(extendedPolicy)) return integration;
++    return { ...integration, policy: extendedPolicy };
++  });
++}
+diff --git a/docs/harness-engineering/09-porting-to-a-new-harness.md b/docs/harness-engineering/09-porting-to-a-new-harness.md
+index 7d366ce4f..28ffac1cf 100644
+--- a/docs/harness-engineering/09-porting-to-a-new-harness.md
++++ b/docs/harness-engineering/09-porting-to-a-new-harness.md
+@@ -63,6 +63,63 @@ so a new dir is built by the default `bun scripts/package.ts` and `--check` with
+ no edit to the packager itself — the literal meaning of "one directory and one
+ manifest row, zero shared-code edits."
+ 
++Core output declarations have a pure owner in `scripts/core-projection-contract.ts`.
++It selects per-file protocol binding scope and native additions, then checks
++declared paths against successful publications. The packager checks for unmatched
++paths after publishing core runtime, preserving failure order. Repeated declarations
++keep their first position and last supplied lines; this is a path-coverage contract,
++not duplicate-declaration or duplicate-output rejection. Platform path normalization
++and filesystem work stay in the packager.
++
++`scripts/harness-runtime-data.ts` selects the identity and declared host fields
++that ship in `tools/data/harness.json`. It creates a fresh record, omits undeclared
++optional fields and retains the manifest's rules-directory choice. The packager
++owns serialization and publication; runtime readers retain their existing
++validation and capability interpretation. Extra manifest keys are not runtime
++configuration, and changing the projection invalidates generated-source freshness.
++
++Root-integration wire compatibility belongs to
++`core/tools/aidlc-root-integration-codec.ts`. Newer recognized policies ship with
++the older `whole-file` base policy and an `extendedPolicy` field. Readers restore
++recognized extensions and otherwise retain the base policy. Existing distribution
++APIs delegate to this pure codec; filesystem admission and reconciliation retain
++their existing owners. The core input fingerprint includes codec changes.
++
++`core/tools/aidlc-projection-path.ts` owns lexical admission of projection metadata
++paths and top-level names. It retains declared spellings and returns a decision;
++the distribution adapter keeps error labels and filesystem/symlink checks. This
++does not add path normalization or change the accepted metadata grammar.
++
++Native agent metadata belongs in the manifest's `frontmatterAdditions`. The
++pure owner in `scripts/agent-surface-projection.ts` validates those additions
++and plans the dispatch document and any inline persona copy from supplied
++content and role facts. The packager loads knowledge and roles, then writes
++the planned surfaces. On Kiro IDE, an inline persona copy omits the native
++permission block; Kiro CLI's `tools` grant alone creates no extra copy.
++Refusals retain the existing diagnostic text and publication order: a persona
++copy can already exist when its dispatch metadata is refused. Publication
++does not roll back earlier files. The projection module is a packaging input,
++so changing its policy invalidates the recorded generated output.
++
++Onboarding placement has its own pure owner in `scripts/onboarding-projection.ts`.
++With `harnessDst`, it keeps the shared document neutral and schedules native
++setup afterward inside the harness tree. Without that destination, it combines
++native setup before the shared guidance in the declared document. The existing
++renderer still owns slots and marker validation; the packager owns reads,
++token projection and ordered publication. A failed native render can leave the
++earlier neutral document, as before. This policy is also a tracked packaging
++input.
++
++Authored host files use `scripts/harness-surface-projection.ts` to select their
++native projection from the declared flavor and source path. Kiro agent JSON
++keeps model selection in the existing core model-policy owner, expands its
++shared-methodology file glob without preloading format documents, and applies
++the manifest's hook suffix afterward. The shared knowledge filenames are read
++only when that exact file glob occurs; explicit resources retain their order
++and values. JSON parsing, missing-file handling and ordered reads/writes stay
++with the packager. This is filesystem knowledge projection; MCP resource
++behavior is unchanged.
++
+ ## Step 1 — the manifest (the declarative 80%)
+ 
+ Create `harness/<name>/manifest.ts` exporting a `HarnessManifest`
+diff --git a/scripts/agent-surface-projection.test.ts b/scripts/agent-surface-projection.test.ts
+new file mode 100644
+index 000000000..79d4ab91d
+--- /dev/null
++++ b/scripts/agent-surface-projection.test.ts
+@@ -0,0 +1,116 @@
++// covers: function:agentSurfaceRequirements, function:projectAgentSurface
++
++import { expect, test } from "bun:test";
++import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
++
++const document = "---\nname: product\n---\nPersona body.\n";
++const path = "agents/product-agent.md";
++const inlineAgents = new Set(["product-agent"]);
++
++test("native permissions on an agent require an inline-role snapshot", () => {
++  expect(agentSurfaceRequirements({ path, additions: ["permissions:", "  read: allow"] })).toEqual({
++    kind: "inline-role", agent: "product-agent", personaPath: "aidlc-common/personas/product-agent.md",
++  });
++});
++
++test.each([
++  { path, additions: ["tools: [read, write]"] },
++  { path, additions: [" permissions: nested"] },
++  { path, additions: ["permissions-extra: true"] },
++  { path: "knowledge/product-agent.md", additions: ["permissions: allow"] },
++  { path, additions: [] },
++])("ordinary metadata does not require loading inline roles: $path $additions", ({ path, additions }) => {
++  expect(agentSurfaceRequirements({ path, additions })).toEqual({ kind: "dispatch-only" });
++});
++
++test("a nested agent destination retains the existing leaf-only persona path", () => {
++  expect(agentSurfaceRequirements({ path: "agents/nested/product-agent.md", additions: ["permissions: allow"] })).toEqual({
++    kind: "inline-role", agent: "product-agent", personaPath: "aidlc-common/personas/product-agent.md",
++  });
++});
++
++test.each([
++  { path: "agents/nested\nfolder/product-agent.md", agent: "product-agent", personaPath: "aidlc-common/personas/product-agent.md" },
++  { path: "agents/product-agent.md\n", agent: "product-agent.md\n", personaPath: "aidlc-common/personas/product-agent.md\n" },
++  { path: "agents/.md", agent: ".md", personaPath: "aidlc-common/personas/.md" },
++])("the role lookup preserves native basename semantics: $path", ({ path, agent, personaPath }) => {
++  expect(agentSurfaceRequirements({ path, additions: ["permissions: allow"] })).toEqual({ kind: "inline-role", agent, personaPath });
++});
++
++test("an inline lead gets its original persona before the native dispatch document", () => {
++  expect(projectAgentSurface({ path, content: document, additions: ["permissions:", "  read: allow"], inlineAgents })).toEqual({
++    kind: "projected", writes: [
++      { kind: "persona", path: "aidlc-common/personas/product-agent.md" },
++      { kind: "dispatch", path, content: "---\nname: product\npermissions:\n  read: allow\n---\nPersona body.\n" },
++    ],
++  });
++});
++
++test("a dispatched-only agent needs no persona even with native permissions", () => {
++  expect(projectAgentSurface({ path, content: document, additions: ["permissions: allow"], inlineAgents: new Set() })).toEqual({
++    kind: "projected", writes: [{ kind: "dispatch", path, content: "---\nname: product\npermissions: allow\n---\nPersona body.\n" }],
++  });
++});
++
++test("a tools grant does not copy the persona even when the agent also works inline", () => {
++  expect(projectAgentSurface({ path, content: document, additions: ["tools: [read]"], inlineAgents })).toEqual({
++    kind: "projected", writes: [{ kind: "dispatch", path, content: "---\nname: product\ntools: [read]\n---\nPersona body.\n" }],
++  });
++});
++
++test("indented permission continuation lines retain their exact spelling", () => {
++  expect(projectAgentSurface({ path, content: document, additions: ["permissions:", "  shell:", '    "git *": allow'], inlineAgents })).toEqual({
++    kind: "projected", writes: [
++      { kind: "persona", path: "aidlc-common/personas/product-agent.md" },
++      { kind: "dispatch", path, content: '---\nname: product\npermissions:\n  shell:\n    "git *": allow\n---\nPersona body.\n' },
++    ],
++  });
++});
++
++test.each(["Persona only.\n", "---\n---\nPersona body.\n", "\uFEFF---\nname: product\n---\nPersona body.\n"])("a missing leading metadata block refuses after preparing the persona copy: %s", (content) => {
++  expect(projectAgentSurface({ path, content, additions: ["permissions: allow"], inlineAgents })).toEqual({
++    kind: "refused", message: "frontmatterAdditions: agents/product-agent.md has no leading frontmatter block to extend.",
++    writes: [{ kind: "persona", path: "aidlc-common/personas/product-agent.md" }],
++  });
++});
++
++test("malformed metadata without a persona requirement prepares no writes", () => {
++  expect(projectAgentSurface({ path, content: "Persona only.\n", additions: ["tools: read"], inlineAgents })).toEqual({
++    kind: "refused", message: "frontmatterAdditions: agents/product-agent.md has no leading frontmatter block to extend.", writes: [],
++  });
++});
++
++test.each([
++  { additions: ["permissions: allow", "bad key: value"], message: 'frontmatterAdditions: line "bad key: value" for agents/product-agent.md does not start with a YAML key.' },
++  { additions: ["permissions: allow", ""], message: 'frontmatterAdditions: line "" for agents/product-agent.md does not start with a YAML key.' },
++  { additions: ["permissions: allow", "permissions: deny"], message: 'frontmatterAdditions: agents/product-agent.md declares "permissions:" more than once in additions.' },
++  { additions: ["permissions: allow", "name: replacement"], message: 'frontmatterAdditions: agents/product-agent.md already declares "name:" in core - resolve the collision instead of shipping a duplicate key.' },
++])("an invalid addition retains the earlier persona and its exact refusal: $message", ({ additions, message }) => {
++  expect(projectAgentSurface({ path, content: document, additions, inlineAgents })).toEqual({
++    kind: "refused", message, writes: [{ kind: "persona", path: "aidlc-common/personas/product-agent.md" }],
++  });
++});
++
++test("validation reports the first addition failure without evaluating later keys", () => {
++  expect(projectAgentSurface({ path, content: document, additions: ["name: conflict", "bad key: invalid"], inlineAgents })).toEqual({
++    kind: "refused", message: 'frontmatterAdditions: agents/product-agent.md already declares "name:" in core - resolve the collision instead of shipping a duplicate key.', writes: [],
++  });
++});
++
++test("an empty declared addition still inserts the legacy separator newline", () => {
++  expect(projectAgentSurface({ path, content: document, additions: [], inlineAgents })).toEqual({
++    kind: "projected", writes: [{ kind: "dispatch", path, content: "---\nname: product\n\n---\nPersona body.\n" }],
++  });
++});
++
++test("CRLF metadata keeps its delimiters and body while inserted lines use LF", () => {
++  expect(projectAgentSurface({ path, content: "---\r\nname: product\r\n---\r\nPersona body.\r\n", additions: ["tools: read"], inlineAgents })).toEqual({
++    kind: "projected", writes: [{ kind: "dispatch", path, content: "---\r\nname: product\r\ntools: read\n---\r\nPersona body.\r\n" }],
++  });
++});
++
++test("metadata validation does not inspect keys in the document body", () => {
++  expect(projectAgentSurface({ path, content: "---\nname: product\n---\npermissions: prose\n", additions: ["permissions: allow"], inlineAgents: new Set() })).toEqual({
++    kind: "projected", writes: [{ kind: "dispatch", path, content: "---\nname: product\npermissions: allow\n---\npermissions: prose\n" }],
++  });
++});
+diff --git a/scripts/agent-surface-projection.ts b/scripts/agent-surface-projection.ts
+new file mode 100644
+index 000000000..97cf3e61d
+--- /dev/null
++++ b/scripts/agent-surface-projection.ts
+@@ -0,0 +1,83 @@
++// Native dispatch metadata and the persona an inline lead reads have different audiences.
++export type AgentSurfaceRequirements =
++  | { readonly kind: "dispatch-only" }
++  | { readonly kind: "inline-role"; readonly agent: string; readonly personaPath: string };
++
++export type AgentSurfaceWrite =
++  | { readonly kind: "persona"; readonly path: string }
++  | { readonly kind: "dispatch"; readonly path: string; readonly content: string };
++
++export type AgentSurfaceProjection =
++  | { readonly kind: "projected"; readonly writes: readonly AgentSurfaceWrite[] }
++  // A persona copy precedes validation today; keep that publication order on refusal.
++  | { readonly kind: "refused"; readonly writes: readonly AgentSurfaceWrite[]; readonly message: string };
++
++type FrontmatterExtension =
++  | { readonly kind: "extended"; readonly content: string }
++  | { readonly kind: "refused"; readonly message: string };
++
++type AdditionCheck =
++  | { readonly kind: "accepted"; readonly keys: ReadonlySet<string> }
++  | { readonly kind: "refused"; readonly message: string };
++
++export function agentSurfaceRequirements({ path, additions }: {
++  readonly path: string;
++  readonly additions: readonly string[];
++}): AgentSurfaceRequirements {
++  if (!path.startsWith("agents/") || !additions.some((line) => line.split(":", 1).includes("permissions"))) {
++    return { kind: "dispatch-only" };
++  }
++  const filename = path.slice(path.lastIndexOf("/") + 1);
++  const agent = filename.endsWith(".md") && filename !== ".md" ? filename.slice(0, -3) : filename;
++  return { kind: "inline-role", agent, personaPath: `aidlc-common/personas/${filename}` };
++}
++
++function checkAddition({ line, path, frontmatter, keys }: {
++  readonly line: string;
++  readonly path: string;
++  readonly frontmatter: string;
++  readonly keys: ReadonlySet<string>;
++}): AdditionCheck {
++  if (/^\s/.test(line)) return { kind: "accepted", keys };
++  const key = line.replace(/:[\s\S]*$/, "").trim();
++  if (!/^[A-Za-z_][\w-]*$/.test(key)) return {
++    kind: "refused", message: `frontmatterAdditions: line "${line}" for ${path} does not start with a YAML key.`,
++  };
++  if (keys.has(key)) return {
++    kind: "refused", message: `frontmatterAdditions: ${path} declares "${key}:" more than once in additions.`,
++  };
++  if (new RegExp(`^${key}:`, "m").test(frontmatter)) return {
++    kind: "refused", message: `frontmatterAdditions: ${path} already declares "${key}:" in core - resolve the collision instead of shipping a duplicate key.`,
++  };
++  return { kind: "accepted", keys: new Set([...keys, key]) };
++}
++
++function extendFrontmatter({ content, additions, path }: {
++  readonly content: string;
++  readonly additions: readonly string[];
++  readonly path: string;
++}): FrontmatterExtension {
++  const matched = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
++  if (matched === null) return {
++    kind: "refused", message: `frontmatterAdditions: ${path} has no leading frontmatter block to extend.`,
++  };
++  const checked = additions.reduce<AdditionCheck>((prior, line) => prior.kind === "refused" ? prior
++    : checkAddition({ line, path, frontmatter: matched[0], keys: prior.keys }), { kind: "accepted", keys: new Set<string>() });
++  if (checked.kind === "refused") return checked;
++  const insertAt = matched[0].lastIndexOf("---");
++  return { kind: "extended", content: `${content.slice(0, insertAt)}${additions.join("\n")}\n${content.slice(insertAt)}` };
++}
++
++export function projectAgentSurface({ path, content, additions, inlineAgents }: {
++  readonly path: string;
++  readonly content: string;
++  readonly additions: readonly string[];
++  readonly inlineAgents: ReadonlySet<string>;
++}): AgentSurfaceProjection {
++  const requirements = agentSurfaceRequirements({ path, additions });
++  const writes: readonly AgentSurfaceWrite[] = requirements.kind === "inline-role" && inlineAgents.has(requirements.agent)
++    ? [{ kind: "persona", path: requirements.personaPath }] : [];
++  const extended = extendFrontmatter({ content, additions, path });
++  if (extended.kind === "refused") return { ...extended, writes };
++  return { kind: "projected", writes: [...writes, { kind: "dispatch", path, content: extended.content }] };
++}
+diff --git a/scripts/core-projection-contract.test.ts b/scripts/core-projection-contract.test.ts
+new file mode 100644
+index 000000000..5d49fdf66
+--- /dev/null
++++ b/scripts/core-projection-contract.test.ts
+@@ -0,0 +1,67 @@
++// covers: function:coreProjectionDeclarations, function:coreFileProjection, function:coreProjectionCoverage
++
++import { expect, test } from "bun:test";
++import { coreFileProjection, coreProjectionCoverage, coreProjectionDeclarations } from "./core-projection-contract.ts";
++
++test("no native additions impose no publication obligation", () => {
++  const declarations = coreProjectionDeclarations({ declarations: [] });
++  expect(coreProjectionCoverage({ declarations, publishedPaths: new Set() })).toEqual({ kind: "covered" });
++});
++
++test("duplicate declaration paths retain first position and last supplied lines", () => {
++  const declarations = coreProjectionDeclarations({ declarations: [
++    { file: "agents/product.md", lines: ["tools: [read]"] },
++    { file: "agents/developer.md", lines: ["tools: [read, write]"] },
++    { file: "agents/product.md", lines: ["tools: [read, shell]"] },
++  ] });
++  expect([...declarations]).toEqual([
++    ["agents/product.md", ["tools: [read, shell]"]],
++    ["agents/developer.md", ["tools: [read, write]"]],
++  ]);
++});
++
++test("declared lines retain their supplied identity without mutation", () => {
++  const lines = ["tools: [read]"];
++  const supplied = [{ file: "agents/product.md", lines }];
++  const declarations = coreProjectionDeclarations({ declarations: supplied });
++  expect(coreFileProjection({ path: "agents/product.md", declarations }).additions).toBe(lines);
++  expect(supplied).toEqual([{ file: "agents/product.md", lines: ["tools: [read]"] }]);
++});
++
++test.each(["aidlc-common/protocols/construction.md", "aidlc-common/protocols/a.md", "aidlc-common/protocols/tool bindings.md"])("only the current harness bindings ship in a top-level protocol: %s", (path) => {
++  expect(coreFileProjection({ path, declarations: new Map() })).toEqual({ bindingScope: "own-harness", additions: undefined });
++});
++
++test.each(["aidlc-common/protocols/.md", "aidlc-common/protocols/nested/construction.md", "aidlc-common/protocols/construction.MD", "aidlc-common/protocols/construction.json", "./aidlc-common/protocols/construction.md", "aidlc-common\\protocols\\construction.md", "other/protocols/construction.md", "agents/product.md"])("other projected paths keep their content bindings: %s", (path) => {
++  expect(coreFileProjection({ path, declarations: new Map() })).toEqual({ bindingScope: "unchanged", additions: undefined });
++});
++
++test("binding scope and native frontmatter are independent decisions", () => {
++  const path = "aidlc-common/protocols/construction.md";
++  const lines = ["native: true"];
++  const declarations = coreProjectionDeclarations({ declarations: [{ file: path, lines }] });
++  expect(coreFileProjection({ path, declarations })).toEqual({ bindingScope: "own-harness", additions: lines });
++});
++
++test("an empty declared line list remains a declared extension", () => {
++  const path = "agents/product.md";
++  const declarations = coreProjectionDeclarations({ declarations: [{ file: path, lines: [] }] });
++  expect(coreFileProjection({ path, declarations }).additions).toEqual([]);
++  expect(coreProjectionCoverage({ declarations, publishedPaths: new Set() })).toEqual({ kind: "missing-declarations", paths: [path] });
++});
++
++test("published declarations are covered while unrelated publications impose no obligation", () => {
++  const declarations = coreProjectionDeclarations({ declarations: [{ file: "agents/product.md", lines: [] }] });
++  expect(coreProjectionCoverage({ declarations, publishedPaths: new Set(["unrelated.md", "agents/product.md", "agents/product.md"]) })).toEqual({ kind: "covered" });
++});
++
++test("missing paths retain declaration order and only successful publications count", () => {
++  const declarations = coreProjectionDeclarations({ declarations: [
++    { file: "agents/z.md", lines: [] }, { file: "agents/a.md", lines: [] },
++    { file: "agents/done.md", lines: [] }, { file: "agents/z.md", lines: ["native: true"] },
++  ] });
++  const publishedPaths = new Set(["agents/done.md", "unrelated.md"]);
++  expect(coreProjectionCoverage({ declarations, publishedPaths })).toEqual({ kind: "missing-declarations", paths: ["agents/z.md", "agents/a.md"] });
++  expect([...publishedPaths]).toEqual(["agents/done.md", "unrelated.md"]);
++  expect([...declarations]).toEqual([["agents/z.md", ["native: true"]], ["agents/a.md", []], ["agents/done.md", []]]);
++});
+diff --git a/scripts/core-projection-contract.ts b/scripts/core-projection-contract.ts
+new file mode 100644
+index 000000000..857f9dba4
+--- /dev/null
++++ b/scripts/core-projection-contract.ts
+@@ -0,0 +1,39 @@
++type FrontmatterDeclaration = {
++  readonly file: string;
++  readonly lines: readonly string[];
++};
++
++export type CoreFileProjection = {
++  readonly bindingScope: "own-harness" | "unchanged";
++  readonly additions: readonly string[] | undefined;
++};
++
++export type CoreProjectionCoverage =
++  | { readonly kind: "covered" }
++  | { readonly kind: "missing-declarations"; readonly paths: readonly string[] };
++
++// Repeated declarations retain their first position and their last supplied lines.
++export function coreProjectionDeclarations({ declarations }: {
++  readonly declarations: readonly FrontmatterDeclaration[];
++}): ReadonlyMap<string, readonly string[]> {
++  return new Map(declarations.map(({ file, lines }) => [file, lines]));
++}
++
++export function coreFileProjection({ path, declarations }: {
++  readonly path: string;
++  readonly declarations: ReadonlyMap<string, readonly string[]>;
++}): CoreFileProjection {
++  return {
++    bindingScope: /^aidlc-common\/protocols\/[^/]+\.md$/.test(path) ? "own-harness" : "unchanged",
++    additions: declarations.get(path),
++  };
++}
++
++// Supplied paths are successful publications; the caller chooses when to check coverage.
++export function coreProjectionCoverage({ declarations, publishedPaths }: {
++  readonly declarations: ReadonlyMap<string, readonly string[]>;
++  readonly publishedPaths: ReadonlySet<string>;
++}): CoreProjectionCoverage {
++  const paths = [...declarations.keys()].filter((path) => !publishedPaths.has(path));
++  return paths.length === 0 ? { kind: "covered" } : { kind: "missing-declarations", paths };
++}
+diff --git a/scripts/harness-runtime-data.test.ts b/scripts/harness-runtime-data.test.ts
+new file mode 100644
+index 000000000..4687e8cc6
+--- /dev/null
++++ b/scripts/harness-runtime-data.test.ts
+@@ -0,0 +1,73 @@
++// covers: function:projectHarnessRuntimeData
++
++import { expect, test } from "bun:test";
++import { projectHarnessRuntimeData } from "./harness-runtime-data.ts";
++
++const declaration = { name: "future-host", productName: "Future Host", configNextStep: "Reopen the host", harnessDir: ".future", rulesRename: null };
++
++test("a new host ships the selected runtime identity with default rules", () => {
++  expect(projectHarnessRuntimeData({ declaration })).toEqual({ schemaVersion: 1, distribution: "future-host", productName: "Future Host", configNextStep: "Reopen the host", name: "future-host", harnessDir: ".future", rulesSubdir: "rules" });
++});
++
++test("runtime identity serialization retains field order", () => {
++  expect(JSON.stringify(projectHarnessRuntimeData({ declaration }))).toBe('{"schemaVersion":1,"distribution":"future-host","productName":"Future Host","configNextStep":"Reopen the host","name":"future-host","harnessDir":".future","rulesSubdir":"rules"}');
++});
++
++test("the projection is a fresh object and leaves its declaration intact", () => {
++  expect(projectHarnessRuntimeData({ declaration })).not.toBe(projectHarnessRuntimeData({ declaration }));
++  expect(declaration).toEqual({ name: "future-host", productName: "Future Host", configNextStep: "Reopen the host", harnessDir: ".future", rulesRename: null });
++});
++
++test("unknown manifest keys cannot enter runtime data or override its schema", () => {
++  const extended = { ...declaration, schemaVersion: 99, privateBuildInput: "not-runtime", plugins: ["local-choice"] };
++  expect(projectHarnessRuntimeData({ declaration: extended })).toEqual({ schemaVersion: 1, distribution: "future-host", productName: "Future Host", configNextStep: "Reopen the host", name: "future-host", harnessDir: ".future", rulesSubdir: "rules" });
++});
++
++test.each(["steering", "aidlc-rules", ""])("an explicitly declared rules directory is retained: %s", (rulesRename) => {
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, rulesRename } }).rulesSubdir).toBe(rulesRename);
++});
++
++test("an empty runner-frontmatter list is omitted", () => {
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, runnerFrontmatterAdditions: [] } })).not.toHaveProperty("runnerFrontmatterAdditions");
++});
++
++test("nonempty runner frontmatter retains the supplied lines", () => {
++  const lines = ["tools: [read]"];
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, runnerFrontmatterAdditions: lines } }).runnerFrontmatterAdditions).toBe(lines);
++});
++
++test("null document extractors are omitted", () => {
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, documentExtractors: null } })).not.toHaveProperty("documentExtractors");
++});
++
++test("an explicitly empty extractor object remains declared", () => {
++  const documentExtractors = {};
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, documentExtractors } }).documentExtractors).toBe(documentExtractors);
++});
++
++test("hook activation retains the declared host action", () => {
++  const hookActivation = { recovery: "Reopen this host" };
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, hookActivation } }).hookActivation).toBe(hookActivation);
++});
++
++test("the Kiro layout is manifest data", () => {
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, kiroLayout: "kas" } }).kiroLayout).toBe("kas");
++});
++
++test("zero directive cap remains omitted", () => {
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, directiveMaxBytes: 0 } })).not.toHaveProperty("directiveMaxBytes");
++});
++
++test.each([12000, -1])("a truthy directive cap retains the declared value: %s", (directiveMaxBytes) => {
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, directiveMaxBytes } }).directiveMaxBytes).toBe(directiveMaxBytes);
++});
++
++test("a declared status-line object remains present even with no items", () => {
++  const statusLine = { items: [] };
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, statusLine } }).statusLine).toBe(statusLine);
++});
++
++test("agent finish recording remains declared even with no environment names", () => {
++  const agentFinishRecorded = { env: [] };
++  expect(projectHarnessRuntimeData({ declaration: { ...declaration, agentFinishRecorded } }).agentFinishRecorded).toBe(agentFinishRecorded);
++});
+diff --git a/scripts/harness-runtime-data.ts b/scripts/harness-runtime-data.ts
+new file mode 100644
+index 000000000..937763d89
+--- /dev/null
++++ b/scripts/harness-runtime-data.ts
+@@ -0,0 +1,38 @@
++type RuntimeDeclaration = {
++  readonly name: string;
++  readonly productName: string;
++  readonly configNextStep: string;
++  readonly harnessDir: string;
++  readonly rulesRename: string | null;
++  readonly runnerFrontmatterAdditions?: readonly string[];
++  // Optional host declarations are forwarded; their existing owners interpret and validate them.
++  readonly documentExtractors?: unknown;
++  readonly hookActivation?: unknown;
++  readonly kiroLayout?: unknown;
++  readonly directiveMaxBytes?: unknown;
++  readonly statusLine?: unknown;
++  readonly agentFinishRecorded?: unknown;
++};
++
++// Runtime readers tolerate unknown fields; this projection alone selects what ships.
++export function projectHarnessRuntimeData({ declaration }: {
++  readonly declaration: RuntimeDeclaration;
++}): Readonly<Record<string, unknown>> {
++  return {
++    schemaVersion: 1,
++    distribution: declaration.name,
++    productName: declaration.productName,
++    configNextStep: declaration.configNextStep,
++    name: declaration.name,
++    harnessDir: declaration.harnessDir,
++    rulesSubdir: declaration.rulesRename ?? "rules",
++    ...(declaration.runnerFrontmatterAdditions?.length
++      ? { runnerFrontmatterAdditions: declaration.runnerFrontmatterAdditions } : {}),
++    ...(declaration.documentExtractors ? { documentExtractors: declaration.documentExtractors } : {}),
++    ...(declaration.hookActivation ? { hookActivation: declaration.hookActivation } : {}),
++    ...(declaration.kiroLayout ? { kiroLayout: declaration.kiroLayout } : {}),
++    ...(declaration.directiveMaxBytes ? { directiveMaxBytes: declaration.directiveMaxBytes } : {}),
++    ...(declaration.statusLine ? { statusLine: declaration.statusLine } : {}),
++    ...(declaration.agentFinishRecorded ? { agentFinishRecorded: declaration.agentFinishRecorded } : {}),
++  };
++}
+diff --git a/scripts/harness-surface-projection.test.ts b/scripts/harness-surface-projection.test.ts
+new file mode 100644
+index 000000000..dd8244e57
+--- /dev/null
++++ b/scripts/harness-surface-projection.test.ts
+@@ -0,0 +1,74 @@
++// covers: function:authoredHarnessSurface, function:kiroSharedKnowledgeRequirement, function:expandKiroSharedKnowledge
++
++import { expect, test } from "bun:test";
++import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeRequirement } from "./harness-surface-projection.ts";
++
++test.each(["claude", "codex", "cursor", "copilot", "opencode", "future-host"])("%s keeps authored files on the ordinary transform path", (flavor) => {
++  expect(authoredHarnessSurface({ flavor, source: "agents/product-agent.json" })).toBe("standard");
++  expect(authoredHarnessSurface({ flavor, source: "settings/cli.json" })).toBe("standard");
++});
++
++test.each(["agents/product-agent.json", "agents/aidlc.json", "agents/nested/support.json"])("the declared Kiro flavor projects native agent JSON: %s", (source) => {
++  expect(authoredHarnessSurface({ flavor: "kiro", source })).toBe("kiro-agent-json");
++});
++
++test("only the exact Kiro CLI settings surface receives model defaults", () => {
++  expect(authoredHarnessSurface({ flavor: "kiro", source: "settings/cli.json" })).toBe("kiro-cli-settings");
++});
++
++test.each(["agents/product-agent.JSON", "agents/product-agent.md", "nested/agents/product-agent.json", "./agents/product-agent.json", "agents\\product-agent.json", "settings/cli.json.example", "other/cli.json"])("other Kiro sources retain the ordinary path: %s", (source) => {
++  expect(authoredHarnessSurface({ flavor: "kiro", source })).toBe("standard");
++});
++
++test("shared knowledge filenames are required only for the exact authored resource glob", () => {
++  expect(kiroSharedKnowledgeRequirement({ resources: ["file://other.md", "file://.kiro/knowledge/aidlc-shared/*.md"] })).toBe("shared-methodology");
++});
++
++test.each([
++  { resources: [] },
++  { resources: ["file://.kiro/knowledge/aidlc-shared/explicit.md"] },
++  { resources: ["file://.kiro/knowledge/aidlc-shared/*"] },
++  { resources: ["file://.kiro/knowledge/aidlc-shared/*.MD"] },
++  { resources: [null, 7, false, { resource: "file://.kiro/knowledge/aidlc-shared/*.md" }] },
++])("resource facts without the exact glob require no directory read: $resources", ({ resources }) => {
++  expect(kiroSharedKnowledgeRequirement({ resources })).toBe("unchanged");
++});
++
++test("dispatch knowledge expands sorted Markdown files and excludes the existing format-document set", () => {
++  expect(expandKiroSharedKnowledge({
++    resources: ["file://before.md", "file://.kiro/knowledge/aidlc-shared/*.md", "file://after.md"],
++    availableFiles: ["z-method.md", "format.md", "a-method.md", "notes.txt", "UPPER.MD"],
++    formatDocuments: new Set(["format.md"]),
++  })).toEqual([
++    "file://before.md", "file://.kiro/knowledge/aidlc-shared/a-method.md",
++    "file://.kiro/knowledge/aidlc-shared/z-method.md", "file://after.md",
++  ]);
++});
++
++test("multiple glob entries preserve repeated preload groups and explicit resources", () => {
++  expect(expandKiroSharedKnowledge({
++    resources: ["file://.kiro/knowledge/aidlc-shared/*.md", "file://.kiro/knowledge/aidlc-shared/a.md", "file://.kiro/knowledge/aidlc-shared/*.md"],
++    availableFiles: ["a.md"], formatDocuments: new Set(),
++  })).toEqual([
++    "file://.kiro/knowledge/aidlc-shared/a.md", "file://.kiro/knowledge/aidlc-shared/a.md", "file://.kiro/knowledge/aidlc-shared/a.md",
++  ]);
++});
++
++test("an empty eligible knowledge set removes the glob without dropping unrelated JSON values", () => {
++  expect(expandKiroSharedKnowledge({
++    resources: [null, false, 7, ["nested"], { named: "resource" }, "file://.kiro/knowledge/aidlc-shared/*.md"],
++    availableFiles: ["format.md", "notes.txt"], formatDocuments: new Set(["format.md"]),
++  })).toEqual([null, false, 7, ["nested"], { named: "resource" }]);
++});
++
++test("inputs without a glob retain their resource values", () => {
++  expect(expandKiroSharedKnowledge({ resources: ["file://explicit.md", null], availableFiles: ["method.md"], formatDocuments: new Set() }))
++    .toEqual(["file://explicit.md", null]);
++});
++
++test("expansion does not reorder the supplied filename snapshot", () => {
++  const availableFiles = ["z.md", "a.md"];
++  expect(expandKiroSharedKnowledge({ resources: ["file://.kiro/knowledge/aidlc-shared/*.md"], availableFiles, formatDocuments: new Set() }))
++    .toEqual(["file://.kiro/knowledge/aidlc-shared/a.md", "file://.kiro/knowledge/aidlc-shared/z.md"]);
++  expect(availableFiles).toEqual(["z.md", "a.md"]);
++});
+diff --git a/scripts/harness-surface-projection.ts b/scripts/harness-surface-projection.ts
+new file mode 100644
+index 000000000..32598e2b2
+--- /dev/null
++++ b/scripts/harness-surface-projection.ts
+@@ -0,0 +1,30 @@
++export type AuthoredHarnessSurface = "standard" | "kiro-agent-json" | "kiro-cli-settings";
++
++const SHARED_KNOWLEDGE = "file://.kiro/knowledge/aidlc-shared/";
++const SHARED_GLOB = `${SHARED_KNOWLEDGE}*.md`;
++
++export function authoredHarnessSurface({ flavor, source }: {
++  readonly flavor: string;
++  readonly source: string;
++}): AuthoredHarnessSurface {
++  if (flavor !== "kiro") return "standard";
++  if (source.startsWith("agents/") && source.endsWith(".json")) return "kiro-agent-json";
++  return source === "settings/cli.json" ? "kiro-cli-settings" : "standard";
++}
++
++export function kiroSharedKnowledgeRequirement({ resources }: {
++  readonly resources: readonly unknown[];
++}): "shared-methodology" | "unchanged" {
++  return resources.includes(SHARED_GLOB) ? "shared-methodology" : "unchanged";
++}
++
++// Dispatch preloads method knowledge; format documents remain owned by preflight.
++export function expandKiroSharedKnowledge({ resources, availableFiles, formatDocuments }: {
++  readonly resources: readonly unknown[];
++  readonly availableFiles: readonly string[];
++  readonly formatDocuments: ReadonlySet<string>;
++}): readonly unknown[] {
++  const files = availableFiles.filter((file) => file.endsWith(".md") && !formatDocuments.has(file))
++    .sort().map((file) => `${SHARED_KNOWLEDGE}${file}`);
++  return resources.flatMap((entry) => entry === SHARED_GLOB ? files : [entry]);
++}
+diff --git a/scripts/onboarding-projection.test.ts b/scripts/onboarding-projection.test.ts
+new file mode 100644
+index 000000000..a8557a555
+--- /dev/null
++++ b/scripts/onboarding-projection.test.ts
+@@ -0,0 +1,63 @@
++// covers: function:projectOnboardingDocuments
++
++import { expect, test } from "bun:test";
++import { projectOnboardingDocuments } from "./onboarding-projection.ts";
++
++const neutral = "Shared project instructions.\n";
++const nativeSkeleton = "{{SLOT:title_block}}\nRun {{SKILL_INVOKE}}.\n";
++
++test("a shared project file stays neutral when native setup has its own destination", () => {
++  expect(projectOnboardingDocuments({ neutral, nativeSkeleton, shared: { root: "project", path: "AGENTS.md" }, nativePath: "onboarding.md" })).toEqual([
++    { kind: "neutral", destination: { root: "project", path: "AGENTS.md" }, content: neutral },
++    { kind: "native", destination: { root: "harness", path: "onboarding.md" }, content: nativeSkeleton },
++  ]);
++});
++
++test("a host-local shared document still keeps its declared destination", () => {
++  expect(projectOnboardingDocuments({ neutral, nativeSkeleton, shared: { root: "harness", path: "shared.md" }, nativePath: "native/setup.md" })).toEqual([
++    { kind: "neutral", destination: { root: "harness", path: "shared.md" }, content: neutral },
++    { kind: "native", destination: { root: "harness", path: "native/setup.md" }, content: nativeSkeleton },
++  ]);
++});
++
++test.each([null, ""])("a host with no separate native path combines setup before shared guidance: %s", (nativePath) => {
++  expect(projectOnboardingDocuments({ neutral, nativeSkeleton, shared: { root: "harness", path: "CLAUDE.md" }, nativePath })).toEqual([
++    { kind: "combined", destination: { root: "harness", path: "CLAUDE.md" }, content: "{{SLOT:title_block}}\nRun {{SKILL_INVOKE}}.\n\n## Shared AI-DLC onboarding\n\nShared project instructions.\n" },
++  ]);
++});
++
++test("a combined host can own a project-root document", () => {
++  expect(projectOnboardingDocuments({ neutral, nativeSkeleton, shared: { root: "project", path: "AGENTS.md" }, nativePath: null })).toEqual([
++    { kind: "combined", destination: { root: "project", path: "AGENTS.md" }, content: "{{SLOT:title_block}}\nRun {{SKILL_INVOKE}}.\n\n## Shared AI-DLC onboarding\n\nShared project instructions.\n" },
++  ]);
++});
++
++test("placement leaves native slot and runtime markers for their existing owners", () => {
++  expect(projectOnboardingDocuments({ neutral, nativeSkeleton: "{{SLOT:title_block}} {{HARNESS_DIR}} {{INVOKE}}", shared: { root: "project", path: "AGENTS.md" }, nativePath: "rules/setup.md" })).toEqual([
++    { kind: "neutral", destination: { root: "project", path: "AGENTS.md" }, content: neutral },
++    { kind: "native", destination: { root: "harness", path: "rules/setup.md" }, content: "{{SLOT:title_block}} {{HARNESS_DIR}} {{INVOKE}}" },
++  ]);
++});
++
++test("coincident destinations retain neutral-then-native publication order", () => {
++  expect(projectOnboardingDocuments({ neutral, nativeSkeleton, shared: { root: "harness", path: "setup.md" }, nativePath: "setup.md" })).toEqual([
++    { kind: "neutral", destination: { root: "harness", path: "setup.md" }, content: neutral },
++    { kind: "native", destination: { root: "harness", path: "setup.md" }, content: nativeSkeleton },
++  ]);
++});
++
++test("placement preserves supplied line endings and source text", () => {
++  expect(projectOnboardingDocuments({ neutral: "Shared.\r\n", nativeSkeleton: "Native.\r\n", shared: { root: "project", path: "AGENTS.md" }, nativePath: null })).toEqual([
++    { kind: "combined", destination: { root: "project", path: "AGENTS.md" }, content: "Native.\r\n\n## Shared AI-DLC onboarding\n\nShared.\r\n" },
++  ]);
++});
++
++test("the document plan captures destination values instead of exposing the caller's mutable object", () => {
++  const shared: { root: "project"; path: string } = { root: "project", path: "AGENTS.md" };
++  const documents = projectOnboardingDocuments({ neutral, nativeSkeleton, shared, nativePath: "setup.md" });
++  shared.path = "changed.md";
++  expect(documents).toEqual([
++    { kind: "neutral", destination: { root: "project", path: "AGENTS.md" }, content: neutral },
++    { kind: "native", destination: { root: "harness", path: "setup.md" }, content: nativeSkeleton },
++  ]);
++});
+diff --git a/scripts/onboarding-projection.ts b/scripts/onboarding-projection.ts
+new file mode 100644
+index 000000000..94fc8d746
+--- /dev/null
++++ b/scripts/onboarding-projection.ts
+@@ -0,0 +1,27 @@
++export type OnboardingDestination = {
++  readonly root: "project" | "harness";
++  readonly path: string;
++};
++
++export type OnboardingDocument = {
++  readonly kind: "neutral" | "combined" | "native";
++  readonly destination: OnboardingDestination;
++  readonly content: string;
++};
++
++// A host with its own setup document leaves shared project guidance neutral.
++export function projectOnboardingDocuments({ neutral, nativeSkeleton, shared, nativePath }: {
++  readonly neutral: string;
++  readonly nativeSkeleton: string;
++  readonly shared: OnboardingDestination;
++  readonly nativePath: string | null;
++}): readonly OnboardingDocument[] {
++  if (nativePath) return [
++    { kind: "neutral", destination: { ...shared }, content: neutral },
++    { kind: "native", destination: { root: "harness", path: nativePath }, content: nativeSkeleton },
++  ];
++  return [{
++    kind: "combined", destination: { ...shared },
++    content: `${nativeSkeleton}\n## Shared AI-DLC onboarding\n\n${neutral}`,
++  }];
++}
+diff --git a/scripts/package-source-inputs.test.ts b/scripts/package-source-inputs.test.ts
+index 7009eac51..3ab680c07 100644
+--- a/scripts/package-source-inputs.test.ts
++++ b/scripts/package-source-inputs.test.ts
+@@ -8,10 +8,15 @@ test("available producer inputs are selected without unrelated scripts or tests"
+     "scripts/package-runtime-cli.ts",
+     "scripts/manifest-types.ts",
+     "scripts/agent-knowledge.ts",
++    "scripts/agent-surface-projection.ts",
++    "scripts/core-projection-contract.ts",
+     "scripts/earlier-release-regions.ts",
+     "scripts/copy-era-files.json",
+     "scripts/harness-bindings.ts",
++    "scripts/harness-surface-projection.ts",
++    "scripts/harness-runtime-data.ts",
+     "scripts/onboarding.ts",
++    "scripts/onboarding-projection.ts",
+     "scripts/plugin-contributions.ts",
+     "scripts/plugin-declaration.ts",
+     "scripts/plugin-hook-source.ts",
+@@ -36,10 +41,15 @@ test("absent producer inputs are not selected", () => {
+     ["scripts/package-runtime-cli.ts"],
+     ["scripts/manifest-types.ts"],
+     ["scripts/agent-knowledge.ts"],
++    ["scripts/agent-surface-projection.ts"],
++    ["scripts/core-projection-contract.ts"],
+     ["scripts/earlier-release-regions.ts"],
+     ["scripts/copy-era-files.json"],
+     ["scripts/harness-bindings.ts"],
++    ["scripts/harness-surface-projection.ts"],
++    ["scripts/harness-runtime-data.ts"],
+     ["scripts/onboarding.ts"],
++    ["scripts/onboarding-projection.ts"],
+     ["scripts/plugin-contributions.ts"],
+     ["scripts/plugin-declaration.ts"],
+     ["scripts/plugin-hook-source.ts"],
+diff --git a/scripts/package-source-inputs.ts b/scripts/package-source-inputs.ts
+index a0b2ab24c..42f561704 100644
+--- a/scripts/package-source-inputs.ts
++++ b/scripts/package-source-inputs.ts
+@@ -4,10 +4,15 @@ const SOURCE_FILES = [
+   "scripts/package-runtime-cli.ts",
+   "scripts/manifest-types.ts",
+   "scripts/agent-knowledge.ts",
++  "scripts/agent-surface-projection.ts",
++  "scripts/core-projection-contract.ts",
+   "scripts/earlier-release-regions.ts",
+   "scripts/copy-era-files.json",
+   "scripts/harness-bindings.ts",
++  "scripts/harness-surface-projection.ts",
++  "scripts/harness-runtime-data.ts",
+   "scripts/onboarding.ts",
++  "scripts/onboarding-projection.ts",
+   "scripts/plugin-contributions.ts",
+   "scripts/plugin-declaration.ts",
+   "scripts/plugin-hook-source.ts",
+diff --git a/scripts/package.ts b/scripts/package.ts
+index ef81b9007..56713aad1 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -63,12 +63,13 @@ import { fileURLToPath } from "node:url";
+ import { spawnSync } from "node:child_process";
+ import { runtimeSourceRole } from "./runtime-source.ts";
+ import { projectDeclaredPluginRuntime } from "./plugin-runtime-projection.ts";
++import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
+ import { bindPluginHookSources } from "../core/tools/aidlc-plugin-hook-definition.ts";
+ import { createPluginRuntimeCompiler, createPluginRuntimeSourcePort, createPluginRuntimeArtifactPort, prepareProjectedPluginRuntimeArtifacts, publishPluginRuntimeArtifacts, type RuntimePreparationFailure, type RuntimePublication } from "./plugin-runtime.ts";
+ import { createPackageRuntimeCliPort, reportPackageRuntimeFailure } from "./package-runtime-cli.ts";
+ import { preparePluginDeclarationRuntime } from "./plugin-declaration.ts";
+ import { pluginHookRows, renderPluginHookContributions } from "./plugin-contributions.ts";
+-import type { HarnessManifest } from "./manifest-types.ts";
++import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
+ import {
+   absorbReviewerKnowledge,
+   agentNameFromPath,
+@@ -77,6 +78,10 @@ import {
+   reviewerAgentSet,
+ } from "./agent-knowledge.ts";
+ import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
++import { projectOnboardingDocuments } from "./onboarding-projection.ts";
++import { coreFileProjection, coreProjectionCoverage, coreProjectionDeclarations } from "./core-projection-contract.ts";
++import { projectHarnessRuntimeData } from "./harness-runtime-data.ts";
++import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeRequirement } from "./harness-surface-projection.ts";
+ import { keepOwnHarnessBindings } from "./harness-bindings.ts";
+ import { EARLIER_RELEASE_REGIONS, earlierReleasesReadSkill } from "./earlier-release-regions.ts";
+ import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
+@@ -378,13 +383,13 @@ function projectKiroAgentJson(srcPath: string, content: Buffer): Buffer {
+ // harness's preflight names them (SHIPPED_FORMAT_DOCS is the one list).
+ function projectKiroSharedKnowledge(content: Buffer): Buffer {
+   const parsed = JSON.parse(content.toString("utf-8")) as { resources?: unknown };
+-  const glob = "file://.kiro/knowledge/aidlc-shared/*.md";
+-  if (!Array.isArray(parsed.resources) || !parsed.resources.includes(glob)) return content;
+-  const files = readdirSync(join(CORE_ROOT, "knowledge", "aidlc-shared"))
+-    .filter((file) => file.endsWith(".md") && !SHIPPED_FORMAT_DOCS.has(file))
+-    .sort()
+-    .map((file) => `file://.kiro/knowledge/aidlc-shared/${file}`);
+-  parsed.resources = parsed.resources.flatMap((entry) => (entry === glob ? files : [entry]));
++  if (!Array.isArray(parsed.resources)) return content;
++  if (kiroSharedKnowledgeRequirement({ resources: parsed.resources }) === "unchanged") return content;
++  parsed.resources = expandKiroSharedKnowledge({
++    resources: parsed.resources,
++    availableFiles: readdirSync(join(CORE_ROOT, "knowledge", "aidlc-shared")),
++    formatDocuments: SHIPPED_FORMAT_DOCS,
++  });
+   return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
+ }
+ 
+@@ -468,49 +473,6 @@ function transform(
+   return content;
+ }
+ 
+-// Append manifest-declared frontmatter lines to a projected .md, just before
+-// the closing `---` of its YAML block (manifest-types.ts frontmatterAdditions).
+-// Hard errors, never silent: the file must open with a frontmatter block, and
+-// no added line's key may already exist in it - if core later grows the same
+-// key, the build fails loudly instead of shipping a double.
+-function applyFrontmatterAdditions(
+-  content: string,
+-  lines: string[],
+-  file: string,
+-): string {
+-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n(---\r?\n)/);
+-  if (!m) {
+-    throw new Error(
+-      `frontmatterAdditions: ${file} has no leading frontmatter block to extend.`,
+-    );
+-  }
+-  const fm = m[1];
+-  const added = new Set<string>();
+-  for (const line of lines) {
+-    if (/^\s/.test(line)) continue;
+-    const key = line.split(":")[0]?.trim();
+-    if (!key || !/^[A-Za-z_][\w-]*$/.test(key)) {
+-      throw new Error(
+-        `frontmatterAdditions: line "${line}" for ${file} does not start with a YAML key.`,
+-      );
+-    }
+-    if (added.has(key)) {
+-      throw new Error(
+-        `frontmatterAdditions: ${file} declares "${key}:" more than once in additions.`,
+-      );
+-    }
+-    added.add(key);
+-    if (new RegExp(`^${key}:`, "m").test(fm)) {
+-      throw new Error(
+-        `frontmatterAdditions: ${file} already declares "${key}:" in core - ` +
+-          `resolve the collision instead of shipping a duplicate key.`,
+-      );
+-    }
+-  }
+-  const insertAt = m[0].length - m[2].length;
+-  return `${content.slice(0, insertAt)}${lines.join("\n")}\n${content.slice(insertAt)}`;
+-}
+-
+ function* walk(dir: string): Generator<string> {
+   for (const entry of readdirSync(dir).sort()) {
+     const full = join(dir, entry);
+@@ -627,38 +589,10 @@ const ACTIVE_SPACE_VALUE = "default\n";
+ // open-set descriptor. Pretty-printed + trailing newline keeps output
+ // diff-friendly and stable under --check.
+ function writeHarnessData(treeRoot: string, m: HarnessManifest): void {
+-  // A FRESH object, deliberately: the runtime READER tolerates unknown keys, but
+-  // this writer alone decides what ships. Anything hand-added to a local
+-  // harness.json is erased on the next build, so a new configuration field has
+-  // to be added HERE to exist at all.
+-  const data: Record<string, unknown> = {
+-    schemaVersion: 1,
+-    distribution: m.name,
+-    productName: m.productName,
+-    configNextStep: m.configNextStep,
+-    name: m.name,
+-    harnessDir: m.harnessDir,
+-    rulesSubdir: m.rulesRename ?? "rules",
+-    ...(m.runnerFrontmatterAdditions?.length
+-      ? { runnerFrontmatterAdditions: m.runnerFrontmatterAdditions }
+-      : {}),
+-  };
+-  // Emitted only when a manifest sets it, so the output stays
+-  // byte-identical for every harness that does not -- which is all of them today.
+-  if (m.documentExtractors) data.documentExtractors = m.documentExtractors;
+-  // Likewise conditional: only a host whose hooks wait on the person (trust, engine) declares it.
+-  if (m.hookActivation) data.hookActivation = m.hookActivation;
+-  // Only the Kiro rows declare a layout; the runtime reads it in place of the row name.
+-  if (m.kiroLayout) data.kiroLayout = m.kiroLayout;
+-  // And only a host that cuts a shell result below the engine's cap.
+-  if (m.directiveMaxBytes) data.directiveMaxBytes = m.directiveMaxBytes;
+-  // And only a host where AI-DLC can show its progress in the status line.
+-  if (m.statusLine) data.statusLine = m.statusLine;
+-  // And only a host whose stop event records an agent's finish before its result.
+-  if (m.agentFinishRecorded) data.agentFinishRecorded = m.agentFinishRecorded;
++  const runtimeDescriptor = projectHarnessRuntimeData({ declaration: m });
+   const dst = join(treeRoot, HARNESS_DATA);
+   mkdirSync(dirname(dst), { recursive: true });
+-  writeFileSync(dst, `${JSON.stringify(data, null, 2)}\n`);
++  writeFileSync(dst, `${JSON.stringify(runtimeDescriptor, null, 2)}\n`);
+ }
+ 
+ function writePluginAgentData(treeRoot: string, m: HarnessManifest): void {
+@@ -881,6 +815,78 @@ function emitActiveSpace(outRoot: string): void {
+   writeFileSync(outPath, ACTIVE_SPACE_VALUE);
+ }
+ 
++function writeAgentSurface(input: {
++  readonly treeRoot: string;
++  readonly path: string;
++  readonly content: Buffer;
++  readonly additions: readonly string[];
++}): PackageRuntimeOutcome {
++  const requirements = agentSurfaceRequirements({ path: input.path, additions: input.additions });
++  const inlineAgents = requirements.kind === "inline-role" ? inlineAgentSet(CORE_ROOT) : new Set<string>();
++  const projection = projectAgentSurface({
++    path: input.path, content: input.content.toString("utf-8"), additions: input.additions, inlineAgents,
++  });
++  projection.writes.forEach((artifact) => {
++    const path = join(input.treeRoot, artifact.path);
++    if (artifact.kind === "persona") mkdirSync(dirname(path), { recursive: true });
++    writeFileSync(path, artifact.kind === "persona" ? input.content : artifact.content);
++  });
++  return projection.kind === "refused" ? { kind: "refused", message: projection.message } : { kind: "completed" };
++}
++
++function writeOnboarding(input: {
++  readonly spec: OnboardingSpec;
++  readonly outRoot: string;
++  readonly treeRoot: string;
++  readonly harnessDir: string;
++  readonly rulesRename: string | null;
++  readonly harness: Harness;
++  readonly invoke: string;
++}): void {
++  const { dst, projectRoot, harnessDst, fills } = input.spec;
++  const neutral = renderNeutralOnboarding(readFileSync(ONBOARDING_SKELETON, "utf-8"));
++  const nativeSkeleton = readFileSync(HARNESS_ONBOARDING_SKELETON, "utf-8");
++  const documents = projectOnboardingDocuments({
++    neutral, nativeSkeleton, shared: { root: projectRoot ? "project" : "harness", path: dst }, nativePath: harnessDst ?? null,
++  });
++  documents.forEach((document) => {
++    // Combined rendering precedes mkdir; a separate native file renders after its directory exists.
++    const prepared = document.kind === "combined" ? renderOnboarding(document.content, fills) : document.content;
++    const destination = join(document.destination.root === "project" ? input.outRoot : input.treeRoot, document.destination.path);
++    mkdirSync(dirname(destination), { recursive: true });
++    const rendered = document.kind === "native" ? renderOnboarding(prepared, fills) : prepared;
++    const source = document.kind === "native" ? HARNESS_ONBOARDING_SKELETON : ONBOARDING_SKELETON;
++    writeFileSync(destination, transform(source, Buffer.from(rendered), input.harnessDir, input.rulesRename, input.harness, input.invoke));
++  });
++}
++
++function writeAuthoredHarnessFiles(input: {
++  readonly projection: Pick<HarnessManifest, "harnessFiles" | "rulesRename" | "hookCommandSuffix">;
++  readonly harnessSrcRoot: string;
++  readonly outRoot: string;
++  readonly treeRoot: string;
++  readonly harnessDir: string;
++  readonly harness: Harness;
++  readonly invoke: string;
++  readonly letters: string;
++}): void {
++  // Require the prior iterator protocol; do not accept Array.from's array-like fallback.
++  Array.from({ [Symbol.iterator]: () => input.projection.harnessFiles[Symbol.iterator]() }, ({ src, dst, projectRoot }) => {
++    const srcPath = join(input.harnessSrcRoot, src);
++    if (!existsSync(srcPath)) return;
++    const outPath = projectRoot ? join(input.outRoot, dst) : join(input.treeRoot, dst);
++    mkdirSync(dirname(outPath), { recursive: true });
++    let out = transform(srcPath, readFileSync(srcPath), input.harnessDir, input.projection.rulesRename, input.harness, input.invoke, input.letters);
++    const surface = authoredHarnessSurface({ flavor: input.harness, source: src });
++    // Tier projection, knowledge lookup and hook suffixing retain their existing failure order.
++    if (surface === "kiro-agent-json") {
++      out = projectKiroSharedKnowledge(projectKiroAgentJson(srcPath, out));
++      out = projectKiroHookCommands(out, input.projection.hookCommandSuffix);
++    } else if (surface === "kiro-cli-settings") out = projectKiroCliJson(out);
++    writeFileSync(outPath, out);
++  });
++}
++
+ // ---------------------------------------------------------------------------
+ // Build one harness tree into `outRoot` (the dist/<name> dir). Returns the full
+ // generated-file inventory rooted there, including project-root files beside
+@@ -900,11 +906,9 @@ async function buildTree(
+   const letters = optionLetters(m);
+   // 1. Copy core dirs with token substitution + rules rename. Manifest-declared
+   //    frontmatter additions (harness-native fields, e.g. the Kiro IDE's
+-  //    subagent `tools:` grant) are appended during this projection; every
+-  //    declared file must be hit exactly once (typo/rename guard).
+-  const fmAdditions = new Map(
+-    (m.frontmatterAdditions ?? []).map(({ file, lines }) => [file, lines]),
+-  );
++  //    subagent `tools:` grant) are appended during this projection. Every
++  //    declared path must be published (typo/rename guard).
++  const fmAdditions = coreProjectionDeclarations({ declarations: m.frontmatterAdditions ?? [] });
+   const fmApplied = new Set<string>();
+   for (const { src, dst } of m.coreDirs) {
+     const srcDir = join(CORE_ROOT, src);
+@@ -927,106 +931,37 @@ async function buildTree(
+       // Manifest keys are POSIX; normalize the platform separator so the
+       // lookup works on Windows too.
+       const harnessRel = join(finalDst, rel).split(sep).join("/");
++      const projection = coreFileProjection({ path: harnessRel, declarations: fmAdditions });
+       // A protocol module's per-tool binding subsections: this tree keeps its own.
+-      if (/^aidlc-common\/protocols\/[^/]+\.md$/.test(harnessRel)) {
++      if (projection.bindingScope === "own-harness") {
+         out = Buffer.from(keepOwnHarnessBindings(out.toString("utf-8"), m.name, harnessRel), "utf-8");
+       }
+-      const fmLines = fmAdditions.get(harnessRel);
++      const fmLines = projection.additions;
+       if (fmLines) {
+-        // The additions are for the harness's dispatch (Kiro IDE: about 32 KB
+-        // of tool permissions); the lead reading the persona in its own chat
+-        // gets the persona without them, from the copy the roster names. A
+-        // tools line alone (Kiro CLI) is no weight to keep out: no copy.
+-        if (
+-          harnessRel.startsWith("agents/") &&
+-          fmLines.some((line) => line.split(":", 1)[0] === "permissions") &&
+-          inlineAgentSet(CORE_ROOT).has(basename(outPath, ".md"))
+-        ) {
+-          const copy = join(treeRoot, "aidlc-common", "personas", basename(outPath));
+-          mkdirSync(dirname(copy), { recursive: true });
+-          writeFileSync(copy, out);
+-        }
+-        out = Buffer.from(
+-          applyFrontmatterAdditions(out.toString("utf-8"), fmLines, harnessRel),
+-          "utf-8",
+-        );
++        const projected = writeAgentSurface({ treeRoot, path: harnessRel, content: out, additions: fmLines });
++        if (projected.kind !== "completed") return projected;
+         fmApplied.add(harnessRel);
+-      }
+-      writeFileSync(outPath, out);
++      } else writeFileSync(outPath, out);
+     }
+   }
+   const runtime = await projectCoreRuntime({ treeRoot });
+   if (runtime.kind !== "published") return runtime;
+-  const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
+-  if (fmMissed.length > 0) {
++  const coverage = coreProjectionCoverage({ declarations: fmAdditions, publishedPaths: fmApplied });
++  if (coverage.kind === "missing-declarations") {
+     throw new Error(
+       `[${m.name}] frontmatterAdditions name file(s) the core projection never produced: ` +
+-        `${fmMissed.join(", ")} - fix the path(s) in the manifest.`,
++        `${coverage.paths.join(", ")} - fix the path(s) in the manifest.`,
+     );
+   }
+-  // 2. Copy authored harness surfaces (token substitution on .md). projectRoot
+-  //    files land beside the harness dir (e.g. dist/kiro/AGENTS.md), the rest
+-  //    inside <harnessDir>/. On the kiro harnesses two authored JSON surfaces
+-  //    are additionally tier-projected: the agent .json "model" fields and the
+-  //    settings/cli.json chat.modelDefaults entries (effort rides on the model
+-  //    on Kiro - see aidlc-tiers.ts).
+   const harnessSrcRoot = join(HARNESS_ROOT, m.name);
+-  for (const { src, dst, projectRoot } of m.harnessFiles) {
+-    const srcPath = join(harnessSrcRoot, src);
+-    if (!existsSync(srcPath)) continue;
+-    const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
+-    mkdirSync(dirname(outPath), { recursive: true });
+-    let out = transform(
+-      srcPath,
+-      readFileSync(srcPath),
+-      harnessDir,
+-      m.rulesRename,
+-      harnessKind,
+-      invoke,
+-      letters,
+-    );
+-    if (harnessKind === "kiro") {
+-      if (src.startsWith("agents/") && src.endsWith(".json")) {
+-        out = projectKiroSharedKnowledge(projectKiroAgentJson(srcPath, out));
+-        out = projectKiroHookCommands(out, m.hookCommandSuffix);
+-      } else if (src === "settings/cli.json") {
+-        out = projectKiroCliJson(out);
+-      }
+-    }
+-    writeFileSync(outPath, out);
+-  }
++  writeAuthoredHarnessFiles({
++    projection: m, harnessSrcRoot, outRoot, treeRoot, harnessDir,
++    harness: harnessKind, invoke, letters,
++  });
+ 
+-  // 2b. Split neutral project instructions from each harness's native setup.
+-  // Claude and Copilot keep both parts in their single always-on file.
+-  if (m.onboarding) {
+-    const { dst, projectRoot, harnessDst, fills } = m.onboarding;
+-    const neutral = renderNeutralOnboarding(readFileSync(ONBOARDING_SKELETON, "utf-8"));
+-    const harnessSkeleton = readFileSync(HARNESS_ONBOARDING_SKELETON, "utf-8");
+-    const rendered = harnessDst
+-      ? neutral
+-      : renderOnboarding(harnessSkeleton + "\n## Shared AI-DLC onboarding\n\n" + neutral, fills);
+-    const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
+-    mkdirSync(dirname(outPath), { recursive: true });
+-    writeFileSync(
+-      outPath,
+-      transform(ONBOARDING_SKELETON, Buffer.from(rendered), harnessDir, m.rulesRename, harnessKind, invoke),
+-    );
+-    if (harnessDst) {
+-      const harnessPath = join(treeRoot, harnessDst);
+-      mkdirSync(dirname(harnessPath), { recursive: true });
+-      writeFileSync(
+-        harnessPath,
+-        transform(
+-          HARNESS_ONBOARDING_SKELETON,
+-          Buffer.from(renderOnboarding(harnessSkeleton, fills)),
+-          harnessDir,
+-          m.rulesRename,
+-          harnessKind,
+-          invoke,
+-        ),
+-      );
+-    }
+-  }
++  if (m.onboarding) writeOnboarding({
++    spec: m.onboarding, outRoot, treeRoot, harnessDir, rulesRename: m.rulesRename, harness: harnessKind, invoke,
++  });
+ 
+   // 2c. Emit the relocated method ("memory") tree at the workspace root
+   //     (dist/<name>/aidlc/spaces/default/memory/). MUST run before compile —
+diff --git a/tests/integration/t-projection-input-freshness.test.ts b/tests/integration/t-projection-input-freshness.test.ts
+index 19d83eef2..3ba901285 100644
+--- a/tests/integration/t-projection-input-freshness.test.ts
++++ b/tests/integration/t-projection-input-freshness.test.ts
+@@ -30,8 +30,57 @@ test("rewriting identical producer bytes leaves the output current", () => {
+   expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
+ });
+ 
++test("an agent surface policy edit invalidates the persisted consumer record", () => {
++  const fixture = inputFixture({ path: "scripts/agent-surface-projection.ts", name: "changed-agent-surfaces" });
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++  writeFileSync(fixture.inputPath, "// changed dispatch/persona decision\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run \u0060bun scripts/package.ts\u0060 first.");
++});
++
++test("an onboarding projection edit invalidates the persisted consumer record", () => {
++  const fixture = inputFixture({ path: "scripts/onboarding-projection.ts", name: "changed-onboarding-projection" });
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++  writeFileSync(fixture.inputPath, "// changed shared/native onboarding placement\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run \u0060bun scripts/package.ts\u0060 first.");
++});
++
++test("an authored harness projection edit invalidates the persisted consumer record", () => {
++  const fixture = inputFixture({ path: "scripts/harness-surface-projection.ts", name: "changed-harness-surface" });
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++  writeFileSync(fixture.inputPath, "// changed authored host projection\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run \u0060bun scripts/package.ts\u0060 first.");
++});
++
+ test("an unrelated test module does not invalidate runtime output", () => {
+   const fixture = inputFixture({ path: "scripts/plugin-runtime.test.ts", name: "test-module" });
+   writeFileSync(fixture.inputPath, "// test changed\n");
+   expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
+ });
++
++test("a core projection contract edit invalidates the persisted consumer record", () => {
++  const fixture = inputFixture({ path: "scripts/core-projection-contract.ts", name: "changed-core-projection" });
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++  writeFileSync(fixture.inputPath, "// changed native declaration coverage\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run \u0060bun scripts/package.ts\u0060 first.");
++});
++
++test("a runtime harness data projection edit invalidates the persisted consumer record", () => {
++  const fixture = inputFixture({ path: "scripts/harness-runtime-data.ts", name: "changed-harness-runtime-data" });
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++  writeFileSync(fixture.inputPath, "// changed runtime field selection\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run \u0060bun scripts/package.ts\u0060 first.");
++});
++
++test("a core root-integration codec edit invalidates the persisted consumer record", () => {
++  const fixture = inputFixture({ path: "core/tools/aidlc-root-integration-codec.ts", name: "changed-root-codec" });
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++  writeFileSync(fixture.inputPath, "// changed root-policy wire compatibility\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run \u0060bun scripts/package.ts\u0060 first.");
++});
++
++test("a core projection path edit invalidates the persisted consumer record", () => {
++  const fixture = inputFixture({ path: "core/tools/aidlc-projection-path.ts", name: "changed-projection-path" });
++  expect(stalePackageMessage(fixture.root, "claude")).toBeNull();
++  writeFileSync(fixture.inputPath, "// changed projection path admission\n");
++  expect(stalePackageMessage(fixture.root, "claude")).toBe("dist/claude was packaged from other sources than this checkout: run \u0060bun scripts/package.ts\u0060 first.");
++});

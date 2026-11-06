@@ -1,3 +1,9 @@
+import { type KnowledgeProjection } from "../domain/knowledge-definition.ts";
+import type { SensorProjection, SensorProjectionInput } from "../domain/sensor-definition.ts";
+import type { GuidanceProjection, GuidanceProjectionInput } from "../domain/core-guidance.ts";
+import type { HarnessDocumentProjection, HarnessDocumentProjectionInput } from "../domain/harness-document.ts";
+import type { AuthoredKnowledge } from "../domain/core-knowledge-sources.ts";
+import type { AuthoredProseContext } from "../domain/authored-prose.ts";
 import type { AgentDefinitionProjection, AuthoredSkillProjection, CompiledAgentProjectionRequest, GeneratedRunnerProjectionRequest, GeneratedRunnerSet } from "./surface-projection.ts";
 import type { AgentProjection } from "../domain/agent-definition.ts";
 import type { SkillProjection } from "../domain/skill-definition.ts";
@@ -10,6 +16,10 @@ import { finding, pathStatus, type Outcome, type Finding } from "../domain/model
 import { residue } from "../domain/projection-content.ts";
 
 export type ProjectionSetUnit =
+  | { readonly kind: "sensor"; readonly key: string; readonly input: SensorProjectionInput }
+  | { readonly kind: "harness-document"; readonly key: string; readonly input: HarnessDocumentProjectionInput }
+  | { readonly kind: "guidance"; readonly key: string; readonly input: GuidanceProjectionInput }
+  | { readonly kind: "knowledge"; readonly key: string; readonly input: { readonly document: AuthoredKnowledge; readonly context: AuthoredProseContext } }
   | { readonly kind: "stage"; readonly key: string; readonly input: { readonly stage: AuthoredStage; readonly context: StageContext } }
   | { readonly kind: "scope"; readonly key: string; readonly input: { readonly scope: AuthoredScope; readonly context: ScopeContext } }
   | { readonly kind: "agent"; readonly key: string; readonly input: AgentDefinitionProjection }
@@ -17,6 +27,10 @@ export type ProjectionSetUnit =
   | { readonly kind: "skill"; readonly key: string; readonly input: AuthoredSkillProjection }
   | { readonly kind: "runners"; readonly key: string; readonly input: GeneratedRunnerProjectionRequest };
 export type ProjectedSetUnit =
+  | { readonly kind: "sensor"; readonly key: string; readonly projection: SensorProjection }
+  | { readonly kind: "harness-document"; readonly key: string; readonly projection: HarnessDocumentProjection }
+  | { readonly kind: "guidance"; readonly key: string; readonly projection: GuidanceProjection }
+  | { readonly kind: "knowledge"; readonly key: string; readonly projection: KnowledgeProjection }
   | { readonly kind: "stage"; readonly key: string; readonly projection: StageProjection }
   | { readonly kind: "scope"; readonly key: string; readonly projection: ScopeProjection }
   | { readonly kind: "agent" | "compiled-agent"; readonly key: string; readonly projection: AgentProjection }
@@ -26,6 +40,10 @@ export type ProjectionSet = { readonly scope: "selected-surfaces"; readonly targ
 export type ProjectionSetRequest = { readonly units: readonly ProjectionSetUnit[]; readonly target: HarnessBinding };
 export type ProjectionSetProjector = { readonly project: (input: ProjectionSetRequest) => Outcome<ProjectionSet> };
 export type ProjectionSetServices = {
+  readonly sensor: (input: SensorProjectionInput) => Outcome<SensorProjection>;
+  readonly harnessDocument: (input: HarnessDocumentProjectionInput) => Outcome<HarnessDocumentProjection>;
+  readonly guidance: (input: GuidanceProjectionInput) => Outcome<GuidanceProjection>;
+  readonly knowledge: (input: { readonly document: AuthoredKnowledge; readonly context: AuthoredProseContext }) => Outcome<KnowledgeProjection>;
   readonly stage: (input: { readonly stage: AuthoredStage; readonly context: StageContext }) => Outcome<StageProjection>;
   readonly scope: (input: { readonly scope: AuthoredScope; readonly context: ScopeContext }) => Outcome<ScopeProjection>;
   readonly agent: (input: AgentDefinitionProjection) => Outcome<AgentProjection>;
@@ -43,15 +61,19 @@ const selectionFindings = ({ units, target }: { readonly units: readonly Project
     ...(unit.input.context.harness !== target.harness || unit.input.context.directory !== target.directory ? [finding({ code: "harness-mismatch", subject: unit.key, detail: "every selected unit must target the assembly's harness binding" })] : []),
   ]),
 ];
+const retainProjectedUnit = <Projection>({ projected, identify }: { readonly projected: Outcome<Projection>; readonly identify: (input: { readonly projection: Projection }) => ProjectedSetUnit }): Outcome<ProjectedSetUnit> => projected.status === "invalid" ? projected : { status: "ok", value: identify({ projection: projected.value }) };
 const projectUnit = ({ unit, services }: { readonly unit: ProjectionSetUnit; readonly services: ProjectionSetServices }): Outcome<ProjectedSetUnit> => {
   switch (unit.kind) {
-    case "stage": { const projected = services.stage(unit.input); return projected.status === "invalid" ? projected : { status: "ok", value: { kind: unit.kind, key: unit.key, projection: projected.value } }; }
-    case "scope": { const projected = services.scope(unit.input); return projected.status === "invalid" ? projected : { status: "ok", value: { kind: unit.kind, key: unit.key, projection: projected.value } }; }
-    case "agent": { const projected = services.agent(unit.input); return projected.status === "invalid" ? projected : { status: "ok", value: { kind: unit.kind, key: unit.key, projection: projected.value } }; }
-    case "compiled-agent": { const projected = services.compiledAgent(unit.input); return projected.status === "invalid" ? projected : { status: "ok", value: { kind: unit.kind, key: unit.key, projection: projected.value } }; }
-    case "skill": { const projected = services.skill(unit.input); return projected.status === "invalid" ? projected : { status: "ok", value: { kind: unit.kind, key: unit.key, projection: projected.value } }; }
-    case "runners": { const projected = services.runners(unit.input); return projected.status === "invalid" ? projected : { status: "ok", value: { kind: unit.kind, key: unit.key, projection: projected.value } }; }
-    default: return { status: "invalid", findings: [finding({ code: "invalid-input", subject: "projection-set", detail: "unsupported projection unit kind" })] };
+    case "sensor": return retainProjectedUnit({ projected: services.sensor(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "harness-document": return retainProjectedUnit({ projected: services.harnessDocument(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "guidance": return retainProjectedUnit({ projected: services.guidance(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "knowledge": return retainProjectedUnit({ projected: services.knowledge(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "stage": return retainProjectedUnit({ projected: services.stage(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "scope": return retainProjectedUnit({ projected: services.scope(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "agent": return retainProjectedUnit({ projected: services.agent(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "compiled-agent": return retainProjectedUnit({ projected: services.compiledAgent(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "skill": return retainProjectedUnit({ projected: services.skill(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
+    case "runners": return retainProjectedUnit({ projected: services.runners(unit.input), identify: ({ projection }) => ({ kind: unit.kind, key: unit.key, projection }) });
   }
 };
 const outputFindings = ({ unit, target }: { readonly unit: ProjectedSetUnit; readonly target: HarnessBinding }): readonly Finding[] => {

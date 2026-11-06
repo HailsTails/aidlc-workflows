@@ -1,6 +1,43 @@
 import { expect, mock, test } from "bun:test";
 import { createProjectionSet } from "./projection-set.ts";
 import { assemblyAgent, assemblyAgentUnit, assemblyFailure, assemblyResource, assemblySet, assemblySkillUnit, assemblyTarget, createAssemblyServices, createAssemblyValidation, invalidAssemblySelections } from "../../__tests__/projection-set-fixtures.ts";
+import { coreKnowledgeContext, coreKnowledgeOrigin, coreKnowledgeText, coreKnowledgeProjection, coreKnowledgeSelection, coreKnowledgeSet } from "../../__tests__/core-knowledge-fixtures.ts";
+import { preparedConductor, preparedProtocol, conductorProjection, protocolProjection, guidanceSelection, guidanceSet } from "../../__tests__/core-guidance-fixtures.ts";
+import { entrySelection, entrySet, entryProjection, entryMain } from "../../__tests__/harness-document-fixtures.ts";
+import { coreSensorContext, coreSensorDocument, coreSensorProjection, coreSensorSet } from "../../__tests__/core-sensor-fixtures.ts";
+test("sensor descriptors dispatch through their own port and atomic native collection", () => {
+  const services = { ...createAssemblyServices(), sensor: mock().mockReturnValue({ status: "ok", value: coreSensorProjection }) };
+  const validation = { ...createAssemblyValidation(), collect: mock().mockReturnValue({ status: "ok", value: coreSensorSet.resources }) };
+  expect(createProjectionSet({ services, validation }).project({ target: { harness: "claude", directory: ".claude" }, units: [{ kind: "sensor", key: "sensor-example", input: { document: coreSensorDocument, context: coreSensorContext } }] })).toEqual({ status: "ok", value: coreSensorSet });
+  expect(services.sensor.mock.calls).toEqual([[{ document: coreSensorDocument, context: coreSensorContext }]]);
+  expect(services.knowledge).not.toHaveBeenCalled();
+  expect(validation.collect.mock.calls).toEqual([[{ resources: [{ kind: "file", path: ".claude/sensors/aidlc-example.md", body: "Rendered sensor\n" }] }]]);
+});
+
+test("harness documents dispatch to their own renderer and common atomic collection", () => {
+  const services = { ...createAssemblyServices(), harnessDocument: mock().mockReturnValue({ status: "ok", value: entryProjection }) };
+  const validation = { ...createAssemblyValidation(), collect: mock().mockReturnValue({ status: "ok", value: entrySet.resources }) };
+  expect(createProjectionSet({ services, validation }).project(entrySelection)).toEqual({ status: "ok", value: entrySet });
+  expect(services.harnessDocument).toHaveBeenCalledWith({ document: entryMain, context: { harness: "claude", directory: ".claude" } });
+  expect(services.guidance).not.toHaveBeenCalled();
+});
+
+test("guidance dispatch joins the common atomic file collection", () => {
+  const services = { ...createAssemblyServices(), guidance: mock().mockReturnValueOnce({ status: "ok", value: conductorProjection }).mockReturnValueOnce({ status: "ok", value: protocolProjection }) };
+  const validation = { ...createAssemblyValidation(), collect: mock().mockReturnValue({ status: "ok", value: guidanceSet.resources }) };
+  expect(createProjectionSet({ services, validation }).project(guidanceSelection)).toEqual({ status: "ok", value: guidanceSet });
+  expect(services.guidance).toHaveBeenNthCalledWith(1, { document: preparedConductor, context: { harness: "claude", directory: ".claude" } });
+  expect(services.guidance).toHaveBeenNthCalledWith(2, { document: preparedProtocol, context: { harness: "claude", directory: ".claude" } });
+  expect(validation.collect).toHaveBeenCalledWith({ resources: [{ kind: "file", path: ".claude/aidlc-common/conductor.md", body: "Rendered\n" }, { kind: "file", path: ".claude/aidlc-common/protocols/stage-protocol.md", body: "Rendered\n" }] });
+});
+
+test("knowledge selection invokes its own projector and joins native file collection", () => {
+  const services = { ...createAssemblyServices(), knowledge: mock().mockReturnValue({ status: "ok", value: coreKnowledgeProjection }) };
+  const validation = { ...createAssemblyValidation(), collect: mock().mockReturnValue({ status: "ok", value: coreKnowledgeProjection.resources }) };
+  expect(createProjectionSet({ services, validation }).project(coreKnowledgeSelection)).toEqual({ status: "ok", value: coreKnowledgeSet });
+  expect(services.knowledge).toHaveBeenCalledWith({ document: { relativePath: "aidlc-shared/guide.md", origin: coreKnowledgeOrigin, text: coreKnowledgeText }, context: coreKnowledgeContext });
+  expect(validation.collect).toHaveBeenCalledWith({ resources: coreKnowledgeProjection.resources });
+});
 
 test("retains unit metadata and collected files", () => {
   const services = createAssemblyServices(), validation = createAssemblyValidation();

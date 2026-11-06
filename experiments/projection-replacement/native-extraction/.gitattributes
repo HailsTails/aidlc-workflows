@@ -1,0 +1,4 @@
+upstream44-projection-compatibility.patch text eol=lf
+rin-preview-runtime-failure.patch text eol=lf
+workflow-plugin-dependency-refactor.patch text eol=lf
+rin-gate0-obligations.patch text eol=lf

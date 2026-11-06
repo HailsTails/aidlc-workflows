@@ -1,0 +1,125 @@
+diff --git a/core/tools/aidlc-init.ts b/core/tools/aidlc-init.ts
+index ffe3b7afa..a798e1914 100644
+--- a/core/tools/aidlc-init.ts
++++ b/core/tools/aidlc-init.ts
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env bun
+-import { assessRecordedRetirement, decideManagedFileChange, decideRecordedRetirement } from "./aidlc-managed-file-decision.ts";
++import { assessRecordedRetirement, decideManagedFileChange, decideManagedFileRecord, decideRecordedRetirement } from "./aidlc-managed-file-decision.ts";
+ import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
+ import { captureWorkflowRefreshInputs, combineRefreshChecks, planWorkflowRefresh, validateEmptyRefreshPlan } from "./aidlc-workflow-refresh.ts";
+ import type { WorkflowRefreshPolicy } from "./aidlc-workflow-refresh-contract.ts";
+@@ -10171,18 +10171,22 @@ function planManagedFiles(
+         // A composed agent file is recorded without the plugin's additions, so
+         // the plugin replay, which re-applies them only over that record, is
+         // its proof; a model written into it then reaches the record too.
+-        const unmodified = currentHash === priorHash ||
+-          (priorHash !== undefined && modelStamped.has(rel) && composedRecords.has(rel));
+         // A file staged from the project's own CRLF checkout (Codex's
+         // config.toml, Kiro CLI's mcp.json) keeps the record it equals once
+         // line endings are set aside, so a clone's refresh leaves it as committed.
+         const recordHash = priorHash !== undefined && hash !== priorHash && sha256FileMatching(source, [priorHash]) === priorHash
+           ? priorHash
+           : hash;
+-        const nextHash = retainBaseline
+-          ? regenerated.has(rel) && targetRegular && unmodified ? composedRecords.get(rel) ?? recordHash : priorHash
+-          : composedRecords.get(rel) ?? recordHash;
+-        if (nextHash !== undefined) nextHashes[rel] = nextHash;
++        const record = decideManagedFileRecord({
++          mode: retainBaseline ? "retain" : "advance",
++          target: !targetExists ? { kind: "absent" } : targetRegular ? { kind: "file", hash: currentHash } : { kind: "other" },
++          priorHash,
++          recordHash,
++          composedHash: composedRecords.get(rel),
++          regeneration: regenerated.has(rel) ? "regenerated" : "unchanged",
++          modelStamp: modelStamped.has(rel) ? "stamped" : "unstamped",
++        });
++        if (record.kind === "record") nextHashes[rel] = record.hash;
+       }
+       if (runtimeGenerated(rel, descriptor.harnessDir, regenerated) && !modelWritten.has(rel)) {
+         if (targetRegular && currentHash === hash) {
+diff --git a/core/tools/aidlc-managed-file-decision.test.ts b/core/tools/aidlc-managed-file-decision.test.ts
+index 102d218cf..264e09607 100644
+--- a/core/tools/aidlc-managed-file-decision.test.ts
++++ b/core/tools/aidlc-managed-file-decision.test.ts
+@@ -1,7 +1,7 @@
+ // covers: function:decideManagedFileChange
+ 
+ import { expect, test } from "bun:test";
+-import { assessRecordedRetirement, decideManagedFileChange, decideRecordedRetirement, type ManagedFileFacts, type ManagedFileDecision, type RecordedRetirementFacts, type RecordedRetirementAttribution, type RecordedRetirementDecision } from "./aidlc-managed-file-decision.ts";
++import { assessRecordedRetirement, decideManagedFileChange, decideManagedFileRecord, decideRecordedRetirement, type ManagedFileFacts, type ManagedFileDecision, type ManagedFileRecordFacts, type ManagedFileRecordDecision, type RecordedRetirementFacts, type RecordedRetirementAttribution, type RecordedRetirementDecision } from "./aidlc-managed-file-decision.ts";
+ 
+ const OWNED: ManagedFileFacts = Object.freeze({
+   target: Object.freeze({ kind: "file", hash: "old" }),
+@@ -70,3 +70,37 @@ const RETIREMENT_DECISIONS: readonly { name: string; facts: Parameters<typeof de
+ test.each([...RETIREMENT_DECISIONS])("recorded retirement decision: $name", ({ facts, expected }) => {
+   expect(decideRecordedRetirement(facts)).toEqual(expected);
+ });
++
++const RETAINED_RECORD: ManagedFileRecordFacts = Object.freeze({
++  mode: "retain",
++  target: Object.freeze({ kind: "file", hash: "old" }),
++  priorHash: "old",
++  recordHash: "new",
++  composedHash: undefined,
++  regeneration: "regenerated",
++  modelStamp: "unstamped",
++});
++
++const RECORD_CASES: readonly { name: string; facts: ManagedFileRecordFacts; expected: ManagedFileRecordDecision }[] = [
++  { name: "regenerated unchanged file advances", facts: RETAINED_RECORD, expected: { kind: "record", hash: "new" } },
++  { name: "local edit retains old ownership", facts: { ...RETAINED_RECORD, target: { kind: "file", hash: "user" } }, expected: { kind: "record", hash: "old" } },
++  { name: "unchanged regeneration fact retains old record", facts: { ...RETAINED_RECORD, regeneration: "unchanged" }, expected: { kind: "record", hash: "old" } },
++  { name: "missing target retains old record", facts: { ...RETAINED_RECORD, target: { kind: "absent" } }, expected: { kind: "record", hash: "old" } },
++  { name: "nonregular target ignores stamped composition", facts: { ...RETAINED_RECORD, target: { kind: "other" }, composedHash: "composed", modelStamp: "stamped" }, expected: { kind: "record", hash: "old" } },
++  { name: "unowned edit stays unrecorded", facts: { ...RETAINED_RECORD, priorHash: undefined, target: { kind: "file", hash: "user" } }, expected: { kind: "unrecorded" } },
++  { name: "stamp and composition cannot manufacture prior proof", facts: { ...RETAINED_RECORD, priorHash: undefined, target: { kind: "file", hash: "user" }, composedHash: "composed", modelStamp: "stamped" }, expected: { kind: "unrecorded" } },
++  { name: "stamped composition advances existing record", facts: { ...RETAINED_RECORD, target: { kind: "file", hash: "model" }, composedHash: "composed", modelStamp: "stamped" }, expected: { kind: "record", hash: "composed" } },
++  { name: "composition alone does not attribute edit", facts: { ...RETAINED_RECORD, target: { kind: "file", hash: "user" }, composedHash: "composed" }, expected: { kind: "record", hash: "old" } },
++  { name: "stamp alone does not attribute edit", facts: { ...RETAINED_RECORD, target: { kind: "file", hash: "user" }, modelStamp: "stamped" }, expected: { kind: "record", hash: "old" } },
++  { name: "stamped composition requires regeneration", facts: { ...RETAINED_RECORD, target: { kind: "file", hash: "model" }, composedHash: "composed", modelStamp: "stamped", regeneration: "unchanged" }, expected: { kind: "record", hash: "old" } },
++  { name: "unchanged target uses composed record", facts: { ...RETAINED_RECORD, composedHash: "composed" }, expected: { kind: "record", hash: "composed" } },
++  { name: "release advance starts first record", facts: { ...RETAINED_RECORD, mode: "advance", priorHash: undefined, target: { kind: "absent" }, regeneration: "unchanged" }, expected: { kind: "record", hash: "new" } },
++  { name: "release advance uses composed record", facts: { ...RETAINED_RECORD, mode: "advance", composedHash: "composed", target: { kind: "file", hash: "user" } }, expected: { kind: "record", hash: "composed" } },
++  { name: "normalized record value remains authoritative", facts: { ...RETAINED_RECORD, recordHash: "normalized" }, expected: { kind: "record", hash: "normalized" } },
++  { name: "undefined equality preserves existing policy", facts: { ...RETAINED_RECORD, priorHash: undefined, target: { kind: "file", hash: undefined } }, expected: { kind: "record", hash: "new" } },
++  { name: "empty composed record is defined", facts: { ...RETAINED_RECORD, composedHash: "" }, expected: { kind: "record", hash: "" } },
++];
++
++test.each([...RECORD_CASES])("managed ownership record: $name", ({ facts, expected }) => {
++  expect(decideManagedFileRecord(facts)).toEqual(expected);
++});
+diff --git a/core/tools/aidlc-managed-file-decision.ts b/core/tools/aidlc-managed-file-decision.ts
+index fe38fb5ce..0417ff43c 100644
+--- a/core/tools/aidlc-managed-file-decision.ts
++++ b/core/tools/aidlc-managed-file-decision.ts
+@@ -68,3 +68,29 @@ export function decideRecordedRetirement({ attribution, kiroProof, overwrite }:
+   if (overwrite === "force") return { kind: "remove", cause: "explicit-force" };
+   return { kind: "conflict", detail: "removed upstream but locally modified" };
+ }
++
++export type ManagedFileRecordFacts = Readonly<{
++  mode: "retain" | "advance";
++  target: ManagedTarget;
++  priorHash: string | undefined;
++  recordHash: string;
++  composedHash: string | undefined;
++  regeneration: "regenerated" | "unchanged";
++  modelStamp: "stamped" | "unstamped";
++}>;
++
++export type ManagedFileRecordDecision =
++  | Readonly<{ kind: "record"; hash: string }>
++  | Readonly<{ kind: "unrecorded" }>;
++
++function mayAdvanceRetainedRecord({ target, priorHash, composedHash, regeneration, modelStamp }: ManagedFileRecordFacts) {
++  return regeneration === "regenerated" && target.kind === "file" &&
++    (target.hash === priorHash || (priorHash !== undefined && modelStamp === "stamped" && composedHash !== undefined));
++}
++
++export function decideManagedFileRecord(facts: ManagedFileRecordFacts): ManagedFileRecordDecision {
++  const hash = facts.mode === "advance" || mayAdvanceRetainedRecord(facts)
++    ? facts.composedHash ?? facts.recordHash
++    : facts.priorHash;
++  return hash === undefined ? { kind: "unrecorded" } : { kind: "record", hash };
++}

@@ -1,0 +1,412 @@
+diff --git a/core/projection/plugin-hook-types.ts b/core/projection/plugin-hook-types.ts
+new file mode 100644
+index 0000000..2177e61
+--- /dev/null
++++ b/core/projection/plugin-hook-types.ts
+@@ -0,0 +1,42 @@
++export type PluginHookRow = {
++  event: string;
++  matcher?: string;
++  target: string;
++  capabilityId?: string;
++  hookFile: string;
++  pluginName: string;
++};
++
++export type NativeHookGroup =
++  | {
++      readonly matcher?: string;
++      readonly hooks: readonly { readonly type: "command"; readonly command: string }[];
++    }
++  | {
++      readonly type: "command";
++      readonly bash: string;
++      readonly powershell: string;
++      readonly timeoutSec: number;
++    };
++
++export type PluginHookContribution =
++  | { readonly kind: "group"; readonly path: string; readonly event: string; readonly group: NativeHookGroup }
++  | { readonly kind: "target"; readonly path: string; readonly target: string; readonly hookFile: string }
++  | { readonly kind: "event-body"; readonly path: string; readonly event: string; readonly hookFile: string }
++  | { readonly kind: "event-row"; readonly path: string; readonly row: PluginHookRow };
++
++export type ProjectedPluginHookContributions<Harness extends string> = {
++  readonly schemaVersion: 1;
++  readonly pluginName: string;
++  readonly harness: Harness;
++  readonly registrations: readonly PluginHookContribution[];
++};
++
++export type PluginHookProjectionInput<Harness extends string> = {
++  pluginName: string;
++  harness: Harness;
++  harnessDir: string;
++  invocation: string;
++  trustedNamespace: string;
++  rows: readonly PluginHookRow[];
++};
+diff --git a/core/projection/plugin-hook.test.ts b/core/projection/plugin-hook.test.ts
+new file mode 100644
+index 0000000..40c1eaa
+--- /dev/null
++++ b/core/projection/plugin-hook.test.ts
+@@ -0,0 +1,106 @@
++import { expect, test } from "bun:test";
++import { renderPluginHookContributions } from "./plugin-hook.ts";
++
++const context = { pluginName: "sample", harnessDir: ".claude", invocation: "aidlc", trustedNamespace: "engine" };
++
++test("Claude selects Node for a declared JavaScript body and keeps its matcher", () => {
++  expect(renderPluginHookContributions({ ...context, harness: "claude", rows: [
++    { pluginName: "sample", event: "PreToolUse", target: "guard-git", hookFile: "guard-git.mjs", matcher: "Bash" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "claude", registrations: [
++    { kind: "group", path: ".claude/settings.json", event: "PreToolUse", group: { matcher: "Bash", hooks: [
++      { type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-git.mjs"' },
++    ] } },
++  ] });
++});
++
++test("Claude selects Bun for TypeScript without manufacturing a matcher", () => {
++  expect(renderPluginHookContributions({ ...context, harness: "claude", rows: [
++    { pluginName: "sample", event: "SessionStart", target: "session-check", hookFile: "nested/session-check.ts" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "claude", registrations: [
++    { kind: "group", path: ".claude/settings.json", event: "SessionStart", group: { hooks: [
++      { type: "command", command: 'bun "$CLAUDE_PROJECT_DIR/.claude/hooks/nested/session-check.ts"' },
++    ] } },
++  ] });
++});
++
++test("compose registration remains owned by its existing bootstrap", () => {
++  expect(renderPluginHookContributions({ ...context, harness: "claude", rows: [
++    { pluginName: "sample", event: "SessionStart", target: "aidlc-plugin-compose", hookFile: "compose.ts" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "claude", registrations: [] });
++});
++
++test("a similarly named JavaScript hook is not mistaken for the compose bootstrap", () => {
++  expect(renderPluginHookContributions({ ...context, harness: "claude", rows: [
++    { pluginName: "sample", event: "SessionStart", target: "aidlc-plugin-compose-check", hookFile: "compose-check.js" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "claude", registrations: [
++    { kind: "group", path: ".claude/settings.json", event: "SessionStart", group: { hooks: [
++      { type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/compose-check.js"' },
++    ] } },
++  ] });
++});
++
++test("an undeclared hook set remains an explicit empty contribution", () => {
++  expect(renderPluginHookContributions({ ...context, harness: "claude", rows: [] })).toEqual({
++    schemaVersion: 1, pluginName: "sample", harness: "claude", registrations: [],
++  });
++});
++
++test("Codex projects its adapter invocation and body target separately", () => {
++  expect(renderPluginHookContributions({ ...context, harnessDir: ".codex", invocation: "aidlc.exe", harness: "codex", rows: [
++    { pluginName: "sample", event: "PreToolUse", target: "guard-git", hookFile: "guard-git.ts", matcher: "Bash" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "codex", registrations: [
++    { kind: "group", path: ".codex/hooks.json", event: "PreToolUse", group: { matcher: "Bash", hooks: [
++      { type: "command", command: "aidlc.exe engine adapter codex guard-git" },
++    ] } },
++    { kind: "target", path: ".codex/hooks/plugin-hook-targets.json", target: "guard-git", hookFile: "guard-git.ts" },
++  ] });
++});
++
++test("Copilot retains its native cross-shell group", () => {
++  expect(renderPluginHookContributions({ ...context, harnessDir: ".github", harness: "copilot", rows: [
++    { pluginName: "sample", event: "PreToolUse", target: "guard-git", hookFile: "guard-git.ts" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "copilot", registrations: [
++    { kind: "group", path: ".github/hooks/aidlc.json", event: "PreToolUse", group: {
++      type: "command", bash: "bun .github/hooks/aidlc-copilot-adapter.ts guard-git",
++      powershell: "bun .github/hooks/aidlc-copilot-adapter.ts guard-git", timeoutSec: 30,
++    } },
++    { kind: "target", path: ".github/hooks/plugin-hook-targets.json", target: "guard-git", hookFile: "guard-git.ts" },
++  ] });
++});
++
++test("Cursor retains an event-body contribution rather than a fabricated command", () => {
++  expect(renderPluginHookContributions({ ...context, harnessDir: ".cursor", harness: "cursor", rows: [
++    { pluginName: "sample", event: "PreToolUse", target: "guard-git", hookFile: "guard-git.ts" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "cursor", registrations: [
++    { kind: "event-body", path: ".cursor/hooks/plugin-hook-targets.json", event: "PreToolUse", hookFile: "guard-git.ts" },
++  ] });
++});
++
++test("OpenCode preserves the complete authored row", () => {
++  expect(renderPluginHookContributions({ ...context, harnessDir: ".opencode", harness: "opencode", rows: [
++    { pluginName: "sample", event: "PreToolUse", target: "guard-git", hookFile: "guard-git.ts", capabilityId: "git-guard" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "opencode", registrations: [
++    { kind: "event-row", path: ".opencode/hooks/plugin-hook-rows.json", row: {
++      pluginName: "sample", event: "PreToolUse", target: "guard-git", hookFile: "guard-git.ts", capabilityId: "git-guard",
++    } },
++  ] });
++});
++
++test("an existing unsupported Kiro contribution stays empty", () => {
++  expect(renderPluginHookContributions({ ...context, harnessDir: ".kiro", harness: "kiro", rows: [
++    { pluginName: "sample", event: "PreToolUse", target: "guard-git", hookFile: "guard-git.ts" },
++  ] })).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "kiro", registrations: [] });
++});
++
++test("projection accepts deeply frozen authored input without mutating it", () => {
++  const declaration = Object.freeze({ pluginName: "sample", event: "Stop", target: "session-check", hookFile: "session-check.ts" });
++  const request = Object.freeze({ ...context, harness: "claude", rows: Object.freeze([declaration]) });
++  expect(renderPluginHookContributions(request)).toEqual({ schemaVersion: 1, pluginName: "sample", harness: "claude", registrations: [
++    { kind: "group", path: ".claude/settings.json", event: "Stop", group: { hooks: [
++      { type: "command", command: 'bun "$CLAUDE_PROJECT_DIR/.claude/hooks/session-check.ts"' },
++    ] } },
++  ] });
++  expect(request).toEqual({ pluginName: "sample", harnessDir: ".claude", invocation: "aidlc", trustedNamespace: "engine", harness: "claude", rows: [
++    { pluginName: "sample", event: "Stop", target: "session-check", hookFile: "session-check.ts" },
++  ] });
++});
+diff --git a/core/projection/plugin-hook.ts b/core/projection/plugin-hook.ts
+new file mode 100644
+index 0000000..cff2752
+--- /dev/null
++++ b/core/projection/plugin-hook.ts
+@@ -0,0 +1,35 @@
++import type { PluginHookRow, PluginHookContribution, ProjectedPluginHookContributions, PluginHookProjectionInput } from "./plugin-hook-types.ts";
++export type { PluginHookRow, NativeHookGroup, PluginHookContribution, ProjectedPluginHookContributions, PluginHookProjectionInput } from "./plugin-hook-types.ts";
++
++const runnerFor = (hookFile: string): string =>
++  hookFile.endsWith(".mjs") || hookFile.endsWith(".js") ? "node" : "bun";
++
++type HookRowProjectionInput = { readonly projection: PluginHookProjectionInput<string>; readonly row: PluginHookRow };
++
++const adapterHookContributions = ({ projection, row }: HookRowProjectionInput): PluginHookContribution[] => {
++  if (projection.harness !== "codex" && projection.harness !== "copilot") return [];
++  const command = projection.harness === "codex"
++    ? `${projection.invocation} ${projection.trustedNamespace} adapter codex ${row.target}`
++    : `bun ${projection.harnessDir}/hooks/aidlc-copilot-adapter.ts ${row.target}`;
++  return [{ kind: "group", path: projection.harness === "codex" ? `${projection.harnessDir}/hooks.json` : ".github/hooks/aidlc.json", event: row.event, group: projection.harness === "codex"
++    ? { ...(row.matcher === undefined ? {} : { matcher: row.matcher }), hooks: [{ type: "command", command }] }
++    : { type: "command", bash: command, powershell: command, timeoutSec: 30 } },
++  { kind: "target", path: `${projection.harnessDir}/hooks/plugin-hook-targets.json`, target: row.target, hookFile: row.hookFile }];
++};
++
++const hookRowContributions = ({ projection, row }: HookRowProjectionInput): PluginHookContribution[] => {
++  if (row.target === "aidlc-plugin-compose") return [];
++  if (projection.harness === "cursor") return [{ kind: "event-body", path: `${projection.harnessDir}/hooks/plugin-hook-targets.json`, event: row.event, hookFile: row.hookFile }];
++  if (projection.harness === "opencode") return [{ kind: "event-row", path: `${projection.harnessDir}/hooks/plugin-hook-rows.json`, row }];
++  if (projection.harness === "claude") return [{ kind: "group", path: `${projection.harnessDir}/settings.json`, event: row.event, group: {
++    ...(row.matcher === undefined ? {} : { matcher: row.matcher }),
++    hooks: [{ type: "command", command: `${runnerFor(row.hookFile)} "$CLAUDE_PROJECT_DIR/${projection.harnessDir}/hooks/${row.hookFile}"` }],
++  } }];
++  return adapterHookContributions({ projection, row });
++};
++
++export function renderPluginHookContributions<Harness extends string>(input: PluginHookProjectionInput<Harness>): ProjectedPluginHookContributions<Harness> {
++  return { schemaVersion: 1, pluginName: input.pluginName, harness: input.harness,
++    registrations: input.rows.flatMap((row) => hookRowContributions({ projection: input, row })),
++  };
++}
+diff --git a/core/tools/aidlc-plugin-hook-registrations.ts b/core/tools/aidlc-plugin-hook-registrations.ts
+index 9b59ad0..a39c1b6 100644
+--- a/core/tools/aidlc-plugin-hook-registrations.ts
++++ b/core/tools/aidlc-plugin-hook-registrations.ts
+@@ -1,39 +1,9 @@
+ import type { ModelHarness } from "./aidlc-model-policy.ts";
+ import { isModelHarness } from "./aidlc-model-policy.ts";
+ 
+-type PluginHookRow = {
+-  event: string;
+-  matcher?: string;
+-  target: string;
+-  capabilityId?: string;
+-  hookFile: string;
+-  pluginName: string;
+-};
+-
+-type NativeHookGroup =
+-  | {
+-      readonly matcher?: string;
+-      readonly hooks: readonly { readonly type: "command"; readonly command: string }[];
+-    }
+-  | {
+-      readonly type: "command";
+-      readonly bash: string;
+-      readonly powershell: string;
+-      readonly timeoutSec: number;
+-    };
+-
+-type PluginHookContribution =
+-  | { readonly kind: "group"; readonly path: string; readonly event: string; readonly group: NativeHookGroup }
+-  | { readonly kind: "target"; readonly path: string; readonly target: string; readonly hookFile: string }
+-  | { readonly kind: "event-body"; readonly path: string; readonly event: string; readonly hookFile: string }
+-  | { readonly kind: "event-row"; readonly path: string; readonly row: PluginHookRow };
++import type { PluginHookRow, NativeHookGroup, PluginHookContribution, ProjectedPluginHookContributions as ProjectedContributions } from "../projection/plugin-hook-types.ts";
+ 
+-type ProjectedPluginHookContributions = {
+-  readonly schemaVersion: 1;
+-  readonly pluginName: string;
+-  readonly harness: ModelHarness;
+-  readonly registrations: readonly PluginHookContribution[];
+-};
++type ProjectedPluginHookContributions = ProjectedContributions<ModelHarness>;
+ 
+ type HookRegistrationDocument = { readonly path: string; readonly text: string };
+ 
+diff --git a/scripts/package.ts b/scripts/package.ts
+index 4a1c000..301446d 100644
+--- a/scripts/package.ts
++++ b/scripts/package.ts
+@@ -62,7 +62,8 @@ import {
+ import { fileURLToPath } from "node:url";
+ import { spawnSync } from "node:child_process";
+ import { bindPluginHookSources } from "../core/tools/aidlc-plugin-hook-definition.ts";
+-import { createPluginRuntimePort, preparePluginRuntimeArtifacts } from "./plugin-runtime.ts";
++import { createPluginRuntimePort, preparePluginRuntimeArtifacts, type PreparedRuntime } from "./plugin-runtime.ts";
++import { preparePluginDeclarationArtifacts } from "./plugin-declaration.ts";
+ import { pluginHookRows, renderPluginHookContributions } from "./plugin-contributions.ts";
+ import type { HarnessManifest } from "./manifest-types.ts";
+ import {
+@@ -946,6 +947,11 @@ async function buildTree(
+       writeFileSync(outPath, out);
+     }
+   }
++  writePreparedRuntimeArtifacts({ outDir: treeRoot, prepared: preparePluginDeclarationArtifacts({
++    pluginRoot: CORE_ROOT, file: "projection/plugin-hook-types.ts",
++    files: Array.from(walk(treeRoot), (file) => relative(treeRoot, file).split(sep).join("/")),
++    port: createPluginRuntimePort({ projectRoot: REPO_ROOT }),
++  }) });
+   await bundleRuntimeDependencies({ pluginRoot: CORE_ROOT, outDir: treeRoot, files: Array.from(walk(treeRoot), (file) => relative(treeRoot, file).split(sep).join("/")) });
+   const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
+   if (fmMissed.length > 0) {
+@@ -2030,12 +2036,16 @@ async function bundleRuntimeDependencies(input: {
+     pluginRoot: input.pluginRoot, files: input.files, sources, port: createPluginRuntimePort({ projectRoot: REPO_ROOT }),
+     closedModules: sources.filter(({ file }) => file.startsWith("hooks/") && file.endsWith(".ts")).map(({ file }) => file),
+   });
+-  if (prepared.kind === "refused") throw new Error(prepared.message);
+-  for (const artifact of prepared.artifacts) {
++  writePreparedRuntimeArtifacts({ outDir: input.outDir, prepared });
++}
++
++function writePreparedRuntimeArtifacts(input: { readonly outDir: string; readonly prepared: PreparedRuntime }): void {
++  if (input.prepared.kind === "refused") throw new Error(input.prepared.message);
++  input.prepared.artifacts.forEach((artifact) => {
+     const path = join(input.outDir, artifact.file);
+     mkdirSync(dirname(path), { recursive: true });
+     writeFileSync(path, artifact.content);
+-  }
++  });
+ }
+ 
+ async function buildRepositoryPluginProjection(
+diff --git a/scripts/plugin-contributions.ts b/scripts/plugin-contributions.ts
+index 2e47c56..519c5f4 100644
+--- a/scripts/plugin-contributions.ts
++++ b/scripts/plugin-contributions.ts
+@@ -35,8 +35,6 @@ import { readPluginHookSource } from "./plugin-hook-source.ts";
+ import { existsSync, readFileSync, readdirSync } from "node:fs";
+ import { join } from "node:path";
+ import type { PluginHookRow } from "../core/tools/aidlc-plugin-hook-registrations.ts";
+-import type { PluginHookContribution, ProjectedPluginHookContributions } from "../core/tools/aidlc-plugin-hook-registrations.ts";
+-import type { ModelHarness } from "../core/tools/aidlc-model-policy.ts";
+ 
+ // `target` names the hook BODY the adapter dispatches to. `capabilityId` is
+ // optional and names the capability that body implements, for plugins whose
+@@ -93,40 +91,7 @@ export function pluginHookRows(
+   return rows;
+ }
+ 
+-// A plugin may ship hook bodies in more than one runtime — a TypeScript body
+-// needs a TS-capable runner, a plain .mjs runs on node. Choosing from the file's
+-// own extension keeps the row a declaration of WHAT to register rather than HOW
+-// to launch it, so a plugin never restates the runtime in every row.
+-const runnerFor = (hookFile: string): string =>
+-  hookFile.endsWith(".mjs") || hookFile.endsWith(".js") ? "node" : "bun";
+-
+-export function renderPluginHookContributions(input: {
+-  pluginName: string;
+-  harness: ModelHarness;
+-  harnessDir: string;
+-  invocation: string;
+-  trustedNamespace: string;
+-  rows: readonly PluginHookRow[];
+-}): ProjectedPluginHookContributions {
+-  const registrations = input.rows.flatMap((row): PluginHookContribution[] => {
+-    if (row.target === "aidlc-plugin-compose") return [];
+-    if (input.harness === "cursor") return [{ kind: "event-body", path: `${input.harnessDir}/hooks/plugin-hook-targets.json`, event: row.event, hookFile: row.hookFile }];
+-    if (input.harness === "opencode") return [{ kind: "event-row", path: `${input.harnessDir}/hooks/plugin-hook-rows.json`, row }];
+-    if (input.harness === "claude") return [{ kind: "group", path: `${input.harnessDir}/settings.json`, event: row.event, group: {
+-      ...(row.matcher === undefined ? {} : { matcher: row.matcher }),
+-      hooks: [{ type: "command", command: `${runnerFor(row.hookFile)} "$CLAUDE_PROJECT_DIR/${input.harnessDir}/hooks/${row.hookFile}"` }],
+-    } }];
+-    if (input.harness !== "codex" && input.harness !== "copilot") return [];
+-    const command = input.harness === "codex"
+-      ? `${input.invocation} ${input.trustedNamespace} adapter codex ${row.target}`
+-      : `bun ${input.harnessDir}/hooks/aidlc-copilot-adapter.ts ${row.target}`;
+-    return [{ kind: "group", path: input.harness === "codex" ? `${input.harnessDir}/hooks.json` : ".github/hooks/aidlc.json", event: row.event, group: input.harness === "codex"
+-      ? { ...(row.matcher === undefined ? {} : { matcher: row.matcher }), hooks: [{ type: "command", command }] }
+-      : { type: "command", bash: command, powershell: command, timeoutSec: 30 } },
+-    { kind: "target", path: `${input.harnessDir}/hooks/plugin-hook-targets.json`, target: row.target, hookFile: row.hookFile }];
+-  });
+-  return { schemaVersion: 1, pluginName: input.pluginName, harness: input.harness, registrations };
+-}
++export { renderPluginHookContributions } from "../core/projection/plugin-hook.ts";
+ 
+ /**
+  * A plugin's own prose tokens, substituted into its projected content.
+diff --git a/scripts/plugin-declaration.test.ts b/scripts/plugin-declaration.test.ts
+new file mode 100644
+index 0000000..bc66aa5
+--- /dev/null
++++ b/scripts/plugin-declaration.test.ts
+@@ -0,0 +1,33 @@
++import { describe, expect, test } from "bun:test";
++import { preparePluginDeclarationArtifacts, type PluginDeclarationPort } from "./plugin-declaration.ts";
++
++const packagePort: PluginDeclarationPort = { declaration: () => ({ content: "export declare const guard: () => boolean;\n", companions: [] }) };
++
++describe("declaration-only runtime dependency preparation", () => {
++  test("projects an explicit declaration dependency without shipping its executable module", () => {
++    expect(preparePluginDeclarationArtifacts({ pluginRoot: "/fixture", file: "projection/guard.ts", files: [], port: packagePort })).toEqual({
++      kind: "prepared", artifacts: [{ file: "projection/guard.d.ts", content: "export declare const guard: () => boolean;\n" }],
++    });
++  });
++
++  test("refuses an occupied declaration before emitting it", () => {
++    expect(preparePluginDeclarationArtifacts({ pluginRoot: "/fixture", file: "projection/guard.ts", files: ["projection/guard.d.ts"], port: packagePort })).toEqual({
++      kind: "refused", message: "plugin declaration collides with projected file or has no source extension: projection/guard.d.ts",
++    });
++  });
++
++  test("retains a declaration's vendored type companions", () => {
++    expect(preparePluginDeclarationArtifacts({ pluginRoot: "/fixture", file: "projection/guard.ts", files: [], port: {
++      ...packagePort, declaration: () => ({ content: "declaration", companions: [{ file: "tools/vendor.d.ts", content: "companion" }] }),
++    } })).toEqual({ kind: "prepared", artifacts: [
++      { file: "projection/guard.d.ts", content: "declaration" }, { file: "tools/vendor.d.ts", content: "companion" },
++    ] });
++  });
++
++  test("refuses a declaration companion that would overwrite projected content", () => {
++    expect(preparePluginDeclarationArtifacts({ pluginRoot: "/fixture", file: "projection/guard.ts", files: ["tools/vendor.d.ts"], port: {
++      ...packagePort, declaration: () => ({ content: "declaration", companions: [{ file: "tools/vendor.d.ts", content: "companion" }] }),
++    } })).toEqual({ kind: "refused", message: "plugin declaration companion collides with projected file: tools/vendor.d.ts" });
++  });
++
++});
+diff --git a/scripts/plugin-declaration.ts b/scripts/plugin-declaration.ts
+new file mode 100644
+index 0000000..3a60cd8
+--- /dev/null
++++ b/scripts/plugin-declaration.ts
+@@ -0,0 +1,19 @@
++import type { PluginRuntimePort, PreparedRuntime } from "./plugin-runtime.ts";
++
++export type PluginDeclarationPort = Pick<PluginRuntimePort, "declaration">;
++
++export function preparePluginDeclarationArtifacts(input: {
++  readonly pluginRoot: string;
++  readonly file: string;
++  readonly files: readonly string[];
++  readonly port: PluginDeclarationPort;
++}): PreparedRuntime {
++  const declarationFile = input.file.replace(/\.([cm]?)[jt]s$/, ".d.$1ts");
++  if (/\.d\.[cm]?ts$/.test(input.file) || declarationFile === input.file || input.files.includes(declarationFile)) return {
++    kind: "refused", message: `plugin declaration collides with projected file or has no source extension: ${declarationFile}`,
++  };
++  const declaration = input.port.declaration({ pluginRoot: input.pluginRoot, file: input.file });
++  const collision = declaration.companions.find((artifact) => input.files.includes(artifact.file) || artifact.file === declarationFile);
++  if (collision !== undefined) return { kind: "refused", message: `plugin declaration companion collides with projected file: ${collision.file}` };
++  return { kind: "prepared", artifacts: [{ file: declarationFile, content: declaration.content }, ...declaration.companions] };
++}

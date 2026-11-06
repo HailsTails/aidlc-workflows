@@ -11,7 +11,14 @@ test("a private snapshot is consumed and its allocated root is always released",
 test("partial staging failure releases its private root and never invokes the consumer", async () => {
   const operations = createWorkspaceOperationsFixture();
   const consume = mock();
-  expect(await createDistributionWorkspace({ operations: { ...operations, materialize: unavailableWorkspaceWrite() } }).run({ seed: distributionSeed, sourceRoot: "source", consume })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "distribution-workspace", detail: "private runtime staging unavailable; no artifact issued: staging write failed" }] });
+  expect(await createDistributionWorkspace({ operations: { ...operations, materialize: unavailableWorkspaceWrite() } }).run({ seed: distributionSeed, sourceRoot: "source", consume })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "producer-workspace", detail: "private producer work unavailable; no artifact issued: staging write failed" }] });
+  expect(consume).not.toHaveBeenCalled();
+  expect(operations.remove).toHaveBeenCalledWith({ root: "private-root" });
+});
+test("composition: explicit materialization refusal releases staging without consuming it", async () => {
+  const operations = createWorkspaceOperationsFixture();
+  const consume = mock();
+  expect(await createDistributionWorkspace({ operations: { ...operations, materialize: mock().mockResolvedValue({ status: "invalid", findings: [{ code: "invalid-input", subject: "distribution-archive", detail: "native archive producer must return byte contents" }] }) } }).run({ seed: distributionSeed, sourceRoot: "source", consume })).toEqual({ status: "invalid", findings: [{ code: "invalid-input", subject: "distribution-archive", detail: "native archive producer must return byte contents" }] });
   expect(consume).not.toHaveBeenCalled();
   expect(operations.remove).toHaveBeenCalledWith({ root: "private-root" });
 });
@@ -21,5 +28,5 @@ test("a consumer failure also releases its private runtime", async () => {
   expect(operations.remove).toHaveBeenCalledWith({ root: "private-root" });
 });
 test("production cleanup refuses a root that this workspace never allocated", async () => {
-  await expect(createDistributionWorkspaceOperations().remove({ root: "H:/private/user-files" })).rejects.toThrow("workspace cleanup requires a root allocated by this workspace instance");
+  expect(await createDistributionWorkspaceOperations().remove({ root: "H:/private/user-files" })).toEqual({ status: "invalid", findings: [{ code: "foreign-content", subject: "H:/private/user-files", detail: "cleanup requires a root allocated by this directory instance" }] });
 });

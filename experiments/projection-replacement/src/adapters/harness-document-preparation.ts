@@ -1,0 +1,70 @@
+import { z } from "zod";
+import type { HarnessDocumentSources, PreparedHarnessDocuments, PreparedHarnessDocument, AuthoredHarnessDocument } from "../domain/harness-document.ts";
+import { harnessDocumentPlacements } from "../domain/harness-document.ts";
+import { renderAuthoredProse, type AuthoredProseContext } from "../domain/authored-prose.ts";
+import type { SourceBasis } from "../domain/source-origin.ts";
+import { copyHarnessBinding } from "../domain/harness-binding.ts";
+import { finding, sourceKey, type Outcome } from "../domain/model.ts";
+import { createHarnessDocumentSourceOperations, type HarnessDocumentSourceOperations } from "./harness-document-sources.ts";
+
+const helperPath = "scripts/earlier-release-regions.ts";
+type NativeSkillTextPreparation = (input: { readonly text: string; readonly skillRel: string; readonly harnessDir: string }) => unknown;
+const helperSchema = z.object({ prepareEarlierReleaseSkillText: z.custom<NativeSkillTextPreparation>((capability) => typeof capability === "function") });
+type NativeCompatibilityPolicy = z.infer<typeof helperSchema>;
+export type HarnessDocumentPreparationRequest = { readonly sourceRoot: string; readonly basis: SourceBasis; readonly context: AuthoredProseContext; readonly sources: HarnessDocumentSources };
+export type HarnessDocumentPreparationOperations = HarnessDocumentSourceOperations;
+export type HarnessDocumentPreparer = { readonly prepare: (input: HarnessDocumentPreparationRequest) => Promise<Outcome<PreparedHarnessDocuments>> };
+export const createHarnessDocumentPreparationOperations = (): HarnessDocumentPreparationOperations => createHarnessDocumentSourceOperations();
+const failure = ({ detail, code = "capability-gap" }: { readonly detail: string; readonly code?: "capability-gap" | "foreign-content" }): Outcome<never> => ({ status: "invalid", findings: [finding({ code, subject: "harness-document-preparation", detail })] });
+const admitRequest = ({ request }: { readonly request: HarnessDocumentPreparationRequest }): Outcome<HarnessDocumentPreparationRequest> => {
+  if (request.context.harness !== "claude" || request.context.invocation !== "bun .claude/tools/aidlc.ts") return failure({ detail: "authored entry document preparation qualifies explicit Claude Bun-copy invocation only" });
+  if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || request.sources.documents.some((document) => sourceKey(document.origin.source) !== sourceKey(request.basis.source) || document.origin.pin !== request.basis.pin) || request.sources.authoring.some((origin) => sourceKey(origin.source) !== sourceKey(request.basis.source) || origin.pin !== request.basis.pin)) return failure({ code: "foreign-content", detail: "entry documents and manifest provenance must retain the requested framework source basis" });
+  return { status: "ok", value: request };
+};
+const invokeNativeTextPreparation = ({ text, skillRel, harnessDir, policy }: { readonly text: string; readonly skillRel: string; readonly harnessDir: string; readonly policy: NativeCompatibilityPolicy }): Outcome<string> => {
+  try {
+    const prepared = z.string().safeParse(policy.prepareEarlierReleaseSkillText({ text, skillRel, harnessDir }));
+    return prepared.success ? { status: "ok", value: prepared.data } : failure({ detail: "source-owned earlier-release preparation must return native document text" });
+  } catch { return failure({ detail: "source-owned earlier-release text preparation unavailable" }); }
+};
+const prepareDocumentText = ({ document, rendered, policy, request }: { readonly document: AuthoredHarnessDocument; readonly rendered: string; readonly policy: NativeCompatibilityPolicy; readonly request: HarnessDocumentPreparationRequest }): Outcome<PreparedHarnessDocument> => {
+  const placement = harnessDocumentPlacements().find((candidate) => candidate.role === document.role);
+  if (placement === undefined) return failure({ detail: "authored entry document role has no supported destination" });
+  const prepared = invokeNativeTextPreparation({ text: rendered, skillRel: `${request.context.directory}/${placement.destination}`, harnessDir: request.context.directory, policy });
+  return prepared.status === "invalid" ? prepared : { status: "ok", value: { authored: document, text: prepared.value, binding: copyHarnessBinding({ binding: request.context }), authoring: [...request.sources.authoring, { ...request.basis, path: helperPath }] } };
+};
+const admitRenderedEntryText = ({ rendered, subject }: { readonly rendered: string; readonly subject: string }): Outcome<string> => {
+  const unsupported = rendered.match(/\{\{[^{}\r\n]+\}\}/);
+  return unsupported === null ? { status: "ok", value: rendered } : { status: "invalid", findings: [finding({ code: "unresolved-token", subject, detail: `unsupported authored entry token ${unsupported[0]}` })] };
+};
+const prepareDocument = ({ document, policy, request, prose }: { readonly document: AuthoredHarnessDocument; readonly policy: NativeCompatibilityPolicy; readonly request: HarnessDocumentPreparationRequest; readonly prose: typeof renderAuthoredProse }): Outcome<PreparedHarnessDocument> => {
+  const rendered = prose({ markdown: document.text, context: request.context, subject: document.origin.path });
+  if (rendered.status === "invalid") return rendered;
+  const admitted = admitRenderedEntryText({ rendered: rendered.value, subject: document.origin.path });
+  return admitted.status === "invalid" ? admitted : prepareDocumentText({ document, rendered: admitted.value, policy, request });
+};
+const collectDocuments = ({ prepared, request, sha256 }: { readonly prepared: readonly Outcome<PreparedHarnessDocument>[]; readonly request: HarnessDocumentPreparationRequest; readonly sha256: string }): Outcome<PreparedHarnessDocuments> => {
+  const findings = prepared.flatMap((document) => document.status === "invalid" ? document.findings : []);
+  return findings.length > 0 ? { status: "invalid", findings } : { status: "ok", value: { documents: prepared.flatMap((document) => document.status === "ok" ? [document.value] : []), inputs: [...request.sources.inputs, { path: helperPath, sha256 }] } };
+};
+const applyCompatibilityPolicy = ({ imported, request, sha256, prose }: { readonly imported: unknown; readonly request: HarnessDocumentPreparationRequest; readonly sha256: string; readonly prose: typeof renderAuthoredProse }): Outcome<PreparedHarnessDocuments> => {
+  const parsed = helperSchema.safeParse(imported);
+  if (!parsed.success) return failure({ detail: "source-owned earlier release module must export its native text preparation capability" });
+  return collectDocuments({ prepared: request.sources.documents.map((document) => prepareDocument({ document, policy: parsed.data, request, prose })), request, sha256 });
+};
+const retainStablePreparation = ({ prepared, before, after }: { readonly prepared: Outcome<PreparedHarnessDocuments>; readonly before: string; readonly after: string }): Outcome<PreparedHarnessDocuments> => before === after ? prepared : failure({ code: "foreign-content", detail: "earlier-release policy changed during entry document preparation" });
+const prepareDocuments = async ({ request, operations, prose }: { readonly request: HarnessDocumentPreparationRequest; readonly operations: HarnessDocumentPreparationOperations; readonly prose: typeof renderAuthoredProse }): Promise<Outcome<PreparedHarnessDocuments>> => {
+  const before = await operations.read({ sourceRoot: request.sourceRoot, path: helperPath });
+  if (before.status === "invalid") return before;
+  const sha256 = operations.digest({ bytes: before.value });
+  const imported = await operations.module({ sourceRoot: request.sourceRoot, path: helperPath, sha256 });
+  if (imported.status === "invalid") return imported;
+  const prepared = applyCompatibilityPolicy({ imported: imported.value, request, sha256, prose });
+  if (prepared.status === "invalid") return prepared;
+  const after = await operations.read({ sourceRoot: request.sourceRoot, path: helperPath });
+  return after.status === "invalid" ? after : retainStablePreparation({ prepared, before: sha256, after: operations.digest({ bytes: after.value }) });
+};
+export const createHarnessDocumentPreparer = ({ operations = createHarnessDocumentPreparationOperations(), prose = renderAuthoredProse }: { readonly operations?: HarnessDocumentPreparationOperations; readonly prose?: typeof renderAuthoredProse } = {}): HarnessDocumentPreparer => ({ prepare: async (request) => {
+  const admitted = admitRequest({ request });
+  return admitted.status === "invalid" ? admitted : prepareDocuments({ request: admitted.value, operations, prose });
+} });

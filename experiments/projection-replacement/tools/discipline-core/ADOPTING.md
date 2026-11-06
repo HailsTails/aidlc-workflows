@@ -295,3 +295,4 @@ verdict: pass
 - Each check flags exactly what its rules page says and no more. Where a rule asks for more than its check can see, the page says which part is left to review.
 - A snippet is the text the check reports; some checks report a fixed-width window that runs across lines, as CD-2 does above.
 - The disciplines' IDs and rule text come from one team's code-discipline set. Selecting a subset is supported; editing a shipped rule is not. Write your own rule set for different rules.
+

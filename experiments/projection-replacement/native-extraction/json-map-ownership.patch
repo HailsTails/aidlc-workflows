@@ -1,0 +1,223 @@
+diff --git a/core/tools/aidlc-init.ts b/core/tools/aidlc-init.ts
+index eff8c5b22..fd0595afb 100644
+--- a/core/tools/aidlc-init.ts
++++ b/core/tools/aidlc-init.ts
+@@ -1,4 +1,5 @@
+ #!/usr/bin/env bun
++import { decideJsonMapEntry, type JsonMapReconciliation } from "./aidlc-json-map-decision.ts";
+ import { assessRecordedRetirement, classifyManagedContent, decideManagedFileChange, decideManagedFileRecord, decideRecordedRetirement, decideWorkspaceSeed } from "./aidlc-managed-file-decision.ts";
+ import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
+ import { captureWorkflowRefreshInputs, combineRefreshChecks, planWorkflowRefresh, validateEmptyRefreshPlan } from "./aidlc-workflow-refresh.ts";
+@@ -6669,11 +6670,10 @@ function mergeKiroMcpServers(
+   const untouched = priorFile !== undefined && sha256Matching(currentText, [priorFile]) === priorFile;
+   const priorEntries = prior?.entries?.[rel] ?? (untouched ? hashes(currentMap) : {});
+   const shipped = Object.fromEntries(Object.entries(hashes(stagedMap)).map(([name, hash]) => [name, [hash]]));
+-  const servers = { ...currentMap };
+-  const owned = mergeJsonMapEntries(servers, stagedMap, priorEntries, shipped, force);
+-  const merged = { ...current, mcpServers: servers };
++  const reconciliation = mergeJsonMapEntries({ targetMap: currentMap, sourceMap: stagedMap, priorEntries, shippedHashes: shipped, overwrite: force ? "force" : "protect", addition: "allow" });
++  const merged = { ...current, mcpServers: reconciliation.map };
+   writeFileSync(stagedPath, canonical(merged) === canonical(current) ? currentText : jsonFileText(merged, currentText));
+-  return owned;
++  return reconciliation.entries;
+ }
+ 
+ // The person's own Kiro MCP settings, read and never written. Under the test
+@@ -10494,43 +10494,47 @@ function openCodeProviderClaim(
+ // changed since takes the release's value, an entry the person added or
+ // changed stays theirs, and one the release no longer ships goes only when
+ // nobody changed it. `shippedHashes` names values a release shipped, for an
+-// entry with no record yet. Updates `targetMap` and returns the hash of each
+-// entry that is AI-DLC's after the merge.
+-function mergeJsonMapEntries(
+-  targetMap: Record<string, unknown>,
+-  sourceMap: Record<string, unknown>,
+-  priorEntries: Record<string, string>,
+-  shippedHashes: Record<string, readonly string[]>,
+-  force: boolean,
+-  keepPresent = false,
+-): Record<string, string> {
++// entry with no record yet.
++function mergeJsonMapEntries({ targetMap, sourceMap, priorEntries, shippedHashes, overwrite, addition }: {
++  targetMap: Record<string, unknown>;
++  sourceMap: Record<string, unknown>;
++  priorEntries: Record<string, string>;
++  shippedHashes: Record<string, readonly string[]>;
++  overwrite: "protect" | "force";
++  addition: "allow" | "present-only";
++}): JsonMapReconciliation {
++  const map = { ...targetMap };
+   const nextEntries: Record<string, string> = {};
+   for (const [entry, value] of Object.entries(sourceMap)) {
+     const desiredHash = sha256Bytes(canonical(value));
+-    if (!(entry in targetMap)) {
+-      if (keepPresent) continue;
+-      targetMap[entry] = value;
+-      nextEntries[entry] = desiredHash;
+-      continue;
+-    }
+-    const currentHash = sha256Bytes(canonical(targetMap[entry]));
++    const currentHash = entry in map ? sha256Bytes(canonical(map[entry])) : undefined;
+     const priorHash = priorEntries[entry];
+-    if (priorHash && (currentHash === priorHash || force)) {
+-      targetMap[entry] = value;
+-      nextEntries[entry] = desiredHash;
+-    } else if (priorHash && currentHash === desiredHash) {
+-      nextEntries[entry] = desiredHash;
+-    } else if (!priorHash && (shippedHashes[entry] ?? []).includes(currentHash)) {
+-      targetMap[entry] = value;
+-      nextEntries[entry] = desiredHash;
+-    }
++    const decision = decideJsonMapEntry({
++      incoming: { kind: "present", hash: desiredHash },
++      current: currentHash === undefined ? { kind: "absent" } : { kind: "present", hash: currentHash },
++      recordedHash: priorHash,
++      legacySignature: !priorHash && currentHash !== undefined && (shippedHashes[entry] ?? []).includes(currentHash) ? "matched" : "unmatched",
++      overwrite,
++      addition,
++    });
++    if (decision.kind === "set") {
++      map[entry] = value;
++      nextEntries[entry] = decision.recordHash;
++    } else if (decision.kind === "record") nextEntries[entry] = decision.hash;
+   }
+   for (const [entry, priorHash] of Object.entries(priorEntries)) {
+-    if (entry in sourceMap || !(entry in targetMap)) continue;
+-    const currentHash = sha256Bytes(canonical(targetMap[entry]));
+-    if (currentHash === priorHash || force) delete targetMap[entry];
++    if (entry in sourceMap || !(entry in map)) continue;
++    const decision = decideJsonMapEntry({
++      incoming: { kind: "absent" },
++      current: { kind: "present", hash: sha256Bytes(canonical(map[entry])) },
++      recordedHash: priorHash,
++      legacySignature: "unmatched",
++      overwrite,
++      addition,
++    });
++    if (decision.kind === "remove") delete map[entry];
+   }
+-  return nextEntries;
++  return { map, entries: nextEntries };
+ }
+ 
+ function planRootIntegrations(
+@@ -10801,7 +10805,7 @@ function planRootIntegrations(
+         });
+         continue;
+       }
+-      const targetMap = { ...rawTargetMap };
++      let targetMap = { ...rawTargetMap };
+       const sourceMap = rawSourceMap;
+       const priorEntries = priorContribution?.policy === "json-map"
+         ? priorContribution.entries
+@@ -10826,7 +10830,9 @@ function planRootIntegrations(
+           if ((shippedHashes[entry] ?? []).includes(currentHash)) nextEntries[entry] = currentHash;
+         }
+       } else if (mcpMode === "defaults") {
+-        Object.assign(nextEntries, mergeJsonMapEntries(targetMap, sourceMap, priorEntries, shippedHashes, force, keepPresent));
++        const reconciliation = mergeJsonMapEntries({ targetMap, sourceMap, priorEntries, shippedHashes, overwrite: force ? "force" : "protect", addition: keepPresent ? "present-only" : "allow" });
++        targetMap = reconciliation.map;
++        Object.assign(nextEntries, reconciliation.entries);
+       } else {
+         for (const [entry, priorHash] of Object.entries(priorEntries)) {
+           if (!(entry in targetMap)) continue;
+diff --git a/core/tools/aidlc-json-map-decision.test.ts b/core/tools/aidlc-json-map-decision.test.ts
+new file mode 100644
+index 000000000..ba9ae1e61
+--- /dev/null
++++ b/core/tools/aidlc-json-map-decision.test.ts
+@@ -0,0 +1,46 @@
++import { expect, test } from "bun:test";
++import { decideJsonMapEntry, type JsonMapEntryFacts, type JsonMapEntryDecision } from "./aidlc-json-map-decision.ts";
++
++const OWNED: JsonMapEntryFacts = Object.freeze({
++  incoming: Object.freeze({ kind: "present", hash: "new" }),
++  current: Object.freeze({ kind: "present", hash: "old" }),
++  recordedHash: "old",
++  legacySignature: "unmatched",
++  overwrite: "protect",
++  addition: "allow",
++});
++
++const CASES: readonly { name: string; facts: JsonMapEntryFacts; expected: JsonMapEntryDecision }[] = [
++  { name: "new entry", facts: { ...OWNED, current: { kind: "absent" }, recordedHash: undefined }, expected: { kind: "set", recordHash: "new" } },
++  { name: "missing incoming entry skipped in present-only mode", facts: { ...OWNED, current: { kind: "absent" }, addition: "present-only" }, expected: { kind: "preserve" } },
++  { name: "force cannot bypass present-only mode", facts: { ...OWNED, current: { kind: "absent" }, addition: "present-only", overwrite: "force" }, expected: { kind: "preserve" } },
++  { name: "recorded entry update", facts: OWNED, expected: { kind: "set", recordHash: "new" } },
++  { name: "present-only mode still updates existing entry", facts: { ...OWNED, addition: "present-only" }, expected: { kind: "set", recordHash: "new" } },
++  { name: "edited recorded entry remains personal", facts: { ...OWNED, current: { kind: "present", hash: "user" } }, expected: { kind: "preserve" } },
++  { name: "edited recorded entry accepts explicit force", facts: { ...OWNED, current: { kind: "present", hash: "user" }, overwrite: "force" }, expected: { kind: "set", recordHash: "new" } },
++  { name: "recorded entry already equal keeps ownership without write", facts: { ...OWNED, current: { kind: "present", hash: "new" } }, expected: { kind: "record", hash: "new" } },
++  { name: "force equal recorded entry follows update precedence", facts: { ...OWNED, current: { kind: "present", hash: "new" }, overwrite: "force" }, expected: { kind: "set", recordHash: "new" } },
++  { name: "unowned entry cannot be force claimed", facts: { ...OWNED, recordedHash: undefined, overwrite: "force" }, expected: { kind: "preserve" } },
++  { name: "equal unowned entry does not become owned", facts: { ...OWNED, recordedHash: undefined, current: { kind: "present", hash: "new" } }, expected: { kind: "preserve" } },
++  { name: "legacy signature adopts exact entry", facts: { ...OWNED, recordedHash: undefined, legacySignature: "matched" }, expected: { kind: "set", recordHash: "new" } },
++  { name: "legacy signature cannot override edited recorded entry", facts: { ...OWNED, current: { kind: "present", hash: "user" }, legacySignature: "matched" }, expected: { kind: "preserve" } },
++  { name: "empty incoming record is not attribution", facts: { ...OWNED, recordedHash: "", overwrite: "force" }, expected: { kind: "preserve" } },
++  { name: "empty record still permits exact legacy adoption", facts: { ...OWNED, recordedHash: "", legacySignature: "matched" }, expected: { kind: "set", recordHash: "new" } },
++  { name: "retired unchanged entry removed", facts: { ...OWNED, incoming: { kind: "absent" } }, expected: { kind: "remove" } },
++  { name: "retired edited entry preserved", facts: { ...OWNED, incoming: { kind: "absent" }, current: { kind: "present", hash: "user" } }, expected: { kind: "preserve" } },
++  { name: "retired recorded edit can be forced", facts: { ...OWNED, incoming: { kind: "absent" }, current: { kind: "present", hash: "user" }, overwrite: "force" }, expected: { kind: "remove" } },
++  { name: "absent retired entry is no-op", facts: { ...OWNED, incoming: { kind: "absent" }, current: { kind: "absent" }, overwrite: "force" }, expected: { kind: "preserve" } },
++  { name: "unowned retirement cannot be forced", facts: { ...OWNED, incoming: { kind: "absent" }, recordedHash: undefined, overwrite: "force", legacySignature: "matched" }, expected: { kind: "preserve" } },
++  { name: "retirement compares empty prior exactly", facts: { ...OWNED, incoming: { kind: "absent" }, recordedHash: "", current: { kind: "present", hash: "" } }, expected: { kind: "remove" } },
++  { name: "retirement can force defined empty record", facts: { ...OWNED, incoming: { kind: "absent" }, recordedHash: "", overwrite: "force" }, expected: { kind: "remove" } },
++  { name: "legacy proof alone cannot retire an entry", facts: { ...OWNED, incoming: { kind: "absent" }, recordedHash: undefined, legacySignature: "matched" }, expected: { kind: "preserve" } },
++];
++
++test.each([...CASES])("JSON-map entry authority: $name", ({ facts, expected }) => {
++  expect(decideJsonMapEntry(facts)).toEqual(expected);
++});
++
++test("frozen observed facts remain unchanged", () => {
++  expect(decideJsonMapEntry(OWNED)).toEqual({ kind: "set", recordHash: "new" });
++  expect(OWNED).toEqual({ incoming: { kind: "present", hash: "new" }, current: { kind: "present", hash: "old" }, recordedHash: "old", legacySignature: "unmatched", overwrite: "protect", addition: "allow" });
++});
+diff --git a/core/tools/aidlc-json-map-decision.ts b/core/tools/aidlc-json-map-decision.ts
+new file mode 100644
+index 000000000..0f5efbc1e
+--- /dev/null
++++ b/core/tools/aidlc-json-map-decision.ts
+@@ -0,0 +1,42 @@
++type JsonMapEntryValue =
++  | Readonly<{ kind: "absent" }>
++  | Readonly<{ kind: "present"; hash: string }>;
++
++export type JsonMapEntryFacts = Readonly<{
++  incoming: JsonMapEntryValue;
++  current: JsonMapEntryValue;
++  recordedHash: string | undefined;
++  legacySignature: "matched" | "unmatched";
++  overwrite: "protect" | "force";
++  addition: "allow" | "present-only";
++}>;
++
++export type JsonMapEntryDecision =
++  | Readonly<{ kind: "preserve" }>
++  | Readonly<{ kind: "set"; recordHash: string }>
++  | Readonly<{ kind: "record"; hash: string }>
++  | Readonly<{ kind: "remove" }>;
++
++export type JsonMapReconciliation = Readonly<{
++  map: Record<string, unknown>;
++  entries: Record<string, string>;
++}>;
++
++function decideRetiredJsonMapEntry({ current, recordedHash, overwrite }: JsonMapEntryFacts): JsonMapEntryDecision {
++  return current.kind === "present" && recordedHash !== undefined &&
++    (current.hash === recordedHash || overwrite === "force")
++    ? { kind: "remove" }
++    : { kind: "preserve" };
++}
++
++export function decideJsonMapEntry(facts: JsonMapEntryFacts): JsonMapEntryDecision {
++  const { incoming, current, recordedHash, legacySignature, overwrite, addition } = facts;
++  if (incoming.kind === "absent") return decideRetiredJsonMapEntry(facts);
++  if (current.kind === "absent") {
++    return addition === "present-only" ? { kind: "preserve" } : { kind: "set", recordHash: incoming.hash };
++  }
++  if (recordedHash && (current.hash === recordedHash || overwrite === "force")) return { kind: "set", recordHash: incoming.hash };
++  if (recordedHash && current.hash === incoming.hash) return { kind: "record", hash: incoming.hash };
++  if (!recordedHash && legacySignature === "matched") return { kind: "set", recordHash: incoming.hash };
++  return { kind: "preserve" };
++}
