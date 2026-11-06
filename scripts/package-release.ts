@@ -22,6 +22,7 @@ import {
   releaseCopyRuntimeAsset,
   releaseRuntimeAsset,
   type ReleaseAsset,
+  ROOT_LIFECYCLE_CAPABILITY,
   type ReleaseManifest,
 } from "../core/tools/aidlc-release.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
@@ -95,8 +96,7 @@ function verifyGeneratedInventory(): {
   plugins: string[];
 } {
   const harnesses = sourceHarnesses();
-  const releaseHarnesses = directoryNames(join(REPO_ROOT, "dist-release"))
-    .filter((name) => name !== "plugins");
+  const releaseHarnesses = directoryNames(join(REPO_ROOT, "dist-release"));
   if (!sameNames(releaseHarnesses, harnesses)) {
     throw new Error(
       `generated release harness inventory differs from source: expected ` +
@@ -114,11 +114,8 @@ function verifyGeneratedInventory(): {
 
   const plugins = sourcePlugins();
   const pluginsRoot = join(REPO_ROOT, "dist", "plugins");
-  const generatedPlugins = directoryNames(pluginsRoot);
-  const generatedNativePlugins = directoryNames(join(REPO_ROOT, "dist-release", "plugins"));
-  if (!sameNames(generatedNativePlugins, plugins)) {
-    throw new Error("generated native plugin inventory differs from source");
-  }
+  // The dot folders hold the catalogue our plugins share, not a plugin.
+  const generatedPlugins = directoryNames(pluginsRoot).filter((name) => !name.startsWith("."));
   if (!sameNames(generatedPlugins, plugins)) {
     throw new Error(
       `generated plugin inventory differs from source: expected ` +
@@ -126,10 +123,6 @@ function verifyGeneratedInventory(): {
     );
   }
   for (const plugin of plugins) {
-    const nativePluginHarnesses = directoryNames(join(REPO_ROOT, "dist-release", "plugins", plugin));
-    if (!sameNames(nativePluginHarnesses, harnesses)) {
-      throw new Error(`generated native plugin ${plugin} harness inventory differs from source`);
-    }
     const pluginHarnesses = directoryNames(join(pluginsRoot, plugin));
     if (!sameNames(pluginHarnesses, harnesses)) {
       throw new Error(
@@ -330,12 +323,16 @@ function build(argv: string[]): void {
           path: `plugins/${plugin}/${harness}/${entry.path}`,
         }));
         copyRuntimeEntries.push(...entries);
-        const nativeHarnessRoot = join(REPO_ROOT, "dist-release", "plugins", plugin, harness);
-        runtimeEntries.push(...entriesFor(nativeHarnessRoot).map((entry) => ({
-          ...entry,
-          path: `plugins/${plugin}/${harness}/${entry.path}`,
-        })));
+        runtimeEntries.push(...entries);
       }
+    }
+    for (const folder of directoryNames(pluginsRoot).filter((name) => name.startsWith("."))) {
+      const entries = entriesFor(join(pluginsRoot, folder)).map((entry) => ({
+        ...entry,
+        path: `plugins/${folder}/${entry.path}`,
+      }));
+      copyRuntimeEntries.push(...entries);
+      runtimeEntries.push(...entries);
     }
   }
   const runtimeName = releaseRuntimeAsset(BUILD_VERSION);
@@ -453,6 +450,7 @@ function build(argv: string[]): void {
     sourceDigest: releaseSourceDigest(),
     distributions,
     assets,
+    capabilities: [ROOT_LIFECYCLE_CAPABILITY],
   };
   writeFileSync(join(output, "version.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   writeFileSync(

@@ -20,14 +20,13 @@
 // their migration behavior. This test seeds rows directly into the deterministic
 // audit shard (no git worktrees, no live model) to control the converged set.
 //
-// SOURCE UNDER TEST (dist/claude/.claude/tools/aidlc-orchestrate.ts):
-//   - tryEmitSwarm (batch selection + terminal settle) + swarmConvergedUnits
-//     (the audit-ledger reader), wired into BOTH handleNext call sites.
-// NONE are exported (the tool has zero exports), so the behaviour is observable
-// only on the JSON directive the spawned engine emits to stdout; mechanism =
-// cli: SPAWN `bun aidlc-orchestrate.ts next` and assert the parsed directive, the
-// SAME process boundary t135 (invoke-swarm emission) and t186 (per-unit
-// iteration) drive.
+// SOURCE UNDER TEST:
+//   - aidlc-orchestrate.ts tryEmitSwarm (batch selection + terminal settle).
+//   - aidlc-lib.ts swarmConvergedUnits (the exported audit-ledger reader).
+// The routing behaviour is observed on the JSON directive the spawned engine
+// emits to stdout; mechanism = cli: SPAWN `bun aidlc-orchestrate.ts next` and
+// assert the parsed directive, the SAME process boundary t135 (invoke-swarm
+// emission) and t186 (per-unit iteration) drive.
 //
 // FIXTURE DISCIPLINE (mirrors t186's fresh-temp-per-case + clean single-row
 // state): each case uses a FRESH temp project (createTestProject seeds the
@@ -47,7 +46,7 @@ import {
 } from "../harness/test-budget.ts";
 import { afterEach, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, cpSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   AIDLC_SRC,
@@ -66,7 +65,7 @@ setDefaultTimeout(NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
 
 resetAidlcEnv();
 
-const BUN = process.execPath; // the bun running this test
+const BUN = process.execPath;
 const ORCH = join(AIDLC_SRC, "tools", "aidlc-orchestrate.ts");
 
 const tempDirs: string[] = [];
@@ -150,14 +149,12 @@ function auditBlock(
   return `${body}\n---\n`;
 }
 
-/** Append raw block content to the deterministic audit shard. */
 function appendShard(proj: string, content: string): void {
   const shard = seededAuditShard(proj);
   mkdirSync(dirname(shard), { recursive: true });
   writeFileSync(shard, content, { flag: "a" });
 }
 
-/** The fixture timestamp shape shared by the seeders below. */
 function fixtureTs(atSecond: number): string {
   return `2026-07-05T00:00:${String(atSecond).padStart(2, "0")}.000Z`;
 }
@@ -246,7 +243,6 @@ function seedStageStarted(
   );
 }
 
-/** Seed a fresh autonomous Construction project at code-generation. */
 function seedProject(): string {
   const proj = createTestProject();
   tempDirs.push(proj);
@@ -255,7 +251,6 @@ function seedProject(): string {
   return proj;
 }
 
-/** Run `aidlc-orchestrate.ts next` and parse the emitted directive. */
 function runNext(
   proj: string,
   extraEnv: Record<string, string> = {},
@@ -271,23 +266,12 @@ function runNext(
   return r.directive as Directive;
 }
 
-function explicitOrchestrator(proj: string): string {
-  const engineRoot = join(proj, ".claude");
-  cpSync(AIDLC_SRC, engineRoot, { recursive: true });
-  const harnessPath = join(engineRoot, "tools", "data", "harness.json");
-  writeFileSync(harnessPath, readFileSync(harnessPath, "utf-8").replace(
-    '"baseRuleDelivery": "ambient"',
-    '"baseRuleDelivery": "explicit"',
-  ));
-  return join(engineRoot, "tools", "aidlc-orchestrate.ts");
-}
-
-function runRawDirective(proj: string, args: string[], orchestrator = ORCH): Directive {
+function runRawDirective(proj: string, args: string[]): Directive {
   const env = { ...process.env };
   delete env.AWS_AIDLC_DEFAULT_SCOPE;
   const r = spawnSync(
     BUN,
-    [orchestrator, ...args, "--project-dir", proj],
+    [ORCH, ...args, "--project-dir", proj],
     { timeout: remainingOperationTimeoutMs(NATIVE_STARTUP_TIMEOUT_MS), encoding: "utf-8", env },
   );
   if ((r.status ?? -1) !== 0) {
@@ -377,7 +361,7 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
     expect(d.unit).toBe("api"); // the last unit in topological order
     expect(d.gate).toBe(true);
     expect(d.swarm_settled).toBe(true);
-    expect(d.protocol_modules).toEqual(["construction", "swarm", "learnings"]);
+    expect(d.protocol_modules).toEqual(["construction", "swarm", "learnings", "sensors"]);
     expect(d.reviewer).toBeUndefined();
     expect(d.review_artifact).toBeUndefined();
     expect(d.review_class).toBeUndefined();
@@ -386,7 +370,6 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
 
   test("3b: settled shape survives the load-steering continue round trip", () => {
     const proj = seedProject();
-    const orchestrator = explicitOrchestrator(proj);
     seedBoltDagBatches(proj, [["auth"], ["api"]]);
     seedConverged(proj, ["auth", "api"]);
     // The shipped bundle rides inline on the run-stage (test 3 covers that
@@ -402,7 +385,7 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
       "utf-8",
     );
 
-    let directive = runRawDirective(proj, ["next"], orchestrator);
+    let directive = runRawDirective(proj, ["next"]);
     expect(directive.kind).toBe("load-steering");
     let continueCalls = 0;
     while (directive.kind === "load-steering") {
@@ -410,7 +393,7 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
       directive = runRawDirective(proj, [
         "continue",
         directive.receipt ?? "",
-      ], orchestrator);
+      ]);
       continueCalls++;
       expect(continueCalls).toBeLessThan(100);
     }
@@ -421,7 +404,7 @@ describe("t201 autonomous swarm advances through every Bolt batch (issue headlin
     expect(directive.review_artifact).toBeUndefined();
     expect(directive.review_class).toBeUndefined();
     expect(directive.reviewer_max_iterations).toBeUndefined();
-    expect(directive.protocol_modules).toEqual(["construction", "swarm", "learnings"]);
+    expect(directive.protocol_modules).toEqual(["construction", "swarm", "learnings", "sensors"]);
     expect(directive.swarm_settled).toBe(true);
   }, NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
 
@@ -698,7 +681,7 @@ describe("t201 converged-row attempt identity (Stage + Run floor stamp)", () => 
     expect(d.units).toEqual(["auth"]);
   }, NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
 
-  // 12: pre-2.5.0 rows without the stamp fail CLOSED - the affected units
+  // 12: rows without the stamp fail CLOSED - the affected units
   // re-fan (finalize's re-verify makes the re-run safe), never silently count.
   test("12: unstamped legacy rows are not coverage", () => {
     const proj = seedProject();

@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { AIDLC_VERSION } from "../../core/tools/aidlc-version.ts";
 import { readConfigDiagnosticRecords } from "../../core/tools/aidlc-config-diagnostics.ts";
 import { REPO_ROOT } from "../harness/fixtures.ts";
+import { typedHarnessName } from "../../core/tools/aidlc-runtime-paths.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -103,6 +104,11 @@ function scaffoldArgs(path: string, extra: string[] = []): string[] {
   ];
 }
 
+// The walk is offered to `aidlc config` without --yes; --yes asks nothing.
+function walkArgs(path: string): string[] {
+  return scaffoldArgs(path).filter((arg) => arg !== "--yes");
+}
+
 function run(
   args: string[],
   cwd: string,
@@ -140,7 +146,7 @@ describe("t296 first-run config setup walk", () => {
   test("fresh scaffold renders eight rows, one gate, and decline changes no section state", () => {
     const path = project("aidlc-t296-map-decline-");
     const result = run(
-      scaffoldArgs(path),
+      walkArgs(path),
       path,
       hookPathEnv(null, true),
       "n\n",
@@ -196,6 +202,37 @@ describe("t296 first-run config setup walk", () => {
     expect(records.trust).toBeNull();
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
+  test("--yes at a terminal asks nothing: the map and what still needs the person, and no section answer chosen", () => {
+    // "y" would walk the sections if the question were put; it must not be.
+    const path = project("aidlc-t296-yes-asks-nothing-");
+    const codex = project("aidlc-t296-yes-asks-nothing-codex-");
+    const runs = [
+      { root: join(path, ".claude"), result: run(scaffoldArgs(path), path, hookPathEnv(null, true), "y\n") },
+      // The refresh `aidlc update` names: `aidlc config --yes` in a set-up project.
+      {
+        root: join(path, ".claude"),
+        result: run(["config", "--project-dir", path, "--from", CLAUDE_RELEASE, "--yes"], path, hookPathEnv(null, true), "y\n"),
+      },
+      {
+        root: join(codex, ".codex"),
+        result: run(
+          ["config", "--project-dir", codex, "--from", CODEX_RELEASE, "--harness", "codex", "--mcp", "none", "--yes"],
+          codex,
+          hookPathEnv(null, true),
+          "y\n",
+        ),
+      },
+    ];
+    for (const { root, result } of runs) {
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(result.stdout).toMatch(/Setup check - \d of 8 sections need you\./);
+      expect(result.stdout).not.toContain("Fix the");
+      expect(result.stdout).toMatch(/Setup complete\. \d actions? still needs? you/);
+      expect(result.stdout).toMatch(/providers\s+bun \.\w+\/tools\/aidlc\.ts config providers/);
+      expect(readConfigDiagnosticRecords(root).providers).toBeNull();
+    }
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
   test("a Bedrock-oriented harness defaults to keeping the current provider", () => {
     const path = project("aidlc-t296-walk-unchanged-");
     const env = hookPathEnv("aidlc", true, {
@@ -217,7 +254,7 @@ describe("t296 first-run config setup walk", () => {
       "1. keep current     inherit the provider already configured in the harness (default)",
     );
     expect(result.stdout).toContain(
-      "2. amazon-bedrock   write the AWS region and profile to settings.json",
+      "2. amazon-bedrock   write the AWS region and profile to settings.local.json, just for you",
     );
     expect(result.stdout).not.toContain("builtin");
     expect(readConfigDiagnosticRecords(join(path, ".claude")).providers)
@@ -282,15 +319,14 @@ describe("t296 first-run config setup walk", () => {
       "--from",
       join(REPO_ROOT, "dist-release", "kiro"),
       "--harness",
-      "kiro",
+      "kiro-v2",
       "--mcp",
       "none",
       "--yes",
     ];
-    // Naming the section explicitly still has no provider question to ask.
     expect(run(kiroScaffold, path, env, "n\n").status).toBe(0);
     const section = run(
-      ["config", "providers", "--project-dir", path, "--harness", "kiro"],
+      ["config", "providers", "--project-dir", path, "--harness", "kiro-v2"],
       path,
       env,
     );
@@ -307,7 +343,7 @@ describe("t296 first-run config setup walk", () => {
     // `--quiet` one line, and a non-TTY caller gets the same answer without a
     // usage error.
     const asJson = run(
-      ["config", "providers", "--project-dir", path, "--harness", "kiro", "--json"],
+      ["config", "providers", "--project-dir", path, "--harness", "kiro-v2", "--json"],
       path,
       env,
     );
@@ -315,19 +351,19 @@ describe("t296 first-run config setup walk", () => {
     expect(asJson.stdout.trim().split("\n")).toHaveLength(1);
     expect(JSON.parse(asJson.stdout)).toEqual(expect.objectContaining({
       ok: true,
-      message: "providers needs no answer for kiro; its model access is harness-managed",
+      message: "providers needs no answer for kiro-v2; its model access is harness-managed",
     }));
     const quiet = run(
-      ["config", "providers", "--project-dir", path, "--harness", "kiro", "--quiet"],
+      ["config", "providers", "--project-dir", path, "--harness", "kiro-v2", "--quiet"],
       path,
       env,
     );
     expect(quiet.status, quiet.stdout + quiet.stderr).toBe(0);
     expect(quiet.stdout.trim().split("\n")).toEqual([
-      "providers needs no answer for kiro; its model access is harness-managed",
+      "providers needs no answer for kiro-v2; its model access is harness-managed",
     ]);
     const nonTty = run(
-      ["config", "providers", "--project-dir", path, "--harness", "kiro"],
+      ["config", "providers", "--project-dir", path, "--harness", "kiro-v2"],
       path,
       hookPathEnv("aidlc", false),
     );
@@ -352,7 +388,7 @@ describe("t296 first-run config setup walk", () => {
         "--from",
         join(REPO_ROOT, "dist-release", "kiro"),
         "--harness",
-        "kiro",
+        "kiro-v2",
         "--mcp",
         "none",
         "--yes",
@@ -518,15 +554,15 @@ describe("t296 first-run config setup walk", () => {
     expect(rerun.stdout).toContain(
       "The workspace shell is incomplete, so no section is walked until it is rebuilt",
     );
-    // The old advice was a bare `aidlc config`, which is this very command. This
-    // is a Bun-invoking projection, which has no installed runtime to refresh
-    // from, so the rebuild also fetches the copy runtime for its release, never
-    // the native bytes that would swap its channel.
+    // A bare `aidlc config` would rerun this very command. This is a Bun-invoking
+    // projection, which has no installed runtime to refresh from, so the rebuild
+    // also fetches the copy runtime for its release, never the native bytes that
+    // would swap its channel.
     expect(rerun.stdout).toMatch(
       /workspace\s+bun \.claude\/tools\/aidlc\.ts config --harness claude --download/,
     );
     expect(rerun.stdout).not.toMatch(/^\s+trust\s+/m);
-    // The trust issue itself now names the same rebuild, not the bare rerun.
+    // The trust issue itself names the same rebuild, not the bare rerun.
     const trust = run(
       ["config", "trust", "--project-dir", path, "--show", "--json"],
       path,
@@ -581,11 +617,11 @@ describe("t296 first-run config setup walk", () => {
       AWS_ACCESS_KEY_ID: "test-access",
       AWS_SECRET_ACCESS_KEY: "test-secret",
     });
-    // Models is walked first now: settings layer, then 1 to pick a preset, then
+    // Models is walked first: settings layer, then 1 to pick a preset, then
     // balanced. Providers follows with region and profile. Recording the preset
     // is the point of the walk: without it every agent inherits the session.
     const result = run(
-      scaffoldArgs(path),
+      walkArgs(path),
       path,
       env,
       "\nproject\n1\nbalanced\n2\nus-west-2\ndev\ny\n",
@@ -622,14 +658,17 @@ describe("t296 first-run config setup walk", () => {
     expect(records.providers).toEqual(expect.objectContaining({
       provider: "amazon-bedrock",
       region: "us-west-2",
-      profile: "dev",
       pendingActions: [
         { id: "bedrock-model-access", status: "done" },
       ],
     }));
-    const settings = readFileSync(join(path, ".claude", "settings.json"), "utf-8");
+    expect(records.providers).not.toHaveProperty("profile");
+    // The answer is the person's own (#2712): their git-ignored file, never the
+    // shared settings.json, and the shared record keeps no profile.
+    const settings = readFileSync(join(path, ".claude", "settings.local.json"), "utf-8");
     expect(settings).toContain('"AWS_REGION": "us-west-2"');
     expect(settings).toContain('"AWS_PROFILE": "dev"');
+    expect(readFileSync(join(path, ".claude", "settings.json"), "utf-8")).not.toContain("AWS_PROFILE");
 
     const rerun = run(
       [
@@ -655,7 +694,6 @@ describe("t296 first-run config setup walk", () => {
         path,
         "--from",
         CLAUDE_RELEASE,
-        "--yes",
       ],
       path,
       hookPathEnv(null, true),
@@ -714,7 +752,7 @@ describe("t296 first-run config setup walk", () => {
     );
     expect(walked.status, walked.stdout + walked.stderr).toBe(0);
     expect(walked.stdout).toContain(
-      "2. amazon-bedrock   write the AWS region and profile to settings.json (recorded: eu-west-1, team; default)",
+      "2. amazon-bedrock   write the AWS region and profile to settings.local.json, just for you (recorded: eu-west-1, team; default)",
     );
     expect(walked.stdout).toContain("Provider [2]:");
     expect(walked.stdout).toContain("AWS region [eu-west-1]:");
@@ -725,7 +763,9 @@ describe("t296 first-run config setup walk", () => {
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
   test("non-TTY human output is byte-identical to the pre-walk completion", () => {
-    const path = project("aidlc-t296-nontty-snapshot-");
+    // A short name: on Windows a project folder 75 characters deep gets
+    // config's own warning that it is too deep for AI-DLC's records.
+    const path = project("aidlc-t296-nontty-");
     const result = run(
       scaffoldArgs(path),
       path,
@@ -797,28 +837,31 @@ describe("t296 first-run config setup walk", () => {
     }
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("where the session sets every agent's model and effort, the Models row names it and is never walked", () => {
-    // These hosts cannot pin an agent's model or effort, so a recorded policy
-    // changes nothing there. The row says where the lever is, counts as done,
-    // and never sends the person into the models wizard or the closing list.
+  test("where a preset changes nothing, the Models row names the session and is never walked", () => {
+    // On these hosts a preset or group effort changes nothing (Kiro takes only
+    // one agent's own model and effort). The row says where the lever is,
+    // counts as done, and never sends the person into the models wizard or the
+    // closing list.
     const hosts = [
       ["copilot", ".aidlc", "GitHub Copilot"],
       ["cursor", ".cursor", "Cursor"],
-      ["kiro-ide", ".kiro", "Kiro IDE"],
+      ["kiro-ide", ".kiro", "Kiro"],
     ] as const;
     const env = hookPathEnv("aidlc", true);
     for (const [harness, dir, product] of hosts) {
       const path = project(`aidlc-t296-session-models-${harness}-`);
       const args = [
         "config", "--project-dir", path, "--from", join(REPO_ROOT, "dist-release", harness),
-        "--harness", harness, "--mcp", "none", "--yes",
+        "--harness", typedHarnessName(harness), "--mcp", "none", "--yes",
       ];
       const fresh = run(args, path, env, "n\n");
       expect(fresh.status, fresh.stdout + fresh.stderr).toBe(0);
       const models = setupRows(fresh.stdout).find((line) => line.includes("Models"));
       expect(models, harness).toContain("[ok]");
       expect(models, harness).toContain(
-        `every agent uses your ${product} session's model and effort`,
+        `every agent uses your ${product} session's model and effort${
+          harness === "kiro-ide" ? " unless a model or effort is set for that agent" : ""
+        }`,
       );
       expect(models, harness).not.toContain("does not apply");
       // No provider answer on these hosts is the session's own model access,
@@ -828,7 +871,7 @@ describe("t296 first-run config setup walk", () => {
       expect(providers, harness).not.toContain("provider access unverified");
       expect(providers, harness).toContain(
         harness === "kiro-ide"
-          ? "model access comes with Kiro IDE; nothing for AI-DLC to configure"
+          ? "model access comes with Kiro; nothing for AI-DLC to configure"
           : harness === "cursor"
           ? "model access comes with your Cursor session; to use your own Amazon Bedrock access in the Cursor IDE instead, run `"
           : `model access comes with your ${product} session; to use your own Amazon Bedrock access instead, run \``,
@@ -850,8 +893,9 @@ describe("t296 first-run config setup walk", () => {
       expect(rerun.status, rerun.stdout + rerun.stderr).toBe(0);
       expect(setupRows(rerun.stdout).find((line) => line.includes("Models")), harness)
         .toContain(
-          `[ok]     Models      every agent uses your ${product} session's model and effort; ` +
-            "the recorded balanced preset does not apply here",
+          `[ok]     Models      every agent uses your ${product} session's model and effort${
+            harness === "kiro-ide" ? " unless a model or effort is set for that agent" : ""
+          }; the recorded balanced preset does not apply here`,
         );
       expect(rerun.stdout, harness).not.toContain("config models");
       expect(readFileSync(join(path, dir, "tools", "data", "harness.json"), "utf-8"), harness)
@@ -867,7 +911,7 @@ describe("t296 first-run config setup walk", () => {
       const path = project(`aidlc-t296-session-models-name-${harness}-`);
       const scaffold = run([
         "config", "--project-dir", path, "--from", join(REPO_ROOT, "dist-release", harness),
-        "--harness", harness, "--mcp", "none", "--yes",
+        "--harness", typedHarnessName(harness), "--mcp", "none", "--yes",
       ], path, env, "n\n");
       expect(scaffold.status, scaffold.stdout + scaffold.stderr).toBe(0);
       const descriptorPath = join(path, dir, "tools", "data", "harness.json");
@@ -888,11 +932,84 @@ describe("t296 first-run config setup walk", () => {
     const kiro = project("aidlc-t296-session-models-kiro-");
     const kiroRun = run([
       "config", "--project-dir", kiro, "--from", join(REPO_ROOT, "dist-release", "kiro"),
-      "--harness", "kiro", "--mcp", "none", "--yes",
+      "--harness", "kiro-v2", "--mcp", "none", "--yes",
     ], kiro, env, "n\n");
     expect(kiroRun.status, kiroRun.stdout + kiroRun.stderr).toBe(0);
     expect(setupRows(kiroRun.stdout).find((line) => line.includes("Models")))
       .toContain("[needs]  Models      no recorded policy; agents inherit your session model and effort");
     expect(kiroRun.stdout).toContain("models       bun .kiro/tools/aidlc.ts config models");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("Enter at Models is an answer: the next walk asks nothing about models", () => {
+    const path = project("aidlc-t296-models-kept-");
+    const env = hookPathEnv("aidlc", true);
+    expect(run(scaffoldArgs(path), path, env, "n\n").status).toBe(0);
+    const providers = run(
+      ["config", "providers", "--project-dir", path, "--harness", "claude", "--provider", "current", "--yes"],
+      path,
+      env,
+    );
+    expect(providers.status, providers.stdout + providers.stderr).toBe(0);
+    // The walk's gate, the settings layer, then Enter: keep everything.
+    const first = run(["config", "--project-dir", path], path, env, "\n\n\n");
+    expect(first.status, first.stdout + first.stderr).toBe(0);
+    expect(first.stdout).toContain("Setup check - 1 of 8 sections need you.");
+    expect(first.stdout).toContain(
+      "Recorded the models answer in .claude/tools/data/harness.json. To undo: bun .claude/tools/aidlc.ts config models --reset --project --yes",
+    );
+    expect(first.stdout).not.toContain("Apply model policy changes?");
+    expect(first.stdout).toContain("Setup complete. 0 actions still need you");
+    expect(readConfigDiagnosticRecords(join(path, ".claude")).modelsAnswer).toEqual({ schemaVersion: 1, kept: true });
+    expect(existsSync(join(path, "aidlc.settings.json"))).toBe(false);
+
+    const second = run(["config", "--project-dir", path], path, env, "y\n");
+    expect(second.status, second.stdout + second.stderr).toBe(0);
+    expect(second.stdout).toContain("Setup check - 0 of 8 sections need you.");
+    expect(setupRows(second.stdout).find((line) => line.includes("Models")))
+      .toContain("[ok]     Models      agents inherit your session model and effort (your answer)");
+    expect(second.stdout).not.toContain("Fix the");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("closed input at Models is no answer: nothing is recorded and setup still names models", () => {
+    const path = project("aidlc-t296-models-closed-");
+    const env = hookPathEnv("aidlc", true);
+    expect(run(scaffoldArgs(path), path, env, "n\n").status).toBe(0);
+    expect(run(
+      ["config", "providers", "--project-dir", path, "--harness", "claude", "--provider", "current", "--yes"],
+      path,
+      env,
+    ).status).toBe(0);
+    // The walk's gate and the settings layer, then the input ends at Models.
+    const walk = run(["config", "--project-dir", path], path, env, "\n\n");
+    expect(walk.status, walk.stdout + walk.stderr).toBe(0);
+    expect(walk.stdout).toContain("model policy unchanged");
+    expect(walk.stdout).not.toContain("Recorded the models answer");
+    expect(walk.stdout).toMatch(/^\s+models\s+bun \.claude\/tools\/aidlc\.ts config models/m);
+    expect(readConfigDiagnosticRecords(join(path, ".claude")).modelsAnswer).toBeNull();
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  test("--keep records the models answer for a script, and --reset is the way back", () => {
+    const path = project("aidlc-t296-models-keep-flag-");
+    // A terminal, so the refresh prints its map and ledger; --yes asks nothing.
+    const env = hookPathEnv("aidlc", true);
+    expect(run(scaffoldArgs(path), path, env).status).toBe(0);
+    const keep = run(["config", "models", "--project-dir", path, "--keep", "--yes"], path, env);
+    expect(keep.status, keep.stdout + keep.stderr).toBe(0);
+    expect(keep.stdout).toContain("Recorded the models answer in .claude/tools/data/harness.json.");
+    expect(readConfigDiagnosticRecords(join(path, ".claude")).modelsAnswer).toEqual({ schemaVersion: 1, kept: true });
+    const ledger = run(["config", "--project-dir", path, "--from", CLAUDE_RELEASE, "--yes"], path, env);
+    expect(ledger.status, ledger.stdout + ledger.stderr).toBe(0);
+    expect(ledger.stdout).not.toMatch(/^\s+models\s+bun/m);
+    // A second keep has nothing to record.
+    const again = run(["config", "models", "--project-dir", path, "--keep", "--yes"], path, env);
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    expect(again.stdout).toContain("model policy unchanged");
+
+    const reset = run(["config", "models", "--project-dir", path, "--reset", "--project", "--yes"], path, env);
+    expect(reset.status, reset.stdout + reset.stderr).toBe(0);
+    expect(reset.stdout).toContain("Cleared the models answer in .claude/tools/data/harness.json.");
+    expect(readConfigDiagnosticRecords(join(path, ".claude")).modelsAnswer).toBeNull();
+    const asked = run(["config", "--project-dir", path, "--from", CLAUDE_RELEASE, "--yes"], path, env);
+    expect(asked.stdout).toMatch(/^\s+models\s+bun \.claude\/tools\/aidlc\.ts config models/m);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });

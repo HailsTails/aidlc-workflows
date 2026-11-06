@@ -1,9 +1,12 @@
 // covers: subcommand:aidlc-state:gate-start, subcommand:aidlc-sensor:fire,
-//         audit:SENSOR_FIRED, audit:SENSOR_FAILED
+//         audit:SENSOR_FIRED, audit:SENSOR_FAILED, subcommand:aidlc-orchestrate:next,
+//         function:hasBlockingSensorOverrideAuthorization
 //
 // Gate-bound sensor integration: state dispatches outside its transaction,
 // blocking failures refuse the transition, the explicit override is audited,
-// and advisory failures preserve the historical non-blocking behavior.
+// and advisory failures preserve non-blocking behavior. After the person's
+// Override pick, `next` names the report that carries it, and the gate opens
+// with the override on its row.
 
 import {
   NATIVE_FIXTURE_SETUP_TIMEOUT_MS,
@@ -14,7 +17,6 @@ import { setDefaultTimeout, afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
-  cpSync,
   chmodSync,
   existsSync,
   mkdirSync,
@@ -28,8 +30,8 @@ import {
 import { basename, dirname, join } from "node:path";
 import {
   AIDLC_SRC,
-  REPO_ROOT,
   cleanupTestProject,
+  createOrchestrationTestProject,
   createTestProject,
   seedAuditFile,
   seededAuditDir,
@@ -41,10 +43,15 @@ import {
   BLOCKING_SENSOR_OVERRIDE_CHOICE,
   BLOCKING_SENSOR_OVERRIDE_DECISION,
   BLOCKING_SENSOR_OVERRIDE_OPTIONS,
+  blockingSensorPicks,
+  codekbDir,
+  codekbRepoName,
+  readAuditShardEvents,
   setField,
+  setGuardPolicyLine,
 } from "../../core/tools/aidlc-lib.ts";
-
-import { createHermeticGitRepository, type HermeticGitRepository } from "../../plugins/rin/tools/hermetic-git/index.ts";
+import { failedCheckNotices } from "../../core/tools/aidlc-state.ts";
+import { LOG, env, exec, next, reviewedStage, say } from "../harness/aidlc-input-corpus.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -52,12 +59,12 @@ const BUN = process.execPath;
 const STATE = join(AIDLC_SRC, "tools", "aidlc-state.ts");
 const ORCHESTRATE = join(AIDLC_SRC, "tools", "aidlc-orchestrate.ts");
 const DISPATCHER = join(AIDLC_SRC, "tools", "aidlc.ts");
+const SENSOR_DISPATCHER = join(AIDLC_SRC, "tools", "aidlc-sensor.ts");
+const AUDIT_TOOL = join(AIDLC_SRC, "tools", "aidlc-audit.ts");
 const projects: string[] = [];
 const externalPaths: string[] = [];
-const decayRepositories: HermeticGitRepository[] = [];
 
 afterAll(() => {
-  decayRepositories.splice(0).forEach((repository) => { repository.dispose(); });
   for (const project of projects) cleanupTestProject(project);
   for (const path of externalPaths) {
     rmSync(path, { recursive: true, force: true });
@@ -72,11 +79,16 @@ interface Fixture {
   scripts: string;
 }
 
+// `laterConstructionStage` places the probe as the second Construction stage,
+// behind a completed anchor, so a Construction autonomy grant makes its gate
+// one the engine approves itself (the first Construction approval is never
+// the grant's).
 function setupFixture(
   severity: "advisory" | "blocking",
   matches = "**/*",
   pass = false,
   scope = "bugfix",
+  laterConstructionStage = false,
 ): Fixture {
   const project = createTestProject();
   projects.push(project);
@@ -114,15 +126,37 @@ function setupFixture(
     "utf-8",
   );
 
+  const phase = laterConstructionStage ? "construction" : "inception";
   const graph = join(project, "stage-graph.json");
+  const anchor = {
+    slug: "anchor",
+    number: "0.9",
+    name: "Anchor",
+    phase,
+    execution: "ALWAYS",
+    lead_agent: "aidlc-product-agent",
+    support_agents: [],
+    mode: "inline",
+    produces: [],
+    optional_produces: [],
+    consumes: [],
+    requires_stage: [],
+    sensors: [],
+    scopes: [scope],
+    inputs: "",
+    outputs: "",
+    rules_in_context: [],
+    sensors_applicable: [],
+  };
   writeFileSync(
     graph,
     `${JSON.stringify([
+      ...(laterConstructionStage ? [anchor] : []),
       {
         slug: "probe",
         number: "1.0",
         name: "Probe",
-        phase: "inception",
+        phase,
         execution: "ALWAYS",
         lead_agent: "aidlc-product-agent",
         support_agents: [],
@@ -151,6 +185,7 @@ function setupFixture(
     "utf-8",
   );
 
+  const probeLine = "- [-] probe — EXECUTE";
   writeFileSync(
     seededStateFile(project),
     [
@@ -159,17 +194,18 @@ function setupFixture(
       `- **Workflow**: ${scope}`,
       "- **State Version**: 8",
       `- **Scope**: ${scope}`,
-      "- **Phase**: inception",
+      `- **Phase**: ${phase}`,
       "- **Current Stage**: probe",
       "",
-      "- [-] probe — EXECUTE",
+      ...(laterConstructionStage ? [probeLine.replace("[-] probe", "[x] anchor")] : []),
+      probeLine,
       "",
     ].join("\n"),
     "utf-8",
   );
   seedAuditFile(project);
 
-  const outputDir = join(seededRecordDir(project), "inception", "probe");
+  const outputDir = join(seededRecordDir(project), phase, "probe");
   mkdirSync(outputDir, { recursive: true });
   writeFileSync(join(outputDir, "one.md"), "# One\n", "utf-8");
   writeFileSync(join(outputDir, "two.md"), "# Two\n", "utf-8");
@@ -225,8 +261,6 @@ function gate(
 function reportRevised(
   fixture: Fixture,
   extra: string[] = [],
-  reportResult = "revised",
-  envOverrides: Record<string, string> = {},
 ): { status: number; out: string } {
   const result = spawnSync(
     BUN,
@@ -236,7 +270,7 @@ function reportRevised(
       "--stage",
       "probe",
       "--result",
-      reportResult,
+      "revised",
       ...extra,
       "--project-dir",
       fixture.project,
@@ -251,7 +285,6 @@ function reportRevised(
         AIDLC_SENSORS_DIR: fixture.sensors,
         AIDLC_SENSOR_SCRIPT_DIR: fixture.scripts,
         AIDLC_GATE_SENSOR_DISPATCH_TIMEOUT_MS: String(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
-        ...envOverrides,
       },
     },
   );
@@ -299,6 +332,7 @@ function authorizeOverride(
   fixture: Fixture,
   options = BLOCKING_SENSOR_OVERRIDE_OPTIONS.join(","),
   includeHumanTurn = true,
+  details: string = BLOCKING_SENSOR_OVERRIDE_CHOICE,
 ): void {
   appendAuditEvent(fixture.project, "DECISION_RECORDED", {
     Stage: "probe",
@@ -308,7 +342,7 @@ function authorizeOverride(
   if (includeHumanTurn) appendAuditEvent(fixture.project, "HUMAN_TURN");
   appendAuditEvent(fixture.project, "QUESTION_ANSWERED", {
     Stage: "probe",
-    Details: BLOCKING_SENSOR_OVERRIDE_CHOICE,
+    Details: details,
   });
 }
 
@@ -328,144 +362,47 @@ function setAutonomous(fixture: Fixture): void {
   );
 }
 
+// A compiled dispatcher that gives the gate no verdict. `rows-then-garbage`
+// runs the real dispatcher (its rows are written) and prints no verdict;
+// `fired-then-exit` writes the fire's SENSOR_FIRED row under the gate's Fire id
+// and dies before its result row.
 function dispatcherStub(
   fixture: Fixture,
-  mode: "exit-2" | "malformed" | "timeout",
+  mode: "exit-2" | "malformed" | "timeout" | "rows-then-garbage" | "fired-then-exit",
 ): string {
   const path = join(fixture.project, `.dispatcher-${mode}.ts`);
+  const flag = (name: string) => `process.argv[process.argv.indexOf("--${name}") + 1]`;
   const body =
     mode === "exit-2"
       ? '#!/usr/bin/env bun\nprocess.stderr.write("dispatcher exploded\\n");\nprocess.exit(2);\n'
       : mode === "malformed"
         ? '#!/usr/bin/env bun\nprocess.stdout.write("not-json\\n");\n'
-        : '#!/usr/bin/env bun\nawait Bun.sleep(1000);\n';
+        : mode === "timeout"
+          ? '#!/usr/bin/env bun\nawait Bun.sleep(1000);\n'
+          : mode === "rows-then-garbage"
+            ? [
+              "#!/usr/bin/env bun",
+              "const env = { ...process.env };",
+              "delete env.AIDLC_COMPILED_EXECUTABLE;",
+              `Bun.spawnSync([process.execPath, ${JSON.stringify(SENSOR_DISPATCHER)}, ...process.argv.slice(4)], { env });`,
+              'process.stdout.write("not-json\\n");',
+              "",
+            ].join("\n")
+            : [
+              "#!/usr/bin/env bun",
+              'import { relative } from "node:path";',
+              `import { appendAuditEntry } from ${JSON.stringify(AUDIT_TOOL)};`,
+              "const pd = process.env.AIDLC_PROJECT_DIR;",
+              `appendAuditEntry("SENSOR_FIRED", { "Fire id": ${flag("fire-id")}, "Sensor ID": process.argv[5], "Stage slug": ${flag("stage")}, "Output path": relative(pd, ${flag("output-path")}).split("\\\\").join("/") }, pd);`,
+              "process.exit(3);",
+              "",
+            ].join("\n");
   writeFileSync(path, body, "utf-8");
   chmodSync(path, 0o755);
   return path;
 }
 
-function autonomousCorrectionFixture({ fixture }: { fixture: Fixture }): Fixture {
-  writeFileSync(fixture.graph, readFileSync(fixture.graph, "utf-8").replace(
-    '"phase": "inception",', '"phase": "inception",\n        "approval_mode": "autonomous",',
-  ));
-  writeFileSync(join(fixture.outputDir, "one.md"), "# One\nPending\n", "utf-8");
-  writeFileSync(join(fixture.outputDir, "two.md"), "# Two\nVerified\n", "utf-8");
-  writeFileSync(join(fixture.scripts, "aidlc-sensor-gate-probe.ts"), [
-    'import { readFileSync } from "node:fs";',
-    'const output = process.argv[process.argv.indexOf("--output-path") + 1];',
-    'const pass = readFileSync(output, "utf-8").includes("Verified");',
-    'process.stdout.write(JSON.stringify({ pass, findings_count: pass ? 0 : 1 }) + "\\n");',
-  ].join("\n"), "utf-8");
-  return fixture;
-}
 describe("t311 gate-bound sensor enforcement", () => {
-  test("CD46 checker findings survive actual gate dispatch without a JSON suffix flag", () => {
-    const seed = setupFixture("blocking");
-    const repository = createHermeticGitRepository({ namePrefix: "cd46-gate-contract-" });
-    decayRepositories.push(repository);
-    cpSync(seed.project, repository.path, { recursive: true });
-    const fixture: Fixture = {
-      project: repository.path,
-      graph: join(repository.path, "stage-graph.json"),
-      outputDir: join(seededRecordDir(repository.path), "inception", "probe"),
-      sensors: join(repository.path, ".test-sensors"),
-      scripts: join(REPO_ROOT, "plugins", "rin", "tools"),
-    };
-    const manifestPath = join(fixture.sensors, "aidlc-gate-probe.md");
-    writeFileSync(manifestPath, readFileSync(manifestPath, "utf-8").replace(
-      "bun .claude/tools/aidlc-sensor-gate-probe.ts",
-      "bun .claude/tools/rin-harness-carve-out-decay.ts",
-    ), "utf-8");
-    repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 1;\n" });
-    mkdirSync(join(repository.path, ".constitution-carve-outs"));
-    repository.writeFile({ relativePath: ".constitution-carve-outs/cd-7.json", body: JSON.stringify([
-      { files: ["legacy.ts"], reason: "Historical fixture exemption", decision: "legacy-import" },
-    ]) });
-    repository.commitAll({ message: "gate baseline" });
-    repository.writeFile({ relativePath: "legacy.ts", body: "export const legacy = 2;\n" });
-    const refused = gate(fixture, [], {
-      ...repository.environment,
-      AIDLC_STAGE_GRAPH: fixture.graph,
-      AIDLC_SENSORS_DIR: fixture.sensors,
-      AIDLC_SENSOR_SCRIPT_DIR: fixture.scripts,
-    });
-    expect(refused.status).toBe(1);
-    expect(refused.out).toContain("reported findings");
-    expect(refused.out).not.toContain("script-error");
-    expect(eventCount(audit(fixture.project), "SENSOR_FAILED")).toBe(2);
-    expect(eventCount(audit(fixture.project), "SENSOR_PASSED")).toBe(0);
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [-] probe");
-  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
-
-  test("autonomous completion survives sensor repair and its awaiting-approval retry", () => {
-    const fixture = autonomousCorrectionFixture({ fixture: setupFixture("blocking") });
-    const environment = { AIDLC_SKIP_HUMAN_PRESENCE_GUARD: "0" };
-    const refused = reportRevised(fixture, [], "approved", environment);
-    expect(refused.status, refused.out).toBe(0);
-    expect(JSON.parse(refused.out)).toMatchObject({ kind: "print", agent_guidance: "fix-sensor-findings" });
-    expect(refused.out).toContain("--result awaiting-approval");
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [-] probe");
-    expect(eventCount(audit(fixture.project), "STAGE_AWAITING_APPROVAL")).toBe(0);
-    writeFileSync(join(fixture.outputDir, "one.md"), "# One\nVerified\n", "utf-8");
-    const retried = reportRevised(fixture, [], "awaiting-approval", environment);
-    expect(retried.status, retried.out).toBe(0);
-    expect(JSON.parse(retried.out)).toMatchObject({ kind: "print" });
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [?] probe");
-    expect(eventCount(audit(fixture.project), "GATE_APPROVED")).toBe(0);
-    const completed = reportRevised(fixture, [], "approved", environment);
-    expect(completed.status, completed.out).toBe(0);
-    expect(JSON.parse(completed.out)).toMatchObject({ kind: "done" });
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [x] probe");
-    expect(eventCount(audit(fixture.project), "GATE_APPROVED")).toBe(1);
-    expect(eventCount(audit(fixture.project), "HUMAN_TURN")).toBe(0);
-    expect(eventCount(audit(fixture.project), "QUESTION_ANSWERED")).toBe(0);
-    expect(audit(fixture.project)).not.toContain("**Blocking Sensor Override**:");
-  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
-  test("failed sensor report drives authorized correction and a normal gate retry", () => {
-    const fixture = setupFixture("blocking");
-    writeFileSync(join(fixture.outputDir, "one.md"), "const probe: any = null;\n", "utf-8");
-    writeFileSync(join(fixture.scripts, "aidlc-sensor-gate-probe.ts"), [
-      'import { readFileSync } from "node:fs";',
-      'const output = process.argv[process.argv.indexOf("--output-path") + 1];',
-      'const pass = !readFileSync(output, "utf-8").includes(": any");',
-      'process.stdout.write(JSON.stringify({ pass, findings_count: pass ? 0 : 1 }) + "\\n");',
-    ].join("\n"), "utf-8");
-    const refused = reportRevised(fixture, [], "awaiting-approval");
-    expect(refused.status).toBe(0);
-    expect(JSON.parse(refused.out)).toMatchObject({ kind: "print", agent_guidance: "fix-sensor-findings" });
-    expect(refused.out).toContain("without an override");
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [-] probe");
-    expect(eventCount(audit(fixture.project), "STAGE_AWAITING_APPROVAL")).toBe(0);
-    writeFileSync(join(fixture.outputDir, "one.md"), "const probe: unknown = null;\n", "utf-8");
-    const retried = reportRevised(fixture, [], "awaiting-approval");
-    expect(retried.status).toBe(0);
-    expect(JSON.parse(retried.out)).toMatchObject({ kind: "print" });
-    expect(retried.out).not.toContain("fix-sensor-findings");
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [?] probe");
-    expect(eventCount(audit(fixture.project), "STAGE_AWAITING_APPROVAL")).toBe(1);
-    expect(eventCount(audit(fixture.project), "GATE_APPROVED")).toBe(0);
-    expect(eventCount(audit(fixture.project), "QUESTION_ANSWERED")).toBe(0);
-    expect(audit(fixture.project)).not.toContain("**Blocking Sensor Override**:");
-  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
-
-  test("revised sensor reports remain recoverable and unauthorized overrides remain terminal", () => {
-    const fixture = setupFixture("blocking");
-    writeFileSync(seededStateFile(fixture.project), readFileSync(seededStateFile(fixture.project), "utf-8").replace("- [-] probe", "- [R] probe"), "utf-8");
-    const refused = reportRevised(fixture);
-    expect(JSON.parse(refused.out)).toMatchObject({ kind: "print", agent_guidance: "fix-sensor-findings" });
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [R] probe");
-    const unauthorized = reportRevised(fixture, overrideArgs());
-    expect(JSON.parse(unauthorized.out)).toMatchObject({ kind: "error" });
-    expect(unauthorized.out).toContain("no fresh authorization receipt");
-    writeFileSync(join(fixture.scripts, "aidlc-sensor-gate-probe.ts"), 'process.stdout.write(JSON.stringify({ pass: true, findings_count: 0 }) + "\\n");\n', "utf-8");
-    const retried = reportRevised(fixture);
-    expect(JSON.parse(retried.out)).toMatchObject({ kind: "print" });
-    expect(retried.out).not.toContain("fix-sensor-findings");
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [?] probe");
-    expect(eventCount(audit(fixture.project), "GATE_APPROVED")).toBe(0);
-    expect(audit(fixture.project)).not.toContain("**Blocking Sensor Override**:");
-  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
-
   for (const transition of ["gate-start", "revise", "approve"] as const) {
     test(`an explicit off override skips classic sensors at ${transition}; a resumed intent can opt back in`, () => {
       for (const enabled of [false, true]) {
@@ -578,6 +515,35 @@ describe("t311 gate-bound sensor enforcement", () => {
     expect(advisoryAudit).not.toContain("**Blocking Sensor Override**:");
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
+  // Advisory gate sensors are evidence for whoever answers the gate. A gate the
+  // engine approves itself under Construction autonomy has no reader, so only
+  // its blocking sensors (which halt an unattended run) fire; the same gate
+  // with a person answering keeps every sensor.
+  test("a gate the engine approves itself fires no advisory sensor; blocking ones and a person's gate are unchanged", () => {
+    const selfApproved = setupFixture("advisory", "**/*", false, "bugfix", true);
+    setAutonomous(selfApproved);
+    expect(gate(selfApproved).status).toBe(0);
+    expect(eventCount(audit(selfApproved.project), "SENSOR_FIRED")).toBe(0);
+    expect(readFileSync(seededStateFile(selfApproved.project), "utf-8")).toContain("- [?] probe");
+
+    const blocking = setupFixture("blocking", "**/*", false, "bugfix", true);
+    setAutonomous(blocking);
+    expect(gate(blocking).status).toBe(1);
+    expect(eventCount(audit(blocking.project), "SENSOR_FIRED")).toBe(2);
+    expect(eventCount(audit(blocking.project), "SENSOR_FAILED")).toBe(2);
+
+    // The same gate with a person answering: unchanged, and a revise re-entry
+    // after the grant arrives fires nothing advisory.
+    const answered = setupFixture("advisory", "**/*", false, "bugfix", true);
+    expect(gate(answered).status).toBe(0);
+    expect(eventCount(audit(answered.project), "SENSOR_FIRED")).toBe(2);
+    expect(stateCommand(answered, "reject", ["--feedback", "revise the deliverables"]).status).toBe(0);
+    setAutonomous(answered);
+    expect(stateCommand(answered, "revise").status).toBe(0);
+    expect(eventCount(audit(answered.project), "SENSOR_FIRED")).toBe(2);
+    expect(readFileSync(seededStateFile(answered.project), "utf-8")).toContain("- [?] probe");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
   test("revise re-fires gate sensors, enforces blocking failures, and accepts the report override", () => {
     const fixture = setupFixture("blocking");
     authorizeOverride(fixture);
@@ -670,28 +636,93 @@ describe("t311 gate-bound sensor enforcement", () => {
     expect(accepted.status, accepted.out).toBe(0);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("a blocking finding on an autonomous stage still refuses, and points at a park rather than a person", () => {
-    const fixture = setupFixture("blocking");
-    const stages: Array<Record<string, unknown>> = JSON.parse(readFileSync(fixture.graph, "utf-8"));
-    writeFileSync(fixture.graph, JSON.stringify(stages.map((stage) => ({ ...stage, approval_mode: "autonomous" }))));
+  test("an answer recorded as an option's number authorizes only that option", () => {
+    const byNumber = setupFixture("blocking");
+    authorizeOverride(byNumber, BLOCKING_SENSOR_OVERRIDE_OPTIONS.join(","), true, "2");
+    const overridden = gate(byNumber, overrideArgs());
+    expect(overridden.status, overridden.out).toBe(0);
 
-    const refused = gate(fixture);
-
-    expect(refused.status).toBe(1);
-    expect(refused.out).toContain("Blocking gate sensor evaluation did not pass");
-    expect(refused.out).toContain("Fix the findings within the already authorized stage scope");
-    expect(refused.out).toContain("park this stage and name the blocker");
-    expect(refused.out).not.toContain("ask the person");
-    expect(refused.out).not.toContain("Only if the person requests an override");
-    expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [-] probe");
+    const fixFirst = setupFixture("blocking");
+    authorizeOverride(fixFirst, BLOCKING_SENSOR_OVERRIDE_OPTIONS.join(","), true, "1");
+    expect(gate(fixFirst, overrideArgs()).out).toContain("no fresh authorization receipt");
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("a blocking finding on a human stage keeps the person's override path", () => {
-    const refused = gate(setupFixture("blocking"));
+  // Another question for the stage logged after the check's own takes its open
+  // place; an answer naming one of the check's labels still answers the check's
+  // question, after a person's turn, so a Fix findings answer there is a pick
+  // too. One reply recorded for both questions (stage-protocol.md's
+  // `Q1: ...; Q2: ...`) is read the same way, by the first label its parts
+  // name. An answer by number reads only the open question's own options, and
+  // the look-back stops at the stage's last boundary.
+  test("an Override after a second question for the stage still authorizes", () => {
+    const ask = (fixture: Fixture, decision: string, options: string) =>
+      appendAuditEvent(fixture.project, "DECISION_RECORDED", { Stage: "probe", Decision: decision, Options: options });
+    const askCheck = (fixture: Fixture) =>
+      ask(fixture, BLOCKING_SENSOR_OVERRIDE_DECISION, BLOCKING_SENSOR_OVERRIDE_OPTIONS.join(","));
+    const askOther = (fixture: Fixture) =>
+      ask(fixture, "Override only the traceability finding, or every finding?", "Only traceability,Every finding");
+    const turn = (fixture: Fixture) => appendAuditEvent(fixture.project, "HUMAN_TURN");
+    const answer = (fixture: Fixture, details: string) =>
+      appendAuditEvent(fixture.project, "QUESTION_ANSWERED", { Stage: "probe", Details: details });
+    const shapes: Array<(fixture: Fixture) => void> = [
+      (f) => {
+        askCheck(f); askOther(f); turn(f);
+        answer(f, BLOCKING_SENSOR_OVERRIDE_CHOICE);
+      },
+      (f) => {
+        askCheck(f); turn(f); askOther(f); turn(f);
+        answer(f, "Every finding"); answer(f, BLOCKING_SENSOR_OVERRIDE_CHOICE);
+      },
+      (f) => {
+        askCheck(f); askOther(f); turn(f);
+        answer(f, "Every finding"); answer(f, BLOCKING_SENSOR_OVERRIDE_CHOICE);
+      },
+    ];
+    for (const shape of shapes) {
+      const fixture = setupFixture("blocking");
+      shape(fixture);
+      const overridden = gate(fixture, overrideArgs());
+      expect(overridden.status, overridden.out).toBe(0);
+    }
 
-    expect(refused.status).toBe(1);
-    expect(refused.out).toContain("explain the blocker and ask the person");
-    expect(refused.out).toContain("Only if the person requests an override");
+    const byNumber = setupFixture("blocking");
+    askCheck(byNumber); askOther(byNumber); turn(byNumber);
+    answer(byNumber, "2");
+    expect(gate(byNumber, overrideArgs()).out).toContain("no fresh authorization receipt");
+
+    const fixAfter = setupFixture("blocking");
+    askCheck(fixAfter); askOther(fixAfter); turn(fixAfter);
+    answer(fixAfter, "Fix findings");
+    expect([...blockingSensorPicks(readAuditShardEvents(fixAfter.project), "probe").values()]).toEqual(["Fix findings"]);
+
+    const combined = setupFixture("blocking");
+    askCheck(combined); askOther(combined); turn(combined);
+    answer(combined, `Q1: ${BLOCKING_SENSOR_OVERRIDE_CHOICE}; Q2: Every finding`);
+    const accepted = gate(combined, overrideArgs());
+    expect(accepted.status, accepted.out).toBe(0);
+    const picksFor = (details: string, checkFirst = true): string[] => {
+      const fixture = setupFixture("blocking");
+      if (checkFirst) {
+        askCheck(fixture); askOther(fixture);
+      } else {
+        askOther(fixture); askCheck(fixture);
+      }
+      turn(fixture);
+      answer(fixture, details);
+      return [...blockingSensorPicks(readAuditShardEvents(fixture.project), "probe").values()];
+    };
+    expect(picksFor("Q1: Fix findings; Q2: Every finding")).toEqual(["Fix findings"]);
+    expect(picksFor(`Q1: Fix findings; Q2: ${BLOCKING_SENSOR_OVERRIDE_CHOICE}`)).toEqual(["Fix findings"]);
+    expect(picksFor(`Fix findings; ${BLOCKING_SENSOR_OVERRIDE_CHOICE}`, false)).toEqual(["Fix findings"]);
+    expect(picksFor(`Q1: Every finding; Q2: ${BLOCKING_SENSOR_OVERRIDE_CHOICE}`, false))
+      .toEqual([BLOCKING_SENSOR_OVERRIDE_CHOICE]);
+
+    const beforeBoundary = setupFixture("blocking");
+    askCheck(beforeBoundary); askOther(beforeBoundary);
+    appendAuditEvent(beforeBoundary.project, "STAGE_STARTED", { Stage: "probe" });
+    turn(beforeBoundary);
+    answer(beforeBoundary, BLOCKING_SENSOR_OVERRIDE_CHOICE);
+    expect(gate(beforeBoundary, overrideArgs()).out).toContain("no fresh authorization receipt");
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
   test("blocking dispatch exits, malformed verdicts, and dispatcher timeouts fail closed", () => {
@@ -707,6 +738,98 @@ describe("t311 gate-bound sensor enforcement", () => {
       expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain(
         "- [-] probe",
       );
+      expect(eventCount(audit(fixture.project), "SENSOR_COULD_NOT_RUN")).toBe(2);
+    }
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  // A fire whose dispatcher gives the gate no verdict checked nothing the gate
+  // can show. An advisory check stops nothing, but the fire is recorded as could
+  // not run, paired by its Fire id, with its cause and not the dispatcher's
+  // words, and the gate says so once, as it does for a script that crashed.
+  // The stub dispatchers run through their shebang, which native Windows cannot
+  // do (every stub would fail to start there); a missing script runs everywhere.
+  test("an advisory check whose dispatcher gives no verdict is recorded as could not run and said at the gate", () => {
+    const stage = (JSON.parse(readFileSync(setupFixture("advisory").graph, "utf-8")) as Parameters<typeof failedCheckNotices>[1][])[0];
+    const notes = { "exit-2": "exit-2", malformed: "bad-output", timeout: "timeout", "missing-script": "exit-1" } as const;
+    const modes = process.platform === "win32" ? ["missing-script"] as const : ["exit-2", "malformed", "timeout", "missing-script"] as const;
+    for (const mode of modes) {
+      const fixture = setupFixture("advisory");
+      if (mode === "missing-script") unlinkSync(join(fixture.scripts, "aidlc-sensor-gate-probe.ts"));
+      const result = gate(fixture, [], mode === "missing-script" ? {} : {
+        AIDLC_COMPILED_EXECUTABLE: dispatcherStub(fixture, mode),
+        AIDLC_GATE_SENSOR_DISPATCH_TIMEOUT_MS: mode === "timeout" ? "100" : String(NATIVE_STARTUP_TIMEOUT_MS),
+      });
+      const trail = audit(fixture.project);
+      expect(result.status, `${mode}: ${result.out}`).toBe(0);
+      expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [?] probe");
+      expect(eventCount(trail, "SENSOR_FIRED"), `${mode}: ${trail}`).toBe(2);
+      expect(eventCount(trail, "SENSOR_COULD_NOT_RUN"), mode).toBe(2);
+      expect(eventCount(trail, "SENSOR_PASSED")).toBe(0);
+      expect(eventCount(trail, "SENSOR_FAILED")).toBe(0);
+      expect(trail.match(/\*\*Note\*\*: .*/g), mode).toEqual([`**Note**: dispatch-error: ${notes[mode]}`, `**Note**: dispatch-error: ${notes[mode]}`]);
+      const rows = readAuditShardEvents(fixture.project);
+      const fired = rows.filter((row) => row.event === "SENSOR_FIRED").map((row) => row.block.match(/\*\*Fire id\*\*: (\S+)/)?.[1]);
+      const closed = rows.filter((row) => row.event === "SENSOR_COULD_NOT_RUN").map((row) => row.block.match(/\*\*Fire id\*\*: (\S+)/)?.[1]);
+      expect(closed.sort()).toEqual(fired.sort());
+      expect(trail.match(/gate-probe@[^;\n]*=could-not-run/g) ?? [], mode).toHaveLength(2);
+      expect(failedCheckNotices(fixture.project, stage)).toEqual(["The gate-probe check could not run on one.md and 1 other file."]);
+    }
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  // The gate accounts for the fire it started, by the Fire id it handed the
+  // dispatcher: rows the fire already wrote are kept, and a SENSOR_FIRED left
+  // without a result is closed rather than doubled. The stubs run through their
+  // shebang, which native Windows cannot do.
+  test.skipIf(process.platform === "win32")("a fire with no verdict keeps the rows it wrote and closes the one it left open", () => {
+    const written = setupFixture("advisory");
+    expect(gate(written, [], { AIDLC_COMPILED_EXECUTABLE: dispatcherStub(written, "rows-then-garbage") }).status).toBe(0);
+    const writtenTrail = audit(written.project);
+    expect(eventCount(writtenTrail, "SENSOR_FIRED"), writtenTrail).toBe(2);
+    expect(eventCount(writtenTrail, "SENSOR_FAILED")).toBe(2);
+    expect(eventCount(writtenTrail, "SENSOR_COULD_NOT_RUN")).toBe(0);
+
+    // Through a symlinked project folder the record spells those rows'
+    // outputs as `<project-dir>/...`; they are still this fire's.
+    const linked = setupFixture("advisory");
+    const link = `${linked.project}-link`;
+    symlinkSync(linked.project, link, "dir");
+    externalPaths.push(link);
+    expect(gate({ ...linked, project: link }, [], { AIDLC_COMPILED_EXECUTABLE: dispatcherStub(linked, "rows-then-garbage") }).status).toBe(0);
+    const linkedTrail = audit(linked.project);
+    expect(eventCount(linkedTrail, "SENSOR_FIRED"), linkedTrail).toBe(2);
+    expect(eventCount(linkedTrail, "SENSOR_FAILED")).toBe(2);
+    expect(eventCount(linkedTrail, "SENSOR_COULD_NOT_RUN")).toBe(0);
+
+    const open = setupFixture("advisory");
+    expect(gate(open, [], { AIDLC_COMPILED_EXECUTABLE: dispatcherStub(open, "fired-then-exit") }).status).toBe(0);
+    const openTrail = audit(open.project);
+    expect(eventCount(openTrail, "SENSOR_FIRED"), openTrail).toBe(2);
+    expect(eventCount(openTrail, "SENSOR_COULD_NOT_RUN")).toBe(2);
+    expect(openTrail).toContain("**Note**: dispatch-error: exit-3");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  // A check whose script crashed checked nothing: it is recorded as could not
+  // run, never as a pass. A blocking one still needs a verified pass, so the
+  // gate stops as it always has and names why; an advisory one stops nothing.
+  test("a check whose script crashes is recorded as could not run; blocking stops the gate, advisory does not", () => {
+    for (const severity of ["blocking", "advisory"] as const) {
+      const fixture = setupFixture(severity);
+      writeFileSync(join(fixture.scripts, "aidlc-sensor-gate-probe.ts"), 'process.stderr.write("boom\\n");\nprocess.exit(1);\n', "utf-8");
+      const result = gate(fixture);
+      const trail = audit(fixture.project);
+      expect(eventCount(trail, "SENSOR_COULD_NOT_RUN"), trail).toBe(2);
+      expect(eventCount(trail, "SENSOR_PASSED")).toBe(0);
+      expect(eventCount(trail, "SENSOR_FAILED")).toBe(0);
+      expect(trail).toContain("**Note**: script-error: exit-1");
+      if (severity === "blocking") {
+        expect(result.status, result.out).toBe(1);
+        expect(result.out).toContain("Blocking gate sensor evaluation did not pass");
+        expect(result.out).toContain("could not run (script-error: exit-1)");
+        expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [-] probe");
+      } else {
+        expect(result.status, result.out).toBe(0);
+        expect(readFileSync(seededStateFile(fixture.project), "utf-8")).toContain("- [?] probe");
+      }
     }
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -864,4 +987,165 @@ describe("t311 gate-bound sensor enforcement", () => {
     expect(reused.status).toBe(1);
     expect(reused.out).toContain("no fresh authorization receipt");
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+});
+
+// At a code knowledge base stage the required-sections check fires once over
+// every repository's files (the paths on stdin), so a blocking binding holds
+// every file that fire reads, not only the one it is named for: a sibling that
+// changes while the check runs is refused and named, and the retry passes.
+describe("t311 a blocking check over every repository's files", () => {
+  test("a sibling changed during the one fire is refused once and named; the retry passes", () => {
+    const project = createTestProject();
+    projects.push(project);
+    const sensors = join(project, ".test-sensors");
+    const scripts = join(project, ".test-scripts");
+    mkdirSync(sensors, { recursive: true });
+    mkdirSync(scripts, { recursive: true });
+    const id = "required-sections";
+    const matches = "**/codekb/**";
+    writeFileSync(join(sensors, `aidlc-${id}.md`), [
+      "---", `id: ${id}`, "kind: deterministic", `command: bun .claude/tools/aidlc-sensor-${id}.ts`,
+      "default_severity: blocking", "fire_on: gate", "description: codekb gate fixture", "category: test",
+      `matches: "${matches}"`, `timeout_seconds: ${NATIVE_STARTUP_TIMEOUT_MS / 1000}`, "---", "",
+    ].join("\n"), "utf-8");
+    // Changes the second path it is handed, once, then passes.
+    const once = join(project, ".changed-once");
+    writeFileSync(join(scripts, `aidlc-sensor-${id}.ts`), [
+      'import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";',
+      'const paths = JSON.parse(readFileSync(0, "utf-8"));',
+      `if (!existsSync(${JSON.stringify(once)})) {`,
+      '  appendFileSync(paths[1], "\\nchanged during the check\\n");',
+      `  writeFileSync(${JSON.stringify(once)}, "");`,
+      "}",
+      'process.stdout.write(JSON.stringify({ pass: true, findings_count: 0, failed_outputs: [] }) + "\\n");',
+      "",
+    ].join("\n"), "utf-8");
+    const graph = join(project, "stage-graph.json");
+    writeFileSync(graph, `${JSON.stringify([{
+      slug: "reverse-engineering", number: "2.1", name: "Reverse Engineering", phase: "inception",
+      execution: "ALWAYS", lead_agent: "aidlc-product-agent", support_agents: [], mode: "inline",
+      produces: ["architecture", "dependencies"], optional_produces: [], consumes: [], requires_stage: [],
+      sensors: [id], scopes: ["bugfix"], inputs: "", outputs: "", rules_in_context: [],
+      sensors_applicable: [{ id, path: `.claude/sensors/aidlc-${id}.md`, fire_on: "gate", default_severity: "blocking", category: "test", matches }],
+    }], null, 2)}\n`, "utf-8");
+    writeFileSync(seededStateFile(project), [
+      "# AI-DLC State Tracking", "", "- **Workflow**: bugfix", "- **State Version**: 8", "- **Scope**: bugfix",
+      "- **Phase**: inception", "- **Current Stage**: reverse-engineering", "", "- [-] reverse-engineering \u2014 EXECUTE", "",
+    ].join("\n"), "utf-8");
+    seedAuditFile(project);
+    const store = codekbDir(project, codekbRepoName(project));
+    mkdirSync(store, { recursive: true });
+    writeFileSync(join(store, "architecture.md"), "# Architecture\n", "utf-8");
+    writeFileSync(join(store, "dependencies.md"), "# Dependencies\n", "utf-8");
+    const gateStart = (): { status: number; out: string } => {
+      const result = spawnSync(BUN, [STATE, "gate-start", "reverse-engineering", "--project-dir", project], {
+        cwd: project,
+        encoding: "utf-8",
+        env: {
+          ...process.env,
+          AIDLC_DISABLE_SENSORS: "0",
+          AIDLC_DISABLE_ENSEMBLE_EVIDENCE: "1",
+          AIDLC_ALLOW_DIRECT_STATE_TRANSITIONS: "1",
+          AIDLC_SKIP_HUMAN_PRESENCE_GUARD: "1",
+          AIDLC_STAGE_GRAPH: graph,
+          AIDLC_SENSORS_DIR: sensors,
+          AIDLC_SENSOR_SCRIPT_DIR: scripts,
+          AIDLC_GATE_SENSOR_DISPATCH_TIMEOUT_MS: String(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
+        },
+      });
+      return { status: result.status ?? -1, out: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+    };
+
+    const refused = gateStart().out;
+    expect(refused).toMatch(/required-sections@[^;]*dependencies\.md: artifact changed during sensor evaluation/);
+    expect(eventCount(audit(project), "SENSOR_FIRED")).toBe(1);
+    expect(readFileSync(seededStateFile(project), "utf-8")).toContain("- [-] reverse-engineering");
+
+    const retried = gateStart();
+    expect(retried.status, retried.out).toBe(0);
+    const finalAudit = audit(project);
+    expect(eventCount(finalAudit, "SENSOR_FIRED")).toBe(2);
+    const gateRow = finalAudit.split("\n---\n").find((block) => block.includes("**Event**: STAGE_AWAITING_APPROVAL")) ?? "";
+    const rel = `aidlc/spaces/default/codekb/${basename(store)}`;
+    expect(gateRow).toContain(`**Sensor State**: required-sections@${rel}/architecture.md=passed`);
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+});
+
+// A team's own blocking check on Requirements Analysis that finds something,
+// through the graph and sensor seams setupFixture uses, over the stage as a run
+// leaves it before its gate: summary confirmed, the reviewer's READY on record.
+describe("t311 after the person picks Override blocking sensors", () => {
+  const RA = "requirements-analysis";
+  const SEAMS = ["AIDLC_STAGE_GRAPH", "AIDLC_SENSORS_DIR", "AIDLC_SENSOR_SCRIPT_DIR", "AIDLC_GATE_SENSOR_DISPATCH_TIMEOUT_MS"];
+  afterAll(() => {
+    for (const key of SEAMS) delete process.env[key];
+  });
+
+  function teamBlockingCheck(project: string): void {
+    const sensors = join(project, ".test-sensors");
+    const scripts = join(project, ".test-scripts");
+    mkdirSync(sensors, { recursive: true });
+    mkdirSync(scripts, { recursive: true });
+    const id = "gate-probe";
+    const matches = "**/requirements.md";
+    writeFileSync(join(sensors, `aidlc-${id}.md`), [
+      "---", `id: ${id}`, "kind: deterministic", `command: bun .claude/tools/aidlc-sensor-${id}.ts`,
+      "default_severity: blocking", "fire_on: gate", "description: a team's blocking check", "category: test",
+      `matches: "${matches}"`, `timeout_seconds: ${NATIVE_STARTUP_TIMEOUT_MS / 1000}`, "---", "",
+    ].join("\n"), "utf-8");
+    writeFileSync(join(scripts, `aidlc-sensor-${id}.ts`),
+      'process.stdout.write(JSON.stringify({ pass: false, findings_count: 1 }) + "\\n");\n', "utf-8");
+    const stages = JSON.parse(readFileSync(join(AIDLC_SRC, "tools", "data", "stage-graph.json"), "utf-8")) as Array<Record<string, unknown>>;
+    const stage = stages.find((entry) => entry.slug === RA);
+    if (stage === undefined) throw new Error(`no ${RA} in the shipped graph`);
+    stage.sensors = [id];
+    stage.sensors_applicable = [{ id, path: `.claude/sensors/aidlc-${id}.md`, fire_on: "gate", default_severity: "blocking", category: "test", matches }];
+    const graph = join(project, "stage-graph.json");
+    writeFileSync(graph, `${JSON.stringify(stages, null, 2)}\n`, "utf-8");
+    Object.assign(process.env, {
+      AIDLC_STAGE_GRAPH: graph,
+      AIDLC_SENSORS_DIR: sensors,
+      AIDLC_SENSOR_SCRIPT_DIR: scripts,
+      AIDLC_GATE_SENSOR_DISPATCH_TIMEOUT_MS: String(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
+    });
+  }
+
+  for (const policy of ["strict", "off"] as const) {
+    test(`Guard Policy ${policy}: next names the override report the refusal named, and the gate opens with the override on its row`, async () => {
+      const project = createOrchestrationTestProject();
+      projects.push(project);
+      teamBlockingCheck(project);
+      await reviewedStage(project);
+      const statePath = seededStateFile(project);
+      writeFileSync(statePath, setGuardPolicyLine(readFileSync(statePath, "utf-8"), `${policy} (set by you)`), "utf-8");
+      const run = (tool: string, args: string[]) =>
+        exec([BUN, tool, ...args, "--project-dir", project], { cwd: project, env: env(project) });
+
+      const refused = await run(ORCHESTRATE, ["report", "--stage", RA, "--result", "awaiting-approval"]);
+      const refusal = refused.stdout + refused.stderr;
+      expect(refusal).toContain("Blocking gate sensor evaluation did not pass");
+      expect(readFileSync(statePath, "utf-8")).toContain(`- [-] ${RA}`);
+      const asked = await run(LOG, ["decision", "--stage", RA, "--decision", BLOCKING_SENSOR_OVERRIDE_DECISION,
+        "--options", BLOCKING_SENSOR_OVERRIDE_OPTIONS.join(",")]);
+      expect(asked.status, asked.stdout + asked.stderr).toBe(0);
+      await say(project, "just approve it", "claude");
+      const answered = await run(LOG, ["answer", "--stage", RA, "--details", BLOCKING_SENSOR_OVERRIDE_CHOICE]);
+      expect(answered.status, answered.stdout + answered.stderr).toBe(0);
+
+      const step = await next(project, []);
+      expect(step.directive?.kind, step.out).toBe("print");
+      const command = /`([^`]*--override-blocking-sensors[^`]*)`/.exec(String(step.directive?.message ?? ""))?.[1];
+      expect(command, step.out).toBeDefined();
+      // One spelling: the step names the report the refusal already named.
+      expect(refusal.replaceAll('\\"', '"')).toContain(command as string);
+      const argv = ((command as string).match(/"[^"]*"|\S+/g) ?? []).map((part) => part.replace(/^"|"$/g, ""));
+      const reported = await run(ORCHESTRATE, argv.slice(2));
+      expect(reported.status, reported.stdout + reported.stderr).toBe(0);
+      expect(reported.stdout).not.toContain('"ask_type":"guard-recovery"');
+      expect(readFileSync(statePath, "utf-8")).toContain(`- [?] ${RA}`);
+      const gateRow = audit(project).split("\n---\n").filter((block) => block.includes("**Event**: STAGE_AWAITING_APPROVAL")).at(-1) ?? "";
+      expect(gateRow).toContain("**Blocking Sensor Override**: true");
+      expect(gateRow).toContain("**Blocking Sensor IDs**: gate-probe");
+    }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+  }
 });

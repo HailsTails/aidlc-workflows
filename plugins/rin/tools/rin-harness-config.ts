@@ -207,7 +207,7 @@ const defaultProjectIdentity: ProjectIdentityConfig = {
   prCommand:
     "(unconfigured: set projectIdentity.prCommand to a command that opens or updates the pull request for the current branch under the authoring identity)",
   deployCommand:
-    "(unconfigured: set projectIdentity.deployCommand to a command that deploys the target, total and idempotent)",
+    "(unconfigured: set projectIdentity.deployCommand only when the project deployment procedure requires an agent-triggered invocation)",
 };
 
 const defaultConfig: HarnessConfig = {
@@ -576,7 +576,10 @@ const validateProjectIdentity = ({
   if (!reviewCommand.ok) return reviewCommand;
   const prCommand = requireString({ container: raw, key: "prCommand" });
   if (!prCommand.ok) return prCommand;
-  const deployCommand = requireString({ container: raw, key: "deployCommand" });
+  const deployCommand: Validation<string> =
+    raw.deployCommand === undefined
+      ? { ok: true, value: defaultProjectIdentity.deployCommand }
+      : requireString({ container: raw, key: "deployCommand" });
   if (!deployCommand.ok) return deployCommand;
   return {
     ok: true,

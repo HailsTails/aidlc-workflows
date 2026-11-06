@@ -1,6 +1,6 @@
 // covers: function:headingKey, function:summaryConfirmationContentHash
 //
-// #1385 follow-up. The claim-sources sensor reads a Q<n> or Assumption
+// #1385. The claim-sources sensor reads a Q<n> or Assumption
 // Confirmation heading behind a leading emoji as the section it names, but the
 // summary confirmation digest needed the exact spelling: a decorated follow-up
 // question after the Consolidated Summary Confirmation stopped the gate with
@@ -85,7 +85,6 @@ describe("summary confirmation digest reads decorated contract headings", () => 
     expect(summaryConfirmationContentHash(
       decorated.replace("Customers use email sign-in.", "Customers use SSO."),
     )).toBe(UNDECORATED_DIGEST);
-    // A second one, decorated or not, is still a duplicate.
     expect(() => summaryConfirmationContentHash(
       `${decorated}\n## Assumption Confirmation\n\n[Answer]: A. Accept assumptions\n`,
     )).toThrow('duplicate H2 section "Assumption Confirmation"');
@@ -116,6 +115,25 @@ describe("summary confirmation digest reads decorated contract headings", () => 
     )).toThrow('duplicate H2 section "Q2"');
   });
 
+  test("a question that names its trade after its number is still that question", () => {
+    // The stage protocol writes `## Q<n>. [<trade>] <title>`, in the
+    // conversation language.
+    const named = QUESTIONS
+      .replace("## Q1. Which", "## Q1. [Product owner] Which")
+      .replace("## Q2: Where", "## Q2: [개발자] Where")
+      .replace("## Q3. How", "## Q3. [Operations engineer] How");
+    // Before and after the checkpoint each one is a question, not an unsupported heading.
+    expect(() => summaryConfirmationContentHash(named)).not.toThrow();
+    // Straight after Assumption Confirmation a follow-up ends that exclusion, as `## Q3.` does.
+    const afterAssumptions = named.replace("## Requested Changes Feedback\n\n[Answer]: Add an audit log.\n\n", "");
+    expect(afterAssumptions).not.toBe(named);
+    expect(summaryConfirmationContentHash(afterAssumptions.replace("One year", "Ten years")))
+      .not.toBe(summaryConfirmationContentHash(afterAssumptions));
+    expect(() => summaryConfirmationContentHash(
+      named.replace("## Q3. [Operations engineer]", "## Q2. [Operations engineer]"),
+    )).toThrow('duplicate H2 section "Q2"');
+  });
+
   test("a decorated question spelled inside code still ends the exclusion", () => {
     const spelled = QUESTIONS.replace(
       "- [assumption] Customers use email sign-in.",
@@ -130,5 +148,22 @@ describe("summary confirmation digest reads decorated contract headings", () => 
       expect(() => summaryConfirmationContentHash(`${QUESTIONS}\n## ${heading}\n`))
         .toThrow(`unsupported H2 heading "${heading}"`);
     }
+  });
+
+  test("a later round written as its own section or a second summary is refused with the shape it takes", () => {
+    const shape = 'goes in "## Q<n>" sections after the summary';
+    const ownSection = `${QUESTIONS}\n## Revision 1: the settings file\n\n## Q4. Which file holds the settings?\n\n[Answer]: .env\n`;
+    expect(() => summaryConfirmationContentHash(ownSection)).toThrow('unsupported H2 heading "Revision 1: the settings file"');
+    expect(() => summaryConfirmationContentHash(ownSection)).toThrow(shape);
+    const secondSummary = `${QUESTIONS}\n## Q4. Which file holds the settings?\n\n[Answer]: .env\n\n## Consolidated Summary Confirmation\n\n[Answer]:\n`;
+    expect(() => summaryConfirmationContentHash(secondSummary)).toThrow(shape);
+
+    // The shape it names digests: the round's question after the summary, the one summary rewritten and blanked.
+    const laterRound = `${QUESTIONS.replace(
+      "Staff and customers sign in; data stays in the EU region.\n\n[Answer]: Looks correct",
+      "Staff and customers sign in; data stays in the EU region; settings live in .env.\n\n[Answer]:",
+    )}\n## Q4. Which file holds the settings?\n\n[Answer]: .env\n`;
+    expect(() => summaryConfirmationContentHash(laterRound)).not.toThrow();
+    expect(summaryConfirmationContentHash(laterRound)).not.toBe(summaryConfirmationContentHash(QUESTIONS));
   });
 });

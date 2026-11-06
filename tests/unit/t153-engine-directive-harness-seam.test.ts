@@ -14,14 +14,10 @@
 // ships verbatim into the others and tells their conductors to run a tool at a
 // path that does not exist there.
 //
-// This is the exact CRIT-class seam bug the dist-unified review found for the
-// rules dir (rulesSubdir). The merge-endgame re-homed v0.6.8's createPrintDirective
-// into core/, where main's original hardcoded `.claude/tools/aidlc-utility.ts`;
-// the port rewrote it to `${harnessDir()}/tools/...`. This test is the
-// determinism mechanism that proves no such literal re-enters a directive string
-// — t146 guards the SAME leak in core/*.md prose; this guards core/*.ts directives.
+// This test proves no such literal re-enters a directive string - t146 guards
+// the SAME leak in core/*.md prose; this guards core/*.ts directives.
 //
-// SCOPE (deliberately narrow — avoids the ~59 legitimate `.claude/` literals in
+// SCOPE (deliberately narrow - avoids legitimate `.claude/` literals in
 // core .ts that are comments, error text naming the literal Claude tree, install
 // instructions like `dist/claude/.claude/settings.json`, and the example
 // directive-shape fixtures in aidlc-directive.ts). The dangerous form is
@@ -33,7 +29,6 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { classifyPluginSourceFile } from "../../core/tools/aidlc-plugin-validate.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CORE = join(REPO_ROOT, "core");
@@ -56,19 +51,19 @@ function* walkTs(dir: string): Generator<string> {
   }
 }
 
-function directiveViolations({ file, source }: { file: string; source: string }): string[] {
-  if (classifyPluginSourceFile({ pluginRoot: CORE, file }) !== "runtime") return [];
-  return source.split("\n").flatMap((line, index) =>
-    HARDCODED_DIRECTIVE_RE.test(line) ? [`${relative(CORE, file)}:${index + 1}: ${line.trim()}`] : []);
-}
-
 describe("t153 engine directive harness seam — no hardcoded .claude/tools in core directives", () => {
   // biome-ignore lint/suspicious/noTemplateCurlyInString: test name documents literal source syntax
   test("every `bun <harness>/tools|hooks/` directive in core/*.ts uses ${harnessDir()}, not a hardcoded dir", () => {
     const stray: string[] = [];
     for (const scanDir of SCAN_DIRS) {
       for (const file of walkTs(scanDir)) {
-        stray.push(...directiveViolations({ file, source: readFileSync(file, "utf-8") }));
+        const rel = relative(CORE, file);
+        const lines = readFileSync(file, "utf-8").split("\n");
+        lines.forEach((line, i) => {
+          if (HARDCODED_DIRECTIVE_RE.test(line)) {
+            stray.push(`${rel}:${i + 1}: ${line.trim()}`);
+          }
+        });
       }
     }
     if (stray.length > 0) {
@@ -142,7 +137,6 @@ describe("t153 engine directive harness seam — no hardcoded .claude/tools in c
     let seamUses = 0;
     for (const scanDir of SCAN_DIRS) {
       for (const file of walkTs(scanDir)) {
-        if (classifyPluginSourceFile({ pluginRoot: CORE, file }) !== "runtime") continue;
         if (file.endsWith("aidlc-runtime-paths.ts")) continue;
         const src = readFileSync(file, "utf-8");
         const m = src.match(/aidlcToolInvocation\(/g);
@@ -150,15 +144,5 @@ describe("t153 engine directive harness seam — no hardcoded .claude/tools in c
       }
     }
     expect(seamUses).toBeGreaterThan(0);
-  });
-
-  test("a hardcoded command in maintained runtime source remains a violation", () => {
-    const violations = directiveViolations({ file: join(CORE, "tools", "example.ts"), source: '"bun .codex/tools/aidlc.ts engine state approve"' });
-    expect(violations).toEqual(['tools/example.ts:1: "bun .codex/tools/aidlc.ts engine state approve"']);
-  });
-
-  test("source-only test command fixtures are excluded from runtime directive checks", () => {
-    const violations = directiveViolations({ file: join(CORE, "tools", "example.test.ts"), source: '"bun .codex/tools/aidlc.ts engine state approve"' });
-    expect(violations).toEqual([]);
   });
 });

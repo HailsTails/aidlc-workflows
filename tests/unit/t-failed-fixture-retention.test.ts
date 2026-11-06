@@ -160,12 +160,15 @@ describe("t-failed-fixture-retention", () => {
   });
 
   test("both live collectors copy the whole log tree the snapshot lives in", () => {
-    // POSIX: the administrator-side copy takes every entry under tests/logs.
     const posix = readFileSync(join(REPO_ROOT, ".github/scripts/prepare-live-runtime.sh"), "utf-8");
     expect(posix).toContain(`sudo cp -a "$live_root/tests/logs/." "$GITHUB_WORKSPACE/tests/logs/"`);
-    // Windows: the tests\logs tree is staged whole with links rejected.
     const windows = readFileSync(join(REPO_ROOT, ".github/scripts/prepare-live-runtime.ps1"), "utf-8");
     expect(windows).toContain(`@{ label = 'tests'; source = (Join-Path $work 'tests\\logs'); optional = $true }`);
     expect(windows).toContain("Copy-PlainTree $item.source $staging -RejectLinks");
+    // Every live job sanitizes, then uploads, that same tree.
+    const workflow = readFileSync(join(REPO_ROOT, ".github/workflows/full-suite.yml"), "utf-8");
+    expect(workflow.match(/run: bun scripts\/ci-sanitize-logs\.ts tests\/logs/g)?.length ?? 0)
+      .toBeGreaterThanOrEqual(2);
+    expect(workflow.match(/path: tests\/logs\//g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 });

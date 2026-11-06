@@ -25,9 +25,9 @@
 // across concurrent sub-agent files, so `(sourceFile, uuid)` is the only unique
 // key) are documented in docs/reference/06-hooks-and-tools.md.
 
+import { dlopen, ptr } from "bun:ffi";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import {
   closeSync,
   existsSync,
@@ -73,7 +73,7 @@ export type PriceRow = {
 // tree carries the JSON, so an installed harness always reads that). Every
 // field is the published price, not a derived multiplier: cache writes are
 // 1.25x (5m) / 2x (1h) input on every row, but cache reads are 0.1x input on
-// most rows and 0.05x on opus-5-5, 0.025x on fable-5-1.
+// most rows, 0.05x on opus-5-5 and sonnet-5-5, 0.025x on fable-5-1.
 //
 // VERSION-DISCRETE keys (a row per model VERSION, NOT one per family): a point
 // release such as `opus-5-5` has its own row, never its major's (`opus-5`).
@@ -91,9 +91,10 @@ export const DEFAULT_RATES: Record<string, PriceRow> = {
   "opus-4-8": { input: 5.0, output: 25.0, cacheWrite5m: 6.25, cacheWrite1h: 10.0, cacheRead: 0.5 },
   "opus-4-7": { input: 5.0, output: 25.0, cacheWrite5m: 6.25, cacheWrite1h: 10.0, cacheRead: 0.5 },
   "opus-4-6": { input: 5.0, output: 25.0, cacheWrite5m: 6.25, cacheWrite1h: 10.0, cacheRead: 0.5 },
-  "sonnet-5-5": { input: 2.0, output: 10.0, cacheWrite5m: 2.5, cacheWrite1h: 4.0, cacheRead: 0.2 },
+  "sonnet-5-5": { input: 2.0, output: 10.0, cacheWrite5m: 2.5, cacheWrite1h: 4.0, cacheRead: 0.1 },
   "sonnet-5": { input: 2.0, output: 10.0, cacheWrite5m: 2.5, cacheWrite1h: 4.0, cacheRead: 0.2 },
   "sonnet-4-6": { input: 3.0, output: 15.0, cacheWrite5m: 3.75, cacheWrite1h: 6.0, cacheRead: 0.3 },
+  "haiku-5-5": { input: 0.1, output: 0.5, cacheWrite5m: 0.125, cacheWrite1h: 0.2, cacheRead: 0.01 },
   "haiku-4-5": { input: 1.0, output: 5.0, cacheWrite5m: 1.25, cacheWrite1h: 2.0, cacheRead: 0.1 },
   "fable-5-1": { input: 10.0, output: 50.0, cacheWrite5m: 12.5, cacheWrite1h: 20.0, cacheRead: 0.25 },
   "fable-5": { input: 10.0, output: 50.0, cacheWrite5m: 12.5, cacheWrite1h: 20.0, cacheRead: 1.0 },
@@ -1036,34 +1037,15 @@ const USAGE_LOCK_INTENT = "__usage-ledger__";
 const USAGE_LOCK_SPACE = "__runtime__";
 // The directory lock's stale-reaper restore gap can admit two holders on Win32.
 // A kernel mutex closes that gap and transfers ownership after an abandoned owner.
-
-type BunFfi = Pick<typeof import("bun:ffi"), "dlopen" | "ptr">;
-
-const loadBunFfi = (): BunFfi | null => {
-  try {
-    return createRequire(import.meta.url)("bun:ffi") as BunFfi;
-  } catch {
-    return null;
-  }
-};
-
-const openWindowsUsageMutex = (ffi: BunFfi) =>
-  ffi.dlopen("kernel32.dll", {
-    CreateMutexW: { args: ["ptr", "i32", "ptr"], returns: "ptr" },
-    WaitForSingleObject: { args: ["ptr", "u32"], returns: "u32" },
-    ReleaseMutex: { args: ["ptr"], returns: "i32" },
-    CloseHandle: { args: ["ptr"], returns: "i32" },
-  });
-
-type WindowsUsageMutex = ReturnType<typeof openWindowsUsageMutex>;
-let win32UsageMutex: WindowsUsageMutex | null | undefined;
-
-const windowsUsageMutex = (): WindowsUsageMutex | null => {
-  if (win32UsageMutex !== undefined) return win32UsageMutex;
-  const ffi = process.platform === "win32" ? loadBunFfi() : null;
-  win32UsageMutex = ffi === null ? null : openWindowsUsageMutex(ffi);
-  return win32UsageMutex;
-};
+const WIN32_USAGE_MUTEX =
+  process.platform === "win32"
+    ? dlopen("kernel32.dll", {
+        CreateMutexW: { args: ["ptr", "i32", "ptr"], returns: "ptr" },
+        WaitForSingleObject: { args: ["ptr", "u32"], returns: "u32" },
+        ReleaseMutex: { args: ["ptr"], returns: "i32" },
+        CloseHandle: { args: ["ptr"], returns: "i32" },
+      })
+    : null;
 
 const WAIT_OBJECT_0 = 0;
 const WAIT_ABANDONED = 0x80;
@@ -1082,12 +1064,7 @@ export function usageTrace(phase: string, detail?: Record<string, unknown>): voi
 }
 
 function withUsageLedgerLock(projectDir: string, fn: () => Ledger): Ledger {
-  const mutex = windowsUsageMutex();
-  if (mutex !== null) {
-    const ffi = loadBunFfi();
-    if (ffi === null) {
-      throw new Error("The Windows usage-ledger mutex needs bun:ffi");
-    }
+  if (WIN32_USAGE_MUTEX !== null) {
     const identity = auditLockIdentity(
       projectDir,
       USAGE_LOCK_INTENT,
@@ -1095,19 +1072,19 @@ function withUsageLedgerLock(projectDir: string, fn: () => Ledger): Ledger {
     );
     const hash = createHash("sha256").update(identity).digest("hex").slice(0, 32);
     const name = Buffer.from(`Global\\aidlc-usage-${hash}\0`, "utf16le");
-    const handle = mutex.symbols.CreateMutexW(null, 0, ffi.ptr(name));
+    const handle = WIN32_USAGE_MUTEX.symbols.CreateMutexW(null, 0, ptr(name));
     if (handle === null) {
       throw new Error("Failed to create the Windows usage-ledger mutex");
     }
     usageTrace("usage-lock-wait", { lock: "win32-mutex", boundMs: USAGE_MUTEX_WAIT_MS });
     const waitStarted = Date.now();
-    const waitResult = mutex.symbols.WaitForSingleObject(
+    const waitResult = WIN32_USAGE_MUTEX.symbols.WaitForSingleObject(
       handle,
       USAGE_MUTEX_WAIT_MS,
     );
     usageTrace("usage-lock-wait-end", { result: waitResult, waitedMs: Date.now() - waitStarted });
     if (waitResult !== WAIT_OBJECT_0 && waitResult !== WAIT_ABANDONED) {
-      mutex.symbols.CloseHandle(handle);
+      WIN32_USAGE_MUTEX.symbols.CloseHandle(handle);
       throw new Error(
         `Failed to acquire the Windows usage-ledger mutex: ${waitResult}`,
       );
@@ -1115,8 +1092,8 @@ function withUsageLedgerLock(projectDir: string, fn: () => Ledger): Ledger {
     try {
       return fn();
     } finally {
-      mutex.symbols.ReleaseMutex(handle);
-      mutex.symbols.CloseHandle(handle);
+      WIN32_USAGE_MUTEX.symbols.ReleaseMutex(handle);
+      WIN32_USAGE_MUTEX.symbols.CloseHandle(handle);
       usageTrace("usage-lock-released");
     }
   }
@@ -1402,7 +1379,7 @@ export function sessionUsageAggregate(
 // Task 6 - Persisted transcript path + runtime ledger producer (usage.ts half)
 // ===========================================================================
 
-// Normalise a session id to a safe filename segment (mirrors aidlc-lib's
+// Normalise a session id to a safe filename segment (mirrors aidlc-record-core's
 // sessionRecordPath sanitisation) so a host-supplied id can't escape the dir.
 function safeSessionSegment(sessionId: string): string {
   return sessionId.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");

@@ -11,25 +11,16 @@ const gateDecisionOf = async ({ hookInput }: { readonly hookInput: string }): Pr
   });
 };
 
-const gateFailureDecisionOf = ({
-  hookInput,
-  failure,
-}: {
-  readonly hookInput: string;
-  readonly failure: unknown;
-}): GateDecision =>
-  hookInput.includes("report") && hookInput.includes("--result")
-    ? {
-        kind: "deny",
-        reason: `Blocked: stage completion refused. The constitution gate failed before it reached a verdict, so this stage is unverified, not passing: ${String(failure)}\n`,
-      }
-    : { kind: "allow" };
+const gateFailureDecisionOf = ({ failure }: { readonly failure: unknown }): GateDecision => ({
+  kind: "deny",
+  reason: `Blocked: the completion command contract could not be inspected: ${String(failure)}. Refresh the runtime and Rin plugin together.\n`,
+});
 
 const decisionOrGateFailureOf = async ({ hookInput }: { readonly hookInput: string }): Promise<GateDecision> => {
   try {
     return await gateDecisionOf({ hookInput });
   } catch (failure) {
-    return gateFailureDecisionOf({ hookInput, failure });
+    return gateFailureDecisionOf({ failure });
   }
 };
 

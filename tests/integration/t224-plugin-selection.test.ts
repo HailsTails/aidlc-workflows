@@ -33,6 +33,7 @@ import {
   composePluginFixture,
   copyHarnessInstall,
 } from "../harness/plugin-kit.ts";
+import { typedHarnessName } from "../../core/tools/aidlc-runtime-paths.ts";
 
 const BUN = process.execPath;
 const TIMEOUT_MS = NATIVE_FIXTURE_SETUP_TIMEOUT_MS;
@@ -142,7 +143,7 @@ function runOrchestrate(project: string, args: string[]) {
 }
 
 function stageTableRegion(project: string): string {
-  const skill = readFileSync(join(project, ".claude", "skills", "aidlc", "SKILL.md"), "utf-8");
+  const skill = readFileSync(join(project, ".claude", "skills", "aidlc", "tables.md"), "utf-8");
   const begin = skill.indexOf(STAGE_TABLE_BEGIN);
   const end = skill.indexOf(STAGE_TABLE_END, begin);
   expect(begin).toBeGreaterThanOrEqual(0);
@@ -279,7 +280,9 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
 
     const disable = runUtility(proj, ["select-plugins", "aidlc"]);
     expect(disable.status).toBe(0);
-    expect(disable.stdout).toContain("Stripped merged contributions of disabled plugin(s): test-pro");
+    expect(disable.stdout).toContain(
+      "What test-pro added to other stages and agents, and its rules, is taken out; turn test-pro back on and they return at the next session start.",
+    );
     const stripped = readFileSync(stagePath, "utf-8");
     expect(stripped).not.toContain("test-pro-regression-suite");
     expect(stripped).not.toContain("Step 8a (test-pro)");
@@ -306,6 +309,17 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
     expect(readFileSync(sidecar, "utf-8")).toBe(composedSidecar);
   });
 
+  test("unreadable contribution ownership refuses disable without changing installed surfaces", () => {
+    const proj = join(tmp, "unreadable-ownership");
+    composePluginFixture({ plugin: PLUGIN, harness: "claude", projectDir: proj, pluginBuilt });
+    const sidecar = join(proj, ".claude", "tools", "data", "plugin-contrib-test-pro.json");
+    writeFileSync(sidecar, "{invalid ownership\n");
+    const before = surfaceSnapshot(join(proj, ".claude"));
+    const disable = runUtility(proj, ["select-plugins", "aidlc"]);
+    expect(disable.status).not.toBe(0);
+    expect(disable.stdout + disable.stderr).toContain("contribution ownership is unreadable");
+    expect(surfaceSnapshot(join(proj, ".claude"))).toEqual(before);
+  });
   test("compose does not merge contributions for a plugin the selection disables", () => {
     const proj = join(tmp, "no-merge-disabled");
     copyHarnessInstall("claude", proj);
@@ -363,7 +377,7 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
 
     const core = runUtility(proj, ["select-plugins", "aidlc"]);
     expect(core.status, core.stderr).toBe(0);
-    expect(core.stdout).toContain(`Stripped merged contributions of disabled plugin(s): ${PLUGIN}`);
+    expect(core.stdout).toContain(`What ${PLUGIN} added to other stages and agents, and its rules, is taken out;`);
     expect(buildSensors()).not.toContain("coverage-threshold");
     expect(buildSensors()).not.toContain("requirement-coverage");
   });
@@ -373,12 +387,12 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
   // with no in-band recovery. select-plugins must refuse, and doctor must
   // flag a selection (written before this guard, or hand-edited) that
   // already strands one.
-  function seedActiveWorkflow(proj: string, scope: string, extraStageRow = ""): string {
+  function seedActiveWorkflow(proj: string, scope: string, extraStageRow = "", space = "default"): string {
     const dirName = "strand-probe-deadbeef";
-    const intentDir = join(proj, "aidlc", "spaces", "default", "intents", dirName);
+    const intentDir = join(proj, "aidlc", "spaces", space, "intents", dirName);
     mkdirSync(intentDir, { recursive: true });
     writeFileSync(
-      join(proj, "aidlc", "spaces", "default", "intents", "intents.json"),
+      join(proj, "aidlc", "spaces", space, "intents", "intents.json"),
       `${JSON.stringify([{ uuid: "deadbeef-0000-4000-8000-000000000000", slug: "strand-probe", dirName, scope, status: "in-flight" }], null, 2)}\n`,
     );
     // The Stage Progress row delimiter is the em dash (parseCheckboxes'
@@ -406,6 +420,34 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
     );
     return intentDir;
   }
+
+  test("init uses focused owners instead of importing the utility CLI", () => {
+    const init = readFileSync(join(REPO_ROOT, "core", "tools", "aidlc-init.ts"), "utf-8");
+    expect(init).not.toContain('from "./aidlc-utility.ts"');
+    expect(init).toContain('from "./aidlc-workflow-plugin-dependency-reader.ts"');
+  });
+
+  test("selection refuses without writes and doctor reports parked dependencies across spaces", () => {
+    const proj = join(tmp, "strand-cross-space");
+    composePluginFixture({ plugin: PLUGIN, harness: "claude", projectDir: proj, pluginBuilt });
+    seedActiveWorkflow(proj, "test-pro-validation");
+    const parked = seedActiveWorkflow(proj, "feature", "- [ ] test-pro-integration \u2014 EXECUTE", "team");
+    const state = join(parked, "aidlc-state.md");
+    writeFileSync(state, readFileSync(state, "utf-8").replace("- **Status**: Running", "- **Status**: Parked"));
+    const before = surfaceSnapshot(join(proj, ".claude"));
+    const refused = runUtility(proj, ["select-plugins", "aidlc"]);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("2 active workflow dependency(ies)");
+    expect(refused.stderr).toContain("space default");
+    expect(refused.stderr).toContain("space team");
+    expect(refused.stderr).toContain("test-pro-integration");
+    expect(surfaceSnapshot(join(proj, ".claude"))).toEqual(before);
+    const harness = JSON.parse(readFileSync(harnessPath(proj), "utf-8"));
+    harness.plugins = ["aidlc"];
+    writeFileSync(harnessPath(proj), `${JSON.stringify(harness, null, 2)}\n`);
+    const doctor = runUtility(proj, ["doctor"]);
+    expect(doctor.stdout + doctor.stderr).toContain("Plugin selection vs active workflows: 2 stranded dependency(ies)");
+  });
 
   test("select-plugins refuses to strand an active workflow's scope", () => {
     const proj = join(tmp, "strand-scope");
@@ -490,7 +532,75 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
     // Nothing was recorded before, so --reset (every plugin on) is the undo.
     expect(result.stdout).toContain("config project --reset --yes");
     expect(JSON.parse(readFileSync(harnessPath(proj), "utf-8")).plugins).toEqual(["aidlc"]);
+    // What the plugin merged into core stages is out, as with plugin select.
+    const buildAndTest = readFileSync(join(proj, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md"), "utf-8");
+    expect(buildAndTest).not.toContain("<!-- plugin:test-pro:");
+    expect(buildAndTest).not.toContain("test-pro-regression-suite");
+    expect(existsSync(join(proj, ".claude", "tools", "data", "plugin-contrib-test-pro.json"))).toBe(false);
   });
+
+  // The order a person meets: config installs and records the project, the
+  // plugin composes at a session start, then config project turns it off.
+  // What it merged into core stages and personas goes, as with plugin select,
+  // with no line beyond the change and its undo; the undo brings it back at
+  // the next session start.
+  for (const harness of ["claude", "codex"] as const) {
+    test(`${harness}: config project turning a plugin off takes out what it merged, and its undo brings that back at the next session start`, () => {
+      const leaf = harness === "claude" ? ".claude" : ".codex";
+      const proj = join(tmp, `config-off-${harness}`);
+      const built = harness === "claude"
+        ? pluginBuilt
+        : buildPluginProjection(PLUGIN, harness, join(tmp, "plugin", harness));
+      const release = join(REPO_ROOT, "dist", harness);
+      mkdirSync(proj, { recursive: true });
+      const env = { ...process.env, CLAUDE_PROJECT_DIR: proj, AIDLC_HARNESS_DIR: leaf };
+      const run = (tool: string, args: string[]) => spawnSync(BUN, [tool, ...args], {
+        cwd: proj,
+        encoding: "utf-8",
+        timeout: remainingOperationTimeoutMs(NATIVE_RUNTIME_CASE_TIMEOUT_MS),
+        env,
+      });
+      const config = (...args: string[]) => run(join(proj, leaf, "tools", "aidlc.ts"), ["config", ...args]);
+      const installed = run(join(release, leaf, "tools", "aidlc.ts"), [
+        "config", "--from", release, "--harness", typedHarnessName(harness), "--project-dir", proj, "--yes",
+      ]);
+      expect(installed.status, `${installed.stdout}${installed.stderr}`).toBe(0);
+      composePluginFixture({ plugin: PLUGIN, harness, projectDir: proj, pluginBuilt: built, copyInstall: false });
+
+      const stage = join(proj, leaf, "aidlc-common", "stages", "construction", "build-and-test.md");
+      const persona = join(proj, leaf, "agents", "aidlc-quality-agent.md");
+      const twin = join(proj, leaf, "agents", "aidlc-quality-agent.toml");
+      const sidecar = join(proj, leaf, "tools", "data", "plugin-contrib-test-pro.json");
+      const merged = [stage, persona, ...(harness === "codex" ? [twin] : [])];
+      const composed = merged.map((path) => readFileSync(path, "utf-8"));
+      const composedSidecar = readFileSync(sidecar, "utf-8");
+      for (const text of composed) expect(text).toContain("<!-- plugin:test-pro:");
+      // test-pro's rules ride the same turn-off, in the team's rule files.
+      const ruleFiles = ["team.md", "phases/inception.md"].map((rel) => join(proj, "aidlc", "spaces", "default", "memory", rel));
+      const composedRules = ruleFiles.map((path) => readFileSync(path, "utf-8"));
+      for (const text of composedRules) expect(text).toContain("## Rules from the test-pro plugin");
+
+      const off = config("project", "--plugins", "aidlc", "--yes");
+      expect(off.status, `${off.stdout}${off.stderr}`).toBe(0);
+      expect(off.stdout).toContain("config project --reset --yes");
+      expect(off.stdout).not.toContain("Stripped");
+      for (const path of merged) expect(readFileSync(path, "utf-8")).not.toContain("<!-- plugin:test-pro:");
+      expect(readFileSync(stage, "utf-8")).not.toContain("test-pro-regression-suite");
+      expect(existsSync(sidecar)).toBe(false);
+      for (const path of ruleFiles) expect(readFileSync(path, "utf-8")).not.toContain("## Rules from the test-pro plugin");
+      const nodes = JSON.parse(readFileSync(join(proj, leaf, "tools", "data", "stage-graph.json"), "utf-8")) as GraphStage[];
+      const bat = nodes.find((s) => s.slug === "build-and-test");
+      expect(bat?.produces).not.toContain("test-pro-regression-suite");
+      expect(bat?.sensors ?? []).not.toContain("coverage-threshold");
+
+      const undo = config("project", "--reset", "--yes");
+      expect(undo.status, `${undo.stdout}${undo.stderr}`).toBe(0);
+      composePluginFixture({ plugin: PLUGIN, harness, projectDir: proj, pluginBuilt: built, copyInstall: false });
+      expect(merged.map((path) => readFileSync(path, "utf-8"))).toEqual(composed);
+      expect(readFileSync(sidecar, "utf-8")).toBe(composedSidecar);
+      expect(ruleFiles.map((path) => readFileSync(path, "utf-8"))).toEqual(composedRules);
+    });
+  }
 
   test("doctor flags a selection that already strands an active workflow", () => {
     const proj = join(tmp, "strand-doctor");
@@ -524,6 +634,7 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
     const agentsSkill = join(noSkillsProj, ".agents", "skills", "aidlc", "SKILL.md");
     mkdirSync(dirname(agentsSkill), { recursive: true });
     cpSync(join(noSkillsProj, ".claude", "skills", "aidlc", "SKILL.md"), agentsSkill);
+    cpSync(join(noSkillsProj, ".claude", "skills", "aidlc", "tables.md"), join(dirname(agentsSkill), "tables.md"));
     rmSync(join(noSkillsProj, ".claude", "skills"), { recursive: true, force: true });
 
     const result = runUtility(noSkillsProj, ["select-plugins", "test-pro"]);

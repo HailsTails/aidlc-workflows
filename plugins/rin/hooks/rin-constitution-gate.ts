@@ -1,15 +1,16 @@
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { env, stdin } from "node:process";
 import { fileURLToPath } from "node:url";
-import { gateToolsDirectoryOf, isCompletionReport } from "./rin-gate-invocation.ts";
+import { completionOperations, gateToolsDirectoryOf, isCompletionReport, resolveCompletionTarget } from "./rin-gate-invocation.ts";
 import { appendGateRun } from "../tools/rin-harness-gate-runs.ts";
 
 type HookInput = {
   readonly tool_name?: string;
   readonly tool_input?: { readonly command?: string };
   readonly cwd?: string;
+  readonly session_id?: string;
 };
 
 // Every shell-bearing tool this harness offers, as a closed set. This gate owns
@@ -175,39 +176,7 @@ const describeElapsed = ({
 }): string =>
   warmMs === null ? `${coldMs}ms` : `${coldMs}ms cold then ${warmMs}ms warm`;
 
-const isGitCheckout = ({ root }: { readonly root: string }): boolean =>
-  existsSync(join(root, ".git"));
-
-const nearestCheckoutAt = (candidate: string): string | undefined => {
-  if (isGitCheckout({ root: candidate })) return candidate;
-  const parent = dirname(candidate);
-  return parent === candidate ? undefined : nearestCheckoutAt(parent);
-};
-
 const hookDir = dirname(fileURLToPath(import.meta.url));
-const checkoutRootFromCommandCwd = (
-  cwd: string | undefined,
-): string | undefined => {
-  if (cwd === undefined || cwd === "") return undefined;
-  return nearestCheckoutAt(resolve(cwd));
-};
-const hookFileCheckout = (): string => {
-  const fromHookFile = resolve(join(hookDir, "..", ".."));
-  return isGitCheckout({ root: fromHookFile })
-    ? fromHookFile
-    : resolve(env.CLAUDE_PROJECT_DIR ?? fromHookFile);
-};
-const resolveAuditRoot = ({
-  commandCwd,
-}: {
-  readonly commandCwd: string | undefined;
-}): string => {
-  const explicitOverride = env.RIN_CONSTITUTION_GATE_TOOL_ROOT;
-  if (explicitOverride !== undefined && explicitOverride !== "") {
-    return resolve(explicitOverride);
-  }
-  return checkoutRootFromCommandCwd(commandCwd) ?? hookFileCheckout();
-};
 
 const readStdin = (): Promise<string> =>
   new Promise((resolvePromise) => {
@@ -342,10 +311,10 @@ const gatedInvocationFrom = ({
   }
   if (!isShellToolName(input.tool_name)) return null;
   const command = input.tool_input?.command ?? "";
+  if (command.includes(BYPASS_TOKEN)) return null;
   if (!isCompletionReport({ command })) {
     return null;
   }
-  if (command.includes(BYPASS_TOKEN)) return null;
   return { command, commandCwd: input.cwd };
 };
 
@@ -374,12 +343,16 @@ const denyOnFindings = ({
 
 const recordGateRun = ({
   command,
+  stage,
+  result,
   audit,
   decay,
   auditRoot,
   clock,
 }: {
   readonly command: string;
+  readonly stage: string;
+  readonly result: string;
   readonly audit: AuditJson | null;
   readonly decay: AuditJson | null;
   readonly auditRoot: string;
@@ -388,9 +361,8 @@ const recordGateRun = ({
   try {
     appendGateRun({
       projectDir: auditRoot,
-      stage: command.match(/--stage\s+([A-Za-z0-9._-]+)/)?.[1] ?? "ungrouped",
-      result:
-        command.match(/--result\s+(approved|completed)/)?.[1] ?? "unknown",
+      stage,
+      result,
       command,
       verdict: {
         pass: audit?.pass ?? false,
@@ -459,7 +431,13 @@ const main = async (): Promise<void> => {
   if (invocation === null) process.exit(0);
   const { command, commandCwd } = invocation;
 
-  const auditRoot = resolveAuditRoot({ commandCwd });
+  const payload = JSON.parse(raw) as HookInput;
+  const operations = completionOperations({ command, context: { cwd: commandCwd ?? process.cwd(), environment: env, sessionId: payload.session_id } });
+  for (const operation of operations) {
+  const target = resolveCompletionTarget(operation);
+  if (target.kind === "unavailable") deny(`Blocked: completion target unavailable: ${target.reason}`);
+  if (target.unjoined) deny("Blocked: this conversation has not joined the selected work; select it with aidlc intent first.");
+  const auditRoot = target.projectDir;
 
   const ports = verdictToolPorts();
   const windows = resolveSpawnWindows({
@@ -469,7 +447,7 @@ const main = async (): Promise<void> => {
 
   const { audit, decay } = gatherVerdicts({ auditRoot, windows, ports });
 
-  recordGateRun({ command, audit, decay, auditRoot, clock: ports.clock });
+  recordGateRun({ command: operation.command, stage: target.stage, result: operation.request.kind === "report" ? operation.request.flags.result ?? "unknown" : "unknown", audit, decay, auditRoot, clock: ports.clock });
 
   if (audit && !audit.pass) {
     denyOnFindings({
@@ -501,11 +479,12 @@ const main = async (): Promise<void> => {
     });
   }
 
+  }
   process.exit(0);
 };
 
 if (import.meta.main) {
-  main().catch(() => process.exit(0));
+  main().catch((error) => deny(`Blocked: completion observation failed: ${String(error)}`));
 }
 
 export {

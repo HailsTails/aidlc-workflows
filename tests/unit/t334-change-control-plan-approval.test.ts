@@ -27,8 +27,8 @@ import {
 } from "../harness/test-budget.ts";
 import { afterAll, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import {
   auditBlockField,
   readAuditShardEvents,
@@ -103,7 +103,6 @@ describe("t334 (1) relaxed accepts source drift at the checkpoint record and re-
     expect(auditBlockField(rows[0].block, "Recorded")).toBe(planned);
     expect(auditBlockField(rows[0].block, "Current")).toBe(rebaselined);
 
-    // The approval then completes against the re-baselined source and generation begins.
     humanTurn(project, "relaxed-decision");
     const answered = answer(project, questions, "relaxed-decision");
     expect(answered.code, answered.stderr).toBe(0);
@@ -345,6 +344,31 @@ describe("t334 (4) strict refuses drift before the answer, in the human's words,
     expect(changeNotices(begin(project).stdout)).toEqual([]);
     expect(acceptedRows(project)).toHaveLength(1);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
+
+  // An AI-DLC update after approval rewrites only AI-DLC's own files (Codex's
+  // skill here): nothing of the person's moved, so the start says nothing.
+  test("an AI-DLC update after approval starts the build with no line; beside the person's file only theirs is named", () => {
+    const skill = (project: string, text: string) => {
+      mkdirSync(join(project, ".agents", "skills", "aidlc"), { recursive: true });
+      writeFileSync(join(project, ".agents", "skills", "aidlc", "SKILL.md"), text);
+    };
+    for (const theirs of [false, true]) {
+      const project = createProject("strict");
+      skill(project, "AI-DLC 1\n");
+      const questions = presentPlan(project);
+      startSession(project, "strict-update");
+      expect(decide(project, questions, "strict-update").code).toBe(0);
+      humanTurn(project, "strict-update");
+      expect(answer(project, questions, "strict-update").code).toBe(0);
+      skill(project, "AI-DLC 2\n");
+      if (theirs) writeFileSync(join(project, "src", "late.ts"), "export const late = 1;\n");
+      const started = begin(project);
+      expect(started.code, started.stderr).toBe(0);
+      expect(changeNotices(started.stdout)).toEqual(theirs ? [movedNotice("1 file", "src/late.ts")] : []);
+      const rows = acceptedRows(project);
+      expect(rows.map((row) => auditBlockField(row.block, "Changed"))).toEqual(theirs ? ["src/late.ts"] : []);
+    }
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });
 
 describe("t334 (5) changed content or prompt before the answer cannot be recorded as human approval", () => {
@@ -413,6 +437,34 @@ describe("t334 (5) changed content or prompt before the answer cannot be recorde
       expect(evaluateCodeGenerationApproval(project, { unit: null }).ok).toBe(false);
     }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
   }
+
+  test("a plan or instructions edited after approval names the differing files and the sync cause", () => {
+    const project = createProject("strict");
+    const questions = presentPlan(project);
+    const session = "synced-after-approval";
+    startSession(project, session);
+    expect(decide(project, questions, session).code).toBe(0);
+    humanTurn(project, session);
+    expect(answer(project, questions, session).code).toBe(0);
+
+    const dir = codeGenerationRecordDir(project, null);
+    const plan = join(dir, "code-generation-plan.md");
+    const instructions = join(dir, "unit-test-instructions.md");
+    writeFileSync(plan, readFileSync(plan, "utf-8").replace("- [ ] Implement", "- [ ] Implement differently"));
+    writeFileSync(instructions, `${readFileSync(instructions, "utf-8")}\nRun twice.\n`);
+
+    const refused = answer(project, questions, session);
+    expect(refused.code).not.toBe(0);
+    expect(refused.stderr).toContain("Plan Approval fingerprint does not match");
+    expect(refused.stderr).toContain(
+      `Files that differ from the approved copy: ${relative(project, plan).replaceAll("\\", "/")}, ` +
+        relative(project, instructions).replaceAll("\\", "/") + ".",
+    );
+    expect(refused.stderr).toContain(
+      "A background sync client (Google Drive, iCloud Drive, OneDrive, Dropbox) rewriting files on its own",
+    );
+    expect(refused.stderr).toContain("Re-run the fingerprint command, re-present the plan, and approve again.");
+  }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 });
 
 describe("t334 (6) F16: lowered fences allow post-approval content edits without inventing approval", () => {
@@ -572,7 +624,7 @@ describe("t334 (6) F16: lowered fences allow post-approval content edits without
             `${guarded.stderr}\n${guarded.stdout}\n${hookDrops(project)}`,
           ).toBe(lowered ? 0 : 2);
           if (lowered) {
-            if (speaks) expect(guarded.stdout).toContain("Continuing past the plan-approval check");
+            if (speaks) expect(guarded.stdout).toContain("Continuing past the plan re-approval check");
             else expect(guarded.stdout).not.toContain("Continuing past");
             expect(guarded.stderr).not.toContain('"ask_type":"guard-recovery"');
             const rows = stoodAsideRows();
@@ -612,7 +664,7 @@ describe("t334 (6) F16: lowered fences allow post-approval content edits without
           expect(handoff.stdout).toContain("## Current unit-test instructions");
           expect(handoff.stdout).not.toContain("## Approved plan");
           expect(handoff.stdout).not.toContain("## Approved unit-test instructions");
-          if (speaks) expect(handoff.stderr).toContain("Continuing past the plan-approval check");
+          if (speaks) expect(handoff.stderr).toContain("Continuing past the plan re-approval check");
           else expect(handoff.stderr).not.toContain("Continuing past");
           expect(stoodAsideRows()).toHaveLength(beforeBrief + 1);
           const row = stoodAsideRows()[beforeBrief];
@@ -638,7 +690,7 @@ describe("t334 (6) F16: lowered fences allow post-approval content edits without
           expect(JSON.parse(started.stdout.trim().split("\n").pop() ?? "{}").status).toBe("generation");
           const notices = changeNotices(started.stdout);
           expect(notices).toHaveLength(speaks ? 1 : 0);
-          if (speaks) expect(notices[0]).toContain("Continuing past the plan-approval check");
+          if (speaks) expect(notices[0]).toContain("Continuing past the plan re-approval check");
           expect(stoodAsideRows()).toHaveLength(beforeBegin + 1);
           const row = stoodAsideRows()[beforeBegin];
           expect(auditBlockField(row.block, "Tool")).toBe("testing-posture begin");

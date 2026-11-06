@@ -6,7 +6,7 @@
 |-------|-------|
 | Name | aidlc-product-agent |
 | Tier | **judgment** |
-| Allowed Claude Code Tools | Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion |
+| Claude Code Tools | Inherits the full session toolset, MCP tools included (no `tools:` allowlist); expected to use Read, Edit, Write, Glob, Grep, WebSearch, AskUserQuestion |
 | Disallowed Claude Code Tools | Task |
 
 ---
@@ -21,7 +21,7 @@
 | market-research | Market Research and Competitive Analysis | Researches competitive landscape, market trends, build-vs-buy trade-offs, and differentiation opportunities |
 | scope-definition | Scope Definition and Prioritization | Defines scope boundaries (in/out), applies prioritization frameworks, creates the Intent Backlog |
 | requirements-analysis | Requirements Analysis | Structures and formalizes requirements from Ideation artifacts into traceable, testable specifications |
-| user-stories | User Stories | Writes the stories and their priorities in the mob, and assembles the outputs |
+| user-stories | User Stories | Transforms requirements into INVEST-compliant user stories with personas, acceptance criteria, and dependency mapping |
 
 ### Support Stages
 
@@ -73,9 +73,9 @@ Path: `.claude/knowledge/aidlc-product-agent/`
 
 ### Team (Tier 2)
 
-Path: `aidlc/knowledge/aidlc-product-agent/` (the space-level knowledge dir; user-managed)
+Path: `aidlc/spaces/<active-space>/knowledge/aidlc-product-agent/` (the space-level knowledge dir; user-managed)
 
-A space-level directory the team creates when it has content (the engine ships `aidlc/knowledge/` empty). Populated by the team with project-specific
+A space-level directory the team creates when it has content (the engine creates the space's `knowledge/` folder empty). Populated by the team with project-specific
 product knowledge such as existing personas, market research, domain glossaries,
 or stakeholder communication preferences.
 

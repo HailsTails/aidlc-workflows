@@ -124,6 +124,16 @@ async function activeSpaceFor(targetRoot: string): Promise<string> {
   return module.knownActiveSpace(join(targetRoot, "aidlc"), readFileSync(pointer, "utf-8"));
 }
 
+// Loaded from the distribution being installed, so a rebuilt stage gets the
+// same produces_kinds entries that compose writes.
+interface ProducesKinds {
+  addPluginProducesKinds: (content: string, added: readonly string[]) => string;
+  removeOrphanProducesKinds: (content: string, names: readonly string[]) => string;
+}
+async function loadProducesKinds(): Promise<ProducesKinds> {
+  return await import(pathToFileURL(join(DIST_ROOT, ".cursor", "tools", "aidlc-plugin-produces-kinds.ts")).href) as ProducesKinds;
+}
+
 function parseBufferObject(content: Buffer, label: string): JsonObject {
   let parsed: unknown;
   try {
@@ -154,6 +164,7 @@ interface StageContribRecord {
   sensors?: string[];
   consumes?: Array<string | ConsumeEntry>;
   scopes?: string[];
+  requires_stage?: string[];
   required_sections?: string[];
   required_sections_created?: boolean;
 }
@@ -198,6 +209,7 @@ function stageContribRecord(value: unknown): StageContribRecord | null {
     "produces",
     "sensors",
     "scopes",
+    "requires_stage",
     "required_sections",
   ] as const) {
     const entries = value[field];
@@ -305,6 +317,18 @@ function pluginRuntimeState(targetRoot: string): PluginRuntimeState {
     }
   } catch {
     // Existing sidecar/graph evidence remains usable.
+  }
+  // Personas carry compose-time prose fragments too (contributions/agents/).
+  const agentsDir = join(targetRoot, ".cursor", "agents");
+  try {
+    for (const path of filesUnder(agentsDir)) {
+      if (!path.endsWith(".md")) continue;
+      if (!readFileSync(path, "utf-8").includes("<!-- plugin:")) continue;
+      state.composed = true;
+      stageState(basename(path, ".md"));
+    }
+  } catch {
+    // Stage evidence above still applies.
   }
   return state;
 }
@@ -419,6 +443,7 @@ function reconcileCoreOwnedContributions(source: Buffer, state: PluginStageState
     sensors: new Set(listFieldValues(content, "sensors") ?? []),
     consumes: consumeEntryValues(content),
     scopes: new Set(listFieldValues(content, "scopes") ?? []),
+    requires_stage: new Set(listFieldValues(content, "requires_stage") ?? []),
     required_sections: new Set(listFieldValues(content, "required_sections") ?? []),
   };
   const coreHasRequiredSections =
@@ -429,6 +454,7 @@ function reconcileCoreOwnedContributions(source: Buffer, state: PluginStageState
       "produces",
       "sensors",
       "scopes",
+      "requires_stage",
       "required_sections",
     ] as const) {
       const prior = binding.record[field] ?? [];
@@ -520,12 +546,29 @@ function removeConsumesEntries(content: string, artifacts: ReadonlySet<string>):
   return content.replace(blockRe, replacement);
 }
 
+// Cuts a fragment block together with the separator compose inserted with it,
+// and nothing else, so the file's own whitespace survives. Compose wraps the
+// blocks at one insertion point in a newline on each side and joins them with
+// a blank line: a block owns the blank line to the block after it, else the
+// one from the block before it, else its two surrounding newlines.
+function cutPluginFragment(content: string, start: number, end: number): string {
+  if (content.startsWith("\n\n<!-- plugin:", end)) return content.slice(0, start) + content.slice(end + 2);
+  const before = content.slice(0, start);
+  const previousClose = before.lastIndexOf("<!-- /plugin:");
+  if (previousClose !== -1 && /^<!-- \/plugin:[^\n]* -->\n\n$/.test(before.slice(previousClose))) {
+    return content.slice(0, start - 2) + content.slice(end);
+  }
+  const from = content[start - 1] === "\n" ? start - 1 : start;
+  const to = content[end] === "\n" ? end + 1 : end;
+  return content.slice(0, from) + content.slice(to);
+}
+
 function stripPluginFragments(content: string, fragments: readonly PluginFragment[]): string {
   let stripped = content;
   for (const fragment of [...fragments].sort((left, right) => right.start - left.start)) {
-    stripped = stripped.slice(0, fragment.start) + stripped.slice(fragment.end);
+    stripped = cutPluginFragment(stripped, fragment.start, fragment.end);
   }
-  return stripped.replace(/\n{3,}/g, "\n\n");
+  return stripped;
 }
 
 function mergeListValues(content: string, field: string, values: readonly string[]): string | null {
@@ -645,6 +688,17 @@ function locateAnchor(content: string, anchor: string): number {
     const next = content.slice(from).search(/^## /m);
     return next === -1 ? content.length : from + next;
   }
+  // Persona anchors (contributions/agents/): after the delegated-knowledge
+  // preflight block the packager injects, and the end of the authored body
+  // before knowledge absorbed into a reviewer persona.
+  if (anchor === "after-preflight") {
+    const preflight = content.match(/^<!-- aidlc-delegated-knowledge-preflight -->\n[^\n]*\n/m);
+    return preflight ? preflight.index! + preflight[0].length : -1;
+  }
+  if (anchor === "end-of-body") {
+    const absorbed = content.indexOf("\n---\n\n<!-- Absorbed at build time");
+    return absorbed === -1 ? content.length : absorbed;
+  }
   return -1;
 }
 
@@ -709,11 +763,97 @@ function spliceFragment(content: string, fragment: PluginFragment): string | nul
   );
 }
 
+// A recorded requires_stage edge is re-applied onto the incoming stage only if
+// it still holds after this install, under the compiler's own rule: the
+// dependency exists, and its number sorts before the target's. The inventory is
+// the one the install leaves behind: every stage the distribution ships, plus
+// every installed stage the installer does not manage (a plugin stage stays on
+// disk across a reinstall); a stage the prior receipt manages but the
+// distribution dropped is removed. The post-install compile seeds from the
+// shipped stage-graph.json, so a stage pinned there keeps its full number
+// (prefix, then index) even when its file sits in another phase directory; a
+// stage with no row there takes its phase directory as prefix and seeds past
+// that prefix's max. A stale edge is still stripped from the installed file's
+// base, so the upgrade proceeds; it is simply not re-created.
+const PHASE_ORDER = ["initialization", "ideation", "inception", "construction", "operation"];
+type RequiresEdgeHolds = (target: string, dependency: string) => boolean;
+function requiresEdgeOracle(targetRoot: string, priorReceipt: InstallReceipt | null): RequiresEdgeHolds {
+  const phaseBySlug = new Map<string, number>();
+  for (const [root, retainedOnly] of [[DIST_ROOT, false], [targetRoot, true]] as const) {
+    for (const [index, phase] of PHASE_ORDER.entries()) {
+      let names: string[];
+      try {
+        names = readdirSync(join(root, ".cursor", "aidlc-common", "stages", phase));
+      } catch {
+        continue;
+      }
+      for (const name of names) {
+        const slug = name.endsWith(".md") ? name.slice(0, -3) : "";
+        if (!slug || phaseBySlug.has(slug)) continue;
+        const rel = `.cursor/aidlc-common/stages/${phase}/${name}`;
+        if (retainedOnly && priorReceipt?.managedFiles[rel] !== undefined) continue;
+        phaseBySlug.set(slug, index);
+      }
+    }
+  }
+  let pinned: Map<string, [number, number]> | null = null;
+  try {
+    const rows = JSON.parse(
+      readFileSync(join(DIST_ROOT, ".cursor", "tools", "data", "stage-graph.json"), "utf-8"),
+    ) as Array<{ slug?: string; number?: string }>;
+    const numbers = new Map<string, [number, number]>();
+    for (const row of rows) {
+      const [prefix, index] = (row.number ?? "").split(".").map((part) => Number.parseInt(part, 10));
+      if (row.slug && Number.isFinite(prefix) && Number.isFinite(index)) numbers.set(row.slug, [prefix, index]);
+    }
+    pinned = numbers;
+  } catch {
+    // Unreadable shipped graph: same-prefix ordering cannot be verified.
+  }
+  return (target, dependency) => {
+    if (target === dependency) return false;
+    const targetPhase = phaseBySlug.get(target);
+    const dependencyPhase = phaseBySlug.get(dependency);
+    if (targetPhase === undefined || dependencyPhase === undefined) return false;
+    const targetNumber = pinned?.get(target);
+    const dependencyNumber = pinned?.get(dependency);
+    const targetPrefix = targetNumber?.[0] ?? targetPhase;
+    const dependencyPrefix = dependencyNumber?.[0] ?? dependencyPhase;
+    if (dependencyPrefix !== targetPrefix) return dependencyPrefix < targetPrefix;
+    if (pinned === null) return false;
+    // Same prefix: an unpinned stage seeds past the prefix max, so it follows
+    // every pinned one; two unpinned stages are seeded in their own edge order.
+    if (dependencyNumber === undefined) return targetNumber === undefined;
+    if (targetNumber === undefined) return true;
+    return dependencyNumber[1] < targetNumber[1];
+  };
+}
+
+// An edge the rebuild refused to re-create is no longer the plugin's
+// contribution: drop it from the stage's records, so doctor does not report it
+// missing and the next reinstall recognises the file this one writes.
+function retireRequiresEdges(state: PluginStageState, retired: readonly string[]): void {
+  if (retired.length === 0) return;
+  for (const binding of state.records) {
+    const prior = binding.record.requires_stage ?? [];
+    const retained = prior.filter((value) => !retired.includes(value));
+    if (retained.length === prior.length) continue;
+    if (retained.length > 0) binding.raw.requires_stage = retained;
+    else delete binding.raw.requires_stage;
+    binding.record.requires_stage = retained;
+    binding.sidecar.dirty = true;
+    if (Object.keys(binding.raw).length === 0) delete binding.sidecar.data[binding.slug];
+  }
+}
+
 function rebuildPluginComposedStage(
   source: Buffer,
   current: Buffer,
   state: PluginStageState,
-): { desired: Buffer; base: Buffer } | null {
+  target: string,
+  requiresEdgeHolds: RequiresEdgeHolds,
+  producesKinds: ProducesKinds,
+): { desired: Buffer; base: Buffer; retiredRequires: string[] } | null {
   if (state.unsafe) return null;
   const installed = current.toString("utf-8");
   const fragments = pluginFragments(installed);
@@ -724,6 +864,7 @@ function rebuildPluginComposedStage(
     sensors: new Set<string>(),
     consumes: new Set<string>(),
     scopes: new Set<string>(),
+    requires_stage: new Set<string>(),
     required_sections: new Set<string>(),
   };
   let requiredSectionsCreated = false;
@@ -732,6 +873,7 @@ function rebuildPluginComposedStage(
       "produces",
       "sensors",
       "scopes",
+      "requires_stage",
       "required_sections",
     ] as const) {
       for (const value of record[field] ?? []) owned[field].add(value);
@@ -742,13 +884,14 @@ function rebuildPluginComposedStage(
     requiredSectionsCreated ||= record.required_sections_created === true;
   }
 
-  const ordered: Record<"produces" | "sensors" | "scopes" | "required_sections", string[]> = {
+  const ordered: Record<"produces" | "sensors" | "scopes" | "requires_stage" | "required_sections", string[]> = {
     produces: [],
     sensors: [],
     scopes: [],
+    requires_stage: [],
     required_sections: [],
   };
-  for (const field of ["produces", "sensors", "scopes", "required_sections"] as const) {
+  for (const field of ["produces", "sensors", "scopes", "requires_stage", "required_sections"] as const) {
     const values = listFieldValues(installed, field);
     if (owned[field].size > 0 && values === null) return null;
     ordered[field] = (values ?? []).filter((value) => owned[field].has(value));
@@ -759,8 +902,10 @@ function rebuildPluginComposedStage(
 
   let base = stripPluginFragments(installed, fragments);
   base = removeListValues(base, "produces", owned.produces, false);
+  base = producesKinds.removeOrphanProducesKinds(base, [...owned.produces]);
   base = removeListValues(base, "sensors", owned.sensors, false);
   base = removeListValues(base, "scopes", owned.scopes, false);
+  base = removeListValues(base, "requires_stage", owned.requires_stage, false);
   base = removeConsumesEntries(base, owned.consumes);
   base = removeListValues(
     base,
@@ -770,11 +915,21 @@ function rebuildPluginComposedStage(
   );
 
   let desired: string | null = source.toString("utf-8");
+  const shippedProduces = new Set(listFieldValues(desired, "produces") ?? []);
   desired = mergeListValues(desired, "produces", ordered.produces);
   if (desired === null) return null;
+  desired = producesKinds.addPluginProducesKinds(
+    desired,
+    ordered.produces.filter((name) => !shippedProduces.has(name)),
+  );
   desired = mergeListValues(desired, "sensors", ordered.sensors);
   if (desired === null) return null;
   desired = mergeListValues(desired, "scopes", ordered.scopes);
+  if (desired === null) return null;
+  const replayedRequires = ordered.requires_stage.filter((dependency) =>
+    requiresEdgeHolds(target, dependency)
+  );
+  desired = mergeListValues(desired, "requires_stage", replayedRequires);
   if (desired === null) return null;
   desired = mergeConsumes(desired, consumes);
   if (desired === null) return null;
@@ -790,6 +945,9 @@ function rebuildPluginComposedStage(
   return {
     desired: Buffer.from(desired, "utf-8"),
     base: Buffer.from(base, "utf-8"),
+    retiredRequires: ordered.requires_stage.filter((dependency) =>
+      !replayedRequires.includes(dependency)
+    ),
   };
 }
 
@@ -858,6 +1016,8 @@ function isRuntimeOwnedManagedFile(
   return (
     rel === ".cursor/tools/data/stage-graph.json" ||
     rel === ".cursor/tools/data/scope-grid.json" ||
+    // The composed tables; an install from before them composed them into SKILL.md.
+    rel === ".cursor/skills/aidlc/tables.md" ||
     rel === ".cursor/skills/aidlc/SKILL.md"
   );
 }
@@ -955,7 +1115,7 @@ function mergeHooks(sourcePath: string, targetPath: string): string {
 
 const RETIRED_SHIPPED_ALLOW = new Set(["Shell(bun)"]);
 
-function mergeCli(sourcePath: string, targetPath: string, priorReceipt: InstallReceipt | null): string {
+function mergeCli(sourcePath: string, targetPath: string): string {
   const source = parseObject(sourcePath);
   const existing = existsSync(targetPath) ? parseObject(targetPath) : {};
   const sourcePermissions = source.permissions;
@@ -967,11 +1127,10 @@ function mergeCli(sourcePath: string, targetPath: string, priorReceipt: InstallR
 
   const shippedAllow = stringArray(sourcePermissions.allow, `${sourcePath}: permissions.allow`);
   const shippedDeny = stringArray(sourcePermissions.deny, `${sourcePath}: permissions.deny`);
-  const priorCliHash = priorReceipt?.managedFiles[".cursor/cli.json"];
-  const isOwnedCli = priorCliHash !== undefined && existsSync(targetPath) &&
-    sha256(readFileSync(targetPath)) === priorCliHash;
+  // The allow entry earlier releases shipped, which covered every bun command;
+  // the narrower shipped entries replace it on refresh.
   const projectAllow = stringArray(existingPermissions?.allow, `${targetPath}: permissions.allow`)
-    .filter((entry) => !isOwnedCli || !RETIRED_SHIPPED_ALLOW.has(entry));
+    .filter((entry) => !RETIRED_SHIPPED_ALLOW.has(entry));
   const projectDeny = stringArray(existingPermissions?.deny, `${targetPath}: permissions.deny`);
   const conflicts = [
     ...shippedAllow.filter((entry) => projectDeny.includes(entry)),
@@ -1069,6 +1228,10 @@ export async function install(targetDir: string): Promise<void> {
   const activeSpace = await activeSpaceFor(targetRoot);
   const selectedPlugins = activePluginSelection(targetRoot);
   const pluginRuntime = pluginRuntimeState(targetRoot);
+  const requiresEdgeHolds = requiresEdgeOracle(targetRoot, priorReceipt);
+  // Loaded when a plugin composed into this install, the only case in which the
+  // loop below rebuilds a stage.
+  const pluginProducesKinds = pluginRuntime.stages.size > 0 ? await loadProducesKinds() : null;
   const managedFiles: Record<string, string> = {};
 
   for (const top of [".cursor", "aidlc"]) {
@@ -1096,15 +1259,28 @@ export async function install(targetDir: string): Promise<void> {
       );
       let pluginBase: Buffer | undefined;
       let rebuiltPluginStage = false;
+      let retiredRequires: string[] = [];
       const pluginStage =
-        rel.startsWith(".cursor/aidlc-common/stages/") && rel.endsWith(".md")
+        (rel.startsWith(".cursor/aidlc-common/stages/") || rel.startsWith(".cursor/agents/")) &&
+        rel.endsWith(".md")
           ? pluginRuntime.stages.get(basename(rel, ".md"))
           : undefined;
-      if (targetBytes && pluginStage) {
-        const rebuilt = rebuildPluginComposedStage(sourceBytes, targetBytes, pluginStage);
+      if (targetBytes && pluginStage && pluginProducesKinds) {
+        // Rebuild from the content this install writes (managedContent), not
+        // the raw distribution bytes, so the rebuilt file is what the install
+        // would write and its receipt comparison holds.
+        const rebuilt = rebuildPluginComposedStage(
+          desired,
+          targetBytes,
+          pluginStage,
+          basename(rel, ".md"),
+          requiresEdgeHolds,
+          pluginProducesKinds,
+        );
         if (rebuilt) {
           desired = rebuilt.desired;
           pluginBase = rebuilt.base;
+          retiredRequires = rebuilt.retiredRequires;
           rebuiltPluginStage = true;
         }
       }
@@ -1119,17 +1295,20 @@ export async function install(targetDir: string): Promise<void> {
         // Already current, including an active-space-adjusted Cursor surface.
         if (pluginStage && rebuiltPluginStage) {
           reconcileCoreOwnedContributions(sourceBytes, pluginStage);
+          retireRequiresEdges(pluginStage, retiredRequires);
         }
       } else if (priorReceipt?.managedFiles[rel] !== undefined) {
-        const unchangedSinceInstall = pluginStage
-          ? pluginBase !== undefined &&
-            sha256(pluginBase) === priorReceipt.managedFiles[rel]
-          : sha256(receiptComparableContent(rel, targetBytes!, activeSpace)) ===
+        // A composed file is compared without its plugin contributions.
+        const comparable = pluginStage ? pluginBase : targetBytes;
+        const unchangedSinceInstall =
+          comparable !== undefined &&
+          sha256(receiptComparableContent(rel, comparable, activeSpace)) ===
             priorReceipt.managedFiles[rel];
         if (unchangedSinceInstall || runtimeOwned) {
           actions.push({ kind: "write", target, content: desired });
           if (pluginStage && rebuiltPluginStage) {
             reconcileCoreOwnedContributions(sourceBytes, pluginStage);
+            retireRequiresEdges(pluginStage, retiredRequires);
           }
         } else {
           collisions.push(rel);
@@ -1142,6 +1321,12 @@ export async function install(targetDir: string): Promise<void> {
 
   for (const sidecar of pluginRuntime.sidecars) {
     if (!sidecar.dirty) continue;
+    // Compose and plugin sync refuse an empty sidecar, so a reconciliation
+    // that leaves no record removes the file instead of writing `{}`.
+    if (Object.keys(sidecar.data).length === 0) {
+      actions.push({ kind: "remove", target: sidecar.path });
+      continue;
+    }
     actions.push({
       kind: "write",
       target: sidecar.path,
@@ -1150,7 +1335,7 @@ export async function install(targetDir: string): Promise<void> {
   }
 
   for (const [rel, priorHash] of Object.entries(priorReceipt?.managedFiles ?? {})) {
-    if (sharedJson.has(rel) || Object.hasOwn(managedFiles, rel)) continue;
+    if (Object.hasOwn(managedFiles, rel)) continue;
     const target = join(targetRoot, rel);
     if (!existsSync(target)) continue;
     const comparable = receiptComparableContent(
@@ -1168,7 +1353,7 @@ export async function install(targetDir: string): Promise<void> {
   const hooksTarget = join(targetRoot, ".cursor", "hooks.json");
   const cliTarget = join(targetRoot, ".cursor", "cli.json");
   const hooks = mergeHooks(join(DIST_ROOT, ".cursor", "hooks.json"), hooksTarget);
-  const cli = mergeCli(join(DIST_ROOT, ".cursor", "cli.json"), cliTarget, priorReceipt);
+  const cli = mergeCli(join(DIST_ROOT, ".cursor", "cli.json"), cliTarget);
   actions.push({ kind: "write", target: hooksTarget, content: hooks });
   actions.push({ kind: "write", target: cliTarget, content: cli });
 

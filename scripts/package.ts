@@ -1,34 +1,36 @@
 #!/usr/bin/env bun
+import { walkPluginFiles } from "../core/tools/aidlc-plugin-validate.ts";
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
 //
-//   bun scripts/package.ts            regenerate dist/{claude,kiro,kiro-ide,codex}
+//   bun scripts/package.ts            regenerate dist/ and dist-release/ for every harness, plus plugins
 //   bun scripts/package.ts --check     determinism guard (exit 1 on mismatch)
 //   bun scripts/package.ts <name>      regenerate just one harness
 //   bun scripts/package.ts <name> --check
 //
-// PIPELINE PER HARNESS (per the engine design, generalized from the proven S4 prototype and
-// the package-codex.ts engine):
+// PIPELINE PER HARNESS:
 //   1. COPY core/<src> → dist/<name>/<harnessDir>/<dst>, substituting
-//      {{HARNESS_DIR}} → harnessDir in .md prose (the ONE transform class) and
+//      {{HARNESS_DIR}} -> harnessDir in .md prose (see transform()) and
 //      applying the manifest's rules-dir rename.
 //   2. COPY harness/<name>/<src> → dist/<name>/<harnessDir>/<dst> (authored
 //      surfaces: orchestrator skill, settings/config), same token substitution
 //      on .md; render neutral onboarding and native setup from their skeletons.
 //   3. COMPILE the stage graph into the assembled tree (emits harness-correct
 //      stage-graph.json + scope-grid.json — compiled data lives only in dist).
-//   4. GENERATE runners into the assembled tree by composing aidlc-runner-gen's
-//      exported render fns under AIDLC_HARNESS_DIR (the proven codex idiom, now
-//      uniform for all shipped harnesses).
-//   5. EMIT via harness/<name>/emit.ts if the manifest declares one (codex only
-//      today: config.toml, hooks.json, trust-seed, agent TOMLs, .agents/skills).
+//   4. GENERATE runners into the assembled tree by running aidlc-runner-gen's
+//      write and scopes CLIs under AIDLC_HARNESS_DIR (skipped when the manifest
+//      sets skipRunnerGen).
+//   5. EMIT via harness/<name>/emit.ts if the manifest declares one (codex,
+//      copilot and opencode today; for codex: config.toml, hooks.json,
+//      trust-seed, agent TOMLs, .agents/skills).
 //   6. REFRESH generated stage/scope table regions in the assembled orchestrator
 //      skill from the just-compiled graph and scope grid.
 //
-// THE TRANSFORM CLASS (T5 — the only permitted text transform): the harness-dir
-// token. core/ prose carries {{HARNESS_DIR}}; here it becomes `.claude`/`.kiro`/
-// `.codex`. Truthful carve-outs in core (workspace-detection's 3-dir list, the
-// `$CLAUDE_PROJECT_DIR on Claude Code` note) never carried the token, so they
-// pass through untouched.
+// THE TOKENS: core/ prose carries {{HARNESS_DIR}}, {{INVOKE}}, {{TOOL_PREFIX}},
+// {{TRUSTED_NAMESPACE}} and {{OPTION_LETTERS}}; here they become the harness's
+// own values (the dir is `.claude`/`.kiro`/`.codex`/`.aidlc`/`.cursor`; the
+// letters are optionLetters()). Truthful carve-outs in core
+// (workspace-detection's 3-dir list, the `$CLAUDE_PROJECT_DIR on Claude Code`
+// note) never carried the token, so they pass through untouched.
 //
 // --check builds the complete copy-channel, native-release, and plugin
 // projections twice in independent temp roots, then compares them byte for
@@ -43,7 +45,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -60,40 +61,47 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import {
-  createPluginRuntimePort,
-  createSharedPluginRuntimePort,
-  preparePluginRuntimeArtifacts,
-  type PluginRuntimePort,
-} from "./plugin-runtime.ts";
-import type { HarnessManifest } from "./manifest-types.ts";
+import { runtimeSourceRole } from "./runtime-source.ts";
+import { prepareRuntimeModuleText, substituteRuntimeInvocation } from "./runtime-module.ts";
+import { substituteAuthoredTokens } from "./authored-text.ts";
+import { prepareClaudeSettingsText } from "./claude-settings.ts";
+import { projectDeclaredPluginRuntime } from "./plugin-runtime-projection.ts";
+import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
+import { bindPluginHookSources } from "../core/tools/aidlc-plugin-hook-definition.ts";
+import { createPluginRuntimeCompiler, createPluginRuntimeSourcePort, createPluginRuntimeArtifactPort, prepareProjectedPluginRuntimeArtifacts, publishPluginRuntimeArtifacts, type RuntimePreparationFailure, type RuntimePublication } from "./plugin-runtime.ts";
+import { createPackageRuntimeCliPort, reportPackageRuntimeFailure } from "./package-runtime-cli.ts";
+import { prepareCoreRuntimeArtifacts } from "./core-runtime.ts";
+import { preparePluginAuthoringArtifacts, projectPluginTargets } from "./plugin-authoring-data.ts";
+import { pluginHookRows, renderPluginHookContributions } from "./plugin-contributions.ts";
+import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
   agentNameFromPath,
+  inlineAgentSet,
   injectDelegatedKnowledgePreflight,
   reviewerAgentSet,
 } from "./agent-knowledge.ts";
-import {
-  pluginHookRows,
-  renderPluginHookContributions,
-  pluginTokens,
-  substitutePluginTokens,
-} from "./plugin-contributions.ts";
-import { isModelHarness } from "../core/tools/aidlc-model-policy.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
+import { projectOnboardingDocuments } from "./onboarding-projection.ts";
+import { coreFileProjection, coreProjectionCoverage, coreProjectionDeclarations } from "./core-projection-contract.ts";
+import { projectHarnessRuntimeData } from "./harness-runtime-data.ts";
+import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeRequirement } from "./harness-surface-projection.ts";
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
+import { earlierReleasesReadSkill, prepareEarlierReleaseSkillText } from "./earlier-release-regions.ts";
+import { planProjectionMetadata, prepareProjectionMetadata } from "./projection-metadata.ts";
+import { freshWorkspaceSeed } from "./workspace-seed.ts";
+import { GENERATED_SKILL_REGIONS, replaceGeneratedSkillRegion } from "./generated-skill-regions.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
 import {
-  buildPluginProjection as emitPluginProjection, writePluginHookWiring,
+  buildPluginProjection as emitPluginProjection,
+  writeFirstPartyCatalogues,
   type PluginTarget,
   type PluginTargetTable,
-  type PluginProjectionResult,
 } from "../core/tools/aidlc-plugin-emit.ts";
 import {
   type Harness,
   readEnvCap,
   readMemoryCap,
-  TIERS,
   type Tier,
 } from "../core/tools/aidlc-tiers.ts";
 import {
@@ -101,7 +109,6 @@ import {
   modelAgentName,
   resolveModelPolicy,
   serializeAgentTiers,
-  writeCodexAgentSurface,
   writeKiroAgentSurface,
   writeKiroCliSurface,
   writeMarkdownAgentSurface,
@@ -114,12 +121,16 @@ import {
   trustedCommand,
 } from "../core/tools/aidlc-command.ts";
 import { copyChannelDispatcherCommands, copyChannelToolScripts, ROUTES, TOOLS } from "../core/tools/aidlc.ts";
-import { parseSensorManifest } from "../core/tools/aidlc-sensor-schema.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
-import { copyStartsWithout, sha256Bytes, walkFiles, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
+import { copyStartsWithout, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
 import { kiroIdeSteering } from "../core/tools/aidlc-includes.ts";
+import { SHIPPED_FORMAT_DOCS } from "../core/tools/aidlc-inline-context.ts";
 import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
+
+type PackageRuntimeOutcome = { readonly kind: "completed" } | RuntimePreparationFailure;
+type PackageTreeOutcome = { readonly kind: "completed"; readonly files: readonly string[] } | RuntimePreparationFailure;
+type PackageCheckOutcome = { readonly kind: "checked"; readonly problems: readonly string[] } | RuntimePreparationFailure;
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CORE_ROOT = join(REPO_ROOT, "core");
@@ -165,40 +176,10 @@ const BUILD_VERSION = releaseBuildVersion();
 if (BUILD_VERSION !== AIDLC_VERSION) {
   console.error(`[version] stamping projections with ${BUILD_VERSION_ENV}=${BUILD_VERSION}`);
 }
-const VERSION_ASSIGNMENT = /^export const AIDLC_VERSION = "[^"]+";$/m;
-
-function stampVersionModule(content: string): string {
-  if (BUILD_VERSION === AIDLC_VERSION) return content;
-  const matches = content.match(new RegExp(VERSION_ASSIGNMENT.source, "gm")) ?? [];
-  if (matches.length !== 1) {
-    throw new Error(
-      `aidlc-version.ts must declare exactly one AIDLC_VERSION assignment, found ${matches.length}`,
-    );
-  }
-  return content.replace(VERSION_ASSIGNMENT, `export const AIDLC_VERSION = "${BUILD_VERSION}";`);
-}
 
 // Neutral and native onboarding skeletons (scripts/onboarding.ts).
 const ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding.md");
 const HARNESS_ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding-harness.md");
-const HARNESS_TOKEN = /\{\{HARNESS_DIR\}\}/g;
-const INVOKE_TOKEN = /\{\{INVOKE\}\}/g;
-const TOOL_PREFIX_TOKEN = /\{\{TOOL_PREFIX\}\}/g;
-const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
-// Matched by PREFIX (mirroring aidlc-init.ts's marker scan): the begin marker
-// embeds the harness-projected invocation, so its tail varies per channel.
-const GENERATED_SKILL_REGIONS = [
-  {
-    verb: "stage-table",
-    begin: "<!-- BEGIN: compiled stage graph via ",
-    end: "<!-- END: compiled stage graph -->",
-  },
-  {
-    verb: "scope-table",
-    begin: "<!-- BEGIN: compiled scope grid via ",
-    end: "<!-- END: compiled scope grid -->",
-  },
-] as const;
 
 // Harnesses the packager builds = every harness/<name>/ that carries a
 // manifest.ts. DISCOVERED, not hardcoded: adding harness #N is one harness/<n>/
@@ -213,7 +194,7 @@ function discoverHarnessNames(): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Transform: the ONE class. Token substitution on authored prose and the
+// Transform: token substitution on authored prose and the
 // TypeScript invocation seam; compiled JSON is regenerated per tree.
 // ---------------------------------------------------------------------------
 function substituteInvocationTokens(
@@ -221,26 +202,35 @@ function substituteInvocationTokens(
   harnessDir: string,
   invoke = `bun ${harnessDir}/tools/aidlc.ts`,
 ): string {
-  const toolPrefix = invoke === "aidlc" ? `${TRUSTED_COMMAND_PREFIX} ` : `bun ${harnessDir}/tools/`;
-  return s
-    .replace(INVOKE_TOKEN, invoke)
-    .replace(TOOL_PREFIX_TOKEN, toolPrefix)
-    .replace(TRUSTED_NAMESPACE_TOKEN, TRUSTED_ROUTE_NAMESPACE);
+  return substituteRuntimeInvocation({ source: s, harnessDir, invoke });
 }
 
+// The letters a questions file gives a question's options before `X. Other`:
+// A to the last option the harness's question box shows besides its own Other
+// row (manifest questionOptions), A-E for a box that shows five or more.
+function optionLetters(m: HarnessManifest): string {
+  const shown = m.questionOptions ?? 5;
+  if (!Number.isInteger(shown) || shown < 2 || shown > 5) {
+    throw new Error(`[${m.name}] questionOptions must be a whole number from 2 to 5, got ${shown}`);
+  }
+  return `A-${String.fromCharCode(64 + shown)}`;
+}
+
+// The letters are substituted only where the caller passes them, so a path
+// that never does leaves the token for the leftover check instead of A-E.
 function substituteToken(
   s: string,
   harnessDir: string,
   invoke = `bun ${harnessDir}/tools/aidlc.ts`,
+  letters?: string,
 ): string {
-  return substituteInvocationTokens(s.replace(HARNESS_TOKEN, harnessDir), harnessDir, invoke);
+  return substituteAuthoredTokens({ source: s, harnessDir, invoke, ...(letters === undefined ? {} : { letters }) });
 }
 
 // Rewrite in-prose `<harnessDir>/rules/` → `<harnessDir>/<rulesRename>/` for a
 // harness that renames its rules dir (kiro: steering, codex: aidlc-rules).
 // Anchored on the post-substitution harness-dir form so it can't touch an
-// unrelated `rules/` mention — the proven STEERING_RENAME step from the spike
-// packagers. No-op when rulesRename is null (claude).
+// unrelated `rules/` mention. No-op when rulesRename is null (claude).
 function applyRulesRename(s: string, harnessDir: string, rulesRename: string | null): string {
   if (!rulesRename) return s;
   // Codex's native Starlark permission file is not an AIDLC markdown rule.
@@ -359,6 +349,36 @@ function projectKiroAgentJson(srcPath: string, content: Buffer): Buffer {
   );
 }
 
+// The authored Kiro agent JSONs preload the shared knowledge with a glob; a
+// dispatched agent gets the shared methodology files only, as every other
+// harness's preflight names them (SHIPPED_FORMAT_DOCS is the one list).
+function projectKiroSharedKnowledge(content: Buffer): Buffer {
+  const parsed = JSON.parse(content.toString("utf-8")) as { resources?: unknown };
+  if (!Array.isArray(parsed.resources)) return content;
+  if (kiroSharedKnowledgeRequirement({ resources: parsed.resources }) === "unchanged") return content;
+  parsed.resources = expandKiroSharedKnowledge({
+    resources: parsed.resources,
+    availableFiles: readdirSync(join(CORE_ROOT, "knowledge", "aidlc-shared")),
+    formatDocuments: SHIPPED_FORMAT_DOCS,
+  });
+  return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
+}
+
+// Every hook command of an authored Kiro agent JSON gets the row's
+// hookCommandSuffix (the manifest says why), so the authored files carry the
+// command an author writes and no hook can ship without it.
+function projectKiroHookCommands(content: Buffer, suffix: string | undefined): Buffer {
+  if (suffix === undefined) return content;
+  const parsed = JSON.parse(content.toString("utf-8")) as { hooks?: Record<string, Array<{ command?: unknown }>> };
+  if (parsed.hooks === undefined) return content;
+  for (const rows of Object.values(parsed.hooks)) {
+    for (const row of rows) {
+      if (typeof row.command === "string") row.command = `${row.command}${suffix}`;
+    }
+  }
+  return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
+}
+
 // Merge the tier-derived chat.modelDefaults entries into an authored Kiro
 // settings/cli.json: one entry per distinct pinned Kiro model, carrying the
 // highest sharing tier's effort (the collapse rule - kiroModelDefaults()).
@@ -379,6 +399,7 @@ function transform(
   rulesRename: string | null,
   harness?: Harness,
   invoke = `bun ${harnessDir}/tools/aidlc.ts`,
+  letters?: string,
 ): Buffer {
   if (srcPath.endsWith(".md")) {
     // Reviewer knowledge absorption runs FIRST (on the raw core text) so the
@@ -389,82 +410,34 @@ function transform(
       s = absorbReviewerKnowledge(s, agentName, CORE_ROOT);
       s = injectDelegatedKnowledgePreflight(s, agentName, harnessDir);
     }
-    s = substituteToken(s, harnessDir, invoke);
+    s = substituteToken(s, harnessDir, invoke, letters);
     s = applyRulesRename(s, harnessDir, rulesRename);
     if (harness) s = projectTierFrontmatter(s, srcPath, harness);
-    // Cursor, opencode, and Copilot persona bodies are mutable active-space
-    // pointers. Ship their memory references on the default seed so the first
-    // startup's repointHarnessIncludes(project, "default") is byte-identical;
-    // later space switches still rewrite the same concrete segment in place.
+    // Cursor, opencode, and Copilot persona bodies read the method by path:
+    // the engine's git-ignored copy of the active space's memory
+    // (aidlc-includes.ts ACTIVE_MEMORY_DIR), the same path on every install.
     const posixPath = srcPath.split(sep).join("/");
     if (
       (harness === "cursor" || harness === "opencode" || harness === "copilot") &&
       posixPath.includes("/agents/") &&
       posixPath.endsWith("-agent.md")
     ) {
-      s = s.replaceAll("aidlc/spaces/<active-space>/memory/", "aidlc/spaces/default/memory/");
+      s = s.replaceAll("aidlc/spaces/<active-space>/memory/", "aidlc/active-memory/");
     }
     return Buffer.from(s, "utf-8");
   }
   if (srcPath.endsWith(".ts")) {
-    const source = basename(srcPath) === "aidlc-version.ts"
-      ? stampVersionModule(content.toString("utf-8"))
-      : content.toString("utf-8");
-    return Buffer.from(
-      substituteInvocationTokens(source, harnessDir, invoke),
-      "utf-8",
-    );
+    const prepared = prepareRuntimeModuleText({ file: basename(srcPath), source: content.toString("utf-8"), harnessDir, invoke, sourceVersion: AIDLC_VERSION, buildVersion: BUILD_VERSION });
+    if (prepared.kind === "refused") throw new Error(prepared.message);
+    return Buffer.from(prepared.content, "utf-8");
   }
   if (/\.(?:hook|json|toml)$/.test(srcPath)) {
     return Buffer.from(
-      substituteToken(content.toString("utf-8"), harnessDir, invoke),
+      substituteToken(content.toString("utf-8"), harnessDir, invoke, letters),
       "utf-8",
     );
   }
   return content;
-}
-
-// Append manifest-declared frontmatter lines to a projected .md, just before
-// the closing `---` of its YAML block (manifest-types.ts frontmatterAdditions).
-// Hard errors, never silent: the file must open with a frontmatter block, and
-// no added line's key may already exist in it - if core later grows the same
-// key, the build fails loudly instead of shipping a double.
-function applyFrontmatterAdditions(
-  content: string,
-  lines: string[],
-  file: string,
-): string {
-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n(---\r?\n)/);
-  if (!m) {
-    throw new Error(
-      `frontmatterAdditions: ${file} has no leading frontmatter block to extend.`,
-    );
-  }
-  const fm = m[1];
-  const added = new Set<string>();
-  for (const line of lines) {
-    if (/^\s/.test(line)) continue;
-    const key = line.split(":")[0]?.trim();
-    if (!key || !/^[A-Za-z_][\w-]*$/.test(key)) {
-      throw new Error(
-        `frontmatterAdditions: line "${line}" for ${file} does not start with a YAML key.`,
-      );
-    }
-    if (added.has(key)) {
-      throw new Error(
-        `frontmatterAdditions: ${file} declares "${key}:" more than once in additions.`,
-      );
-    }
-    added.add(key);
-    if (new RegExp(`^${key}:`, "m").test(fm)) {
-      throw new Error(
-        `frontmatterAdditions: ${file} already declares "${key}:" in core - ` +
-          `resolve the collision instead of shipping a duplicate key.`,
-      );
-    }
-  }
-  const insertAt = m[0].length - m[2].length;
-  return `${content.slice(0, insertAt)}${lines.join("\n")}\n${content.slice(insertAt)}`;
 }
 
 function* walk(dir: string): Generator<string> {
@@ -515,21 +488,22 @@ const COMPILED_DATA = ["tools/data/stage-graph.json", "tools/data/scope-grid.jso
 const HARNESS_DATA = "tools/data/harness.json";
 const AGENT_TIERS_DATA = "tools/data/agent-tiers.json";
 const SETTINGS_SCHEMA_DATA = "tools/data/aidlc-settings.schema.json";
-const STAMP_DATA = "tools/data/aidlc-stamp.json";
-const PROJECTION_DATA = "tools/data/aidlc-projection.json";
 
-// The relocated method ("memory") — the single hand-editable source of truth
+const PROJECTION_DATA = "tools/data/aidlc-projection.json";
+// The lines the plugin compose hook adds to a plugin's agent
+// (manifest-types.ts pluginAgentFrontmatter), in Markdown so the native
+// release's agent rewrites reach them.
+const PLUGIN_AGENT_DATA = "tools/data/plugin-agent.md";
+
+// The method ("memory"): the single hand-editable source of truth
 // for the layered practices (org/team/project + phases/). It is HARNESS-NEUTRAL
 // (identical bytes on every harness — neutral filenames, no {{HARNESS_DIR}}
 // token), so the source dir + the dist destination are constants here, not
-// per-manifest. The authored source already carries the renamed/nested layout
-// (core/rules/aidlc-org.md → core/memory/org.md; flat aidlc-phase-<p>.md →
-// core/memory/phases/<p>.md) — the per-file rename map is realized by that move,
-// so the packager copies the tree verbatim. The destination sits at the
-// WORKSPACE ROOT (beside the harness dir), under the always-present `default`
+// per-manifest, and the packager copies the tree verbatim. The destination sits
+// at the WORKSPACE ROOT (beside the harness dir), under the always-present `default`
 // space, so a fresh `dist/<harness>/` copy ships a resolving method tree and the
-// per-harness native include points at it (Claude @-stub, Kiro resources glob,
-// Codex AGENTS.md/@-mention) — one copy, no drift.
+// per-harness native include points at it (see aidlc-includes.ts) - one copy,
+// no drift.
 const MEMORY_SRC = "memory";
 const MEMORY_DST = join("aidlc", "spaces", "default", "memory");
 
@@ -552,69 +526,23 @@ const PLUGIN_HOOKS_TEMPLATE_SRC = join(
   "scripts",
   "plugin-hooks-template",
 );
-const PLUGIN_HOOKS_TEMPLATE_DST = join(
-  "tools",
-  "data",
-  "plugin-hooks-template",
-);
-const PLUGIN_TARGETS_DST = join("tools", "data", "plugin-targets.json");
-const PLUGIN_AUTHORING_CONTEXT_DST = join(
-  "tools",
-  "data",
-  "plugin-authoring-context.json",
-);
-
-// The active-space CURSOR shipped as part of the workspace shell (SEED). It
-// lives at aidlc/active-space (ABOVE spaces/, not inside memory/) and holds the
-// name of the space the next /aidlc resolves against. Ships pointed at the
-// always-present "default" space so a fresh copy resolves with zero ceremony.
-// NOTE: it is GITIGNORED in the user's workspace (a per-user session cursor,
-// vision 5.1 - teammates legitimately point at different spaces at once), yet
-// dist must SHIP it as part of the shell. The two reconcile: the projected
-// .gitignore ignores aidlc/active-space for the END USER; a clone's first
-// SessionStart or active-intent write atomically recreates the missing pointer
-// and keeps it untracked. The local dist root itself is ignored.
-const ACTIVE_SPACE_REL = join("aidlc", "active-space");
-const ACTIVE_SPACE_VALUE = "default\n";
 
 // Write tools/data/harness.json from manifest data. The runtime reads the
 // rules-subdir and any host-native generated-runner frontmatter from this
 // open-set descriptor. Pretty-printed + trailing newline keeps output
 // diff-friendly and stable under --check.
 function writeHarnessData(treeRoot: string, m: HarnessManifest): void {
-  // A FRESH object, deliberately: the runtime READER tolerates unknown keys, but
-  // this writer alone decides what ships. Anything hand-added to a local
-  // harness.json is erased on the next build, so a new configuration field has
-  // to be added HERE to exist at all.
-  const data: Record<string, unknown> = {
-    schemaVersion: 1,
-    distribution: m.name,
-    productName: m.productName,
-    configNextStep: m.configNextStep,
-    name: m.name,
-    harnessDir: m.harnessDir,
-    rulesSubdir: m.rulesRename ?? "rules",
-    // Always emitted, never defaulted at the writer: the engine must be able to
-    // tell "this harness declares ambient delivery" from "this harness's
-    // manifest predates the field", and only an explicit value does that. The
-    // READER fails closed to "explicit" for an older harness.json.
-    baseRuleDelivery: m.baseRuleDelivery,
-    ...(m.runnerFrontmatterAdditions?.length
-      ? { runnerFrontmatterAdditions: m.runnerFrontmatterAdditions }
-      : {}),
-  };
-  // Emitted only when a manifest sets it, so the three-field output stays
-  // byte-identical for every harness that does not -- which is all of them today.
-  if (m.documentExtractors) data.documentExtractors = m.documentExtractors;
-  // Likewise conditional: only a host whose hooks wait on the person (trust, engine) declares it.
-  if (m.hookActivation) data.hookActivation = m.hookActivation;
-  // Only the Kiro rows declare a layout; the runtime reads it in place of the row name.
-  if (m.kiroLayout) data.kiroLayout = m.kiroLayout;
-  // And only a host that cuts a shell result below the engine's cap.
-  if (m.directiveMaxBytes) data.directiveMaxBytes = m.directiveMaxBytes;
+  const runtimeDescriptor = projectHarnessRuntimeData({ declaration: m });
   const dst = join(treeRoot, HARNESS_DATA);
   mkdirSync(dirname(dst), { recursive: true });
-  writeFileSync(dst, `${JSON.stringify(data, null, 2)}\n`);
+  writeFileSync(dst, `${JSON.stringify(runtimeDescriptor, null, 2)}\n`);
+}
+
+function writePluginAgentData(treeRoot: string, m: HarnessManifest): void {
+  if (!m.pluginAgentFrontmatter?.length) return;
+  const dst = join(treeRoot, PLUGIN_AGENT_DATA);
+  mkdirSync(dirname(dst), { recursive: true });
+  writeFileSync(dst, `---\n${m.pluginAgentFrontmatter.join("\n")}\n---\n`);
 }
 
 function writeAgentTiersData(treeRoot: string): void {
@@ -632,107 +560,29 @@ function writeSettingsSchemaData(treeRoot: string): void {
   writeFileSync(dst, `${JSON.stringify(AIDLC_SETTINGS_SCHEMA, null, 2)}\n`);
 }
 
-function writeProjectionData(outRoot: string, treeRoot: string, m: HarnessManifest): void {
-  const rootIntegrationPaths = new Set(m.rootIntegrations.map((item) => item.path));
-  if (rootIntegrationPaths.size !== m.rootIntegrations.length) {
-    throw new Error(`[${m.name}] duplicate root integration path`);
-  }
-  for (const integration of m.rootIntegrations) {
-    if (!existsSync(join(outRoot, integration.path))) {
-      throw new Error(`[${m.name}] root integration is not projected: ${integration.path}`);
-    }
-  }
-  // A directory that holds only root integrations (.vscode/ for settings.json)
-  // is the project's, not a managed engine directory.
-  const onlyRootIntegrations = (entry: string): boolean => {
-    const files: string[] = [];
-    const visit = (dir: string): void => {
-      for (const name of readdirSync(join(outRoot, dir))) {
-        const rel = `${dir}/${name}`;
-        if (statSync(join(outRoot, rel)).isDirectory()) visit(rel);
-        else files.push(rel);
-      }
-    };
-    visit(entry);
-    return files.length > 0 && files.every((file) => rootIntegrationPaths.has(file));
-  };
-  const managedDirectories = readdirSync(outRoot)
-    .filter((entry) => statSync(join(outRoot, entry)).isDirectory())
-    .filter((entry) => !rootIntegrationPaths.has(entry) && !onlyRootIntegrations(entry))
-    .sort();
-  const allowedTopLevel = new Set([
-    ...managedDirectories,
-    ...m.rootIntegrations.map((item) => item.path.split("/")[0]),
-  ]);
-  const unclassified = readdirSync(outRoot)
-    .filter((entry) => !allowedTopLevel.has(entry))
-    .sort();
-  if (unclassified.length > 0) {
-    throw new Error(`[${m.name}] unclassified projection entries: ${unclassified.join(", ")}`);
-  }
-  const rootIntegrations = m.rootIntegrations.map((integration) => {
-    if (copyStartsWithout(integration) || integration.policy === "json-entries") {
-      // A copy starts without this file (or leaves the team's own in place);
-      // its shipped part rides along so config and the engine can add it
-      // without a download.
-      const dst = join(treeRoot, "tools", "data", "root-blocks", basename(integration.path));
-      mkdirSync(dirname(dst), { recursive: true });
-      writeFileSync(dst, readFileSync(join(outRoot, integration.path)));
-      return integration;
-    }
-    if (integration.policy !== "managed-block") return integration;
-    const bytes = readFileSync(join(outRoot, integration.path));
-    // Every managed block ships a copy inside the harness folder: siblings
-    // read it to combine .gitignore lines, the copy runtime leaves the root
-    // file out, and config and the engine add AI-DLC's part from it.
-    const dst = join(
-      treeRoot,
-      "tools",
-      "data",
-      "root-blocks",
-      integration.marker || basename(integration.path),
-    );
-    mkdirSync(dirname(dst), { recursive: true });
-    writeFileSync(dst, bytes);
-    const currentHash = sha256Bytes(bytes);
-    return {
-      ...integration,
-      legacySignatures: {
-        ...integration.legacySignatures,
-        wholeFileHashes: [
-          ...new Set([
-            ...(integration.legacySignatures?.wholeFileHashes ?? []),
-            currentHash,
-          ]),
-        ],
-      },
-    };
+function projectionDirectories({ outRoot, directory = "" }: { readonly outRoot: string; readonly directory?: string }): readonly string[] {
+  return readdirSync(join(outRoot, directory)).flatMap((entry) => {
+    const path = directory ? `${directory}/${entry}` : entry;
+    return statSync(join(outRoot, path)).isDirectory() ? [path, ...projectionDirectories({ outRoot, directory: path })] : [];
   });
-  const projection = {
-    schemaVersion: 1,
-    distribution: m.name,
-    productName: m.productName,
-    configNextStep: m.configNextStep,
-    ...(m.firstRunSteps ? { firstRunSteps: m.firstRunSteps } : {}),
-    ...(m.editorTerminalApp ? { editorTerminalApp: m.editorTerminalApp } : {}),
-    harnessDir: m.harnessDir,
-    ...(m.onboarding?.harnessDst
-      ? { onboarding: `${m.harnessDir}/${m.onboarding.harnessDst}` }
-      : m.onboarding && !m.onboarding.projectRoot
-        ? { onboarding: `${m.harnessDir}/${m.onboarding.dst}` }
-        : {}),
-    managedDirectories,
-    rootIntegrations: rootIntegrations.map(writtenRootIntegration),
-  };
-  const stamp = {
-    schemaVersion: 1,
-    frameworkVersion: BUILD_VERSION,
-    distribution: m.name,
-    harnessDir: m.harnessDir,
-  };
-  mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
-  writeFileSync(join(treeRoot, PROJECTION_DATA), `${JSON.stringify(projection, null, 2)}\n`);
-  writeFileSync(join(treeRoot, STAMP_DATA), `${JSON.stringify(stamp, null, 2)}\n`);
+}
+
+function writeProjectionData({ outRoot, declaration }: { readonly outRoot: string; readonly declaration: HarnessManifest }): void {
+  const files = Array.from(walk(outRoot), (file) => relative(outRoot, file).split(sep).join("/"));
+  const directories = projectionDirectories({ outRoot });
+  const planned = planProjectionMetadata({ declaration, files, directories });
+  if (planned.kind === "refused") throw new Error(planned.message);
+  const rootFiles = planned.rootPathsToRead.map((path) => {
+    const bytes = readFileSync(join(outRoot, path));
+    return { path, fileName: basename(path), bytes: new Uint8Array(bytes), sha256: sha256Bytes(bytes) };
+  });
+  const prepared = prepareProjectionMetadata({ declaration, files, directories, rootFiles, buildVersion: BUILD_VERSION });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  prepared.artifacts.forEach((artifact) => {
+    const destination = join(outRoot, artifact.file);
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, artifact.bytes);
+  });
 }
 
 // Emit the method ("memory") tree at the WORKSPACE ROOT of the dist tree
@@ -782,35 +632,28 @@ function emitMemorySeed(
   }
 }
 
-function emitPluginAuthoringData(treeRoot: string): void {
-  for (const file of walk(PLUGIN_HOOKS_TEMPLATE_SRC)) {
-    const outPath = join(
-      treeRoot,
-      PLUGIN_HOOKS_TEMPLATE_DST,
-      relative(PLUGIN_HOOKS_TEMPLATE_SRC, file),
-    );
-    mkdirSync(dirname(outPath), { recursive: true });
-    cpSync(file, outPath);
+function publishPluginAuthoringArtifact(input: { readonly treeRoot: string; readonly artifact: { readonly file: string; readonly bytes: Uint8Array }; readonly templateSources: ReadonlyMap<string, string> }): void {
+  const outPath = join(input.treeRoot, input.artifact.file);
+  mkdirSync(dirname(outPath), { recursive: true });
+  const templateSource = input.templateSources.get(input.artifact.file);
+  if (templateSource !== undefined) {
+    cpSync(templateSource, outPath);
+    return;
   }
-  const targetsPath = join(treeRoot, PLUGIN_TARGETS_DST);
-  mkdirSync(dirname(targetsPath), { recursive: true });
-  writeFileSync(
-    targetsPath,
-    `${JSON.stringify(pluginTargets(), null, 2)}\n`,
-  );
-  const contextPath = join(treeRoot, PLUGIN_AUTHORING_CONTEXT_DST);
-  const agents = [...walk(join(CORE_ROOT, "agents"))]
-    .filter((file) => file.endsWith("-agent.md"))
-    .map((file) => basename(file, ".md"))
-    .sort();
-  const stages = [...walk(join(CORE_ROOT, "aidlc-common", "stages"))]
-    .filter((file) => file.endsWith(".md"))
-    .map((file) => basename(file, ".md"))
-    .sort();
-  writeFileSync(
-    contextPath,
-    `${JSON.stringify({ agents, stages }, null, 2)}\n`,
-  );
+  writeFileSync(outPath, input.artifact.bytes);
+}
+
+function emitPluginAuthoringData(treeRoot: string): void {
+  const templates = Array.from(walk(PLUGIN_HOOKS_TEMPLATE_SRC), (file) => ({ file: relative(PLUGIN_HOOKS_TEMPLATE_SRC, file).split(sep).join("/"), bytes: new Uint8Array(readFileSync(file)), source: file }));
+  const prepared = preparePluginAuthoringArtifacts({
+    targets: pluginTargets(),
+    agentNames: Array.from(walk(join(CORE_ROOT, "agents")), (file) => basename(file)),
+    stageNames: Array.from(walk(join(CORE_ROOT, "aidlc-common", "stages")), (file) => basename(file)),
+    templates,
+  });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  const templateSources = new Map(templates.map((template) => [`tools/data/plugin-hooks-template/${template.file}`, template.source]));
+  prepared.artifacts.forEach((artifact) => publishPluginAuthoringArtifact({ treeRoot, artifact, templateSources }));
 }
 
 // Emit the active-space CURSOR (aidlc/active-space -> "default") into the dist
@@ -820,9 +663,82 @@ function emitPluginAuthoringData(treeRoot: string): void {
 // value for every harness (the resolver follows it identically). The projected
 // .gitignore ignores this path for the END USER's workspace.
 function emitActiveSpace(outRoot: string): void {
-  const outPath = join(outRoot, ACTIVE_SPACE_REL);
+  const seed = freshWorkspaceSeed();
+  const outPath = join(outRoot, seed.file);
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, ACTIVE_SPACE_VALUE);
+  writeFileSync(outPath, seed.content);
+}
+
+function writeAgentSurface(input: {
+  readonly treeRoot: string;
+  readonly path: string;
+  readonly content: Buffer;
+  readonly additions: readonly string[];
+}): PackageRuntimeOutcome {
+  const requirements = agentSurfaceRequirements({ path: input.path, additions: input.additions });
+  const inlineAgents = requirements.kind === "inline-role" ? inlineAgentSet(CORE_ROOT) : new Set<string>();
+  const projection = projectAgentSurface({
+    path: input.path, content: input.content.toString("utf-8"), additions: input.additions, inlineAgents,
+  });
+  projection.writes.forEach((artifact) => {
+    const path = join(input.treeRoot, artifact.path);
+    if (artifact.kind === "persona") mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, artifact.kind === "persona" ? input.content : artifact.content);
+  });
+  return projection.kind === "refused" ? { kind: "refused", message: projection.message } : { kind: "completed" };
+}
+
+function writeOnboarding(input: {
+  readonly spec: OnboardingSpec;
+  readonly outRoot: string;
+  readonly treeRoot: string;
+  readonly harnessDir: string;
+  readonly rulesRename: string | null;
+  readonly harness: Harness;
+  readonly invoke: string;
+}): void {
+  const { dst, projectRoot, harnessDst, fills } = input.spec;
+  const neutral = renderNeutralOnboarding(readFileSync(ONBOARDING_SKELETON, "utf-8"));
+  const nativeSkeleton = readFileSync(HARNESS_ONBOARDING_SKELETON, "utf-8");
+  const documents = projectOnboardingDocuments({
+    neutral, nativeSkeleton, shared: { root: projectRoot ? "project" : "harness", path: dst }, nativePath: harnessDst ?? null,
+  });
+  documents.forEach((document) => {
+    // Combined rendering precedes mkdir; a separate native file renders after its directory exists.
+    const prepared = document.kind === "combined" ? renderOnboarding(document.content, fills) : document.content;
+    const destination = join(document.destination.root === "project" ? input.outRoot : input.treeRoot, document.destination.path);
+    mkdirSync(dirname(destination), { recursive: true });
+    const rendered = document.kind === "native" ? renderOnboarding(prepared, fills) : prepared;
+    const source = document.kind === "native" ? HARNESS_ONBOARDING_SKELETON : ONBOARDING_SKELETON;
+    writeFileSync(destination, transform(source, Buffer.from(rendered), input.harnessDir, input.rulesRename, input.harness, input.invoke));
+  });
+}
+
+function writeAuthoredHarnessFiles(input: {
+  readonly projection: Pick<HarnessManifest, "harnessFiles" | "rulesRename" | "hookCommandSuffix">;
+  readonly harnessSrcRoot: string;
+  readonly outRoot: string;
+  readonly treeRoot: string;
+  readonly harnessDir: string;
+  readonly harness: Harness;
+  readonly invoke: string;
+  readonly letters: string;
+}): void {
+  // Require the prior iterator protocol; do not accept Array.from's array-like fallback.
+  Array.from({ [Symbol.iterator]: () => input.projection.harnessFiles[Symbol.iterator]() }, ({ src, dst, projectRoot }) => {
+    const srcPath = join(input.harnessSrcRoot, src);
+    if (!existsSync(srcPath)) return;
+    const outPath = projectRoot ? join(input.outRoot, dst) : join(input.treeRoot, dst);
+    mkdirSync(dirname(outPath), { recursive: true });
+    let out = transform(srcPath, readFileSync(srcPath), input.harnessDir, input.projection.rulesRename, input.harness, input.invoke, input.letters);
+    const surface = authoredHarnessSurface({ flavor: input.harness, source: src });
+    // Tier projection, knowledge lookup and hook suffixing retain their existing failure order.
+    if (surface === "kiro-agent-json") {
+      out = projectKiroSharedKnowledge(projectKiroAgentJson(srcPath, out));
+      out = projectKiroHookCommands(out, input.projection.hookCommandSuffix);
+    } else if (surface === "kiro-cli-settings") out = projectKiroCliJson(out);
+    writeFileSync(outPath, out);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -830,39 +746,31 @@ function emitActiveSpace(outRoot: string): void {
 // generated-file inventory rooted there, including project-root files beside
 // <harnessDir> (onboarding/config, workspace memory, emitted skills, and so on).
 // ---------------------------------------------------------------------------
-async function buildTree({
-  manifest: m,
-  outRoot,
-  runtimePort,
+async function buildTree(
+  m: HarnessManifest,
+  outRoot: string,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
-}: {
-  readonly manifest: HarnessManifest;
-  readonly outRoot: string;
-  readonly runtimePort: PluginRuntimePort;
-  readonly invoke?: string;
-}): Promise<string[]> {
+): Promise<PackageTreeOutcome> {
   const harnessDir = m.harnessDir;
   const treeRoot = join(outRoot, harnessDir);
-  // Every harness projects onto ONE of the five flavors the tier module
+  // Every harness projects onto ONE of the six flavors the tier module
   // knows (Kiro CLI and Kiro IDE share the "kiro" flavor - identical model
   // dial). Declared per manifest, never inferred from the harness name.
   const harnessKind = m.tierFlavor;
+  const letters = optionLetters(m);
   // 1. Copy core dirs with token substitution + rules rename. Manifest-declared
   //    frontmatter additions (harness-native fields, e.g. the Kiro IDE's
-  //    subagent `tools:` grant) are appended during this projection; every
-  //    declared file must be hit exactly once (typo/rename guard).
-  const fmAdditions = new Map(
-    (m.frontmatterAdditions ?? []).map(({ file, lines }) => [file, lines]),
-  );
+  //    subagent `tools:` grant) are appended during this projection. Every
+  //    declared path must be published (typo/rename guard).
+  const fmAdditions = coreProjectionDeclarations({ declarations: m.frontmatterAdditions ?? [] });
   const fmApplied = new Set<string>();
   for (const { src, dst } of m.coreDirs) {
     const srcDir = join(CORE_ROOT, src);
     if (!existsSync(srcDir)) continue;
     const finalDst = m.rulesRename && dst === "rules" ? m.rulesRename : dst;
     for (const file of walk(srcDir)) {
+      if (runtimeSourceRole({ file }) === "test") continue;
       const rel = relative(srcDir, file);
-      if (/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(rel)) continue;
-      if (rel.split(sep).includes("test-fixtures")) continue;
       const outPath = join(treeRoot, finalDst, rel);
       mkdirSync(dirname(outPath), { recursive: true });
       let out = transform(
@@ -872,99 +780,42 @@ async function buildTree({
         m.rulesRename,
         harnessKind,
         invoke,
+        letters,
       );
       // Manifest keys are POSIX; normalize the platform separator so the
       // lookup works on Windows too.
       const harnessRel = join(finalDst, rel).split(sep).join("/");
+      const projection = coreFileProjection({ path: harnessRel, declarations: fmAdditions });
       // A protocol module's per-tool binding subsections: this tree keeps its own.
-      if (/^aidlc-common\/protocols\/[^/]+\.md$/.test(harnessRel)) {
+      if (projection.bindingScope === "own-harness") {
         out = Buffer.from(keepOwnHarnessBindings(out.toString("utf-8"), m.name, harnessRel), "utf-8");
       }
-      const fmLines = fmAdditions.get(harnessRel);
+      const fmLines = projection.additions;
       if (fmLines) {
-        out = Buffer.from(
-          applyFrontmatterAdditions(out.toString("utf-8"), fmLines, harnessRel),
-          "utf-8",
-        );
+        const projected = writeAgentSurface({ treeRoot, path: harnessRel, content: out, additions: fmLines });
+        if (projected.kind !== "completed") return projected;
         fmApplied.add(harnessRel);
-      }
-      writeFileSync(outPath, out);
+      } else writeFileSync(outPath, out);
     }
   }
-  await bundleRuntimeDependencies({
-    pluginRoot: CORE_ROOT,
-    outDir: treeRoot,
-    files: Array.from(walk(treeRoot), (file) => relative(treeRoot, file).split(sep).join("/")),
-    runtimePort,
-  });
-  const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
-  if (fmMissed.length > 0) {
+  const runtime = await projectCoreRuntime({ treeRoot });
+  if (runtime.kind !== "published") return runtime;
+  const coverage = coreProjectionCoverage({ declarations: fmAdditions, publishedPaths: fmApplied });
+  if (coverage.kind === "missing-declarations") {
     throw new Error(
       `[${m.name}] frontmatterAdditions name file(s) the core projection never produced: ` +
-        `${fmMissed.join(", ")} - fix the path(s) in the manifest.`,
+        `${coverage.paths.join(", ")} - fix the path(s) in the manifest.`,
     );
   }
-  // 2. Copy authored harness surfaces (token substitution on .md). projectRoot
-  //    files land beside the harness dir (e.g. dist/kiro/AGENTS.md), the rest
-  //    inside <harnessDir>/. On the kiro harnesses two authored JSON surfaces
-  //    are additionally tier-projected: the agent .json "model" fields and the
-  //    settings/cli.json chat.modelDefaults entries (effort rides on the model
-  //    on Kiro - see aidlc-tiers.ts).
   const harnessSrcRoot = join(HARNESS_ROOT, m.name);
-  for (const { src, dst, projectRoot } of m.harnessFiles) {
-    const srcPath = join(harnessSrcRoot, src);
-    if (!existsSync(srcPath)) continue;
-    const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
-    mkdirSync(dirname(outPath), { recursive: true });
-    let out = transform(
-      srcPath,
-      readFileSync(srcPath),
-      harnessDir,
-      m.rulesRename,
-      harnessKind,
-      invoke,
-    );
-    if (harnessKind === "kiro") {
-      if (src.startsWith("agents/") && src.endsWith(".json")) {
-        out = projectKiroAgentJson(srcPath, out);
-      } else if (src === "settings/cli.json") {
-        out = projectKiroCliJson(out);
-      }
-    }
-    writeFileSync(outPath, out);
-  }
+  writeAuthoredHarnessFiles({
+    projection: m, harnessSrcRoot, outRoot, treeRoot, harnessDir,
+    harness: harnessKind, invoke, letters,
+  });
 
-  // 2b. Split neutral project instructions from each harness's native setup.
-  // Claude and Copilot keep both parts in their single always-on file.
-  if (m.onboarding) {
-    const { dst, projectRoot, harnessDst, fills } = m.onboarding;
-    const neutral = renderNeutralOnboarding(readFileSync(ONBOARDING_SKELETON, "utf-8"));
-    const harnessSkeleton = readFileSync(HARNESS_ONBOARDING_SKELETON, "utf-8");
-    const rendered = harnessDst
-      ? neutral
-      : renderOnboarding(harnessSkeleton + "\n## Shared AI-DLC onboarding\n\n" + neutral, fills);
-    const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
-    mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(
-      outPath,
-      transform(ONBOARDING_SKELETON, Buffer.from(rendered), harnessDir, m.rulesRename, harnessKind, invoke),
-    );
-    if (harnessDst) {
-      const harnessPath = join(treeRoot, harnessDst);
-      mkdirSync(dirname(harnessPath), { recursive: true });
-      writeFileSync(
-        harnessPath,
-        transform(
-          HARNESS_ONBOARDING_SKELETON,
-          Buffer.from(renderOnboarding(harnessSkeleton, fills)),
-          harnessDir,
-          m.rulesRename,
-          harnessKind,
-          invoke,
-        ),
-      );
-    }
-  }
+  if (m.onboarding) writeOnboarding({
+    spec: m.onboarding, outRoot, treeRoot, harnessDir, rulesRename: m.rulesRename, harness: harnessKind, invoke,
+  });
 
   // 2c. Emit the relocated method ("memory") tree at the workspace root
   //     (dist/<name>/aidlc/spaces/default/memory/). MUST run before compile —
@@ -1019,6 +870,7 @@ async function buildTree({
   //     the compile step just created, hence walked + byte-diffed by --check
   //     like any other generated file.
   writeHarnessData(treeRoot, m);
+  writePluginAgentData(treeRoot, m);
   writeAgentTiersData(treeRoot);
   writeSettingsSchemaData(treeRoot);
 
@@ -1044,21 +896,23 @@ async function buildTree({
       distRoot: outRoot,
       harnessDir,
       trustedRouteNamespace: TRUSTED_ROUTE_NAMESPACE,
-      substituteToken: (s: string) => substituteToken(s, harnessDir, invoke),
+      substituteToken: (s: string) => substituteToken(s, harnessDir, invoke, letters),
       tierCap: TIER_CAP,
     });
   }
   expandCursorToolAllows(treeRoot, m);
-  expandClaudeToolAllows(treeRoot, m);
+  expandClaudeToolAllows({ treeRoot, manifest: m });
   expandKiroToolAllows(treeRoot, m);
   expandKiroIdeConductorAllows(treeRoot, m, invoke);
-  writeProjectionData(outRoot, treeRoot, m);
+  writeProjectionData({ outRoot, declaration: m });
 
   // 6. Generated table regions are build products, not authored prose. Refresh
   //    them only after emit(), because Codex and Copilot place the orchestrator
   //    skill outside <harnessDir>/skills/.
   refreshGeneratedSkillRegions(outRoot, treeRoot, harnessDir, m);
-  return [...walk(outRoot)];
+  // 7. The place an earlier release's refresh writes the tables into the skill.
+  keepEarlierReleaseRegions(outRoot, m);
+  return { kind: "completed", files: [...walk(outRoot)] };
 }
 
 function escapeRegExp(value: string): string {
@@ -1094,7 +948,8 @@ function applyNativeReplacements(outRoot: string, m: HarnessManifest): void {
 function rewriteKiroNativeAllowlists(outRoot: string, m: HarnessManifest): void {
   if (m.tierFlavor !== "kiro") return;
   const agentsDir = join(outRoot, m.harnessDir, "agents");
-  for (const file of walk(agentsDir)) {
+  const pluginAgentData = join(outRoot, m.harnessDir, PLUGIN_AGENT_DATA);
+  for (const file of [...walk(agentsDir), ...(existsSync(pluginAgentData) ? [pluginAgentData] : [])]) {
     if (file.endsWith(".md")) {
       // Kiro IDE persona surfaces carry a YAML shell allowlist; the native
       // channel replaces the bun tool glob with the aidlc command prefix. The
@@ -1102,11 +957,14 @@ function rewriteKiroNativeAllowlists(outRoot: string, m: HarnessManifest): void 
       // `bun <dir>/tools/aidlc.ts engine *` on a persona, which the tool
       // rewrite above turned into `aidlc engine engine *`) is that same
       // prefix, so the pair collapses to one entry. A persona's ask lines get
-      // the same doubled prefix and lose it the same way.
+      // the same doubled prefix and lose it the same way. The asks on a risky
+      // shell form after an AI-DLC command (`bun <dir>/tools/aidlc*<form>*`)
+      // take the native command name as their prefix, as the persona deny does.
       const value = readFileSync(file, "utf-8");
       const trusted = `- "${trustedCommand("*")}"`;
       const rewritten = value
         .replaceAll(`- "bun ${m.harnessDir}/tools/aidlc-*"`, trusted)
+        .replaceAll(`- "bun ${m.harnessDir}/tools/aidlc*`, `- "aidlc*`)
         .replaceAll(`- "${trustedCommand("engine ")}`, `- "${trustedCommand("")} `)
         .replaceAll(`${trusted}\n        ${trusted}`, trusted);
       if (rewritten !== value) writeFileSync(file, rewritten);
@@ -1170,35 +1028,12 @@ function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): vo
 // command, and any config command but the read-only forms, then shows Claude
 // Code's own prompt. Both trees get it; the native rewrite then drops every
 // bun entry.
-function expandClaudeToolAllows(treeRoot: string, m: HarnessManifest): void {
-  if (m.tierFlavor !== "claude") return;
+function expandClaudeToolAllows({ treeRoot, manifest }: { readonly treeRoot: string; readonly manifest: HarnessManifest }): void {
+  if (manifest.tierFlavor !== "claude") return;
   const settingsPath = join(treeRoot, "settings.json");
-  const value = JSON.parse(readFileSync(settingsPath, "utf-8")) as { permissions?: { allow?: unknown } };
-  const allow = value.permissions?.allow;
-  if (Array.isArray(allow) && allow.some((entry) =>
-    typeof entry === "string" && /^Bash\(bun \S+\/tools\/\*\)$/.test(entry)
-  )) return;
-  // The authored entries name the tools folder as written (`.claude`), which
-  // a renamed harness folder keeps, so the expansion uses the same spelling.
-  const glob = Array.isArray(allow)
-    ? allow.find((entry): entry is string =>
-      typeof entry === "string" && /^Bash\(bun \S+\/tools\/aidlc-\*\)$/.test(entry)
-    )
-    : undefined;
-  if (!Array.isArray(allow) || glob === undefined) {
-    throw new Error("[claude] settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand");
-  }
-  const toolsDir = glob.slice("Bash(bun ".length, -"/aidlc-*)".length);
-  const tool = (script: string) => `Bash(bun ${toolsDir}/${script}`;
-  value.permissions!.allow = allow.flatMap((entry) =>
-    entry === glob
-      ? [
-        ...copyChannelDispatcherCommands().map((command) => `${tool("aidlc.ts")} ${command})`),
-        ...copyChannelToolScripts().flatMap((script) => [`${tool(script)})`, `${tool(script)} *)`]),
-      ]
-      : [entry]
-  );
-  writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
+  const prepared = prepareClaudeSettingsText({ text: readFileSync(settingsPath, "utf-8"), dispatcherCommands: copyChannelDispatcherCommands(), toolScripts: copyChannelToolScripts() });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  writeFileSync(settingsPath, prepared.content);
 }
 
 // Kiro CLI's authored agents name AI-DLC's tool scripts with one pattern
@@ -1206,14 +1041,18 @@ function expandClaudeToolAllows(treeRoot: string, m: HarnessManifest): void {
 // dispatcher's engine commands, each dispatcher command a copy channel
 // pre-approves exactly as AI-DLC runs it (copyChannelDispatcherCommands), and
 // the tool scripts it pre-approves (copyChannelToolScripts), bare or followed
-// by arguments, never a longer file name. A script behind a machine-changing
-// command, and any config command but the read-only forms, then waits for the
-// person in Kiro CLI. Both trees get it; the native rewrite then turns every
-// bun entry into the one trusted prefix.
+// by arguments, never a longer file name, one entry each, with the path bare
+// or in either quote spelled out: Kiro's upgrade for its 3.0 engine turns each
+// spelling into its own glob, an optional quote into a `*` that also matches
+// `/`, and drops an entry with more spellings than its limit (kiro-cli
+// 2.29.0). A script behind a machine-changing command, and any config command
+// but the read-only forms, then waits for the person in Kiro CLI. Both trees
+// get it; the native rewrite then turns every bun entry into the one trusted
+// prefix.
 function expandKiroToolAllows(treeRoot: string, m: HarnessManifest): void {
   if (m.name !== "kiro") return;
   const agentsDir = join(treeRoot, "agents");
-  const prefix = (dir: string) => `bun (run )?["']?${dir}/`;
+  const bun = (path: string) => `bun (run )?(${path}|"${path}"|'${path}')`;
   let expanded = 0;
   for (const file of walk(agentsDir).filter((path) => path.endsWith(".json"))) {
     const value = JSON.parse(readFileSync(file, "utf-8")) as {
@@ -1230,11 +1069,11 @@ function expandKiroToolAllows(treeRoot: string, m: HarnessManifest): void {
       const tools = `${match[1]}/tools`;
       const scripts = copyChannelToolScripts().map((script) => escapeRegExp(script.slice(0, -".ts".length)));
       return [
-        `${prefix(tools)}aidlc\\.ts["']? engine( .*)?`,
+        `${bun(`${tools}/aidlc\\.ts`)} engine( .*)?`,
         ...copyChannelDispatcherCommands().map((command) =>
-          `${prefix(tools)}aidlc\\.ts["']? ${escapeRegExp(command)}`
+          `${bun(`${tools}/aidlc\\.ts`)} ${escapeRegExp(command)}`
         ),
-        `${prefix(tools)}(${scripts.join("|")})\\.ts["']?( .*)?`,
+        ...scripts.map((script) => `${bun(`${tools}/${script}\\.ts`)}( .*)?`),
       ];
     });
     value.toolsSettings!.execute_bash!.allowedCommands = next;
@@ -1243,7 +1082,7 @@ function expandKiroToolAllows(treeRoot: string, m: HarnessManifest): void {
   if (expanded === 0) throw new Error("[kiro] no agent names the tools-folder pattern to expand");
 }
 
-// Kiro IDE's authored conductor (agents/aidlc.md) allows AI-DLC's tool
+// Kiro IDE's authored conductor (agents/aidlc-aidlc.md) allows AI-DLC's tool
 // scripts and the dispatcher's engine namespace. Both trees add, after the
 // engine line, each dispatcher command every install pre-approves exactly as
 // AI-DLC runs it (copyChannelDispatcherCommands): through the project's
@@ -1253,11 +1092,11 @@ function expandKiroToolAllows(treeRoot: string, m: HarnessManifest): void {
 // commands (delegate-shell-deny.ts).
 function expandKiroIdeConductorAllows(treeRoot: string, m: HarnessManifest, invoke: string): void {
   if (m.name !== "kiro-ide") return;
-  const conductor = join(treeRoot, "agents", "aidlc.md");
+  const conductor = join(treeRoot, "agents", "aidlc-aidlc.md");
   const engine = `        - "${invoke} engine *"\n`;
   const value = readFileSync(conductor, "utf-8");
   if (value.split(engine).length !== 2) {
-    throw new Error(`[kiro-ide] agents/aidlc.md must allow ${invoke} engine * exactly once`);
+    throw new Error(`[kiro-ide] agents/aidlc-aidlc.md must allow ${invoke} engine * exactly once`);
   }
   const exact = copyChannelDispatcherCommands().map((command) => `        - "${invoke} ${command}"\n`);
   writeFileSync(conductor, value.replace(engine, `${engine}${exact.join("")}`));
@@ -1326,7 +1165,7 @@ function rewriteNativeOnboarding(value: string, exactReads = false): string {
   return value
     .replace(
       /^- \*\*bun\*\*:.*$/gm,
-      "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available.",
+      "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available. If `aidlc` is not found in this tool, give the person both fixes in one line, then end your turn without installing anything or working around it: if AI-DLC was installed while this tool was open, quit the tool fully and reopen it (a new tab or reloaded window is not enough); otherwise the installer's bin folder is not on PATH (an install with `-NoModifyPath`, or a Unix install whose PATH line was not applied), so add the folder the installer printed to PATH, or rerun the installer without `-NoModifyPath`, then reopen the tool.",
     )
     .replace(
       /^- \*\*Hook permissions\*\*:.*$/gm,
@@ -1342,13 +1181,27 @@ function rewriteNativeOnboarding(value: string, exactReads = false): string {
       `pre-approves only \`${TRUSTED_COMMAND_PREFIX}\` shell commands`,
     )
     .replace(
-      /pre-allows the deterministic core's exact command prefixes — `bun \.codex\/tools\/`, `bun \.codex\/hooks\/`, and/g,
-      `pre-allows the deterministic core's \`${TRUSTED_COMMAND_PREFIX}\` command prefix and`,
-    )
-    .replace(
       /^\*\*CWD drift warning\*\*: If a stage runs `cd` in Bash.*$/gm,
       "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.",
     );
+}
+
+// A copyOnly harness file ships in the copy runtime alone. The native tree
+// drops it and the root integration of the same path, so `aidlc config` never
+// writes it into a project.
+function dropCopyOnlyFiles(outRoot: string, m: HarnessManifest): void {
+  const copyOnly = m.harnessFiles.filter((file) => file.copyOnly);
+  if (copyOnly.length === 0) return;
+  for (const file of copyOnly) {
+    rmSync(file.projectRoot ? join(outRoot, file.dst) : join(outRoot, m.harnessDir, file.dst), { force: true });
+  }
+  const dropped = new Set(copyOnly.filter((file) => file.projectRoot).map((file) => file.dst));
+  const descriptorPath = join(outRoot, m.harnessDir, PROJECTION_DATA);
+  const descriptor = JSON.parse(readFileSync(descriptorPath, "utf-8")) as {
+    rootIntegrations: Array<Record<string, unknown>>;
+  };
+  descriptor.rootIntegrations = descriptor.rootIntegrations.filter((item) => !dropped.has(String(item.path)));
+  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
 }
 
 function projectNativeRootIntegrations(outRoot: string, m: HarnessManifest): void {
@@ -1392,76 +1245,16 @@ function projectedNamespaceInvocationViolations(
     );
 }
 
-function nativeSensorSelectorSource(input: {
-  readonly outRoot: string;
-  readonly relativeFile: string;
-  readonly source: string;
-}): string {
-  const manifest = parseSensorManifest(input.source);
-  const command = trustedCommand(`sensor-${manifest.id}`);
-  const tool = join(input.outRoot, dirname(dirname(input.relativeFile)), "tools", `aidlc-sensor-${manifest.id}.ts`);
-  if (manifest.command !== command || basename(input.relativeFile) !== `aidlc-${manifest.id}.md` || !existsSync(tool))
-    return input.source;
-  return input.source.replace(/^(---\r?\n)([\s\S]*?)(\r?\n---)/, (_match, opening: string, fields: string, closing: string) =>
-    opening + fields.replace(new RegExp(`^command: ${escapeRegExp(command)}$`, "m"), "") + closing);
-}
-
-function assertNativeInvocationFiles(outRoot: string, m: HarnessManifest): void {
+function rewriteNativeInvocations(
+  outRoot: string,
+  m: HarnessManifest,
+  copyRoot: string,
+): void {
+  dropCopyOnlyFiles(outRoot, m);
+  projectNativeRootIntegrations(outRoot, m);
+  applyNativeReplacements(outRoot, m);
   const harnessDir = escapeRegExp(m.harnessDir);
-  const delegateNames = Object.values(TOOLS)
-    .map((file) => escapeRegExp(file.slice("aidlc-".length, -".ts".length)))
-    .join("|");
-  const bareToolCheck = new RegExp(String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`, "i");
-  // A manifest's nativeReplacements text is generated from the route table
-  // (permission globs, not invocations), so the prose check skips it; its
-  // lines stay as blank lines so reported line numbers still match the file.
-  const withoutNativeReplacements = (value: string): string =>
-    (m.nativeReplacements ?? []).reduce(
-      (text, { to }) => text.replaceAll(to, to.replace(/[^\n]/g, "")),
-      value,
-    );
-  const leftovers: string[] = [];
-  for (const file of walk(outRoot)) {
-    if (!/\.(?:md|mdc|json|toml|hook|[cm]?[jt]s)$/.test(file)) continue;
-    const value = readFileSync(file, "utf-8");
-    for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}"]) {
-      if (value.includes(token)) {
-        leftovers.push(`${relative(outRoot, file)}: unexpanded ${token}`);
-      }
-    }
-    if (new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: bun invocation survived native projection`);
-    }
-    if (bareToolCheck.test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: bare bun invocation survived native projection`);
-    }
-    if (/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: retired engine alias survived native projection`);
-    }
-    const relativeFile = relative(outRoot, file).split(sep).join("/");
-    const sensorDirectory = dirname(relativeFile);
-    const sensorSource = sensorDirectory === "sensors" || sensorDirectory === `${m.harnessDir}/sensors`
-      ? nativeSensorSelectorSource({ outRoot, relativeFile, source: value })
-      : value;
-    leftovers.push(
-      ...projectedNamespaceInvocationViolations(relativeFile, withoutNativeReplacements(sensorSource)),
-    );
-    if (
-      relative(outRoot, file).split(sep).join("/").includes("/agents/") &&
-      /"allowedCommands"\s*:\s*\[[\s\S]*?"bun [^"]*tools\//.test(value)
-    ) {
-      leftovers.push(`${relative(outRoot, file)}: bun allowlist survived native projection`);
-    }
-  }
-  if (leftovers.length > 0) {
-    throw new Error(`[${m.name}] native invocation projection failed:\n${leftovers.join("\n")}`);
-  }
-}
-
-function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void {
-  const harnessDir = escapeRegExp(m.harnessDir);
-  // The hand-maintained list had drifted to 23 of 33 tools, omitting review-brief.
-  // Deriving it from TOOLS keeps new delegates' bare bun aidlc-<name>.ts forms
+  // Deriving the delegate list from TOOLS keeps new delegates' bare bun aidlc-<name>.ts forms
   // covered by both the rewrite and bareToolCheck. The leftover checks below
   // still reject a rewrite to a non-route.
   const delegateNames = Object.values(TOOLS)
@@ -1490,8 +1283,9 @@ function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
     String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`,
     "gi",
   );
+  const bareToolCheck = new RegExp(bareToolPattern.source, "i");
   for (const file of walk(outRoot)) {
-    if (!/\.(?:md|mdc|json|toml|hook|[cm]?[jt]s)$/.test(file)) continue;
+    if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
     let value = readFileSync(file, "utf-8");
     // Claude's source hook/statusline dispatcher is rooted at the project, so
     // it still loads after an application command changes cwd. JSON escapes
@@ -1538,16 +1332,6 @@ function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
       configUtilityPattern,
       (_match, key: string) => trustedCommand(`config set ${key}`),
     );
-    const intentCreatePattern = new RegExp(
-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+intent-create\b`,
-      "gi",
-    );
-    value = value.replace(intentCreatePattern, trustedCommand("intent create"));
-    const namespacedDispatcherPattern = new RegExp(
-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc\.ts${suffix}\s+${TRUSTED_ROUTE_NAMESPACE}\b`,
-      "gi",
-    );
-    value = value.replace(namespacedDispatcherPattern, TRUSTED_COMMAND_PREFIX);
     value = value.replace(toolPattern, (_match, delegate: string | undefined) =>
       delegate ? trustedCommand(delegate) : TRUSTED_COMMAND_PREFIX
     );
@@ -1572,16 +1356,6 @@ function projectNativeInvocationFiles(outRoot: string, m: HarnessManifest): void
     value = rewriteNativeOnboarding(value, m.tierFlavor === "claude" || m.tierFlavor === "cursor" || m.tierFlavor === "kiro");
     writeFileSync(file, value);
   }
-}
-
-function rewriteNativeInvocations(
-  outRoot: string,
-  m: HarnessManifest,
-  copyRoot: string,
-): void {
-  projectNativeRootIntegrations(outRoot, m);
-  applyNativeReplacements(outRoot, m);
-  projectNativeInvocationFiles(outRoot, m);
   rewriteKiroNativeAllowlists(outRoot, m);
   rewriteClaudeNativePermissions(outRoot, m);
   rewriteCursorNativePermissions(outRoot, m);
@@ -1596,7 +1370,6 @@ function rewriteNativeInvocations(
       ) => string;
       emitTrustSeed: (
         harnessDir: string,
-        repoRoot: string,
         harnessName: string,
         invoke: string,
         trustedNamespace: string,
@@ -1608,19 +1381,17 @@ function rewriteNativeInvocations(
     );
     writeFileSync(
       join(outRoot, m.harnessDir, "trust-seed.toml"),
-      emitTrustSeed(
-        m.harnessDir,
-        REPO_ROOT,
-        m.name,
-        "aidlc",
-        TRUSTED_ROUTE_NAMESPACE,
-      ),
+      emitTrustSeed(m.harnessDir, m.name, "aidlc", TRUSTED_ROUTE_NAMESPACE),
     );
   }
+  // Before the copy's hashes are recorded below, so a part that changed here
+  // still has its copy bytes recognized, and --check builds it the same way.
+  syncRootBlockParts(outRoot, m);
   const descriptorPath = join(outRoot, m.harnessDir, PROJECTION_DATA);
   const descriptor = JSON.parse(readFileSync(descriptorPath, "utf-8")) as {
     managedDirectories: string[];
     legacyManagedFileHashes?: Record<string, string[]>;
+    retiredCopyFileHashes?: Record<string, string[]>;
   };
   const legacyManagedFileHashes: Record<string, string[]> = {};
   for (const directory of descriptor.managedDirectories) {
@@ -1635,6 +1406,29 @@ function rewriteNativeInvocations(
       if (releaseHash !== copyHash) legacyManagedFileHashes[rel] = [copyHash];
     }
   }
+  // What the copy-era releases put at each path (scripts/copy-era-files.ts):
+  // they wrote no install record, so their unchanged files are told from the
+  // person's by these bytes.
+  // Read as data, not imported: a type for half a megabyte of JSON would weigh on the typecheck.
+  const copyEra = JSON.parse(readFileSync(join(REPO_ROOT, "scripts", "copy-era-files.json"), "utf-8")) as Record<string, Record<string, string[]>>;
+  const retiredCopyFileHashes: Record<string, string[]> = {};
+  for (const [rel, hashes] of Object.entries(copyEra[m.name] ?? {})) {
+    if (!descriptor.managedDirectories.some((directory) => rel.startsWith(`${directory}/`))) continue;
+    // The workspace's seeds are the team's once written (config preserves them,
+    // aidlc-init.ts workspaceSeed) and a copy runtime leaves them out
+    // (copyChannelOmits), so no signature is owed for them.
+    if (rel.startsWith("aidlc/")) continue;
+    const release = join(outRoot, rel);
+    if (!existsSync(release) || !lstatSync(release).isFile()) {
+      retiredCopyFileHashes[rel] = [...hashes].sort();
+      continue;
+    }
+    const releaseHash = sha256Bytes(readFileSync(release));
+    const known = new Set(legacyManagedFileHashes[rel] ?? []);
+    for (const hash of hashes) if (hash !== releaseHash) known.add(hash);
+    if (known.size > 0) legacyManagedFileHashes[rel] = [...known].sort();
+  }
+  descriptor.retiredCopyFileHashes = retiredCopyFileHashes;
   const descriptorRel = `${m.harnessDir}/${PROJECTION_DATA}`.split(sep).join("/");
   const copyDescriptor = join(copyRoot, descriptorRel);
   if (existsSync(copyDescriptor)) {
@@ -1649,7 +1443,45 @@ function rewriteNativeInvocations(
   }
   writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
 
-  assertNativeInvocationFiles(outRoot, m);
+  // A manifest's nativeReplacements text is generated from the route table
+  // (permission globs, not invocations), so the prose check skips it; its
+  // lines stay as blank lines so reported line numbers still match the file.
+  const withoutNativeReplacements = (value: string): string =>
+    (m.nativeReplacements ?? []).reduce(
+      (text, { to }) => text.replaceAll(to, to.replace(/[^\n]/g, "")),
+      value,
+    );
+  const leftovers: string[] = [];
+  for (const file of walk(outRoot)) {
+    if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
+    const value = readFileSync(file, "utf-8");
+    for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}", "{{OPTION_LETTERS}}"]) {
+      if (value.includes(token)) {
+        leftovers.push(`${relative(outRoot, file)}: unexpanded ${token}`);
+      }
+    }
+    if (new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: bun invocation survived native projection`);
+    }
+    if (bareToolCheck.test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: bare bun invocation survived native projection`);
+    }
+    if (/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(value)) {
+      leftovers.push(`${relative(outRoot, file)}: retired engine alias survived native projection`);
+    }
+    leftovers.push(
+      ...projectedNamespaceInvocationViolations(relative(outRoot, file), withoutNativeReplacements(value)),
+    );
+    if (
+      relative(outRoot, file).split(sep).join("/").includes("/agents/") &&
+      /"allowedCommands"\s*:\s*\[[\s\S]*?"bun [^"]*tools\//.test(value)
+    ) {
+      leftovers.push(`${relative(outRoot, file)}: bun allowlist survived native projection`);
+    }
+  }
+  if (leftovers.length > 0) {
+    throw new Error(`[${m.name}] native invocation projection failed:\n${leftovers.join("\n")}`);
+  }
 }
 
 // Run an in-tree tool (bun <treeRoot>/<rel> ...) with the harness env seams set
@@ -1715,7 +1547,9 @@ function refreshGeneratedSkillRegions(
   harnessDir: string,
   manifest: HarnessManifest,
 ): void {
-  const skillPath = assembledOrchestratorSkill(outRoot, manifest);
+  // The generated tables live beside the skill (tables.md), out of its body.
+  const skillPath = join(dirname(assembledOrchestratorSkill(outRoot, manifest)), "tables.md");
+  if (!existsSync(skillPath)) return;
   let body = readFileSync(skillPath, "utf-8").replace(/\r\n/g, "\n");
 
   for (const region of GENERATED_SKILL_REGIONS) {
@@ -1725,33 +1559,26 @@ function refreshGeneratedSkillRegions(
       manifest.name,
       ["tools/aidlc-utility.ts", region.verb],
     ).trimEnd();
-    const beginIdx = body.indexOf(region.begin);
-    const endIdx = body.indexOf(region.end);
-    if (beginIdx === -1 && endIdx === -1) continue;
-    if (
-      beginIdx === -1 ||
-      endIdx === -1 ||
-      endIdx < beginIdx ||
-      body.lastIndexOf(region.begin) !== beginIdx ||
-      body.lastIndexOf(region.end) !== endIdx
-    ) {
-      throw new Error(
-        `packager: malformed ${region.verb} markers in ${skillPath}`,
-      );
-    }
-    body =
-      body.slice(0, beginIdx) +
-      rendered +
-      body.slice(endIdx + region.end.length);
+    const replacement = replaceGeneratedSkillRegion({ text: body, rendered, region, path: skillPath });
+    if (replacement.status === "refused") throw new Error(replacement.detail);
+    body = replacement.text;
   }
 
   writeFileSync(skillPath, body, "utf-8");
 }
 
+// See scripts/earlier-release-regions.ts.
+function keepEarlierReleaseRegions(outRoot: string, manifest: HarnessManifest): void {
+  const skillPath = assembledOrchestratorSkill(outRoot, manifest);
+  if (!earlierReleasesReadSkill(relative(outRoot, skillPath), manifest.harnessDir)) return;
+  const text = readFileSync(skillPath, "utf-8");
+  writeFileSync(skillPath, prepareEarlierReleaseSkillText({ text, skillRel: relative(outRoot, skillPath), harnessDir: manifest.harnessDir }), "utf-8");
+}
+
 // Defense-in-depth backstop: rewrite any residual "<harnessDir>/rules/" →
-// "<harnessDir>/<rulesRename>/" in the compiled JSON path strings. Since the
-// rulesSubdir() seam landed, compile (run under AIDLC_HARNESS_DIR) emits the
-// renamed segment directly, so this normally matches nothing (guarded by the
+// "<harnessDir>/<rulesRename>/" in the compiled JSON path strings. Compile (run
+// under AIDLC_HARNESS_DIR) emits the renamed segment directly through
+// rulesSubdir(), so this normally matches nothing (guarded by the
 // `out !== s` check). It stays as a safety net in case a future code path emits
 // a literal "rules" segment that bypasses the seam. Slash-anchored, so it can
 // only touch the rules path family.
@@ -1773,132 +1600,48 @@ function loadManifest(name: string): HarnessManifest {
 // ---------------------------------------------------------------------------
 // write mode: regenerate dist/<name> in place (clean-sweep).
 // ---------------------------------------------------------------------------
-async function writeHarness({ name, runtimePort }: {
-  readonly name: string;
-  readonly runtimePort: PluginRuntimePort;
-}): Promise<void> {
+async function writeHarness(name: string): Promise<PackageRuntimeOutcome> {
   const m = loadManifest(name);
   const distDir = join(REPO_ROOT, "dist", name);
-  const treeRoot = join(distDir, m.harnessDir);
-  // Stash the committed compiled-data seed before the clean sweep so compile
-  // can bootstrap its number/name mappings (the seed survives the regenerate).
-  // When a manifest renames its harnessDir, treeRoot does not exist yet. Read
-  // the canonical Claude seed before sweeping dist/<name>/ as a fallback; for
-  // the Claude harness that fallback lives inside the root about to be removed.
-  const seedStash = mkdtempSync(join(tmpdir(), `aidlc-seed-${name}-`));
-  try {
-    const seedRoots = [treeRoot, join(REPO_ROOT, "dist", "claude", ".claude")];
-    for (const rel of COMPILED_DATA) {
-      const src = seedRoots.map((root) => join(root, rel)).find(existsSync);
-      if (src) {
-        const dst = join(seedStash, rel);
-        mkdirSync(dirname(dst), { recursive: true });
-        cpSync(src, dst);
-      }
-    }
-    // dist/<name>/ is one generated root. Sweep that root, not selected
-    // subdirectories, so removed/renamed project-root outputs cannot linger.
-    // Siblings at dist/ (plugins, specifications, and unrelated assets) remain
-    // outside this harness-owned boundary.
-    //
-    // RIN DIVERGENCE (drift register: atomic-dist-rebuild). Build into a staging
-    // sibling and RENAME into place, rather than removing the live root and
-    // repopulating it. The destructive form leaves the payload existing but
-    // incomplete for the whole build — measured at 45 distinct partial states,
-    // climbing 1 -> 266 — and a concurrent reader cannot tell a partial tree
-    // from a complete one. rin's orphan sweep accounts for tracked files by
-    // PATH PRESENCE in this payload, so a partial tree makes real files read as
-    // unsourced and fails the pre-push gate on trees that are not broken.
-    //
-    // The staging root is a SIBLING of dist/<name>, never tmpdir(): rename is
-    // only atomic within a filesystem, and tmpdir() is routinely a different
-    // one.
-    //
-    // The swap PREFERS rename-live-aside-then-rename-in, which makes the
-    // replacement genuinely atomic: the live tree goes from complete-old to
-    // complete-new with no observable state in between, and the old tree is
-    // torn down afterwards under a name nothing reads.
-    //
-    // That form is attempted, not assumed, because its availability is
-    // PLATFORM-DEPENDENT:
-    //
-    //   - POSIX (INFERRED from rename(2), not measured here — this machine is
-    //     Windows). rename() over a directory with open handles succeeds; the
-    //     old inode simply lingers until the last handle closes. So the atomic
-    //     path is expected to hold on every face on Linux/macOS — which is
-    //     where the autonomous lanes and CI actually run.
-    //   - Windows (MEASURED here). Renaming a directory throws EPERM whenever
-    //     any process holds a handle anywhere inside it. Measured across the
-    //     seven faces: six swap atomically, and `claude` always falls back —
-    //     because dist/claude is the installed engine the running session is
-    //     itself executing from, so a handle is always held.
-    //
-    // The fallback is rm-then-rename, and it leaves a real but much smaller
-    // window: the payload is ABSENT rather than PARTIAL. That distinction is
-    // the whole point — absent is a state every consumer already models and
-    // refuses on, while a partial tree is a WRONG ANSWER that reads as a
-    // complete tree missing files.
-    //
-    // Measured on one instrument, same face, fix stashed and restored:
-    // 35 partial observations before, 0-6 (typically 1) after. The residual is
-    // the .superseded teardown racing the sampler, not the build, and on the
-    // reasoning above it is a desktop-development artefact rather than
-    // something the deploy target sees. Chasing it to zero (background unlink,
-    // or a generation-suffixed dir behind a symlink swap) is deliberately NOT
-    // done here and is captured as a follow-up, to be taken up only if the
-    // desktop residual proves to matter.
-    const stagingDir = `${distDir}.staging`;
-    rmSync(stagingDir, { recursive: true, force: true });
-    // NOT positional. Pre-2.9.0 buildTree's third parameter was rin's
-    // `seedFrom`; 2.9.0 repurposed that position for `invoke`, so passing
-    // seedStash here substituted a Windows temp path into every projected
-    // .json and broke the parse with an invalid \U escape. The seed is
-    // restored explicitly after the tree is built instead.
-    await buildTree({ manifest: m, outRoot: stagingDir, runtimePort });
-    for (const rel of COMPILED_DATA) {
-      const seeded = join(seedStash, rel);
-      if (!existsSync(seeded)) continue;
-      const dst = join(stagingDir, m.harnessDir, rel);
-      if (existsSync(dst)) continue;
-      mkdirSync(dirname(dst), { recursive: true });
-      cpSync(seeded, dst);
-    }
-    const supersededDir = `${distDir}.superseded`;
-    rmSync(supersededDir, { recursive: true, force: true });
-    const swappedAtomically = ((): boolean => {
-      if (!existsSync(distDir)) return false;
-      try {
-        renameSync(distDir, supersededDir);
-        return true;
-      } catch {
-        return false;
-      }
-    })();
-    if (!swappedAtomically) rmSync(distDir, { recursive: true, force: true });
-    renameSync(stagingDir, distDir);
-    if (swappedAtomically) {
-      rmSync(supersededDir, { recursive: true, force: true });
-    }
-    console.log(
-      `[${name}] regenerated dist/${name}/${m.harnessDir}` +
-        ` (swap: ${swappedAtomically ? "atomic-rename" : "rm-then-rename"})`,
-    );
-  } finally {
-    rmSync(seedStash, { recursive: true, force: true });
-  }
+  // dist/<name>/ is one generated root. Sweep that root, not selected
+  // subdirectories, so removed/renamed project-root outputs cannot linger.
+  // Siblings at dist/ (plugins and unrelated local assets) remain outside this
+  // harness-owned boundary.
+  if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
+  const built = await buildTree(m, distDir);
+  if (built.kind !== "completed") return built;
+  console.log(`[${name}] regenerated dist/${name}/${m.harnessDir}`);
+  return { kind: "completed" };
 }
 
-async function writeReleaseHarness({ name, runtimePort }: {
-  readonly name: string;
-  readonly runtimePort: PluginRuntimePort;
-}): Promise<void> {
+async function writeReleaseHarness(name: string): Promise<PackageRuntimeOutcome> {
   const m = loadManifest(name);
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  await buildTree({ manifest: m, outRoot: releaseDir, runtimePort, invoke: "aidlc" });
+  const built = await buildTree(m, releaseDir, "aidlc");
+  if (built.kind !== "completed") return built;
   rewriteNativeInvocations(releaseDir, m, copyRoot);
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
+  return { kind: "completed" };
+}
+
+// A root file's part under tools/data/root-blocks/ is that file's text, as
+// buildTree writes it. The native rewrite changes the root file (AGENTS.md's
+// native wording) and skips the part, which has no extension, so the part
+// takes the rewritten text again: config and the engine merge AI-DLC's text
+// from it, and a native install must never be told it needs bun.
+function syncRootBlockParts(outRoot: string, m: HarnessManifest): void {
+  for (const integration of m.rootIntegrations) {
+    const part = integration.policy === "managed-block"
+      ? integration.marker || basename(integration.path)
+      : copyStartsWithout(integration) || integration.policy === "json-entries"
+      ? basename(integration.path)
+      : undefined;
+    const file = join(outRoot, integration.path);
+    const dst = part === undefined ? undefined : join(outRoot, m.harnessDir, "tools", "data", "root-blocks", part);
+    if (dst !== undefined && existsSync(file) && existsSync(dst)) writeFileSync(dst, readFileSync(file));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1953,7 +1696,6 @@ if (argv[0] === "codex" && argv[1] === "trust") {
       project: string,
       hooksJson: string | undefined,
       harnessDir: string,
-      repoRoot: string,
       harnessName: string,
       invoke: string,
       trustedNamespace: string,
@@ -1966,7 +1708,6 @@ if (argv[0] === "codex" && argv[1] === "trust") {
       resolvedProject,
       hooksJson ?? undefined,
       ".codex",
-      REPO_ROOT,
       "codex",
       substituteInvocationTokens("{{INVOKE}}", ".codex"),
       TRUSTED_ROUTE_NAMESPACE,
@@ -2002,39 +1743,7 @@ function discoverPluginNames(): string[] {
 let pluginTargetCache: PluginTargetTable | null = null;
 function pluginTargets(): PluginTargetTable {
   if (pluginTargetCache) return pluginTargetCache;
-  pluginTargetCache = {};
-  for (const harnessName of discoverHarnessNames()) {
-    const manifest = loadManifest(harnessName);
-    const installRoots = new Set<string>([
-      manifest.harnessDir,
-      "aidlc",
-    ]);
-    const addTopLevel = (path: string): void => {
-      const top = path.split(/[\\/]/).filter(Boolean)[0];
-      if (top) installRoots.add(top);
-    };
-    for (const file of manifest.harnessFiles) {
-      if (file.projectRoot) addTopLevel(file.dst);
-    }
-    if (manifest.onboarding?.projectRoot) {
-      addTopLevel(manifest.onboarding.dst);
-    }
-    if (manifest.orchestratorSkillPath) {
-      addTopLevel(manifest.orchestratorSkillPath);
-    }
-    for (const root of manifest.plugin?.installRoots ?? []) {
-      addTopLevel(root);
-    }
-    pluginTargetCache[harnessName] = {
-      harnessName: manifest.name,
-      manifestDir:
-        manifest.plugin?.manifestDir ??
-        `${manifest.harnessDir}-plugin`,
-      harnessLeaf: manifest.harnessDir,
-      kind: manifest.plugin?.kind ?? "store",
-      installRoots: [...installRoots].sort(),
-    };
-  }
+  pluginTargetCache = projectPluginTargets({ declarations: discoverHarnessNames().map((name) => ({ name, manifest: loadManifest(name) })) });
   return pluginTargetCache;
 }
 
@@ -2042,37 +1751,39 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
   return pluginTargets()[harnessName] ?? null;
 }
 
-function createPassRuntimePort(): PluginRuntimePort {
-  return createSharedPluginRuntimePort(createPluginRuntimePort({ projectRoot: REPO_ROOT }));
+async function projectCoreRuntime(input: { readonly treeRoot: string }): Promise<RuntimePublication> {
+  const compiler = await createPluginRuntimeCompiler({ projectRoot: REPO_ROOT });
+  if (compiler.kind === "unavailable") return compiler;
+  const prepared = await prepareCoreRuntimeArtifacts({
+    pluginRoot: CORE_ROOT,
+    files: Array.from(walk(input.treeRoot), (file) => relative(input.treeRoot, file).split(sep).join("/")),
+    sourcePort: createPluginRuntimeSourcePort(), runtimePort: compiler.port,
+  });
+  return publishPluginRuntimeArtifacts({ outDir: input.treeRoot, prepared, port: createPluginRuntimeArtifactPort() });
 }
 
 async function bundleRuntimeDependencies(input: {
   readonly pluginRoot: string;
   readonly outDir: string;
   readonly files: readonly string[];
-  readonly runtimePort: PluginRuntimePort;
-}): Promise<void> {
-  const sources = input.files.filter((file) =>
-    /\.[cm]?[jt]s$/.test(file) && !/\.d\.[cm]?ts$/.test(file) && existsSync(join(input.pluginRoot, file)),
-  ).map((file) => ({ file, source: readFileSync(join(input.pluginRoot, file), "utf-8") }));
-  const prepared = await preparePluginRuntimeArtifacts({
-    pluginRoot: input.pluginRoot, files: input.files, sources, port: input.runtimePort,
+}): Promise<RuntimePublication> {
+  const compiler = await createPluginRuntimeCompiler({ projectRoot: REPO_ROOT });
+  if (compiler.kind === "unavailable") return compiler;
+  const prepared = await prepareProjectedPluginRuntimeArtifacts({
+    pluginRoot: input.pluginRoot,
+    files: input.files,
+    sourcePort: createPluginRuntimeSourcePort(),
+    runtimePort: compiler.port,
   });
-  if (prepared.kind === "refused") throw new Error(prepared.message);
-  for (const artifact of prepared.artifacts) {
-    const path = join(input.outDir, artifact.file);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, artifact.content);
-  }
+  return publishPluginRuntimeArtifacts({ outDir: input.outDir, prepared, port: createPluginRuntimeArtifactPort() });
 }
 
-async function buildRepositoryPluginProjection({ pluginName, harnessName, outDir, outputBoundary, runtimePort }: {
-  readonly pluginName: string;
-  readonly harnessName: string;
-  readonly outDir: string;
-  readonly outputBoundary: string;
-  readonly runtimePort: PluginRuntimePort;
-}): Promise<PluginProjectionResult> {
+async function buildRepositoryPluginProjection(
+  pluginName: string,
+  harnessName: string,
+  outDir: string,
+  outputBoundary = REPO_ROOT,
+): Promise<PackageRuntimeOutcome> {
   const target = pluginTargetFor(harnessName);
   if (!target) {
     throw new Error(
@@ -2086,168 +1797,23 @@ async function buildRepositoryPluginProjection({ pluginName, harnessName, outDir
     outputBoundary,
     templateHooksDir: PLUGIN_HOOKS_TEMPLATE_SRC,
     reviewerAgents: reviewerAgentSet(CORE_ROOT),
+    // This repository's own plugins/ are AI-DLC's: aidlc-<name> in aidlc-plugins.
+    firstParty: true,
   });
-  projectPluginDocuments({ projection, outDir, pluginName, harnessName });
-  await bundleRuntimeDependencies({ pluginRoot: join(PLUGINS_ROOT, pluginName), outDir, files: projection.files, runtimePort });
-  if (!isModelHarness(harnessName)) throw new Error(`unsupported plugin hook harness: ${harnessName}`);
-  const hookContributions = renderPluginHookContributions({
-    pluginName, harness: harnessName, harnessDir: target.harnessLeaf,
-    invocation: `bun ${target.harnessLeaf}/tools/aidlc.ts`, trustedNamespace: TRUSTED_ROUTE_NAMESPACE,
-    rows: pluginHookRows(REPO_ROOT, harnessName).filter((row) => row.pluginName === pluginName),
-  });
-  if (hookContributions.registrations.length > 0) {
-    const registrationPath = join(outDir, "contributions", "hook-registrations.json");
-    mkdirSync(dirname(registrationPath), { recursive: true });
-    writeFileSync(registrationPath, JSON.stringify(hookContributions, null, 2) + "\n");
-  }
-  return { ...projection, files: walkFiles(outDir).map((file) => file.split(sep).join("/")) };
-}
-
-function pluginAgentFrontmatter(
-  content: string,
-  sourcePath: string,
-): { fields: Record<string, string>; body: string } {
-  const raw = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!match) {
-    throw new Error(`${sourcePath}: plugin agent has no closed frontmatter block.`);
-  }
-  const fields: Record<string, string> = {};
-  let current: string | null = null;
-  for (const line of match[1].split(/\r?\n/)) {
-    const entry = line.match(/^([A-Za-z_]+):\s*(.*)$/);
-    if (entry) {
-      current = entry[1];
-      fields[current] = entry[2].replace(/^>\s*$/, "");
-    } else if (current && /^\s+\S/.test(line) && !line.trim().startsWith("-")) {
-      fields[current] = `${fields[current]} ${line.trim()}`.trim();
+  const runtime = await projectDeclaredPluginRuntime({ projectRoot: REPO_ROOT, pluginRoot: join(PLUGINS_ROOT, pluginName), projection });
+  if (runtime.kind !== "published") return runtime;
+  if (harnessName === "claude") {
+    const authoredHooks = join(PLUGINS_ROOT, pluginName, "hooks");
+    const bound = bindPluginHookSources({ rows: pluginHookRows(REPO_ROOT, harnessName).filter((row) => row.pluginName === pluginName), authoredFiles: existsSync(authoredHooks) ? walkPluginFiles(authoredHooks).map((file) => "hooks/" + relative(authoredHooks, file).split(sep).join("/")) : [], projectedFiles: projection.files });
+    if (bound.kind === "refused") throw new Error(bound.message);
+    const hookContributions = renderPluginHookContributions({ pluginName, harness: "claude", harnessDir: target.harnessLeaf, invocation: "bun .claude/tools/aidlc.ts", trustedNamespace: "engine", rows: bound.rows });
+    if (hookContributions.registrations.length > 0) {
+      const registrationPath = join(projection.pluginRoot, "contributions", "hook-registrations.json");
+      mkdirSync(dirname(registrationPath), { recursive: true });
+      writeFileSync(registrationPath, JSON.stringify(hookContributions, null, 2) + "\n");
     }
   }
-  return { fields, body: raw.slice(match[0].length) };
-}
-
-function isTier(value: string): value is Tier {
-  return TIERS.some((tier) => tier === value);
-}
-
-function projectCodexPluginAgent(
-  content: string,
-  sourcePath: string,
-  tier: Tier | null,
-): string {
-  const { fields, body } = pluginAgentFrontmatter(content, sourcePath);
-  const name = fields.name?.trim();
-  if (!name) throw new Error(`${sourcePath}: plugin agent has no name: line.`);
-  const description = (fields.description ?? "").replace(/\s+/g, " ").trim();
-  const instructions = body.trim();
-  const unresolved = `${description}\n${instructions}`.match(/\{\{[A-Z_]+\}\}/);
-  if (unresolved) {
-    throw new Error(`${sourcePath}: unresolved Codex agent token ${unresolved[0]}.`);
-  }
-  const effective = tier === null
-    ? null
-    : resolveModelPolicy(null, modelAgentName(sourcePath), tier, "codex", TIER_CAP);
-  const surface = `name = ${JSON.stringify(name)}\n` +
-    `description = ${JSON.stringify(description)}\n` +
-    `developer_instructions = ${JSON.stringify(instructions)}\n`;
-  return writeCodexAgentSurface(surface, effective ?? {});
-}
-
-// The engine PLACES; the packager PROJECTS. `aidlc-plugin-emit.ts` declares
-// itself free of any framework-checkout or harness-manifest dependency because
-// it is also the shipped offline builder's engine, so it cannot run the
-// authoring steps — which read CORE_ROOT, the harness manifest, and the memory
-// tier cap. Left there, plugin content reaches an install still carrying
-// `{{HARNESS_DIR}}`: core declares exactly ONE transform class
-// (scripts/plugin-contributions.ts) and plugin content never received it, so a
-// plugin authored to the documented convention ships literal tokens and
-// unrunnable commands.
-//
-// This runs the SAME `transform` core content gets, over the already-placed
-// tree, plus the plugin-token layer. Doing it here rather than inside the engine
-// keeps the engine's stated contract intact.
-//
-// KNOWN LIMIT, deliberately not papered over: this fixes the PACKAGER path only.
-// A plugin built through the offline `aidlc-plugin-build` CLI still receives no
-// projection, because the authoring steps genuinely need a checkout — the tier
-// projection alone reads a table (core/tools/aidlc-tiers.ts), a cap layered over
-// core/memory, and throws per-harness validation. Making that offline-capable
-// requires separating core's projection concerns first; it is not a matter of
-// passing more configuration. Recorded in the drift register rather than faked.
-function projectPluginDocuments(args: {
-  readonly projection: { readonly files: readonly string[] };
-  readonly outDir: string;
-  readonly pluginName: string;
-  readonly harnessName: string;
-}): void {
-  const manifest = loadManifest(args.harnessName);
-  const declaredTokens = pluginTokens(REPO_ROOT, args.pluginName, args.harnessName);
-  for (const relativePath of args.projection.files) {
-    if (!relativePath.endsWith(".md")) continue;
-    const absolutePath = join(args.outDir, relativePath);
-    const source = readFileSync(absolutePath);
-    const codexAgent = args.harnessName === "codex" &&
-      /(?:^|\/)agents\/[^/]+-agent\.md$/.test(relativePath);
-    const tierValue = codexAgent
-      ? agentTierFromMdOrNull(source.toString("utf-8"), absolutePath)
-      : null;
-    if (tierValue !== null && !isTier(tierValue)) {
-      throw new Error(`${absolutePath}: invalid agent tier ${JSON.stringify(tierValue)}.`);
-    }
-    const projected = transform(
-      absolutePath,
-      projectPluginAgentTier(
-        absolutePath,
-        source,
-        manifest.tierFlavor,
-      ),
-      manifest.harnessDir,
-      manifest.rulesRename,
-    );
-    const content = substitutePluginTokens(projected.toString("utf-8"), declaredTokens);
-    writeFileSync(absolutePath, content);
-    if (codexAgent) {
-      writeFileSync(
-        absolutePath.replace(/\.md$/, ".toml"),
-        projectCodexPluginAgent(content, absolutePath, tierValue),
-      );
-    }
-  }
-}
-
-// Tolerant tier reader for PLUGIN agents: returns null when the frontmatter
-// declares none. A PLUGIN agent may legitimately hand-pin `model:` directly
-// instead of opting into the tier vocabulary (the test-pro fixture does), so a
-// plugin's tier-less agent is shipped verbatim rather than failing the build -
-// the tier projection is opt-in for plugins, mandatory for core (agentTierFromMd
-// keeps the loud contract there). A malformed frontmatter block is still a hard
-// error in both readers.
-function agentTierFromMdOrNull(s: string, srcPath: string): string | null {
-  // Strip a UTF-8 BOM before anchoring - macOS/Windows editors occasionally
-  // save .md with one, and the ^--- anchor would otherwise miss (same
-  // tolerance as the rule-frontmatter parser).
-  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
-  const m = s.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) throw new Error(`${srcPath}: agent .md has no YAML frontmatter block.`);
-  const tierMatch = m[1].match(/^tier:\s*(\S+)\s*$/m);
-  return tierMatch ? tierMatch[1] : null;
-}
-
-// Project a plugin file's tier IFF it is a tier-declaring agent .md; every other
-// file (stages, sensors, knowledge, hand-pinned agents) is returned byte-for-byte
-// so this stays a superset of the old verbatim copy. Guarding on the tolerant
-// tier reader keeps token-substitution and rules-rename OUT of the plugin path -
-// only the tier line is rewritten, nothing else in the file moves.
-function projectPluginAgentTier(
-  srcPath: string,
-  content: Buffer,
-  harness: Harness,
-): Buffer {
-  const posixPath = srcPath.split(sep).join("/");
-  if (!posixPath.includes("/agents/") || !posixPath.endsWith("-agent.md")) return content;
-  const text = content.toString("utf-8");
-  if (agentTierFromMdOrNull(text, srcPath) === null) return content;
-  return Buffer.from(projectTierFrontmatter(text, srcPath, harness), "utf-8");
+  return { kind: "completed" };
 }
 
 // Which harnesses get a projection = every built harness with a manifest (each
@@ -2256,35 +1822,30 @@ function pluginHarnessesFor(harnesses: string[]): string[] {
   return harnesses.filter((h) => pluginTargetFor(h) !== null);
 }
 
-async function emitPlugins({ harnesses, runtimePort, distRoot = join(REPO_ROOT, "dist"), output }: {
-  readonly harnesses: string[];
-  readonly runtimePort: PluginRuntimePort;
-  readonly distRoot?: string;
-  readonly output: "logged" | "quiet";
-}): Promise<void> {
+async function emitPlugins(
+  harnesses: string[],
+  distRoot = join(REPO_ROOT, "dist"),
+  log = true,
+): Promise<PackageRuntimeOutcome> {
   for (const pluginName of discoverPluginNames()) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
-      await buildRepositoryPluginProjection({
+      const projected = await buildRepositoryPluginProjection(
         pluginName,
         harnessName,
-        outDir: join(distRoot, "plugins", pluginName, harnessName),
-        outputBoundary: distRoot,
-        runtimePort,
-      });
-      const nativeOut = join(dirname(distRoot), "dist-release", "plugins", pluginName, harnessName);
-      rmSync(nativeOut, { recursive: true, force: true });
-      cpSync(join(distRoot, "plugins", pluginName, harnessName), nativeOut, { recursive: true });
-      const target = pluginTargetFor(harnessName);
-      if (!target) throw new Error(`no native plugin target for ${harnessName}`);
-      writePluginHookWiring({ pluginName, outDir: nativeOut, target, channel: "native" });
-      const manifest = loadManifest(harnessName);
-      projectNativeInvocationFiles(nativeOut, manifest);
-      assertNativeInvocationFiles(nativeOut, manifest);
-      if (output === "logged") {
-        console.log(`[plugin:${pluginName}] emitted copy and native projections for ${harnessName}/`);
+        join(distRoot, "plugins", pluginName, harnessName),
+        distRoot,
+      );
+      if (projected.kind !== "completed") return projected;
+      if (log) {
+        console.log(`[plugin:${pluginName}] emitted dist/plugins/${pluginName}/${harnessName}/`);
       }
     }
   }
+  const built = pluginHarnessesFor(harnesses).map((name) => pluginTargetFor(name) as PluginTarget);
+  for (const file of writeFirstPartyCatalogues(join(distRoot, "plugins"), built)) {
+    if (log) console.log(`[plugins] emitted dist/plugins/${file}`);
+  }
+  return { kind: "completed" };
 }
 
 function removeUnexpectedGeneratedEntries(
@@ -2307,9 +1868,8 @@ function cleanWriteOutputs(harnesses: string[], fullBuild: boolean): void {
       distRoot,
       new Set([...harnesses, "plugins"]),
     );
-    removeUnexpectedGeneratedEntries(releaseRoot, new Set([...harnesses, "plugins"]));
+    removeUnexpectedGeneratedEntries(releaseRoot, new Set(harnesses));
     rmSync(join(distRoot, "plugins"), { recursive: true, force: true });
-    rmSync(join(releaseRoot, "plugins"), { recursive: true, force: true });
     return;
   }
 
@@ -2340,40 +1900,40 @@ function assertIdenticalRootIntegrations(root: string, harnesses: string[]): voi
   }
 }
 
-async function buildCheckPass({ root, harnesses, runtimePort }: {
-  readonly root: string;
-  readonly harnesses: string[];
-  readonly runtimePort: PluginRuntimePort;
-}): Promise<void> {
+async function buildCheckPass(root: string, harnesses: string[]): Promise<PackageRuntimeOutcome> {
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
   for (const name of harnesses) {
     const manifest = loadManifest(name);
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
-    await buildTree({ manifest, outRoot: copyRoot, runtimePort });
-    await buildTree({ manifest, outRoot: nativeRoot, runtimePort, invoke: "aidlc" });
+    const copied = await buildTree(manifest, copyRoot);
+    if (copied.kind !== "completed") return copied;
+    const native = await buildTree(manifest, nativeRoot, "aidlc");
+    if (native.kind !== "completed") return native;
     rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
   assertIdenticalRootIntegrations(releaseRoot, harnesses);
-  await emitPlugins({ harnesses, runtimePort, distRoot, output: "quiet" });
+  return emitPlugins(harnesses, distRoot, false);
 }
 
-async function checkPackageDeterminism(harnesses: string[]): Promise<string[]> {
+async function checkPackageDeterminism(harnesses: string[]): Promise<PackageCheckOutcome> {
   const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
   const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
   try {
-    await buildCheckPass({ root: first, harnesses, runtimePort: createPassRuntimePort() });
-    await buildCheckPass({ root: second, harnesses, runtimePort: createPassRuntimePort() });
-    return [
+    const firstPass = await buildCheckPass(first, harnesses);
+    if (firstPass.kind !== "completed") return firstPass;
+    const secondPass = await buildCheckPass(second, harnesses);
+    if (secondPass.kind !== "completed") return secondPass;
+    return { kind: "checked", problems: [
       ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
       ...diffTrees(
         join(first, "dist-release"),
         join(second, "dist-release"),
         "dist-release",
       ),
-    ];
+    ] };
   } finally {
     rmSync(first, { recursive: true, force: true });
     rmSync(second, { recursive: true, force: true });
@@ -2397,7 +1957,7 @@ if (argv[0] === "plugin" && argv[1] === "build") {
     console.error("usage: package.ts plugin build <plugin> <harness> <outDir>");
     process.exit(1);
   }
-  // Proper usage errors, never a raw ENOENT/rmSync stack (round-3).
+  // Proper usage errors, never a raw ENOENT/rmSync stack.
   // Reserved-name check FIRST so the error names the real problem even when
   // the directory doesn't exist yet (same rule discoverPluginNames enforces).
   if (pluginName === "aidlc" || pluginName.startsWith("aidlc-")) {
@@ -2416,19 +1976,18 @@ if (argv[0] === "plugin" && argv[1] === "build") {
   const outArg = outDir.replace(/[/\\]+$/, "") || outDir;
   const resolvedOut = isAbsolute(outArg) ? outArg : join(process.cwd(), outArg);
   try {
-    await buildRepositoryPluginProjection({
+    const projected = await buildRepositoryPluginProjection(
       pluginName,
       harnessName,
-      outDir: resolvedOut,
-      outputBoundary: resolvedOut,
-      runtimePort: createPassRuntimePort(),
-    });
+      resolvedOut,
+      resolvedOut,
+    );
+    if (projected.kind !== "completed") reportPackageRuntimeFailure({ failure: projected, port: createPackageRuntimeCliPort() });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
-  process.exit(0);
-}
+} else {
 
 const check = argv.includes("--check");
 const named = argv.find((a) => !a.startsWith("--"));
@@ -2443,35 +2002,38 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
   process.exit(1);
 }
 
-if (check) {
-  const problems = await checkPackageDeterminism(targets);
-  if (problems.length > 0) {
-    console.error(`\npackage --check FAILED (${problems.length} problem(s)):`);
-    for (const p of problems.slice(0, 40)) console.error("  " + p);
-    process.exit(1);
-  }
-  console.log(
-    `package --check: deterministic across two independent build(s) ` +
-      `for ${targets.join(", ")}.`,
-  );
-} else {
+async function runPackageCheck(): Promise<PackageRuntimeOutcome> {
+  const checked = await checkPackageDeterminism(targets);
+  if (checked.kind !== "checked") return checked;
+  if (checked.problems.length > 0) return {
+    kind: "refused", message: `\npackage --check FAILED (${checked.problems.length} problem(s)):\n${checked.problems.slice(0, 40).map((problem) => "  " + problem).join("\n")}`,
+  };
+  console.log(`package --check: deterministic across two independent build(s) for ${targets.join(", ")}.`);
+  return { kind: "completed" };
+}
+
+async function runPackageWrite(): Promise<PackageRuntimeOutcome> {
   const builtFrom = packageInputsFingerprint(REPO_ROOT);
   forgetPackagedSources(REPO_ROOT, targets);
   cleanWriteOutputs(targets, named === undefined);
-  const runtimePort = createPassRuntimePort();
-  for (const n of targets) {
-    await writeHarness({ name: n, runtimePort });
-    await writeReleaseHarness({ name: n, runtimePort });
-  }
+  const harnesses = await targets.reduce<Promise<PackageRuntimeOutcome>>(async (prior, target) => {
+    const previous = await prior;
+    if (previous.kind !== "completed") return previous;
+    const copied = await writeHarness(target);
+    if (copied.kind !== "completed") return copied;
+    return writeReleaseHarness(target);
+  }, Promise.resolve({ kind: "completed" }));
+  if (harnesses.kind !== "completed") return harnesses;
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);
-  // Emit plugin projections (the hybrid: per-harness host plugins from plugins/<name>/)
-  await emitPlugins({ harnesses: targets, runtimePort, output: "logged" });
-  // Last, so only a finished build from unchanged sources is recorded as current.
-  if (!recordPackagedSources(REPO_ROOT, targets, builtFrom)) {
-    console.error(
-      "[sources] a packaging input changed while packaging, so the generated trees may mix old and new files: run `bun scripts/package.ts` again.",
-    );
-    process.exit(1);
-  }
+  const plugins = await emitPlugins(targets);
+  if (plugins.kind !== "completed") return plugins;
+  if (!recordPackagedSources(REPO_ROOT, targets, builtFrom)) return {
+    kind: "refused", message: "[sources] a packaging input changed while packaging, so the generated trees may mix old and new files: run `bun scripts/package.ts` again.",
+  };
+  return { kind: "completed" };
+}
+
+const completed = check ? await runPackageCheck() : await runPackageWrite();
+if (completed.kind !== "completed") reportPackageRuntimeFailure({ failure: completed, port: createPackageRuntimeCliPort() });
 }

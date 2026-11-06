@@ -1,7 +1,5 @@
 ---
 slug: user-stories
-number: 2.4
-name: User Stories
 phase: inception
 execution: CONDITIONAL
 condition: Execute when user-facing features, multiple personas, complex business logic, or cross-team work is involved. Skip for pure refactoring, isolated bug fixes, infrastructure-only changes, or developer tooling.
@@ -54,9 +52,10 @@ outputs: stories.md, personas.md, user-stories-assessment.md, traceability.json 
 
 ### Step 1: Load the Lead Persona (mob stage)
 
-Read every path in `directive.inline_context_paths` per the stage protocol. For
-this mob the roster contains the aidlc-product-agent persona and its shared/role
-knowledge only; the product manager writes its own pieces and assembles the outputs.
+The step carries the aidlc-product-agent persona (`directive.lead_persona`); work
+this stage as that agent. Read every path in `directive.inline_context_paths` per
+the stage protocol: for this mob it holds the product agent's shared and role
+knowledge only. The product manager owns the inline draft and integration work.
 
 This stage runs `mode: mob` (stage-protocol-ensemble.md §5 "Multi-agent stages"): the support agents (aidlc-design-agent for user experience, aidlc-developer-agent for implementability, aidlc-quality-agent for testability) are NOT voices to adopt — they are dispatched as independent participants during PART 2. Do not load their personas into your own context.
 
@@ -74,7 +73,7 @@ Create `<record>/inception/user-stories/user-stories-assessment.md` documenting 
 - If skipping: what alternative coverage exists (e.g., requirements alone are sufficient)
 
 If skipping, run
-`{{INVOKE}} engine orchestrate report --stage user-stories --result skipped --reason "<reason>"`.
+`{{INVOKE}} engine orchestrate report --stage user-stories --result skipped --reason '<reason>'`.
 The engine records the skip and advances to the next in-scope stage.
 
 ### Step 3: Load Prior Context
@@ -119,27 +118,57 @@ If the user interjects with feedback before generation completes, treat it as a 
 
 ### Step 8: Execute Plan — Generate Stories and Personas via the Mob
 
-The two outputs are written in the mob rounds of stage-protocol-ensemble.md §5
-`mode: mob`, from the approved plan, the Q&A file and `requirements.md`, and the
-Product Leader reviews afterwards (`stage-protocol-reviewer.md` §12a). The
-pieces, their authors and their rounds:
+This is the mob-elaboration ritual: the Product Manager (lead) owns the
+draft, Developers and QA (and Design) collaborate as independent
+participants, and the Product Leader reviews afterwards (`stage-protocol-reviewer.md` §12a).
 
-**`<record>/inception/user-stories/personas.md`** — design, round 1:
+**Round 0 — lead drafts.** As the lead, based on the approved plan, draft:
+
+**`<record>/inception/user-stories/personas.md`:**
 - User persona definitions (name, role, goals, pain points, context)
 - Persona relationships and priority ranking
 
 **`<record>/inception/user-stories/stories.md`:**
-- Lead, round 1: user stories in standard format: "As a [persona], I want [goal], so that [benefit]", each with a stable `US{group}.{seq}` ID (for example `US1.1`), and each story's priority (Must Have / Should Have / Could Have / Won't Have).
-- Quality, round 1: the acceptance conditions each requirement in `requirements.md` implies. Shared round: acceptance criteria for each assembled story, built from those conditions, each with a three-segment `AC{story-group}.{story-seq}.{criterion-seq}` ID (for example `AC1.1.1`).
-- Developer, round 1: the implementation constraints and dependencies the requirements imply. Shared round: the assembled stories' dependencies and relationships, and INVEST compliance notes.
+- User stories in standard format: "As a [persona], I want [goal], so that [benefit]". Give each story a stable `US{group}.{seq}` ID (for example `US1.1`).
+- Acceptance criteria for each story. Give each criterion a three-segment `AC{story-group}.{story-seq}.{criterion-seq}` ID (for example `AC1.1.1`).
+- Story priority (Must Have / Should Have / Could Have / Won't Have)
+- Story dependencies and relationships
+- INVEST compliance notes
 
-When `directive.support_agents` is empty, the lead writes every piece (§5).
-Maintained dissent is quoted verbatim in the Step 10 completion summary.
+**Round 1 — dispatch the mob.** Per stage-protocol-collaborators.md `mode: mob`,
+dispatch exactly the collaborators the directive lists in `support_agents`, in
+parallel against the draft (artifacts by path: the two draft artifacts, the Q&A
+file, requirements.md; rules per `stage-protocol.md` § "For subagent stages" step 2),
+mutually blind. Each WRITES its contribution file at
+`<record>/inception/user-stories/contributions/<agent-slug>.md` (§11 format:
+identity-marker first line, Contribution, Positions): design on UX and
+persona fidelity, developer on implementability and story sizing, quality on
+testability of the acceptance criteria.
+
+**If `directive.support_agents` is empty, skip Round 1 and the triage below** —
+the collaborators switch is off for this scope, so the lead works alone
+(§5): your draft stands as the user stories, with no mob round to dispatch,
+integrate, or triage, and no contribution files.
+
+**Integrate and triage.** As the lead, fold the contributions into the two
+artifacts, then triage unresolved objections per stage-protocol-collaborators.md: a judgment call (both
+positions legitimate) goes to the user NOW as a structured question (add it
+to the questions file first, blank `[Answer]:` tag); a knowledge dispute
+goes to **round 2** — re-dispatch only the objecting agent(s) with the
+revised draft and the other participants' positions (they update their own
+contribution files). Maintained dissent is quoted verbatim in the Step 10
+completion summary. The dispatched collaborators' contribution files are this
+stage's ensemble evidence — the engine refuses approval while any in the
+directive's effective `support_agents` is missing. A lead working alone has none.
 
 **Write element-level traceability.** Create
-`<record>/inception/user-stories/traceability.json`. Enumerate every `FR` and
-`NFR` ID from `requirements.md` in `upstream_ids`, with one `coverage` row per
-ID. `OK` targets must name one or more existing `USx.y` IDs. Use `Deferred`
+`<record>/inception/user-stories/traceability.json` by running
+`{{INVOKE}} engine sensor-traceability --stage user-stories --output-path <that path> --write-upstream`:
+it lists every `FR` and `NFR` ID Requirements Analysis recorded in
+`upstream_ids`, each with a `GAP` row (a requirement with sub-requirements is
+traced through its `FR{n}.{m}` IDs and needs no row of its own). Set each
+row's `status` and `target`: `OK` targets must name one or more existing
+`USx.y` IDs. Use `Deferred`
 only with a named downstream stage and `N/A` only with a justification:
 
 ```json
@@ -157,7 +186,7 @@ only with a named downstream stage and `N/A` only with a justification:
 ### Step 9: Open the Approval Gate
 
 After verifying the three lead artifacts and every dispatched collaborator's
-contribution file (none on a lead-only run), run:
+contribution file (none when the lead works alone), run:
 
 ```bash
 {{INVOKE}} engine orchestrate report \
@@ -196,6 +225,6 @@ declared and covered, and checks that each `OK` target exists in `stories.md`.
 
 When `directive.protocol_modules` lists `learnings`, follow
 `stage-protocol-learnings.md`: keep the diary at `directive.memory_path` while
-working and run the ritual before the approval gate, applying its bootstrap,
-`single: true`, per-unit, and gate-revision exemptions. When the module is absent,
-skip both the diary and the ritual.
+working, and take the learnings step before the approval gate; that module says
+when it asks the person anything. When the module is absent, skip both the diary
+and the step.

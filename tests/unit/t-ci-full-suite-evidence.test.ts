@@ -31,7 +31,7 @@ function run(overrides: Partial<EvidenceRun> = {}): EvidenceRun {
   };
 }
 
-describe("t-ci-full-suite-evidence stable release Full Suite gate", () => {
+describe("t-ci-full-suite-evidence optional result inspection", () => {
   test("only a passing release-purpose result for the exact commit and run qualifies", () => {
     expect(evidenceProblems(passing(), SHA, "41")).toEqual([]);
     expect(evidenceProblems(passing(), OTHER, "41")).toEqual([`sha is "${SHA}", not "${OTHER}"`]);
@@ -191,7 +191,7 @@ describe("t-ci-full-suite-evidence stable release Full Suite gate", () => {
       ]) {
         const refused = check(runId, path, sha);
         expect(refused.status, refused.stderr).toBe(1);
-        expect(refused.stderr).toContain(`::error::Stable publication refused: no passing release-purpose Full Suite for ${sha}.`);
+        expect(refused.stderr).toContain(`::error::No passing release-purpose Full Suite for ${sha}.`);
         expect(refused.stderr).toContain(detail);
         expect(refused.output).toBe("");
       }
@@ -209,7 +209,7 @@ describe("t-ci-full-suite-evidence stable release Full Suite gate", () => {
     }
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
-  test("a failed search falls back to running the Full Suite instead of blocking the release", () => {
+  test("a failed search reports missing evidence without claiming to have run tests", () => {
     const root = mkdtempSync(join(tmpdir(), "t-ci-full-suite-evidence-find-"));
     try {
       const output = join(root, "output");
@@ -221,7 +221,7 @@ describe("t-ci-full-suite-evidence stable release Full Suite gate", () => {
       });
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain("::warning::Could not search earlier runs for Full Suite evidence:");
-      expect(result.stdout).toContain(`No earlier passing Full Suite result for ${SHA}; this release runs the Full Suite`);
+      expect(result.stdout).toContain(`No earlier passing Full Suite result for ${SHA}`);
       expect(readFileSync(output, "utf8")).toBe("run_id=\n");
     } finally {
       rmSync(root, { recursive: true, force: true });

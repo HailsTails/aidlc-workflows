@@ -1,3 +1,4 @@
+import { join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { gateScopeGridPathOf, gateToolsDirectoryOf, isCompletionReport } from "./rin-gate-invocation.ts";
 import { gatedInvocationFrom as constitutionInvocation, runVerdictTool } from "./rin-constitution-gate.ts";
@@ -97,10 +98,10 @@ describe("Rin completion command recognition", () => {
 
 describe("required-host gate assets", () => {
   test.each([".claude", ".codex"])("resolves %s sibling assets while auditing the invoking checkout", (host) => {
-    const hookDirectory = "/producer/" + host + "/hooks";
+    const hookDirectory = `/producer/${host}/hooks`;
     const tools = gateToolsDirectoryOf({ hookDirectory, checkoutRoot: "/invoking" });
-    expect(tools).toBe("/producer/" + host + "/tools");
-    expect(gateScopeGridPathOf({ hookDirectory, checkoutRoot: "/invoking" })).toBe("/invoking/" + host + "/tools/data/scope-grid.json");
+    expect(tools).toBe(resolve("/producer", host, "tools"));
+    expect(gateScopeGridPathOf({ hookDirectory, checkoutRoot: "/invoking" })).toBe(join("/invoking", host, "tools", "data", "scope-grid.json"));
     const seat = verdictSeat();
     const outcome = runVerdictTool({
       scriptName: "rin-harness-constitution-audit.ts", auditRoot: "/invoking", hookDirectory,
@@ -108,7 +109,7 @@ describe("required-host gate assets", () => {
       ports: seat.ports,
     });
     expect(outcome.kind).toBe("spoke");
-    expect(seat.requests).toEqual([{ scriptPath: tools + "/rin-harness-constitution-audit.ts", auditRoot: "/invoking", timeoutMs: 1 }]);
+    expect(seat.requests).toEqual([{ scriptPath: join(tools, "rin-harness-constitution-audit.ts"), auditRoot: "/invoking", timeoutMs: 1 }]);
   });
   test("missing installed assets refuse before spawning instead of borrowing Claude assets", () => {
     const seat = verdictSeat();
@@ -117,7 +118,7 @@ describe("required-host gate assets", () => {
       windows: { coldMs: 1, warmMs: 2 }, assetExists: () => false,
       ports: seat.ports,
     });
-    expect(outcome).toEqual({ kind: "unavailable", scriptName: "rin-harness-constitution-audit.ts", reason: "not found at /producer/.codex/tools/rin-harness-constitution-audit.ts" });
+    expect(outcome).toEqual({ kind: "unavailable", scriptName: "rin-harness-constitution-audit.ts", reason: `not found at ${resolve("/producer", ".codex", "tools", "rin-harness-constitution-audit.ts")}` });
     expect(seat.requests).toEqual([]);
   });
 });

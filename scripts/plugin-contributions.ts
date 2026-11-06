@@ -31,11 +31,10 @@
 // A plugin declaring no block for a harness contributes nothing there, which is
 // how a plugin opts out of a face it has not verified.
 
+import { readPluginHookSource } from "./plugin-hook-source.ts";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { PluginHookRow } from "../core/tools/aidlc-plugin-hook-registrations.ts";
-import type { PluginHookContribution, ProjectedPluginHookContributions } from "../core/tools/aidlc-plugin-hook-registrations.ts";
-import type { ModelHarness } from "../core/tools/aidlc-model-policy.ts";
 
 // `target` names the hook BODY the adapter dispatches to. `capabilityId` is
 // optional and names the capability that body implements, for plugins whose
@@ -49,49 +48,6 @@ export type { PluginHookRow };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const requiredString = (
-  container: Record<string, unknown>,
-  key: string,
-): string | null => {
-  const value = container[key];
-  return typeof value === "string" && value.length > 0 ? value : null;
-};
-
-// A malformed row is a HARD error naming the plugin and the row, never a silent
-// skip: a dropped registration is a guard that does not fire, and the whole
-// point of the seam is that a plugin's guards reach the harness.
-const rowFrom = (
-  candidate: unknown,
-  pluginName: string,
-  harnessName: string,
-  index: number,
-): PluginHookRow => {
-  const where = `plugins/${pluginName} aidlc.hooks.${harnessName}[${index}]`;
-  if (!isRecord(candidate)) throw new Error(`${where}: not an object.`);
-  const event = requiredString(candidate, "event");
-  const target = requiredString(candidate, "target");
-  const hookFile = requiredString(candidate, "hookFile");
-  if (!event) throw new Error(`${where}: missing non-empty "event".`);
-  if (!target) throw new Error(`${where}: missing non-empty "target".`);
-  if (!hookFile) throw new Error(`${where}: missing non-empty "hookFile".`);
-  const matcher = candidate.matcher;
-  if (matcher !== undefined && typeof matcher !== "string")
-    throw new Error(`${where}: "matcher" must be a string when present.`);
-  const capabilityId = candidate.capabilityId;
-  if (capabilityId !== undefined && typeof capabilityId !== "string")
-    throw new Error(`${where}: "capabilityId" must be a string when present.`);
-  if (capabilityId !== undefined && capabilityId.length === 0)
-    throw new Error(`${where}: "capabilityId" must be non-empty when present.`);
-  return {
-    event,
-    target,
-    hookFile,
-    pluginName,
-    ...(matcher ? { matcher } : {}),
-    ...(capabilityId ? { capabilityId } : {}),
-  };
-};
-
 const rowsFromManifest = (
   pluginsRoot: string,
   pluginName: string,
@@ -99,21 +55,9 @@ const rowsFromManifest = (
 ): PluginHookRow[] => {
   const manifestPath = join(pluginsRoot, pluginName, ".aidlc-plugin", "plugin.json");
   if (!existsSync(manifestPath)) return [];
-  const manifest: unknown = JSON.parse(readFileSync(manifestPath, "utf-8"));
-  if (!isRecord(manifest)) return [];
-  const aidlc = manifest.aidlc;
-  if (!isRecord(aidlc)) return [];
-  const hooks = aidlc.hooks;
-  if (!isRecord(hooks)) return [];
-  const forHarness = hooks[harnessName];
-  if (forHarness === undefined) return [];
-  if (!Array.isArray(forHarness))
-    throw new Error(
-      `plugins/${pluginName}: aidlc.hooks.${harnessName} must be an array of rows.`,
-    );
-  return forHarness.map((candidate, index) =>
-    rowFrom(candidate, pluginName, harnessName, index),
-  );
+  const read = readPluginHookSource({ manifest: JSON.parse(readFileSync(manifestPath, "utf-8")), pluginName, harness: harnessName });
+  if (read.kind === "invalid") throw new Error(read.message);
+  return [...read.rows];
 };
 
 /**
@@ -147,40 +91,7 @@ export function pluginHookRows(
   return rows;
 }
 
-// A plugin may ship hook bodies in more than one runtime — a TypeScript body
-// needs a TS-capable runner, a plain .mjs runs on node. Choosing from the file's
-// own extension keeps the row a declaration of WHAT to register rather than HOW
-// to launch it, so a plugin never restates the runtime in every row.
-const runnerFor = (hookFile: string): string =>
-  hookFile.endsWith(".mjs") || hookFile.endsWith(".js") ? "node" : "bun";
-
-export function renderPluginHookContributions(input: {
-  pluginName: string;
-  harness: ModelHarness;
-  harnessDir: string;
-  invocation: string;
-  trustedNamespace: string;
-  rows: readonly PluginHookRow[];
-}): ProjectedPluginHookContributions {
-  const registrations = input.rows.flatMap((row): PluginHookContribution[] => {
-    if (row.target === "aidlc-plugin-compose") return [];
-    if (input.harness === "cursor") return [{ kind: "event-body", path: `${input.harnessDir}/hooks/plugin-hook-targets.json`, event: row.event, hookFile: row.hookFile }];
-    if (input.harness === "opencode") return [{ kind: "event-row", path: `${input.harnessDir}/hooks/plugin-hook-rows.json`, row }];
-    if (input.harness === "claude") return [{ kind: "group", path: `${input.harnessDir}/settings.json`, event: row.event, group: {
-      ...(row.matcher === undefined ? {} : { matcher: row.matcher }),
-      hooks: [{ type: "command", command: `${runnerFor(row.hookFile)} "$CLAUDE_PROJECT_DIR/${input.harnessDir}/hooks/${row.hookFile}"` }],
-    } }];
-    if (input.harness !== "codex" && input.harness !== "copilot") return [];
-    const command = input.harness === "codex"
-      ? `${input.invocation} ${input.trustedNamespace} adapter codex ${row.target}`
-      : `bun ${input.harnessDir}/hooks/aidlc-copilot-adapter.ts ${row.target}`;
-    return [{ kind: "group", path: input.harness === "codex" ? `${input.harnessDir}/hooks.json` : ".github/hooks/aidlc.json", event: row.event, group: input.harness === "codex"
-      ? { ...(row.matcher === undefined ? {} : { matcher: row.matcher }), hooks: [{ type: "command", command }] }
-      : { type: "command", bash: command, powershell: command, timeoutSec: 30 } },
-    { kind: "target", path: `${input.harnessDir}/hooks/plugin-hook-targets.json`, target: row.target, hookFile: row.hookFile }];
-  });
-  return { schemaVersion: 1, pluginName: input.pluginName, harness: input.harness, registrations };
-}
+export { renderPluginHookContributions } from "../core/projection/plugin-hook.ts";
 
 /**
  * A plugin's own prose tokens, substituted into its projected content.

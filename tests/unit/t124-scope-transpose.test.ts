@@ -15,25 +15,25 @@
 // process-boundary rows — `compile` writing scope-grid.json to disk, and
 // `compile --check`'s exit codes on clean / stale / missing grids — drive
 // the real CLI via spawnSync against the BUN runtime, isolated through the
-// AIDLC_STAGE_GRAPH + AIDLC_SCOPE_GRID env seams (aidlc-graph.ts:161-185).
-// process.exit(1) on drift (aidlc-graph.ts:1219,1236) is only observable on
+// AIDLC_STAGE_GRAPH + AIDLC_SCOPE_GRID env seams (aidlc-graph.ts).
+// process.exit(1) on drift (aidlc-graph.ts) is only observable on
 // the spawned process's exit code, so those four stay spawns deliberately.
 //
 // Source under test (dist/claude/.claude/tools/aidlc-graph.ts):
-//   :971  transposeScopeGrid(stages): ScopeGrid
+//   transposeScopeGrid(stages): ScopeGrid
 //          - scope columns = SORTED UNION of every name any stage declares
 //          - a stage naming a scope => EXECUTE under it; every other cell SKIP
 //          - pure, no I/O
-//   :992  canonicalScopeGridJson(grid): string
+//   canonicalScopeGridJson(grid): string
 //          - JSON.stringify(grid, null, 2) + "\n"  (sole-writer, trailing NL)
-//   :1013 compileStageGraph(): { json, gridJson, stages }
-//          - gridJson = canonicalScopeGridJson(transposeScopeGrid(stages)) (:1146)
-//   :740  subgraphForScope(scope): GraphStage[]
+//   compileStageGraph(): { json, gridJson, stages }
+//          - gridJson = canonicalScopeGridJson(transposeScopeGrid(stages))
+//   subgraphForScope(scope): GraphStage[]
 //          - the EXECUTE slice the grid drives, in numeric stage order
-//   :1212 runCompileCheck(): byte-compares both compiled artifacts to disk;
-//          process.exit(1) on stale/missing grid (:1232-1237)
-//   :1293 compile CLI handler: writeFileAtomic(scopeGridPath(), gridJson) (:1308)
-//   :183  scopeGridPath(): AIDLC_SCOPE_GRID ?? data/scope-grid.json (env seam)
+//   runCompileCheck(): byte-compares both compiled artifacts to disk;
+//          process.exit(1) on stale/missing grid
+//   compile CLI handler: writeFileAtomic(scopeGridPath(), gridJson)
+//   scopeGridPath(): AIDLC_SCOPE_GRID ?? data/scope-grid.json (env seam)
 //
 // Old TAP -> new test parity (1:1, every .sh assertion -> a named test()):
 //   .sh test 1  (transposeScopeGrid is a callable export)        -> "transposeScopeGrid is a callable export"
@@ -263,7 +263,8 @@ describe("aidlc-graph compile / --check (Bun spawnSync env seam)", () => {
   test("compile --check on a clean tree (graph + grid) exits 0 [.sh test 9]", () => {
     const graphPath = mkTempPath("graph");
     const gridPath = mkTempPath("grid");
-    expect(runGraph(["compile"], graphPath, gridPath).status).toBe(0);
+    copyFileSync(GRAPH_JSON, graphPath);
+    copyFileSync(GRID_JSON, gridPath);
     const r = runGraph(["compile", "--check"], graphPath, gridPath);
     expect(r.status).toBe(0);
   }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
@@ -271,7 +272,8 @@ describe("aidlc-graph compile / --check (Bun spawnSync env seam)", () => {
   test("compile --check exits 1 on a stale scope-grid.json (drift guard) [.sh test 10]", () => {
     const graphPath = mkTempPath("graph");
     const gridPath = mkTempPath("grid");
-    expect(runGraph(["compile"], graphPath, gridPath).status).toBe(0);
+    copyFileSync(GRAPH_JSON, graphPath);
+    copyFileSync(GRID_JSON, gridPath);
     // Flip exactly one cell so the on-disk grid no longer matches the transpose
     // — the same single-cell mutation the .sh applied via bun -e.
     const j = JSON.parse(readFileSync(gridPath, "utf-8")) as Record<
@@ -296,10 +298,9 @@ describe("aidlc-graph compile / --check (Bun spawnSync env seam)", () => {
   test("compile --check exits 1 when scope-grid.json is missing [.sh test 11]", () => {
     const graphPath = mkTempPath("graph");
     const gridPath = mkTempPath("grid");
-    expect(runGraph(["compile"], graphPath, gridPath).status).toBe(0);
-    rmSync(gridPath);
+    copyFileSync(GRAPH_JSON, graphPath);
     // gridPath never created -> missing grid is treated like a stale one
-    // (aidlc-graph.ts:1226-1237 reads "" on ENOENT, then byte-compares).
+    // (aidlc-graph.ts reads "" on ENOENT, then byte-compares).
     expect(existsSync(gridPath)).toBe(false);
     const r = runGraph(["compile", "--check"], graphPath, gridPath);
     expect(r.status).toBe(1);
@@ -321,7 +322,8 @@ describe("compile preserves composed scope-grid entries", () => {
   test("a composed entry survives recompile and --check stays clean with it present", () => {
     const graphPath = mkTempPath("graph");
     const gridPath = mkTempPath("grid");
-    expect(runGraph(["compile"], graphPath, gridPath).status).toBe(0);
+    copyFileSync(GRAPH_JSON, graphPath);
+    copyFileSync(GRID_JSON, gridPath);
 
     // Append a composed entry the way the composer writes it.
     const grid = JSON.parse(readFileSync(gridPath, "utf-8")) as Record<

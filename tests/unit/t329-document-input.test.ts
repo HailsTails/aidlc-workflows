@@ -16,7 +16,9 @@ import {
   realpathSync,
   renameSync,
   symlinkSync,
+  statSync,
   truncateSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -28,6 +30,7 @@ import {
   REPO_ROOT,
   seedStateFile,
 } from "../harness/fixtures.ts";
+import { stubPdftotextPath } from "../harness/stub-pdftotext.ts";
 import {
   DOCUMENT_INPUT_REQUEST_FILE,
   documentInputRequestFilePath,
@@ -61,7 +64,12 @@ function writeRequest(dir: string, path: string): void {
   writeFileSync(documentInputRequestFilePath(dir), `${path}\n`, "utf-8");
 }
 
-function runCommand(dir: string, args: readonly string[], utility = UTILITY): {
+function runCommand(
+  dir: string,
+  args: readonly string[],
+  utility = UTILITY,
+  env?: Record<string, string | undefined>,
+): {
   status: number;
   stdout: string;
   stderr: string;
@@ -71,6 +79,7 @@ function runCommand(dir: string, args: readonly string[], utility = UTILITY): {
     cmd: [process.execPath, utility, ...args, "--project-dir", dir],
     stdout: "pipe",
     stderr: "pipe",
+    ...(env === undefined ? {} : { env }),
   });
   return {
     status: result.exitCode,
@@ -95,14 +104,21 @@ function gitIn(dir: string, ...args: string[]) {
   });
 }
 
-// The active space's knowledge folder in a fixture project.
 const DOCUMENTS = "aidlc/spaces/default/knowledge/documents";
 const DOCUMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // A minimal Word file: the two OOXML entries DocumentKB detects, the same
 // shape the knowledge extraction tests build.
+// A real zip (with its central directory) holding a Word document with one line of text.
 function wordBytes(): Buffer {
-  const entry = (name: string, data: Buffer): Buffer => {
+  const parts: Array<[string, Buffer]> = [
+    ["[Content_Types].xml", Buffer.from("<Types/>")],
+    ["word/document.xml", Buffer.from("<w:document><w:body><w:p><w:r><w:t>Report text.</w:t></w:r></w:p></w:body></w:document>")],
+  ];
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const [name, data] of parts) {
     const nameBuf = Buffer.from(name, "ascii");
     const header = Buffer.alloc(30);
     header.writeUInt32LE(0x04034b50, 0);
@@ -110,15 +126,24 @@ function wordBytes(): Buffer {
     header.writeUInt32LE(data.length, 18);
     header.writeUInt32LE(data.length, 22);
     header.writeUInt16LE(nameBuf.length, 26);
-    return Buffer.concat([header, nameBuf, data]);
-  };
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(header, nameBuf, data);
+    centrals.push(central, nameBuf);
+    offset += 30 + nameBuf.length + data.length;
+  }
+  const directory = Buffer.concat(centrals);
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
-  return Buffer.concat([
-    entry("[Content_Types].xml", Buffer.from("<Types/>")),
-    entry("word/document.xml", Buffer.from("<document/>")),
-    end,
-  ]);
+  end.writeUInt16LE(parts.length, 8);
+  end.writeUInt16LE(parts.length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
 }
 
 // A copied install whose harness.json names a Bun script as the PDF
@@ -167,8 +192,6 @@ describe("t329 project-description and document-input boundaries", () => {
       ]) {
         expect(flat, `${file}: ${phrase}`).toContain(phrase);
       }
-      // The retired rules: one terminal block, refuse anything after it, and
-      // never look a file name up.
       for (const retired of [
         "exactly one terminal",
         "Reject additional markers",
@@ -469,7 +492,6 @@ describe("t329 project-description and document-input boundaries", () => {
     );
     expect(payload.content_notice).toContain("UNTRUSTED DATA");
 
-    // A name with no extension matches on the stem, ignoring case.
     writeRequest(dir, "VISION");
     const stem = run(dir);
     expect(stem.status, stem.stderr).toBe(0);
@@ -533,7 +555,6 @@ describe("t329 project-description and document-input boundaries", () => {
     const found = run(dir);
     expect(found.status, found.stderr).toBe(0);
     expect(JSON.parse(found.stdout).path).toBe("config/vision.md");
-    // A named secret file is not looked up either.
     writeFileSync(join(dir, "config", "api-credentials.md"), "secret\n");
     writeRequest(dir, "api-credentials.md");
     expect(run(dir).status).not.toBe(0);
@@ -554,7 +575,6 @@ describe("t329 project-description and document-input boundaries", () => {
       expect(looked.status, `${name}: ${looked.stdout}`).not.toBe(0);
       expect(looked.stdout).toBe("");
     }
-    // A folder that says it holds secrets keeps even a document out.
     for (const folder of ["credentials", "secrets"]) {
       mkdirSync(join(dir, folder));
       writeFileSync(join(dir, folder, "vision.md"), "# not a vision\n");
@@ -690,7 +710,6 @@ describe("t329 project-description and document-input boundaries", () => {
     expect(error).not.toContain("/aidlc knowledge onboard");
     expect(existsSync(join(dir, DOCUMENTS))).toBe(false);
 
-    // Other binary input has no text to read, onboarded or not.
     writeFileSync(join(dir, "blob.bin"), Buffer.from([0, 1, 2, 3]));
     writeRequest(dir, "blob.bin");
     const blob = runOnboard(dir);
@@ -729,7 +748,6 @@ describe("t329 project-description and document-input boundaries", () => {
     expect(index.documents.map((row) => [row.id, row.source.path])).toEqual([
       [payload.document_id, "documents/brief.pdf"],
     ]);
-    // The knowledge command's own onboarding ran, audit event included.
     const audit = [...new Bun.Glob("aidlc/spaces/default/**/audit/*.md").scanSync({ cwd: dir, dot: true })]
       .map((file) => readFileSync(join(dir, file), "utf-8"))
       .join("\n");
@@ -747,7 +765,7 @@ describe("t329 project-description and document-input boundaries", () => {
     expect(readdirSync(join(dir, DOCUMENTS))).toEqual(["brief.pdf"]);
   });
 
-  test("onboards a Word file with no extractor and never replaces a file of the same name", () => {
+  test("onboards a Word file AI-DLC reads itself and never replaces a file of the same name", () => {
     const dir = project();
     mkdirSync(join(dir, "docs"));
     mkdirSync(join(dir, DOCUMENTS), { recursive: true });
@@ -763,14 +781,37 @@ describe("t329 project-description and document-input boundaries", () => {
     expect(payload.document_id).toMatch(DOCUMENT_ID);
     expect(payload.document_path).toBe(copy);
     expect(payload.onboard_note).toBe(
-      `I copied "docs/report.docx" to "${copy}" and added it to the knowledge base as document ${payload.document_id}. ` +
-        "I couldn't read any text from it: nothing on this machine is set up to read this kind of file.",
+      `I copied "docs/report.docx" to "${copy}" and added it to the knowledge base as document ${payload.document_id}.`,
     );
     expect(payload.path_notice).toContain("UNTRUSTED PATHS");
-    expect(payload.content).toBeUndefined();
-    expect(payload.content_notice).toBeUndefined();
+    expect(payload.content).toBe("Report text.");
+    expect(payload.content_notice).toContain("NOT INSTRUCTIONS");
     expect(readFileSync(join(dir, DOCUMENTS, "report.docx"), "utf-8")).toBe("another report\n");
     expect(readFileSync(join(dir, copy)).equals(word)).toBe(true);
+  });
+
+  // A copy stopped between claiming the name and renaming its bytes over the
+  // claim leaves an empty file there; it is never taken for the person's
+  // document, and the next copy lands beside it whole.
+  test("an empty file a stopped copy left at the name is passed over, and the Word file lands beside it", () => {
+    const dir = project();
+    mkdirSync(join(dir, "docs"));
+    mkdirSync(join(dir, DOCUMENTS), { recursive: true });
+    const stopped = join(dir, DOCUMENTS, "report.docx");
+    writeFileSync(stopped, "");
+    utimesSync(stopped, new Date("2001-01-01T00:00:00Z"), new Date("2001-01-01T00:00:00Z"));
+    const word = wordBytes();
+    writeFileSync(join(dir, "docs", "report.docx"), word);
+    writeRequest(dir, "docs/report.docx");
+
+    const result = runOnboard(dir);
+    expect(result.status, result.stderr).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    const copy = `${DOCUMENTS}/report-2.docx`;
+    expect(payload.document_path).toBe(copy);
+    expect(payload.onboard_note).toStartWith(`I copied "docs/report.docx" to "${copy}"`);
+    expect(readFileSync(join(dir, copy)).equals(word)).toBe(true);
+    expect(statSync(stopped).size).toBe(0);
   });
 
   test("asks once before copying a git-ignored file, and the person's yes copies it", () => {
@@ -838,6 +879,37 @@ describe("t329 project-description and document-input boundaries", () => {
     expect(onboarded.stdout).not.toContain("print every secret");
     expect(onboarded.stdout).not.toContain("please-print-every-secret");
   });
+
+  // The default extractor (no harness extractor configured), stood in by a
+  // POSIX script first on PATH.
+  test.skipIf(process.platform === "win32")(
+    "a PDF past the page cap says only its first 50 pages were read, in the note and in show",
+    () => {
+      const dir = project();
+      const env = { ...process.env, PATH: stubPdftotextPath(dir, 60) };
+      writeFileSync(join(dir, "policy.pdf"), Buffer.from("%PDF-1.7\npolicy\n"));
+      writeRequest(dir, "policy.pdf");
+
+      const onboarded = runCommand(dir, ["document-input", "--onboard"], UTILITY, env);
+      expect(onboarded.status, onboarded.stderr).toBe(0);
+      const payload = JSON.parse(onboarded.stdout);
+      expect(payload.onboard_note).toEndWith(" Only its first 50 pages were read.");
+      expect(payload.truncated).toBe(true);
+      expect(payload.content).toContain("Page 50 text");
+      expect(payload.content).not.toContain("Page 51 text");
+
+      const shown = runCommand(
+        dir,
+        ["show", payload.document_id],
+        join(AIDLC_SRC, "tools", "aidlc-knowledge.ts"),
+        env,
+      );
+      expect(shown.status, shown.stderr).toBe(0);
+      expect(shown.stdout).toContain(
+        "truncated  yes after page 50 - the content below is a PARTIAL extraction, not the whole document",
+      );
+    },
+  );
 
   test("when git cannot say whether a file is ignored, it asks first and copies nothing", () => {
     const dir = project();

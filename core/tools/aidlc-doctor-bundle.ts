@@ -44,7 +44,6 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
-  statSync,
   type Stats,
   writeFileSync,
 } from "node:fs";
@@ -60,6 +59,7 @@ import {
   hooksHealthReadDir,
   isoTimestamp,
   isPerUnitStage,
+  isStageOrGateEvent,
   isTeamUnitOwnership,
   listIntentDirs,
   listSpaces,
@@ -68,18 +68,18 @@ import {
   readAllAuditShards,
   readRegularFileNoFollowOrThrow,
   recordDir,
-  recoveryFilePath,
   relativeRecordDir,
   runtimeGraphPath,
   stateFilePath,
   stopHookDir,
 } from "./aidlc-lib.ts";
+import { SECRET_SHAPES } from "./aidlc-audit.ts";
 import { aidlcToolInvocation, entrySkillInvocation } from "./aidlc-runtime-paths.ts";
 import { AIDLC_VERSION } from "./aidlc-version.ts";
 
 // The bundle format version — bumped when the report/manifest/evidence SHAPE
 // changes so a maintainer reading an old bundle knows what to expect.
-export const BUNDLE_SCHEMA_VERSION = "1";
+export const BUNDLE_SCHEMA_VERSION = "2";
 
 // Caps. A diagnostic bundle should never approach the size of the thing it is
 // meant to replace; a runaway audit or a pathological graph is truncated with a
@@ -195,14 +195,14 @@ export function newRedactionContext(projectDir: string): RedactionContext {
   };
 }
 
-// Secret-like token shapes. Deliberately broad: AWS keys, bearer/JWT-ish
-// blobs, generic `key=`/`token=`/`secret=`/`password=` assignments, and long
-// hex/base64 runs. A false positive redacts a harmless string (acceptable); a
-// miss leaks a secret (not). Applied to every emitted string.
+// Secret-like token shapes: the shapes AI-DLC's committed record masks
+// (SECRET_SHAPES, aidlc-audit.ts), then this bundle's broader rules, since a
+// bundle leaves the machine: any Bearer run, any value after a secret's name,
+// and long hex/base64 runs. A false positive redacts a harmless string
+// (acceptable); a miss leaks a secret (not). Applied to every emitted string.
 const SECRET_PATTERNS: Array<{ rule: string; re: RegExp; replace: string }> = [
-  { rule: "aws-access-key", re: /\b(AKIA|ASIA)[A-Z0-9]{16}\b/g, replace: "<redacted-aws-key>" },
+  ...SECRET_SHAPES.map(({ rule, re, doctor }) => ({ rule, re, replace: doctor })),
   { rule: "bearer-token", re: /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/g, replace: "Bearer <redacted-token>" },
-  { rule: "jwt", re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, replace: "<redacted-jwt>" },
   {
     // Matches `password=hunter2`, JSON-shaped `"password": "hunter2"`, AND the
     // JSON-ESCAPED form `{\"password\":\"hunter2\"}` that arises when a secret
@@ -340,12 +340,12 @@ export const UNKNOWN = "unknown";
 export interface StageTimelineEntry {
   slug: string;
   startedRaw: string | typeof UNKNOWN;
-  completedRaw: string | typeof UNKNOWN;
+  completedRaw: string | typeof UNKNOWN; // a skip ends the attempt too, flagged "skipped"
   durationMs: number | null; // null when either endpoint is unknown
   gate: "approved" | "rejected" | "unresolved" | "none";
   revisionCount: number | null;
   gapFromPrevMs: number | null; // time between previous stage's end and this start
-  abnormal: string[]; // e.g. ["long-duration"], ["incomplete"]
+  abnormal: string[]; // e.g. ["long-duration"], ["incomplete"], ["skipped"]
 }
 
 export interface Timeline {
@@ -353,8 +353,10 @@ export interface Timeline {
   workflowStartedRaw: string | typeof UNKNOWN;
   workflowStatus: string; // from state file, or "unknown"
   // True when the LATEST run (the scoped slice, not the whole buffer) recorded a
-  // WORKFLOW_COMPLETED. Rule 3 (state/audit drift) reads this so it never fires
-  // on an old completion left in the buffer by a completed-then-restarted run.
+  // WORKFLOW_COMPLETED that no later STAGE_STARTED reopened. Rule 3 (state/audit
+  // drift) reads this so it never fires on an old completion left in the buffer
+  // by a completed-then-restarted run, nor on finished work a scope change
+  // reopened at the stage it added (#2261).
   workflowCompleted: boolean;
   notes: string[];
 }
@@ -431,16 +433,18 @@ export function reconstructTimeline(audit: string, stateContent: string): Timeli
     // Pair CHRONOLOGICALLY, scoped to the CURRENT attempt: a stage jumped back
     // to (aidlc-jump re-emits STAGE_STARTED after a completion) must not read as
     // completed with a stale duration. The current attempt begins at the LAST
-    // STAGE_STARTED; it is complete only if a STAGE_COMPLETED follows that start
-    // (events are timestamp-sorted with ledger tie-break above). A completion
-    // that predates the latest start belongs to an earlier attempt and is
-    // ignored, so a re-worked stage correctly reads incomplete/in-progress.
+    // STAGE_STARTED; it ends at the first STAGE_COMPLETED or STAGE_SKIPPED
+    // after that start (events are timestamp-sorted with ledger tie-break
+    // above). An end that predates the latest start belongs to an earlier
+    // attempt and is ignored, so a re-worked stage correctly reads
+    // incomplete/in-progress. A skip ends the attempt because the engine skips
+    // a started stage on the conditional-skip path, and that stage is settled,
+    // not unfinished.
     const startIdx = lastEventIndex(evs, "STAGE_STARTED");
     const started = startIdx >= 0 ? evs[startIdx] : undefined;
+    const isEnd = (e: AuditEvent) => e.event === "STAGE_COMPLETED" || e.event === "STAGE_SKIPPED";
     const completed =
-      startIdx >= 0
-        ? evs.slice(startIdx).find((e) => e.event === "STAGE_COMPLETED")
-        : lastEvent(evs, "STAGE_COMPLETED");
+      startIdx >= 0 ? evs.slice(startIdx).find(isEnd) : evs.findLast(isEnd);
     const startedMs = started?.timestampMs ?? NaN;
     const completedMs = completed?.timestampMs ?? NaN;
 
@@ -465,6 +469,7 @@ export function reconstructTimeline(audit: string, stateContent: string): Timeli
     const abnormal: string[] = [];
     if (durationMs !== null && durationMs > LONG_STAGE_MS) abnormal.push("long-duration");
     if (started && !completed) abnormal.push("incomplete");
+    if (completed?.event === "STAGE_SKIPPED") abnormal.push("skipped");
 
     stages.push({
       slug,
@@ -480,22 +485,19 @@ export function reconstructTimeline(audit: string, stateContent: string): Timeli
     if (Number.isFinite(completedMs)) prevEndMs = completedMs;
   }
 
-  if (events.length === 0) notes.push("No audit events found — timeline is empty.");
-  if (stateContent === "") notes.push("No state file — status and checkbox cross-checks skipped.");
+  if (events.length === 0) notes.push("No audit events found - timeline is empty.");
+  if (stateContent === "") notes.push("No state file - status and checkbox cross-checks skipped.");
 
   return {
     stages,
     workflowStartedRaw: workflowStarted?.timestampRaw ?? UNKNOWN,
     workflowStatus: status,
-    workflowCompleted: events.some((e) => e.event === "WORKFLOW_COMPLETED"),
+    workflowCompleted: lastEventIndex(events, "WORKFLOW_COMPLETED") !== -1 &&
+      lastEventIndex(events, "WORKFLOW_COMPLETED") > lastEventIndex(events, "STAGE_STARTED"),
     notes,
   };
 }
 
-function lastEvent(evs: AuditEvent[], name: string): AuditEvent | undefined {
-  for (let i = evs.length - 1; i >= 0; i--) if (evs[i].event === name) return evs[i];
-  return undefined;
-}
 function lastEventIndex(evs: AuditEvent[], name: string): number {
   for (let i = evs.length - 1; i >= 0; i--) if (evs[i].event === name) return i;
   return -1;
@@ -624,8 +626,6 @@ export interface DiagnosisInput {
   recordAbsDir: string | null; // for structural contribution-file checks
   hooksHealth: HookHealthSnapshot;
   runtimeGraphExists: boolean;
-  runtimeGraphMtimeMs: number | null;
-  authoredInputsNewestMtimeMs: number | null; // newest stage-source mtime
   markers: MarkerSnapshot;
 }
 
@@ -646,12 +646,11 @@ export interface HookHealthSnapshot {
 export interface MarkerSnapshot {
   planExists: boolean;
   planParseable: boolean | null; // null when absent
-  recoveryExists: boolean;
   stopHookDirExists: boolean;
 }
 
 // Freshness window past which a heartbeat is "frozen" relative to the newest
-// recorded audit activity. A hook that has not fired since well before the last
+// recorded work (newestWorkAuditMs). A hook that has not fired since well before the last
 // stage transition is the cold-hook signal (#571's rebuild-stage-graph case).
 export const FROZEN_HEARTBEAT_MS = 24 * 60 * 60 * 1000;
 
@@ -665,8 +664,6 @@ export function runDiagnosis(input: DiagnosisInput): DoctorFinding[] {
     recordAbsDir,
     hooksHealth,
     runtimeGraphExists,
-    runtimeGraphMtimeMs,
-    authoredInputsNewestMtimeMs,
     markers,
     stateContent,
     audit,
@@ -839,31 +836,11 @@ export function runDiagnosis(input: DiagnosisInput): DoctorFinding[] {
     }
   }
 
-  // Rule 4 — runtime graph older than its authored inputs. A stale graph means
-  // a recompile did not run (the #571 cold-hook downstream). Only when both
-  // mtimes are known.
+  // No staleness rule: the compile reads the state, the audit and the memory
+  // files, never <harness>/aidlc-common/stages, which every refresh rewrites, so
+  // those mtimes say nothing about the graph. Hooks that stop compiling are
+  // hookLiveness's to report.
   if (
-    runtimeGraphExists &&
-    runtimeGraphMtimeMs !== null &&
-    authoredInputsNewestMtimeMs !== null &&
-    authoredInputsNewestMtimeMs > runtimeGraphMtimeMs
-  ) {
-    findings.push({
-      id: "runtime-graph-stale",
-      severity: "warning",
-      summary: "runtime-graph.json is older than its authored stage inputs.",
-      evidence: {
-        runtimeGraphMtime: new Date(runtimeGraphMtimeMs).toISOString(),
-        authoredInputsNewestMtime: new Date(authoredInputsNewestMtimeMs).toISOString(),
-      },
-      remedy:
-        `The compiled runtime graph is out of date. Re-run \`${
-          aidlcToolInvocation("runtime")
-        } compile\`. If it goes out of date again, AI-DLC's hooks are not running here: ` +
-        "doctor's hooks check says what to do.",
-      safeToAutomate: true,
-    });
-  } else if (
     !runtimeGraphExists &&
     (stateContent !== "" ||
       timeline.stages.length > 0 ||
@@ -884,8 +861,8 @@ export function runDiagnosis(input: DiagnosisInput): DoctorFinding[] {
     });
   }
 
-  // Rule 5 — frozen / missing hook heartbeats. A registered hook that has not
-  // fired since well before the latest audit activity is cold.
+  // Rule 5 - frozen / missing hook heartbeats. A registered hook that has not
+  // fired since well before the latest recorded work is cold.
   if (!hooksHealth.dirExists) {
     findings.push({
       id: "hooks-never-fired",
@@ -904,8 +881,10 @@ export function runDiagnosis(input: DiagnosisInput): DoctorFinding[] {
           summary: `Hook "${hb.hook}" has not fired in over ${Math.floor(hb.ageMs / (60 * 60 * 1000))}h.`,
           evidence: { hook: hb.hook, lastFired: hb.timestampRaw, ageMs: hb.ageMs },
           remedy:
-            "A cold hook silently skips its side effects (audit, sensors, runtime " +
-            "compile). Verify the hook is wired and firing on this harness.",
+            "A hook that last fired long ago is expected on an intent nobody is working on, " +
+            "but work on this intent was recorded more than a day after this hook last fired. " +
+            "A hook that does not run skips its side effects (audit, sensors, runtime compile): " +
+            "check the hook is wired and firing on this harness.",
           safeToAutomate: true,
         });
       }
@@ -1011,6 +990,8 @@ function firstLineIsMarker(file: string, agent: string): boolean {
 
 // Selected state fields needed for routing + gate diagnosis. Naming these
 // explicitly is the allowlist — a field not listed here never leaves the box.
+// A paused Unit's Reason and Next Action are the agent's own text, which can
+// quote the person, so they stay off it; Unit State says the Unit is paused.
 const STATE_ALLOWLIST = [
   "State Version",
   "Status",
@@ -1026,9 +1007,12 @@ const STATE_ALLOWLIST = [
   "Active Unit",
   "Unit Stage",
   "Unit State",
-  "Unit Pause Reason",
-  "Unit Next Action",
+  "Construction Autonomy Mode",
+  "Construction Iteration",
 ] as const;
+
+// State fields that hold only a Unit name (hashed whole, see hashUnitNames).
+const STATE_UNIT_FIELDS = ["Active Unit"] as const;
 
 // Audit event types that carry routing/gate signal. Other event types (and all
 // free-text Details/Request fields) are dropped.
@@ -1054,13 +1038,25 @@ const AUDIT_EVENT_ALLOWLIST = new Set([
   "DOCUMENT_INDEXED",
   "DOCUMENT_UPDATED",
   "DOCUMENT_REMOVED",
+  "STAGE_JUMPED",
+  "UNIT_STARTED",
+  "UNIT_PAUSED",
+  "UNIT_RESUMED",
+  "UNIT_COMPLETED",
+  "UNIT_SKIPPED",
+  "UNIT_MERGED",
+  "UNIT_OWNERSHIP_SET",
+  "UNIT_GATE_RHYTHM_SET",
+  "AUTONOMY_MODE_SET",
+  "CONSTRUCTION_POLICY_SET",
 ]);
 
 // Audit block fields kept per event (structural only — no Details/Request/
 // Reason free text, which can carry paths or decisions).
 // Document identity and digest fields are safe structural evidence. `Source`
 // and `Last Path` are deliberately excluded: they carry customer-chosen
-// filenames, while the diagnostic bundle is redacted by design.
+// filenames, while the diagnostic bundle is redacted by design. `Unit` is
+// hashed before it is written (hashUnitNames).
 const AUDIT_FIELD_ALLOWLIST = [
   "Event",
   "Timestamp",
@@ -1072,7 +1068,21 @@ const AUDIT_FIELD_ALLOWLIST = [
   "Change",
   "Digest",
   "Last Digest",
+  "Unit",
 ];
+
+// Fields kept on one event only, because another event uses the same name for
+// a filename (`Source` on DOCUMENT_*) or a file path (`Target` on a guard's
+// refusal row, recordGuardBlockedRow). Each value here is a stage slug or one
+// of its setter's fixed values.
+const AUDIT_EVENT_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  STAGE_JUMPED: ["Direction", "Source", "Target"],
+  STAGE_SKIPPED: ["Skip Kind"],
+  AUTONOMY_MODE_SET: ["Mode"],
+  UNIT_OWNERSHIP_SET: ["Mode"],
+  UNIT_GATE_RHYTHM_SET: ["Rhythm"],
+  CONSTRUCTION_POLICY_SET: ["Field", "Value", "Previous Value"],
+};
 
 export interface NormalizedEvidence {
   state: Record<string, string>;
@@ -1100,7 +1110,7 @@ export function extractAuditEvents(audit: string): Array<Record<string, string>>
   for (const e of parseAuditEvents(audit)) {
     if (!AUDIT_EVENT_ALLOWLIST.has(e.event)) continue;
     const row: Record<string, string> = {};
-    for (const f of AUDIT_FIELD_ALLOWLIST) {
+    for (const f of [...AUDIT_FIELD_ALLOWLIST, ...(AUDIT_EVENT_FIELDS[e.event] ?? [])]) {
       const v = auditBlockField(e.block, f);
       if (v !== null) row[f] = v;
     }
@@ -1157,6 +1167,7 @@ function seedCustomIdentifiers(
   coreAgents: Set<string>,
   graphStages: GraphStageLite[],
   timeline: Timeline,
+  unitNames: readonly string[],
 ): void {
   const seed = (id: string): void => {
     // Defense-in-depth: a corrupt graph (valid JSON, wrong element types) can
@@ -1189,6 +1200,33 @@ function seedCustomIdentifiers(
   }
   // Any stage slug the timeline surfaced (covers audit-only slugs not in graph).
   for (const s of timeline.stages) seed(s.slug);
+  // Every Unit name the evidence holds, so a mention in another field hashes too.
+  for (const u of unitNames) seed(u);
+}
+
+// A Unit's name is the person's own name for a piece of their work, so it
+// leaves the box as its short hash, the way an intent id does. A field that
+// holds only a Unit name is hashed whole here: a legacy name that is short or
+// has a dot never meets redactString's token scan whole. Returns the names for
+// seedCustomIdentifiers.
+function hashUnitNames(
+  ctx: RedactionContext,
+  state: Record<string, string>,
+  rows: Array<Record<string, string>>,
+): string[] {
+  const names: string[] = [];
+  const hashed = (name: string): string => {
+    names.push(name);
+    ctx.rulesApplied.add("unit-name");
+    return `<id:${shortHash(name)}>`;
+  };
+  for (const field of STATE_UNIT_FIELDS) {
+    if (state[field]) state[field] = hashed(state[field]);
+  }
+  for (const row of rows) {
+    if (row.Unit) row.Unit = hashed(row.Unit);
+  }
+  return names;
 }
 
 // Run the fresh analysis. Reads through symlink-rejecting safeRead; seeds all
@@ -1210,11 +1248,10 @@ export function runDoctorAnalysis(projectDir: string): DoctorAnalysis {
 
   const rgPath = runtimeGraphPath(projectDir);
   const runtimeGraphExists = existsSync(rgPath) && !isSymlink(rgPath);
-  const runtimeGraphMtimeMs = runtimeGraphExists ? safeMtime(rgPath) : null;
   const graphStages = runtimeGraphExists ? readGraphStages(rgPath) : [];
 
-  // Core allowlists from the SHIPPED graph (always present) — the stale/missing
-  // runtime graph is the very thing we diagnose, so never seed core ids from it.
+  // Core allowlists come from the SHIPPED graph (always present), never from
+  // the runtime graph, which is the very thing doctor diagnoses.
   const shippedStages = readShippedStageGraph(projectDir);
   const coreSlugs = new Set(shippedStages.map((s) => s.slug));
   const coreAgents = new Set<string>();
@@ -1225,17 +1262,19 @@ export function runDoctorAnalysis(projectDir: string): DoctorAnalysis {
   const stagesForDiagnosis = graphStages.length > 0 ? graphStages : shippedStages;
   setCoreSlugs(coreSlugs);
 
-  const authoredNewest = newestStageSourceMtime(projectDir);
   const hooksHealth = readHookHealth(projectDir, audit);
   const markers = readMarkers(projectDir);
   const timeline = reconstructTimeline(audit, stateContent);
+  const state = extractStateFields(stateContent);
+  const auditEvents = extractAuditEvents(audit);
+  const unitNames = hashUnitNames(ctx, state, auditEvents);
 
   // Seed the active intent + every other custom id BEFORE serialization.
   if (intentSlug) {
     ctx.idHashes.set(intentSlug, intentHash);
     ctx.rulesApplied.add("intent-id");
   }
-  seedCustomIdentifiers(ctx, projectDir, coreSlugs, coreAgents, stagesForDiagnosis, timeline);
+  seedCustomIdentifiers(ctx, projectDir, coreSlugs, coreAgents, stagesForDiagnosis, timeline, unitNames);
 
   const findings = runDiagnosis({
     projectDir,
@@ -1246,14 +1285,12 @@ export function runDoctorAnalysis(projectDir: string): DoctorAnalysis {
     recordAbsDir: recordDir(projectDir),
     hooksHealth,
     runtimeGraphExists,
-    runtimeGraphMtimeMs,
-    authoredInputsNewestMtimeMs: authoredNewest,
     markers,
   });
 
   const evidence: NormalizedEvidence = {
-    state: extractStateFields(stateContent),
-    auditEvents: extractAuditEvents(audit),
+    state,
+    auditEvents,
     graph: runtimeGraphExists ? { stageCount: graphStages.length, stages: graphStages } : null,
     hooks: hooksHealth,
     markers,
@@ -1319,7 +1356,7 @@ function truncatePlaceholder(relPath: string, originalBytes: number, reason: str
   if (relPath.endsWith(".json")) {
     return JSON.stringify({ truncated: true, reason, originalBytes }, null, 2);
   }
-  return `[TRUNCATED: ${reason} — original ${originalBytes} bytes]\n`;
+  return `[TRUNCATED: ${reason} - original ${originalBytes} bytes]\n`;
 }
 
 function stage(relPath: string, rawContent: string, ctx: RedactionContext): StagedFile {
@@ -1490,7 +1527,7 @@ function renderReportMd(timeline: Timeline, findings: DoctorFinding[], intentHas
       L.push("");
       if (f.remedy) {
         L.push(`Remedy: ${f.remedy}`);
-        if (!f.safeToAutomate) L.push(`(Not safe to automate — run this yourself after confirming.)`);
+        if (!f.safeToAutomate) L.push(`(Not safe to automate - run this yourself after confirming.)`);
         L.push("");
       }
     }
@@ -1577,38 +1614,14 @@ function readGraphStages(rgPath: string): GraphStageLite[] {
   }
 }
 
-// Newest mtime across the authored stage source (aidlc-common/stages/**.md) —
-// the "authored inputs" the runtime graph is compiled from.
-function newestStageSourceMtime(projectDir: string): number | null {
-  const root = join(projectDir, harnessDir(), "aidlc-common", "stages");
-  let newest: number | null = null;
-  const walk = (dir: string): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const abs = join(dir, e);
-      const st = safeLstat(abs);
-      if (!st) continue;
-      if (st.isDirectory()) walk(abs);
-      else if (e.endsWith(".md") && (newest === null || st.mtimeMs > newest)) newest = st.mtimeMs;
-    }
-  };
-  walk(root);
-  return newest;
-}
-
 function readHookHealth(projectDir: string, audit: string): HookHealthSnapshot {
   const dir = hooksHealthReadDir(projectDir);
   const dirExists = existsSync(dir);
   const heartbeats: HookHealthSnapshot["heartbeats"] = [];
   const degradedDrops: HookHealthSnapshot["degradedDrops"] = [];
-  // Age is measured against the newest audit timestamp (the run's own clock),
-  // not wall-clock — a bundle produced days later must not flag every hook.
-  const latestAudit = newestAuditMs(audit);
+  // Age is measured against the newest recorded work (the run's own clock),
+  // not wall-clock: a bundle produced days later must not flag every hook.
+  const latestAudit = newestWorkAuditMs(audit);
   if (dirExists) {
     let files: string[] = [];
     try {
@@ -1649,16 +1662,20 @@ function readMarkers(projectDir: string): NormalizedEvidence["markers"] {
   return {
     planExists,
     planParseable,
-    recoveryExists: existsSync(recoveryFilePath(projectDir)),
     stopHookDirExists: existsSync(stopDir),
     turnCounter: existsSync(turnCounterPath) ? safeRead(turnCounterPath).trim() : null,
     readonlyLatch: existsSync(latchPath),
   };
 }
 
-function newestAuditMs(audit: string): number | null {
+// The newest stage or gate row. Opening a chat to run doctor records its
+// session start and the person's prompt, and doctor records its own rows,
+// before the analysis reads the audit: counting any of them would date every
+// idle intent's newest work to now and read all of its hooks as frozen.
+function newestWorkAuditMs(audit: string): number | null {
   let newest: number | null = null;
   for (const e of parseAuditEvents(audit)) {
+    if (!isStageOrGateEvent(e.event)) continue;
     if (Number.isFinite(e.timestampMs) && (newest === null || e.timestampMs > newest)) {
       newest = e.timestampMs;
     }
@@ -1715,14 +1732,6 @@ function safeRead(path: string): string {
     return content;
   } catch {
     return "";
-  }
-}
-
-function safeMtime(path: string): number | null {
-  try {
-    return statSync(path).mtimeMs;
-  } catch {
-    return null;
   }
 }
 

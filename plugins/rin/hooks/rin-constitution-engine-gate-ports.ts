@@ -1,3 +1,4 @@
+import { resolveCompletionTarget } from "./rin-gate-invocation.ts";
 import { nearestCheckoutRootOf } from "../tools/rin-checkout-root.ts";
 import { runDisciplinesCheck } from "../tools/rin-disciplines-check.ts";
 import { defaultReviewProcessPort, type ReviewProcessPort } from "../tools/rin-gates/review-process-port.ts";
@@ -91,12 +92,6 @@ const runWalkerGate =
     return walkerGateOutcomeOf({ walkerGatePath, output });
   };
 
-const stageOf = ({ command }: { readonly command: string }): string =>
-  command.match(/--stage\s+([A-Za-z0-9._-]+)/)?.[1] ?? "ungrouped";
-
-const stageResultOf = ({ command }: { readonly command: string }): string =>
-  command.match(/--result\s+(approved|completed)/)?.[1] ?? "unknown";
-
 const checkoutAppendGateRunOf = async ({
   runtime,
   checkoutRoot,
@@ -112,13 +107,13 @@ const checkoutAppendGateRunOf = async ({
 
 const recordGateRun =
   (runtime: GateRuntime): ConstitutionGatePorts["recordGateRun"] =>
-  async ({ command, checkoutRoot, verdict }) => {
+  async ({ command, stage, result, checkoutRoot, verdict }) => {
     try {
       const appendGateRun = await checkoutAppendGateRunOf({ runtime, checkoutRoot });
       appendGateRun({
         projectDir: checkoutRoot,
-        stage: stageOf({ command }),
-        result: stageResultOf({ command }),
+        stage,
+        result,
         command,
         verdict,
         timestamp: runtime.process.timestamp(),
@@ -137,6 +132,7 @@ const defaultConstitutionGatePorts = ({ hookModuleUrl }: { readonly hookModuleUr
     hookDirectory: pathOperations.dirname({ path: pathOperations.fromFileUrl({ url: hookModuleUrl }) }),
   };
   return {
+    resolveTarget: resolveCompletionTarget,
     checkoutRootOf: checkoutRootOf(runtime),
     readEngine: readEngine(runtime),
     runWalkerGate: runWalkerGate(runtime),

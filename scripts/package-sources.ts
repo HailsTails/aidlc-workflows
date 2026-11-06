@@ -4,6 +4,7 @@
 // reports on code that has since changed.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { packageInputFiles } from "./package-source-inputs.ts";
 
 /** Written by `bun scripts/package.ts` after each build, beside the harness trees. */
 export const PACKAGE_SOURCES_FILE = join("dist", ".package-sources.json");
@@ -12,19 +13,7 @@ export const PACKAGE_SOURCES_FILE = join("dist", ".package-sources.json");
 // it ships, and its own modules. Plugin tests are never packaged, so editing
 // one leaves dist/ current.
 const INPUT_DIRS = ["core", "harness", "plugins", "scripts/plugin-hooks-template"];
-const INPUT_FILES = [
-  "tsconfig.json",
-  "package.json",
-  "bun.lock",
-  "scripts/package.ts",
-  "scripts/package-sources.ts",
-  "scripts/plugin-runtime.ts",
-  "scripts/plugin-contributions.ts",
-  "scripts/manifest-types.ts",
-  "scripts/agent-knowledge.ts",
-  "scripts/harness-bindings.ts",
-  "scripts/onboarding.ts",
-];
+
 
 function inputFiles(repoRoot: string): string[] {
   const files: string[] = [];
@@ -40,11 +29,10 @@ function inputFiles(repoRoot: string): string[] {
     }
   };
   for (const dir of INPUT_DIRS) if (existsSync(join(repoRoot, dir))) walk(join(repoRoot, dir));
-  for (const file of INPUT_FILES) if (existsSync(join(repoRoot, file))) files.push(file);
+  files.push(...packageInputFiles({ fileExists: (file) => existsSync(join(repoRoot, file)) }));
   return files.sort();
 }
 
-/** A SHA-256 over every input's path and bytes; about 20 ms for this repository. */
 export function packageInputsFingerprint(repoRoot: string): string {
   const hash = new Bun.CryptoHasher("sha256");
   for (const file of inputFiles(repoRoot)) {
@@ -96,7 +84,6 @@ export function recordPackagedSources(repoRoot: string, harnesses: string[], bui
   return true;
 }
 
-/** Null when dist/<harness> was packaged from the working tree's sources; otherwise the one line to show. */
 export function stalePackageMessage(repoRoot: string, harness: string): string | null {
   const recorded = readRecord(repoRoot)[harness];
   if (recorded === packageInputsFingerprint(repoRoot)) return null;

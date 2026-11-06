@@ -5,7 +5,7 @@ import {
   success,
   usage,
 } from "./aidlc-command.ts";
-import { listRoutes } from "./aidlc.ts";
+import { listRoutes, routeOptions } from "./aidlc.ts";
 
 export type Shell = "bash" | "zsh" | "fish" | "powershell";
 
@@ -15,24 +15,14 @@ type CompletionInventory = {
   options: Record<string, string[]>;
 };
 
-const GLOBAL_OPTIONS = ["--no-color"];
-
-function routeOptions(
+// The option inventory comes from the route table's own derivation, the same
+// one `aidlc <command> --help` renders, so a completion can never offer a flag
+// the help does not name.
+function routeOptionNames(
   route: ReturnType<typeof listRoutes>[number],
   verb: string,
 ): string[] {
-  const values = new Set(GLOBAL_OPTIONS);
-  if (route.outputModes.includes("json")) values.add("--json");
-  if (route.outputModes.includes("quiet")) values.add("--quiet");
-  if (route.networkPolicy !== "forbidden") values.add("--offline");
-  for (
-    const line of (route.all ?? []).filter((value) =>
-      value.split(/\s+/, 1)[0] === verb
-    )
-  ) {
-    for (const option of line.match(/--[a-z][a-z-]*/g) ?? []) values.add(option);
-  }
-  return [...values].sort();
+  return routeOptions(route, verb).map((option) => option.flag);
 }
 
 function inventory(): CompletionInventory {
@@ -49,7 +39,7 @@ function inventory(): CompletionInventory {
     if (route.group === "top") {
       for (const verb of verbs) {
         top.add(verb);
-        const routeOptionValues = routeOptions(route, verb);
+        const routeOptionValues = routeOptionNames(route, verb);
         options[verb] = [...new Set([
           ...(options[verb] ?? []),
           ...routeOptionValues,
@@ -61,7 +51,7 @@ function inventory(): CompletionInventory {
     top.add(route.group);
     for (const verb of verbs) {
       const first = verb.split(/\s+/, 1)[0];
-      const routeOptionValues = routeOptions(route, first);
+      const routeOptionValues = routeOptionNames(route, first);
       nouns[route.group].push(first);
       const key = `${route.group} ${first}`;
       options[key] = [...new Set([
@@ -283,8 +273,8 @@ function parsedInventory(shell: Shell, content: string): CompletionInventory | n
 // Activation writes the completions of the release that runs it, so after an
 // update they come from the previous release. Every release renders through
 // these templates: content that parses back into a command list and renders
-// to the same text is AI-DLC's own, whichever release wrote it, while any
-// edited or added byte makes it the person's.
+// to the same text is AI-DLC's own, whichever release wrote it, while content
+// that does not round-trip is the person's.
 export function isGeneratedCompletion(shell: Shell, content: string): boolean {
   const data = parsedInventory(shell, content);
   if (!data) return false;

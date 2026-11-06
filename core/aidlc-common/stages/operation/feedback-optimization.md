@@ -1,6 +1,5 @@
 ---
 slug: feedback-optimization
-number: 4.7
 name: Feedback & Optimization
 phase: operation
 execution: CONDITIONAL
@@ -81,7 +80,7 @@ That `report` call owns every lifecycle transition and advancement; never perfor
 
 Completion emoji: :recycle:
 Review path: `<record>/operation/feedback-optimization/`
-Approval gate: Approve (workflow complete) / Request Changes / Start New Ideation Cycle.
+Approval gate: Approve (workflow complete) / Request Changes.
 
 This is the final stage. Upon approval, the full AI-DLC workflow is complete. The feedback loop document feeds insights back into the next Ideation cycle if the user chooses to continue iterating.
 
@@ -97,6 +96,6 @@ Upstream targets: `dashboards`, `alarms`, `slo-config`, `deployment-log`, `load-
 
 When `directive.protocol_modules` lists `learnings`, follow
 `stage-protocol-learnings.md`: keep the diary at `directive.memory_path` while
-working and run the ritual before the approval gate, applying its bootstrap,
-`single: true`, per-unit, and gate-revision exemptions. When the module is absent,
-skip both the diary and the ritual.
+working, and take the learnings step before the approval gate; that module says
+when it asks the person anything. When the module is absent, skip both the diary
+and the step.

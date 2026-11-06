@@ -1,55 +1,40 @@
 import { basename, dirname, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { completionCommands, type ObservedReportCommand, type ReportCommandContext } from "../../../core/tools/aidlc-report-command.ts";
+import type { resolveReportTarget } from "../../../core/tools/aidlc-report-target.ts";
 
-const shellTokensOf = (command: string): readonly string[] =>
-  [...command.matchAll(/"(?:\\.|[^"\\])*"|'[^']*'|&&|\|\||[;|&\n]|[^\s;|&]+/g)]
-    .map((match) => match[0]);
+type TargetContract = { resolveReportTarget: typeof resolveReportTarget };
 
-const unquoted = (token: string): string =>
-  /^["']/.test(token) ? token.slice(1, -1) : token;
+// The installed sibling module is authoritative. The source fallback is a
+// relative development layout, never a portable manifest-supplied executable.
+function coreModulePath(name: string): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const installed = resolve(here, "../tools", name);
+  if (basename(dirname(here)).startsWith(".")) return installed;
+  return resolve(here, "../../../core/tools", name);
+}
 
-const completionRoute = (input: {
-  readonly executable: string | undefined;
-  readonly sourceName: string | undefined;
-  readonly args: readonly string[];
-}): boolean => {
-  const args = input.args.filter((token, index, all) =>
-    !["--json", "--quiet", "--no-color", "--yes", "--offline", "--verbose", "--project-dir"].includes(token) && all[index - 1] !== "--project-dir" && !token.startsWith("--project-dir="));
-  const route = input.sourceName === "aidlc-orchestrate.ts"
-    ? ["report"]
-    : input.executable === "aidlc" || input.sourceName === "aidlc.ts"
-      ? ["engine", "orchestrate", "report"]
-      : [];
-  return route.length > 0 &&
-    route.every((token, index) => args[index] === token) &&
-    args.slice(route.length).some((token, index, args) =>
-      token === "--result" && ["approved", "completed"].includes(args[index + 1] ?? ""));
-};
+export function completionOperations(input: { command: string; context: ReportCommandContext }): ObservedReportCommand[] {
+  // The projector bundles this static import with the hook. Relevance remains
+  // available even when the separately installed target/runtime needs repair.
+  return completionCommands(input);
+}
 
-const completionSegment = (tokens: readonly string[]): boolean => {
-  const executableIndex = tokens.findIndex((token, index) => !["env", "command", "exec"].includes(token) && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token) && !(token === "--" && tokens.slice(0, index).some((prefix) => ["env", "command", "exec"].includes(prefix))));
-  const invocation = tokens.slice(executableIndex).map(unquoted);
-  const executable = invocation[0]?.replace(/\\/g, "/").split("/").at(-1);
-  if (executable !== "bun" && executable !== "bun.exe") {
-    return completionRoute({ executable, sourceName: undefined, args: invocation.slice(1) });
+export function resolveCompletionTarget(operation: ObservedReportCommand): ReturnType<typeof resolveReportTarget> {
+  if (operation.request.kind !== "report") return { kind: "unavailable", reason: operation.request.kind === "invalid" ? operation.request.diagnostic : "Not a report operation" };
+  const path = coreModulePath("aidlc-report-target.ts");
+  if (!existsSync(path)) return { kind: "unavailable", reason: `Installed completion target contract unavailable at ${path}; refresh the runtime and Rin plugin together.` };
+  const contract: TargetContract = require(path);
+  const target = contract.resolveReportTarget({ request: operation.request, context: operation.context });
+  if (target.kind === "resolved" && typeof target.unjoined !== "boolean") {
+    return { kind: "unavailable", reason: "The installed completion target contract is incompatible; refresh the runtime and Rin plugin together." };
   }
-  return invocation.some((source, sourceIndex) => {
-    const sourceName = source.replace(/\\/g, "/").split("/").at(-1);
-    return ["aidlc.ts", "aidlc-orchestrate.ts"].includes(sourceName ?? "") &&
-      completionRoute({ executable, sourceName, args: invocation.slice(sourceIndex + 1) });
-  });
-};
+  return target;
+}
 
-export const isCompletionReport = (input: { readonly command: string }): boolean => {
-  const segments: string[][] = [[]];
-  shellTokensOf(input.command).forEach((token) => {
-    if ([";", "|", "&", "&&", "||", "\n"].includes(token)) {
-      segments.push([]);
-    } else {
-      segments.at(-1)?.push(token);
-    }
-  });
-  return segments.some(completionSegment);
-};
+export const isCompletionReport = (input: { readonly command: string }): boolean =>
+  completionOperations({ ...input, context: { cwd: process.cwd(), environment: process.env } }).length > 0;
 
 export const gateToolsDirectoryOf = (input: {
   readonly hookDirectory: string;

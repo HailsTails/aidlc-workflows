@@ -51,6 +51,7 @@ const MANIFEST: ChangedFileManifest = {
     { path: "assets/logo.png", status: "M", added: [], deleted: [], fileLevelEvidence: true },
   ],
 };
+const REVIEW_WORKFLOW = readFileSync(join(REPO_ROOT, ".github", "workflows", "ai-pr-review.yml"), "utf8");
 const prompt = (name: string): string => readFileSync(join(REPO_ROOT, ".github", "prompts", `ai-pr-review-${name}.md`), "utf8");
 const CONTRIBUTING = readFileSync(join(REPO_ROOT, "CONTRIBUTING.md"), "utf8");
 
@@ -310,7 +311,7 @@ describe("t346 AIDA incremental review scope", () => {
     expect(body.indexOf("**P1: Finding number 2**")).toBeGreaterThan(-1);
     expect(body.indexOf("## Deferred (outside the review scope)")).toBeGreaterThan(body.indexOf("**P2: Finding number 3**"));
 
-    // The only finding is deferred and the scores permit merge: the decision is re-derived.
+    // The only finding is deferred and no blocking finding remains: the decision is re-derived.
     const sole = parseStructuredReview(review([{ priority: "P1", category: "correctness", evidence: [diffLine(42)] }], { readiness: 5, risk: 1 }, CHANGE), BASE, HEAD, MANIFEST, METADATA, INCREMENTAL);
     expect(sole.findings).toEqual([]);
     expect(sole.decision.action).toBe("merge");
@@ -329,12 +330,10 @@ describe("t346 AIDA incremental review scope", () => {
     expect(advisoryOnly.findings).toHaveLength(1);
     expect(advisoryOnly.deferred).toHaveLength(1);
 
-    // Full mode defers nothing and says why the head was reviewed in full.
     const full = parseStructuredReview(review([{ priority: "P1", category: "correctness", evidence: [diffLine(42)] }], { readiness: 2, risk: 4 }, CHANGE), BASE, HEAD, MANIFEST, METADATA, FULL);
     expect(full.deferred).toEqual([]);
     expect(full.findings).toHaveLength(1);
     expect(renderReview(full, CONTEXT_ID).body).toContain("Scope: **full head** (first review of this pull request).");
-    // No scope at all renders exactly as before.
     expect(renderReview(parseStructuredReview(review([], { readiness: 5, risk: 1 }, MERGE), BASE, HEAD, MANIFEST, METADATA), CONTEXT_ID).body).not.toContain("Scope:");
   });
 
@@ -371,6 +370,30 @@ describe("t346 AIDA incremental review scope", () => {
   });
 
   test("the workflow derives the scope after the ledger, scopes three lenses, and validates with it", () => {
+    const context = REVIEW_WORKFLOW.slice(REVIEW_WORKFLOW.indexOf("      - name: Build immutable review context"), REVIEW_WORKFLOW.indexOf("      - name: Start AIDA review label state"));
+    expect(context.indexOf("ai-pr-ledger.ts fetch")).toBeLessThan(context.indexOf("ai-pr-review.ts build-scope"));
+    expect(context.indexOf("build-context \\")).toBeLessThan(context.indexOf("ai-pr-review.ts build-scope"));
+    expect(context).toContain("--ledger .ai-review-context/ledger.json \\\n            --output .ai-review-context/review-scope.json");
+    for (const lens of ["aidlc", "user-experience", "direction"]) {
+      expect(REVIEW_WORKFLOW).toContain(`.ai-review-controls/prompts/ai-pr-review-scope.md \\\n              .ai-review-controls/prompts/ai-pr-review-${lens}.md`);
+    }
+    for (const lens of ["security", "prompt-injection", "judge"]) {
+      expect(REVIEW_WORKFLOW).not.toContain(`.ai-review-controls/prompts/ai-pr-review-scope.md \\\n              .ai-review-controls/prompts/ai-pr-review-${lens}.md`);
+    }
+    expect(REVIEW_WORKFLOW.split("--scope .ai-review-context/review-scope.json")).toHaveLength(3);
+    expect(REVIEW_WORKFLOW.split("--lens-dir .ai-review-lenses")).toHaveLength(3);
+    // The two security lenses emit structured JSON under the lens schema; the other three stay prose.
+    expect(REVIEW_WORKFLOW).toContain('lens_schema="$(jq -c . .ai-review-controls/prompts/ai-pr-review-lens-schema.json)"');
+    expect(REVIEW_WORKFLOW.split('"$lens_schema"')).toHaveLength(3);
+    for (const lens of ["prompt-injection", "security"]) {
+      expect(REVIEW_WORKFLOW).toContain(`".ai-review-lenses/${lens}.json"`);
+      expect(REVIEW_WORKFLOW).toContain(`'.marker == $marker and .status == "complete"' .ai-review-lenses/${lens}.json >/dev/null`);
+      expect(REVIEW_WORKFLOW).toContain(`::error::${lens} lens did not complete its inspection`);
+      expect(REVIEW_WORKFLOW).toContain(`.ai-review-controls/prompts/ai-pr-review-lens-json.md \\\n              .ai-review-controls/prompts/ai-pr-review-${lens}.md`);
+    }
+    for (const lens of ["aidlc", "user-experience", "direction"]) {
+      expect(REVIEW_WORKFLOW).toContain(`".ai-review-lenses/${lens}.md"`);
+    }
     const lensSchema = JSON.parse(readFileSync(join(REPO_ROOT, ".github", "prompts", "ai-pr-review-lens-schema.json"), "utf8"));
     expect(lensSchema.required).toEqual(["marker", "status", "candidates"]);
     // Source-specific variants: a schema-valid citation always carries the fields its source needs.

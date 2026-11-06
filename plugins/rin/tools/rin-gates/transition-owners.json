@@ -5,8 +5,9 @@
     "spec-drafted": {
       "gate": "rin-gate-0-reconcile",
       "owningLane": "intake",
-      "actor": "autonomous gate lane, committing under the authoring identity",
-      "requiredCapabilities": ["record-dir write + commit"]
+      "actor": "gate lane reconciling selected work under the stage approval policy and authoring identity; a whole intake sweep applies only when assigned",
+      "requiredCapabilities": ["record-dir write + commit"],
+      "note": "Project Gate 0 policy owns any additional capture, intake-sweep and publication obligations. Missing required integration or authority remains HOLD; local recording never proves publication or replaces the reviewer."
     },
     "answered": {
       "gate": "rin-gate-1-framing",

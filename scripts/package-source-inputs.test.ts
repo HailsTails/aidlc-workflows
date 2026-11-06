@@ -1,0 +1,83 @@
+import { expect, mock, test } from "bun:test";
+import { packageInputFiles } from "./package-source-inputs.ts";
+
+test("available producer inputs are selected without unrelated scripts or tests", () => {
+  const fileExists = mock<(path: string) => boolean>().mockReturnValue(true);
+  expect(packageInputFiles({ fileExists })).toEqual([
+    "scripts/package.ts",
+    "scripts/package-runtime-cli.ts",
+    "scripts/manifest-types.ts",
+    "scripts/agent-knowledge.ts",
+    "scripts/agent-surface-projection.ts",
+    "scripts/core-projection-contract.ts",
+    "scripts/core-runtime.ts",
+    "scripts/projection-metadata.ts",
+    "scripts/workspace-seed.ts",
+    "scripts/earlier-release-regions.ts",
+    "scripts/generated-skill-regions.ts",
+    "scripts/copy-era-files.json",
+    "scripts/harness-bindings.ts",
+    "scripts/harness-surface-projection.ts",
+    "scripts/harness-runtime-data.ts",
+    "scripts/onboarding.ts",
+    "scripts/onboarding-projection.ts",
+    "scripts/plugin-contributions.ts",
+    "scripts/plugin-authoring-data.ts",
+    "scripts/plugin-declaration.ts",
+    "scripts/plugin-hook-source.ts",
+    "scripts/plugin-runtime.ts",
+    "scripts/plugin-runtime-selection.ts",
+    "scripts/plugin-runtime-projection.ts",
+    "scripts/runtime-import.ts",
+    "scripts/runtime-source.ts",
+    "scripts/runtime-module.ts",
+    "scripts/authored-text.ts",
+    "scripts/claude-settings.ts",
+    "scripts/package-sources.ts",
+    "scripts/package-source-inputs.ts",
+    "package.json",
+    "bun.lock",
+    "tsconfig.json",
+  ]);
+});
+
+test("absent producer inputs are not selected", () => {
+  const fileExists = mock<(path: string) => boolean>().mockReturnValue(false);
+  expect(packageInputFiles({ fileExists })).toEqual([]);
+  expect(fileExists.mock.calls).toEqual([
+    ["scripts/package.ts"],
+    ["scripts/package-runtime-cli.ts"],
+    ["scripts/manifest-types.ts"],
+    ["scripts/agent-knowledge.ts"],
+    ["scripts/agent-surface-projection.ts"],
+    ["scripts/core-projection-contract.ts"],
+    ["scripts/core-runtime.ts"],
+    ["scripts/projection-metadata.ts"],
+    ["scripts/workspace-seed.ts"],
+    ["scripts/earlier-release-regions.ts"],
+    ["scripts/generated-skill-regions.ts"],
+    ["scripts/copy-era-files.json"],
+    ["scripts/harness-bindings.ts"],
+    ["scripts/harness-surface-projection.ts"],
+    ["scripts/harness-runtime-data.ts"],
+    ["scripts/onboarding.ts"],
+    ["scripts/onboarding-projection.ts"],
+    ["scripts/plugin-contributions.ts"],
+    ["scripts/plugin-authoring-data.ts"],
+    ["scripts/plugin-declaration.ts"],
+    ["scripts/plugin-hook-source.ts"],
+    ["scripts/plugin-runtime.ts"],
+    ["scripts/plugin-runtime-selection.ts"],
+    ["scripts/plugin-runtime-projection.ts"],
+    ["scripts/runtime-import.ts"],
+    ["scripts/runtime-source.ts"],
+    ["scripts/runtime-module.ts"],
+    ["scripts/authored-text.ts"],
+    ["scripts/claude-settings.ts"],
+    ["scripts/package-sources.ts"],
+    ["scripts/package-source-inputs.ts"],
+    ["package.json"],
+    ["bun.lock"],
+    ["tsconfig.json"],
+  ]);
+});

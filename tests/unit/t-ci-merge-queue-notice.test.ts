@@ -57,7 +57,6 @@ describe("merge-queue runner notice", () => {
       .toBe(notice("Tests (macos-15, smoke): checkout could not reach github.com", `${RUNS}/36405772694`));
     expect(noticeFor(facts("setup-hung")))
       .toBe(notice("Tests (ubuntu-latest, unit-7): its tool install hung past the queue's time limit", `${RUNS}/36732390217`));
-    // Twelve macOS jobs had no runner when the queue's time limit ran out.
     expect(noticeFor(facts("runner-wait"))).toBe(notice(
       "Native terminal units (macos-15), Tests (macos-15, smoke), Tests (macos-15, integration) and 9 more: waited for a runner past the queue's time limit",
       `${RUNS}/36936394204`,
@@ -166,10 +165,36 @@ describe("merge-queue runner notice", () => {
     }
   });
 
-  test("the notice script only posts its one comment and never changes the queue", () => {
+  test("the workflow runs from main with the built-in token, least permissions, and no queue action", () => {
+    const text = readFileSync(join(REPO_ROOT, ".github/workflows/merge-queue-notice.yml"), "utf8");
     const script = readFileSync(join(REPO_ROOT, ".github/scripts/merge-queue-notice.ts"), "utf8");
+    const workflow = Bun.YAML.parse(text) as {
+      on: unknown;
+      permissions: unknown;
+      jobs: Record<string, {
+        if?: string; permissions?: unknown; "timeout-minutes"?: number;
+        steps: Array<{ uses?: string; with?: Record<string, unknown>; env?: Record<string, string>; run?: string }>;
+      }>;
+    };
+    expect(workflow.on).toEqual({ workflow_run: { workflows: ["CI"], types: ["completed"] } });
+    expect(workflow.permissions).toEqual({});
+    expect(Object.keys(workflow.jobs)).toEqual(["notice"]);
+    const job = workflow.jobs.notice;
+    expect(job.if).toBe("github.event.workflow_run.event == 'merge_group'");
+    expect(job.permissions).toEqual({ actions: "read", checks: "read", contents: "read", "pull-requests": "write" });
+    expect(job["timeout-minutes"]).toBe(10);
+    const checkout = job.steps.find((step) => step.uses?.startsWith("actions/checkout@"))!;
+    expect(checkout.with).toEqual({ "persist-credentials": false, ref: `\${{ github.event.repository.default_branch }}` });
+    for (const step of job.steps) if (step.uses) expect(step.uses, step.uses).toMatch(/^[^@\s]+@[a-f0-9]{40}$/);
+    const run = job.steps.at(-1)!;
+    expect(run.env).toEqual({ GH_TOKEN: `\${{ github.token }}` });
+    expect(run.run).toBe(`bun .github/scripts/merge-queue-notice.ts "$GITHUB_EVENT_PATH"`);
+    // Nothing reads a secret, checks out the run's code, or changes the queue.
+    expect(text).not.toMatch(/secrets\.|id-token/);
+    for (const source of [text, script]) {
+      expect(source).not.toMatch(/enqueuePullRequest|dequeuePullRequest|mergePullRequest|mutation|pulls\/[^/\s]+\/merge\b|pr merge/);
+    }
     // The only write is the one comment.
-    expect(script).not.toMatch(/enqueuePullRequest|dequeuePullRequest|mergePullRequest|mutation|pulls\/[^/\s]+\/merge\b|pr merge/);
     expect(script.match(/"-f", `body=/g)).toHaveLength(1);
   });
 });

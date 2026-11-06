@@ -1,7 +1,5 @@
 ---
 slug: contract-design
-number: 2.8
-name: Contract Design
 phase: inception
 execution: CONDITIONAL
 condition: Execute when the system has any formal contract to pin down — an inter-unit boundary (more than one unit that must integrate) OR a unit that exposes a public/external API consumed outside the system. Skip only for a single self-contained unit with no inter-unit boundaries and no externally consumed API.
@@ -121,6 +119,6 @@ Upstream targets: `unit-of-work`, `unit-of-work-dependency`, `components`, `requ
 
 When `directive.protocol_modules` lists `learnings`, follow
 `stage-protocol-learnings.md`: keep the diary at `directive.memory_path` while
-working and run the ritual before the approval gate, applying its bootstrap,
-`single: true`, per-unit, and gate-revision exemptions. When the module is absent,
-skip both the diary and the ritual.
+working, and take the learnings step before the approval gate; that module says
+when it asks the person anything. When the module is absent, skip both the diary
+and the step.

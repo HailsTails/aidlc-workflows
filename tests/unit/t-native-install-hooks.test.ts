@@ -23,6 +23,7 @@ import {
   NATIVE_STARTUP_TIMEOUT_MS,
   remainingOperationTimeoutMs,
 } from "../harness/test-budget.ts";
+import kiroManifest from "../../harness/kiro/manifest.ts";
 
 setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
@@ -161,7 +162,6 @@ beforeAll(() => {
     : found.stdout.trim() === launcher;
   expect(same, `${shell} runs ${found.stdout.trim()} for aidlc, not ${launcher}`).toBe(true);
 
-  // As a person does after installing: configure the project with `aidlc`.
   const configured = sh('aidlc config --project-dir "$NATIVE_HOOKS_PROJECT" --harness claude --mcp none --quiet', "", {
     NATIVE_HOOKS_PROJECT: project,
   });
@@ -180,7 +180,12 @@ beforeAll(() => {
       matcher: group.matcher ?? "",
       command: hook.command ?? "",
     }))));
-  statusLine = settings.statusLine?.command ?? "";
+  // AI-DLC's status line ships in harness.json and reaches the person's own
+  // settings only on their yes (#1407).
+  statusLine = (JSON.parse(readFileSync(join(project, ".claude", "tools", "data", "harness.json"), "utf-8")) as {
+    statusLine?: { command?: string };
+  }).statusLine?.command ?? "";
+  expect(settings.statusLine).toBeUndefined();
 }, NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 
 afterAll(() => {
@@ -230,7 +235,7 @@ describe.skipIf(SKIP_REASON !== null)("a native install runs every Claude Code h
   });
 
   test("Kiro CLI's /aidlc --doctor answers with the doctor report", () => {
-    const configured = sh('aidlc config --project-dir "$NATIVE_HOOKS_PROJECT" --harness kiro --mcp none --quiet', "", {
+    const configured = sh('aidlc config --project-dir "$NATIVE_HOOKS_PROJECT" --harness kiro-v2 --mcp none --quiet', "", {
       NATIVE_HOOKS_PROJECT: project,
     });
     expect(configured.status, configured.stdout + configured.stderr).toBe(0);
@@ -238,7 +243,7 @@ describe.skipIf(SKIP_REASON !== null)("a native install runs every Claude Code h
       hooks?: Record<string, Array<{ command?: string }>>;
     };
     const prompt = agent.hooks?.userPromptSubmit?.[0]?.command ?? "";
-    expect(prompt).toBe("aidlc engine adapter kiro verb-intercept");
+    expect(prompt).toBe(`aidlc engine adapter kiro verb-intercept${kiroManifest.hookCommandSuffix}`);
     const r = sh(prompt, JSON.stringify({ cwd: project, hook_event_name: "userPromptSubmit", prompt: "/aidlc --doctor" }));
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout + r.stderr).not.toMatch(/command not found|unknown command/);

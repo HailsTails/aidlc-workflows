@@ -10,11 +10,14 @@
 //     complete DAG. Compiled from YAML into stage-graph.json.
 //   - A scope is a sub-DAG: scope-mapping.json's EXECUTE slice +
 //     whichever requires_stage edges exist among those nodes.
-//   - The serial runtime linearizes each sub-DAG to numeric order for
-//     iteration. Numeric order is a valid topological sort of the full
-//     graph (proven by t65 assertion 17; protected by compile's
-//     edge-local invariant check below). The future worktree scheduler
-//     will consume the sub-DAG structure directly for parallel Bolts.
+//   - The serial runtime linearizes each sub-DAG to run order for
+//     iteration: numeric order, with each phase's per-Unit stages as one
+//     block (stageRouteOrder). Compile writes stage-graph.json in that
+//     order, and every runtime walk reads the file in it. Run order is a
+//     valid topological sort of the full graph (proven by t65 assertion 17;
+//     protected by compile's edge-local and run-order checks below). The
+//     future worktree scheduler will consume the sub-DAG structure directly
+//     for parallel Bolts.
 //   - topoSort and findCycles exist in the library for analysis
 //     (doctor consumes them) and for future scheduling; they do not
 //     gate runtime iteration today.
@@ -43,9 +46,10 @@
 //
 // See docs/reference/16-artifact-vocabulary.md for artifact naming.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { constants as fsConstants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { composerPlansShown, compareComposerPlans } from "./aidlc-composer-plan-selection.ts";
 import {
   aidlcToolInvocation,
   refuseLinkOnTheWay,
@@ -54,6 +58,7 @@ import {
   runtimeProjectDir,
 } from "./aidlc-runtime-paths.ts";
 import {
+  agentFileText,
   _resetAgentsForTests,
   _resetHarnessDataForTests,
   _resetScopeMappingForTests,
@@ -67,7 +72,9 @@ import {
   composerProposalPath,
   errorMessage,
   frontmatterBlock,
+  recordFileTargetOrThrow,
   refuseEngineObserverWrite,
+  removeRecordFileNoFollow,
   gridCostSummary,
   loadAgents,
   loadScopeMapping,
@@ -91,12 +98,14 @@ import {
   type GuardPolicy,
   guardPolicyAtLeast,
   guardPolicyMemoryStrictRefusal,
+  isPerUnitStage,
   memoryGuardPolicyDeclarations,
   noteGuardPolicyRename,
   parseGuardPolicy,
   resolveProjectDir,
   resolveProjectFlag,
   resolveWorkflowSelection,
+  REVIEW_CLASSES,
   type ReviewClass,
   scalarField,
   type ScopeDefinition,
@@ -110,18 +119,35 @@ import {
   SCOPE_NAME_RULE,
   withAuditLock,
   writeFileAtomic,
+  writeRecordFileNoFollow,
+  effectivePlanAction,
+  escapeRegex,
+  getField,
+  parseCheckboxes,
 } from "./aidlc-lib.ts";
 import {
   parseRuleFrontmatter,
   type RuleFrontmatter,
   validateRuleFrontmatter,
 } from "./aidlc-rule-schema.ts";
+import { PLUGIN_RULES_OPENING } from "./aidlc-plugin-rules.ts";
 import {
   parseSensorManifest,
   type SensorManifest,
   validateSensorManifest,
 } from "./aidlc-sensor-schema.ts";
-import { type StageFrontmatter, validateStageFrontmatter } from "./aidlc-stage-schema.ts";
+import {
+  ARS_COMPONENT_KEYS,
+  ARS_COST_MAX,
+  ARS_COST_MIN,
+  ARS_PROJECT_TYPE_KEYS,
+  ARS_ROLES,
+  type ArsComponentKey,
+  type ArsProjectTypeKey,
+  type StageArsPrior,
+  type StageFrontmatter,
+  validateStageFrontmatter,
+} from "./aidlc-stage-schema.ts";
 
 // --- Types ---
 
@@ -162,6 +188,8 @@ export interface SensorResolution {
 // StageEntry in lib.ts carries the same fields as optional so existing
 // runtime callers stay source-compatible without caring about the
 // extended shape.
+import type { StageApprovalMode } from "./aidlc-stage-participation.ts";
+
 export interface GraphStage extends StageEntry {
   plugin?: string;
   enabled?: false;
@@ -180,6 +208,11 @@ export interface GraphStage extends StageEntry {
   // per-unit construction matrix; an unlisted artifact applies to all kinds.
   produces_kinds?: Record<string, string[]>;
   consumes: Consume[];
+  // cites - the consumes the stage marks `cited: true`: its deliverables cite
+  // them whenever they exist, and the upstream-coverage check reads them beside
+  // the required ones. Listed here, not in consumes, so marking one changes no
+  // finished stage's validity record.
+  cites?: string[];
   requires_stage: string[];
   // sensors is the stage-side pull import — a list of sensor manifest
   // ids. Optional because most stages declare empty (initialization) or
@@ -194,6 +227,13 @@ export interface GraphStage extends StageEntry {
   // identically. Lives on stage YAML, round-trips through parse/emit, and is
   // transposed into the compiled grid (scope-grid.json) at compile time.
   scopes?: string[];
+  // ars is the stage-authored composer screening prior (targets + cost,
+  // optional role/project_types) - the frontmatter twin of one
+  // tools/data/ars-priors.json entry, for stages that file does not name
+  // (plugin stages). Optional; core stages never carry it. Lives on stage
+  // YAML, round-trips through parse/emit, and compiles into stage-graph.json
+  // verbatim; computeArs reads it when the priors file has no entry.
+  ars?: StageArsPrior;
   inputs: string;
   outputs: string;
   for_each?: string;
@@ -217,8 +257,6 @@ export interface GraphStage extends StageEntry {
   // reviewer_max_iterations — review cycle cap before escalating to human.
   // Defaults to 2 when reviewer is present.
   reviewer_max_iterations?: number;
-
-  approval_mode?: "human" | "autonomous";
   // review_class — how the review runs: "adversarial" (refute + fix loop up
   // to the cap, §12a classic) or "advisory" (single pass, findings quoted at
   // the human gate, no fix loop). Defaults to "adversarial" when a reviewer
@@ -228,6 +266,13 @@ export interface GraphStage extends StageEntry {
   review_class?: "adversarial" | "advisory";
   // Deterministic pre-generation consolidated-summary checkpoint policy.
   summary_confirmation?: "required" | "if-present";
+  approval_mode?: StageApprovalMode;
+}
+
+/** A stage a custom plan skips and the stages it keeps that use what it makes (none when no kept stage does). */
+export interface SkippedInput {
+  stage: string;
+  used_by: string[];
 }
 
 export interface ScopeValidation {
@@ -237,7 +282,10 @@ export interface ScopeValidation {
   // The deterministic ceremony count of the validated grid (stage/gate/per-unit
   // counts). The composer copies this into its proposal verbatim so the gate the
   // human sees leads with numbers the validator computed, not an LLM recount.
-  summary?: ScopeCostSummary;
+  // A passing --custom run adds skipped_inputs when the plan drops a stage from
+  // its base or leaves a kept stage without what it uses: the offer says it
+  // once, in one line.
+  summary?: ScopeCostSummary & { skipped_inputs?: SkippedInput[] };
   // Graph/plugin-authored stock scopes ranked by grid distance from the
   // validated proposal; composer-authored entries are excluded. A front/report
   // matched-vs-custom verdict routes on nearest_stock[0].diff (match when <= 2
@@ -278,7 +326,19 @@ export interface ScopeValidation {
   // run that is not --matched so the composer copies them before it routes.
   // Absent when the classic scope is not enabled here.
   custom_start?: { guard_policy: GuardPolicy; scope_settings: ScopeSettings };
+  // The depth, Guard Policy and settings of the stock scope a matched plan
+  // carries (the one --matched names, else nearest_stock[0]), echoed on every
+  // run so the composer copies them, and checks the depth, instead of finding
+  // that scope's file: no other echo carries a stock scope's depth or settings.
+  matched_start?: MatchedPlanStart;
 }
+
+export type MatchedPlanStart = {
+  scope: string;
+  depth?: "minimal" | "standard" | "comprehensive";
+  guard_policy: GuardPolicy;
+  scope_settings: ScopeSettings;
+};
 
 // The scope-file settings a composer proposal carries beside its grid. The keys
 // are the scope frontmatter spellings, so the approved values are copied into
@@ -326,7 +386,7 @@ function stagesDir(): string {
 }
 
 /** Resolve the stage-graph.json path. Mirrors lib.ts:loadStageGraph()'s
- *  AIDLC_STAGE_GRAPH env-var seam (lib.ts:295-296) so tests can point both
+ *  AIDLC_STAGE_GRAPH env-var seam so tests can point both
  *  loader and compile-check at a temp file. Evaluated at call time so tests
  *  that set/unset the env mid-process see the change. */
 function stageGraphPath(): string {
@@ -363,7 +423,7 @@ const MEMORY_SEGMENTS = ["aidlc", "spaces", MEMORY_SPACE, "memory"] as const;
  *  analog of the default-pinned MEMORY_SEGMENTS. Keeps the `aidlc/spaces/<space>/
  *  memory` shape in one place so the project-family resolvers can never drift
  *  from the compile/display family's layout. */
-export function memorySegmentsForSpace(space: string): string[] {
+function memorySegmentsForSpace(space: string): string[] {
   return ["aidlc", "spaces", space, "memory"];
 }
 
@@ -398,7 +458,7 @@ function memoryDisplayPath(rel: string): string {
  *  `<projectDir>/aidlc/spaces/<space>/memory`. FOLLOWS the active-space cursor —
  *  `space` defaults to `activeSpace(projectDir)` (which itself falls back to
  *  `default` when no cursor is set), mirroring the `space?`/`?? activeSpace`
- *  shape of codekbDir()/knowledgeDir()/intentsDir() in aidlc-lib.ts. So the
+ *  shape of codekbDir()/knowledgeDir() in aidlc-lib.ts and intentsDir() in aidlc-locks.ts. So the
  *  learnings/practices writers that resolve through here land under the active
  *  space, while a cursorless resolve still yields `default`. The path layout
  *  stays byte-aligned with the packager's emit and the native includes via
@@ -408,6 +468,16 @@ export function memoryDirFor(projectDir: string, space?: string): string {
   const resolvedSpace =
     space ?? resolveWorkflowSelection(projectDir).space;
   return join(projectDir, ...memorySegmentsForSpace(resolvedSpace));
+}
+
+/** The file a rule the person keeps is written to, relative to the project in
+ *  posix form: the space's `project.md` or `team.md`, the learning loop's two
+ *  scopes (practiceFilePath, aidlc-learnings.ts, writes the same files). A
+ *  claimed Unit's candidate carries it like the Unit's source
+ *  (candidateBoundary, aidlc-unit.ts). */
+export const KEPT_RULE_SCOPES = ["project", "team"] as const;
+export function keptRuleFile(space: string, scope: (typeof KEPT_RULE_SCOPES)[number]): string {
+  return [...memorySegmentsForSpace(space), `${scope}.md`].join("/");
 }
 
 /** The TPL template-override source-of-truth dir for a workspace:
@@ -425,14 +495,15 @@ export function memoryTemplatesDir(projectDir: string, space?: string): string {
 }
 
 /** The FRAMEWORK-DEFAULT templates dir — the read-only, engine-shipped middle
- *  tier of the §10 templates resolution order (team override → framework default
- *  → generic floor). Ships at `<harness>/tools/data/templates/` beside the
+ *  tier of the templates resolution order (team override, then framework
+ *  default, then no heading required). Ships at
+ *  `<harness>/tools/data/templates/` beside the
  *  compiled data, resolved relative to THIS tool's location (like DATA_DIR), so
  *  it is harness-correct and space-INDEPENDENT (a framework default is the same
  *  for every space — it's the baseline a team optionally overrides per-space via
  *  `memoryTemplatesDir`). The framework ships zero default files at GA, so this
  *  dir resolves but holds only a marker → the sensor's middle branch misses and
- *  falls through to the floor. AIDLC_FRAMEWORK_TEMPLATES_DIR is a test/relocation
+ *  no heading is required. AIDLC_FRAMEWORK_TEMPLATES_DIR is a test/relocation
  *  seam mirroring AIDLC_TEMPLATES_DIR. */
 export function frameworkTemplatesDir(): string {
   return process.env.AIDLC_FRAMEWORK_TEMPLATES_DIR ?? join(resolveDataDir(), "templates");
@@ -449,6 +520,29 @@ export function frameworkTemplatesDir(): string {
  *  AIDLC_MEMORY_SEED_DIR is a test/relocation seam mirroring AIDLC_FRAMEWORK_TEMPLATES_DIR. */
 export function frameworkMemorySeedDir(): string {
   return process.env.AIDLC_MEMORY_SEED_DIR ?? join(resolveDataDir(), "memory-seed");
+}
+
+/** The framework's phase rule files (the seed's phases/), copied into a space's
+ *  memory wherever it has no file of that name, never over one the team wrote.
+ *  `space create` gives a new space all of them, and the engine gives them to a
+ *  space made before they shipped when a stage needs one (restoreSpacePhaseRules
+ *  in aidlc-steering.ts). Returns the names it wrote. */
+export function copyFrameworkPhaseRules(memoryDir: string): string[] {
+  const seed = join(frameworkMemorySeedDir(), "phases");
+  if (!existsSync(seed)) return [];
+  const phases = join(memoryDir, "phases");
+  mkdirSync(phases, { recursive: true });
+  const written: string[] = [];
+  for (const entry of readdirSync(seed, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    try {
+      copyFileSync(join(seed, entry.name), join(phases, entry.name), fsConstants.COPYFILE_EXCL);
+      written.push(entry.name);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
+  return written.sort();
 }
 
 /** Resolve the sensors directory. AIDLC_SENSORS_DIR env-var seam mirrors
@@ -528,7 +622,7 @@ function composedScopesDir(): string {
 // scope to a different set of executed stages — and dropped every authored line
 // after the collision on the next write-back. A sentinel a user will not type by
 // accident removes that class of bug, and it matches how this repo already fences
-// generated regions inside authored files (SKILL.md's `<!-- BEGIN: compiled ... -->`
+// generated regions inside authored files (tables.md's `<!-- BEGIN: compiled ... -->`
 // blocks, the scope-stage matrix in the guide, plugin prose fragments).
 const COMPOSED_GRID_BEGIN =
   "<!-- BEGIN aidlc composed-scope-grid: generated by `aidlc engine graph compile` — reshape the plan through /aidlc compose, not by editing here -->";
@@ -959,15 +1053,17 @@ const FIELD_ORDER = [
   "optional_produces",
   "produces_kinds",
   "consumes",
+  "cites",
   "requires_stage",
   "sensors",
   "scopes",
+  "ars",
   "reviewer",
   "review_artifact",
   "reviewer_max_iterations",
-  "approval_mode",
   "review_class",
   "summary_confirmation",
+  "approval_mode",
   "inputs",
   "outputs",
   "rules_in_context",
@@ -1043,7 +1139,7 @@ function parseRuleHeadings(raw: string): Map<string, string> {
   let inFence = false;
   let inComment = false;
 
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
     if (/^```/.test(line)) {
       inFence = !inFence;
       continue;
@@ -1066,7 +1162,10 @@ function parseRuleHeadings(raw: string): Map<string, string> {
     }
 
     if (/^## /.test(line)) {
-      current = line.slice(3).trim();
+      // A plugin's rules section says whose it is, so doctor's overlap row
+      // names the plugin, not the file's own layer, as the source.
+      const owner = PLUGIN_RULES_OPENING.exec(lines[index + 1]?.trim() ?? "")?.[1];
+      current = `${line.slice(3).trim()}${owner ? ` (plugin ${owner})` : ""}`;
       if (!out.has(current)) out.set(current, "");
       continue;
     }
@@ -1089,9 +1188,8 @@ function parseRuleHeadings(raw: string): Map<string, string> {
  *  this same walker (single walking surface, no parser duplication).
  *  Tolerates a missing rules dir (returns []) so the zero-rules edge
  *  case stays clean. */
-export function loadRules(args?: { readonly projectDir: string }): RuleFile[] {
-  const dir = args ? memoryDirFor(args.projectDir, MEMORY_SPACE) : rulesDir();
-  if (args) refuseLinkOnTheWay(args.projectDir, dir);
+export function loadRules(): RuleFile[] {
+  const dir = rulesDir();
   if (!existsSync(dir)) return [];
 
   // Each candidate: the absolute on-disk path to read, the display sub-path
@@ -1121,7 +1219,6 @@ export function loadRules(args?: { readonly projectDir: string }): RuleFile[] {
   // 2. Phase-scoped files nested under phases/<phase>.md.
   const phasesDir = join(dir, PHASE_RULES_SUBDIR);
   if (existsSync(phasesDir)) {
-    if (args) refuseLinkOnTheWay(args.projectDir, phasesDir);
     for (const f of readdirSync(phasesDir)) {
       const m = f.match(PHASE_FILE_REGEX);
       if (!m) continue;
@@ -1136,7 +1233,6 @@ export function loadRules(args?: { readonly projectDir: string }): RuleFile[] {
 
   const matched: RuleFile[] = [];
   for (const c of candidates) {
-    if (args) refuseLinkOnTheWay(args.projectDir, c.filePath);
     const raw = readFileSync(c.filePath, "utf-8");
     const fm = parseRuleFrontmatter(raw);
     validateRuleFrontmatter(fm, c.filePath);
@@ -1244,7 +1340,7 @@ export function loadSensors(): Map<string, SensorFile> {
     if (typeof manifest.id === "string" && out.has(manifest.id)) {
       const previous = mustGet(out, manifest.id, "sensor-manifest dup");
       throw new Error(
-        `${filePath}: duplicate sensor id "${manifest.id}" — also declared ` +
+        `${filePath}: duplicate sensor id "${manifest.id}" - also declared ` +
           `in ${previous.path}. Rename one of them.`,
       );
     }
@@ -1318,6 +1414,45 @@ export function loadGraph(): GraphStage[] {
   return _graph;
 }
 
+// A stage a plugin added after the work started has no row in the state file's
+// Stage Progress, so a transition onto it would write nothing and the stage
+// would never read as started or done. Its first transition writes the row
+// (not started, with the plan's action) after the rows of its phase that come
+// before it in the graph, or before the first one after it. A stage that has a
+// row, a slug the graph does not know, or a phase with no rows leaves the
+// content as it is.
+export function withStageProgressRow(content: string, slug: string): string {
+  if (parseCheckboxes(content).some((row) => row.slug === slug)) return content;
+  const graph = loadGraph();
+  const at = graph.findIndex((stage) => stage.slug === slug);
+  if (at === -1) return content;
+  const phase = graph[at].phase;
+  const lines = content.split("\n");
+  const rowsOf = (stages: GraphStage[]) =>
+    stages
+      .filter((stage) => stage.phase === phase)
+      .map((stage) => lines.findIndex((line) => new RegExp(`^- \\[[ xSR?-]\\] ${escapeRegex(stage.slug)} —`).test(line)))
+      .filter((row) => row !== -1);
+  const before = rowsOf(graph.slice(0, at));
+  const after = rowsOf(graph.slice(at + 1));
+  const insertAt = before.length > 0 ? Math.max(...before) + 1 : after.length > 0 ? Math.min(...after) : -1;
+  if (insertAt === -1) return content;
+  const eol = lines[before.length > 0 ? insertAt - 1 : insertAt].endsWith("\r") ? "\r" : "";
+  const action = effectivePlanAction(slug, getField(content, "Scope"), content) ?? "EXECUTE";
+  lines.splice(insertAt, 0, `- [ ] ${slug} — ${action}${eol}`);
+  return lines.join("\n");
+}
+
+// True when `slug` runs before the first per-Unit stage of `stages` (a graph in
+// run order): Inception and earlier, where the Unit plan itself is made. A team
+// that goes back there is changing its Unit plan, which leaves each Unit's own
+// work to its claim. False for a slug the graph does not know.
+export function beforePerUnitBlock(stages: readonly { slug: string; for_each?: string }[], slug: string): boolean {
+  const at = stages.findIndex((stage) => stage.slug === slug);
+  const firstPerUnit = stages.findIndex((stage) => isPerUnitStage(stage));
+  return at !== -1 && firstPerUnit !== -1 && at < firstPerUnit;
+}
+
 /** Stages that produce the given artifact. Empty array = orphan
  *  consumer candidate (doctor surfaces). Unions produces and
  *  optional_produces so a conditionally-produced artifact still resolves to
@@ -1377,6 +1512,19 @@ export function consumedArtifactProducerCollisions(): {
  *  declared-prose artifact. Lives here so both invocation sites derive it
  *  identically without importing the dispatcher (whose top-level main() would
  *  run on import). */
+/** The sensors that read a stage's whole output: given one file, each
+ *  evaluates every declared deliverable in that file's folder (the dispatcher
+ *  threads --deliverables for them), so one evaluation per folder is the
+ *  stage's verdict. The dispatcher and the gate both read this set. */
+export const STAGE_WIDE_SENSOR_IDS: ReadonlySet<string> = new Set(["upstream-coverage", "claim-sources"]);
+
+/** The sensors whose script evaluates a set of output paths handed on stdin
+ *  (`--paths-stdin json`), each path as it would evaluate it alone. At a codekb
+ *  stage, whose outputs span one folder per repository, the gate fires each of
+ *  these once for the stage over every repository's files instead of once per
+ *  file or folder; every other stage keeps its fires. */
+export const PATH_SET_SENSOR_IDS: ReadonlySet<string> = new Set(["required-sections", "upstream-coverage"]);
+
 export function templateEligibleArtifacts(produces: string[]): string[] {
   return (produces ?? []).filter(
     (a) =>
@@ -1511,11 +1659,11 @@ export function findCycles(stages: GraphStage[]): string[][] {
   return cycles;
 }
 
-/** The scope's sub-DAG as a linear array, sorted by numeric order.
- *  Filter to scope-mapping's EXECUTE slice, then sort by number.
- *  No topological sort at runtime — numeric order is a valid topo-
+/** The scope's sub-DAG as a linear array, in the graph's run order
+ *  (stageRouteOrder, the order compile writes): scope-mapping's EXECUTE
+ *  slice. No topological sort at runtime — run order is a valid topo-
  *  order of the full graph (proven by t65, protected by compile's
- *  invariant) and therefore of any node subset. The future worktree
+ *  invariants) and therefore of any node subset. The future worktree
  *  scheduler will consume the sub-DAG structure directly for
  *  parallelism.
  *
@@ -1537,9 +1685,7 @@ export function subgraphForScope(scope: string): GraphStage[] {
       .filter(([, action]) => action === "EXECUTE")
       .map(([slug]) => slug)
   );
-  return loadGraph()
-    .filter((s) => executeSlugs.has(s.slug))
-    .sort((a, b) => numericStageOrder(a.number, b.number));
+  return loadGraph().filter((s) => executeSlugs.has(s.slug));
 }
 
 /** Rank every graph/plugin-authored stock scope by grid distance from the given
@@ -1594,8 +1740,6 @@ export function resolvePlanForScope(
   const entry = loadScopeGrid()[scope];
   const stages = entry?.stages ?? {};
   return loadGraph()
-    .slice()
-    .sort((a, b) => numericStageOrder(a.number, b.number))
     .map((s) => ({
       slug: s.slug,
       phase: s.phase,
@@ -1694,62 +1838,34 @@ export function validateGrid(
     );
   }
 
-  const onPath = new Set(
-    Object.entries(grid)
-      .filter(([slug, action]) => action === "EXECUTE" && knownSlugs.has(slug))
-      .map(([slug]) => slug)
-  );
-  const subgraph = graph
-    .filter((s) => onPath.has(s.slug))
-    .sort((a, b) => numericStageOrder(a.number, b.number));
-
-  for (const stage of subgraph) {
-    for (const consume of stage.consumes ?? []) {
-      // required: false -> silent
-      if (!consume.required) continue;
-      // projectType filter for conditional consumes
-      if (
-        consume.conditional_on &&
-        opts?.projectType &&
-        consume.conditional_on !== opts.projectType
-      ) {
-        continue;
-      }
-      const producers = producersOf(consume.artifact);
-      if (producers.length === 0) {
-        errors.push(
-          `Stage "${stage.slug}" requires artifact "${consume.artifact}" ` +
-            `but no stage in the graph produces it.`
-        );
-        continue;
-      }
-      const onPathProducers = producers.filter((p) => onPath.has(p.slug));
-      if (onPathProducers.length === 0) {
-        const message =
-          `Stage "${stage.slug}" requires artifact "${consume.artifact}" ` +
-          `whose producer(s) [${producers.map((p) => p.slug).join(", ")}] ` +
-          `are not on the "${label}" path.`;
-        if (opts?.strict) {
-          errors.push(
-            `${message} Strict (recompose) mode rejects a starved required input.`
-          );
-        } else {
-          advisories.push(`${message} Ensure existing artifact is current.`);
-        }
-      }
+  for (const { stage, artifact, producers } of unmadeInputs(grid, opts?.projectType)) {
+    if (producers.length === 0) {
+      errors.push(
+        `Stage "${stage.slug}" requires artifact "${artifact}" ` +
+          `but no stage in the graph produces it.`
+      );
+      continue;
+    }
+    const message =
+      `Stage "${stage.slug}" requires artifact "${artifact}" ` +
+      `whose producer(s) [${producers.map((p) => p.slug).join(", ")}] ` +
+      `are not on the "${label}" path.`;
+    if (opts?.strict) {
+      errors.push(
+        `${message} Strict (recompose) mode rejects a starved required input.`
+      );
+    } else {
+      advisories.push(`${message} Ensure existing artifact is current.`);
     }
   }
 
   // The ceremony count travels with the validation so the composer relays the
   // validator's numbers, not a hand recount. Computed over the raw proposal
   // entries; unknown slugs already produced errors above and contribute only to
-  // total/execute per gridCostSummary's graph-lookup guard. Creation skips
-  // reverse-engineering on a greenfield project, so a greenfield count leaves
-  // it out too and the offer's numbers are the ones creation prints.
+  // total/execute per gridCostSummary's graph-lookup guard. Counted as
+  // creation runs the grid, so the offer's numbers are the ones creation prints.
   const summary = gridCostSummary(
-    (opts?.projectType === "greenfield" && grid["reverse-engineering"] === "EXECUTE"
-      ? { ...grid, "reverse-engineering": "SKIP" }
-      : grid) as Record<string, "EXECUTE" | "SKIP">,
+    asCreated(grid, opts?.projectType) as Record<string, "EXECUTE" | "SKIP">,
   );
   // Distance to each stock scope travels with the validation for the same
   // reason as summary: the match decision must ride the validator's numbers.
@@ -1759,6 +1875,79 @@ export function validateGrid(
     grid as Record<string, "EXECUTE" | "SKIP">,
   );
   return { valid: errors.length === 0, errors, advisories, summary, nearest_stock };
+}
+
+/** `grid` as creation runs it: a new project skips Reverse Engineering, so
+ *  the plan offer's counts and its skip line leave it out there too. */
+function asCreated(
+  grid: Record<string, string>,
+  projectType?: "brownfield" | "greenfield",
+): Record<string, string> {
+  return projectType === "greenfield" && grid["reverse-engineering"] === "EXECUTE"
+    ? { ...grid, "reverse-engineering": "SKIP" }
+    : grid;
+}
+
+/** Each required input `grid` leaves unmade: a stage it runs whose required
+ *  artifact no stage it runs produces (`producers` empty when no stage in the
+ *  graph does). In stage order, then consume order. The one walk behind
+ *  validateGrid's errors and advisories and the plan offer's skippedInputs.
+ *  required: false is silent; projectType filters conditional_on consumes. */
+function unmadeInputs(
+  grid: Record<string, string>,
+  projectType?: "brownfield" | "greenfield",
+): Array<{ stage: GraphStage; artifact: string; producers: GraphStage[] }> {
+  const graph = loadGraph();
+  const onPath = new Set(graph.filter((s) => grid[s.slug] === "EXECUTE").map((s) => s.slug));
+  const subgraph = graph
+    .filter((s) => onPath.has(s.slug))
+    .sort((a, b) => numericStageOrder(a.number, b.number));
+  const unmade: Array<{ stage: GraphStage; artifact: string; producers: GraphStage[] }> = [];
+  for (const stage of subgraph) {
+    for (const consume of stage.consumes ?? []) {
+      if (!consume.required) continue;
+      if (consume.conditional_on && projectType && consume.conditional_on !== projectType) continue;
+      const producers = producersOf(consume.artifact);
+      if (producers.some((p) => onPath.has(p.slug))) continue;
+      unmade.push({ stage, artifact: consume.artifact, producers });
+    }
+  }
+  return unmade;
+}
+
+/** The stages a custom plan skips, for the offer's one line: every stage it
+ *  drops from `base`, the stock scope it runs on (planChangesBetween, the list
+ *  creation records as Stages skipped), and every skipped producer of an input
+ *  a kept stage needs that `base` does not leave unmade too (the plan added a
+ *  stage that needs it). A stock scope leaves some inputs unmade by design (t66
+ *  pins those edges), so those name nothing. Each is named with every kept stage
+ *  that uses what it makes, none when no kept stage does, so the line is whole.
+ *  Display names, in stage order. */
+function skippedInputs(
+  plan: Record<string, string>,
+  base: Record<string, "EXECUTE" | "SKIP">,
+  projectType?: "brownfield" | "greenfield",
+): SkippedInput[] {
+  const key = (gap: { stage: GraphStage; artifact: string }): string => `${gap.stage.slug} ${gap.artifact}`;
+  const onBase = new Set(unmadeInputs(base, projectType).map(key));
+  const gaps = unmadeInputs(plan, projectType).filter((gap) => gap.producers.length > 0);
+  const dropped = planChangesBetween(
+    asCreated(base, projectType) as Record<string, "EXECUTE" | "SKIP">,
+    asCreated(plan, projectType),
+  ).skip;
+  const named = new Set([
+    ...dropped,
+    ...gaps.filter((gap) => !onBase.has(key(gap))).flatMap((gap) => gap.producers.map((p) => p.slug)),
+  ]);
+  return loadGraph()
+    .filter((s) => named.has(s.slug))
+    .sort((a, b) => numericStageOrder(a.number, b.number))
+    .map((producer) => ({
+      stage: producer.name,
+      used_by: [...new Set(
+        gaps.filter((gap) => gap.producers.some((p) => p.slug === producer.slug)).map((gap) => gap.stage.name),
+      )],
+    }));
 }
 
 /** Check a composer proposal's `scopeSettings` member. All four keys are
@@ -1824,6 +2013,21 @@ export function customPlanStart(): { guard_policy: GuardPolicy; scope_settings: 
   const settings = scopeSettingsOf("classic");
   if (settings === null) return null;
   return { guard_policy: scopeGuardPolicyDefault("classic"), scope_settings: settings };
+}
+
+/** What a matched plan starts from: its stock scope's own depth, Guard Policy
+ *  and settings, read by the same resolvers the matched check and the
+ *  creation diff use. Null for a scope that is not enabled here. */
+export function matchedPlanStart(scope: string): MatchedPlanStart | null {
+  const settings = scopeSettingsOf(scope);
+  if (settings === null) return null;
+  const depth = (loadScopeMapping()[scope]?.depth ?? "").toLowerCase();
+  return {
+    scope,
+    ...(depth === "minimal" || depth === "standard" || depth === "comprehensive" ? { depth } : {}),
+    guard_policy: scopeGuardPolicyDefault(scope),
+    scope_settings: settings,
+  };
 }
 
 /** The errors for a front/report proposal that names its routing. Either route
@@ -1967,34 +2171,40 @@ export function killSwitchAdvisories(
   );
 }
 
-/** Check proposed (granted-at-the-gate) keywords against the keywords the
- *  existing scopes already claim - the same loadScopeMapping data both
- *  inference (inferScopeFromText) and findScopeByKeyword read. Inference
- *  takes the FIRST ALPHABETICAL keyword match, so a duplicate keyword would
- *  permanently shadow the incumbent scope on every future cold start; a
- *  collision is therefore a hard error naming the colliding scope, never an
- *  advisory. Comparison is case-insensitive exact equality, matching
- *  findScopeByKeyword. */
-export function keywordCollisions(granted: string[]): string[] {
-  const mapping = loadScopeMapping();
-  const errors: string[] = [];
-  for (const kw of granted) {
-    const holders = Object.keys(mapping)
-      .filter((scope) =>
-        (mapping[scope]?.keywords ?? []).some(
-          (k) => k.toLowerCase() === kw.toLowerCase()
-        )
-      )
-      .sort();
-    if (holders.length > 0) {
-      errors.push(
-        `Keyword "${kw}" is already claimed by scope${holders.length > 1 ? "s" : ""} ` +
-          `[${holders.join(", ")}] - granting it would shadow that scope in ` +
-          `keyword inference. Pick a keyword no existing scope claims.`
-      );
+/** Every plan's hints, lowercased, each with the plans that have it, sorted:
+ *  the one comparison behind keywordCollisions and doctor's Keyword overlap
+ *  row (case-insensitive exact equality, as scope save lowercases a hint). */
+export function hintHolders(): Map<string, string[]> {
+  const holders = new Map<string, string[]>();
+  for (const [scope, def] of Object.entries(loadScopeMapping())) {
+    for (const kw of def.keywords ?? []) {
+      const list = holders.get(kw.toLowerCase()) ?? [];
+      if (!list.includes(scope)) list.push(scope);
+      holders.set(kw.toLowerCase(), list);
     }
   }
-  return errors;
+  for (const list of holders.values()) list.sort();
+  return holders;
+}
+
+/** Check proposed (granted-at-the-gate) keywords against the keywords the
+ *  existing scopes already have - the same loadScopeMapping data the plan
+ *  proposal step lists as each plan's hints for the agent to weigh. Nothing
+ *  picks a plan by a hint any more, so a shared one is a note naming the other
+ *  plans, never a refusal: one line per shared hint. */
+export function keywordCollisions(granted: string[]): string[] {
+  const all = hintHolders();
+  const notes: string[] = [];
+  for (const kw of granted) {
+    const holders = all.get(kw.toLowerCase()) ?? [];
+    if (holders.length === 1) {
+      notes.push(`The hint "${kw}" is also ${holders[0]}'s; the plan proposal lists it under both.`);
+    } else if (holders.length > 1) {
+      const named = `${holders.slice(0, -1).join(", ")} and ${holders[holders.length - 1]}`;
+      notes.push(`The hint "${kw}" is also a hint of ${named}; the plan proposal lists it under each.`);
+    }
+  }
+  return notes;
 }
 
 /** Union of produces[] and optional_produces[] across all stages. */
@@ -2323,6 +2533,26 @@ function enabledScopeNames(): ReadonlySet<string> | null {
   return new Set(Object.keys(loadScopeMetadata()).sort());
 }
 
+// The order the work runs the stages in: number order, except that a phase's
+// per-Unit stages run as one block where its first per-Unit stage stands. Each
+// Unit walks the block, and the stages that run once per intent come after it.
+// Numbers are pinned and a plugin's new stage is numbered past its phase's
+// highest, so a plugin's per-Unit stage can be numbered after Build and Test;
+// it still runs with its Unit. compileStageGraph writes stage-graph.json in this
+// order and refuses a requires_stage edge it would break.
+export function stageRouteOrder<T extends { slug: string; number: string; phase: string; for_each?: string }>(
+  stages: readonly T[],
+): T[] {
+  const byNumber = [...stages].sort((a, b) => numericStageOrder(a.number, b.number));
+  const routed: T[] = [];
+  for (const stage of byNumber) {
+    if (routed.includes(stage)) continue;
+    if (!isPerUnitStage(stage)) routed.push(stage);
+    else routed.push(...byNumber.filter((other) => other.phase === stage.phase && isPerUnitStage(other)));
+  }
+  return routed;
+}
+
 /** Parse a numeric stage identifier like "3.5" into a tuple [phase, index]
  *  for total-ordering comparison. Returns negative, zero, or positive. */
 export function numericStageOrder(a: string, b: string): number {
@@ -2583,7 +2813,7 @@ export function compileStageGraph(): {
       const previousFile = slugToFile.get(slug);
       if (previousFile) {
         throw new Error(
-          `Duplicate stage slug "${slug}" in ${filePath} — already declared ` +
+          `Duplicate stage slug "${slug}" in ${filePath} - already declared ` +
             `in ${previousFile}. Rename one of them.`
         );
       }
@@ -2627,10 +2857,9 @@ export function compileStageGraph(): {
             `"${phase}". Stage phase directories must be one of: ${PHASES.join(", ")}.`
         );
       }
-
-      const number = validation.data.number ?? numberBySlug.get(slug);
+      const number = numberBySlug.get(slug);
       const name =
-        validation.data.name ?? nameBySlug.get(slug) ?? titleCaseSlug(slug);
+        nameBySlug.get(slug) ?? validation.data.name ?? titleCaseSlug(slug);
       if (number) {
         stages.push(buildGraphStage(validation.data, phase, number, name));
       } else {
@@ -2646,13 +2875,13 @@ export function compileStageGraph(): {
     if (!consumer) continue;
 
     // Shared artifact names are legal when unconsumed: traceability is
-    // produced by eight stages and consumed by none, so only consumed names
+    // produced by nine stages and consumed by none, so only consumed names
     // require a unique producer.
     const producerList = producers
       .map(({ file, slug }) => `${file} (stage "${slug}")`)
       .join(", ");
     throw new Error(
-      `Duplicate producers for consumed artifact "${artifact}" in ${producerList} — ` +
+      `Duplicate producers for consumed artifact "${artifact}" in ${producerList} - ` +
         `consumed by stage "${consumer.slug}" in ${consumer.file}. ` +
         `Rename one produced artifact or update the consumer.`
     );
@@ -2723,9 +2952,27 @@ export function compileStageGraph(): {
     }
   }
 
-  // Sort by numeric order (phase-prefix.index).
-  stages.sort((a, b) => numericStageOrder(a.number, b.number));
-  const stockScopeNames = stageDeclaredScopeNames(stages);
+  // Run order (stageRouteOrder): numeric order, with each phase's per-Unit
+  // stages as one block.
+  stages.splice(0, stages.length, ...stageRouteOrder(stages));
+
+  // A team plugin's scope runs the base stages its include_stages names, so
+  // each included stage's row carries that scope, as if the stage named it.
+  // An include no installed stage has is left out (plugin sync holds the team
+  // plugin and says so), never an error. Such a scope counts as stage-declared
+  // even when nothing resolves, so composedFoldBack never keeps its old column
+  // as a composer-authored scope's.
+  const bySlug = new Map(stages.map((stage) => [stage.slug, stage]));
+  const includingScopes: string[] = [];
+  for (const meta of Object.values(loadScopeMetadataAll())) {
+    if (meta.includeStages === undefined) continue;
+    includingScopes.push(meta.name);
+    for (const slug of meta.includeStages) {
+      const stage = bySlug.get(slug);
+      if (stage && !(stage.scopes ?? []).includes(meta.name)) stage.scopes = [...(stage.scopes ?? []), meta.name];
+    }
+  }
+  const stockScopeNames = new Set([...stageDeclaredScopeNames(stages), ...includingScopes]);
 
   // Resolve per-stage rule chain. Strict-additive: every applicable rule
   // appears in rules_in_context (org+team+project + phase when stage's
@@ -2769,11 +3016,27 @@ export function compileStageGraph(): {
       if (numericStageOrder(depNum, stage.number) >= 0) {
         throw new Error(
           `Compile invariant violated: stage "${stage.slug}" (${stage.number}) ` +
-            `requires "${dep}" (${depNum}) — dependency must be lower-numbered. ` +
+            `requires "${dep}" (${depNum}) - dependency must be lower-numbered. ` +
             `Fix: either renumber in stage-graph.json to match the dependency ` +
             `direction, or remove the offending requires_stage edge.`
         );
       }
+    }
+  }
+
+  // Run-order invariant: the runtime walks a phase's per-Unit stages as one
+  // block, so a per-Unit stage must not require a stage that runs once per
+  // intent after that block starts; each Unit would reach it before the stage
+  // it needs had run.
+  const runPosition = new Map(stages.map((s, i) => [s.slug, i]));
+  for (const stage of stages) {
+    for (const dep of stage.requires_stage ?? []) {
+      if ((runPosition.get(dep) ?? -1) < (runPosition.get(stage.slug) ?? -1)) continue;
+      throw new Error(
+        `Stage "${stage.slug}" runs once per Unit of Work, but it requires "${dep}", ` +
+          `which runs once for the whole intent after the Units. ` +
+          `Fix: remove "${dep}" from its requires_stage, or drop its for_each: unit-of-work.`
+      );
     }
   }
 
@@ -2795,7 +3058,7 @@ export function compileStageGraph(): {
       console.error(
         `[advisory] stage "${stage.slug}" is the per-unit build stage ` +
           `(for_each: unit-of-work + workspace_requires) but mode is ` +
-          `"${stage.mode}", not "subagent" — the autonomous Construction ` +
+          `"${stage.mode}", not "subagent" - the autonomous Construction ` +
           `swarm will NOT fire for it; units build serially.`
       );
     }
@@ -2911,8 +3174,15 @@ function buildGraphStage(
   if (parsed.workspace_requires !== undefined) {
     stage.workspace_requires = parsed.workspace_requires;
   }
+  if (parsed.ars !== undefined) {
+    stage.ars = parsed.ars;
+  }
   if (parsed.optional_produces !== undefined) {
     stage.optional_produces = parsed.optional_produces;
+  }
+  const cites = consumesRaw.filter((c) => c.cited === true).map((c) => c.artifact);
+  if (cites.length > 0) {
+    stage.cites = cites;
   }
   if (parsed.produces_kinds !== undefined) {
     stage.produces_kinds = parsed.produces_kinds;
@@ -2946,11 +3216,11 @@ function buildGraphStage(
     stage.review_class =
       parsed.review_class === "advisory" ? "advisory" : "adversarial";
   }
-  if (parsed.summary_confirmation !== undefined) {
-    stage.summary_confirmation = parsed.summary_confirmation;
-  }
   if (parsed.approval_mode !== undefined) {
     stage.approval_mode = parsed.approval_mode;
+  }
+  if (parsed.summary_confirmation !== undefined) {
+    stage.summary_confirmation = parsed.summary_confirmation;
   }
   return stage;
 }
@@ -3033,12 +3303,19 @@ function printSlugs(stages: GraphStage[]): void {
 // documentation of that file, not the source. The composite stays an
 // ADVISORY index: nothing deterministic routes on it.
 
-const ARS_COMPONENTS = ["iae", "csu", "ve", "r", "ua"] as const;
-export type ArsComponent = (typeof ARS_COMPONENTS)[number];
+// The component symbols and project types are shared with the stage schema
+// (a stage's own `ars:` block is validated against the same lists).
+const ARS_COMPONENTS = ARS_COMPONENT_KEYS;
+export type ArsComponent = ArsComponentKey;
 type ArsBand = "LOW" | "MED" | "HIGH";
 type ArsDecision = "EXECUTE" | "SKIP" | "COMPLETED";
-const ARS_PROJECT_TYPES = ["brownfield", "greenfield"] as const;
-type ArsProjectType = (typeof ARS_PROJECT_TYPES)[number];
+const ARS_PROJECT_TYPES = ARS_PROJECT_TYPE_KEYS;
+type ArsProjectType = ArsProjectTypeKey;
+// The shipped priors' roles: a stage block's, plus `project-type`, which only
+// reverse-engineering carries (its own store check decides whether to scan,
+// so a judged CSU never drops it, #2575). A plugin stage's project_types keeps
+// its component arithmetic on its own kind.
+const ARS_PRIOR_ROLES: readonly string[] = [...ARS_ROLES, "project-type"];
 
 /** IEEE summation of the weighted terms can land a hair under an exact
  *  half-point - 0.75 + 12.45 + 7.3 evaluates to 20.499999999999996, which
@@ -3064,7 +3341,8 @@ interface ArsPriors {
       role?: string;
       // Present only on stages whose compiled `condition:` restricts them to
       // one kind of project (today: reverse-engineering, brownfield-only).
-      // Absent = the stage runs on either project type.
+      // Absent = the stage runs on either project type. With role
+      // `project-type` the stage also RUNS on these types, whatever it scores.
       projectTypes?: ArsProjectType[];
     }
   >;
@@ -3084,6 +3362,9 @@ export interface ArsScreenRow {
     | "no-cost-prior"
     | "no-prior"
     | "completed";
+  // Where the row's prior came from: the shipped priors file, the stage's own
+  // `ars:` frontmatter block (plugin stages), or nowhere (`no-prior`).
+  priorSource: "shipped" | "stage" | null;
   targets: ArsComponent[];
   cost: number | null;
   maxTargetScore: number | null;
@@ -3176,10 +3457,28 @@ export function loadArsPriors(): ArsPriors {
       throw new Error(`ars priors: evThresholds["${key}"] must be a number in [0,1].`);
     }
   }
+  // Each entry follows the same rules as a stage's own ars: block
+  // (aidlc-stage-schema.ts), so the two sources cannot drift; the one word
+  // only this file may use is the `project-type` role (ARS_PRIOR_ROLES).
+  const hasRepeats = (list: readonly unknown[]): boolean => new Set(list).size !== list.length;
   for (const [slug, st] of Object.entries(priors.stages ?? {})) {
-    if (!Array.isArray(st.targets) || st.targets.some((t) => !ARS_COMPONENTS.includes(t))) {
+    if (
+      !Array.isArray(st.targets) ||
+      st.targets.some((t) => !ARS_COMPONENTS.includes(t)) ||
+      hasRepeats(st.targets)
+    ) {
       throw new Error(
-        `ars priors: stages.${slug}.targets must be a subset of {${ARS_COMPONENTS.join(", ")}}.`
+        `ars priors: stages.${slug}.targets must be a subset of {${ARS_COMPONENTS.join(", ")}}, without repeats.`
+      );
+    }
+    if (st.role !== undefined && !ARS_PRIOR_ROLES.includes(st.role)) {
+      throw new Error(
+        `ars priors: stages.${slug}.role must be one of {${ARS_PRIOR_ROLES.join(", ")}}.`
+      );
+    }
+    if (st.role === "project-type" && st.projectTypes === undefined) {
+      throw new Error(
+        `ars priors: stages.${slug}.role project-type needs projectTypes (the project types the stage runs on).`
       );
     }
     // Type before lookup: `String(cost) in evThresholds` alone accepts the
@@ -3190,6 +3489,11 @@ export function loadArsPriors(): ArsPriors {
         `ars priors: stages.${slug}.cost must be a number or null (got ${typeof st.cost}).`
       );
     }
+    if (st.cost !== null && !(Number.isInteger(st.cost) && st.cost >= ARS_COST_MIN && st.cost <= ARS_COST_MAX)) {
+      throw new Error(
+        `ars priors: stages.${slug}.cost must be null or an integer ${ARS_COST_MIN}..${ARS_COST_MAX} (got ${st.cost}).`
+      );
+    }
     if (st.cost !== null && !(String(st.cost) in (priors.evThresholds ?? {}))) {
       throw new Error(`ars priors: stages.${slug}.cost ${String(st.cost)} has no evThresholds entry.`);
     }
@@ -3197,10 +3501,11 @@ export function loadArsPriors(): ArsPriors {
       if (
         !Array.isArray(st.projectTypes) ||
         st.projectTypes.length === 0 ||
-        st.projectTypes.some((t) => !ARS_PROJECT_TYPES.includes(t))
+        st.projectTypes.some((t) => !ARS_PROJECT_TYPES.includes(t)) ||
+        hasRepeats(st.projectTypes)
       ) {
         throw new Error(
-          `ars priors: stages.${slug}.projectTypes must be a non-empty subset of {${ARS_PROJECT_TYPES.join(", ")}}.`
+          `ars priors: stages.${slug}.projectTypes must be a non-empty subset of {${ARS_PROJECT_TYPES.join(", ")}}, without repeats.`
         );
       }
     }
@@ -3287,17 +3592,44 @@ export function computeArs(
     projectType !== undefined &&
     p?.projectTypes !== undefined &&
     !p.projectTypes.includes(projectType);
+  // A stage the shipped priors do not name may carry its own prior in its
+  // frontmatter (`ars:` - plugin stages; docs/reference/15-stage-definition.md).
+  // The shipped entry wins when both exist, so core screening never changes
+  // under a stage-side edit. The node's cost is checked against the loaded
+  // evThresholds here because the stage schema validates the block's shape,
+  // not its coupling to this file - and a cost with no threshold would
+  // otherwise decide EXECUTE/SKIP against `undefined`, silently.
+  type StagePrior = ArsPriors["stages"][string];
+  const priorOf = new Map<string, { prior: StagePrior; source: "shipped" | "stage" }>();
+  for (const s of graph) {
+    const shipped = priors.stages[s.slug];
+    if (shipped !== undefined) {
+      priorOf.set(s.slug, { prior: shipped, source: "shipped" });
+      continue;
+    }
+    if (s.ars === undefined) continue;
+    if (s.ars.cost !== null && !(String(s.ars.cost) in (priors.evThresholds ?? {}))) {
+      throw new Error(
+        `stage ${s.slug}: ars.cost ${String(s.ars.cost)} has no evThresholds entry in ars-priors.json.`
+      );
+    }
+    const prior: StagePrior = { targets: s.ars.targets, cost: s.ars.cost };
+    if (s.ars.role !== undefined) prior.role = s.ars.role;
+    if (s.ars.project_types !== undefined) prior.projectTypes = s.ars.project_types;
+    priorOf.set(s.slug, { prior, source: "stage" });
+  }
+
   const decisionOf = new Map<string, ArsDecision>();
   const deferred = new Set<string>();
   for (const s of graph) {
-    const p = priors.stages[s.slug];
+    const p = priorOf.get(s.slug)?.prior;
     if (completedSet.has(s.slug)) {
       decisionOf.set(s.slug, "COMPLETED");
     } else if (offProjectType(p)) {
       decisionOf.set(s.slug, "SKIP");
     } else if (p?.role === "phase-gate") {
       deferred.add(s.slug);
-    } else if (p?.role === "initialization" || p?.role === "core") {
+    } else if (p?.role === "initialization" || p?.role === "core" || p?.role === "project-type") {
       decisionOf.set(s.slug, "EXECUTE");
     } else if (!p || p.role === "structural" || p.cost === null) {
       decisionOf.set(s.slug, "SKIP");
@@ -3307,27 +3639,37 @@ export function computeArs(
       decisionOf.set(s.slug, maxTarget > threshold ? "EXECUTE" : "SKIP");
     }
   }
-  // Pass 2 - a phase-gate executes iff any OTHER stage in its phase does
-  // (persona: approval-handoff is "Always at ideation->inception boundary";
-  // when the whole phase folds away, the boundary does not exist).
+  // Pass 2 - a phase-gate executes iff other work in its phase executes or
+  // already ran (persona: approval-handoff is "Always at ideation->inception
+  // boundary"; when the whole phase folds away, the boundary does not exist).
+  // Activity is read from non-gate stages only: a gate, pending or already
+  // completed, marks a boundary and is not work, so gates in an otherwise
+  // skipped phase cannot keep each other alive.
+  const activePhases = new Set(
+    graph
+      .filter((o) => {
+        const decision = decisionOf.get(o.slug);
+        return priorOf.get(o.slug)?.prior.role !== "phase-gate" &&
+          (decision === "EXECUTE" || decision === "COMPLETED");
+      })
+      .map((o) => o.phase)
+  );
   for (const s of graph) {
-    if (!deferred.has(s.slug)) continue;
-    const phaseActive = graph.some(
-      (o) => o.phase === s.phase && o.slug !== s.slug && decisionOf.get(o.slug) !== "SKIP"
-    );
-    decisionOf.set(s.slug, phaseActive ? "EXECUTE" : "SKIP");
+    if (deferred.has(s.slug)) decisionOf.set(s.slug, activePhases.has(s.phase) ? "EXECUTE" : "SKIP");
   }
 
   // Pass 3 - render the screen rows in graph order with the reasoning the
   // gate table shows verbatim.
   const evScreen: ArsScreenRow[] = [];
   for (const s of graph) {
-    const p = priors.stages[s.slug];
+    const resolved = priorOf.get(s.slug);
+    const p = resolved?.prior;
     const decision = decisionOf.get(s.slug) as ArsDecision;
     const base = {
       stage: s.slug,
       number: s.number,
       decision,
+      priorSource: resolved?.source ?? null,
       targets: p?.targets ?? [],
       cost: p?.cost ?? null,
       maxTargetScore: null as number | null,
@@ -3343,13 +3685,23 @@ export function computeArs(
       evScreen.push({
         ...base,
         screen: "no-prior",
-        reason: "no entry in ars-priors.json - not screenable",
+        reason: "no entry in ars-priors.json and no ars: block on the stage - not screenable",
       });
     } else if (offProjectType(p)) {
       evScreen.push({
         ...base,
         screen: "project-type",
         reason: `project is ${String(projectType)} - the stage's compiled condition restricts it to ${(p.projectTypes ?? []).join("/")} projects`,
+      });
+    } else if (p.role === "project-type") {
+      // Today only reverse-engineering, whose own store check runs first.
+      const reuse = "when an earlier scan's code map is still current it asks whether to reuse it";
+      evScreen.push({
+        ...base,
+        screen: "project-type",
+        reason: projectType === undefined
+          ? `no project type given - existing code always gets this stage and a new project leaves it out; ${reuse}`
+          : `project is ${projectType} - existing code always gets this stage; ${reuse}`,
       });
     } else if (p.role === "initialization") {
       evScreen.push({ ...base, screen: "initialization", reason: "initialization - always runs" });
@@ -3371,10 +3723,26 @@ export function computeArs(
         reason: "structural (decomposition) - not numerically screenable; mechanical default SKIP, human judgment at the gate",
       });
     } else if (p.cost === null) {
+      const noCost = resolved?.source === "stage"
+        ? "the stage's ars: block declares no cost"
+        : "no cost prior in the shipped table";
       evScreen.push({
         ...base,
         screen: "no-cost-prior",
-        reason: "no cost prior in the shipped table - not numerically screenable; human judgment at the gate",
+        reason: `${noCost} - not numerically screenable; human judgment at the gate`,
+      });
+    } else if (p.targets.length === 0) {
+      // A costed prior that names no component is legal (the priors schema and
+      // the stage schema both allow an empty list) but can never clear its
+      // threshold: pass 1 scored it 0 and decided SKIP. Say so instead of
+      // reducing over an empty array, which would throw and take every `ars`
+      // call on the install down with it.
+      const threshold = priors.evThresholds[String(p.cost)];
+      evScreen.push({
+        ...base,
+        threshold,
+        screen: "component",
+        reason: `no target component - nothing can clear threshold ${threshold} (cost ${p.cost}); mechanical default SKIP, human judgment at the gate`,
       });
     } else {
       const maxSym = p.targets.reduce((a, b) => (scores[a] >= scores[b] ? a : b));
@@ -3430,6 +3798,271 @@ export function computeArs(
   };
 }
 
+// The composer's scores for the plan a front compose dispatch is working out
+// (#2575). The dispatch opens the record with its request id and the project
+// type the scan found then; `ars` fills it with the scores it screened, and
+// `validate-grid` keeps the plan its last routed run passed, the one the gate
+// shows, with the project type that run was given. Creation of that plan takes
+// its stage changes, and its type when the composer planned for another type
+// than that scan's (the person's word, never a scan the folder has outgrown),
+// writes the scores on WORKFLOW_STARTED, then removes the record. The plan
+// also keeps the depth, settings and Guard Policy the gate showed beside its
+// stages, so the creation that approves it runs at them. The plan the gate
+// showed is the one kept before the person's reply to it: each plan keeps the
+// time it was kept, and a different plan validated later moves it to `earlier`,
+// so a composer run again after the reply (one gone by the Approve turn, a new
+// chat) never stands in for the plan they saw (keptComposerPlans). It sits
+// beside the proposal, in the space's gitignored engine dir. Every step is
+// best-effort: a record that cannot be read or written records nothing.
+export type ArsMethod = "codekb" | "fallback";
+type ProjectTypeWord = "brownfield" | "greenfield";
+interface ComposerScores {
+  request: string;
+  scanned?: ProjectTypeWord;
+  scores?: Record<ArsComponent, number>;
+  method?: ArsMethod;
+  plan?: KeptComposerPlan;
+  // The plans kept before `plan`, oldest first.
+  earlier?: KeptComposerPlan[];
+  // Creation named the approval of the plan the person saw (markComposerPlanNamed).
+  named?: true;
+}
+const isProjectTypeWord = (value: unknown): value is ProjectTypeWord => value === "brownfield" || value === "greenfield";
+export interface KeptComposerPlan {
+  scope: string;
+  changes: PlanChanges;
+  projectType?: ProjectTypeWord;
+  // Each only where it differs from the scope the plan runs on: creation_depth,
+  // creation_settings, and a Guard Policy above that scope's default.
+  depth?: CreationDepth;
+  settings?: SettingsChanges;
+  guardPolicy?: GuardPolicy;
+  // When a routed run kept it. A plan an older version kept has none.
+  at?: string;
+}
+const KEPT_EARLIER_MAX = 8;
+type CreationDepth = NonNullable<ScopeValidation["creation_depth"]>;
+const CREATION_DEPTHS: readonly CreationDepth[] = ["minimal", "standard", "comprehensive"];
+
+/** A kept settings record whose every key is a setting and every value one of
+ *  its words, or null: a record edited by hand never reaches a command. */
+function keptSettings(value: unknown): SettingsChanges | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const settings: SettingsChanges = {};
+  for (const [key, word] of Object.entries(value)) {
+    if (key === "review" && (REVIEW_CLASSES as readonly unknown[]).includes(word)) settings.review = word as ReviewClass;
+    else if ((CEREMONY_KEYS as readonly string[]).includes(key) && (word === "on" || word === "off")) settings[key as CeremonyKey] = word;
+    else return null;
+  }
+  return settings;
+}
+
+const KEPT_SLUG = /^[a-z0-9][a-z0-9-]*$/;
+
+export function composerScoresPath(projectDir: string): string {
+  return join(dirname(composerProposalPath(projectDir)), "composer-scores.json");
+}
+
+function composerScoresRel(projectDir: string): string {
+  return relative(projectDir, composerScoresPath(projectDir));
+}
+
+function readComposerScores(projectDir: string): ComposerScores | null {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(recordFileTargetOrThrow(projectDir, composerScoresRel(projectDir)), "utf-8"),
+    ) as Partial<ComposerScores> | null;
+    if (typeof parsed?.request !== "string" || parsed.request === "") return null;
+    const record: ComposerScores = { request: parsed.request };
+    if (isProjectTypeWord(parsed.scanned)) record.scanned = parsed.scanned;
+    const scores = parsed.scores;
+    if (scores !== undefined) {
+      if (!ARS_COMPONENTS.every((c) => typeof scores?.[c] === "number" && scores[c] >= 0 && scores[c] <= 1)) return null;
+      record.scores = Object.fromEntries(ARS_COMPONENTS.map((c) => [c, scores[c]])) as Record<ArsComponent, number>;
+    }
+    if (parsed.method === "codekb" || parsed.method === "fallback") record.method = parsed.method;
+    const plan = keptPlanOf(parsed.plan);
+    if (plan !== null) record.plan = plan;
+    const earlier = Array.isArray(parsed.earlier) ? parsed.earlier.flatMap((entry) => keptPlanOf(entry) ?? []) : [];
+    if (plan !== null && earlier.length > 0) record.earlier = earlier.slice(-KEPT_EARLIER_MAX);
+    if (plan !== null && parsed.named === true) record.named = true;
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+function keptPlanOf(plan: KeptComposerPlan | undefined): KeptComposerPlan | null {
+  const slugs = (list: unknown): list is string[] =>
+    Array.isArray(list) && list.every((slug) => typeof slug === "string" && KEPT_SLUG.test(slug));
+  if (typeof plan?.scope !== "string" || !KEPT_SLUG.test(plan.scope) || !slugs(plan.changes?.skip) || !slugs(plan.changes?.add)) {
+    return null;
+  }
+  const kept: KeptComposerPlan = { scope: plan.scope, changes: { skip: plan.changes.skip, add: plan.changes.add } };
+  if (isProjectTypeWord(plan.projectType)) kept.projectType = plan.projectType;
+  if ((CREATION_DEPTHS as readonly unknown[]).includes(plan.depth)) kept.depth = plan.depth;
+  const settings = keptSettings(plan.settings);
+  if (settings !== null) kept.settings = settings;
+  if (plan.guardPolicy === "strict" || plan.guardPolicy === "relaxed") kept.guardPolicy = plan.guardPolicy;
+  if (typeof plan.at === "string" && !Number.isNaN(Date.parse(plan.at))) kept.at = plan.at;
+  return kept;
+}
+
+/** A front compose dispatch for `request` opens a fresh record, replacing any
+ *  an earlier composition left, with the project type the scan found as it
+ *  dispatched (none when the scan could not say). */
+export function openComposerScores(projectDir: string, request: string, scanned?: string | null): void {
+  const record: ComposerScores = { request, ...(isProjectTypeWord(scanned) ? { scanned } : {}) };
+  try {
+    writeRecordFileNoFollow(projectDir, composerScoresRel(projectDir), `${JSON.stringify(record)}\n`);
+  } catch {
+    // No record: the plan's creation records no scores.
+  }
+}
+
+/** `ars` keeps its scores only in a record a dispatch opened; with none open
+ *  (an in-flight compose, a run by hand) it writes nothing. */
+function fillComposerScores(projectDir: string, scores: Record<ArsComponent, number>, method?: ArsMethod): void {
+  const open = readComposerScores(projectDir);
+  if (open === null) return;
+  const record: ComposerScores = {
+    request: open.request,
+    ...(open.scanned ? { scanned: open.scanned } : {}),
+    scores: Object.fromEntries(ARS_COMPONENTS.map((c) => [c, scores[c]])) as Record<ArsComponent, number>,
+    ...(method ? { method } : {}),
+    ...(open.plan ? { plan: open.plan } : {}),
+    ...(open.earlier ? { earlier: open.earlier } : {}),
+    ...(open.named ? { named: open.named } : {}),
+  };
+  try {
+    writeRecordFileNoFollow(projectDir, composerScoresRel(projectDir), `${JSON.stringify(record)}\n`);
+  } catch {
+    // Unwritten: creation records no scores.
+  }
+}
+
+/** A routed `validate-grid` run that passes keeps its plan in a record a
+ *  dispatch opened, with the time it kept it; a different plan moves the one
+ *  kept before it to `earlier` and clears the named mark, and the same plan
+ *  again keeps its first time. With no record open it writes nothing. */
+function keepComposerPlan(projectDir: string, plan: KeptComposerPlan): void {
+  const open = readComposerScores(projectDir);
+  if (open === null || (open.plan !== undefined && compareComposerPlans({ left: open.plan, right: plan }) === "same-plan")) return;
+  const { named: _named, ...kept } = open;
+  const record: ComposerScores = {
+    ...kept,
+    plan: { ...plan, at: new Date().toISOString() },
+    ...(open.plan ? { earlier: [...(open.earlier ?? []), open.plan].slice(-KEPT_EARLIER_MAX) } : {}),
+  };
+  try {
+    writeRecordFileNoFollow(projectDir, composerScoresRel(projectDir), `${JSON.stringify(record)}\n`);
+  } catch {
+    // Unwritten: creation takes the stage changes and type the command carries.
+  }
+}
+
+/** The plans kept for one of `requests` (a creation's request and the one it
+ *  was composed from): `shown`, the newest the person replied after (`seen`
+ *  says whether they replied since a time; a plan an older version kept counts
+ *  as seen), the one their gate showed; `unseen`, the newest plan when it was
+ *  kept after that reply; and `named`, whether creation named the shown plan's
+ *  approval since. Null when the record belongs to other work or keeps no plan. */
+export function keptComposerPlans(
+  projectDir: string,
+  requests: readonly string[],
+  seen: (at: string) => boolean,
+): { shown: KeptComposerPlan | null; unseen: KeptComposerPlan | null; named: boolean } | null {
+  const record = readComposerScores(projectDir);
+  if (record?.plan === undefined || !requests.includes(record.request)) return null;
+  return {
+    ...composerPlansShown({ plan: record.plan, earlier: record.earlier ?? [], observeReply: ({ at }) => seen(at) ? "reply-observed" : "reply-not-observed" }),
+    named: record.named === true,
+  };
+}
+
+/** Creation named the approval of the plan the person saw for one of
+ *  `requests`: once said, a creation typed with that plan's stages is created
+ *  as typed, with any setting the person asked for in their own words. */
+export function markComposerPlanNamed(projectDir: string, requests: readonly string[]): void {
+  const record = readComposerScores(projectDir);
+  if (record?.plan === undefined || !requests.includes(record.request) || record.named) return;
+  try {
+    writeRecordFileNoFollow(projectDir, composerScoresRel(projectDir), `${JSON.stringify({ ...record, named: true })}\n`);
+  } catch {
+    // Unwritten: the step is said again at the next creation.
+  }
+}
+
+/** The plan the composer validated for one of `requests` on `scope` that the
+ *  person saw (keptComposerPlans; without `seen`, the plan kept last): the
+ *  stage changes creation of the approved plan carries, whatever list was
+ *  typed for it, and the project type it was validated for when that is not
+ *  the type the scan found as the dispatch opened the record: the composer
+ *  plans on the scan's type unless the person said otherwise, so only their
+ *  word is carried. The depth, settings and Guard Policy the gate showed ride
+ *  with it. Null when the record belongs to other work, keeps no plan (one an
+ *  older version wrote), or the plan they saw runs on another scope. */
+export function approvedComposerPlan(
+  projectDir: string,
+  requests: readonly string[],
+  scope: string,
+  seen: (at: string) => boolean = () => true,
+): ApprovedComposerPlan | null {
+  const record = readComposerScores(projectDir);
+  if (record?.plan === undefined || !requests.includes(record.request)) return null;
+  const plan = composerPlansShown({
+    plan: record.plan, earlier: record.earlier ?? [], observeReply: ({ at }) => seen(at) ? "reply-observed" : "reply-not-observed",
+  }).shown;
+  if (plan === null || plan.scope !== scope) return null;
+  const { changes, depth, settings, guardPolicy } = plan;
+  const theirs = plan.projectType !== undefined && record.scanned !== undefined && plan.projectType !== record.scanned;
+  return {
+    changes,
+    ...(theirs ? { projectType: plan.projectType } : {}),
+    ...(depth ? { depth } : {}),
+    ...(settings ? { settings } : {}),
+    ...(guardPolicy ? { guardPolicy } : {}),
+  };
+}
+export type ApprovedComposerPlan = Omit<KeptComposerPlan, "scope" | "at">;
+
+/** The WORKFLOW_STARTED fields for a plan being created for `requests` (its
+ *  request id and the one it was composed from): the composer's scores when
+ *  the record belongs to that request AND the plan is the grid the composer
+ *  last validated, so neither another piece of work nor a plan the person
+ *  named after a Reject picks them up. A record for this request is spent
+ *  either way. */
+export function takeComposerScores(
+  projectDir: string,
+  requests: readonly string[],
+  plannedStages: Record<string, "EXECUTE" | "SKIP">,
+): Record<string, string> {
+  const record = readComposerScores(projectDir);
+  if (record === null || !requests.includes(record.request)) return {};
+  try {
+    removeRecordFileNoFollow(projectDir, composerScoresRel(projectDir));
+  } catch {
+    // Left in place, it can match no later request.
+  }
+  if (record.scores === undefined) return {};
+  let proposal: unknown;
+  try {
+    proposal = JSON.parse(readFileSync(composerProposalPath(projectDir), "utf-8"));
+  } catch {
+    return {};
+  }
+  const stages = (proposal as { stages?: unknown } | null)?.stages;
+  const grid = stages !== null && typeof stages === "object" && !Array.isArray(stages) ? stages : proposal;
+  if (grid === null || typeof grid !== "object" || Array.isArray(grid)) return {};
+  const changes = planChangesBetween(plannedStages, grid as Record<string, string>);
+  if (changes.skip.length > 0 || changes.add.length > 0) return {};
+  const scores = record.scores;
+  return {
+    "ARS Scores": ARS_COMPONENTS.map((c) => `${c.toUpperCase()} ${scores[c].toFixed(2)}`).join(", "),
+    ...(record.method ? { "ARS Method": record.method } : {}),
+  };
+}
+
 const COMMANDS: Record<string, Handler> = {
   artifacts: () => {
     for (const name of [...artifactsRegistry()].sort()) {
@@ -3469,16 +4102,20 @@ const COMMANDS: Record<string, Handler> = {
     }
   },
   // ars --iae <s> --csu <s> --ve <s> --r <s> --ua <s> [--completed <csv>]
-  // [--project-type <bg>] - the deterministic ARS arithmetic: weighted
-  // composite + band labels, the per-stage EV screen against the cost-prior
-  // table, nearest stock scopes by grid diff count, and the two gate tables
-  // pre-rendered as markdown - all constants read from
+  // [--project-type <bg>] [--method <codekb|fallback>] - the deterministic ARS
+  // arithmetic: weighted composite + band labels, the per-stage EV screen
+  // against the cost-prior table, nearest stock scopes by grid diff count, and
+  // the two gate tables pre-rendered as markdown - all constants read from
   // tools/data/ars-priors.json. The composer scores the five components from
   // evidence, runs this, and copies the output verbatim; a model never does
   // the multiplication. --project-type screens out the stages whose compiled
   // condition restricts them to the other kind of project (greenfield ->
   // reverse-engineering SKIPs) so the mechanical screen cannot contradict a
-  // stage's own execution condition. Prints a JSON ArsResult on stdout; exit
+  // stage's own execution condition; reverse-engineering's project-type role
+  // runs it otherwise, whatever CSU scores. --method names the composer's
+  // structural evidence source; with the scores it fills the record a front
+  // compose dispatch opened (fillComposerScores), and the output never
+  // changes because of it. Prints a JSON ArsResult on stdout; exit
   // 1 on out-of-range scores, unknown stage slugs (same typo discipline as
   // validate-grid), or a priors-schema violation. The composite is advisory:
   // nothing deterministic routes on it.
@@ -3527,7 +4164,14 @@ const COMMANDS: Record<string, Handler> = {
       }
       projectType = lowered;
     }
+    const methodIdx = args.indexOf("--method");
+    const methodRaw = methodIdx >= 0 ? args[methodIdx + 1] : undefined;
+    if (methodIdx >= 0 && methodRaw !== "codekb" && methodRaw !== "fallback") {
+      console.error(`ars: --method must be codekb or fallback (got ${methodRaw === undefined ? "no value" : `"${methodRaw}"`}).`);
+      process.exit(1);
+    }
     const result = computeArs(scores, { completed, projectType });
+    fillComposerScores(resolveProjectDir(), scores, methodRaw as ArsMethod | undefined);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   },
   // validate-grid [--proposal <path>] [--strict] [--project-type <bg>]
@@ -3538,11 +4182,10 @@ const COMMANDS: Record<string, Handler> = {
   // composer writes, composerProposalPath. Lenient mode mirrors validate-scope
   // (off-path producer of a required consume = advisory); --strict is the
   // recompose mode that REJECTS a starved required input. --keywords checks
-  // each granted keyword against the keywords already claimed by existing
-  // scopes (the same loadScopeMapping data inference reads): a collision is
-  // a hard ERROR naming the colliding scope, because inference takes the
-  // first alphabetical keyword match and a duplicate would permanently
-  // shadow the incumbent. Prints a JSON ScopeValidation on stdout; exit 1
+  // each granted keyword against the keywords existing scopes already have
+  // (the same loadScopeMapping data the plan proposal step lists as hints): a
+  // shared one is an advisory naming the other plans, and the grid still
+  // validates. Prints a JSON ScopeValidation on stdout; exit 1
   // iff invalid - callers branch on the exit code and read the reasons off
   // stdout.
   "validate-grid": (args) => {
@@ -3586,7 +4229,7 @@ const COMMANDS: Record<string, Handler> = {
       // A proposal piped in (`--proposal /dev/stdin` or `-`) is read from the
       // command's own input to its end, whatever kind of pipe carries it.
       const fromStdin = proposalPath === "/dev/stdin" || proposalPath === "-";
-      parsed = JSON.parse(readFileSync(fromStdin ? 0 : proposalPath, "utf-8"));
+      parsed = JSON.parse(agentFileText(readFileSync(fromStdin ? 0 : proposalPath)));
     } catch (err) {
       console.error(
         `validate-grid: cannot read ${proposalPath}: ${errorMessage(err)}` +
@@ -3628,7 +4271,8 @@ const COMMANDS: Record<string, Handler> = {
     }
     if (kwRaw !== undefined) {
       const granted = kwRaw.split(",").map((k) => k.trim()).filter(Boolean);
-      for (const err of keywordCollisions(granted)) r.errors.push(err);
+      // A hint another plan already has is a note; the grid still validates.
+      for (const note of keywordCollisions(granted)) r.advisories.push(note);
     }
     // The composer's Guard Policy proposal rides with the grid: `--guard-policy
     // <value>` (retired spelling `--change-control`) or a `guardPolicy` member
@@ -3689,6 +4333,9 @@ const COMMANDS: Record<string, Handler> = {
       const start = customPlanStart();
       if (start !== null) r.custom_start = start;
     }
+    const startScope = matched ?? r.nearest_stock?.[0]?.scope;
+    const stockStart = startScope === undefined ? null : matchedPlanStart(startScope);
+    if (stockStart !== null) r.matched_start = stockStart;
     if (matched !== undefined || custom) {
       const routeErrors = composerProposalErrors(
         matched ?? null,
@@ -3721,6 +4368,8 @@ const COMMANDS: Record<string, Handler> = {
         } else if (base !== null && !("error" in base)) {
           r.base_scope = base.scope;
           r.plan_changes = base.changes;
+          const skipped = skippedInputs(grid, loadScopeGrid()[base.scope]?.stages ?? {}, projectType);
+          if (skipped.length > 0 && r.summary) r.summary.skipped_inputs = skipped;
           r.creation_settings = creationSettingsFor(base.scope, r.scope_settings);
           const baseDepth = (loadScopeMapping()[base.scope]?.depth ?? "").toLowerCase();
           if (planDepth !== undefined && planDepth !== baseDepth) r.creation_depth = planDepth;
@@ -3728,6 +4377,21 @@ const COMMANDS: Record<string, Handler> = {
       }
     }
     r.valid = r.errors.length === 0;
+    if (r.valid && r.routing !== undefined) {
+      const kept = r.routing === "matched" ? r.matched_scope : r.base_scope;
+      if (kept !== undefined) {
+        const raised = r.guard_policy !== undefined && r.guard_policy !== scopeGuardPolicyDefault(kept) &&
+          guardPolicyAtLeast(r.guard_policy, scopeGuardPolicyDefault(kept));
+        keepComposerPlan(resolveProjectDir(), {
+          scope: kept,
+          changes: r.plan_changes ?? { skip: [], add: [] },
+          ...(projectType ? { projectType } : {}),
+          ...(r.creation_depth ? { depth: r.creation_depth } : {}),
+          ...(r.creation_settings && Object.keys(r.creation_settings).length > 0 ? { settings: r.creation_settings } : {}),
+          ...(raised ? { guardPolicy: r.guard_policy } : {}),
+        });
+      }
+    }
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     if (!r.valid) process.exit(1);
   },
@@ -3852,7 +4516,7 @@ Common forms:
                                        Validate an arbitrary EXECUTE/SKIP grid
                                        (no --proposal reads the proposalPath detect --json prints;
                                        --strict rejects a starved required input;
-                                       --keywords rejects keywords an existing scope claims;
+                                       --keywords notes a keyword another scope has, as an advisory;
                                        --report matches a code-findings report to bugfix or security-patch only)
   aidlc-graph ars --iae <s> --csu <s> --ve <s> --r <s> --ua <s> [--completed <csv>] [--project-type <t>]
                                        Deterministic ARS arithmetic: composite + bands,

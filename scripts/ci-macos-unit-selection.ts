@@ -15,13 +15,19 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
-import { assignWeightedShards, parseShardSpec, type ShardConfig } from "../tests/lib/test-sharding.ts";
+import { join, relative } from "node:path";
+import { assignWeightedShards, parseShardSpec, shardConfigForPlatform, type ShardConfig } from "../tests/lib/test-sharding.ts";
+import { type TestDirectoryReader, discoverCoLocatedTests, discoverUnitTests, unitTestKey } from "./test-discovery.ts";
+
+const readTestDirectory: TestDirectoryReader = ({ directory }) => existsSync(directory)
+  ? readdirSync(directory, { withFileTypes: true }).map((entry) => ({
+    name: entry.name, kind: entry.isDirectory() ? "directory" : entry.isFile() ? "file" : "other",
+  })) : null;
 
 const REPO_ROOT = join(import.meta.dir, "..");
 const MACOS_NAMED = /darwin|macos/i;
 // The test-file names the selection passes on; any other name runs the full shard.
-const SAFE_NAME = /^[A-Za-z0-9._-]+\.test\.ts$/;
+const SAFE_NAME = /^[A-Za-z0-9._%~-]+\.test\.ts$/;
 
 export type MacosUnitSelection = { mode: "full" } | { mode: "none" } | { mode: "selected"; files: string[] };
 
@@ -33,23 +39,27 @@ export function macosNamedUnitFiles(unitDir: string): string[] {
     .sort();
 }
 
-/** The unit test files the change touches, or null when git cannot compare it with its base. */
 export function changedUnitFiles(repoRoot: string, base: string): string[] | null {
-  const diff = spawnSync("git", ["-C", repoRoot, "diff", "-z", "--name-only", base, "HEAD", "--", "tests/unit"], {
+  const diff = spawnSync("git", ["-C", repoRoot, "diff", "-z", "--name-only", base, "HEAD", "--", "tests/unit", "core", "harness", "scripts"], {
     encoding: "utf8",
   });
   if (diff.status !== 0) return null;
-  return diff.stdout.split("\0")
-    .filter((path) => /^tests\/unit\/[^/]+\.test\.ts$/.test(path) && existsSync(join(repoRoot, path)))
-    .map((path) => basename(path));
+  const inventory = new Map(discoverUnitTests({ repositoryRoot: repoRoot, readDirectory: readTestDirectory }).map((file) => [
+    relative(repoRoot, file).replaceAll("\\", "/"), unitTestKey({ repositoryRoot: repoRoot, file }),
+  ]));
+  return diff.stdout.split("\0").flatMap((path) => inventory.get(path) ?? []);
 }
 
-/** This shard's share of the selection; `changed` is null when the change could not be read. */
 export function macosUnitSelection(repoRoot: string, changed: string[] | null, shard: string): MacosUnitSelection {
   const spec = parseShardSpec(shard);
   if (changed === null) return { mode: "full" };
-  const full = JSON.parse(readFileSync(join(repoRoot, "tests", "unit-shard-weights.json"), "utf8")) as ShardConfig;
-  const keep = new Set([...macosNamedUnitFiles(join(repoRoot, "tests", "unit")), ...changed]);
+  const full = shardConfigForPlatform(
+    JSON.parse(readFileSync(join(repoRoot, "tests", "unit-shard-weights.json"), "utf8")) as ShardConfig, "darwin",
+  );
+  const sourceNamed = discoverCoLocatedTests({ repositoryRoot: repoRoot, readDirectory: readTestDirectory })
+    .filter((file) => MACOS_NAMED.test(readFileSync(file, "utf8")))
+    .map((file) => unitTestKey({ repositoryRoot: repoRoot, file }));
+  const keep = new Set([...macosNamedUnitFiles(join(repoRoot, "tests", "unit")), ...sourceNamed, ...changed]);
   if ([...keep].some((file) => !SAFE_NAME.test(file))) return { mode: "full" };
   // An affinity group runs whole, as in a full shard: a test that reads what
   // another builds keeps its builder.

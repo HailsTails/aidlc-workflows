@@ -1,10 +1,12 @@
-// covers: subcommand:aidlc-unit:adopt, subcommand:aidlc-unit:claim, subcommand:aidlc-unit:release, subcommand:aidlc-unit:participate, subcommand:aidlc-unit:status, subcommand:aidlc-utility:claim, subcommand:aidlc-utility:release, subcommand:aidlc-utility:participate, subcommand:aidlc-state:sync-unit-scope-stage, subcommand:aidlc-orchestrate:next, function:UNIT_SCOPE_FILE, function:UNIT_PARKED_FILE, function:CLAIM_GENERATIONS_FILE, function:UNIT_PARTICIPANT_FILE, function:CLAIM_REGISTRY_CACHE_FILE, function:UNIT_RELEASE_PENDING_FILE, function:unitScopePath, function:unitParkedPath, function:claimGenerationsPath, function:unitParticipantPath, function:claimRegistryCachePath, function:unitReleasePendingPath, function:readUnitScopeStamp, function:readApplicableTeamUnitScopeStamp, function:writeUnitScopeStamp, function:clearUnitScopeStamp, function:readClaimGenerations, function:writeClaimGeneration, function:clearClaimGeneration, function:readUnitClaimRegistryCache, function:writeUnitClaimRegistryCache, function:claimAttemptFields, function:eventMatchesClaimAttempt, function:effectiveUnitGateRhythm, function:hasAnyUnitClaimRefs, function:validateLiveUnitScope, function:requireLiveClaimForTeamUnit, function:isWalkingSkeletonUnitOnMain, function:worktreeClaimBoundaryMatches, function:ensureCloneId, function:invalidateLiveClaimPayloadCache
+// covers: subcommand:aidlc-unit:adopt, subcommand:aidlc-unit:claim, subcommand:aidlc-unit:release, subcommand:aidlc-unit:participate, subcommand:aidlc-unit:status, subcommand:aidlc-utility:claim, subcommand:aidlc-utility:release, subcommand:aidlc-utility:participate, subcommand:aidlc-state:sync-unit-scope-stage, subcommand:aidlc-orchestrate:next, function:UNIT_SCOPE_FILE, function:UNIT_PARKED_FILE, function:CLAIM_GENERATIONS_FILE, function:UNIT_PARTICIPANT_FILE, function:CLAIM_REGISTRY_CACHE_FILE, function:UNIT_RELEASE_PENDING_FILE, function:unitScopePath, function:unitParkedPath, function:claimGenerationsPath, function:unitParticipantPath, function:claimRegistryCachePath, function:unitReleasePendingPath, function:readUnitScopeStamp, function:readApplicableTeamUnitScopeStamp, function:writeUnitScopeStamp, function:clearUnitScopeStamp, function:readClaimGenerations, function:writeClaimGeneration, function:clearClaimGeneration, function:readUnitClaimRegistryCache, function:writeUnitClaimRegistryCache, function:claimAttemptFields, function:eventMatchesClaimAttempt, function:effectiveUnitGateRhythm, function:hasAnyUnitClaimRefs, function:validateLiveUnitScope, function:requireLiveClaimForTeamUnit, function:isWalkingSkeletonUnitOnMain, function:teamSkeletonOn, function:worktreeClaimBoundaryMatches, function:ensureCloneId, function:invalidateLiveClaimPayloadCache
 
 import { NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS } from "../harness/test-budget.ts";
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -27,10 +29,14 @@ import {
   cleanupTestProject,
   createTestProject,
   seedAidlcMemory,
-  seededAuditDir,
   seededRecordDir,
   seededStateFile,
 } from "../harness/fixtures.ts";
+
+// The stage's checks run once before its review or gate, and again at the gate
+// (completionChecksStep, t-checks-before-review); this file's fixture documents
+// are not written for them and its subject is not them, so they stay off here.
+process.env.AIDLC_DISABLE_SENSORS = "1";
 
 // Several independent Git trees and CLI sessions share each case. Use the
 // generous workload backstop for both its work and its afterEach cleanup.
@@ -66,6 +72,7 @@ function stateBody(
   scope = "feature",
   skeletonComplete = true,
   rhythm = "per-stage",
+  stance = "on",
 ): string {
   const skeletonMarker = skeletonComplete ? "[x]" : "[ ]";
   return `# AI-DLC State Tracking
@@ -75,7 +82,7 @@ function stateBody(
 - **Project Type**: Greenfield
 - **Scope**: ${scope}
 - **State Version**: 8
-- **Skeleton Stance**: on
+- **Skeleton Stance**: ${stance}
 
 ## Runtime State
 - **Revision Count**: 0
@@ -133,27 +140,18 @@ function makeSeed(options: {
   scope?: string;
   skeletonComplete?: boolean;
   rhythm?: "per-stage" | "unit-end";
+  stance?: "on" | "off" | "scope-dependent";
 } = {}): { seed: string; remote: string } {
   const seed = createTestProject();
   tempDirs.push(seed);
   seedAidlcMemory(seed);
   writeFileSync(
     seededStateFile(seed),
-    stateBody(options.scope, options.skeletonComplete, options.rhythm),
+    stateBody(options.scope, options.skeletonComplete, options.rhythm, options.stance),
   );
   const depDir = join(seededRecordDir(seed), "inception", "units-generation");
   mkdirSync(depDir, { recursive: true });
   writeFileSync(join(depDir, "unit-of-work-dependency.md"), dependencyBody());
-  if (options.skeletonComplete !== false) {
-    mkdirSync(seededAuditDir(seed), { recursive: true });
-    writeFileSync(
-      join(seededAuditDir(seed), "skeleton.md"),
-      "## Bolt Started\n**Timestamp**: 2026-08-20T00:00:00Z\n" +
-        "**Event**: BOLT_STARTED\n**Bolt names**: skeleton\n**Walking skeleton**: true\n\n---\n" +
-        "## Bolt Completed\n**Timestamp**: 2026-08-20T00:00:01Z\n" +
-        "**Event**: BOLT_COMPLETED\n**Bolt names**: skeleton\n\n---\n",
-    );
-  }
   writeFileSync(
     join(seed, ".gitignore"),
     "aidlc/.aidlc-clone-id\naidlc/.aidlc-unit-scope.json\naidlc/.aidlc-unit-parked\n" +
@@ -366,7 +364,9 @@ describe("t325 atomic team Unit claims", () => {
       cloneOn,
     );
     expect(blocked.status).not.toBe(0);
-    expect(blocked.out).toContain("walking skeleton");
+    expect(JSON.parse(blocked.out).error).toBe(
+      'the walking skeleton, Unit "skeleton", is not complete on origin/main yet',
+    );
 
     const skeletonOff = makeSeed({
       scope: "express",
@@ -385,6 +385,42 @@ describe("t325 atomic team Unit claims", () => {
     );
     expect(waiting.status).not.toBe(0);
     expect(waiting.out).toContain("beta waits on alpha");
+  });
+
+  // #1288: the team path walks the skeleton on main through its Unit gates and
+  // records it in Unit Progress; it writes no Bolt rows. The picker and the
+  // claim read that same row.
+  test("a skeleton Unit done on main opens the claims the picker offers (#1288)", () => {
+    const { remote } = makeSeed({ scope: "workshop" });
+    const team = clone(remote, "after-skeleton");
+    const status = run(UNIT, ["status"], team);
+    expect(status.status, status.out).toBe(0);
+    expect(JSON.parse(status.stdout).claimable).toEqual(["alpha", "gamma"]);
+    expect(run(UNIT, ["participate"], team).status).toBe(0);
+    expect(nextDirective(team)).toMatchObject({
+      kind: "ask",
+      ask_type: "unit-claim",
+      claimable_units: ["alpha", "gamma"],
+    });
+    const claimed = run(UNIT, ["claim", "alpha", "--team", "after-skeleton"], team);
+    expect(claimed.status, claimed.out).toBe(0);
+  });
+
+  test("a recorded Skeleton Stance off opens claims at once on a skeleton-on scope", () => {
+    const { remote } = makeSeed({ skeletonComplete: false, stance: "off" });
+    const team = clone(remote, "stance-off");
+    const status = run(UNIT, ["status"], team);
+    expect(status.status, status.out).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      claimable: ["skeleton"],
+      waiting: [
+        { unit: "alpha", blockedBy: ["skeleton"] },
+        { unit: "beta", blockedBy: ["alpha"] },
+        { unit: "gamma", blockedBy: ["skeleton"] },
+      ],
+    });
+    const claimed = run(UNIT, ["claim", "skeleton", "--team", "stance-off"], team);
+    expect(claimed.status, claimed.out).toBe(0);
   });
 
   test("malformed public claim flags fail closed instead of advancing", () => {
@@ -426,7 +462,9 @@ describe("t325 atomic team Unit claims", () => {
     const claimlessDirective = nextDirective(claimless.seed, {
       AIDLC_STOP_HOOK_PROBE: "1",
     });
-    expect(claimlessDirective).toMatchObject({ kind: "run-stage", unit: "skeleton" });
+    // The lead's claim-less walk with a remote: before its first Unit, the
+    // offer to share the plan with the teams; the probe writes nothing.
+    expect(claimlessDirective).toMatchObject({ kind: "ask", ask_type: "team-handover", handovers: ["share"] });
     expect(localRuntimeSnapshot(claimless.seed)).toEqual(claimlessRuntime);
     expect(readAllAuditShards(claimless.seed)).toBe(claimlessAudit);
 
@@ -612,25 +650,29 @@ describe("t325 atomic team Unit claims", () => {
         "**Iteration:** 1\n\n" +
         "### Findings\n\nNo blocking findings.\n",
     );
-    expect(
-      run(
-        LOG,
-        [
-          "review",
-          "--stage",
-          "functional-design",
-          "--reviewer",
-          "aidlc-architecture-reviewer-agent",
-          "--iteration",
-          "1",
-          "--verdict",
-          "READY",
-          "--unit",
-          "alpha",
-        ],
-        checkout,
-      ).status,
-    ).toBe(0);
+    const verdict = run(
+      LOG,
+      [
+        "review",
+        "--stage",
+        "functional-design",
+        "--reviewer",
+        "aidlc-architecture-reviewer-agent",
+        "--iteration",
+        "1",
+        "--verdict",
+        "READY",
+        "--unit",
+        "alpha",
+      ],
+      checkout,
+    );
+    expect(verdict.status, verdict.out).toBe(0);
+    // The verdict's step records the Unit's completion first, the step the
+    // route itself names for it; following it reaches the Unit gate.
+    const step = String(JSON.parse(verdict.stdout.trim().split("\n").at(-1) ?? "{}").agent_note);
+    const named = [...step.matchAll(/`([^`]+)`/g)].map((match) => match[1].replace(/^.* engine /, ""));
+    expect(named, step).toEqual(["state unit complete --stage functional-design --unit alpha", "orchestrate next"]);
     expect(
       run(
         STATE,
@@ -638,6 +680,9 @@ describe("t325 atomic team Unit claims", () => {
         checkout,
       ).status,
     ).toBe(0);
+    expect(nextDirective(checkout)).toMatchObject({
+      kind: "run-stage", stage: "functional-design", unit: "alpha", gate: true, unit_gate: "per-stage",
+    });
     expect(
       JSON.parse(
         run(
@@ -1293,10 +1338,18 @@ describe("t325 atomic team Unit claims", () => {
         "- **Revision Count**: 0\n- **Construction Autonomy Mode**: autonomous",
       ),
     );
+    // The agent's own park: the run goes on, and the agent is told its step.
     const refused = run(ORCH, ["park"], checkout);
     expect(refused.status, refused.out).toBe(0);
-    expect(JSON.parse(refused.stdout).kind).toBe("error");
+    expect(JSON.parse(refused.stdout).kind).toBe("print");
     expect(refused.stdout).toContain("autonomous");
+    expect(exists(join(checkout, "aidlc", ".aidlc-unit-parked"))).toBe(false);
+    // The person's stop with no reply of theirs on record is still refused.
+    const asked = run(ORCH, ["park", "--person-asked"], checkout);
+    expect(asked.status, asked.out).toBe(0);
+    expect(JSON.parse(asked.stdout).kind).toBe("error");
+    expect(asked.stdout).toContain("autonomous");
+    expect(exists(join(checkout, "aidlc", ".aidlc-unit-parked"))).toBe(false);
   });
 
   test("no-remote sibling worktree claim uses the shared local ref namespace", () => {
@@ -1415,11 +1468,33 @@ describe("t325 atomic team Unit claims", () => {
       "Details=claimed worktree delta",
     ], wt);
     expect(workerEvent.status, workerEvent.out).toBe(0);
+    // The Unit's receipt for an artifact the worker wrote in the claimed
+    // worktree, as the write hook records it there.
+    const artifact = join(seededRecordDir(wt), "construction", "alpha", "functional-design", "business-logic-model.md");
+    mkdirSync(dirname(artifact), { recursive: true });
+    writeFileSync(artifact, "# Business Logic Model\n\nclaimed worktree receipt\n");
+    const hooked = spawnSync(process.execPath, [join(AIDLC_SRC, "hooks", "aidlc-write-audit-log.ts")], {
+      cwd: wt,
+      input: JSON.stringify({ hook_event_name: "PostToolUse", tool_name: "Write", tool_input: { file_path: artifact } }),
+      env: { ...process.env, CLAUDE_PROJECT_DIR: wt },
+      encoding: "utf-8",
+    });
+    expect(hooked.status, `${hooked.stdout}${hooked.stderr}`).toBe(0);
     const mergedAudit = run(AUDIT, ["audit-merge", "--slug", "alpha"], checkout);
     expect(mergedAudit.status, mergedAudit.out).toBe(0);
     const mergedLedger = readAllAuditShards(checkout);
     expect(mergedLedger).toContain("claimed worktree delta");
     expect(mergedLedger.match(/Details\*\*: claim fixture/g) ?? []).toHaveLength(1);
+    // The worktree's rows come back once: the checkout's tracked shard has one
+    // copy of the receipt, and the worktree's own tracked shard none, so the
+    // Bolt's landing meets no second copy.
+    const receipt = /\*\*Event\*\*: ARTIFACT_CREATED/g;
+    const wtLocal = JSON.parse(retriedFork.stdout).worktree_audit as string;
+    expect(basename(dirname(dirname(wtLocal)))).toBe(".aidlc-engine");
+    const claimShard = JSON.parse(claim.stdout).audit_shard as string;
+    expect(readFileSync(join(seededRecordDir(checkout), "audit", claimShard), "utf-8").match(receipt) ?? []).toHaveLength(1);
+    const wtTracked = join(dirname(dirname(dirname(wtLocal))), "audit", basename(wtLocal));
+    expect(existsSync(wtTracked) ? readFileSync(wtTracked, "utf-8") : "").not.toMatch(receipt);
 
     const facilitator = clone(remote, "fork-facilitator");
     const released = run(UNIT, ["release", "alpha"], facilitator);
@@ -1474,12 +1549,25 @@ describe("t325 atomic team Unit claims", () => {
       seed,
     );
     expect(valid.status, valid.out).toBe(0);
+
+    // A recorded Skeleton Stance off has the same answer on the Bolt path as
+    // on the claim path: no skeleton, so the first Unit takes a claim too.
+    const off = makeSeed({ skeletonComplete: false, stance: "off" });
+    const noSkeleton = run(
+      BOLT,
+      ["start", "--name", "skeleton", "--batch", "1", "--walking-skeleton", "true"],
+      off.seed,
+    );
+    expect(noSkeleton.status).not.toBe(0);
+    expect(noSkeleton.out).toContain("first DAG Unit");
   });
 
   test("direct audit fork and merge use the same claimed shard authority", () => {
     const { remote } = makeSeed();
     const checkout = clone(remote, "audit-direct");
-    expect(run(UNIT, ["claim", "alpha", "--team", "audit-direct"], checkout).status).toBe(0);
+    const claimed = run(UNIT, ["claim", "alpha", "--team", "audit-direct"], checkout);
+    expect(claimed.status, claimed.out).toBe(0);
+    const shard = JSON.parse(claimed.stdout).audit_shard as string;
     expect(
       run(AUDIT, [
         "append",
@@ -1503,9 +1591,190 @@ describe("t325 atomic team Unit claims", () => {
         "Details=direct audit delta",
       ], wt).status,
     ).toBe(0);
+    // The Unit's receipt for an artifact the worker wrote in the worktree, as
+    // the write hook records it there.
+    const artifact = join(seededRecordDir(wt), "construction", "alpha", "functional-design", "business-logic-model.md");
+    mkdirSync(dirname(artifact), { recursive: true });
+    writeFileSync(artifact, "# Business Logic Model\n\ndirect audit receipt\n");
+    const hooked = spawnSync(process.execPath, [join(AIDLC_SRC, "hooks", "aidlc-write-audit-log.ts")], {
+      cwd: wt,
+      input: JSON.stringify({ hook_event_name: "PostToolUse", tool_name: "Write", tool_input: { file_path: artifact } }),
+      env: { ...process.env, CLAUDE_PROJECT_DIR: wt },
+      encoding: "utf-8",
+    });
+    expect(hooked.status, `${hooked.stdout}${hooked.stderr}`).toBe(0);
     const merge = run(AUDIT, ["audit-merge", "--slug", "alpha"], checkout);
     expect(merge.status, merge.out).toBe(0);
     expect(readAllAuditShards(checkout)).toContain("direct audit delta");
+    // The worktree's rows come back once: the checkout's local record has them
+    // all, and its tracked shard one copy of the Unit's receipt.
+    const tracked = (dir: string) => {
+      try {
+        return readFileSync(join(seededRecordDir(dir), "audit", shard), "utf-8");
+      } catch {
+        return "";
+      }
+    };
+    const receipt = /\*\*Event\*\*: ARTIFACT_CREATED/g;
+    expect(readAllAuditShards(checkout).match(receipt) ?? []).toHaveLength(1);
+    expect(tracked(checkout).match(receipt) ?? []).toHaveLength(1);
+    expect(tracked(checkout)).not.toContain("direct audit delta");
+    expect(readFileSync(join(seededRecordDir(checkout), ".aidlc-engine", "audit", shard), "utf-8"))
+      .toContain("direct audit delta");
+  });
+
+  test("a Bolt forked before the claim's local record existed merges back after the upgrade", () => {
+    const { remote } = makeSeed();
+    const checkout = clone(remote, "audit-legacy");
+    const claimed = run(UNIT, ["claim", "alpha", "--team", "audit-legacy"], checkout);
+    expect(claimed.status, claimed.out).toBe(0);
+    const shard = JSON.parse(claimed.stdout).audit_shard as string;
+    expect(
+      run(AUDIT, ["append", "HEALTH_CHECKED", "--field", "Details=legacy fixture"], checkout).status,
+    ).toBe(0);
+    expect(run(WORKTREE, ["create", "--slug", "alpha", "--base", "main"], checkout).status).toBe(0);
+    expect(run(STATE, ["fork", "--slug", "alpha"], checkout).status).toBe(0);
+    const fork = run(AUDIT, ["audit-fork", "--slug", "alpha"], checkout);
+    expect(fork.status, fork.out).toBe(0);
+    const wt = worktreePath(checkout, fixtureIntentId8(checkout), "alpha");
+    // Both records as an earlier AI-DLC kept them: in the tracked shards.
+    const wtLocal = JSON.parse(fork.stdout).worktree_audit as string;
+    expect(basename(dirname(dirname(wtLocal)))).toBe(".aidlc-engine");
+    for (const local of [join(seededRecordDir(checkout), ".aidlc-engine", "audit", shard), wtLocal]) {
+      const tracked = join(dirname(dirname(dirname(local))), "audit", basename(local));
+      mkdirSync(dirname(tracked), { recursive: true });
+      writeFileSync(tracked, readFileSync(local));
+      rmSync(local);
+    }
+    expect(
+      run(AUDIT, ["append", "HEALTH_CHECKED", "--field", "Details=legacy delta"], wt).status,
+    ).toBe(0);
+    const merge = run(AUDIT, ["audit-merge", "--slug", "alpha"], checkout);
+    expect(merge.status, merge.out).toBe(0);
+    const ledger = readAllAuditShards(checkout);
+    expect(ledger).toContain("legacy delta");
+    expect(ledger.match(/Details\*\*: legacy fixture/g) ?? []).toHaveLength(1);
+  });
+
+  // #2116: the integration branch the team wrote down under Way of Working is
+  // the one claims use, whatever it is called; a name that cannot be used is
+  // named with its file instead of being silently replaced by org.md's `main`.
+  test("team mode uses the integration branch named under Way of Working and names the file when the name cannot be used", () => {
+    const { seed, remote } = makeSeed();
+    // Gitflow shape: `dev` holds the intent; `main` carries only releases.
+    git(seed, ["push", "origin", "main:dev"]);
+    git(seed, ["checkout", "-q", "--orphan", "releases"]);
+    git(seed, ["rm", "-r", "-q", "--cached", "."]);
+    writeFileSync(join(seed, "README.md"), "# releases only\n");
+    git(seed, ["add", "README.md"]);
+    git(seed, ["commit", "-q", "-m", "release only"]);
+    git(seed, ["push", "-q", "--force", "origin", "releases:main"]);
+    const gitflow = clone(remote, "gitflow");
+    git(gitflow, ["switch", "-q", "dev"]);
+    const teamMd = join(gitflow, "aidlc", "spaces", "default", "memory", "team.md");
+    const wayOfWorking = (branch: string) =>
+      writeFileSync(
+        teamMd,
+        readFileSync(teamMd, "utf-8").replace(
+          "## Way of Working\n",
+          "## Way of Working\n\nWe use gitflow. Integration tests live in `tests/integration`.\n" +
+            "Integration branch: `" + branch + "`.\n",
+        ),
+      );
+    wayOfWorking("dev");
+    git(gitflow, ["commit", "-q", "-am", "team: integration branch dev"]);
+    git(gitflow, ["push", "-q", "origin", "dev"]);
+
+    const status = run(UNIT, ["status"], gitflow);
+    expect(status.status, status.out).toBe(0);
+    expect([...JSON.parse(status.stdout).claimable].sort()).toEqual(["alpha", "gamma"]);
+    const claimed = run(UNIT, ["claim", "alpha", "--team", "gitflow"], gitflow);
+    expect(claimed.status, claimed.out).toBe(0);
+    expect(JSON.parse(claimed.stdout).integration_ref).toBe("refs/remotes/origin/dev");
+
+    const original = readFileSync(teamMd, "utf-8");
+    writeFileSync(teamMd, original.replace("`dev`", "`bad..name`"));
+    const invalid = run(UNIT, ["status"], gitflow);
+    expect(invalid.status).not.toBe(0);
+    expect(invalid.out).toContain("bad..name");
+    expect(invalid.out).toContain("memory/team.md");
+    expect(invalid.out).toContain("not a valid git branch name");
+
+    writeFileSync(teamMd, original.replace("`dev`", "`integration`"));
+    const absent = run(UNIT, ["status"], gitflow);
+    expect(absent.status).not.toBe(0);
+    expect(absent.out).toContain('branch \\"integration\\"');
+    expect(absent.out).toContain("memory/team.md");
+    expect(absent.out).toContain("could not be fetched from origin");
+  });
+
+  // #2117: a claim is the claimant's own commit, so a remote that only takes
+  // the pusher's own committer email accepts it; a push the remote refuses is
+  // reported with the remote's reason, never as a lost race.
+  test("claim commits carry the claimant's git identity and a refused push is reported with the remote's reason", () => {
+    const { seed, remote } = makeSeed();
+    // The forge rule: the committer email must be one of the pusher's own.
+    const hook = join(remote, "hooks", "pre-receive");
+    writeFileSync(
+      hook,
+      [
+        "#!/bin/sh",
+        "while read old new ref; do",
+        '  for c in $(git rev-list "$new" --not --all); do',
+        '    email=$(git log -1 --format=%ce "$c")',
+        '    case "$email" in',
+        "      *@example.test) ;;",
+        "      *) echo \"GL-HOOK-ERR: You cannot push commits for '$email'. You can only push commits if the committer email is one of your own verified emails.\" >&2; exit 1 ;;",
+        "    esac",
+        "  done",
+        "done",
+        "exit 0",
+        "",
+      ].join("\n"),
+    );
+    chmodSync(hook, 0o755);
+
+    const alice = clone(remote, "alice");
+    const claimed = run(UNIT, ["claim", "alpha", "--team", "alice"], alice);
+    expect(claimed.status, claimed.out).toBe(0);
+    const stamp = JSON.parse(claimed.stdout) as { claim_ref: string };
+    expect(git(remote, ["log", "-1", "--format=%an <%ae> %cn <%ce>", stamp.claim_ref])).toBe(
+      "alice <alice@example.test> alice <alice@example.test>",
+    );
+    const released = run(UNIT, ["release", "alpha"], seed);
+    expect(released.status, released.out).toBe(0);
+    expect(git(remote, ["log", "-1", "--format=%ce", stamp.claim_ref])).toBe("seed@example.test");
+
+    const outsider = clone(remote, "outsider");
+    git(outsider, ["config", "user.email", "outsider@example.org"]);
+    const refused = run(UNIT, ["claim", "gamma", "--team", "outsider"], outsider);
+    expect(refused.status).not.toBe(0);
+    expect(refused.out).toContain('Unit \\"gamma\\" claim was rejected by origin: ');
+    expect(refused.out).toContain("You cannot push commits for 'outsider@example.org'");
+    expect(refused.out).not.toContain("compare-and-swap");
+    expect(exists(join(outsider, "aidlc", ".aidlc-unit-scope.json"))).toBe(false);
+    const second = clone(remote, "second");
+    const accepted = run(UNIT, ["claim", "gamma", "--team", "second"], second);
+    expect(accepted.status, accepted.out).toBe(0);
+
+    const nameless = clone(remote, "nameless");
+    git(nameless, ["config", "--unset", "user.name"]);
+    git(nameless, ["config", "--unset", "user.email"]);
+    git(nameless, ["config", "user.useConfigOnly", "true"]);
+    const unknown = run(UNIT, ["claim", "alpha", "--team", "nameless"], nameless, {
+      GIT_CONFIG_GLOBAL: join(nameless, "no-global-gitconfig"),
+      GIT_CONFIG_NOSYSTEM: "1",
+    });
+    expect(unknown.status).not.toBe(0);
+    expect(unknown.out).toContain("Git has no name and email for your commits yet.");
+    expect(unknown.out).toContain("git config --global user.email");
+    expect(unknown.out).not.toContain("Please tell me who you are");
+
+    // The person's signing setting applies to these commits too.
+    git(seed, ["config", "commit.gpgsign", "true"]);
+    git(seed, ["config", "gpg.format", "ssh"]);
+    git(seed, ["config", "user.signingkey", "no-such-signing-key"]);
+    expect(run(UNIT, ["release", "gamma"], seed).status).not.toBe(0);
   });
 });
 

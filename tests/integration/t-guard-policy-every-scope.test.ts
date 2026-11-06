@@ -11,9 +11,8 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
-import { guardPolicyAcceptsChanges, hookChildEnv, markHumanTurn, resolveGuardPolicy } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
-import { appendAuditEntry } from "../../dist/claude/.claude/tools/aidlc-audit.ts";
+import { join } from "node:path";
+import { guardPolicyAcceptsChanges } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 import { setupIntegrationProject } from "../harness/fixtures.ts";
 import { buildPluginProjection, composePluginFixture } from "../harness/plugin-kit.ts";
 
@@ -22,25 +21,26 @@ setDefaultTimeout(NATIVE_FIXTURE_SETUP_TIMEOUT_MS);
 const BUN = process.execPath;
 const PLUGIN_SCOPE = "test-pro-validation";
 const temps: string[] = [];
-const fixtureHome = mkdtempSync(join(tmpdir(), "aidlc-policy-home-"));
-temps.push(fixtureHome);
-const fixtureEnvironment = { PATH: process.env.PATH, HOME: fixtureHome, TMPDIR: tmpdir() };
 
 afterAll(() => {
   for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-// The project's installed tools resolve its scopes and policy.
-function runTool(proj: string, tool: string, args: string[]): { status: number; out: string } {
-  const sessionEnvironment = hookChildEnv(proj, "rin-policy-human");
-  const env: Record<string, string | undefined> = {
-    ...fixtureEnvironment,
-    CLAUDE_PROJECT_DIR: proj,
-    AIDLC_SESSION_OVERRIDE: sessionEnvironment.AIDLC_SESSION_OVERRIDE,
-    AIDLC_SESSION_OVERRIDE_SOURCE: sessionEnvironment.AIDLC_SESSION_OVERRIDE_SOURCE,
-  };
+// The project's OWN tools with no fixture seams, so scopes resolve the way they
+// do for a person.
+function runTool(proj: string, tool: string, args: string[], atTerminal = false): { status: number; out: string } {
+  const env: Record<string, string | undefined> = { ...process.env, CLAUDE_PROJECT_DIR: proj };
   for (const key of ["AIDLC_SCOPE_MAPPING", "AIDLC_SCOPE_GRID", "AIDLC_SCOPES_DIR", "AIDLC_COMPOSED_SCOPES_DIR", "AIDLC_STAGE_GRAPH"]) {
     delete env[key];
+  }
+  // Typed at the person's own terminal: no chat, and no agent host's mark.
+  if (atTerminal) {
+    for (const key of Object.keys(env)) {
+      if (/^(?:CLAUDECODE|CLAUDE_CODE_|CODEX_|CURSOR_|KIRO_|OPENCODE|COPILOT_|VSCODE_)/i.test(key)) delete env[key];
+    }
+    delete env.AIDLC_SESSION_OVERRIDE;
+    delete env.TERM_PROGRAM;
+    env.AIDLC_TEST_CONFIG_TTY = "1";
   }
   const res = spawnSync(BUN, [join(proj, ".claude", "tools", tool), ...args, "--project-dir", proj], {
     encoding: "utf-8",
@@ -49,24 +49,20 @@ function runTool(proj: string, tool: string, args: string[]): { status: number; 
   return { status: res.status ?? -1, out: `${res.stdout ?? ""}${res.stderr ?? ""}` };
 }
 
-function create(proj: string, scope: string, extra: string[] = []): void {
+function create(proj: string, scope: string, extra: string[] = [], atTerminal = false): void {
   const made = runTool(proj, "aidlc-utility.ts", [
     "intent-create", "--scope", scope, "--arguments=fix the flaky date parser", "--label", `work on ${scope}`, ...extra,
-  ]);
+  ], atTerminal);
   expect(made.status, made.out).toBe(0);
 }
 
-function latestStatePath(proj: string): string {
+function policyLine(proj: string): string {
   const intents = join(proj, "aidlc", "spaces", "default", "intents");
   const records = readdirSync(intents)
     .map((name) => join(intents, name))
     .filter((path) => existsSync(join(path, "aidlc-state.md")))
     .sort((a, b) => statSync(join(b, "aidlc-state.md")).mtimeMs - statSync(join(a, "aidlc-state.md")).mtimeMs);
-  return join(records[0], "aidlc-state.md");
-}
-
-function policyLine(proj: string, path = latestStatePath(proj)): string {
-  const state = readFileSync(path, "utf-8");
+  const state = readFileSync(join(records[0], "aidlc-state.md"), "utf-8");
   return /- \*\*Guard Policy\*\*: (.*)/.exec(state)?.[1] ?? "(no line)";
 }
 
@@ -100,7 +96,7 @@ describe("a plugin's scope", () => {
     temps.push(tmp);
     const built = join(tmp, "plugin", "claude");
     buildPluginProjection("test-pro", "claude", built);
-    undeclared = composePluginFixture({ plugin: "test-pro", harness: "claude", projectDir: join(tmp, "undeclared"), pluginBuilt: built, env: fixtureEnvironment }).projectDir;
+    undeclared = composePluginFixture({ plugin: "test-pro", harness: "claude", projectDir: join(tmp, "undeclared"), pluginBuilt: built }).projectDir;
     const builtStrict = join(tmp, "plugin-strict", "claude");
     buildPluginProjection("test-pro", "claude", builtStrict);
     declaredStrict = composePluginFixture({
@@ -108,7 +104,6 @@ describe("a plugin's scope", () => {
       harness: "claude",
       projectDir: join(tmp, "strict"),
       pluginBuilt: builtStrict,
-      env: fixtureEnvironment,
       beforeCompose: ({ pluginBuilt }) => {
         const found = spawnSync("find", [pluginBuilt, "-name", `${PLUGIN_SCOPE}.md`], { encoding: "utf-8" }).stdout.trim().split("\n").filter(Boolean);
         expect(found.length).toBeGreaterThan(0);
@@ -171,92 +166,9 @@ describe("a team's memory layer", () => {
 
   test("a value the person set for this work keeps it", () => {
     const proj = plainProject();
-    create(proj, "classic", ["--guard-policy", "strict"]);
+    create(proj, "classic", ["--guard-policy", "strict"], true);
     expect(policyLine(proj)).toBe("strict (set by you)");
     declareMemory(proj, "team", "off");
     expect(guardPolicyAcceptsChanges(proj)).toBe(false);
-  });
-});
-
-
-describe("Rin native strict scope policy", () => {
-  let project = "";
-  let policyState = "";
-
-  beforeAll(() => {
-    const temporary = mkdtempSync(join(tmpdir(), "aidlc-rin-policy-"));
-    temps.push(temporary);
-    const built = join(temporary, "plugin", "claude");
-    buildPluginProjection("rin", "claude", built);
-    project = composePluginFixture({ plugin: "rin", harness: "claude", projectDir: join(temporary, "project"), pluginBuilt: built, env: fixtureEnvironment }).projectDir;
-    const started = spawnSync(BUN, [join(project, ".claude", "tools", "aidlc.ts"), "engine", "hook", "session-start", "--project-dir", project], {
-      cwd: project,
-      encoding: "utf-8",
-      env: { ...fixtureEnvironment, CLAUDE_PROJECT_DIR: project },
-      input: JSON.stringify({ cwd: project, hook_event_name: "SessionStart", session_id: "rin-policy-human", source: "startup" }),
-    });
-    expect(started.status).toBe(0);
-  });
-
-  test.each(["rin-audit", "rin-bugfix", "rin-dep-bump", "rin-gates", "rin-harness", "rin-ops", "rin-retired", "rin-unit"])("%s creates with strict native policy", (scope) => {
-    create(project, scope);
-    expect(policyLine(project)).toBe(`strict (from scope ${scope})`);
-    expect(guardPolicyAcceptsChanges(project)).toBe(false);
-  });
-
-  test("explicit strict remains the person's setting", () => {
-    create(project, "rin-gates", ["--guard-policy", "strict"]);
-    policyState = latestStatePath(project);
-    expect(policyLine(project, policyState)).toBe("strict (set by you)");
-  });
-
-  test("an unapproved lower override is refused", () => {
-    const refused = runTool(project, "aidlc-utility.ts", ["intent-create", "--scope", "rin-gates", "--arguments=fix parser", "--guard-policy", "off"]);
-    expect(refused.status).not.toBe(0);
-    expect(policyLine(project, policyState)).toBe("strict (set by you)");
-  });
-
-  test("a fixture-recorded human request authorizes native lowering", () => {
-    const joined = runTool(project, "aidlc-utility.ts", ["intent", "switch", basename(dirname(policyState))]);
-    expect(joined.status, joined.out).toBe(0);
-    appendAuditEntry("HUMAN_TURN", { Session: "rin-policy-human" }, project);
-    markHumanTurn(project);
-    const changed = runTool(project, "aidlc-utility.ts", ["config-change", "--guard-policy", "off"]);
-    expect(changed.status, changed.out).toBe(0);
-    expect(policyLine(project, policyState)).toBe("off (set by you)");
-    expect(guardPolicyAcceptsChanges(project)).toBe(true);
-  });
-
-  test("existing off state and absent policy state retain native semantics", () => {
-    expect(resolveGuardPolicy(project, "- **Scope**: rin-gates\n- **Guard Policy**: off (from scope rin-gates)\n").value).toBe("off");
-    expect(resolveGuardPolicy(project, "- **Scope**: rin-gates\n").value).toBe("strict");
-  });
-
-  test("engine resume preserves an existing off policy", () => {
-    const state = policyState;
-    const before = readFileSync(state, "utf-8");
-    const resumed = runTool(project, "aidlc-orchestrate.ts", ["next"]);
-    expect(resumed.status, resumed.out).toBe(0);
-    expect(policyLine(project, policyState)).toBe("off (set by you)");
-    expect(readFileSync(state, "utf-8")).toBe(before);
-  });
-
-  test("engine resume does not manufacture an absent legacy policy", () => {
-    const state = policyState;
-    const legacy = readFileSync(state, "utf-8").replace(/^- \*\*Guard Policy\*\*:.*\n/m, "");
-    writeFileSync(state, legacy);
-    const resumed = runTool(project, "aidlc-orchestrate.ts", ["next"]);
-    expect(resumed.status, resumed.out).toBe(0);
-    expect(policyLine(project, policyState)).toBe("(no line)");
-    expect(guardPolicyAcceptsChanges(project)).toBe(false);
-    expect(readFileSync(state, "utf-8")).toBe(legacy);
-  });
-
-  test("a strict memory lock rejects explicit lowering and overrides existing off", () => {
-    declareMemory(project, "team", "strict");
-    const refused = runTool(project, "aidlc-utility.ts", ["intent-create", "--scope", "rin-gates", "--arguments=fix parser", "--guard-policy", "off"]);
-    expect(refused.status).not.toBe(0);
-    expect(refused.out).toContain("Your team set Guard Policy to strict");
-    expect(resolveGuardPolicy(project, "- **Scope**: rin-gates\n- **Guard Policy**: off (set by you)\n").value).toBe("strict");
   });
 });

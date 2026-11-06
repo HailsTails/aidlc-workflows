@@ -4,8 +4,8 @@
 // have actually captured for that harness. This intentionally does not claim
 // that every captured tool has a matcher. Kiro CLI is excluded because its
 // agent-v1 matchers use glob and canonical-name/alias-family semantics; t148
-// and PR #788 own that coverage with live-captured alias evidence. Claude is
-// excluded because the repository has no captured Claude hook payload fixture.
+// owns that coverage with live-captured alias evidence. Claude is excluded
+// because the repository has no captured Claude hook payload fixture.
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
@@ -26,9 +26,9 @@ interface KiroIdeMatcherRegistration extends MatcherRegistration {
 const CODEX_FIXTURE_GAPS = [
   {
     event: "PreToolUse",
-    matcher: "^(spawn_agent|collaborationspawn_agent)$",
+    matcher: "spawn_agent",
     reason:
-      "Official native Codex 0.153.4/0.160.0 registry and flat_tool_name source derive collaborationspawn_agent; aidlc-codex-dispatch-tool.fixture.json records immutable source provenance. No V2 command-hook stdin capture exists; dotted Responses display is not hook payload evidence",
+      "harness/codex/emit.ts:39-41 records this registration as verified live on Codex 0.142.5; #777 has no delegation capture yet",
   },
   {
     event: "PostToolUse",
@@ -104,6 +104,10 @@ function matcherRegistrations(document: JsonObject, source: string): MatcherRegi
   return registrations;
 }
 
+function selectedLiteralNames(matcher: string, toolNames: readonly string[]): string[] {
+  return toolNames.filter((name) => name === matcher);
+}
+
 function selectedPatternNames(matcher: string, toolNames: readonly string[]): string[] {
   const pattern = new RegExp(matcher);
   return toolNames.filter((name) => {
@@ -130,7 +134,7 @@ describe("t308 hook registration matchers select captured fixture tool names", (
       );
       if (gap) continue;
       expect(
-        selectedPatternNames(registration.matcher, toolNames),
+        selectedLiteralNames(registration.matcher, toolNames),
         `Codex ${registration.event}/${registration.matcher} must select a captured tool_name`,
       ).not.toEqual([]);
     }
@@ -145,7 +149,7 @@ describe("t308 hook registration matchers select captured fixture tool names", (
         gap.reason,
       ).toBe(true);
       expect(
-        selectedPatternNames(gap.matcher, toolNames),
+        selectedLiteralNames(gap.matcher, toolNames),
         `${gap.reason}; remove this fixture-gap entry once a capture lands`,
       ).toEqual([]);
     }
@@ -175,10 +179,10 @@ describe("t308 hook registration matchers select captured fixture tool names", (
       }
     }
 
-    // aidlc-guard-tool-call, aidlc-write-audit-log, aidlc-after-shell and
-    // aidlc-log-subagent: the five tool-call checks and the two after-shell
-    // hooks each share one registration (#2022).
-    expect(new Set(registrations.map((registration) => registration.file)).size).toBe(4);
+    // aidlc-guard-tool-call and aidlc-log-subagent: the four tool-call checks
+    // share one registration (#2022), and the work after a write or a command
+    // runs in the next card instead of a card of its own.
+    expect(new Set(registrations.map((registration) => registration.file)).size).toBe(2);
     for (const registration of registrations) {
       expect(
         selectedPatternNames(registration.matcher, KIRO_IDE_OBSERVED_TOOLS),

@@ -1,46 +1,32 @@
-import { lstatSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { lstatSync, statSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { previewRuntimeContract, previewRegistrationDisposition, previewFailure } from "./preview-runtime-contract.mjs";
 
-// This file has two homes: plugins/rin/hooks/ (authored) and .claude/hooks/
-// (projected, where the harness actually runs it). Those sit at different
-// depths, so no single static `../` specifier reaches repo-root scripts/ from
-// both. Resolving the repo root from the nearest ancestor that contains
-// scripts/ makes one source correct in either location.
-const repoRootFrom = (start) => {
-  const ascend = (directory) => {
-    const parent = dirname(directory);
-    if (parent === directory) return null;
-    return lstatSync(join(directory, "scripts"), {
-      throwIfNoEntry: false,
-    })?.isDirectory()
-      ? directory
-      : ascend(parent);
-  };
-  return ascend(start);
+const repoRootFrom = ({ directory }) => {
+  const parent = dirname(directory);
+  if (parent === directory) return null;
+  return lstatSync(join(directory, "scripts"), { throwIfNoEntry: false })?.isDirectory()
+    ? directory
+    : repoRootFrom({ directory: parent });
 };
 
-const pathToFileHref = (absolutePath) =>
-  new URL(`file:///${absolutePath.replace(/\\/g, "/").replace(/^\/+/, "")}`)
-    .href;
-
-const previewScript = (fileName) => {
-  const repoRoot = repoRootFrom(
-    resolve(dirname(fileURLToPath(import.meta.url))),
-  );
-  if (repoRoot === null) throw new Error("no repo root above this hook");
-  return pathToFileHref(join(repoRoot, "scripts", fileName));
+const loadPreviewRuntime = async ({ hookDirectory }) => {
+  try {
+    const repoRoot = repoRootFrom({ directory: hookDirectory });
+    if (repoRoot === null) return previewFailure({ reason: "missing-runtime" });
+    const generatorPath = join(repoRoot, "scripts", "generate-preview-launch.mjs");
+    const registryPath = join(repoRoot, "scripts", "preview-worktree-registry.mjs");
+    if (!statSync(generatorPath, { throwIfNoEntry: false })?.isFile() || !statSync(registryPath, { throwIfNoEntry: false })?.isFile()) {
+      return previewFailure({ reason: "missing-runtime" });
+    }
+    const generator = await import(pathToFileURL(generatorPath).href);
+    const registry = await import(pathToFileURL(registryPath).href);
+    return previewRuntimeContract({ generator, registry });
+  } catch {
+    return previewFailure({ reason: "load-failed" });
+  }
 };
-
-const readStdin = () =>
-  new Promise((resolve) => {
-    let raw = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => {
-      raw += chunk;
-    });
-    process.stdin.on("end", () => resolve(raw));
-  });
 
 const isWorktreeRoot = ({ directory }) => {
   try {
@@ -50,53 +36,68 @@ const isWorktreeRoot = ({ directory }) => {
   }
 };
 
-const targetDirectoryFrom = ({ invocation }) => {
+const targetDirectoryFrom = ({ invocation, sessionDirectory }) => {
   const fromToolInput = invocation?.tool_input?.path;
-  if (
-    typeof fromToolInput === "string" &&
-    isWorktreeRoot({ directory: fromToolInput })
-  ) {
+  if (typeof fromToolInput === "string" && isWorktreeRoot({ directory: fromToolInput })) {
     return fromToolInput;
   }
-  const sessionDirectory = process.cwd();
-  return isWorktreeRoot({ directory: sessionDirectory })
-    ? sessionDirectory
-    : null;
+  return isWorktreeRoot({ directory: sessionDirectory }) ? sessionDirectory : null;
 };
 
-const registerWorktree = async ({ worktreeDirectory }) => {
-  const { generatePreviewLaunch } = await import(
-    previewScript("generate-preview-launch.mjs")
-  );
-  const { mainRootFrom, prunedWorktrees, readRegistry, writeRegistry } =
-    await import(previewScript("preview-worktree-registry.mjs"));
-  const mainRoot = mainRootFrom({ anyRepoDirectory: worktreeDirectory });
-  const registry = readRegistry({ mainRoot });
-  const worktreeName = basename(worktreeDirectory);
-  const live = prunedWorktrees({ worktrees: registry.worktrees });
-  live[worktreeName] = { path: worktreeDirectory };
-  writeRegistry({ mainRoot, registry: { worktrees: live } });
-  generatePreviewLaunch({ anyRepoDirectory: worktreeDirectory });
-};
-
-const main = async () => {
-  const raw = await readStdin();
-  let invocation = {};
+const registerWorktree = async ({ worktreeDirectory, hookDirectory }) => {
+  const loaded = await loadPreviewRuntime({ hookDirectory });
+  if (loaded.kind !== "ready") return loaded;
   try {
-    invocation = JSON.parse(raw);
+    const { generatePreviewLaunch, mainRootFrom, prunedWorktrees, readRegistry, writeRegistry } = loaded.runtime;
+    const mainRoot = mainRootFrom({ anyRepoDirectory: worktreeDirectory });
+    const registry = readRegistry({ mainRoot });
+    const live = prunedWorktrees({ worktrees: registry.worktrees });
+    const worktrees = { ...live, [basename(worktreeDirectory)]: { path: worktreeDirectory } };
+    writeRegistry({ mainRoot, registry: { worktrees } });
+    await generatePreviewLaunch({ anyRepoDirectory: worktreeDirectory });
+    return { kind: "registered" };
   } catch {
-    invocation = {};
+    return previewFailure({ reason: "execution-failed" });
   }
-  const worktreeDirectory = targetDirectoryFrom({ invocation });
-  if (worktreeDirectory === null) {
-    process.exit(0);
-  }
-  try {
-    await registerWorktree({ worktreeDirectory });
-  } catch {
-    process.exit(0);
-  }
-  process.exit(0);
 };
 
-main().catch(() => process.exit(0));
+const invocationFrom = ({ raw }) => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+};
+
+const main = async ({ processPort }) => {
+  const input = await processPort.readInput();
+  if (input.kind !== "read") return input;
+  const worktreeDirectory = targetDirectoryFrom({ invocation: invocationFrom({ raw: input.raw }), sessionDirectory: processPort.sessionDirectory });
+  return worktreeDirectory === null
+    ? { kind: "not-requested" }
+    : registerWorktree({ worktreeDirectory, hookDirectory: processPort.hookDirectory });
+};
+
+const createPreviewHookProcess = () => ({
+  sessionDirectory: process.cwd(),
+  hookDirectory: dirname(fileURLToPath(import.meta.url)),
+  readInput: () => new Promise((resolve) => {
+    let raw = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => { raw += chunk; });
+    process.stdin.on("end", () => resolve({ kind: "read", raw }));
+    process.stdin.on("error", () => resolve(previewFailure({ reason: "input-failed" })));
+  }),
+  finish: ({ outcome }) => {
+    const { exitCode, diagnostic } = previewRegistrationDisposition({ outcome });
+    process.stderr.write(diagnostic);
+    process.exitCode = exitCode;
+  },
+});
+
+const processPort = createPreviewHookProcess();
+main({ processPort }).then(
+  (outcome) => processPort.finish({ outcome }),
+  () => processPort.finish({ outcome: previewFailure({ reason: "unexpected" }) }),
+);
+

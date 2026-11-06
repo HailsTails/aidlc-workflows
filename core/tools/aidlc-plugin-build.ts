@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Offline builder for one authored AIDLC plugin and one target harness.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import {
   dirname,
   isAbsolute,
@@ -12,43 +12,34 @@ import {
 } from "node:path";
 import {
   buildPluginProjection,
+  PluginBuildLockFolderError,
   readPluginTargets,
 } from "./aidlc-plugin-emit.ts";
 import {
+  bundledPluginData,
   formatPluginValidation,
   type PluginValidationFinding,
   type PluginValidationResult,
   pluginValidationJson,
   validatePluginRoot,
 } from "./aidlc-plugin-validate.ts";
+import { harnessIdFromTyped, typedHarnessName } from "./aidlc-runtime-paths.ts";
 
 const USAGE =
   "Usage: bun <tools-dir>/aidlc-plugin-build.ts <plugin-root> <harness> [outDir] [--json]";
 
 export function bundledPluginTargetsPath(): string {
-  const candidates = [
-    join(import.meta.dir, "data", "plugin-targets.json"),
-    join(
-      import.meta.dir,
-      "..",
-      "..",
-      "dist",
-      "claude",
-      ".claude",
-      "tools",
-      "data",
-      "plugin-targets.json",
-    ),
-  ];
-  return candidates.find(existsSync) ?? candidates[0];
+  return bundledPluginData(
+    ["plugin-targets.json"],
+    join(import.meta.dir, "..", "..", "dist", "claude", ".claude", "tools", "data", "plugin-targets.json"),
+  );
 }
 
 export function bundledPluginHookTemplatesDir(): string {
-  const candidates = [
-    join(import.meta.dir, "data", "plugin-hooks-template"),
+  return bundledPluginData(
+    ["plugin-hooks-template"],
     join(import.meta.dir, "..", "..", "scripts", "plugin-hooks-template"),
-  ];
-  return candidates.find(existsSync) ?? candidates[0];
+  );
 }
 
 function withBuildError(
@@ -86,7 +77,7 @@ function formatBuildResult(
   const lines = [
     "Plugin build: COMPLETE",
     `Plugin root: ${resolve(pluginRoot)}`,
-    `Harness: ${harness}`,
+    `Harness: ${typedHarnessName(harness)}`,
     `Output: ${resolve(outDir)}`,
   ];
   for (const finding of result.warnings) {
@@ -136,7 +127,10 @@ export function main(argv: string[]): number {
     return 2;
   }
 
-  const [pluginRootArg, harness, outArg] = positional;
+  const [pluginRootArg, typedHarness, outArg] = positional;
+  // The harness is typed as config takes it; the target table, the output
+  // folder and the result keep its id.
+  const harness = harnessIdFromTyped(typedHarness);
   const pluginRoot = resolve(pluginRootArg);
   const outDir = outArg
     ? resolve(outArg)
@@ -179,22 +173,15 @@ export function main(argv: string[]): number {
     return 1;
   }
   const targets = readPluginTargets(targetsPath);
-  const target = targets[harness];
+  const target = Object.hasOwn(targets, harness) ? targets[harness] : undefined;
   if (!target) {
     process.stderr.write(
-      `${USAGE}\nUnknown harness "${harness}" (available: ${Object.keys(targets).sort().join(", ")})\n`,
+      `${USAGE}\nUnknown harness "${typedHarness}" (available: ${Object.keys(targets).map(typedHarnessName).sort().join(", ")})\n`,
     );
     return 2;
   }
 
   try {
-    const manifest: unknown = JSON.parse(readFileSync(join(pluginRoot, ".aidlc-plugin", "plugin.json"), "utf-8"));
-    const aidlc = manifest !== null && typeof manifest === "object" && "aidlc" in manifest ? manifest.aidlc : null;
-    const hooks = aidlc !== null && typeof aidlc === "object" && "hooks" in aidlc ? aidlc.hooks : undefined;
-    if (hooks !== undefined && (hooks === null || typeof hooks !== "object" || Array.isArray(hooks) ||
-      Object.values(hooks).some((rows) => !Array.isArray(rows) || rows.length > 0))) {
-      throw new Error("Native hook declarations require the repository packager; use bun scripts/package.ts plugin build <plugin> <harness> <outDir>.");
-    }
     buildPluginProjection({
       pluginRoot,
       target,
@@ -213,7 +200,9 @@ export function main(argv: string[]): number {
       outDir,
       "build-output",
       error instanceof Error ? error.message : String(error),
-      "Choose a fresh output directory or correct the plugin source and retry.",
+      error instanceof PluginBuildLockFolderError
+        ? error.fix
+        : "Choose a fresh output directory or correct the plugin source and retry.",
     );
   }
 

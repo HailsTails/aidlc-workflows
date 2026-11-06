@@ -11,11 +11,12 @@ const fills: OnboardingFills = {
 
 <!--
   The @-line above pulls the AIDLC method into Claude's ambient context. It is
-  the first hop of a reference chain (NOT a copy): CLAUDE.md → @.claude/rules/
-  aidlc.md → @../../aidlc/spaces/default/memory/*.md. The method is authored ONCE
-  at the workspace root under aidlc/spaces/default/memory/ (org/team/project +
-  phases/), so edit it there, never in .claude/rules/aidlc.md. Verified resolving
-  (G1 PASS) — see tmp/workspace-vision/at-import-spike/RESULTS.md.
+  the first hop of a reference chain: CLAUDE.md imports @.claude/rules/aidlc.md,
+  which imports @../../aidlc/active-memory/*.md, AI-DLC's git-ignored
+  copy of the active space's method that the engine refreshes at session start
+  and on a space switch. The method is authored ONCE at the workspace root
+  under aidlc/spaces/<space>/memory/ (org/team/project + phases/), so edit it
+  there, never in .claude/rules/aidlc.md and never in the copy.
 -->
 
 # AI-DLC
@@ -28,8 +29,9 @@ This project uses AI-DLC (AI-Driven Development Life Cycle) for structured devel
 - **Model provider**: The shipped \`.claude/settings.json\` does not select a provider, model, region, or reasoning effort. Claude Code keeps your existing subscription, API, Bedrock, or enterprise-gateway configuration. Run \`{{INVOKE}} config providers\` to record and validate a project provider choice.
 - **MCP servers (optional)**: \`.mcp.json\` (project root, beside \`.claude/\`) declares the MCP servers available to the framework. \`context7\` (library/SDK documentation lookups) is an HTTP server that reads \`CONTEXT7_API_KEY\` from your environment. The four AWS servers (\`aws-mcp\`, \`aws-pricing\`, \`aws-iac\`, \`aws-serverless\`) launch via \`uvx\` and authenticate with your standard AWS credential chain — they require an AWS account with IAM credentials available to your shell (install \`uv\`/\`uvx\` via \`curl -fsSL https://astral.sh/uv/install.sh | sh\`). All credentials flow through environment passthrough; no keys are committed. Servers you have no credentials for are simply unavailable and never block a workflow. Declared servers are provisioned to the session and **inherited by every agent** — there is no per-agent grant; agents that should be prevented from using a server are narrowed via their \`tools:\` allowlist with fully-qualified \`mcp__<server>__<tool>\` ids.`,
 
-    prereq_bullets_tail: `- **Settings**: \`.claude/settings.json\` pre-approves the framework's own work (file edits inside the project, Task, WebSearch, and the bun .claude/tools/ engine commands) so workflows run without per-call permission prompts; a project's own build or test commands prompt once.
-- **Personal overrides**: Copy \`.claude/settings.local.json.example\` to \`.claude/settings.local.json\` (gitignored) to override the model or set environment variables without affecting shared settings.`,
+    prereq_bullets_tail: `- **Settings**: \`.claude/settings.json\` pre-approves the framework's own work (file edits inside the project, Task, WebSearch, and the AI-DLC engine commands) so workflows run without per-call permission prompts; a project's own build or test commands prompt once.
+- **Personal overrides**: Copy \`.claude/settings.local.json.example\` to \`.claude/settings.local.json\` (gitignored) to override the model or set environment variables without affecting shared settings; if that file already exists, add your keys to it.
+- **Status line**: AI-DLC's progress shows in your status line only when you choose it, in place of your own: setup asks once, and \`/aidlc --statusline on|off\` switches it any time. It is kept in your own \`.claude/settings.local.json\`, so each teammate chooses.`,
 
     hook_permissions_note: `After copying the project shell, approve its hooks when Claude Code prompts or through \`/hooks\`, then fully restart Claude Code; \`/clear\` is not enough. Organization-managed policy can block project hooks, and \`/aidlc --doctor\` detects the supported managed-policy restriction.`,
 

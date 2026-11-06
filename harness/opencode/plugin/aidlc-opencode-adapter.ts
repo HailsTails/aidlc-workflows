@@ -6,27 +6,31 @@
 // the PLUGIN API (auto-discovered from .opencode/plugin/*.ts, loaded in-process
 // by the opencode runtime). This one plugin maps opencode's hook surface onto
 // the core hook bodies, each run as a bun subprocess fed the ClaudeCodeHookInput
-// JSON shape the core hooks parse (live-verified on opencode 1.17.18):
+// JSON shape the core hooks parse (live-verified on opencode 1.17.18). The
+// default export serves opencode 1 through server() and OpenCode 2 through
+// setup(); the OpenCode 2 section at the end of this file maps V2 moments onto
+// the V1 hooks below:
 //
-//   opencode moment                      → core hook (Claude event it mirrors)
-//   ------------------------------------------------------------------------
-//   chat.message (first per session)     → aidlc-session-start.ts  (SessionStart)
-//   chat.message (every human turn)      → aidlc-record-human-turn.ts  (UserPromptSubmit)
-//   tool.execute.before task             → aidlc-deliver-stage-rules.ts rewrite + plan-approval guard (PreToolUse)
-//   tool.execute.before other tools      → entrypoint boundary + aidlc-reviewer-scope.ts (PreToolUse)
-//   tool.execute.after write|edit|patch  → aidlc-write-audit-log.ts + aidlc-run-sensors.ts (PostToolUse Write|Edit)
-//   tool.execute.after bash              → aidlc-rebuild-stage-graph.ts (PostToolUse Bash)
-//   tool.execute.after todowrite         → aidlc-sync-workflow-state.ts (PostToolUse TaskUpdate)
-//   tool.execute.after task              → aidlc-log-subagent.ts    (SubagentStop)
-//   event session.idle                   → aidlc-continue-workflow.ts            (Stop)
-//   experimental.session.compacting      → aidlc-validate-state.ts  (PreCompact)
+//   opencode moment                           -> core hook (Claude event it mirrors)
+//   ----------------------------------------------------------------------------
+//   chat.message (until a workflow is active) -> aidlc-session-start.ts  (SessionStart)
+//   chat.message (every human turn)           -> aidlc-record-human-turn.ts  (UserPromptSubmit)
+//   shell.env (every shell command)           -> names the command's chat (AIDLC_SESSION_OVERRIDE)
+//   tool.execute.before task                  -> aidlc-deliver-stage-rules.ts rewrite + plan-approval guard (PreToolUse)
+//   tool.execute.before other tools           -> entrypoint boundary + state-transition, review-freeze, plan-approval and reviewer-scope guards (PreToolUse)
+//   tool.execute.after write|edit|apply_patch -> aidlc-write-audit-log.ts + aidlc-run-sensors.ts (PostToolUse Write|Edit)
+//   tool.execute.after bash                   -> aidlc-rebuild-stage-graph.ts (PostToolUse Bash)
+//   tool.execute.after todowrite              -> aidlc-sync-workflow-state.ts (PostToolUse TaskUpdate)
+//   tool.execute.after task                   -> aidlc-log-subagent.ts    (SubagentStop)
+//   event session.idle                        -> aidlc-continue-workflow.ts            (Stop)
+//   experimental.session.compacting           -> aidlc-validate-state.ts  (PreCompact)
 //
 // Stop enforcement: session.idle is a REACTIVE event (opencode has no blocking
 // continue-workflow channel), so when the core continue-workflow hook answers {"decision":"block",
-// "reason":…} this plugin re-engages the loop by injecting the reason as a new
-// session prompt via the SDK client. The injected prompt carries the NUDGE
-// sentinel so the chat.message arm never mints HUMAN presence for it (a
-// synthetic nudge is not a human turn), and loop-guarding stays with the core
+// "reason":...} this plugin re-engages the loop by injecting the reason as a new
+// session prompt via the SDK client. The plugin knows that prompt by the id of
+// the part it sent, so the chat.message arm never mints HUMAN presence for it
+// (a synthetic nudge is not a human turn), and loop-guarding stays with the core
 // hook's run-mode-aware no-progress ceiling; this shim never counts. The
 // prompt's part is synthetic, so the agent reads it and the person's chat does
 // not show it. After the person stops a turn (Esc, a session.error
@@ -38,13 +42,13 @@
 // command's template, and the chat.message that follows records it as their
 // turn.
 //
-// Known degradations vs Claude Code (documented in AGENTS.md):
+// Known degradations vs Claude Code (documented in .aidlc/onboarding.md):
 //   - session-start's additionalContext has no injection channel; the hook
 //     still runs for its side effects (session→intent stamp, state checks).
 //   - There is no session-end moment; SESSION_ENDED is not emitted.
 //   - Presence minting is skipped for subagent (child) sessions. A parent
-//     lookup failure fails closed for that event and is retried later; an
-//     uncertain child can never record-human-turn a HUMAN_TURN into the shared ledger.
+//     lookup exception fails closed for that event and is retried later; a
+//     response without a session record is treated as a main session.
 //   - tool.execute.before carries no active-agent field. Reviewer identity is
 //     correlated from chat.message.agent by session; when that field is absent,
 //     a child session is treated as scoped registration while a dispatch record
@@ -52,19 +56,12 @@
 //     but never scopes the main session.
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { fileURLToPath } from "node:url";
+// emit.ts points this at the projected .aidlc/tools/ copy.
+import { windowsScriptLaunch } from "../../../core/tools/aidlc-executable-path.ts";
 
-const CONTRIBUTED_CHILD_MARKER = "AIDLC_OPENCODE_CONTRIBUTED_CHILD";
-const contributedChildTarget = process.env[CONTRIBUTED_CHILD_MARKER];
-if (contributedChildTarget !== undefined && contributedChildTarget === process.argv[1] &&
-    process.env.BUN_BE_BUN === "1") {
-  delete process.env.BUN_BE_BUN;
-  delete process.env[CONTRIBUTED_CHILD_MARKER];
-}
-
-const NUDGE_SENTINEL = "[aidlc-forwarding-nudge]";
 const PROJECTED_INVOKE = "{{INVOKE}}";
 const TRUSTED_NAMESPACE = "{{TRUSTED_NAMESPACE}}";
 const PROJECTED_TRUSTED_NAMESPACE = TRUSTED_NAMESPACE.startsWith("{{")
@@ -74,98 +71,39 @@ const DEFAULT_AIDLC_COMMAND = PROJECTED_INVOKE.startsWith("{{")
   ? ["bun", ".aidlc/tools/aidlc.ts", PROJECTED_TRUSTED_NAMESPACE]
   : [...PROJECTED_INVOKE.trim().split(/\s+/), PROJECTED_TRUSTED_NAMESPACE];
 
-// The core hook bodies ship in the ENGINE dir (<project>/.aidlc/hooks/), not
-// beside this plugin — .opencode/ carries only natively-consumed surfaces.
-// Resolved per-call from the project directory opencode hands the plugin.
-const HARNESS_LEAF = ".aidlc";
-const HOOKS_SUBDIR = join(HARNESS_LEAF, "hooks");
-
-const hookPathFor = (hookFile: string, projectDir: string): string =>
-  hookFile.includes("/") || hookFile.includes("\\")
-    ? join(projectDir, hookFile)
-    : join(projectDir, HOOKS_SUBDIR, hookFile);
-
-// A hook may deny through EITHER protocol: exit code 2 with the reason on
-// stderr, or exit 0 carrying {"hookSpecificOutput":{"permissionDecision":
-// "deny","permissionDecisionReason":…}} on stdout. Claude Code honours both
-// natively; every shimmed face reaches its hooks through runCore, so the JSON
-// form is normalised to the exit-2 form HERE — once — rather than at each of
-// the call sites that test `code === 2`. Reading only the exit code silently
-// discards the JSON denials (inline-exec, gh-write and destructive-git all use
-// that form), which reads as an installed rail that permits what it forbids.
-function deniedByStructuredOutput(stdout: string): string | null {
-  const trimmed = stdout.trim();
-  if (trimmed.length === 0) return null;
-  if (!trimmed.startsWith("{")) return null;
-  try {
-    const parsed = JSON.parse(trimmed) as {
-      hookSpecificOutput?: {
-        permissionDecision?: unknown;
-        permissionDecisionReason?: unknown;
-      };
-    };
-    const decision = parsed.hookSpecificOutput?.permissionDecision;
-    if (decision !== "deny") return null;
-    const reason = parsed.hookSpecificOutput?.permissionDecisionReason;
-    return typeof reason === "string" && reason.trim().length > 0
-      ? reason
-      : "Blocked by an AIDLC guard hook.";
-  } catch {
-    return null;
-  }
-}
-
-function normalisedHookResult(result: {
-  stdout: string;
-  stderr: string;
-  code: number;
-}): { stdout: string; stderr: string; code: number } {
-  if (result.code === 2) return result;
-  const denialReason = deniedByStructuredOutput(result.stdout);
-  if (denialReason === null) return result;
-  // The reason moves onto stderr because every call site sources its block
-  // message from there; leaving it only in stdout blocks with an empty message.
-  return {
-    stdout: result.stdout,
-    stderr: result.stderr.trim().length > 0 ? result.stderr : denialReason,
-    code: 2,
-  };
-}
-
-function runCoreHook({ hookFile, input, cwd, aidlcCommand, origin }: {
-  readonly hookFile: string;
-  readonly input: Record<string, unknown>;
-  readonly cwd: string;
-  readonly aidlcCommand: readonly string[];
-  readonly origin: "core" | "contributed";
-}): Promise<{ stdout: string; stderr: string; code: number }> {
+function runCoreHook(
+  hookFile: string,
+  input: Record<string, unknown>,
+  cwd: string,
+  aidlcCommand: readonly string[],
+  platform: NodeJS.Platform,
+): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    const [bin, ...prefix] = aidlcCommand;
     const hook = hookFile.replace(/^aidlc-/, "").replace(/\.ts$/, "");
+    // The native engine finds its tree by looking in .claude first, so with
+    // Claude Code installed here too a hook would run as Claude Code's.
+    const env = {
+      ...process.env,
+      AIDLC_PROJECT_DIR: cwd,
+      CLAUDE_PROJECT_DIR: cwd,
+      AIDLC_HARNESS_DIR: ".aidlc",
+      AIDLC_HARNESS_NAME: "opencode",
+    };
+    const [bin, ...prefix] = aidlcCommand;
     if (!bin) return resolve({ stdout: "", stderr: "", code: 0 });
+    // Windows starts the native install's aidlc.cmd only through cmd.exe; the
+    // project folder then goes by the environment above.
+    const viaCmd = windowsScriptLaunch(bin, [...prefix, "hook", hook], platform, env);
+    if (viaCmd === "refused") return resolve({ stdout: "", stderr: "", code: 0 }); // fail open
     try {
-      const argv = origin === "core"
-        ? [...prefix, "hook", hook, "--project-dir", cwd]
-        : ["--preload", fileURLToPath(import.meta.url), hookPathFor(hookFile, cwd)];
-      const child = spawn(bin, argv, {
-        cwd,
-        stdio: ["pipe", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          ...(origin === "contributed" ? {
-            BUN_BE_BUN: "1",
-            [CONTRIBUTED_CHILD_MARKER]: hookPathFor(hookFile, cwd),
-          } : {}),
-          AIDLC_PROJECT_DIR: cwd,
-          CLAUDE_PROJECT_DIR: cwd,
-          // Core hooks that resolve a harness-relative path default to
-          // ".claude" when this is unset — correct for the Claude face and
-          // wrong for every other. The composer is the load-bearing case: it
-          // writes plugin content INTO the harness dir, so an unset value
-          // composes into a directory this face does not use.
-          AIDLC_HARNESS_DIR: HARNESS_LEAF,
-        },
-      });
+      const child = viaCmd
+        ? spawn(viaCmd.file, viaCmd.args, {
+          cwd,
+          stdio: ["pipe", "pipe", "pipe"],
+          env: { ...env, ...viaCmd.env },
+          windowsVerbatimArguments: true,
+        })
+        : spawn(bin, [...prefix, "hook", hook, "--project-dir", cwd], { cwd, stdio: ["pipe", "pipe", "pipe"], env });
       let out = "";
       let err = "";
       child.stdout.on("data", (d: Buffer) => {
@@ -176,10 +114,11 @@ function runCoreHook({ hookFile, input, cwd, aidlcCommand, origin }: {
       });
       child.on("error", () => resolve({ stdout: "", stderr: "", code: 0 })); // fail open
       child.on("close", (code: number | null) =>
-        resolve(
-          normalisedHookResult({ stdout: out, stderr: err, code: code ?? 0 })
-        )
+        resolve({ stdout: out, stderr: err, code: code ?? 0 })
       );
+      // A hook that exits before it reads its input breaks this pipe; its exit
+      // still answers through "close".
+      child.stdin.on("error", () => {});
       child.stdin.write(JSON.stringify(input));
       child.stdin.end();
     } catch {
@@ -217,7 +156,7 @@ export type PluginInput = {
       get: (opts: { path: { id: string } }) => Promise<{ data?: { parentID?: string } }>;
       prompt: (opts: {
         path: { id: string };
-        body: { parts: Array<{ type: "text"; text: string; synthetic?: boolean }> };
+        body: { parts: Array<{ id?: string; type: "text"; text: string; synthetic?: boolean }> };
       }) => Promise<unknown>;
     };
     // opencode's merged settings; `shell` names the shell bash-tool commands run in.
@@ -548,71 +487,6 @@ type ReviewerCall = {
   toolInput: Record<string, unknown>;
 };
 
-type PluginHookRow = {
-  event: string;
-  matcher?: string;
-  target: string;
-  hookFile: string;
-};
-
-// Plugin-contributed rows, emitted beside this plugin by harness/opencode/emit.ts.
-// Read from disk (never imported) because this file ships in dist/ with no
-// packager available. Absent or malformed reads to an empty list: a plugin
-// wiring problem must never break core's own routing.
-const pluginRowsCache = new Map<string, PluginHookRow[]>();
-
-function pluginRows(cwd: string): PluginHookRow[] {
-  const cached = pluginRowsCache.get(cwd);
-  if (cached !== undefined) return cached;
-  const rowsPath = join(cwd, HOOKS_SUBDIR, "plugin-hook-rows.json");
-  const rows = ((): PluginHookRow[] => {
-    if (!existsSync(rowsPath)) return [];
-    try {
-      const parsed: unknown = JSON.parse(readFileSync(rowsPath, "utf-8"));
-      return Array.isArray(parsed) ? (parsed as PluginHookRow[]) : [];
-    } catch {
-      return [];
-    }
-  })();
-  pluginRowsCache.set(cwd, rows);
-  return rows;
-}
-
-function pluginRowsFor(event: string, cwd: string): PluginHookRow[] {
-  return pluginRows(cwd).filter((row) => row.event === event);
-}
-
-// opencode names its tools lowercase ("bash"); a contributed matcher is written
-// in the Claude vocabulary core hooks use ("Bash"), so the comparison is on the
-// projected name. Keeping one vocabulary means a plugin declares the same
-// matcher for every face rather than learning each harness's tool names.
-// opencode names its tools lowercase; a contributed matcher is written in the
-// Claude vocabulary core hooks use. Derived from the tool NAME alone, never from
-// a call built with empty args: a patch envelope with no paths yields no calls,
-// which would silently leave apply_patch unmatched by a Write|Edit matcher — a
-// guard that appears registered and never fires on the edit surface.
-const claudeToolNameByOpencodeTool: Readonly<Record<string, string>> = {
-  bash: "Bash",
-  read: "Read",
-  write: "Write",
-  edit: "Edit",
-  apply_patch: "Write",
-  glob: "Glob",
-  grep: "Grep",
-  list: "LS",
-  task: "Task",
-  todowrite: "TaskUpdate",
-};
-
-function claudeToolName(tool: string): string {
-  return claudeToolNameByOpencodeTool[tool] ?? tool;
-}
-
-function matchesTool(matcher: string, tool: string): boolean {
-  const projected = claudeToolName(tool);
-  return matcher.split("|").some((candidate) => candidate.trim() === projected);
-}
-
 function reviewerCalls(tool: string, args: Record<string, unknown>): ReviewerCall[] {
   if (tool === "bash") {
     return [{ toolName: "Bash", toolInput: { command: (args.command as string) ?? "" } }];
@@ -678,25 +552,32 @@ function sessionStartHandled(stdout: string): boolean {
   }
 }
 
-export default async ({
+/**
+ * The OpenCode 1 plugin: returns the hook map keyed by V1 hook name. OpenCode 2
+ * does not run it; its `setup` entry (below) feeds V2 events into this same map.
+ * Not exported by name: OpenCode 1 loads every exported function of a plugin
+ * module as a plugin, so the module exports only its default object.
+ */
+async function createV1Adapter({
   client,
   directory,
   aidlcEntrypoints = shippedAidlcEntrypoints,
   aidlcCommand = DEFAULT_AIDLC_COMMAND,
   platform = process.platform,
-}: PluginInput) => {
-  const runCore = (input: { readonly hookFile: string; readonly input: Record<string, unknown> }) =>
-    runCoreHook({ ...input, cwd: directory, aidlcCommand, origin: "core" });
+}: PluginInput) {
+  const runCore = (
+    hookFile: string,
+    input: Record<string, unknown>,
+    _cwd = directory,
+  ) => runCoreHook(hookFile, input, directory, aidlcCommand, platform);
 
-  const runContributed = (input: { readonly hookFile: string; readonly input: Record<string, unknown> }) =>
-    runCoreHook({ ...input, cwd: directory, aidlcCommand, origin: "contributed" });
-
-  // The rebuild-stage-graph hook's only stdout on this harness is the
-  // engine-error relay: one {"systemMessage": <exact directive.message>} line.
-  // opencode has no hook-to-transcript channel, so the closest human surface is
-  // a TUI toast. It is transient, which is why the opencode conductor skill
-  // still prints the message verbatim as well. A headless `opencode run` has no
-  // TUI: the request may fail and that is fine.
+  // The rebuild-stage-graph hook writes one line, or none: the engine-error
+  // relay ({"systemMessage": <exact directive.message>}, with no note for the
+  // model here) or the setter's say-once note (handModelNote, below). opencode
+  // has no hook-to-transcript channel, so the closest human surface for the
+  // relay is a TUI toast. It is transient, which is why the opencode conductor
+  // skill still prints the message verbatim as well. A headless `opencode run`
+  // has no TUI: the request may fail and that is fine.
   async function showEngineErrorToast(stdout: string): Promise<void> {
     let message: string | null = null;
     try {
@@ -715,6 +596,23 @@ export default async ({
     } catch {
       /* no TUI attached (headless run) - the toast is best-effort */
     }
+  }
+
+  // A PostToolUse note for the model (`hookSpecificOutput.additionalContext`,
+  // the setter's say-once order with its lines) follows the result the model
+  // reads. The TUI draws a bash call from its metadata.output, so the person
+  // does not see it.
+  function handModelNote(stdout: string, output?: { output?: string }): void {
+    if (typeof output?.output !== "string") return;
+    let note: unknown;
+    try {
+      note = (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: unknown } })
+        .hookSpecificOutput?.additionalContext;
+    } catch {
+      return;
+    }
+    if (typeof note !== "string" || note === "") return;
+    output.output = `${output.output.trimEnd()}\n\n${note}`;
   }
 
   // Sessions whose session-start hook reached an active workflow.
@@ -737,6 +635,10 @@ export default async ({
   // What the person typed through /aidlc, by session, set by opencode's own
   // command hook. Only the message carrying the part it added reads it.
   const typedCommands = new Map<string, string>();
+  // The ids of the nudge parts this plugin sent. opencode hands a part to
+  // chat.message with the id it was sent with (1.18.18), so the plugin knows
+  // its own nudge by that, never by its words.
+  const ownNudgeParts = new Set<string>();
   // The shell opencode runs bash-tool commands in, read once from its settings.
   // An unreadable setting reads every command strictly and is asked again.
   let dialect: ShellDialect | null = null;
@@ -779,6 +681,17 @@ export default async ({
     return current;
   }
 
+  // The owning session for a record forward: a child whose owner cannot be
+  // looked up is forwarded with no session rather than its own unbound id, so
+  // nothing of a child's is bound as a chat of its own.
+  async function owningSessionOrNone(sessionID: string): Promise<string | undefined> {
+    try {
+      return await owningSession(sessionID);
+    } catch {
+      return undefined;
+    }
+  }
+
   async function isMainSession(sessionID: string): Promise<boolean> {
     const cached = mainSession.get(sessionID);
     if (cached !== undefined) return cached;
@@ -808,43 +721,43 @@ export default async ({
       // Another message (a nudge sent at the same moment) leaves it for the command's own.
       if (typed !== null) typedCommands.delete(input.sessionID);
       // Never treat this plugin's own continue-workflow-nudge injection as a human turn.
-      const first = output.parts.find((p) => p.type === "text");
-      if (first?.text?.startsWith(NUDGE_SENTINEL)) return;
+      if (output.parts.some((p) => p.id !== undefined && ownNudgeParts.delete(p.id))) return;
+      // What the person typed is every text part opencode does not mark as its
+      // own: it leads with a synthetic note when an editor's open file or
+      // selection rides the message (opencode in Zed's terminal, or in VS
+      // Code's with the editor extension), and a client may send their words
+      // in more than one part. A message with none forwards its first text
+      // part.
+      const texts = output.parts.filter((p) => p.type === "text");
+      const own = texts.filter((p) => p.synthetic !== true && p.ignored !== true);
+      const said = own.length > 0 ? own.map((p) => p.text ?? "").join("\n") : texts[0]?.text;
       if (!(await isMainSession(input.sessionID))) return;
       sawHumanTurn.add(input.sessionID);
       interrupted.delete(input.sessionID);
       rejectedUnowned = false;
       if (!started.has(input.sessionID)) {
-        const result = await runCore({ hookFile: "aidlc-session-start.ts", input: {
+        const result = await runCore(
+          "aidlc-session-start.ts",
+          {
             hook_event_name: "SessionStart",
             source: "startup",
             session_id: input.sessionID,
-          } });
+          },
+          directory,
+        );
         // A fresh project has no state yet, so the core hook emits no context.
         // Retry on later human turns until an active workflow is available.
         if (sessionStartHandled(result.stdout)) started.add(input.sessionID);
-        // Plugin-contributed SessionStart rows. On registry-bearing faces the
-        // host merges a plugin's hooks.json alongside core's own registration;
-        // opencode has no registry, so the equivalent merge happens here. The
-        // composer is the row that matters most — it is what copies a plugin's
-        // stages, scopes, agents and knowledge into the install, so without
-        // this arm an opencode adopter installs a plugin whose content never
-        // arrives.
-        await Promise.all(
-          pluginRowsFor("SessionStart", directory).map((row) =>
-            runContributed({ hookFile: row.hookFile, input: {
-                hook_event_name: "SessionStart",
-                source: "startup",
-                session_id: input.sessionID,
-              } }),
-          ),
-        );
       }
-      await runCore({ hookFile: "aidlc-record-human-turn.ts", input: {
+      await runCore(
+        "aidlc-record-human-turn.ts",
+        {
           hook_event_name: "UserPromptSubmit",
           session_id: input.sessionID,
-          prompt: typed ?? first?.text ?? "",
-        } });
+          prompt: typed ?? said ?? "",
+        },
+        directory,
+      );
     },
 
     "command.execute.before": async (
@@ -855,19 +768,42 @@ export default async ({
       typedCommands.set(input.sessionID, showTypedCommand(output.parts, input.arguments));
     },
 
+    // One opencode process hosts every chat of a window, so the process tree
+    // names only the chat that started last. opencode asks for each shell
+    // command's environment and names the chat it runs for; that chat's owner
+    // makes the engine act on its own work. opencode's own terminal names no chat.
+    "shell.env": async (
+      input: { cwd: string; sessionID?: string; callID?: string },
+      output: { env: Record<string, string> },
+    ) => {
+      if (!input.sessionID) return;
+      try {
+        output.env.AIDLC_SESSION_OVERRIDE = await owningSession(input.sessionID);
+        output.env.AIDLC_SESSION_OVERRIDE_SOURCE = "payload";
+      } catch {
+        // A throw here fails the person's command; unconfirmed, the engine finds the chat as before.
+      }
+    },
+
     "tool.execute.before": async (
-      input: { tool: string; sessionID: string; callID: string },
+      // `agent` is supplied by OpenCode 2, whose tool events name the calling
+      // agent; OpenCode 1 omits it and the chat.message correlation is used.
+      input: { tool: string; sessionID: string; callID: string; agent?: string },
       output: { args: Record<string, unknown> },
     ) => {
       const args = output.args ?? {};
       if (input.tool === "task") {
-        const dispatch = await runCore({ hookFile: "aidlc-deliver-stage-rules.ts", input: {
+        const dispatch = await runCore(
+          "aidlc-deliver-stage-rules.ts",
+          {
             hook_event_name: "PreToolUse",
-            session_id: input.sessionID,
+            session_id: await owningSessionOrNone(input.sessionID),
             tool_name: "task",
             tool_input: args,
             cwd: directory,
-          } });
+          },
+          directory,
+        );
         if (dispatch.code === 2) {
           throw new Error(
             dispatch.stderr.trim() ||
@@ -891,7 +827,7 @@ export default async ({
           }
         }
       }
-      const namedAgent = sessionAgent.get(input.sessionID);
+      const namedAgent = input.agent ?? sessionAgent.get(input.sessionID);
       const delegatedAgent =
         namedAgent?.startsWith("aidlc-") && namedAgent.endsWith("-agent")
           ? namedAgent
@@ -901,10 +837,11 @@ export default async ({
         const violation = aidlcBashBoundaryViolation(command, aidlcEntrypoints, await currentShellDialect());
         if (violation) throw new Error(violation);
         // State-transition guard, parallel to the Claude/Kiro/Codex PreToolUse
-        // wiring. The state CLI's ownership check remains the hard floor; this
-        // gives the conductor the same immediate redirect the other harnesses
-        // get instead of a late CLI error.
-        const guard = await runCore({ hookFile: "aidlc-state-transition-guard.ts", input: {
+        // wiring: runtime integrity, and a named worker's lifecycle and routing
+        // commands. A direct stage-status verb is the state CLI's own to refuse.
+        const guard = await runCore(
+          "aidlc-state-transition-guard.ts",
+          {
             hook_event_name: "PreToolUse",
             // The guards judge the workflow of the session that owns this call.
             session_id: await owningSession(input.sessionID),
@@ -912,7 +849,9 @@ export default async ({
             tool_input: { command },
             cwd: directory,
             ...(delegatedAgent ? { agent_type: delegatedAgent } : {}),
-          } });
+          },
+          directory,
+        );
         if (guard.code === 2) {
           throw new Error(
             guard.stderr.trim() ||
@@ -943,13 +882,17 @@ export default async ({
                   toolInput: { file_path: filePath },
                 }));
         for (const call of freezeCalls) {
-          const freeze = await runCore({ hookFile: "aidlc-review-freeze.ts", input: {
+          const freeze = await runCore(
+            "aidlc-review-freeze.ts",
+            {
               hook_event_name: "PreToolUse",
               session_id: await owningSession(input.sessionID),
               tool_name: call.toolName,
               tool_input: call.toolInput,
               cwd: directory,
-            } });
+            },
+            directory,
+          );
           if (freeze.code === 2) {
             throw new Error(
               freeze.stderr.trim() ||
@@ -980,13 +923,17 @@ export default async ({
                   toolInput: { file_path: filePath },
                 }));
         for (const call of planCalls) {
-          const guard = await runCore({ hookFile: "aidlc-plan-approval-guard.ts", input: {
+          const guard = await runCore(
+            "aidlc-plan-approval-guard.ts",
+            {
               hook_event_name: "PreToolUse",
               tool_name: call.toolName,
               tool_input: call.toolInput,
               session_id: await owningSession(input.sessionID),
               cwd: directory,
-            } });
+            },
+            directory,
+          );
           if (guard.code === 2) {
             throw new Error(
               guard.stderr.trim() ||
@@ -1000,7 +947,9 @@ export default async ({
         const target =
           (args.subagent_type as string) ?? (args.agent as string) ?? "";
         if (target === "aidlc-developer-agent") {
-          const guard = await runCore({ hookFile: "aidlc-plan-approval-guard.ts", input: {
+          const guard = await runCore(
+            "aidlc-plan-approval-guard.ts",
+            {
               hook_event_name: "PreToolUse",
               tool_name: "Task",
               tool_input: {
@@ -1011,46 +960,15 @@ export default async ({
               },
               session_id: await owningSession(input.sessionID),
               cwd: directory,
-            } });
+            },
+            directory,
+          );
           if (guard.code === 2) {
             throw new Error(
               guard.stderr.trim() ||
                 "code-generation requires an approved plan before dispatching the developer agent",
             );
           }
-        }
-      }
-
-      // Plugin-contributed PreToolUse targets. The plugin's hook body reads the
-      // same ClaudeCodeHookInput shape core hooks do, so it inherits this
-      // adapter's normalisation and its reject contract (opencode blocks by
-      // THROWING, not by exit code — the code-2 convention is translated here
-      // exactly as it is for every core guard above).
-      for (const row of pluginRowsFor("PreToolUse", directory)) {
-        if (row.matcher && !matchesTool(row.matcher, input.tool)) continue;
-        // A file-shaped guard expects one call per path. reviewerCalls already
-        // fans a patch envelope into per-file Write calls, so reuse it and fall
-        // back to the raw args for tools it does not decompose (bash, task).
-        const fanned = reviewerCalls(input.tool, args);
-        const payloads =
-          fanned.length > 0
-            ? fanned.map((call) => ({
-                tool_name: call.toolName,
-                tool_input: call.toolInput,
-              }))
-            : [{ tool_name: claudeToolName(input.tool), tool_input: args }];
-        for (const payload of payloads) {
-          const contributed = await runContributed({ hookFile: row.hookFile, input: {
-              hook_event_name: "PreToolUse",
-              ...payload,
-              cwd: directory,
-              ...(delegatedAgent ? { agent_type: delegatedAgent } : {}),
-            } });
-          if (contributed.code === 2)
-            throw new Error(
-              contributed.stderr.trim() ||
-                `${row.target} denied this operation`,
-            );
         }
       }
 
@@ -1067,14 +985,18 @@ export default async ({
       if (identity === null) return;
 
       for (const call of calls) {
-        const result = await runCore({ hookFile: "aidlc-reviewer-scope.ts", input: {
+        const result = await runCore(
+          "aidlc-reviewer-scope.ts",
+          {
             hook_event_name: "PreToolUse",
             session_id: await owningSession(input.sessionID),
             tool_name: call.toolName,
             tool_input: call.toolInput,
             cwd: directory,
             ...identity,
-          } });
+          },
+          directory,
+        );
         if (result.code === 2) {
           throw new Error(result.stderr.trim() || "reviewer read-scope refused this tool call");
         }
@@ -1091,20 +1013,6 @@ export default async ({
       output?: { output?: string },
     ) => {
       const { tool, args } = input;
-      // Plugin-contributed PostToolUse rows run FIRST: the core arms below
-      // return early per tool, so dispatching after them would silently skip
-      // every plugin row on write, edit, patch and todo tools — the shape that
-      // makes a registration look present while never firing.
-      for (const row of pluginRowsFor("PostToolUse", directory)) {
-        if (row.matcher && !matchesTool(row.matcher, tool)) continue;
-        await runContributed({ hookFile: row.hookFile, input: {
-            hook_event_name: "PostToolUse",
-            tool_name: claudeToolName(tool),
-            tool_input: args,
-            tool_response: output?.output ?? "",
-            cwd: directory,
-          } });
-      }
       if (tool === "write" || tool === "edit" || tool === "apply_patch") {
         const paths =
           tool === "apply_patch"
@@ -1117,10 +1025,12 @@ export default async ({
             hook_event_name: "PostToolUse",
             tool_name: "Write",
             tool_input: { file_path: absolutePath },
+            // The process names only the chat that started last; the write is its own chat's.
+            session_id: await owningSessionOrNone(input.sessionID),
           };
           // audit THEN sensors, mirroring the Claude settings.json order.
-          await runCore({ hookFile: "aidlc-write-audit-log.ts", input: payload });
-          await runCore({ hookFile: "aidlc-run-sensors.ts", input: payload });
+          await runCore("aidlc-write-audit-log.ts", payload, directory);
+          await runCore("aidlc-run-sensors.ts", payload, directory);
         }
         return;
       }
@@ -1129,11 +1039,12 @@ export default async ({
           hook_event_name: "PostToolUse",
           tool_name: "Bash",
           tool_input: { command: (args.command as string) ?? "" },
-          session_id: input.sessionID,
+          session_id: await owningSessionOrNone(input.sessionID),
           tool_response: output?.output ?? "",
         };
-        const result = await runCore({ hookFile: "aidlc-rebuild-stage-graph.ts", input: payload });
+        const result = await runCore("aidlc-rebuild-stage-graph.ts", payload, directory);
         await showEngineErrorToast(result.stdout);
+        handModelNote(result.stdout, output);
         return;
       }
       if (tool === "todowrite") {
@@ -1142,34 +1053,41 @@ export default async ({
         const todos = (args.todos as Array<{ content?: string; status?: string }>) ?? [];
         const active = todos.find((t) => t.status === "in_progress");
         if (!active?.content) return;
-        await runCore({ hookFile: "aidlc-sync-workflow-state.ts", input: {
+        await runCore(
+          "aidlc-sync-workflow-state.ts",
+          {
             hook_event_name: "PostToolUse",
             tool_name: "TaskUpdate",
             tool_input: { status: "in_progress", activeForm: active.content },
-          } });
+            session_id: await owningSessionOrNone(input.sessionID),
+          },
+          directory,
+        );
         return;
       }
       if (tool === "task") {
-        const subagentStop = {
-          hook_event_name: "SubagentStop",
-          session_id: input.sessionID,
-          agent_type:
-            (args.subagent_type as string) ?? (args.agent as string) ?? "unknown",
-          agent_id: input.callID,
-        };
-        await runCore({ hookFile: "aidlc-log-subagent.ts", input: subagentStop });
-        // Contributed SubagentStop hooks see the SAME payload core's does. The
-        // event cannot block, so each runs for its side effect and its exit code
-        // is not a verdict.
-        for (const row of pluginRowsFor("SubagentStop", directory)) {
-          await runContributed({ hookFile: row.hookFile, input: subagentStop });
-        }
+        await runCore(
+          "aidlc-log-subagent.ts",
+          {
+            hook_event_name: "SubagentStop",
+            session_id: await owningSessionOrNone(input.sessionID),
+            agent_type:
+              (args.subagent_type as string) ?? (args.agent as string) ?? "unknown",
+            agent_id: input.callID,
+          },
+          directory,
+        );
       }
     },
 
     "experimental.session.compacting": async (input: { sessionID: string }) => {
-      // The compacting session's own id: a child's compaction concerns the child.
-      await runCore({ hookFile: "aidlc-validate-state.ts", input: { hook_event_name: "PreCompact", session_id: input.sessionID } });
+      // A child's compaction is recorded for the chat that owns it: a child's own
+      // id is no chat of its own.
+      await runCore(
+        "aidlc-validate-state.ts",
+        { hook_event_name: "PreCompact", session_id: await owningSessionOrNone(input.sessionID) },
+        directory,
+      );
     },
 
     event: async ({ event }: { event: { type: string; properties?: Record<string, unknown> } }) => {
@@ -1203,17 +1121,21 @@ export default async ({
       idleInFlight.add(sessionID);
       // opencode provides no stop_hook_active flag and no transcript, so the
       // core hook's run-mode-aware no-progress ceiling is the loop guard here
-      // (same degradation profile as Kiro). The absent transcript no longer makes
+      // (same degradation profile as Kiro). The absent transcript does not make
       // the conversational carve-out inert: the core hook falls back to the
       // `.aidlc-engine/human-turn` / `.aidlc-engine/engine-touch` mtime comparison, and the
       // chat.message arm's aidlc-record-human-turn.ts forward writes the former.
       let nudgeReason: string | null = null;
       try {
-        const res = await runCore({ hookFile: "aidlc-continue-workflow.ts", input: {
+        const res = await runCore(
+          "aidlc-continue-workflow.ts",
+          {
             hook_event_name: "Stop",
             stop_hook_active: false,
             session_id: sessionID,
-          } });
+          },
+          directory,
+        );
         try {
           const parsed = JSON.parse(res.stdout) as { decision?: string; reason?: string };
           if (parsed.decision === "block" && parsed.reason) {
@@ -1229,11 +1151,280 @@ export default async ({
       // deliver the continuation's next idle while this promise is pending.
       if (nudgeReason) {
         // Synthetic: the agent reads it, the person's chat does not show it.
+        const id = `prt_${randomUUID()}`;
+        ownNudgeParts.add(id);
         await client.session.prompt({
           path: { id: sessionID },
-          body: { parts: [{ type: "text", text: `${NUDGE_SENTINEL} ${nudgeReason}`, synthetic: true }] },
+          body: { parts: [{ id, type: "text", text: nudgeReason, synthetic: true }] },
         });
       }
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// OpenCode 2 entry point.
+//
+// OpenCode 2 ignores V1 plugin functions: it reads `id` + `setup(ctx)` from the
+// default export and registers hooks on the context's domains. Rather than
+// fork the hook logic, setup() builds the V1 hook map above over a small
+// client shim and forwards each V2 hook or event to the V1 hook it replaces
+// (live-verified on opencode 2.0.24):
+//
+//   V2 moment                                  → V1 hook driven
+//   ------------------------------------------------------------------------
+//   session.hook("prompt")                     → chat.message
+//   tool.hook("execute.before")                → tool.execute.before
+//   tool.hook("execute.after")                 → tool.execute.after
+//   session.hook("compaction")                 → experimental.session.compacting
+//   event session.execution.succeeded          → event session.idle
+//   event session.execution.interrupted        → event session.error (aborted)
+//   event permission.replied                   → event permission.replied
+//   shell.hook("create.before")                → shell.env
+//
+// V2's shell event carries the command's env but no session, so the shell
+// tool's execute.before (which names the session and fires first) records it
+// per command, and create.before consumes it. A command typed in opencode's
+// own terminal has no tool call ahead of it and names no chat, as on V1.
+//
+// V2 renames built-in tools (shell, subagent, patch); toV1Tool maps them back
+// so the hook map keeps one vocabulary. The nudge is sent with
+// session.synthetic, which V2 never routes through the prompt hook, so it can
+// never be recorded as a human turn.
+//
+// Degradations vs the V1 path (documented in docs/guide/harnesses/opencode.md):
+//   - V2 has no todo tool, so aidlc-sync-workflow-state.ts (todowrite) never
+//     runs; workflow state is still advanced by the engine's own commands.
+//   - V2 has no command.execute.before: the person's chat shows the /aidlc
+//     template. The prompt hook gets it expanded, so typedAidlcArguments
+//     reads what they typed back out of it and the turn records that line.
+//   - There is no TUI toast channel; the conductor skill still prints the
+//     engine-error relay message verbatim.
+//   - The shell setting is not exposed, so the bash boundary reads commands
+//     in the platform's default shell dialect.
+// ---------------------------------------------------------------------------
+
+/** A V2 hook callback; each registration narrows `event` to the shape it reads. */
+export type V2HookCallback = (event: never) => Promise<void> | void;
+
+/** The subset of the OpenCode 2 plugin context this adapter uses. */
+export type V2PluginContext = {
+  location: { directory: string };
+  session: {
+    get(input: { sessionID: string }): Promise<{ parentID?: string } | undefined>;
+    synthetic(input: { sessionID: string; text: string }): Promise<unknown>;
+    hook(name: string, callback: V2HookCallback): Promise<unknown>;
+  };
+  tool: {
+    hook(name: string, callback: V2HookCallback): Promise<unknown>;
+  };
+  /** Absent on hosts older than the shell domain; the override is then skipped. */
+  shell?: {
+    hook(name: string, callback: V2HookCallback): Promise<unknown>;
+  };
+  event: {
+    subscribe(options?: { signal?: AbortSignal }): AsyncIterable<{ type: string; data?: Record<string, unknown> }>;
+  };
+};
+
+/** Unit-test seams for the V2 entry point (production passes none). */
+export type V2SetupOptions = Pick<PluginInput, "aidlcEntrypoints" | "aidlcCommand" | "platform">;
+
+const V2_TOOL_NAMES: Record<string, string> = {
+  shell: "bash",
+  subagent: "task",
+  patch: "apply_patch",
+};
+
+function toV1Tool(tool: string): string {
+  return V2_TOOL_NAMES[tool] ?? tool;
+}
+
+/** The text a V2 tool result carries, as V1's string `output`. */
+function v2ToolOutput(result: unknown): string {
+  const r = result as { output?: { output?: unknown }; content?: Array<{ type?: string; text?: string }> };
+  if (typeof r?.output?.output === "string") return r.output.output;
+  return (r?.content ?? [])
+    .filter((c) => c.type === "text" && typeof c.text === "string")
+    .map((c) => c.text)
+    .join("\n");
+}
+
+type V1Hooks = Awaited<ReturnType<typeof createV1Adapter>>;
+
+// What the person typed after /aidlc, read back from the expanded template
+// OpenCode 2 hands the prompt hook: the installed command file's text before
+// $ARGUMENTS, then their words, then the skill text its shell line prints. Null
+// for any other prompt, or when the command file cannot be read.
+function typedAidlcArguments(text: string, directory: string): string | null {
+  let file: string;
+  try {
+    file = readFileSync(join(directory, ".opencode", "command", "aidlc.md"), "utf-8").replace(/\r\n/g, "\n");
+  } catch {
+    return null;
+  }
+  const frontmatterEnd = file.startsWith("---\n") ? file.indexOf("\n---\n", 4) : -1;
+  const body = frontmatterEnd < 0 ? file : file.slice(frontmatterEnd + "\n---\n".length);
+  const at = body.indexOf("$ARGUMENTS");
+  const prompt = text.replace(/\r\n/g, "\n");
+  if (at <= 0 || !prompt.startsWith(body.slice(0, at))) return null;
+  const rest = prompt.slice(at);
+  const skill = rest.indexOf("\n\n---\nname: aidlc\n");
+  const end = skill >= 0 ? skill : rest.indexOf("\n\n");
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
+/**
+ * Wire the V1 hook map onto an OpenCode 2 context. Returns the cleanup that
+ * stops the event subscription. Reached through the default export's setup().
+ */
+async function setupV2(
+  ctx: V2PluginContext,
+  options: V2SetupOptions = {},
+): Promise<() => void> {
+  // Parents learned from session.created, so a child is known even before a
+  // session lookup answers.
+  const parents = new Map<string, string | null>();
+  const client: PluginInput["client"] = {
+    session: {
+      get: async ({ path }) => {
+        const known = parents.get(path.id);
+        if (known !== undefined) return { data: known ? { parentID: known } : {} };
+        const info = await ctx.session.get({ sessionID: path.id });
+        if (!info) return {};
+        return { data: info.parentID ? { parentID: info.parentID } : {} };
+      },
+      prompt: async ({ path, body }) => {
+        const text = body.parts.map((p) => p.text).join("\n");
+        return ctx.session.synthetic({ sessionID: path.id, text });
+      },
+    },
+  };
+  // Sessions of shell tool calls waiting for their shell, oldest first per command.
+  const pendingShells = new Map<string, Array<{ callID: string; sessionID: string }>>();
+  const takePendingShell = (command: string): string | undefined => {
+    const queue = pendingShells.get(command);
+    const entry = queue?.shift();
+    if (queue && queue.length === 0) pendingShells.delete(command);
+    return entry?.sessionID;
+  };
+  const dropPendingShell = (command: string, callID: string): void => {
+    const queue = pendingShells.get(command);
+    const at = queue?.findIndex((e) => e.callID === callID) ?? -1;
+    if (queue && at >= 0) queue.splice(at, 1);
+    if (queue && queue.length === 0) pendingShells.delete(command);
+  };
+  const hooks: V1Hooks = await createV1Adapter({
+    client,
+    directory: ctx.location.directory,
+    ...options,
+  });
+
+  await ctx.session.hook("prompt", async (event: {
+    sessionID: string;
+    prompt: { text?: string };
+  }) => {
+    const text = event.prompt?.text ?? "";
+    const parts: ChatPart[] = [{ type: "text", text }];
+    const args = typedAidlcArguments(text, ctx.location.directory);
+    if (args !== null) {
+      await hooks["command.execute.before"]({ command: "aidlc", sessionID: event.sessionID, arguments: args }, { parts });
+    }
+    await hooks["chat.message"]({ sessionID: event.sessionID }, { parts });
+  });
+
+  await ctx.tool.hook("execute.before", async (event: {
+    tool: string;
+    sessionID: string;
+    id: string;
+    agent?: string;
+    input: Record<string, unknown>;
+  }) => {
+    const output = { args: event.input ?? {} };
+    await hooks["tool.execute.before"](
+      { tool: toV1Tool(event.tool), sessionID: event.sessionID, callID: event.id, agent: event.agent },
+      output,
+    );
+    if (output.args !== event.input) event.input = output.args;
+    const command = output.args?.command;
+    if (event.tool === "shell" && typeof command === "string") {
+      const queue = pendingShells.get(command) ?? [];
+      queue.push({ callID: event.id, sessionID: event.sessionID });
+      pendingShells.set(command, queue);
+    }
+  });
+
+  await ctx.tool.hook("execute.after", async (event: {
+    tool: string;
+    sessionID: string;
+    id: string;
+    input: Record<string, unknown>;
+    status: "completed" | "error";
+    result?: unknown;
+  }) => {
+    const tool = toV1Tool(event.tool);
+    // A shell call that never reached a shell must not name the next one.
+    if (event.tool === "shell" && typeof event.input?.command === "string") {
+      dropPendingShell(event.input.command, event.id);
+    }
+    // A failed write changed nothing to audit; a failed subagent still ended.
+    if (event.status !== "completed" && tool !== "task") return;
+    await hooks["tool.execute.after"](
+      { tool, sessionID: event.sessionID, callID: event.id, args: event.input ?? {} },
+      { output: v2ToolOutput(event.result) },
+    );
+  });
+
+  await ctx.shell?.hook("create.before", async (event: {
+    command: string;
+    cwd: string;
+    env: Record<string, string>;
+  }) => {
+    const sessionID = takePendingShell(event.command);
+    if (!sessionID || !event.env) return;
+    await hooks["shell.env"]({ cwd: event.cwd, sessionID }, { env: event.env });
+  });
+
+  await ctx.session.hook("compaction", async (event: { sessionID: string }) => {
+    await hooks["experimental.session.compacting"]({ sessionID: event.sessionID });
+  });
+
+  const controller = new AbortController();
+  void (async () => {
+    try {
+      for await (const ev of ctx.event.subscribe({ signal: controller.signal })) {
+        const data = ev.data ?? {};
+        const sessionID = typeof data.sessionID === "string" ? data.sessionID : "";
+        if (!sessionID) continue;
+        if (ev.type === "session.created") {
+          parents.set(sessionID, typeof data.parentID === "string" ? data.parentID : null);
+        } else if (ev.type === "session.execution.succeeded") {
+          await hooks.event({ event: { type: "session.idle", properties: { sessionID } } });
+        } else if (ev.type === "session.execution.interrupted") {
+          await hooks.event({
+            event: { type: "session.error", properties: { sessionID, error: { name: "MessageAbortedError" } } },
+          });
+        } else if (ev.type === "permission.replied") {
+          await hooks.event({ event: { type: "permission.replied", properties: { sessionID, reply: data.reply } } });
+        }
+      }
+    } catch {
+      /* the stream ends when the plugin unloads */
+    }
+  })();
+  return () => controller.abort();
+}
+
+// One default export serves both hosts: OpenCode 1 (1.18.29+) calls server(),
+// OpenCode 2 calls setup(). OpenCode 1.18 also calls setup() with a partial
+// context that has no tool or session domain; setup() returns early there so
+// the V1 hooks never run twice.
+export default {
+  id: "aidlc",
+  // `options` is a unit-test seam; OpenCode passes only the context.
+  async setup(ctx: V2PluginContext, options?: V2SetupOptions): Promise<(() => void) | undefined> {
+    if (typeof ctx?.tool?.hook !== "function" || typeof ctx?.session?.hook !== "function") return undefined;
+    return setupV2(ctx, options);
+  },
+  server: createV1Adapter,
 };
