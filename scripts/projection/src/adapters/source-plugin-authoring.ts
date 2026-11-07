@@ -1,3 +1,4 @@
+import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { z } from "zod";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import type { PreparedRuntimeInput, RuntimeInputPreparer, RuntimeInputRequest } from "../domain/runtime-inputs.ts";
@@ -87,7 +88,12 @@ const prepareNative = async ({ inputs }) => {
     const templates = await loadTemplates({ inputs });
     const targets = api.projectPluginTargets({ declarations: declarations.declarations });
     const prepared = api.preparePluginAuthoringArtifacts({ targets, agentNames: sourceNames({ inputs, prefix: "core/agents/" }), stageNames: sourceNames({ inputs, prefix: "core/aidlc-common/stages/" }), templates });
-    return admitPreparedArtifacts({ prepared });
+    const admitted = admitPreparedArtifacts({ prepared });
+    if (admitted.status !== "ok" || input.agentFrontmatter === undefined) return admitted;
+    const declaration = declarations.declarations.find(item => item.name === input.harness)?.manifest;
+    if (JSON.stringify(declaration?.pluginAgentFrontmatter) !== JSON.stringify(input.agentFrontmatter)) return unavailable({ detail: "plugin authoring requires the qualified authored persona frontmatter" });
+    const text = ["---", ...declaration.pluginAgentFrontmatter, "---", ""].join(String.fromCharCode(10));
+    return { ...admitted, files: [...admitted.files, { file: "tools/data/plugin-agent.md", bytes: Array.from(new TextEncoder().encode(text)) }] };
   } catch { return unavailable({ detail: "plugin authoring native source APIs unavailable" }); }
 };
 const admitStableAuthoring = ({ before, after, projected }) => JSON.stringify(before.inputs) === JSON.stringify(after.inputs)
@@ -125,7 +131,7 @@ const admitAuthoring = ({ prepared, request }: { readonly prepared: PreparedAuth
   if ([modulePath, "scripts/manifest-types.ts", `harness/${request.binding.harness}/manifest.ts`].some((path) => !inputs.includes(path)) || inputs.some((path) => sourcePathStatus({ path }) !== "safe") || new Set(inputs.map((path) => path.toLowerCase())).size !== inputs.length) return failure({ code: "foreign-content", detail: "plugin authoring requires unique safe complete source inventory witnesses including its native API, manifest contract and selected harness" });
   const files = prepared.files.map((file) => file.file);
   const templatePaths = inputs.filter((path) => path.startsWith(templateRoot)).map((path) => `tools/data/plugin-hooks-template/${path.slice(templateRoot.length)}`);
-  const required = [...canonicalFiles, ...templatePaths];
+  const required = [...canonicalFiles, ...templatePaths, ...(qualifiedHarnessProfile(request.binding)?.pluginAgentFrontmatter === undefined ? [] : ["tools/data/plugin-agent.md"])];
   if (new Set(files.map((path) => path.toLowerCase())).size !== files.length || files.some((path) => pathStatus({ path }) !== "safe" || !required.includes(path)) || required.some((path) => !files.includes(path))) return failure({ code: "foreign-content", detail: "plugin authoring must emit both native JSON files and exactly its witnessed template paths without aliases or collisions" });
   return { status: "ok", value: prepared };
 };
@@ -145,7 +151,7 @@ const authoringEnvironment = ({ inherited, root }: { readonly inherited: Readonl
 const prepareAuthoring = ({ request, binary, operations }: { readonly request: RuntimeInputRequest; readonly binary: string; readonly operations: SourcePluginAuthoringOperations }): Outcome<PreparedRuntimeInput> => {
   try {
     const paths = operations.paths(request);
-    return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot }), env: authoringEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
+    return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harness: request.binding.harness, agentFrontmatter: qualifiedHarnessProfile(request.binding)?.pluginAgentFrontmatter }), env: authoringEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
   } catch { return failure({ detail: "plugin authoring process capability unavailable" }); }
 };
 export const createSourcePluginAuthoringPreparer = ({ binary = "bun", operations = createSourcePluginAuthoringOperations() }: { readonly binary?: string; readonly operations?: SourcePluginAuthoringOperations } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {

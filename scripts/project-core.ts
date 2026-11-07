@@ -65,7 +65,7 @@ async function assembleCore(request: ClaudeCopyRequest, binding: HarnessBinding,
     onboardingCache.set(key, prepared);
     return prepared;
   } };
-  const assemble = createPublicationAssembler({ request: preparation, assemble: assembleAuthoredCoreDistribution, createServices: () => createCoreServices({ buildVersion, environmentCap }, onboarding, copy), createSource: request => createSourceContextDistributionSource({ ...request, context: config => createSourceRuntimeContextReader({ ...config, delivery: copy === undefined ? "copy" : "native" }) }), createSettings: request => createHarnessSettingsDistributionSource({ ...request, onboarding }), createModules: request => createSourceModuleDistributionSource({ ...request, prepare: () => createSourceRuntimeModulePreparer({ buildVersion }) }) });
+  const assemble = createPublicationAssembler({ request: preparation, assemble: assembleAuthoredCoreDistribution, createServices: () => createCoreServices({ buildVersion, environmentCap }, onboarding, copy), createSource: request => createSourceContextDistributionSource({ ...request, context: config => createSourceRuntimeContextReader({ ...config, delivery: copy === undefined ? "copy" : "native" }) }), createSettings: request => createHarnessSettingsDistributionSource({ ...request, onboarding, environmentCap }), createModules: request => createSourceModuleDistributionSource({ ...request, prepare: () => createSourceRuntimeModulePreparer({ buildVersion }) }) });
   try {
     const prepared = await assemble({ location: { sourceRoot, root: runtimeRoot, basis: { source: { kind: "core", id: "framework" }, pin } }, binding, contextRoot: workspace, mode, modelInvocation: profile.modelInvocation, stageDocuments: "project-authored", methodRuntime: "prepare-authored", workflowReferences: "prepare-compiled" });
     if (prepared.status === "invalid") throw new Error(prepared.findings.map(finding => `${finding.subject}: ${finding.detail}`).join("\n"));
@@ -102,7 +102,7 @@ export async function projectCoreNative(request: ClaudeCopyRequest, binding: Har
 }
 if (import.meta.main) {
   const input: unknown = await Bun.stdin.json();
-  const request = copyRequestSchema.extend({ harness: z.enum(["claude", "codex", "cursor"]), delivery: z.enum(["copy", "native"]) }).parse(input);
+  const request = copyRequestSchema.extend({ harness: z.enum(["claude", "codex", "cursor", "kiro"]), delivery: z.enum(["copy", "native"]) }).parse(input);
   const binding = qualifiedHarnessByName({ name: request.harness, harnessDir: `.${request.harness}` });
   if (binding === null) throw new Error("Host projection profile is not qualified");
   const profile = copyRequestSchema.parse({ sourceRoot: request.sourceRoot, outRoot: request.outRoot, buildVersion: request.buildVersion, environmentCap: request.environmentCap });

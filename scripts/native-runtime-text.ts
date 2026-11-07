@@ -45,6 +45,8 @@ export function prepareNativeRuntimeText(source: string, harnessDir: string): st
   if (harnessDir === ".claude") return prepareClaudeNativeRuntimeText(source);
   if (harnessDir === ".cursor") return projectNativeCommandText({ source, context: createNativeCommandContext({ harnessDir }) })
     .replace(/\bbun\s+"?\.cursor\/hooks\/aidlc-cursor-adapter\.ts"?/gi, trustedCommand("adapter cursor"));
+  if (harnessDir === ".kiro") return projectNativeCommandText({ source, context: createNativeCommandContext({ harnessDir }) })
+    .replace(/\bbun\s+"?\.kiro\/hooks\/aidlc-kiro-adapter\.ts"?/gi, trustedCommand("adapter kiro"));
   if (harnessDir !== ".codex") throw new Error("Unsupported native runtime harness");
   return projectNativeCommandText({ source, context: createNativeCommandContext({ harnessDir }) })
     .replace(/\bbun\s+"?\.codex\/hooks\/aidlc-codex-adapter\.ts"?/gi, trustedCommand("adapter codex"));

@@ -47,7 +47,7 @@ const prepare = async () => {
     const delivery = await module("scripts/projection/src/adapters/qualified-delivery-policy.ts");
     delivery.qualifyDeliveryDeclaration(manifest, request.profile);
     const documents = request.profile.entryMapping === "manifest" ? [...request.profile.entryDocuments.map(document => ({ src: document.source, dst: document.destination.slice(request.harnessDir.length + 1) })), { src: request.profile.referenceTemplate, dst: request.profile.referenceDestination.slice(request.harnessDir.length + 1) }] : [];
-    const ordinary = [...mappings, ...documents, ...request.profile.settingsMappings];
+    const ordinary = [...mappings, ...documents, ...request.profile.settingsMappings, ...(request.profile.agentMappings ?? [])];
     const expected = [...ordinary.map(mapping => ({...mapping, projectRoot: false, copyOnly: false})), ...roots.map(mapping => ({...mapping, projectRoot: true, copyOnly: false})), ...request.profile.copyOnlyRoots.map(mapping => ({src:mapping.src,dst:mapping.dst,projectRoot:true,copyOnly:true}))];
     const matches = (file, mapping) => file.src === mapping.src && file.dst === mapping.dst && (file.projectRoot ?? false) === mapping.projectRoot && (file.copyOnly ?? false) === mapping.copyOnly && Object.keys(file).every(key => ["src", "dst", "projectRoot", "copyOnly"].includes(key));
     if (manifest.name !== request.profile.harness || manifest.harnessDir !== request.harnessDir || !Array.isArray(declared) || declared.length !== expected.length || declared.some(file => !expected.some(mapping => matches(file,mapping))) || expected.some(mapping => declared.filter(file=>matches(file,mapping)).length !== 1)) return unavailable({ detail: "runtime modules require the qualified host runtime and root mappings" });
