@@ -49,7 +49,7 @@ concurrency:
 # Temporary pause for the listed refactor drafts; non-draft behavior is unchanged.
 jobs:
   check:
-    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44","review/refactor-codex-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Checks (contracts + smoke + production guards)
     runs-on: ubuntu-latest
     timeout-minutes: 300
@@ -177,7 +177,7 @@ jobs:
           if-no-files-found: error
 
   deterministic:
-    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44","review/refactor-codex-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Tests (${{ matrix.runner }}, ${{ matrix.suite.name }})
     strategy:
       fail-fast: false
@@ -635,7 +635,7 @@ jobs:
     name: Tests (smoke + unit)
     # Still collect failures, but let a superseded run release its concurrency
     # slot instead of waiting for this summary job to obtain another runner.
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44"]'), github.head_ref) || !github.event.pull_request.draft) }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44","review/refactor-codex-upstream44"]'), github.head_ref) || !github.event.pull_request.draft) }}
     needs: [check, deterministic, test_native_terminal, test_live_isolation]
     runs-on: ubuntu-latest
     steps:
