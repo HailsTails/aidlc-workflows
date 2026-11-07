@@ -17,13 +17,13 @@ test("settings prepare against delivered runtime paths, then admit bytes before 
 });
 test("merely supplying a dispatcher does not establish source-prepared settings authority", async () => {
   const services = fixture();
-  expect(await prepareHarnessSettings({ request: { ...request, seed: { ...request.seed, inputPreparations: [] } }, services })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "harness-settings", detail: "copy-channel settings require the Claude source-prepared runtime dispatcher; permissions are not inferred from arbitrary files" }] });
+  expect(await prepareHarnessSettings({ request: { ...request, seed: { ...request.seed, inputPreparations: [] } }, services })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "harness-settings", detail: "harness settings require the source-prepared runtime dispatcher; permissions are not inferred from arbitrary files" }] });
   expect(services.preparer.prepare).not.toHaveBeenCalled();
   expect(services.admit).not.toHaveBeenCalled();
 });
 test("a different harness cannot borrow Claude settings authority", async () => {
   const services = fixture();
-  expect(await prepareHarnessSettings({ request: { ...request, seed: { ...request.seed, binding: { harness: "cursor", directory: ".cursor" } } }, services })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "harness-settings", detail: "copy-channel settings require the Claude source-prepared runtime dispatcher; permissions are not inferred from arbitrary files" }] });
+  expect(await prepareHarnessSettings({ request: { ...request, seed: { ...request.seed, binding: { harness: "cursor", directory: ".cursor" } } }, services })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "harness-settings", detail: "harness settings require the source-prepared runtime dispatcher; permissions are not inferred from arbitrary files" }] });
   expect(services.preparer.prepare).not.toHaveBeenCalled();
 });
 test("native refusal prevents byte admission", async () => {

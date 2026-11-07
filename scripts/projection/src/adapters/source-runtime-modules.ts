@@ -16,7 +16,7 @@ const request = await Bun.stdin.json();
 const required = ${JSON.stringify(requiredSources)};
 const mappings = request.profile?.runtimeMappings ?? [];
 const hostRoot = "harness/" + request.profile?.harness;
-const hostSources = mappings.length > 0 ? [hostRoot + "/manifest.ts", ...mappings.map(mapping => hostRoot + "/" + mapping.src)] : [];
+const hostSources = mappings.length > 0 ? ["scripts/projection/src/adapters/qualified-delivery-policy.ts", hostRoot + "/manifest.ts", ...mappings.map(mapping => hostRoot + "/" + mapping.src)] : [];
 const unavailable = ({ detail }) => ({ status: "unavailable", detail });
 const sourceFiles = async directory => {
   const fs = await import("node:fs/promises");
@@ -44,9 +44,13 @@ const prepare = async () => {
     const manifest = (await module(hostRoot + "/manifest.ts")).default;
     const declared = manifest.harnessFiles;
     const roots = request.profile.rootMappings;
-    const isRuntime = file => mappings.some(mapping => file.src === mapping.src && file.dst === mapping.dst && file.projectRoot !== true && !file.copyOnly && Object.keys(file).every(key => ["src", "dst", "projectRoot"].includes(key)));
-    const isRoot = file => roots.some(mapping => file.src === mapping.src && file.dst === mapping.dst && file.projectRoot === true && !file.copyOnly);
-    if (manifest.name !== request.profile.harness || manifest.harnessDir !== request.harnessDir || !Array.isArray(declared) || declared.length !== mappings.length + roots.length || declared.some(file => !isRuntime(file) && !isRoot(file)) || mappings.some(mapping => declared.filter(file => file.src === mapping.src && file.dst === mapping.dst && isRuntime(file)).length !== 1) || roots.some(mapping => declared.filter(file => file.src === mapping.src && file.dst === mapping.dst && isRoot(file)).length !== 1) || manifest.nativeRootIntegrations !== undefined || manifest.nativeReplacements !== undefined) return unavailable({ detail: "runtime modules require the qualified host runtime and root mappings" });
+    const delivery = await module("scripts/projection/src/adapters/qualified-delivery-policy.ts");
+    delivery.qualifyDeliveryDeclaration(manifest, request.profile);
+    const documents = request.profile.entryMapping === "manifest" ? [...request.profile.entryDocuments.map(document => ({ src: document.source, dst: document.destination.slice(request.harnessDir.length + 1) })), { src: request.profile.referenceTemplate, dst: request.profile.referenceDestination.slice(request.harnessDir.length + 1) }] : [];
+    const ordinary = [...mappings, ...documents, ...request.profile.settingsMappings];
+    const expected = [...ordinary.map(mapping => ({...mapping, projectRoot: false, copyOnly: false})), ...roots.map(mapping => ({...mapping, projectRoot: true, copyOnly: false})), ...request.profile.copyOnlyRoots.map(mapping => ({src:mapping.src,dst:mapping.dst,projectRoot:true,copyOnly:true}))];
+    const matches = (file, mapping) => file.src === mapping.src && file.dst === mapping.dst && (file.projectRoot ?? false) === mapping.projectRoot && (file.copyOnly ?? false) === mapping.copyOnly && Object.keys(file).every(key => ["src", "dst", "projectRoot", "copyOnly"].includes(key));
+    if (manifest.name !== request.profile.harness || manifest.harnessDir !== request.harnessDir || !Array.isArray(declared) || declared.length !== expected.length || declared.some(file => !expected.some(mapping => matches(file,mapping))) || expected.some(mapping => declared.filter(file=>matches(file,mapping)).length !== 1)) return unavailable({ detail: "runtime modules require the qualified host runtime and root mappings" });
     modules.push(...mappings.map(mapping => mapping.dst));
   }
   const binding = { invoke: request.invoke, toolPrefix: "bun " + request.harnessDir + "/tools/", trustedNamespace: commands.TRUSTED_ROUTE_NAMESPACE };
@@ -86,7 +90,7 @@ const admitModuleEvidence = ({ prepared, request }: { readonly prepared: Prepare
   const files = prepared.files.map((file) => file.file);
   const profile = qualifiedHarnessProfile(request.binding);
   const mappings = profile?.runtimeMappings ?? [];
-  const hostSources = mappings.length === 0 ? [] : [`harness/${request.binding.harness}/manifest.ts`, ...mappings.map(mapping => `harness/${request.binding.harness}/${mapping.src}`)];
+  const hostSources = mappings.length === 0 ? [] : ["scripts/projection/src/adapters/qualified-delivery-policy.ts", `harness/${request.binding.harness}/manifest.ts`, ...mappings.map(mapping => `harness/${request.binding.harness}/${mapping.src}`)];
   if (hostSources.some(path => !inputs.includes(path)) || mappings.some(mapping => !prepared.modules.includes(mapping.dst)) || inputs.some(path => path.startsWith("harness/") && !hostSources.includes(path))) return failure({ code: "foreign-content", detail: "runtime host mappings require the selected host and complete manifest/adapter evidence" });
   if (requiredSources.some((path) => !inputs.includes(path)) || inputs.some((path) => witnessPathStatus({ path, hostSources }) !== "safe") || uniquePaths({ paths: inputs }) !== "unique") return failure({ code: "foreign-content", detail: "runtime modules require complete unique safe core/tools, core/hooks, core/projection and scripts witnesses including all native APIs" });
   if (prepared.modules.some((path) => modulePathStatus({ path }) !== "safe" || !inputs.includes(mappings.some(mapping => mapping.dst === path) ? `harness/${request.binding.harness}/${mappings.find(mapping => mapping.dst === path)!.src}` : `core/${path}`) || !files.includes(path)) || uniquePaths({ paths: prepared.modules }) !== "unique") return failure({ code: "foreign-content", detail: "runtime modules require unique direct module witnesses and a prepared output for each module" });

@@ -54,6 +54,35 @@ const applyCompatibilityPolicy = ({ imported, request, sha256, prose }: { readon
   return collectDocuments({ prepared: request.sources.documents.map((document) => prepareDocument({ document, policy: parsed.data, request, prose })), request, sha256 });
 };
 const retainStablePreparation = ({ prepared, before, after }: { readonly prepared: Outcome<PreparedHarnessDocuments>; readonly before: string; readonly after: string }): Outcome<PreparedHarnessDocuments> => before === after ? prepared : failure({ code: "foreign-content", detail: "earlier-release policy changed during entry document preparation" });
+const prepareDeliveryDocuments = async ({ prepared, request, operations }: { readonly prepared: PreparedHarnessDocuments; readonly request: HarnessDocumentPreparationRequest; readonly operations: HarnessDocumentPreparationOperations }): Promise<Outcome<PreparedHarnessDocuments>> => {
+  const profile = qualifiedHarnessProfile(request.context);
+  if (profile === null || profile.nativeTextSources.length === 0) return { status: "ok", value: prepared };
+  const paths = ["scripts/projection/src/adapters/qualified-delivery-policy.ts", `harness/${profile.harness}/manifest.ts`];
+  const observed = [];
+  for (const path of paths) {
+    const bytes = await operations.read({sourceRoot:request.sourceRoot,path});
+    if (bytes.status === "invalid") return bytes;
+    const sha256 = operations.digest({bytes:bytes.value});
+    const previous = prepared.inputs.find(input => input.path === path);
+    if (previous !== undefined && previous.sha256 !== sha256) return failure({code:"foreign-content",detail:"delivery declaration changed after document observation"});
+    const loaded = await operations.module({sourceRoot:request.sourceRoot,path,sha256});
+    if (loaded.status === "invalid") return loaded;
+    observed.push({path,sha256,module:loaded.value});
+  }
+  const policy = z.object({qualifyDeliveryDeclaration:z.custom<(declaration:unknown,profile:unknown)=>void>(value=>typeof value === "function"),prepareQualifiedNativeDocument:z.custom<(input:unknown)=>string>(value=>typeof value === "function")}).safeParse(observed[0]!.module);
+  const manifest = z.object({default:z.unknown()}).safeParse(observed[1]!.module);
+  if (!policy.success || !manifest.success) return failure({detail:"qualified document delivery APIs unavailable"});
+  try {
+    policy.data.qualifyDeliveryDeclaration(manifest.data.default,profile);
+    const documents = prepared.documents.map(document => ({...document,text:request.context.invocation === "aidlc" ? policy.data.prepareQualifiedNativeDocument({declaration:manifest.data.default,profile,path:document.authored.origin.path,text:document.text}) : document.text,authoring:[...document.authoring,{...request.basis,path:paths[0]!}]}));
+    for (const input of observed) {
+      const after = await operations.read({sourceRoot:request.sourceRoot,path:input.path});
+      if (after.status === "invalid") return after;
+      if (operations.digest({bytes:after.value}) !== input.sha256) return failure({code:"foreign-content",detail:"delivery sources changed during document preparation"});
+    }
+    return {status:"ok",value:{documents,inputs:[...prepared.inputs,...observed.filter(input=>!prepared.inputs.some(previous=>previous.path===input.path)).map(({path,sha256})=>({path,sha256}))]}};
+  } catch { return failure({detail:"qualified native document delivery refused the authored declaration or text"}); }
+};
 const prepareDocuments = async ({ request, operations, prose }: { readonly request: HarnessDocumentPreparationRequest; readonly operations: HarnessDocumentPreparationOperations; readonly prose: typeof renderAuthoredProse }): Promise<Outcome<PreparedHarnessDocuments>> => {
   const before = await operations.read({ sourceRoot: request.sourceRoot, path: helperPath });
   if (before.status === "invalid") return before;
@@ -64,7 +93,9 @@ const prepareDocuments = async ({ request, operations, prose }: { readonly reque
   if (prepared.status === "invalid") return prepared;
   const after = await operations.read({ sourceRoot: request.sourceRoot, path: helperPath });
   if (after.status === "invalid") return after;
-  const stable = retainStablePreparation({ prepared, before: sha256, after: operations.digest({ bytes: after.value }) });
+  const retained = retainStablePreparation({ prepared, before: sha256, after: operations.digest({ bytes: after.value }) });
+  if (retained.status === "invalid") return retained;
+  const stable = await prepareDeliveryDocuments({prepared:retained.value,request,operations});
   if (stable.status === "invalid") return stable;
   const documents = stable.value.documents.map(document => ({ path: document.authored.origin.path, source: document.text }));
   const commands = prepareDocumentCommands({ sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents });

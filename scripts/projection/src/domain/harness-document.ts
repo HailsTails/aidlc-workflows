@@ -3,7 +3,7 @@ import type { HarnessBinding } from "./harness-binding.ts";
 import type { NativeResource } from "./native-rendering.ts";
 import { finding, pathStatus, type Outcome } from "./model.ts";
 
-export type HarnessDocumentRole = "main-skill" | "composer" | "question-rendering" | "method-import" | "onboarding";
+export type HarnessDocumentRole = "main-skill" | "composer" | "question-rendering" | "method-import" | "onboarding" | "shortcut-status" | "shortcut-jump" | "shortcut-scope" | "phase-ideation-guidance" | "phase-inception-guidance" | "phase-construction-guidance" | "phase-operation-guidance";
 export type HarnessDocumentPlacement = { readonly role: HarnessDocumentRole; readonly source: string; readonly destination: string };
 const placements: readonly HarnessDocumentPlacement[] = [
   { role: "main-skill", source: "skills/aidlc/SKILL.md", destination: "skills/aidlc/SKILL.md" },

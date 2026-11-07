@@ -11,4 +11,4 @@ export type PreparedDistributionDescription = { readonly files: readonly Distrib
 export type DistributionDescriptionPreparer = { readonly prepare: (input: DistributionDescriptionRequest) => Promise<Outcome<PreparedDistributionDescription>> };
 export const claudeDistributionDescriptionPaths = (): readonly string[] => [".gitignore", ".mcp.json", ".claude/tools/data/root-blocks/gitignore", ".claude/tools/data/root-blocks/.mcp.json", ".claude/tools/data/aidlc-projection.json", ".claude/tools/data/aidlc-stamp.json"];
 
-export type DistributionDescriptionPaths = (binding: HarnessBinding) => readonly string[];
+export type DistributionDescriptionPaths = (binding: HarnessBinding, invocation: string) => readonly string[];

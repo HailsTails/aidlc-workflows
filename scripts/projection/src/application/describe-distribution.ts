@@ -15,7 +15,7 @@ const admitDescriptionProfile = ({ request }: { readonly request: DescribeDistri
   if (request.seed.structure?.kind !== "file-parents" || !request.seed.inputPreparations?.some((preparation) => preparation.kind === "runtime-modules" && preparation.paths.includes(`${request.seed.binding.directory}/tools/aidlc-version.ts`))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "distribution-description", detail: "source-version metadata requires a file-parent profile and source-prepared runtime version module" })] };
   return { status: "ok", value: { ...request, seed: { ...request.seed, structure: request.seed.structure } } };
 };
-const finalDescriptionPaths = ({ request, services }: { readonly request: DescribeDistributionRequest; readonly services: DescriptionServices }): readonly string[] => [...new Set([...request.seed.files.map((file) => file.path), ...request.projection.resources.map((resource) => resource.path), ...services.paths(request.seed.binding)])];
+const finalDescriptionPaths = ({ request, services }: { readonly request: DescribeDistributionRequest; readonly services: DescriptionServices }): readonly string[] => [...new Set([...request.seed.files.map((file) => file.path), ...request.projection.resources.map((resource) => resource.path), ...services.paths(request.seed.binding, request.seed.invocation)])];
 const finalDescriptionFiles = ({ request, services }: { readonly request: DescribeDistributionRequest; readonly services: DescriptionServices }) => [
   ...request.seed.files.map((file) => {
     const replacement = request.projection.resources.find((resource) => resource.path === file.path);

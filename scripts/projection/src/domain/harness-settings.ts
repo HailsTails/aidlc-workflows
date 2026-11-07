@@ -7,3 +7,5 @@ export type HarnessSettingsPreparer = { readonly prepare: (input: HarnessSetting
 export const claudeSettingsPaths = (): readonly string[] => [".claude/settings.json", ".claude/settings.local.json.example"];
 
 export const codexSettingsPaths = (): readonly string[] => [".codex/hooks.json", ".codex/config.toml", ".codex/rules/default.rules", ".codex/trust-seed.toml"];
+
+export const cursorSettingsPaths = (): readonly string[] => [".cursor/hooks.json", ".cursor/cli.json"];

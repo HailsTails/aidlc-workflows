@@ -7,7 +7,7 @@ import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import { createOwnershipDigest } from "./projection-ownership.ts";
 
 const manifestPath = (location: HarnessDocumentLocation) => `harness/${location.binding.harness}/manifest.ts`;
-const mapping = z.strictObject({ src: z.string(), dst: z.string(), projectRoot: z.boolean().optional() });
+const mapping = z.strictObject({ src: z.string(), dst: z.string(), projectRoot: z.boolean().optional(), copyOnly: z.boolean().optional() });
 const moduleSchema = z.object({ default: z.object({ name: z.string(), harnessDir: z.string(), orchestratorSkillPath: z.string().optional(), harnessFiles: z.array(mapping) }) });
 type HarnessMapping = z.infer<typeof mapping>;
 export type HarnessDocumentLocation = { readonly sourceRoot: string; readonly basis: SourceBasis; readonly binding: HarnessBinding };
@@ -31,13 +31,13 @@ const admitLocation = ({ location }: { readonly location: HarnessDocumentLocatio
   if (location.basis.source.kind !== "core" || location.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(location.basis.pin)) return failure({ code: "foreign-content", detail: "authored entry documents require the framework source basis and full source pin" });
   return { status: "ok", value: location };
 };
-const ownedMapping = ({ entry, placement }: { readonly entry: HarnessMapping; readonly placement: HarnessDocumentPlacement }): "matches" | "different" => entry.src === placement.source && entry.dst === placement.destination && entry.projectRoot !== true ? "matches" : "different";
-const delegatedMapping = ({ entry }: { readonly entry: HarnessMapping }): "delegated" | "unknown" => entry.src === "skills/aidlc/tables.md" && entry.dst === "skills/aidlc/tables.md" && entry.projectRoot !== true ? "delegated" : "unknown";
+const ownedMapping = ({ entry, placement }: { readonly entry: HarnessMapping; readonly placement: HarnessDocumentPlacement }): "matches" | "different" => entry.src === placement.source && entry.dst === placement.destination && entry.projectRoot !== true && !entry.copyOnly ? "matches" : "different";
+const delegatedMapping = ({ entry }: { readonly entry: HarnessMapping }): "delegated" | "unknown" => entry.src === "skills/aidlc/tables.md" && entry.dst === "skills/aidlc/tables.md" && entry.projectRoot !== true && !entry.copyOnly ? "delegated" : "unknown";
 const admitMappings = ({ imported, location }: { readonly imported: unknown; readonly location: HarnessDocumentLocation }): Outcome<readonly HarnessDocumentPlacement[]> => {
   const parsed = moduleSchema.safeParse(imported);
   const profile = qualifiedHarnessProfile(location.binding);
   if (!parsed.success || profile === null || parsed.data.default.name !== profile.harness || parsed.data.default.harnessDir !== profile.directory) return failure({ detail: "authored entry documents require the selected host manifest and supported harness file mappings" });
-  const entries = parsed.data.default.harnessFiles.filter(entry => /\.md$/i.test(entry.src) || /\.md$/i.test(entry.dst));
+  const entries = parsed.data.default.harnessFiles.filter(entry => /\.(?:md|mdc)$/i.test(entry.src) || /\.(?:md|mdc)$/i.test(entry.dst));
   if (profile.entryMapping === "orchestrator") {
     if (entries.length > 0 || parsed.data.default.orchestratorSkillPath !== `${profile.skillRoot}/aidlc/SKILL.md`) return failure({ detail: "orchestrator-owned entry documents require the declared skill root and no competing Markdown mappings" });
     return { status: "ok", value: profile.entryDocuments };
