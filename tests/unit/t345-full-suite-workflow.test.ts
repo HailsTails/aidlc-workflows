@@ -70,6 +70,7 @@ const deterministic = Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workf
 const preparation = Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows/live-prepare.yml"), "utf8")) as {
   env: Record<string, string>; permissions: Record<string, string>; jobs: Record<string, Job>;
 };
+const draftRefactorGuard = "github.event_name != 'pull_request' || !contains(fromJSON('[\"review/refactor-core-upstream44\",\"review/refactor-projection-upstream44\",\"review/refactor-integration-upstream44\"]'), github.head_ref) || !github.event.pull_request.draft";
 const liveKinds = Object.keys(LIVE_MATRICES) as LiveMatrixKind[];
 const prepareJobs = liveKinds.map(kind => `live_prepare_${kind}`);
 const liveJobs = liveKinds.map((kind) => `live_${kind}`);
@@ -1190,9 +1191,9 @@ describe("t345 complete nightly coverage", () => {
     };
     expect(ci.on.merge_group).toEqual({ types: ["checks_requested"] });
     for (const name of ["test_native_terminal", "test_live_isolation"]) expect(ci.jobs[name].if).toBe("github.event_name != 'pull_request'");
-    for (const name of ["check", "deterministic"]) expect(ci.jobs[name].if).toBeUndefined();
+    for (const name of ["check", "deterministic"]) expect(ci.jobs[name].if).toBe(`\${{ ${draftRefactorGuard} }}`);
     // A skipped need would skip the summary under the default success() gate.
-    expect(ci.jobs.test.if).toBe(`\${{ !cancelled() }}`);
+    expect(ci.jobs.test.if).toBe(`\${{ !cancelled() && (${draftRefactorGuard}) }}`);
     expect(ci.jobs.test.needs).toEqual(["check", "deterministic", "test_native_terminal", "test_live_isolation"]);
     const summary = steps(ci.jobs.test)[0];
     expect(summary.env?.EVENT_NAME).toBe(`\${{ github.event_name }}`);
@@ -1214,6 +1215,47 @@ describe("t345 complete nightly coverage", () => {
       // The merge queue cannot pass on cross-OS jobs that never ran.
       if (event !== "pull_request") {
         for (const key of ["NATIVE_RESULT", "ISOLATION_RESULT"]) expect(status(event, { ...crossOs, [key]: "skipped" }), `${event} ${key}=skipped`).not.toBe(0);
+      }
+    }
+  });
+
+  test("only the planned refactor drafts pause PR jobs; ready_for_review resumes them", () => {
+    const branches = ["review/refactor-core-upstream44", "review/refactor-projection-upstream44", "review/refactor-integration-upstream44"];
+    const contains = (values: string[], value: string) => values.includes(value);
+    const pausedJobs: Record<string, string[]> = {
+      "ci.yml": ["check", "deterministic", "test"],
+      "docs.yml": ["build"],
+      "markdownlint.yml": ["markdownlint"],
+      "security-scanners.yml": ["gitleaks", "semgrep", "bun-audit"],
+    };
+    for (const [file, paused] of Object.entries(pausedJobs)) {
+      const workflow = Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows", file), "utf8")) as {
+        on: { pull_request: { types: string[] } };
+        jobs: Record<string, Job>;
+      };
+      expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "ready_for_review"]);
+      for (const [name, job] of Object.entries(workflow.jobs)) {
+        if (paused.includes(name)) {
+          expect(job.if).toBe(name === "test"
+            ? `\${{ !cancelled() && (${draftRefactorGuard}) }}`
+            : `\${{ ${draftRefactorGuard} }}`);
+        } else {
+          expect(job.if).toBe("github.event_name != 'pull_request'");
+        }
+        const expression = job.if!.replace(/^\$\{\{\s*|\s*\}\}$/g, "");
+        const enabled = new Function("github", "cancelled", "contains", "fromJSON", `return (${expression});`);
+        for (const event of ["pull_request", "push", "merge_group", "workflow_dispatch", "workflow_call", "schedule"]) {
+          for (const branch of [...branches, "review/refactor-other-upstream44", "review/refactor-core-upstream44-extra", "review/refactor-integration-upstream45", "another-draft", "main"]) {
+            for (const draft of [true, false]) {
+              const isPr = event === "pull_request";
+              const github = { event_name: event, head_ref: isPr ? branch : "", event: isPr ? { pull_request: { draft } } : {} };
+              const pausedDraft = isPr && branches.includes(branch) && draft;
+              const expected = paused.includes(name) ? !pausedDraft : !isPr;
+              expect(enabled(github, () => false, contains, JSON.parse), `${file}/${name}: ${event}, ${branch}, draft=${draft}`).toBe(expected);
+              if (name === "test") expect(enabled(github, () => true, contains, JSON.parse)).toBe(false);
+            }
+          }
+        }
       }
     }
   });

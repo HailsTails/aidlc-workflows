@@ -15,6 +15,7 @@ on:
       - 'uv.lock'
       - '.github/workflows/docs.yml'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
     paths:
@@ -26,7 +27,7 @@ on:
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
-# The build job validates every PR and push; only the deploy job needs
+# Only the deploy job needs
 # Pages/OIDC permissions, granted at job level below.
 permissions:
   contents: read
@@ -39,8 +40,10 @@ concurrency:
   group: docs-build-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Temporary pause for the three planned refactor drafts; revert this commit to remove it.
 jobs:
   build:
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
