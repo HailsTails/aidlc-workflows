@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-30",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "composition-only",
+      "summary": "an integration test targets the wiring between units, not their logic",
+      "enforcedBy": "review"
+    }
+  ]
+}

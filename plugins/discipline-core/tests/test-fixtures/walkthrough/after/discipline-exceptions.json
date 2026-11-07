@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "kind": "authorised-location",
+      "clause": "CD-17#clock-sources",
+      "file": "src/clock.ts",
+      "reason": "the system clock adapter is the one place that reads the real time",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/clock.ts call Date.now()?",
+            "because": "It is the system adapter behind the Clock port, the only place where real time enters the basket code.",
+            "evidence": "src/clock.ts:3"
+          },
+          {
+            "why": "Why does real time enter the basket code only through the Clock port?",
+            "because": "openBasket and basketAge take a Clock argument instead of reading the time themselves.",
+            "evidence": "src/basket.ts:14"
+          },
+          {
+            "why": "Why do openBasket and basketAge take a Clock argument instead of reading the time?",
+            "because": "Their test pins the clock at 1000 and 1500 to assert an age of exactly 500.",
+            "evidence": "src/basket.test.ts:12"
+          },
+          {
+            "why": "Why must the test pin the clock to assert an exact age?",
+            "because": "Date.now() advances between calls, so an age read from the platform clock is never the same twice.",
+            "evidence": "src/basket.ts:28"
+          },
+          {
+            "why": "Why does an age read from the platform clock never come out the same twice?",
+            "because": "Age is defined as elapsed milliseconds of real time, and the platform clock is the only source of real milliseconds.",
+            "evidence": "src/basket.ts:27"
+          }
+        ],
+        "rootCause": "Basket age is defined in elapsed real milliseconds, which only the platform clock supplies, so one adapter has to read it.",
+        "rootCheck": "src/basket.ts:27 still computes basketAge as clock.now() minus openedAt.",
+        "readback": "Age is defined in real milliseconds only the platform clock supplies, therefore the test must pin a Clock, therefore the basket code takes a Clock argument, therefore src/clock.ts calls Date.now().",
+        "owner": "basket team"
+      }
+    }
+  ]
+}

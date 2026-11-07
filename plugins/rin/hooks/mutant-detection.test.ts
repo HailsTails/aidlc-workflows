@@ -1,0 +1,131 @@
+import { afterEach, describe, expect, test } from "vitest";
+import { defaultPathOperations } from "../tools/rin-harness-path-operations.ts";
+import { defaultFileTextPort } from "../tools/rin-harness-sidecar-file-reader.ts";
+import {
+  bashInvocationPayload,
+  permissionDecisionFrom,
+  runRanHookProcess,
+} from "./run-hook-process.ts";
+
+const paths = defaultPathOperations();
+const files = defaultFileTextPort();
+
+const hooksDirectory = paths.dirname({ path: paths.fromFileUrl({ url: import.meta.url }) });
+const RUNTIME = "node";
+const INLINE_EXEC_HOOK = "block-inline-exec.ts";
+const INLINE_EXEC_RUNTIME = "bun";
+
+const mutantRoots: string[] = [];
+
+type Mutant = {
+  readonly path: string;
+  readonly anchorFound: boolean;
+  readonly textChanged: boolean;
+};
+
+const mutantOf = (input: {
+  readonly hookFileName: string;
+  readonly find: string;
+  readonly replace: string;
+}): Mutant => {
+  const root = files.makeTemporaryDirectory(
+    paths.join({ segments: [files.temporaryRoot(), "hook-mutant-"] }),
+  );
+  mutantRoots.push(root);
+  const mutantPath = paths.join({ segments: [root, input.hookFileName] });
+  const original = files.read(paths.join({ segments: [hooksDirectory, input.hookFileName] }));
+  const mutated = original.replace(input.find, input.replace);
+  files.write(mutantPath, mutated);
+  return {
+    path: mutantPath,
+    anchorFound: original.includes(input.find),
+    textChanged: mutated !== original,
+  };
+};
+
+const denyDecisionFrom = (stdout: string): boolean =>
+  permissionDecisionFrom({ stdout }).hookSpecificOutput?.permissionDecision ===
+  "deny";
+
+afterEach(() => {
+  mutantRoots.splice(0).forEach((root) => {
+    files.remove(root, { recursive: true, force: true });
+  });
+});
+
+describe("mutant detection — the suites fail against a weakened rail", () => {
+  test("the original inline-exec rail denies an inline eval", async () => {
+    const outcome = await runRanHookProcess({
+      hookFileName: INLINE_EXEC_HOOK,
+      runtime: INLINE_EXEC_RUNTIME,
+      stdinPayload: bashInvocationPayload({
+        command: 'node -e "console.log(1)"',
+      }),
+    });
+    expect(denyDecisionFrom(outcome.stdout)).toBe(true);
+  });
+
+  test("an inline-exec mutant with its eval rule removed stops denying", async () => {
+    const mutant = mutantOf({
+      hookFileName: INLINE_EXEC_HOOK,
+      find: "if (inlineEvalRule.test(segment)) return true;",
+      replace: "if (false) return true;",
+    });
+    expect(mutant.anchorFound).toBe(true);
+    expect(mutant.textChanged).toBe(true);
+    const outcome = await runRanHookProcess({
+      hookFileName: INLINE_EXEC_HOOK,
+      hookPath: mutant.path,
+      runtime: INLINE_EXEC_RUNTIME,
+      stdinPayload: bashInvocationPayload({
+        command: 'node -e "console.log(1)"',
+      }),
+    });
+    expect(denyDecisionFrom(outcome.stdout)).toBe(false);
+  });
+
+  test("the original github-writes rail denies a raw gh pr create", async () => {
+    const outcome = await runRanHookProcess({
+      hookFileName: "guard-github-writes.mjs",
+      runtime: RUNTIME,
+      stdinPayload: bashInvocationPayload({ command: "gh pr create --fill" }),
+    });
+    expect(denyDecisionFrom(outcome.stdout)).toBe(true);
+  });
+
+  test("a github-writes mutant with its create rule widened stops denying", async () => {
+    const mutant = mutantOf({
+      hookFileName: "guard-github-writes.mjs",
+      find: '{ verb: "pr create", usage: SAME_ARGUMENTS }',
+      replace: '{ verb: "pr create-nothing", usage: SAME_ARGUMENTS }',
+    });
+    expect(mutant.anchorFound).toBe(true);
+    expect(mutant.textChanged).toBe(true);
+    const outcome = await runRanHookProcess({
+      hookFileName: "guard-github-writes.mjs",
+      hookPath: mutant.path,
+      runtime: RUNTIME,
+      stdinPayload: bashInvocationPayload({ command: "gh pr create --fill" }),
+    });
+    expect(denyDecisionFrom(outcome.stdout)).toBe(false);
+  });
+
+  test("hookPath spawns the copy rather than the original hook", async () => {
+    const mutant = mutantOf({
+      hookFileName: INLINE_EXEC_HOOK,
+      find: "IS THIS REALLY JUST A SEARCH?",
+      replace: "SENTINEL-ONLY-IN-THE-COPY",
+    });
+    expect(mutant.anchorFound).toBe(true);
+    expect(mutant.textChanged).toBe(true);
+    const outcome = await runRanHookProcess({
+      hookFileName: INLINE_EXEC_HOOK,
+      hookPath: mutant.path,
+      runtime: INLINE_EXEC_RUNTIME,
+      stdinPayload: bashInvocationPayload({
+        command: 'node -e "console.log(1)"',
+      }),
+    });
+    expect(outcome.stdout).toContain("SENTINEL-ONLY-IN-THE-COPY");
+  });
+});

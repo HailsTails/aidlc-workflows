@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "discipline": "CD-44",
+  "mechanism": "eslint",
+  "clauses": [
+    {
+      "clause": "parameter-reassignment",
+      "settings": {
+        "pluginNamespace": "discipline-cd44",
+        "pluginModule": "cd44/cd44.eslint-plugin.ts",
+        "rule": "no-param-reassign",
+        "options": [
+          {
+            "props": false
+          }
+        ]
+      }
+    }
+  ]
+}

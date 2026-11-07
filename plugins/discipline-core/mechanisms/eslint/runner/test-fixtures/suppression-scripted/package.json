@@ -1,0 +1,7 @@
+{
+  "name": "consumer",
+  "scripts": {
+    "lint": "eslint --suppressions-location custom/supp.json .",
+    "lint2": "eslint --suppressions-location=custom/supp2.json ."
+  }
+}

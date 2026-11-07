@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-45",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "parse-once",
+      "summary": "validation runs once at the boundary and its types do not leak inward",
+      "enforcedBy": "review"
+    }
+  ]
+}

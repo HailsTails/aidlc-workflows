@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-39",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "cite-by-id",
+      "summary": "reviews and rationale cite principles and rules by identifier",
+      "enforcedBy": "review"
+    }
+  ]
+}

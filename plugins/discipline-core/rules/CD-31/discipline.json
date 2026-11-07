@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-31",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "no-coverage-thresholds",
+      "summary": "no percentage coverage threshold gates a run",
+      "enforcedBy": "review"
+    }
+  ]
+}
