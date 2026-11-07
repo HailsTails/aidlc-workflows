@@ -6,7 +6,11 @@
 //   bun scripts/package.ts <name>      regenerate just one harness
 //   bun scripts/package.ts <name> --check
 //
-// PIPELINE PER HARNESS:
+// Claude copy delivery at the source version uses the retained clean projection
+// component. Environment-capped copies, native releases and other harnesses
+// retain the pipeline below until their component profiles are qualified.
+//
+// LEGACY PIPELINE PER HARNESS:
 //   1. COPY core/<src> → dist/<name>/<harnessDir>/<dst>, substituting
 //      {{HARNESS_DIR}} -> harnessDir in .md prose (see transform()) and
 //      applying the manifest's rules-dir rename.
@@ -60,6 +64,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { projectClaudeCopyTree, usesCleanClaudeCopy } from "./projection-process.ts";
 import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
 import { prepareClaudeCopyAllowList, prepareClaudeNativeAllowList, type ClaudeCopyCommandAuthority, type ClaudeNativeCommandAuthority } from "./claude-settings.ts";
 import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
@@ -827,6 +832,10 @@ function buildTree(
   outRoot: string,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
 ): string[] {
+  if (usesCleanClaudeCopy({ name: m.name, harnessDir: m.harnessDir, invoke, environmentCap: ENV_CAP, buildVersion: BUILD_VERSION, sourceVersion: AIDLC_VERSION })) {
+    projectClaudeCopyTree({ sourceRoot: REPO_ROOT, outRoot });
+    return [...walk(outRoot)];
+  }
   const harnessDir = m.harnessDir;
   const treeRoot = join(outRoot, harnessDir);
   // Every harness projects onto ONE of the six flavors the tier module

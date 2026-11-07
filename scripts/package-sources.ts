@@ -11,9 +11,13 @@ export const PACKAGE_SOURCES_FILE = join("dist", ".package-sources.json");
 // Everything the packager reads: the authored trees, the plugin hook template
 // it ships, and its own modules. Plugin tests are never packaged, so editing
 // one leaves dist/ current.
-const INPUT_DIRS = ["core", "harness", "plugins", "scripts/plugin-hooks-template"];
+const INPUT_DIRS = ["core", "harness", "plugins", "scripts/plugin-hooks-template", "scripts/projection"];
 const INPUT_FILES = [
+  "package.json",
+  "bun.lock",
   "scripts/package.ts",
+  "scripts/project-claude.ts",
+  "scripts/projection-process.ts",
   "scripts/claude-settings.ts",
   "scripts/projection-text.ts",
   "scripts/projection-metadata.ts",

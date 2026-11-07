@@ -1,0 +1,25 @@
+import type { NativeResource } from "../src/domain/native-rendering.ts";
+import { createWorkflowReferencePreparer } from "../src/adapters/workflow-reference.ts";
+import type { WorkflowReferencePreparer } from "../src/domain/workflow-reference.ts";
+import { createDistributionWorkspace, type DistributionWorkspace } from "../src/adapters/distribution-workspace.ts";
+import { planPreparedFileAdditions } from "../src/domain/prepared-file-additions.ts";
+import { createDistributionAssemblyRules } from "../src/adapters/distribution-source.ts";
+import type { DistributionAssemblyRules } from "../src/application/distribution-assembly.ts";
+import type { DistributionSeed } from "../src/domain/distribution-artifact.ts";
+import type { CompiledWorkflowSource } from "../src/domain/workflow-compilation.ts";
+import type { WorkflowAuthoringPolicy } from "../src/domain/workflow-prose.ts";
+import type { SourceContentDigest } from "../src/domain/source-origin.ts";
+import { finding, type Outcome } from "../src/domain/model.ts";
+export type WorkflowReferencePreparation = { readonly kind: "native-supplied" } | { readonly kind: "prepared"; readonly paths: readonly string[]; readonly inputs: readonly SourceContentDigest[] };
+export type PreparedWorkflowReferenceRuntime = { readonly seed: DistributionSeed; readonly preparation: Extract<WorkflowReferencePreparation, { readonly kind: "prepared" }> };
+export type WorkflowReferenceRuntimeServices = { readonly preparer: WorkflowReferencePreparer; readonly workspace: DistributionWorkspace; readonly admit: typeof planPreparedFileAdditions; readonly rules: DistributionAssemblyRules };
+export const createWorkflowReferenceRuntimeServices = (): WorkflowReferenceRuntimeServices => ({ preparer: createWorkflowReferencePreparer(), workspace: createDistributionWorkspace(), admit: planPreparedFileAdditions, rules: createDistributionAssemblyRules() });
+const requireReferenceAuthoring = ({ authoring }: { readonly authoring: WorkflowAuthoringPolicy | null }): Outcome<WorkflowAuthoringPolicy> => authoring === null ? { status: "invalid", findings: [finding({ code: "capability-gap", subject: "workflow-reference", detail: "compiled workflow reference preparation requires fresh authored stage context; select project-authored stages" })] } : { status: "ok", value: authoring };
+export const prepareCompiledWorkflowReferenceRuntime = async ({ sourceRoot, seed, workflow, scopeFiles, authoring, mode, services = createWorkflowReferenceRuntimeServices() }: { readonly sourceRoot: string; readonly seed: DistributionSeed; readonly workflow: CompiledWorkflowSource; readonly scopeFiles: readonly NativeResource[]; readonly authoring: WorkflowAuthoringPolicy | null; readonly mode: number; readonly services?: WorkflowReferenceRuntimeServices }): Promise<Outcome<PreparedWorkflowReferenceRuntime>> => {
+  const admittedAuthoring = requireReferenceAuthoring({ authoring });
+  if (admittedAuthoring.status === "invalid") return admittedAuthoring;
+  const prepared = await services.workspace.run({ sourceRoot, seed, consume: ({ root }) => services.preparer.prepare({ sourceRoot, root, basis: seed.basis, context: { ...seed.binding, invocation: seed.invocation, rulesSubdir: seed.rulesSubdir, optionLetters: admittedAuthoring.value.optionLetters }, workflow, scopeFiles, authoring: admittedAuthoring.value }) });
+  if (prepared.status === "invalid") return prepared;
+  const admitted = services.admit({ candidates: [prepared.value.file], inventory: seed, mode, rules: services.rules });
+  return admitted.status === "invalid" ? admitted : { status: "ok", value: { seed: { ...seed, files: [...seed.files, ...admitted.value.additions] }, preparation: { kind: "prepared", paths: [prepared.value.file.path], inputs: prepared.value.inputs } } };
+};

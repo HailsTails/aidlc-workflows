@@ -1,0 +1,24 @@
+import { mock } from "bun:test";
+import type { WorkflowCompilerOperations } from "../../../../../scripts/projection/src/adapters/workflow-source-compiler.ts";
+import type { CompiledWorkflowSource } from "../../../../../scripts/projection/src/domain/workflow-compilation.ts";
+import { distributionBasis } from "./distribution-fixtures.ts";
+export const workflowLocation = { sourceRoot: "authored", contextRoot: "private-context", basis: distributionBasis, binding: { harness: "claude", directory: ".claude" } } as const;
+export const workflowGraph = '[{"slug":"code-generation","mode":"delegated","lead_agent":"aidlc-developer-agent","support_agents":["aidlc-quality-agent"]}]';
+export const workflowGrid = '{"code-generation":{"bugfix":"EXECUTE"}}';
+export const workflowDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+export const workflowInputs = [{ path: "core/tools/aidlc-graph.ts", sha256: workflowDigest }];
+export const workflowReply = { status: "ok", graph: workflowGraph, grid: workflowGrid, inputs: workflowInputs };
+export const compiledWorkflow: CompiledWorkflowSource = { binding: workflowLocation.binding, compiler: { ...distributionBasis, path: "core/tools/aidlc-graph.ts" }, graph: { origin: { ...distributionBasis, path: ".claude/tools/data/stage-graph.json" }, text: workflowGraph }, grid: { origin: { ...distributionBasis, path: ".claude/tools/data/scope-grid.json" }, text: workflowGrid }, inputs: workflowInputs };
+export const workflowInheritedEnvironment = Object.fromEntries([["PATH", "local-bun"], ["API_KEY", "must-not-leak"], ["AIDLC_STAGE_GRAPH", "foreign"], ["AIDLC_AGENTS_DIR", "foreign-agents"]]);
+export const workflowExpectedEnvironmentFragment = Object.fromEntries([["PATH", "local-bun"], ["HOME", "private-root"], ["AIDLC_RUNTIME_HARNESS_ROOT", "authored-root/core"], ["AIDLC_AGENTS_DIR", "authored-root/core/agents"], ["AIDLC_STAGE_GRAPH", "private-root/source-only-stage-graph.json"]]);
+export const workflowUnsafeEnvironmentFragment = Object.fromEntries([["API_KEY", "must-not-leak"]]);
+export const systemInheritedEnvironment = Object.fromEntries([["PATH", "bin"], ["Temp", "private-temp"], ["SYSTEMROOT", "windows"], ["API_KEY", "secret"], ["AIDLC_HARNESS_DIR", ".foreign"], ["HOME", "foreign-home"]]);
+export const systemExpectedEnvironment = Object.fromEntries([["PATH", "bin"], ["Temp", "private-temp"], ["SYSTEMROOT", "windows"]]);
+export const privateExpectedEnvironment = Object.fromEntries([
+  ["PATH", "/bin"], ["HOME", "/private"], ["USERPROFILE", "/private"], ["APPDATA", "/private"], ["LOCALAPPDATA", "/private"],
+  ["TEMP", "/private"], ["TMP", "/private"], ["BUN_TMPDIR", "/private"], ["BUN_INSTALL", "/private/bun-install"],
+  ["BUN_INSTALL_CACHE_DIR", "/private/bun-cache"], ["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "/private/transpiler-cache"],
+]);
+export const createWorkflowCompilerFixture = (): WorkflowCompilerOperations => ({ environment: mock().mockReturnValue(workflowInheritedEnvironment), locations: mock().mockReturnValue({ source: "authored-root", context: "private-root", moduleUrl: "file:///authored-root/core/tools/aidlc-graph.ts" }), spawn: mock().mockReturnValue({ exitCode: 0, stdout: JSON.stringify(workflowReply), stderr: "", error: null }) });
+export const workflowCatalogue = { artifact: compiledWorkflow.graph.origin, sources: [distributionBasis], stages: [{ origin: { kind: "compiled", artifact: compiledWorkflow.graph.origin, definition: distributionBasis }, slug: "code-generation", mode: "delegated", lead: "aidlc-developer-agent", supports: ["aidlc-quality-agent"], reviewer: null }] } as const;
+export const createInvalidWorkflowLocations = (): WorkflowCompilerOperations["locations"] => mock().mockImplementation(() => { throw new Error("invalid context root"); });
