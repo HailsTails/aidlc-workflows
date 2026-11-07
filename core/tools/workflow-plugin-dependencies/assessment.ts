@@ -37,8 +37,8 @@ export type DependencyReason = {
  */
 export function assessDependencies(source: DependencySource, available: ReadonlySet<string>): DependencyReason[] {
   const declarations = source.ownership();
-  const scopes = new Map(declarations.scopes.map((item) => [item.name, item.plugin ?? "aidlc"]));
-  const stages = new Map(declarations.stages.filter((item) => item.phase !== "initialization").map((item) => [item.name, item.plugin ?? "aidlc"]));
+  const scopes = new Map(declarations.scopes.map((scope) => [scope.name, scope.plugin ?? "aidlc"]));
+  const stages = new Map(declarations.stages.filter((stage) => stage.phase !== "initialization").map((stage) => [stage.name, stage.plugin ?? "aidlc"]));
   const reasons: DependencyReason[] = [];
   source.visitWorkflows((candidate) => {
     if (candidate.lifecycle === "completed" || candidate.lifecycle === "archived" || !candidate.identity.name) return;

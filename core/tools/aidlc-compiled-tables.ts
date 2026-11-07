@@ -1,31 +1,58 @@
 import { loadScopeMapping, loadStageGraph, validScopes } from "./aidlc-lib.ts";
+import type { ScopeDefinition, StageEntry } from "./aidlc-lib.ts";
 import { aidlcDispatcherInvocation } from "./aidlc-runtime-paths.ts";
+
+export interface ScopeTableSources {
+  mapping: () => Readonly<Record<string, Pick<ScopeDefinition, "depth" | "stages" | "testStrategy">>>;
+  scopes: () => ReadonlySet<string>;
+}
+
+type TableStage = Pick<StageEntry,
+  "slug" | "number" | "name" | "phase" | "execution" | "mode"
+> & {
+  leadAgent: StageEntry["lead_agent"];
+  supportAgents: StageEntry["support_agents"];
+};
+
+function installedStageRows(): readonly TableStage[] {
+  return loadStageGraph().map((stage) => ({
+    slug: stage.slug,
+    number: stage.number,
+    name: stage.name,
+    phase: stage.phase,
+    execution: stage.execution,
+    leadAgent: stage.lead_agent,
+    supportAgents: stage.support_agents,
+    mode: stage.mode,
+  }));
+}
+
+function installedScopeSources(): ScopeTableSources {
+  return { mapping: loadScopeMapping, scopes: validScopes };
+}
 
 export const SCOPE_TABLE_BEGIN =
   `<!-- BEGIN: compiled scope grid via \`${aidlcDispatcherInvocation("gen scope-table")}\` - do NOT hand-edit -->`;
 export const SCOPE_TABLE_END =
   "<!-- END: compiled scope grid -->";
 
-/** Exported for t67 unit tests. */
-export function renderScopeTable(): string {
-  const mapping = loadScopeMapping();
-  const scopes = [...validScopes()]; // alphabetical
-  const lines = [
+export function renderScopeTable(sources: ScopeTableSources = installedScopeSources()): string {
+  const mapping = sources.mapping();
+  const rows = [...sources.scopes()].map((name) => {
+    // validScopes derives its names from the same cached mapping.
+    const definition = mapping[name]!;
+    const stages = definition.stages;
+    const total = Object.keys(stages).length;
+    const execute = Object.values(stages).filter((execution) => execution === "EXECUTE").length;
+    const depth = definition.depth;
+    const strategy = definition.testStrategy ?? "(default)";
+    return `| ${name.padEnd(14)} | ${depth.padEnd(13)} | ${strategy.padEnd(12)} | ${`${execute} / ${total}`.padEnd(15)} |`;
+  });
+  return [
     "| Scope          | Depth         | TestStrategy | EXECUTE / Total |",
     "|----------------|---------------|--------------|-----------------|",
-  ];
-  for (const name of scopes) {
-    const def = mapping[name];
-    const stages = def.stages;
-    const total = Object.keys(stages).length;
-    const execute = Object.values(stages).filter((v) => v === "EXECUTE").length;
-    const depth = def.depth;
-    const ts = def.testStrategy ?? "(default)";
-    lines.push(
-      `| ${name.padEnd(14)} | ${depth.padEnd(13)} | ${ts.padEnd(12)} | ${`${execute} / ${total}`.padEnd(15)} |`
-    );
-  }
-  return lines.join("\n");
+    ...rows,
+  ].join("\n");
 }
 
 /** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */
@@ -47,21 +74,17 @@ function displayLeadAgent(agent: string): string {
 }
 
 function displaySupportAgents(agents: string[] | undefined): string {
-  return Array.isArray(agents) && agents.length > 0 ? agents.join(", ") : "—";
+  return Array.isArray(agents) && agents.length > 0 ? agents.join(", ") : "\u2014";
 }
 
-/** Exported for t32 integration tests. */
-export function renderStageTable(): string {
-  const lines = [
+export function renderStageTable(stages: () => readonly TableStage[] = installedStageRows): string {
+  return [
     "| Slug | # | Stage | Phase | Execution | Lead Agent | Support Agents | Mode |",
     "|------|---|-------|-------|-----------|------------|----------------|------|",
-  ];
-  for (const stage of loadStageGraph()) {
-    lines.push(
-      `| ${stage.slug} | ${stage.number} | ${stage.name} | ${displayPhase(stage.phase)} | ${stage.execution} | ${displayLeadAgent(stage.lead_agent)} | ${displaySupportAgents(stage.support_agents)} | ${stage.mode} |`
-    );
-  }
-  return lines.join("\n");
+    ...stages().map((stage) =>
+      `| ${stage.slug} | ${stage.number} | ${stage.name} | ${displayPhase(stage.phase)} | ${stage.execution} | ${displayLeadAgent(stage.leadAgent)} | ${displaySupportAgents(stage.supportAgents)} | ${stage.mode} |`
+    ),
+  ].join("\n");
 }
 
 /** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */

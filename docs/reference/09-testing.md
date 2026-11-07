@@ -3,7 +3,7 @@
 ## Overview
 
 The AI-DLC test suite is **entirely TypeScript** — every test is a
-`t*.test.ts` file run under `bun`, with zero shell (`.sh`) test files. This is
+`.test.ts` file run under `bun`, with zero shell (`.sh`) test files. This is
 the platform-invariance guarantee by construction: the same files run
 identically on macOS, Linux, and native Windows.
 
@@ -31,6 +31,13 @@ shows where each level sits conceptually — the profile flags below are how you
 actually select them.
 
 ### Test boundaries and ownership
+
+Retained projection domain and application suites live beside their owners in
+`scripts/projection/src/{domain,application}/*.test.ts`. The native tier runner
+discovers `tests/unit/t-clean-projection-retained.test.ts`, which imports those
+suites once. Bun also discovers the co-located files directly; selecting both
+the aggregator and the files in one Bun run does not execute cases twice.
+Shared fixtures remain in `tests/unit/projection/support/`.
 
 The directory is an execution selector, not a promise about cost. In particular,
 `unit` currently includes CLI, installer, native-build and complete workflow

@@ -13,7 +13,7 @@ test("memory service adapter delegates complete eligibility and requirement asse
     {name:"missing",lifecycle:"other",state:null}, {name:"terminal",lifecycle:"other",state:{...state,lifecycle:"archived"}},
     {name:"active",lifecycle:"other",state},
   ];
-  const source: DependencySource = { ownership: () => declarations, visitWorkflows: visit => records.forEach(record => visit({ identity: {space:"remote",name:record.name,displayName:String(record.name)},lifecycle:record.lifecycle,readState:()=>{reads.push(String(record.name));return record.state;} })) };
+  const source: DependencySource = { ownership: () => declarations, visitWorkflows: visit => records.forEach(record => { visit({ identity: {space:"remote",name:record.name,displayName:String(record.name)},lifecycle:record.lifecycle,readState:()=>{reads.push(String(record.name));return record.state;} }); }) };
   const reasons=assessDependencies(source,new Set());
   expect(reads).toEqual(["missing","terminal","active"]);
   expect(reasons.map(x=>[x.kind,x.plugin])).toEqual([["scope","aidlc"],["stage","security"],["stage","security"]]);
@@ -23,7 +23,7 @@ test("memory service adapter delegates complete eligibility and requirement asse
 
 test("source failure stops acquisition at that workflow with the original error", () => {
   const reads:string[]=[];const error=new Error("remote state unavailable");
-  const source:DependencySource={ownership:()=>declarations,visitWorkflows:visit=>["first","broken","later"].forEach(name=>visit({identity:{space:"remote",name,displayName:name},lifecycle:"other",readState:()=>{reads.push(name);if(name==="broken")throw error;return state;}}))};
+  const source:DependencySource={ownership:()=>declarations,visitWorkflows:visit=>["first","broken","later"].forEach(name=>{ visit({identity:{space:"remote",name,displayName:name},lifecycle:"other",readState:()=>{reads.push(name);if(name==="broken")throw error;return state;}}); })};
   expect(()=>assessDependencies(source,new Set())).toThrow(error);
   expect(reads).toEqual(["first","broken"]);
 });

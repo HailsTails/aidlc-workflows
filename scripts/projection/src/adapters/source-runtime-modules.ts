@@ -1,10 +1,11 @@
+import { authoredSourceRole } from "../../../runtime-source-selection.ts";
 import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { z } from "zod";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import type { PreparedRuntimeInput, RuntimeInputPreparer, RuntimeInputRequest } from "../domain/runtime-inputs.ts";
 import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 
-const requiredSources = ["scripts/projection-text.ts", "scripts/version-module.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-version.ts", "core/tools/aidlc-channel.ts", "scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "core/tools/aidlc-routes.ts"];
+const requiredSources = ["scripts/projection-text.ts", "scripts/version-module.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-version.ts", "core/tools/aidlc-channel.ts", "scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "core/tools/aidlc-routes.ts", "scripts/runtime-source-selection.ts"];
 export type SourceRuntimeModuleOperations = NativeCompilerProcessOperations & { readonly paths: (request: RuntimeInputRequest) => { readonly sourceRoot: string; readonly root: string } };
 export const createSourceRuntimeModuleOperations = ({ create = createNativeCompilerProcessOperations }: { readonly create?: typeof createNativeCompilerProcessOperations } = {}): SourceRuntimeModuleOperations => ({
   ...create({ timeout: 30000, maxBuffer: 32 * 1024 * 1024 }),
@@ -39,7 +40,8 @@ const prepare = async () => {
   const [text, version, commands, stamp, channel, nativeText] = await Promise.all(required.map(module));
   if (typeof text.substituteInvocationTokens !== "function" || typeof version.prepareVersionModuleText !== "function" || typeof commands.TRUSTED_ROUTE_NAMESPACE !== "string" || typeof stamp.AIDLC_VERSION !== "string" || typeof channel.releaseBuildVersion !== "function") return unavailable({ detail: "upstream runtime text and version APIs unavailable" });
   const buildVersion = channel.releaseBuildVersion({ AIDLC_BUILD_VERSION: request.buildVersion });
-  const modules = before.map(input => input.path).filter(path => (path.startsWith("core/tools/") || path.startsWith("core/hooks/")) && path.endsWith(".ts")).map(path => path.slice("core/".length));
+  const selection = await module("scripts/runtime-source-selection.ts");
+  const modules = before.map(input => input.path).filter(path => (path.startsWith("core/tools/") || path.startsWith("core/hooks/")) && path.endsWith(".ts") && selection.authoredSourceRole({ path }) === "production").map(path => path.slice("core/".length));
   if (hostSources.length > 0) {
     const manifest = (await module(hostRoot + "/manifest.ts")).default;
     const declared = manifest.harnessFiles;
@@ -81,8 +83,8 @@ const admitRequest = ({ request }: { readonly request: RuntimeInputRequest }): O
   if (request.invocation !== `bun ${request.binding.directory}/tools/aidlc.ts` && !(request.invocation === "aidlc" && qualifiedHarnessProfile(request.binding) !== null)) return failure({ detail: "source runtime modules require an explicit Bun-copy or qualified native invocation" });
   return { status: "ok", value: request };
 };
-const modulePathStatus = ({ path }: { readonly path: string }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && /^(?:tools|hooks)\/.+\.ts$/.test(path) ? "safe" : "unsafe";
-const artifactPathStatus = ({ path }: { readonly path: string }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && (path.startsWith("tools/") || path.startsWith("hooks/") ) ? "safe" : "unsafe";
+const modulePathStatus = ({ path }: { readonly path: string }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && authoredSourceRole({ path: `core/${path}` }) === "production" && /^(?:tools|hooks)\/.+\.ts$/.test(path) ? "safe" : "unsafe";
+const artifactPathStatus = ({ path }: { readonly path: string }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && authoredSourceRole({ path: `core/${path}` }) === "production" && (path.startsWith("tools/") || path.startsWith("hooks/") ) ? "safe" : "unsafe";
 const witnessPathStatus = ({ path, hostSources }: { readonly path: string; readonly hostSources: readonly string[] }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && (path.startsWith("core/tools/") || path.startsWith("core/hooks/") || path.startsWith("core/projection/") || path.startsWith("scripts/") || hostSources.includes(path)) ? "safe" : "unsafe";
 const uniquePaths = ({ paths }: { readonly paths: readonly string[] }): "unique" | "collision" => new Set(paths.map((path) => path.toLowerCase())).size === paths.length ? "unique" : "collision";
 const admitModuleEvidence = ({ prepared, request }: { readonly prepared: PreparedModuleReply; readonly request: RuntimeInputRequest }): Outcome<PreparedModuleReply> => {

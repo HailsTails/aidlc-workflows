@@ -36,11 +36,11 @@ type WorkflowPluginDependency = {
 function workflowPluginDependencies(input: { enabled: ReadonlySet<string>; ownership: WorkflowPluginOwnership; workflows: readonly WorkflowPluginFacts[] }): WorkflowPluginDependency[] {
   const source: DependencySource = {
     ownership: () => decodeOwnership(input.ownership.scopes, input.ownership.stages),
-    visitWorkflows: (visit) => input.workflows.forEach((facts) => visit({
+    visitWorkflows: (visit) => input.workflows.forEach((facts) => { visit({
       identity: { space: facts.space, name: facts.recordName, displayName: facts.displayName },
       lifecycle: facts.registryClosed ? "completed" : "other",
       readState: () => facts.state === null ? null : decodeState({ status: facts.state.status, scope: facts.state.scope, rows: facts.state.stages }),
-    })),
+    }); }),
   };
   return assessDependencies(source, input.enabled).map((reason) => {
     const workflow = { space: reason.workflow.space, recordName: reason.workflow.name, displayName: reason.workflow.displayName };

@@ -1,3 +1,4 @@
+import { formatSelectionRefusal } from "./workflow-plugin-dependencies/selection-refusal.ts";
 export { activeWorkflowPluginDependencies } from "./aidlc-workflow-plugin-dependency-reader.ts";
 export { pluginsTurnedOff } from "./aidlc-plugin-selection.ts";
 export { stripPluginsTurnedOff } from "./aidlc-plugin-disable.ts";
@@ -577,7 +578,6 @@ import {
   resolveSkillsPath,
   runtimeHarnessDir,
   runtimeHarnessName,
-  runtimeProjectDir,
   typedHarnessName,
 } from "./aidlc-runtime-paths.ts";
 import { HARNESS_PRODUCT_NAMES } from "./aidlc-model-policy.ts";
@@ -1240,19 +1240,9 @@ function handleSelectPlugins(projectDir: string, positional: string[], rulesLeve
     const pausedBefore = pausedPlugins();
     const pausedAfter = pausedBySelection(nameSet, (plugin) => composedPluginBase(dirname(harnessDataPath()), plugin));
     const active = new Set(names.filter((name) => !pausedAfter.has(name)));
-    const violations = activeWorkflowDependencyViolations(projectDir, active);
-    if (violations.length > 0) {
-      const pausedWhy = [...pausedAfter]
-        .filter(([plugin]) => violations.some((v) => v.includes(`plugin "${plugin}"`)))
-        .map(([plugin, base]) => `  ${plugin} would be paused: ${plugin} builds on ${base}, which this selection leaves off.\n`)
-        .join("");
-      die(
-        `select-plugins refused: the new selection would strand ${violations.length} active workflow dependency(ies):\n` +
-          violations.map((v) => `  - ${v}`).join("\n") +
-          (pausedWhy ? `\n${pausedWhy.trimEnd()}` : "") +
-          `\nComplete or archive the workflow(s) first (\`${entrySkillInvocation()} intent archive <name>\`; a parked workflow ` +
-          "still needs its plugin when it resumes), or keep the plugin enabled, then re-run select-plugins.",
-      );
+    const dependencies = activeWorkflowPluginDependencies(projectDir, active);
+    if (dependencies.length > 0) {
+      die(formatSelectionRefusal({ dependencies, paused: pausedAfter, entryInvocation: entrySkillInvocation }));
     }
 
     const previousSelection = renderPluginSelection(pluginsSelected());

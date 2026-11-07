@@ -1,3 +1,4 @@
+import { authoredSourceRole } from "./runtime-source-selection.ts";
 // Which sources each dist/<harness> tree was packaged from. `bun
 // scripts/package.ts` records a content fingerprint of its inputs after a
 // build; a tool that reads dist/ compares it with the working tree, so it never
@@ -16,13 +17,14 @@ const INPUT_FILES = [
   "package.json",
   "bun.lock",
   "scripts/package.ts",
+  "scripts/runtime-source-selection.ts",
   "scripts/project-claude.ts",
   "scripts/project-core.ts",
   "scripts/project-core-session.ts",
   "scripts/projection-process.ts",
   "scripts/claude-settings.ts",
   "scripts/projection-text.ts",
-  "scripts/projection-metadata.ts",
+  "scripts/projection-metadata-filesystem.ts",
   "scripts/version-module.ts",
   "scripts/agent-surface-projection.ts",
   "scripts/core-projection-contract.ts",
@@ -51,7 +53,7 @@ function inputFiles(repoRoot: string): string[] {
       const rel = relative(repoRoot, path).replaceAll("\\", "/");
       if (entry.isDirectory()) {
         if (entry.name !== "node_modules" && !/^plugins\/[^/]+\/tests$/.test(rel)) walk(path);
-      } else if (entry.isFile()) {
+      } else if (entry.isFile() && authoredSourceRole({ path: rel }) === "production") {
         files.push(rel);
       }
     }

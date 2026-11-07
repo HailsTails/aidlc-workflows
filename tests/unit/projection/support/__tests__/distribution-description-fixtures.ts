@@ -4,7 +4,7 @@ import type { SourceDescriptionOperations } from "../../../../../scripts/project
 import type { DistributionDescriptionRequest, PreparedDistributionDescription } from "../../../../../scripts/projection/src/domain/distribution-description.ts";
 import { entryBasis } from "./harness-document-fixtures.ts";
 export const descriptionInputs = [
-  { path: "scripts/projection-metadata.ts", sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  { path: "scripts/projection/native/projection-metadata.ts", sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
   { path: "scripts/manifest-types.ts", sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
   { path: "harness/claude/manifest.ts", sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
   { path: "harness/claude/onboarding.fills.ts", sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },

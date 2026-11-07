@@ -32,7 +32,7 @@ const AUTHORED_CASES: readonly { name: string; request: Parameters<typeof substi
   { name: "repeated authored tokens", request: { source: "{{HARNESS_DIR}}/{{HARNESS_DIR}} {{OPTION_LETTERS}} {{OPTION_LETTERS}}", harnessDir: ".cursor", letters: "A-B", binding: COPY }, expected: ".cursor/.cursor A-B A-B" },
   { name: "complete sequential replacement order", request: { source: "{{OPTION_LETTERS}}", harnessDir: "{{INVOKE}}", letters: "{{HARNESS_DIR}}", binding: { invoke: "{{TOOL_PREFIX}}", toolPrefix: "{{TRUSTED_NAMESPACE}}", trustedNamespace: "ordered" } }, expected: "ordered" },
   { name: "harness replacement does not rerun letters", request: { source: "{{HARNESS_DIR}}", harnessDir: "{{OPTION_LETTERS}}", letters: "A-E", binding: COPY }, expected: "{{OPTION_LETTERS}}" },
-  { name: "no unrequested normalization", request: { source: "{{HARNESS_DIR}}\r\n${CONTEXT7_API_KEY} {{UNKNOWN}}", harnessDir: "custom/../dir", binding: COPY }, expected: "custom/../dir\r\n${CONTEXT7_API_KEY} {{UNKNOWN}}" },
+  { name: "no unrequested normalization", request: { source: `{{HARNESS_DIR}}\r\n\${CONTEXT7_API_KEY} {{UNKNOWN}}`, harnessDir: "custom/../dir", binding: COPY }, expected: `custom/../dir\r\n\${CONTEXT7_API_KEY} {{UNKNOWN}}` },
   { name: "literal replacement dollar semantics", request: { source: "{{HARNESS_DIR}} {{OPTION_LETTERS}}", harnessDir: "$&", letters: "$&", binding: COPY }, expected: "{{HARNESS_DIR}} {{OPTION_LETTERS}}" },
 ];
 

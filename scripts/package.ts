@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { authoredSourceRole } from "./runtime-source-selection.ts";
 import { prepareCursorCopyAllowList, prepareCursorNativeAllowList } from "./cursor-settings.ts";
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
 //
@@ -8,8 +9,8 @@ import { prepareCursorCopyAllowList, prepareCursorNativeAllowList } from "./curs
 //   bun scripts/package.ts <name> --check
 //
 // Qualified copy and native deliveries use the retained projection component
-// with explicit version and model-cap inputs. Legacy assembly remains dormant
-// pending the separately reviewed shared-owner retirement.
+// with explicit version and model-cap inputs. Generic assembly remains for
+// unknown or renamed manifests and uses the same root metadata owner.
 //
 // LEGACY PIPELINE PER HARNESS:
 //   1. COPY core/<src> → dist/<name>/<harnessDir>/<dst>, substituting
@@ -71,7 +72,7 @@ import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
 import { prepareClaudeCopyAllowList, prepareClaudeNativeAllowList, type ClaudeCopyCommandAuthority, type ClaudeNativeCommandAuthority } from "./claude-settings.ts";
 import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
 import { substituteAuthoredTokens, substituteInvocationTokens, type InvocationTextBinding } from "./projection-text.ts";
-import { prepareProjectionMetadata, projectionMetadataText, type ProjectionMetadataRules } from "./projection-metadata.ts";
+import { writeProjectionMetadata } from "./projection-metadata-filesystem.ts";
 import { prepareVersionModuleText } from "./version-module.ts";
 import {
   absorbReviewerKnowledge,
@@ -123,7 +124,7 @@ import { createNativeCommandContext } from "./native-command-context.ts";
 import { copyChannelDispatcherCommands, copyChannelToolScripts } from "../core/tools/aidlc.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
-import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
+import { copyStartsWithout, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
 import { SHIPPED_FORMAT_DOCS } from "../core/tools/aidlc-inline-context.ts";
 import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
 
@@ -486,7 +487,6 @@ const COMPILED_DATA = ["tools/data/stage-graph.json", "tools/data/scope-grid.jso
 const HARNESS_DATA = "tools/data/harness.json";
 const AGENT_TIERS_DATA = "tools/data/agent-tiers.json";
 const SETTINGS_SCHEMA_DATA = "tools/data/aidlc-settings.schema.json";
-const STAMP_DATA = "tools/data/aidlc-stamp.json";
 const PROJECTION_DATA = "tools/data/aidlc-projection.json";
 // The lines the plugin compose hook adds to a plugin's agent
 // (manifest-types.ts pluginAgentFrontmatter), in Markdown so the native
@@ -567,95 +567,6 @@ function writeSettingsSchemaData(treeRoot: string): void {
   const dst = join(treeRoot, SETTINGS_SCHEMA_DATA);
   mkdirSync(dirname(dst), { recursive: true });
   writeFileSync(dst, `${JSON.stringify(AIDLC_SETTINGS_SCHEMA, null, 2)}\n`);
-}
-
-function createProjectionMetadataRules(): ProjectionMetadataRules {
-  return { encodeRootIntegration: ({ integration }) => writtenRootIntegration(integration) };
-}
-
-function writeProjectionData(outRoot: string, treeRoot: string, m: HarnessManifest): void {
-  if (!harnessChoiceTextIsPlain(m)) {
-    throw new Error(`[${m.name}] choiceName or choiceNote is not text the harness lists can show`);
-  }
-  const rootIntegrationPaths = new Set(m.rootIntegrations.map((item) => item.path));
-  if (rootIntegrationPaths.size !== m.rootIntegrations.length) {
-    throw new Error(`[${m.name}] duplicate root integration path`);
-  }
-  for (const integration of m.rootIntegrations) {
-    if (!existsSync(join(outRoot, integration.path))) {
-      throw new Error(`[${m.name}] root integration is not projected: ${integration.path}`);
-    }
-  }
-  // A directory that holds only root integrations (.vscode/ for settings.json)
-  // is the project's, not a managed engine directory.
-  const onlyRootIntegrations = (entry: string): boolean => {
-    const files: string[] = [];
-    const visit = (dir: string): void => {
-      for (const name of readdirSync(join(outRoot, dir))) {
-        const rel = `${dir}/${name}`;
-        if (statSync(join(outRoot, rel)).isDirectory()) visit(rel);
-        else files.push(rel);
-      }
-    };
-    visit(entry);
-    return files.length > 0 && files.every((file) => rootIntegrationPaths.has(file));
-  };
-  const managedDirectories = readdirSync(outRoot)
-    .filter((entry) => statSync(join(outRoot, entry)).isDirectory())
-    .filter((entry) => !rootIntegrationPaths.has(entry) && !onlyRootIntegrations(entry))
-    .sort();
-  const allowedTopLevel = new Set([
-    ...managedDirectories,
-    ...m.rootIntegrations.map((item) => item.path.split("/")[0]),
-  ]);
-  const unclassified = readdirSync(outRoot)
-    .filter((entry) => !allowedTopLevel.has(entry))
-    .sort();
-  if (unclassified.length > 0) {
-    throw new Error(`[${m.name}] unclassified projection entries: ${unclassified.join(", ")}`);
-  }
-  const rootIntegrations = m.rootIntegrations.map((integration) => {
-    if (copyStartsWithout(integration) || integration.policy === "json-entries") {
-      // A copy starts without this file (or leaves the team's own in place);
-      // its shipped part rides along so config and the engine can add it
-      // without a download.
-      const dst = join(treeRoot, "tools", "data", "root-blocks", basename(integration.path));
-      mkdirSync(dirname(dst), { recursive: true });
-      writeFileSync(dst, readFileSync(join(outRoot, integration.path)));
-      return integration;
-    }
-    if (integration.policy !== "managed-block") return integration;
-    const bytes = readFileSync(join(outRoot, integration.path));
-    // Every managed block ships a copy inside the harness folder: siblings
-    // read it to combine .gitignore lines, the copy runtime leaves the root
-    // file out, and config and the engine add AI-DLC's part from it.
-    const dst = join(
-      treeRoot,
-      "tools",
-      "data",
-      "root-blocks",
-      integration.marker || basename(integration.path),
-    );
-    mkdirSync(dirname(dst), { recursive: true });
-    writeFileSync(dst, bytes);
-    const currentHash = sha256Bytes(bytes);
-    return {
-      ...integration,
-      legacySignatures: {
-        ...integration.legacySignatures,
-        wholeFileHashes: [
-          ...new Set([
-            ...(integration.legacySignatures?.wholeFileHashes ?? []),
-            currentHash,
-          ]),
-        ],
-      },
-    };
-  });
-  const metadata = prepareProjectionMetadata({ declaration: m, managedDirectories, rootIntegrations, buildVersion: BUILD_VERSION, rules: createProjectionMetadataRules() });
-  mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
-  writeFileSync(join(treeRoot, PROJECTION_DATA), projectionMetadataText({ value: metadata.projection }));
-  writeFileSync(join(treeRoot, STAMP_DATA), projectionMetadataText({ value: metadata.stamp }));
 }
 
 // Emit the method ("memory") tree at the WORKSPACE ROOT of the dist tree
@@ -806,10 +717,9 @@ function writeAuthoredHarnessFiles(input: {
   readonly invoke: string;
   readonly letters: string;
 }): void {
-  // Require the prior iterator protocol; do not accept Array.from's array-like fallback.
-  Array.from({ [Symbol.iterator]: () => input.projection.harnessFiles[Symbol.iterator]() }, ({ src, dst, projectRoot }) => {
+  for (const { src, dst, projectRoot } of input.projection.harnessFiles) {
     const srcPath = join(input.harnessSrcRoot, src);
-    if (!existsSync(srcPath)) return;
+    if (!existsSync(srcPath)) continue;
     const outPath = projectRoot ? join(input.outRoot, dst) : join(input.treeRoot, dst);
     mkdirSync(dirname(outPath), { recursive: true });
     let out = transform(srcPath, readFileSync(srcPath), input.harnessDir, input.projection.rulesRename, input.harness, input.invoke, input.letters);
@@ -820,7 +730,7 @@ function writeAuthoredHarnessFiles(input: {
       out = projectKiroHookCommands(out, input.projection.hookCommandSuffix);
     } else if (surface === "kiro-cli-settings") out = projectKiroCliJson(out);
     writeFileSync(outPath, out);
-  });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -855,6 +765,7 @@ function buildTree(
     if (!existsSync(srcDir)) continue;
     const finalDst = m.rulesRename && dst === "rules" ? m.rulesRename : dst;
     for (const file of walk(srcDir)) {
+      if (authoredSourceRole({ path: relative(REPO_ROOT, file) }) === "test") continue;
       const rel = relative(srcDir, file);
       const outPath = join(treeRoot, finalDst, rel);
       mkdirSync(dirname(outPath), { recursive: true });
@@ -977,7 +888,7 @@ function buildTree(
   }
   expandCursorToolAllows(treeRoot, m);
   expandClaudeToolAllows(treeRoot, m);
-  writeProjectionData(outRoot, treeRoot, m);
+  writeProjectionMetadata({ root: outRoot, declaration: m, buildVersion: BUILD_VERSION });
 
   // 6. Generated table regions are build products, not authored prose. Refresh
   //    them only after emit(), because Codex and Copilot place the orchestrator

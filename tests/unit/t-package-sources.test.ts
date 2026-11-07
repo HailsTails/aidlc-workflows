@@ -30,6 +30,8 @@ function checkout(): string {
     ["plugins/demo/tests/t.test.ts", "// a plugin test\n"],
     ["scripts/package.ts", "// packager\n"],
     ["scripts/project-core-session.ts", "// session launcher\n"],
+    ["scripts/projection-metadata-filesystem.ts", "// metadata filesystem adapter\n"],
+    ["scripts/projection/native/projection-metadata.ts", "// retained metadata owner\n"],
     ["scripts/plugin-hooks-template/compose.ts", "// compose\n"],
   ] as const) {
     mkdirSync(join(root, path, ".."), { recursive: true });
@@ -55,6 +57,8 @@ describe("the packaged-sources fingerprint", () => {
     ["plugins/demo/stages/s.md"],
     ["scripts/package.ts"],
     ["scripts/project-core-session.ts"],
+    ["scripts/projection-metadata-filesystem.ts"],
+    ["scripts/projection/native/projection-metadata.ts"],
     ["scripts/plugin-hooks-template/compose.ts"],
   ])("covers %s", (path) => {
     const root = checkout();
@@ -77,6 +81,21 @@ describe("the packaged-sources fingerprint", () => {
 });
 
 describe("the packaged-sources record", () => {
+  test.each([
+    ["scripts/projection-metadata-filesystem.ts", "// metadata filesystem adapter\n"],
+    ["scripts/projection/native/projection-metadata.ts", "// retained metadata owner\n"],
+  ])("editing %s makes the record stale and refuses the old build fingerprint", (path, original) => {
+    const root = checkout();
+    const before = packageInputsFingerprint(root);
+    expect(recordPackagedSources(root, ["foo"], before)).toBe(true);
+    writeFileSync(join(root, path), "// changed metadata input\n");
+    expect(stalePackageMessage(root, "foo")).toContain("was packaged from other sources");
+    expect(recordPackagedSources(root, ["foo"], before)).toBe(false);
+    writeFileSync(join(root, path), original);
+    expect(packageInputsFingerprint(root)).toBe(before);
+    expect(stalePackageMessage(root, "foo")).toBeNull();
+  });
+
   test("editing the session launcher makes the record stale and refuses the old build fingerprint", () => {
     const root = checkout();
     const before = packageInputsFingerprint(root);
