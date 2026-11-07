@@ -61,6 +61,9 @@ import {
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import type { HarnessManifest } from "./manifest-types.ts";
+import { substituteAuthoredTokens, substituteInvocationTokens, type InvocationTextBinding } from "./projection-text.ts";
+import { prepareProjectionMetadata, projectionMetadataText, type ProjectionMetadataRules } from "./projection-metadata.ts";
+import { prepareVersionModuleText } from "./version-module.ts";
 import {
   absorbReviewerKnowledge,
   agentNameFromPath,
@@ -70,7 +73,7 @@ import {
 } from "./agent-knowledge.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
-import { EARLIER_RELEASE_REGIONS, earlierReleasesReadSkill } from "./earlier-release-regions.ts";
+import { earlierReleasesReadSkill, prepareEarlierReleaseSkillText } from "./earlier-release-regions.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
 import {
   buildPluginProjection as emitPluginProjection,
@@ -152,27 +155,16 @@ const BUILD_VERSION = releaseBuildVersion();
 if (BUILD_VERSION !== AIDLC_VERSION) {
   console.error(`[version] stamping projections with ${BUILD_VERSION_ENV}=${BUILD_VERSION}`);
 }
-const VERSION_ASSIGNMENT = /^export const AIDLC_VERSION = "[^"]+";$/m;
-
-function stampVersionModule(content: string): string {
-  if (BUILD_VERSION === AIDLC_VERSION) return content;
-  const matches = content.match(new RegExp(VERSION_ASSIGNMENT.source, "gm")) ?? [];
-  if (matches.length !== 1) {
-    throw new Error(
-      `aidlc-version.ts must declare exactly one AIDLC_VERSION assignment, found ${matches.length}`,
-    );
-  }
-  return content.replace(VERSION_ASSIGNMENT, `export const AIDLC_VERSION = "${BUILD_VERSION}";`);
+function stampVersionModule({ source }: { readonly source: string }): string {
+  if (BUILD_VERSION === AIDLC_VERSION) return source;
+  const prepared = prepareVersionModuleText({ source, buildVersion: BUILD_VERSION });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  return prepared.content;
 }
 
 // Neutral and native onboarding skeletons (scripts/onboarding.ts).
 const ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding.md");
 const HARNESS_ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding-harness.md");
-const HARNESS_TOKEN = /\{\{HARNESS_DIR\}\}/g;
-const INVOKE_TOKEN = /\{\{INVOKE\}\}/g;
-const TOOL_PREFIX_TOKEN = /\{\{TOOL_PREFIX\}\}/g;
-const TRUSTED_NAMESPACE_TOKEN = /\{\{TRUSTED_NAMESPACE\}\}/g;
-const OPTION_LETTERS_TOKEN = /\{\{OPTION_LETTERS\}\}/g;
 // Matched by PREFIX (mirroring aidlc-init.ts's marker scan): the begin marker
 // embeds the harness-projected invocation, so its tail varies per channel.
 const GENERATED_SKILL_REGIONS = [
@@ -204,16 +196,15 @@ function discoverHarnessNames(): string[] {
 // Transform: token substitution on authored prose and the
 // TypeScript invocation seam; compiled JSON is regenerated per tree.
 // ---------------------------------------------------------------------------
-function substituteInvocationTokens(
-  s: string,
-  harnessDir: string,
-  invoke = `bun ${harnessDir}/tools/aidlc.ts`,
-): string {
-  const toolPrefix = invoke === "aidlc" ? `${TRUSTED_COMMAND_PREFIX} ` : `bun ${harnessDir}/tools/`;
-  return s
-    .replace(INVOKE_TOKEN, invoke)
-    .replace(TOOL_PREFIX_TOKEN, toolPrefix)
-    .replace(TRUSTED_NAMESPACE_TOKEN, TRUSTED_ROUTE_NAMESPACE);
+function invocationTextBinding({ harnessDir, invoke = `bun ${harnessDir}/tools/aidlc.ts` }: {
+  harnessDir: string;
+  invoke?: string;
+}): InvocationTextBinding {
+  return {
+    invoke,
+    toolPrefix: invoke === "aidlc" ? `${TRUSTED_COMMAND_PREFIX} ` : `bun ${harnessDir}/tools/`,
+    trustedNamespace: TRUSTED_ROUTE_NAMESPACE,
+  };
 }
 
 // The letters a questions file gives a question's options before `X. Other`:
@@ -225,18 +216,6 @@ function optionLetters(m: HarnessManifest): string {
     throw new Error(`[${m.name}] questionOptions must be a whole number from 2 to 5, got ${shown}`);
   }
   return `A-${String.fromCharCode(64 + shown)}`;
-}
-
-// The letters are substituted only where the caller passes them, so a path
-// that never does leaves the token for the leftover check instead of A-E.
-function substituteToken(
-  s: string,
-  harnessDir: string,
-  invoke = `bun ${harnessDir}/tools/aidlc.ts`,
-  letters?: string,
-): string {
-  const lettered = letters === undefined ? s : s.replace(OPTION_LETTERS_TOKEN, letters);
-  return substituteInvocationTokens(lettered.replace(HARNESS_TOKEN, harnessDir), harnessDir, invoke);
 }
 
 // Rewrite in-prose `<harnessDir>/rules/` → `<harnessDir>/<rulesRename>/` for a
@@ -422,7 +401,7 @@ function transform(
       s = absorbReviewerKnowledge(s, agentName, CORE_ROOT);
       s = injectDelegatedKnowledgePreflight(s, agentName, harnessDir);
     }
-    s = substituteToken(s, harnessDir, invoke, letters);
+    s = substituteAuthoredTokens({ source: s, harnessDir, letters, binding: invocationTextBinding({ harnessDir, invoke }) });
     s = applyRulesRename(s, harnessDir, rulesRename);
     if (harness) s = projectTierFrontmatter(s, srcPath, harness);
     // Cursor, opencode, and Copilot persona bodies read the method by path:
@@ -440,16 +419,16 @@ function transform(
   }
   if (srcPath.endsWith(".ts")) {
     const source = basename(srcPath) === "aidlc-version.ts"
-      ? stampVersionModule(content.toString("utf-8"))
+      ? stampVersionModule({ source: content.toString("utf-8") })
       : content.toString("utf-8");
     return Buffer.from(
-      substituteInvocationTokens(source, harnessDir, invoke),
+      substituteInvocationTokens({ source, binding: invocationTextBinding({ harnessDir, invoke }) }),
       "utf-8",
     );
   }
   if (/\.(?:hook|json|toml)$/.test(srcPath)) {
     return Buffer.from(
-      substituteToken(content.toString("utf-8"), harnessDir, invoke, letters),
+      substituteAuthoredTokens({ source: content.toString("utf-8"), harnessDir, letters, binding: invocationTextBinding({ harnessDir, invoke }) }),
       "utf-8",
     );
   }
@@ -671,6 +650,10 @@ function writeSettingsSchemaData(treeRoot: string): void {
   writeFileSync(dst, `${JSON.stringify(AIDLC_SETTINGS_SCHEMA, null, 2)}\n`);
 }
 
+function createProjectionMetadataRules(): ProjectionMetadataRules {
+  return { encodeRootIntegration: ({ integration }) => writtenRootIntegration(integration) };
+}
+
 function writeProjectionData(outRoot: string, treeRoot: string, m: HarnessManifest): void {
   if (!harnessChoiceTextIsPlain(m)) {
     throw new Error(`[${m.name}] choiceName or choiceNote is not text the harness lists can show`);
@@ -750,33 +733,10 @@ function writeProjectionData(outRoot: string, treeRoot: string, m: HarnessManife
       },
     };
   });
-  const projection = {
-    schemaVersion: 1,
-    distribution: m.name,
-    productName: m.productName,
-    ...(m.choiceName ? { choiceName: m.choiceName } : {}),
-    ...(m.choiceNote ? { choiceNote: m.choiceNote } : {}),
-    configNextStep: m.configNextStep,
-    ...(m.firstRunSteps ? { firstRunSteps: m.firstRunSteps } : {}),
-    ...(m.editorTerminalApp ? { editorTerminalApp: m.editorTerminalApp } : {}),
-    harnessDir: m.harnessDir,
-    ...(m.onboarding?.harnessDst
-      ? { onboarding: `${m.harnessDir}/${m.onboarding.harnessDst}` }
-      : m.onboarding && !m.onboarding.projectRoot
-        ? { onboarding: `${m.harnessDir}/${m.onboarding.dst}` }
-        : {}),
-    managedDirectories,
-    rootIntegrations: rootIntegrations.map(writtenRootIntegration),
-  };
-  const stamp = {
-    schemaVersion: 1,
-    frameworkVersion: BUILD_VERSION,
-    distribution: m.name,
-    harnessDir: m.harnessDir,
-  };
+  const metadata = prepareProjectionMetadata({ declaration: m, managedDirectories, rootIntegrations, buildVersion: BUILD_VERSION, rules: createProjectionMetadataRules() });
   mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
-  writeFileSync(join(treeRoot, PROJECTION_DATA), `${JSON.stringify(projection, null, 2)}\n`);
-  writeFileSync(join(treeRoot, STAMP_DATA), `${JSON.stringify(stamp, null, 2)}\n`);
+  writeFileSync(join(treeRoot, PROJECTION_DATA), projectionMetadataText({ value: metadata.projection }));
+  writeFileSync(join(treeRoot, STAMP_DATA), projectionMetadataText({ value: metadata.stamp }));
 }
 
 // Emit the method ("memory") tree at the WORKSPACE ROOT of the dist tree
@@ -1092,7 +1052,7 @@ function buildTree(
       distRoot: outRoot,
       harnessDir,
       trustedRouteNamespace: TRUSTED_ROUTE_NAMESPACE,
-      substituteToken: (s: string) => substituteToken(s, harnessDir, invoke, letters),
+      substituteToken: (s: string) => substituteAuthoredTokens({ source: s, harnessDir, letters, binding: invocationTextBinding({ harnessDir, invoke }) }),
       tierCap: TIER_CAP,
     });
   }
@@ -1568,7 +1528,7 @@ function rewriteNativeInvocations(
       `"bun \\\\$\\\\{?KIRO_PROJECT_DIR\\\\}?/${m.harnessDir}/tools/.*"`,
       `"${trustedCommand(".*")}"`,
     );
-    value = substituteInvocationTokens(value, m.harnessDir, "aidlc");
+    value = substituteInvocationTokens({ source: value, binding: invocationTextBinding({ harnessDir: m.harnessDir, invoke: "aidlc" }) });
     value = rewriteNativeOnboarding(value, m.tierFlavor === "claude" || m.tierFlavor === "cursor" || m.tierFlavor === "kiro");
     writeFileSync(file, value);
   }
@@ -1802,8 +1762,8 @@ function refreshGeneratedSkillRegions(
 function keepEarlierReleaseRegions(outRoot: string, manifest: HarnessManifest): void {
   const skillPath = assembledOrchestratorSkill(outRoot, manifest);
   if (!earlierReleasesReadSkill(relative(outRoot, skillPath), manifest.harnessDir)) return;
-  const body = readFileSync(skillPath, "utf-8").replace(/\n*$/, "");
-  writeFileSync(skillPath, `${body}\n\n${EARLIER_RELEASE_REGIONS}\n`, "utf-8");
+  const body = readFileSync(skillPath, "utf-8");
+  writeFileSync(skillPath, prepareEarlierReleaseSkillText({ text: body, skillRel: relative(outRoot, skillPath), harnessDir: manifest.harnessDir }), "utf-8");
 }
 
 // Defense-in-depth backstop: rewrite any residual "<harnessDir>/rules/" →
@@ -1936,7 +1896,7 @@ if (argv[0] === "codex" && argv[1] === "trust") {
       hooksJson ?? undefined,
       ".codex",
       "codex",
-      substituteInvocationTokens("{{INVOKE}}", ".codex"),
+      substituteInvocationTokens({ source: "{{INVOKE}}", binding: invocationTextBinding({ harnessDir: ".codex" }) }),
       TRUSTED_ROUTE_NAMESPACE,
     ),
   );

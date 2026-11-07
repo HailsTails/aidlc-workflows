@@ -14,6 +14,9 @@ export const PACKAGE_SOURCES_FILE = join("dist", ".package-sources.json");
 const INPUT_DIRS = ["core", "harness", "plugins", "scripts/plugin-hooks-template"];
 const INPUT_FILES = [
   "scripts/package.ts",
+  "scripts/projection-text.ts",
+  "scripts/projection-metadata.ts",
+  "scripts/version-module.ts",
   "scripts/manifest-types.ts",
   "scripts/agent-knowledge.ts",
   "scripts/earlier-release-regions.ts",
