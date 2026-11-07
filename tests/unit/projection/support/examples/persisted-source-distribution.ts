@@ -1,0 +1,23 @@
+import { createProjectionOwnershipCodec, createOwnershipDigest, type ProjectionOwnershipCodec } from "../../../../../scripts/projection/src/adapters/projection-ownership.ts";
+import { planOwnedProducts, type OwnedProductIdentity, type OwnershipDigest } from "../../../../../scripts/projection/src/domain/projection-ownership.ts";
+import { createOwnedSourceDistributionServices, type OwnedSourceArchive, type OwnedSourceDistributionServices } from "./owned-source-distribution.ts";
+import type { DistributionSourceLocation } from "../../../../../scripts/projection/src/adapters/distribution-source.ts";
+import type { DistributionProduct } from "../../../../../scripts/projection/src/domain/distribution-products.ts";
+import type { SourceBasis } from "../../../../../scripts/projection/src/domain/source-origin.ts";
+import type { Outcome } from "../../../../../scripts/projection/src/domain/model.ts";
+import { nativeProducerRequiredPaths } from "../../../../../scripts/projection/src/application/native-runner-requirements.ts";
+export type PersistedSourceServices = OwnedSourceDistributionServices & { readonly codec: ProjectionOwnershipCodec; readonly digest: OwnershipDigest; readonly plan: typeof planOwnedProducts };
+export const createPersistedSourceServices = (): PersistedSourceServices => ({ ...createOwnedSourceDistributionServices(), codec: createProjectionOwnershipCodec(), digest: createOwnershipDigest(), plan: planOwnedProducts });
+export type PersistedSourceArchive = OwnedSourceArchive & { readonly ownershipJson: string };
+export const assemblePersistedSourceDistribution = async ({ location, ownershipJson, products, retirements, sources, services = createPersistedSourceServices() }: { readonly location: DistributionSourceLocation; readonly ownershipJson: string; readonly products: readonly DistributionProduct[]; readonly retirements: readonly OwnedProductIdentity[]; readonly sources: readonly SourceBasis[]; readonly services?: PersistedSourceServices }): Promise<Outcome<PersistedSourceArchive>> => {
+  const ownership = services.codec.read({ json: ownershipJson });
+  if (ownership.status === "invalid") return ownership;
+  const prepared = await services.prepare({ location });
+  if (prepared.status === "invalid") return prepared;
+  const planned = services.plan({ ownership: ownership.value, seed: prepared.value.seed, products, retirements, digest: services.digest });
+  if (planned.status === "invalid") return planned;
+  const reconciled = services.reconciler.reconcile({ seed: prepared.value.seed, edits: planned.value.edits, sources, protectedPaths: [], requiredPaths: nativeProducerRequiredPaths({ requirements: prepared.value.requirements, stageDocuments: prepared.value.stageDocuments }) });
+  if (reconciled.status === "invalid") return reconciled;
+  const packed = await services.archive({ sourceRoot: location.sourceRoot, distribution: reconciled.value });
+  return packed.status === "invalid" ? packed : { status: "ok", value: { distribution: reconciled.value, requirements: prepared.value.requirements, archive: packed.value, ownershipJson: services.codec.write({ ownership: planned.value.ownership }) } };
+};

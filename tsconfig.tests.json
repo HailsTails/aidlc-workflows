@@ -2,6 +2,7 @@
   "extends": "./tsconfig.json",
   "include": [
     "core/**/*.d.ts",
+    "scripts/**/*.d.ts",
     "tests/**/*.ts",
     "plugins/*/tests/**/*.ts"
   ],

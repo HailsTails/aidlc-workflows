@@ -1,0 +1,18 @@
+import { mock } from "bun:test";
+import { distributionBasis, distributionSeed } from "./distribution-fixtures.ts";
+import { compiledWorkflow } from "./workflow-compiler-fixtures.ts";
+import type { ScopeSourceOperations } from "../../../../../scripts/projection/src/adapters/scope-sources.ts";
+import type { ProjectionSet } from "../../../../../scripts/projection/src/application/projection-set.ts";
+import type { ScopeRuntimeServices } from "../../../../../scripts/projection/examples/scope-runtime.ts";
+export const scopeOrigin = { ...distributionBasis, path: "core/scopes/aidlc-bugfix.md" };
+export const scopeText = "---\nname: bugfix\nrunner: true\nguard_policy: off\n---\n\n# Fix a bug\nKeep the authored scope policy.\n";
+export const authoredScope = { origin: scopeOrigin, name: "bugfix", markdown: scopeText };
+export const scopeContext = { harness: "claude", directory: ".claude", invocation: "bun .claude/tools/aidlc.ts", rulesSubdir: "rules" } as const;
+export const scopeProjection = { origin: scopeOrigin, name: "bugfix", harness: "claude", resources: [{ kind: "file", path: ".claude/scopes/aidlc-bugfix.md", body: scopeText }] } as const;
+export const scopeSet: ProjectionSet = { scope: "selected-surfaces", target: distributionSeed.binding, units: [{ kind: "scope", key: "scope-bugfix", projection: scopeProjection }], resources: scopeProjection.resources };
+export const scopeSources = { scopes: [authoredScope], inputs: [{ path: "core/scopes/aidlc-bugfix.md", sha256: "a".repeat(64) }] };
+export const scopeWorkflow = { ...compiledWorkflow, inputs: [...compiledWorkflow.inputs, ...scopeSources.inputs] };
+export const createScopeSourceFixture = (): ScopeSourceOperations => ({ inventory: mock().mockResolvedValue([{ path: "core/scopes/aidlc-bugfix.md", text: scopeText }]), digest: mock().mockReturnValue("a".repeat(64)) });
+export const scopeRuntimeFile = { path: ".claude/scopes/aidlc-bugfix.md", bytes: new TextEncoder().encode(scopeText), mode: 0o644 };
+export const scopeRuntimeSeed = { ...distributionSeed, files: [...distributionSeed.files, scopeRuntimeFile] };
+export const createScopeRuntimeFixture = (): ScopeRuntimeServices => ({ reader: { load: mock().mockResolvedValue({ status: "ok", value: scopeSources }) }, bind: mock().mockReturnValue({ status: "ok", value: scopeSources }), project: mock().mockReturnValue({ status: "ok", value: scopeSet }), prepare: mock().mockReturnValue({ status: "ok", value: { seed: scopeRuntimeSeed, projection: scopeSet } }), rules: { path: mock().mockReturnValue("safe"), encode: mock().mockReturnValue(new Uint8Array([9, 8])) } });

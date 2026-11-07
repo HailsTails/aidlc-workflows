@@ -1,0 +1,18 @@
+import { mock } from "bun:test";
+import type { CoreKnowledgeSourceOperations } from "../../../../../scripts/projection/src/adapters/core-knowledge-sources.ts";
+import type { CoreKnowledgeSources } from "../../../../../scripts/projection/src/domain/core-knowledge-sources.ts";
+import type { AuthoredProseContext } from "../../../../../scripts/projection/src/domain/authored-prose.ts";
+import type { ProjectionSet, ProjectionSetRequest } from "../../../../../scripts/projection/src/application/projection-set.ts";
+import type { DistributionProduct } from "../../../../../scripts/projection/src/domain/distribution-products.ts";
+import type { CoreKnowledgeProductServices } from "../../../../../scripts/projection/examples/core-knowledge-products.ts";
+export const coreKnowledgeBasis = { source: { kind: "core", id: "framework" }, pin: "1111111111111111111111111111111111111111" } as const;
+export const coreKnowledgeOrigin = { ...coreKnowledgeBasis, path: "core/knowledge/aidlc-shared/guide.md" };
+export const coreKnowledgeText = "Run {{INVOKE}} engine knowledge list.\n";
+export const coreKnowledgeSources: CoreKnowledgeSources = { documents: [{ relativePath: "aidlc-shared/guide.md", origin: coreKnowledgeOrigin, text: coreKnowledgeText }], inputs: [{ path: "core/knowledge/aidlc-shared/guide.md", sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }] };
+export const coreKnowledgeContext: AuthoredProseContext = { harness: "claude", directory: ".claude", invocation: "bun .claude/tools/aidlc.ts", rulesSubdir: "rules" };
+export const coreKnowledgeSelection: ProjectionSetRequest = { target: { harness: "claude", directory: ".claude" }, units: [{ kind: "knowledge", key: "knowledge-12-aidlc-shared-guide", input: { document: { relativePath: "aidlc-shared/guide.md", origin: coreKnowledgeOrigin, text: coreKnowledgeText }, context: coreKnowledgeContext } }] };
+export const coreKnowledgeProjection = { origin: coreKnowledgeOrigin, harness: "claude", resources: [{ kind: "file", path: ".claude/knowledge/aidlc-shared/guide.md", body: "Rendered knowledge" }] } as const;
+export const coreKnowledgeSet: ProjectionSet = { scope: "selected-surfaces", target: { harness: "claude", directory: ".claude" }, units: [{ kind: "knowledge", key: "knowledge-12-aidlc-shared-guide", projection: coreKnowledgeProjection }], resources: [{ kind: "file", path: ".claude/knowledge/aidlc-shared/guide.md", body: "Rendered knowledge" }] };
+export const coreKnowledgeProducts: readonly DistributionProduct[] = [{ key: "knowledge-12-aidlc-shared-guide", owner: coreKnowledgeBasis, binding: { harness: "claude", directory: ".claude" }, inputs: [coreKnowledgeOrigin], requiredByProducer: [], files: [{ path: ".claude/knowledge/aidlc-shared/guide.md", bytes: new Uint8Array([1, 2]), mode: 0o644 }] }];
+export const coreKnowledgeSourceOperations = (): CoreKnowledgeSourceOperations => ({ inventory: mock().mockResolvedValue([{ path: "core/knowledge/aidlc-shared/guide.md", text: coreKnowledgeText }]), digest: mock().mockReturnValue("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") });
+export const coreKnowledgeProductServices = (): CoreKnowledgeProductServices => ({ reader: { load: mock().mockResolvedValue({ status: "ok", value: coreKnowledgeSources }) }, select: mock().mockReturnValue({ status: "ok", value: coreKnowledgeSelection }), project: mock().mockReturnValue({ status: "ok", value: coreKnowledgeSet }), products: mock().mockReturnValue({ status: "ok", value: coreKnowledgeProducts }), rules: { encode: mock().mockReturnValue(new Uint8Array([1, 2])) } });

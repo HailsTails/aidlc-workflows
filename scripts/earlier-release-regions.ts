@@ -16,3 +16,8 @@ export function earlierReleasesReadSkill(skillRel: string, harnessDir: string): 
   const rel = skillRel.split(/[\\/]/).join("/");
   return rel === `${harnessDir}/skills/aidlc/SKILL.md` || rel === ".agents/skills/aidlc/SKILL.md";
 }
+
+export function prepareEarlierReleaseSkillText({ text, skillRel, harnessDir }: { readonly text: string; readonly skillRel: string; readonly harnessDir: string }): string {
+  if (!earlierReleasesReadSkill(skillRel, harnessDir)) return text;
+  return `${text.replace(/\n*$/, "")}\n\n${EARLIER_RELEASE_REGIONS}\n`;
+}

@@ -1,0 +1,8 @@
+import { mock } from "bun:test";
+import type { SourceWorkspaceSeedServices } from "../../../../../scripts/projection/src/adapters/source-workspace-seed.ts";
+export const workspaceSeedBasis = { source: { kind: "core", id: "framework" }, pin: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } as const;
+export const workspaceSeedRequest = { sourceRoot: "authored-source", root: "native-input", basis: workspaceSeedBasis, binding: { harness: "claude", directory: ".claude" }, invocation: "bun .claude/tools/aidlc.ts", mode: 0o640 } as const;
+export const workspaceSeedDigest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+export const workspaceSeedSource = { origin: { ...workspaceSeedBasis, path: "scripts/workspace-seed.ts" }, sha256: workspaceSeedDigest, file: "aidlc/active-space", content: "default\n" } as const;
+export const workspaceSeedPrepared = { files: [{ path: "aidlc/active-space", bytes: new Uint8Array([100, 101, 102, 97, 117, 108, 116, 10]), mode: 0o640 }], preparation: { kind: "workspace-seed", paths: ["aidlc/active-space"], inputs: [{ path: "scripts/workspace-seed.ts", sha256: workspaceSeedDigest }] } } as const;
+export const createWorkspaceSeedFixture = (): SourceWorkspaceSeedServices => ({ operations: { read: mock().mockResolvedValue({ status: "ok", value: new Uint8Array([83]) }), module: mock().mockResolvedValue({ status: "ok", value: { freshWorkspaceSeed: mock().mockReturnValue({ file: "aidlc/active-space", content: "default\n" }) } }), digest: mock().mockReturnValue(workspaceSeedDigest) }, prepare: mock().mockReturnValue({ status: "ok", value: workspaceSeedPrepared }), encode: mock().mockReturnValue(new Uint8Array([100, 101, 102, 97, 117, 108, 116, 10])) });
