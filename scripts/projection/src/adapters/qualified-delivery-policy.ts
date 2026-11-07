@@ -1,6 +1,7 @@
+import type { KasDeclaration } from "./qualified-kas-policy.ts";
 import type { ExecutableDelivery, QualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 
-type DeliveryDeclaration = {
+type DeliveryDeclaration = KasDeclaration & {
   readonly name: string;
   readonly harnessDir: string;
   readonly harnessFiles: readonly { readonly src: string; readonly dst: string; readonly projectRoot?: boolean; readonly copyOnly?: boolean }[];
@@ -15,6 +16,10 @@ export function qualifyDeliveryDeclaration(declaration: DeliveryDeclaration, pro
   if (declaration.nativeRootIntegrations !== undefined) throw new Error("delivery does not admit nativeRootIntegrations declarations");
   const omitted = declaration.harnessFiles.filter(mapping => mapping.copyOnly);
   if (omitted.length !== profile.copyOnlyRoots.length || profile.copyOnlyRoots.some(expected => omitted.filter(mapping => mapping.src === expected.src && mapping.dst === expected.dst && mapping.projectRoot === true && mapping.copyOnly === true).length !== 1 || declaration.rootIntegrations.filter(integration => integration.path === expected.dst && integration.policy === expected.policy).length !== 1)) throw new Error("delivery does not admit unqualified copyOnly resources or root ownership");
+  if (profile.nativePolicy === "kas-personas") {
+    const { qualifyKasDeclaration } = require("./qualified-kas-policy.ts") as typeof import("./qualified-kas-policy.ts");
+    qualifyKasDeclaration(declaration, profile); return;
+  }
   const replacements = declaration.nativeReplacements;
   if (profile.nativeReplacementCount === 0 ? replacements !== undefined : !Array.isArray(replacements) || replacements.length !== profile.nativeReplacementCount || profile.nativeTextSources.length !== 1 || replacements.some(replacement => typeof replacement.from !== "string" || replacement.from.length === 0 || typeof replacement.to !== "string" || replacement.to.length === 0 || replacement.from === replacement.to)) throw new Error("delivery does not admit unqualified nativeReplacements declarations");
 }

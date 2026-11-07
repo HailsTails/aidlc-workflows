@@ -1,3 +1,4 @@
+import { observeKasInputs } from "./kas-source-contract.ts";
 import { qualifiedHarnessProfile, qualifiedRootMappings, qualifiedDescriptionPaths } from "./qualified-harness-profile.ts";
 import { createHash } from "node:crypto";
 import { mergeSourceDigests } from "../domain/source-origin.ts";
@@ -12,7 +13,7 @@ const descriptionSourcePaths = (request: DistributionDescriptionRequest): readon
   if (profile === null) return [];
   const sourcePaths = ["scripts/projection/native/projection-metadata.ts", "scripts/manifest-types.ts", "scripts/projection/src/adapters/qualified-delivery-policy.ts", `harness/${profile.harness}/manifest.ts`, `harness/${profile.harness}/onboarding.fills.ts`, ...[...profile.rootMappings, ...profile.copyOnlyRoots].map(mapping => `harness/${profile.harness}/${mapping.src}`), "core/tools/aidlc-distribution.ts", "core/tools/aidlc-root-integration-codec.ts", "core/tools/aidlc-projection-path.ts", "core/tools/aidlc-channel.ts", "core/tools/aidlc-version.ts"];
   const nativeSourcePaths = ["scripts/projection/native/native-delivery.ts", "scripts/projection/src/domain/model.ts", "scripts/copy-era-files.json", "scripts/native-command-text.ts", "scripts/native-command-context.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts", "core/tools/aidlc-runtime-paths.ts"];
-  return request.invocation === "aidlc" ? [...sourcePaths, ...nativeSourcePaths] : sourcePaths;
+  return [...new Set([...(request.invocation === "aidlc" ? [...sourcePaths, ...nativeSourcePaths] : sourcePaths), ...(profile.nativePolicy === "kas-personas" ? observeKasInputs(request.sourceRoot).map(input => input.path) : [])])];
 };
 export type NativeDescriptionPair = { readonly profile: DistributionBuildProfile; readonly copy: PairedCopyDescription };
 export type SourceDescriptionOperations = NativeCompilerProcessOperations & { readonly paths: (input: DistributionDescriptionRequest) => { readonly sourceRoot: string; readonly root: string } };
@@ -80,7 +81,8 @@ const prepareNative = async ({ native, roots }) => {
   if (input.nativeDelivery && prepared.kind === "prepared") {
     const delivery = await loadModule({ path: "scripts/projection/native/native-delivery.ts" });
     const history = await Bun.file(input.sourceRoot + "/scripts/copy-era-files.json").json();
-    const finalized = delivery.finalizeNativeMetadata({ harnessDir: input.profile.directory, artifacts: [...roots.filter(root => !input.profile.projectedRootPaths.includes(root.path)).map(root => ({ file: root.path, bytes: root.bytes })), ...prepared.artifacts], nativeFiles: input.nativeDelivery.files.map(file => ({ path: file.path, bytes: Buffer.from(file.base64, "base64") })), copyFiles: input.nativeDelivery.copyFiles, history: history[input.profile.harness] });
+    const namespaceLiterals = input.profile.nativePolicy === "kas-personas" ? [...native.declaration.frontmatterAdditions.map(item => ({ path: input.profile.directory + "/" + item.file, lines: item.lines })), { path: input.profile.directory + "/tools/data/plugin-agent.md", lines: native.declaration.pluginAgentFrontmatter }].map(item => ({ path: item.path, text: native.declaration.nativeReplacements.find(replacement => item.lines.join("\\n").includes(replacement.from)).to })) : [];
+    const finalized = delivery.finalizeNativeMetadata({ namespaceLiterals, harnessDir: input.profile.directory, artifacts: [...roots.filter(root => !input.profile.projectedRootPaths.includes(root.path)).map(root => ({ file: root.path, bytes: root.bytes })), ...prepared.artifacts], nativeFiles: input.nativeDelivery.files.map(file => ({ path: file.path, bytes: Buffer.from(file.base64, "base64") })), copyFiles: input.nativeDelivery.copyFiles, history: history[input.profile.harness] });
     return admitPrepared({ prepared: finalized, roots: [] });
   }
   return admitPrepared({ prepared, roots });

@@ -96,9 +96,11 @@ export const parseKasWorkerPolicy = ({
 };
 export const createKasAgentEmitter = ({
   policy,
+  inlinePersona = false,
   formatters = createAgentMarkdownFormatters(),
 }: {
   readonly policy?: KasWorkerPolicy;
+  readonly inlinePersona?: boolean;
   readonly formatters?: AgentMarkdownFormatters;
 } = {}): AgentNativeEmitter => ({
   emit: (input) => {
@@ -146,6 +148,7 @@ export const createKasAgentEmitter = ({
     return {
       status: "ok",
       value: [
+        ...(inlinePersona ? [{ kind: "file" as const, path: `.kiro/aidlc-common/personas/${input.name}.md`, body: formatters.persona({ input, frontmatter: formatters.frontmatter({ frontmatter: input.frontmatter, nativeModel: input.nativeModel, effortKey: "effortLevel", removeKeys: ["disallowedTools"], additions: [] }) }) }] : []),
         {
           kind: "file",
           path: `.kiro/agents/${input.name}.md`,

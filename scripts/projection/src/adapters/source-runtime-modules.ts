@@ -59,7 +59,7 @@ const prepare = async () => {
     const stamped = file.endsWith("/aidlc-version.ts") ? version.prepareVersionModuleText({ source, buildVersion }) : { kind: "prepared", content: source };
     if (stamped.kind !== "prepared") throw new Error(stamped.message);
     const projected = text.substituteInvocationTokens({ source: stamped.content, binding });
-    return { file, content: request.invoke === "aidlc" ? nativeText.prepareNativeRuntimeText(projected, request.harnessDir) : projected };
+    return { file, content: request.invoke === "aidlc" ? nativeText.prepareNativeRuntimeText(projected, request.harnessDir, request.profile.harness) : projected };
   }));
   const after = await observe();
   if (JSON.stringify(before) !== JSON.stringify(after)) return unavailable({ detail: "source runtime module inventories changed during preparation" });

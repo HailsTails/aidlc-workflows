@@ -16,9 +16,9 @@ const binding = { harness: "kiro", directory: ".kiro" } as const;
 const basis = { source: origin.source, pin: origin.pin };
 const authored = () => JSON.parse(readFileSync(join(sourceRoot, origin.path), "utf8"));
 
-test("the agent-v1 producer is explicitly qualified without admitting the shared-directory V3 host", () => {
+test("the agent-v1 producer stays explicitly qualified beside the separate shared-directory V3 host", () => {
   expect(usesRetainedProjection({ name: "kiro", harnessDir: ".kiro" })).toBe(true);
-  expect(usesRetainedProjection({ name: "kiro-ide", harnessDir: ".kiro" })).toBe(false);
+  expect(usesRetainedProjection({ name: "kiro-ide", harnessDir: ".kiro" })).toBe(true);
   expect(usesRetainedProjection({ name: "kiro", harnessDir: ".other" })).toBe(false);
   const profile = qualifiedHarnessByName({ name: "kiro", harnessDir: ".kiro" })!;
   expect(profile.agentMappings).toHaveLength(14);

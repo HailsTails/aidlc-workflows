@@ -37,7 +37,8 @@ const admitMappings = ({ imported, location }: { readonly imported: unknown; rea
   const parsed = moduleSchema.safeParse(imported);
   const profile = qualifiedHarnessProfile(location.binding);
   if (!parsed.success || profile === null || parsed.data.default.name !== profile.harness || parsed.data.default.harnessDir !== profile.directory) return failure({ detail: "authored entry documents require the selected host manifest and supported harness file mappings" });
-  const entries = parsed.data.default.harnessFiles.filter(entry => /\.(?:md|mdc)$/i.test(entry.src) || /\.(?:md|mdc)$/i.test(entry.dst));
+  const settingsOwned = (entry: HarnessMapping) => !entry.projectRoot && !entry.copyOnly && profile.settingsMappings.some(mapping => mapping.src === entry.src && mapping.dst === entry.dst);
+  const entries = parsed.data.default.harnessFiles.filter(entry => !settingsOwned(entry)).filter(entry => /\.(?:md|mdc)$/i.test(entry.src) || /\.(?:md|mdc)$/i.test(entry.dst));
   if (profile.entryMapping === "orchestrator") {
     if (entries.length > 0 || parsed.data.default.orchestratorSkillPath !== `${profile.skillRoot}/aidlc/SKILL.md`) return failure({ detail: "orchestrator-owned entry documents require the declared skill root and no competing Markdown mappings" });
     return { status: "ok", value: profile.entryDocuments };

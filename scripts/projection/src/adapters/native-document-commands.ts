@@ -5,7 +5,7 @@ import type { NativeDocumentCommandPreparer, NativeDocumentCommandRequest, Nativ
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 const modules = ["scripts/native-command-text.ts", "scripts/native-command-context.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts", "core/tools/aidlc-color.ts", "core/tools/aidlc-runtime-paths.ts", "scripts/native-runtime-text.ts"] as const;
 export const nativeDocumentCommandSourcePaths = (): readonly string[] => modules;
-const documentSchema = z.strictObject({ path: z.string().refine((path) => pathStatus({ path }) === "safe"), source: z.string(), text: z.string() });
+const documentSchema = z.strictObject({ path: z.string().refine((path) => pathStatus({ path }) === "safe"), source: z.string(), text: z.string(), namespaceLiterals: z.array(z.string()).optional() });
 const responseSchema = z.discriminatedUnion("status", [z.strictObject({ status: z.literal("ok"), documents: z.array(documentSchema).min(1), inputs: z.array(z.strictObject({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) })) }), z.strictObject({ status: z.enum(["unavailable", "refused"]), detail: z.string() })]);
 const nativeProgram = `
 const input = await Bun.stdin.json();
@@ -27,7 +27,7 @@ const prepare = async () => {
   const prose = await import(Bun.pathToFileURL(input.root + "/scripts/native-runtime-text.ts").href);
   if (typeof api.prepareNativeDocumentText !== "function" || typeof factory.createNativeCommandContext !== "function" || typeof prose.prepareNativeOnboardingText !== "function") return { status: "unavailable", detail: "source-owned native command preparation exports are unavailable" };
   const context = factory.createNativeCommandContext({ harnessDir: input.binding.directory });
-  const prepared = input.documents.map(document => ({ document, prepared: api.prepareNativeDocumentText({ source: prose.prepareNativeOnboardingText(document.source, input.exactReads), subject: document.path, context }) }));
+  const prepared = input.documents.map(document => ({ document, prepared: api.prepareNativeDocumentText({ source: prose.prepareNativeOnboardingText(document.source, input.exactReads), subject: document.path, context, namespaceLiterals: document.namespaceLiterals }) }));
   const refusals = prepared.filter(entry => entry.prepared.status !== "ok").flatMap(entry => entry.prepared.problems ?? ["native text preparation refused without diagnostics"]);
   if (refusals.length > 0) return { status: "refused", detail: refusals.join("\\n") };
   const after = await fingerprint();
@@ -42,9 +42,9 @@ const admitReply = ({ decoded, request }: { readonly decoded: unknown; readonly 
   if (!parsed.success) return { status: "invalid", findings: [finding({ code: "invalid-input", subject: "native-document-commands", detail: "native preparation must return complete text documents and source witnesses or an explicit refusal" })] };
   if (parsed.data.status !== "ok") return { status: "invalid", findings: [finding({ code: parsed.data.status === "unavailable" ? "capability-gap" : "invalid-input", subject: "native-document-commands", detail: parsed.data.detail })] };
   const reply = parsed.data;
-  if (reply.documents.length !== request.documents.length || new Set(reply.documents.map((document) => document.path)).size !== reply.documents.length || reply.documents.some((document) => !request.documents.some((expected) => expected.path === document.path && expected.source === document.source)) || reply.inputs.length !== modules.length || modules.some((path) => reply.inputs.filter((input) => input.path === path).length !== 1)) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "native-document-commands", detail: "native prepared texts must bind every requested path and input byte string once, with the declared source witnesses" })] };
+  if (reply.documents.length !== request.documents.length || new Set(reply.documents.map((document) => document.path)).size !== reply.documents.length || reply.documents.some((document) => !request.documents.some((expected) => expected.path === document.path && expected.source === document.source && JSON.stringify(expected.namespaceLiterals) === JSON.stringify(document.namespaceLiterals))) || reply.inputs.length !== modules.length || modules.some((path) => reply.inputs.filter((input) => input.path === path).length !== 1)) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "native-document-commands", detail: "native prepared texts must bind every requested path and input byte string once, with the declared source witnesses" })] };
   const origins = reply.inputs.map((input) => ({ ...request.basis, path: input.path }));
-  return { status: "ok", value: { binding: request.binding, compiler: { ...request.basis, path: "scripts/native-command-text.ts" }, inputs: reply.inputs, documents: reply.documents.map((document) => ({ ...document, origins })) } };
+  return { status: "ok", value: { binding: request.binding, compiler: { ...request.basis, path: "scripts/native-command-text.ts" }, inputs: reply.inputs, documents: reply.documents.map(({ namespaceLiterals, ...document }) => ({ ...document, origins, ...(namespaceLiterals === undefined ? {} : { namespaceLiterals }) })) } };
 };
 const admitStageRequest = ({ request }: { readonly request: NativeDocumentCommandRequest }): Outcome<NativeDocumentCommandRequest> => request.basis.source.kind !== "core" || request.documents.length === 0 || new Set(request.documents.map((document) => document.path)).size !== request.documents.length || request.documents.some((document) => pathStatus({ path: document.path }) === "unsafe")
   ? { status: "invalid", findings: [finding({ code: "invalid-input", subject: "native-document-commands", detail: "prepare nonempty unique core documents with safe relative paths" })] } : { status: "ok", value: request };

@@ -1,7 +1,10 @@
 import type { HarnessBinding } from "../domain/harness-binding.ts";
 import type { HarnessDocumentPlacement } from "../domain/harness-document.ts";
 
-export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness: "claude" | "codex" | "cursor" | "kiro" }> & {
+export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness: "claude" | "codex" | "cursor" | "kiro" | "kiro-ide" }> & {
+  readonly tierFlavor?: "kiro";
+  readonly nativePolicy?: "kas-personas";
+  readonly agentPolicyNames?: readonly string[];
   readonly pluginAgentFrontmatter?: readonly string[];
   readonly agentMappings?: readonly { readonly src: string; readonly dst: string }[];
   readonly agentKnowledgeRead?: "kiro-chunks";
@@ -74,6 +77,17 @@ const profiles: readonly QualifiedHarnessProfile[] = [
     harness: "kiro", directory: ".kiro", onboardingDestinations: ["AGENTS.md", ".kiro/steering/aidlc-onboarding.md"], agentTurnLimit: "authored-metadata", agentKnowledgeRead: "kiro-chunks", copyOnlyRoots: [], nativeTextSources: [], nativeReplacementCount: 0, agentMemoryReference: null, exactNativeReads: true, modelInvocation: "native-default", skillRoot: ".kiro/skills", runtimeMappings: [{ src: "hooks/aidlc-kiro-adapter.ts", dst: "hooks/aidlc-kiro-adapter.ts" }], settingsMappings: ["agents/aidlc.json", "hooks/aidlc-record-human-turn.kiro.hook", "hooks/aidlc-plan-approval-guard.kiro.hook", "settings/cli.json", "settings/mcp.json"].map(path => ({ src: path, dst: path })), settingsOnboardingPath: null, entryMapping: "manifest",
     pluginAgentFrontmatter: ['tools: ["read", "write", "shell"]', "includeMcpJson: true"],
     agentMappings: kiroAgents.map(role => ({ src: `agents/aidlc-${role}-agent.json`, dst: `agents/aidlc-${role}-agent.json` })),
+    entryDocuments: [
+      { role: "main-skill", source: "skills/aidlc/SKILL.md", destination: ".kiro/skills/aidlc/SKILL.md" },
+      { role: "composer", source: "skills/aidlc/composer.md", destination: ".kiro/skills/aidlc/composer.md" },
+      { role: "question-rendering", source: "skills/aidlc/question-rendering.md", destination: ".kiro/skills/aidlc/question-rendering.md" },
+    ],
+    referenceTemplate: "skills/aidlc/tables.md", referenceDestination: ".kiro/skills/aidlc/tables.md",
+    rootMappings: [{ src: "dot-gitignore", dst: ".gitignore" }], projectedRootPaths: ["AGENTS.md"],
+    descriptionPaths: [".gitignore", ".kiro/tools/data/root-blocks/gitignore", ".kiro/tools/data/root-blocks/agents", ".kiro/tools/data/aidlc-projection.json", ".kiro/tools/data/aidlc-stamp.json"],
+  },
+  {
+    harness: "kiro-ide", tierFlavor: "kiro", nativePolicy: "kas-personas", agentPolicyNames: kiroAgents.map(role => `aidlc-${role}-agent`), directory: ".kiro", onboardingDestinations: ["AGENTS.md", ".kiro/steering/aidlc-onboarding.md"], agentTurnLimit: "authored-metadata", agentKnowledgeRead: "kiro-chunks", copyOnlyRoots: [], nativeTextSources: [], nativeReplacementCount: 0, agentMemoryReference: null, exactNativeReads: true, modelInvocation: "native-default", skillRoot: ".kiro/skills", runtimeMappings: ["hooks/aidlc-kiro-adapter.ts", "hooks/aidlc-kiro-tool-names.ts"].map(path => ({ src: path, dst: path })), settingsMappings: ["agents/aidlc-aidlc.md", "steering/aidlc-active-memory.md", "settings/cli.json", ...["record-human-turn", "guard-tool-call", "log-subagent", "session-start", "continue-workflow"].map(name => `hooks/aidlc-${name}.json`)].map(path => ({ src: path, dst: path })), settingsOnboardingPath: null, entryMapping: "manifest",
     entryDocuments: [
       { role: "main-skill", source: "skills/aidlc/SKILL.md", destination: ".kiro/skills/aidlc/SKILL.md" },
       { role: "composer", source: "skills/aidlc/composer.md", destination: ".kiro/skills/aidlc/composer.md" },

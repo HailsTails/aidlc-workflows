@@ -35,7 +35,7 @@ test.each(["codex", "cursor", "kiro", "kiro-ide", "opencode", "copilot"])("%s re
 function policySource(memoryCap: Tier | null | string): CoreAgentPolicySourceOperations {
   return {
     read: async ({ path }) => ({ status: "ok", value: new TextEncoder().encode(path) }),
-    module: async () => ({ status: "ok", value: { readMemoryCap: () => memoryCap, projectTier } }),
+    project: async ({ environmentCap, harness }) => ({ status: "ok", value: { memoryCap, tiers: Object.fromEntries(tiers.map(tier => [tier, projectTier(tier, harness as "claude", (environmentCap ?? memoryCap) as Tier | null)])) } }),
     digest: ({ bytes }) => createHash("sha256").update(bytes).digest("hex"),
   };
 }

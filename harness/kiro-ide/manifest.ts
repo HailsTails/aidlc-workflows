@@ -84,7 +84,7 @@ const copyShellDeny = new Map<string, string[]>(
 // chains) meet no AI-DLC rule: Kiro's own rules and their Always allow decide
 // them (#2199). The conductor (agents/aidlc-aidlc.md) carries the same list; t148
 // checks every agent; the native release spells the prefix `aidlc`
-// (rewriteKiroNativeAllowlists in scripts/package.ts).
+// (prepareKasShellText in scripts/projection/src/adapters/qualified-kas-policy.ts).
 const SHELL_FORM_ASKS = RISKY_SHELL_FORMS.map((form) => `bun .kiro/tools/aidlc*${form}*`);
 
 // A persona's own tools and permissions are enforced only when the conductor

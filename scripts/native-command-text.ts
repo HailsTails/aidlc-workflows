@@ -42,8 +42,19 @@ export const nativeCommandTextProblems = ({ source, context, subject, namespaceS
   ];
 };
 export type NativeDocumentText = { readonly status: "ok"; readonly text: string } | { readonly status: "invalid"; readonly problems: readonly string[] };
-export const prepareNativeDocumentText = ({ source, context, subject }: { readonly source: string; readonly context: NativeCommandContext; readonly subject: string }): NativeDocumentText => {
+export const prepareNativeDocumentText = ({ source, context, subject, namespaceLiterals = [] }: { readonly source: string; readonly context: NativeCommandContext; readonly subject: string; readonly namespaceLiterals?: readonly string[] }): NativeDocumentText => {
   const text = projectNativeCommandText({ source, context });
-  const problems = nativeCommandTextProblems({ source: text, context, subject });
+  const namespaceSource = prepareNativeNamespaceSource(text, namespaceLiterals);
+  if (namespaceSource === null) return { status: "invalid", problems: [`${subject}: native permission literals require exact unique coverage`] };
+  const problems = nativeCommandTextProblems({ source: text, context, subject, namespaceSource });
   return problems.length > 0 ? { status: "invalid", problems } : { status: "ok", text };
 };
+
+// Only source-backed native permission literals are excluded from command-name scanning.
+// Token, surviving Bun and retired-alias validation still inspect the complete text.
+export function prepareNativeNamespaceSource(text: string, literals: readonly string[]): string | null {
+  if (new Set(literals).size !== literals.length || literals.some(literal => literal.length === 0 || text.split(literal).length !== 2)) return null;
+  let source = text;
+  for (const literal of literals) { if (source.split(literal).length !== 2) return null; source = source.replace(literal, literal.replace(/[^\r\n]/g, " ")); }
+  return source;
+}

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { sha256Bytes } from "../../../core/tools/aidlc-distribution.ts";
 import { createNativeCommandContext } from "../../native-command-context.ts";
-import { nativeCommandTextProblems } from "../../native-command-text.ts";
+import { nativeCommandTextProblems, prepareNativeNamespaceSource } from "../../native-command-text.ts";
 import { pathStatus } from "../src/domain/model.ts";
 import type { ProjectionMetadataArtifact, ProjectionMetadataPreparation } from "./projection-metadata.ts";
 
@@ -12,7 +12,7 @@ const refused = (message: string): ProjectionMetadataPreparation => ({ kind: "re
 const text = (bytes: Uint8Array): string => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 
 // Installer migration signatures describe delivered bytes, before ownership is issued.
-export function finalizeNativeMetadata({ artifacts, nativeFiles, copyFiles, history, harnessDir }: { readonly artifacts: readonly ProjectionMetadataArtifact[]; readonly nativeFiles: readonly DeliveryFile[]; readonly copyFiles: readonly DeliveryDigest[]; readonly history: unknown; readonly harnessDir: string }): ProjectionMetadataPreparation {
+export function finalizeNativeMetadata({ artifacts, nativeFiles, copyFiles, history, harnessDir, namespaceLiterals = [] }: { readonly namespaceLiterals?: readonly { readonly path: string; readonly text: string }[]; readonly artifacts: readonly ProjectionMetadataArtifact[]; readonly nativeFiles: readonly DeliveryFile[]; readonly copyFiles: readonly DeliveryDigest[]; readonly history: unknown; readonly harnessDir: string }): ProjectionMetadataPreparation {
   const descriptorPath = `${harnessDir}/tools/data/aidlc-projection.json`;
   const descriptorFile = artifacts.find(file => file.file === descriptorPath);
   const copyDescriptor = copyFiles.find(file => file.path === descriptorPath);
@@ -49,7 +49,13 @@ export function finalizeNativeMetadata({ artifacts, nativeFiles, copyFiles, hist
   descriptor.legacyManagedFileHashes = legacy;
   const result = artifacts.map(file => file.file === descriptorPath ? { ...file, bytes: new TextEncoder().encode(`${JSON.stringify(descriptor, null, 2)}\n`) } : file);
   const context = createNativeCommandContext({ harnessDir });
-  const problems = [...nativeFiles, ...result.map(file => ({ path: file.file, bytes: file.bytes }))].flatMap(file => /\.(?:md|mdc|json|toml|hook|ts)$/.test(file.path) ? nativeCommandTextProblems({ source: text(file.bytes), context, subject: file.path }) : []);
+  if (new Set(namespaceLiterals.map(item => item.path)).size !== namespaceLiterals.length || namespaceLiterals.some(item => nativeFiles.filter(file => file.path === item.path).length !== 1)) return refused("native permission literals require distinct owned final files");
+  const problems = [...nativeFiles, ...result.map(file => ({ path: file.file, bytes: file.bytes }))].flatMap(file => {
+    if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file.path)) return [];
+    const source = text(file.bytes);
+    const namespaceSource = prepareNativeNamespaceSource(source, namespaceLiterals.filter(item => item.path === file.path).map(item => item.text));
+    return namespaceSource === null ? [`${file.path}: native permission literals require exact coverage`] : nativeCommandTextProblems({ source, context, subject: file.path, namespaceSource });
+  });
   return problems.length > 0 ? refused(`native delivery command validation failed:\n${problems.join("\n")}`) : { kind: "prepared", artifacts: result };
 }
 

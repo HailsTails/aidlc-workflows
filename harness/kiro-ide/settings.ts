@@ -1,0 +1,52 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { z } from "zod";
+import manifest from "./manifest.ts";
+import { copyChannelDispatcherCommands, copyChannelToolScripts } from "../../core/tools/aidlc.ts";
+import { TRUSTED_ROUTE_NAMESPACE } from "../../core/tools/aidlc-command.ts";
+import { kiroIdeSteering } from "../../core/tools/aidlc-includes.ts";
+import { readMemoryCap } from "../../core/tools/aidlc-tiers.ts";
+import { writeKiroCliSurface } from "../../core/tools/aidlc-model-policy.ts";
+import { substituteAuthoredTokens } from "../../scripts/projection-text.ts";
+import { prepareNativeRuntimeText } from "../../scripts/native-runtime-text.ts";
+import { createAuthoredYaml } from "../../scripts/projection/src/adapters/authored-yaml.ts";
+import { qualifiedHarnessByName } from "../../scripts/projection/src/adapters/qualified-harness-profile.ts";
+import { qualifyDeliveryDeclaration } from "../../scripts/projection/src/adapters/qualified-delivery-policy.ts";
+import { prepareKasPolicyText, prepareKasShellText } from "../../scripts/projection/src/adapters/qualified-kas-policy.ts";
+import { observeKasInputs } from "../../scripts/projection/src/adapters/kas-source-contract.ts";
+import type { Tier } from "../../scripts/projection/src/domain/model.ts";
+const rule = z.strictObject({ capability: z.enum(["shell", "fs_read", "filesystem", "subagent"]), effect: z.enum(["allow", "ask", "deny"]), match: z.array(z.string()).min(1), exclude: z.array(z.string()).optional() });
+const conductor = z.strictObject({ name: z.literal("aidlc"), description: z.string(), display_name: z.literal("aidlc"), tools: z.array(z.enum(["read", "write", "shell", "invoke_sub_agent", "orchestrate_subagent"])), includeMcpJson: z.literal(true), resources: z.array(z.string()), permissions: z.strictObject({ rules: z.array(rule) }) });
+export function readKasSourcePolicy(request: { readonly sourceRoot: string; readonly workRoot: string; readonly invocation: string; readonly environmentCap: Tier | null }) {
+  const profile = qualifiedHarnessByName({ name: "kiro-ide", harnessDir: ".kiro" })!;
+  qualifyDeliveryDeclaration(manifest, profile);
+  if (manifest.kiroLayout !== "kas" || manifest.tierFlavor !== "kiro") throw new Error("KAS preparation requires the qualified layout and tier flavor");
+  const before = observeKasInputs(request.sourceRoot);
+  const native = request.invocation === "aidlc";
+  if (!native && request.invocation !== "bun .kiro/tools/aidlc.ts") throw new Error("KAS invocation is not qualified");
+  const substitute = (source: string) => substituteAuthoredTokens({ source, harnessDir: ".kiro", binding: { invoke: request.invocation, toolPrefix: "bun .kiro/tools/", trustedNamespace: TRUSTED_ROUTE_NAMESPACE } });
+  const project = (source: string) => native ? prepareNativeRuntimeText(substitute(source), ".kiro", "kiro-ide") : substitute(source);
+  const agents = manifest.frontmatterAdditions!.map(item => ({ name: item.file.slice(7,-3), lines: prepareKasPolicyText(item.lines.join("\n"), manifest, native).split("\n"), namespaceLiteral: native ? manifest.nativeReplacements!.find(replacement => item.lines.join("\n").includes(replacement.from))!.to : null }));
+  const plugin = ["---", prepareKasPolicyText(manifest.pluginAgentFrontmatter!.join("\n"), manifest, native), "---", ""].join("\n");
+  const read = (path: string) => readFileSync(join(request.sourceRoot, "harness/kiro-ide", path), "utf8");
+  let leader = substitute(read("agents/aidlc-aidlc.md"));
+  const yaml = createAuthoredYaml().decode({ text: leader.split("---")[1]! });
+  if (yaml.status !== "ok") throw new Error("KAS conductor frontmatter is invalid");
+  conductor.parse(yaml.value);
+  const engine = `        - "${request.invocation} engine *"\n`;
+  if (leader.split(engine).length !== 2) throw new Error("KAS conductor requires one dispatcher engine allow");
+  leader = leader.replace(engine, engine + copyChannelDispatcherCommands().map(command => `        - "${request.invocation} ${command}"\n`).join(""));
+  if (native) leader = prepareNativeRuntimeText(prepareKasShellText(leader), ".kiro", "kiro-ide");
+  const memoryRoot = join(request.workRoot, "memory-project");
+  for (const input of before.filter(input => input.path.startsWith("core/memory/") && input.path.endsWith(".md"))) {
+    const path = join(memoryRoot, "aidlc/spaces/default/memory", input.path.slice("core/memory/".length));
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, project(readFileSync(join(request.sourceRoot, input.path), "utf8")));
+  }
+  const cap = z.enum(["judgment", "balanced", "templated"]).nullable().parse(request.environmentCap) ?? readMemoryCap(join(request.sourceRoot, "core/memory"));
+  const settings = profile.settingsMappings.map(mapping => ({ path: `.kiro/${mapping.dst}`, text: mapping.src === "agents/aidlc-aidlc.md" ? leader : mapping.src === "steering/aidlc-active-memory.md" ? kiroIdeSteering(memoryRoot, "default").text : mapping.src === "settings/cli.json" ? writeKiroCliSurface(project(read(mapping.src)), [], cap) : project(read(mapping.src)) }));
+  settings.push({ path: ".kiro/tools/data/plugin-agent.md", text: plugin });
+  const after = observeKasInputs(request.sourceRoot);
+  if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error("KAS source changed during preparation");
+  return { agents, settings, inputs: before, toolScripts: copyChannelToolScripts() };
+}

@@ -124,7 +124,6 @@ import { copyChannelDispatcherCommands, copyChannelToolScripts } from "../core/t
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
-import { kiroIdeSteering } from "../core/tools/aidlc-includes.ts";
 import { SHIPPED_FORMAT_DOCS } from "../core/tools/aidlc-inline-context.ts";
 import { AIDLC_SETTINGS_SCHEMA } from "../core/tools/aidlc-settings.ts";
 
@@ -906,13 +905,6 @@ function buildTree(
   //     (AIDLC_RULES_DIR points there below), so it has to exist first.
   const memoryDir = join(outRoot, MEMORY_DST);
   emitMemory(outRoot, harnessDir, m.rulesRename, harnessKind, invoke);
-  // Kiro IDE's always-included steering carries the memory text itself (Kiro
-  // IDE does not expand file references there), so a fresh install's first
-  // chat already holds the shipped memory the engine would write.
-  if (m.name === "kiro-ide") {
-    writeFileSync(join(treeRoot, "steering", "aidlc-active-memory.md"), kiroIdeSteering(outRoot, "default").text);
-  }
-
   // 2d. Emit the active-space cursor (aidlc/active-space -> "default") — part of
   //     the shipped shell so a fresh copy resolves the default space with no
   //     ceremony (SEED). Outside <harnessDir>, like the memory tree.
@@ -985,8 +977,6 @@ function buildTree(
   }
   expandCursorToolAllows(treeRoot, m);
   expandClaudeToolAllows(treeRoot, m);
-  expandKiroToolAllows(treeRoot, m);
-  expandKiroIdeConductorAllows(treeRoot, m, invoke);
   writeProjectionData(outRoot, treeRoot, m);
 
   // 6. Generated table regions are build products, not authored prose. Refresh
@@ -1025,58 +1015,6 @@ function applyNativeReplacements(outRoot: string, m: HarnessManifest): void {
     if (!found) {
       throw new Error(`[${m.name}] nativeReplacements: text not found in the native projection:\n${from}`);
     }
-  }
-}
-
-function rewriteKiroNativeAllowlists(outRoot: string, m: HarnessManifest): void {
-  if (m.tierFlavor !== "kiro") return;
-  const agentsDir = join(outRoot, m.harnessDir, "agents");
-  const pluginAgentData = join(outRoot, m.harnessDir, PLUGIN_AGENT_DATA);
-  for (const file of [...walk(agentsDir), ...(existsSync(pluginAgentData) ? [pluginAgentData] : [])]) {
-    if (file.endsWith(".md")) {
-      // Kiro IDE persona surfaces carry a YAML shell allowlist; the native
-      // channel replaces the bun tool glob with the aidlc command prefix. The
-      // copy channel's dispatcher line (`{{INVOKE}} engine *` on the conductor,
-      // `bun <dir>/tools/aidlc.ts engine *` on a persona, which the tool
-      // rewrite above turned into `aidlc engine engine *`) is that same
-      // prefix, so the pair collapses to one entry. A persona's ask lines get
-      // the same doubled prefix and lose it the same way. The asks on a risky
-      // shell form after an AI-DLC command (`bun <dir>/tools/aidlc*<form>*`)
-      // take the native command name as their prefix, as the persona deny does.
-      const value = readFileSync(file, "utf-8");
-      const trusted = `- "${trustedCommand("*")}"`;
-      const rewritten = value
-        .replaceAll(`- "bun ${m.harnessDir}/tools/aidlc-*"`, trusted)
-        .replaceAll(`- "bun ${m.harnessDir}/tools/aidlc*`, `- "aidlc*`)
-        .replaceAll(`- "${trustedCommand("engine ")}`, `- "${trustedCommand("")} `)
-        .replaceAll(`${trusted}\n        ${trusted}`, trusted);
-      if (rewritten !== value) writeFileSync(file, rewritten);
-      continue;
-    }
-    if (!file.endsWith(".json")) continue;
-    const value = JSON.parse(readFileSync(file, "utf-8")) as {
-      toolsSettings?: {
-        execute_bash?: {
-          allowedCommands?: unknown;
-        };
-      };
-    };
-    const allowed = value.toolsSettings?.execute_bash?.allowedCommands;
-    if (!Array.isArray(allowed)) continue;
-    const rewritten = allowed.map((command) =>
-      typeof command === "string" &&
-        command.startsWith("bun ") &&
-        command.includes(`${m.harnessDir.replace(".", "\\.")}/tools/`)
-        ? trustedCommand(".*")
-        : command
-    );
-    // An agent the copy channel let run AI-DLC's tool commands also runs the
-    // exact read-only and turn-back-on commands natively, as anchored patterns.
-    const trusted = trustedCommand(".*");
-    value.toolsSettings!.execute_bash!.allowedCommands = [...new Set(rewritten)].flatMap((command) =>
-      command === trusted ? [command, ...nativeDispatcherCommands().map(escapeRegExp)] : [command]
-    );
-    writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
   }
 }
 
@@ -1124,72 +1062,6 @@ function expandClaudeToolAllows(treeRoot: string, m: HarnessManifest): void {
   if (prepared.kind === "refused") throw new Error(prepared.message);
   value.permissions!.allow = prepared.allow;
   writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-// Kiro CLI's authored agents name AI-DLC's tool scripts with one pattern
-// (any script, any arguments). The projection lists, in its place, the
-// dispatcher's engine commands, each dispatcher command a copy channel
-// pre-approves exactly as AI-DLC runs it (copyChannelDispatcherCommands), and
-// the tool scripts it pre-approves (copyChannelToolScripts), bare or followed
-// by arguments, never a longer file name, one entry each, with the path bare
-// or in either quote spelled out: Kiro's upgrade for its 3.0 engine turns each
-// spelling into its own glob, an optional quote into a `*` that also matches
-// `/`, and drops an entry with more spellings than its limit (kiro-cli
-// 2.29.0). A script behind a machine-changing command, and any config command
-// but the read-only forms, then waits for the person in Kiro CLI. Both trees
-// get it; the native rewrite then turns every bun entry into the one trusted
-// prefix.
-function expandKiroToolAllows(treeRoot: string, m: HarnessManifest): void {
-  if (m.name !== "kiro") return;
-  const agentsDir = join(treeRoot, "agents");
-  const bun = (path: string) => `bun (run )?(${path}|"${path}"|'${path}')`;
-  let expanded = 0;
-  for (const file of walk(agentsDir).filter((path) => path.endsWith(".json"))) {
-    const value = JSON.parse(readFileSync(file, "utf-8")) as {
-      toolsSettings?: { execute_bash?: { allowedCommands?: unknown } };
-    };
-    const allowed = value.toolsSettings?.execute_bash?.allowedCommands;
-    if (!Array.isArray(allowed)) continue;
-    const next = allowed.flatMap((entry) => {
-      const match = typeof entry === "string"
-        ? /^bun \(run \)\?\["']\?(\S+)\/tools\/\[A-Za-z0-9\._-\]\+\\\.ts\["']\?\( \.\*\)\?$/.exec(entry)
-        : null;
-      if (match === null) return [entry];
-      expanded++;
-      const tools = `${match[1]}/tools`;
-      const scripts = copyChannelToolScripts().map((script) => escapeRegExp(script.slice(0, -".ts".length)));
-      return [
-        `${bun(`${tools}/aidlc\\.ts`)} engine( .*)?`,
-        ...copyChannelDispatcherCommands().map((command) =>
-          `${bun(`${tools}/aidlc\\.ts`)} ${escapeRegExp(command)}`
-        ),
-        ...scripts.map((script) => `${bun(`${tools}/${script}\\.ts`)}( .*)?`),
-      ];
-    });
-    value.toolsSettings!.execute_bash!.allowedCommands = next;
-    writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
-  }
-  if (expanded === 0) throw new Error("[kiro] no agent names the tools-folder pattern to expand");
-}
-
-// Kiro IDE's authored conductor (agents/aidlc-aidlc.md) allows AI-DLC's tool
-// scripts and the dispatcher's engine namespace. Both trees add, after the
-// engine line, each dispatcher command every install pre-approves exactly as
-// AI-DLC runs it (copyChannelDispatcherCommands): through the project's
-// dispatcher on the copy channel, through the installed aidlc command in the
-// native release. Reading a setting or running doctor then shows no card,
-// while any config change still does. Every persona's deny lists the same
-// commands (delegate-shell-deny.ts).
-function expandKiroIdeConductorAllows(treeRoot: string, m: HarnessManifest, invoke: string): void {
-  if (m.name !== "kiro-ide") return;
-  const conductor = join(treeRoot, "agents", "aidlc-aidlc.md");
-  const engine = `        - "${invoke} engine *"\n`;
-  const value = readFileSync(conductor, "utf-8");
-  if (value.split(engine).length !== 2) {
-    throw new Error(`[kiro-ide] agents/aidlc-aidlc.md must allow ${invoke} engine * exactly once`);
-  }
-  const exact = copyChannelDispatcherCommands().map((command) => `        - "${invoke} ${command}"\n`);
-  writeFileSync(conductor, value.replace(engine, `${engine}${exact.join("")}`));
 }
 
 // Cursor's authored cli.json names AI-DLC's tool scripts with one glob. The
@@ -1338,7 +1210,6 @@ function rewriteNativeInvocations(
     value = rewriteNativeOnboarding(value, m.tierFlavor === "claude" || m.tierFlavor === "cursor" || m.tierFlavor === "kiro");
     writeFileSync(file, value);
   }
-  rewriteKiroNativeAllowlists(outRoot, m);
   rewriteClaudeNativePermissions(outRoot, m);
   rewriteCursorNativePermissions(outRoot, m);
   if (m.tierFlavor === "codex") {
