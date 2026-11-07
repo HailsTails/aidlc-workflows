@@ -9,7 +9,7 @@ const root = mkdtempSync(join(tmpdir(), "producer-input-registration-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 test.each([
-  "projection-text", "agent-surface-projection", "core-projection-contract",
+  "projection-text", "claude-settings", "agent-surface-projection", "core-projection-contract",
   "harness-runtime-data", "harness-surface-projection", "onboarding-projection",
   "native-command-context", "native-command-text",
   "generated-skill-regions", "workspace-seed", "projection-metadata", "version-module",
