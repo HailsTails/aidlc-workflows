@@ -60,7 +60,8 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import type { HarnessManifest } from "./manifest-types.ts";
+import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
+import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
 import { substituteAuthoredTokens, substituteInvocationTokens, type InvocationTextBinding } from "./projection-text.ts";
 import { prepareProjectionMetadata, projectionMetadataText, type ProjectionMetadataRules } from "./projection-metadata.ts";
 import { prepareVersionModuleText } from "./version-module.ts";
@@ -72,8 +73,14 @@ import {
   reviewerAgentSet,
 } from "./agent-knowledge.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
+import { projectOnboardingDocuments } from "./onboarding-projection.ts";
+import { coreFileProjection, coreProjectionCoverage, coreProjectionDeclarations } from "./core-projection-contract.ts";
+import { projectHarnessRuntimeData } from "./harness-runtime-data.ts";
+import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeRequirement } from "./harness-surface-projection.ts";
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
 import { earlierReleasesReadSkill, prepareEarlierReleaseSkillText } from "./earlier-release-regions.ts";
+import { GENERATED_SKILL_REGIONS, replaceGeneratedSkillRegion } from "./generated-skill-regions.ts";
+import { freshWorkspaceSeed } from "./workspace-seed.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
 import {
   buildPluginProjection as emitPluginProjection,
@@ -98,12 +105,13 @@ import {
 } from "../core/tools/aidlc-model-policy.ts";
 import {
   cursorTrustedShell,
-  scanNamespaceInvocations,
   TRUSTED_COMMAND_PREFIX,
   TRUSTED_ROUTE_NAMESPACE,
   trustedCommand,
 } from "../core/tools/aidlc-command.ts";
-import { copyChannelDispatcherCommands, copyChannelToolScripts, ROUTES, TOOLS } from "../core/tools/aidlc.ts";
+import { projectNativeCommandText, nativeCommandTextProblems } from "./native-command-text.ts";
+import { createNativeCommandContext } from "./native-command-context.ts";
+import { copyChannelDispatcherCommands, copyChannelToolScripts } from "../core/tools/aidlc.ts";
 import { AIDLC_VERSION } from "../core/tools/aidlc-version.ts";
 import { BUILD_VERSION_ENV, releaseBuildVersion } from "../core/tools/aidlc-channel.ts";
 import { copyStartsWithout, harnessChoiceTextIsPlain, sha256Bytes, writtenRootIntegration } from "../core/tools/aidlc-distribution.ts";
@@ -162,23 +170,10 @@ function stampVersionModule({ source }: { readonly source: string }): string {
   return prepared.content;
 }
 
+
 // Neutral and native onboarding skeletons (scripts/onboarding.ts).
 const ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding.md");
 const HARNESS_ONBOARDING_SKELETON = join(CORE_ROOT, "templates", "onboarding-harness.md");
-// Matched by PREFIX (mirroring aidlc-init.ts's marker scan): the begin marker
-// embeds the harness-projected invocation, so its tail varies per channel.
-const GENERATED_SKILL_REGIONS = [
-  {
-    verb: "stage-table",
-    begin: "<!-- BEGIN: compiled stage graph via ",
-    end: "<!-- END: compiled stage graph -->",
-  },
-  {
-    verb: "scope-table",
-    begin: "<!-- BEGIN: compiled scope grid via ",
-    end: "<!-- END: compiled scope grid -->",
-  },
-] as const;
 
 // Harnesses the packager builds = every harness/<name>/ that carries a
 // manifest.ts. DISCOVERED, not hardcoded: adding harness #N is one harness/<n>/
@@ -345,13 +340,13 @@ function projectKiroAgentJson(srcPath: string, content: Buffer): Buffer {
 // harness's preflight names them (SHIPPED_FORMAT_DOCS is the one list).
 function projectKiroSharedKnowledge(content: Buffer): Buffer {
   const parsed = JSON.parse(content.toString("utf-8")) as { resources?: unknown };
-  const glob = "file://.kiro/knowledge/aidlc-shared/*.md";
-  if (!Array.isArray(parsed.resources) || !parsed.resources.includes(glob)) return content;
-  const files = readdirSync(join(CORE_ROOT, "knowledge", "aidlc-shared"))
-    .filter((file) => file.endsWith(".md") && !SHIPPED_FORMAT_DOCS.has(file))
-    .sort()
-    .map((file) => `file://.kiro/knowledge/aidlc-shared/${file}`);
-  parsed.resources = parsed.resources.flatMap((entry) => (entry === glob ? files : [entry]));
+  if (!Array.isArray(parsed.resources)) return content;
+  if (kiroSharedKnowledgeRequirement({ resources: parsed.resources }) === "unchanged") return content;
+  parsed.resources = expandKiroSharedKnowledge({
+    resources: parsed.resources,
+    availableFiles: readdirSync(join(CORE_ROOT, "knowledge", "aidlc-shared")),
+    formatDocuments: SHIPPED_FORMAT_DOCS,
+  });
   return Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
 }
 
@@ -433,49 +428,6 @@ function transform(
     );
   }
   return content;
-}
-
-// Append manifest-declared frontmatter lines to a projected .md, just before
-// the closing `---` of its YAML block (manifest-types.ts frontmatterAdditions).
-// Hard errors, never silent: the file must open with a frontmatter block, and
-// no added line's key may already exist in it - if core later grows the same
-// key, the build fails loudly instead of shipping a double.
-function applyFrontmatterAdditions(
-  content: string,
-  lines: string[],
-  file: string,
-): string {
-  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n(---\r?\n)/);
-  if (!m) {
-    throw new Error(
-      `frontmatterAdditions: ${file} has no leading frontmatter block to extend.`,
-    );
-  }
-  const fm = m[1];
-  const added = new Set<string>();
-  for (const line of lines) {
-    if (/^\s/.test(line)) continue;
-    const key = line.split(":")[0]?.trim();
-    if (!key || !/^[A-Za-z_][\w-]*$/.test(key)) {
-      throw new Error(
-        `frontmatterAdditions: line "${line}" for ${file} does not start with a YAML key.`,
-      );
-    }
-    if (added.has(key)) {
-      throw new Error(
-        `frontmatterAdditions: ${file} declares "${key}:" more than once in additions.`,
-      );
-    }
-    added.add(key);
-    if (new RegExp(`^${key}:`, "m").test(fm)) {
-      throw new Error(
-        `frontmatterAdditions: ${file} already declares "${key}:" in core - ` +
-          `resolve the collision instead of shipping a duplicate key.`,
-      );
-    }
-  }
-  const insertAt = m[0].length - m[2].length;
-  return `${content.slice(0, insertAt)}${lines.join("\n")}\n${content.slice(insertAt)}`;
 }
 
 function* walk(dir: string): Generator<string> {
@@ -576,56 +528,15 @@ const PLUGIN_AUTHORING_CONTEXT_DST = join(
   "plugin-authoring-context.json",
 );
 
-// The active-space CURSOR shipped as part of the workspace shell (SEED). It
-// lives at aidlc/active-space (ABOVE spaces/, not inside memory/) and holds the
-// name of the space the next /aidlc resolves against. Ships pointed at the
-// always-present "default" space so a fresh copy resolves with zero ceremony.
-// NOTE: it is GITIGNORED in the user's workspace (a per-user session cursor,
-// vision 5.1 - teammates legitimately point at different spaces at once), yet
-// dist must SHIP it as part of the shell. The two reconcile: the projected
-// .gitignore ignores aidlc/active-space for the END USER; a clone's first
-// SessionStart or active-intent write atomically recreates the missing pointer
-// and keeps it untracked. The local dist root itself is ignored.
-const ACTIVE_SPACE_REL = join("aidlc", "active-space");
-const ACTIVE_SPACE_VALUE = "default\n";
-
 // Write tools/data/harness.json from manifest data. The runtime reads the
 // rules-subdir and any host-native generated-runner frontmatter from this
 // open-set descriptor. Pretty-printed + trailing newline keeps output
 // diff-friendly and stable under --check.
 function writeHarnessData(treeRoot: string, m: HarnessManifest): void {
-  // A FRESH object, deliberately: the runtime READER tolerates unknown keys, but
-  // this writer alone decides what ships. Anything hand-added to a local
-  // harness.json is erased on the next build, so a new configuration field has
-  // to be added HERE to exist at all.
-  const data: Record<string, unknown> = {
-    schemaVersion: 1,
-    distribution: m.name,
-    productName: m.productName,
-    configNextStep: m.configNextStep,
-    name: m.name,
-    harnessDir: m.harnessDir,
-    rulesSubdir: m.rulesRename ?? "rules",
-    ...(m.runnerFrontmatterAdditions?.length
-      ? { runnerFrontmatterAdditions: m.runnerFrontmatterAdditions }
-      : {}),
-  };
-  // Emitted only when a manifest sets it, so the output stays
-  // byte-identical for every harness that does not -- which is all of them today.
-  if (m.documentExtractors) data.documentExtractors = m.documentExtractors;
-  // Likewise conditional: only a host whose hooks wait on the person (trust, engine) declares it.
-  if (m.hookActivation) data.hookActivation = m.hookActivation;
-  // Only the Kiro rows declare a layout; the runtime reads it in place of the row name.
-  if (m.kiroLayout) data.kiroLayout = m.kiroLayout;
-  // And only a host that cuts a shell result below the engine's cap.
-  if (m.directiveMaxBytes) data.directiveMaxBytes = m.directiveMaxBytes;
-  // And only a host where AI-DLC can show its progress in the status line.
-  if (m.statusLine) data.statusLine = m.statusLine;
-  // And only a host whose stop event records an agent's finish before its result.
-  if (m.agentFinishRecorded) data.agentFinishRecorded = m.agentFinishRecorded;
+  const runtimeDescriptor = projectHarnessRuntimeData({ declaration: m });
   const dst = join(treeRoot, HARNESS_DATA);
   mkdirSync(dirname(dst), { recursive: true });
-  writeFileSync(dst, `${JSON.stringify(data, null, 2)}\n`);
+  writeFileSync(dst, `${JSON.stringify(runtimeDescriptor, null, 2)}\n`);
 }
 
 function writePluginAgentData(treeRoot: string, m: HarnessManifest): void {
@@ -824,9 +735,82 @@ function emitPluginAuthoringData(treeRoot: string): void {
 // value for every harness (the resolver follows it identically). The projected
 // .gitignore ignores this path for the END USER's workspace.
 function emitActiveSpace(outRoot: string): void {
-  const outPath = join(outRoot, ACTIVE_SPACE_REL);
+  const seed = freshWorkspaceSeed();
+  const outPath = join(outRoot, seed.file);
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, ACTIVE_SPACE_VALUE);
+  writeFileSync(outPath, seed.content);
+}
+
+function writeAgentSurface(input: {
+  readonly treeRoot: string;
+  readonly path: string;
+  readonly content: Buffer;
+  readonly additions: readonly string[];
+}): void {
+  const requirements = agentSurfaceRequirements({ path: input.path, additions: input.additions });
+  const inlineAgents = requirements.kind === "inline-role" ? inlineAgentSet(CORE_ROOT) : new Set<string>();
+  const projection = projectAgentSurface({
+    path: input.path, content: input.content.toString("utf-8"), additions: input.additions, inlineAgents,
+  });
+  projection.writes.forEach((artifact) => {
+    const path = join(input.treeRoot, artifact.path);
+    if (artifact.kind === "persona") mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, artifact.kind === "persona" ? input.content : artifact.content);
+  });
+  if (projection.kind === "refused") throw new Error(projection.message);
+}
+
+function writeOnboarding(input: {
+  readonly spec: OnboardingSpec;
+  readonly outRoot: string;
+  readonly treeRoot: string;
+  readonly harnessDir: string;
+  readonly rulesRename: string | null;
+  readonly harness: Harness;
+  readonly invoke: string;
+}): void {
+  const { dst, projectRoot, harnessDst, fills } = input.spec;
+  const neutral = renderNeutralOnboarding(readFileSync(ONBOARDING_SKELETON, "utf-8"));
+  const nativeSkeleton = readFileSync(HARNESS_ONBOARDING_SKELETON, "utf-8");
+  const documents = projectOnboardingDocuments({
+    neutral, nativeSkeleton, shared: { root: projectRoot ? "project" : "harness", path: dst }, nativePath: harnessDst ?? null,
+  });
+  documents.forEach((document) => {
+    // Combined rendering precedes mkdir; a separate native file renders after its directory exists.
+    const prepared = document.kind === "combined" ? renderOnboarding(document.content, fills) : document.content;
+    const destination = join(document.destination.root === "project" ? input.outRoot : input.treeRoot, document.destination.path);
+    mkdirSync(dirname(destination), { recursive: true });
+    const rendered = document.kind === "native" ? renderOnboarding(prepared, fills) : prepared;
+    const source = document.kind === "native" ? HARNESS_ONBOARDING_SKELETON : ONBOARDING_SKELETON;
+    writeFileSync(destination, transform(source, Buffer.from(rendered), input.harnessDir, input.rulesRename, input.harness, input.invoke));
+  });
+}
+
+function writeAuthoredHarnessFiles(input: {
+  readonly projection: Pick<HarnessManifest, "harnessFiles" | "rulesRename" | "hookCommandSuffix">;
+  readonly harnessSrcRoot: string;
+  readonly outRoot: string;
+  readonly treeRoot: string;
+  readonly harnessDir: string;
+  readonly harness: Harness;
+  readonly invoke: string;
+  readonly letters: string;
+}): void {
+  // Require the prior iterator protocol; do not accept Array.from's array-like fallback.
+  Array.from({ [Symbol.iterator]: () => input.projection.harnessFiles[Symbol.iterator]() }, ({ src, dst, projectRoot }) => {
+    const srcPath = join(input.harnessSrcRoot, src);
+    if (!existsSync(srcPath)) return;
+    const outPath = projectRoot ? join(input.outRoot, dst) : join(input.treeRoot, dst);
+    mkdirSync(dirname(outPath), { recursive: true });
+    let out = transform(srcPath, readFileSync(srcPath), input.harnessDir, input.projection.rulesRename, input.harness, input.invoke, input.letters);
+    const surface = authoredHarnessSurface({ flavor: input.harness, source: src });
+    // Tier projection, knowledge lookup and hook suffixing retain their existing failure order.
+    if (surface === "kiro-agent-json") {
+      out = projectKiroSharedKnowledge(projectKiroAgentJson(srcPath, out));
+      out = projectKiroHookCommands(out, input.projection.hookCommandSuffix);
+    } else if (surface === "kiro-cli-settings") out = projectKiroCliJson(out);
+    writeFileSync(outPath, out);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -848,11 +832,9 @@ function buildTree(
   const letters = optionLetters(m);
   // 1. Copy core dirs with token substitution + rules rename. Manifest-declared
   //    frontmatter additions (harness-native fields, e.g. the Kiro IDE's
-  //    subagent `tools:` grant) are appended during this projection; every
-  //    declared file must be hit exactly once (typo/rename guard).
-  const fmAdditions = new Map(
-    (m.frontmatterAdditions ?? []).map(({ file, lines }) => [file, lines]),
-  );
+  //    subagent `tools:` grant) are appended during this projection. Every
+  //    declared path must be published (typo/rename guard).
+  const fmAdditions = coreProjectionDeclarations({ declarations: m.frontmatterAdditions ?? [] });
   const fmApplied = new Set<string>();
   for (const { src, dst } of m.coreDirs) {
     const srcDir = join(CORE_ROOT, src);
@@ -874,104 +856,34 @@ function buildTree(
       // Manifest keys are POSIX; normalize the platform separator so the
       // lookup works on Windows too.
       const harnessRel = join(finalDst, rel).split(sep).join("/");
+      const projection = coreFileProjection({ path: harnessRel, declarations: fmAdditions });
       // A protocol module's per-tool binding subsections: this tree keeps its own.
-      if (/^aidlc-common\/protocols\/[^/]+\.md$/.test(harnessRel)) {
+      if (projection.bindingScope === "own-harness") {
         out = Buffer.from(keepOwnHarnessBindings(out.toString("utf-8"), m.name, harnessRel), "utf-8");
       }
-      const fmLines = fmAdditions.get(harnessRel);
+      const fmLines = projection.additions;
       if (fmLines) {
-        // The additions are for the harness's dispatch (Kiro IDE: about 32 KB
-        // of tool permissions); the lead reading the persona in its own chat
-        // gets the persona without them, from the copy the roster names. A
-        // tools line alone (Kiro CLI) is no weight to keep out: no copy.
-        if (
-          harnessRel.startsWith("agents/") &&
-          fmLines.some((line) => line.split(":", 1)[0] === "permissions") &&
-          inlineAgentSet(CORE_ROOT).has(basename(outPath, ".md"))
-        ) {
-          const copy = join(treeRoot, "aidlc-common", "personas", basename(outPath));
-          mkdirSync(dirname(copy), { recursive: true });
-          writeFileSync(copy, out);
-        }
-        out = Buffer.from(
-          applyFrontmatterAdditions(out.toString("utf-8"), fmLines, harnessRel),
-          "utf-8",
-        );
+        writeAgentSurface({ treeRoot, path: harnessRel, content: out, additions: fmLines });
         fmApplied.add(harnessRel);
-      }
-      writeFileSync(outPath, out);
+      } else writeFileSync(outPath, out);
     }
   }
-  const fmMissed = [...fmAdditions.keys()].filter((f) => !fmApplied.has(f));
-  if (fmMissed.length > 0) {
+  const coverage = coreProjectionCoverage({ declarations: fmAdditions, publishedPaths: fmApplied });
+  if (coverage.kind === "missing-declarations") {
     throw new Error(
       `[${m.name}] frontmatterAdditions name file(s) the core projection never produced: ` +
-        `${fmMissed.join(", ")} - fix the path(s) in the manifest.`,
+        `${coverage.paths.join(", ")} - fix the path(s) in the manifest.`,
     );
   }
-  // 2. Copy authored harness surfaces (token substitution on .md). projectRoot
-  //    files land beside the harness dir (e.g. dist/kiro/AGENTS.md), the rest
-  //    inside <harnessDir>/. On the kiro harnesses two authored JSON surfaces
-  //    are additionally tier-projected: the agent .json "model" fields and the
-  //    settings/cli.json chat.modelDefaults entries (effort rides on the model
-  //    on Kiro - see aidlc-tiers.ts).
   const harnessSrcRoot = join(HARNESS_ROOT, m.name);
-  for (const { src, dst, projectRoot } of m.harnessFiles) {
-    const srcPath = join(harnessSrcRoot, src);
-    if (!existsSync(srcPath)) continue;
-    const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
-    mkdirSync(dirname(outPath), { recursive: true });
-    let out = transform(
-      srcPath,
-      readFileSync(srcPath),
-      harnessDir,
-      m.rulesRename,
-      harnessKind,
-      invoke,
-      letters,
-    );
-    if (harnessKind === "kiro") {
-      if (src.startsWith("agents/") && src.endsWith(".json")) {
-        out = projectKiroSharedKnowledge(projectKiroAgentJson(srcPath, out));
-        out = projectKiroHookCommands(out, m.hookCommandSuffix);
-      } else if (src === "settings/cli.json") {
-        out = projectKiroCliJson(out);
-      }
-    }
-    writeFileSync(outPath, out);
-  }
+  writeAuthoredHarnessFiles({
+    projection: m, harnessSrcRoot, outRoot, treeRoot, harnessDir,
+    harness: harnessKind, invoke, letters,
+  });
 
-  // 2b. Split neutral project instructions from each harness's native setup.
-  // Claude and Copilot keep both parts in their single always-on file.
-  if (m.onboarding) {
-    const { dst, projectRoot, harnessDst, fills } = m.onboarding;
-    const neutral = renderNeutralOnboarding(readFileSync(ONBOARDING_SKELETON, "utf-8"));
-    const harnessSkeleton = readFileSync(HARNESS_ONBOARDING_SKELETON, "utf-8");
-    const rendered = harnessDst
-      ? neutral
-      : renderOnboarding(harnessSkeleton + "\n## Shared AI-DLC onboarding\n\n" + neutral, fills);
-    const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
-    mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(
-      outPath,
-      transform(ONBOARDING_SKELETON, Buffer.from(rendered), harnessDir, m.rulesRename, harnessKind, invoke),
-    );
-    if (harnessDst) {
-      const harnessPath = join(treeRoot, harnessDst);
-      mkdirSync(dirname(harnessPath), { recursive: true });
-      writeFileSync(
-        harnessPath,
-        transform(
-          HARNESS_ONBOARDING_SKELETON,
-          Buffer.from(renderOnboarding(harnessSkeleton, fills)),
-          harnessDir,
-          m.rulesRename,
-          harnessKind,
-          invoke,
-        ),
-      );
-    }
-  }
+  if (m.onboarding) writeOnboarding({
+    spec: m.onboarding, outRoot, treeRoot, harnessDir, rulesRename: m.rulesRename, harness: harnessKind, invoke,
+  });
 
   // 2c. Emit the relocated method ("memory") tree at the workspace root
   //     (dist/<name>/aidlc/spaces/default/memory/). MUST run before compile —
@@ -1410,16 +1322,7 @@ function projectNativeRootIntegrations(outRoot: string, m: HarnessManifest): voi
   writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`);
 }
 
-function projectedNamespaceInvocationViolations(
-  file: string,
-  value: string,
-): string[] {
-  return scanNamespaceInvocations(file, value, ROUTES)
-    .filter((invocation) => invocation.source === "aidlc" && !invocation.resolves)
-    .map((invocation) =>
-      `${file}:${invocation.line}: unresolvable projected namespace invocation "${invocation.command}"`
-    );
-}
+
 
 function rewriteNativeInvocations(
   outRoot: string,
@@ -1430,12 +1333,7 @@ function rewriteNativeInvocations(
   projectNativeRootIntegrations(outRoot, m);
   applyNativeReplacements(outRoot, m);
   const harnessDir = escapeRegExp(m.harnessDir);
-  // Deriving the delegate list from TOOLS keeps new delegates' bare bun aidlc-<name>.ts forms
-  // covered by both the rewrite and bareToolCheck. The leftover checks below
-  // still reject a rewrite to a non-route.
-  const delegateNames = Object.values(TOOLS)
-    .map((file) => escapeRegExp(file.slice("aidlc-".length, -".ts".length)))
-    .join("|");
+  const commandContext = createNativeCommandContext({ harnessDir: m.harnessDir });
   // The authored subprocess adapters, each backed by an `aidlc engine adapter
   // <harness>` dispatcher route. Only these project onto that route; any other
   // hook file keeps the generic one-argument `engine hook <name>` rewrite.
@@ -1447,19 +1345,10 @@ function rewriteNativeInvocations(
   };
   const projectPrefix = String.raw`(?:"?(?:\$\{?CLAUDE_PROJECT_DIR\}?/)?`;
   const suffix = `"?)`;
-  const toolPattern = new RegExp(
-    String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc(?:-([a-z0-9-]+))?\.ts${suffix}`,
-    "gi",
-  );
   const hookPattern = new RegExp(
     String.raw`\bbun\s+${projectPrefix}${harnessDir}/hooks/aidlc-([a-z0-9-]+)\.ts${suffix}`,
     "gi",
   );
-  const bareToolPattern = new RegExp(
-    String.raw`\bbun\s+aidlc-(${delegateNames})\.ts`,
-    "gi",
-  );
-  const bareToolCheck = new RegExp(bareToolPattern.source, "i");
   for (const file of walk(outRoot)) {
     if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
     let value = readFileSync(file, "utf-8");
@@ -1481,40 +1370,7 @@ function rewriteNativeInvocations(
         ? trustedCommand("statusline")
         : trustedCommand(`hook ${hook}`);
     });
-    // Direct utility verbs whose dispatcher route lives under the `workspace`
-    // noun: rewrite verb-aware BEFORE the generic tool rewrite would emit the
-    // retired `engine utility` alias.
-    const workspaceUtilityPattern = new RegExp(
-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+(codekb-path|codekb-scope-diff|codekb-snapshot|codekb-publish|project-description|document-input)\b`,
-      "gi",
-    );
-    value = value.replace(
-      workspaceUtilityPattern,
-      (_match, verb: string) =>
-        `${trustedCommand("workspace")} ${verb === "codekb-path" ? "codekb" : verb}`,
-    );
-    // Settings share one utility transaction; project its first setting onto
-    // the dispatcher's config noun and preserve all trailing flags/selectors.
-    // The key list mirrors the dispatcher's `config set` verbs: guard-policy
-    // (with its retired spelling change-control, accepted for one release) and
-    // the four per-fence guard.<fence> switches. A key missing here falls
-    // through to the generic tool rewrite, which emits the retired `engine
-    // utility` alias that the leftover check below rejects.
-    const configUtilityPattern = new RegExp(
-      String.raw`\bbun\s+${projectPrefix}${harnessDir}/tools/aidlc-utility\.ts${suffix}\s+config-change\s+--(depth|test-strategy|review|guard-policy|change-control|sensors|learnings|summary-confirmation|guard\.(?:plan-approval|review-freeze|state-transition|reviewer-scope))\b`,
-      "gi",
-    );
-    value = value.replace(
-      configUtilityPattern,
-      (_match, key: string) => trustedCommand(`config set ${key}`),
-    );
-    value = value.replace(toolPattern, (_match, delegate: string | undefined) =>
-      delegate ? trustedCommand(delegate) : TRUSTED_COMMAND_PREFIX
-    );
-    value = value.replace(
-      bareToolPattern,
-      (_match, delegate: string) => trustedCommand(delegate),
-    );
+    value = projectNativeCommandText({ source: value, context: commandContext });
     value = value.replace(hookPattern, (_match, hook: string) => {
       if (adapterHookNames[hook]) return trustedCommand(`adapter ${m.name}`);
       if (hook === "statusline") return trustedCommand("statusline");
@@ -1631,23 +1487,7 @@ function rewriteNativeInvocations(
   for (const file of walk(outRoot)) {
     if (!/\.(?:md|mdc|json|toml|hook|ts)$/.test(file)) continue;
     const value = readFileSync(file, "utf-8");
-    for (const token of ["{{INVOKE}}", "{{TOOL_PREFIX}}", "{{OPTION_LETTERS}}"]) {
-      if (value.includes(token)) {
-        leftovers.push(`${relative(outRoot, file)}: unexpanded ${token}`);
-      }
-    }
-    if (new RegExp(String.raw`\bbun\s+[^\n]*${harnessDir}/(?:tools|hooks)/aidlc`).test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: bun invocation survived native projection`);
-    }
-    if (bareToolCheck.test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: bare bun invocation survived native projection`);
-    }
-    if (/\baidlc\s+engine\s+(?:utility|runner-gen)\b/.test(value)) {
-      leftovers.push(`${relative(outRoot, file)}: retired engine alias survived native projection`);
-    }
-    leftovers.push(
-      ...projectedNamespaceInvocationViolations(relative(outRoot, file), withoutNativeReplacements(value)),
-    );
+    leftovers.push(...nativeCommandTextProblems({ source: value, context: commandContext, subject: relative(outRoot, file), namespaceSource: withoutNativeReplacements(value) }));
     if (
       relative(outRoot, file).split(sep).join("/").includes("/agents/") &&
       /"allowedCommands"\s*:\s*\[[\s\S]*?"bun [^"]*tools\//.test(value)
@@ -1735,24 +1575,9 @@ function refreshGeneratedSkillRegions(
       manifest.name,
       ["tools/aidlc-utility.ts", region.verb],
     ).trimEnd();
-    const beginIdx = body.indexOf(region.begin);
-    const endIdx = body.indexOf(region.end);
-    if (beginIdx === -1 && endIdx === -1) continue;
-    if (
-      beginIdx === -1 ||
-      endIdx === -1 ||
-      endIdx < beginIdx ||
-      body.lastIndexOf(region.begin) !== beginIdx ||
-      body.lastIndexOf(region.end) !== endIdx
-    ) {
-      throw new Error(
-        `packager: malformed ${region.verb} markers in ${skillPath}`,
-      );
-    }
-    body =
-      body.slice(0, beginIdx) +
-      rendered +
-      body.slice(endIdx + region.end.length);
+    const replacement = replaceGeneratedSkillRegion({ text: body, rendered, region, path: skillPath });
+    if (replacement.status === "refused") throw new Error(replacement.detail);
+    body = replacement.text;
   }
 
   writeFileSync(skillPath, body, "utf-8");
