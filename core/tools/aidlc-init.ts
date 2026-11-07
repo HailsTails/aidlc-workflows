@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { decideJsonMapEntry, type JsonMapReconciliation } from "./aidlc-json-map-decision.ts";
+import { assessRecordedRetirement, classifyManagedContent, decideManagedFileChange, decideManagedFileRecord, decideRecordedRetirement, decideWorkspaceSeed } from "./aidlc-managed-file-decision.ts";
 import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
 import { LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { proveMessage } from "./aidlc-message-store.ts";
@@ -6668,11 +6670,10 @@ function mergeKiroMcpServers(
   const untouched = priorFile !== undefined && sha256Matching(currentText, [priorFile]) === priorFile;
   const priorEntries = prior?.entries?.[rel] ?? (untouched ? hashes(currentMap) : {});
   const shipped = Object.fromEntries(Object.entries(hashes(stagedMap)).map(([name, hash]) => [name, [hash]]));
-  const servers = { ...currentMap };
-  const owned = mergeJsonMapEntries(servers, stagedMap, priorEntries, shipped, force);
-  const merged = { ...current, mcpServers: servers };
+  const reconciliation = mergeJsonMapEntries({ targetMap: currentMap, sourceMap: stagedMap, priorEntries, shippedHashes: shipped, overwrite: force ? "force" : "protect", addition: "allow" });
+  const merged = { ...current, mcpServers: reconciliation.map };
   writeFileSync(stagedPath, canonical(merged) === canonical(current) ? currentText : jsonFileText(merged, currentText));
-  return owned;
+  return reconciliation.entries;
 }
 
 // The person's own Kiro MCP settings, read and never written. Under the test
@@ -10033,20 +10034,6 @@ function existingProject(projectDir: string, requested?: string): {
   };
 }
 
-// The workspace directory holds the project's records and its per-machine
-// runtime state (clone id, sessions, engine health, sensor caches). A release
-// ships only its seeds there, so no other path under it is release content:
-// such a path in a source tree (a runtime payload a hook once wrote into, or a
-// copied project's own records) is never copied or baselined, and a baseline
-// entry recorded for one is dropped rather than retired.
-function workspaceSeed(rel: string): boolean {
-  return rel === "aidlc/active-space" || /^aidlc\/spaces\/[^/]+\/memory\//.test(rel);
-}
-
-function workspaceState(rel: string): boolean {
-  return rel.startsWith("aidlc/") && !workspaceSeed(rel);
-}
-
 // The hash a managed file counts as: its own, or the known one it equals once
 // line endings Git rewrote (#2057) or the include paths an earlier release's
 // space switch pointed at another space are set aside (those files are
@@ -10120,7 +10107,8 @@ function planManagedFiles(
     if (!existsSync(sourceDir)) throw new Error(`projection is missing managed directory ${directory}`);
     for (const nested of walkFiles(sourceDir)) {
       const rel = join(directory, nested).replaceAll("\\", "/");
-      if (workspaceState(rel)) continue;
+      const authority = classifyManagedContent({ path: rel });
+      if (authority.kind === "workspace-state") continue;
       shipped.add(rel);
       const source = join(sourceRoot, rel);
       const target = join(projectDir, rel);
@@ -10144,9 +10132,10 @@ function planManagedFiles(
             currentHash,
           ) ?? false
         );
-      if (workspaceSeed(rel)) {
-        if (targetExists) {
-          actions.push({ path: rel, action: "preserve", detail: "project-owned seed" });
+      if (authority.kind === "workspace-seed") {
+        const seed = decideWorkspaceSeed({ target: targetExists ? "present" : "absent" });
+        if (seed.kind === "preserve") {
+          actions.push({ path: rel, action: "preserve", detail: seed.detail });
         } else {
           operations.push({
             kind: "copy",
@@ -10170,18 +10159,22 @@ function planManagedFiles(
         // A composed agent file is recorded without the plugin's additions, so
         // the plugin replay, which re-applies them only over that record, is
         // its proof; a model written into it then reaches the record too.
-        const unmodified = currentHash === priorHash ||
-          (priorHash !== undefined && modelStamped.has(rel) && composedRecords.has(rel));
         // A file staged from the project's own CRLF checkout (Codex's
         // config.toml, Kiro CLI's mcp.json) keeps the record it equals once
         // line endings are set aside, so a clone's refresh leaves it as committed.
         const recordHash = priorHash !== undefined && hash !== priorHash && sha256FileMatching(source, [priorHash]) === priorHash
           ? priorHash
           : hash;
-        const nextHash = retainBaseline
-          ? regenerated.has(rel) && targetRegular && unmodified ? composedRecords.get(rel) ?? recordHash : priorHash
-          : composedRecords.get(rel) ?? recordHash;
-        if (nextHash !== undefined) nextHashes[rel] = nextHash;
+        const record = decideManagedFileRecord({
+          mode: retainBaseline ? "retain" : "advance",
+          target: !targetExists ? { kind: "absent" } : targetRegular ? { kind: "file", hash: currentHash } : { kind: "other" },
+          priorHash,
+          recordHash,
+          composedHash: composedRecords.get(rel),
+          regeneration: regenerated.has(rel) ? "regenerated" : "unchanged",
+          modelStamp: modelStamped.has(rel) ? "stamped" : "unstamped",
+        });
+        if (record.kind === "record") nextHashes[rel] = record.hash;
       }
       if (runtimeGenerated(rel, descriptor.harnessDir, regenerated) && !modelWritten.has(rel)) {
         if (targetRegular && currentHash === hash) {
@@ -10207,7 +10200,16 @@ function planManagedFiles(
         });
         continue;
       }
-      if (targetRegular && currentHash === hash) {
+      const managedDecision = decideManagedFileChange({
+        target: !targetExists ? { kind: "absent" } : targetRegular ? { kind: "file", hash: currentHash } : { kind: "other" },
+        sourceHash: hash,
+        recordedHash: priorHash,
+        releaseHash,
+        attribution: adoptedManagedFile ? "adopted-copy" : "not-adopted",
+        proof: unproven.has(rel) ? "unproven" : "available",
+        overwrite: force ? "force" : "protect",
+      });
+      if (managedDecision.kind === "preserve") {
         actions.push({ path: rel, action: "preserve" });
         continue;
       }
@@ -10264,16 +10266,8 @@ function planManagedFiles(
         actions.push({ path: rel, action: "update" });
         continue;
       }
-      if (
-        targetExists &&
-        (
-          !targetRegular ||
-          unproven.has(rel) ||
-          (!adoptedManagedFile && currentHash !== releaseHash && (!priorHash || currentHash !== priorHash))
-        ) &&
-        !force
-      ) {
-        actions.push({ path: rel, action: "conflict", detail: "locally modified or unowned" });
+      if (managedDecision.kind === "conflict") {
+        actions.push({ path: rel, action: "conflict", detail: managedDecision.detail });
         continue;
       }
       operations.push({
@@ -10286,8 +10280,8 @@ function planManagedFiles(
       });
       actions.push({
         path: rel,
-        action: targetExists ? "update" : "create",
-        detail: adoptedManagedFile ? "adopted exact copy-channel signature" : undefined,
+        action: managedDecision.action,
+        detail: managedDecision.detail,
       });
     }
   }
@@ -10296,22 +10290,33 @@ function planManagedFiles(
     // stay the tool's.
     if (
       shipped.has(rel) ||
-      workspaceState(rel) ||
+      classifyManagedContent({ path: rel }).kind === "workspace-state" ||
       hostToolPath(rel) ||
       rel.endsWith("/tools/data/aidlc-manifest.json")
     ) continue;
     const target = join(projectDir, rel);
-    if (!pathPresent(target)) continue;
+    const present = pathPresent(target);
     // An agent file Kiro upgraded from the one AI-DLC wrote, untouched since,
     // goes with the rest; its backups stay (kiroBackupsKeptNote).
-    const regular = regularFile(target);
-    const recorded = regular && (provenRetired.has(rel) || sha256FileMatching(target, [priorHash]) === priorHash);
-    const kiroUpgrade = !recorded && kiroUpgradeOfOwnFile(projectDir, rel, [priorHash], false);
-    if (!recorded && !kiroUpgrade && !force) {
-      actions.push({ path: rel, action: "conflict", detail: "removed upstream but locally modified" });
+    const regular = present && regularFile(target);
+    const proven = regular && provenRetired.has(rel);
+    const retirementAttribution = assessRecordedRetirement({
+      target: !present ? { kind: "absent" } : regular ? { kind: "file", hash: proven ? undefined : sha256FileMatching(target, [priorHash]) } : { kind: "other" },
+      recordedHash: priorHash,
+      proof: proven ? "proven-retired" : "unproven",
+    });
+    const kiroUpgrade = retirementAttribution.kind === "unproven" && kiroUpgradeOfOwnFile(projectDir, rel, [priorHash], false);
+    const retirement = decideRecordedRetirement({
+      attribution: retirementAttribution,
+      kiroProof: kiroUpgrade ? "attributed" : "unproven",
+      overwrite: force ? "force" : "protect",
+    });
+    if (retirement.kind === "absent") continue;
+    if (retirement.kind === "conflict") {
+      actions.push({ path: rel, action: "conflict", detail: retirement.detail });
       continue;
     }
-    if (kiroUpgrade) kiroUpgradesRemoved.add(rel);
+    if (retirement.cause === "kiro-upgrade") kiroUpgradesRemoved.add(rel);
     operations.push({ kind: "remove", path: rel, expected: expected(target) });
     actions.push({ path: rel, action: "remove", detail: NO_LONGER_SHIPPED });
   }
@@ -10319,7 +10324,7 @@ function planManagedFiles(
   // that this one no longer ships, unchanged, goes the way a recorded one does.
   if (prior === null) {
     for (const rel of Object.keys(descriptor.retiredCopyFileHashes ?? {})) {
-      if (shipped.has(rel) || workspaceState(rel) || hostToolPath(rel)) continue;
+      if (shipped.has(rel) || classifyManagedContent({ path: rel }).kind === "workspace-state" || hostToolPath(rel)) continue;
       const target = join(projectDir, rel);
       if (!pathPresent(target) || !copyEraOwnFile(descriptor, rel, target)) continue;
       operations.push({ kind: "remove", path: rel, expected: expected(target) });
@@ -10489,43 +10494,47 @@ function openCodeProviderClaim(
 // changed since takes the release's value, an entry the person added or
 // changed stays theirs, and one the release no longer ships goes only when
 // nobody changed it. `shippedHashes` names values a release shipped, for an
-// entry with no record yet. Updates `targetMap` and returns the hash of each
-// entry that is AI-DLC's after the merge.
-function mergeJsonMapEntries(
-  targetMap: Record<string, unknown>,
-  sourceMap: Record<string, unknown>,
-  priorEntries: Record<string, string>,
-  shippedHashes: Record<string, readonly string[]>,
-  force: boolean,
-  keepPresent = false,
-): Record<string, string> {
+// entry with no record yet.
+function mergeJsonMapEntries({ targetMap, sourceMap, priorEntries, shippedHashes, overwrite, addition }: {
+  targetMap: Record<string, unknown>;
+  sourceMap: Record<string, unknown>;
+  priorEntries: Record<string, string>;
+  shippedHashes: Record<string, readonly string[]>;
+  overwrite: "protect" | "force";
+  addition: "allow" | "present-only";
+}): JsonMapReconciliation {
+  const map = { ...targetMap };
   const nextEntries: Record<string, string> = {};
   for (const [entry, value] of Object.entries(sourceMap)) {
     const desiredHash = sha256Bytes(canonical(value));
-    if (!(entry in targetMap)) {
-      if (keepPresent) continue;
-      targetMap[entry] = value;
-      nextEntries[entry] = desiredHash;
-      continue;
-    }
-    const currentHash = sha256Bytes(canonical(targetMap[entry]));
+    const currentHash = entry in map ? sha256Bytes(canonical(map[entry])) : undefined;
     const priorHash = priorEntries[entry];
-    if (priorHash && (currentHash === priorHash || force)) {
-      targetMap[entry] = value;
-      nextEntries[entry] = desiredHash;
-    } else if (priorHash && currentHash === desiredHash) {
-      nextEntries[entry] = desiredHash;
-    } else if (!priorHash && (shippedHashes[entry] ?? []).includes(currentHash)) {
-      targetMap[entry] = value;
-      nextEntries[entry] = desiredHash;
-    }
+    const decision = decideJsonMapEntry({
+      incoming: { kind: "present", hash: desiredHash },
+      current: currentHash === undefined ? { kind: "absent" } : { kind: "present", hash: currentHash },
+      recordedHash: priorHash,
+      legacySignature: !priorHash && currentHash !== undefined && (shippedHashes[entry] ?? []).includes(currentHash) ? "matched" : "unmatched",
+      overwrite,
+      addition,
+    });
+    if (decision.kind === "set") {
+      map[entry] = value;
+      nextEntries[entry] = decision.recordHash;
+    } else if (decision.kind === "record") nextEntries[entry] = decision.hash;
   }
   for (const [entry, priorHash] of Object.entries(priorEntries)) {
-    if (entry in sourceMap || !(entry in targetMap)) continue;
-    const currentHash = sha256Bytes(canonical(targetMap[entry]));
-    if (currentHash === priorHash || force) delete targetMap[entry];
+    if (entry in sourceMap || !(entry in map)) continue;
+    const decision = decideJsonMapEntry({
+      incoming: { kind: "absent" },
+      current: { kind: "present", hash: sha256Bytes(canonical(map[entry])) },
+      recordedHash: priorHash,
+      legacySignature: "unmatched",
+      overwrite,
+      addition,
+    });
+    if (decision.kind === "remove") delete map[entry];
   }
-  return nextEntries;
+  return { map, entries: nextEntries };
 }
 
 function planRootIntegrations(
@@ -10796,7 +10805,7 @@ function planRootIntegrations(
         });
         continue;
       }
-      const targetMap = { ...rawTargetMap };
+      let targetMap = { ...rawTargetMap };
       const sourceMap = rawSourceMap;
       const priorEntries = priorContribution?.policy === "json-map"
         ? priorContribution.entries
@@ -10821,7 +10830,9 @@ function planRootIntegrations(
           if ((shippedHashes[entry] ?? []).includes(currentHash)) nextEntries[entry] = currentHash;
         }
       } else if (mcpMode === "defaults") {
-        Object.assign(nextEntries, mergeJsonMapEntries(targetMap, sourceMap, priorEntries, shippedHashes, force, keepPresent));
+        const reconciliation = mergeJsonMapEntries({ targetMap, sourceMap, priorEntries, shippedHashes, overwrite: force ? "force" : "protect", addition: keepPresent ? "present-only" : "allow" });
+        targetMap = reconciliation.map;
+        Object.assign(nextEntries, reconciliation.entries);
       } else {
         for (const [entry, priorHash] of Object.entries(priorEntries)) {
           if (!(entry in targetMap)) continue;
