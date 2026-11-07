@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { VERSION_ID } from "./aidlc-channel.ts";
+import { decodeRootIntegrations, encodeRootIntegration } from "./aidlc-root-integration-codec.ts";
+import { checkProjectionPath } from "./aidlc-projection-path.ts";
 
 export type ProjectionStamp = {
   schemaVersion: 1;
@@ -32,24 +34,14 @@ export type RootIntegration = {
 // with "whole-file", which 2.10.0 accepts, in `policy`; reading a projection
 // puts the real policy back when this release knows it, and otherwise keeps
 // "whole-file", so this release can install a later one in turn.
-const EXTENDED_POLICIES: readonly string[] = ["jsonc-settings", "json-entries"];
-
 export function writtenRootIntegration<T extends { policy: string }>(
   integration: T,
 ): T | (Omit<T, "policy"> & { policy: "whole-file"; extendedPolicy: string }) {
-  return EXTENDED_POLICIES.includes(integration.policy)
-    ? { ...integration, policy: "whole-file", extendedPolicy: integration.policy }
-    : integration;
+  return encodeRootIntegration({ integration });
 }
 
-export function readRootIntegrations(value: unknown): unknown {
-  if (!Array.isArray(value)) return value;
-  return value.map((item: unknown) => {
-    if (!item || typeof item !== "object" || !("extendedPolicy" in item)) return item;
-    const { extendedPolicy, ...integration } = item as Record<string, unknown>;
-    if (typeof extendedPolicy !== "string" || !EXTENDED_POLICIES.includes(extendedPolicy)) return integration;
-    return { ...integration, policy: extendedPolicy };
-  });
+export function readRootIntegrations(wireIntegrations: unknown): unknown {
+  return decodeRootIntegrations({ value: wireIntegrations });
 }
 
 export type ProjectionDescriptor = {
@@ -315,20 +307,12 @@ function parseJson<T>(path: string): T {
   }
 }
 
-function safeRelativePath(value: unknown, label: string, topLevel = false): string {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.includes("\0") ||
-    value.includes("\\") ||
-    value.startsWith("/") ||
-    /^[A-Za-z]:/.test(value) ||
-    value.split("/").some((segment) => segment === "" || segment === "." || segment === "..") ||
-    (topLevel && value.includes("/"))
-  ) {
+function safeRelativePath(projectionPath: unknown, label: string, topLevel = false): string {
+  const admission = checkProjectionPath({ path: projectionPath, scope: topLevel ? "top-level-name" : "relative-path" });
+  if (admission.kind === "refused") {
     throw new Error(`${label} is not a safe ${topLevel ? "top-level name" : "relative path"}`);
   }
-  return value;
+  return admission.path;
 }
 
 function validateHashes(value: unknown, label: string): string[] {
