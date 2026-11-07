@@ -61,6 +61,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
+import { prepareClaudeCopyAllowList, prepareClaudeNativeAllowList, type ClaudeCopyCommandAuthority, type ClaudeNativeCommandAuthority } from "./claude-settings.ts";
 import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
 import { substituteAuthoredTokens, substituteInvocationTokens, type InvocationTextBinding } from "./projection-text.ts";
 import { prepareProjectionMetadata, projectionMetadataText, type ProjectionMetadataRules } from "./projection-metadata.ts";
@@ -1065,6 +1066,14 @@ function rewriteKiroNativeAllowlists(outRoot: string, m: HarnessManifest): void 
   }
 }
 
+function createClaudeCopyCommandAuthority(): ClaudeCopyCommandAuthority {
+  return { dispatcherCommands: copyChannelDispatcherCommands, toolScripts: copyChannelToolScripts };
+}
+
+function createClaudeNativeCommandAuthority(): ClaudeNativeCommandAuthority {
+  return { trustedCommand: ({ args }) => trustedCommand(args), dispatcherCommands: nativeDispatcherCommands };
+}
+
 function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): void {
   if (m.tierFlavor !== "claude") return;
   const settingsPath = join(outRoot, m.harnessDir, "settings.json");
@@ -1072,19 +1081,13 @@ function rewriteClaudeNativePermissions(outRoot: string, m: HarnessManifest): vo
     permissions?: { allow?: unknown };
   };
   const allow = value.permissions?.allow;
-  if (!Array.isArray(allow)) throw new Error("[claude] settings.json has no permissions.allow list");
   // The copy channel's AI-DLC command entries (the tool rewrite above has
   // already turned their `bun <dir>/tools/aidlc...` into `aidlc engine ...`)
   // give way to the one trusted prefix and the exact read-only and
   // turn-back-on commands, run as the installed aidlc command.
-  value.permissions!.allow = [
-    ...allow.filter((entry) =>
-      entry !== "Bash" &&
-      !(typeof entry === "string" && (entry.startsWith("Bash(bun ") || entry.startsWith("Bash(aidlc ")))
-    ),
-    `Bash(${trustedCommand("*")})`,
-    ...nativeDispatcherCommands().map((command) => `Bash(${command})`),
-  ];
+  const prepared = prepareClaudeNativeAllowList({ allow, authority: createClaudeNativeCommandAuthority() });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  value.permissions!.allow = prepared.allow;
   writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
@@ -1103,24 +1106,9 @@ function expandClaudeToolAllows(treeRoot: string, m: HarnessManifest): void {
   const allow = value.permissions?.allow;
   // The authored entries name the tools folder as written (`.claude`), which
   // a renamed harness folder keeps, so the expansion uses the same spelling.
-  const glob = Array.isArray(allow)
-    ? allow.find((entry): entry is string =>
-      typeof entry === "string" && /^Bash\(bun \S+\/tools\/aidlc-\*\)$/.test(entry)
-    )
-    : undefined;
-  if (!Array.isArray(allow) || glob === undefined) {
-    throw new Error("[claude] settings.json has no Bash(bun <dir>/tools/aidlc-*) entry to expand");
-  }
-  const toolsDir = glob.slice("Bash(bun ".length, -"/aidlc-*)".length);
-  const tool = (script: string) => `Bash(bun ${toolsDir}/${script}`;
-  value.permissions!.allow = allow.flatMap((entry) =>
-    entry === glob
-      ? [
-        ...copyChannelDispatcherCommands().map((command) => `${tool("aidlc.ts")} ${command})`),
-        ...copyChannelToolScripts().flatMap((script) => [`${tool(script)})`, `${tool(script)} *)`]),
-      ]
-      : [entry]
-  );
+  const prepared = prepareClaudeCopyAllowList({ allow, authority: createClaudeCopyCommandAuthority() });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  value.permissions!.allow = prepared.allow;
   writeFileSync(settingsPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
