@@ -81,6 +81,7 @@ import { authoredHarnessSurface, expandKiroSharedKnowledge, kiroSharedKnowledgeR
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
 import { earlierReleasesReadSkill, prepareEarlierReleaseSkillText } from "./earlier-release-regions.ts";
 import { GENERATED_SKILL_REGIONS, replaceGeneratedSkillRegion } from "./generated-skill-regions.ts";
+import { projectPluginTarget, sortPluginAuthoringNames } from "./plugin-authoring-catalogue.ts";
 import { freshWorkspaceSeed } from "./workspace-seed.ts";
 import { forgetPackagedSources, packageInputsFingerprint, recordPackagedSources } from "./package-sources.ts";
 import {
@@ -715,14 +716,16 @@ function emitPluginAuthoringData(treeRoot: string): void {
     `${JSON.stringify(pluginTargets(), null, 2)}\n`,
   );
   const contextPath = join(treeRoot, PLUGIN_AUTHORING_CONTEXT_DST);
-  const agents = [...walk(join(CORE_ROOT, "agents"))]
-    .filter((file) => file.endsWith("-agent.md"))
-    .map((file) => basename(file, ".md"))
-    .sort();
-  const stages = [...walk(join(CORE_ROOT, "aidlc-common", "stages"))]
-    .filter((file) => file.endsWith(".md"))
-    .map((file) => basename(file, ".md"))
-    .sort();
+  const agents = sortPluginAuthoringNames({
+    names: [...walk(join(CORE_ROOT, "agents"))]
+      .filter((file) => file.endsWith("-agent.md"))
+      .map((file) => basename(file, ".md")),
+  });
+  const stages = sortPluginAuthoringNames({
+    names: [...walk(join(CORE_ROOT, "aidlc-common", "stages"))]
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => basename(file, ".md")),
+  });
   writeFileSync(
     contextPath,
     `${JSON.stringify({ agents, stages }, null, 2)}\n`,
@@ -1766,18 +1769,7 @@ function pluginTargets(): PluginTargetTable {
     for (const root of manifest.plugin?.installRoots ?? []) {
       addTopLevel(root);
     }
-    const manifestDir =
-      manifest.plugin?.manifestDir ?? `${manifest.harnessDir}-plugin`;
-    pluginTargetCache[harnessName] = {
-      harnessName: manifest.name,
-      manifestDir,
-      marketplaceDir: manifest.plugin?.marketplaceDir ?? manifestDir,
-      hostCatalogue: manifest.plugin?.hostCatalogue ??
-        ["store", "cursor"].includes(manifest.plugin?.kind ?? "store"),
-      harnessLeaf: manifest.harnessDir,
-      kind: manifest.plugin?.kind ?? "store",
-      installRoots: [...installRoots].sort(),
-    };
+    pluginTargetCache[harnessName] = projectPluginTarget({ manifest, installRoots });
   }
   return pluginTargetCache;
 }

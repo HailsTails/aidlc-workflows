@@ -21,6 +21,7 @@ const INPUT_FILES = [
   "scripts/agent-surface-projection.ts",
   "scripts/core-projection-contract.ts",
   "scripts/harness-runtime-data.ts",
+  "scripts/plugin-authoring-catalogue.ts",
   "scripts/harness-surface-projection.ts",
   "scripts/onboarding-projection.ts",
   "scripts/native-command-context.ts",

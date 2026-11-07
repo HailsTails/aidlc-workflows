@@ -13,7 +13,7 @@ test.each([
   "harness-runtime-data", "harness-surface-projection", "onboarding-projection",
   "native-command-context", "native-command-text",
   "generated-skill-regions", "workspace-seed", "projection-metadata", "version-module",
-  "earlier-release-regions",
+  "earlier-release-regions", "plugin-authoring-catalogue",
 ])("producer edit invalidates package input fingerprint: %s", (name) => {
   const fixture = join(root, name);
   mkdirSync(join(fixture, "scripts"), { recursive: true });
