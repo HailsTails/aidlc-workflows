@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { decideJsonMapEntry, type JsonMapReconciliation } from "./aidlc-json-map-decision.ts";
 import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
 import { LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { proveMessage } from "./aidlc-message-store.ts";
@@ -6668,11 +6669,10 @@ function mergeKiroMcpServers(
   const untouched = priorFile !== undefined && sha256Matching(currentText, [priorFile]) === priorFile;
   const priorEntries = prior?.entries?.[rel] ?? (untouched ? hashes(currentMap) : {});
   const shipped = Object.fromEntries(Object.entries(hashes(stagedMap)).map(([name, hash]) => [name, [hash]]));
-  const servers = { ...currentMap };
-  const owned = mergeJsonMapEntries(servers, stagedMap, priorEntries, shipped, force);
-  const merged = { ...current, mcpServers: servers };
+  const reconciliation = mergeJsonMapEntries({ targetMap: currentMap, sourceMap: stagedMap, priorEntries, shippedHashes: shipped, overwrite: force ? "force" : "protect", addition: "allow" });
+  const merged = { ...current, mcpServers: reconciliation.map };
   writeFileSync(stagedPath, canonical(merged) === canonical(current) ? currentText : jsonFileText(merged, currentText));
-  return owned;
+  return reconciliation.entries;
 }
 
 // The person's own Kiro MCP settings, read and never written. Under the test
@@ -10489,43 +10489,47 @@ function openCodeProviderClaim(
 // changed since takes the release's value, an entry the person added or
 // changed stays theirs, and one the release no longer ships goes only when
 // nobody changed it. `shippedHashes` names values a release shipped, for an
-// entry with no record yet. Updates `targetMap` and returns the hash of each
-// entry that is AI-DLC's after the merge.
-function mergeJsonMapEntries(
-  targetMap: Record<string, unknown>,
-  sourceMap: Record<string, unknown>,
-  priorEntries: Record<string, string>,
-  shippedHashes: Record<string, readonly string[]>,
-  force: boolean,
-  keepPresent = false,
-): Record<string, string> {
+// entry with no record yet.
+function mergeJsonMapEntries({ targetMap, sourceMap, priorEntries, shippedHashes, overwrite, addition }: {
+  targetMap: Record<string, unknown>;
+  sourceMap: Record<string, unknown>;
+  priorEntries: Record<string, string>;
+  shippedHashes: Record<string, readonly string[]>;
+  overwrite: "protect" | "force";
+  addition: "allow" | "present-only";
+}): JsonMapReconciliation {
+  const map = { ...targetMap };
   const nextEntries: Record<string, string> = {};
   for (const [entry, value] of Object.entries(sourceMap)) {
     const desiredHash = sha256Bytes(canonical(value));
-    if (!(entry in targetMap)) {
-      if (keepPresent) continue;
-      targetMap[entry] = value;
-      nextEntries[entry] = desiredHash;
-      continue;
-    }
-    const currentHash = sha256Bytes(canonical(targetMap[entry]));
+    const currentHash = entry in map ? sha256Bytes(canonical(map[entry])) : undefined;
     const priorHash = priorEntries[entry];
-    if (priorHash && (currentHash === priorHash || force)) {
-      targetMap[entry] = value;
-      nextEntries[entry] = desiredHash;
-    } else if (priorHash && currentHash === desiredHash) {
-      nextEntries[entry] = desiredHash;
-    } else if (!priorHash && (shippedHashes[entry] ?? []).includes(currentHash)) {
-      targetMap[entry] = value;
-      nextEntries[entry] = desiredHash;
-    }
+    const decision = decideJsonMapEntry({
+      incoming: { kind: "present", hash: desiredHash },
+      current: currentHash === undefined ? { kind: "absent" } : { kind: "present", hash: currentHash },
+      recordedHash: priorHash,
+      legacySignature: !priorHash && currentHash !== undefined && (shippedHashes[entry] ?? []).includes(currentHash) ? "matched" : "unmatched",
+      overwrite,
+      addition,
+    });
+    if (decision.kind === "set") {
+      map[entry] = value;
+      nextEntries[entry] = decision.recordHash;
+    } else if (decision.kind === "record") nextEntries[entry] = decision.hash;
   }
   for (const [entry, priorHash] of Object.entries(priorEntries)) {
-    if (entry in sourceMap || !(entry in targetMap)) continue;
-    const currentHash = sha256Bytes(canonical(targetMap[entry]));
-    if (currentHash === priorHash || force) delete targetMap[entry];
+    if (entry in sourceMap || !(entry in map)) continue;
+    const decision = decideJsonMapEntry({
+      incoming: { kind: "absent" },
+      current: { kind: "present", hash: sha256Bytes(canonical(map[entry])) },
+      recordedHash: priorHash,
+      legacySignature: "unmatched",
+      overwrite,
+      addition,
+    });
+    if (decision.kind === "remove") delete map[entry];
   }
-  return nextEntries;
+  return { map, entries: nextEntries };
 }
 
 function planRootIntegrations(
@@ -10796,7 +10800,7 @@ function planRootIntegrations(
         });
         continue;
       }
-      const targetMap = { ...rawTargetMap };
+      let targetMap = { ...rawTargetMap };
       const sourceMap = rawSourceMap;
       const priorEntries = priorContribution?.policy === "json-map"
         ? priorContribution.entries
@@ -10821,7 +10825,9 @@ function planRootIntegrations(
           if ((shippedHashes[entry] ?? []).includes(currentHash)) nextEntries[entry] = currentHash;
         }
       } else if (mcpMode === "defaults") {
-        Object.assign(nextEntries, mergeJsonMapEntries(targetMap, sourceMap, priorEntries, shippedHashes, force, keepPresent));
+        const reconciliation = mergeJsonMapEntries({ targetMap, sourceMap, priorEntries, shippedHashes, overwrite: force ? "force" : "protect", addition: keepPresent ? "present-only" : "allow" });
+        targetMap = reconciliation.map;
+        Object.assign(nextEntries, reconciliation.entries);
       } else {
         for (const [entry, priorHash] of Object.entries(priorEntries)) {
           if (!(entry in targetMap)) continue;
