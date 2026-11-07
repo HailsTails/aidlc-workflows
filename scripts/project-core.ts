@@ -1,3 +1,4 @@
+import { observeCopilotProductionInputs, verifyCopilotProductionInputs } from "./projection/src/adapters/copilot-source-contract.ts";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, chmodSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
@@ -40,6 +41,7 @@ export const copyRequestSchema = z.strictObject({ sourceRoot: z.string().min(1),
 
 async function assembleCore(request: ClaudeCopyRequest, binding: HarnessBinding, copy?: PairedCopyDescription): Promise<IssuedProjectionDistribution> {
   const { sourceRoot, buildVersion, environmentCap } = copyRequestSchema.parse(request);
+  const copilotInputs = binding.harness === "copilot" ? observeCopilotProductionInputs(sourceRoot) : null;
   const workspace = mkdtempSync(join(tmpdir(), "aidlc-retained-projection-"));
   const owned = resolve(workspace);
   if (!owned.startsWith(resolve(tmpdir()) + sep)) throw new Error("Projection workspace escaped temporary root");
@@ -70,6 +72,10 @@ async function assembleCore(request: ClaudeCopyRequest, binding: HarnessBinding,
     const prepared = await assemble({ location: { sourceRoot, root: runtimeRoot, basis: { source: { kind: "core", id: "framework" }, pin } }, binding, contextRoot: workspace, mode, modelInvocation: profile.modelInvocation, stageDocuments: "project-authored", methodRuntime: "prepare-authored", workflowReferences: "prepare-compiled" });
     if (prepared.status === "invalid") throw new Error(prepared.findings.map(finding => `${finding.subject}: ${finding.detail}`).join("\n"));
     if (createHash("sha1").update(packageInputsFingerprint(sourceRoot)).digest("hex") !== pin) throw new Error("Source changed during assembly");
+    if (copilotInputs !== null) {
+      verifyCopilotProductionInputs(copilotInputs, observeCopilotProductionInputs(sourceRoot));
+      verifyCopilotProductionInputs(copilotInputs, prepared.value.artifact.sourceInputs ?? []);
+    }
     return prepared.value.artifact;
   } finally {
     rmSync(owned, { recursive: true, force: true });
@@ -102,8 +108,8 @@ export async function projectCoreNative(request: ClaudeCopyRequest, binding: Har
 }
 if (import.meta.main) {
   const input: unknown = await Bun.stdin.json();
-  const request = copyRequestSchema.extend({ harness: z.enum(["claude", "codex", "cursor", "kiro", "kiro-ide"]), delivery: z.enum(["copy", "native"]) }).parse(input);
-  const binding = qualifiedHarnessByName({ name: request.harness, harnessDir: request.harness === "kiro-ide" ? ".kiro" : `.${request.harness}` });
+  const request = copyRequestSchema.extend({ harness: z.enum(["claude", "codex", "cursor", "kiro", "kiro-ide", "copilot"]), delivery: z.enum(["copy", "native"]) }).parse(input);
+  const binding = qualifiedHarnessByName({ name: request.harness, harnessDir: request.harness === "copilot" ? ".aidlc" : request.harness === "kiro-ide" ? ".kiro" : `.${request.harness}` });
   if (binding === null) throw new Error("Host projection profile is not qualified");
   const profile = copyRequestSchema.parse({ sourceRoot: request.sourceRoot, outRoot: request.outRoot, buildVersion: request.buildVersion, environmentCap: request.environmentCap });
   console.log(JSON.stringify(await (request.delivery === "native" ? projectCoreNative(profile, binding) : projectCoreCopy(profile, binding))));

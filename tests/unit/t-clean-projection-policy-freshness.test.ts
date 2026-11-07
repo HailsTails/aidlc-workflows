@@ -26,7 +26,7 @@ function fixture() {
 const basis = { source: { kind: "core", id: "framework" }, pin: "a".repeat(40) } as const;
 const binding = { harness: "kiro-ide", directory: ".kiro" } as const;
 
-for (const binding of [{ harness: "claude", directory: ".claude" }, { harness: "codex", directory: ".codex" }, { harness: "cursor", directory: ".cursor" }, { harness: "kiro", directory: ".kiro" }, { harness: "kiro-ide", directory: ".kiro" }] as const) {
+for (const binding of [{ harness: "claude", directory: ".claude" }, { harness: "codex", directory: ".codex" }, { harness: "cursor", directory: ".cursor" }, { harness: "kiro", directory: ".kiro" }, { harness: "kiro-ide", directory: ".kiro" }, { harness: "copilot", directory: ".aidlc" }] as const) {
   const { harness } = binding;
   test(`fresh selected-source policy at the same path is A/B/A for ${harness}`, async () => {
     const f = fixture();

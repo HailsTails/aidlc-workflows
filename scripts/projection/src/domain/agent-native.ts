@@ -9,6 +9,7 @@ export type AgentEmissionInput = {
   readonly description: string;
   readonly frontmatter: string;
   readonly body: string;
+  readonly authoredBody?: string;
   readonly preflight: string;
   readonly nativeModel: NativeTier;
   readonly policy: AgentExecutionPolicy;

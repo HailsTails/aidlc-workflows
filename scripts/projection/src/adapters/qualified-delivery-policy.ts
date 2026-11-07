@@ -5,7 +5,8 @@ type DeliveryDeclaration = KasDeclaration & {
   readonly name: string;
   readonly harnessDir: string;
   readonly harnessFiles: readonly { readonly src: string; readonly dst: string; readonly projectRoot?: boolean; readonly copyOnly?: boolean }[];
-  readonly rootIntegrations: readonly { readonly path: string; readonly policy: string }[];
+  readonly rootIntegrations: readonly { readonly path: string; readonly policy: string; readonly marker?: string; readonly shared?: string; readonly optional?: boolean }[];
+  readonly tierFlavor?: string;
   readonly nativeRootIntegrations?: unknown;
   readonly nativeReplacements?: readonly { readonly from: string; readonly to: string }[];
 };
@@ -13,6 +14,11 @@ type DeliveryDeclaration = KasDeclaration & {
 // Delivery declarations are admitted independently of layout and model invocation.
 export function qualifyDeliveryDeclaration(declaration: DeliveryDeclaration, profile: QualifiedHarnessProfile): void {
   if (declaration.name !== profile.harness || declaration.harnessDir !== profile.directory || !Array.isArray(declaration.harnessFiles) || !Array.isArray(declaration.rootIntegrations)) throw new Error("delivery requires the qualified authored manifest");
+  if (profile.harness === "copilot") {
+    const roots = declaration.rootIntegrations;
+    const exact = (path: string, policy: string, marker: string | undefined, shared: string | undefined, optional: boolean | undefined) => roots.filter(root => root.path === path && root.policy === policy && root.marker === marker && root.shared === shared && root.optional === optional).length === 1;
+    if (declaration.tierFlavor !== "copilot" || roots.length !== 3 || !exact("AGENTS.md", "managed-block", "agents", undefined, undefined) || !exact(".gitignore", "managed-block", "gitignore", "union", undefined) || !exact(".vscode/settings.json", "jsonc-settings", undefined, undefined, true)) throw new Error("Copilot requires model inheritance, exclusive root guidance, union ignore rules and optional additive editor settings");
+  }
   if (declaration.nativeRootIntegrations !== undefined) throw new Error("delivery does not admit nativeRootIntegrations declarations");
   const omitted = declaration.harnessFiles.filter(mapping => mapping.copyOnly);
   if (omitted.length !== profile.copyOnlyRoots.length || profile.copyOnlyRoots.some(expected => omitted.filter(mapping => mapping.src === expected.src && mapping.dst === expected.dst && mapping.projectRoot === true && mapping.copyOnly === true).length !== 1 || declaration.rootIntegrations.filter(integration => integration.path === expected.dst && integration.policy === expected.policy).length !== 1)) throw new Error("delivery does not admit unqualified copyOnly resources or root ownership");

@@ -1,3 +1,4 @@
+import { prepareSourceCopilotSettings } from "./source-copilot-settings.ts";
 import { readSourceKasPreparation } from "./source-kas-preparation.ts";
 import { readSourceKiroPreparation } from "./source-kiro-preparation.ts";
 import type { Tier } from "../domain/model.ts";
@@ -184,6 +185,7 @@ const execute = async ({ request, binary, operations }: { readonly request: Harn
   catch { return failure({ detail: "harness settings process capability unavailable" }); }
 };
 export const createSourceHarnessSettingsPreparer = ({ binary = "bun", operations = createSourceHarnessSettingsOperations(), environmentCap = null }: { readonly environmentCap?: Tier | null; readonly binary?: string; readonly operations?: SourceHarnessSettingsOperations } = {}): HarnessSettingsPreparer => ({ prepare: async (request) => {
+  if (request.binding.harness === "copilot") return prepareSourceCopilotSettings(request, binary);
   if (request.binding.harness === "kiro" || request.binding.harness === "kiro-ide") {
     if (request.binding.directory !== ".kiro" || request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || !["aidlc", "bun .kiro/tools/aidlc.ts"].includes(request.invocation) || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777 || request.files.filter(file => file === ".kiro/tools/aidlc.ts").length !== 1) return failure({ detail: "Kiro settings require the pinned framework, exact invocation, modes and prepared dispatcher" });
     const paths = admitWorkingPaths({ paths: operations.paths(request) });

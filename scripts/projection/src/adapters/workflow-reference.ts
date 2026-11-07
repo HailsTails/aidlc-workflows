@@ -161,9 +161,9 @@ const prepareReferenceInputs = async ({ request, manifest, operations, binary }:
     const bytes = findBytes({ observed: before.value, root: request.sourceRoot, path: nativeRuntimePath });
     const loaded = await operations.module({ sourceRoot: request.sourceRoot, path: nativeRuntimePath, sha256: operations.digest({ bytes }) });
     if (loaded.status === "invalid") return loaded;
-    const policy = z.object({ prepareNativeRuntimeText: z.function({ input: [z.string(), z.string()], output: z.string() }) }).safeParse(loaded.value);
+    const policy = z.object({ prepareNativeRuntimeText: z.function({ input: [z.string(), z.string(), z.string().optional()], output: z.string() }) }).safeParse(loaded.value);
     if (!policy.success) return refused({ detail: "workflow reference runtime comparison requires source-owned native text preparation" });
-    nativeText = source => policy.data.prepareNativeRuntimeText(source, request.context.directory);
+    nativeText = source => policy.data.prepareNativeRuntimeText(source, request.context.directory, request.context.harness);
   }
   const facts = admitRuntimeFacts({ observed: before.value, request, ...(nativeText === undefined ? {} : { nativeText }) });
   if (facts.status === "invalid") return facts;

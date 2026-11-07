@@ -21,8 +21,8 @@
 //     semantics), and .github/ is SHARED with real repo content (workflows,
 //     templates) — the engine tree cannot own it. The engine ships at
 //     .aidlc/ — a dir neither Copilot surface scans (the opencode precedent)
-//     — and emit.ts writes only aidlc-named files into .github/.
-//   - .github/ carries ONLY natively-consumed emissions (emit.ts): the hook
+//     — and the retained projection writes only aidlc-named files into .github/.
+//   - .github/ carries ONLY natively-consumed emissions (the retained projection): the hook
 //     wiring (.github/hooks/aidlc.json → the adapter in .aidlc/hooks/), the
 //     14 persona agents (.github/agents/aidlc-*-agent.md), and the full
 //     skills tree (.github/skills/: orchestrator + generated runners +
@@ -36,7 +36,6 @@
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
-import emit from "./emit.ts";
 
 const manifest: HarnessManifest = {
   name: "copilot",
@@ -251,11 +250,12 @@ const manifest: HarnessManifest = {
   directiveMaxBytes: 19000,
 
   // Copilot discovers project skills at .github/skills/ (and .agents/skills/,
-  // .claude/skills/) — never inside .aidlc/. emit.ts composes the full skill
+  // .claude/skills/) — never inside .aidlc/. the retained projection composes the full skill
   // tree there from runner-gen's render fns; graph compile still runs.
   skipRunnerGen: true,
 
-  emit,
+  emit: null,
+
 
   // Copilot recognizes .plugin/plugin.json as a native plugin manifest.
   // The harnessDir-derived ".aidlc-plugin" default is not a discovery path.

@@ -76,6 +76,7 @@ const renderedEmission = ({
     frontmatter: rules.text({ text: prepared.agent.frontmatter, contract }),
     description: rules.text({ text: prepared.agent.description, contract }),
     body: agentBody,
+    ...(prepared.context.harness === "copilot" ? { authoredBody: rules.text({ text: prepared.agent.body, contract }).replaceAll("aidlc/spaces/<active-space>/memory/", `${prepared.context.memoryReference ?? "aidlc/spaces/<active-space>/memory"}/`) } : {}),
     preflight: delegatedAgentPreflight({ name: prepared.agent.name, context: prepared.context }),
     nativeModel: prepared.nativeModel,
     policy: prepared.agent.policy,

@@ -46,7 +46,7 @@ const project = async ({ before }) => {
     const projected = projectModules({ manifest, projector, runtime, policy });
     if (projected.status !== "ok" || input.delivery !== "native") return projected;
     const nativeText = await import(Bun.pathToFileURL(input.sourceRoot + "/scripts/native-runtime-text.ts").href);
-    return { ...projected, descriptor: JSON.parse(nativeText.prepareNativeRuntimeText(JSON.stringify(projected.descriptor), input.harnessDir)) };
+    return { ...projected, descriptor: JSON.parse(nativeText.prepareNativeRuntimeText(JSON.stringify(projected.descriptor), input.harnessDir, input.harness)) };
   } catch { return unavailable({ detail: "source runtime context projection API unavailable" }); }
 };
 const prepare = async () => {

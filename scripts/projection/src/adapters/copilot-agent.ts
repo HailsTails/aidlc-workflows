@@ -34,11 +34,11 @@ export const createCopilotAgentEmitter = ({
         ],
       };
     const frontmatter = formatters.frontmatter({
-      frontmatter: input.frontmatter,
+      frontmatter: input.frontmatter.replace(/^tier:.*$/m, 'tools: ["read", "edit", "search", "execute", "web", "todo"]'),
       nativeModel: { model: null, effort: null },
       effortKey: "effort",
       removeKeys: ["disallowedTools"],
-      additions: ['tools: ["read", "edit", "search", "execute", "web", "todo"]'],
+      additions: [],
     });
     const engineFrontmatter = formatters.frontmatter({
       frontmatter: input.frontmatter,
@@ -53,7 +53,8 @@ export const createCopilotAgentEmitter = ({
         {
           kind: "file",
           path: `.github/agents/${input.name}.md`,
-          body: formatters.persona({ input, frontmatter }),
+          // The discovery persona keeps authored guidance; the engine twin carries compiled reviewer knowledge.
+          body: formatters.persona({ input: { ...input, body: input.authoredBody ?? input.body }, frontmatter }),
         },
         {
           kind: "file",

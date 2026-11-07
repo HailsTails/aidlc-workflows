@@ -1,3 +1,4 @@
+import { observeCopilotSettingsInputs } from "./copilot-source-contract.ts";
 import { observeKasInputs } from "./kas-source-contract.ts";
 import { qualifiedHarnessProfile, qualifiedRootMappings, qualifiedDescriptionPaths } from "./qualified-harness-profile.ts";
 import { createHash } from "node:crypto";
@@ -13,7 +14,7 @@ const descriptionSourcePaths = (request: DistributionDescriptionRequest): readon
   if (profile === null) return [];
   const sourcePaths = ["scripts/projection/native/projection-metadata.ts", "scripts/manifest-types.ts", "scripts/projection/src/adapters/qualified-delivery-policy.ts", `harness/${profile.harness}/manifest.ts`, `harness/${profile.harness}/onboarding.fills.ts`, ...[...profile.rootMappings, ...profile.copyOnlyRoots].map(mapping => `harness/${profile.harness}/${mapping.src}`), "core/tools/aidlc-distribution.ts", "core/tools/aidlc-root-integration-codec.ts", "core/tools/aidlc-projection-path.ts", "core/tools/aidlc-channel.ts", "core/tools/aidlc-version.ts"];
   const nativeSourcePaths = ["scripts/projection/native/native-delivery.ts", "scripts/projection/src/domain/model.ts", "scripts/copy-era-files.json", "scripts/native-command-text.ts", "scripts/native-command-context.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts", "core/tools/aidlc-runtime-paths.ts"];
-  return [...new Set([...(request.invocation === "aidlc" ? [...sourcePaths, ...nativeSourcePaths] : sourcePaths), ...(profile.nativePolicy === "kas-personas" ? observeKasInputs(request.sourceRoot).map(input => input.path) : [])])];
+  return [...new Set([...(request.invocation === "aidlc" ? [...sourcePaths, ...nativeSourcePaths] : sourcePaths), ...(profile.harness === "copilot" ? observeCopilotSettingsInputs(request.sourceRoot).map(input => input.path) : []), ...(profile.nativePolicy === "kas-personas" ? observeKasInputs(request.sourceRoot).map(input => input.path) : [])])];
 };
 export type NativeDescriptionPair = { readonly profile: DistributionBuildProfile; readonly copy: PairedCopyDescription };
 export type SourceDescriptionOperations = NativeCompilerProcessOperations & { readonly paths: (input: DistributionDescriptionRequest) => { readonly sourceRoot: string; readonly root: string } };
@@ -67,7 +68,14 @@ const readRoots = async ({ digest }) => {
   for (const path of input.profile.projectedRootPaths) {
     const file = input.finalFiles.find(file => file.path === path);
     if (file === undefined) return unavailable({ detail: "projected root integration requires actual final encoded product bytes" });
-    roots.push(admitRoot({ bytes: Buffer.from(file.base64, "base64"), mapping: { dst: path }, digest }));
+    const root = admitRoot({ bytes: Buffer.from(file.base64, "base64"), mapping: { dst: path }, digest });
+    if (root !== null && input.profile.harness === "copilot" && input.delivery === "native" && path === "AGENTS.md") {
+      const policy = await loadModule({ path: "harness/copilot/settings.ts" });
+      const legacy = policy.copilotLegacyRootText(await Bun.file(input.sourceRoot + "/core/templates/onboarding.md").text(), await Bun.file(input.sourceRoot + "/core/templates/onboarding-harness.md").text());
+      if (typeof legacy !== "string" || legacy.length === 0) return unavailable({ detail: "Copilot compatibility root requires raw authored text" });
+      root.legacySignatureSha256 = digest(Buffer.from(legacy));
+    }
+    roots.push(root);
   }
   return collectRoots({ roots });
 };

@@ -3,7 +3,7 @@ import { harnessChoiceTextIsPlain, shipsRootBlock as nativeShipsRootBlock } from
 import { encodeRootIntegration as nativeEncodeRootIntegration } from "../../../core/tools/aidlc-root-integration-codec.ts";
 import { VERSION_ID } from "../../../core/tools/aidlc-channel.ts";
 
-export type ProjectedRootFile = { readonly path: string; readonly fileName: string; readonly bytes: Uint8Array; readonly sha256: string };
+export type ProjectedRootFile = { readonly path: string; readonly fileName: string; readonly bytes: Uint8Array; readonly sha256: string; readonly legacySignatureSha256?: string };
 export type ProjectionMetadataArtifact = { readonly file: string; readonly bytes: Uint8Array };
 export type ProjectionRootIntegrationWire = RootIntegration & { readonly extendedPolicy?: string };
 export type ProjectionMetadataRules = {
@@ -56,13 +56,14 @@ function rootBlockName({ integration, rootFile }: { readonly integration: RootIn
 
 function rootIntegrationWithSignature({ integration, rootFile }: { readonly integration: RootIntegration; readonly rootFile: ProjectedRootFile }): RootIntegration {
   if (integration.policy !== "managed-block") return integration;
-  return { ...integration, legacySignatures: { ...integration.legacySignatures, wholeFileHashes: [...new Set([...(integration.legacySignatures?.wholeFileHashes ?? []), rootFile.sha256])] } };
+  return { ...integration, legacySignatures: { ...integration.legacySignatures, wholeFileHashes: [...new Set([...(integration.legacySignatures?.wholeFileHashes ?? []), rootFile.legacySignatureSha256 ?? rootFile.sha256])] } };
 }
 
 function prepareRootIntegrations({ declaration, rootFiles, rules }: Pick<ProjectionMetadataRequest, "declaration" | "rootFiles"> & { readonly rules: ProjectionMetadataRules }): PreparedRootIntegrations {
   const missing = declaration.rootIntegrations.find((integration) => rules.shipsRootBlock({ integration }) === "shipped" && !rootFiles.some((file) => file.path === integration.path));
   if (missing !== undefined) return refuse({ declaration, message: `root integration bytes unavailable: ${missing.path}` });
   if (new Set(rootFiles.map((file) => file.path)).size !== rootFiles.length) return refuse({ declaration, message: "duplicate projected root file bytes" });
+  if (rootFiles.some(file => file.legacySignatureSha256 !== undefined && !/^sha256:[a-f0-9]{64}$/.test(file.legacySignatureSha256))) return refuse({ declaration, message: "root compatibility signature requires a SHA-256 digest" });
   const prepared = declaration.rootIntegrations.map((integration) => {
     const rootFile = rootFiles.find((file) => file.path === integration.path);
     if (rules.shipsRootBlock({ integration }) === "not-shipped" || rootFile === undefined) return { integration, artifacts: [] };

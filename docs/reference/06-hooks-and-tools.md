@@ -525,7 +525,7 @@ Native command-hook registrations provide another enclosing limit:
 |---|---|---|
 | Claude Code | `timeout`, seconds in `harness/claude/settings.json` | 1,800 ordinary; 3,600 for `run-sensors` and Stop; **60 for SessionEnd** |
 | Codex | `timeout`, seconds in `harness/codex/emit.ts` | 1,800 ordinary; 3,600 for `audit-and-sensors` and Stop |
-| Copilot | `timeoutSec`, seconds in `harness/copilot/emit.ts` | 1,800 ordinary; 3,600 for PostToolUse fanout and Stop |
+| Copilot | `timeoutSec`, seconds in `harness/copilot/settings.ts` | 1,800 ordinary; 3,600 for PostToolUse fanout and Stop |
 | Kiro CLI agent-v1 | `timeout_ms`, milliseconds in `harness/kiro/agents/aidlc*.json` | 1,800,000 ordinary; 3,600,000 for `audit-and-sensors` and Stop |
 | Cursor | No timeout field emitted | Native outer-timeout override support is **unverified** |
 | Kiro IDE and Kiro CLI v3 (`kiro-ide`) | `timeout`, seconds in `harness/kiro-ide/hooks/*.json` | 1,800 ordinary; 3,600 for `audit-and-sensors` and Stop |

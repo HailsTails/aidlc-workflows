@@ -7,9 +7,9 @@ import { prepareCursorCopyAllowList, prepareCursorNativeAllowList } from "./curs
 //   bun scripts/package.ts <name>      regenerate just one harness
 //   bun scripts/package.ts <name> --check
 //
-// Claude copy delivery uses the retained projection component with explicit
-// build-version and environment-cap inputs. Native releases and other harnesses
-// retain the pipeline below until their component profiles are qualified.
+// Qualified copy and native deliveries use the retained projection component
+// with explicit version and model-cap inputs. Opencode retains the legacy
+// pipeline until its complete component profile is qualified.
 //
 // LEGACY PIPELINE PER HARNESS:
 //   1. COPY core/<src> → dist/<name>/<harnessDir>/<dst>, substituting
@@ -24,7 +24,7 @@ import { prepareCursorCopyAllowList, prepareCursorNativeAllowList } from "./curs
 //      write and scopes CLIs under AIDLC_HARNESS_DIR (skipped when the manifest
 //      sets skipRunnerGen).
 //   5. EMIT via harness/<name>/emit.ts if the manifest declares one (codex,
-//      copilot and opencode today; for codex: config.toml, hooks.json,
+//      opencode today; for codex: config.toml, hooks.json,
 //      trust-seed, agent TOMLs, .agents/skills).
 //   6. REFRESH generated stage/scope table regions in the assembled orchestrator
 //      skill from the just-compiled graph and scope grid.

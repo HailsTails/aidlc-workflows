@@ -1,7 +1,7 @@
 import type { HarnessBinding } from "../domain/harness-binding.ts";
 import type { HarnessDocumentPlacement } from "../domain/harness-document.ts";
 
-export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness: "claude" | "codex" | "cursor" | "kiro" | "kiro-ide" }> & {
+export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness: "claude" | "codex" | "cursor" | "kiro" | "kiro-ide" | "copilot" }> & {
   readonly tierFlavor?: "kiro";
   readonly nativePolicy?: "kas-personas";
   readonly agentPolicyNames?: readonly string[];
@@ -96,6 +96,17 @@ const profiles: readonly QualifiedHarnessProfile[] = [
     referenceTemplate: "skills/aidlc/tables.md", referenceDestination: ".kiro/skills/aidlc/tables.md",
     rootMappings: [{ src: "dot-gitignore", dst: ".gitignore" }], projectedRootPaths: ["AGENTS.md"],
     descriptionPaths: [".gitignore", ".kiro/tools/data/root-blocks/gitignore", ".kiro/tools/data/root-blocks/agents", ".kiro/tools/data/aidlc-projection.json", ".kiro/tools/data/aidlc-stamp.json"],
+  },
+  {
+    harness: "copilot", directory: ".aidlc", onboardingDestinations: ["AGENTS.md"], agentTurnLimit: "authored-metadata", copyOnlyRoots: [], nativeTextSources: [], nativeReplacementCount: 0, agentMemoryReference: "aidlc/active-memory", exactNativeReads: true, modelInvocation: "native-default", skillRoot: ".github/skills", runtimeMappings: [{ src: "hooks/aidlc-copilot-adapter.ts", dst: "hooks/aidlc-copilot-adapter.ts" }], settingsMappings: [], settingsOnboardingPath: null, entryMapping: "orchestrator",
+    entryDocuments: [
+      { role: "main-skill", source: "skills/aidlc/SKILL.md", destination: ".github/skills/aidlc/SKILL.md" },
+      { role: "composer", source: "skills/aidlc/composer.md", destination: ".github/skills/aidlc/composer.md" },
+      { role: "question-rendering", source: "skills/aidlc/question-rendering.md", destination: ".github/skills/aidlc/question-rendering.md" },
+    ],
+    referenceTemplate: "skills/aidlc/tables.md", referenceDestination: ".github/skills/aidlc/tables.md",
+    rootMappings: [{ src: "dot-gitignore", dst: ".gitignore" }, { src: "dot-vscode-settings.json", dst: ".vscode/settings.json" }], projectedRootPaths: ["AGENTS.md"],
+    descriptionPaths: [".gitignore", ".vscode/settings.json", ".aidlc/tools/data/root-blocks/gitignore", ".aidlc/tools/data/root-blocks/agents", ".aidlc/tools/data/aidlc-projection.json", ".aidlc/tools/data/aidlc-stamp.json"],
   },
 ];
 // Admission is explicit; an unqualified host never inherits another host's policy.
