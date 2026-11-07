@@ -1,3 +1,11 @@
+export { activeWorkflowPluginDependencies } from "./aidlc-workflow-plugin-dependency-reader.ts";
+export { pluginsTurnedOff } from "./aidlc-plugin-selection.ts";
+export { stripPluginsTurnedOff } from "./aidlc-plugin-disable.ts";
+import { activeWorkflowPluginDependencies } from "./aidlc-workflow-plugin-dependency-reader.ts";
+import { knownPluginNames } from "./aidlc-plugin-selection.ts";
+import { stripPluginsTurnedOffWithChanges } from "./aidlc-plugin-disable.ts";
+import { canonicalScopeTableRegion, canonicalStageTableRegion, renderScopeTable, renderStageTable, SCOPE_TABLE_BEGIN, SCOPE_TABLE_END, STAGE_TABLE_BEGIN, STAGE_TABLE_END } from "./aidlc-compiled-tables.ts";
+export { canonicalScopeTableRegion, canonicalStageTableRegion, renderScopeTable, renderStageTable } from "./aidlc-compiled-tables.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS, LONG_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
 import { hasStoredMessages, proveMessage, requestMessageStep, type StoredMessage } from "./aidlc-message-store.ts";
@@ -157,7 +165,6 @@ import {
   stageWorkspaceRepo,
 } from "./aidlc-workspace-sync.ts";
 import {
-  composedPluginNames,
   copilotCliTrust,
   insideGitRepository,
   instructionFileDoctorCheck,
@@ -185,7 +192,6 @@ import {
   staleStageLine,
   activeWorkflowDescriptions,
   runningWorkflows,
-  workflowDisplayName,
   readActiveIntentCursor,
   activeSpace,
   authoritativeProjectDescription,
@@ -536,7 +542,6 @@ import {
   contributionSources,
   copyPluginRulesToSpace,
   copyProjectSurfaces,
-  cutPluginFragment,
   hostListsPlugins,
   mergePluginRulesFromRoot,
   movePluginRules,
@@ -546,17 +551,13 @@ import {
   refreshRulesCopy,
   sayRulesPlacement,
   noPluginListLine,
-  personaTwinRels,
   projectDiffPlan,
   recordedContributionGaps,
   skippedCommandLine,
   type StageContribRecord,
-  stripRecordedAdds,
   rulesRecordGaps,
-  stripPluginRules,
   syncCommand,
   tomlFragmentText,
-  withFileLineEndings,
 } from "./aidlc-plugin.ts";
 import { pluginTestCommand, renderPluginTestHelp, resolveHookPath } from "./aidlc.ts";
 import { projectPluginCommands } from "./aidlc-plugin-commands.ts";
@@ -1012,24 +1013,6 @@ function requireInstalledHarness(projectDir: string): void {
   }
 }
 
-function knownPluginNames(): string[] {
-  const names = new Set<string>(["aidlc"]);
-  try {
-    for (const stage of loadStageGraphAll()) {
-      if (stage.plugin) names.add(stage.plugin);
-    }
-  } catch {
-    // Scope files still provide known plugin identities when the graph is stale.
-  }
-  for (const meta of Object.values(loadScopeMetadataAll())) {
-    names.add(meta.plugin ?? "aidlc");
-  }
-  for (const name of composedPluginNames(resolveHarnessPath(["tools", "data"]))) {
-    names.add(name);
-  }
-  return [...names].sort();
-}
-
 function selectionOwner(stage: Pick<StageEntry, "plugin">): string {
   return stage.plugin ?? "aidlc";
 }
@@ -1199,139 +1182,6 @@ export function regenerateSelectionSurfaces(
   );
 }
 
-// --- disable-time contribution strip -----------------------------------------
-//
-// Compose merges a plugin's structural adds (produces/sensors/consumes/
-// scopes/required_sections) into CORE stage source, where no selection filter
-// reaches, and records what it actually added in a per-plugin sidecar
-// (tools/data/plugin-contrib-<key>.json). Prose fragments carry their own
-// sentinel markers. On disable, select-plugins strips both, so a disabled
-// plugin's contributions stop steering enabled stages; re-enabling restores
-// them at the plugin's next compose (`nextCompose` in aidlc-plugin.ts).
-
-function pluginContribSidecarPath(plugin: string): string {
-  return resolveHarnessPath(
-    ["tools", "data", `plugin-contrib-${plugin.replace(/[^\w.-]/g, "_")}.json`],
-    { mutable: true },
-  );
-}
-
-function installedStagesRoot(): string {
-  return resolveHarnessPath(["aidlc-common", "stages"], { mutable: true });
-}
-
-// Strip every sentinel-marked prose fragment this plugin spliced. The open
-// and close markers carry the plugin name, so removal needs no sidecar.
-// Anchors may themselves contain colons (after-step:9, in:Sensors), so the
-// anchor segment is matched non-greedily up to the trailing :order:hash.
-function removePluginFragments(content: string, plugin: string): string {
-  const pE = escapeRegex(plugin);
-  const openRe = new RegExp(`<!-- plugin:${pE}:.+?:\\d+:[0-9a-f]+ -->`, "g");
-  let out = content;
-  let match = openRe.exec(out);
-  while (match !== null) {
-    const close = `<!-- /${match[0].slice(5)}`;
-    const closeIdx = out.indexOf(close, match.index);
-    if (closeIdx === -1) break; // unpaired marker: leave as-is (doctor territory)
-    out = cutPluginFragment(out, match.index, closeIdx + close.length);
-    openRe.lastIndex = 0;
-    match = openRe.exec(out);
-  }
-  return out;
-}
-
-// Strip the merged contributions of every named plugin from staged stage
-// source. The caller commits the resulting staged-project diff through the
-// shared transaction engine; consumed sidecars are deleted in staging and
-// compose recreates them when the plugin is re-enabled.
-// The plugins whose rules sections the last strip took out, for the line
-// select says.
-const rulesTakenOut = new Set<string>();
-
-function stripDisabledPluginContributions(
-  plugins: readonly string[],
-): string[] {
-  const stagesRoot = installedStagesRoot();
-  const stripped: string[] = [];
-  for (const plugin of plugins) {
-    const sidecar = pluginContribSidecarPath(plugin);
-    let manifest: Record<string, StageContribRecord> = {};
-    if (existsSync(sidecar)) {
-      try {
-        const parsed = JSON.parse(readFileSync(sidecar, "utf-8"));
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) manifest = parsed;
-      } catch {
-        // Unreadable sidecar: fragments still strip below; structural adds stay.
-      }
-    }
-    let pluginTouched = false;
-    for (const phase of PHASES) {
-      const dir = join(stagesRoot, phase);
-      if (!existsSync(dir)) continue;
-      for (const f of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
-        const path = join(dir, f);
-        const before = readFileSync(path, "utf-8");
-        // A CRLF checkout strips as the LF text compose wrote, in its own line endings.
-        const content = withFileLineEndings(before, (text) => {
-          const record = manifest[f.replace(/\.md$/, "")];
-          return removePluginFragments(record ? stripRecordedAdds(text, record) : text, plugin);
-        });
-        if (content !== before) {
-          writeFileSync(path, content, "utf-8");
-          pluginTouched = true;
-        }
-      }
-    }
-    // Persona contributions are prose-only, so their strip needs no sidecar
-    // record: the fragment sentinels carry the plugin name. The persona's
-    // native twins carry the same fragments.
-    const personasDir = resolveHarnessPath(["agents"], { mutable: true });
-    if (existsSync(personasDir)) {
-      const projectDir = runtimeProjectDir();
-      const harness = runtimeHarnessName(projectDir, harnessDir());
-      for (const f of readdirSync(personasDir).filter((name) => name.endsWith(".md")).sort()) {
-        const twins = personaTwinRels(harness, harnessDir(), f.replace(/\.md$/, ""))
-          .map((rel) => join(projectDir, rel))
-          .filter((path) => existsSync(path) && lstatSync(path).isFile());
-        for (const path of [join(personasDir, f), ...twins]) {
-          const before = readFileSync(path, "utf-8");
-          const content = withFileLineEndings(before, (text) => removePluginFragments(text, plugin));
-          if (content !== before) {
-            writeFileSync(path, content, "utf-8");
-            pluginTouched = true;
-          }
-        }
-      }
-    }
-    if (existsSync(sidecar)) {
-      rmSync(sidecar, { force: true });
-      pluginTouched = true;
-    }
-    if (stripPluginRules(runtimeProjectDir(), plugin, true)) {
-      pluginTouched = true;
-      rulesTakenOut.add(plugin);
-    }
-    if (pluginTouched) stripped.push(plugin);
-  }
-  return stripped;
-}
-
-// The one turn-off rule, run in the staged tree a selection is built in by
-// plugin select and by every config refresh: a plugin that tree's selection
-// leaves off or pauses keeps nothing it merged into core stages and personas,
-// nor its record of it, so its compose merges it back once it is on again.
-// The implicit core plugin merges nothing.
-export function stripPluginsTurnedOff(): string[] {
-  return stripDisabledPluginContributions(pluginsTurnedOff());
-}
-
-// The plugins the selection leaves off or pauses.
-export function pluginsTurnedOff(): string[] {
-  const active = pluginsEnabled();
-  if (active === null) return [];
-  return knownPluginNames().filter((name) => name !== "aidlc" && !active.has(name));
-}
-
 // A selection change must not strand a live workflow: after disable, a state
 // file whose Scope belongs to a disabled plugin makes every later /aidlc on
 // that workflow hard-error ("Unknown scope") with no in-band way out (the
@@ -1344,68 +1194,6 @@ function activeWorkflowDependencyViolations(
   enabled: ReadonlySet<string>,
 ): string[] {
   return activeWorkflowPluginDependencies(projectDir, enabled).map((dependency) => dependency.text);
-}
-
-// The same check, with the plugin each dependency needs, for a command that
-// says what a selection change stops instead of refusing it.
-export function activeWorkflowPluginDependencies(
-  projectDir: string,
-  enabled: ReadonlySet<string>,
-): Array<{ plugin: string; workflow: string; text: string }> {
-  const violations: Array<{ plugin: string; workflow: string; text: string }> = [];
-  const scopeOwner = new Map<string, string>();
-  for (const [name, meta] of Object.entries(loadScopeMetadataAll())) {
-    scopeOwner.set(name, meta.plugin ?? "aidlc");
-  }
-  // Mirror stageEnabledBySelection: initialization stages are always enabled,
-  // so they can never strand a plan regardless of the selection.
-  const stageOwner = new Map<string, string>();
-  for (const stage of loadStageGraphAll()) {
-    if (stage.phase === "initialization") continue;
-    stageOwner.set(stage.slug, stage.plugin ?? "aidlc");
-  }
-  for (const space of listSpaces(projectDir)) {
-    for (const intent of listIntents(projectDir, space.name)) {
-      if (
-        isCompletedIntent(intent) ||
-        isArchivedIntent(intent) ||
-        !intent.dirName
-      ) continue;
-      const sp = stateFilePath(projectDir, intent.dirName, space.name);
-      if (!existsSync(sp)) continue;
-      const content = readFileSync(sp, "utf-8");
-      const status = getField(content, "Status") ?? "";
-      if (status === "Completed" || status === "Archived") continue;
-      const where = `workflow "${intent.dirName}" (space ${space.name})`;
-      const scope = getField(content, "Scope");
-      if (scope) {
-        const owner = scopeOwner.get(scope);
-        if (owner && !enabled.has(owner)) {
-          violations.push({
-            plugin: owner,
-            workflow: workflowDisplayName(space.name, intent),
-            text: `${where} runs under scope "${scope}" owned by plugin "${owner}"`,
-          });
-        }
-      }
-      // Pending/active plugin-owned stages in the plan (EXECUTE rows that are
-      // not yet completed/skipped) - the walk would error on or silently drop
-      // them. Completed rows are history; they don't depend on the plugin.
-      for (const cb of parseCheckboxes(content)) {
-        if (cb.state === "completed" || cb.state === "skipped") continue;
-        if (!cb.suffix.startsWith("EXECUTE")) continue;
-        const owner = stageOwner.get(cb.slug);
-        if (owner && !enabled.has(owner)) {
-          violations.push({
-            plugin: owner,
-            workflow: workflowDisplayName(space.name, intent),
-            text: `${where} has pending stage "${cb.slug}" owned by plugin "${owner}"`,
-          });
-        }
-      }
-    }
-  }
-  return violations;
 }
 
 function handleSelectPlugins(projectDir: string, positional: string[], rulesLevelFlag?: string): void {
@@ -1484,6 +1272,7 @@ function handleSelectPlugins(projectDir: string, positional: string[], rulesLeve
       ] as const;
       const saved = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
       let strippedPlugins: string[] = [];
+      let rulesTakenOut: ReadonlySet<string> = new Set();
       const rulesLines: string[] = [];
       try {
         process.env.AIDLC_RUNTIME_PROJECT_DIR = stagedProject;
@@ -1495,8 +1284,9 @@ function handleSelectPlugins(projectDir: string, positional: string[], rulesLeve
         // The live project remains byte-untouched until the shared transaction
         // commits.
         if (!keepSelection) writePluginSelection(stagedProject, names);
-        rulesTakenOut.clear();
-        strippedPlugins = stripPluginsTurnedOff();
+        const stripped = stripPluginsTurnedOffWithChanges();
+        strippedPlugins = stripped.plugins;
+        rulesTakenOut = stripped.rulesTakenOut;
         for (const [plugin, level] of rulesLevels) {
           const line = movePluginRules(stagedProject, selectedHarness, plugin, level);
           if (line !== null) rulesLines.push(line);
@@ -13592,38 +13382,6 @@ export function findScopeByKeyword(kw: string): string[] {
 // AIDLC_SKILL_MD_PATH env-seam lets t67 sandbox --check against a
 // fixture tables.md (so drift tests never mutate the real file).
 
-const SCOPE_TABLE_BEGIN =
-  `<!-- BEGIN: compiled scope grid via \`${aidlcDispatcherInvocation("gen scope-table")}\` - do NOT hand-edit -->`;
-const SCOPE_TABLE_END =
-  "<!-- END: compiled scope grid -->";
-
-/** Exported for t67 unit tests. */
-export function renderScopeTable(): string {
-  const mapping = loadScopeMapping();
-  const scopes = [...validScopes()]; // alphabetical
-  const lines = [
-    "| Scope          | Depth         | TestStrategy | EXECUTE / Total |",
-    "|----------------|---------------|--------------|-----------------|",
-  ];
-  for (const name of scopes) {
-    const def = mapping[name];
-    const stages = def.stages;
-    const total = Object.keys(stages).length;
-    const execute = Object.values(stages).filter((v) => v === "EXECUTE").length;
-    const depth = def.depth;
-    const ts = def.testStrategy ?? "(default)";
-    lines.push(
-      `| ${name.padEnd(14)} | ${depth.padEnd(13)} | ${ts.padEnd(12)} | ${`${execute} / ${total}`.padEnd(15)} |`
-    );
-  }
-  return lines.join("\n");
-}
-
-/** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */
-export function canonicalScopeTableRegion(table: string): string {
-  return `${SCOPE_TABLE_BEGIN}\n\n${table}\n\n${SCOPE_TABLE_END}`;
-}
-
 // The generated scope and stage tables live beside the skill, out of its body.
 // AIDLC_SKILL_MD_PATH names a test fixture that holds the regions.
 function tablesMdPath(): string {
@@ -13751,42 +13509,6 @@ function handleScopeTable(
 //
 // AIDLC_SKILL_MD_PATH env-seam lets tests sandbox --check against a
 // fixture tables.md (so drift tests never mutate the real file).
-
-const STAGE_TABLE_BEGIN =
-  `<!-- BEGIN: compiled stage graph via \`${aidlcDispatcherInvocation("gen stage-table")}\` - do NOT hand-edit -->`;
-const STAGE_TABLE_END =
-  "<!-- END: compiled stage graph -->";
-
-function displayPhase(phase: string): string {
-  return phase.charAt(0).toUpperCase() + phase.slice(1);
-}
-
-function displayLeadAgent(agent: string): string {
-  return agent === "orchestrator" ? "(orchestrator)" : agent;
-}
-
-function displaySupportAgents(agents: string[] | undefined): string {
-  return Array.isArray(agents) && agents.length > 0 ? agents.join(", ") : "—";
-}
-
-/** Exported for t32 integration tests. */
-export function renderStageTable(): string {
-  const lines = [
-    "| Slug | # | Stage | Phase | Execution | Lead Agent | Support Agents | Mode |",
-    "|------|---|-------|-------|-----------|------------|----------------|------|",
-  ];
-  for (const stage of loadStageGraph()) {
-    lines.push(
-      `| ${stage.slug} | ${stage.number} | ${stage.name} | ${displayPhase(stage.phase)} | ${stage.execution} | ${displayLeadAgent(stage.lead_agent)} | ${displaySupportAgents(stage.support_agents)} | ${stage.mode} |`
-    );
-  }
-  return lines.join("\n");
-}
-
-/** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */
-export function canonicalStageTableRegion(table: string): string {
-  return `${STAGE_TABLE_BEGIN}\n\n${table}\n\n${STAGE_TABLE_END}`;
-}
 
 function handleStageTable(
   _projectDir: string,

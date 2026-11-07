@@ -269,7 +269,7 @@ words from `nextCompose()`). A pause that
 would strand open work is refused like any turn-off, naming the plugin and the
 base. Through `aidlc config project --plugins`, a plugin turned off or paused
 loses its merged contributions the same way: every config refresh runs the same
-rule, `stripPluginsTurnedOff()` in `aidlc-utility.ts`, in its staged tree.
+rule, `stripPluginsTurnedOff()` in `aidlc-plugin-disable.ts`, in its staged tree.
 
 ## 5a. Installed inventory, composition stamps, and sync
 
@@ -847,6 +847,23 @@ wherever their scopes put them on-path.
 - **Slug identity, display-only numbers.** Inserting a plugin stage never renumbers core.
 - **Trust is host-native.** Org restrictions use the host's managed allowlist; AIDLC builds no trust layer.
 - **No gatekeeping.** First- and third-party plugins are mechanically equal; provenance is the only difference.
+
+### Workflow requirements when selecting plugins
+
+`aidlc-workflow-plugin-dependencies.ts` classifies already-read workflow facts
+against scope and stage ownership and the effective enabled plugin set. It
+owns no filesystem, Markdown parsing, plugin-base resolution or transactions.
+`aidlc-workflow-plugin-dependency-reader.ts` reads every space with the existing
+record parser and formats the shared diagnostics for plugin selection, doctor
+and project configuration. An open parked workflow still requires its scope
+and remaining EXECUTE stages; initialization stages never require a selection.
+
+Project configuration and the utility CLI share the installed selection reader
+in `aidlc-plugin-selection.ts`, staged removal in `aidlc-plugin-disable.ts`,
+and generated tables in `aidlc-compiled-tables.ts`. Their callers retain the
+existing locks, transaction, rollback and audit ownership. The disable adapter
+returns the changes from that call, including removed rules, rather than
+retaining mutable reporting state between transactions.
 
 ## Cross-references
 

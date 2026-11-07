@@ -179,15 +179,10 @@ import { droppedPluginRegistrations } from "./aidlc-plugin-emit.ts";
 import { addPluginProducesKinds } from "./aidlc-plugin-produces-kinds.ts";
 import { regenerateRunnerSurfaces } from "./aidlc-runner-gen.ts";
 import { KIRO_IDE_STEERING, kiroIdeSteering, refreshActiveMemory } from "./aidlc-includes.ts";
-import {
-  activeWorkflowPluginDependencies,
-  canonicalScopeTableRegion,
-  canonicalStageTableRegion,
-  renderScopeTable,
-  renderStageTable,
-  pluginsTurnedOff,
-  stripPluginsTurnedOff,
-} from "./aidlc-utility.ts";
+import { activeWorkflowPluginDependencies } from "./aidlc-workflow-plugin-dependency-reader.ts";
+import { canonicalScopeTableRegion, canonicalStageTableRegion, renderScopeTable, renderStageTable } from "./aidlc-compiled-tables.ts";
+import { pluginsTurnedOff } from "./aidlc-plugin-selection.ts";
+import { stripPluginsTurnedOff } from "./aidlc-plugin-disable.ts";
 import {
   aidlcInvocation,
   discoverProjectHarnesses,
