@@ -1,8 +1,51 @@
-import { expect, mock, test } from "bun:test";
+import { expect, mock, test, type Mock } from "bun:test";
 import { prepareClaudeCopyAllowList, prepareClaudeNativeAllowList, type ClaudeCopyCommandAuthority, type ClaudeNativeCommandAuthority } from "./claude-settings.ts";
 
-const copyAuthority = () => ({ dispatcherCommands: mock<ClaudeCopyCommandAuthority["dispatcherCommands"]>().mockReturnValue(["doctor"]), toolScripts: mock<ClaudeCopyCommandAuthority["toolScripts"]>().mockReturnValue(["aidlc-check.ts"]) });
-const nativeAuthority = () => ({ trustedCommand: mock<ClaudeNativeCommandAuthority["trustedCommand"]>().mockReturnValue("aidlc engine *"), dispatcherCommands: mock<ClaudeNativeCommandAuthority["dispatcherCommands"]>().mockReturnValue(["aidlc doctor"]) });
+export type ClaudeCopyAuthorityFixture = Readonly<{
+  dispatcherCommands: Mock<ClaudeCopyCommandAuthority["dispatcherCommands"]>;
+  toolScripts: Mock<ClaudeCopyCommandAuthority["toolScripts"]>;
+}>;
+export type ClaudeNativeAuthorityFixture = Readonly<{
+  trustedCommand: Mock<ClaudeNativeCommandAuthority["trustedCommand"]>;
+  dispatcherCommands: Mock<ClaudeNativeCommandAuthority["dispatcherCommands"]>;
+}>;
+export type ClaudeAuthorityTraceFixture = Readonly<{
+  copy: ClaudeCopyCommandAuthority;
+  native: ClaudeNativeCommandAuthority;
+  trace: readonly string[];
+}>;
+
+const copyAuthority = (): ClaudeCopyAuthorityFixture => ({ dispatcherCommands: mock<ClaudeCopyCommandAuthority["dispatcherCommands"]>().mockReturnValue(["doctor"]), toolScripts: mock<ClaudeCopyCommandAuthority["toolScripts"]>().mockReturnValue(["aidlc-check.ts"]) });
+const nativeAuthority = (): ClaudeNativeAuthorityFixture => ({ trustedCommand: mock<ClaudeNativeCommandAuthority["trustedCommand"]>().mockReturnValue("aidlc engine *"), dispatcherCommands: mock<ClaudeNativeCommandAuthority["dispatcherCommands"]>().mockReturnValue(["aidlc doctor"]) });
+
+const authorityTrace = (): ClaudeAuthorityTraceFixture => {
+  const trace: string[] = [];
+  const copy = copyAuthority();
+  const native = nativeAuthority();
+  return {
+    copy: {
+      dispatcherCommands: () => { trace.push("copy.dispatcher"); return copy.dispatcherCommands(); },
+      toolScripts: () => { trace.push("copy.tools"); return copy.toolScripts(); },
+    },
+    native: {
+      trustedCommand: (input) => { trace.push("native.trusted"); return native.trustedCommand(input); },
+      dispatcherCommands: () => { trace.push("native.dispatcher"); return native.dispatcherCommands(); },
+    },
+    trace,
+  };
+};
+
+test("copy queries dispatcher before tools for each equal glob", () => {
+  const fixture = authorityTrace();
+  expect(prepareClaudeCopyAllowList({ allow: ["Bash(bun .claude/tools/aidlc-*)", "Bash(bun .claude/tools/aidlc-*)"], authority: fixture.copy })).toEqual({ kind: "prepared", allow: ["Bash(bun .claude/tools/aidlc.ts doctor)", "Bash(bun .claude/tools/aidlc-check.ts)", "Bash(bun .claude/tools/aidlc-check.ts *)", "Bash(bun .claude/tools/aidlc.ts doctor)", "Bash(bun .claude/tools/aidlc-check.ts)", "Bash(bun .claude/tools/aidlc-check.ts *)"] });
+  expect(fixture.trace).toEqual(["copy.dispatcher", "copy.tools", "copy.dispatcher", "copy.tools"]);
+});
+
+test("native queries trusted command before dispatcher", () => {
+  const fixture = authorityTrace();
+  expect(prepareClaudeNativeAllowList({ allow: ["Read", "Bash(aidlc engine *)"], authority: fixture.native })).toEqual({ kind: "prepared", allow: ["Read", "Bash(aidlc engine *)", "Bash(aidlc doctor)"] });
+  expect(fixture.trace).toEqual(["native.trusted", "native.dispatcher"]);
+});
 
 test("copy projection expands only supplied canonical command authority", () => {
   const authority = copyAuthority();
