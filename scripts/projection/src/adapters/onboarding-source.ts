@@ -8,6 +8,8 @@ import { finding, type Outcome } from "../domain/model.ts";
 import { continuePreparation } from "../application/preparation-result.ts";
 
 const sourcePaths = ["harness/claude/manifest.ts", "harness/claude/onboarding.fills.ts", "core/templates/onboarding.md", "core/templates/onboarding-harness.md", "scripts/onboarding.ts", "scripts/onboarding-projection.ts"];
+const nativeSourcePaths = ["scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts"];
+export const onboardingSourcePaths = ({ invocation }: { readonly invocation: string }): readonly string[] => [...sourcePaths, ...(invocation === "aidlc" ? nativeSourcePaths : [])];
 export type OnboardingRequest = { readonly sourceRoot: string; readonly workRoot: string; readonly basis: SourceBasis; readonly context: AuthoredProseContext };
 export type OnboardingOperations = NativeCompilerProcessOperations & { readonly paths: (input: OnboardingRequest) => { readonly root: string; readonly workRoot: string }; readonly prose: typeof renderAuthoredProse };
 export const createOnboardingOperations = (): OnboardingOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, workRoot }) => ({ root: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), workRoot: Bun.fileURLToPath(Bun.pathToFileURL(workRoot)) }), prose: renderAuthoredProse });
@@ -18,7 +20,7 @@ const replySchema = z.discriminatedUnion("status", [
 ]);
 const worker = `
 const input = await Bun.stdin.json();
-const paths = ${JSON.stringify(sourcePaths)};
+const paths = input.paths;
 const unavailable = ({ detail }) => ({ status: "unavailable", detail });
 const observe = async () => {
   const fs = await import("node:fs/promises");
@@ -70,7 +72,11 @@ const prepare = async () => {
   if (before.status !== "ok") return before;
   const native = await loadNative();
   if (native.status !== "ok") return native;
-  const rendered = await renderNative(native);
+  let rendered = await renderNative(native);
+  if (rendered.status === "ok" && input.invocation === "aidlc") {
+    const policy = await loadSourceModule({ path: "scripts/native-runtime-text.ts" });
+    rendered = { ...rendered, text: policy.prepareClaudeNativeRuntimeText(policy.prepareNativeOnboardingText(rendered.text, true)) };
+  }
   if (rendered.status !== "ok") return rendered;
   return retainStable({ before, after: await observe(), rendered });
 };
@@ -78,17 +84,18 @@ try { process.stdout.write(JSON.stringify(await prepare())); }
 catch { process.stdout.write(JSON.stringify(unavailable({ detail: "onboarding authored inputs or native rendering unavailable" }))); }
 `;
 const failure = ({ detail, code = "capability-gap" }: { readonly detail: string; readonly code?: "capability-gap" | "foreign-content" | "invalid-input" }): Outcome<never> => ({ status: "invalid", findings: [finding({ code, subject: "onboarding-source", detail })] });
-const admitRequest = ({ request }: { readonly request: OnboardingRequest }): Outcome<OnboardingRequest> => request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || request.context.harness !== "claude" || request.context.directory !== ".claude" || request.context.invocation !== "bun .claude/tools/aidlc.ts" || request.context.rulesSubdir !== "rules"
-  ? failure({ detail: "onboarding qualifies a pinned framework source with the Claude Bun-copy binding and declared rules directory" }) : { status: "ok", value: request };
+const admitRequest = ({ request }: { readonly request: OnboardingRequest }): Outcome<OnboardingRequest> => request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || request.context.harness !== "claude" || request.context.directory !== ".claude" || !["bun .claude/tools/aidlc.ts", "aidlc"].includes(request.context.invocation) || request.context.rulesSubdir !== "rules"
+  ? failure({ detail: "onboarding qualifies a pinned framework source with the Claude copy or native binding and declared rules directory" }) : { status: "ok", value: request };
 type PreparedOnboardingReply = z.infer<typeof replySchema> & { readonly status: "ok" };
-const admitWitnesses = ({ prepared }: { readonly prepared: PreparedOnboardingReply }): Outcome<PreparedOnboardingReply> => {
+const admitWitnesses = ({ prepared, request }: { readonly prepared: PreparedOnboardingReply; readonly request: OnboardingRequest }): Outcome<PreparedOnboardingReply> => {
+  const sourcePaths = onboardingSourcePaths({ invocation: request.context.invocation });
   if (prepared.inputs.length !== sourcePaths.length || sourcePaths.some((path) => prepared.inputs.filter((input) => input.path === path).length !== 1)) return failure({ code: "foreign-content", detail: "onboarding must witness every declared template, fill, manifest and rendering module exactly once" });
   return { status: "ok", value: prepared };
 };
 const retainRenderedOnboarding = ({ prepared, request, text }: { readonly prepared: PreparedOnboardingReply; readonly request: OnboardingRequest; readonly text: string }): Outcome<PreparedHarnessDocuments> => /\{\{[^{}\r\n]+\}\}/.test(text)
   ? failure({ code: "invalid-input", detail: "onboarding contains an unsupported authored template marker" })
   : { status: "ok", value: { inputs: prepared.inputs, documents: [{ authored: { role: "onboarding", origin: { ...request.basis, path: "core/templates/onboarding.md" }, text: prepared.text }, binding: copyHarnessBinding({ binding: request.context }), text, authoring: prepared.inputs.filter((input) => input.path !== "core/templates/onboarding.md").map((input) => ({ ...request.basis, path: input.path })) }] } };
-const retainOnboarding = ({ prepared, request, operations }: { readonly prepared: PreparedOnboardingReply; readonly request: OnboardingRequest; readonly operations: OnboardingOperations }): Promise<Outcome<PreparedHarnessDocuments>> => continuePreparation({ previous: admitWitnesses({ prepared }), consume: ({ prepared: admitted }) => continuePreparation({ previous: operations.prose({ markdown: admitted.text, context: { ...request.context, optionLetters: null }, subject: "core/templates/onboarding.md" }), consume: ({ prepared: text }) => retainRenderedOnboarding({ prepared: admitted, request, text }) }) });
+const retainOnboarding = ({ prepared, request, operations }: { readonly prepared: PreparedOnboardingReply; readonly request: OnboardingRequest; readonly operations: OnboardingOperations }): Promise<Outcome<PreparedHarnessDocuments>> => continuePreparation({ previous: admitWitnesses({ prepared, request }), consume: ({ prepared: admitted }) => continuePreparation({ previous: operations.prose({ markdown: admitted.text, context: { ...request.context, optionLetters: null }, subject: "core/templates/onboarding.md" }), consume: ({ prepared: text }) => retainRenderedOnboarding({ prepared: admitted, request, text }) }) });
 const decodeOnboarding = async ({ stdout, request, operations }: { readonly stdout: string; readonly request: OnboardingRequest; readonly operations: OnboardingOperations }): Promise<Outcome<PreparedHarnessDocuments>> => {
   let decoded: unknown;
   try { decoded = JSON.parse(stdout); }
@@ -104,13 +111,13 @@ const admitWorkingPaths = ({ root, workRoot }: { readonly root: string; readonly
   const scratch = workRoot.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "");
   return source === "" || scratch === "" || scratch === source || scratch.startsWith(`${source}/`) ? failure({ detail: "onboarding requires a separate working root outside its authored source tree" }) : { status: "ok", value: { root, workRoot } };
 };
-const processInput = ({ paths, binary, operations }: { readonly paths: { readonly root: string; readonly workRoot: string }; readonly binary: string; readonly operations: OnboardingOperations }): NativeCompilerSpawnInput => {
+const processInput = ({ paths, binary, operations, invocation }: { readonly invocation: string; readonly paths: { readonly root: string; readonly workRoot: string }; readonly binary: string; readonly operations: OnboardingOperations }): NativeCompilerSpawnInput => {
   const { root, workRoot } = paths;
   const env = { ...privateCompilerEnvironment({ inherited: operations.environment(), root: `${workRoot}/.onboarding-home` }), ...Object.fromEntries([["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0"], ["BUN_INSTALL_AUTO", "disable"]]) };
-  return { binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: workRoot, env, input: JSON.stringify({ root }) };
+  return { binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: workRoot, env, input: JSON.stringify({ root, invocation, paths: onboardingSourcePaths({ invocation }) }) };
 };
 const executeOnboarding = async ({ request, binary, operations }: { readonly request: OnboardingRequest; readonly binary: string; readonly operations: OnboardingOperations }): Promise<Outcome<PreparedHarnessDocuments>> => {
-  try { return await continuePreparation({ previous: admitWorkingPaths(operations.paths(request)), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, binary, operations })), request, operations }) }); }
+  try { return await continuePreparation({ previous: admitWorkingPaths(operations.paths(request)), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, binary, operations, invocation: request.context.invocation })), request, operations }) }); }
   catch { return failure({ detail: "onboarding process capability unavailable" }); }
 };
 export const createOnboardingPreparer = ({ binary = "bun", operations = createOnboardingOperations() }: { readonly binary?: string; readonly operations?: OnboardingOperations } = {}): OnboardingPreparer => ({ prepare: async (request) => {

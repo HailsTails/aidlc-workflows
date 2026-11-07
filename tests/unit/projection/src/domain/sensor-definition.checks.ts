@@ -13,8 +13,8 @@ test("unresolved authored text failure is retained without a partial sensor file
   const failure = { status: "invalid", findings: [{ code: "unresolved-token", subject: "sensor", detail: "unsupported token" }] } as const;
   expect(createSensorProjector({ prose: mock().mockReturnValue(failure) }).render({ document, context })).toEqual(failure);
 });
-test.each([{ harness: "claude", directory: ".claude", invocation: "aidlc", rulesSubdir: "rules" }, { harness: "cursor", directory: ".cursor", invocation: "bun .cursor/tools/aidlc.ts", rulesSubdir: "rules" }] as const)("unsupported sensor delivery refuses before text projection", (unsupported) => {
+test.each([{ harness: "claude", directory: ".claude", invocation: "npx aidlc", rulesSubdir: "rules" }, { harness: "cursor", directory: ".cursor", invocation: "bun .cursor/tools/aidlc.ts", rulesSubdir: "rules" }] as const)("unsupported sensor delivery refuses before text projection", (unsupported) => {
   const prose = mock();
-  expect(createSensorProjector({ prose }).render({ document, context: unsupported })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "core/sensors/aidlc-example.md", detail: "authored sensor products currently qualify Claude Bun-copy delivery; other harness and native-release outcomes need their own evidence" }] });
+  expect(createSensorProjector({ prose }).render({ document, context: unsupported })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "core/sensors/aidlc-example.md", detail: "authored sensor products qualify Claude copy and native delivery; other harness outcomes need their own evidence" }] });
   expect(prose).not.toHaveBeenCalled();
 });

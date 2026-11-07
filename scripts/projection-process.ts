@@ -13,10 +13,16 @@ export function usesCleanClaudeCopy({ name, harnessDir, invoke }: { readonly nam
   return name === "claude" && harnessDir === ".claude" && invoke === "bun .claude/tools/aidlc.ts";
 }
 
-export function projectClaudeCopyTree({ sourceRoot, outRoot, buildVersion, environmentCap }: ClaudeCopyRequest): void {
+function projectClaudeTree({ sourceRoot, outRoot, buildVersion, environmentCap }: ClaudeCopyRequest, delivery: "copy" | "native"): void {
   const result = spawnSync(process.execPath, ["--no-env-file", "--no-install", join(sourceRoot, "scripts/project-claude.ts")], {
-    cwd: sourceRoot, encoding: "utf8", input: JSON.stringify({ sourceRoot, outRoot, buildVersion, environmentCap }), maxBuffer: 8 * 1024 * 1024,
+    cwd: sourceRoot, encoding: "utf8", input: JSON.stringify({ sourceRoot, outRoot, buildVersion, environmentCap, ...(delivery === "native" ? { delivery } : {}) }), maxBuffer: 8 * 1024 * 1024,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "Claude projection process failed");
 }
+
+export function usesCleanClaudeNative({ name, harnessDir }: { readonly name: string; readonly harnessDir: string }): boolean {
+  return name === "claude" && harnessDir === ".claude";
+}
+export function projectClaudeCopyTree(request: ClaudeCopyRequest): void { projectClaudeTree(request, "copy"); }
+export function projectClaudeNativeTree(request: ClaudeCopyRequest): void { projectClaudeTree(request, "native"); }

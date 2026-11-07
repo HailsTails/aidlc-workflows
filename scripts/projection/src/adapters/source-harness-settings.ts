@@ -4,7 +4,7 @@ import { claudeSettingsPaths, type HarnessSettingsRequest, type HarnessSettingsP
 import { continuePreparation } from "../application/preparation-result.ts";
 import { finding, type Outcome } from "../domain/model.ts";
 
-const sourcePaths = ["scripts/projection-text.ts", "scripts/claude-settings.ts", "harness/claude/manifest.ts", "harness/claude/onboarding.fills.ts", "harness/claude/settings.json", "harness/claude/settings.local.json.example", "core/tools/aidlc.ts", "core/tools/aidlc-copy-preapproval.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-settings.ts", "core/tools/aidlc-runtime-paths.ts", "core/tools/aidlc-version.ts"];
+const sourcePaths = ["scripts/projection-text.ts", "scripts/claude-settings.ts", "harness/claude/manifest.ts", "harness/claude/onboarding.fills.ts", "harness/claude/settings.json", "harness/claude/settings.local.json.example", "core/tools/aidlc.ts", "core/tools/aidlc-copy-preapproval.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-settings.ts", "core/tools/aidlc-runtime-paths.ts", "core/tools/aidlc-version.ts", "scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "core/tools/aidlc-routes.ts"];
 export type SourceHarnessSettingsOperations = NativeCompilerProcessOperations & { readonly paths: (input: HarnessSettingsRequest) => { readonly sourceRoot: string; readonly root: string } };
 export const createSourceHarnessSettingsOperations = (): SourceHarnessSettingsOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
 const replySchema = z.discriminatedUnion("status", [
@@ -30,22 +30,23 @@ const observe = async () => {
 const sourceModuleUrl = ({ path, inputs }) => Bun.pathToFileURL(input.sourceRoot + "/" + path).href + "?source=" + inputs.find(witness => witness.path === path).sha256;
 const loadModule = ({ path, inputs }) => import(sourceModuleUrl({ path, inputs }));
 const importNative = async ({ inputs }) => {
-  const [manifest, authored, settings, dispatcher, command] = await Promise.all([loadModule({ path: "harness/claude/manifest.ts", inputs }), loadModule({ path: "scripts/projection-text.ts", inputs }), loadModule({ path: "scripts/claude-settings.ts", inputs }), loadModule({ path: "core/tools/aidlc.ts", inputs }), loadModule({ path: "core/tools/aidlc-command.ts", inputs })]);
-  return { manifest, authored, settings, dispatcher, command };
+  const [manifest, authored, settings, dispatcher, command, runtimeText] = await Promise.all([loadModule({ path: "harness/claude/manifest.ts", inputs }), loadModule({ path: "scripts/projection-text.ts", inputs }), loadModule({ path: "scripts/claude-settings.ts", inputs }), loadModule({ path: "core/tools/aidlc.ts", inputs }), loadModule({ path: "core/tools/aidlc-command.ts", inputs }), loadModule({ path: "scripts/native-runtime-text.ts", inputs })]);
+  return { manifest, authored, settings, dispatcher, command, runtimeText };
 };
 const settingsMappings = [{ src: "settings.json", dst: "settings.json" }, { src: "settings.local.json.example", dst: "settings.local.json.example" }];
 const nativeSchema = ({ z }) => z.object({
   manifest: z.object({ default: z.object({ name: z.literal("claude"), harnessDir: z.literal(".claude"), tierFlavor: z.literal("claude"), harnessFiles: z.array(z.looseObject({ src: z.string(), dst: z.string(), projectRoot: z.boolean().optional() })) }) }),
   authored: z.object({ substituteAuthoredTokens: z.custom(candidate => typeof candidate === "function") }),
-  settings: z.object({ prepareClaudeCopyAllowList: z.custom(candidate => typeof candidate === "function") }),
-  command: z.object({ TRUSTED_ROUTE_NAMESPACE: z.string() }),
+  settings: z.object({ prepareClaudeCopyAllowList: z.custom(candidate => typeof candidate === "function"), prepareClaudeNativeAllowList: z.custom(candidate => typeof candidate === "function") }),
+  command: z.object({ TRUSTED_ROUTE_NAMESPACE: z.string(), trustedCommand: z.custom(candidate => typeof candidate === "function") }),
+  runtimeText: z.object({ prepareClaudeNativeRuntimeText: z.custom(candidate => typeof candidate === "function") }),
   dispatcher: z.object({ copyChannelDispatcherCommands: z.custom(candidate => typeof candidate === "function"), copyChannelToolScripts: z.custom(candidate => typeof candidate === "function") }),
 });
 const admitMappings = ({ native }) => {
   const candidates = native.manifest.default.harnessFiles.filter(mapping => settingsMappings.some(expected => mapping.src === expected.src || mapping.dst === expected.dst));
   return candidates.length !== 2 || settingsMappings.some(expected => candidates.filter(mapping => mapping.src === expected.src && mapping.dst === expected.dst && mapping.projectRoot !== true).length !== 1)
     ? unavailable({ detail: "harness settings qualify the two declared Claude settings mappings only" })
-    : { status: "ok", project: native.authored.substituteAuthoredTokens, expand: native.settings.prepareClaudeCopyAllowList, commands: native.dispatcher.copyChannelDispatcherCommands, scripts: native.dispatcher.copyChannelToolScripts, trustedNamespace: native.command.TRUSTED_ROUTE_NAMESPACE };
+    : { status: "ok", project: native.authored.substituteAuthoredTokens, expand: native.settings.prepareClaudeCopyAllowList, commands: native.dispatcher.copyChannelDispatcherCommands, scripts: native.dispatcher.copyChannelToolScripts, trustedNamespace: native.command.TRUSTED_ROUTE_NAMESPACE, nativeAllow: native.settings.prepareClaudeNativeAllowList, trustedCommand: native.command.trustedCommand, runtimeText: native.runtimeText.prepareClaudeNativeRuntimeText };
 };
 const loadNative = async ({ inputs, z }) => {
   const parsed = nativeSchema({ z }).safeParse(await importNative({ inputs }));
@@ -72,8 +73,8 @@ const admitProjectedText = ({ candidate, z }) => {
 const projectSettings = ({ native, capabilities, text, z }) => {
   const projected = admitProjectedText({ candidate: native.project({ source: text, harnessDir: ".claude", binding: { invoke: input.invocation, toolPrefix: "bun .claude/tools/", trustedNamespace: native.trustedNamespace } }), z });
   if (projected.status !== "ok") return projected;
-  const value = JSON.parse(projected.text);
-  const prepared = native.expand({ allow: value.permissions?.allow, authority: { dispatcherCommands: () => capabilities.dispatcherCommands, toolScripts: () => capabilities.toolScripts } });
+  const value = JSON.parse(input.invocation === "aidlc" ? native.runtimeText(projected.text) : projected.text);
+  const prepared = input.invocation === "aidlc" ? native.nativeAllow({ allow: value.permissions?.allow, authority: { trustedCommand: ({ args }) => native.trustedCommand(args), dispatcherCommands: () => capabilities.dispatcherCommands.map(command => "aidlc " + command) } }) : native.expand({ allow: value.permissions?.allow, authority: { dispatcherCommands: () => capabilities.dispatcherCommands, toolScripts: () => capabilities.toolScripts } });
   if (prepared.kind === "refused") return { status: "refused", detail: prepared.message };
   value.permissions.allow = prepared.allow;
   return admitSettingsText({ prepared: { kind: "prepared", content: JSON.stringify(value, null, 2) + String.fromCharCode(10) }, z });
@@ -118,7 +119,7 @@ const decodeReply = ({ stdout, request }: { readonly stdout: string; readonly re
 };
 const processOutcome = ({ reply, request }: { readonly reply: NativeCompilerSpawnReply; readonly request: HarnessSettingsRequest }): Outcome<PreparedHarnessSettings> => reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0 ? failure({ detail: "harness settings process unavailable or reported diagnostics" }) : decodeReply({ stdout: reply.stdout, request });
 const admitRequest = ({ request }: { readonly request: HarnessSettingsRequest }): Outcome<HarnessSettingsRequest> => {
-  if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || request.binding.harness !== "claude" || request.binding.directory !== ".claude" || request.invocation !== "bun .claude/tools/aidlc.ts" || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777) return failure({ detail: "harness settings require the pinned framework Claude Bun-copy profile, exact invocation and explicit file modes" });
+  if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || request.binding.harness !== "claude" || request.binding.directory !== ".claude" || !["bun .claude/tools/aidlc.ts", "aidlc"].includes(request.invocation) || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777) return failure({ detail: "harness settings require the pinned framework Claude copy or native profile, exact invocation and explicit file modes" });
   if (request.files.filter((path) => path === ".claude/tools/aidlc.ts").length !== 1) return failure({ detail: "harness settings require exactly one prepared Claude dispatcher before source capability discovery" });
   return { status: "ok", value: request };
 };

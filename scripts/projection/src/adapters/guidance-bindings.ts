@@ -1,3 +1,5 @@
+import { isClaudeNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
+import { guidanceDocumentName } from "../domain/core-guidance.ts";
 import { z } from "zod";
 import type { CoreGuidanceSources, PreparedCoreGuidance, PreparedGuidance, AuthoredGuidance } from "../domain/core-guidance.ts";
 import type { SourceBasis } from "../domain/source-origin.ts";
@@ -45,11 +47,19 @@ const prepareGuidanceBindings = async ({ request, operations, prose }: { readonl
   try {
     const sha256 = await selectorFingerprint({ request, operations });
     const prepared = applyGuidanceSelector({ admitted: admitGuidanceSelector({ imported: await operations.load({ sourceRoot: request.sourceRoot, sha256 }), request, prose }), request, sha256 });
-    return retainStableBindings({ prepared, before: sha256, after: await selectorFingerprint({ request, operations }) });
+    const stable = retainStableBindings({ prepared, before: sha256, after: await selectorFingerprint({ request, operations }) });
+    if (stable.status === "invalid") return stable;
+    const commands = prepareDocumentCommands({ sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents: stable.value.documents.map(document => ({ path: `${request.context.directory}/aidlc-common/${guidanceDocumentName({ placement: document.authored.placement })}`, source: document.text })) });
+    if (commands.status === "invalid") return commands;
+    const preparedTexts = new Map(commands.value.documents.map(document => [document.path, document]));
+    return { status: "ok", value: { documents: stable.value.documents.map(document => {
+      const text = preparedTexts.get(`${request.context.directory}/aidlc-common/${guidanceDocumentName({ placement: document.authored.placement })}`);
+      return { ...document, text: text?.text ?? document.text, authoring: [...document.authoring, ...(text?.origins ?? [])] };
+    }), inputs: [...stable.value.inputs, ...commands.value.inputs] } };
   } catch { return { status: "invalid", findings: [finding({ code: "capability-gap", subject: selectorPath, detail: "source-owned guidance binding selector unavailable; inspect the selected source checkout and API" })] }; }
 };
 const admitBindingRequest = ({ request }: { readonly request: GuidanceBindingRequest }): Outcome<GuidanceBindingRequest> => {
-  if (!request.context.invocation.startsWith("bun ")) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-guidance-bindings", detail: "guidance text qualifies Bun copy delivery; native-release command preparation requires a source-owned capability" })] };
+  if ((!request.context.invocation.startsWith("bun ") && !isClaudeNativeDocumentContext(request.context))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-guidance-bindings", detail: "guidance text qualifies Bun copy and explicit Claude native delivery" })] };
   if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || request.sources.documents.length === 0 || request.sources.documents.some((document) => sourceKey(document.origin.source) !== sourceKey(request.basis.source) || document.origin.pin !== request.basis.pin)) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "core-guidance-bindings", detail: "bind authored guidance from one declared framework source basis" })] };
   return { status: "ok", value: request };
 };

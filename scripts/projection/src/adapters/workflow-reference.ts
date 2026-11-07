@@ -1,3 +1,4 @@
+import { isClaudeNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
 import { z } from "zod";
 import { createWorkflowAuthoringOperations, type WorkflowAuthoringOperations } from "./workflow-authoring-policy.ts";
 import { createOwnershipDigest } from "./projection-ownership.ts";
@@ -11,6 +12,8 @@ export type { PreparedWorkflowReference, WorkflowReferencePreparer, WorkflowRefe
 const helperPath = "scripts/generated-skill-regions.ts";
 const utilityPath = "core/tools/aidlc-utility.ts";
 const formatterPath = "core/tools/aidlc-compiled-tables.ts";
+const nativeRuntimePath = "scripts/native-runtime-text.ts";
+const nativeRuntimeSources = [nativeRuntimePath, "scripts/native-command-text.ts", "scripts/native-command-context.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts", "core/tools/aidlc-color.ts", "core/tools/aidlc-runtime-paths.ts"];
 const regionsKey = "GENERATED_SKILL_REGIONS";
 const digestSchema = z.strictObject({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
 const manifestSchema = z.strictObject({ capability: z.enum(["declared", "absent"]), inputs: z.array(digestSchema), manifest: z.object({ name: z.string(), harnessDir: z.string(), orchestratorSkillPath: z.string(), harnessFiles: z.array(z.object({ src: z.string(), dst: z.string(), projectRoot: z.boolean().optional() })) }) });
@@ -52,7 +55,7 @@ export const createWorkflowReferenceOperations = (): WorkflowReferenceOperations
 const hasBasis = ({ origin, request }: { readonly origin: WorkflowReferenceRequest["workflow"]["compiler"]; readonly request: WorkflowReferenceRequest }) => origin.source.kind === request.basis.source.kind && origin.source.id === request.basis.source.id && origin.pin === request.basis.pin;
 const admitReferenceRequest = ({ request }: { readonly request: WorkflowReferenceRequest }): Outcome<WorkflowReferenceRequest> => {
   if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin)) return refused({ code: "foreign-content", detail: "workflow references require the framework basis and full source pin" });
-  if (request.context.harness !== "claude" || request.context.directory !== ".claude" || request.context.invocation !== "bun .claude/tools/aidlc.ts") return refused({ code: "harness-mismatch", detail: "compiled workflow references currently qualify the Claude Bun copy profile" });
+  if (request.context.harness !== "claude" || request.context.directory !== ".claude" || (request.context.invocation !== "bun .claude/tools/aidlc.ts" && !isClaudeNativeDocumentContext(request.context))) return refused({ code: "harness-mismatch", detail: "compiled workflow references qualify explicit Claude copy and native profiles" });
   const workflow = request.workflow;
   if (workflow.binding.harness !== request.context.harness || workflow.binding.directory !== request.context.directory || !hasBasis({ origin: workflow.compiler, request }) || workflow.compiler.path !== "core/tools/aidlc-graph.ts" || !hasBasis({ origin: workflow.graph.origin, request }) || !hasBasis({ origin: workflow.grid.origin, request }) || workflow.graph.origin.path !== ".claude/tools/data/stage-graph.json" || workflow.grid.origin.path !== ".claude/tools/data/scope-grid.json" || !workflow.inputs.some((input) => input.path === workflow.compiler.path)) return refused({ code: "foreign-content", detail: "compiled workflow graph, grid and compiler witnesses must share the requested source basis and binding" });
   if (request.authoring.binding.harness !== request.context.harness || request.authoring.binding.directory !== request.context.directory || (request.context.optionLetters ?? null) !== request.authoring.optionLetters || request.authoring.origins.length !== request.authoring.inputs.length || request.authoring.origins.some((origin) => !hasBasis({ origin, request }) || !request.authoring.inputs.some((input) => input.path === origin.path))) return refused({ code: "foreign-content", detail: "workflow reference authoring policy must match the context and requested source basis" });
@@ -73,7 +76,7 @@ const admitManifest = ({ snapshot, request }: { readonly snapshot: unknown; read
   return source === undefined || pathStatus({ path: source }) !== "safe" ? refused({ code: "invalid-input", detail: "reference template must be a safe authored harness path" }) : { status: "ok", value: { template: `harness/${request.context.harness}/${source}`, destination } };
 };
 const referenceLocations = ({ request, manifest }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest }): readonly { readonly root: string; readonly path: string }[] => [
-  ...[helperPath, utilityPath, formatterPath, manifest.template].map((path) => ({ root: request.sourceRoot, path })),
+  ...[helperPath, utilityPath, formatterPath, manifest.template, ...(isClaudeNativeDocumentContext(request.context) ? nativeRuntimeSources : [])].map((path) => ({ root: request.sourceRoot, path })),
   ...[".claude/tools/aidlc-utility.ts", ".claude/tools/aidlc-compiled-tables.ts", request.workflow.graph.origin.path, request.workflow.grid.origin.path, ...request.scopeFiles.map((file) => file.path)].map((path) => ({ root: request.root, path })),
 ];
 const observeReference = async ({ request, manifest, operations }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest; readonly operations: WorkflowReferenceOperations }): Promise<Outcome<ReferenceObservation>> => {
@@ -85,8 +88,9 @@ const observeReference = async ({ request, manifest, operations }: { readonly re
 };
 const sameBytes = ({ first, second }: { readonly first: Uint8Array; readonly second: Uint8Array }) => first.length === second.length && first.every((byte, index) => byte === second[index]);
 const findBytes = ({ observed, root, path }: { readonly observed: ReferenceObservation; readonly root: string; readonly path: string }): Uint8Array => observed.files.find((file) => file.root === root && file.path === path)?.bytes ?? new Uint8Array();
-const admitRuntimeFacts = ({ observed, request }: { readonly observed: ReferenceObservation; readonly request: WorkflowReferenceRequest }): Outcome<ReferenceObservation> => {
-  const mismatch = [utilityPath, formatterPath].some((path) => !sameBytes({ first: findBytes({ observed, root: request.sourceRoot, path }), second: findBytes({ observed, root: request.root, path: `.claude/${path.slice("core/".length)}` }) }));
+const admitRuntimeFacts = ({ observed, request, nativeText }: { readonly observed: ReferenceObservation; readonly request: WorkflowReferenceRequest; readonly nativeText?: (source: string) => string }): Outcome<ReferenceObservation> => {
+  const expected = (path: string) => { const bytes = findBytes({ observed, root: request.sourceRoot, path }); return nativeText === undefined ? bytes : new TextEncoder().encode(nativeText(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes))); };
+  const mismatch = [utilityPath, formatterPath].some((path) => !sameBytes({ first: expected(path), second: findBytes({ observed, root: request.root, path: `.claude/${path.slice("core/".length)}` }) }));
   if (mismatch) return refused({ code: "foreign-content", detail: "runtime utility and compiled-table formatter must match their source-owned bytes" });
   if (!sameBytes({ first: findBytes({ observed, root: request.root, path: request.workflow.graph.origin.path }), second: new TextEncoder().encode(request.workflow.graph.text) }) || !sameBytes({ first: findBytes({ observed, root: request.root, path: request.workflow.grid.origin.path }), second: new TextEncoder().encode(request.workflow.grid.text) })) return refused({ code: "foreign-content", detail: "private runtime graph and grid must be the supplied fresh workflow compilation" });
   if (observed.scopes.length !== request.scopeFiles.length || new Set(observed.scopes).size !== observed.scopes.length || observed.scopes.some((path) => !request.scopeFiles.some((file) => file.path === path)) || request.scopeFiles.some((file) => !sameBytes({ first: findBytes({ observed, root: request.root, path: file.path }), second: new TextEncoder().encode(file.body) }))) return refused({ code: "foreign-content", detail: "private runtime scope inventory and bytes must match the caller's fresh scope projection" });
@@ -149,7 +153,16 @@ const admitReferenceHelper = ({ imported }: { readonly imported: unknown }): Out
 const prepareReferenceInputs = async ({ request, manifest, operations, binary }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest; readonly operations: WorkflowReferenceOperations; readonly binary: string }): Promise<Outcome<PreparedWorkflowReference>> => {
   const before = await observeReference({ request, manifest, operations });
   if (before.status === "invalid") return before;
-  const facts = admitRuntimeFacts({ observed: before.value, request });
+  let nativeText: ((source: string) => string) | undefined;
+  if (isClaudeNativeDocumentContext(request.context)) {
+    const bytes = findBytes({ observed: before.value, root: request.sourceRoot, path: nativeRuntimePath });
+    const loaded = await operations.module({ sourceRoot: request.sourceRoot, path: nativeRuntimePath, sha256: operations.digest({ bytes }) });
+    if (loaded.status === "invalid") return loaded;
+    const policy = z.object({ prepareClaudeNativeRuntimeText: z.function({ input: [z.string()], output: z.string() }) }).safeParse(loaded.value);
+    if (!policy.success) return refused({ detail: "workflow reference runtime comparison requires source-owned native text preparation" });
+    nativeText = policy.data.prepareClaudeNativeRuntimeText;
+  }
+  const facts = admitRuntimeFacts({ observed: before.value, request, ...(nativeText === undefined ? {} : { nativeText }) });
   if (facts.status === "invalid") return facts;
   const witnessed = prepareReferenceWitnesses({ observed: facts.value, sourceRoot: request.sourceRoot, digest: operations.digest });
   if (witnessed.status === "invalid") return witnessed;
@@ -161,7 +174,11 @@ const prepareReferenceInputs = async ({ request, manifest, operations, binary }:
   if (text.status === "invalid") return text;
   const after = await observeReference({ request, manifest, operations });
   if (after.status === "invalid") return after;
-  return finishReference({ before: facts.value, after: after.value, text: text.value, request, manifest, witnessed: witnessed.value.inputs });
+  const commands = prepareDocumentCommands({ sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents: [{ path: manifest.destination, source: text.value }] });
+  if (commands.status === "invalid") return commands;
+  const document = commands.value.documents[0];
+  if (document === undefined) return refused({ detail: "workflow reference native command preparation returned no document" });
+  return finishReference({ before: facts.value, after: after.value, text: document.text, request, manifest, witnessed: [...witnessed.value.inputs, ...commands.value.inputs] });
 };
 const prepareReference = async ({ request, operations, binary }: { readonly request: WorkflowReferenceRequest; readonly operations: WorkflowReferenceOperations; readonly binary: string }): Promise<Outcome<PreparedWorkflowReference>> => {
   try {

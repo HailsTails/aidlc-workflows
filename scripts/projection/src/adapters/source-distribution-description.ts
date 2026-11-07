@@ -1,16 +1,21 @@
+import { createHash } from "node:crypto";
+import { mergeSourceDigests } from "../domain/source-origin.ts";
 import { z } from "zod";
 import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
-import { claudeDistributionDescriptionPaths, type DistributionDescriptionRequest, type DistributionDescriptionPreparer, type PreparedDistributionDescription } from "../domain/distribution-description.ts";
-import { finding, type Outcome } from "../domain/model.ts";
+import { claudeDistributionDescriptionPaths, type DistributionDescriptionRequest, type DistributionDescriptionPreparer, type PreparedDistributionDescription, type PairedCopyDescription, type DistributionBuildProfile } from "../domain/distribution-description.ts";
+import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import { continuePreparation } from "../application/preparation-result.ts";
 
 const sourcePaths = ["scripts/projection/native/projection-metadata.ts", "scripts/manifest-types.ts", "harness/claude/manifest.ts", "harness/claude/onboarding.fills.ts", "harness/claude/.mcp.json", "harness/claude/dot-gitignore", "core/tools/aidlc-distribution.ts", "core/tools/aidlc-root-integration-codec.ts", "core/tools/aidlc-projection-path.ts", "core/tools/aidlc-channel.ts", "core/tools/aidlc-version.ts"];
+const nativeSourcePaths = ["scripts/projection/native/native-delivery.ts", "scripts/projection/src/domain/model.ts", "scripts/copy-era-files.json", "scripts/native-command-text.ts", "scripts/native-command-context.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts", "core/tools/aidlc-runtime-paths.ts"];
+const descriptionSourcePaths = (request: DistributionDescriptionRequest) => request.invocation === "aidlc" ? [...sourcePaths, ...nativeSourcePaths] : sourcePaths;
+export type NativeDescriptionPair = { readonly profile: DistributionBuildProfile; readonly copy: PairedCopyDescription };
 export type SourceDescriptionOperations = NativeCompilerProcessOperations & { readonly paths: (input: DistributionDescriptionRequest) => { readonly sourceRoot: string; readonly root: string } };
 export const createSourceDescriptionOperations = (): SourceDescriptionOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
 const replySchema = z.discriminatedUnion("status", [z.strictObject({ status: z.literal("ok"), files: z.array(z.strictObject({ file: z.string(), bytes: z.array(z.number().int().min(0).max(255)) })), inputs: z.array(z.strictObject({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) })) }), z.strictObject({ status: z.enum(["unavailable", "refused"]), detail: z.string() })]);
 const worker = `
 const input = await Bun.stdin.json();
-const paths = ${JSON.stringify(sourcePaths)};
+const paths = input.paths;
 const unavailable = ({ detail }) => ({ status: "unavailable", detail });
 const sourceComponents = ({ path }) => {
   const segments = path.split("/");
@@ -51,7 +56,16 @@ const admitPrepared = ({ prepared, roots }) => {
   if (prepared?.kind !== "prepared" || !Array.isArray(prepared.artifacts) || prepared.artifacts.some(artifact => typeof artifact.file !== "string" || !(artifact.bytes instanceof Uint8Array))) return unavailable({ detail: "native metadata preparation must return byte artifacts" });
   return { status: "ok", files: [...roots.map(root => ({ file: root.path, bytes: Array.from(root.bytes) })), ...prepared.artifacts.map(artifact => ({ file: artifact.file, bytes: Array.from(artifact.bytes) }))] };
 };
-const prepareNative = ({ native, roots }) => admitPrepared({ prepared: native.prepare({ declaration: native.declaration, files: input.files, directories: input.directories, rootFiles: roots, buildVersion: native.buildVersion }), roots });
+const prepareNative = async ({ native, roots }) => {
+  let prepared = native.prepare({ declaration: native.declaration, files: input.files, directories: input.directories, rootFiles: roots, buildVersion: native.buildVersion });
+  if (input.nativeDelivery && prepared.kind === "prepared") {
+    const delivery = await loadModule({ path: "scripts/projection/native/native-delivery.ts" });
+    const history = await Bun.file(input.sourceRoot + "/scripts/copy-era-files.json").json();
+    const finalized = delivery.finalizeClaudeNativeMetadata({ artifacts: [...roots.map(root => ({ file: root.path, bytes: root.bytes })), ...prepared.artifacts], nativeFiles: input.nativeDelivery.files.map(file => ({ path: file.path, bytes: Buffer.from(file.base64, "base64") })), copyFiles: input.nativeDelivery.copyFiles, history: history.claude });
+    return admitPrepared({ prepared: finalized, roots: [] });
+  }
+  return admitPrepared({ prepared, roots });
+};
 const retainStable = ({ before, after, prepared }) => after.status !== "ok" || JSON.stringify(before.inputs) !== JSON.stringify(after.inputs) ? unavailable({ detail: "distribution description source changed during preparation" }) : { ...prepared, inputs: after.inputs };
 const prepare = async () => {
   const before = await observe();
@@ -60,7 +74,7 @@ const prepare = async () => {
   if (native.status !== "ok") return native;
   const roots = await readRoots({ digest: native.digest });
   if (roots.status !== "ok") return roots;
-  const prepared = prepareNative({ native, roots: roots.roots });
+  const prepared = await prepareNative({ native, roots: roots.roots });
   if (prepared.status !== "ok") return prepared;
   return retainStable({ before, after: await observe(), prepared });
 };
@@ -69,6 +83,7 @@ catch { process.stdout.write(JSON.stringify(unavailable({ detail: "distribution 
 `;
 const failure = ({ detail, code = "capability-gap" }: { readonly detail: string; readonly code?: "capability-gap" | "invalid-input" | "foreign-content" }): Outcome<never> => ({ status: "invalid", findings: [finding({ code, subject: "source-distribution-description", detail })] });
 const admitReply = ({ reply, request }: { readonly reply: z.infer<typeof replySchema> & { readonly status: "ok" }; readonly request: DistributionDescriptionRequest }): Outcome<PreparedDistributionDescription> => {
+  const sourcePaths = descriptionSourcePaths(request);
   const files = reply.files.map((file) => file.file);
   const expected = claudeDistributionDescriptionPaths();
   if (files.length !== expected.length || expected.some((path) => files.filter((file) => file === path).length !== 1) || reply.inputs.length !== sourcePaths.length || sourcePaths.some((path) => reply.inputs.filter((input) => input.path === path).length !== 1)) return failure({ code: "foreign-content", detail: "distribution description must retain every declared source witness and exactly its six producer artifacts" });
@@ -90,15 +105,25 @@ const admitWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: s
     const root = paths.root.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "");
     return root === "" || source === "" || root === source || root.startsWith(`${source}/`) ? failure({ detail: "distribution description requires a working root outside authored source" }) : { status: "ok", value: paths };
 };
-const processInput = ({ paths, request, binary, operations, buildVersion }: { readonly paths: { readonly sourceRoot: string; readonly root: string }; readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations; readonly buildVersion: string | undefined }) => {
+const processInput = ({ paths, request, binary, operations, buildVersion, nativePair }: { readonly paths: { readonly sourceRoot: string; readonly root: string }; readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations; readonly buildVersion: string | undefined; readonly nativePair: NativeDescriptionPair | undefined }) => {
     const env = { ...privateCompilerEnvironment({ inherited: operations.environment(), root: `${paths.root}/.description-home` }), ...Object.fromEntries([["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0"], ["BUN_INSTALL_AUTO", "disable"]]) };
-    return { binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, env, input: JSON.stringify({ sourceRoot: paths.sourceRoot, files: request.files, directories: request.directories, buildVersion }) };
+    return { binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, env, input: JSON.stringify({ sourceRoot: paths.sourceRoot, paths: descriptionSourcePaths(request), files: request.files, directories: request.directories, buildVersion, ...(request.invocation === "aidlc" && nativePair !== undefined ? { nativeDelivery: { files: request.finalFiles?.map(file => ({ path: file.path, base64: Buffer.from(file.bytes).toString("base64") })), copyFiles: nativePair.copy.files.map(file => ({ path: file.path, sha256: `sha256:${createHash("sha256").update(file.bytes).digest("hex")}` })) } } : {}) }) };
 };
-const execute = async ({ request, binary, operations, buildVersion }: { readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations; readonly buildVersion: string | undefined }): Promise<Outcome<PreparedDistributionDescription>> => {
-  try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations, buildVersion })), request }) }); }
+const execute = async ({ request, binary, operations, buildVersion, nativePair }: { readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations; readonly buildVersion: string | undefined; readonly nativePair: NativeDescriptionPair | undefined }): Promise<Outcome<PreparedDistributionDescription>> => {
+  try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations, buildVersion, nativePair })), request }) }); }
   catch { return failure({ detail: "distribution description process capability unavailable" }); }
 };
-export const createSourceDescriptionPreparer = ({ binary = "bun", operations = createSourceDescriptionOperations(), buildVersion }: { readonly binary?: string; readonly operations?: SourceDescriptionOperations; readonly buildVersion?: string } = {}): DistributionDescriptionPreparer => ({ prepare: async (request) => {
+export const createSourceDescriptionPreparer = ({ binary = "bun", operations = createSourceDescriptionOperations(), buildVersion, nativePair }: { readonly binary?: string; readonly operations?: SourceDescriptionOperations; readonly buildVersion?: string; readonly nativePair?: NativeDescriptionPair } = {}): DistributionDescriptionPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
-  return admitted.status === "invalid" ? admitted : execute({ request: admitted.value, binary, operations, buildVersion });
+  if (admitted.status === "invalid") return admitted;
+  if (request.invocation === "aidlc") {
+    if (nativePair === undefined || request.finalFiles === undefined || nativePair.profile.buildVersion !== buildVersion || nativePair.copy.profile.buildVersion !== nativePair.profile.buildVersion || nativePair.copy.profile.environmentCap !== nativePair.profile.environmentCap || JSON.stringify(nativePair.copy.basis) !== JSON.stringify(request.basis)) return failure({ code: "foreign-content", detail: "native delivery requires final bytes and an explicitly paired copy artifact from the same source and version/cap profile" });
+    const paths = [...request.finalFiles.map(file => file.path), ...claudeDistributionDescriptionPaths()];
+    const copyPaths = nativePair.copy.files.map(file => file.path);
+    if ([paths, copyPaths, request.files].some(inventory => new Set(inventory).size !== inventory.length || inventory.some(path => pathStatus({ path }) !== "safe")) || paths.length !== request.files.length || copyPaths.length !== request.files.length || request.files.some(path => !paths.includes(path) || !copyPaths.includes(path))) return failure({ code: "foreign-content", detail: "native final bytes, paired copy and producer metadata must exactly cover the declared file inventory" });
+  } else if (nativePair !== undefined) return failure({ code: "foreign-content", detail: "copy delivery must not consume native finalization inputs" });
+  const prepared = await execute({ request: admitted.value, binary, operations, buildVersion, nativePair });
+  if (prepared.status === "invalid" || nativePair === undefined) return prepared;
+  const inputs = mergeSourceDigests({ groups: [prepared.value.preparation.inputs, nativePair.copy.inputs] });
+  return inputs.status === "invalid" ? inputs : { status: "ok", value: { ...prepared.value, preparation: { ...prepared.value.preparation, inputs: inputs.value } } };
 } });
