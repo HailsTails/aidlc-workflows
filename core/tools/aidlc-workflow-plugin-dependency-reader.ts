@@ -1,30 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
 import {
-  getField,
-  isArchivedIntent,
-  isCompletedIntent,
-  listIntents,
-  listSpaces,
-  loadScopeMetadataAll,
-  loadStageGraphAll,
-  parseCheckboxes,
-  stateFilePath,
+  getField, isArchivedIntent, isCompletedIntent, listIntents, listSpaces,
+  loadScopeMetadataAll, loadStageGraphAll, parseCheckboxes, stateFilePath,
   workflowDisplayName,
 } from "./aidlc-lib.ts";
-import {
-  workflowPluginDependencies,
-  type WorkflowPluginDependency,
-  type WorkflowPluginFacts,
-} from "./aidlc-workflow-plugin-dependencies.ts";
+import { assessDependencies, type DependencyReason, type DependencySource } from "./workflow-plugin-dependencies/assessment.ts";
+import { decodeOwnership, decodeState } from "./workflow-plugin-dependencies/persisted-records.ts";
 
 export interface WorkflowPluginDiagnostic {
   plugin: string;
   workflow: string;
   text: string;
 }
-
-function dependencyDiagnostic(dependency: WorkflowPluginDependency): WorkflowPluginDiagnostic {
-  const where = `workflow "${dependency.workflow.recordName}" (space ${dependency.workflow.space})`;
+function dependencyDiagnostic(dependency: DependencyReason): WorkflowPluginDiagnostic {
+  const where = `workflow "${dependency.workflow.name}" (space ${dependency.workflow.space})`;
   const requirement = dependency.kind === "scope"
     ? `runs under scope "${dependency.scope}"`
     : `has pending stage "${dependency.stage}"`;
@@ -35,35 +24,31 @@ function dependencyDiagnostic(dependency: WorkflowPluginDependency): WorkflowPlu
   };
 }
 
-export function activeWorkflowPluginDependencies(
-  projectDir: string,
-  enabled: ReadonlySet<string>,
-): WorkflowPluginDiagnostic[] {
-  const ownership = {
-    scopes: Object.entries(loadScopeMetadataAll()).map(([name, meta]) => ({ name, plugin: meta.plugin })),
-    stages: loadStageGraphAll(),
+export function activeWorkflowPluginDependencies(projectDir: string, enabled: ReadonlySet<string>): WorkflowPluginDiagnostic[] {
+  const source: DependencySource = {
+    ownership: () => decodeOwnership(
+      Object.entries(loadScopeMetadataAll()).map(([name, meta]) => ({ name, plugin: meta.plugin })),
+      loadStageGraphAll(),
+    ),
+    visitWorkflows: (visit) => {
+      listSpaces(projectDir).forEach((space) => {
+        listIntents(projectDir, space.name).forEach((intent) => {
+          const identity = {
+            space: space.name,
+            name: intent.dirName || null,
+            displayName: workflowDisplayName(space.name, intent),
+          };
+          const lifecycle = isCompletedIntent(intent) ? "completed" : isArchivedIntent(intent) ? "archived" : "other";
+          visit({ identity, lifecycle, readState: (name) => {
+            // The component invokes this only for a named, eligible candidate.
+            const path = stateFilePath(projectDir, name, space.name);
+            if (!existsSync(path)) return null;
+            const content = readFileSync(path, "utf-8");
+            return decodeState({ status: getField(content, "Status") ?? "", scope: getField(content, "Scope"), rows: parseCheckboxes(content) });
+          } });
+        });
+      });
+    },
   };
-  const workflows = listSpaces(projectDir).flatMap((space) =>
-    listIntents(projectDir, space.name).map((intent): WorkflowPluginFacts => {
-      const identity = {
-        space: space.name,
-        recordName: intent.dirName || null,
-        displayName: workflowDisplayName(space.name, intent),
-        registryClosed: isCompletedIntent(intent) || isArchivedIntent(intent),
-      };
-      if (identity.registryClosed || !intent.dirName) return { ...identity, state: null };
-      const path = stateFilePath(projectDir, intent.dirName, space.name);
-      if (!existsSync(path)) return { ...identity, state: null };
-      const content = readFileSync(path, "utf-8");
-      return {
-        ...identity,
-        state: {
-          status: getField(content, "Status") ?? "",
-          scope: getField(content, "Scope"),
-          stages: parseCheckboxes(content),
-        },
-      };
-    }),
-  );
-  return workflowPluginDependencies({ enabled, ownership, workflows }).map(dependencyDiagnostic);
+  return assessDependencies(source, enabled).map(dependencyDiagnostic);
 }

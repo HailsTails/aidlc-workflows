@@ -1,5 +1,52 @@
 import { describe, expect, test } from "bun:test";
-import { workflowPluginDependencies, type WorkflowPluginFacts, type WorkflowPluginOwnership } from "../../core/tools/aidlc-workflow-plugin-dependencies.ts";
+import { assessDependencies, type DependencySource } from "../../core/tools/workflow-plugin-dependencies/assessment.ts";
+import { decodeOwnership, decodeState } from "../../core/tools/workflow-plugin-dependencies/persisted-records.ts";
+
+// Test-only legacy corpus adapter. Production uses the component directly.
+interface WorkflowPluginFacts {
+  readonly space: string;
+  readonly recordName: string | null;
+  readonly displayName: string;
+  readonly registryClosed: boolean;
+  readonly state: {
+    readonly status: string;
+    readonly scope: string | null;
+    readonly stages: readonly {
+      readonly slug: string;
+      readonly state: string;
+      readonly suffix: string;
+    }[];
+  } | null;
+}
+
+interface WorkflowPluginOwnership {
+  readonly scopes: readonly { readonly name: string; readonly plugin?: string }[];
+  readonly stages: readonly { readonly slug: string; readonly phase: string; readonly plugin?: string }[];
+}
+
+type WorkflowPluginDependency = {
+  readonly plugin: string;
+  readonly workflow: Pick<WorkflowPluginFacts, "space" | "recordName" | "displayName">;
+} & (
+  | { readonly kind: "scope"; readonly scope: string }
+  | { readonly kind: "stage"; readonly stage: string }
+);
+
+
+function workflowPluginDependencies(input: { enabled: ReadonlySet<string>; ownership: WorkflowPluginOwnership; workflows: readonly WorkflowPluginFacts[] }): WorkflowPluginDependency[] {
+  const source: DependencySource = {
+    ownership: () => decodeOwnership(input.ownership.scopes, input.ownership.stages),
+    visitWorkflows: (visit) => input.workflows.forEach((facts) => visit({
+      identity: { space: facts.space, name: facts.recordName, displayName: facts.displayName },
+      lifecycle: facts.registryClosed ? "completed" : "other",
+      readState: () => facts.state === null ? null : decodeState({ status: facts.state.status, scope: facts.state.scope, rows: facts.state.stages }),
+    })),
+  };
+  return assessDependencies(source, input.enabled).map((reason) => {
+    const workflow = { space: reason.workflow.space, recordName: reason.workflow.name, displayName: reason.workflow.displayName };
+    return reason.kind === "scope" ? { kind: "scope", plugin: reason.plugin, workflow, scope: reason.scope } : { kind: "stage", plugin: reason.plugin, workflow, stage: reason.stage };
+  });
+}
 
 const ownership: WorkflowPluginOwnership = {
   scopes: [{ name: "feature" }, { name: "validation", plugin: "quality" }],
