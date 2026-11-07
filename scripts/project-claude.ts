@@ -2,13 +2,34 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync, chmodSync } from "node:f
 import { dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { assembleAuthoredCoreDistribution } from "./projection/examples/core-distribution.ts";
-import { createDescribedCoreDistributionServices } from "./projection/examples/described-core-distribution.ts";
+import { createDescribedCoreDistributionServices, createCoreDescriptionServices } from "./projection/examples/described-core-distribution.ts";
 import { createPublicationAssembler } from "./projection/examples/publication-assembly.ts";
 import { packageInputsFingerprint } from "./package-sources.ts";
-import { projectionModes } from "./projection-process.ts";
+import { projectionModes, type ClaudeCopyProfile, type ClaudeCopyRequest } from "./projection-process.ts";
+import { createCoreDocumentDistributionServices } from "./projection/examples/core-document-distribution.ts";
+import { createCoreDocumentServices, prepareCoreAuthoredDocuments } from "./projection/examples/core-authored-documents.ts";
+import { createCoreAgentPolicyReader } from "./projection/src/adapters/core-agent-policy.ts";
+import { createSourceRuntimeModulePreparer } from "./projection/src/adapters/source-runtime-modules.ts";
+import { createSourceDescriptionPreparer } from "./projection/src/adapters/source-distribution-description.ts";
+import { createSourceModuleDistributionSource } from "./projection/examples/source-module-distribution.ts";
 
-export async function projectClaudeCopy({ sourceRoot, outRoot }: { readonly sourceRoot: string; readonly outRoot: string }): Promise<{ readonly files: number; readonly sourceInputs: number }> {
+function createClaudeCopyServices({ buildVersion, environmentCap }: ClaudeCopyProfile) {
+  return createDescribedCoreDistributionServices({
+    core: () => {
+      const documents = createCoreDocumentServices();
+      const policy = createCoreAgentPolicyReader();
+      return { ...createCoreDocumentDistributionServices(), documents: request => prepareCoreAuthoredDocuments({ ...request, services: { ...documents, policy: { load: location => policy.load({ ...location, environmentCap }) } } }) };
+    },
+    description: ({ rules }) => createCoreDescriptionServices({ rules, preparation: () => createSourceDescriptionPreparer({ buildVersion }) }),
+  });
+}
+
+const copyRequestSchema = z.strictObject({ sourceRoot: z.string().min(1), outRoot: z.string().min(1), buildVersion: z.string().min(1), environmentCap: z.enum(["judgment", "balanced", "templated"]).nullable() });
+
+export async function projectClaudeCopy(request: ClaudeCopyRequest): Promise<{ readonly files: number; readonly sourceInputs: number }> {
+  const { sourceRoot, outRoot, buildVersion, environmentCap } = copyRequestSchema.parse(request);
   const workspace = mkdtempSync(join(tmpdir(), "aidlc-clean-claude-"));
   const owned = resolve(workspace);
   if (!owned.startsWith(resolve(tmpdir()) + sep)) throw new Error("Projection workspace escaped temporary root");
@@ -16,12 +37,12 @@ export async function projectClaudeCopy({ sourceRoot, outRoot }: { readonly sour
   mkdirSync(runtimeRoot);
   const { fileMode: mode, directoryMode } = projectionModes({ platform: process.platform, umask: process.umask() });
   const pin = createHash("sha1").update(packageInputsFingerprint(sourceRoot)).digest("hex");
-  const request = {
+  const preparation = {
     runtimeContext: "prepare-source", runtimeAssets: "prepare-authored", runtimeContracts: "prepare-source",
     runtimeModules: "prepare-source", pluginAuthoring: "prepare-source", harnessSettings: "prepare-source", workspaceSeed: "prepare-source",
     directories: { kind: "file-parents", mode: directoryMode }, mode,
   } as const;
-  const assemble = createPublicationAssembler({ request, assemble: assembleAuthoredCoreDistribution, createServices: createDescribedCoreDistributionServices });
+  const assemble = createPublicationAssembler({ request: preparation, assemble: assembleAuthoredCoreDistribution, createServices: () => createClaudeCopyServices({ buildVersion, environmentCap }), createModules: request => createSourceModuleDistributionSource({ ...request, prepare: () => createSourceRuntimeModulePreparer({ buildVersion }) }) });
   try {
     const prepared = await assemble({ location: { sourceRoot, root: runtimeRoot, basis: { source: { kind: "core", id: "framework" }, pin } }, binding: { harness: "claude", directory: ".claude" }, contextRoot: workspace, mode, modelInvocation: "native-default", stageDocuments: "project-authored", methodRuntime: "prepare-authored", workflowReferences: "prepare-compiled" });
     if (prepared.status === "invalid") throw new Error(prepared.findings.map(finding => `${finding.subject}: ${finding.detail}`).join("\n"));
@@ -39,6 +60,6 @@ export async function projectClaudeCopy({ sourceRoot, outRoot }: { readonly sour
   }
 }
 if (import.meta.main) {
-  const request = await Bun.stdin.json() as { sourceRoot: string; outRoot: string };
+  const request = await Bun.stdin.json() as ClaudeCopyRequest;
   console.log(JSON.stringify(await projectClaudeCopy(request)));
 }

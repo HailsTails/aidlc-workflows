@@ -26,17 +26,17 @@ const observe = async () => {
 };
 const loadModule = ({ path }) => import(Bun.pathToFileURL(input.sourceRoot + "/" + path).href);
 const importNative = async () => {
-  const [manifest, metadata, distribution, version] = await Promise.all([loadModule({ path: "harness/claude/manifest.ts" }), loadModule({ path: "scripts/projection/native/projection-metadata.ts" }), loadModule({ path: "core/tools/aidlc-distribution.ts" }), loadModule({ path: "core/tools/aidlc-version.ts" })]);
-  return { manifest, metadata, distribution, version };
+  const [manifest, metadata, distribution, version, channel] = await Promise.all([loadModule({ path: "harness/claude/manifest.ts" }), loadModule({ path: "scripts/projection/native/projection-metadata.ts" }), loadModule({ path: "core/tools/aidlc-distribution.ts" }), loadModule({ path: "core/tools/aidlc-version.ts" }), loadModule({ path: "core/tools/aidlc-channel.ts" })]);
+  return { manifest, metadata, distribution, version, channel };
 };
 const rootMappings = [{ src: ".mcp.json", dst: ".mcp.json" }, { src: "dot-gitignore", dst: ".gitignore" }];
-const admitNative = ({ manifest, metadata, distribution, version }) => {
+const admitNative = ({ manifest, metadata, distribution, version, channel }) => {
   const declaration = manifest.default;
   if (declaration?.name !== "claude" || declaration?.harnessDir !== ".claude" || !Array.isArray(declaration.harnessFiles)) return unavailable({ detail: "distribution description requires the authored Claude manifest" });
   const mappings = declaration.harnessFiles.filter(mapping => mapping.projectRoot === true);
   if (mappings.length !== 2 || rootMappings.some(expected => mappings.filter(mapping => mapping.src === expected.src && mapping.dst === expected.dst).length !== 1)) return unavailable({ detail: "distribution description qualifies the two declared Claude root mappings only" });
-  if (typeof metadata.prepareProjectionMetadata !== "function" || typeof distribution.sha256Bytes !== "function" || typeof version.AIDLC_VERSION !== "string") return unavailable({ detail: "source-owned metadata planning, hashing and version capabilities unavailable" });
-  return { status: "ok", declaration, prepare: metadata.prepareProjectionMetadata, digest: distribution.sha256Bytes, buildVersion: version.AIDLC_VERSION };
+  if (typeof metadata.prepareProjectionMetadata !== "function" || typeof distribution.sha256Bytes !== "function" || typeof version.AIDLC_VERSION !== "string" || typeof channel.releaseBuildVersion !== "function") return unavailable({ detail: "source-owned metadata planning, hashing and version capabilities unavailable" });
+  return { status: "ok", declaration, prepare: metadata.prepareProjectionMetadata, digest: distribution.sha256Bytes, buildVersion: channel.releaseBuildVersion({ AIDLC_BUILD_VERSION: input.buildVersion }) };
 };
 const loadNative = async () => admitNative(await importNative());
 const admitRoot = ({ bytes, mapping, digest }) => {
@@ -90,15 +90,15 @@ const admitWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: s
     const root = paths.root.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "");
     return root === "" || source === "" || root === source || root.startsWith(`${source}/`) ? failure({ detail: "distribution description requires a working root outside authored source" }) : { status: "ok", value: paths };
 };
-const processInput = ({ paths, request, binary, operations }: { readonly paths: { readonly sourceRoot: string; readonly root: string }; readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations }) => {
+const processInput = ({ paths, request, binary, operations, buildVersion }: { readonly paths: { readonly sourceRoot: string; readonly root: string }; readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations; readonly buildVersion: string | undefined }) => {
     const env = { ...privateCompilerEnvironment({ inherited: operations.environment(), root: `${paths.root}/.description-home` }), ...Object.fromEntries([["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0"], ["BUN_INSTALL_AUTO", "disable"]]) };
-    return { binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, env, input: JSON.stringify({ sourceRoot: paths.sourceRoot, files: request.files, directories: request.directories }) };
+    return { binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, env, input: JSON.stringify({ sourceRoot: paths.sourceRoot, files: request.files, directories: request.directories, buildVersion }) };
 };
-const execute = async ({ request, binary, operations }: { readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations }): Promise<Outcome<PreparedDistributionDescription>> => {
-  try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations })), request }) }); }
+const execute = async ({ request, binary, operations, buildVersion }: { readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations; readonly buildVersion: string | undefined }): Promise<Outcome<PreparedDistributionDescription>> => {
+  try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations, buildVersion })), request }) }); }
   catch { return failure({ detail: "distribution description process capability unavailable" }); }
 };
-export const createSourceDescriptionPreparer = ({ binary = "bun", operations = createSourceDescriptionOperations() }: { readonly binary?: string; readonly operations?: SourceDescriptionOperations } = {}): DistributionDescriptionPreparer => ({ prepare: async (request) => {
+export const createSourceDescriptionPreparer = ({ binary = "bun", operations = createSourceDescriptionOperations(), buildVersion }: { readonly binary?: string; readonly operations?: SourceDescriptionOperations; readonly buildVersion?: string } = {}): DistributionDescriptionPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
-  return admitted.status === "invalid" ? admitted : execute({ request: admitted.value, binary, operations });
+  return admitted.status === "invalid" ? admitted : execute({ request: admitted.value, binary, operations, buildVersion });
 } });

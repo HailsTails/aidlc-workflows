@@ -3,7 +3,7 @@ import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import type { PreparedRuntimeInput, RuntimeInputPreparer, RuntimeInputRequest } from "../domain/runtime-inputs.ts";
 import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 
-const requiredSources = ["scripts/projection-text.ts", "scripts/version-module.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-version.ts"];
+const requiredSources = ["scripts/projection-text.ts", "scripts/version-module.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-version.ts", "core/tools/aidlc-channel.ts"];
 export type SourceRuntimeModuleOperations = NativeCompilerProcessOperations & { readonly paths: (request: RuntimeInputRequest) => { readonly sourceRoot: string; readonly root: string } };
 export const createSourceRuntimeModuleOperations = ({ create = createNativeCompilerProcessOperations }: { readonly create?: typeof createNativeCompilerProcessOperations } = {}): SourceRuntimeModuleOperations => ({
   ...create({ timeout: 30000, maxBuffer: 32 * 1024 * 1024 }),
@@ -12,7 +12,7 @@ export const createSourceRuntimeModuleOperations = ({ create = createNativeCompi
 
 const worker = `
 const request = await Bun.stdin.json();
-const required = ["scripts/projection-text.ts", "scripts/version-module.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-version.ts"];
+const required = ${JSON.stringify(requiredSources)};
 const unavailable = ({ detail }) => ({ status: "unavailable", detail });
 const sourceFiles = async directory => {
   const fs = await import("node:fs/promises");
@@ -32,13 +32,14 @@ const observe = async () => {
 const module = path => import(Bun.pathToFileURL(request.sourceRoot + "/" + path).href);
 const prepare = async () => {
   const before = await observe();
-  const [text, version, commands, stamp] = await Promise.all(required.map(module));
-  if (typeof text.substituteInvocationTokens !== "function" || typeof version.prepareVersionModuleText !== "function" || typeof commands.TRUSTED_ROUTE_NAMESPACE !== "string" || typeof stamp.AIDLC_VERSION !== "string") return unavailable({ detail: "upstream runtime text and version APIs unavailable" });
+  const [text, version, commands, stamp, channel] = await Promise.all(required.map(module));
+  if (typeof text.substituteInvocationTokens !== "function" || typeof version.prepareVersionModuleText !== "function" || typeof commands.TRUSTED_ROUTE_NAMESPACE !== "string" || typeof stamp.AIDLC_VERSION !== "string" || typeof channel.releaseBuildVersion !== "function") return unavailable({ detail: "upstream runtime text and version APIs unavailable" });
+  const buildVersion = channel.releaseBuildVersion({ AIDLC_BUILD_VERSION: request.buildVersion });
   const modules = before.map(input => input.path).filter(path => (path.startsWith("core/tools/") || path.startsWith("core/hooks/")) && path.endsWith(".ts")).map(path => path.slice("core/".length));
   const binding = { invoke: request.invoke, toolPrefix: "bun " + request.harnessDir + "/tools/", trustedNamespace: commands.TRUSTED_ROUTE_NAMESPACE };
   const files = await Promise.all(modules.map(async file => {
     const source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await Bun.file(request.sourceRoot + "/core/" + file).bytes());
-    const stamped = file.endsWith("/aidlc-version.ts") ? version.prepareVersionModuleText({ source, buildVersion: request.buildVersion ?? stamp.AIDLC_VERSION }) : { kind: "prepared", content: source };
+    const stamped = file.endsWith("/aidlc-version.ts") ? version.prepareVersionModuleText({ source, buildVersion }) : { kind: "prepared", content: source };
     if (stamped.kind !== "prepared") throw new Error(stamped.message);
     return { file, content: text.substituteInvocationTokens({ source: stamped.content, binding }) };
   }));
@@ -90,13 +91,13 @@ const decodeModules = ({ stdout, request }: { readonly stdout: string; readonly 
 };
 const admitProcess = ({ reply, request }: { readonly reply: NativeCompilerSpawnReply; readonly request: RuntimeInputRequest }): Outcome<PreparedRuntimeInput> => reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0 ? failure({ detail: "source runtime module process unavailable or reported diagnostics" }) : decodeModules({ stdout: reply.stdout, request });
 const moduleEnvironment = ({ inherited, root }: { readonly inherited: Readonly<Record<string, string | undefined>>; readonly root: string }): Readonly<Record<string, string | undefined>> => ({ ...privateCompilerEnvironment({ inherited, root: `${root}/.source-runtime-module-home` }), ...Object.fromEntries([["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0"]]) });
-const prepareModules = ({ request, binary, operations }: { readonly request: RuntimeInputRequest; readonly binary: string; readonly operations: SourceRuntimeModuleOperations }): Outcome<PreparedRuntimeInput> => {
+const prepareModules = ({ request, binary, operations, buildVersion }: { readonly request: RuntimeInputRequest; readonly binary: string; readonly operations: SourceRuntimeModuleOperations; readonly buildVersion: string | undefined }): Outcome<PreparedRuntimeInput> => {
   try {
     const paths = operations.paths(request);
-    return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harnessDir: request.binding.directory, invoke: request.invocation }), env: moduleEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
+    return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harnessDir: request.binding.directory, invoke: request.invocation, buildVersion }), env: moduleEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
   } catch { return failure({ detail: "source runtime module process capability unavailable" }); }
 };
-export const createSourceRuntimeModulePreparer = ({ binary = "bun", operations = createSourceRuntimeModuleOperations() }: { readonly binary?: string; readonly operations?: SourceRuntimeModuleOperations } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {
+export const createSourceRuntimeModulePreparer = ({ binary = "bun", operations = createSourceRuntimeModuleOperations(), buildVersion }: { readonly binary?: string; readonly operations?: SourceRuntimeModuleOperations; readonly buildVersion?: string } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
-  return admitted.status === "invalid" ? admitted : prepareModules({ request: admitted.value, binary, operations });
+  return admitted.status === "invalid" ? admitted : prepareModules({ request: admitted.value, binary, operations, buildVersion });
 } });

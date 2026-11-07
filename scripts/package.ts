@@ -6,8 +6,8 @@
 //   bun scripts/package.ts <name>      regenerate just one harness
 //   bun scripts/package.ts <name> --check
 //
-// Claude copy delivery at the source version uses the retained clean projection
-// component. Environment-capped copies, native releases and other harnesses
+// Claude copy delivery uses the retained projection component with explicit
+// build-version and environment-cap inputs. Native releases and other harnesses
 // retain the pipeline below until their component profiles are qualified.
 //
 // LEGACY PIPELINE PER HARNESS:
@@ -832,8 +832,8 @@ function buildTree(
   outRoot: string,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
 ): string[] {
-  if (usesCleanClaudeCopy({ name: m.name, harnessDir: m.harnessDir, invoke, environmentCap: ENV_CAP, buildVersion: BUILD_VERSION, sourceVersion: AIDLC_VERSION })) {
-    projectClaudeCopyTree({ sourceRoot: REPO_ROOT, outRoot });
+  if (usesCleanClaudeCopy({ name: m.name, harnessDir: m.harnessDir, invoke })) {
+    projectClaudeCopyTree({ sourceRoot: REPO_ROOT, outRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP });
     return [...walk(outRoot)];
   }
   const harnessDir = m.harnessDir;

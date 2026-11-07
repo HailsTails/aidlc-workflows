@@ -9,7 +9,6 @@ const qualified = { name: "claude", harnessDir: ".claude", invoke: "bun .claude/
 test("default Claude copy uses the retained component", () => expect(usesCleanClaudeCopy(qualified)).toBe(true));
 test.each([
   { name: "cursor" }, { harnessDir: ".custom" }, { invoke: "aidlc" },
-  { environmentCap: "balanced" }, { buildVersion: "2.11.4-preview.1" },
 ])("unqualified profile retains its named legacy route: %j", (change) => expect(usesCleanClaudeCopy({ ...qualified, ...change })).toBe(false));
 
 const repo = join(import.meta.dir, "../..");

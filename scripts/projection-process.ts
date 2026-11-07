@@ -1,17 +1,21 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import type { Tier } from "./projection/src/domain/model.ts";
+
+export type ClaudeCopyProfile = { readonly buildVersion: string; readonly environmentCap: Tier | null };
+export type ClaudeCopyRequest = ClaudeCopyProfile & { readonly sourceRoot: string; readonly outRoot: string };
 
 export function projectionModes({ platform, umask }: { readonly platform: string; readonly umask: number }): { readonly fileMode: number; readonly directoryMode: number } {
   return { fileMode: platform === "win32" ? 0o666 : 0o666 & ~umask, directoryMode: 0o777 & ~umask };
 }
 
-export function usesCleanClaudeCopy({ name, harnessDir, invoke, environmentCap, buildVersion, sourceVersion }: { readonly name: string; readonly harnessDir: string; readonly invoke: string; readonly environmentCap: string | null; readonly buildVersion: string; readonly sourceVersion: string }): boolean {
-  return name === "claude" && harnessDir === ".claude" && invoke === "bun .claude/tools/aidlc.ts" && environmentCap === null && buildVersion === sourceVersion;
+export function usesCleanClaudeCopy({ name, harnessDir, invoke }: { readonly name: string; readonly harnessDir: string; readonly invoke: string }): boolean {
+  return name === "claude" && harnessDir === ".claude" && invoke === "bun .claude/tools/aidlc.ts";
 }
 
-export function projectClaudeCopyTree({ sourceRoot, outRoot }: { readonly sourceRoot: string; readonly outRoot: string }): void {
+export function projectClaudeCopyTree({ sourceRoot, outRoot, buildVersion, environmentCap }: ClaudeCopyRequest): void {
   const result = spawnSync(process.execPath, ["--no-env-file", "--no-install", join(sourceRoot, "scripts/project-claude.ts")], {
-    cwd: sourceRoot, encoding: "utf8", input: JSON.stringify({ sourceRoot, outRoot }), maxBuffer: 8 * 1024 * 1024,
+    cwd: sourceRoot, encoding: "utf8", input: JSON.stringify({ sourceRoot, outRoot, buildVersion, environmentCap }), maxBuffer: 8 * 1024 * 1024,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "Claude projection process failed");
