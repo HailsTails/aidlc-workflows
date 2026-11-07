@@ -376,12 +376,12 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
   // with no in-band recovery. select-plugins must refuse, and doctor must
   // flag a selection (written before this guard, or hand-edited) that
   // already strands one.
-  function seedActiveWorkflow(proj: string, scope: string, extraStageRow = ""): string {
+  function seedActiveWorkflow(proj: string, scope: string, extraStageRow = "", space = "default"): string {
     const dirName = "strand-probe-deadbeef";
-    const intentDir = join(proj, "aidlc", "spaces", "default", "intents", dirName);
+    const intentDir = join(proj, "aidlc", "spaces", space, "intents", dirName);
     mkdirSync(intentDir, { recursive: true });
     writeFileSync(
-      join(proj, "aidlc", "spaces", "default", "intents", "intents.json"),
+      join(proj, "aidlc", "spaces", space, "intents", "intents.json"),
       `${JSON.stringify([{ uuid: "deadbeef-0000-4000-8000-000000000000", slug: "strand-probe", dirName, scope, status: "in-flight" }], null, 2)}\n`,
     );
     // The Stage Progress row delimiter is the em dash (parseCheckboxes'
@@ -409,6 +409,34 @@ describe("t224 plugin selection - install chooses visible plugin surfaces", () =
     );
     return intentDir;
   }
+
+  test("init uses focused owners instead of importing the utility CLI", () => {
+    const init = readFileSync(join(REPO_ROOT, "core", "tools", "aidlc-init.ts"), "utf-8");
+    expect(init).not.toContain('from "./aidlc-utility.ts"');
+    expect(init).toContain('from "./aidlc-workflow-plugin-dependency-reader.ts"');
+  });
+
+  test("selection refuses without writes and doctor reports parked dependencies across spaces", () => {
+    const proj = join(tmp, "strand-cross-space");
+    composePluginFixture({ plugin: PLUGIN, harness: "claude", projectDir: proj, pluginBuilt });
+    seedActiveWorkflow(proj, "test-pro-validation");
+    const parked = seedActiveWorkflow(proj, "feature", "- [ ] test-pro-integration \u2014 EXECUTE", "team");
+    const state = join(parked, "aidlc-state.md");
+    writeFileSync(state, readFileSync(state, "utf-8").replace("- **Status**: Running", "- **Status**: Parked"));
+    const before = surfaceSnapshot(join(proj, ".claude"));
+    const refused = runUtility(proj, ["select-plugins", "aidlc"]);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("2 active workflow dependency(ies)");
+    expect(refused.stderr).toContain("space default");
+    expect(refused.stderr).toContain("space team");
+    expect(refused.stderr).toContain("test-pro-integration");
+    expect(surfaceSnapshot(join(proj, ".claude"))).toEqual(before);
+    const harness = JSON.parse(readFileSync(harnessPath(proj), "utf-8"));
+    harness.plugins = ["aidlc"];
+    writeFileSync(harnessPath(proj), `${JSON.stringify(harness, null, 2)}\n`);
+    const doctor = runUtility(proj, ["doctor"]);
+    expect(doctor.stdout + doctor.stderr).toContain("Plugin selection vs active workflows: 2 stranded dependency(ies)");
+  });
 
   test("select-plugins refuses to strand an active workflow's scope", () => {
     const proj = join(tmp, "strand-scope");

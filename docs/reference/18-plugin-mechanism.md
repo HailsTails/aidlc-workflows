@@ -269,7 +269,7 @@ words from `nextCompose()`). A pause that
 would strand open work is refused like any turn-off, naming the plugin and the
 base. Through `aidlc config project --plugins`, a plugin turned off or paused
 loses its merged contributions the same way: every config refresh runs the same
-rule, `stripPluginsTurnedOff()` in `aidlc-utility.ts`, in its staged tree.
+rule, `stripPluginsTurnedOff()` in `aidlc-plugin-disable.ts`, in its staged tree.
 
 ## 5a. Installed inventory, composition stamps, and sync
 
@@ -847,6 +847,39 @@ wherever their scopes put them on-path.
 - **Slug identity, display-only numbers.** Inserting a plugin stage never renumbers core.
 - **Trust is host-native.** Org restrictions use the host's managed allowlist; AIDLC builds no trust layer.
 - **No gatekeeping.** First- and third-party plugins are mechanically equal; provenance is the only difference.
+
+### Workflow requirements when selecting plugins
+
+`tools/workflow-plugin-dependencies/assessment.ts` owns the complete dependency
+assessment. It decides registry/state eligibility before imposing requirements,
+requests state only for named nonterminal registry records, and requires the
+scope and each unfinished executable stage of an eligible workflow.
+Initialization declarations impose no dependency. An omitted/null owner on a
+declaration defaults to core; an absent declaration or empty owner is permissive.
+A named plugin still requires availability. Availability remains authoritative
+even for core. Last declarations win and repeated reasons retain occurrence order.
+
+The component depends on an injected source, not filesystem, Markdown or the
+large tool facade. Its source enumerates workflow candidates and provides lazy
+state reads; the component owns whether those reads occur. Another source can
+supply complete records and states without precomputing eligibility or obligations.
+`persisted-records.ts` translates exact persisted lifecycle, progress, action and
+phase spellings into component vocabulary; it makes no dependency decisions.
+
+`aidlc-workflow-plugin-dependency-reader.ts` is the production source adapter. It
+obtains and decodes existing registry/state data, then formats component reasons
+for selection, doctor and project configuration. Its existing public entrypoint
+is preserved; the former storage-shaped policy is retired. Read failures propagate
+at the same acquisition point and stop later reads. An open parked workflow still
+requires its scope and remaining EXECUTE stages. Locks, transactions, rollback and
+plugin installation remain outside this assessment component.
+
+Project configuration and the utility CLI share the installed selection reader
+in `aidlc-plugin-selection.ts`, staged removal in `aidlc-plugin-disable.ts`,
+and generated tables in `aidlc-compiled-tables.ts`. Their callers retain the
+existing locks, transaction, rollback and audit ownership. The disable adapter
+returns the changes from that call, including removed rules, rather than
+retaining mutable reporting state between transactions.
 
 ## Cross-references
 

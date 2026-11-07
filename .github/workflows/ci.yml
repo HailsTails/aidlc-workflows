@@ -1,6 +1,6 @@
 name: CI
 
-# Deterministic gate for the main line. Every PR push runs contract checks
+# Deterministic gate for the main line. PR pushes normally run contract checks
 # (generator determinism, typecheck, lint, installer ShellCheck), Linux
 # smoke/unit/integration, and
 # production-guard contracts. The merge queue, manual dispatch, and callers also
@@ -17,13 +17,12 @@ on:
   pull_request:
     branches:
       - main
-    # Run on PR open, on every push to the PR branch (synchronize), and on
-    # reopen. This is GitHub's default set for `pull_request`; declared
-    # explicitly so the re-run-on-modify behavior is unambiguous.
+    # Resume the temporary refactor-branch pause when its draft is ready.
     types:
       - opened
       - synchronize
       - reopened
+      - ready_for_review
   # The main merge queue tests each queued merge commit with the full gate,
   # including the cross-OS jobs that PR pushes skip.
   merge_group:
@@ -47,8 +46,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Temporary pause for the three planned refactor drafts; revert this commit to remove it.
 jobs:
   check:
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Checks (contracts + smoke + production guards)
     runs-on: ubuntu-latest
     timeout-minutes: 300
@@ -176,6 +177,7 @@ jobs:
           if-no-files-found: error
 
   deterministic:
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Tests (${{ matrix.runner }}, ${{ matrix.suite.name }})
     strategy:
       fail-fast: false
@@ -633,7 +635,7 @@ jobs:
     name: Tests (smoke + unit)
     # Still collect failures, but let a superseded run release its concurrency
     # slot instead of waiting for this summary job to obtain another runner.
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44"]'), github.head_ref) || !github.event.pull_request.draft) }}
     needs: [check, deterministic, test_native_terminal, test_live_isolation]
     runs-on: ubuntu-latest
     steps:

@@ -1,3 +1,5 @@
+import { auditBlockField } from "./aidlc-markdown.ts";
+export { auditBlockField } from "./aidlc-markdown.ts";
 // The audit and state core: where a piece of work's record lives (the record
 // folder, the intent registry, the active intent, which work and which chat a
 // command is for, the session bindings and the process ancestry behind them),
@@ -1695,15 +1697,6 @@ export interface AuditMark {
 // they mean. Callers that require uniqueness must reject duplicates separately.
 // Mirrors the per-tool private auditField readers; shared here for
 // humanActedSinceGate.
-export function auditBlockField(block: string, fieldName: string): string | null {
-  const prefix = `**${fieldName}**:`;
-  for (const raw of block.split("\n")) {
-    const line = raw.startsWith("- ") ? raw.slice(2) : raw;
-    if (line.startsWith(prefix)) return line.slice(prefix.length).trim();
-  }
-  return null;
-}
-
 export function gateStagesFromBlock(block: string): string[] {
   const explicit = auditBlockField(block, "Gate Stages");
   if (explicit) {

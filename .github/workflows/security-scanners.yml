@@ -2,6 +2,7 @@ name: Security Scanners
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
   push:
@@ -16,8 +17,10 @@ concurrency:
   group: security-scanners-${{ github.ref }}
   cancel-in-progress: true
 
+# Temporary pause for the three planned refactor drafts; revert this commit to remove it.
 jobs:
   gitleaks:
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Gitleaks (full history)
     runs-on: ubuntu-latest
     permissions:
@@ -85,6 +88,7 @@ jobs:
           exit "$SCANNER_EXIT"
 
   semgrep:
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Semgrep (authored TypeScript)
     runs-on: ubuntu-latest
     permissions:
@@ -150,6 +154,7 @@ jobs:
           exit "$SCANNER_EXIT"
 
   bun-audit:
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Bun audit (critical)
     runs-on: ubuntu-latest
     permissions:

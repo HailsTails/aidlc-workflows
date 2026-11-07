@@ -1504,7 +1504,7 @@ export interface StageContribRecord {
 }
 
 // The one strip of a record's structural adds from a stage's LF text, for a
-// plugin turned off (`stripPluginsTurnedOff()` in aidlc-utility.ts), removed or
+// plugin turned off (`stripPluginsTurnedOff()` in aidlc-plugin-disable.ts), removed or
 // updated (`pruneContributions`), and the config refresh's test of a composed
 // file (aidlc-init.ts). Fragments carry their own markers, and each caller
 // strips them in its own scope.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { catalogueRefreshRecovery, renderCatalogueRefreshWarning } from "./aidlc-catalogue-recovery.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { randomUUID } from "node:crypto";
 import {
@@ -1376,24 +1377,10 @@ export function pluginCatalogueWarning(failure: {
   platform?: NodeJS.Platform;
 }): string {
   const code = (failure.error as NodeJS.ErrnoException | null)?.code;
-  const held = (failure.platform ?? process.platform) === "win32" &&
-    ["EBUSY", "EPERM", "EACCES"].includes(code ?? "");
-  const reason = held
-    ? "a program may have a file in it open"
-    : code === "EACCES" || code === "EPERM"
-    ? "permission denied"
-    : code === "ENOSPC"
-    ? "the disk is full"
-    : code === "EROFS"
-    ? "the disk is read-only"
-    : (failure.error instanceof Error ? failure.error.message : String(failure.error)).split("\n")[0].slice(0, 200);
-  const next = `${held ? "close Claude Code and Codex" : "fix that"}, then run aidlc use ${failure.version}.`;
-  const at = `Warning: the plugin marketplace at ${failure.path}`;
-  return failure.before === null || failure.after !== failure.before
-    ? `${at} was not refreshed (${reason}) and may be incomplete; ${next}`
-    : failure.before === "absent"
-    ? `${at} was not created (${reason}); ${next}`
-    : `${at} was not refreshed (${reason}), so it still lists the earlier plugins; ${next}`;
+  const recovery = catalogueRefreshRecovery({ platform: failure.platform ?? process.platform, errorCode: code });
+  const reason = recovery.reason ??
+    (failure.error instanceof Error ? failure.error.message : String(failure.error)).split("\n")[0].slice(0, 200);
+  return renderCatalogueRefreshWarning({ failure, reason, recoveryAction: recovery.action });
 }
 
 // The release's plugins/ folder, copied whole into the catalogue's one path

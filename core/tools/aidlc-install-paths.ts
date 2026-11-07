@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { compareInstalledRuntimeFiles } from "./aidlc-runtime-inventory.ts";
+import { admitMachineTransactionParent, planMachineTransactionParent } from "./aidlc-machine-transaction-parent.ts";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import {
@@ -112,22 +114,18 @@ export function projectPathOverlapsMachineRoots(projectDir: string): boolean {
 export function machineTransactionRoot(): string {
   const paths = [installRoot(), binRoot()].map((path) => resolve(path));
   const filesystemRoot = parse(paths[0]).root;
-  if (paths.some((path) => parse(path).root !== filesystemRoot)) {
-    throw new Error("machine install and command directories must be on one filesystem root");
-  }
-  const parts = paths.map((path) =>
-    path.slice(filesystemRoot.length).split(/[\\/]/).filter(Boolean)
-  );
-  const shared: string[] = [];
-  for (let index = 0; index < Math.min(...parts.map((value) => value.length)); index++) {
-    if (parts.some((value) => value[index] !== parts[0][index])) break;
-    shared.push(parts[0][index]);
-  }
-  const common = join(filesystemRoot, ...shared);
-  if (common === filesystemRoot) {
-    throw new Error("machine install and command directories need a writable shared parent");
-  }
-  return common;
+  const directories = paths.map((path) => ({
+    filesystemRoot: parse(path).root,
+    segments: path.slice(filesystemRoot.length).split(/[\\/]/).filter(Boolean),
+  }));
+  const parent = planMachineTransactionParent({
+    installDirectory: directories[0],
+    commandDirectory: directories[1],
+  });
+  return admitMachineTransactionParent({
+    filesystemRoot: parent.filesystemRoot,
+    parentPath: join(parent.filesystemRoot, ...parent.segments),
+  });
 }
 
 export function commandPath(): string {
@@ -627,44 +625,8 @@ export function inspectInstalledVersion(
         reason: error instanceof Error ? error.message : String(error),
       };
     }
-    if (baseline.files.length !== actual.files.length) {
-      return {
-        complete: false,
-        distributions: [],
-        reason: "runtime file inventory does not match the installed baseline",
-      };
-    }
-    for (let index = 0; index < actual.files.length; index++) {
-      const expected = baseline.files[index];
-      const current = actual.files[index];
-      if (
-        !expected ||
-        typeof expected.path !== "string" ||
-        !Number.isInteger(expected.mode) ||
-        typeof expected.sha256 !== "string" ||
-        !/^sha256:[a-f0-9]{64}$/.test(expected.sha256)
-      ) {
-        return {
-          complete: false,
-          distributions: [],
-          reason: "runtime integrity baseline contains an invalid file entry",
-        };
-      }
-      if (expected.path !== current.path) {
-        return {
-          complete: false,
-          distributions: [],
-          reason: "runtime file inventory does not match the installed baseline",
-        };
-      }
-      if (expected.mode !== current.mode || expected.sha256 !== current.sha256) {
-        return {
-          complete: false,
-          distributions: [],
-          reason: `runtime file ${current.path} does not match the installed baseline`,
-        };
-      }
-    }
+    const reason = compareInstalledRuntimeFiles({ expectedFiles: baseline.files, actualFiles: actual.files });
+    if (reason !== null) return { complete: false, distributions: [], reason };
   }
   const declared = new Set(
     Array.isArray(manifest.distributions)

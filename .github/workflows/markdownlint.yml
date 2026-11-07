@@ -2,6 +2,7 @@ name: Markdownlint
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - main
   push:
@@ -16,8 +17,10 @@ concurrency:
   group: markdownlint-${{ github.ref }}
   cancel-in-progress: true
 
+# Temporary pause for the three planned refactor drafts; revert this commit to remove it.
 jobs:
   markdownlint:
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Root documentation
     runs-on: ubuntu-latest
     steps:
