@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "discipline": "CD-14",
+  "mechanism": "eslint",
+  "clauses": [
+    {
+      "clause": "class-syntax",
+      "settings": {
+        "pluginNamespace": "discipline",
+        "pluginModule": "cd14/cd14.eslint-plugin.ts",
+        "rule": "no-class-authoring"
+      }
+    },
+    {
+      "clause": "static-only-class",
+      "settings": {
+        "pluginNamespace": "discipline",
+        "pluginModule": "cd14/cd14.eslint-plugin.ts",
+        "rule": "no-extraneous-class",
+        "options": [
+          {
+            "allowConstructorOnly": true,
+            "allowEmpty": true,
+            "allowStaticOnly": false,
+            "allowWithDecorator": true
+          }
+        ]
+      }
+    }
+  ]
+}

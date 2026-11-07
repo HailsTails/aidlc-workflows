@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "id": "CD-44",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "parameter-mutation",
+      "summary": "Functions must not mutate fields of parameters they receive",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "field assignment on a parameter",
+            "fileName": "field.ts",
+            "source": "type Profile = { name: string };\nexport const rename = (profile: Profile, name: string): void => {\n  profile.name = name;\n};\n",
+            "expectedLines": [
+              3
+            ]
+          },
+          {
+            "name": "push on a parameter",
+            "fileName": "push.ts",
+            "source": "export const append = (list: number[], value: number): void => {\n  list.push(value);\n};\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "delete on a parameter field",
+            "fileName": "delete.ts",
+            "source": "export const strip = (record: { extra?: string }): void => {\n  delete record.extra;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "local mutation then return",
+            "fileName": "local.ts",
+            "source": "export const buildRow = (name: string): { name: string } => {\n  const built = { name: \"\" };\n  built.name = name;\n  return built;\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "returns a new value",
+            "fileName": "pure.ts",
+            "source": "export const append = (list: readonly number[], value: number): readonly number[] => [...list, value];\n",
+            "expectedLines": []
+          },
+          {
+            "name": "Map.set is not detected",
+            "fileName": "map.ts",
+            "source": "export const record = (cache: Map<string, number>): void => {\n  cache.set(\"a\", 1);\n};\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "parameter-reassignment",
+      "summary": "Functions must not mutate fields of parameters they receive",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "="
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "assigning to a parameter",
+            "fileName": "src/bump.ts",
+            "source": "export const bump = (count: number): number => {\n  count = count + 1;\n  return count;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "incrementing a parameter",
+            "fileName": "src/bump.ts",
+            "source": "export const bump = (count: number): number => {\n  count++;\n  return count;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "assigning to a parameter's field",
+            "fileName": "src/fill.ts",
+            "source": "export const fill = (target: { value: number }): void => {\n  target.value = 1;\n};\n",
+            "expectedLines": []
+          },
+          {
+            "name": "returning a new value",
+            "fileName": "src/bump.ts",
+            "source": "export const bump = (count: number): number => count + 1;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

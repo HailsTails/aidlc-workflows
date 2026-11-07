@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "discipline": "PD-1",
+  "mechanism": "audit",
+  "clauses": [{ "clause": "no-tmp-files", "settings": { "module": "no-tmp-files.ts" } }]
+}

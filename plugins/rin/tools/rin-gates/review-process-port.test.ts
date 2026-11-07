@@ -1,0 +1,87 @@
+import { describe, expect, test } from "vitest";
+import { defaultPathOperations } from "../rin-harness-path-operations.ts";
+import { defaultReviewProcessPort } from "./review-process-port.ts";
+
+const runtime = defaultReviewProcessPort();
+
+describe("review process boundary", () => {
+  test("returns owned status/text data from synchronous execution", () => {
+    const result = runtime.runSync({ program: "bun", args: ["--version"] });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/^\d+\.\d+\.\d+/);
+    expect(Object.keys(result).sort()).toEqual(["status", "stderr", "stdout"]);
+  });
+
+  test("passes the supplied environment and standard input to a synchronous child", () => {
+    const result = runtime.runSync({
+      program: "bun",
+      args: ["-e", "process.stdin.on('data', (chunk) => process.stdout.write(process.env.REVIEW_PORT_PROBE + ':' + chunk))"],
+      environment: { ...runtime.environment, REVIEW_PORT_PROBE: "probe" },
+      input: "stdin-text",
+    });
+    expect(result.stdout).toBe("probe:stdin-text");
+  });
+
+  test("a synchronous child that outlives its timeout returns no exit status", () => {
+    const result = runtime.runSync({ program: "bun", args: ["-e", "setTimeout(() => {}, 10000)"], timeoutMilliseconds: 200 });
+    expect(result.status).toBeNull();
+  });
+
+  test("returns a synchronous child's standard output as owned bytes", () => {
+    const result = runtime.runSyncBytes({ program: "bun", args: ["-e", "process.stdout.write('bytes')"] });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBeInstanceOf(Uint8Array);
+    expect(new TextDecoder().decode(result.stdout)).toBe("bytes");
+  });
+
+  test("returns owned data after asynchronous child completion", async () => {
+    const result = await runtime.run({ program: "bun", args: ["--version"] });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/^\d+\.\d+\.\d+/);
+    expect(Object.keys(result).sort()).toEqual(["status", "stderr", "stdout"]);
+  });
+
+  test("startup failures do not expose Node error properties", async () => {
+    await expect(runtime.run({ program: "__rin_review_missing_executable__", args: [] })).rejects.not.toHaveProperty("code");
+  });
+});
+
+
+const paths = defaultPathOperations();
+const fileUrlFailure = (url: string): unknown => {
+  try { paths.fromFileUrl({ url }); return undefined; }
+  catch (error) { return error; }
+};
+
+describe("review module location boundary", () => {
+  test("malformed URLs expose no Node error properties", () => {
+    expect(() => paths.fromFileUrl({ url: "not-a-url" })).toThrow(Error);
+    expect(fileUrlFailure("not-a-url")).not.toHaveProperty("code");
+  });
+
+  test("non-file schemes expose no Node error properties", () => {
+    expect(() => paths.fromFileUrl({ url: "https://invalid.test/module" })).toThrow(Error);
+    expect(fileUrlFailure("https://invalid.test/module")).not.toHaveProperty("code");
+  });
+});
+
+
+const syncCommandFailure = (): unknown => {
+  try { runtime.runSync({ program: "\0", args: [] }); return undefined; }
+  catch (error) { return error; }
+};
+
+describe("subprocess argument failure confinement", () => {
+  test("synchronous launch validation exposes only an owned Error", () => {
+    expect(() => runtime.runSync({ program: "\0", args: [] })).toThrow(Error);
+    expect(syncCommandFailure()).toMatchObject({ name: "Error" });
+    expect(syncCommandFailure()).not.toHaveProperty("code");
+    expect(syncCommandFailure()).not.toHaveProperty("cause");
+  });
+
+  test("asynchronous launch validation rejects with an owned Error", async () => {
+    await expect(runtime.run({ program: "\0", args: [] })).rejects.toMatchObject({ name: "Error" });
+    await expect(runtime.run({ program: "\0", args: [] })).rejects.not.toHaveProperty("code");
+    await expect(runtime.run({ program: "\0", args: [] })).rejects.not.toHaveProperty("cause");
+  });
+});

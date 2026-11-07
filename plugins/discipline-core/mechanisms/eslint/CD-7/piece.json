@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "discipline": "CD-7",
+  "mechanism": "eslint",
+  "clauses": [
+    {
+      "clause": "filename-case",
+      "settings": {
+        "pluginNamespace": "discipline-cd7",
+        "pluginModule": "cd7/cd7.eslint-plugin.ts",
+        "rule": "filename-case"
+      }
+    }
+  ]
+}

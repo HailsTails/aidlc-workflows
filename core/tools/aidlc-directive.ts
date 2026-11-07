@@ -34,6 +34,7 @@ import {
   guardOperationMatchesRemedy,
   isGuardRecoveryOperation,
 } from "./aidlc-guard-operation.ts";
+import { type StageApprovalMode, stageParticipationPolicy } from "./aidlc-stage-participation.ts";
 import { readsAlikeInDoubleQuotes } from "./aidlc-runtime-paths.ts";
 
 // --- Public types ---
@@ -344,6 +345,7 @@ export interface RunStageDirective {
   brought_files_note?: string;
   // briefNote(): the lines every agent brief carries on a dispatched topology.
   brief_note?: string;
+  participation_note?: string;
   // ceremonyNote(): the summary confirmation, confirm when on, skip when off.
   ceremony_note?: string;
   // Present only for team-owned unit-major approval beats. The stage body is
@@ -449,6 +451,7 @@ export interface RunStageDirective {
   ceremony: CeremonyPolicy;
   // How this stage's questions are answered (stage-protocol.md section 3, Step 2): ask
   // the mode question, or use `mode` and show `notice` without asking.
+  approval_mode?: StageApprovalMode;
   answer_mode?: StageAnswerMode;
   stage_file: string;
   // Kiro IDE 0.12 has no chat/session id. The engine emits this one-time
@@ -582,6 +585,7 @@ export interface DispatchSubagentDirective {
   // Presentation projection only: detailed fire policy remains on stage-graph.
   sensors_applicable: string[];
   ceremony: CeremonyPolicy;
+  approval_mode?: StageApprovalMode;
   answer_mode?: StageAnswerMode;
   stage_file: string;
   worker: string;
@@ -1057,6 +1061,7 @@ const RUN_STAGE_FIELDS = [
   "other_work_note",
   "brought_files_note",
   "brief_note",
+  "participation_note",
   "ceremony_note",
   "unit_gate",
   "construction_policy",
@@ -1077,6 +1082,7 @@ const RUN_STAGE_FIELDS = [
   "rules_held_note",
   "sensors_applicable",
   "ceremony",
+  "approval_mode",
   "answer_mode",
   "stage_file",
   "reviewer",
@@ -1803,6 +1809,18 @@ export function bodyRuns(d: Record<string, unknown>): boolean {
   return (d.construction_policy as { completion_only?: boolean } | undefined)?.completion_only !== true;
 }
 
+// Participation only: checkpoint authority and evidence keep their own owners.
+export function stageParticipationNote(approvalMode?: StageApprovalMode): string {
+  const policy = stageParticipationPolicy({ approvalMode });
+  if (policy.routineQuestions) return "Follow the stage's declared questions and human approval steps; do not add an approval gate where none is declared.";
+  return "Run this stage without a routine interview, answer-mode choice or human learnings ritual. " +
+    "Apply stage-protocol.md section Reserved operator decisions to every question and action; never invent a person's reply. " +
+    "Keep declared summary confirmation, review, sensors, artifacts and freshness checks. " +
+    "Once verification is settled, report an ordinary stage gate approved through the normal engine command without a human approval menu. " +
+    "Explicit human checkpoints retain their own learnings ritual; Plan Approval, verification-command selection, failure halts and blocking-sensor overrides still require the person. " +
+    "Construction checkpoint, skeleton, Unit and isolated-run instructions retain precedence; workers return evidence and the conductor owns lifecycle reporting.";
+}
+
 // The notes for one emitted directive. `invocation` is how this install runs
 // the orchestrate tool. A rules part carries none: its run-stage repeats the
 // advisory and the notices, and they are said from there, once.
@@ -1819,6 +1837,12 @@ export function withAgentNotes<T extends object>(
   const d = directive as Record<string, unknown>;
   if (d.kind === "load-steering") return directive;
   const notes: Record<string, unknown> = {};
+  if (d.kind === "run-stage" && !stageParticipationPolicy({
+    approvalMode: d.approval_mode as StageApprovalMode | undefined,
+  }).routineQuestions && "answer_mode_note" in d) {
+    const { answer_mode_note: _stale, ...rest } = d;
+    return withAgentNotes(rest, invocation, logInvocation, boltInvocation, changeNoticesFollowUps) as T;
+  }
   if (d.stage_validity !== undefined) {
     const stage = (d.stage_validity as { earliest_affected_stage?: unknown }).earliest_affected_stage;
     notes.stage_validity_note = stageValidityNote(invocation, typeof stage === "string" ? stage : null);
@@ -1859,6 +1883,7 @@ export function withAgentNotes<T extends object>(
       ? d.protocol_modules.filter((module): module is string =>
         typeof module === "string" && (VALID_PROTOCOL_MODULES as readonly string[]).includes(module))
       : [];
+    notes.participation_note = stageParticipationNote(d.approval_mode as StageApprovalMode | undefined);
     const note = protocolNote(d.stage_file, modules);
     if (note !== null) notes.protocol_note = note;
     if (bodyRuns(d)) {
@@ -1868,7 +1893,8 @@ export function withAgentNotes<T extends object>(
       if (isPlainObject(d.ceremony) && (d.ceremony.summary_confirmation === "on" || d.ceremony.summary_confirmation === "off")) {
         notes.ceremony_note = ceremonyNote(d.ceremony.summary_confirmation, d.questions_only === true);
       }
-      if (isPlainObject(d.answer_mode) && typeof d.stage === "string") {
+      if (stageParticipationPolicy({ approvalMode: d.approval_mode as StageApprovalMode | undefined }).routineQuestions &&
+        isPlainObject(d.answer_mode) && typeof d.stage === "string") {
         notes.answer_mode_note = answerModeNote(d.answer_mode as unknown as StageAnswerMode, d.stage, logInvocation);
       }
       const gaps = Array.isArray(d.consumes_absent)
@@ -1882,7 +1908,7 @@ export function withAgentNotes<T extends object>(
     }
     const dispatched = d.mode === "subagent" || d.mode === "pipeline" || d.mode === "mob" || "wave" in d;
     if (dispatched && isPlainObject(d.ceremony)) {
-      const carried = [d.other_work_note, d.brought_files_note].filter((note): note is string => typeof note === "string");
+      const carried = [notes.participation_note, d.other_work_note, d.brought_files_note].filter((note): note is string => typeof note === "string");
       notes.brief_note = briefNote(d.ceremony, modules, carried);
     }
   }
@@ -1901,7 +1927,11 @@ export function withAgentNotes<T extends object>(
     } else if (typeof d.unit_record_step === "string") {
       notes.gate_note = d.unit_record_step;
     } else if (showsGateAgain(d)) {
-      notes.gate_note = gateOnlyNote();
+      const humanCheckpoint = ["construction_checkpoint", "swarm_checkpoint", "unit_gate"].some((field) => field in d) ||
+        (d.construction_policy as { human_completion_required?: boolean } | undefined)?.human_completion_required === true;
+      notes.gate_note = stageParticipationPolicy({
+        approvalMode: d.approval_mode as StageApprovalMode | undefined, requireHuman: humanCheckpoint,
+      }).autonomousApproval ? stageParticipationNote(d.approval_mode as StageApprovalMode) : gateOnlyNote();
     } else if (d.questions_only === true && typeof d.unit === "string") {
       notes.gate_note = unitQuestionsNote(d.unit, invocation);
     } else if (
@@ -1987,6 +2017,7 @@ export function validateDirective(obj: unknown): ValidationResult {
   checkAgentNote(o, "answer_mode_note", "stage_file" in o, kind, errors);
   checkAgentNote(o, "context_note", "stage_file" in o, kind, errors);
   checkAgentNote(o, "brief_note", "stage_file" in o, kind, errors);
+  checkAgentNote(o, "participation_note", "stage_file" in o, kind, errors);
   checkAgentNote(o, "ceremony_note", "stage_file" in o, kind, errors);
   checkAgentNote(o, "inputs_note", Array.isArray(o.consumes_absent) && o.consumes_absent.length > 0, kind, errors);
   checkAgentNote(o, "plan_note", "plan_approval" in o, kind, errors);
@@ -2438,6 +2469,8 @@ function checkRunStageShared(
   }
   checkStringArray(o, "sensors_applicable", kind, errors);
   checkCeremony(o, kind, errors);
+  checkOptionalString(o, "approval_mode", kind, errors);
+  checkEnum(o, "approval_mode", ["human", "autonomous"], kind, errors);
   checkOptionalAnswerMode(o, kind, errors);
   checkString(o, "stage_file", kind, errors);
   checkOptionalLegacyPlanApprovalChoices(o, kind, errors);

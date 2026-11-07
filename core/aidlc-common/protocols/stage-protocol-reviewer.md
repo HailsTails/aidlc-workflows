@@ -1,5 +1,9 @@
 # Reviewer Protocol Module
 
+For a stage using autonomous approval, follow the emitted participation note and
+`stage-protocol.md` section "Reserved operator decisions" before any ordinary
+human-question or approval procedure below. Autonomy never substitutes for review evidence or grants the person-only unfinished-review exception. If the engine refuses, follow its recovery step; never invent a human override. Explicit human checkpoints and Construction routing retain precedence.
+
 Load this module when a directive names a reviewer with an effective review class other than `none`.
 
 ## 12a. Reviewer Invocation

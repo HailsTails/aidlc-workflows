@@ -898,7 +898,7 @@ async function handleExecute(args: string[]): Promise<void> {
     emitAudit(pd, "STAGE_STARTED", {
       Stage: targetSlug,
       Agent: targetStage.lead_agent,
-      ...answerModeStageStartedFields(pd),
+      ...answerModeStageStartedFields(pd, { approvalMode: targetStage.approval_mode }),
       ...jumpSourceBaseline,
     });
   } catch (e) {

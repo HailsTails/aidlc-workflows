@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "id": "CD-5",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "comments-directives",
+      "summary": "No comments, no JSDoc",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "todo without tracker",
+            "fileName": "bare-todo.ts",
+            "source": "// TODO: rename this for clarity\nexport const someValue = 1;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "biome-ignore without tracker",
+            "fileName": "bare-biome-ignore.ts",
+            "source": "export const portNumber = (): number => {\n  // biome-ignore lint/style/noMagicNumbers: literal port\n  return 8080;\n};\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "ts-expect-error without tracker",
+            "fileName": "expect-error.ts",
+            "source": "// @ts-expect-error\nexport const broken: number = \"text\";\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "todo with spec tracker",
+            "fileName": "tracked-todo.ts",
+            "source": "// TODO(spec-42) rename this\nexport const someValue = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "biome-ignore with spec tracker",
+            "fileName": "tracked-ignore.ts",
+            "source": "// biome-ignore lint/style/noMagicNumbers: literal port (spec-7)\nexport const portNumber = 8080;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "ordinary comment is left to review",
+            "fileName": "plain.ts",
+            "source": "// Ordinary prose remains outside this detector.\nexport type ProfileName = string;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

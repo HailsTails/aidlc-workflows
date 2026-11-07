@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "id": "CD-41",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "cognitive-complexity",
+      "summary": "Orchestrators contain only orchestration",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "function"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "sixteen sequential ifs",
+            "fileName": "src/decide.ts",
+            "source": "export function decide(): void {\n  if (flag0) {\n    run();\n  }\n  if (flag1) {\n    run();\n  }\n  if (flag2) {\n    run();\n  }\n  if (flag3) {\n    run();\n  }\n  if (flag4) {\n    run();\n  }\n  if (flag5) {\n    run();\n  }\n  if (flag6) {\n    run();\n  }\n  if (flag7) {\n    run();\n  }\n  if (flag8) {\n    run();\n  }\n  if (flag9) {\n    run();\n  }\n  if (flag10) {\n    run();\n  }\n  if (flag11) {\n    run();\n  }\n  if (flag12) {\n    run();\n  }\n  if (flag13) {\n    run();\n  }\n  if (flag14) {\n    run();\n  }\n  if (flag15) {\n    run();\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "six nested ifs",
+            "fileName": "src/decide.ts",
+            "source": "export function decide(): void {\n  if (level0) {\n    if (level1) {\n      if (level2) {\n        if (level3) {\n          if (level4) {\n            if (level5) {\n              run();\n            }\n          }\n        }\n      }\n    }\n  }\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "a second operator starts a new run",
+            "fileName": "src/decide.ts",
+            "source": "export function decide(): void {\n  if (flag0) {\n    run();\n  }\n  if (flag1) {\n    run();\n  }\n  if (flag2) {\n    run();\n  }\n  if (flag3) {\n    run();\n  }\n  if (flag4) {\n    run();\n  }\n  if (flag5) {\n    run();\n  }\n  if (flag6) {\n    run();\n  }\n  if (flag7) {\n    run();\n  }\n  if (flag8) {\n    run();\n  }\n  if (flag9) {\n    run();\n  }\n  if (flag10) {\n    run();\n  }\n  if (flag11) {\n    run();\n  }\n  if (flag12) {\n    run();\n  }\n  if (flag13) {\n    run();\n  }\n  void (left && right || other);\n}\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "fifteen sequential ifs",
+            "fileName": "src/decide.ts",
+            "source": "export function decide(): void {\n  if (flag0) {\n    run();\n  }\n  if (flag1) {\n    run();\n  }\n  if (flag2) {\n    run();\n  }\n  if (flag3) {\n    run();\n  }\n  if (flag4) {\n    run();\n  }\n  if (flag5) {\n    run();\n  }\n  if (flag6) {\n    run();\n  }\n  if (flag7) {\n    run();\n  }\n  if (flag8) {\n    run();\n  }\n  if (flag9) {\n    run();\n  }\n  if (flag10) {\n    run();\n  }\n  if (flag11) {\n    run();\n  }\n  if (flag12) {\n    run();\n  }\n  if (flag13) {\n    run();\n  }\n  if (flag14) {\n    run();\n  }\n}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "five nested ifs",
+            "fileName": "src/decide.ts",
+            "source": "export function decide(): void {\n  if (level0) {\n    if (level1) {\n      if (level2) {\n        if (level3) {\n          if (level4) {\n            run();\n          }\n        }\n      }\n    }\n  }\n}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "a run of one operator counts once",
+            "fileName": "src/decide.ts",
+            "source": "export function decide(): void {\n  if (flag0) {\n    run();\n  }\n  if (flag1) {\n    run();\n  }\n  if (flag2) {\n    run();\n  }\n  if (flag3) {\n    run();\n  }\n  if (flag4) {\n    run();\n  }\n  if (flag5) {\n    run();\n  }\n  if (flag6) {\n    run();\n  }\n  if (flag7) {\n    run();\n  }\n  if (flag8) {\n    run();\n  }\n  if (flag9) {\n    run();\n  }\n  if (flag10) {\n    run();\n  }\n  if (flag11) {\n    run();\n  }\n  if (flag12) {\n    run();\n  }\n  if (flag13) {\n    run();\n  }\n  void (left && right && other);\n}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "a nested function is scored on its own",
+            "fileName": "src/decide.ts",
+            "source": "export function decide(): void {\n  if (flag0) {\n    run();\n  }\n  if (flag1) {\n    run();\n  }\n  if (flag2) {\n    run();\n  }\n  if (flag3) {\n    run();\n  }\n  if (flag4) {\n    run();\n  }\n  if (flag5) {\n    run();\n  }\n  if (flag6) {\n    run();\n  }\n  if (flag7) {\n    run();\n  }\n  const inner = (): void => {\n    if (inner0) {\n      run();\n    }\n    if (inner1) {\n      run();\n    }\n    if (inner2) {\n      run();\n    }\n    if (inner3) {\n      run();\n    }\n    if (inner4) {\n      run();\n    }\n    if (inner5) {\n      run();\n    }\n    if (inner6) {\n      run();\n    }\n  };\n  inner();\n}\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "function-length",
+      "summary": "Orchestrators contain only orchestration",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "keyword",
+        "keyword": "function"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "fifty-one statement lines",
+            "fileName": "src/steps.ts",
+            "source": "export function steps(): void {\n  step0();\n  step1();\n  step2();\n  step3();\n  step4();\n  step5();\n  step6();\n  step7();\n  step8();\n  step9();\n  step10();\n  step11();\n  step12();\n  step13();\n  step14();\n  step15();\n  step16();\n  step17();\n  step18();\n  step19();\n  step20();\n  step21();\n  step22();\n  step23();\n  step24();\n  step25();\n  step26();\n  step27();\n  step28();\n  step29();\n  step30();\n  step31();\n  step32();\n  step33();\n  step34();\n  step35();\n  step36();\n  step37();\n  step38();\n  step39();\n  step40();\n  step41();\n  step42();\n  step43();\n  step44();\n  step45();\n  step46();\n  step47();\n  step48();\n  step49();\n  step50();\n}\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "blank lines count",
+            "fileName": "src/steps.ts",
+            "source": "export function steps(): void {\n  step0();\n\n  step1();\n\n  step2();\n\n  step3();\n\n  step4();\n\n  step5();\n\n  step6();\n\n  step7();\n\n  step8();\n\n  step9();\n\n  step10();\n\n  step11();\n\n  step12();\n\n  step13();\n\n  step14();\n\n  step15();\n\n  step16();\n\n  step17();\n\n  step18();\n\n  step19();\n\n  step20();\n\n  step21();\n\n  step22();\n\n  step23();\n\n  step24();\n\n  step25();\n}\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "fifty statement lines",
+            "fileName": "src/steps.ts",
+            "source": "export function steps(): void {\n  step0();\n  step1();\n  step2();\n  step3();\n  step4();\n  step5();\n  step6();\n  step7();\n  step8();\n  step9();\n  step10();\n  step11();\n  step12();\n  step13();\n  step14();\n  step15();\n  step16();\n  step17();\n  step18();\n  step19();\n  step20();\n  step21();\n  step22();\n  step23();\n  step24();\n  step25();\n  step26();\n  step27();\n  step28();\n  step29();\n  step30();\n  step31();\n  step32();\n  step33();\n  step34();\n  step35();\n  step36();\n  step37();\n  step38();\n  step39();\n  step40();\n  step41();\n  step42();\n  step43();\n  step44();\n  step45();\n  step46();\n  step47();\n  step48();\n  step49();\n}\n",
+            "expectedLines": []
+          },
+          {
+            "name": "closing brace lines are not counted",
+            "fileName": "src/steps.ts",
+            "source": "export function steps(): void {\n  step0();\n  step1();\n  step2();\n  step3();\n  step4();\n  step5();\n  step6();\n  step7();\n  step8();\n  step9();\n  step10();\n  step11();\n  step12();\n  step13();\n  step14();\n  step15();\n  step16();\n  step17();\n  step18();\n  step19();\n  step20();\n  step21();\n  step22();\n  step23();\n  step24();\n  step25();\n  step26();\n  step27();\n  step28();\n  step29();\n  step30();\n  step31();\n  step32();\n  step33();\n  step34();\n  step35();\n  step36();\n  step37();\n  step38();\n  step39();\n  step40();\n  step41();\n  step42();\n  step43();\n  if (ready0) {\n    run();\n  }\n  if (ready1) {\n    run();\n  }\n  if (ready2) {\n    run();\n  }\n}\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "judgement",
+      "id": "orchestration-only",
+      "summary": "an orchestrator only composes helper calls and assembles their results",
+      "enforcedBy": "review"
+    }
+  ]
+}

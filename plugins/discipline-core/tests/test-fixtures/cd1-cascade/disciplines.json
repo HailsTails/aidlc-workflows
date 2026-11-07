@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "ruleSets": {},
+  "clauses": {
+    "CD-1#any-cast": "audit",
+    "CD-1#explicit-any": "eslint",
+    "CD-1#implicit-any-let": "eslint",
+    "CD-15#loops": "audit"
+  }
+}

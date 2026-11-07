@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-18",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "process-lifecycle-ports",
+      "summary": "process signals, exit, kill and high-resolution timing arrive through an injected port",
+      "enforcedBy": "review"
+    }
+  ]
+}

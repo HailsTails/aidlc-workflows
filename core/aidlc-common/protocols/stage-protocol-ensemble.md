@@ -1,5 +1,9 @@
 # Ensemble Protocol Module
 
+For a stage using autonomous approval, follow the emitted participation note and
+`stage-protocol.md` section "Reserved operator decisions" before any ordinary
+human-question or approval procedure below. The lead settles non-stopping judgment calls from evidence and records the ruling and dissent; only stopping-class calls reach the person. Explicit human checkpoints and Construction routing retain precedence.
+
 Load this module when `directive.mode` is `subagent`, `pipeline`, or `mob`, or when the stage declares support agents; use only the harness subsection that matches the active harness.
 
 ## 5. Multi-agent stages (ensemble topologies)

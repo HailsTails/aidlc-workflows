@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "id": "CD-7",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "categorical-paths",
+      "summary": "No categorical filenames or folder names",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "categorical file name",
+            "fileName": "src/utils.ts",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "types file",
+            "fileName": "src/types.ts",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "file under a categorical folder",
+            "fileName": "src/helpers/format-price.ts",
+            "source": "export const formatPrice = (): string => \"\";\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "hyphenated name containing types",
+            "fileName": "src/account-types.ts",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "capitalised name is not an exact match",
+            "fileName": "src/Types.ts",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "tsx extension is not an exact match",
+            "fileName": "src/types.tsx",
+            "source": "export type ProfileName = string;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    },
+    {
+      "kind": "mechanical",
+      "id": "filename-case",
+      "summary": "No categorical filenames or folder names",
+      "mechanisms": [
+        "eslint"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "camelCase file name",
+            "fileName": "src/userProfile.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "snake_case file name",
+            "fileName": "src/user_profile.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "all-capitals file name",
+            "fileName": "src/README.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": [
+              1
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "kebab-case file name",
+            "fileName": "src/user-profile.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "PascalCase file name",
+            "fileName": "src/UserProfile.tsx",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "kebab-case test file",
+            "fileName": "src/user-profile.test.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "consecutive capitals in PascalCase",
+            "fileName": "src/HTTPServer.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "route segment",
+            "fileName": "src/[slug].ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "lower-case index",
+            "fileName": "src/index.ts",
+            "source": "export const value = 1;\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}

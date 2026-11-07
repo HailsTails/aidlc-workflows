@@ -504,6 +504,8 @@ const LEGACY_ACTIVE_DIRECTIVE_LOCK = ".aidlc-active-directive.lock";
 
 // --- Types ---
 
+import { type StageApprovalMode, stageParticipationPolicy } from "./aidlc-stage-participation.ts";
+
 export interface StageEntry {
   slug: string;
   number: string;
@@ -527,6 +529,7 @@ export interface StageEntry {
   review_artifact?: string;
   reviewer_max_iterations?: number;
   review_class?: "adversarial" | "advisory";
+  approval_mode?: StageApprovalMode;
   // Summary-confirmation policy for stages using the unified question flow.
   // `required` means every execution owes a questions file and receipt;
   // `if-present` enforces a receipt only when the conditional flow created one.
@@ -12634,6 +12637,22 @@ export function isAutonomousConstructionGate(
     getField(stateContent!, "Construction Iteration")?.trim() === "unit-major" &&
     stage.for_each === "unit-of-work"
   );
+}
+
+// The Construction owner supplies its existing grant; stage policy adds only
+// the authored participation choice. No caller may infer a human reply from it.
+export function isAutonomousStageGate(
+  stateContent: string | null,
+  stage: { slug: string; phase: string; for_each?: string; approval_mode?: StageApprovalMode },
+  projectDir?: string,
+  evidence?: ConstructionEvidence,
+  decision: { personDecision?: boolean; requireHuman?: boolean } = {},
+): boolean {
+  return stageParticipationPolicy({
+    approvalMode: stage.approval_mode,
+    constructionGateAutonomous: isAutonomousConstructionGate(stateContent, stage, projectDir, evidence),
+    ...decision,
+  }).autonomousApproval;
 }
 
 export function constructionSkeletonOn(stateContent: string): boolean {
@@ -37850,6 +37869,7 @@ export function emitStageFrontmatter(obj: Record<string, unknown>): string {
     "lead_agent",
     "support_agents",
     "mode",
+    "approval_mode",
     "summary_confirmation",
     "reviewer",
     "review_artifact",
@@ -40448,6 +40468,26 @@ export function latestRecordedAnswerMode(
   return latest;
 }
 
+export { type StageApprovalMode, stageParticipationPolicy } from "./aidlc-stage-participation.ts";
+
+export function isAutonomousStage(stage: { approval_mode?: StageApprovalMode } | undefined): boolean {
+  return !stageParticipationPolicy({ approvalMode: stage?.approval_mode }).routineQuestions;
+}
+
+export function stageApprovalDirectiveFields({
+  projectDir,
+  approvalMode,
+}: {
+  projectDir: string | null;
+  approvalMode?: StageApprovalMode;
+}): { approval_mode: StageApprovalMode; answer_mode?: StageAnswerMode } {
+  const policy = stageParticipationPolicy({ approvalMode });
+  return {
+    approval_mode: policy.approvalMode,
+    ...(policy.routineQuestions ? { answer_mode: resolveStageAnswerMode(projectDir) } : {}),
+  };
+}
+
 export interface StageAnswerMode {
   /** The mode this stage uses without asking; null when it asks. */
   mode: AnswerModeChoice | null;
@@ -40493,8 +40533,9 @@ export function resolveStageAnswerMode(
  */
 export function answerModeStageStartedFields(
   projectDir: string | null,
-  options: { intent?: string; space?: string } = {},
+  options: { intent?: string; space?: string; approvalMode?: StageApprovalMode } = {},
 ): Record<string, string> {
+  if (!stageParticipationPolicy({ approvalMode: options.approvalMode }).routineQuestions) return {};
   try {
     const mode = resolveStageAnswerMode(projectDir, options);
     return mode.mode !== null && mode.reused_from !== null

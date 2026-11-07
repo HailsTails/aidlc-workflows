@@ -187,6 +187,8 @@ export interface SensorResolution {
 // StageEntry in lib.ts carries the same fields as optional so existing
 // runtime callers stay source-compatible without caring about the
 // extended shape.
+import type { StageApprovalMode } from "./aidlc-stage-participation.ts";
+
 export interface GraphStage extends StageEntry {
   plugin?: string;
   enabled?: false;
@@ -263,6 +265,7 @@ export interface GraphStage extends StageEntry {
   review_class?: "adversarial" | "advisory";
   // Deterministic pre-generation consolidated-summary checkpoint policy.
   summary_confirmation?: "required" | "if-present";
+  approval_mode?: StageApprovalMode;
 }
 
 /** A stage a custom plan skips and the stages it keeps that use what it makes (none when no kept stage does). */
@@ -1059,6 +1062,7 @@ const FIELD_ORDER = [
   "reviewer_max_iterations",
   "review_class",
   "summary_confirmation",
+  "approval_mode",
   "inputs",
   "outputs",
   "rules_in_context",
@@ -3210,6 +3214,9 @@ function buildGraphStage(
     // bad value degrades to the strict default rather than leaking through.
     stage.review_class =
       parsed.review_class === "advisory" ? "advisory" : "adversarial";
+  }
+  if (parsed.approval_mode !== undefined) {
+    stage.approval_mode = parsed.approval_mode;
   }
   if (parsed.summary_confirmation !== undefined) {
     stage.summary_confirmation = parsed.summary_confirmation;

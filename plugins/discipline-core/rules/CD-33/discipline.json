@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "CD-33",
+  "clauses": [
+    {
+      "kind": "judgement",
+      "id": "sensitive-brands",
+      "summary": "sensitive branded types redact everywhere, with no opt-out",
+      "enforcedBy": "review"
+    }
+  ]
+}

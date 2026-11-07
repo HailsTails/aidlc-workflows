@@ -1,0 +1,4 @@
+{
+  "jsPlugins": ["./cd14/cd14.eslint-plugin.ts"],
+  "rules": { "rin-discipline/no-class-authoring": "error" }
+}

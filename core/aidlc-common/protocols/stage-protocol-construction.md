@@ -1,5 +1,9 @@
 # Construction Protocol Module
 
+For a stage using autonomous approval, follow the emitted participation note and
+`stage-protocol.md` section "Reserved operator decisions" before any ordinary
+human-question or approval procedure below. Explicit human checkpoints and Construction routing retain precedence.
+
 The verified Unit checkpoint policy applies to solo workflows with a real Unit
 DAG and an included stage that produces workspace source. Design-only scopes
 and scopes without Units keep their existing stage approval flow; they do not

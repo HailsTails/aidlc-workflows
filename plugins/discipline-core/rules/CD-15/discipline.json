@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "id": "CD-15",
+  "clauses": [
+    {
+      "kind": "mechanical",
+      "id": "loops",
+      "summary": "Iteration is functional transformation, never an imperative loop",
+      "mechanisms": [
+        "audit"
+      ],
+      "anchor": {
+        "kind": "file"
+      },
+      "cases": {
+        "flag": [
+          {
+            "name": "for-of loop",
+            "fileName": "for-of.ts",
+            "source": "declare const orders: readonly { readonly total: number }[];\nconst totals: number[] = [];\nfor (const order of orders) {\n  totals.push(order.total);\n}\n",
+            "expectedLines": [
+              3
+            ]
+          },
+          {
+            "name": "for-await loop",
+            "fileName": "for-await.ts",
+            "source": "declare const stream: AsyncIterable<number>;\nfor await (const entry of stream) console.log(entry);\n",
+            "expectedLines": [
+              2
+            ]
+          },
+          {
+            "name": "counted for loop",
+            "fileName": "counted.ts",
+            "source": "for (let index = 0; index < 2; index++) console.log(index);\n",
+            "expectedLines": [
+              1
+            ]
+          },
+          {
+            "name": "while loop",
+            "fileName": "while.ts",
+            "source": "declare const queue: number[];\nwhile (queue.length) queue.pop();\n",
+            "expectedLines": [
+              2
+            ]
+          }
+        ],
+        "allow": [
+          {
+            "name": "array pipeline",
+            "fileName": "pipeline.ts",
+            "source": "export const totals = (orders: readonly { readonly total: number }[]): readonly number[] => orders.map((order) => order.total);\n",
+            "expectedLines": []
+          },
+          {
+            "name": "loop text in a comment line",
+            "fileName": "commented.ts",
+            "source": "// while (queue.length) drain();\nexport const value = 1;\n",
+            "expectedLines": []
+          },
+          {
+            "name": "switch statement",
+            "fileName": "switch.ts",
+            "source": "export const pick = (kind: \"a\" | \"b\"): number => {\n  switch (kind) {\n    case \"a\": return 1;\n    case \"b\": return 2;\n  }\n};\n",
+            "expectedLines": []
+          }
+        ]
+      }
+    }
+  ]
+}
