@@ -1,4 +1,5 @@
-import { pipelineAttemptFloorIn, pipelineEventAfterFloor, singleStageAttemptOpenIn, singleStageAttemptFieldIn, type PipelineAttemptFloor } from "./aidlc-attempt-boundary.ts";
+import { attemptEventPosition } from "./aidlc-attempt-boundary.ts";
+import { auditAttemptFloor, auditIsolatedAttemptState, auditIsolatedAttemptField, type PipelineAttemptFloor } from "./aidlc-attempt-audit.ts";
 import { parseLiteralShellInvocation, shellCommandSegments } from "./aidlc-shell-invocation.ts";
 export { parseLiteralShellInvocation } from "./aidlc-shell-invocation.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
@@ -34007,10 +34008,13 @@ export function supportAgentsAtOpenGate(
   } catch {
     return current;
   }
-  const floor = pipelineAttemptFloor(events, stage.slug, false, guardPolicyAcceptsChanges(projectDir));
+  const floor = auditAttemptFloor(events, {
+    scope: { stage: stage.slug, mode: "pipeline", rejection: guardPolicyAcceptsChanges(projectDir) ? "retain" : "reset" },
+    jumpTarget: (block, slug) => stageJumpReaches(block, slug) ? "reaches" : "misses",
+  });
   let gate: OrderedPipelineEvidenceEvent | null = null;
   for (const entry of events) {
-    if (!pipelineEventAfterFloor(entry, floor)) continue;
+    if (attemptEventPosition(entry, floor) !== "after") continue;
     if (auditBlockField(entry.block, "Workflow")?.startsWith("single-stage:")) continue;
     if (auditBlockField(entry.block, "Stage") !== stage.slug) continue;
     if (entry.event === "STAGE_AWAITING_APPROVAL") {
@@ -34028,7 +34032,7 @@ export function supportAgentsAtOpenGate(
   const flip = events.find((entry) =>
     entry.event === "CEREMONY_SET" &&
     auditBlockField(entry.block, "Key") === "collaborators" &&
-    pipelineEventAfterFloor(entry, opened)
+    attemptEventPosition(entry, opened) === "after"
   );
   if (flip === undefined) return current;
   const before = parseCeremonySetting(auditBlockField(flip.block, "Old"));
@@ -34052,9 +34056,7 @@ function orderedPipelineEvidenceEvents(
   });
 }
 
-function pipelineAttemptFloor(events: OrderedPipelineEvidenceEvent[], stageSlug: string, singleRun: boolean, rejectionKeepsReceipts = false): PipelineAttemptFloor | null {
-  return pipelineAttemptFloorIn(events, stageSlug, singleRun, rejectionKeepsReceipts, stageJumpReaches);
-}
+
 
 export function pipelineAttemptStartedAt(
   projectDir: string,
@@ -34062,11 +34064,10 @@ export function pipelineAttemptStartedAt(
   options: { singleRun?: boolean } = {},
 ): string {
   const events = orderedPipelineEvidenceEvents(projectDir);
-  const floor = pipelineAttemptFloor(
-    events,
-    stageSlug,
-    options.singleRun === true,
-  );
+  const floor = auditAttemptFloor(events, {
+    scope: { stage: stageSlug, mode: options.singleRun === true ? "isolated" : "pipeline", rejection: "reset" },
+    jumpTarget: (block, slug) => stageJumpReaches(block, slug) ? "reaches" : "misses",
+  });
   return floor?.timestamp ?? "";
 }
 
@@ -34080,7 +34081,7 @@ export function singleStageAttemptScope(projectDir: string, slug: string): strin
 // A field the latest isolated start of <slug> recorded (Scope, Depth, Test
 // Strategy), or null when that start did not record it.
 export function singleStageAttemptField(projectDir: string, slug: string, field: string): string | null {
-  return singleStageAttemptFieldIn(readAuditShardEvents(projectDir), slug, field);
+  return auditIsolatedAttemptField(readAuditShardEvents(projectDir), { stage: slug, field });
 }
 
 // The Test Strategy an isolated Code Generation run took for itself, while the
@@ -34097,7 +34098,7 @@ export function singleStageAttemptIsOpen(
   projectDir: string,
   stageSlug: string,
 ): boolean {
-  return singleStageAttemptOpenIn(orderedPipelineEvidenceEvents(projectDir), stageSlug);
+  return auditIsolatedAttemptState(orderedPipelineEvidenceEvents(projectDir), stageSlug) === "open";
 }
 
 // An isolated run of any stage started on the selection's own record and not
@@ -34117,7 +34118,7 @@ export function isolatedRunIsOpen(projectDir: string, selection: WorkflowSelecti
     const stage = auditBlockField(entry.block, "Stage");
     if (stage && auditBlockField(entry.block, "Workflow") === `single-stage:${stage}`) stages.add(stage);
   }
-  return [...stages].some((stage) => singleStageAttemptOpenIn(events, stage));
+  return [...stages].some((stage) => auditIsolatedAttemptState(events, stage) === "open");
 }
 
 // With no work selected, an isolated run keeps its record in the space's own,
@@ -34188,7 +34189,7 @@ export function singleRunRequest(projectDir: string): { stage: string; descripti
     const stage = auditBlockField(entry.block, "Stage");
     if (
       entry.event === "STAGE_STARTED" && stage !== null &&
-      auditBlockField(entry.block, "Workflow") === `single-stage:${stage}` && singleStageAttemptOpenIn(events, stage)
+      auditBlockField(entry.block, "Workflow") === `single-stage:${stage}` && auditIsolatedAttemptState(events, stage) === "open"
     ) {
       start = entry;
     }
@@ -34223,10 +34224,13 @@ export function currentPipelineLinkReceipts(
   const workflow = `single-stage:${stageSlug}`;
   // Under Guard Policy relaxed or off, Request Changes for a targeted fix keeps
   // the pipeline's earlier handoffs: the agents do not all run again.
-  const floor = pipelineAttemptFloor(events, stageSlug, singleRun, guardPolicyAcceptsChanges(projectDir));
+  const floor = auditAttemptFloor(events, {
+    scope: { stage: stageSlug, mode: singleRun ? "isolated" : "pipeline", rejection: guardPolicyAcceptsChanges(projectDir) ? "retain" : "reset" },
+    jumpTarget: (block, slug) => stageJumpReaches(block, slug) ? "reaches" : "misses",
+  });
   const receipts: PipelineLinkReceipt[] = [];
   for (const entry of events) {
-    if (!pipelineEventAfterFloor(entry, floor)) continue;
+    if (attemptEventPosition(entry, floor) !== "after") continue;
     const eventWorkflow = auditBlockField(entry.block, "Workflow");
     if (
       entry.event !== "PIPELINE_LINK_COMPLETED" ||
@@ -34354,11 +34358,14 @@ function currentPipelineReuseEvidence(
   singleRun: boolean,
 ): Set<string | null> {
   const events = orderedPipelineEvidenceEvents(projectDir);
-  const floor = pipelineAttemptFloor(events, stageSlug, singleRun, guardPolicyAcceptsChanges(projectDir));
+  const floor = auditAttemptFloor(events, {
+    scope: { stage: stageSlug, mode: singleRun ? "isolated" : "pipeline", rejection: guardPolicyAcceptsChanges(projectDir) ? "retain" : "reset" },
+    jumpTarget: (block, slug) => stageJumpReaches(block, slug) ? "reaches" : "misses",
+  });
   const workflow = `single-stage:${stageSlug}`;
   const reused = new Set<string | null>();
   for (const entry of events) {
-    if (!pipelineEventAfterFloor(entry, floor)) continue;
+    if (attemptEventPosition(entry, floor) !== "after") continue;
     const eventWorkflow = auditBlockField(entry.block, "Workflow");
     if (
       entry.event !== "ARTIFACT_REUSED" ||

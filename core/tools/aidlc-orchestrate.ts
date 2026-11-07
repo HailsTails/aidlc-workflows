@@ -18764,8 +18764,8 @@ const FORWARD_RESULTS = new Set(["approved", "completed", "complete", "done"]);
 // The forward results that claim completion rather than name an approval.
 const COMPLETION_RESULTS = new Set(["completed", "complete", "done"]);
 // What the agent does after Request Changes on a pipeline stage, read from the
-// rule that decides it (guardPolicyAcceptsChanges, which pipelineAttemptFloor
-// reads too): under strict the rejection starts a fresh chain; under relaxed or
+// rule that decides it (guardPolicyAcceptsChanges, also supplied to auditAttemptFloor):
+// under strict the rejection starts a fresh chain; under relaxed or
 // off the links already recorded still hold. Either way the links the attempt
 // still owes are named with their exact commands.
 function pipelineRejectedMessage(pd: string, node: GraphStage, slug: string): string {

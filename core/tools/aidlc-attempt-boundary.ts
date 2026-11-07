@@ -1,123 +1,97 @@
-// Pure attempt boundaries over captured, ordered audit rows. No record selection or policy decision.
-import type { AuditShardEvent } from "./aidlc-record-core.ts";
-import { auditBlockField } from "./aidlc-markdown.ts";
-type OrderedPipelineEvidenceEvent = AuditShardEvent;
-
-export interface PipelineAttemptFloor {
-  timestamp: string;
-  rows: OrderedPipelineEvidenceEvent[];
+// Attempt policy consumes observations, not the representation of the audit record.
+export interface AttemptPosition {
+  readonly timestamp: string;
+  readonly shard: string;
+  readonly shardIndex: number;
+  readonly pos: number;
 }
 
-export function pipelineAttemptFloorIn(
-  events: OrderedPipelineEvidenceEvent[],
-  stageSlug: string,
-  singleRun: boolean,
-  rejectionKeepsReceipts: boolean,
-  stageJumpReaches: (block: string, slug: string) => boolean,
-): PipelineAttemptFloor | null {
-  const workflow = `single-stage:${stageSlug}`;
-  const boundaries = events.filter((entry) => {
-    const eventWorkflow = auditBlockField(entry.block, "Workflow");
-    if (
-      !singleRun &&
-      (
-        entry.event === "WORKFLOW_STARTED" ||
-        (entry.event === "STAGE_JUMPED" && stageJumpReaches(entry.block, stageSlug)) ||
-        (
-          entry.event === "GATE_REJECTED" &&
-          !rejectionKeepsReceipts &&
-          auditBlockField(entry.block, "Stage") === stageSlug
-        )
-      ) &&
-      !eventWorkflow?.startsWith("single-stage:")
-    ) {
-      return true;
-    }
-    return (
-      entry.event === "STAGE_STARTED" &&
-      auditBlockField(entry.block, "Stage") === stageSlug &&
-      (
-        singleRun
-          ? eventWorkflow === workflow
-          : !eventWorkflow?.startsWith("single-stage:")
-      )
-    );
-  });
-  if (boundaries.length === 0) return null;
-  const timestamp = boundaries[boundaries.length - 1].timestamp;
-  return {
-    timestamp,
-    rows: boundaries.filter((entry) => entry.timestamp === timestamp),
-  };
+export type AttemptWorkflow = { readonly mode: "pipeline" } | { readonly mode: "isolated"; readonly stage: string };
+export type AttemptAction = "workflow-start" | "stage-start" | "stage-complete" | "rejection" | "jump-reaches" | "unrelated";
+export interface AttemptObservation<Row extends AttemptPosition> {
+  readonly source: Row;
+  readonly action: AttemptAction;
+  readonly stage: string | null;
+  readonly workflow: AttemptWorkflow;
 }
 
-export function pipelineEventAfterFloor(
-  entry: OrderedPipelineEvidenceEvent,
-  floor: PipelineAttemptFloor | null,
-): boolean {
-  if (floor === null) return true;
-  if (entry.timestamp !== floor.timestamp) {
-    return entry.timestamp > floor.timestamp;
-  }
+export interface AttemptScope {
+  readonly stage: string;
+  readonly mode: "pipeline" | "isolated";
+  readonly rejection: "reset" | "retain";
+}
+
+export interface AttemptFloor<Row extends AttemptPosition> {
+  readonly timestamp: string;
+  readonly rows: readonly Row[];
+}
+
+type FloorOrder = { readonly kind: "ambiguous" } | { readonly kind: "ordered"; readonly shard: string; readonly position: number };
+export type AttemptState = "not-started" | "ambiguous" | "completed" | "open";
+
+function workflowParticipation(workflow: AttemptWorkflow, scope: AttemptScope): "included" | "excluded" {
+  if (scope.mode === "pipeline") return workflow.mode === "pipeline" ? "included" : "excluded";
+  return workflow.mode === "isolated" && workflow.stage === scope.stage ? "included" : "excluded";
+}
+
+function boundaryRole<Row extends AttemptPosition>(observation: AttemptObservation<Row>, scope: AttemptScope): "boundary" | "evidence" {
+  if (workflowParticipation(observation.workflow, scope) === "excluded") return "evidence";
+  if (observation.action === "stage-start" && observation.stage === scope.stage) return "boundary";
+  if (scope.mode === "isolated") return "evidence";
+  if (observation.action === "workflow-start" || observation.action === "jump-reaches") return "boundary";
+  return observation.action === "rejection" && scope.rejection === "reset" && observation.stage === scope.stage ? "boundary" : "evidence";
+}
+
+export function attemptFloor<Row extends AttemptPosition>(observations: readonly AttemptObservation<Row>[], scope: AttemptScope): AttemptFloor<Row> | null {
+  const boundaries = observations.filter((observation) => boundaryRole(observation, scope) === "boundary");
+  const last = boundaries.at(-1);
+  if (last === undefined) return null;
+  // The supplied order is authoritative: do not replace its last boundary with a timestamp maximum.
+  const timestamp = last.source.timestamp;
+  return { timestamp, rows: boundaries.filter((observation) => observation.source.timestamp === timestamp).map((observation) => observation.source) };
+}
+
+function floorOrder<Row extends AttemptPosition>(floor: AttemptFloor<Row>): FloorOrder {
   const shards = new Set(floor.rows.map((row) => row.shard));
-  if (shards.size !== 1) return false;
-  const shard = floor.rows[0].shard;
-  if (entry.shard !== shard) return false;
-  const maxPos = Math.max(...floor.rows.map((row) => row.pos));
-  return entry.pos > maxPos;
+  const first = floor.rows[0];
+  if (shards.size !== 1 || first === undefined) return { kind: "ambiguous" };
+  return { kind: "ordered", shard: first.shard, position: Math.max(...floor.rows.map((row) => row.pos)) };
 }
 
-export function singleStageAttemptOpenIn(
-  events: OrderedPipelineEvidenceEvent[],
-  stageSlug: string,
-): boolean {
-  const workflow = `single-stage:${stageSlug}`;
-  const floor = pipelineAttemptFloorIn(events, stageSlug, true, false, () => false);
-  if (floor === null) return false;
-  const floorShards = new Set(floor.rows.map((row) => row.shard));
-  if (floorShards.size !== 1) return false;
-  const floorShard = floor.rows[0].shard;
-  const floorPos = Math.max(...floor.rows.map((row) => row.pos));
-  for (const entry of events) {
-    if (
-      entry.event !== "STAGE_COMPLETED" ||
-      auditBlockField(entry.block, "Stage") !== stageSlug ||
-      auditBlockField(entry.block, "Workflow") !== workflow
-    ) {
-      continue;
-    }
-    if (pipelineEventAfterFloor(entry, floor)) return false;
-    if (
-      entry.timestamp === floor.timestamp &&
-      entry.shard !== floorShard
-    ) {
-      return false;
-    }
-    if (
-      entry.timestamp === floor.timestamp &&
-      entry.shard === floorShard &&
-      entry.pos > floorPos
-    ) {
-      return false;
-    }
-  }
-  return true;
+export function attemptEventPosition<Row extends AttemptPosition>(entry: Row, floor: AttemptFloor<Row> | null): "after" | "not-after" {
+  if (floor === null) return "after";
+  // Audit timestamps have always used string ordering, including non-ISO values.
+  if (entry.timestamp !== floor.timestamp) return entry.timestamp > floor.timestamp ? "after" : "not-after";
+  const order = floorOrder(floor);
+  return order.kind === "ordered" && entry.shard === order.shard && entry.pos > order.position ? "after" : "not-after";
 }
 
-export function singleStageAttemptFieldIn(events: readonly AuditShardEvent[], slug: string, field: string): string | null {
-  const workflow = `single-stage:${slug}`;
-  const attemptStart = events
-    .filter((entry) =>
-      entry.event === "STAGE_STARTED" &&
-      auditBlockField(entry.block, "Stage") === slug &&
-      auditBlockField(entry.block, "Workflow") === workflow
-    )
-    .sort((a, b) => {
-      if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
-      if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
-      return a.pos - b.pos;
-    })
-    .pop();
-  return attemptStart ? auditBlockField(attemptStart.block, field) : null;
+function completionPosition<Row extends AttemptPosition>(entry: Row, floor: AttemptFloor<Row>): "later" | "ambiguous" | "earlier" {
+  if (attemptEventPosition(entry, floor) === "after") return "later";
+  const order = floorOrder(floor);
+  return entry.timestamp === floor.timestamp && order.kind === "ordered" && entry.shard !== order.shard ? "ambiguous" : "earlier";
 }
 
+export function isolatedAttemptState<Row extends AttemptPosition>(observations: readonly AttemptObservation<Row>[], stage: string): AttemptState {
+  const scope: AttemptScope = { stage, mode: "isolated", rejection: "reset" };
+  const floor = attemptFloor(observations, scope);
+  if (floor === null) return "not-started";
+  if (floorOrder(floor).kind === "ambiguous") return "ambiguous";
+  const completions = observations.filter((observation) => observation.action === "stage-complete" && observation.stage === stage && workflowParticipation(observation.workflow, scope) === "included");
+  const closing = completions.map((observation) => completionPosition(observation.source, floor));
+  if (closing.includes("later")) return "completed";
+  return closing.includes("ambiguous") ? "ambiguous" : "open";
+}
+
+function compareAttemptPositions(left: AttemptPosition, right: AttemptPosition): number {
+  if (left.timestamp !== right.timestamp) return left.timestamp < right.timestamp ? -1 : 1;
+  if (left.shardIndex !== right.shardIndex) return left.shardIndex - right.shardIndex;
+  return left.pos - right.pos;
+}
+
+export function latestIsolatedStart<Row extends AttemptPosition>(observations: readonly AttemptObservation<Row>[], stage: string): Row | null {
+  const scope: AttemptScope = { stage, mode: "isolated", rejection: "reset" };
+  const starts = observations.filter((observation) => observation.action === "stage-start" && observation.stage === stage && workflowParticipation(observation.workflow, scope) === "included");
+  // Stable sorting retains the last supplied row when every ordering key ties.
+  return starts.map((observation) => observation.source).sort(compareAttemptPositions).at(-1) ?? null;
+}
