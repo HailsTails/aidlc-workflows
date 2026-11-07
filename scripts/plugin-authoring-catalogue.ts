@@ -1,12 +1,11 @@
 import type { HarnessManifest } from "./manifest-types.ts";
-import type { PluginTarget } from "../core/tools/aidlc-plugin-emit.ts";
 
 export type PluginTargetDeclaration = Pick<HarnessManifest, "name" | "harnessDir" | "plugin">;
 
 export function projectPluginTarget({ manifest, installRoots }: {
   readonly manifest: PluginTargetDeclaration;
   readonly installRoots: ReadonlySet<string>;
-}): PluginTarget {
+}) {
   const manifestDir = manifest.plugin?.manifestDir ?? `${manifest.harnessDir}-plugin`;
   return {
     harnessName: manifest.name,

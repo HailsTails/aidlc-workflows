@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { sortPluginAuthoringNames, projectPluginTarget } from "./plugin-authoring-catalogue.ts";
-import type { PluginTargetKind } from "../core/tools/aidlc-plugin-emit.ts";
+import type { PluginTargetDeclaration } from "./plugin-authoring-catalogue.ts";
+type PluginTargetKind = NonNullable<PluginTargetDeclaration["plugin"]>["kind"];
 
 const manifest = { name: "declared-name", harnessDir: ".engine" };
 const installRoots = new Set(["aidlc", ".engine"]);
