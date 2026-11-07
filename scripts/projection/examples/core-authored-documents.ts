@@ -43,7 +43,7 @@ const prepareDocumentOwners = async ({ request, policy, catalogue, services }: {
   const [skills, knowledge, agents, guidance, entries, onboarding, sensors] = await Promise.all([
     services.skills({ ...preparationLocation, context: { ...request.context, memoryRoot: "aidlc/active-memory", modelInvocation: qualifiedHarnessProfile(request.context)!.modelInvocation } }),
     services.knowledge({ ...preparationLocation, context: request.context }),
-    services.agents({ ...preparationLocation, context: { ...request.context, tierCap: policy.tierCap, models: policy.models, sharedKnowledge: "methodology-only", knowledgeRead: "ordinary", memoryReference: qualifiedHarnessProfile(request.context)!.agentMemoryReference, ...(qualifiedHarnessProfile(request.context)!.agentTurnLimit === null ? {} : { turnLimitProjection: qualifiedHarnessProfile(request.context)!.agentTurnLimit! }) }, catalogue }),
+    services.agents({ ...preparationLocation, workRoot: request.workRoot, context: { ...request.context, tierCap: policy.tierCap, models: policy.models, sharedKnowledge: "methodology-only", knowledgeRead: qualifiedHarnessProfile(request.context)!.agentKnowledgeRead ?? "ordinary", memoryReference: qualifiedHarnessProfile(request.context)!.agentMemoryReference, ...(qualifiedHarnessProfile(request.context)!.agentTurnLimit === null ? {} : { turnLimitProjection: qualifiedHarnessProfile(request.context)!.agentTurnLimit! }) }, catalogue }),
     services.guidance({ ...preparationLocation, context: request.context }),
     services.entries({ ...preparationLocation, context: request.context }),
     services.onboarding({ ...preparationLocation, workRoot: request.workRoot, context: request.context }),

@@ -35,8 +35,8 @@ const observe = async () => {
 };
 const admitManifest = ({ manifest }) => {
   const spec = manifest?.onboarding;
-  if (input.harness === "codex" || input.harness === "cursor") {
-    if (manifest?.name !== input.harness || manifest?.harnessDir !== input.harnessDir || spec?.dst !== "AGENTS.md" || spec?.projectRoot !== true || spec?.harnessDst !== (input.harness === "cursor" ? "rules/aidlc-onboarding.mdc" : "onboarding.md") || Object.keys(spec).some(key => !["dst", "fills", "projectRoot", "harnessDst"].includes(key))) return unavailable({ detail: "unsupported Codex onboarding placement" });
+  if (input.harness === "codex" || input.harness === "cursor" || input.harness === "kiro") {
+    if (manifest?.name !== input.harness || manifest?.harnessDir !== input.harnessDir || spec?.dst !== "AGENTS.md" || spec?.projectRoot !== true || spec?.harnessDst !== (input.harness === "cursor" ? "rules/aidlc-onboarding.mdc" : input.harness === "kiro" ? "steering/aidlc-onboarding.md" : "onboarding.md") || Object.keys(spec).some(key => !["dst", "fills", "projectRoot", "harnessDst"].includes(key))) return unavailable({ detail: "unsupported Codex onboarding placement" });
   } else if (manifest?.name !== "claude" || manifest?.harnessDir !== ".claude" || spec?.dst !== "CLAUDE.md" || spec.projectRoot !== undefined && spec.projectRoot !== false || spec.harnessDst !== undefined || Object.keys(spec).some(key => !["dst", "fills", "projectRoot"].includes(key))) return unavailable({ detail: "onboarding requires the declared Claude combined harness destination; split or project-root placement is not qualified" });
   if (typeof spec.fills?.invoke !== "string" || typeof spec.fills?.slots !== "object" || spec.fills.slots === null || Array.isArray(spec.fills.slots) || Object.values(spec.fills.slots).some(fill => typeof fill !== "string") || Object.keys(spec.fills).some(key => !["invoke", "slots"].includes(key))) return unavailable({ detail: "onboarding requires native string slot fills" });
   return { status: "ok", spec };
@@ -66,7 +66,7 @@ const renderNative = async ({ spec, renderer, projection }) => {
   const neutral = renderer.renderNeutralOnboarding(await readText({ path: "core/templates/onboarding.md" }));
   const nativeSkeleton = await readText({ path: "core/templates/onboarding-harness.md" });
   const documents = projection.projectOnboardingDocuments({ neutral, nativeSkeleton, shared: { root: input.harness !== "claude" ? "project" : "harness", path: spec.dst }, nativePath: spec.harnessDst ?? null });
-  if (input.harness === "codex" || input.harness === "cursor") {
+  if (input.harness === "codex" || input.harness === "cursor" || input.harness === "kiro") {
     if (documents.length !== 2 || documents[0].kind !== "neutral" || documents[1].kind !== "native") return unavailable({ detail: "Codex requires the neutral and native onboarding pair" });
     const text = renderer.renderOnboarding(documents[1].content, spec.fills);
     return { status: "ok", neutral: documents[0].content, text: input.harness === "codex" ? text.replaceAll(".codex/skills/", ".agents/skills/") : text };
@@ -91,7 +91,7 @@ try { process.stdout.write(JSON.stringify(await prepare())); }
 catch { process.stdout.write(JSON.stringify(unavailable({ detail: "onboarding authored inputs or native rendering unavailable" }))); }
 `;
 const failure = ({ detail, code = "capability-gap" }: { readonly detail: string; readonly code?: "capability-gap" | "foreign-content" | "invalid-input" }): Outcome<never> => ({ status: "invalid", findings: [finding({ code, subject: "onboarding-source", detail })] });
-const admitRequest = ({ request }: { readonly request: OnboardingRequest }): Outcome<OnboardingRequest> => request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || !((request.context.harness === "claude" && request.context.directory === ".claude" && request.context.rulesSubdir === "rules") || (request.context.harness === "codex" && request.context.directory === ".codex" && request.context.rulesSubdir === "aidlc-rules") || (request.context.harness === "cursor" && request.context.directory === ".cursor" && request.context.rulesSubdir === "rules")) || ![`bun ${request.context.directory}/tools/aidlc.ts`, "aidlc"].includes(request.context.invocation)
+const admitRequest = ({ request }: { readonly request: OnboardingRequest }): Outcome<OnboardingRequest> => request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || !((request.context.harness === "claude" && request.context.directory === ".claude" && request.context.rulesSubdir === "rules") || (request.context.harness === "codex" && request.context.directory === ".codex" && request.context.rulesSubdir === "aidlc-rules") || (request.context.harness === "cursor" && request.context.directory === ".cursor" && request.context.rulesSubdir === "rules") || (request.context.harness === "kiro" && request.context.directory === ".kiro" && request.context.rulesSubdir === "steering")) || ![`bun ${request.context.directory}/tools/aidlc.ts`, "aidlc"].includes(request.context.invocation)
   ? failure({ detail: "onboarding qualifies a pinned framework source with the Claude copy or native binding and declared rules directory" }) : { status: "ok", value: request };
 type PreparedOnboardingReply = z.infer<typeof replySchema> & { readonly status: "ok" };
 const admitWitnesses = ({ prepared, request }: { readonly prepared: PreparedOnboardingReply; readonly request: OnboardingRequest }): Outcome<PreparedOnboardingReply> => {
@@ -103,11 +103,11 @@ const retainRenderedOnboarding = ({ prepared, request, text }: { readonly prepar
   if (/\{\{[^{}\r\n]+\}\}/.test(text)) return failure({ code: "invalid-input", detail: "onboarding contains an unsupported authored template marker" });
   const codex = request.context.harness === "codex";
   if (codex) text = text.replaceAll(".codex/skills/", ".agents/skills/");
-  const split = codex || request.context.harness === "cursor";
+  const split = codex || request.context.harness === "cursor" || request.context.harness === "kiro";
   if (split !== (prepared.neutral !== undefined)) return failure({ code: "foreign-content", detail: "onboarding must retain the selected combined or split document shape" });
   const authoring = prepared.inputs.filter(input => input.path !== "core/templates/onboarding.md").map(input => ({ ...request.basis, path: input.path }));
   const document = { authored: { role: "onboarding" as const, origin: { ...request.basis, path: "core/templates/onboarding.md" }, text: prepared.text }, binding: copyHarnessBinding({ binding: request.context }), text, authoring };
-  return { status: "ok", value: { inputs: prepared.inputs, documents: split ? [{ ...document, destination: "AGENTS.md", authored: { ...document.authored, text: prepared.neutral! }, text: prepared.neutral! }, { ...document, destination: codex ? ".codex/onboarding.md" : ".cursor/rules/aidlc-onboarding.mdc" }] : [document] } };
+  return { status: "ok", value: { inputs: prepared.inputs, documents: split ? [{ ...document, destination: "AGENTS.md", authored: { ...document.authored, text: prepared.neutral! }, text: prepared.neutral! }, { ...document, destination: codex ? ".codex/onboarding.md" : request.context.harness === "kiro" ? ".kiro/steering/aidlc-onboarding.md" : ".cursor/rules/aidlc-onboarding.mdc" }] : [document] } };
 };
 const retainOnboarding = ({ prepared, request, operations }: { readonly prepared: PreparedOnboardingReply; readonly request: OnboardingRequest; readonly operations: OnboardingOperations }): Promise<Outcome<PreparedHarnessDocuments>> => continuePreparation({ previous: admitWitnesses({ prepared, request }), consume: ({ prepared: admitted }) => continuePreparation({ previous: operations.prose({ markdown: admitted.text, context: { ...request.context, optionLetters: null }, subject: "core/templates/onboarding.md" }), consume: ({ prepared: text }) => retainRenderedOnboarding({ prepared: admitted, request, text }) }) });
 const decodeOnboarding = async ({ stdout, request, operations }: { readonly stdout: string; readonly request: OnboardingRequest; readonly operations: OnboardingOperations }): Promise<Outcome<PreparedHarnessDocuments>> => {

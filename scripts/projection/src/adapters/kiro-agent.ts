@@ -104,7 +104,7 @@ export const parseKiroAgentProfile = ({
         ],
       };
     const profile = parsed.data;
-    const leafFindings = leafToolFindings(profile);
+    const leafFindings = leafToolFindings({ name: profile.name, tools: [...profile.tools, ...profile.allowedTools] });
     if (leafFindings.length > 0) return { status: "invalid", findings: leafFindings };
     return {
       status: "ok",
@@ -353,7 +353,7 @@ const kiroEmissionPrerequisites = ({
         }),
       ],
     };
-  const leafFindings = leafToolFindings(profile);
+  const leafFindings = leafToolFindings({ name: profile.name, tools: [...profile.tools, ...profile.allowedTools] });
   if (leafFindings.length > 0) return { status: "invalid", findings: leafFindings };
   if (
     promptAdditions === undefined ||

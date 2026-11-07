@@ -1,3 +1,4 @@
+import { prepareCoreKiroAgents } from "../src/adapters/core-kiro-agents.ts";
 import { qualifiedDeliveryContext, qualifiedHarnessProfile } from "../src/adapters/qualified-harness-profile.ts";
 import { prepareNativeProjectionCommands } from "../src/adapters/native-document-preparation.ts";
 import { createCoreAgentSourceReader, type CoreAgentSourceReader } from "../src/adapters/core-agent-sources.ts";
@@ -30,13 +31,15 @@ const readCoreAgentInputs = async ({ sourceRoot, basis, services }: { readonly s
   const [agents, knowledge] = await Promise.all([services.agents.load({ sourceRoot, basis }), services.knowledge.load({ sourceRoot, basis })]);
   return agents.status === "invalid" ? agents : knowledge.status === "invalid" ? knowledge : { status: "ok", value: { agents: agents.value, knowledge: knowledge.value } };
 };
-export const prepareCoreAgentProducts = ({ sourceRoot, basis, context, catalogue, mode, services = createCoreAgentProductServices() }: { readonly sourceRoot: string; readonly basis: SourceBasis; readonly context: AgentContext; readonly catalogue: CompiledAgentStageCatalogue; readonly mode: number; readonly services?: CoreAgentProductServices }): Promise<Outcome<CoreAgentProducts>> => continuePreparation({
+export const prepareCoreAgentProducts = ({ sourceRoot, workRoot, basis, context, catalogue, mode, services = createCoreAgentProductServices() }: { readonly sourceRoot: string; readonly workRoot?: string; readonly basis: SourceBasis; readonly context: AgentContext; readonly catalogue: CompiledAgentStageCatalogue; readonly mode: number; readonly services?: CoreAgentProductServices }): Promise<Outcome<CoreAgentProducts>> => continuePreparation({
   previous: readCoreAgentInputs({ sourceRoot, basis, services }), consume: async ({ prepared: sources }) => continuePreparation({
     previous: services.select({ sources, basis, context, catalogue }), consume: async ({ prepared: selection }) => continuePreparation({
-      previous: services.project(selection), consume: async ({ prepared: rendered }) => continuePreparation({
-        previous: prepareNativeProjectionCommands({ projection: rendered, sourceRoot, basis, context }), consume: async ({ prepared: commands }) => continuePreparation({
-        previous: services.products({ projection: commands.projection, sources: [basis], compiler: basis, mode, rules: services.rules }), consume: async ({ prepared: products }) => ({ status: "ok", value: { projection: commands.projection, inputs: [...sources.agents.inputs, ...sources.knowledge.inputs, ...commands.inputs], products } }),
+      previous: prepareCoreKiroAgents({ sourceRoot, ...(workRoot === undefined ? {} : { workRoot }), basis, selection }), consume: async ({ prepared: native }) => continuePreparation({
+      previous: services.project(native.selection), consume: async ({ prepared: rendered }) => continuePreparation({
+        previous: prepareNativeProjectionCommands({ projection: { ...rendered, units: rendered.units.map(unit => unit.kind === "compiled-agent" ? { ...unit, projection: { ...unit.projection, dependencies: [...(unit.projection.dependencies ?? []), ...native.inputs.map(input => ({ ...basis, path: input.path }))] } } : unit) }, sourceRoot, basis, context }), consume: async ({ prepared: commands }) => continuePreparation({
+        previous: services.products({ projection: commands.projection, sources: [basis], compiler: basis, mode, rules: services.rules }), consume: async ({ prepared: products }) => ({ status: "ok", value: { projection: commands.projection, inputs: [...sources.agents.inputs, ...sources.knowledge.inputs, ...native.inputs, ...commands.inputs], products } }),
         }),
+      }),
       }),
     }),
   }),
