@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { prepareClaudeNativeRuntimeText, prepareNativeOnboardingText } from "../../scripts/native-runtime-text.ts";
@@ -70,7 +70,7 @@ for (const declaration of ["copyOnly", "nativeRootIntegrations", "nativeReplacem
     const fixture = mkdtempSync(join(tmpdir(), "native-context-refusal-"));
     const sourceRoot = join(fixture, "source"), root = join(fixture, "work");
     mkdirSync(root);
-    const authored = { name: "claude", harnessDir: ".claude", harnessFiles: declaration === "copyOnly" ? [{ copyOnly: true }] : [], ...(declaration === "nativeRootIntegrations" ? { nativeRootIntegrations: [] } : {}), ...(declaration === "nativeReplacements" ? { nativeReplacements: [] } : {}) };
+    const authored = { name: "claude", harnessDir: ".claude", rootIntegrations: [], harnessFiles: declaration === "copyOnly" ? [{ copyOnly: true }] : [], ...(declaration === "nativeRootIntegrations" ? { nativeRootIntegrations: [] } : {}), ...(declaration === "nativeReplacements" ? { nativeReplacements: [] } : {}) };
     const manifest = join(sourceRoot, "harness/claude/manifest.ts");
     const files: Record<string, string> = {
       "harness/claude/manifest.ts": `export default ${JSON.stringify(authored)};`,
@@ -82,6 +82,7 @@ for (const declaration of ["copyOnly", "nativeRootIntegrations", "nativeReplacem
       "scripts/native-command-text.ts": "export {};",
       "core/tools/aidlc-command.ts": "export {};",
       "core/tools/aidlc-routes.ts": "export {};",
+      "scripts/projection/src/adapters/qualified-delivery-policy.ts": readFileSync(join(import.meta.dir, "../../scripts/projection/src/adapters/qualified-delivery-policy.ts"), "utf8"),
     };
     try {
       for (const [path, text] of Object.entries(files)) { const file = join(sourceRoot, path); mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, text); }

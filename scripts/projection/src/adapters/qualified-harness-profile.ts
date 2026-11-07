@@ -1,10 +1,17 @@
 import type { HarnessBinding } from "../domain/harness-binding.ts";
 import type { HarnessDocumentPlacement } from "../domain/harness-document.ts";
 
-export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness: "claude" | "codex" }> & {
+export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness: "claude" | "codex" | "cursor" }> & {
+  readonly copyOnlyRoots: readonly { readonly src: string; readonly dst: string; readonly policy: "whole-file" }[];
+  readonly nativeTextSources: readonly string[];
+  readonly nativeReplacementCount: number;
+  readonly onboardingDestinations: readonly (string | undefined)[];
+  readonly agentTurnLimit: "authored-metadata" | null;
+  readonly agentMemoryReference: "aidlc/active-memory" | null;
   readonly exactNativeReads: boolean;
   readonly modelInvocation: "native-default" | "disabled";
   readonly runtimeMappings: readonly { readonly src: string; readonly dst: string }[];
+  readonly settingsMappings: readonly { readonly src: string; readonly dst: string }[];
   readonly settingsOnboardingPath: string | null;
   readonly skillRoot: string;
   readonly entryDocuments: readonly HarnessDocumentPlacement[];
@@ -17,7 +24,7 @@ export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness
 };
 const profiles: readonly QualifiedHarnessProfile[] = [
   {
-    harness: "claude", directory: ".claude", exactNativeReads: true, modelInvocation: "native-default", skillRoot: ".claude/skills", runtimeMappings: [], settingsOnboardingPath: null, entryMapping: "manifest",
+    harness: "claude", directory: ".claude", onboardingDestinations: [undefined], agentTurnLimit: null, copyOnlyRoots: [], nativeTextSources: [], nativeReplacementCount: 0, agentMemoryReference: null, exactNativeReads: true, modelInvocation: "native-default", skillRoot: ".claude/skills", runtimeMappings: [], settingsMappings: [], settingsOnboardingPath: null, entryMapping: "manifest",
     entryDocuments: [
       { role: "main-skill", source: "skills/aidlc/SKILL.md", destination: ".claude/skills/aidlc/SKILL.md" },
       { role: "composer", source: "skills/aidlc/composer.md", destination: ".claude/skills/aidlc/composer.md" },
@@ -29,7 +36,7 @@ const profiles: readonly QualifiedHarnessProfile[] = [
     descriptionPaths: [".gitignore", ".mcp.json", ".claude/tools/data/root-blocks/gitignore", ".claude/tools/data/root-blocks/.mcp.json", ".claude/tools/data/aidlc-projection.json", ".claude/tools/data/aidlc-stamp.json"],
   },
   {
-    harness: "codex", directory: ".codex", exactNativeReads: false, modelInvocation: "disabled", skillRoot: ".agents/skills", runtimeMappings: [{ src: "hooks/aidlc-codex-adapter.ts", dst: "hooks/aidlc-codex-adapter.ts" }], settingsOnboardingPath: ".codex/onboarding.md", entryMapping: "orchestrator",
+    harness: "codex", directory: ".codex", onboardingDestinations: ["AGENTS.md", ".codex/onboarding.md"], agentTurnLimit: null, copyOnlyRoots: [], nativeTextSources: [], nativeReplacementCount: 0, agentMemoryReference: null, exactNativeReads: false, modelInvocation: "disabled", skillRoot: ".agents/skills", runtimeMappings: [{ src: "hooks/aidlc-codex-adapter.ts", dst: "hooks/aidlc-codex-adapter.ts" }], settingsMappings: [], settingsOnboardingPath: ".codex/onboarding.md", entryMapping: "orchestrator",
     entryDocuments: [
       { role: "main-skill", source: "skills/aidlc/SKILL.md", destination: ".agents/skills/aidlc/SKILL.md" },
       { role: "composer", source: "skills/aidlc/composer.md", destination: ".agents/skills/aidlc/composer.md" },
@@ -39,9 +46,36 @@ const profiles: readonly QualifiedHarnessProfile[] = [
     rootMappings: [{ src: "dot-gitignore", dst: ".gitignore" }], projectedRootPaths: ["AGENTS.md"],
     descriptionPaths: [".gitignore", ".codex/tools/data/root-blocks/gitignore", ".codex/tools/data/root-blocks/agents", ".codex/tools/data/aidlc-projection.json", ".codex/tools/data/aidlc-stamp.json"],
   },
+  {
+    harness: "cursor", directory: ".cursor", onboardingDestinations: ["AGENTS.md", ".cursor/rules/aidlc-onboarding.mdc"], agentTurnLimit: "authored-metadata", exactNativeReads: true, modelInvocation: "native-default", skillRoot: ".cursor/skills", runtimeMappings: [{ src: "hooks/aidlc-cursor-adapter.ts", dst: "hooks/aidlc-cursor-adapter.ts" }], settingsMappings: [{ src: "hooks.json", dst: "hooks.json" }, { src: "cli.json", dst: "cli.json" }], settingsOnboardingPath: null, entryMapping: "manifest",
+    copyOnlyRoots: [{ src: "install.ts", dst: "install.ts", policy: "whole-file" }], nativeTextSources: ["rules-aidlc.mdc"], nativeReplacementCount: 1, agentMemoryReference: "aidlc/active-memory",
+    entryDocuments: [
+      { role: "main-skill", source: "skills/aidlc/SKILL.md", destination: ".cursor/skills/aidlc/SKILL.md" },
+      { role: "composer", source: "skills/aidlc/composer.md", destination: ".cursor/skills/aidlc/composer.md" },
+      { role: "question-rendering", source: "skills/aidlc/question-rendering.md", destination: ".cursor/skills/aidlc/question-rendering.md" },
+      { role: "method-import", source: "rules-aidlc.mdc", destination: ".cursor/rules/aidlc.mdc" },
+      { role: "shortcut-status", source: "skills/aidlc-status/SKILL.md", destination: ".cursor/skills/aidlc-status/SKILL.md" },
+      { role: "shortcut-jump", source: "skills/aidlc-jump/SKILL.md", destination: ".cursor/skills/aidlc-jump/SKILL.md" },
+      { role: "shortcut-scope", source: "skills/aidlc-scope/SKILL.md", destination: ".cursor/skills/aidlc-scope/SKILL.md" },
+      { role: "phase-ideation-guidance", source: "rules-aidlc-phase-ideation.mdc", destination: ".cursor/rules/aidlc-phase-ideation.mdc" },
+      { role: "phase-inception-guidance", source: "rules-aidlc-phase-inception.mdc", destination: ".cursor/rules/aidlc-phase-inception.mdc" },
+      { role: "phase-construction-guidance", source: "rules-aidlc-phase-construction.mdc", destination: ".cursor/rules/aidlc-phase-construction.mdc" },
+      { role: "phase-operation-guidance", source: "rules-aidlc-phase-operation.mdc", destination: ".cursor/rules/aidlc-phase-operation.mdc" },
+    ],
+    referenceTemplate: "skills/aidlc/tables.md", referenceDestination: ".cursor/skills/aidlc/tables.md",
+    rootMappings: [{ src: "dot-gitignore", dst: ".gitignore" }], projectedRootPaths: ["AGENTS.md"],
+    descriptionPaths: [".gitignore", ".cursor/tools/data/root-blocks/gitignore", ".cursor/tools/data/root-blocks/agents", ".cursor/tools/data/aidlc-projection.json", ".cursor/tools/data/aidlc-stamp.json"],
+  },
 ];
 // Admission is explicit; an unqualified host never inherits another host's policy.
 export const qualifiedHarnessProfile = (binding: HarnessBinding): QualifiedHarnessProfile | null => profiles.find(profile => profile.harness === binding.harness && profile.directory === binding.directory) ?? null;
 export const qualifiedDeliveryContext = (context: HarnessBinding & { readonly invocation: string }): boolean => qualifiedHarnessProfile(context) !== null && ["aidlc", `bun ${context.directory}/tools/aidlc.ts`].includes(context.invocation);
 
 export const qualifiedHarnessByName = ({ name, harnessDir }: { readonly name: string; readonly harnessDir: string }): QualifiedHarnessProfile | null => profiles.find(profile => profile.harness === name && profile.directory === harnessDir) ?? null;
+
+export type ExecutableDelivery = "copy" | "native";
+export const qualifiedRootMappings = (profile: QualifiedHarnessProfile, delivery: ExecutableDelivery): readonly { readonly src: string; readonly dst: string }[] => [...profile.rootMappings, ...(delivery === "copy" ? profile.copyOnlyRoots : [])];
+export const qualifiedDescriptionPaths = (binding: HarnessBinding, invocation: string | undefined): readonly string[] => {
+  const profile = qualifiedHarnessProfile(binding);
+  return profile === null ? [] : [...profile.descriptionPaths, ...(invocation === "aidlc" ? [] : profile.copyOnlyRoots.map(mapping => mapping.dst))];
+};

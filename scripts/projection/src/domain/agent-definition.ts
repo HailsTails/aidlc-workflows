@@ -49,6 +49,7 @@ export type AgentParticipation = {
 export type AgentHarnessBinding = HarnessBinding;
 export type AgentHarness = Harness;
 export type AgentContext = AgentHarnessBinding & {
+  readonly turnLimitProjection?: "authored-metadata";
   readonly invocation: string;
   readonly tierCap: Tier;
   readonly sharedKnowledge: "all" | "methodology-only";

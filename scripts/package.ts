@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { prepareCursorCopyAllowList, prepareCursorNativeAllowList } from "./cursor-settings.ts";
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
 //
 //   bun scripts/package.ts            regenerate dist/ and dist-release/ for every harness, plus plugins
@@ -1204,19 +1205,9 @@ function expandCursorToolAllows(treeRoot: string, m: HarnessManifest): void {
   const cliPath = join(treeRoot, "cli.json");
   const value = JSON.parse(readFileSync(cliPath, "utf-8")) as { permissions?: { allow?: unknown } };
   const allow = value.permissions?.allow;
-  const glob = `Shell(bun:${m.harnessDir}/tools/aidlc-*)`;
-  if (!Array.isArray(allow) || !allow.includes(glob)) {
-    throw new Error(`[cursor] cli.json has no ${glob} entry to expand`);
-  }
-  const tool = (script: string) => `Shell(bun:${m.harnessDir}/tools/${script}`;
-  value.permissions!.allow = allow.flatMap((entry) =>
-    entry === glob
-      ? [
-        ...copyChannelDispatcherCommands().map((command) => `${tool("aidlc.ts")} ${command})`),
-        ...copyChannelToolScripts().flatMap((script) => [`${tool(script)})`, `${tool(script)} *)`]),
-      ]
-      : [entry]
-  );
+  const prepared = prepareCursorCopyAllowList({ allow, authority: { dispatcherCommands: copyChannelDispatcherCommands, toolScripts: copyChannelToolScripts } });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  value.permissions!.allow = prepared.allow;
   writeFileSync(cliPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
@@ -1227,17 +1218,9 @@ function rewriteCursorNativePermissions(outRoot: string, m: HarnessManifest): vo
     permissions?: { allow?: unknown; deny?: unknown };
   };
   const allow = value.permissions?.allow;
-  if (!Array.isArray(allow)) throw new Error("[cursor] cli.json has no permissions.allow list");
-  // The copy channel's bun entries name its tool paths; native runs the
-  // aidlc command, so they give way to its one trusted-prefix entry and the
-  // same exact read-only and turn-back-on commands.
-  value.permissions!.allow = [
-    ...allow.filter((entry) => typeof entry !== "string" || !entry.startsWith("Shell(bun")),
-    cursorTrustedShell(),
-    // Cursor reads the first token as the command and the rest as an
-    // argument glob, so each exact form is `Shell(aidlc:<arguments>)`.
-    ...copyChannelDispatcherCommands().map((command) => `Shell(aidlc:${command})`),
-  ];
+  const prepared = prepareCursorNativeAllowList({ allow, authority: { dispatcherCommands: copyChannelDispatcherCommands, trustedShell: cursorTrustedShell } });
+  if (prepared.kind === "refused") throw new Error(prepared.message);
+  value.permissions!.allow = prepared.allow;
   writeFileSync(cliPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 

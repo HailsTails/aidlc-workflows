@@ -102,7 +102,7 @@ export async function projectCoreNative(request: ClaudeCopyRequest, binding: Har
 }
 if (import.meta.main) {
   const input: unknown = await Bun.stdin.json();
-  const request = copyRequestSchema.extend({ harness: z.enum(["claude", "codex"]), delivery: z.enum(["copy", "native"]) }).parse(input);
+  const request = copyRequestSchema.extend({ harness: z.enum(["claude", "codex", "cursor"]), delivery: z.enum(["copy", "native"]) }).parse(input);
   const binding = qualifiedHarnessByName({ name: request.harness, harnessDir: `.${request.harness}` });
   if (binding === null) throw new Error("Host projection profile is not qualified");
   const profile = copyRequestSchema.parse({ sourceRoot: request.sourceRoot, outRoot: request.outRoot, buildVersion: request.buildVersion, environmentCap: request.environmentCap });

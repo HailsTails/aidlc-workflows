@@ -12,7 +12,7 @@ export const createSourceRuntimeContextOperations = (): SourceRuntimeContextOper
   ...createNativeCompilerProcessOperations(),
   paths: ({ location }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(location.sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(location.root)) }),
 });
-const directSourcePaths = ({ binding }: { readonly binding: HarnessBinding }): readonly string[] => [`harness/${binding.harness}/manifest.ts`, `harness/${binding.harness}/onboarding.fills.ts`, "scripts/harness-runtime-data.ts", "core/tools/aidlc-runtime-paths.ts"];
+const directSourcePaths = ({ binding }: { readonly binding: HarnessBinding }): readonly string[] => [`harness/${binding.harness}/manifest.ts`, `harness/${binding.harness}/onboarding.fills.ts`, "scripts/harness-runtime-data.ts", "core/tools/aidlc-runtime-paths.ts", "scripts/projection/src/adapters/qualified-delivery-policy.ts"];
 const nativeSourcePaths = ["scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts"];
 const worker = `
 const input = await Bun.stdin.json();
@@ -22,13 +22,15 @@ const observe = async () => {
     return { status: "ok", inputs: await Promise.all(input.paths.map(async path => ({ path, sha256: new Bun.CryptoHasher("sha256").update(await Bun.file(input.sourceRoot + "/" + path).bytes()).digest("hex") }))) };
   } catch { return unavailable({ detail: "source runtime context direct inputs unavailable" }); }
 };
-const projectModules = ({ manifest, projector, runtime }) => {
+const projectModules = ({ manifest, projector, runtime, policy }) => {
   if (!Object.hasOwn(manifest, "default") || !Object.hasOwn(projector, "projectHarnessRuntimeData") || !Object.hasOwn(runtime, "aidlcInvocation")) return unavailable({ detail: "source runtime context modules lack the required native exports" });
   const declaration = manifest.default;
   const projectDescriptor = projector.projectHarnessRuntimeData;
   const invocation = runtime.aidlcInvocation;
   if (typeof declaration !== "object" || declaration === null || typeof projectDescriptor !== "function" || typeof invocation !== "function") return unavailable({ detail: "source runtime context modules require a native manifest and callable projection APIs" });
-  if (input.delivery === "native" && (!(declaration.name === input.harness && declaration.harnessDir === input.harnessDir && input.qualifiedNative === true) || declaration.harnessFiles?.some(file => file.copyOnly) || declaration.nativeRootIntegrations !== undefined || declaration.nativeReplacements !== undefined)) return unavailable({ detail: "native host context does not admit copyOnly, nativeRootIntegrations or nativeReplacements declarations" });
+  if (input.profile === null) return unavailable({ detail: "runtime context requires a qualified delivery profile" });
+  try { policy.qualifyDeliveryDeclaration(declaration, input.profile); }
+  catch (error) { return unavailable({ detail: error.message }); }
   return { status: "ok", descriptor: projectDescriptor({ declaration }), invocation: input.delivery === "native" ? "aidlc" : invocation() };
 };
 const admitStableContext = ({ before, after, projected }) => JSON.stringify(before.inputs) !== JSON.stringify(after.inputs)
@@ -40,10 +42,11 @@ const project = async ({ before }) => {
     const manifest = await import(sourceModuleUrl({ sourceRoot: input.sourceRoot, path: input.paths[0], sha256: before.inputs[0].sha256 }));
     const projector = await import(sourceModuleUrl({ sourceRoot: input.sourceRoot, path: input.paths[2], sha256: before.inputs[2].sha256 }));
     const runtime = await import(sourceModuleUrl({ sourceRoot: input.sourceRoot, path: input.paths[3], sha256: before.inputs[3].sha256 }));
-    const projected = projectModules({ manifest, projector, runtime });
+    const policy = await import(sourceModuleUrl({ sourceRoot: input.sourceRoot, path: input.paths[4], sha256: before.inputs[4].sha256 }));
+    const projected = projectModules({ manifest, projector, runtime, policy });
     if (projected.status !== "ok" || input.delivery !== "native") return projected;
-    const policy = await import(Bun.pathToFileURL(input.sourceRoot + "/scripts/native-runtime-text.ts").href);
-    return { ...projected, descriptor: JSON.parse(policy.prepareNativeRuntimeText(JSON.stringify(projected.descriptor), input.harnessDir)) };
+    const nativeText = await import(Bun.pathToFileURL(input.sourceRoot + "/scripts/native-runtime-text.ts").href);
+    return { ...projected, descriptor: JSON.parse(nativeText.prepareNativeRuntimeText(JSON.stringify(projected.descriptor), input.harnessDir)) };
   } catch { return unavailable({ detail: "source runtime context projection API unavailable" }); }
 };
 const prepare = async () => {
@@ -100,7 +103,7 @@ const admitContextRequest = ({ input, mode }: { readonly input: DistributionCont
 const loadContext = ({ input, mode, binary, operations, delivery }: { readonly delivery: "copy" | "native"; readonly input: DistributionContextLocation; readonly mode: number; readonly binary: string; readonly operations: SourceRuntimeContextOperations }): Outcome<PreparedDistributionContext> => {
   try {
     const paths = operations.paths(input);
-    const reply = operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, paths: [...directSourcePaths({ binding: input.binding }), ...(delivery === "native" ? nativeSourcePaths : [])], delivery, qualifiedNative: qualifiedHarnessProfile(input.binding) !== null, harness: input.binding.harness, harnessDir: input.binding.directory }), env: contextEnvironment({ inherited: operations.environment(), paths, binding: input.binding }) });
+    const reply = operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, paths: [...directSourcePaths({ binding: input.binding }), ...(delivery === "native" ? nativeSourcePaths : [])], delivery, profile: qualifiedHarnessProfile(input.binding), harness: input.binding.harness, harnessDir: input.binding.directory }), env: contextEnvironment({ inherited: operations.environment(), paths, binding: input.binding }) });
     const prepared = admitProcessContext({ reply, binding: input.binding, mode });
     return prepared.status === "ok" && prepared.value.context.invocation !== (delivery === "native" ? "aidlc" : `bun ${input.binding.directory}/tools/aidlc.ts`) ? failure({ detail: "runtime context invocation does not match the explicitly selected delivery" }) : prepared;
   } catch { return failure({ detail: "source runtime context process capability unavailable" }); }

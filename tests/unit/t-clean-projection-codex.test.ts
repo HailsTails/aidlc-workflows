@@ -14,8 +14,8 @@ test("host model invocation is separate from copy and native executable delivery
   for (const invocation of ["aidlc", "bun .codex/tools/aidlc.ts"]) expect(qualifiedDeliveryContext({ ...binding, invocation })).toBe(true);
   expect(qualifiedDeliveryContext({ ...binding, invocation: "bun .claude/tools/aidlc.ts" })).toBe(false);
 });
-test.each(["aidlc", "bun .cursor/tools/aidlc.ts"])("unqualified source-host sensor selection refuses %s", invocation => {
-  expect(selectCoreSensorProducts({ basis, sources: { inputs: [], documents: [{ fileName: "aidlc-example.md", origin: { ...basis, path: "core/sensors/aidlc-example.md" }, text: "content" }] }, context: { harness: "cursor", directory: ".cursor", invocation, rulesSubdir: "rules" } }).status).toBe("invalid");
+test.each(["aidlc", "bun .kiro/tools/aidlc.ts"])("unqualified source-host sensor selection refuses %s", invocation => {
+  expect(selectCoreSensorProducts({ basis, sources: { inputs: [], documents: [{ fileName: "aidlc-example.md", origin: { ...basis, path: "core/sensors/aidlc-example.md" }, text: "content" }] }, context: { harness: "kiro", directory: ".kiro", invocation, rulesSubdir: "rules" } }).status).toBe("invalid");
 });
 test("Codex turn cap stays in Markdown and is explicitly prose-only in TOML", () => {
   const result = createCodexAgentEmitter().emit({ origin: { ...basis, path: "core/agents/aidlc-review-agent.md" }, binding, name: "aidlc-review-agent", description: "Review", frontmatter: "name: aidlc-review-agent\nmaxTurns: 17", body: "Use the `maxTurns: 17` frontmatter above - keep the two numbers in sync", preflight: "Read first", nativeModel: { model: null, effort: "medium" }, policy: { ambientInstructions: "inherit", tools: { kind: "inherit" }, turnLimit: 17 } });

@@ -20,7 +20,7 @@ concurrency:
 # Temporary pause for the listed refactor drafts; non-draft behavior is unchanged.
 jobs:
   markdownlint:
-    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44","review/refactor-codex-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44","review/refactor-codex-upstream44","review/refactor-cursor-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     name: Root documentation
     runs-on: ubuntu-latest
     steps:
