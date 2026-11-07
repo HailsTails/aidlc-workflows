@@ -1,3 +1,4 @@
+import { isClaudeNativeDocumentContext, prepareNativeProjectionCommands } from "../src/adapters/native-document-preparation.ts";
 import { createCoreAgentSourceReader, type CoreAgentSourceReader } from "../src/adapters/core-agent-sources.ts";
 import { createCoreKnowledgeSourceReader, type CoreKnowledgeSourceReader } from "../src/adapters/core-knowledge-sources.ts";
 import { createDistributionAssemblyRules } from "../src/adapters/distribution-source.ts";
@@ -16,7 +17,7 @@ import { finding, sourceKey, type Outcome } from "../src/domain/model.ts";
 export type CoreAgentInputs = { readonly agents: CoreAgentSources; readonly knowledge: CoreKnowledgeSources };
 export type CoreAgentProducts = { readonly projection: ProjectionSet; readonly inputs: readonly SourceContentDigest[]; readonly products: readonly DistributionProduct[] };
 export const selectCoreAgentProducts = ({ sources, basis, context, catalogue }: { readonly sources: CoreAgentInputs; readonly basis: SourceBasis; readonly context: AgentContext; readonly catalogue: CompiledAgentStageCatalogue }): Outcome<ProjectionSetRequest> => {
-  if (context.harness !== "claude" || !context.invocation.startsWith("bun ")) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-agent-products", detail: "this core agent producer qualifies Claude Bun-copy definitions; other host policies require separate verified preparation" })] };
+  if (context.harness !== "claude" || (!context.invocation.startsWith("bun ") && !isClaudeNativeDocumentContext(context))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-agent-products", detail: "this core agent producer qualifies Claude copy and native definitions; other host policies require separate verified preparation" })] };
   if (basis.source.kind !== "core" || basis.source.id !== "framework" || sources.agents.agents.length === 0 || [...sources.agents.agents, ...sources.knowledge.documents].some((entry) => sourceKey(entry.origin.source) !== sourceKey(basis.source) || entry.origin.pin !== basis.pin)) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "core-agent-products", detail: "agents and knowledge must preserve the framework source basis" })] };
   if (sourceKey(catalogue.artifact.source) !== sourceKey(basis.source) || catalogue.artifact.pin !== basis.pin || catalogue.artifact.path !== `${context.directory}/tools/data/stage-graph.json`) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "core-agent-products", detail: "compiled participation must bind the current framework artifact and selected harness" })] };
   return { status: "ok", value: { target: copyHarnessBinding({ binding: context }), units: sources.agents.agents.map((agent) => ({ kind: "compiled-agent", key: `agent-${agent.name}`, input: { agent, context, catalogue, footprint: "definition", knowledge: sources.knowledge.documents.filter((entry) => entry.origin.path.startsWith(`core/knowledge/${agent.name}/`)).map((entry) => ({ origin: entry.origin, body: entry.text })) } })) } };
@@ -30,8 +31,10 @@ const readCoreAgentInputs = async ({ sourceRoot, basis, services }: { readonly s
 export const prepareCoreAgentProducts = ({ sourceRoot, basis, context, catalogue, mode, services = createCoreAgentProductServices() }: { readonly sourceRoot: string; readonly basis: SourceBasis; readonly context: AgentContext; readonly catalogue: CompiledAgentStageCatalogue; readonly mode: number; readonly services?: CoreAgentProductServices }): Promise<Outcome<CoreAgentProducts>> => continuePreparation({
   previous: readCoreAgentInputs({ sourceRoot, basis, services }), consume: async ({ prepared: sources }) => continuePreparation({
     previous: services.select({ sources, basis, context, catalogue }), consume: async ({ prepared: selection }) => continuePreparation({
-      previous: services.project(selection), consume: async ({ prepared: projection }) => continuePreparation({
-        previous: services.products({ projection, sources: [basis], compiler: basis, mode, rules: services.rules }), consume: async ({ prepared: products }) => ({ status: "ok", value: { projection, inputs: [...sources.agents.inputs, ...sources.knowledge.inputs], products } }),
+      previous: services.project(selection), consume: async ({ prepared: rendered }) => continuePreparation({
+        previous: prepareNativeProjectionCommands({ projection: rendered, sourceRoot, basis, context }), consume: async ({ prepared: commands }) => continuePreparation({
+        previous: services.products({ projection: commands.projection, sources: [basis], compiler: basis, mode, rules: services.rules }), consume: async ({ prepared: products }) => ({ status: "ok", value: { projection: commands.projection, inputs: [...sources.agents.inputs, ...sources.knowledge.inputs, ...commands.inputs], products } }),
+        }),
       }),
     }),
   }),

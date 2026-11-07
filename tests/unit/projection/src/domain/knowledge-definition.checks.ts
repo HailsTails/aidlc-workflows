@@ -9,8 +9,8 @@ test.each([
   expect(createKnowledgeProjector({ prose }).render({ document: { relativePath: "aidlc-shared/guide.md", origin: coreKnowledgeOrigin, text: coreKnowledgeText }, context: coreKnowledgeContext })).toEqual(expected);
   expect(prose).toHaveBeenCalledWith({ markdown: coreKnowledgeText, context: coreKnowledgeContext, subject: "core/knowledge/aidlc-shared/guide.md" });
 });
-test("unsupported native-release delivery stops before prose preparation", () => {
+test("unsupported invocation stops before prose preparation", () => {
   const prose = mock();
-  expect(createKnowledgeProjector({ prose }).render({ document: { relativePath: "aidlc-shared/guide.md", origin: coreKnowledgeOrigin, text: coreKnowledgeText }, context: { ...coreKnowledgeContext, invocation: "aidlc" } })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "core/knowledge/aidlc-shared/guide.md", detail: "knowledge text currently qualifies Bun copy delivery; native-release command preparation is a separate capability" }] });
+  expect(createKnowledgeProjector({ prose }).render({ document: { relativePath: "aidlc-shared/guide.md", origin: coreKnowledgeOrigin, text: coreKnowledgeText }, context: { ...coreKnowledgeContext, invocation: "npx aidlc" } })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "core/knowledge/aidlc-shared/guide.md", detail: "knowledge text requires Bun copy or explicit Claude native context" }] });
   expect(prose).not.toHaveBeenCalled();
 });

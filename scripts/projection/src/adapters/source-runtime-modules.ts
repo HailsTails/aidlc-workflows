@@ -3,7 +3,7 @@ import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import type { PreparedRuntimeInput, RuntimeInputPreparer, RuntimeInputRequest } from "../domain/runtime-inputs.ts";
 import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 
-const requiredSources = ["scripts/projection-text.ts", "scripts/version-module.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-version.ts", "core/tools/aidlc-channel.ts"];
+const requiredSources = ["scripts/projection-text.ts", "scripts/version-module.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-version.ts", "core/tools/aidlc-channel.ts", "scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "core/tools/aidlc-routes.ts"];
 export type SourceRuntimeModuleOperations = NativeCompilerProcessOperations & { readonly paths: (request: RuntimeInputRequest) => { readonly sourceRoot: string; readonly root: string } };
 export const createSourceRuntimeModuleOperations = ({ create = createNativeCompilerProcessOperations }: { readonly create?: typeof createNativeCompilerProcessOperations } = {}): SourceRuntimeModuleOperations => ({
   ...create({ timeout: 30000, maxBuffer: 32 * 1024 * 1024 }),
@@ -32,7 +32,7 @@ const observe = async () => {
 const module = path => import(Bun.pathToFileURL(request.sourceRoot + "/" + path).href);
 const prepare = async () => {
   const before = await observe();
-  const [text, version, commands, stamp, channel] = await Promise.all(required.map(module));
+  const [text, version, commands, stamp, channel, nativeText] = await Promise.all(required.map(module));
   if (typeof text.substituteInvocationTokens !== "function" || typeof version.prepareVersionModuleText !== "function" || typeof commands.TRUSTED_ROUTE_NAMESPACE !== "string" || typeof stamp.AIDLC_VERSION !== "string" || typeof channel.releaseBuildVersion !== "function") return unavailable({ detail: "upstream runtime text and version APIs unavailable" });
   const buildVersion = channel.releaseBuildVersion({ AIDLC_BUILD_VERSION: request.buildVersion });
   const modules = before.map(input => input.path).filter(path => (path.startsWith("core/tools/") || path.startsWith("core/hooks/")) && path.endsWith(".ts")).map(path => path.slice("core/".length));
@@ -41,7 +41,8 @@ const prepare = async () => {
     const source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await Bun.file(request.sourceRoot + "/core/" + file).bytes());
     const stamped = file.endsWith("/aidlc-version.ts") ? version.prepareVersionModuleText({ source, buildVersion }) : { kind: "prepared", content: source };
     if (stamped.kind !== "prepared") throw new Error(stamped.message);
-    return { file, content: text.substituteInvocationTokens({ source: stamped.content, binding }) };
+    const projected = text.substituteInvocationTokens({ source: stamped.content, binding });
+    return { file, content: request.invoke === "aidlc" ? nativeText.prepareClaudeNativeRuntimeText(projected) : projected };
   }));
   const after = await observe();
   if (JSON.stringify(before) !== JSON.stringify(after)) return unavailable({ detail: "source runtime module inventories changed during preparation" });
@@ -60,7 +61,7 @@ const failure = ({ detail, code = "capability-gap" }: { readonly detail: string;
 const admitRequest = ({ request }: { readonly request: RuntimeInputRequest }): Outcome<RuntimeInputRequest> => {
   if (!Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777) return failure({ code: "invalid-input", detail: "source runtime modules require a file permission mode between 0 and 0777" });
   if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin)) return failure({ code: "foreign-content", detail: "source runtime modules require the framework source basis and full source pin" });
-  if (request.invocation !== `bun ${request.binding.directory}/tools/aidlc.ts`) return failure({ detail: "source runtime modules qualify explicit Bun copy invocation; missing or native-release invocation is unsupported" });
+  if (request.invocation !== `bun ${request.binding.directory}/tools/aidlc.ts` && !(request.invocation === "aidlc" && request.binding.harness === "claude" && request.binding.directory === ".claude")) return failure({ detail: "source runtime modules require an explicit Bun-copy or Claude native invocation" });
   return { status: "ok", value: request };
 };
 const modulePathStatus = ({ path }: { readonly path: string }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && /^(?:tools|hooks)\/.+\.ts$/.test(path) ? "safe" : "unsafe";

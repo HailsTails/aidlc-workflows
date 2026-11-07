@@ -30,6 +30,7 @@ const INPUT_FILES = [
   "scripts/onboarding-projection.ts",
   "scripts/native-command-context.ts",
   "scripts/native-command-text.ts",
+  "scripts/native-runtime-text.ts",
   "scripts/generated-skill-regions.ts",
   "scripts/workspace-seed.ts",
   "scripts/manifest-types.ts",

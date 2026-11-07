@@ -30,4 +30,4 @@ export type SkillNativeEmission = {
 };
 export type SkillEmissionInput = { readonly skill: AuthoredSkill; readonly context: SkillContext; readonly markdown: string };
 export type SkillNativeEmitter = { readonly emit: (input: SkillEmissionInput) => Outcome<SkillNativeEmission> };
-export type SkillProjection = SkillNativeEmission & { readonly origin: SourceOrigin; readonly harness: Harness; readonly userInvocation: AuthoredSkill["userInvocation"] };
+export type SkillProjection = SkillNativeEmission & { readonly origin: SourceOrigin; readonly dependencies?: readonly SourceOrigin[]; readonly harness: Harness; readonly userInvocation: AuthoredSkill["userInvocation"] };

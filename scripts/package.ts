@@ -64,7 +64,8 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { projectClaudeCopyTree, usesCleanClaudeCopy } from "./projection-process.ts";
+import { prepareNativeOnboardingText as rewriteNativeOnboarding } from "./native-runtime-text.ts";
+import { projectClaudeCopyTree, usesCleanClaudeCopy, projectClaudeNativeTree, usesCleanClaudeNative } from "./projection-process.ts";
 import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
 import { prepareClaudeCopyAllowList, prepareClaudeNativeAllowList, type ClaudeCopyCommandAuthority, type ClaudeNativeCommandAuthority } from "./claude-settings.ts";
 import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
@@ -1240,40 +1241,6 @@ function rewriteCursorNativePermissions(outRoot: string, m: HarnessManifest): vo
   writeFileSync(cliPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-// The native Permissions line. A harness whose native allow list carries the
-// exact read-only and turn-back-on commands names them; the others keep the
-// engine prefix alone.
-function nativePermissionsLine(exactReads: boolean): string {
-  return exactReads
-    ? `- **Permissions**: the \`aidlc\` agent pre-approves only the native \`${TRUSTED_COMMAND_PREFIX}\` command prefix, the read-only \`aidlc doctor\`, \`status\`, \`version\` and \`config <section> --show\` (with or without \`--json\`) and \`--help\` forms, turning a check back on (\`aidlc config flags --clear-bypass <switch> --yes\`), and its listed read-only tools; everything else prompts, including any other \`config\` change.`
-    : `- **Permissions**: the \`aidlc\` agent pre-approves only the native \`${TRUSTED_COMMAND_PREFIX}\` command prefix and its listed read-only tools; everything else prompts.`;
-}
-
-function rewriteNativeOnboarding(value: string, exactReads = false): string {
-  return value
-    .replace(
-      /^- \*\*bun\*\*:.*$/gm,
-      "- **Runtime**: Framework commands run through `aidlc`; keep that command and its runtime available. If `aidlc` is not found in this tool, give the person both fixes in one line, then end your turn without installing anything or working around it: if AI-DLC was installed while this tool was open, quit the tool fully and reopen it (a new tab or reloaded window is not enough); otherwise the installer's bin folder is not on PATH (an install with `-NoModifyPath`, or a Unix install whose PATH line was not applied), so add the folder the installer printed to PATH, or rerun the installer without `-NoModifyPath`, then reopen the tool.",
-    )
-    .replace(
-      /^- \*\*Hook permissions\*\*:.*$/gm,
-      "- **Hook permissions**: Framework hooks run through the self-contained `aidlc` binary. No separate script runtime or executable bits are required.",
-    )
-    .replace(/^- \*\*Permissions\*\*:.*$/gm, nativePermissionsLine(exactReads))
-    .replace(
-      /TypeScript, run via bun/g,
-      "TypeScript sources invoked through the self-contained `aidlc` runtime",
-    )
-    .replace(
-      /pre-approves ONLY `bun \.kiro\/tools\/\*` shell commands/g,
-      `pre-approves only \`${TRUSTED_COMMAND_PREFIX}\` shell commands`,
-    )
-    .replace(
-      /^\*\*CWD drift warning\*\*: If a stage runs `cd` in Bash.*$/gm,
-      "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.",
-    );
-}
-
 // A copyOnly harness file ships in the copy runtime alone. The native tree
 // drops it and the root integration of the same path, so `aidlc config` never
 // writes it into a project.
@@ -1633,8 +1600,11 @@ function writeReleaseHarness(name: string): void {
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  buildTree(m, releaseDir, "aidlc");
-  rewriteNativeInvocations(releaseDir, m, copyRoot);
+  if (usesCleanClaudeNative(m)) projectClaudeNativeTree({ sourceRoot: REPO_ROOT, outRoot: releaseDir, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP });
+  else {
+    buildTree(m, releaseDir, "aidlc");
+    rewriteNativeInvocations(releaseDir, m, copyRoot);
+  }
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
 
@@ -1901,8 +1871,11 @@ function buildCheckPass(root: string, harnesses: string[]): void {
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
     buildTree(manifest, copyRoot);
-    buildTree(manifest, nativeRoot, "aidlc");
-    rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
+    if (usesCleanClaudeNative(manifest)) projectClaudeNativeTree({ sourceRoot: REPO_ROOT, outRoot: nativeRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP });
+    else {
+      buildTree(manifest, nativeRoot, "aidlc");
+      rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
+    }
   }
   assertIdenticalRootIntegrations(distRoot, harnesses);
   assertIdenticalRootIntegrations(releaseRoot, harnesses);

@@ -70,7 +70,7 @@ const deterministic = Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workf
 const preparation = Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows/live-prepare.yml"), "utf8")) as {
   env: Record<string, string>; permissions: Record<string, string>; jobs: Record<string, Job>;
 };
-const draftRefactorGuard = "github.event_name != 'pull_request' || !contains(fromJSON('[\"review/refactor-core-upstream44\",\"review/refactor-projection-upstream44\",\"review/refactor-integration-upstream44\"]'), github.head_ref) || !github.event.pull_request.draft";
+const draftRefactorGuard = "github.event_name != 'pull_request' || !contains(fromJSON('[\"review/refactor-core-upstream44\",\"review/refactor-projection-upstream44\",\"review/refactor-integration-upstream44\",\"review/refactor-native-upstream44\"]'), github.head_ref) || !github.event.pull_request.draft";
 const liveKinds = Object.keys(LIVE_MATRICES) as LiveMatrixKind[];
 const prepareJobs = liveKinds.map(kind => `live_prepare_${kind}`);
 const liveJobs = liveKinds.map((kind) => `live_${kind}`);
@@ -1220,7 +1220,7 @@ describe("t345 complete nightly coverage", () => {
   });
 
   test("only the planned refactor drafts pause PR jobs; ready_for_review resumes them", () => {
-    const branches = ["review/refactor-core-upstream44", "review/refactor-projection-upstream44", "review/refactor-integration-upstream44"];
+    const branches = ["review/refactor-core-upstream44", "review/refactor-projection-upstream44", "review/refactor-integration-upstream44","review/refactor-native-upstream44"];
     const contains = (values: string[], value: string) => values.includes(value);
     const pausedJobs: Record<string, string[]> = {
       "ci.yml": ["check", "deterministic", "test"],

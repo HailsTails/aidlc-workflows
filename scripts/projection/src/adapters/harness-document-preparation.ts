@@ -1,3 +1,4 @@
+import { isClaudeNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
 import { z } from "zod";
 import type { HarnessDocumentSources, PreparedHarnessDocuments, PreparedHarnessDocument, AuthoredHarnessDocument } from "../domain/harness-document.ts";
 import { harnessDocumentPlacements } from "../domain/harness-document.ts";
@@ -17,7 +18,7 @@ export type HarnessDocumentPreparer = { readonly prepare: (input: HarnessDocumen
 export const createHarnessDocumentPreparationOperations = (): HarnessDocumentPreparationOperations => createHarnessDocumentSourceOperations();
 const failure = ({ detail, code = "capability-gap" }: { readonly detail: string; readonly code?: "capability-gap" | "foreign-content" }): Outcome<never> => ({ status: "invalid", findings: [finding({ code, subject: "harness-document-preparation", detail })] });
 const admitRequest = ({ request }: { readonly request: HarnessDocumentPreparationRequest }): Outcome<HarnessDocumentPreparationRequest> => {
-  if (request.context.harness !== "claude" || request.context.invocation !== "bun .claude/tools/aidlc.ts") return failure({ detail: "authored entry document preparation qualifies explicit Claude Bun-copy invocation only" });
+  if (request.context.harness !== "claude" || (request.context.invocation !== "bun .claude/tools/aidlc.ts" && !isClaudeNativeDocumentContext(request.context))) return failure({ detail: "authored entry document preparation qualifies explicit Claude copy and native invocations" });
   if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || request.sources.documents.some((document) => sourceKey(document.origin.source) !== sourceKey(request.basis.source) || document.origin.pin !== request.basis.pin) || request.sources.authoring.some((origin) => sourceKey(origin.source) !== sourceKey(request.basis.source) || origin.pin !== request.basis.pin)) return failure({ code: "foreign-content", detail: "entry documents and manifest provenance must retain the requested framework source basis" });
   return { status: "ok", value: request };
 };
@@ -62,7 +63,17 @@ const prepareDocuments = async ({ request, operations, prose }: { readonly reque
   const prepared = applyCompatibilityPolicy({ imported: imported.value, request, sha256, prose });
   if (prepared.status === "invalid") return prepared;
   const after = await operations.read({ sourceRoot: request.sourceRoot, path: helperPath });
-  return after.status === "invalid" ? after : retainStablePreparation({ prepared, before: sha256, after: operations.digest({ bytes: after.value }) });
+  if (after.status === "invalid") return after;
+  const stable = retainStablePreparation({ prepared, before: sha256, after: operations.digest({ bytes: after.value }) });
+  if (stable.status === "invalid") return stable;
+  const documents = stable.value.documents.map(document => ({ path: document.authored.origin.path, source: document.text }));
+  const commands = prepareDocumentCommands({ sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents });
+  if (commands.status === "invalid") return commands;
+  const texts = new Map(commands.value.documents.map(document => [document.path, document]));
+  return { status: "ok", value: { documents: stable.value.documents.map(document => {
+    const text = texts.get(document.authored.origin.path);
+    return { ...document, text: text?.text ?? document.text, authoring: [...document.authoring, ...(text?.origins ?? [])] };
+  }), inputs: [...stable.value.inputs, ...commands.value.inputs] } };
 };
 export const createHarnessDocumentPreparer = ({ operations = createHarnessDocumentPreparationOperations(), prose = renderAuthoredProse }: { readonly operations?: HarnessDocumentPreparationOperations; readonly prose?: typeof renderAuthoredProse } = {}): HarnessDocumentPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
