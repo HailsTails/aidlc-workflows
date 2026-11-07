@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { ROUTES, TOOLS } from "./aidlc-routes.ts";
-import { scanNamespaceInvocations } from "./aidlc-command.ts";
+import { ROUTES, TOOLS } from "../../core/tools/aidlc-routes.ts";
+import { scanNamespaceInvocations } from "../../core/tools/aidlc-command.ts";
 test("shared route contract admits an authored workspace command", () => {
   expect(scanNamespaceInvocations("stage.md", "aidlc engine workspace document-input --onboard", ROUTES)).toEqual([{ file: "stage.md", line: 1, command: "aidlc engine workspace document-input", source: "aidlc", namespace: "engine", noun: "workspace", verb: "document-input", resolves: true }]);
 });
