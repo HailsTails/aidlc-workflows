@@ -12,8 +12,8 @@ const refused = (message: string): ProjectionMetadataPreparation => ({ kind: "re
 const text = (bytes: Uint8Array): string => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 
 // Installer migration signatures describe delivered bytes, before ownership is issued.
-export function finalizeClaudeNativeMetadata({ artifacts, nativeFiles, copyFiles, history }: { readonly artifacts: readonly ProjectionMetadataArtifact[]; readonly nativeFiles: readonly DeliveryFile[]; readonly copyFiles: readonly DeliveryDigest[]; readonly history: unknown }): ProjectionMetadataPreparation {
-  const descriptorPath = ".claude/tools/data/aidlc-projection.json";
+export function finalizeNativeMetadata({ artifacts, nativeFiles, copyFiles, history, harnessDir }: { readonly artifacts: readonly ProjectionMetadataArtifact[]; readonly nativeFiles: readonly DeliveryFile[]; readonly copyFiles: readonly DeliveryDigest[]; readonly history: unknown; readonly harnessDir: string }): ProjectionMetadataPreparation {
+  const descriptorPath = `${harnessDir}/tools/data/aidlc-projection.json`;
   const descriptorFile = artifacts.find(file => file.file === descriptorPath);
   const copyDescriptor = copyFiles.find(file => file.path === descriptorPath);
   if (descriptorFile === undefined || copyDescriptor === undefined) return refused("native delivery requires its producer descriptor and the paired copy descriptor");
@@ -48,7 +48,9 @@ export function finalizeClaudeNativeMetadata({ artifacts, nativeFiles, copyFiles
   legacy[descriptorPath] = [copyDescriptor.sha256];
   descriptor.legacyManagedFileHashes = legacy;
   const result = artifacts.map(file => file.file === descriptorPath ? { ...file, bytes: new TextEncoder().encode(`${JSON.stringify(descriptor, null, 2)}\n`) } : file);
-  const context = createNativeCommandContext({ harnessDir: ".claude" });
+  const context = createNativeCommandContext({ harnessDir });
   const problems = [...nativeFiles, ...result.map(file => ({ path: file.file, bytes: file.bytes }))].flatMap(file => /\.(?:md|mdc|json|toml|hook|ts)$/.test(file.path) ? nativeCommandTextProblems({ source: text(file.bytes), context, subject: file.path }) : []);
   return problems.length > 0 ? refused(`native delivery command validation failed:\n${problems.join("\n")}`) : { kind: "prepared", artifacts: result };
 }
+
+export const finalizeClaudeNativeMetadata = (input: Omit<Parameters<typeof finalizeNativeMetadata>[0], "harnessDir">): ProjectionMetadataPreparation => finalizeNativeMetadata({ ...input, harnessDir: ".claude" });

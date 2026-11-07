@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
-import { claudeSettingsPaths, type HarnessSettingsRequest, type HarnessSettingsPreparer, type PreparedHarnessSettings } from "../domain/harness-settings.ts";
+import { claudeSettingsPaths, codexSettingsPaths, type HarnessSettingsRequest, type HarnessSettingsPreparer, type PreparedHarnessSettings } from "../domain/harness-settings.ts";
 import { continuePreparation } from "../application/preparation-result.ts";
 import { finding, type Outcome } from "../domain/model.ts";
 
 const sourcePaths = ["scripts/projection-text.ts", "scripts/claude-settings.ts", "harness/claude/manifest.ts", "harness/claude/onboarding.fills.ts", "harness/claude/settings.json", "harness/claude/settings.local.json.example", "core/tools/aidlc.ts", "core/tools/aidlc-copy-preapproval.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-settings.ts", "core/tools/aidlc-runtime-paths.ts", "core/tools/aidlc-version.ts", "scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "core/tools/aidlc-routes.ts"];
+const codexSourcePaths = ["harness/codex/settings.ts", "harness/codex/manifest.ts", "harness/codex/onboarding.fills.ts", "core/tools/aidlc.ts", "core/tools/aidlc-copy-preapproval.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-runtime-budget.ts", "core/tools/aidlc-routes.ts", "scripts/projection-text.ts"];
+const settingsSourcePaths = (request: HarnessSettingsRequest): readonly string[] => request.binding.harness === "codex" ? codexSourcePaths : sourcePaths;
 export type SourceHarnessSettingsOperations = NativeCompilerProcessOperations & { readonly paths: (input: HarnessSettingsRequest) => { readonly sourceRoot: string; readonly root: string } };
 export const createSourceHarnessSettingsOperations = (): SourceHarnessSettingsOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
 const replySchema = z.discriminatedUnion("status", [
@@ -13,7 +15,7 @@ const replySchema = z.discriminatedUnion("status", [
 ]);
 const worker = `
 const input = await Bun.stdin.json();
-const paths = ${JSON.stringify(sourcePaths)};
+const paths = input.paths;
 const unavailable = ({ detail }) => ({ status: "unavailable", detail });
 const sourceComponents = ({ path }) => {
   const segments = path.split("/");
@@ -87,9 +89,24 @@ const prepareNative = async ({ native, capabilities, z }) => {
   return prepared.status !== "ok" ? prepared : encodeFiles({ prepared, authored });
 };
 const retainStable = ({ before, after, prepared }) => after.status !== "ok" || JSON.stringify(before.inputs) !== JSON.stringify(after.inputs) ? unavailable({ detail: "harness settings source changed during preparation" }) : { ...prepared, inputs: after.inputs };
+const prepareCodex = async ({ inputs }) => {
+  const [settings, dispatcher, command, authored, manifest] = await Promise.all(["harness/codex/settings.ts", "core/tools/aidlc.ts", "core/tools/aidlc-command.ts", "scripts/projection-text.ts", "harness/codex/manifest.ts"].map(path => loadModule({ path, inputs })));
+  const declaration = manifest.default;
+  if (declaration.name !== "codex" || declaration.harnessDir !== ".codex" || declaration.harnessFiles?.some(file => file.copyOnly) || declaration.nativeRootIntegrations !== undefined || declaration.nativeReplacements !== undefined) return unavailable({ detail: "unsupported Codex settings declarations" });
+  if (["emitHooksJson", "emitConfigToml", "emitDefaultRules", "emitTrustSeed"].some(name => typeof settings[name] !== "function") || typeof dispatcher.copyChannelToolScripts !== "function") return unavailable({ detail: "Codex settings capabilities unavailable" });
+  const scripts = dispatcher.copyChannelToolScripts();
+  if (!Array.isArray(scripts) || scripts.some(script => typeof script !== "string" || input.files.filter(file => file === ".codex/tools/" + script).length !== 1)) return unavailable({ detail: "Codex settings require every declared preapproved tool" });
+  const substitute = source => authored.substituteAuthoredTokens({ source, harnessDir: ".codex", binding: { invoke: input.invocation, toolPrefix: "bun .codex/tools/", trustedNamespace: command.TRUSTED_ROUTE_NAMESPACE } });
+  const values = [settings.emitHooksJson(substitute, "codex", command.TRUSTED_ROUTE_NAMESPACE), settings.emitConfigToml(input.onboarding), settings.emitDefaultRules(".codex", input.invocation, command.TRUSTED_ROUTE_NAMESPACE), settings.emitTrustSeed(".codex", "codex", input.invocation, command.TRUSTED_ROUTE_NAMESPACE)];
+  return { status: "ok", files: input.outputPaths.map((file, index) => ({ file, bytes: Array.from(new TextEncoder().encode(values[index])) })) };
+};
 const prepare = async () => {
   const before = await observe();
   if (before.status !== "ok") return before;
+  if (input.harness === "codex") {
+    const prepared = await prepareCodex({ inputs: before.inputs });
+    return prepared.status === "ok" ? retainStable({ before, after: await observe(), prepared }) : prepared;
+  }
   const { z } = await import(Bun.pathToFileURL(Bun.resolveSync("zod", input.sourceRoot)).href);
   const native = await loadNative({ inputs: before.inputs, z });
   if (native.status !== "ok") return native;
@@ -105,8 +122,9 @@ catch { process.stdout.write(JSON.stringify(unavailable({ detail: "harness setti
 const failure = ({ detail, code = "capability-gap" }: { readonly detail: string; readonly code?: "capability-gap" | "invalid-input" | "foreign-content" }): Outcome<never> => ({ status: "invalid", findings: [finding({ code, subject: "source-harness-settings", detail })] });
 const admitReply = ({ reply, request }: { readonly reply: Extract<z.infer<typeof replySchema>, { readonly status: "ok" }>; readonly request: HarnessSettingsRequest }): Outcome<PreparedHarnessSettings> => {
   const paths = reply.files.map((file) => file.file);
-  const expected = claudeSettingsPaths();
-  if (paths.length !== expected.length || expected.some((path) => paths.filter((file) => file === path).length !== 1) || reply.inputs.length !== sourcePaths.length || sourcePaths.some((path) => reply.inputs.filter((input) => input.path === path).length !== 1)) return failure({ code: "foreign-content", detail: "harness settings must retain every declared source witness and exactly its two settings artifacts" });
+  const expected = request.binding.harness === "codex" ? codexSettingsPaths() : claudeSettingsPaths();
+  const sourcePaths = settingsSourcePaths(request);
+  if (paths.length !== expected.length || expected.some((path) => paths.filter((file) => file === path).length !== 1) || reply.inputs.length !== sourcePaths.length || sourcePaths.some((path) => reply.inputs.filter((input) => input.path === path).length !== 1)) return failure({ code: "foreign-content", detail: "harness settings must retain every declared source witness and exactly its declared settings artifacts" });
   return { status: "ok", value: { files: reply.files.map((file) => ({ path: file.file, bytes: Uint8Array.from(file.bytes), mode: request.mode })), preparation: { kind: "harness-settings", paths, inputs: reply.inputs } } };
 };
 const decodeReply = ({ stdout, request }: { readonly stdout: string; readonly request: HarnessSettingsRequest }): Outcome<PreparedHarnessSettings> => {
@@ -119,8 +137,9 @@ const decodeReply = ({ stdout, request }: { readonly stdout: string; readonly re
 };
 const processOutcome = ({ reply, request }: { readonly reply: NativeCompilerSpawnReply; readonly request: HarnessSettingsRequest }): Outcome<PreparedHarnessSettings> => reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0 ? failure({ detail: "harness settings process unavailable or reported diagnostics" }) : decodeReply({ stdout: reply.stdout, request });
 const admitRequest = ({ request }: { readonly request: HarnessSettingsRequest }): Outcome<HarnessSettingsRequest> => {
-  if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || request.binding.harness !== "claude" || request.binding.directory !== ".claude" || !["bun .claude/tools/aidlc.ts", "aidlc"].includes(request.invocation) || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777) return failure({ detail: "harness settings require the pinned framework Claude copy or native profile, exact invocation and explicit file modes" });
-  if (request.files.filter((path) => path === ".claude/tools/aidlc.ts").length !== 1) return failure({ detail: "harness settings require exactly one prepared Claude dispatcher before source capability discovery" });
+  if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || !((request.binding.harness === "claude" && request.binding.directory === ".claude") || (request.binding.harness === "codex" && request.binding.directory === ".codex")) || ![`bun ${request.binding.directory}/tools/aidlc.ts`, "aidlc"].includes(request.invocation) || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777) return failure({ detail: "harness settings require the pinned framework qualified copy or native profile, exact invocation and explicit file modes" });
+  if (request.files.filter((path) => path === `${request.binding.directory}/tools/aidlc.ts`).length !== 1) return failure({ detail: "harness settings require exactly one prepared host dispatcher before source capability discovery" });
+  if (request.binding.harness === "codex" && (typeof request.onboarding !== "string" || request.onboarding.length === 0)) return failure({ detail: "Codex settings require the shared prepared onboarding text" });
   return { status: "ok", value: request };
 };
 const admitWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: string; readonly root: string } }): Outcome<{ readonly sourceRoot: string; readonly root: string }> => {
@@ -131,7 +150,7 @@ const admitWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: s
 const processInput = ({ paths, request, binary, operations }: { readonly paths: { readonly sourceRoot: string; readonly root: string }; readonly request: HarnessSettingsRequest; readonly binary: string; readonly operations: SourceHarnessSettingsOperations }) => ({
   binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root,
   env: { ...privateCompilerEnvironment({ inherited: operations.environment(), root: `${paths.root}/.settings-home` }), ...Object.fromEntries([["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0"], ["BUN_INSTALL_AUTO", "disable"]]) },
-  input: JSON.stringify({ sourceRoot: paths.sourceRoot, files: request.files, invocation: request.invocation }),
+  input: JSON.stringify({ sourceRoot: paths.sourceRoot, files: request.files, invocation: request.invocation, onboarding: request.onboarding, harness: request.binding.harness, paths: settingsSourcePaths(request), outputPaths: codexSettingsPaths() }),
 });
 const execute = async ({ request, binary, operations }: { readonly request: HarnessSettingsRequest; readonly binary: string; readonly operations: SourceHarnessSettingsOperations }): Promise<Outcome<PreparedHarnessSettings>> => {
   try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations })), request }) }); }

@@ -1,3 +1,4 @@
+import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { z } from "zod";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import type { PreparedRuntimeInput, RuntimeInputPreparer, RuntimeInputRequest } from "../domain/runtime-inputs.ts";
@@ -13,6 +14,9 @@ export const createSourceRuntimeModuleOperations = ({ create = createNativeCompi
 const worker = `
 const request = await Bun.stdin.json();
 const required = ${JSON.stringify(requiredSources)};
+const mappings = request.profile?.runtimeMappings ?? [];
+const hostRoot = "harness/" + request.profile?.harness;
+const hostSources = mappings.length > 0 ? [hostRoot + "/manifest.ts", ...mappings.map(mapping => hostRoot + "/" + mapping.src)] : [];
 const unavailable = ({ detail }) => ({ status: "unavailable", detail });
 const sourceFiles = async directory => {
   const fs = await import("node:fs/promises");
@@ -26,7 +30,7 @@ const sourceFiles = async directory => {
   return groups.flat();
 };
 const observe = async () => {
-  const paths = [...new Set([...required, ...(await Promise.all(["core/tools", "core/hooks"].map(sourceFiles))).flat()])].sort();
+  const paths = [...new Set([...required, ...hostSources, ...(await Promise.all(["core/tools", "core/hooks"].map(sourceFiles))).flat()])].sort();
   return Promise.all(paths.map(async path => ({ path, sha256: new Bun.CryptoHasher("sha256").update(await Bun.file(request.sourceRoot + "/" + path).bytes()).digest("hex") })));
 };
 const module = path => import(Bun.pathToFileURL(request.sourceRoot + "/" + path).href);
@@ -36,13 +40,22 @@ const prepare = async () => {
   if (typeof text.substituteInvocationTokens !== "function" || typeof version.prepareVersionModuleText !== "function" || typeof commands.TRUSTED_ROUTE_NAMESPACE !== "string" || typeof stamp.AIDLC_VERSION !== "string" || typeof channel.releaseBuildVersion !== "function") return unavailable({ detail: "upstream runtime text and version APIs unavailable" });
   const buildVersion = channel.releaseBuildVersion({ AIDLC_BUILD_VERSION: request.buildVersion });
   const modules = before.map(input => input.path).filter(path => (path.startsWith("core/tools/") || path.startsWith("core/hooks/")) && path.endsWith(".ts")).map(path => path.slice("core/".length));
+  if (hostSources.length > 0) {
+    const manifest = (await module(hostRoot + "/manifest.ts")).default;
+    const declared = manifest.harnessFiles;
+    const roots = request.profile.rootMappings;
+    const isRuntime = file => mappings.some(mapping => file.src === mapping.src && file.dst === mapping.dst && file.projectRoot !== true && !file.copyOnly && Object.keys(file).every(key => ["src", "dst", "projectRoot"].includes(key)));
+    const isRoot = file => roots.some(mapping => file.src === mapping.src && file.dst === mapping.dst && file.projectRoot === true && !file.copyOnly);
+    if (manifest.name !== request.profile.harness || manifest.harnessDir !== request.harnessDir || !Array.isArray(declared) || declared.length !== mappings.length + roots.length || declared.some(file => !isRuntime(file) && !isRoot(file)) || mappings.some(mapping => declared.filter(file => file.src === mapping.src && file.dst === mapping.dst && isRuntime(file)).length !== 1) || roots.some(mapping => declared.filter(file => file.src === mapping.src && file.dst === mapping.dst && isRoot(file)).length !== 1) || manifest.nativeRootIntegrations !== undefined || manifest.nativeReplacements !== undefined) return unavailable({ detail: "runtime modules require the qualified host runtime and root mappings" });
+    modules.push(...mappings.map(mapping => mapping.dst));
+  }
   const binding = { invoke: request.invoke, toolPrefix: "bun " + request.harnessDir + "/tools/", trustedNamespace: commands.TRUSTED_ROUTE_NAMESPACE };
   const files = await Promise.all(modules.map(async file => {
-    const source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await Bun.file(request.sourceRoot + "/core/" + file).bytes());
+    const source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await Bun.file(request.sourceRoot + "/" + (mappings.some(mapping => mapping.dst === file) ? hostRoot + "/" + mappings.find(mapping => mapping.dst === file).src : "core/" + file)).bytes());
     const stamped = file.endsWith("/aidlc-version.ts") ? version.prepareVersionModuleText({ source, buildVersion }) : { kind: "prepared", content: source };
     if (stamped.kind !== "prepared") throw new Error(stamped.message);
     const projected = text.substituteInvocationTokens({ source: stamped.content, binding });
-    return { file, content: request.invoke === "aidlc" ? nativeText.prepareClaudeNativeRuntimeText(projected) : projected };
+    return { file, content: request.invoke === "aidlc" ? nativeText.prepareNativeRuntimeText(projected, request.harnessDir) : projected };
   }));
   const after = await observe();
   if (JSON.stringify(before) !== JSON.stringify(after)) return unavailable({ detail: "source runtime module inventories changed during preparation" });
@@ -61,18 +74,22 @@ const failure = ({ detail, code = "capability-gap" }: { readonly detail: string;
 const admitRequest = ({ request }: { readonly request: RuntimeInputRequest }): Outcome<RuntimeInputRequest> => {
   if (!Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777) return failure({ code: "invalid-input", detail: "source runtime modules require a file permission mode between 0 and 0777" });
   if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin)) return failure({ code: "foreign-content", detail: "source runtime modules require the framework source basis and full source pin" });
-  if (request.invocation !== `bun ${request.binding.directory}/tools/aidlc.ts` && !(request.invocation === "aidlc" && request.binding.harness === "claude" && request.binding.directory === ".claude")) return failure({ detail: "source runtime modules require an explicit Bun-copy or Claude native invocation" });
+  if (request.invocation !== `bun ${request.binding.directory}/tools/aidlc.ts` && !(request.invocation === "aidlc" && qualifiedHarnessProfile(request.binding) !== null)) return failure({ detail: "source runtime modules require an explicit Bun-copy or qualified native invocation" });
   return { status: "ok", value: request };
 };
 const modulePathStatus = ({ path }: { readonly path: string }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && /^(?:tools|hooks)\/.+\.ts$/.test(path) ? "safe" : "unsafe";
 const artifactPathStatus = ({ path }: { readonly path: string }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && (path.startsWith("tools/") || path.startsWith("hooks/") ) ? "safe" : "unsafe";
-const witnessPathStatus = ({ path }: { readonly path: string }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && (path.startsWith("core/tools/") || path.startsWith("core/hooks/") || path.startsWith("core/projection/") || path.startsWith("scripts/")) ? "safe" : "unsafe";
+const witnessPathStatus = ({ path, hostSources }: { readonly path: string; readonly hostSources: readonly string[] }): "safe" | "unsafe" => pathStatus({ path }) === "safe" && (path.startsWith("core/tools/") || path.startsWith("core/hooks/") || path.startsWith("core/projection/") || path.startsWith("scripts/") || hostSources.includes(path)) ? "safe" : "unsafe";
 const uniquePaths = ({ paths }: { readonly paths: readonly string[] }): "unique" | "collision" => new Set(paths.map((path) => path.toLowerCase())).size === paths.length ? "unique" : "collision";
-const admitModuleEvidence = ({ prepared }: { readonly prepared: PreparedModuleReply }): Outcome<PreparedModuleReply> => {
+const admitModuleEvidence = ({ prepared, request }: { readonly prepared: PreparedModuleReply; readonly request: RuntimeInputRequest }): Outcome<PreparedModuleReply> => {
   const inputs = prepared.inputs.map((input) => input.path);
   const files = prepared.files.map((file) => file.file);
-  if (requiredSources.some((path) => !inputs.includes(path)) || inputs.some((path) => witnessPathStatus({ path }) !== "safe") || uniquePaths({ paths: inputs }) !== "unique") return failure({ code: "foreign-content", detail: "runtime modules require complete unique safe core/tools, core/hooks, core/projection and scripts witnesses including all native APIs" });
-  if (prepared.modules.some((path) => modulePathStatus({ path }) !== "safe" || !inputs.includes(`core/${path}`) || !files.includes(path)) || uniquePaths({ paths: prepared.modules }) !== "unique") return failure({ code: "foreign-content", detail: "runtime modules require unique direct module witnesses and a prepared output for each module" });
+  const profile = qualifiedHarnessProfile(request.binding);
+  const mappings = profile?.runtimeMappings ?? [];
+  const hostSources = mappings.length === 0 ? [] : [`harness/${request.binding.harness}/manifest.ts`, ...mappings.map(mapping => `harness/${request.binding.harness}/${mapping.src}`)];
+  if (hostSources.some(path => !inputs.includes(path)) || mappings.some(mapping => !prepared.modules.includes(mapping.dst)) || inputs.some(path => path.startsWith("harness/") && !hostSources.includes(path))) return failure({ code: "foreign-content", detail: "runtime host mappings require the selected host and complete manifest/adapter evidence" });
+  if (requiredSources.some((path) => !inputs.includes(path)) || inputs.some((path) => witnessPathStatus({ path, hostSources }) !== "safe") || uniquePaths({ paths: inputs }) !== "unique") return failure({ code: "foreign-content", detail: "runtime modules require complete unique safe core/tools, core/hooks, core/projection and scripts witnesses including all native APIs" });
+  if (prepared.modules.some((path) => modulePathStatus({ path }) !== "safe" || !inputs.includes(mappings.some(mapping => mapping.dst === path) ? `harness/${request.binding.harness}/${mappings.find(mapping => mapping.dst === path)!.src}` : `core/${path}`) || !files.includes(path)) || uniquePaths({ paths: prepared.modules }) !== "unique") return failure({ code: "foreign-content", detail: "runtime modules require unique direct module witnesses and a prepared output for each module" });
   if (files.some((path) => artifactPathStatus({ path }) !== "safe") || uniquePaths({ paths: files }) !== "unique") return failure({ code: "foreign-content", detail: "runtime module outputs require unique safe tools/hooks resources" });
   return { status: "ok", value: prepared };
 };
@@ -87,7 +104,7 @@ const decodeModules = ({ stdout, request }: { readonly stdout: string; readonly 
   const parsed = replySchema.safeParse(candidate);
   if (!parsed.success) return failure({ detail: "source runtime modules require native text artifacts, selected modules and SHA-256 inventory witnesses" });
   if (parsed.data.status === "unavailable") return failure({ detail: parsed.data.detail });
-  const admitted = admitModuleEvidence({ prepared: parsed.data });
+  const admitted = admitModuleEvidence({ prepared: parsed.data, request });
   return admitted.status === "invalid" ? admitted : { status: "ok", value: encodeModules({ prepared: admitted.value, request }) };
 };
 const admitProcess = ({ reply, request }: { readonly reply: NativeCompilerSpawnReply; readonly request: RuntimeInputRequest }): Outcome<PreparedRuntimeInput> => reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0 ? failure({ detail: "source runtime module process unavailable or reported diagnostics" }) : decodeModules({ stdout: reply.stdout, request });
@@ -95,7 +112,7 @@ const moduleEnvironment = ({ inherited, root }: { readonly inherited: Readonly<R
 const prepareModules = ({ request, binary, operations, buildVersion }: { readonly request: RuntimeInputRequest; readonly binary: string; readonly operations: SourceRuntimeModuleOperations; readonly buildVersion: string | undefined }): Outcome<PreparedRuntimeInput> => {
   try {
     const paths = operations.paths(request);
-    return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harnessDir: request.binding.directory, invoke: request.invocation, buildVersion }), env: moduleEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
+    return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harnessDir: request.binding.directory, invoke: request.invocation, buildVersion, profile: qualifiedHarnessProfile(request.binding) }), env: moduleEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
   } catch { return failure({ detail: "source runtime module process capability unavailable" }); }
 };
 export const createSourceRuntimeModulePreparer = ({ binary = "bun", operations = createSourceRuntimeModuleOperations(), buildVersion }: { readonly binary?: string; readonly operations?: SourceRuntimeModuleOperations; readonly buildVersion?: string } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {

@@ -1,3 +1,4 @@
+import { qualifiedHarnessProfile, type QualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { z } from "zod";
 import { createOwnershipDigest } from "./projection-ownership.ts";
 import { continuePreparation } from "../application/preparation-result.ts";
@@ -13,7 +14,7 @@ const projectionSchema = z.strictObject({ model: z.string().min(1).nullable().op
 const missingFileSchema = z.object({ code: z.enum(["ENOENT", "ENOTDIR"]) });
 type NativePolicyApi = {
   readonly readMemoryCap: (memoryDir: string) => unknown;
-  readonly projectTier: (...nativeArguments: readonly [tier: Tier, harness: "claude", cap: Tier | null]) => unknown;
+  readonly projectTier: (...nativeArguments: readonly [tier: Tier, harness: QualifiedHarnessProfile["harness"], cap: Tier | null]) => unknown;
 };
 const moduleSchema = z.unknown().refine((namespace) => typeof namespace === "object" && namespace !== null && Object.hasOwn(namespace, "readMemoryCap") && Object.hasOwn(namespace, "projectTier")).pipe(z.object({
   readMemoryCap: z.custom<NativePolicyApi["readMemoryCap"]>((capability) => typeof capability === "function"),
@@ -47,7 +48,7 @@ export const createCoreAgentPolicySourceOperations = (): CoreAgentPolicySourceOp
 const admitPolicyLocation = ({ location }: { readonly location: CoreAgentPolicyLocation }): Outcome<CoreAgentPolicyLocation> => {
   if (!tierSchema.safeParse(location.environmentCap ?? null).success) return { status: "invalid", findings: [finding({ code: "invalid-tier-mapping", subject: "core-agent-policy", detail: "the explicit environment cap must be a supported tier or null" })] };
   if (location.basis.source.kind !== "core" || location.basis.source.id !== "framework" || location.basis.pin.trim().length === 0) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "core-agent-policy", detail: "declare the framework source basis before preparing core agent model policy" })] };
-  if (location.binding.harness !== "claude" || location.binding.directory !== ".claude") return { status: "invalid", findings: [finding({ code: "inapplicable-agent-context", subject: "core-agent-policy", detail: "the qualified core agent policy profile requires Claude with .claude" })] };
+  if (qualifiedHarnessProfile(location.binding) === null) return { status: "invalid", findings: [finding({ code: "inapplicable-agent-context", subject: "core-agent-policy", detail: "the qualified core agent policy profile requires a qualified host binding" })] };
   return { status: "ok", value: location };
 };
 const observePolicySources = async ({ location, source }: { readonly location: CoreAgentPolicyLocation; readonly source: CoreAgentPolicySourceOperations }): Promise<Outcome<readonly PolicyObservation[]>> => {
@@ -56,11 +57,11 @@ const observePolicySources = async ({ location, source }: { readonly location: C
   return findings.length > 0 ? { status: "invalid", findings } : { status: "ok", value: reads.flatMap(({ path, observed }) => observed.status === "ok" ? [{ path, bytes: observed.value }] : []) };
 };
 const policyWitnesses = ({ observations, source }: { readonly observations: readonly PolicyObservation[]; readonly source: CoreAgentPolicySourceOperations }): readonly SourceContentDigest[] => observations.flatMap(({ path, bytes }) => bytes === null ? [] : [{ path, sha256: source.digest({ bytes }) }]);
-const projectNativeTier = ({ api, tier, cap }: { readonly api: NativePolicyApi; readonly tier: Tier; readonly cap: Tier | null }): Outcome<NativeTier> => {
+const projectNativeTier = ({ api, tier, cap, harness }: { readonly api: NativePolicyApi; readonly tier: Tier; readonly cap: Tier | null; readonly harness: QualifiedHarnessProfile["harness"] }): Outcome<NativeTier> => {
   try {
-    const projected = projectionSchema.safeParse(api.projectTier(tier, "claude", cap));
-    return projected.success ? { status: "ok", value: { model: projected.data.model ?? null, effort: projected.data.effort ?? null } } : { status: "invalid", findings: [finding({ code: "invalid-tier-mapping", subject: modulePath, detail: `native Claude ${tier} projection requires supported model and effort fields` })] };
-  } catch { return unavailablePolicy({ detail: `native Claude ${tier} projection failed; inspect the tier module capability` }); }
+    const projected = projectionSchema.safeParse(api.projectTier(tier, harness, cap));
+    return projected.success ? { status: "ok", value: { model: projected.data.model ?? null, effort: projected.data.effort ?? null } } : { status: "invalid", findings: [finding({ code: "invalid-tier-mapping", subject: modulePath, detail: `native ${harness} ${tier} projection requires supported model and effort fields` })] };
+  } catch { return unavailablePolicy({ detail: `native ${harness} ${tier} projection failed; inspect the tier module capability` }); }
 };
 const readNativeMemoryCap = ({ api, sourceRoot }: { readonly api: NativePolicyApi; readonly sourceRoot: string }): Outcome<Tier | null> => {
   try {
@@ -68,13 +69,13 @@ const readNativeMemoryCap = ({ api, sourceRoot }: { readonly api: NativePolicyAp
     return cap.success ? { status: "ok", value: cap.data } : { status: "invalid", findings: [finding({ code: "invalid-tier-mapping", subject: modulePath, detail: "native memory cap must be a supported tier or null" })] };
   } catch { return unavailablePolicy({ detail: "native memory cap evaluation failed; inspect org.md, team.md and project.md tier_cap declarations" }); }
 };
-const projectNativePolicy = ({ api, sourceRoot, environmentCap }: { readonly api: NativePolicyApi; readonly sourceRoot: string; readonly environmentCap: Tier | null }): Outcome<NativePolicyProjection> => {
+const projectNativePolicy = ({ api, sourceRoot, environmentCap, harness }: { readonly api: NativePolicyApi; readonly sourceRoot: string; readonly environmentCap: Tier | null; readonly harness: QualifiedHarnessProfile["harness"] }): Outcome<NativePolicyProjection> => {
   const cap = readNativeMemoryCap({ api, sourceRoot });
   if (cap.status === "invalid") return cap;
   const effectiveCap = environmentCap ?? cap.value;
-  const judgment = projectNativeTier({ api, tier: "judgment", cap: effectiveCap });
-  const balanced = projectNativeTier({ api, tier: "balanced", cap: effectiveCap });
-  const templated = projectNativeTier({ api, tier: "templated", cap: effectiveCap });
+  const judgment = projectNativeTier({ api, tier: "judgment", cap: effectiveCap, harness });
+  const balanced = projectNativeTier({ api, tier: "balanced", cap: effectiveCap, harness });
+  const templated = projectNativeTier({ api, tier: "templated", cap: effectiveCap, harness });
   if (judgment.status === "invalid") return judgment;
   if (balanced.status === "invalid") return balanced;
   if (templated.status === "invalid") return templated;
@@ -82,7 +83,7 @@ const projectNativePolicy = ({ api, sourceRoot, environmentCap }: { readonly api
 };
 const admitNativePolicy = ({ imported, location }: { readonly imported: unknown; readonly location: CoreAgentPolicyLocation }): Outcome<NativePolicyProjection> => {
   const admitted = moduleSchema.safeParse(imported);
-  return admitted.success ? projectNativePolicy({ api: admitted.data, sourceRoot: location.sourceRoot, environmentCap: location.environmentCap ?? null }) : { status: "invalid", findings: [finding({ code: "invalid-input", subject: modulePath, detail: "native tier module must export callable readMemoryCap and projectTier capabilities" })] };
+  return admitted.success ? projectNativePolicy({ api: admitted.data, sourceRoot: location.sourceRoot, environmentCap: location.environmentCap ?? null, harness: qualifiedHarnessProfile(location.binding)!.harness }) : { status: "invalid", findings: [finding({ code: "invalid-input", subject: modulePath, detail: "native tier module must export callable readMemoryCap and projectTier capabilities" })] };
 };
 const isMatchingObservation = ({ before, after }: { readonly before: PolicyObservation; readonly after: PolicyObservation | undefined }) => before.path === after?.path && (before.bytes === null ? after.bytes === null : after.bytes !== null && before.bytes.length === after.bytes.length && before.bytes.every((byte, index) => byte === after.bytes?.[index]));
 const finishPolicyObservation = ({ before, after, projection, inputs, location }: {

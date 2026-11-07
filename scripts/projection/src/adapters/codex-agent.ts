@@ -9,6 +9,7 @@ import {
 const codexRole = (input: AgentEmissionInput): string => {
   const instructions = `${input.preflight}\n\n${input.body.trimStart()}`
     .trimEnd()
+    .replace(/the `maxTurns: (\d+)` frontmatter above - keep the two numbers in sync/g, "the core persona's `maxTurns: $1` cap - Codex TOML personas carry no frontmatter and no native per-agent cap key, so this number is prose-only here; update it by hand if the authored cap changes")
     .replaceAll("\\", "\\\\")
     .replaceAll('"""', '\\"\\"\\"');
   return [

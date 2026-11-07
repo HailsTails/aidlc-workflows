@@ -11,6 +11,6 @@ test.each([
 });
 test("unsupported invocation stops before prose preparation", () => {
   const prose = mock();
-  expect(createKnowledgeProjector({ prose }).render({ document: { relativePath: "aidlc-shared/guide.md", origin: coreKnowledgeOrigin, text: coreKnowledgeText }, context: { ...coreKnowledgeContext, invocation: "npx aidlc" } })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "core/knowledge/aidlc-shared/guide.md", detail: "knowledge text requires Bun copy or explicit Claude native context" }] });
+  expect(createKnowledgeProjector({ prose }).render({ document: { relativePath: "aidlc-shared/guide.md", origin: coreKnowledgeOrigin, text: coreKnowledgeText }, context: { ...coreKnowledgeContext, invocation: "npx aidlc" } })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "core/knowledge/aidlc-shared/guide.md", detail: "knowledge text requires Bun copy or explicit native context" }] });
   expect(prose).not.toHaveBeenCalled();
 });

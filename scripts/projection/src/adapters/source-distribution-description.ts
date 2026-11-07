@@ -1,14 +1,19 @@
+import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { createHash } from "node:crypto";
 import { mergeSourceDigests } from "../domain/source-origin.ts";
 import { z } from "zod";
 import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
-import { claudeDistributionDescriptionPaths, type DistributionDescriptionRequest, type DistributionDescriptionPreparer, type PreparedDistributionDescription, type PairedCopyDescription, type DistributionBuildProfile } from "../domain/distribution-description.ts";
+import type { DistributionDescriptionRequest, DistributionDescriptionPreparer, PreparedDistributionDescription, PairedCopyDescription, DistributionBuildProfile } from "../domain/distribution-description.ts";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import { continuePreparation } from "../application/preparation-result.ts";
 
-const sourcePaths = ["scripts/projection/native/projection-metadata.ts", "scripts/manifest-types.ts", "harness/claude/manifest.ts", "harness/claude/onboarding.fills.ts", "harness/claude/.mcp.json", "harness/claude/dot-gitignore", "core/tools/aidlc-distribution.ts", "core/tools/aidlc-root-integration-codec.ts", "core/tools/aidlc-projection-path.ts", "core/tools/aidlc-channel.ts", "core/tools/aidlc-version.ts"];
-const nativeSourcePaths = ["scripts/projection/native/native-delivery.ts", "scripts/projection/src/domain/model.ts", "scripts/copy-era-files.json", "scripts/native-command-text.ts", "scripts/native-command-context.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts", "core/tools/aidlc-runtime-paths.ts"];
-const descriptionSourcePaths = (request: DistributionDescriptionRequest) => request.invocation === "aidlc" ? [...sourcePaths, ...nativeSourcePaths] : sourcePaths;
+const descriptionSourcePaths = (request: DistributionDescriptionRequest): readonly string[] => {
+  const profile = qualifiedHarnessProfile(request.binding);
+  if (profile === null) return [];
+  const sourcePaths = ["scripts/projection/native/projection-metadata.ts", "scripts/manifest-types.ts", `harness/${profile.harness}/manifest.ts`, `harness/${profile.harness}/onboarding.fills.ts`, ...profile.rootMappings.map(mapping => `harness/${profile.harness}/${mapping.src}`), "core/tools/aidlc-distribution.ts", "core/tools/aidlc-root-integration-codec.ts", "core/tools/aidlc-projection-path.ts", "core/tools/aidlc-channel.ts", "core/tools/aidlc-version.ts"];
+  const nativeSourcePaths = ["scripts/projection/native/native-delivery.ts", "scripts/projection/src/domain/model.ts", "scripts/copy-era-files.json", "scripts/native-command-text.ts", "scripts/native-command-context.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts", "core/tools/aidlc-runtime-paths.ts"];
+  return request.invocation === "aidlc" ? [...sourcePaths, ...nativeSourcePaths] : sourcePaths;
+};
 export type NativeDescriptionPair = { readonly profile: DistributionBuildProfile; readonly copy: PairedCopyDescription };
 export type SourceDescriptionOperations = NativeCompilerProcessOperations & { readonly paths: (input: DistributionDescriptionRequest) => { readonly sourceRoot: string; readonly root: string } };
 export const createSourceDescriptionOperations = (): SourceDescriptionOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
@@ -31,15 +36,15 @@ const observe = async () => {
 };
 const loadModule = ({ path }) => import(Bun.pathToFileURL(input.sourceRoot + "/" + path).href);
 const importNative = async () => {
-  const [manifest, metadata, distribution, version, channel] = await Promise.all([loadModule({ path: "harness/claude/manifest.ts" }), loadModule({ path: "scripts/projection/native/projection-metadata.ts" }), loadModule({ path: "core/tools/aidlc-distribution.ts" }), loadModule({ path: "core/tools/aidlc-version.ts" }), loadModule({ path: "core/tools/aidlc-channel.ts" })]);
+  const [manifest, metadata, distribution, version, channel] = await Promise.all([loadModule({ path: "harness/" + input.profile.harness + "/manifest.ts" }), loadModule({ path: "scripts/projection/native/projection-metadata.ts" }), loadModule({ path: "core/tools/aidlc-distribution.ts" }), loadModule({ path: "core/tools/aidlc-version.ts" }), loadModule({ path: "core/tools/aidlc-channel.ts" })]);
   return { manifest, metadata, distribution, version, channel };
 };
-const rootMappings = [{ src: ".mcp.json", dst: ".mcp.json" }, { src: "dot-gitignore", dst: ".gitignore" }];
+const rootMappings = input.profile.rootMappings;
 const admitNative = ({ manifest, metadata, distribution, version, channel }) => {
   const declaration = manifest.default;
-  if (declaration?.name !== "claude" || declaration?.harnessDir !== ".claude" || !Array.isArray(declaration.harnessFiles)) return unavailable({ detail: "distribution description requires the authored Claude manifest" });
+  if (declaration?.name !== input.profile.harness || declaration?.harnessDir !== input.profile.directory || !Array.isArray(declaration.harnessFiles)) return unavailable({ detail: "distribution description requires the qualified authored manifest" });
   const mappings = declaration.harnessFiles.filter(mapping => mapping.projectRoot === true);
-  if (mappings.length !== 2 || rootMappings.some(expected => mappings.filter(mapping => mapping.src === expected.src && mapping.dst === expected.dst).length !== 1)) return unavailable({ detail: "distribution description qualifies the two declared Claude root mappings only" });
+  if (mappings.length !== rootMappings.length || rootMappings.some(expected => mappings.filter(mapping => mapping.src === expected.src && mapping.dst === expected.dst).length !== 1)) return unavailable({ detail: "distribution description qualifies the declared qualified root mappings only" });
   if (typeof metadata.prepareProjectionMetadata !== "function" || typeof distribution.sha256Bytes !== "function" || typeof version.AIDLC_VERSION !== "string" || typeof channel.releaseBuildVersion !== "function") return unavailable({ detail: "source-owned metadata planning, hashing and version capabilities unavailable" });
   return { status: "ok", declaration, prepare: metadata.prepareProjectionMetadata, digest: distribution.sha256Bytes, buildVersion: channel.releaseBuildVersion({ AIDLC_BUILD_VERSION: input.buildVersion }) };
 };
@@ -50,18 +55,26 @@ const admitRoot = ({ bytes, mapping, digest }) => {
     return { path: mapping.dst, fileName: mapping.dst, bytes, sha256: digest(bytes) };
 };
 const collectRoots = ({ roots }) => roots.some(root => root === null) ? unavailable({ detail: "authored root mappings containing projection tokens need their native text owner before publication" }) : { status: "ok", roots };
-const readRoots = async ({ digest }) => collectRoots({ roots: await Promise.all(rootMappings.map(async mapping => admitRoot({ bytes: await Bun.file(input.sourceRoot + "/harness/claude/" + mapping.src).bytes(), mapping, digest }))) });
+const readRoots = async ({ digest }) => {
+  const roots = await Promise.all(rootMappings.map(async mapping => admitRoot({ bytes: await Bun.file(input.sourceRoot + "/harness/" + input.profile.harness + "/" + mapping.src).bytes(), mapping, digest })));
+  for (const path of input.profile.projectedRootPaths) {
+    const file = input.finalFiles.find(file => file.path === path);
+    if (file === undefined) return unavailable({ detail: "projected root integration requires actual final encoded product bytes" });
+    roots.push(admitRoot({ bytes: Buffer.from(file.base64, "base64"), mapping: { dst: path }, digest }));
+  }
+  return collectRoots({ roots });
+};
 const admitPrepared = ({ prepared, roots }) => {
   if (prepared?.kind === "refused") return { status: "refused", detail: typeof prepared.message === "string" ? prepared.message : "native metadata preparation refused" };
   if (prepared?.kind !== "prepared" || !Array.isArray(prepared.artifacts) || prepared.artifacts.some(artifact => typeof artifact.file !== "string" || !(artifact.bytes instanceof Uint8Array))) return unavailable({ detail: "native metadata preparation must return byte artifacts" });
-  return { status: "ok", files: [...roots.map(root => ({ file: root.path, bytes: Array.from(root.bytes) })), ...prepared.artifacts.map(artifact => ({ file: artifact.file, bytes: Array.from(artifact.bytes) }))] };
+  return { status: "ok", files: [...roots.filter(root => !input.profile.projectedRootPaths.includes(root.path)).map(root => ({ file: root.path, bytes: Array.from(root.bytes) })), ...prepared.artifacts.map(artifact => ({ file: artifact.file, bytes: Array.from(artifact.bytes) }))] };
 };
 const prepareNative = async ({ native, roots }) => {
   let prepared = native.prepare({ declaration: native.declaration, files: input.files, directories: input.directories, rootFiles: roots, buildVersion: native.buildVersion });
   if (input.nativeDelivery && prepared.kind === "prepared") {
     const delivery = await loadModule({ path: "scripts/projection/native/native-delivery.ts" });
     const history = await Bun.file(input.sourceRoot + "/scripts/copy-era-files.json").json();
-    const finalized = delivery.finalizeClaudeNativeMetadata({ artifacts: [...roots.map(root => ({ file: root.path, bytes: root.bytes })), ...prepared.artifacts], nativeFiles: input.nativeDelivery.files.map(file => ({ path: file.path, bytes: Buffer.from(file.base64, "base64") })), copyFiles: input.nativeDelivery.copyFiles, history: history.claude });
+    const finalized = delivery.finalizeNativeMetadata({ harnessDir: input.profile.directory, artifacts: [...roots.filter(root => !input.profile.projectedRootPaths.includes(root.path)).map(root => ({ file: root.path, bytes: root.bytes })), ...prepared.artifacts], nativeFiles: input.nativeDelivery.files.map(file => ({ path: file.path, bytes: Buffer.from(file.base64, "base64") })), copyFiles: input.nativeDelivery.copyFiles, history: history[input.profile.harness] });
     return admitPrepared({ prepared: finalized, roots: [] });
   }
   return admitPrepared({ prepared, roots });
@@ -85,8 +98,8 @@ const failure = ({ detail, code = "capability-gap" }: { readonly detail: string;
 const admitReply = ({ reply, request }: { readonly reply: z.infer<typeof replySchema> & { readonly status: "ok" }; readonly request: DistributionDescriptionRequest }): Outcome<PreparedDistributionDescription> => {
   const sourcePaths = descriptionSourcePaths(request);
   const files = reply.files.map((file) => file.file);
-  const expected = claudeDistributionDescriptionPaths();
-  if (files.length !== expected.length || expected.some((path) => files.filter((file) => file === path).length !== 1) || reply.inputs.length !== sourcePaths.length || sourcePaths.some((path) => reply.inputs.filter((input) => input.path === path).length !== 1)) return failure({ code: "foreign-content", detail: "distribution description must retain every declared source witness and exactly its six producer artifacts" });
+  const expected = qualifiedHarnessProfile(request.binding)?.descriptionPaths ?? [];
+  if (files.length !== expected.length || expected.some((path) => files.filter((file) => file === path).length !== 1) || reply.inputs.length !== sourcePaths.length || sourcePaths.some((path) => reply.inputs.filter((input) => input.path === path).length !== 1)) return failure({ code: "foreign-content", detail: "distribution description must retain every declared source witness and exactly its qualified producer artifacts" });
   return { status: "ok", value: { files: reply.files.map((file) => ({ path: file.file, bytes: Uint8Array.from(file.bytes), mode: request.mode })), preparation: { kind: "distribution-metadata", paths: files, inputs: reply.inputs } } };
 };
 const decodeReply = ({ stdout, request }: { readonly stdout: string; readonly request: DistributionDescriptionRequest }): Outcome<PreparedDistributionDescription> => {
@@ -98,8 +111,8 @@ const decodeReply = ({ stdout, request }: { readonly stdout: string; readonly re
   return parsed.data.status === "ok" ? admitReply({ reply: parsed.data, request }) : failure({ code: parsed.data.status === "refused" ? "invalid-input" : "capability-gap", detail: parsed.data.detail });
 };
 const processOutcome = ({ reply, request }: { readonly reply: NativeCompilerSpawnReply; readonly request: DistributionDescriptionRequest }): Outcome<PreparedDistributionDescription> => reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0 ? failure({ detail: "distribution description process unavailable or reported diagnostics" }) : decodeReply({ stdout: reply.stdout, request });
-const admitRequest = ({ request }: { readonly request: DistributionDescriptionRequest }): Outcome<DistributionDescriptionRequest> => request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || request.binding.harness !== "claude" || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777
-  ? failure({ detail: "distribution description requires the pinned framework Claude copy profile and explicit file modes" }) : { status: "ok", value: request };
+const admitRequest = ({ request }: { readonly request: DistributionDescriptionRequest }): Outcome<DistributionDescriptionRequest> => request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || qualifiedHarnessProfile(request.binding) === null || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777
+  ? failure({ detail: "distribution description requires the pinned qualified framework profile and explicit file modes" }) : { status: "ok", value: request };
 const admitWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: string; readonly root: string } }): Outcome<{ readonly sourceRoot: string; readonly root: string }> => {
     const source = paths.sourceRoot.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "");
     const root = paths.root.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "");
@@ -107,7 +120,7 @@ const admitWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: s
 };
 const processInput = ({ paths, request, binary, operations, buildVersion, nativePair }: { readonly paths: { readonly sourceRoot: string; readonly root: string }; readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations; readonly buildVersion: string | undefined; readonly nativePair: NativeDescriptionPair | undefined }) => {
     const env = { ...privateCompilerEnvironment({ inherited: operations.environment(), root: `${paths.root}/.description-home` }), ...Object.fromEntries([["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0"], ["BUN_INSTALL_AUTO", "disable"]]) };
-    return { binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, env, input: JSON.stringify({ sourceRoot: paths.sourceRoot, paths: descriptionSourcePaths(request), files: request.files, directories: request.directories, buildVersion, ...(request.invocation === "aidlc" && nativePair !== undefined ? { nativeDelivery: { files: request.finalFiles?.map(file => ({ path: file.path, base64: Buffer.from(file.bytes).toString("base64") })), copyFiles: nativePair.copy.files.map(file => ({ path: file.path, sha256: `sha256:${createHash("sha256").update(file.bytes).digest("hex")}` })) } } : {}) }) };
+    return { binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, env, input: JSON.stringify({ sourceRoot: paths.sourceRoot, profile: qualifiedHarnessProfile(request.binding), finalFiles: request.finalFiles?.map(file => ({ path: file.path, base64: Buffer.from(file.bytes).toString("base64") })) ?? [], paths: descriptionSourcePaths(request), files: request.files, directories: request.directories, buildVersion, ...(request.invocation === "aidlc" && nativePair !== undefined ? { nativeDelivery: { files: request.finalFiles?.map(file => ({ path: file.path, base64: Buffer.from(file.bytes).toString("base64") })), copyFiles: nativePair.copy.files.map(file => ({ path: file.path, sha256: `sha256:${createHash("sha256").update(file.bytes).digest("hex")}` })) } } : {}) }) };
 };
 const execute = async ({ request, binary, operations, buildVersion, nativePair }: { readonly request: DistributionDescriptionRequest; readonly binary: string; readonly operations: SourceDescriptionOperations; readonly buildVersion: string | undefined; readonly nativePair: NativeDescriptionPair | undefined }): Promise<Outcome<PreparedDistributionDescription>> => {
   try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations, buildVersion, nativePair })), request }) }); }
@@ -118,7 +131,7 @@ export const createSourceDescriptionPreparer = ({ binary = "bun", operations = c
   if (admitted.status === "invalid") return admitted;
   if (request.invocation === "aidlc") {
     if (nativePair === undefined || request.finalFiles === undefined || nativePair.profile.buildVersion !== buildVersion || nativePair.copy.profile.buildVersion !== nativePair.profile.buildVersion || nativePair.copy.profile.environmentCap !== nativePair.profile.environmentCap || JSON.stringify(nativePair.copy.basis) !== JSON.stringify(request.basis)) return failure({ code: "foreign-content", detail: "native delivery requires final bytes and an explicitly paired copy artifact from the same source and version/cap profile" });
-    const paths = [...request.finalFiles.map(file => file.path), ...claudeDistributionDescriptionPaths()];
+    const paths = [...request.finalFiles.map(file => file.path), ...(qualifiedHarnessProfile(request.binding)?.descriptionPaths ?? [])];
     const copyPaths = nativePair.copy.files.map(file => file.path);
     if ([paths, copyPaths, request.files].some(inventory => new Set(inventory).size !== inventory.length || inventory.some(path => pathStatus({ path }) !== "safe")) || paths.length !== request.files.length || copyPaths.length !== request.files.length || request.files.some(path => !paths.includes(path) || !copyPaths.includes(path))) return failure({ code: "foreign-content", detail: "native final bytes, paired copy and producer metadata must exactly cover the declared file inventory" });
   } else if (nativePair !== undefined) return failure({ code: "foreign-content", detail: "copy delivery must not consume native finalization inputs" });

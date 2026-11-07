@@ -1,3 +1,4 @@
+import { qualifiedDeliveryContext } from "./qualified-harness-profile.ts";
 import { createNativeDocumentCommandPreparer } from "./native-document-commands.ts";
 import type { NativeDocumentCommandPreparer, NativeDocumentCommands } from "../domain/native-document-commands.ts";
 import type { HarnessBinding } from "../domain/harness-binding.ts";
@@ -6,10 +7,11 @@ import type { NativeResource } from "../domain/native-rendering.ts";
 import type { ProjectionSet, ProjectedSetUnit } from "../application/projection-set.ts";
 import { finding, type Outcome } from "../domain/model.ts";
 
-export const isClaudeNativeDocumentContext = (context: HarnessBinding & { readonly invocation: string }): boolean => context.harness === "claude" && context.directory === ".claude" && context.invocation === "aidlc";
+export const isNativeDocumentContext = (context: HarnessBinding & { readonly invocation: string }): boolean => qualifiedDeliveryContext(context) && context.invocation === "aidlc";
+export const isClaudeNativeDocumentContext = (context: HarnessBinding & { readonly invocation: string }): boolean => context.harness === "claude" && isNativeDocumentContext(context);
 export const prepareDocumentCommands = ({ sourceRoot, basis, context, documents, preparer = createNativeDocumentCommandPreparer() }: { readonly sourceRoot: string; readonly basis: SourceBasis; readonly context: HarnessBinding & { readonly invocation: string }; readonly documents: readonly { readonly path: string; readonly source: string }[]; readonly preparer?: NativeDocumentCommandPreparer }): Outcome<NativeDocumentCommands> => {
   if (context.invocation.startsWith("bun ")) return { status: "ok", value: { binding: context, compiler: { ...basis, path: "scripts/native-command-text.ts" }, inputs: [], documents: documents.map(document => ({ ...document, text: document.source, origins: [] })) } };
-  if (!isClaudeNativeDocumentContext(context)) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "native-document-commands", detail: "native document commands require the explicit Claude aidlc profile" })] };
+  if (!isNativeDocumentContext(context)) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "native-document-commands", detail: "native document commands require the explicit qualified aidlc profile" })] };
   return preparer.prepare({ sourceRoot, basis, binding: context, documents });
 };
 export const prepareNativeProjectionCommands = ({ projection, sourceRoot, basis, context }: { readonly projection: ProjectionSet; readonly sourceRoot: string; readonly basis: SourceBasis; readonly context: HarnessBinding & { readonly invocation: string } }): Outcome<{ readonly projection: ProjectionSet; readonly inputs: readonly SourceContentDigest[] }> => {

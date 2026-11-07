@@ -1,3 +1,4 @@
+import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { z } from "zod";
 import { createNativeCompilerProcessOperations, compilerSystemEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnInput, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 import type { NativeDocumentCommandPreparer, NativeDocumentCommandRequest, NativeDocumentCommands } from "../domain/native-document-commands.ts";
@@ -26,7 +27,7 @@ const prepare = async () => {
   const prose = await import(Bun.pathToFileURL(input.root + "/scripts/native-runtime-text.ts").href);
   if (typeof api.prepareNativeDocumentText !== "function" || typeof factory.createNativeCommandContext !== "function" || typeof prose.prepareNativeOnboardingText !== "function") return { status: "unavailable", detail: "source-owned native command preparation exports are unavailable" };
   const context = factory.createNativeCommandContext({ harnessDir: input.binding.directory });
-  const prepared = input.documents.map(document => ({ document, prepared: api.prepareNativeDocumentText({ source: input.binding.harness === "claude" ? prose.prepareNativeOnboardingText(document.source, true) : document.source, subject: document.path, context }) }));
+  const prepared = input.documents.map(document => ({ document, prepared: api.prepareNativeDocumentText({ source: prose.prepareNativeOnboardingText(document.source, input.exactReads), subject: document.path, context }) }));
   const refusals = prepared.filter(entry => entry.prepared.status !== "ok").flatMap(entry => entry.prepared.problems ?? ["native text preparation refused without diagnostics"]);
   if (refusals.length > 0) return { status: "refused", detail: refusals.join("\\n") };
   const after = await fingerprint();
@@ -52,7 +53,7 @@ const stageProcessEnvironment = ({ root, request, inherited }: { readonly root: 
 });
 const stageProcessInput = ({ request, binary, operations }: { readonly request: NativeDocumentCommandRequest; readonly binary: string; readonly operations: NativeCompilerProcessOperations }): NativeCompilerSpawnInput => {
   const root = Bun.fileURLToPath(Bun.pathToFileURL(request.sourceRoot));
-  return { binary, args: ["--no-env-file", "--no-install", "--eval", nativeProgram], cwd: root, env: { ...stageProcessEnvironment({ root, request, inherited: operations.environment() }), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BUN_INSTALL_AUTO: "disable" }, input: JSON.stringify({ root, binding: request.binding, documents: request.documents }) };
+  return { binary, args: ["--no-env-file", "--no-install", "--eval", nativeProgram], cwd: root, env: { ...stageProcessEnvironment({ root, request, inherited: operations.environment() }), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BUN_INSTALL_AUTO: "disable" }, input: JSON.stringify({ root, binding: request.binding, documents: request.documents, exactReads: qualifiedHarnessProfile(request.binding)?.exactNativeReads ?? false }) };
 };
 const decodeStageReply = ({ stdout, request }: { readonly stdout: string; readonly request: NativeDocumentCommandRequest }): Outcome<NativeDocumentCommands> => {
   try { return admitReply({ decoded: JSON.parse(stdout), request }); }

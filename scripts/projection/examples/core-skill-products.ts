@@ -1,4 +1,4 @@
-import { isClaudeNativeDocumentContext, prepareNativeProjectionCommands } from "../src/adapters/native-document-preparation.ts";
+import { isNativeDocumentContext, prepareNativeProjectionCommands } from "../src/adapters/native-document-preparation.ts";
 import { continuePreparation } from "../src/application/preparation-result.ts";
 import { createCoreSkillSourceReader, type CoreSkillSourceReader } from "../src/adapters/core-skill-sources.ts";
 import { createDistributionAssemblyRules } from "../src/adapters/distribution-source.ts";
@@ -15,7 +15,7 @@ export type CoreSkillProducts = { readonly projection: ProjectionSet; readonly i
 export type CoreSkillProductServices = { readonly reader: CoreSkillSourceReader; readonly select: typeof selectCoreSkillProducts; readonly project: typeof projectProjectionSet; readonly products: typeof prepareProjectedProducts; readonly rules: { readonly encode: (input: { readonly text: string }) => Uint8Array } };
 export const selectCoreSkillProducts = ({ sources, basis, context }: { readonly sources: CoreSkillSources; readonly basis: SourceBasis; readonly context: SkillContext }): Outcome<ProjectionSetRequest> => {
   if (basis.source.kind !== "core" || sources.skills.length === 0 || sources.skills.some((skill) => sourceKey(skill.origin.source) !== sourceKey(basis.source) || skill.origin.pin !== basis.pin)) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "core-skill-products", detail: "authored core skill products must preserve the selected framework source basis" })] };
-  if ((!context.invocation.startsWith("bun ") && !isClaudeNativeDocumentContext(context))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-skill-products", detail: "this producer qualifies authored skill text for Bun copy or explicit Claude native delivery" })] };
+  if ((!context.invocation.startsWith("bun ") && !isNativeDocumentContext(context))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-skill-products", detail: "this producer qualifies authored skill text for Bun copy or explicit Claude native delivery" })] };
   return { status: "ok", value: { target: copyHarnessBinding({ binding: context }), units: sources.skills.map((skill) => ({ kind: "skill", key: `skill-${skill.name}`, input: { text: skill.text, origin: skill.origin, context } })) } };
 };
 export const createCoreSkillProductServices = (): CoreSkillProductServices => ({ reader: createCoreSkillSourceReader(), select: selectCoreSkillProducts, project: projectProjectionSet, products: prepareProjectedProducts, rules: createDistributionAssemblyRules() });

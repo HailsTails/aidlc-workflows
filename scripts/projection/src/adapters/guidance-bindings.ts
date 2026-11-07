@@ -1,4 +1,4 @@
-import { isClaudeNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
+import { isNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
 import { guidanceDocumentName } from "../domain/core-guidance.ts";
 import { z } from "zod";
 import type { CoreGuidanceSources, PreparedCoreGuidance, PreparedGuidance, AuthoredGuidance } from "../domain/core-guidance.ts";
@@ -59,7 +59,7 @@ const prepareGuidanceBindings = async ({ request, operations, prose }: { readonl
   } catch { return { status: "invalid", findings: [finding({ code: "capability-gap", subject: selectorPath, detail: "source-owned guidance binding selector unavailable; inspect the selected source checkout and API" })] }; }
 };
 const admitBindingRequest = ({ request }: { readonly request: GuidanceBindingRequest }): Outcome<GuidanceBindingRequest> => {
-  if ((!request.context.invocation.startsWith("bun ") && !isClaudeNativeDocumentContext(request.context))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-guidance-bindings", detail: "guidance text qualifies Bun copy and explicit Claude native delivery" })] };
+  if ((!request.context.invocation.startsWith("bun ") && !isNativeDocumentContext(request.context))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-guidance-bindings", detail: "guidance text qualifies Bun copy and explicit Claude native delivery" })] };
   if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || request.sources.documents.length === 0 || request.sources.documents.some((document) => sourceKey(document.origin.source) !== sourceKey(request.basis.source) || document.origin.pin !== request.basis.pin)) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "core-guidance-bindings", detail: "bind authored guidance from one declared framework source basis" })] };
   return { status: "ok", value: request };
 };

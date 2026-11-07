@@ -17,7 +17,7 @@ test.each([
 });
 
 test("other harnesses cannot reuse prepared Claude documents", () => {
-  expect(renderHarnessDocument({ document: entryMain, context: { harness: "codex", directory: ".codex" } })).toEqual({ status: "invalid", findings: [{ code: "harness-mismatch", subject: entryMainOrigin.path, detail: "prepared harness documents qualify the same Claude binding only" }] });
+  expect(renderHarnessDocument({ document: entryMain, context: { harness: "codex", directory: ".codex" } })).toEqual({ status: "invalid", findings: [{ code: "harness-mismatch", subject: entryMainOrigin.path, detail: "prepared harness documents require the same binding" }] });
 });
 
 test("the profile declares four distinct source mappings", () => {
