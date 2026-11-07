@@ -64,7 +64,10 @@ const admitRoot = ({ bytes, mapping, digest }) => {
 };
 const collectRoots = ({ roots }) => roots.some(root => root === null) ? unavailable({ detail: "authored root mappings containing projection tokens need their native text owner before publication" }) : { status: "ok", roots };
 const readRoots = async ({ digest }) => {
-  const roots = await Promise.all(rootMappings.map(async mapping => admitRoot({ bytes: await Bun.file(input.sourceRoot + "/harness/" + input.profile.harness + "/" + mapping.src).bytes(), mapping, digest })));
+  const roots = await Promise.all(rootMappings.filter(mapping => !input.profile.projectedRootPaths.includes(mapping.dst)).map(async mapping => {
+    const final = input.finalFiles.find(file => file.path === mapping.dst);
+    return admitRoot({ bytes: final === undefined ? await Bun.file(input.sourceRoot + "/harness/" + input.profile.harness + "/" + mapping.src).bytes() : Buffer.from(final.base64, "base64"), mapping, digest });
+  }));
   for (const path of input.profile.projectedRootPaths) {
     const file = input.finalFiles.find(file => file.path === path);
     if (file === undefined) return unavailable({ detail: "projected root integration requires actual final encoded product bytes" });
@@ -90,7 +93,7 @@ const prepareNative = async ({ native, roots }) => {
     const delivery = await loadModule({ path: "scripts/projection/native/native-delivery.ts" });
     const history = await Bun.file(input.sourceRoot + "/scripts/copy-era-files.json").json();
     const namespaceLiterals = input.profile.nativePolicy === "kas-personas" ? [...native.declaration.frontmatterAdditions.map(item => ({ path: input.profile.directory + "/" + item.file, lines: item.lines })), { path: input.profile.directory + "/tools/data/plugin-agent.md", lines: native.declaration.pluginAgentFrontmatter }].map(item => ({ path: item.path, text: native.declaration.nativeReplacements.find(replacement => item.lines.join("\\n").includes(replacement.from)).to })) : [];
-    const finalized = delivery.finalizeNativeMetadata({ namespaceLiterals, harnessDir: input.profile.directory, artifacts: [...roots.filter(root => !input.profile.projectedRootPaths.includes(root.path)).map(root => ({ file: root.path, bytes: root.bytes })), ...prepared.artifacts], nativeFiles: input.nativeDelivery.files.map(file => ({ path: file.path, bytes: Buffer.from(file.base64, "base64") })), copyFiles: input.nativeDelivery.copyFiles, history: history[input.profile.harness] });
+    const finalized = delivery.finalizeNativeMetadata({ namespaceLiterals, harnessDir: input.profile.directory, artifacts: [...roots.filter(root => !input.profile.projectedRootPaths.includes(root.path)).map(root => ({ file: root.path, bytes: root.bytes })), ...prepared.artifacts], nativeFiles: input.nativeDelivery.files.filter(file => !roots.some(root => root.path === file.path && !input.profile.projectedRootPaths.includes(root.path)) && !prepared.artifacts.some(artifact => artifact.file === file.path)).map(file => ({ path: file.path, bytes: Buffer.from(file.base64, "base64") })), copyFiles: input.nativeDelivery.copyFiles, history: history[input.profile.harness] });
     return admitPrepared({ prepared: finalized, roots: [] });
   }
   return admitPrepared({ prepared, roots });
@@ -147,11 +150,12 @@ export const createSourceDescriptionPreparer = ({ binary = "bun", operations = c
   if (admitted.status === "invalid") return admitted;
   if (request.invocation === "aidlc") {
     if (nativePair === undefined || request.finalFiles === undefined || nativePair.profile.buildVersion !== buildVersion || nativePair.copy.profile.buildVersion !== nativePair.profile.buildVersion || nativePair.copy.profile.environmentCap !== nativePair.profile.environmentCap || JSON.stringify(nativePair.copy.basis) !== JSON.stringify(request.basis)) return failure({ code: "foreign-content", detail: "native delivery requires final bytes and an explicitly paired copy artifact from the same source and version/cap profile" });
-    const paths = [...request.finalFiles.map(file => file.path), ...(qualifiedDescriptionPaths(request.binding, request.invocation))];
+    const finalPaths = request.finalFiles.map(file => file.path);
+    const paths = [...new Set([...finalPaths, ...(qualifiedDescriptionPaths(request.binding, request.invocation))])];
     const copyPaths = nativePair.copy.files.map(file => file.path);
     const omitted = qualifiedHarnessProfile(request.binding)?.copyOnlyRoots.map(mapping => mapping.dst) ?? [];
     const expectedCopy = [...request.files, ...omitted];
-    if ([paths, copyPaths, request.files, expectedCopy].some(inventory => new Set(inventory).size !== inventory.length || inventory.some(path => pathStatus({ path }) !== "safe")) || paths.length !== request.files.length || copyPaths.length !== expectedCopy.length || request.files.some(path => !paths.includes(path)) || expectedCopy.some(path => !copyPaths.includes(path))) return failure({ code: "foreign-content", detail: "native final bytes and metadata must cover their exact inventory; paired copy must add exactly the qualified copy-only roots" });
+    if ([finalPaths, paths, copyPaths, request.files, expectedCopy].some(inventory => new Set(inventory).size !== inventory.length || inventory.some(path => pathStatus({ path }) !== "safe")) || paths.length !== request.files.length || request.files.some(path => !paths.includes(path)) || !request.hostAmended && (copyPaths.length !== expectedCopy.length || expectedCopy.some(path => !copyPaths.includes(path)))) return failure({ code: "foreign-content", detail: "native final bytes and metadata must cover their exact inventory; paired copy must add exactly the qualified copy-only roots" });
   } else if (nativePair !== undefined) return failure({ code: "foreign-content", detail: "copy delivery must not consume native finalization inputs" });
   const prepared = await execute({ request: admitted.value, binary, operations, buildVersion, nativePair });
   if (prepared.status === "invalid" || nativePair === undefined) return prepared;

@@ -22,7 +22,7 @@ export const prepareAuthoredStages = async ({ sourceRoot, seed, workflow, mode, 
   if (bound.status === "invalid") return bound;
   const authoring = await services.authoring.load({ sourceRoot, basis: seed.basis, binding: seed.binding });
   if (authoring.status === "invalid") return authoring;
-  const context = { ...seed.binding, invocation: seed.invocation, rulesSubdir: seed.rulesSubdir, optionLetters: authoring.value.optionLetters, authoring: authoring.value.origins };
+  const context = { ...seed.binding, invocation: seed.invocation, rulesSubdir: seed.rulesSubdir, optionLetters: authoring.value.optionLetters, authoring: authoring.value.origins, ...(seed.preparationStage === undefined ? {} : { preparationStage: seed.preparationStage }) };
   const commands = services.commandPreparation({ sourceRoot, basis: seed.basis, stages: bound.value.stages, context, preparer: services.commands });
   if (commands.status === "invalid") return commands;
   const projected = services.project({ target: seed.binding, units: services.units({ stages: bound.value.stages, context, commands: commands.value }) });

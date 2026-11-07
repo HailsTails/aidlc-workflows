@@ -25,7 +25,7 @@ harness/
   claude/  manifest.ts · skills/aidlc/ · onboarding.fills.ts · settings.json
   kiro/    manifest.ts · skills/aidlc/ · agents/*.json · hooks/aidlc-kiro-adapter.ts · settings/cli.json · onboarding.fills.ts
   codex/   manifest.ts · emit.ts · skills/aidlc/ · hooks/aidlc-codex-adapter.ts
-  opencode/ manifest.ts · emit.ts · skills/aidlc/ · command/ · plugin/
+  opencode/ manifest.ts · settings.ts · skills/aidlc/ · command/ · plugin/
   copilot/ manifest.ts · settings.ts · skills/aidlc/ · hooks/aidlc-copilot-adapter.ts
 scripts/
   package.ts               # bun scripts/package.ts [<name>] [--check]
@@ -337,6 +337,57 @@ agent-TOML transpositions, and the `.agents/skills/` tree (composed from
 `core/tools/aidlc-runner-gen.ts`'s exported render functions under
 `AIDLC_HARNESS_DIR`, never reimplemented). Harnesses whose surfaces are all
 authored files (Claude, Kiro) set `emit: null`.
+
+The retained assembler currently admits extension callbacks for the canonical
+Claude and OpenCode profiles. Its source-local adapter runs the trusted callback
+inside a fresh source-evaluation process on a private generated root, after the core documents and
+runtime are assembled but before allow-list expansion, generated regions,
+metadata and native text finalization. This is freshness isolation, not a
+security sandbox. Ordinary manifest fields remain data-only; the function is
+never serialized or passed into the clean assembly domain.
+
+The portable host-root amendment records complete file bytes, explicit directory
+and file modes, additions, overwrites and removals. The assembler validates that
+delta against the before/after roots, consumes the unfinished preparation stage,
+and issues ownership and metadata from the final products. Empty directories and
+opaque binary files are retained. A callback can write a metadata path, but the
+metadata finalizer still owns and reissues it. Unclassified loose top-level files
+remain invalid under the existing projection policy. Synchronous callback return
+values are ignored; stdout and stderr are retained separately as session diagnostics,
+not interpreted as artifacts or included in deterministic output comparison.
+The package CLI forwards each captured stream once per session. Ordering inside
+each stream is retained; cross-stream timing and interleaving with progress
+messages are not promised.
+
+Copy and native outputs in one package operation form one assembly session: the
+native history uses the actual issued copy output, with matching source witnesses,
+version and cap. Each channel has its own inventory, so a callback may add or
+remove different paths by channel. An independent native API call assembles its
+own paired copy first. A source session is a finite ordered list of evaluation
+steps. When every selected host is qualified, packaging uses one session in
+host/copy/native order; `--check` keeps that same source realm for both passes,
+in pass/host/copy/native order. This preserves module-local callback state and
+shared imports among those hosts. A later command or public assembly request
+always receives a fresh process. Artifact/channel cardinality, every product,
+each actual pair and final source witnesses are validated before publication.
+
+Mixed retained/legacy and plugin callback ordering remains unqualified; the
+adapter does not promise parity for arbitrary ambient process state, asynchronous
+callbacks or module-import side effects. Source witnesses cover the production source tree
+(`core`, `harness`, `scripts`, `package.json` and `bun.lock`); the adapter does not
+trace arbitrary external filesystem reads made by trusted callback code. Mode
+evidence reflects the execution platform; Windows checks do not prove POSIX
+permission behavior. Artifact roots admit ordinary files and directories;
+symbolic links and special filesystem nodes are refused explicitly.
+
+This is a bounded extension repair, not completion of open-set host assembly.
+Binding and render profiles remain qualified separately, other retained host
+callbacks are not admitted by this adapter, and discovered or renamed hosts
+still use the existing compatibility path. Codex's historical emitter is an
+original producer already replaced by retained products; it is not re-executed
+as an extension. A future capability distinction must separate original
+producers from extensions before expanding this adapter to those hosts. Plugin
+producers and identity-independent render/layout policy remain separate work.
 
 Under `--check`, the packager supplies two independent temporary `distRoot`
 sets, runs the same emitter once per channel in each build, then compares the

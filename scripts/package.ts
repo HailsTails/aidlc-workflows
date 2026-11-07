@@ -8,8 +8,8 @@ import { prepareCursorCopyAllowList, prepareCursorNativeAllowList } from "./curs
 //   bun scripts/package.ts <name> --check
 //
 // Qualified copy and native deliveries use the retained projection component
-// with explicit version and model-cap inputs. Opencode retains the legacy
-// pipeline until its complete component profile is qualified.
+// with explicit version and model-cap inputs. Legacy assembly remains dormant
+// pending the separately reviewed shared-owner retirement.
 //
 // LEGACY PIPELINE PER HARNESS:
 //   1. COPY core/<src> → dist/<name>/<harnessDir>/<dst>, substituting
@@ -66,7 +66,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { prepareNativeOnboardingText as rewriteNativeOnboarding } from "./native-runtime-text.ts";
-import { projectRetainedTree, usesRetainedProjection } from "./projection-process.ts";
+import { projectRetainedTree, projectRetainedPair, projectRetainedCheckPairs, projectRetainedSession, usesRetainedProjection } from "./projection-process.ts";
 import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
 import { prepareClaudeCopyAllowList, prepareClaudeNativeAllowList, type ClaudeCopyCommandAuthority, type ClaudeNativeCommandAuthority } from "./claude-settings.ts";
 import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
@@ -1461,6 +1461,19 @@ function writeReleaseHarness(name: string): void {
   }
   console.log(`[${name}] regenerated dist-release/${name}/${m.harnessDir}`);
 }
+function writeRetainedHarness(name: string): void {
+  const manifest = loadManifest(name), copyRoot = join(REPO_ROOT, "dist", name), nativeRoot = join(REPO_ROOT, "dist-release", name);
+  for (const root of [copyRoot, nativeRoot]) if (existsSync(root)) rmSync(root, { recursive: true, force: true });
+  projectRetainedPair({ sourceRoot: REPO_ROOT, outRoot: copyRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, manifest, nativeRoot);
+  console.log(`[${name}] regenerated dist/${name}/${manifest.harnessDir}`);
+  console.log(`[${name}] regenerated dist-release/${name}/${manifest.harnessDir}`);
+}
+function writeRetainedHarnesses(names: string[]): void {
+  const steps = names.map(name => ({ host: loadManifest(name), copyRoot: join(REPO_ROOT, "dist", name), nativeRoot: join(REPO_ROOT, "dist-release", name) }));
+  for (const step of steps) for (const root of [step.copyRoot, step.nativeRoot]) if (existsSync(root)) rmSync(root, { recursive: true, force: true });
+  projectRetainedSession({ sourceRoot: REPO_ROOT, outRoot: join(REPO_ROOT, "dist"), buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, steps);
+  for (const { host } of steps) { console.log(`[${host.name}] regenerated dist/${host.name}/${host.harnessDir}`); console.log(`[${host.name}] regenerated dist-release/${host.name}/${host.harnessDir}`); }
+}
 
 // A root file's part under tools/data/root-blocks/ is that file's text, as
 // buildTree writes it. The native rewrite changes the root file (AGENTS.md's
@@ -1717,16 +1730,18 @@ function assertIdenticalRootIntegrations(root: string, harnesses: string[]): voi
   }
 }
 
-function buildCheckPass(root: string, harnesses: string[]): void {
+function buildCheckPass(root: string, harnesses: string[], retainedReady = false): void {
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
   for (const name of harnesses) {
     const manifest = loadManifest(name);
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
-    buildTree(manifest, copyRoot);
-    if (usesRetainedProjection(manifest)) projectRetainedTree({ sourceRoot: REPO_ROOT, outRoot: nativeRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, manifest, "native");
+    if (usesRetainedProjection(manifest)) {
+      if (!retainedReady) projectRetainedPair({ sourceRoot: REPO_ROOT, outRoot: copyRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, manifest, nativeRoot);
+    }
     else {
+      buildTree(manifest, copyRoot);
       buildTree(manifest, nativeRoot, "aidlc");
       rewriteNativeInvocations(nativeRoot, manifest, copyRoot);
     }
@@ -1740,8 +1755,17 @@ function checkPackageDeterminism(harnesses: string[]): string[] {
   const first = mkdtempSync(join(tmpdir(), "aidlc-package-check-a-"));
   const second = mkdtempSync(join(tmpdir(), "aidlc-package-check-b-"));
   try {
-    buildCheckPass(first, harnesses);
-    buildCheckPass(second, harnesses);
+    // A retained host owns one source session across both complete passes.
+    // Unknown hosts still follow the existing compatibility route below.
+    if (harnesses.length > 0 && harnesses.every(name => usesRetainedProjection(loadManifest(name)))) {
+      const steps = [first, second].flatMap(root => harnesses.map(name => ({ host: loadManifest(name), copyRoot: join(root, "dist", name), nativeRoot: join(root, "dist-release", name) })));
+      projectRetainedSession({ sourceRoot: REPO_ROOT, outRoot: first, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, steps);
+    } else for (const name of harnesses) {
+      const manifest = loadManifest(name);
+      if (usesRetainedProjection(manifest)) projectRetainedCheckPairs({ sourceRoot: REPO_ROOT, outRoot: join(first, "dist", name), buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, manifest, { nativeOutRoot: join(first, "dist-release", name), secondOutRoot: join(second, "dist", name), secondNativeOutRoot: join(second, "dist-release", name) });
+    }
+    buildCheckPass(first, harnesses, true);
+    buildCheckPass(second, harnesses, true);
     return [
       ...diffTrees(join(first, "dist"), join(second, "dist"), "dist"),
       ...diffTrees(
@@ -1833,9 +1857,10 @@ if (check) {
   const builtFrom = packageInputsFingerprint(REPO_ROOT);
   forgetPackagedSources(REPO_ROOT, targets);
   cleanWriteOutputs(targets, named === undefined);
-  for (const n of targets) {
-    writeHarness(n);
-    writeReleaseHarness(n);
+  if (targets.length > 0 && targets.every(name => usesRetainedProjection(loadManifest(name)))) writeRetainedHarnesses(targets);
+  else for (const n of targets) {
+    if (usesRetainedProjection(loadManifest(n))) writeRetainedHarness(n);
+    else { writeHarness(n); writeReleaseHarness(n); }
   }
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist"), targets);
   assertIdenticalRootIntegrations(join(REPO_ROOT, "dist-release"), targets);

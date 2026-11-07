@@ -9,7 +9,7 @@ const stageDrafts = ({ stages, context }: { readonly stages: readonly AuthoredSt
   return findings.length > 0 ? { status: "invalid", findings } : { status: "ok", value: drafted.flatMap((draft) => draft.status === "ok" ? [draft.value] : []) };
 };
 export const prepareStageCommands = ({ sourceRoot, basis, stages, context, preparer }: { readonly sourceRoot: string; readonly basis: SourceBasis; readonly stages: readonly AuthoredStage[]; readonly context: StageContext; readonly preparer: NativeStageCommandPreparer }): Outcome<NativeStageCommands | null> => {
-  if (context.invocation.startsWith("bun ")) return { status: "ok", value: null };
+  if (context.invocation.startsWith("bun ") || context.preparationStage === "before-host") return { status: "ok", value: null };
   const drafts = stageDrafts({ stages, context });
   return drafts.status === "invalid" ? drafts : preparer.prepare({ sourceRoot, basis, binding: context, documents: drafts.value });
 };

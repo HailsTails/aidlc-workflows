@@ -59,7 +59,7 @@ const prepare = async () => {
     const stamped = file.endsWith("/aidlc-version.ts") ? version.prepareVersionModuleText({ source, buildVersion }) : { kind: "prepared", content: source };
     if (stamped.kind !== "prepared") throw new Error(stamped.message);
     const projected = text.substituteInvocationTokens({ source: stamped.content, binding });
-    return { file, content: request.invoke === "aidlc" ? nativeText.prepareNativeRuntimeText(projected, request.harnessDir, request.profile.harness) : projected };
+    return { file, content: request.invoke === "aidlc" && !request.beforeHost ? nativeText.prepareNativeRuntimeText(projected, request.harnessDir, request.profile.harness) : projected };
   }));
   const after = await observe();
   if (JSON.stringify(before) !== JSON.stringify(after)) return unavailable({ detail: "source runtime module inventories changed during preparation" });
@@ -116,7 +116,7 @@ const moduleEnvironment = ({ inherited, root }: { readonly inherited: Readonly<R
 const prepareModules = ({ request, binary, operations, buildVersion }: { readonly request: RuntimeInputRequest; readonly binary: string; readonly operations: SourceRuntimeModuleOperations; readonly buildVersion: string | undefined }): Outcome<PreparedRuntimeInput> => {
   try {
     const paths = operations.paths(request);
-    return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harnessDir: request.binding.directory, invoke: request.invocation, buildVersion, profile: qualifiedHarnessProfile(request.binding) }), env: moduleEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
+    return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harnessDir: request.binding.directory, invoke: request.invocation, beforeHost: request.preparationStage === "before-host", buildVersion, profile: qualifiedHarnessProfile(request.binding) }), env: moduleEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
   } catch { return failure({ detail: "source runtime module process capability unavailable" }); }
 };
 export const createSourceRuntimeModulePreparer = ({ binary = "bun", operations = createSourceRuntimeModuleOperations(), buildVersion }: { readonly binary?: string; readonly operations?: SourceRuntimeModuleOperations; readonly buildVersion?: string } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {

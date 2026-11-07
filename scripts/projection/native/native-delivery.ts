@@ -8,23 +8,21 @@ import type { ProjectionMetadataArtifact, ProjectionMetadataPreparation } from "
 export type DeliveryDigest = { readonly path: string; readonly sha256: string };
 export type DeliveryFile = { readonly path: string; readonly bytes: Uint8Array };
 const historySchema = z.record(z.string().refine(path => pathStatus({ path }) === "safe"), z.array(z.string().regex(/^sha256:[a-f0-9]{64}$/)));
-const refused = (message: string): ProjectionMetadataPreparation => ({ kind: "refused", message });
+const refused = (message: string): { kind: "refused"; message: string } => ({ kind: "refused", message });
 const text = (bytes: Uint8Array): string => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 
-// Installer migration signatures describe delivered bytes, before ownership is issued.
-export function finalizeNativeMetadata({ artifacts, nativeFiles, copyFiles, history, harnessDir, namespaceLiterals = [] }: { readonly namespaceLiterals?: readonly { readonly path: string; readonly text: string }[]; readonly artifacts: readonly ProjectionMetadataArtifact[]; readonly nativeFiles: readonly DeliveryFile[]; readonly copyFiles: readonly DeliveryDigest[]; readonly history: unknown; readonly harnessDir: string }): ProjectionMetadataPreparation {
+export type NativeHistoryPreparation = { readonly kind: "prepared"; readonly retiredCopyFileHashes: Record<string, string[]>; readonly legacyManagedFileHashes: Record<string, string[]> } | { readonly kind: "refused"; readonly message: string };
+export function prepareNativeHistory({ nativeFiles, copyFiles, history, harnessDir, managedDirectories }: { readonly nativeFiles: readonly DeliveryFile[]; readonly copyFiles: readonly DeliveryDigest[]; readonly history: unknown; readonly harnessDir: string; readonly managedDirectories: readonly string[] }): NativeHistoryPreparation {
   const descriptorPath = `${harnessDir}/tools/data/aidlc-projection.json`;
-  const descriptorFile = artifacts.find(file => file.file === descriptorPath);
   const copyDescriptor = copyFiles.find(file => file.path === descriptorPath);
-  if (descriptorFile === undefined || copyDescriptor === undefined) return refused("native delivery requires its producer descriptor and the paired copy descriptor");
-  if (copyFiles.some(file => !/^sha256:[a-f0-9]{64}$/.test(file.sha256))) return refused("native delivery requires paired copy SHA-256 digests");
+  if (copyDescriptor === undefined) return { kind: "refused", message: "native history requires the paired copy descriptor" };
   const parsedHistory = historySchema.safeParse(history);
   if (!parsedHistory.success) return refused("native delivery requires safe copy-era paths and SHA-256 signatures");
-  const finalFiles = [...nativeFiles, ...artifacts.map(file => ({ path: file.file, bytes: file.bytes }))];
+  const finalFiles = nativeFiles;
   for (const files of [finalFiles, copyFiles]) {
     if (new Set(files.map(file => file.path)).size !== files.length || files.some(file => pathStatus({ path: file.path }) !== "safe")) return refused("native delivery requires unique safe file paths in each paired artifact");
   }
-  const descriptor = JSON.parse(text(descriptorFile.bytes)) as { managedDirectories: string[]; retiredCopyFileHashes?: Record<string, string[]>; legacyManagedFileHashes?: Record<string, string[]> };
+  const descriptor = { managedDirectories };
   if (!Array.isArray(descriptor.managedDirectories) || descriptor.managedDirectories.some(path => pathStatus({ path }) !== "safe" || path.includes("/"))) return refused("native delivery requires the producer's managed directory scope");
   const native = new Map(finalFiles.map(file => [file.path, sha256Bytes(Buffer.from(file.bytes))]));
   const copy = new Map(copyFiles.map(file => [file.path, file.sha256]));
@@ -44,9 +42,22 @@ export function finalizeNativeMetadata({ artifacts, nativeFiles, copyFiles, hist
       if (known.size > 0) legacy[path] = [...known].sort();
     }
   }
-  descriptor.retiredCopyFileHashes = retired;
   legacy[descriptorPath] = [copyDescriptor.sha256];
-  descriptor.legacyManagedFileHashes = legacy;
+  return { kind: "prepared", retiredCopyFileHashes: retired, legacyManagedFileHashes: legacy };
+}
+
+// Installer migration signatures describe delivered bytes, before ownership is issued.
+export function finalizeNativeMetadata({ artifacts, nativeFiles, copyFiles, history, harnessDir, namespaceLiterals = [] }: { readonly namespaceLiterals?: readonly { readonly path: string; readonly text: string }[]; readonly artifacts: readonly ProjectionMetadataArtifact[]; readonly nativeFiles: readonly DeliveryFile[]; readonly copyFiles: readonly DeliveryDigest[]; readonly history: unknown; readonly harnessDir: string }): ProjectionMetadataPreparation {
+  const descriptorPath = `${harnessDir}/tools/data/aidlc-projection.json`;
+  const descriptorFile = artifacts.find(file => file.file === descriptorPath);
+  const copyDescriptor = copyFiles.find(file => file.path === descriptorPath);
+  if (descriptorFile === undefined || copyDescriptor === undefined) return refused("native delivery requires its producer descriptor and the paired copy descriptor");
+  if (copyFiles.some(file => !/^sha256:[a-f0-9]{64}$/.test(file.sha256))) return refused("native delivery requires paired copy SHA-256 digests");
+  const descriptor = JSON.parse(text(descriptorFile.bytes)) as { managedDirectories: string[]; retiredCopyFileHashes?: Record<string, string[]>; legacyManagedFileHashes?: Record<string, string[]> };
+  const preparedHistory = prepareNativeHistory({ nativeFiles: [...nativeFiles, ...artifacts.map(file => ({ path: file.file, bytes: file.bytes }))], copyFiles, history, harnessDir, managedDirectories: descriptor.managedDirectories });
+  if (preparedHistory.kind === "refused") return preparedHistory;
+  descriptor.retiredCopyFileHashes = preparedHistory.retiredCopyFileHashes;
+  descriptor.legacyManagedFileHashes = preparedHistory.legacyManagedFileHashes;
   const result = artifacts.map(file => file.file === descriptorPath ? { ...file, bytes: new TextEncoder().encode(`${JSON.stringify(descriptor, null, 2)}\n`) } : file);
   const context = createNativeCommandContext({ harnessDir });
   if (new Set(namespaceLiterals.map(item => item.path)).size !== namespaceLiterals.length || namespaceLiterals.some(item => nativeFiles.filter(file => file.path === item.path).length !== 1)) return refused("native permission literals require distinct owned final files");

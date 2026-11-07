@@ -13,13 +13,13 @@ import type { PreparedCoreAgentPolicy } from "../domain/core-agent-policy.ts";
 const modulePath = "core/tools/aidlc-tiers.ts";
 const paths = [modulePath, "core/memory/org.md", "core/memory/team.md", "core/memory/project.md"];
 const tierSchema = z.enum(["judgment", "balanced", "templated"]).nullable();
-function rawTierProjection(value: unknown): NativeTier | null {
+function rawTierProjection(value: unknown, effortKey: "effort" | "variant" = "effort"): NativeTier | null {
   if (value === null || typeof value !== "object") return null;
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return null;
   const fields = Object.getOwnPropertyDescriptors(value);
-  if (Object.getOwnPropertySymbols(value).length > 0 || Object.keys(fields).some(key => !["model", "effort"].includes(key) || !("value" in fields[key]!))) return null;
-  const model: unknown = fields["model"]?.value, effort: unknown = fields["effort"]?.value;
+  if (Object.getOwnPropertySymbols(value).length > 0 || Object.keys(fields).some(key => !["model", effortKey].includes(key) || !("value" in fields[key]!))) return null;
+  const model: unknown = fields["model"]?.value, effort: unknown = fields[effortKey]?.value;
   if (!((model === undefined || model === null || (typeof model === "string" && model.length > 0)) && (effort === undefined || effort === null || ["low", "medium", "high", "xhigh", "max"].includes(effort as string)))) return null;
   return { model: typeof model === "string" ? model : null, effort: typeof effort === "string" ? effort as NativeTier["effort"] : null };
 }
@@ -78,7 +78,7 @@ const memoryCap = api.readMemoryCap(request.sourceRoot + "/core/memory");
 if (memoryCap !== null && !["judgment", "balanced", "templated"].includes(memoryCap)) throw new Error("Tier policy memory cap is invalid");
 const cap = request.environmentCap ?? memoryCap;
 const tiers = Object.fromEntries(["judgment", "balanced", "templated"].map(tier => {
-  const projected = rawTierProjection(api.projectTier(tier, request.harness, cap));
+  const projected = rawTierProjection(api.projectTier(tier, request.harness, cap), request.harness === "opencode" ? "variant" : "effort");
   if (projected === null) throw new Error("Tier policy must return a plain model/effort projection before serialization");
   return [tier, projected];
 }));

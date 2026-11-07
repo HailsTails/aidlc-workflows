@@ -1,12 +1,13 @@
 import type { DistributionDirectory } from "./distribution-artifact.ts";
 import { finding, type Finding, type Outcome, type pathStatus } from "./model.ts";
 
-export type DistributionStructure = { readonly kind: "file-parents"; readonly mode: number };
+export type DistributionStructure = { readonly kind: "file-parents" | "prepared-root"; readonly mode: number };
 export type DistributionStructureRequest = {
   readonly files: readonly { readonly path: string }[];
   readonly retained: readonly DistributionDirectory[];
   readonly mode: number;
   readonly rules: { readonly path: typeof pathStatus };
+  readonly preserveExplicit?: boolean;
 };
 
 const fileParents = ({ path }: { readonly path: string }): readonly string[] => {
@@ -43,5 +44,12 @@ const prepareParents = ({ files, retained, mode }: DistributionStructureRequest)
 };
 export const prepareDistributionStructure = (request: DistributionStructureRequest): Outcome<readonly DistributionDirectory[]> => {
   const findings = inputFindings(request);
+  if (findings.length === 0 && request.preserveExplicit) {
+    const parents = [...new Set([...request.files, ...request.retained].flatMap(file => fileParents(file)))].sort();
+    const paths = [...new Set([...parents, ...request.retained.map(directory => directory.path)])].sort();
+    const overlaps = parentFindings({ parents: paths, files: request.files, retained: request.retained });
+    if (overlaps.length > 0) return { status: "invalid", findings: overlaps };
+    return { status: "ok", value: paths.map(path => request.retained.find(directory => directory.path === path) ?? { path, mode: request.mode }) };
+  }
   return findings.length > 0 ? { status: "invalid", findings } : prepareParents(request);
 };

@@ -14,7 +14,7 @@ test("host model invocation is separate from copy and native executable delivery
   for (const invocation of ["aidlc", "bun .codex/tools/aidlc.ts"]) expect(qualifiedDeliveryContext({ ...binding, invocation })).toBe(true);
   expect(qualifiedDeliveryContext({ ...binding, invocation: "bun .claude/tools/aidlc.ts" })).toBe(false);
 });
-test.each(["aidlc", "bun .aidlc/tools/aidlc.ts"])("unqualified source-host sensor selection refuses %s", invocation => {
+test.each(["other", "bun .wrong/tools/aidlc.ts"])("unqualified source-host sensor invocation refuses %s", invocation => {
   expect(selectCoreSensorProducts({ basis, sources: { inputs: [], documents: [{ fileName: "aidlc-example.md", origin: { ...basis, path: "core/sensors/aidlc-example.md" }, text: "content" }] }, context: { harness: "opencode", directory: ".aidlc", invocation, rulesSubdir: "rules" } }).status).toBe("invalid");
 });
 test("Codex turn cap stays in Markdown and is explicitly prose-only in TOML", () => {

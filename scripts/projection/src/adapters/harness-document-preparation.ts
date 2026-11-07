@@ -31,7 +31,7 @@ const invokeNativeTextPreparation = ({ text, skillRel, harnessDir, policy }: { r
 const prepareDocumentText = ({ document, rendered, policy, request }: { readonly document: AuthoredHarnessDocument; readonly rendered: string; readonly policy: NativeCompatibilityPolicy; readonly request: HarnessDocumentPreparationRequest }): Outcome<PreparedHarnessDocument> => {
   const placement = qualifiedHarnessProfile(request.context)?.entryDocuments.find((candidate) => candidate.role === document.role);
   if (placement === undefined) return failure({ detail: "authored entry document role has no supported destination" });
-  const prepared = invokeNativeTextPreparation({ text: rendered, skillRel: placement.destination, harnessDir: request.context.directory, policy });
+  const prepared: Outcome<string> = request.context.preparationStage === "before-host" ? { status: "ok", value: rendered } : invokeNativeTextPreparation({ text: rendered, skillRel: placement.destination, harnessDir: request.context.directory, policy });
   return prepared.status === "invalid" ? prepared : { status: "ok", value: { authored: document, destination: placement.destination, text: prepared.value, binding: copyHarnessBinding({ binding: request.context }), authoring: [...request.sources.authoring, { ...request.basis, path: helperPath }] } };
 };
 const admitRenderedEntryText = ({ rendered, subject }: { readonly rendered: string; readonly subject: string }): Outcome<string> => {

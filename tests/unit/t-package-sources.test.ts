@@ -29,6 +29,7 @@ function checkout(): string {
     ["plugins/demo/stages/s.md", "# s\n"],
     ["plugins/demo/tests/t.test.ts", "// a plugin test\n"],
     ["scripts/package.ts", "// packager\n"],
+    ["scripts/project-core-session.ts", "// session launcher\n"],
     ["scripts/plugin-hooks-template/compose.ts", "// compose\n"],
   ] as const) {
     mkdirSync(join(root, path, ".."), { recursive: true });
@@ -53,6 +54,7 @@ describe("the packaged-sources fingerprint", () => {
     ["harness/claude/manifest.ts"],
     ["plugins/demo/stages/s.md"],
     ["scripts/package.ts"],
+    ["scripts/project-core-session.ts"],
     ["scripts/plugin-hooks-template/compose.ts"],
   ])("covers %s", (path) => {
     const root = checkout();
@@ -75,6 +77,20 @@ describe("the packaged-sources fingerprint", () => {
 });
 
 describe("the packaged-sources record", () => {
+  test("editing the session launcher makes the record stale and refuses the old build fingerprint", () => {
+    const root = checkout();
+    const before = packageInputsFingerprint(root);
+    expect(recordPackagedSources(root, ["claude"], before)).toBe(true);
+    expect(stalePackageMessage(root, "claude")).toBeNull();
+    writeFileSync(join(root, "scripts/project-core-session.ts"), "// changed session launcher\n");
+    expect(packageInputsFingerprint(root)).not.toBe(before);
+    expect(stalePackageMessage(root, "claude")).toContain("was packaged from other sources");
+    expect(recordPackagedSources(root, ["claude"], before)).toBe(false);
+    writeFileSync(join(root, "scripts/project-core-session.ts"), "// session launcher\n");
+    expect(packageInputsFingerprint(root)).toBe(before);
+    expect(stalePackageMessage(root, "claude")).toBeNull();
+  });
+
   test("a tree with no record, or an unreadable one, is reported as never packaged", () => {
     const root = checkout();
     const missing = "dist/claude has no record of the sources it was packaged from: run `bun scripts/package.ts` first.";

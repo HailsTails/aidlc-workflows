@@ -25,7 +25,7 @@ test("Copilot keeps host identity, external discovery and combined root ownershi
   expect(profile.rootMappings).toContainEqual({ src: "dot-vscode-settings.json", dst: ".vscode/settings.json" });
   expect(profile.modelInvocation).toBe("native-default");
   for (const invocation of ["aidlc", "bun .aidlc/tools/aidlc.ts"]) expect(qualifiedDeliveryContext({ ...binding, invocation })).toBe(true);
-  expect(qualifiedHarnessProfile({ harness: "opencode", directory: ".aidlc" })).toBeNull();
+  expect(qualifiedHarnessProfile({ harness: "opencode", directory: ".aidlc" })?.harness).toBe("opencode");
 });
 
 for (const invocation of ["aidlc", "bun .aidlc/tools/aidlc.ts"] as const) test(`Copilot hook and launcher products preserve ${invocation}`, () => {
@@ -44,7 +44,7 @@ for (const invocation of ["aidlc", "bun .aidlc/tools/aidlc.ts"] as const) test(`
 
 test("native adapter identity is not inferred from the shared .aidlc directory", () => {
   expect(prepareNativeRuntimeText("bun .aidlc/hooks/aidlc-copilot-adapter.ts session-start", ".aidlc", "copilot")).toBe("aidlc engine adapter copilot session-start");
-  expect(() => prepareNativeRuntimeText("content", ".aidlc", "opencode")).toThrow();
+  expect(prepareNativeRuntimeText("bun .aidlc/hooks/aidlc-copilot-adapter.ts session-start", ".aidlc", "opencode")).not.toContain("adapter copilot");
 });
 
 test("Copilot native discovery keeps authored body and ordered tool policy apart from compiled engine knowledge", () => {

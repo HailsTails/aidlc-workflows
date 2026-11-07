@@ -1,3 +1,4 @@
+import { prepareSourceOpenCodeSettings } from "./source-opencode-settings.ts";
 import { prepareSourceCopilotSettings } from "./source-copilot-settings.ts";
 import { readSourceKasPreparation } from "./source-kas-preparation.ts";
 import { readSourceKiroPreparation } from "./source-kiro-preparation.ts";
@@ -81,6 +82,7 @@ const admitProjectedText = ({ candidate, z }) => {
 const projectSettings = ({ native, capabilities, text, z }) => {
   const projected = admitProjectedText({ candidate: native.project({ source: text, harnessDir: ".claude", binding: { invoke: input.invocation, toolPrefix: "bun .claude/tools/", trustedNamespace: native.trustedNamespace } }), z });
   if (projected.status !== "ok") return projected;
+  if (input.beforeHost) return { status: "ok", content: projected.text };
   const value = JSON.parse(input.invocation === "aidlc" ? native.runtimeText(projected.text) : projected.text);
   const prepared = input.invocation === "aidlc" ? native.nativeAllow({ allow: value.permissions?.allow, authority: { trustedCommand: ({ args }) => native.trustedCommand(args), dispatcherCommands: () => capabilities.dispatcherCommands.map(command => "aidlc " + command) } }) : native.expand({ allow: value.permissions?.allow, authority: { dispatcherCommands: () => capabilities.dispatcherCommands, toolScripts: () => capabilities.toolScripts } });
   if (prepared.kind === "refused") return { status: "refused", detail: prepared.message };
@@ -178,13 +180,14 @@ const admitWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: s
 const processInput = ({ paths, request, binary, operations }: { readonly paths: { readonly sourceRoot: string; readonly root: string }; readonly request: HarnessSettingsRequest; readonly binary: string; readonly operations: SourceHarnessSettingsOperations }) => ({
   binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root,
   env: { ...privateCompilerEnvironment({ inherited: operations.environment(), root: `${paths.root}/.settings-home` }), ...Object.fromEntries([["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0"], ["BUN_INSTALL_AUTO", "disable"]]) },
-  input: JSON.stringify({ sourceRoot: paths.sourceRoot, files: request.files, invocation: request.invocation, onboarding: request.onboarding, harness: request.binding.harness, profile: qualifiedHarnessProfile(request.binding), paths: settingsSourcePaths(request), outputPaths: codexSettingsPaths() }),
+  input: JSON.stringify({ sourceRoot: paths.sourceRoot, files: request.files, invocation: request.invocation, beforeHost: request.preparationStage === "before-host", onboarding: request.onboarding, harness: request.binding.harness, profile: qualifiedHarnessProfile(request.binding), paths: settingsSourcePaths(request), outputPaths: codexSettingsPaths() }),
 });
 const execute = async ({ request, binary, operations }: { readonly request: HarnessSettingsRequest; readonly binary: string; readonly operations: SourceHarnessSettingsOperations }): Promise<Outcome<PreparedHarnessSettings>> => {
   try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations })), request }) }); }
   catch { return failure({ detail: "harness settings process capability unavailable" }); }
 };
 export const createSourceHarnessSettingsPreparer = ({ binary = "bun", operations = createSourceHarnessSettingsOperations(), environmentCap = null }: { readonly environmentCap?: Tier | null; readonly binary?: string; readonly operations?: SourceHarnessSettingsOperations } = {}): HarnessSettingsPreparer => ({ prepare: async (request) => {
+  if (request.binding.harness === "opencode") return prepareSourceOpenCodeSettings(request, binary);
   if (request.binding.harness === "copilot") return prepareSourceCopilotSettings(request, binary);
   if (request.binding.harness === "kiro" || request.binding.harness === "kiro-ide") {
     if (request.binding.directory !== ".kiro" || request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || !["aidlc", "bun .kiro/tools/aidlc.ts"].includes(request.invocation) || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777 || request.files.filter(file => file === ".kiro/tools/aidlc.ts").length !== 1) return failure({ detail: "Kiro settings require the pinned framework, exact invocation, modes and prepared dispatcher" });

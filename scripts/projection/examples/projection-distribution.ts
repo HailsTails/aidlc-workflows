@@ -1,6 +1,10 @@
 import type { RuntimeInputPreparation } from "../src/domain/runtime-inputs.ts";
+import type { DistributionProduct } from "../src/domain/distribution-products.ts";
+import type { ProjectionDistributionRequest } from "../src/application/projection-distribution-request.ts";
+import { finding } from "../src/domain/model.ts";
+export type { ProjectionDistributionRequest } from "../src/application/projection-distribution-request.ts";
 import { createDistributionSource, createDistributionAssemblyRules, type DistributionSource } from "../src/adapters/distribution-source.ts";
-import { createDistributionAssembler, type DistributionAssembler, type DistributionAssemblyRules, type DistributionSeed, type AssembledDistribution } from "../src/application/distribution-assembly.ts";
+import { createDistributionAssembler, type DistributionAssembler, type DistributionAssemblyRules, type AssembledDistribution } from "../src/application/distribution-assembly.ts";
 import { prepareProjectedProducts } from "../src/application/projected-products.ts";
 import { planPreparedFileAdditions } from "../src/domain/prepared-file-additions.ts";
 import { issueCoreProjectionOwnership, type OwnershipDigest } from "../src/domain/projection-ownership.ts";
@@ -8,19 +12,21 @@ import { createProjectionOwnershipCodec, createOwnershipDigest, type ProjectionO
 import type { ProjectionSet } from "../src/application/projection-set.ts";
 import type { SourceContentDigest } from "../src/domain/source-origin.ts";
 import type { Outcome } from "../src/domain/model.ts";
-export type IssuedProjectionDistribution = { readonly archive: Uint8Array; readonly ownershipJson: string; readonly distribution: AssembledDistribution; readonly projection: ProjectionSet; readonly sourceInputs?: readonly SourceContentDigest[]; readonly inputPreparations?: readonly RuntimeInputPreparation[] };
-export type ProjectionDistributionRequest = { readonly sourceRoot: string; readonly seed: DistributionSeed; readonly projection: ProjectionSet; readonly mode: number };
+export type IssuedProjectionDistribution = { readonly sourceDiagnostics?: { readonly stdout: string; readonly stderr: string }; readonly evaluation?: { readonly buildVersion: string; readonly environmentCap: "judgment" | "balanced" | "templated" | null; readonly delivery: "copy" | "native" }; readonly archive: Uint8Array; readonly ownershipJson: string; readonly distribution: AssembledDistribution; readonly projection: ProjectionSet; readonly sourceInputs?: readonly SourceContentDigest[]; readonly inputPreparations?: readonly RuntimeInputPreparation[]; readonly preparedProducts?: readonly DistributionProduct[] };
 export type ProjectionDistributionServices = { readonly source: Pick<DistributionSource, "archive">; readonly assembler: DistributionAssembler; readonly admit: typeof planPreparedFileAdditions; readonly products: typeof prepareProjectedProducts; readonly issue: typeof issueCoreProjectionOwnership; readonly digest: OwnershipDigest; readonly codec: ProjectionOwnershipCodec; readonly rules: DistributionAssemblyRules };
 export const createProjectionDistributionServices = (): ProjectionDistributionServices => ({ source: createDistributionSource(), assembler: createDistributionAssembler({ rules: createDistributionAssemblyRules() }), admit: planPreparedFileAdditions, products: prepareProjectedProducts, issue: issueCoreProjectionOwnership, digest: createOwnershipDigest(), codec: createProjectionOwnershipCodec(), rules: createDistributionAssemblyRules() });
-export const completeProjectionDistribution = async ({ sourceRoot, seed, projection, mode, services = createProjectionDistributionServices() }: ProjectionDistributionRequest & { readonly services?: ProjectionDistributionServices }): Promise<Outcome<IssuedProjectionDistribution>> => {
+export const completeProjectionDistribution = async ({ sourceRoot, seed, projection, mode, preparedProducts, services = createProjectionDistributionServices() }: ProjectionDistributionRequest & { readonly services?: ProjectionDistributionServices }): Promise<Outcome<IssuedProjectionDistribution>> => {
+  if (seed.preparationStage !== undefined) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "host-finalization", detail: "an unfinished host preparation cannot be issued or archived" })] };
   const admitted = services.admit({ candidates: projection.resources, inventory: seed, mode, rules: services.rules });
   if (admitted.status === "invalid") return admitted;
-  const assembled = services.assembler.assemble({ seed: { ...seed, files: [...seed.files, ...admitted.value.additions] }, projection });
+  const assembled = services.assembler.assemble({ seed: { ...seed, files: [...seed.files, ...admitted.value.additions] }, projection, ...(preparedProducts === undefined ? {} : { preparedProducts }) });
   if (assembled.status === "invalid") return assembled;
   const products = services.products({ projection, sources: [seed.basis], compiler: seed.basis, mode, rules: services.rules });
   if (products.status === "invalid") return products;
-  const ownership = services.issue({ distribution: assembled.value, products: products.value, digest: services.digest });
+  const preparedPaths = preparedProducts?.flatMap(product => product.files.map(file => file.path)) ?? [];
+  const distribution = { ...assembled.value, replaced: [...assembled.value.replaced, ...preparedPaths], retained: assembled.value.retained.filter(path => !preparedPaths.includes(path)) };
+  const ownership = services.issue({ distribution, products: products.value, ...(preparedProducts === undefined ? {} : { preparedProducts }), digest: services.digest });
   if (ownership.status === "invalid") return ownership;
-  const packed = await services.source.archive({ sourceRoot, distribution: assembled.value });
-  return packed.status === "invalid" ? packed : { status: "ok", value: { archive: packed.value, ownershipJson: services.codec.write({ ownership: ownership.value }), distribution: assembled.value, projection, ...(seed.inputPreparations === undefined ? {} : { inputPreparations: seed.inputPreparations }) } };
+  const packed = await services.source.archive({ sourceRoot, distribution });
+  return packed.status === "invalid" ? packed : { status: "ok", value: { archive: packed.value, ownershipJson: services.codec.write({ ownership: ownership.value }), distribution, projection, ...(seed.inputPreparations === undefined ? {} : { inputPreparations: seed.inputPreparations }), ...(preparedProducts === undefined ? {} : { preparedProducts }) } };
 };

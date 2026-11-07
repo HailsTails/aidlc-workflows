@@ -6,11 +6,12 @@ export type { DistributionFile, DistributionDirectory, DistributionSeed, Assembl
 import { finding, type pathStatus, sourceKey, type Finding, type Outcome } from "../domain/model.ts";
 import { prepareDistributionStructure } from "../domain/distribution-structure.ts";
 import type { DistributionFile, DistributionDirectory } from "../domain/distribution-artifact.ts";
+import type { DistributionProduct } from "../domain/distribution-products.ts";
 
 export type DistributionAssemblyRules = { readonly path: typeof pathStatus; readonly encode: (input: { readonly text: string }) => Uint8Array };
-export type DistributionAssembler = { readonly assemble: (input: { readonly seed: DistributionSeed; readonly projection: ProjectionSet }) => Outcome<AssembledDistribution> };
+export type DistributionAssembler = { readonly assemble: (input: { readonly seed: DistributionSeed; readonly projection: ProjectionSet; readonly preparedProducts?: readonly DistributionProduct[] }) => Outcome<AssembledDistribution> };
 const origins = ({ projection }: { readonly projection: ProjectionSet }): readonly SourceOrigin[] => projection.units.flatMap((unit) => unit.kind === "runners" ? unit.projection.runners.map((runner) => runner.compiler) : [unit.projection.origin, ...(unit.kind === "harness-document" ? unit.projection.authoring : [])]);
-const assemblyFindings = ({ seed, projection, rules }: { readonly seed: DistributionSeed; readonly projection: ProjectionSet; readonly rules: DistributionAssemblyRules }): readonly Finding[] => [
+const assemblyFindings = ({ seed, projection, rules, preparedProducts = [] }: { readonly seed: DistributionSeed; readonly projection: ProjectionSet; readonly rules: DistributionAssemblyRules; readonly preparedProducts?: readonly DistributionProduct[] }): readonly Finding[] => [
   ...distributionDirectoryFindings({ directories: seed.directories, files: seed.files, path: rules.path }),
   ...(seed.binding.harness !== projection.target.harness || seed.binding.directory !== projection.target.directory ? [finding({ code: "harness-mismatch", subject: "distribution", detail: "selected projection and seed must describe the same harness binding" })] : []),
   ...origins({ projection }).filter((origin) => sourceKey(origin.source) !== sourceKey(seed.basis.source) || origin.pin !== seed.basis.pin).map((origin) => finding({ code: "foreign-content", subject: origin.path, detail: "seeded core assembly requires selected sources and compiler to match the seed's source basis" })),
@@ -27,7 +28,7 @@ const assemblyFindings = ({ seed, projection, rules }: { readonly seed: Distribu
     ...(!seed.files.some((file) => file.path === resource.path) ? [finding({ code: "capability-gap", subject: resource.path, detail: "adding a new distribution path requires an explicit ownership contribution; this seeded assembly only replaces existing paths" })] : []),
     ...(distributionMetadataPaths({ binding: seed.binding }).includes(resource.path) ? [finding({ code: "capability-gap", subject: resource.path, detail: "projection metadata belongs to the distribution producer and cannot be replaced as a native surface" })] : []),
   ]),
-  ...(projection.resources.length === 0 ? [finding({ code: "empty-integration", subject: "distribution", detail: "select at least one native replacement" })] : []),
+  ...(projection.resources.length === 0 && preparedProducts.length === 0 ? [finding({ code: "empty-integration", subject: "distribution", detail: "select at least one native replacement or explicitly prepared product" })] : []),
 ];
 const completeAssembly = ({ seed, projection, files, directories }: { readonly seed: DistributionSeed; readonly projection: ProjectionSet; readonly files: readonly DistributionFile[]; readonly directories: readonly DistributionDirectory[] }): AssembledDistribution => ({
   seed: seed.basis,
@@ -39,12 +40,12 @@ const completeAssembly = ({ seed, projection, files, directories }: { readonly s
   ...(seed.structure === undefined ? {} : { structure: seed.structure }),
 });
 const finishAssembly = ({ seed, projection, files, rules, structure }: { readonly seed: DistributionSeed; readonly projection: ProjectionSet; readonly files: readonly DistributionFile[]; readonly rules: DistributionAssemblyRules; readonly structure: typeof prepareDistributionStructure }): Outcome<AssembledDistribution> => {
-  const directories = seed.structure === undefined ? { status: "ok" as const, value: seed.directories } : structure({ files, retained: seed.directories, mode: seed.structure.mode, rules: { path: rules.path } });
+  const directories = seed.structure === undefined ? { status: "ok" as const, value: seed.directories } : structure({ files, retained: seed.directories, mode: seed.structure.mode, rules: { path: rules.path }, ...(seed.structure.kind === "prepared-root" ? { preserveExplicit: true } : {}) });
   return directories.status === "invalid" ? directories : { status: "ok", value: completeAssembly({ seed, projection, files, directories: directories.value }) };
 };
 export const createDistributionAssembler = ({ rules, structure = prepareDistributionStructure }: { readonly rules: DistributionAssemblyRules; readonly structure?: typeof prepareDistributionStructure }): DistributionAssembler => ({
-  assemble: ({ seed, projection }) => {
-    const findings = assemblyFindings({ seed, projection, rules });
+  assemble: ({ seed, projection, preparedProducts }) => {
+    const findings = assemblyFindings({ seed, projection, rules, ...(preparedProducts === undefined ? {} : { preparedProducts }) });
     if (findings.length > 0) return { status: "invalid", findings };
     const files = seed.files.map((file) => { const replacement = projection.resources.find((resource) => resource.path === file.path); return replacement === undefined ? file : { ...file, bytes: rules.encode({ text: replacement.body }) }; });
     return finishAssembly({ seed, projection, files, rules, structure });

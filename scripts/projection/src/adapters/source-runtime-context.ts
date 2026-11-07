@@ -44,7 +44,7 @@ const project = async ({ before }) => {
     const runtime = await import(sourceModuleUrl({ sourceRoot: input.sourceRoot, path: input.paths[3], sha256: before.inputs[3].sha256 }));
     const policy = await import(sourceModuleUrl({ sourceRoot: input.sourceRoot, path: input.paths[4], sha256: before.inputs[4].sha256 }));
     const projected = projectModules({ manifest, projector, runtime, policy });
-    if (projected.status !== "ok" || input.delivery !== "native") return projected;
+    if (projected.status !== "ok" || input.delivery !== "native" || input.beforeHost) return projected;
     const nativeText = await import(Bun.pathToFileURL(input.sourceRoot + "/scripts/native-runtime-text.ts").href);
     return { ...projected, descriptor: JSON.parse(nativeText.prepareNativeRuntimeText(JSON.stringify(projected.descriptor), input.harnessDir, input.harness)) };
   } catch { return unavailable({ detail: "source runtime context projection API unavailable" }); }
@@ -100,15 +100,15 @@ const admitContextRequest = ({ input, mode }: { readonly input: DistributionCont
   if (input.location.basis.source.kind !== "core" || input.location.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(input.location.basis.pin)) return failure({ code: "foreign-content", detail: "source runtime context requires the framework source basis and full source pin" });
   return { status: "ok", value: input };
 };
-const loadContext = ({ input, mode, binary, operations, delivery }: { readonly delivery: "copy" | "native"; readonly input: DistributionContextLocation; readonly mode: number; readonly binary: string; readonly operations: SourceRuntimeContextOperations }): Outcome<PreparedDistributionContext> => {
+const loadContext = ({ input, mode, binary, operations, delivery, beforeHost }: { readonly beforeHost: boolean; readonly delivery: "copy" | "native"; readonly input: DistributionContextLocation; readonly mode: number; readonly binary: string; readonly operations: SourceRuntimeContextOperations }): Outcome<PreparedDistributionContext> => {
   try {
     const paths = operations.paths(input);
-    const reply = operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, paths: [...directSourcePaths({ binding: input.binding }), ...(delivery === "native" ? nativeSourcePaths : [])], delivery, profile: qualifiedHarnessProfile(input.binding), harness: input.binding.harness, harnessDir: input.binding.directory }), env: contextEnvironment({ inherited: operations.environment(), paths, binding: input.binding }) });
+    const reply = operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, paths: [...directSourcePaths({ binding: input.binding }), ...(delivery === "native" ? nativeSourcePaths : [])], delivery, beforeHost, profile: qualifiedHarnessProfile(input.binding), harness: input.binding.harness, harnessDir: input.binding.directory }), env: contextEnvironment({ inherited: operations.environment(), paths, binding: input.binding }) });
     const prepared = admitProcessContext({ reply, binding: input.binding, mode });
     return prepared.status === "ok" && prepared.value.context.invocation !== (delivery === "native" ? "aidlc" : `bun ${input.binding.directory}/tools/aidlc.ts`) ? failure({ detail: "runtime context invocation does not match the explicitly selected delivery" }) : prepared;
   } catch { return failure({ detail: "source runtime context process capability unavailable" }); }
 };
-export const createSourceRuntimeContextReader = ({ mode, binary = "bun", operations = createSourceRuntimeContextOperations(), delivery = "copy" }: { readonly delivery?: "copy" | "native"; readonly mode: number; readonly binary?: string; readonly operations?: SourceRuntimeContextOperations }): DistributionContextReader => ({ load: async (input) => {
+export const createSourceRuntimeContextReader = ({ mode, binary = "bun", operations = createSourceRuntimeContextOperations(), delivery = "copy", beforeHost = false }: { readonly beforeHost?: boolean; readonly delivery?: "copy" | "native"; readonly mode: number; readonly binary?: string; readonly operations?: SourceRuntimeContextOperations }): DistributionContextReader => ({ load: async (input) => {
   const admitted = admitContextRequest({ input, mode });
-  return admitted.status === "invalid" ? admitted : loadContext({ input: admitted.value, mode, binary, operations, delivery });
+  return admitted.status === "invalid" ? admitted : loadContext({ input: admitted.value, mode, binary, operations, delivery, beforeHost });
 } });

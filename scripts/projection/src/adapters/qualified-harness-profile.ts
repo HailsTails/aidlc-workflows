@@ -1,7 +1,7 @@
 import type { HarnessBinding } from "../domain/harness-binding.ts";
 import type { HarnessDocumentPlacement } from "../domain/harness-document.ts";
 
-export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness: "claude" | "codex" | "cursor" | "kiro" | "kiro-ide" | "copilot" }> & {
+export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness: "claude" | "codex" | "cursor" | "kiro" | "kiro-ide" | "copilot" | "opencode" }> & {
   readonly tierFlavor?: "kiro";
   readonly nativePolicy?: "kas-personas";
   readonly agentPolicyNames?: readonly string[];
@@ -30,6 +30,17 @@ export type QualifiedHarnessProfile = Extract<HarnessBinding, { readonly harness
 };
 const kiroAgents = ["architect", "developer", "product-lead", "architecture-reviewer", "composer", "product", "design", "delivery", "aws-platform", "compliance", "devsecops", "quality", "pipeline-deploy", "operations"];
 const profiles: readonly QualifiedHarnessProfile[] = [
+  {
+    harness: "opencode", directory: ".aidlc", onboardingDestinations: ["AGENTS.md", ".aidlc/onboarding.md"], agentTurnLimit: "authored-metadata", copyOnlyRoots: [], nativeTextSources: [], nativeReplacementCount: 0, agentMemoryReference: "aidlc/active-memory", exactNativeReads: false, modelInvocation: "native-default", skillRoot: ".aidlc/skills", runtimeMappings: [], settingsMappings: [], settingsOnboardingPath: null, entryMapping: "manifest",
+    entryDocuments: [
+      { role: "main-skill", source: "skills/aidlc/SKILL.md", destination: ".aidlc/skills/aidlc/SKILL.md" },
+      { role: "composer", source: "skills/aidlc/composer.md", destination: ".aidlc/skills/aidlc/composer.md" },
+      { role: "question-rendering", source: "skills/aidlc/question-rendering.md", destination: ".aidlc/skills/aidlc/question-rendering.md" },
+    ],
+    referenceTemplate: "skills/aidlc/tables.md", referenceDestination: ".aidlc/skills/aidlc/tables.md",
+    rootMappings: [{ src: "dot-gitignore", dst: ".gitignore" }, { src: "opencode.json", dst: "opencode.json" }], projectedRootPaths: ["AGENTS.md", "opencode.json"],
+    descriptionPaths: [".gitignore", ".aidlc/tools/data/root-blocks/gitignore", ".aidlc/tools/data/root-blocks/agents", ".aidlc/tools/data/root-blocks/opencode.json", ".aidlc/tools/data/aidlc-projection.json", ".aidlc/tools/data/aidlc-stamp.json"],
+  },
   {
     harness: "claude", directory: ".claude", onboardingDestinations: [undefined], agentTurnLimit: null, copyOnlyRoots: [], nativeTextSources: [], nativeReplacementCount: 0, agentMemoryReference: null, exactNativeReads: true, modelInvocation: "native-default", skillRoot: ".claude/skills", runtimeMappings: [], settingsMappings: [], settingsOnboardingPath: null, entryMapping: "manifest",
     entryDocuments: [

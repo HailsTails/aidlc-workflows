@@ -15,7 +15,7 @@ test("prepares metadata from final runner, runtime and anticipated producer path
 });
 test("version metadata cannot be invented for unprepared runtime modules", async () => {
   const services = createDescriptionFixture();
-  expect(await describeDistribution({ request: { ...descriptionRequest, seed: { ...descriptionRequest.seed, inputPreparations: [] } }, services })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "distribution-description", detail: "source-version metadata requires a file-parent profile and source-prepared runtime version module" }] });
+  expect(await describeDistribution({ request: { ...descriptionRequest, seed: { ...descriptionRequest.seed, inputPreparations: [] } }, services })).toEqual({ status: "invalid", findings: [{ code: "capability-gap", subject: "distribution-description", detail: "source-version metadata requires an explicit structure profile and source-prepared runtime version module" }] });
   expect(services.structure).not.toHaveBeenCalled();
   expect(services.preparation.prepare).not.toHaveBeenCalled();
 });

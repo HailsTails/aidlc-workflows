@@ -79,7 +79,7 @@ const admitManifest = ({ snapshot, request }: { readonly snapshot: unknown; read
   return source === undefined || pathStatus({ path: source }) !== "safe" ? refused({ code: "invalid-input", detail: "reference template must be a safe authored harness path" }) : { status: "ok", value: { template: `harness/${request.context.harness}/${source}`, destination } };
 };
 const referenceLocations = ({ request, manifest }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest }): readonly { readonly root: string; readonly path: string }[] => [
-  ...[helperPath, utilityPath, formatterPath, manifest.template, ...(isNativeDocumentContext(request.context) ? nativeRuntimeSources : [])].map((path) => ({ root: request.sourceRoot, path })),
+  ...[helperPath, utilityPath, formatterPath, manifest.template, ...(isNativeDocumentContext(request.context) && request.context.preparationStage !== "before-host" ? nativeRuntimeSources : [])].map((path) => ({ root: request.sourceRoot, path })),
   ...[`${request.context.directory}/tools/aidlc-utility.ts`, `${request.context.directory}/tools/aidlc-compiled-tables.ts`, request.workflow.graph.origin.path, request.workflow.grid.origin.path, ...request.scopeFiles.map((file) => file.path)].map((path) => ({ root: request.root, path })),
 ];
 const observeReference = async ({ request, manifest, operations }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest; readonly operations: WorkflowReferenceOperations }): Promise<Outcome<ReferenceObservation>> => {
@@ -137,6 +137,7 @@ const renderReference = ({ request, manifest, observed, helper, operations, bina
   const template = decodeReferenceTemplate({ bytes: findBytes({ observed, root: request.sourceRoot, path: manifest.template }) });
   if (template.status === "invalid") return template;
   const projected = operations.prose({ markdown: template.value, context: request.context, subject: manifest.destination });
+  if (request.context.preparationStage === "before-host") return projected;
   return helper.GENERATED_SKILL_REGIONS.reduce<Outcome<string>>((previous, region) => prepareRegion({ previous, region, request, manifest, helper, operations, binary }), projected);
 };
 const finishReference = ({ before, after, text, request, manifest, witnessed }: { readonly before: ReferenceObservation; readonly after: ReferenceObservation; readonly text: string; readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest; readonly witnessed: readonly SourceContentDigest[] }): Outcome<PreparedWorkflowReference> => {
@@ -157,7 +158,7 @@ const prepareReferenceInputs = async ({ request, manifest, operations, binary }:
   const before = await observeReference({ request, manifest, operations });
   if (before.status === "invalid") return before;
   let nativeText: ((source: string) => string) | undefined;
-  if (isNativeDocumentContext(request.context)) {
+  if (isNativeDocumentContext(request.context) && request.context.preparationStage !== "before-host") {
     const bytes = findBytes({ observed: before.value, root: request.sourceRoot, path: nativeRuntimePath });
     const loaded = await operations.module({ sourceRoot: request.sourceRoot, path: nativeRuntimePath, sha256: operations.digest({ bytes }) });
     if (loaded.status === "invalid") return loaded;

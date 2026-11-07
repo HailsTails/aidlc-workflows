@@ -10,7 +10,8 @@ export type OwnershipPlan = { readonly edits: readonly DistributionProductEdit[]
 const identity = ({ key, source }: OwnedProductIdentity): string => `${sourceKey(source)}/${key}`;
 const recordIdentity = ({ record }: { readonly record: Pick<DistributionProduct, "key" | "owner"> }): string => identity({ key: record.key, source: record.owner.source });
 const recordProduct = ({ product, digest }: { readonly product: DistributionProduct; readonly digest: OwnershipDigest }): OwnedProductRecord => ({ ...product, files: product.files.map((file) => ({ path: file.path, mode: file.mode, sha256: digest({ bytes: file.bytes }) })) });
-export const issueCoreProjectionOwnership = ({ distribution, products, digest }: { readonly distribution: AssembledDistribution; readonly products: readonly DistributionProduct[]; readonly digest: OwnershipDigest }): Outcome<ProjectionOwnership> => {
+export const issueCoreProjectionOwnership = ({ distribution, products: projections, preparedProducts = [], digest }: { readonly distribution: AssembledDistribution; readonly products: readonly DistributionProduct[]; readonly preparedProducts?: readonly DistributionProduct[]; readonly digest: OwnershipDigest }): Outcome<ProjectionOwnership> => {
+  const products = [...projections, ...preparedProducts];
   const paths = products.flatMap((product) => product.files.map((file) => file.path));
   const keys = products.map((product) => recordIdentity({ record: product }));
   if (products.length === 0 || new Set(paths).size !== paths.length || new Set(keys).size !== keys.length) return { status: "invalid", findings: [finding({ code: "invalid-input", subject: "core-projection-issuance", detail: "issue a nonempty core projection with unique product identities and file paths" })] };
@@ -18,7 +19,8 @@ export const issueCoreProjectionOwnership = ({ distribution, products, digest }:
   if (distribution.seed.source.kind !== "core" || invalidProducts.length > 0) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "core-projection-issuance", detail: "initial core issuance requires the assembled binding and exact core owner/compiler source basis" })] };
   const mismatches = products.flatMap((product) => product.files.filter((file) => {
     const assembled = distribution.files.find((candidate) => candidate.path === file.path);
-    return !distribution.replaced.includes(file.path) || file.path.startsWith(`${distribution.binding.directory}/tools/data/`) || assembled === undefined || assembled.mode !== file.mode || assembled.bytes.length !== file.bytes.length || !assembled.bytes.every((byte, index) => byte === file.bytes[index]);
+    const finalizerOwned = file.path === `${distribution.binding.directory}/tools/data/aidlc-projection.json` || file.path === `${distribution.binding.directory}/tools/data/aidlc-stamp.json` || file.path.startsWith(`${distribution.binding.directory}/tools/data/root-blocks/`);
+    return finalizerOwned || !distribution.replaced.includes(file.path) || !preparedProducts.includes(product) && file.path.startsWith(`${distribution.binding.directory}/tools/data/`) || assembled === undefined || assembled.mode !== file.mode || assembled.bytes.length !== file.bytes.length || !assembled.bytes.every((byte, index) => byte === file.bytes[index]);
   }));
   return mismatches.length > 0 ? { status: "invalid", findings: mismatches.map((file) => finding({ code: "foreign-content", subject: file.path, detail: "initial ownership must describe an actually projected final file with identical bytes and mode; retained native files are not projected products" })) } : { status: "ok", value: { schemaVersion: 1, binding: distribution.binding, products: products.map((product) => recordProduct({ product, digest })) } };
 };

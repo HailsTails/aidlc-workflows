@@ -1,7 +1,7 @@
 // harness/opencode/manifest.ts — the opencode distribution row.
 //
 // Projects the harness-neutral core/ tree into dist/opencode/.aidlc/ and defers
-// every opencode-native surface to emit.ts (the .opencode/ shell: subagent .md
+// its opencode-native surfaces to the retained projection (the .opencode/ shell: subagent .md
 // files, the /aidlc command, the hook-adapter plugin). Verified live against
 // opencode 1.17.18.
 //
@@ -13,7 +13,7 @@
 //     opencode never scans — and the shipped opencode.json registers
 //     `skills.paths: [".aidlc/skills"]` so skills are discovered there
 //     (live-verified).
-//   - .opencode/ carries ONLY natively-consumed emissions (emit.ts): the 14
+//   - .opencode/ carries ONLY natively-consumed emissions: the 14
 //     persona subagents (.opencode/agents/*.md, mode: subagent + projected
 //     tier keys), the /aidlc command (.opencode/command/aidlc.md), and the
 //     hook-adapter plugin (.opencode/plugin/aidlc-opencode-adapter.ts, the
@@ -27,7 +27,6 @@
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
-import emit from "./emit.ts";
 
 const manifest: HarnessManifest = {
   name: "opencode",
@@ -156,7 +155,7 @@ const manifest: HarnessManifest = {
   // .aidlc/ is AIDLC's own dir; core's rules/ name has nothing to collide with.
   rulesRename: null,
 
-  emit,
+  emit: null,
 
   // Host plugin projection: opencode's own plugin store is JS-module-shaped
   // (not folder-drop stage bundles), so the projection ships the uniform

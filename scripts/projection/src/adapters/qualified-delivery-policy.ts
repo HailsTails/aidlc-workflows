@@ -19,6 +19,11 @@ export function qualifyDeliveryDeclaration(declaration: DeliveryDeclaration, pro
     const exact = (path: string, policy: string, marker: string | undefined, shared: string | undefined, optional: boolean | undefined) => roots.filter(root => root.path === path && root.policy === policy && root.marker === marker && root.shared === shared && root.optional === optional).length === 1;
     if (declaration.tierFlavor !== "copilot" || roots.length !== 3 || !exact("AGENTS.md", "managed-block", "agents", undefined, undefined) || !exact(".gitignore", "managed-block", "gitignore", "union", undefined) || !exact(".vscode/settings.json", "jsonc-settings", undefined, undefined, true)) throw new Error("Copilot requires model inheritance, exclusive root guidance, union ignore rules and optional additive editor settings");
   }
+  if (profile.harness === "opencode") {
+    const roots = declaration.rootIntegrations;
+    const exact = (path: string, policy: string, marker: string | undefined, shared: string | undefined) => roots.filter(root => root.path === path && root.policy === policy && root.marker === marker && root.shared === shared && root.optional === undefined).length === 1;
+    if (declaration.tierFlavor !== "opencode" || roots.length !== 3 || !exact("AGENTS.md", "managed-block", "agents", "identical") || !exact(".gitignore", "managed-block", "gitignore", "union") || !exact("opencode.json", "json-entries", undefined, undefined)) throw new Error("OpenCode requires model/variant policy, identical shared guidance, union ignore rules and ordered additive JSON entries");
+  }
   if (declaration.nativeRootIntegrations !== undefined) throw new Error("delivery does not admit nativeRootIntegrations declarations");
   const omitted = declaration.harnessFiles.filter(mapping => mapping.copyOnly);
   if (omitted.length !== profile.copyOnlyRoots.length || profile.copyOnlyRoots.some(expected => omitted.filter(mapping => mapping.src === expected.src && mapping.dst === expected.dst && mapping.projectRoot === true && mapping.copyOnly === true).length !== 1 || declaration.rootIntegrations.filter(integration => integration.path === expected.dst && integration.policy === expected.policy).length !== 1)) throw new Error("delivery does not admit unqualified copyOnly resources or root ownership");

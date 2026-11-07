@@ -40,3 +40,18 @@ export function projectRetainedTree(request: ClaudeCopyRequest, host: { readonly
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "Retained projection process failed");
 }
+export function projectRetainedPair(request: ClaudeCopyRequest, host: { readonly name: string; readonly harnessDir: string }, nativeOutRoot: string): void {
+  projectRetainedSession(request, [{ host, copyRoot: request.outRoot, nativeRoot: nativeOutRoot }]);
+}
+export function projectRetainedCheckPairs(request: ClaudeCopyRequest, host: { readonly name: string; readonly harnessDir: string }, roots: { readonly nativeOutRoot: string; readonly secondOutRoot: string; readonly secondNativeOutRoot: string }): void {
+  projectRetainedSession(request, [{ host, copyRoot: request.outRoot, nativeRoot: roots.nativeOutRoot }, { host, copyRoot: roots.secondOutRoot, nativeRoot: roots.secondNativeOutRoot }]);
+}
+export function projectRetainedSession(request: ClaudeCopyRequest, steps: readonly { readonly host: { readonly name: string; readonly harnessDir: string }; readonly copyRoot: string; readonly nativeRoot: string }[]): void {
+  const publications = steps.map(step => { const profile = qualifiedHarnessByName(step.host); if (profile === null) throw new Error("Host projection profile is not qualified"); return { binding: { harness: profile.harness, directory: profile.directory }, copyRoot: step.copyRoot, nativeRoot: step.nativeRoot }; });
+  const result = spawnSync(process.execPath, ["--no-env-file", "--no-install", join(request.sourceRoot, "scripts/project-core-session.ts")], {
+    cwd: request.sourceRoot, encoding: "utf8", input: JSON.stringify({ request, steps: publications }), maxBuffer: 8 * 1024 * 1024,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "Retained publication session failed");
+  process.stdout.write(result.stdout); process.stderr.write(result.stderr);
+}

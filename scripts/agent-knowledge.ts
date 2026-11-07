@@ -17,10 +17,8 @@
 // hardcoded: a future stage naming a new reviewer agent automatically gets
 // that agent's knowledge absorbed.
 //
-// Used by scripts/package.ts (the declarative projection: Claude, Kiro,
-// Kiro IDE, and the opencode .aidlc copies) AND by the codex/opencode emit.ts
-// plugins (which read core/agents/*.md directly, bypassing the packager's
-// transform).
+// Used by retained agent preparation and the remaining legacy
+// packager/Codex emitter. Knowledge remains authored once in core.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";

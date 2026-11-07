@@ -24,7 +24,7 @@ export const renderStageDefinition = ({ stage, context }: { readonly stage: Auth
   const draft = prepareStageProse({ stage, context });
   if (draft.status === "invalid") return draft;
   const native = context.nativeCommands;
-  if (!context.invocation.startsWith("bun ") && native === undefined) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: stage.origin.path, detail: "native stage emission requires source-owned command preparation bound to this prose and path" })] };
+  if (!context.invocation.startsWith("bun ") && context.preparationStage !== "before-host" && native === undefined) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: stage.origin.path, detail: "native stage emission requires source-owned command preparation bound to this prose and path" })] };
   if (native !== undefined && (context.invocation.startsWith("bun ") || native.path !== draft.value.path || native.source !== draft.value.source || native.origins.length === 0 || native.origins.some((origin) => sourceKey(origin.source) !== sourceKey(stage.origin.source) || origin.pin !== stage.origin.pin))) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: stage.origin.path, detail: "native stage commands must match the native delivery, exact authored prose/path and source basis" })] };
   const origins = [...(context.authoring ?? []), ...(native?.origins ?? [])];
   const authoring = origins.filter((origin, index) => origins.findIndex((candidate) => candidate.path === origin.path && candidate.pin === origin.pin && sourceKey(candidate.source) === sourceKey(origin.source)) === index);

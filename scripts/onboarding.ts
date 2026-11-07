@@ -29,7 +29,7 @@ export type OnboardingFills = {
 
 export function declaredSlots(skeleton: string): string[] {
   const out = new Set<string>();
-  for (const m of skeleton.matchAll(/\{\{SLOT:([a-z_]+)\}\}/g)) out.add(m[1]);
+  for (const m of skeleton.matchAll(/\{\{SLOT:([a-z_]+)\}\}/g)) out.add(m[1]!);
   return [...out];
 }
 
