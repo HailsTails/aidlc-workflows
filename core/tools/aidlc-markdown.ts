@@ -1158,3 +1158,13 @@ export function replaceSection(
   const bodyEnd = nextMatch ? bodyStart + nextMatch.index : content.length;
   return content.slice(0, bodyStart) + newContent + content.slice(bodyEnd);
 }
+
+// Audit fields preserve their first occurrence; uniqueness is the verifier's contract.
+export function auditBlockField(block: string, fieldName: string): string | null {
+  const prefix = `**${fieldName}**:`;
+  for (const raw of block.split("\n")) {
+    const line = raw.startsWith("- ") ? raw.slice(2) : raw;
+    if (line.startsWith(prefix)) return line.slice(prefix.length).trim();
+  }
+  return null;
+}

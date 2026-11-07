@@ -1,3 +1,6 @@
+import { pipelineAttemptFloorIn, pipelineEventAfterFloor, singleStageAttemptOpenIn, singleStageAttemptFieldIn, type PipelineAttemptFloor } from "./aidlc-attempt-boundary.ts";
+import { parseLiteralShellInvocation, shellCommandSegments } from "./aidlc-shell-invocation.ts";
+export { parseLiteralShellInvocation } from "./aidlc-shell-invocation.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { lockFolderHeldGiveUpMs, lockFolderHeldLine } from "./aidlc-lock-line.ts";
 import { reviewManifestForms } from "./aidlc-review-manifest.ts";
@@ -3117,76 +3120,6 @@ function canonicalEngineCommand(text: string): string {
  * ASCII blanks delimit words; NBSP is data. Backslash-newline is unsupported,
  * rather than being mistaken for either whitespace or a preserved backslash.
  */
-export function parseLiteralShellInvocation(text: string): {
-  directory: string | null;
-  command: string;
-  argv: string[];
-  rawWords: string[];
-} | null {
-  if (/[\0\r\n]|\$\(|`/.test(text)) return null;
-  text = text.replace(/^[ \t]+|[ \t]+$/g, "").replace(/[ \t]+2>&1$/, "");
-  const tokens: Array<{ value: string; raw: string; start: number; and: boolean }> = [];
-  for (let i = 0; i < text.length;) {
-    if (text[i] === " " || text[i] === "\t") { i++; continue; }
-    if (text.slice(i, i + 2) === "&&") {
-      tokens.push({ value: "&&", raw: "&&", start: i, and: true });
-      i += 2;
-      continue;
-    }
-    const start = i;
-    let value = "";
-    let quote: "'" | '"' | null = null;
-    while (i < text.length) {
-      const ch = text[i];
-      if (quote === "'") {
-        if (ch === "'") quote = null;
-        else value += ch;
-        i++;
-      } else if (quote === '"') {
-        if (ch === '"') { quote = null; i++; }
-        else if (ch === "$") return null;
-        else if (ch === "\\" && /["\\$`]/.test(text[i + 1] ?? "")) {
-          value += text[i + 1];
-          i += 2;
-        } else { value += ch; i++; }
-      } else {
-        if (ch === " " || ch === "\t" || text.slice(i, i + 2) === "&&") break;
-        if (ch === "'" || ch === '"') { quote = ch; i++; }
-        else if (ch === "\\" || "()[]{}*?;|<>&$#".includes(ch) || (ch === "~" && i === start)) return null;
-        else { value += ch; i++; }
-      }
-    }
-    if (quote !== null) return null;
-    tokens.push({ value, raw: text.slice(start, i), start, and: false });
-  }
-  const separators = tokens.flatMap((token, i) => token.and ? [i] : []);
-  let directory: string | null = null;
-  let words = tokens;
-  if (separators.length > 0) {
-    if (separators.length !== 1) return null;
-    const at = separators[0];
-    const prefix = tokens.slice(0, at);
-    if (
-      prefix[0]?.raw !== "cd" ||
-      !(prefix.length === 2 || (prefix.length === 3 && prefix[1].raw === "--"))
-    ) return null;
-    directory = prefix.at(-1)!.value;
-    if (
-      !directory.startsWith("/") &&
-      !/^[A-Za-z]:[/\\]/.test(directory) &&
-      !/^\\\\[^/\\]+[/\\][^/\\]+/.test(directory)
-    ) return null;
-    words = tokens.slice(at + 1);
-  }
-  if (words.length === 0 || words.some((word) => word.and)) return null;
-  return {
-    directory,
-    command: text.slice(words[0].start),
-    argv: words.map((word) => word.value),
-    rawWords: words.map((word) => word.raw),
-  };
-}
-
 // Detection only: Bash removes an ordinary unquoted escape before looking up an
 // executable. Keep quoted backslashes intact (notably native Windows paths).
 // This representation must never supply argv for a terminal-output exemption.
@@ -3905,45 +3838,6 @@ export function isEngineEngagementSegment(
   }
 
   return false;
-}
-
-function shellCommandSegments(command: string): string[] {
-  const segments: string[] = [];
-  let start = 0;
-  let quote: "'" | '"' | null = null;
-  let escaped = false;
-
-  for (let i = 0; i < command.length; i++) {
-    const char = command[i];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === "\\" && quote !== "'") {
-      escaped = true;
-      continue;
-    }
-    if (quote) {
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === "'" || char === '"') {
-      quote = char;
-      continue;
-    }
-
-    const separatorWidth =
-      char === "&" && command[i + 1] === "&"
-        ? 2
-        : char === "|" || char === ";" || char === "\n" ? 1 : 0;
-    if (separatorWidth === 0) continue;
-    segments.push(command.slice(start, i));
-    i += separatorWidth - 1;
-    start = i + 1;
-  }
-
-  segments.push(command.slice(start));
-  return segments;
 }
 
 // Classify commands for the rebuild-stage-graph hook's cheap PostToolUse gate.
@@ -34158,67 +34052,8 @@ function orderedPipelineEvidenceEvents(
   });
 }
 
-interface PipelineAttemptFloor {
-  timestamp: string;
-  rows: OrderedPipelineEvidenceEvent[];
-}
-
-function pipelineAttemptFloor(
-  events: OrderedPipelineEvidenceEvent[],
-  stageSlug: string,
-  singleRun: boolean,
-  rejectionKeepsReceipts = false,
-): PipelineAttemptFloor | null {
-  const workflow = `single-stage:${stageSlug}`;
-  const boundaries = events.filter((entry) => {
-    const eventWorkflow = auditBlockField(entry.block, "Workflow");
-    if (
-      !singleRun &&
-      (
-        entry.event === "WORKFLOW_STARTED" ||
-        (entry.event === "STAGE_JUMPED" && stageJumpReaches(entry.block, stageSlug)) ||
-        (
-          entry.event === "GATE_REJECTED" &&
-          !rejectionKeepsReceipts &&
-          auditBlockField(entry.block, "Stage") === stageSlug
-        )
-      ) &&
-      !eventWorkflow?.startsWith("single-stage:")
-    ) {
-      return true;
-    }
-    return (
-      entry.event === "STAGE_STARTED" &&
-      auditBlockField(entry.block, "Stage") === stageSlug &&
-      (
-        singleRun
-          ? eventWorkflow === workflow
-          : !eventWorkflow?.startsWith("single-stage:")
-      )
-    );
-  });
-  if (boundaries.length === 0) return null;
-  const timestamp = boundaries[boundaries.length - 1].timestamp;
-  return {
-    timestamp,
-    rows: boundaries.filter((entry) => entry.timestamp === timestamp),
-  };
-}
-
-function pipelineEventAfterFloor(
-  entry: OrderedPipelineEvidenceEvent,
-  floor: PipelineAttemptFloor | null,
-): boolean {
-  if (floor === null) return true;
-  if (entry.timestamp !== floor.timestamp) {
-    return entry.timestamp > floor.timestamp;
-  }
-  const shards = new Set(floor.rows.map((row) => row.shard));
-  if (shards.size !== 1) return false;
-  const shard = floor.rows[0].shard;
-  if (entry.shard !== shard) return false;
-  const maxPos = Math.max(...floor.rows.map((row) => row.pos));
-  return entry.pos > maxPos;
+function pipelineAttemptFloor(events: OrderedPipelineEvidenceEvent[], stageSlug: string, singleRun: boolean, rejectionKeepsReceipts = false): PipelineAttemptFloor | null {
+  return pipelineAttemptFloorIn(events, stageSlug, singleRun, rejectionKeepsReceipts, stageJumpReaches);
 }
 
 export function pipelineAttemptStartedAt(
@@ -34245,20 +34080,7 @@ export function singleStageAttemptScope(projectDir: string, slug: string): strin
 // A field the latest isolated start of <slug> recorded (Scope, Depth, Test
 // Strategy), or null when that start did not record it.
 export function singleStageAttemptField(projectDir: string, slug: string, field: string): string | null {
-  const workflow = `single-stage:${slug}`;
-  const attemptStart = readAuditShardEvents(projectDir)
-    .filter((entry) =>
-      entry.event === "STAGE_STARTED" &&
-      auditBlockField(entry.block, "Stage") === slug &&
-      auditBlockField(entry.block, "Workflow") === workflow
-    )
-    .sort((a, b) => {
-      if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
-      if (a.shardIndex !== b.shardIndex) return a.shardIndex - b.shardIndex;
-      return a.pos - b.pos;
-    })
-    .pop();
-  return attemptStart ? auditBlockField(attemptStart.block, field) : null;
+  return singleStageAttemptFieldIn(readAuditShardEvents(projectDir), slug, field);
 }
 
 // The Test Strategy an isolated Code Generation run took for itself, while the
@@ -34384,43 +34206,6 @@ export function singleRunRequest(projectDir: string): { stage: string; descripti
   } catch {
     return { stage, description: null };
   }
-}
-
-function singleStageAttemptOpenIn(
-  events: OrderedPipelineEvidenceEvent[],
-  stageSlug: string,
-): boolean {
-  const workflow = `single-stage:${stageSlug}`;
-  const floor = pipelineAttemptFloor(events, stageSlug, true);
-  if (floor === null) return false;
-  const floorShards = new Set(floor.rows.map((row) => row.shard));
-  if (floorShards.size !== 1) return false;
-  const floorShard = floor.rows[0].shard;
-  const floorPos = Math.max(...floor.rows.map((row) => row.pos));
-  for (const entry of events) {
-    if (
-      entry.event !== "STAGE_COMPLETED" ||
-      auditBlockField(entry.block, "Stage") !== stageSlug ||
-      auditBlockField(entry.block, "Workflow") !== workflow
-    ) {
-      continue;
-    }
-    if (pipelineEventAfterFloor(entry, floor)) return false;
-    if (
-      entry.timestamp === floor.timestamp &&
-      entry.shard !== floorShard
-    ) {
-      return false;
-    }
-    if (
-      entry.timestamp === floor.timestamp &&
-      entry.shard === floorShard &&
-      entry.pos > floorPos
-    ) {
-      return false;
-    }
-  }
-  return true;
 }
 
 // Current-attempt pipeline receipts are scoped to either the main workflow or
