@@ -49,6 +49,7 @@
 import { constants as fsConstants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { composerPlansShown, compareComposerPlans } from "./aidlc-composer-plan-selection.ts";
 import {
   aidlcToolInvocation,
   refuseLinkOnTheWay,
@@ -3900,15 +3901,6 @@ function keptPlanOf(plan: KeptComposerPlan | undefined): KeptComposerPlan | null
   return kept;
 }
 
-/** The same plan, whenever it was kept. */
-function sameKeptPlan(a: KeptComposerPlan, b: KeptComposerPlan): boolean {
-  const key = (plan: KeptComposerPlan): string => JSON.stringify([
-    plan.scope, [...plan.changes.skip].sort(), [...plan.changes.add].sort(), plan.projectType ?? null, plan.depth ?? null,
-    Object.entries(plan.settings ?? {}).sort(([x], [y]) => x.localeCompare(y)), plan.guardPolicy ?? null,
-  ]);
-  return key(a) === key(b);
-}
-
 /** A front compose dispatch for `request` opens a fresh record, replacing any
  *  an earlier composition left, with the project type the scan found as it
  *  dispatched (none when the scan could not say). */
@@ -3948,7 +3940,7 @@ function fillComposerScores(projectDir: string, scores: Record<ArsComponent, num
  *  again keeps its first time. With no record open it writes nothing. */
 function keepComposerPlan(projectDir: string, plan: KeptComposerPlan): void {
   const open = readComposerScores(projectDir);
-  if (open === null || (open.plan !== undefined && sameKeptPlan(open.plan, plan))) return;
+  if (open === null || (open.plan !== undefined && compareComposerPlans({ left: open.plan, right: plan }) === "same-plan")) return;
   const { named: _named, ...kept } = open;
   const record: ComposerScores = {
     ...kept,
@@ -3975,7 +3967,10 @@ export function keptComposerPlans(
 ): { shown: KeptComposerPlan | null; unseen: KeptComposerPlan | null; named: boolean } | null {
   const record = readComposerScores(projectDir);
   if (record?.plan === undefined || !requests.includes(record.request)) return null;
-  return { ...shownAndUnseen(record.plan, record.earlier ?? [], seen), named: record.named === true };
+  return {
+    ...composerPlansShown({ plan: record.plan, earlier: record.earlier ?? [], observeReply: ({ at }) => seen(at) ? "reply-observed" : "reply-not-observed" }),
+    named: record.named === true,
+  };
 }
 
 /** Creation named the approval of the plan the person saw for one of
@@ -3989,17 +3984,6 @@ export function markComposerPlanNamed(projectDir: string, requests: readonly str
   } catch {
     // Unwritten: the step is said again at the next creation.
   }
-}
-
-function shownAndUnseen(
-  plan: KeptComposerPlan,
-  earlier: readonly KeptComposerPlan[],
-  seen: (at: string) => boolean,
-): { shown: KeptComposerPlan | null; unseen: KeptComposerPlan | null } {
-  const plans = [...earlier, plan];
-  let shown = plans.length - 1;
-  while (shown >= 0 && plans[shown].at !== undefined && !seen(plans[shown].at as string)) shown--;
-  return { shown: plans[shown] ?? null, unseen: shown < plans.length - 1 ? plan : null };
 }
 
 /** The plan the composer validated for one of `requests` on `scope` that the
@@ -4019,7 +4003,9 @@ export function approvedComposerPlan(
 ): ApprovedComposerPlan | null {
   const record = readComposerScores(projectDir);
   if (record?.plan === undefined || !requests.includes(record.request)) return null;
-  const plan = shownAndUnseen(record.plan, record.earlier ?? [], seen).shown;
+  const plan = composerPlansShown({
+    plan: record.plan, earlier: record.earlier ?? [], observeReply: ({ at }) => seen(at) ? "reply-observed" : "reply-not-observed",
+  }).shown;
   if (plan === null || plan.scope !== scope) return null;
   const { changes, depth, settings, guardPolicy } = plan;
   const theirs = plan.projectType !== undefined && record.scanned !== undefined && plan.projectType !== record.scanned;
