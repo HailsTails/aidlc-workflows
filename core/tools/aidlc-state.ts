@@ -1,3 +1,5 @@
+import { appendUnderHeading, extractMarkdownSection, markdownBlocks, projectVisibleMarkdownLines, replaceSection } from "./aidlc-markdown.ts";
+import { practicesRulesToAdd as derivePracticesRules, promotePractices, createPracticesContent, createPracticesPromotionRepository, createPracticesFiles, type PracticesFilesPort, type PracticesAffirmation, type PracticesPromotionSummary, type PracticesContentPort } from "./aidlc-practices-promotion.ts";
 import { DEFAULT_SUBPROCESS_TIMEOUT_MS } from "./aidlc-runtime-budget.ts";
 import { projectDirFlag, settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
 import { BACKGROUND_SYNC_CAUSE, CHECKPOINT_GLOSS } from "./aidlc-guard-fences.ts";
@@ -61,7 +63,6 @@ import {
   isPersonAskedSkipReason,
   auditShardName,
   appendSlug,
-  appendUnderHeading,
   artifactFilename,
   BLOCKING_SENSOR_OVERRIDE_CHOICE,
   BLOCKING_SENSOR_OVERRIDE_DECISION,
@@ -95,7 +96,6 @@ import {
   errorMessage,
   evaluateGuardRefusal,
   eventMatchesClaimAttempt,
-  extractMarkdownSection,
   filterProducesByKind,
   findStageBySlug,
   isPerUnitStage,
@@ -207,7 +207,6 @@ import {
   relativeRecordDir,
   removeField,
   removeSlug,
-  replaceSection,
   resolveBoltDag,
   resolveBoltIdentity,
   requireLiveClaimForTeamUnit,
@@ -297,7 +296,6 @@ import { memoryDirFor, PATH_SET_SENSOR_IDS, STAGE_WIDE_SENSOR_IDS, templateEligi
 import { generateFireId, recordUnfinishedFire, unfinishedFire } from "./aidlc-sensor-record.ts";
 import { inspectRequiredArtifactInstances } from "./aidlc-artifact-resolution.ts";
 import { aidlcDispatcherInvocation, aidlcToolInvocation, compiledExecutable, entrySkillInvocation } from "./aidlc-runtime-paths.ts";
-import { markdownBlocks, projectVisibleMarkdownLines } from "./aidlc-markdown.ts";
 import {
   stageLabel,
   stageValidationAuditFields,
@@ -9325,319 +9323,113 @@ function handlePracticesEvent(args: string[]): void {
   );
 }
 
-// The rules Approve at Practices Discovery adds to project.md: the list items
-// under the draft's `## Mandated` and `## Forbidden`, a wrapped line joined to
-// its item (prose, a "None.", a nested list, a quote, code and comments are no
-// rule), less the rules that heading of project.md already holds. The gate
-// names these and practices-promote writes them, so the person approves
-// exactly what is written. A terminal `(affirmed <date>)` stamp is provenance,
-// not rule identity: an existing rule keeps its original date.
-export function practicesRulesToAdd(
-  discoveredRules: string,
-  projectMd: string,
-): { mandated: string[]; forbidden: string[] } {
-  const ruleText = (text: string): string => text.replace(/(?: \(affirmed \d{4}-\d{2}-\d{2}\))+$/, "");
-  const draftRules = (section: string): string[] => {
-    const blocks = markdownBlocks(section);
-    const visible = projectVisibleMarkdownLines(section, blocks, { preserveIndentedCode: true });
-    const items = new Map<number, string[]>();
-    blocks.lines.forEach((line, index) => {
-      const item = line.containers[0];
-      if (line.kind !== "paragraph" || line.containers.length !== 1 || item?.kind !== "listItem") return;
-      const text = visible[index].slice(line.contentStart).trim();
-      if (text !== "") items.set(item.id, [...(items.get(item.id) ?? []), text]);
-    });
-    return [...items.values()].map((parts) => ruleText(parts.join(" "))).filter((rule) => rule !== "");
-  };
-  // project.md as its writers have left it: one rule a line, with or without a
-  // list marker.
-  const heldRules = (section: string): string[] =>
-    section
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0 && !l.startsWith("<!--") && !l.startsWith("#"))
-      .map((l) => ruleText(l.replace(/^(?:[-*+]|\d+[.)])\s+/, "")));
-  const toAdd = (heading: string): string[] => {
-    const held = new Set(heldRules(extractMarkdownSection(projectMd, heading)));
-    const rules: string[] = [];
-    for (const rule of draftRules(extractMarkdownSection(discoveredRules, heading))) {
-      if (held.has(rule)) continue;
-      held.add(rule);
-      rules.push(rule);
-    }
-    return rules;
-  };
-  return { mandated: toAdd("## Mandated"), forbidden: toAdd("## Forbidden") };
+export function practicesRulesToAdd(discoveredRules: string, projectMd: string): { mandated: string[]; forbidden: string[] } {
+  return derivePracticesRules({ discoveredRules, projectMd, content: productionPracticesContent() });
 }
 
-// practices-promote --team-practices <path> --discovered-rules <path>
-//                   [--affirming-user <name>] [--target-dir <path>]
-//
-// Cross-row promotion of affirmed practices into the team-authored method
-// files. Reads two draft files from the active intent's practices-discovery
-// and applies them deterministically to the relocated method files the
-// resolver reads (aidlc/spaces/<space>/memory/, neutral names):
-//
-//   memory/team.md ........... replaceSection × 5 (Way of Working,
-//                              Walking Skeleton, Testing Posture,
-//                              Deployment, Code Style)
-//   memory/project.md ........ appendUnderHeading × 2 (Mandated,
-//                              Forbidden), each rule stamped
-//                              with `(affirmed YYYY-MM-DD)`
-//
-// Atomicity:
-//   1. Validate every declared support contribution (fail before any write).
-//   2. Read both drafts (fail closed before any write).
-//   3. Read both targets (fail closed if either missing).
-//   4. Build new contents in memory.
-//   5. Write project.md first (smaller, more constrained).
-//   6. Write team.md second.
-//   7. On success → emit PRACTICES_AFFIRMED.
-//   8. On any failure → emit PRACTICES_OVERRIDE with the failure reason
-//      and rethrow so the caller halts the gate.
-//
-// Why this exists: when stage prose tells the LLM to write to the method
-// files directly, the LLM (running non-interactively under `claude -p`)
-// hallucinates a sensitive-file permission policy that does not actually
-// exist. The orchestrator then halts at "awaiting-approval" and emits
-// PRACTICES_OVERRIDE without ever attempting the write — the workflow
-// bricks. Routing the writes through a tool subcommand removes the LLM's
-// judgment from the path: the path is never the LLM's write target, so the
-// hallucinated policy never fires.
+function practiceRuleItems(request: { section: string }): string[] {
+  const blocks = markdownBlocks(request.section);
+  const visible = projectVisibleMarkdownLines(request.section, blocks, { preserveIndentedCode: true });
+  const itemLines = blocks.lines.flatMap((line, index) => {
+    const item = line.containers[0];
+    if (line.kind !== "paragraph" || line.containers.length !== 1 || item?.kind !== "listItem") return [];
+    const text = visible[index].slice(line.contentStart).trim();
+    if (text === "") return [];
+    return [{ id: item.id, text }];
+  });
+  const items = Map.groupBy(itemLines, ({ id }) => id);
+  return Array.from(items.values(), (parts) => parts.map(({ text }) => text).join(" "));
+}
+
+function productionPracticesContent(): PracticesContentPort {
+  return createPracticesContent({
+    section: ({ markdown, heading }) => extractMarkdownSection(markdown, heading),
+    ruleItems: practiceRuleItems,
+    testingPosture: ({ section }) => promotableTestingPosture(section),
+    replaceSection: ({ current, heading, section }) => replaceSection(current, heading, section),
+    appendRule: ({ current, heading, rule }) => appendUnderHeading(current, heading, rule),
+    describeFailure: ({ failure }) => errorMessage(failure),
+  });
+}
+
+function productionPracticesFiles(): PracticesFilesPort {
+  return createPracticesFiles({
+    presence: ({ path }) => existsSync(path) ? "present" : "absent",
+    readText: ({ path }) => readFileSync(path, "utf-8"),
+    writeText: ({ path, content }) => writeFileSync(path, content, "utf-8"),
+    describeFailure: ({ failure }) => errorMessage(failure),
+  });
+}
+function commitPracticesAffirmation(request: {
+  project: string; affirmingUser: string; summary: PracticesPromotionSummary;
+}): PracticesAffirmation {
+  try {
+    const affirmedAt = withAuditLock(request.project, () => {
+      let state = readStateFile(request.project);
+      const timestamp = emitAudit(request.project, "PRACTICES_AFFIRMED", {
+        "Affirming User": request.affirmingUser,
+        "Sections Written": request.summary.sectionsWritten.join(", "),
+        "Mandated Rules Appended": String(request.summary.rulesAppended.mandated),
+        "Forbidden Rules Appended": String(request.summary.rulesAppended.forbidden),
+      });
+      state = setOrInsertField(state, "## Project Information", "Practices Affirmed Timestamp", timestamp);
+      state = setField(state, "Last Updated", timestamp);
+      writeStateFile(request.project, state);
+      return timestamp;
+    });
+    return { kind: "affirmed", affirmedAt };
+  } catch (failure) {
+    return { kind: "failed", stage: "affirmation", applied: "both", reason: `audit/state commit failed AFTER both files were written: ${errorMessage(failure)}` };
+  }
+}
+
+function practicesPromotionFailed(request: { project: string; reason: string }): never {
+  try {
+    emitAudit(request.project, "PRACTICES_OVERRIDE", { Reason: request.reason });
+  } catch {
+  }
+  error(`practices-promote failed: ${request.reason}`);
+}
+
 function handlePracticesPromote(args: string[]): void {
   const flags: Record<string, string> = {};
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a.startsWith("--") && i + 1 < args.length) {
-      flags[a.slice(2)] = args[i + 1];
-      i++;
+  for (let index = 0; index < args.length; index++) {
+    const argument = args[index];
+    if (argument.startsWith("--") && index + 1 < args.length) {
+      flags[argument.slice(2)] = args[index + 1];
+      index++;
     }
   }
   if (!flags["team-practices"] || !flags["discovered-rules"]) {
-    error(
-      'Usage: aidlc-state.ts practices-promote --team-practices <path> --discovered-rules <path> [--affirming-user <name>] [--target-dir <path>]'
-    );
+    error('Usage: aidlc-state.ts practices-promote --team-practices <path> --discovered-rules <path> [--affirming-user <name>] [--target-dir <path>]');
   }
-
-  const pd = resolveProjectDir(projectDir);
-  // The affirmed practices land in the relocated method files the resolver
-  // reads — team.md / project.md under aidlc/spaces/<space>/memory/ (neutral
-  // names, no `aidlc-` prefix). memoryDirFor() derives the path from the SAME
-  // MEMORY_SEGMENTS loadRules() reads from, so this writer and the reader can
-  // never drift (P5 relocated the reader; P6 closes the seam here). --target-dir
-  // lets tests point the writes at a fixture memory dir; it defaults to the
-  // project's resolved memory dir.
-  const targetRoot = flags["target-dir"] ?? memoryDirFor(pd);
-  const teamMdPath = join(targetRoot, "team.md");
-  const guardrailsPath = join(targetRoot, "project.md");
-
+  const project = resolveProjectDir(projectDir);
+  const targetRoot = flags["target-dir"] ?? memoryDirFor(project);
   const today = isoTimestamp().slice(0, 10);
-  const sectionsWritten: string[] = [];
-  const rulesAppended = { mandated: 0, forbidden: 0 };
-
-  const fail = (reason: string): never => {
-    try {
-      emitAudit(pd, "PRACTICES_OVERRIDE", {
-        Reason: reason,
-      });
-    } catch {
-      // If audit emission itself fails, surface the original reason.
-    }
-    error(`practices-promote failed: ${reason}`);
-    throw new Error(reason); // unreachable; error() exits, but TS needs this
-  };
-
-  // Step 1: Revalidate the hub-and-spoke evidence immediately before the
-  // cross-row memory write. The gate-open report checks the same contract
-  // before asking the human, but files can be deleted or malformed while the
-  // gate is open. Promotion is the irreversible seam, so it fails closed too.
-  const teamPracticesPath = flags["team-practices"];
-  const discoveredRulesPath = flags["discovered-rules"];
-  const practicesStage = findStageBySlug("practices-discovery");
-  if (!practicesStage) {
-    fail("practices-discovery is absent from the compiled stage graph");
-  }
-  const draftDir = dirname(teamPracticesPath);
-  if (dirname(discoveredRulesPath) !== draftDir) {
-    fail("team-practices and discovered-rules drafts must share one stage directory");
-  }
-  // Honour the collaborators switch: a lead-only practices-discovery run (the
-  // `collaborators` ceremony off for this scope) has no spokes and therefore no
-  // contribution files to revalidate. Same switch owner the gate and dispatch
-  // read, so promotion can never demand evidence the stage never produced.
-  const missingContributions: string[] = [];
-  for (const agent of effectiveSupportAgentsForProject(pd, practicesStage!)) {
-    const contribution = join(draftDir, "contributions", `${agent}.md`);
-    let firstLine = "";
-    try {
-      firstLine = readFileSync(contribution, "utf-8").split("\n", 1)[0].trim();
-    } catch {
-      missingContributions.push(`${agent} (no contribution file)`);
-      continue;
-    }
-    if (firstLine !== `**Collaborator:** ${agent}`) {
-      missingContributions.push(`${agent} (missing identity-marker first line)`);
-    }
-  }
-  if (missingContributions.length > 0) {
-    fail(
-      "ensemble evidence is incomplete: " + missingContributions.join("; "),
-    );
-  }
-
-  // Step 2: Read both drafts.
-  if (!existsSync(teamPracticesPath))
-    fail(`team-practices draft not found: ${teamPracticesPath}`);
-  if (!existsSync(discoveredRulesPath))
-    fail(`discovered-rules draft not found: ${discoveredRulesPath}`);
-
-  let teamPracticesDraft: string;
-  let discoveredRulesDraft: string;
-  try {
-    teamPracticesDraft = readFileSync(teamPracticesPath, "utf-8");
-    discoveredRulesDraft = readFileSync(discoveredRulesPath, "utf-8");
-  } catch (e) {
-    fail(`could not read drafts: ${errorMessage(e)}`);
-    return;
-  }
-
-  // Step 3: Read both target files. Fail closed if either is missing.
-  if (!existsSync(teamMdPath)) fail(`team.md not found at ${teamMdPath}`);
-  if (!existsSync(guardrailsPath))
-    fail(`project.md not found at ${guardrailsPath}`);
-
-  let teamMd: string;
-  let guardrailsMd: string;
-  try {
-    teamMd = readFileSync(teamMdPath, "utf-8");
-    guardrailsMd = readFileSync(guardrailsPath, "utf-8");
-  } catch (e) {
-    fail(`could not read targets: ${errorMessage(e)}`);
-    return;
-  }
-
-  // Step 4a: Build new team.md by section-replacing each of the five
-  // sections. team.md uses Title Case headings; the draft mirrors that
-  // shape.
-  const TEAM_SECTIONS = [
-    "## Way of Working",
-    "## Walking Skeleton",
-    "## Testing Posture",
-    "## Deployment",
-    "## Code Style",
-  ];
-  let newTeamMd = teamMd;
-  for (const heading of TEAM_SECTIONS) {
-    let draftSection = extractMarkdownSection(teamPracticesDraft, heading);
-    if (draftSection === "") {
-      // Section absent from draft → leave the live file's section alone.
-      // Useful for partial re-runs that only change one practice area.
-      continue;
-    }
-    // team.md gets only a Testing Posture the Code Generation renderer reads:
-    // a Methodology given with its reasons is split into the bare value and a
-    // `Methodology evidence` line; one that cannot be read stops here, before
-    // any write.
-    if (heading === "## Testing Posture") {
-      const promotable = promotableTestingPosture(draftSection);
-      if (promotable.problem !== null) {
-        fail(promotable.problem);
-        return;
-      }
-      draftSection = promotable.section;
-    }
-    try {
-      newTeamMd = replaceSection(newTeamMd, heading, draftSection);
-      sectionsWritten.push(heading.slice(3));
-    } catch (e) {
-      fail(
-        `replaceSection failed on team.md for "${heading}": ${errorMessage(e)}`
-      );
-      return;
-    }
-  }
-
-  // Step 4b: Build new project-guardrails.md by appending, under the matching
-  // heading with a date stamp, exactly the rules the gate named.
-  const rulesToAdd = practicesRulesToAdd(discoveredRulesDraft, guardrailsMd);
-  let newGuardrailsMd = guardrailsMd;
-  for (const [heading, kind] of [["## Mandated", "mandated"], ["## Forbidden", "forbidden"]] as const) {
-    for (const rule of rulesToAdd[kind]) {
-      try {
-        newGuardrailsMd = appendUnderHeading(newGuardrailsMd, heading, `- ${rule} (affirmed ${today})\n`);
-        rulesAppended[kind]++;
-      } catch (e) {
-        fail(`appendUnderHeading failed on ${heading.slice(3)}: ${errorMessage(e)}`);
-        return;
-      }
-    }
-  }
-
-  // Step 5 & 6: Write project.md first, then team.md.
-  // If the project write fails, team.md is untouched. If the team write
-  // fails after project succeeded, we surface that as PRACTICES_OVERRIDE and
-  // the user re-enters the gate. Identical project rules are deduplicated
-  // above, so a retry cannot accumulate copies after this partial-write path.
-  try {
-    writeFileSync(guardrailsPath, newGuardrailsMd, "utf-8");
-  } catch (e) {
-    fail(`writing project.md failed: ${errorMessage(e)}`);
-    return;
-  }
-  try {
-    writeFileSync(teamMdPath, newTeamMd, "utf-8");
-  } catch (e) {
-    fail(
-      `writing team.md failed AFTER project.md was written: ${errorMessage(e)}`
-    );
-    return;
-  }
-
-  // Step 7: Emit PRACTICES_AFFIRMED and record the matching state timestamp in
-  // one audit-locked transaction. The promotion tool owns both facts; leaving a
-  // follow-up generic `set` to stage prose would let the timestamp be omitted or
-  // forged independently of a successful promotion.
-  let affirmedAt = "";
-  try {
-    withAuditLock(pd, () => {
-      let state = readStateFile(pd);
-      affirmedAt = emitAudit(pd, "PRACTICES_AFFIRMED", {
-        "Affirming User": flags["affirming-user"] ?? "unknown",
-        "Sections Written": sectionsWritten.join(", "),
-        "Mandated Rules Appended": String(rulesAppended.mandated),
-        "Forbidden Rules Appended": String(rulesAppended.forbidden),
-      });
-      // setOrInsertField, not setField: on a state file missing the row (a
-      // hand-edited or pre-field file) setField silently no-ops, and the
-      // approve gate that requires this timestamp would then refuse forever
-      // while its remediation ("run practices-promote") keeps no-opping.
-      state = setOrInsertField(
-        state,
-        "## Project Information",
-        "Practices Affirmed Timestamp",
-        affirmedAt,
-      );
-      state = setField(state, "Last Updated", affirmedAt);
-      writeStateFile(pd, state);
-    });
-  } catch (e) {
-    fail(
-      `audit/state commit failed AFTER both files were written: ${errorMessage(e)}`
-    );
-    return;
-  }
-
-  console.log(
-    JSON.stringify({
-      emitted: "PRACTICES_AFFIRMED",
-      sections_written: sectionsWritten,
-      mandated_appended: rulesAppended.mandated,
-      forbidden_appended: rulesAppended.forbidden,
-      affirmed_at: affirmedAt,
-      team_md: teamMdPath,
-      project_guardrails: guardrailsPath,
-    })
-  );
+  const stage = findStageBySlug("practices-discovery");
+  if (!stage) practicesPromotionFailed({ project, reason: "practices-discovery is absent from the compiled stage graph" });
+  const result = promotePractices({
+    today,
+    content: productionPracticesContent(),
+    repository: createPracticesPromotionRepository({
+      files: productionPracticesFiles(),
+      location: {
+        teamPracticesPath: flags["team-practices"], discoveredRulesPath: flags["discovered-rules"],
+        teamPath: join(targetRoot, "team.md"), projectPath: join(targetRoot, "project.md"),
+        draftDirectory: dirname(flags["team-practices"]) === dirname(flags["discovered-rules"]) ? "same" : "different",
+        contributions: () => effectiveSupportAgentsForProject(project, stage).map((agent) => ({
+          agent, path: join(dirname(flags["team-practices"]), "contributions", `${agent}.md`),
+        })),
+      },
+    }),
+    commitAffirmation: (summary) => commitPracticesAffirmation({ project, summary, affirmingUser: flags["affirming-user"] ?? "unknown" }),
+  });
+  if (result.kind === "failed") practicesPromotionFailed({ project, reason: result.reason });
+  console.log(JSON.stringify({
+    emitted: "PRACTICES_AFFIRMED", sections_written: result.sectionsWritten,
+    mandated_appended: result.rulesAppended.mandated, forbidden_appended: result.rulesAppended.forbidden,
+    affirmed_at: result.affirmedAt, team_md: join(targetRoot, "team.md"), project_guardrails: join(targetRoot, "project.md"),
+  }));
 }
 
 // reuse-artifact <slug> --decision <keep|modify|redo> --artifacts <csv>
