@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { planHookLocation } from "./aidlc-hook-location-policy.ts";
+import { machineReachingToolScripts, preapprovedCopyToolScripts, preapprovedDispatcherCommands } from "./aidlc-copy-preapproval.ts";
 import { settleClaudeTurnsFirst } from "./aidlc-claude-turn-pending.ts";
 import { existsSync, readdirSync, readFileSync, realpathSync, writeSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -1362,13 +1364,16 @@ export function resolveHookPath(
       );
   const installed = leaves.map((leaf) => join(projectDir, leaf, "hooks", file));
   const executableRelative = packagedHookPath(file, runtimeLeaf, harness);
-  if (compiled) {
-    if (file !== "aidlc-statusline.ts") return executableRelative;
-    return [...installed, executableRelative].find((candidate) => existsSync(candidate)) ??
-      executableRelative;
-  }
-  const candidates = [moduleRelative, ...installed, executableRelative];
-  return candidates.find((candidate) => existsSync(candidate)) ?? moduleRelative;
+  const location = planHookLocation({
+    execution: compiled ? "native" : "copy",
+    hookFile: file,
+    moduleHookPath: moduleRelative,
+    projectHookPaths: installed,
+    packagedHookPath: executableRelative,
+  });
+  return location.kind === "fixed"
+    ? location.path
+    : location.candidates.find((candidate) => existsSync(candidate)) ?? location.fallback;
 }
 
 function routeForms(route: Route): string[] {
@@ -1435,17 +1440,13 @@ export function routePositionals(route: Route, verb: string): string[] {
 // AI-DLC's other tool scripts, never these, so running one directly shows the
 // host's own prompt.
 export function machineReachingTools(): string[] {
-  return [...new Set(
-    ROUTES.filter((route) => route.mutationScope === "machine" || route.mutationScope === "project-and-machine")
-      .map((route) => route.tool)
-      .filter((tool): tool is string => tool !== undefined),
-  )].sort();
+  return machineReachingToolScripts({ routes: ROUTES });
 }
 
 // AI-DLC's tool scripts a copy channel pre-approves: every one but those.
 export function copyChannelToolScripts(): string[] {
-  const machine = new Set(machineReachingTools());
-  return [...new Set(Object.values(TOOLS))].filter((tool) => !machine.has(tool)).sort();
+  const machineToolScripts = machineReachingTools();
+  return preapprovedCopyToolScripts({ machineToolScripts, toolScripts: Object.values(TOOLS) });
 }
 
 // The dispatcher's public commands, outside its engine namespace, that every
@@ -1463,27 +1464,10 @@ export function copyChannelDispatcherCommands(): string[] {
   // Only the packager and the tests ask for this list, so the settings reader
   // loads here and the dispatcher's own start stays as light as before.
   const { RECORDABLE_PROJECT_BYPASSES } = require("./aidlc-settings.ts") as typeof import("./aidlc-settings.ts");
-  return [
-    "doctor",
-    "doctor --verbose",
-    "version",
-    "--doctor",
-    "--doctor --verbose",
-    "--version",
-    "status",
-    "--status",
-    "config --help",
-    // An unknown option there, answered with the config usage line and no
-    // change; agents run it first for "show my settings".
-    "config --show",
-    "config --show --json",
-    ...CONFIG_SECTIONS.flatMap((section) => [
-      `config ${section} --show`,
-      `config ${section} --show --json`,
-      `config ${section} --help`,
-    ]),
-    ...RECORDABLE_PROJECT_BYPASSES.map((name) => `config flags --clear-bypass ${name} --yes`),
-  ];
+  return preapprovedDispatcherCommands({
+    configSections: CONFIG_SECTIONS,
+    recordableProjectBypasses: RECORDABLE_PROJECT_BYPASSES,
+  });
 }
 
 export function renderHumanHelp(): string {
