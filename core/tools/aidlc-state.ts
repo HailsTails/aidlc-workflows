@@ -157,7 +157,8 @@ import {
   isGitRepoDir,
   isValidRepoName,
   repoDir,
-  isAutonomousConstructionGate,
+  isAutonomousStage,
+  isAutonomousStageGate,
   approvedConstructionUnits,
   constructionCheckpointGaps,
   constructionSkeletonOn,
@@ -2162,7 +2163,7 @@ function handleRefreshUnitProgress(
         emitAudit(pd, "STAGE_STARTED", {
           Stage: started,
           Agent: next?.lead_agent ?? "",
-          ...answerModeStageStartedFields(pd),
+          ...answerModeStageStartedFields(pd, { approvalMode: next?.approval_mode }),
         });
       }
       if (workflowCompleted && completedFinalStage) {
@@ -4019,7 +4020,7 @@ function personAnswersGate(
   stage: NonNullable<ReturnType<typeof findStageBySlug>>,
   teamGate: ReturnType<typeof teamGateContext>,
 ): boolean {
-  return teamGate !== null || !isAutonomousConstructionGate(stateContent, stage, pd);
+  return teamGate !== null || !isAutonomousStageGate(stateContent, stage, pd);
 }
 
 function fireGateSensors(
@@ -4839,7 +4840,7 @@ function sourceWorkNotFound(
     return;
   }
   const personReplies =
-    !isAutonomousConstructionGate(content, stage, pd) &&
+    !isAutonomousStageGate(content, stage, pd, undefined, { personDecision: personsWord }) &&
     !humanPresenceGuardDisabled(pd) &&
     humanTurnMintAllowed();
   if (personReplies && action === "complete" && personsWord) return;
@@ -6266,7 +6267,7 @@ function handleAdvance(
     emitAudit(pd, "STAGE_STARTED", {
       Stage: nextSlug,
       Agent: nextStage.lead_agent,
-      ...answerModeStageStartedFields(pd),
+      ...answerModeStageStartedFields(pd, { approvalMode: nextStage.approval_mode }),
       ...(nextStage.workspace_requires
         ? sourceBaselineAuditFields(pd, nextSlug)
         : {}),
@@ -7215,7 +7216,7 @@ export function completionChecksStep(
   // gate's rule); a team's Unit is a person's gate. A swarm worker's checkout
   // leaves its checks to the stage gate in the main checkout.
   const teamUnit = unit !== null && isTeamUnitOwnership(stateContent);
-  if (!teamUnit && isAutonomousConstructionGate(stateContent, stage, pd)) return null;
+  if (!teamUnit && isAutonomousStageGate(stateContent, stage, pd)) return null;
   if (swarmWorkerWorktreeMeta(pd) !== null) return null;
   if (!requiredOutputsWritten(pd, stage, unit, stateContent)) return null;
   const paths = declaredOutputsForGate(pd, stage, unit);
@@ -7491,7 +7492,7 @@ function handleGateStart(args: string[]): void {
   const personApproves =
     recovered &&
     args.includes("--person-approves") &&
-    (preflightTeamGate !== null || !isAutonomousConstructionGate(preflightContent, preflightStage, pd)) &&
+    (preflightTeamGate !== null || !isAutonomousStageGate(preflightContent, preflightStage, pd, undefined, { personDecision: true })) &&
     (humanPresenceGuardDisabled() || humanRepliedSinceGate(pd));
   const personCall = (): PersonApproval | undefined =>
     personApproves ? { unfinishedReviews: [] } : undefined;
@@ -7694,8 +7695,10 @@ function verifyApprovalDecision(
   unit?: string,
   message?: string,
 ): { approvalInput: string | undefined; autonomousDecision: boolean; together: { first: string; row: AuditShardEvent } | null } {
-  const autonomousDecision =
-    !forceHuman && isAutonomousConstructionGate(content, stage, pd);
+  const autonomousDecision = isAutonomousStageGate(content, stage, pd, undefined, {
+    requireHuman: forceHuman,
+    personDecision: Boolean(userInput?.trim()) || message !== undefined,
+  });
   // The choice the agent read from the person's reply, recorded as it passed
   // it: "Approve", "Accept as-is", "Add User Stories" alike. The engine reads
   // nothing into it.
@@ -8363,10 +8366,10 @@ function handleReject(args: string[]): void {
         "and end the turn.",
     );
   }
-  const autonomousDecision =
-    !teamGate &&
-    getField(content, "Construction Checkpoints") !== "enabled" &&
-    isAutonomousConstructionGate(content, stage, pd);
+  const autonomousDecision = isAutonomousStageGate(content, stage, pd, undefined, {
+    requireHuman: teamGate !== null || getField(content, "Construction Checkpoints") === "enabled",
+    personDecision: getFlagValue(args.slice(1), "--user-input") !== undefined || message !== undefined,
+  });
   // The person's own words. Their replies since the last decision and since
   // the stage started (or the one message the agent named), kept whole by the
   // human-turn hook, are the feedback, and the conductor's text is kept beside
@@ -8417,7 +8420,7 @@ function handleReject(args: string[]): void {
     );
   }
 
-  const autonomousMode = isAutonomousMode(content);
+  const autonomousMode = isAutonomousMode(content) || isAutonomousStage(stage);
   const recoveryResetNeedsHuman =
     !teamGate &&
     autonomousMode &&
@@ -9045,7 +9048,7 @@ function handleSkip(args: string[]): void {
         emitAudit(pd, "STAGE_STARTED", {
           Stage: nextStage.slug,
           Agent: nextStage.lead_agent,
-          ...answerModeStageStartedFields(pd),
+          ...answerModeStageStartedFields(pd, { approvalMode: nextStage.approval_mode }),
           ...(nextStage.workspace_requires
             ? sourceBaselineAuditFields(pd, nextStage.slug)
             : {}),

@@ -276,7 +276,8 @@ import {
   latestMainWorkflowStageRunFloorForProject,
   unitLifecycleRunFloorForProject,
   unitScopedLifecycleFloors,
-  isAutonomousConstructionGate,
+  isAutonomousStage,
+  isAutonomousStageGate,
   isConstructionSwarmEnabled,
   installedHarnessName,
   recordGuardRefusal,
@@ -553,7 +554,7 @@ import {
   savedScopeNameRefusal,
   extractMarkdownSection,
   validateUnitName,
-  resolveStageAnswerMode,
+  stageApprovalDirectiveFields,
   editedReviewNotice,
   dictatedReviewNotice,
   noReviewerNotice,
@@ -9713,9 +9714,10 @@ function buildRunStageDirective(
     ceremony,
     // The person's earlier answer to the mode question is reused; an isolated
     // run never reuses the main workflow's choice.
-    answer_mode: resolveStageAnswerMode(
-      singleRun || !stateContent ? null : codekbCtx?.projectDir ?? null,
-    ),
+    ...stageApprovalDirectiveFields({
+      projectDir: singleRun || !stateContent ? null : codekbCtx?.projectDir ?? null,
+      approvalMode: node.approval_mode,
+    }),
     sensors_applicable: ceremony.sensors === "off"
       ? []
       : (node.sensors_applicable ?? []).map((s) => s.id),
@@ -9752,7 +9754,7 @@ function buildRunStageDirective(
         offer_autonomy: mode !== "autonomous" && mode !== "gated" &&
           skeletonApproved && readSkeletonStance(stateContent) !== null,
         human_completion_required:
-          !isAutonomousConstructionGate(stateContent, node, codekbCtx.projectDir, evidence),
+          !isAutonomousStageGate(stateContent, node, codekbCtx.projectDir, evidence),
         completion_only: unitMajor && isPerUnit(node) &&
           dag.units.every((name) => approved.has(name)),
       };
@@ -9874,7 +9876,7 @@ function buildRunStageDirective(
   if (node.slug === "code-generation" || node.slug === "build-and-test") {
     protocolModules.push("loopback");
   }
-  if (learningsRitualRuns(ceremony.learnings)) protocolModules.push("learnings");
+  if (learningsRitualRuns(ceremony.learnings) && !isAutonomousStage(node)) protocolModules.push("learnings");
   if (protocolModules.length > 0) {
     directive.protocol_modules = protocolModules;
   }
@@ -13836,7 +13838,7 @@ function applySettledSwarmShape(
   delete directive.review_class;
   delete directive.reviewer_max_iterations;
   directive.protocol_modules = ["construction", "swarm"];
-  if (directive.ceremony.learnings === "on") directive.protocol_modules.push("learnings");
+  if (directive.ceremony.learnings === "on" && !isAutonomousStage(directive)) directive.protocol_modules.push("learnings");
   directive.swarm_settled = true;
   if (directive.construction_policy) {
     directive.construction_policy.completion_only = true;
@@ -21144,7 +21146,9 @@ function handleReport(args: string[], projectDir: string | undefined): void {
     stageCheckbox.state !== "completed" &&
     (
       (flags.result === "rejected" && checkpointPolicyEnabled(stateContent)) ||
-      !isAutonomousConstructionGate(stateContent, node, pd)
+      !isAutonomousStageGate(stateContent, node, pd, undefined, {
+        personDecision: Boolean(flags.userInput?.trim()) || flags.message !== undefined,
+      })
     ) &&
     !humanPresenceGuardDisabled();
 
@@ -21303,7 +21307,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       // A Unit approval where the person also asked to stop for now parks.
       const parked = flags.result === "approved" && flags.park === true &&
           workflowContinues(pd).workflow_continues
-        ? parkAfterApproval(pd, slug, !isAutonomousConstructionGate(stateContent, node, pd), unit)
+        ? parkAfterApproval(pd, slug, !isAutonomousStageGate(stateContent, node, pd), unit)
         : null;
       if (parked) {
         emit(withChangeNotices(parked, changeNotices));
@@ -21687,7 +21691,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
       flags.result === "approved"
         ? `\`${renderEngineInvocation({ route: "orchestrate", args: ["report", ...args] })}\` again`
         : undefined,
-      flags.result === "approved",
+      flags.result === "approved" && protectedHumanGate,
     );
     if (!evidence.ok) {
       emit(evidence.step ? printDirective(evidence.message) : errorDirective(evidence.message));
@@ -21963,7 +21967,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
   // step, under the stage they approved, which `surface` still takes after the
   // approval moved the work on (stage-protocol-learnings.md, When to run).
   // Whether their reply asked for one is the agent's reading.
-  const keepNote = flags.result === "approved" && learningsRitualRuns(ceremonyPolicyValues(scope, stateContent).learnings)
+  const keepNote = flags.result === "approved" && !isAutonomousStage(node) && learningsRitualRuns(ceremonyPolicyValues(scope, stateContent).learnings)
     ? ` When their reply also asked you to keep something for next time, keep it under "${lastApproved}" now: run ` +
       `\`${aidlcDispatcherInvocation(`learnings surface --slug ${lastApproved}`)}\`, persist it as ` +
       "stage-protocol-learnings.md step 5 says, and say in one line where it went."
@@ -21979,7 +21983,7 @@ function handleReport(args: string[], projectDir: string | undefined): void {
     sequence.some((step) => step[0] === "gate-start" && step.includes("--recovered"));
   const unbuilt = openedHere ? unitsWithoutInputsNotice(pd, node, null) : null;
   const parked = stopForNow && workflowContinues(pd).workflow_continues
-    ? parkAfterApproval(pd, lastApproved, !isAutonomousConstructionGate(stateContent, node, pd))
+    ? parkAfterApproval(pd, lastApproved, !isAutonomousStageGate(stateContent, node, pd))
     : null;
   if (parked) {
     const parkedNarration = [unbuilt, parked.narration].filter(Boolean).join("\n");

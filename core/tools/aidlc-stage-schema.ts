@@ -8,6 +8,8 @@
 
 import { artifactFilename, isPlainObject, UNIT_KINDS } from "./aidlc-lib.ts";
 
+import type { StageApprovalMode } from "./aidlc-stage-participation.ts";
+
 // --- Public types ---
 
 export interface StageFrontmatter {
@@ -99,6 +101,7 @@ export interface StageFrontmatter {
   // `required` means every run must create the questions file and record the
   // human's consolidated-summary choice; `if-present` is for conditional Q&A.
   summary_confirmation?: "required" | "if-present";
+  approval_mode?: StageApprovalMode;
   // when — structured activation predicate (plugin mechanism, Layer 4). A
   // single-key map; the one predicate is `producer-in-plan: <artifact-slug>`.
   // Accepted for shape here; no engine pass evaluates it yet.
@@ -216,7 +219,7 @@ const REQUIRED_FIELDS = [
   "outputs",
 ] as const;
 
-const OPTIONAL_FIELDS = ["number", "name", "plugin", "for_each", "workspace_requires", "optional_produces", "produces_kinds", "sensors", "scopes", "reviewer", "review_artifact", "reviewer_max_iterations", "review_class", "summary_confirmation", "when", "ars", "required_sections"] as const;
+const OPTIONAL_FIELDS = ["number", "name", "plugin", "for_each", "workspace_requires", "optional_produces", "produces_kinds", "sensors", "scopes", "reviewer", "review_artifact", "reviewer_max_iterations", "review_class", "summary_confirmation", "approval_mode", "when", "ars", "required_sections"] as const;
 
 const KNOWN_FIELDS = new Set<string>([...REQUIRED_FIELDS, ...OPTIONAL_FIELDS]);
 
@@ -398,6 +401,8 @@ export function validateStageFrontmatter(
   // kebab-pattern check: lead_agent has none either, and a pattern-invalid slug
   // can never match a real agent file, so Rule 9 already rejects it — a pattern
   // check here would be redundant.
+  checkString(o, "approval_mode", errors);
+  checkEnum(o, "approval_mode", ["human", "autonomous"], errors);
   checkString(o, "reviewer", errors);
   checkString(o, "review_artifact", errors);
 

@@ -132,6 +132,32 @@ and CI Pipeline, and still runs with its Unit. A per-Unit stage cannot require
 a stage that runs once per intent after the block starts; the compile refuses
 that edge.
 
+### `approval_mode`
+
+`human` is the default when this optional field is absent. `autonomous` gives
+this stage its own completion authority, including outside Construction. It
+does not infer a human reply or alter the existing Construction autonomy grant.
+
+An autonomous stage omits routine interviews, answer-mode prompts and the
+ordinary human learnings ritual. It still runs required artifact, review,
+blocking-sensor, source-freshness and declared summary-confirmation checks.
+An explicitly reported person's decision must pass the existing human-evidence
+checks. Team Unit and Construction checkpoints keep their own authority.
+
+The shared stage protocol owns reserved operator decisions. The emitted
+`participation_note` carries that contract to the conductor and delegated
+workers; a stage's autonomy cannot answer a reserved human question.
+
+This preserves retained Rin fork drift registry 5 from
+[d062c81e](https://github.com/HailsTails/aidlc-workflows/blob/d062c81e5678c9f92162542b425b8a5f095e46e1/docs/reference/rin-fork-drift.md).
+The general participation mechanism is an upstream candidate; each consumer
+owns which stages opt in. Retire the delta only when upstream supplies the
+same schema, graph, directive and lifecycle behavior. The pure
+`aidlc-stage-participation.ts` policy selects participation from recorded
+configuration; presence observation and receipt validation remain separate.
+Source-package verification does not qualify installed plugin hooks, legacy
+workflow migration, or a live model session.
+
 ### `summary_confirmation`
 
 Optional enum controlling the deterministic pre-generation checkpoint for a
