@@ -43,7 +43,7 @@ concurrency:
 # Temporary pause for the listed refactor drafts; non-draft behavior is unchanged.
 jobs:
   build:
-    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44","review/refactor-codex-upstream44","review/refactor-cursor-upstream44","review/refactor-kiro-cli-upstream44","review/refactor-kiro-v3-upstream44","review/refactor-copilot-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
+    if: ${{ github.event_name != 'pull_request' || !contains(fromJSON('["review/refactor-core-upstream44","review/refactor-projection-upstream44","review/refactor-integration-upstream44","review/refactor-native-upstream44","review/refactor-codex-upstream44","review/refactor-cursor-upstream44","review/refactor-kiro-cli-upstream44","review/refactor-kiro-v3-upstream44","review/refactor-copilot-upstream44","review/refactor-opencode-upstream44"]'), github.head_ref) || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
