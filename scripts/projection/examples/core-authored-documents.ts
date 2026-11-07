@@ -1,4 +1,4 @@
-import { isClaudeNativeDocumentContext } from "../src/adapters/native-document-preparation.ts";
+import { qualifiedDeliveryContext, qualifiedHarnessProfile } from "../src/adapters/qualified-harness-profile.ts";
 import { prepareCoreSensorProducts } from "./core-sensor-products.ts";
 import { prepareCoreSkillProducts } from "./core-skill-products.ts";
 import { prepareCoreKnowledgeProducts } from "./core-knowledge-products.ts";
@@ -22,8 +22,8 @@ export type CoreDocumentServices = { readonly policy: CoreAgentPolicyReader; rea
 export const createCoreDocumentServices = (): CoreDocumentServices => ({ policy: createCoreAgentPolicyReader(), catalogue: parseCompiledAgentStages, sensors: prepareCoreSensorProducts, skills: prepareCoreSkillProducts, knowledge: prepareCoreKnowledgeProducts, agents: prepareCoreAgentProducts, guidance: prepareCoreGuidanceProducts, entries: prepareHarnessDocumentProducts, onboarding: prepareOnboardingProducts, combine: combineProjectionSets, digests: mergeSourceDigests });
 const retainAgentPolicyOrigins = ({ projection, policy }: { readonly projection: ProjectionSet; readonly policy: PreparedCoreAgentPolicy }): ProjectionSet => ({ ...projection, units: projection.units.map((unit) => unit.kind === "compiled-agent" || unit.kind === "agent" ? { ...unit, projection: { ...unit.projection, dependencies: [...(unit.projection.dependencies ?? []), ...policy.origins] } } : unit) });
 export type CoreDocumentRequest = { readonly sourceRoot: string; readonly workRoot: string; readonly basis: SourceBasis; readonly context: AuthoredProseContext; readonly workflow: CompiledWorkflowSource; readonly mode: number };
-const admitCoreDocumentProfile = ({ request }: { readonly request: CoreDocumentRequest }): Outcome<CoreDocumentRequest> => request.context.harness !== "claude" || (!request.context.invocation.startsWith("bun ") && !isClaudeNativeDocumentContext(request.context))
-  ? { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-authored-documents", detail: "the authored Core document profile qualifies Claude copy and native delivery; no other harness policy is inferred" })] }
+const admitCoreDocumentProfile = ({ request }: { readonly request: CoreDocumentRequest }): Outcome<CoreDocumentRequest> => !qualifiedDeliveryContext(request.context)
+  ? { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-authored-documents", detail: "the authored Core document profile qualifies the declared host copy and native delivery; no other harness policy is inferred" })] }
   : { status: "ok", value: request };
 const collectDocumentPreparations = ({ prepared }: { readonly prepared: readonly Outcome<CoreAuthoredDocuments>[] }): Outcome<readonly CoreAuthoredDocuments[]> => {
   const failures = prepared.flatMap((document) => document.status === "invalid" ? document.findings : []);
@@ -41,7 +41,7 @@ const collectCoreDocuments = ({ prepared, context, policy, services }: { readonl
 const prepareDocumentOwners = async ({ request, policy, catalogue, services }: { readonly request: CoreDocumentRequest; readonly policy: PreparedCoreAgentPolicy; readonly catalogue: CompiledAgentStageCatalogue; readonly services: CoreDocumentServices }): Promise<Outcome<CoreAuthoredDocuments>> => {
   const preparationLocation = { sourceRoot: request.sourceRoot, basis: request.basis, mode: request.mode };
   const [skills, knowledge, agents, guidance, entries, onboarding, sensors] = await Promise.all([
-    services.skills({ ...preparationLocation, context: { ...request.context, memoryRoot: "aidlc/active-memory", modelInvocation: "native-default" } }),
+    services.skills({ ...preparationLocation, context: { ...request.context, memoryRoot: "aidlc/active-memory", modelInvocation: qualifiedHarnessProfile(request.context)!.modelInvocation } }),
     services.knowledge({ ...preparationLocation, context: request.context }),
     services.agents({ ...preparationLocation, context: { ...request.context, tierCap: policy.tierCap, models: policy.models, sharedKnowledge: "methodology-only", knowledgeRead: "ordinary", memoryReference: null }, catalogue }),
     services.guidance({ ...preparationLocation, context: request.context }),

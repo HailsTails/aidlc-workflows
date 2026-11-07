@@ -1,3 +1,4 @@
+import { qualifiedHarnessProfile } from "../src/adapters/qualified-harness-profile.ts";
 import { nativeDocumentCommandSourcePaths } from "../src/adapters/native-document-commands.ts";
 import { continuePreparation } from "../src/application/preparation-result.ts";
 import { createHarnessDocumentSourceReader, type HarnessDocumentSourceReader } from "../src/adapters/harness-document-sources.ts";
@@ -6,7 +7,7 @@ import { createDistributionAssemblyRules } from "../src/adapters/distribution-so
 import { projectProjectionSet } from "./projection-set.ts";
 import { prepareProjectedProducts } from "../src/application/projected-products.ts";
 import type { ProjectionSet, ProjectionSetRequest } from "../src/application/projection-set.ts";
-import { harnessDocumentPlacements, type PreparedHarnessDocuments } from "../src/domain/harness-document.ts";
+import type { PreparedHarnessDocuments } from "../src/domain/harness-document.ts";
 import type { AuthoredProseContext } from "../src/domain/authored-prose.ts";
 import type { SourceBasis } from "../src/domain/source-origin.ts";
 import type { DistributionProduct } from "../src/domain/distribution-products.ts";
@@ -16,9 +17,14 @@ import { finding, sourceKey, type Outcome } from "../src/domain/model.ts";
 export type HarnessDocumentProducts = { readonly projection: ProjectionSet; readonly inputs: PreparedHarnessDocuments["inputs"]; readonly products: readonly DistributionProduct[] };
 export type HarnessDocumentProductServices = { readonly reader: HarnessDocumentSourceReader; readonly preparation: HarnessDocumentPreparer; readonly select: typeof selectHarnessDocumentProducts; readonly project: typeof projectProjectionSet; readonly products: typeof prepareProjectedProducts; readonly rules: { readonly encode: (input: { readonly text: string }) => Uint8Array } };
 export const selectHarnessDocumentProducts = ({ sources, basis, context }: { readonly sources: PreparedHarnessDocuments; readonly basis: SourceBasis; readonly context: HarnessBinding & { readonly invocation?: string } }): Outcome<ProjectionSetRequest> => {
-  const authoringPaths = ["harness/claude/manifest.ts", "scripts/earlier-release-regions.ts", ...(context.invocation === "aidlc" ? nativeDocumentCommandSourcePaths() : [])];
-  if (context.harness !== "claude" || basis.source.kind !== "core" || basis.source.id !== "framework" || sources.documents.some((document) => document.binding.harness !== context.harness || document.binding.directory !== context.directory || sourceKey(document.authored.origin.source) !== sourceKey(basis.source) || document.authored.origin.pin !== basis.pin || document.authoring.length !== authoringPaths.length || authoringPaths.some(path => document.authoring.filter(origin => origin.path === path).length !== 1) || document.authoring.some((origin) => sourceKey(origin.source) !== sourceKey(basis.source) || origin.pin !== basis.pin))) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "harness-document-products", detail: "authored entry products require the Claude binding and complete selected-source authoring provenance" })] };
-  if (sources.documents.length !== 4 || harnessDocumentPlacements().some((placement) => sources.documents.filter((document) => document.authored.role === placement.role).length !== 1)) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "harness-document-products", detail: "publish the four distinct authored Claude entry documents atomically" })] };
+  const authoringPaths = [`harness/${context.harness}/manifest.ts`, "scripts/earlier-release-regions.ts", ...(context.invocation === "aidlc" ? nativeDocumentCommandSourcePaths() : [])];
+  if (qualifiedHarnessProfile(context) === null || basis.source.kind !== "core" || basis.source.id !== "framework" || sources.documents.some((document) => document.binding.harness !== context.harness || document.binding.directory !== context.directory || sourceKey(document.authored.origin.source) !== sourceKey(basis.source) || document.authored.origin.pin !== basis.pin || document.authoring.length !== authoringPaths.length || authoringPaths.some(path => document.authoring.filter(origin => origin.path === path).length !== 1) || document.authoring.some((origin) => sourceKey(origin.source) !== sourceKey(basis.source) || origin.pin !== basis.pin))) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "harness-document-products", detail: "authored entry products require the qualified binding and complete selected-source authoring provenance" })] };
+  if (sources.documents.length !== qualifiedHarnessProfile(context)?.entryDocuments.length || qualifiedHarnessProfile(context)?.entryDocuments.some((placement) => sources.documents.filter((document) => document.authored.role === placement.role).length !== 1)) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "harness-document-products", detail: "publish all distinct authored entry documents atomically" })] };
+  const profile = qualifiedHarnessProfile(context);
+  if (profile === null || sources.documents.some(document => {
+    const placement = profile.entryDocuments.find(candidate => candidate.role === document.authored.role);
+    return placement === undefined || document.authored.origin.path !== `harness/${context.harness}/${placement.source}` || (document.destination ?? (profile.entryMapping === "manifest" ? placement.destination : undefined)) !== placement.destination;
+  })) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "harness-document-products", detail: "entry roles must retain their declared authored source and exact qualified destination" })] };
   return { status: "ok", value: { target: copyHarnessBinding({ binding: context }), units: sources.documents.map((document) => ({ kind: "harness-document", key: `harness-${document.authored.role}`, input: { document, context: copyHarnessBinding({ binding: context }) } })) } };
 };
 export const createHarnessDocumentProductServices = (): HarnessDocumentProductServices => ({ reader: createHarnessDocumentSourceReader(), preparation: createHarnessDocumentPreparer(), select: selectHarnessDocumentProducts, project: projectProjectionSet, products: prepareProjectedProducts, rules: createDistributionAssemblyRules() });

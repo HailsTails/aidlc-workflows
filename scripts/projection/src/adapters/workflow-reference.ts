@@ -1,4 +1,5 @@
-import { isClaudeNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
+import { qualifiedDeliveryContext, qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
+import { isNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
 import { z } from "zod";
 import { createWorkflowAuthoringOperations, type WorkflowAuthoringOperations } from "./workflow-authoring-policy.ts";
 import { createOwnershipDigest } from "./projection-ownership.ts";
@@ -55,11 +56,11 @@ export const createWorkflowReferenceOperations = (): WorkflowReferenceOperations
 const hasBasis = ({ origin, request }: { readonly origin: WorkflowReferenceRequest["workflow"]["compiler"]; readonly request: WorkflowReferenceRequest }) => origin.source.kind === request.basis.source.kind && origin.source.id === request.basis.source.id && origin.pin === request.basis.pin;
 const admitReferenceRequest = ({ request }: { readonly request: WorkflowReferenceRequest }): Outcome<WorkflowReferenceRequest> => {
   if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin)) return refused({ code: "foreign-content", detail: "workflow references require the framework basis and full source pin" });
-  if (request.context.harness !== "claude" || request.context.directory !== ".claude" || (request.context.invocation !== "bun .claude/tools/aidlc.ts" && !isClaudeNativeDocumentContext(request.context))) return refused({ code: "harness-mismatch", detail: "compiled workflow references qualify explicit Claude copy and native profiles" });
+  if (!qualifiedDeliveryContext(request.context)) return refused({ code: "harness-mismatch", detail: "compiled workflow references qualify explicit qualified copy and native profiles" });
   const workflow = request.workflow;
-  if (workflow.binding.harness !== request.context.harness || workflow.binding.directory !== request.context.directory || !hasBasis({ origin: workflow.compiler, request }) || workflow.compiler.path !== "core/tools/aidlc-graph.ts" || !hasBasis({ origin: workflow.graph.origin, request }) || !hasBasis({ origin: workflow.grid.origin, request }) || workflow.graph.origin.path !== ".claude/tools/data/stage-graph.json" || workflow.grid.origin.path !== ".claude/tools/data/scope-grid.json" || !workflow.inputs.some((input) => input.path === workflow.compiler.path)) return refused({ code: "foreign-content", detail: "compiled workflow graph, grid and compiler witnesses must share the requested source basis and binding" });
+  if (workflow.binding.harness !== request.context.harness || workflow.binding.directory !== request.context.directory || !hasBasis({ origin: workflow.compiler, request }) || workflow.compiler.path !== "core/tools/aidlc-graph.ts" || !hasBasis({ origin: workflow.graph.origin, request }) || !hasBasis({ origin: workflow.grid.origin, request }) || workflow.graph.origin.path !== `${request.context.directory}/tools/data/stage-graph.json` || workflow.grid.origin.path !== `${request.context.directory}/tools/data/scope-grid.json` || !workflow.inputs.some((input) => input.path === workflow.compiler.path)) return refused({ code: "foreign-content", detail: "compiled workflow graph, grid and compiler witnesses must share the requested source basis and binding" });
   if (request.authoring.binding.harness !== request.context.harness || request.authoring.binding.directory !== request.context.directory || (request.context.optionLetters ?? null) !== request.authoring.optionLetters || request.authoring.origins.length !== request.authoring.inputs.length || request.authoring.origins.some((origin) => !hasBasis({ origin, request }) || !request.authoring.inputs.some((input) => input.path === origin.path))) return refused({ code: "foreign-content", detail: "workflow reference authoring policy must match the context and requested source basis" });
-  if (request.scopeFiles.length === 0 || request.scopeFiles.some((file) => file.kind !== "file" || !/^\.claude\/scopes\/aidlc-[a-z][a-z0-9-]*\.md$/.test(file.path)) || new Set(request.scopeFiles.map((file) => file.path)).size !== request.scopeFiles.length) return refused({ code: "invalid-input", detail: "supply unique fresh Claude core scope files before preparing their reference tables" });
+  if (request.scopeFiles.length === 0 || request.scopeFiles.some((file) => file.kind !== "file" || (!file.path.startsWith(`${request.context.directory}/scopes/`) || !/^aidlc-[a-z][a-z0-9-]*\.md$/.test(file.path.slice(`${request.context.directory}/scopes/`.length)))) || new Set(request.scopeFiles.map((file) => file.path)).size !== request.scopeFiles.length) return refused({ code: "invalid-input", detail: "supply unique fresh core scope files before preparing their reference tables" });
   return { status: "ok", value: request };
 };
 const admitManifest = ({ snapshot, request }: { readonly snapshot: unknown; readonly request: WorkflowReferenceRequest }): Outcome<ReferenceManifest> => {
@@ -67,36 +68,38 @@ const admitManifest = ({ snapshot, request }: { readonly snapshot: unknown; read
   if (!parsed.success) return refused({ code: "invalid-input", detail: "native authoring snapshot must declare the orchestrator skill and authored harness file mappings" });
   const manifest = parsed.data.manifest;
   const skill = manifest.orchestratorSkillPath;
-  if (manifest.name !== request.context.harness || manifest.harnessDir !== request.context.directory || pathStatus({ path: skill }) !== "safe" || !skill.startsWith(".claude/") || !skill.endsWith("/SKILL.md")) return refused({ code: "foreign-content", detail: "native orchestrator skill must belong to the requested Claude harness" });
+  const profile = qualifiedHarnessProfile(request.context);
+  if (profile === null) return refused({ detail: "workflow reference host profile is not qualified" });
+  if (manifest.name !== request.context.harness || manifest.harnessDir !== request.context.directory || pathStatus({ path: skill }) !== "safe" || skill !== `${profile.skillRoot}/aidlc/SKILL.md` || !skill.endsWith("/SKILL.md")) return refused({ code: "foreign-content", detail: "native orchestrator skill must belong to the requested harness" });
   const destination = `${skill.slice(0, -"SKILL.md".length)}tables.md`;
   const declared = manifest.harnessFiles.filter((file) => `${request.context.directory}/${file.dst}` === destination && file.projectRoot !== true);
-  const expected = ["harness/claude/manifest.ts", "scripts/manifest-types.ts"];
-  if (declared.length !== 1 || parsed.data.inputs.length !== 2 || request.authoring.inputs.length !== 2 || expected.some((path) => parsed.data.inputs.filter((input) => input.path === path).length !== 1 || request.authoring.inputs.filter((input) => input.path === path).length !== 1) || parsed.data.inputs.some((input) => !request.authoring.inputs.some((previous) => previous.path === input.path && previous.sha256 === input.sha256))) return refused({ code: "foreign-content", detail: "reference template mapping and manifest witnesses must match the prepared authoring policy" });
-  const source = declared[0]?.src;
+  const expected = [`harness/${request.context.harness}/manifest.ts`, "scripts/manifest-types.ts"];
+  if ((profile.entryMapping === "manifest" ? declared.length !== 1 : declared.length !== 0) || parsed.data.inputs.length !== 2 || request.authoring.inputs.length !== 2 || expected.some((path) => parsed.data.inputs.filter((input) => input.path === path).length !== 1 || request.authoring.inputs.filter((input) => input.path === path).length !== 1) || parsed.data.inputs.some((input) => !request.authoring.inputs.some((previous) => previous.path === input.path && previous.sha256 === input.sha256))) return refused({ code: "foreign-content", detail: "reference template mapping and manifest witnesses must match the prepared authoring policy" });
+  const source = profile.entryMapping === "manifest" ? declared[0]?.src : profile.referenceTemplate;
   return source === undefined || pathStatus({ path: source }) !== "safe" ? refused({ code: "invalid-input", detail: "reference template must be a safe authored harness path" }) : { status: "ok", value: { template: `harness/${request.context.harness}/${source}`, destination } };
 };
 const referenceLocations = ({ request, manifest }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest }): readonly { readonly root: string; readonly path: string }[] => [
-  ...[helperPath, utilityPath, formatterPath, manifest.template, ...(isClaudeNativeDocumentContext(request.context) ? nativeRuntimeSources : [])].map((path) => ({ root: request.sourceRoot, path })),
-  ...[".claude/tools/aidlc-utility.ts", ".claude/tools/aidlc-compiled-tables.ts", request.workflow.graph.origin.path, request.workflow.grid.origin.path, ...request.scopeFiles.map((file) => file.path)].map((path) => ({ root: request.root, path })),
+  ...[helperPath, utilityPath, formatterPath, manifest.template, ...(isNativeDocumentContext(request.context) ? nativeRuntimeSources : [])].map((path) => ({ root: request.sourceRoot, path })),
+  ...[`${request.context.directory}/tools/aidlc-utility.ts`, `${request.context.directory}/tools/aidlc-compiled-tables.ts`, request.workflow.graph.origin.path, request.workflow.grid.origin.path, ...request.scopeFiles.map((file) => file.path)].map((path) => ({ root: request.root, path })),
 ];
 const observeReference = async ({ request, manifest, operations }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest; readonly operations: WorkflowReferenceOperations }): Promise<Outcome<ReferenceObservation>> => {
   const reads = await Promise.all(referenceLocations({ request, manifest }).map(async (location) => ({ ...location, observed: await operations.read(location) })));
   const failure = reads.find(({ observed }) => observed.status === "invalid");
   if (failure?.observed.status === "invalid") return failure.observed;
-  const scopes = await operations.scopes({ root: request.root, directory: ".claude/scopes" });
+  const scopes = await operations.scopes({ root: request.root, directory: `${request.context.directory}/scopes` });
   return scopes.status === "invalid" ? scopes : { status: "ok", value: { files: reads.flatMap(({ root, path, observed }) => observed.status === "ok" ? [{ root, path, bytes: observed.value }] : []), scopes: scopes.value } };
 };
 const sameBytes = ({ first, second }: { readonly first: Uint8Array; readonly second: Uint8Array }) => first.length === second.length && first.every((byte, index) => byte === second[index]);
 const findBytes = ({ observed, root, path }: { readonly observed: ReferenceObservation; readonly root: string; readonly path: string }): Uint8Array => observed.files.find((file) => file.root === root && file.path === path)?.bytes ?? new Uint8Array();
 const admitRuntimeFacts = ({ observed, request, nativeText }: { readonly observed: ReferenceObservation; readonly request: WorkflowReferenceRequest; readonly nativeText?: (source: string) => string }): Outcome<ReferenceObservation> => {
   const expected = (path: string) => { const bytes = findBytes({ observed, root: request.sourceRoot, path }); return nativeText === undefined ? bytes : new TextEncoder().encode(nativeText(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes))); };
-  const mismatch = [utilityPath, formatterPath].some((path) => !sameBytes({ first: expected(path), second: findBytes({ observed, root: request.root, path: `.claude/${path.slice("core/".length)}` }) }));
+  const mismatch = [utilityPath, formatterPath].some((path) => !sameBytes({ first: expected(path), second: findBytes({ observed, root: request.root, path: `${request.context.directory}/${path.slice("core/".length)}` }) }));
   if (mismatch) return refused({ code: "foreign-content", detail: "runtime utility and compiled-table formatter must match their source-owned bytes" });
   if (!sameBytes({ first: findBytes({ observed, root: request.root, path: request.workflow.graph.origin.path }), second: new TextEncoder().encode(request.workflow.graph.text) }) || !sameBytes({ first: findBytes({ observed, root: request.root, path: request.workflow.grid.origin.path }), second: new TextEncoder().encode(request.workflow.grid.text) })) return refused({ code: "foreign-content", detail: "private runtime graph and grid must be the supplied fresh workflow compilation" });
   if (observed.scopes.length !== request.scopeFiles.length || new Set(observed.scopes).size !== observed.scopes.length || observed.scopes.some((path) => !request.scopeFiles.some((file) => file.path === path)) || request.scopeFiles.some((file) => !sameBytes({ first: findBytes({ observed, root: request.root, path: file.path }), second: new TextEncoder().encode(file.body) }))) return refused({ code: "foreign-content", detail: "private runtime scope inventory and bytes must match the caller's fresh scope projection" });
   return { status: "ok", value: observed };
 };
-const referenceEnvironment = ({ request, inherited }: { readonly request: WorkflowReferenceRequest; readonly inherited: Readonly<Record<string, string | undefined>> }): Readonly<Record<string, string | undefined>> => ({ ...privateCompilerEnvironment({ inherited, root: `${request.root}/.workflow-reference-home` }), ...Object.fromEntries([["AIDLC_SRC", `${request.root}/.claude`], ["AIDLC_HARNESS_DIR", ".claude"], ["AIDLC_HARNESS_NAME", "claude"], ["AIDLC_PROJECT_DIR", request.root], ["AIDLC_RUNTIME_PROJECT_DIR", request.root], ["AIDLC_RUNTIME_HARNESS_ROOT", `${request.root}/.claude`], ["AIDLC_STAGE_GRAPH", `${request.root}/${request.workflow.graph.origin.path}`], ["AIDLC_SCOPE_GRID", `${request.root}/${request.workflow.grid.origin.path}`], ["AIDLC_SCOPES_DIR", `${request.root}/.claude/scopes`]]) });
+const referenceEnvironment = ({ request, inherited }: { readonly request: WorkflowReferenceRequest; readonly inherited: Readonly<Record<string, string | undefined>> }): Readonly<Record<string, string | undefined>> => ({ ...privateCompilerEnvironment({ inherited, root: `${request.root}/.workflow-reference-home` }), ...Object.fromEntries([["AIDLC_SRC", `${request.root}/${request.context.directory}`], ["AIDLC_HARNESS_DIR", request.context.directory], ["AIDLC_HARNESS_NAME", request.context.harness], ["AIDLC_PROJECT_DIR", request.root], ["AIDLC_RUNTIME_PROJECT_DIR", request.root], ["AIDLC_RUNTIME_HARNESS_ROOT", `${request.root}/${request.context.directory}`], ["AIDLC_STAGE_GRAPH", `${request.root}/${request.workflow.graph.origin.path}`], ["AIDLC_SCOPE_GRID", `${request.root}/${request.workflow.grid.origin.path}`], ["AIDLC_SCOPES_DIR", `${request.root}/${request.context.directory}/scopes`]]) });
 const nativeRegionReplySchema = ({ request, region }: { readonly request: WorkflowReferenceRequest; readonly region: Region }): z.ZodType<NativeRegionReply> => z.strictObject({
   exitCode: z.literal(0), error: z.null(), stderr: z.string().refine((diagnostics) => diagnostics.trim().length === 0),
   stdout: z.string().transform((output) => output.trimEnd()).refine((rendered) => rendered.startsWith(`${region.begin}\`${request.context.invocation} engine gen ${region.verb}\``) && rendered.endsWith(region.end)),
@@ -110,7 +113,7 @@ const admitNativeRegionReply = ({ reply, request, region }: { readonly reply: un
 };
 const generateRegion = ({ request, region, operations, binary }: { readonly request: WorkflowReferenceRequest; readonly region: Region; readonly operations: WorkflowReferenceOperations; readonly binary: string }): Outcome<string> => {
   try {
-    const reply = operations.process.spawn({ binary, args: ["--no-install", `${request.root}/.claude/tools/aidlc-utility.ts`, region.verb], cwd: `${request.root}/.claude`, input: "", env: referenceEnvironment({ request, inherited: operations.process.environment() }) });
+    const reply = operations.process.spawn({ binary, args: ["--no-install", `${request.root}/${request.context.directory}/tools/aidlc-utility.ts`, region.verb], cwd: `${request.root}/${request.context.directory}`, input: "", env: referenceEnvironment({ request, inherited: operations.process.environment() }) });
     return admitNativeRegionReply({ reply, request, region });
   } catch { return refused({ detail: `native ${region.verb} process capability unavailable` }); }
 };
@@ -154,13 +157,13 @@ const prepareReferenceInputs = async ({ request, manifest, operations, binary }:
   const before = await observeReference({ request, manifest, operations });
   if (before.status === "invalid") return before;
   let nativeText: ((source: string) => string) | undefined;
-  if (isClaudeNativeDocumentContext(request.context)) {
+  if (isNativeDocumentContext(request.context)) {
     const bytes = findBytes({ observed: before.value, root: request.sourceRoot, path: nativeRuntimePath });
     const loaded = await operations.module({ sourceRoot: request.sourceRoot, path: nativeRuntimePath, sha256: operations.digest({ bytes }) });
     if (loaded.status === "invalid") return loaded;
-    const policy = z.object({ prepareClaudeNativeRuntimeText: z.function({ input: [z.string()], output: z.string() }) }).safeParse(loaded.value);
+    const policy = z.object({ prepareNativeRuntimeText: z.function({ input: [z.string(), z.string()], output: z.string() }) }).safeParse(loaded.value);
     if (!policy.success) return refused({ detail: "workflow reference runtime comparison requires source-owned native text preparation" });
-    nativeText = policy.data.prepareClaudeNativeRuntimeText;
+    nativeText = source => policy.data.prepareNativeRuntimeText(source, request.context.directory);
   }
   const facts = admitRuntimeFacts({ observed: before.value, request, ...(nativeText === undefined ? {} : { nativeText }) });
   if (facts.status === "invalid") return facts;

@@ -65,7 +65,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { prepareNativeOnboardingText as rewriteNativeOnboarding } from "./native-runtime-text.ts";
-import { projectClaudeCopyTree, usesCleanClaudeCopy, projectClaudeNativeTree, usesCleanClaudeNative } from "./projection-process.ts";
+import { projectRetainedTree, usesRetainedProjection } from "./projection-process.ts";
 import type { HarnessManifest, OnboardingSpec } from "./manifest-types.ts";
 import { prepareClaudeCopyAllowList, prepareClaudeNativeAllowList, type ClaudeCopyCommandAuthority, type ClaudeNativeCommandAuthority } from "./claude-settings.ts";
 import { agentSurfaceRequirements, projectAgentSurface } from "./agent-surface-projection.ts";
@@ -833,8 +833,8 @@ function buildTree(
   outRoot: string,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
 ): string[] {
-  if (usesCleanClaudeCopy({ name: m.name, harnessDir: m.harnessDir, invoke })) {
-    projectClaudeCopyTree({ sourceRoot: REPO_ROOT, outRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP });
+  if (usesRetainedProjection(m) && invoke === `bun ${m.harnessDir}/tools/aidlc.ts`) {
+    projectRetainedTree({ sourceRoot: REPO_ROOT, outRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, m, "copy");
     return [...walk(outRoot)];
   }
   const harnessDir = m.harnessDir;
@@ -1600,7 +1600,7 @@ function writeReleaseHarness(name: string): void {
   const releaseDir = join(REPO_ROOT, "dist-release", name);
   const copyRoot = join(REPO_ROOT, "dist", name);
   if (existsSync(releaseDir)) rmSync(releaseDir, { recursive: true, force: true });
-  if (usesCleanClaudeNative(m)) projectClaudeNativeTree({ sourceRoot: REPO_ROOT, outRoot: releaseDir, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP });
+  if (usesRetainedProjection(m)) projectRetainedTree({ sourceRoot: REPO_ROOT, outRoot: releaseDir, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, m, "native");
   else {
     buildTree(m, releaseDir, "aidlc");
     rewriteNativeInvocations(releaseDir, m, copyRoot);
@@ -1871,7 +1871,7 @@ function buildCheckPass(root: string, harnesses: string[]): void {
     const copyRoot = join(distRoot, name);
     const nativeRoot = join(releaseRoot, name);
     buildTree(manifest, copyRoot);
-    if (usesCleanClaudeNative(manifest)) projectClaudeNativeTree({ sourceRoot: REPO_ROOT, outRoot: nativeRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP });
+    if (usesRetainedProjection(manifest)) projectRetainedTree({ sourceRoot: REPO_ROOT, outRoot: nativeRoot, buildVersion: BUILD_VERSION, environmentCap: ENV_CAP }, manifest, "native");
     else {
       buildTree(manifest, nativeRoot, "aidlc");
       rewriteNativeInvocations(nativeRoot, manifest, copyRoot);

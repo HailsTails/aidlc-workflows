@@ -77,7 +77,7 @@ for (const declaration of ["copyOnly", "nativeRootIntegrations", "nativeReplacem
       "harness/claude/onboarding.fills.ts": "export {};",
       "scripts/harness-runtime-data.ts": `${declaration === "changing-source" ? `import { appendFileSync } from "node:fs"; appendFileSync(${JSON.stringify(manifest)}, "\\n// changed during preparation");` : ""} export const projectHarnessRuntimeData = () => ({ schemaVersion: 1, distribution: "claude", name: "claude", harnessDir: ".claude", rulesSubdir: "rules" });`,
       "core/tools/aidlc-runtime-paths.ts": 'export const aidlcInvocation = () => "bun .claude/tools/aidlc.ts";',
-      "scripts/native-runtime-text.ts": "export const prepareClaudeNativeRuntimeText = text => text;",
+      "scripts/native-runtime-text.ts": "export const prepareNativeRuntimeText = text => text;",
       "scripts/native-command-context.ts": "export {};",
       "scripts/native-command-text.ts": "export {};",
       "core/tools/aidlc-command.ts": "export {};",

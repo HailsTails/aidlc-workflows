@@ -40,3 +40,10 @@ export function prepareNativeOnboardingText(value: string, exactReads = false): 
       "**CWD drift warning**: Native release commands resolve `aidlc` from `PATH`, so changing directories does not change the engine path. Keep project-relative file arguments anchored to the project root, or run `cd` commands in subshells: `(cd subdir && npm install)`.",
     );
 }
+
+export function prepareNativeRuntimeText(source: string, harnessDir: string): string {
+  if (harnessDir === ".claude") return prepareClaudeNativeRuntimeText(source);
+  if (harnessDir !== ".codex") throw new Error("Unsupported native runtime harness");
+  return projectNativeCommandText({ source, context: createNativeCommandContext({ harnessDir }) })
+    .replace(/\bbun\s+"?\.codex\/hooks\/aidlc-codex-adapter\.ts"?/gi, trustedCommand("adapter codex"));
+}

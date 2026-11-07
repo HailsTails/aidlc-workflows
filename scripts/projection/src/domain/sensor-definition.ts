@@ -9,8 +9,8 @@ export type CoreSensorSources = { readonly documents: readonly AuthoredSensor[];
 export type SensorProjection = { readonly origin: SourceOrigin; readonly dependencies?: readonly SourceOrigin[]; readonly harness: Harness; readonly resources: readonly NativeResource[] };
 export type SensorProjectionInput = { readonly document: AuthoredSensor; readonly context: AuthoredProseContext };
 export type SensorProjector = { readonly render: (input: SensorProjectionInput) => Outcome<SensorProjection> };
-const admitSensorDelivery = ({ document, context }: SensorProjectionInput): Outcome<SensorProjectionInput> => context.harness !== "claude" || (!context.invocation.startsWith("bun ") && !(context.harness === "claude" && context.directory === ".claude" && context.invocation === "aidlc"))
-  ? { status: "invalid", findings: [finding({ code: "capability-gap", subject: document.origin.path, detail: "authored sensor products qualify Claude copy and native delivery; other harness outcomes need their own evidence" })] }
+const admitSensorDelivery = ({ document, context }: SensorProjectionInput): Outcome<SensorProjectionInput> => !context.invocation.startsWith("bun ") && context.invocation !== "aidlc"
+  ? { status: "invalid", findings: [finding({ code: "capability-gap", subject: document.origin.path, detail: "authored sensor products qualify prepared copy and native delivery; other harness outcomes need their own evidence" })] }
   : { status: "ok", value: { document, context } };
 const retainSensorText = ({ input: { document, context }, rendered }: { readonly input: SensorProjectionInput; readonly rendered: Outcome<string> }): Outcome<SensorProjection> => rendered.status === "invalid" ? rendered : { status: "ok", value: { origin: document.origin, harness: context.harness, resources: [{ kind: "file", path: `${context.directory}/sensors/${document.fileName}`, body: rendered.value }] } };
 export const createSensorProjector = ({ prose = renderAuthoredProse }: { readonly prose?: typeof renderAuthoredProse } = {}): SensorProjector => ({ render: (input) => {

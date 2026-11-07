@@ -1,7 +1,7 @@
-import { isClaudeNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
+import { qualifiedDeliveryContext, qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
+import { prepareDocumentCommands } from "./native-document-preparation.ts";
 import { z } from "zod";
 import type { HarnessDocumentSources, PreparedHarnessDocuments, PreparedHarnessDocument, AuthoredHarnessDocument } from "../domain/harness-document.ts";
-import { harnessDocumentPlacements } from "../domain/harness-document.ts";
 import { renderAuthoredProse, type AuthoredProseContext } from "../domain/authored-prose.ts";
 import type { SourceBasis } from "../domain/source-origin.ts";
 import { copyHarnessBinding } from "../domain/harness-binding.ts";
@@ -18,7 +18,7 @@ export type HarnessDocumentPreparer = { readonly prepare: (input: HarnessDocumen
 export const createHarnessDocumentPreparationOperations = (): HarnessDocumentPreparationOperations => createHarnessDocumentSourceOperations();
 const failure = ({ detail, code = "capability-gap" }: { readonly detail: string; readonly code?: "capability-gap" | "foreign-content" }): Outcome<never> => ({ status: "invalid", findings: [finding({ code, subject: "harness-document-preparation", detail })] });
 const admitRequest = ({ request }: { readonly request: HarnessDocumentPreparationRequest }): Outcome<HarnessDocumentPreparationRequest> => {
-  if (request.context.harness !== "claude" || (request.context.invocation !== "bun .claude/tools/aidlc.ts" && !isClaudeNativeDocumentContext(request.context))) return failure({ detail: "authored entry document preparation qualifies explicit Claude copy and native invocations" });
+  if (!qualifiedDeliveryContext(request.context)) return failure({ detail: "authored entry document preparation qualifies explicit Claude copy and native invocations" });
   if (request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || request.sources.documents.some((document) => sourceKey(document.origin.source) !== sourceKey(request.basis.source) || document.origin.pin !== request.basis.pin) || request.sources.authoring.some((origin) => sourceKey(origin.source) !== sourceKey(request.basis.source) || origin.pin !== request.basis.pin)) return failure({ code: "foreign-content", detail: "entry documents and manifest provenance must retain the requested framework source basis" });
   return { status: "ok", value: request };
 };
@@ -29,10 +29,10 @@ const invokeNativeTextPreparation = ({ text, skillRel, harnessDir, policy }: { r
   } catch { return failure({ detail: "source-owned earlier-release text preparation unavailable" }); }
 };
 const prepareDocumentText = ({ document, rendered, policy, request }: { readonly document: AuthoredHarnessDocument; readonly rendered: string; readonly policy: NativeCompatibilityPolicy; readonly request: HarnessDocumentPreparationRequest }): Outcome<PreparedHarnessDocument> => {
-  const placement = harnessDocumentPlacements().find((candidate) => candidate.role === document.role);
+  const placement = qualifiedHarnessProfile(request.context)?.entryDocuments.find((candidate) => candidate.role === document.role);
   if (placement === undefined) return failure({ detail: "authored entry document role has no supported destination" });
-  const prepared = invokeNativeTextPreparation({ text: rendered, skillRel: `${request.context.directory}/${placement.destination}`, harnessDir: request.context.directory, policy });
-  return prepared.status === "invalid" ? prepared : { status: "ok", value: { authored: document, text: prepared.value, binding: copyHarnessBinding({ binding: request.context }), authoring: [...request.sources.authoring, { ...request.basis, path: helperPath }] } };
+  const prepared = invokeNativeTextPreparation({ text: rendered, skillRel: placement.destination, harnessDir: request.context.directory, policy });
+  return prepared.status === "invalid" ? prepared : { status: "ok", value: { authored: document, destination: placement.destination, text: prepared.value, binding: copyHarnessBinding({ binding: request.context }), authoring: [...request.sources.authoring, { ...request.basis, path: helperPath }] } };
 };
 const admitRenderedEntryText = ({ rendered, subject }: { readonly rendered: string; readonly subject: string }): Outcome<string> => {
   const unsupported = rendered.match(/\{\{[^{}\r\n]+\}\}/);

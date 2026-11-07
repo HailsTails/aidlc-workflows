@@ -8,7 +8,7 @@ export type KnowledgeProjection = { readonly origin: SourceOrigin; readonly depe
 export type KnowledgeProjectionInput = { readonly document: AuthoredKnowledge; readonly context: AuthoredProseContext };
 export type KnowledgeProjector = { readonly render: (input: KnowledgeProjectionInput) => Outcome<KnowledgeProjection> };
 export const createKnowledgeProjector = ({ prose = renderAuthoredProse }: { readonly prose?: typeof renderAuthoredProse } = {}): KnowledgeProjector => ({ render: ({ document, context }) => {
-  if ((!context.invocation.startsWith("bun ") && !(context.harness === "claude" && context.directory === ".claude" && context.invocation === "aidlc"))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: document.origin.path, detail: "knowledge text requires Bun copy or explicit Claude native context" })] };
+  if ((!context.invocation.startsWith("bun ") && context.invocation !== "aidlc")) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: document.origin.path, detail: "knowledge text requires Bun copy or explicit native context" })] };
   const rendered = prose({ markdown: document.text, context, subject: document.origin.path });
   return rendered.status === "invalid" ? rendered : { status: "ok", value: { origin: document.origin, harness: context.harness, resources: [{ kind: "file", path: `${context.directory}/knowledge/${document.relativePath}`, body: rendered.value }] } };
 } });

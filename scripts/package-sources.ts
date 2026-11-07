@@ -17,6 +17,7 @@ const INPUT_FILES = [
   "bun.lock",
   "scripts/package.ts",
   "scripts/project-claude.ts",
+  "scripts/project-core.ts",
   "scripts/projection-process.ts",
   "scripts/claude-settings.ts",
   "scripts/projection-text.ts",

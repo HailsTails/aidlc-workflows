@@ -1,4 +1,4 @@
-import { isClaudeNativeDocumentContext, prepareNativeProjectionCommands } from "../src/adapters/native-document-preparation.ts";
+import { isNativeDocumentContext, prepareNativeProjectionCommands } from "../src/adapters/native-document-preparation.ts";
 import { continuePreparation } from "../src/application/preparation-result.ts";
 import { createCoreKnowledgeSourceReader, type CoreKnowledgeSourceReader } from "../src/adapters/core-knowledge-sources.ts";
 import { createDistributionAssemblyRules } from "../src/adapters/distribution-source.ts";
@@ -16,7 +16,7 @@ export type CoreKnowledgeProductServices = { readonly reader: CoreKnowledgeSourc
 const knowledgeUnitKey = ({ relativePath }: { readonly relativePath: string }): string => `knowledge-${relativePath.indexOf("/")}-${relativePath.replaceAll("/", "-").replace(/\.md$/, "")}`;
 export const selectCoreKnowledgeProducts = ({ sources, basis, context }: { readonly sources: CoreKnowledgeSources; readonly basis: SourceBasis; readonly context: AuthoredProseContext }): Outcome<ProjectionSetRequest> => {
   if (basis.source.kind !== "core" || sources.documents.length === 0 || sources.documents.some((knowledge) => sourceKey(knowledge.origin.source) !== sourceKey(basis.source) || knowledge.origin.pin !== basis.pin)) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "core-knowledge-products", detail: "authored core knowledge products must preserve the selected framework source basis" })] };
-  if ((!context.invocation.startsWith("bun ") && !isClaudeNativeDocumentContext(context))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-knowledge-products", detail: "this producer qualifies authored knowledge text for Bun copy or explicit Claude native delivery" })] };
+  if ((!context.invocation.startsWith("bun ") && !isNativeDocumentContext(context))) return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "core-knowledge-products", detail: "this producer qualifies authored knowledge text for Bun copy or explicit Claude native delivery" })] };
   return { status: "ok", value: { target: copyHarnessBinding({ binding: context }), units: sources.documents.map((knowledge) => ({ kind: "knowledge", key: knowledgeUnitKey({ relativePath: knowledge.relativePath }), input: { document: knowledge, context } })) } };
 };
 export const createCoreKnowledgeProductServices = (): CoreKnowledgeProductServices => ({ reader: createCoreKnowledgeSourceReader(), select: selectCoreKnowledgeProducts, project: projectProjectionSet, products: prepareProjectedProducts, rules: createDistributionAssemblyRules() });
