@@ -1,3 +1,5 @@
+import { evaluateWorkflowCondition, githubEventContext, readWorkflowConditions } from "../harness/workflow-conditions.ts";
+import "../harness/workflow-conditions.test.ts";
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -1219,45 +1221,77 @@ describe("t345 complete nightly coverage", () => {
     }
   });
 
-  test("only the planned refactor drafts pause PR jobs; ready_for_review resumes them", () => {
-    const branches = ["review/refactor-core-upstream44", "review/refactor-projection-upstream44", "review/refactor-integration-upstream44","review/refactor-native-upstream44","review/refactor-codex-upstream44","review/refactor-cursor-upstream44","review/refactor-kiro-cli-upstream44","review/refactor-kiro-v3-upstream44","review/refactor-copilot-upstream44","review/refactor-opencode-upstream44","review/refactor-completion-upstream44","review/refactor-attempt-upstream44","review/refactor-qualified-ci-upstream44","review/refactor-runtime-upstream44","review/refactor-host-root-upstream44","review/refactor-ci-tests-upstream44","review/refactor-hook-plan-upstream44"];
-    const contains = (values: string[], value: string) => values.includes(value);
-    const pausedJobs: Record<string, string[]> = {
-      "ci.yml": ["check", "deterministic", "test"],
-      "docs.yml": ["build"],
-      "markdownlint.yml": ["markdownlint"],
-      "security-scanners.yml": ["gitleaks", "semgrep", "bun-audit"],
-    };
-    for (const [file, paused] of Object.entries(pausedJobs)) {
-      const workflow = Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows", file), "utf8")) as {
-        on: { pull_request: { types: string[] } };
-        jobs: Record<string, Job>;
-      };
-      expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "ready_for_review"]);
-      for (const [name, job] of Object.entries(workflow.jobs)) {
-        if (paused.includes(name)) {
-          expect(job.if).toBe(name === "test"
-            ? `\${{ !cancelled() && (${draftRefactorGuard}) }}`
-            : `\${{ ${draftRefactorGuard} }}`);
-        } else {
-          expect(job.if).toBe("github.event_name != 'pull_request'");
-        }
-        const expression = job.if!.replace(/^\$\{\{\s*|\s*\}\}$/g, "");
-        const enabled = new Function("github", "cancelled", "contains", "fromJSON", `return (${expression});`);
-        for (const event of ["pull_request", "push", "merge_group", "workflow_dispatch", "workflow_call", "schedule"]) {
-          for (const branch of [...branches, "review/refactor-other-upstream44", "review/refactor-core-upstream44-extra", "review/refactor-integration-upstream45", "another-draft", "main"]) {
-            for (const draft of [true, false]) {
-              const isPr = event === "pull_request";
-              const github = { event_name: event, head_ref: isPr ? branch : "", event: isPr ? { pull_request: { draft } } : {} };
-              const pausedDraft = isPr && branches.includes(branch) && draft;
-              const expected = paused.includes(name) ? !pausedDraft : !isPr;
-              expect(enabled(github, () => false, contains, JSON.parse), `${file}/${name}: ${event}, ${branch}, draft=${draft}`).toBe(expected);
-              if (name === "test") expect(enabled(github, () => true, contains, JSON.parse)).toBe(false);
-            }
-          }
-        }
-      }
-    }
+  describe("only the planned refactor drafts pause PR jobs; ready_for_review resumes them", () => {
+    const paused = { condition: `\${{ ${draftRefactorGuard} }}`, plannedDraft: false, unrelatedDraft: true, ready: true, nonPr: true };
+    const aggregate = { ...paused, condition: `\${{ !cancelled() && (${draftRefactorGuard}) }}` };
+    const nonPr = { condition: "github.event_name != 'pull_request'", plannedDraft: false, unrelatedDraft: false, ready: false, nonPr: true };
+    const ci = readWorkflowConditions(Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8")));
+    const plannedBranches = ["review/refactor-core-upstream44", "review/refactor-projection-upstream44", "review/refactor-integration-upstream44", "review/refactor-native-upstream44", "review/refactor-codex-upstream44", "review/refactor-cursor-upstream44", "review/refactor-kiro-cli-upstream44", "review/refactor-kiro-v3-upstream44", "review/refactor-copilot-upstream44", "review/refactor-opencode-upstream44", "review/refactor-completion-upstream44", "review/refactor-attempt-upstream44","review/refactor-qualified-ci-upstream44","review/refactor-runtime-upstream44","review/refactor-host-root-upstream44","review/refactor-ci-tests-upstream44","review/refactor-hook-plan-upstream44"];
+    const unrelatedBranches = ["review/refactor-other-upstream44", "review/refactor-core-upstream44-extra", "review/refactor-integration-upstream45", "another-draft", "main"];
+    const workflowCases = [
+      {
+        file: "ci.yml", conditions: ci,
+        jobNames: ["check", "deterministic", "test_native_terminal", "test_live_isolation", "test_windows_install_ps51", "test_hooks_without_git_bash", "test_wsl_smoke", "test"],
+        expectations: new Map([
+          ["check", paused], ["deterministic", paused], ["test_native_terminal", nonPr], ["test_live_isolation", nonPr],
+          ["test_windows_install_ps51", nonPr], ["test_hooks_without_git_bash", nonPr], ["test_wsl_smoke", nonPr], ["test", aggregate],
+        ]),
+      },
+      {
+        file: "docs.yml", conditions: readWorkflowConditions(Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows/docs.yml"), "utf8"))),
+        jobNames: ["build", "deploy"], expectations: new Map([["build", paused], ["deploy", nonPr]]),
+      },
+      {
+        file: "markdownlint.yml", conditions: readWorkflowConditions(Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows/markdownlint.yml"), "utf8"))),
+        jobNames: ["markdownlint"], expectations: new Map([["markdownlint", paused]]),
+      },
+      {
+        file: "security-scanners.yml", conditions: readWorkflowConditions(Bun.YAML.parse(readFileSync(join(REPO_ROOT, ".github/workflows/security-scanners.yml"), "utf8"))),
+        jobNames: ["gitleaks", "semgrep", "bun-audit"], expectations: new Map([["gitleaks", paused], ["semgrep", paused], ["bun-audit", paused]]),
+      },
+    ];
+    describe.each(workflowCases)("$file", ({ conditions, expectations, jobNames }) => {
+      test("PR trigger types resume ready_for_review", () => {
+        expect(conditions.pullRequestTypes).toEqual(["opened", "synchronize", "reopened", "ready_for_review"]);
+      });
+      test("every expected job is present", () => {
+        expect(conditions.jobNames).toEqual(jobNames);
+      });
+      describe.each([...conditions.jobs])("$name", ({ name, condition }) => {
+        test("the checked-in condition matches the independent job policy", () => {
+          expect(expectations.get(name)?.condition).toBe(condition);
+        });
+        describe.each([
+          { group: "planned", branches: plannedBranches, draftExpectation: "plannedDraft" },
+          { group: "unrelated", branches: unrelatedBranches, draftExpectation: "unrelatedDraft" },
+        ] as const)("$group branches", ({ branches, draftExpectation }) => {
+          describe.each(branches)("%s", branch => {
+            describe.each([
+              { eventName: "pull_request", draftExpectation, readyExpectation: "ready" },
+              { eventName: "push", draftExpectation: "nonPr", readyExpectation: "nonPr" },
+              { eventName: "merge_group", draftExpectation: "nonPr", readyExpectation: "nonPr" },
+              { eventName: "workflow_dispatch", draftExpectation: "nonPr", readyExpectation: "nonPr" },
+              { eventName: "workflow_call", draftExpectation: "nonPr", readyExpectation: "nonPr" },
+              { eventName: "schedule", draftExpectation: "nonPr", readyExpectation: "nonPr" },
+            ] as const)("$eventName", ({ eventName, draftExpectation, readyExpectation }) => {
+              test.each([
+                { state: "draft", expectation: draftExpectation },
+                { state: "ready", expectation: readyExpectation },
+              ] as const)("$state", ({ state, expectation }) => {
+                expect(evaluateWorkflowCondition({ condition: condition, github: githubEventContext({ eventName: eventName, headBranch: branch, pullRequestState: state }), runState: "active" })).toBe(expectations.get(name)?.[expectation]);
+              });
+            });
+          });
+        });
+      });
+    });
+    describe.each([...plannedBranches, ...unrelatedBranches])("cancelled aggregate for %s", branch => {
+      describe.each(["pull_request", "push", "merge_group", "workflow_dispatch", "workflow_call", "schedule"])("%s", eventName => {
+        test.each(["draft", "ready"] as const)("%s", state => {
+          expect(evaluateWorkflowCondition({ condition: ci.byName.get("test"), github: githubEventContext({ eventName: eventName, headBranch: branch, pullRequestState: state }), runState: "cancelled" })).toBe(false);
+        });
+      });
+    });
   });
 
   test("consolidated checks keep collecting failures and compare changelog against the frozen PR base", () => {
