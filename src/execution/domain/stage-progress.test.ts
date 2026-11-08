@@ -1,23 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { accept } from "../../kernel/fixtures/accept.ts";
 import { at } from "../../kernel/fixtures/values.fixture.ts";
-import { scopeName, stageSlug } from "../../workflow-definition/domain/identities.ts";
-import { intentId, intentSlug, recordVersion, spaceName, unitName } from "./identities.ts";
+import { RUNNING_RECORD, stageOf, unitOf } from "../fixtures/workflow-record.fixture.ts";
 import { jumpToStage, moveStage } from "./stage-progress.ts";
 import type { Transition, TransitionCause } from "./transition.ts";
-import type { StageState, WorkflowRecord } from "./workflow-record.ts";
+import type { WorkflowRecord } from "./workflow-record.ts";
 
 const NOW = at("2026-11-08T10:00:00Z");
 const ENGINE: TransitionCause = { kind: "engine-step" };
 const APPROVED: TransitionCause = { kind: "person-decision", decision: { kind: "approve" } };
 
-const detection = accept(stageSlug("workspace-detection"));
-const requirements = accept(stageSlug("requirements-analysis"));
-const design = accept(stageSlug("application-design"));
-const generation = accept(stageSlug("code-generation"));
-const testing = accept(stageSlug("build-and-test"));
-const payments = accept(unitName("payments-api"));
-const ledger = accept(unitName("ledger"));
+const detection = stageOf("workspace-detection");
+const requirements = stageOf("requirements-analysis");
+const design = stageOf("application-design");
+const generation = stageOf("code-generation");
+const testing = stageOf("build-and-test");
+const payments = unitOf("payments-api");
+const ledger = unitOf("ledger");
 
 const JUMPED_AHEAD: TransitionCause = {
   kind: "person-decision",
@@ -28,41 +26,7 @@ const JUMPED_BACK: TransitionCause = {
   decision: { kind: "jump", to: requirements },
 };
 
-const stagesAtGate: readonly StageState[] = [
-  { stage: detection, unit: null, progress: "completed" },
-  { stage: requirements, unit: null, progress: "awaiting-approval" },
-  { stage: design, unit: null, progress: "pending" },
-  { stage: generation, unit: payments, progress: "pending" },
-  { stage: generation, unit: ledger, progress: "pending" },
-];
-
-const record: WorkflowRecord = {
-  id: accept(intentId("261108-checkout-flow")),
-  slug: accept(intentSlug("checkout-flow")),
-  space: accept(spaceName("default")),
-  scope: accept(scopeName("feature")),
-  version: accept(recordVersion(3)),
-  status: { kind: "running" },
-  settings: {
-    depth: "standard",
-    guardPolicy: "strict",
-    ceremony: {
-      sensors: "on",
-      learnings: "on",
-      "summary-confirmation": "on",
-      "plan-approval": "on",
-      collaborators: "on",
-    },
-    reviewOverride: null,
-  },
-  stages: stagesAtGate,
-  units: null,
-  checkpoints: [],
-  blockingChecks: [],
-  approvals: [],
-  reviews: [],
-  guardSwitches: [],
-};
+const record = RUNNING_RECORD;
 
 const laterRecord: WorkflowRecord = {
   ...record,

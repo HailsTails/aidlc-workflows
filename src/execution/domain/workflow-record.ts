@@ -35,8 +35,11 @@ export type WorkflowStatus =
   | { readonly kind: "completed"; readonly at: Timestamp }
   | { readonly kind: "archived"; readonly at: Timestamp };
 
+export type AutonomyMode = "gated" | "autonomous";
+
 export type WorkflowSettings = {
   readonly depth: Depth;
+  readonly constructionAutonomy: AutonomyMode;
   readonly guardPolicy: GuardPolicy;
   readonly ceremony: Readonly<Record<CeremonyKey, CeremonySwitch>>;
   readonly reviewOverride: ReviewClass | null;

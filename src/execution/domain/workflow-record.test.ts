@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { accept } from "../../kernel/fixtures/accept.ts";
 import { at } from "../../kernel/fixtures/values.fixture.ts";
-import { scopeName, stageSlug } from "../../workflow-definition/domain/identities.ts";
-import { intentId, intentSlug, recordVersion, spaceName } from "./identities.ts";
+import { RUNNING_RECORD, stageOf } from "../fixtures/workflow-record.fixture.ts";
 import {
   completeWorkflow,
   parkWorkflow,
@@ -16,8 +14,8 @@ import {
 const NOW = at("2026-11-08T10:00:00Z");
 const EARLIER = at("2026-11-08T09:00:00Z");
 
-const requirements = accept(stageSlug("requirements-analysis"));
-const design = accept(stageSlug("application-design"));
+const requirements = stageOf("requirements-analysis");
+const design = stageOf("application-design");
 
 const finishedStages: readonly StageState[] = [
   { stage: requirements, unit: null, progress: "completed" },
@@ -25,34 +23,11 @@ const finishedStages: readonly StageState[] = [
 ];
 
 const runningRecord: WorkflowRecord = {
-  id: accept(intentId("261108-checkout-flow")),
-  slug: accept(intentSlug("checkout-flow")),
-  space: accept(spaceName("default")),
-  scope: accept(scopeName("feature")),
-  version: accept(recordVersion(3)),
-  status: { kind: "running" },
-  settings: {
-    depth: "standard",
-    guardPolicy: "strict",
-    ceremony: {
-      sensors: "on",
-      learnings: "on",
-      "summary-confirmation": "on",
-      "plan-approval": "on",
-      collaborators: "on",
-    },
-    reviewOverride: null,
-  },
+  ...RUNNING_RECORD,
   stages: [
     { stage: requirements, unit: null, progress: "completed" },
     { stage: design, unit: null, progress: "in-progress" },
   ],
-  units: null,
-  checkpoints: [],
-  blockingChecks: [],
-  approvals: [],
-  reviews: [],
-  guardSwitches: [],
 };
 
 const parkedRecord: WorkflowRecord = { ...runningRecord, status: { kind: "parked", since: EARLIER } };
