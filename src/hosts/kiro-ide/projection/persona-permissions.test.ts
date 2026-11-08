@@ -14,10 +14,8 @@ const shell: PersonaShell = {
 const lines = personaPermissionLines(shell);
 
 describe("personaPermissionLines", () => {
-  test("grants the tools, allows the AI-DLC commands, asks on risky forms, and fences the engine's trees", () => {
+  test("allows the AI-DLC commands, asks on risky forms, and fences the engine's trees", () => {
     expect(lines("aidlc-architect-agent")).toEqual([
-      `tools: ["read", "write", "shell"]`,
-      "includeMcpJson: true",
       "permissions:",
       "  rules:",
       "    - capability: shell",

@@ -31,6 +31,7 @@ import {
   personaPermissionLines,
   PLUGIN_AGENT,
 } from "../../src/hosts/kiro-ide/projection/persona-permissions.ts";
+import { KIRO_PROMPT_LINES } from "../../src/hosts/kiro/projection/agent-renderer.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const DELEGATION_AGENTS = [
@@ -92,10 +93,14 @@ const copyShellDeny = new Map<string, string[]>(
 // every dispatch path. includeMcpJson gives a persona every server in the
 // person's workspace and user mcp.json; no rule allows an MCP call, so each
 // one asks.
-const personaFrontmatter = personaPermissionLines({
+const personaPermissions = personaPermissionLines({
   shellDeny: (agent) => copyShellDeny.get(agent) ?? [],
   riskyShellForms: RISKY_SHELL_FORMS,
 });
+const personaFrontmatter = (persona: string): readonly string[] => [
+  ...KIRO_PROMPT_LINES,
+  ...personaPermissions(persona),
+];
 
 // The one Kiro IDE step for AI-DLC that is not running in this window, word
 // for word wherever it appears (doctor, the refusals, the missed-reply line).

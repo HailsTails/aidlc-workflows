@@ -53,8 +53,6 @@ const fileRules = (persona: string): readonly string[] => [
 export const personaPermissionLines =
   (shell: PersonaShell) =>
   (persona: string): readonly string[] => [
-    `tools: ["read", "write", "shell"]`,
-    "includeMcpJson: true",
     "permissions:",
     "  rules:",
     ...shellRules(shell, persona),
