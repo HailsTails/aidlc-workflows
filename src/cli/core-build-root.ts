@@ -1,6 +1,8 @@
 import { accepted, type Result } from "../kernel/result.ts";
 import { distributionId, projectPath, type KernelRefusal } from "../kernel/values.ts";
-import { serializeCompiledMethod, type CompiledMethodFiles } from "../projection/core-root.ts";
+import { serializeCompiledMethod, createCommandRenderers, prepareLegacyRunners, projectMethodCommands,
+  type CompiledMethodFiles } from "../projection/core-root.ts";
+import type { CommandPlacement, Rendering } from "../projection/application/ports.ts";
 import { loadAuthoredCoreMethod, type AuthoredCoreMethod } from "../workflow-definition/core-root.ts";
 import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
 
@@ -32,8 +34,6 @@ export const loadCoreBuild = async (request: {
   return accepted({ method, sources, project });
 };
 
-import type { CommandPlacement, Rendering } from "../projection/application/ports.ts";
-import { createCommandRenderers, prepareLegacyRunners, projectMethodCommands } from "../projection/core-root.ts";
 
 export const projectCoreCommands = (request: Parameters<typeof prepareLegacyRunners>[0] & {
   readonly place: CommandPlacement;

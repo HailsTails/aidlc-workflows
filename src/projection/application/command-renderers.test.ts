@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { path } from "../../kernel/fixtures/values.fixture.ts";
 import { accepted, refused } from "../../kernel/result.ts";
-import type { ProjectionRefusal } from "../../projection/domain/projection.ts";
 import type { Scope } from "../../workflow-definition/domain/scope.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import { stageNumber, type ScopeColumn, type StageNode } from
