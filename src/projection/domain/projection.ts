@@ -28,7 +28,8 @@ export type ProjectionRefusal =
       readonly concept: RenderedConcept;
       readonly name: string;
       readonly reason: string;
-    };
+    }
+  | { readonly kind: "command-source-failed"; readonly reason: string };
 
 export type Projection = {
   readonly host: HostIdentity;
