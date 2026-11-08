@@ -27,6 +27,7 @@ import { copyChannelToolScripts } from "../../core/tools/aidlc.ts";
 import { codexHookTrustHash } from "../../core/tools/aidlc-command.ts";
 import { accepted } from "../../src/kernel/result.ts";
 import { createCodexAgentRenderer } from "../../src/hosts/codex/projection/agent-renderer.ts";
+import { codexCommandPath } from "../../src/hosts/codex/projection/command-renderer.ts";
 import { EXTENDED_SUBPROCESS_TIMEOUT_MS } from "../../core/tools/aidlc-runtime-budget.ts";
 import {
   modelAgentName,
@@ -327,25 +328,7 @@ export default function emit(ctx: EmitContext): void {
   const rewriteProse = (s: string): string =>
     substituteToken(s).replaceAll(`${harnessDir}/rules/`, `${harnessDir}/aidlc-rules/`);
 
-
-  // --- Skill packaging into .agents/skills/ ----------------------------------
-  // Compose runner-gen's render fns under the manifest harnessDir. Load the
-  // module FROM THE ASSEMBLED DIST TREE (<harnessDir>/tools/) — the packager's
-  // compile step already wrote tools/data/stage-graph.json there, and
-  // runner-gen resolves its graph + scopes relative to its own location. (core/
-  // carries no compiled JSON, so requiring it from coreRoot would fail.)
   const IMPLICIT_GUARD = "policy:\n  allow_implicit_invocation: false\n";
-  process.env.AIDLC_HARNESS_DIR = harnessDir;
-  process.env.AIDLC_HARNESS_NAME = "codex";
-  const gen = require(join(CODEX_ROOT, "tools", "aidlc-runner-gen.ts")) as {
-    runnableStages: () => Array<{ slug: string }>;
-    renderStageRunner: (node: { slug: string }) => string;
-    renderInitRunner: () => string;
-    renderComposeRunner: () => string;
-    defaultScopeBatch: (discovered?: Record<string, { name: string; description: string; plugin?: string; runner?: boolean }>) => string[];
-    discoverScopes: () => Record<string, { name: string; description: string; plugin?: string; runner?: boolean }>;
-    renderRunner: (scope: string, description: string) => string;
-  };
 
   function walk(dir: string): string[] {
     const out: string[] = [];
@@ -432,23 +415,6 @@ export default function emit(ctx: EmitContext): void {
         ),
     });
   }
-  // (b) stage runners + init, generated, with the implicit-invocation guard
-  for (const node of gen.runnableStages()) {
-    const dir = join(SKILLS_DST, `aidlc-${node.slug}`);
-    emissions.push({ path: join(dir, "SKILL.md"), content: () => rewriteProse(gen.renderStageRunner(node)) });
-    emissions.push({ path: join(dir, "agents", "openai.yaml"), content: () => IMPLICIT_GUARD });
-  }
-  emissions.push({ path: join(SKILLS_DST, "aidlc-init", "SKILL.md"), content: () => rewriteProse(gen.renderInitRunner()) });
-  emissions.push({ path: join(SKILLS_DST, "aidlc-init", "agents", "openai.yaml"), content: () => IMPLICIT_GUARD });
-  emissions.push({ path: join(SKILLS_DST, "aidlc-compose", "SKILL.md"), content: () => rewriteProse(gen.renderComposeRunner()) });
-  emissions.push({ path: join(SKILLS_DST, "aidlc-compose", "agents", "openai.yaml"), content: () => IMPLICIT_GUARD });
-  // (c) Default-batch scope runners
-  const scopes = gen.discoverScopes();
-  for (const scope of gen.defaultScopeBatch(scopes).filter((s) => s in scopes)) {
-    const dir = join(SKILLS_DST, `aidlc-${scope}`);
-    emissions.push({ path: join(dir, "SKILL.md"), content: () => rewriteProse(gen.renderRunner(scope, scopes[scope].description)) });
-    emissions.push({ path: join(dir, "agents", "openai.yaml"), content: () => IMPLICIT_GUARD });
-  }
   // (d) standalone core skills — byte-copy + prose rewrite from core/skills/.
   // Codex alone does NOT enumerate core/skills/, so this list is the only thing
   // that ships them here: a skill missing from it silently reaches every OTHER
@@ -482,4 +448,5 @@ export default function emit(ctx: EmitContext): void {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content(), "utf-8");
   }
+  ctx.emitCommands(codexCommandPath);
 }
