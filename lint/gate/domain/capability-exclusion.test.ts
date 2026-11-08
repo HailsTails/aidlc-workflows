@@ -41,6 +41,16 @@ describe("capability exclusions", () => {
     );
   });
 
+  test("unattributed cases are named as such, never as an environment limit", () => {
+    const exclusions: readonly CapabilityExclusion[] = [
+      { capability: "unattributed", cases: ["t1 > a"] },
+    ];
+    const result = classifyFailures({ failed: ["t1 > a"], exclusions, probes: LINKLESS });
+    expect(excludedNote(result.excluded)).toBe(
+      "1 case(s) UNATTRIBUTED, not an environment limit: known failing, cause not proved; no probe",
+    );
+  });
+
   test("red: a failing case that no exclusion lists is a regression", () => {
     const result = classify({ failed: ["t1 > new break"], probes: LINKLESS });
     expect(result.regressions).toEqual(["t1 > new break"]);

@@ -65,10 +65,14 @@ export const classifyFailures = (request: {
   return { regressions, excluded };
 };
 
+const UNATTRIBUTED_LABEL = "UNATTRIBUTED, not an environment limit: known failing";
+
+const noteOf = (group: ExcludedCases): string => {
+  const count = `${group.cases.length} case(s)`;
+  return group.capability === "unattributed"
+    ? `${count} ${UNATTRIBUTED_LABEL}, ${group.evidence}`
+    : `${count} excluded for ${group.capability} (${group.evidence})`;
+};
+
 export const excludedNote = (excluded: readonly ExcludedCases[]): string =>
-  excluded
-    .map(
-      ({ capability, evidence, cases }) =>
-        `${cases.length} case(s) excluded for ${capability} (${evidence})`,
-    )
-    .join("; ");
+  excluded.map(noteOf).join("; ");
