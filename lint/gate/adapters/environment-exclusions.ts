@@ -8,7 +8,7 @@ const ExclusionsSchema = z.object({
   schemaVersion: z.literal(1),
   exclusions: z.array(
     z.object({
-      capability: z.enum(["symlinks", "short-names", "unattributed"]),
+      capability: z.enum(["symlinks", "short-names", "listable-system-temp"]),
       cases: z.array(z.string().min(1)),
     }),
   ),

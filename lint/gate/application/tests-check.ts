@@ -43,7 +43,7 @@ type RunVerdict = {
   readonly excluded: string;
 };
 
-const CAPABILITIES: readonly CapabilityId[] = ["symlinks", "short-names", "unattributed"];
+const CAPABILITIES: readonly CapabilityId[] = ["symlinks", "short-names", "listable-system-temp"];
 
 const follows = (text: string, modules: readonly string[]): boolean =>
   importsAnyOf({ text, modules });

@@ -1,0 +1,27 @@
+import { describe, expect, test } from "bun:test";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { capabilityProbes } from "./capability-probes.ts";
+
+const canList = (directory: string): boolean => {
+  try {
+    readdirSync(directory);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+describe("capability probes", () => {
+  test("the system temp probe agrees with an attempt to list the folder", () => {
+    const directory = join(process.env["SystemRoot"] ?? "C:\\Windows", "Temp");
+    const result = capabilityProbes().probe("listable-system-temp");
+    expect(result.available).toBe(canList(directory));
+  });
+
+  test("every probe states its evidence", () => {
+    const probes = capabilityProbes();
+    const ids = ["symlinks", "short-names", "listable-system-temp"] as const;
+    expect(ids.every((id) => probes.probe(id).evidence.length > 0)).toBe(true);
+  });
+});

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CapabilityId, ProbeResult } from "../domain/capability-exclusion.ts";
@@ -44,15 +44,21 @@ const shortNames = (): ProbeResult => {
   });
 };
 
-const unattributed = (): ProbeResult => ({
-  available: false,
-  evidence: "cause not proved; no probe",
-});
+const listableSystemTemp = (): ProbeResult => {
+  const directory = join(process.env["SystemRoot"] ?? "C:\\Windows", "Temp");
+  try {
+    readdirSync(directory);
+    return { available: true, evidence: "the system temp folder can be listed" };
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "refused";
+    return { available: false, evidence: `the system temp folder cannot be listed (${code})` };
+  }
+};
 
 const PROBES: Readonly<Record<CapabilityId, () => ProbeResult>> = {
   symlinks,
   "short-names": shortNames,
-  unattributed,
+  "listable-system-temp": listableSystemTemp,
 };
 
 export const capabilityProbes = (): Capabilities => {

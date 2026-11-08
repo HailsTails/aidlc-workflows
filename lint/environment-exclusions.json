@@ -29,7 +29,7 @@
       ]
     },
     {
-      "capability": "unattributed",
+      "capability": "listable-system-temp",
       "cases": [
         "t230 dispatcher dev and compiled in-process modes > compiled main discovers an OpenCode project from shipped harness metadata",
         "t230 dispatcher dev and compiled in-process modes > compiled main run by Codex in a project that also holds Claude Code reads the Codex install",

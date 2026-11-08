@@ -1,4 +1,4 @@
-export type CapabilityId = "symlinks" | "short-names" | "unattributed";
+export type CapabilityId = "symlinks" | "short-names" | "listable-system-temp";
 
 export type ProbeResult = {
   readonly available: boolean;
@@ -65,14 +65,8 @@ export const classifyFailures = (request: {
   return { regressions, excluded };
 };
 
-const UNATTRIBUTED_LABEL = "UNATTRIBUTED, not an environment limit: known failing";
-
-const noteOf = (group: ExcludedCases): string => {
-  const count = `${group.cases.length} case(s)`;
-  return group.capability === "unattributed"
-    ? `${count} ${UNATTRIBUTED_LABEL}, ${group.evidence}`
-    : `${count} excluded for ${group.capability} (${group.evidence})`;
-};
+const noteOf = (group: ExcludedCases): string =>
+  `${group.cases.length} case(s) excluded for ${group.capability} (${group.evidence})`;
 
 export const excludedNote = (excluded: readonly ExcludedCases[]): string =>
   excluded.map(noteOf).join("; ");

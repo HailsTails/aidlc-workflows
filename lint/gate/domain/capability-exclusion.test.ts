@@ -11,7 +11,7 @@ const SYMLINK_CASE = "t243 archive > rejects symlink traversal";
 const LINKLESS: Probes = {
   symlinks: { available: false, evidence: "creating a symlink is refused (EPERM)" },
   "short-names": { available: true, evidence: "8.3 short names are on" },
-  unattributed: { available: false, evidence: "cause not proved; no probe" },
+  "listable-system-temp": { available: true, evidence: "the system temp folder can be listed" },
 };
 const EXCLUSIONS: readonly CapabilityExclusion[] = [
   { capability: "symlinks", cases: [SYMLINK_CASE] },
@@ -38,16 +38,6 @@ describe("capability exclusions", () => {
     expect(result.regressions).toEqual([]);
     expect(excludedNote(result.excluded)).toBe(
       "1 case(s) excluded for symlinks (creating a symlink is refused (EPERM))",
-    );
-  });
-
-  test("unattributed cases are named as such, never as an environment limit", () => {
-    const exclusions: readonly CapabilityExclusion[] = [
-      { capability: "unattributed", cases: ["t1 > a"] },
-    ];
-    const result = classifyFailures({ failed: ["t1 > a"], exclusions, probes: LINKLESS });
-    expect(excludedNote(result.excluded)).toBe(
-      "1 case(s) UNATTRIBUTED, not an environment limit: known failing, cause not proved; no probe",
     );
   });
 
