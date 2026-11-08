@@ -104,7 +104,10 @@
         "src/cli/adapters/routes/{packaging,installation}/**",
         "src/cli/core-build-root{,.test}.ts",
         "docs/reference/15-stage-definition.md",
-        "scripts/package.ts"
+        "scripts/package.ts",
+        "tests/unit/t64.test.ts",
+        "tests/unit/t-package-sources.test.ts",
+        "discipline-exceptions.json"
       ],
       "notOwned": [
         "harness/copilot/emit.ts",
