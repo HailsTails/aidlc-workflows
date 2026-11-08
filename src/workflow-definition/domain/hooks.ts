@@ -10,6 +10,7 @@ export const LIFECYCLE_HOOK_POINTS = [
   "user-prompt",
   "subagent-start",
   "subagent-stop",
+  "before-compaction",
   "stop",
   "status-line",
 ] as const;
@@ -22,21 +23,35 @@ export type LifecycleHookPoint = (typeof LIFECYCLE_HOOK_POINTS)[number];
 
 export type HookPoint = (typeof HOOK_POINTS)[number];
 
-export const TOOL_KINDS = ["shell", "file-write", "file-read", "other"] as const;
+export const TOOL_TARGETS = [
+  "file-read",
+  "file-write",
+  "file-search",
+  "shell",
+  "subagent-dispatch",
+  "task-list-update",
+  "human-question",
+] as const;
 
-export type ToolKind = (typeof TOOL_KINDS)[number];
+export type ToolTarget = (typeof TOOL_TARGETS)[number];
 
 export type ToolMatch =
   | { readonly kind: "every-tool" }
-  | { readonly kind: "only"; readonly tools: NonEmptyArray<ToolKind> };
+  | { readonly kind: "only"; readonly targets: NonEmptyArray<ToolTarget> };
 
-type HookBase = {
+export type LifecycleAttachment = { readonly point: LifecycleHookPoint };
+
+export type ToolAttachment = { readonly point: ToolHookPoint; readonly tools: ToolMatch };
+
+export type HookAttachment = LifecycleAttachment | ToolAttachment;
+
+export type HookPlacement =
+  | { readonly kind: "own-entry" }
+  | { readonly kind: "in-group"; readonly group: HookName };
+
+export type HookDeclaration = {
   readonly name: HookName;
   readonly source: MethodSourcePath;
+  readonly placement: HookPlacement;
+  readonly attachments: NonEmptyArray<HookAttachment>;
 };
-
-export type LifecycleHook = HookBase & { readonly point: LifecycleHookPoint };
-
-export type ToolHook = HookBase & { readonly point: ToolHookPoint; readonly tools: ToolMatch };
-
-export type HookDeclaration = LifecycleHook | ToolHook;
