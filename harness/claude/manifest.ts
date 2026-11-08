@@ -10,9 +10,9 @@
 // same {{HARNESS_DIR}} token as every other harness; the packager substitutes
 // `.claude` here.
 
-import type { EmitContext, HarnessManifest } from "../../scripts/manifest-types.ts";
+import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { modelAgentName, resolveModelPolicy,
   writeMarkdownAgentSurface } from "../../core/tools/aidlc-model-policy.ts";
@@ -23,41 +23,7 @@ import type { ProjectionRefusal } from "../../src/projection/domain/projection.t
 import { createClaudeAgentRenderer,
   type ClaudeAgentLegacy } from "../../src/hosts/claude/projection/agent-renderer.ts";
 
-import { prepareLegacyRunners } from "../../src/projection/core-root.ts";
-import { scopeColumn } from "../../src/workflow-definition/core-root.ts";
-import { createClaudeCommandRenderers } from
-  "../../src/hosts/claude/projection/command-renderer.ts";
-
-const emitCommands = (ctx: EmitContext): void => {
-  const runners = prepareLegacyRunners({ method: ctx.method, sources: ctx.sources,
-    projectRoot: ctx.distRoot, harnessDir: ctx.harnessDir, harnessName: ctx.harnessName });
-  if (!runners.ok) throw new Error(JSON.stringify(runners.refusal));
-  const renderer = createClaudeCommandRenderers({
-    stage: (request) => accepted(runners.value.stages[request.stage.slug]),
-    scope: (request) => accepted(runners.value.scopes[request.scope.name]),
-    orchestrator: () => accepted(runners.value.workflow),
-  });
-  const renderings = [
-    ...ctx.method.graph.nodes.map((node) => {
-      const stage = ctx.method.stages.find((candidate) => candidate.slug === node.stage);
-      if (!stage) throw new Error("The accepted graph references an absent stage: " + node.stage);
-      return renderer.renderStageCommand({ stage, node });
-    }),
-    ...ctx.method.scopes.map((scope) => renderer.renderScopeCommand({ scope,
-      column: scopeColumn({ method: ctx.method, scope: scope.name }) })),
-    renderer.renderOrchestratorSkill({ method: ctx.method }),
-  ];
-  for (const rendering of renderings) {
-    if (!rendering.ok) throw new Error(JSON.stringify(rendering.refusal));
-    for (const file of rendering.value) {
-      const destination = join(ctx.distRoot, file.path);
-      mkdirSync(dirname(destination), { recursive: true });
-      writeFileSync(destination, file.content.kind === "text"
-        ? ctx.substituteToken(file.content.text) : file.content.bytes);
-      if (file.mode === "executable") chmodSync(destination, 0o755);
-    }
-  }
-};
+import { claudeCommandPath } from "../../src/hosts/claude/projection/command-renderer.ts";
 
 const manifest: HarnessManifest = {
   name: "claude",
@@ -268,7 +234,7 @@ const manifest: HarnessManifest = {
   skipRunnerGen: true,
 
   emit(ctx): void {
-    emitCommands(ctx);
+    ctx.emitCommands(claudeCommandPath);
     for (const agent of ctx.method.agents) {
       const legacyModelSurface: ClaudeAgentLegacy = (request) => {
         if (request.agent.model.kind !== "tier") return refused<ProjectionRefusal>({

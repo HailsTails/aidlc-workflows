@@ -31,3 +31,11 @@ export const loadCoreBuild = async (request: {
   };
   return accepted({ method, sources, project });
 };
+
+import type { CommandPlacement, Rendering } from "../projection/application/ports.ts";
+import { createCommandRenderers, prepareLegacyRunners, projectMethodCommands } from "../projection/core-root.ts";
+
+export const projectCoreCommands = (request: Parameters<typeof prepareLegacyRunners>[0] & {
+  readonly place: CommandPlacement;
+}): Rendering => projectMethodCommands({ method: request.method,
+  harness: createCommandRenderers({ source: prepareLegacyRunners(request), place: request.place }) });
