@@ -70,7 +70,10 @@ const EXPECTED_BRIDGES = [
   {
     module: "core/tools/aidlc-model-policy.ts",
     readBy: "src/projection/adapters/legacy-agent-surfaces.ts",
-    retiresWhen: OWNER_MOVES,
+    retiresWhen:
+      "Phase 2 model-policy cutover: its owner moves into src and ships in the runtime bundle " +
+      "(R1), deleting agentTiersFromAuthoredDirectory, the unreachable authored-agents walk " +
+      "the phase 1 freeze keeps in shipped bytes.",
   },
   { module: "core/tools/aidlc-tiers.ts", readBy: "src/projection/adapters/legacy-tiers.ts", retiresWhen: OWNER_MOVES },
   {
@@ -116,7 +119,10 @@ const EXPECTED_BRIDGES = [
   {
     module: "core/tools/aidlc-plugin-emit.ts",
     readBy: "src/projection/adapters/legacy-plugin-emit.ts",
-    retiresWhen: OWNER_MOVES,
+    retiresWhen:
+      "Phase 2 plugin-tools cutover: its owner moves into src and ships in the runtime bundle " +
+      "(R1), deleting the pluginReviewerAgents stage-file regex fallback that the shipped " +
+      "plugin build and plugin test still reach.",
   },
   { module: "core/tools/aidlc.ts", readBy: "src/projection/adapters/legacy-dispatcher.ts", retiresWhen: OWNER_MOVES },
   {
