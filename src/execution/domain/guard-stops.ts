@@ -82,6 +82,12 @@ export const receiptStop = (refusal: ReceiptRefusal): GuardRefusal => ({
   nextStep: ENGINE_NEXT_STEP,
 });
 
+export const reopenPresenceStop: GuardRefusal = {
+  guard: CORE_GUARDS.humanPresence,
+  reason: "The person has not asked, in this chat, to reopen this finished work.",
+  nextStep: "Reopen it only when the person asks in their own words.",
+};
+
 export const presenceStop = (gate: Gate): GuardRefusal => ({
   guard: CORE_GUARDS.humanPresence,
   reason: `No reply the person typed has reached ${gatePlace(gate)} since it opened.`,
