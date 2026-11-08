@@ -15,3 +15,9 @@ test("the filesystem edge captures sorted, portable source names and raw bytes",
     { within: "aidlc-workshop.md" },
   ]);
 });
+
+test("a directory URL without a trailing slash still selects that directory", async () => {
+  const directoryFiles = createSourceFiles(new URL("../../../core", import.meta.url));
+  const captured = await directoryFiles.read(source("scopes"));
+  expect(captured[0]).toMatchObject({ within: "aidlc-bugfix.md" });
+});

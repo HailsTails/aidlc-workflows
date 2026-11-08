@@ -86,6 +86,3 @@ export const authoredValue = <Value>(admission: Result<Value, unknown>): Value =
   if (!admission.ok) throw new Error(`Invalid authored value: ${JSON.stringify(admission.refusal)}`);
   return admission.value;
 };
-
-
-

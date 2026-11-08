@@ -43,4 +43,3 @@ export const validateStage = (stage: Stage): readonly MethodRefusal[] => {
   if (issues.length === 0) return [];
   return [{ kind: "invalid-file", location: { kind: "method-source", path: stage.source, owner: stage.owner }, issues }];
 };
-

@@ -48,5 +48,3 @@ test("authoredValue unwraps only accepted values", () => {
   expect(authoredValue(accepted("feature"))).toBe("feature");
   expect(() => authoredValue(refused("invalid"))).toThrow("Invalid authored value");
 });
-
-

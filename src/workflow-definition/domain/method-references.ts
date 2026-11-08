@@ -19,7 +19,7 @@ const unknown = (request: { readonly names: readonly string[];
     kind: "unknown-reference", source: request.source, concept: request.concept, name,
   }));
 
-export const validateCoreReferences = (core: CoreContent): readonly MethodRefusal[] =>
+const stageReferences = (core: CoreContent): readonly MethodRefusal[] =>
   core.stages.flatMap((stage) => {
     const source = { owner: stage.owner, path: stage.source };
     return [
@@ -32,6 +32,32 @@ export const validateCoreReferences = (core: CoreContent): readonly MethodRefusa
     ];
   });
 
+const membershipReferences = (core: CoreContent): readonly MethodRefusal[] =>
+  core.memberships.flatMap((membership) => {
+    const declaringStage = core.stages.find((stage) => stage.slug === membership.stage);
+    const declaringScope = core.scopes.find((scope) => scope.name === membership.scope);
+    const declaration = declaringStage ?? declaringScope;
+    if (!declaration) throw new Error("A captured membership needs its owning stage or scope");
+    const source = { path: declaration.source, owner: declaration.owner };
+    return [
+      ...unknown({ names: [membership.stage], known: core.stages.map((stage) => stage.slug),
+        source, concept: "stage" }),
+      ...unknown({ names: [membership.scope], known: core.scopes.map((scope) => scope.name),
+        source, concept: "scope" }),
+    ];
+  });
+
+export const validateCoreReferences = (core: CoreContent): readonly MethodRefusal[] => [
+  ...stageReferences(core), ...membershipReferences(core),
+  ...core.knowledge.flatMap((document) => document.audience.kind === "agent" ? unknown({
+    names: [document.audience.agent], known: core.agents.map((agent) => agent.slug),
+    source: { path: document.source, owner: document.owner }, concept: "agent",
+  }) : []),
+  ...core.rules.flatMap((rule) => rule.pairing.kind === "sensor" ? unknown({
+    names: [rule.pairing.sensor], known: core.sensors.map((sensor) => sensor.id),
+    source: { path: rule.source, owner: rule.owner }, concept: "sensor",
+  }) : []),
+];
 const occurrences = (core: CoreContent): readonly Occurrence[] => [
   ...core.stages.map((definition) => ({ name: definition.slug, concept: "stage" as const,
     source: { path: definition.source, owner: definition.owner } })),

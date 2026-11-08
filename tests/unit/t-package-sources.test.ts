@@ -29,6 +29,10 @@ function checkout(): string {
     ["plugins/demo/stages/s.md", "# s\n"],
     ["plugins/demo/tests/t.test.ts", "// a plugin test\n"],
     ["scripts/package.ts", "// packager\n"],
+    ["scripts/package-sources.ts", "export {};\n"],
+    ["src/workflow-definition/domain/example.ts", "export const example = 1;\n"],
+    ["src/workflow-definition/domain/example.test.ts", "export {};\n"],
+    ["src/workflow-definition/fixtures/example.fixture.ts", "export {};\n"],
     ["scripts/plugin-hooks-template/compose.ts", "// compose\n"],
   ] as const) {
     mkdirSync(join(root, path, ".."), { recursive: true });
@@ -53,6 +57,8 @@ describe("the packaged-sources fingerprint", () => {
     ["harness/claude/manifest.ts"],
     ["plugins/demo/stages/s.md"],
     ["scripts/package.ts"],
+    ["scripts/package-sources.ts"],
+    ["src/workflow-definition/domain/example.ts"],
     ["scripts/plugin-hooks-template/compose.ts"],
   ])("covers %s", (path) => {
     const root = checkout();
@@ -65,6 +71,8 @@ describe("the packaged-sources fingerprint", () => {
     const root = checkout();
     const before = packageInputsFingerprint(root);
     writeFileSync(join(root, "plugins/demo/tests/t.test.ts"), "// edited\n");
+    writeFileSync(join(root, "src/workflow-definition/domain/example.test.ts"), "changed\n");
+    writeFileSync(join(root, "src/workflow-definition/fixtures/example.fixture.ts"), "changed\n");
     mkdirSync(join(root, "core/node_modules/dep"), { recursive: true });
     writeFileSync(join(root, "core/node_modules/dep/index.js"), "x");
     writeFileSync(join(root, "scripts/ci-other.ts"), "x");
