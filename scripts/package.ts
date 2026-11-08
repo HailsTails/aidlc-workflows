@@ -15,12 +15,12 @@
 //      on .md; render neutral onboarding and native setup from their skeletons.
 //   3. COMPILE the stage graph into the assembled tree (emits harness-correct
 //      stage-graph.json + scope-grid.json — compiled data lives only in dist).
-//   4. GENERATE runners into the assembled tree by running aidlc-runner-gen's
-//      write and scopes CLIs under AIDLC_HARNESS_DIR (skipped when the manifest
-//      sets skipRunnerGen).
-//   5. EMIT via harness/<name>/emit.ts if the manifest declares one (codex,
+//   4. EMIT via harness/<name>/emit.ts if the manifest declares one (codex,
 //      copilot and opencode today; for codex: config.toml, hooks.json,
 //      trust-seed, agent TOMLs, .agents/skills).
+//   5. GENERATE runners into the assembled tree by running aidlc-runner-gen's
+//      write and scopes CLIs under AIDLC_HARNESS_DIR (skipped when the manifest
+//      sets skipRunnerGen).
 //   6. REFRESH generated stage/scope table regions in the assembled orchestrator
 //      skill from the just-compiled graph and scope grid.
 //
@@ -60,6 +60,8 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { loadCoreBuild } from "../src/cli/core-build-root.ts";
+import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import type { HarnessManifest } from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
@@ -536,10 +538,6 @@ function diffTrees(
   }
   return problems;
 }
-
-// The two compiled-data files regenerated into every tree. The rename backstop
-// below scans both after compile.
-const COMPILED_DATA = ["tools/data/stage-graph.json", "tools/data/scope-grid.json"];
 
 // The packager-emitted harness descriptor (vision T1 open-set seam): the
 // runtime reads tools/data/harness.json to learn this harness's rules-subdir
@@ -1053,21 +1051,14 @@ function buildTree(
   //     hook source bytes plus the manifest-derived target table.
   emitPluginAuthoringData(treeRoot);
 
-  // 3. Compile the stage graph into the assembled tree (writes harness-correct
-  //    stage-graph.json + scope-grid.json). compileStageGraph() bootstraps each
-  //    stage's number from the authored dependency graph and any display-name
-  //    override from stage frontmatter. No generated tree is a build input.
-  // Point loadRules at the emitted method tree via AIDLC_RULES_DIR so
-  // rules_in_context is populated at compile time. The method now lives at the
-  // workspace-root aidlc/spaces/default/memory/ (NOT inside <harnessDir>), so
-  // every harness — claude included — needs the seam set; the resolver's own
-  // default would resolve relative to the in-tree tools/ dir, which points at
-  // the same place, but the assembled tmp tree under --check makes the explicit
-  // override the robust choice. The renameRulesInCompiledData backstop still
-  // runs for renamed-rules harnesses to normalize any residual <dir>/rules/
-  // prose-path that a future code path might emit (guarded no-op today).
-  runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-graph.ts", "compile"], memoryDir);
-  if (m.rulesRename) renameRulesInCompiledData(treeRoot, harnessDir, m.rulesRename);
+  const projected = coreBuild.project({ name: m.name, directory: harnessDir,
+    memoryRoot: relative(outRoot, memoryDir).replaceAll("\\", "/") });
+  if (!projected.ok) {
+    throw new Error(`Cannot project the fresh Method: ${JSON.stringify(projected.refusal)}`);
+  }
+  mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
+  writeFileSync(join(treeRoot, "tools", "data", "stage-graph.json"), projected.value.graph);
+  writeFileSync(join(treeRoot, "tools", "data", "scope-grid.json"), projected.value.grid);
 
   // 3b. Emit tools/data/harness.json — the runtime's open-set source of truth
   //     for the rules-subdir rename. rulesSubdir() (aidlc-lib.ts) reads it so a
@@ -1081,21 +1072,12 @@ function buildTree(
   writeAgentTiersData(treeRoot);
   writeSettingsSchemaData(treeRoot);
 
-  // 4. Generate runners by composing aidlc-runner-gen's CLIs against the
-  //    assembled tree (write + scopes). AIDLC_HARNESS_DIR steers harnessDir()
-  //    so generated prose names the correct dir; AIDLC_SRC roots the tree.
-  //    Codex skips this — it ships no <harnessDir>/skills/; emit() composes the
-  //    whole skill set into .agents/skills/ instead.
-  if (!m.skipRunnerGen) {
-    runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "write"]);
-    runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "scopes"]);
-  }
-
-  // 5. Per-shell emissions. These may live outside
+  // 4. Per-shell emissions. These may live outside
   //    <harnessDir> (e.g. .agents/skills/ and .github/); the generated
   //    root inventory includes them automatically.
   if (m.emit) {
     m.emit({
+      method: coreBuild.method,
       repoRoot: REPO_ROOT,
       coreRoot: CORE_ROOT,
       harnessRoot: harnessSrcRoot,
@@ -1107,6 +1089,16 @@ function buildTree(
       tierCap: TIER_CAP,
     });
   }
+  // 5. Generate runners by composing aidlc-runner-gen's CLIs against the
+  //    assembled tree (write + scopes). AIDLC_HARNESS_DIR steers harnessDir()
+  //    so generated prose names the correct dir; AIDLC_SRC roots the tree.
+  //    Codex skips this — it ships no <harnessDir>/skills/; emit() composes the
+  //    whole skill set into .agents/skills/ instead.
+  if (!m.skipRunnerGen) {
+    runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "write"]);
+    runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "scopes"]);
+  }
+
   expandCursorToolAllows(treeRoot, m);
   expandClaudeToolAllows(treeRoot, m);
   expandKiroToolAllows(treeRoot, m);
@@ -1817,23 +1809,6 @@ function keepEarlierReleaseRegions(outRoot: string, manifest: HarnessManifest): 
   writeFileSync(skillPath, `${body}\n\n${EARLIER_RELEASE_REGIONS}\n`, "utf-8");
 }
 
-// Defense-in-depth backstop: rewrite any residual "<harnessDir>/rules/" →
-// "<harnessDir>/<rulesRename>/" in the compiled JSON path strings. Compile (run
-// under AIDLC_HARNESS_DIR) emits the renamed segment directly through
-// rulesSubdir(), so this normally matches nothing (guarded by the
-// `out !== s` check). It stays as a safety net in case a future code path emits
-// a literal "rules" segment that bypasses the seam. Slash-anchored, so it can
-// only touch the rules path family.
-function renameRulesInCompiledData(treeRoot: string, harnessDir: string, rulesRename: string): void {
-  for (const rel of COMPILED_DATA) {
-    const p = join(treeRoot, rel);
-    if (!existsSync(p)) continue;
-    const s = readFileSync(p, "utf-8");
-    const out = s.replaceAll(`${harnessDir}/rules/`, `${harnessDir}/${rulesRename}/`);
-    if (out !== s) writeFileSync(p, out);
-  }
-}
-
 function loadManifest(name: string): HarnessManifest {
   const mod = require(join(HARNESS_ROOT, name, "manifest.ts")) as { default: HarnessManifest };
   return mod.default;
@@ -2228,6 +2203,12 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
   process.exit(1);
 }
 
+const builtFrom = packageInputsFingerprint(REPO_ROOT);
+const loadedBuild = await loadCoreBuild({ coreRoot: CORE_ROOT, markdownBlocks });
+if (!loadedBuild.ok) {
+  throw new Error(`Cannot load the fresh Method: ${JSON.stringify(loadedBuild.refusal)}`);
+}
+const coreBuild = loadedBuild.value;
 if (check) {
   const problems = checkPackageDeterminism(targets);
   if (problems.length > 0) {
@@ -2235,12 +2216,14 @@ if (check) {
     for (const p of problems.slice(0, 40)) console.error("  " + p);
     process.exit(1);
   }
+  if (packageInputsFingerprint(REPO_ROOT) !== builtFrom) {
+    throw new Error("A packaging input changed during the determinism check; run it again.");
+  }
   console.log(
     `package --check: deterministic across two independent build(s) ` +
       `for ${targets.join(", ")}.`,
   );
 } else {
-  const builtFrom = packageInputsFingerprint(REPO_ROOT);
   forgetPackagedSources(REPO_ROOT, targets);
   cleanWriteOutputs(targets, named === undefined);
   for (const n of targets) {
