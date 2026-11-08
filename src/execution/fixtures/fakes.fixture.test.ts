@@ -6,7 +6,9 @@ import { artifactName } from "../../workflow-definition/domain/identities.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import {
   artifactsUnder,
+  chatOn,
   fixedClock,
+  guardsAsRecorded,
   installedMethod,
   knownPlan,
   memoryAuditLog,
@@ -97,6 +99,20 @@ describe("other fakes", () => {
       ok: true,
       value: methodSliceFixture,
     });
+  });
+
+  test("chatOn binds the fixture chat to the intent it was given", async () => {
+    expect(await chatOn(RUNNING_RECORD.id).current()).toMatchObject({
+      id: CHAT,
+      binding: { intent: RUNNING_RECORD.id, source: "switch" },
+    });
+  });
+
+  test("guardsAsRecorded adds no lock and lowers nothing", async () => {
+    expect([await guardsAsRecorded.lock(), await guardsAsRecorded.machineLowered()]).toEqual([
+      { kind: "unlocked" },
+      [],
+    ]);
   });
 
   test("the plan answers the fingerprint it was given", async () => {

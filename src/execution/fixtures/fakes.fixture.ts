@@ -1,20 +1,33 @@
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { accepted, refused } from "../../kernel/result.ts";
-import { projectPath, type Timestamp } from "../../kernel/values.ts";
+import { projectPath, timestamp, type Timestamp } from "../../kernel/values.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { HumanTurnHistory, MethodProvider } from "../application/boundary-ports.ts";
 import type {
   ArtifactLocations,
   AuditLog,
   Clock,
+  GuardEnvironment,
   PlanFingerprints,
   RecordStore,
+  Sessions,
 } from "../application/ports.ts";
 import type { AuditEntry, AuditEvent } from "../domain/audit.ts";
 import type { HumanEvidence } from "../domain/gate.ts";
-import { auditSequence, recordVersion, type PlanFingerprint } from "../domain/identities.ts";
+import {
+  auditSequence,
+  recordVersion,
+  spaceName,
+  type IntentId,
+  type PlanFingerprint,
+} from "../domain/identities.ts";
 import { orderOf } from "../domain/moment.ts";
 import type { WorkflowRecord } from "../domain/workflow-record.ts";
+import { CHAT } from "./workflow-record.fixture.ts";
+
+const SESSION_STARTED = accept(timestamp("2026-11-08T08:00:00Z"));
+
+const DEFAULT_SPACE = accept(spaceName("default"));
 
 export type MemoryRecordStore = RecordStore & {
   readonly stored: () => WorkflowRecord | null;
@@ -86,6 +99,23 @@ export const artifactsUnder = (folder: string): ArtifactLocations => ({
   destinationOf: ({ record, unit, artifact }) =>
     accept(projectPath(`${folder}/${record.slug}/${unit ?? "intent"}/${artifact}.md`)),
 });
+
+export const chatOn = (intent: IntentId | null): Sessions => ({
+  current: () =>
+    Promise.resolve({
+      id: CHAT,
+      startedAt: SESSION_STARTED,
+      binding:
+        intent === null
+          ? null
+          : { space: DEFAULT_SPACE, intent, boundAt: SESSION_STARTED, source: "switch" },
+    }),
+});
+
+export const guardsAsRecorded: GuardEnvironment = {
+  lock: () => Promise.resolve({ kind: "unlocked" }),
+  machineLowered: () => Promise.resolve([]),
+};
 
 export const knownPlan = (fingerprint: PlanFingerprint | null): PlanFingerprints => ({
   current: () => Promise.resolve(fingerprint),

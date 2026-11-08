@@ -7,12 +7,11 @@ import type {
 } from "../../workflow-definition/domain/identities.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
-import type { ReviewClass } from "../../workflow-definition/domain/vocabulary.ts";
 import type { Gate } from "./gate.ts";
 import type { UnitName } from "./identities.ts";
 import { presenceRequirement } from "./presence.ts";
 import type { ReviewAttempt } from "./review.ts";
-import { nextReviewStep, reviewClassFor } from "./review-attempt.ts";
+import { nextReviewStep, stageReviewClass } from "./review-attempt.ts";
 import { moveStage } from "./stage-progress.ts";
 import type { TransitionCause } from "./transition.ts";
 import {
@@ -96,17 +95,13 @@ const atGate = (placed: Placed): RouteStep => {
     : { kind: "ask-person", gate, stage: placed.stage };
 };
 
-const scopeCapOf = (placed: Placed): ReviewClass | null =>
-  placed.context.method.scopes.find((scope) => scope.name === placed.record.scope)?.reviewCap ?? null;
-
 const awaitingApproval = (placed: Placed): RouteStep => {
   const step = nextReviewStep(placed.record, {
     at: { stage: placed.state.stage, unit: placed.state.unit },
     policy: placed.stage.review,
-    reviewClass: reviewClassFor({
-      declared: placed.stage.review,
-      override: placed.record.settings.reviewOverride,
-      scopeCap: scopeCapOf(placed),
+    reviewClass: stageReviewClass(placed.record, {
+      method: placed.context.method,
+      stage: placed.stage,
     }),
     personAsked: placed.context.personAsked,
     time: placed.context.time,

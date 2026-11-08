@@ -2,6 +2,8 @@ import type { Result } from "../../kernel/result.ts";
 import type { ProjectPath, Timestamp } from "../../kernel/values.ts";
 import type { ArtifactName, StageSlug } from "../../workflow-definition/domain/identities.ts";
 import type { AuditEntry, AuditEvent } from "../domain/audit.ts";
+import type { GuardId } from "../domain/guard.ts";
+import type { PolicyLock } from "../domain/guard-standing.ts";
 import type {
   AuditSequence,
   IntentId,
@@ -44,6 +46,11 @@ export interface ArtifactLocations {
     readonly unit: UnitName | null;
     readonly artifact: ArtifactName;
   }): ProjectPath;
+}
+
+export interface GuardEnvironment {
+  lock(): Promise<PolicyLock>;
+  machineLowered(): Promise<readonly GuardId[]>;
 }
 
 export interface PlanFingerprints {

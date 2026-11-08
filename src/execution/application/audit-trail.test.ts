@@ -38,4 +38,31 @@ describe("auditTrail", () => {
       { sequence: 3, causedBy: 1, fact: { transition: { kind: "resume" } } },
     ]);
   });
+
+  test("records facts after an event already on the trail, as its effects", async () => {
+    const log = memoryAuditLog([]);
+    const trail = auditTrail(log);
+    const observed = await trail.record(scene, { kind: "host-event", point: "stop" });
+
+    await trail.recordAfter(observed, [{ kind: "transition", transition: { kind: "park", at: scene.at } }]);
+
+    expect(log.events()).toMatchObject([
+      { sequence: 1, causedBy: null },
+      { ...scene, sequence: 2, causedBy: 1, fact: { transition: { kind: "park" } } },
+    ]);
+  });
+
+  test("records facts with no single cause, in order", async () => {
+    const log = memoryAuditLog([]);
+
+    await auditTrail(log).recordAll(scene, [
+      { kind: "host-event", point: "session-start" },
+      { kind: "host-event", point: "user-prompt" },
+    ]);
+
+    expect(log.events()).toMatchObject([
+      { sequence: 1, causedBy: null, fact: { point: "session-start" } },
+      { sequence: 2, causedBy: null, fact: { point: "user-prompt" } },
+    ]);
+  });
 });

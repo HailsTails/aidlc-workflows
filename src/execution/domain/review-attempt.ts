@@ -1,7 +1,8 @@
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { Timestamp } from "../../kernel/values.ts";
 import type { AgentSlug, ArtifactName } from "../../workflow-definition/domain/identities.ts";
-import type { ReviewPolicy } from "../../workflow-definition/domain/stage.ts";
+import type { Method } from "../../workflow-definition/domain/method.ts";
+import type { ReviewPolicy, Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ReviewClass } from "../../workflow-definition/domain/vocabulary.ts";
 import type { Approval } from "./gate.ts";
 import { orderOf } from "./moment.ts";
@@ -28,6 +29,18 @@ export const reviewClassFor = (sources: ReviewClassSources): ReviewClass => {
   const ceiling = sources.override ?? sources.scopeCap ?? declared;
   return lower(declared, ceiling);
 };
+
+export type StageInMethod = {
+  readonly method: Method;
+  readonly stage: Stage;
+};
+
+export const stageReviewClass = (record: WorkflowRecord, placed: StageInMethod): ReviewClass =>
+  reviewClassFor({
+    declared: placed.stage.review,
+    override: record.settings.reviewOverride,
+    scopeCap: placed.method.scopes.find((scope) => scope.name === record.scope)?.reviewCap ?? null,
+  });
 
 export const reviewBudget = (reviewClass: ReviewClass, policy: ReviewPolicy | null): number => {
   switch (reviewClass) {

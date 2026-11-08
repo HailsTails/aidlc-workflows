@@ -19,6 +19,10 @@ export type AuditTrail = {
   readonly record: (scene: AuditScene, fact: AuditFact) => Promise<AuditEvent>;
   readonly recordAll: (scene: AuditScene, facts: readonly AuditFact[]) => Promise<readonly AuditEvent[]>;
   readonly recordCaused: (facts: CausedFacts) => Promise<readonly AuditEvent[]>;
+  readonly recordAfter: (
+    cause: AuditEvent,
+    facts: readonly AuditFact[],
+  ) => Promise<readonly AuditEvent[]>;
 };
 
 type Appending = {
@@ -53,5 +57,12 @@ export const auditTrail = (log: AuditLog): AuditTrail => {
     return [cause, ...effects];
   };
 
-  return { record, recordAll, recordCaused };
+  const recordAfter = (cause: AuditEvent, facts: readonly AuditFact[]): Promise<readonly AuditEvent[]> =>
+    appendInOrder(log, {
+      scene: { intent: cause.intent, session: cause.session, at: cause.at },
+      causedBy: cause.sequence,
+      facts,
+    });
+
+  return { record, recordAll, recordCaused, recordAfter };
 };
