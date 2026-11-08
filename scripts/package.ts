@@ -60,12 +60,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { readAuthoredCore } from "../src/workflow-definition/adapters/authored-core-reader.ts";
-import { createSourceFiles } from "../src/workflow-definition/adapters/source-files.ts";
-import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
-import { compileCoreMethod } from "../src/workflow-definition/domain/compile-core-method.ts";
-import { serializeCompiledMethod } from "../src/projection/adapters/compiled-method-file.ts";
-import { distributionId, projectPath } from "../src/kernel/values.ts";
+import { loadCoreBuild } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import type { HarnessManifest } from "./manifest-types.ts";
 import {
@@ -1056,18 +1051,14 @@ function buildTree(
   //     hook source bytes plus the manifest-derived target table.
   emitPluginAuthoringData(treeRoot);
 
-  const hostDirectory = projectPath(harnessDir);
-  const hostDistribution = distributionId(m.name);
-  const memoryRoot = projectPath(relative(outRoot, memoryDir).replaceAll("\\", "/"));
-  if (!hostDirectory.ok || !hostDistribution.ok || !memoryRoot.ok) {
-    throw new Error("The build host and memory root must have portable identities");
+  const projected = coreBuild.project({ name: m.name, directory: harnessDir,
+    memoryRoot: relative(outRoot, memoryDir).replaceAll("\\", "/") });
+  if (!projected.ok) {
+    throw new Error(`Cannot project the fresh Method: ${JSON.stringify(projected.refusal)}`);
   }
-  const compiled = serializeCompiledMethod({ method: freshMethod,
-    host: { distribution: hostDistribution.value, directory: hostDirectory.value },
-    memoryRoot: memoryRoot.value });
   mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
-  writeFileSync(join(treeRoot, "tools", "data", "stage-graph.json"), compiled.graph);
-  writeFileSync(join(treeRoot, "tools", "data", "scope-grid.json"), compiled.grid);
+  writeFileSync(join(treeRoot, "tools", "data", "stage-graph.json"), projected.value.graph);
+  writeFileSync(join(treeRoot, "tools", "data", "scope-grid.json"), projected.value.grid);
 
   // 3b. Emit tools/data/harness.json — the runtime's open-set source of truth
   //     for the rules-subdir rename. rulesSubdir() (aidlc-lib.ts) reads it so a
@@ -1086,7 +1077,7 @@ function buildTree(
   //    root inventory includes them automatically.
   if (m.emit) {
     m.emit({
-      method: freshMethod,
+      method: coreBuild.method,
       repoRoot: REPO_ROOT,
       coreRoot: CORE_ROOT,
       harnessRoot: harnessSrcRoot,
@@ -2213,14 +2204,11 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
 }
 
 const builtFrom = packageInputsFingerprint(REPO_ROOT);
-const authoredCore = await readAuthoredCore({ sourceFiles: createSourceFiles(CORE_ROOT),
-  outliner: createMarkdownOutliner(markdownBlocks), hooks: [] });
-if (!authoredCore.ok) throw new Error(`Invalid authored Method: ${JSON.stringify(authoredCore.refusal)}`);
-const freshCompilation = compileCoreMethod(authoredCore.value.core);
-if (!freshCompilation.ok) {
-  throw new Error(`Cannot compile the fresh Method: ${JSON.stringify(freshCompilation.refusal)}`);
+const loadedBuild = await loadCoreBuild({ coreRoot: CORE_ROOT, markdownBlocks });
+if (!loadedBuild.ok) {
+  throw new Error(`Cannot load the fresh Method: ${JSON.stringify(loadedBuild.refusal)}`);
 }
-const freshMethod = freshCompilation.value;
+const coreBuild = loadedBuild.value;
 if (check) {
   const problems = checkPackageDeterminism(targets);
   if (problems.length > 0) {

@@ -734,9 +734,11 @@ stage but has no test of its own.
 
 ## Parser and emitter
 
-`bun scripts/package.ts` loads the authored core through
-`src/workflow-definition/adapters/authored-core-reader.ts` and compiles one
-accepted Method with `compileCoreMethod`. Projection serializes that Method into
+`bun scripts/package.ts` calls `src/cli/core-build-root.ts`. That root loads
+and compiles one accepted Method through Workflow Definition's `core-root.ts`,
+then projects its graph for each host through Projection's `core-root.ts`.
+The contexts retain their authored reader and `compileCoreMethod` implementation.
+Projection serializes that Method into
 each harness tree through `src/projection/adapters/compiled-method-file.ts`.
 Fresh builds do not invoke the installed graph compiler or rewrite compiled paths.
 
