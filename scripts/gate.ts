@@ -28,12 +28,16 @@ import { jsonReader } from "../lint/gate/adapters/json-reader.ts";
 import { lanesFile } from "../lint/gate/adapters/lanes-file.ts";
 import { nameListFile } from "../lint/gate/adapters/name-list-file.ts";
 import { processRunner } from "../lint/gate/adapters/process-runner.ts";
+import { runTemp } from "../lint/gate/adapters/run-temp.ts";
 import { ratchetRecords } from "../lint/gate/adapters/ratchet-records.ts";
 import {
   LIB_DECLARATIONS,
   MONOLITH_TEST,
   RECORD_LOCATIONS,
 } from "../lint/gate/adapters/record-locations.ts";
+import { capabilityProbes } from "../lint/gate/adapters/capability-probes.ts";
+import { environmentExclusions } from "../lint/gate/adapters/environment-exclusions.ts";
+import { legacyEnvironment, legacySuites } from "../lint/gate/adapters/legacy-suites.ts";
 import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
 import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
@@ -71,7 +75,10 @@ const LOOSE_TESTS = ["tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts"];
 
 const workspace = fileWorkspace(ROOT);
 const repository = gitRepository(ROOT);
-const runner = processRunner(ROOT);
+const temp = runTemp(ROOT);
+process.on("exit", temp.dispose);
+
+const runner = processRunner(ROOT, temp.path);
 const records = ratchetRecords({ repository, workspace, locations: RECORD_LOCATIONS });
 const selection = disciplinesFiles(workspace);
 const audit = disciplineCore({
@@ -118,6 +125,7 @@ const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
 
 const TEST_SUITES: readonly TestSuite[] = [
   ...SOURCE_SUITES,
+  ...legacySuites({ bun: BUN, environment: legacyEnvironment(process.env) }),
   {
     name: "lint",
     triggers: ["lint/**", "scripts/gate.ts", "eslint.config.ts", "eslint.config.test.ts"],
@@ -160,6 +168,8 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     workspace,
     suites: TEST_SUITES,
     looseTests: LOOSE_TESTS,
+    capabilities: capabilityProbes(temp.path),
+    exclusions: environmentExclusions(workspace),
     testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
   }),
   goldensCheck(goldens),
