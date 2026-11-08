@@ -18,6 +18,54 @@ describe("boundaryConfig", () => {
     );
   });
 
+  test("keeps the kernel pure", () => {
+    const messages = new Linter({ configType: "flat" }).verify(
+      'import { z } from "zod";\nexport const name = z.string();\n',
+      BOUNDARIES,
+      { filename: "src/kernel/names.ts" },
+    );
+
+    expect(messages).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports", line: 1 }),
+    );
+  });
+
+  test("lets a domain test import bun:test and its own context's fixtures", () => {
+    const messages = new Linter({ configType: "flat" }).verify(
+      'import { expect, test } from "bun:test";\n' +
+        'import { stage } from "../fixtures/identities.fixture.ts";\n' +
+        'test("stage", () => expect(stage).toBeDefined());\n',
+      BOUNDARIES,
+      { filename: "src/workflow-definition/domain/stage.test.ts" },
+    );
+
+    expect(messages).toEqual([]);
+  });
+
+  test("still refuses an adapter import in a domain test", () => {
+    const messages = new Linter({ configType: "flat" }).verify(
+      'import { stageFile } from "../adapters/stage-file.ts";\nexport const file = stageFile;\n',
+      BOUNDARIES,
+      { filename: "src/workflow-definition/domain/stage.test.ts" },
+    );
+
+    expect(messages).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports", line: 1 }),
+    );
+  });
+
+  test("lets an adapter test import its own context's fixtures", () => {
+    const messages = new Linter({ configType: "flat" }).verify(
+      'import { expect, test } from "bun:test";\n' +
+        'import { stage } from "../fixtures/identities.fixture.ts";\n' +
+        'test("stage", () => expect(stage).toBeDefined());\n',
+      BOUNDARIES,
+      { filename: "src/workflow-definition/adapters/stage-file.test.ts" },
+    );
+
+    expect(messages).toEqual([]);
+  });
+
   test("refuses one context reaching into another's adapters", () => {
     const messages = new Linter({ configType: "flat" }).verify(
       'import { stageFile } from "../../workflow-definition/adapters/stage-file.ts";\n' +

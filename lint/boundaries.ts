@@ -22,7 +22,7 @@ import {
   methodSyntaxFor,
   ownershipInSrc,
   purityOf,
-  pureTestImportRestrictions,
+  testImportRestrictions,
   srcImportRestrictions,
   type ImportRestriction,
   type Layer,
@@ -32,6 +32,14 @@ import {
 type Territory = keyof typeof LEGACY_TERRITORY;
 
 const LAYERS: readonly Layer[] = ["domain", "application", "adapters", "fixtures", "root"];
+
+const KERNEL_LAYERS: readonly Layer[] = ["domain", "fixtures"];
+
+const layersOf = (context: ContextName): readonly Layer[] =>
+  context === "kernel" ? KERNEL_LAYERS : LAYERS;
+
+const testedLayersOf = (context: ContextName): readonly Layer[] =>
+  layersOf(context).filter((layer) => layer !== "fixtures");
 
 const LEGACY_FILES = ["core/**/*.ts", "scripts/**/*.ts", "plugins/*/tools/**/*.ts"];
 
@@ -111,18 +119,16 @@ const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   },
 });
 
-const srcPureTestConfig = (context: ContextName, layer: Layer): Linter.Config => ({
+const srcTestConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   name: `aidlc/src/${context}/${layer}/tests`,
   files: srcFiles(context, layer).map((glob) => glob.replace(/\.ts$/, ".test.ts")),
   rules: {
     "no-restricted-imports": [
       "error",
-      { patterns: [...pureTestImportRestrictions({ context, layer })] },
+      { patterns: [...testImportRestrictions({ context, layer })] },
     ],
   },
 });
-
-const PURE_LAYERS: readonly Layer[] = ["domain", "application"];
 
 const hostBundleConfig: Linter.Config = {
   name: "aidlc/src/hosts",
@@ -189,8 +195,10 @@ export const boundaryConfig: Linter.Config[] = [
   ...TERRITORIES.map(legacyTerritoryConfig),
   monolithConfig,
   harnessTreeConfig,
-  ...CONTEXTS.flatMap((context) => LAYERS.map((layer) => srcLayerConfig(context, layer))),
-  ...CONTEXTS.flatMap((context) => PURE_LAYERS.map((layer) => srcPureTestConfig(context, layer))),
+  ...CONTEXTS.flatMap((context) => layersOf(context).map((layer) => srcLayerConfig(context, layer))),
+  ...CONTEXTS.flatMap((context) =>
+    testedLayersOf(context).map((layer) => srcTestConfig(context, layer)),
+  ),
   hostBundleConfig,
   ...LEGACY_BRIDGES.flatMap(legacyBridgeConfigs),
   {

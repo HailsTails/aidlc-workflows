@@ -135,10 +135,14 @@ const testDiscipline: readonly ImportRestriction[] = [
   },
 ];
 
-export const pureTestImportRestrictions = (placement: Placement): ImportRestriction[] => [
+const layerTestDiscipline = (layer: Layer): readonly ImportRestriction[] =>
+  purityOf(layer) === "pure" ? testDiscipline : [];
+
+export const testImportRestrictions = (placement: Placement): ImportRestriction[] => [
   ...otherContextRestrictions(placement),
   ...OWN_LAYER_RESTRICTIONS[placement.layer],
-  ...testDiscipline,
+  ...layerTestDiscipline(placement.layer),
+  ...hostReachFor(placement),
   monolithReachBack,
 ];
 
