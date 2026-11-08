@@ -156,6 +156,318 @@
         "readback": "ESLint's listener keys are vendor selectors and node names, therefore a rule cannot rename them, therefore the listeners for specifier statements are spelled ImportDeclaration, ExportNamedDeclaration and ExportAllDeclaration, therefore lint/node-import-protocol.ts names its visitor keys that way.",
         "owner": "Lane G (Guardrails) in lanes.json"
       }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/agent-file.ts",
+      "reason": "Decodes upstream agent frontmatter, whose field names such as display_name are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/agent-file.ts declare snake_case schema keys such as display_name?",
+            "because": "Its Zod schema decodes agent frontmatter, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/agents/aidlc-architect-agent.md frontmatter display_name"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: display_name still appears in the upstream agent frontmatter (core/agents/aidlc-architect-agent.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/agent-file.ts declares snake_case schema keys such as display_name to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/plugin-files.ts",
+      "reason": "Decodes upstream plugin contribution manifests, whose field names such as requires_stage are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/plugin-files.ts declare snake_case schema keys such as requires_stage?",
+            "because": "Its Zod schema decodes plugin contribution manifests, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "plugins/test-pro/README.md documents requires_stage and required_sections"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: requires_stage still appears in the upstream plugin contribution manifests (plugins/test-pro/README.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/plugin-files.ts declares snake_case schema keys such as requires_stage to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/rule-file.ts",
+      "reason": "Decodes upstream rule frontmatter, whose field names such as stale_after are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/rule-file.ts declare snake_case schema keys such as stale_after?",
+            "because": "Its Zod schema decodes rule frontmatter, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/tools/aidlc-rule-schema.ts reads stale_after; docs/reference/08-rule-system.md"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: stale_after still appears in the upstream rule frontmatter (core/tools/aidlc-rule-schema.ts), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/rule-file.ts declares snake_case schema keys such as stale_after to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/scope-file.ts",
+      "reason": "Decodes upstream scope frontmatter, whose field names such as existing_code are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/scope-file.ts declare snake_case schema keys such as existing_code?",
+            "because": "Its Zod schema decodes scope frontmatter, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/scopes/aidlc-bugfix.md frontmatter existing_code"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: existing_code still appears in the upstream scope frontmatter (core/scopes/aidlc-bugfix.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/scope-file.ts declares snake_case schema keys such as existing_code to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/sensor-file.ts",
+      "reason": "Decodes upstream sensor manifests, whose field names such as default_severity are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/sensor-file.ts declare snake_case schema keys such as default_severity?",
+            "because": "Its Zod schema decodes sensor manifests, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/sensors/aidlc-claim-sources.md frontmatter default_severity"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: default_severity still appears in the upstream sensor manifests (core/sensors/aidlc-claim-sources.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/sensor-file.ts declares snake_case schema keys such as default_severity to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/workflow-definition/adapters/stage-file.ts",
+      "reason": "Decodes upstream stage frontmatter, whose field names such as lead_agent are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/stage-file.ts declare snake_case schema keys such as lead_agent?",
+            "because": "Its Zod schema decodes stage frontmatter, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/aidlc-common/stages/construction/build-and-test.md frontmatter lead_agent"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: lead_agent still appears in the upstream stage frontmatter (core/aidlc-common/stages/construction/build-and-test.md), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/workflow-definition/adapters/stage-file.ts declares snake_case schema keys such as lead_agent to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "src/execution/adapters/intent-registry-file.ts",
+      "reason": "Decodes upstream the intent registry records, whose field names such as repos_named are snake_case on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/execution/adapters/intent-registry-file.ts declare snake_case schema keys such as repos_named?",
+            "because": "Its Zod schema decodes the intent registry records, whose authored field names are snake_case, so each key must match the name written on disk.",
+            "evidence": "core/tools/aidlc-lib.ts writes repos_named into each intent registry row"
+          },
+          {
+            "why": "Why are the authored field names on disk snake_case?",
+            "because": "Upstream AI-DLC defined these formats before the rebuild, and every shipped stage, agent, scope, sensor and rule file, every plugin and every installed project record was written in them.",
+            "evidence": "core/aidlc-common/stages, core/scopes and core/sensors carry these frontmatter fields"
+          },
+          {
+            "why": "Why can the rebuild not rename fields that shipped and installed files were written in?",
+            "because": "Renaming them would break every team’s own files and plugins and every existing install’s records, which AI-DLC promises to read as they are.",
+            "evidence": "AGENTS.md section The factory works with what the person brings"
+          },
+          {
+            "why": "Why does AI-DLC promise to read teams’ files and existing installs as they are?",
+            "because": "The project and its records belong to the person, so the factory uses their materials unchanged instead of rewriting them to suit itself.",
+            "evidence": "AGENTS.md: everything else in the project is the person’s"
+          },
+          {
+            "why": "Why does the factory use the person’s materials unchanged?",
+            "because": "The first tenet is that the human drives the engine, and changing a person’s files unasked takes the wheel from them.",
+            "evidence": "AGENTS.md section The four tenets, in this order"
+          }
+        ],
+        "rootCause": "The first tenet keeps the person’s files unchanged, so their snake_case format names stay, and only the adapter that decodes them spells them.",
+        "rootCheck": "Ran git grep on 2026-11-08: repos_named still appears in the upstream the intent registry records (core/tools/aidlc-lib.ts), and no module outside src/*/adapters imports the file schemas.",
+        "readback": "The first tenet keeps the person’s files unchanged, therefore the upstream formats keep their snake_case field names, therefore src/execution/adapters/intent-registry-file.ts declares snake_case schema keys such as repos_named to decode them.",
+        "owner": "AGENTS.md four tenets; the adapter belongs to its lane in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-2#cast-expressions",
+      "file": "src/kernel/brand.ts",
+      "reason": "The one place a validated value becomes its branded type; every constructor validates first and then calls it.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/kernel/brand.ts cast its input to the branded type?",
+            "because": "A branded type carries a phantom marker that no runtime value has, so the compiler can only produce one through a type assertion.",
+            "evidence": "src/kernel/brand.ts declares brandName as a unique symbol with no runtime value"
+          },
+          {
+            "why": "Why do identity values carry a phantom marker the runtime never has?",
+            "because": "The contracts brand identity values such as ProjectPath and ContentHash so a validated value cannot be swapped for a raw string at compile time.",
+            "evidence": "src/kernel/values.ts constructors return ProjectPath, SourcePath and ContentHash"
+          },
+          {
+            "why": "Why must a validated identity value be kept apart from a raw string at compile time?",
+            "because": "Each constructor checks portability or format once, and the type is the only proof downstream code holds that the check ran.",
+            "evidence": "src/kernel/values.ts projectPath validates the segments before it brands"
+          },
+          {
+            "why": "Why is the type the only proof downstream code holds that the check ran?",
+            "because": "Domain modules carry no parsing of their own; they trust values that were validated where they entered.",
+            "evidence": "git grep on 2026-11-08 finds no zod import under src/workflow-definition/domain or src/kernel/values.ts"
+          },
+          {
+            "why": "Why do domain modules carry no parsing of their own?",
+            "because": "The clean architecture keeps domain and application pure and puts parsing in adapters and constructors, so each value is validated in exactly one constructor.",
+            "evidence": "lint/restrictions.ts purityRestriction forbids package imports in domain and application"
+          }
+        ],
+        "rootCause": "The clean architecture validates each value in exactly one constructor, so the assertion that brands it exists once, in the kernel helper every constructor calls.",
+        "rootCheck": "Ran the discipline-core audit on 2026-11-08: its only CD-2 finding in src is src/kernel/brand.ts line 11.",
+        "readback": "The clean architecture validates each value in exactly one constructor, therefore the branded type is the downstream proof, therefore identity values carry a phantom marker, therefore src/kernel/brand.ts casts its input to the branded type.",
+        "owner": "Lane 0 (Contracts) in lanes.json"
+      }
     }
   ]
 }

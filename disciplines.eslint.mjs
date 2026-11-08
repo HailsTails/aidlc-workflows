@@ -80,4 +80,39 @@ export default [
     files: ["lint/node-import-protocol.ts"],
     rules: { "discipline-cd6/naming-convention": "off" },
   },
+  {
+    name: "discipline-core/authorised-location/CD-6#naming-convention/src/execution/adapters/intent-registry-file.ts",
+    files: ["src/execution/adapters/intent-registry-file.ts"],
+    rules: { "discipline-cd6/naming-convention": "off" },
+  },
+  {
+    name: "discipline-core/authorised-location/CD-6#naming-convention/src/workflow-definition/adapters/agent-file.ts",
+    files: ["src/workflow-definition/adapters/agent-file.ts"],
+    rules: { "discipline-cd6/naming-convention": "off" },
+  },
+  {
+    name: "discipline-core/authorised-location/CD-6#naming-convention/src/workflow-definition/adapters/plugin-files.ts",
+    files: ["src/workflow-definition/adapters/plugin-files.ts"],
+    rules: { "discipline-cd6/naming-convention": "off" },
+  },
+  {
+    name: "discipline-core/authorised-location/CD-6#naming-convention/src/workflow-definition/adapters/rule-file.ts",
+    files: ["src/workflow-definition/adapters/rule-file.ts"],
+    rules: { "discipline-cd6/naming-convention": "off" },
+  },
+  {
+    name: "discipline-core/authorised-location/CD-6#naming-convention/src/workflow-definition/adapters/scope-file.ts",
+    files: ["src/workflow-definition/adapters/scope-file.ts"],
+    rules: { "discipline-cd6/naming-convention": "off" },
+  },
+  {
+    name: "discipline-core/authorised-location/CD-6#naming-convention/src/workflow-definition/adapters/sensor-file.ts",
+    files: ["src/workflow-definition/adapters/sensor-file.ts"],
+    rules: { "discipline-cd6/naming-convention": "off" },
+  },
+  {
+    name: "discipline-core/authorised-location/CD-6#naming-convention/src/workflow-definition/adapters/stage-file.ts",
+    files: ["src/workflow-definition/adapters/stage-file.ts"],
+    rules: { "discipline-cd6/naming-convention": "off" },
+  },
 ];
