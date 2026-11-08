@@ -4,6 +4,45 @@
     {
       "kind": "authorised-location",
       "clause": "CD-19#import-boundaries",
+      "file": "src/projection/adapters/legacy-runners.ts",
+      "reason": "Projection’s single checked capability adapter for the frozen runner API, including its isolated subprocess and temporary captured-input/output frame. Retires with this legacy bridge in phase 2 (R1).",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does legacy-runners.ts import node:child_process, node:fs, node:path?",
+            "because": "The frozen runner module binds environment at import and writes native command files, so one isolated subprocess must supply its captured inputs and collect its owned output values.",
+            "evidence": "prepareLegacyRunners, executeFrame and runChild in src/projection/adapters/legacy-runners.ts confine subprocess launch, temporary writes and output collection to this checked module; Lane 0 approved this site in B1 handoff 2 of 2 on 2026-11-08."
+          },
+          {
+            "why": "Why must the frozen runner module execute in an isolated captured-input frame?",
+            "because": "Phase 1 freezes shipped runner decisions and output bytes while the build caller moves to Method plus the single captured source snapshot; a second authored reader or copied formatter would duplicate an owner.",
+            "evidence": "Lane 0 B1 handoffs on the AIDLC board; lint/context-map.ts names this file as the aidlc-runner-gen LEGACY_BRIDGES reader."
+          },
+          {
+            "why": "Why does the build caller receive owned values instead of those platform capabilities?",
+            "because": "Projection’s host adapters place typed files without reading the filesystem or inheriting the frozen module’s process-global state.",
+            "evidence": "src/projection/application/ports.ts owns NativeCommandFile and CommandSource; command-renderers.ts places their values through the Harness members."
+          },
+          {
+            "why": "Why must host adapters avoid the filesystem and frozen process-global state?",
+            "because": "Projection’s domain and application remain pure and its host rendering outcomes can be checked with concrete values rather than real IO.",
+            "evidence": "lint/restrictions.ts purity and test disciplines; the co-located command-renderer tests exercise placement, companion files and refusals in memory."
+          },
+          {
+            "why": "Why do Projection’s domain and application remain pure so rendering outcomes can be checked with concrete values rather than real IO?",
+            "because": "The context map and CD-19 confine runtime dependencies to one wrapping boundary, keeping decision logic and its tests independent of platform capabilities.",
+            "evidence": "lint/context-map.ts declares Projection dependencies; lint/restrictions.ts purity rules and the CD-19 rule require one capability wrapping boundary."
+          }
+        ],
+        "rootCause": "Phase 1 retains the shipped runner owner behind one Projection capability adapter, leaving Method orchestration and host placement independent of platform IO until the bridge retires.",
+        "rootCheck": "2026-11-08: read the CD-19 README, lint/context-map.ts LEGACY_BRIDGES and all exception entries. legacy-runners.ts is the named runner reader and Projection has no other IO registration. Inspected frozen writeRunner: both SKILL.md and companion files are created as regular UTF-8 files without chmod.",
+        "readback": "CD-19 confines the capability to one site, therefore Projection’s pure renderers receive owned values, therefore the frozen environment-bound writer runs in an isolated captured-input frame, therefore legacy-runners.ts alone imports spawn, filesystem and path capabilities.",
+        "owner": "codex/integration authored this record; Lane 0 approved the location in B1 handoff 2 of 2 on 2026-11-08; G jointly owns the registry."
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
       "file": "src/workflow-definition/adapters/source-files.ts",
       "reason": "The single adapter through which Workflow Definition reads authored method sources from disk.",
       "whyChain": {
