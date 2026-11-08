@@ -104,12 +104,36 @@ export type LegacyBridge = {
   readonly retiresWhen: string;
 };
 
+const SHIPPED_OWNER_MOVES =
+  "Phase 2: its owner moves into src and ships in the runtime bundle (R1).";
+
+const shippedOwner = (name: string, readBy: string): LegacyBridge => ({
+  module: `core/tools/${name}.ts`,
+  readBy,
+  retiresWhen: SHIPPED_OWNER_MOVES,
+});
+
 export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   {
     module: "core/tools/aidlc-markdown.ts",
     readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
     retiresWhen: "Packaging's ToolBundler ships src; the interpreter then moves into src.",
   },
+  shippedOwner("aidlc-model-policy", "src/projection/adapters/legacy-agent-surfaces.ts"),
+  shippedOwner("aidlc-tiers", "src/projection/adapters/legacy-tiers.ts"),
+  shippedOwner("aidlc-runner-gen", "src/projection/adapters/legacy-runners.ts"),
+  shippedOwner("aidlc-utility", "src/projection/adapters/legacy-skill-tables.ts"),
+  shippedOwner("aidlc-settings", "src/projection/adapters/legacy-settings-schema.ts"),
+  shippedOwner("aidlc-command", "src/projection/adapters/legacy-trusted-commands.ts"),
+  shippedOwner("aidlc-runtime-budget", "src/projection/adapters/legacy-runtime-budget.ts"),
+  shippedOwner("aidlc-launcher-voucher", "src/projection/adapters/legacy-launcher.ts"),
+  shippedOwner("aidlc-includes", "src/projection/adapters/legacy-includes.ts"),
+  shippedOwner("aidlc-inline-context", "src/projection/adapters/legacy-format-docs.ts"),
+  shippedOwner("aidlc-plugin-emit", "src/projection/adapters/legacy-plugin-emit.ts"),
+  shippedOwner("aidlc", "src/projection/adapters/legacy-dispatcher.ts"),
+  shippedOwner("aidlc-distribution", "src/packaging/adapters/legacy-distribution.ts"),
+  shippedOwner("aidlc-version", "src/packaging/adapters/legacy-version.ts"),
+  shippedOwner("aidlc-channel", "src/packaging/adapters/legacy-channel.ts"),
 ];
 
 const tools = (...names: readonly string[]): readonly string[] =>
