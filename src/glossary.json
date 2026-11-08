@@ -297,5 +297,6 @@
 {"name":"LifecycleAttachment","context":"workflow-definition","kind":"concept","definition":"A hook attached at a lifecycle point."},
 {"name":"ToolAttachment","context":"workflow-definition","kind":"concept","definition":"A hook attached before or after a tool call, for the tools its ToolMatch names."},
 {"name":"HookAttachment","context":"workflow-definition","kind":"concept","definition":"One place a hook runs: a lifecycle attachment or a tool attachment."},
-{"name":"HookPlacement","context":"workflow-definition","kind":"concept","definition":"Whether a hook gets its own host entry or runs inside a named group of hooks, in declaration order."}
+{"name":"HookPlacement","context":"workflow-definition","kind":"concept","definition":"Whether a hook gets its own host entry or runs inside a named group of hooks, in declaration order."},
+{"name":"HookAudience","context":"workflow-definition","kind":"concept","definition":"Which agents an attachment applies to: every agent, or the stage reviewers the Method's ReviewPolicy names. Definition selects; a host adapter places the registration."}
 ]

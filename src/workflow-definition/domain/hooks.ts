@@ -39,9 +39,18 @@ export type ToolMatch =
   | { readonly kind: "every-tool" }
   | { readonly kind: "only"; readonly targets: NonEmptyArray<ToolTarget> };
 
-export type LifecycleAttachment = { readonly point: LifecycleHookPoint };
+export type HookAudience = { readonly kind: "every-agent" } | { readonly kind: "stage-reviewers" };
 
-export type ToolAttachment = { readonly point: ToolHookPoint; readonly tools: ToolMatch };
+export type LifecycleAttachment = {
+  readonly point: LifecycleHookPoint;
+  readonly audience: HookAudience;
+};
+
+export type ToolAttachment = {
+  readonly point: ToolHookPoint;
+  readonly tools: ToolMatch;
+  readonly audience: HookAudience;
+};
 
 export type HookAttachment = LifecycleAttachment | ToolAttachment;
 
