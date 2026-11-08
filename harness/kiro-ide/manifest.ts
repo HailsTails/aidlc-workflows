@@ -19,7 +19,22 @@
 //     session start. IDE 0.x .kiro.hook files are not shipped: IDE 1.x never
 //     executes them.
 
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import {
+  absorbReviewerKnowledge, injectDelegatedKnowledgePreflight, inlineAgentSet,
+} from "../../scripts/agent-knowledge.ts";
+import {
+  modelAgentName, resolveModelPolicy, writeMarkdownAgentSurface,
+} from "../../core/tools/aidlc-model-policy.ts";
+import { accepted, refused } from "../../src/kernel/result.ts";
+import {
+  kiroAgentRenderer, type KiroModelSurface,
+} from "../../src/hosts/kiro/projection/agent-renderer.ts";
+import {
+  kiroIdePermissionLines,
+} from "../../src/hosts/kiro-ide/projection/agent-renderer.ts";
+import type { EmitContext, HarnessManifest } from "../../scripts/manifest-types.ts";
 import { kiroIdeCommandPath } from "../../src/hosts/kiro-ide/projection/command-renderer.ts";
 import {
   copyChannelDelegateShellDeny,
@@ -47,100 +62,17 @@ const DELEGATION_AGENTS = [
   "aidlc-operations-agent",
 ] as const;
 
-// The composer's one file: the grid it writes before each validate-grid run
-// (the proposalPath detect --json prints). It writes no scope and not the
-// scope grid; saving a scope is the engine's `scope save`.
-const composerProposalPath = "aidlc/spaces/*/intents/.aidlc-engine/composer-proposal.json";
-// A side-by-side worker's own unit records sit in its worktree, a top-level dot
-// entry (`.aidlc/worktrees/bolt-<id8>_<slug>`); its code there still asks.
-const spacePaths = ["aidlc/spaces/**", ".aidlc/worktrees/*/aidlc/spaces/**"];
-
-const quoted = (paths: readonly string[]) =>
-  paths.map((path) => `        - "${path}"`);
-
-// The name a plugin's agent stands under here: the guard admits it no role of
-// its own, so its deny is the one most personas carry.
 const PLUGIN_AGENT = "plugin-agent";
-
-// Each persona's shell deny admits what the guard admits that persona, and
-// refuses a risky shell form on any AI-DLC command.
 const copyShellDeny = new Map<string, string[]>(
   [...DELEGATION_AGENTS, PLUGIN_AGENT].map((agent) => [agent, [
     ...shellDenyLines(copyChannelDelegateShellDeny(".kiro", agent)),
     ...riskyFormDenyLines(["bun .kiro/tools/aidlc"]),
   ]]),
 );
-
-// Shell forms that can run, expand, or redirect more than the one command a
-// rule names. Kiro judges each part of a chain or substitution on its own
-// (delegate-shell-deny.ts), but a variable, a redirect, or a PowerShell array
-// or hashtable stays inside its part; the rest are listed too, so the rule
-// does not rest on how a Kiro build splits a command. A bare PowerShell
-// grouping is the terminal guard's (aidlcCodeArgumentHazard in the Kiro IDE
-// adapter).
-// An AI-DLC command holding one asks the person: the allow above names one
-// command, and such a form would stretch it to another. The asks start with
-// the same AI-DLC prefix as the persona deny (riskyFormDenyLines), so the
-// person's own commands (a build, a test, a probe, with their redirects and
-// chains) meet no AI-DLC rule: Kiro's own rules and their Always allow decide
-// them (#2199). The conductor (agents/aidlc-aidlc.md) carries the same list; t148
-// checks every agent; the native release spells the prefix `aidlc`
-// (rewriteKiroNativeAllowlists in scripts/package.ts).
-const SHELL_FORM_ASKS = RISKY_SHELL_FORMS.map((form) => `bun .kiro/tools/aidlc*${form}*`);
-
-// A persona's own tools and permissions are enforced only when the conductor
-// dispatches through invoke_sub_agent (IDE) or orchestrate_subagent (CLI); the
-// conductor's tools list selects those (agents/aidlc-aidlc.md). On that path its
-// shell allow is not applied, the conductor's is (delegate-shell-deny.ts); the
-// allow still serves a persona the person selects directly. tools is enforced on
-// every dispatch path. includeMcpJson gives a persona every server in the
-// person's workspace and user mcp.json; no rule allows an MCP call, so each
-// one asks.
-function personaFrontmatter(agent: string): string[] {
-  const writePaths = agent === "aidlc-composer-agent" ? [composerProposalPath] : spacePaths;
-  // Engine-owned trees are never a persona's to write; a deny beats every allow.
-  return [
-    `tools: ["read", "write", "shell"]`,
-    "includeMcpJson: true",
-    "permissions:",
-    "  rules:",
-    "    - capability: shell",
-    "      effect: allow",
-    "      match:",
-    `        - "bun .kiro/tools/aidlc-*"`,
-    // Every engine command goes through the dispatcher, which the hyphen
-    // pattern above does not reach. Its engine namespace only: the public
-    // verbs that change the machine's install keep asking, as on native.
-    `        - "bun .kiro/tools/aidlc.ts engine *"`,
-    // A read-only version check the personas run before a project's tests;
-    // the tests themselves keep asking.
-    `        - "bun --version"`,
-    // The conductor's asks: changing a setting and running a hook adapter
-    // stay the person's to approve, whichever agent runs them.
-    "    - capability: shell",
-    "      effect: ask",
-    "      match:",
-    `        - "bun .kiro/tools/aidlc.ts engine config set *"`,
-    `        - "bun .kiro/tools/aidlc.ts engine adapter *"`,
-    ...quoted(SHELL_FORM_ASKS),
-    ...(copyShellDeny.get(agent) ?? []),
-    "    - capability: fs_read",
-    "      effect: allow",
-    "      match:",
-    `        - "**"`,
-    "    - capability: filesystem",
-    "      effect: allow",
-    "      match:",
-    ...quoted(writePaths),
-    "    - capability: fs_write",
-    "      effect: deny",
-    "      match:",
-    `        - ".kiro/**"`,
-    `        - "aidlc/.aidlc-sessions/**"`,
-    // The person's words kept for a stage gate's Request Changes.
-    `        - "aidlc/spaces/*/intents/*/.aidlc-engine/gate-words/**"`,
-  ];
-}
+const permissionPolicy = {
+  shellDeny: (agent: string): readonly string[] => copyShellDeny.get(agent) ?? [],
+  riskyForms: RISKY_SHELL_FORMS,
+};
 
 // The one Kiro IDE step for AI-DLC that is not running in this window, word
 // for word wherever it appears (doctor, the refusals, the missed-reply line).
@@ -203,6 +135,55 @@ const KIRO_IDE_NOT_RUN_YET_TRUST =
 const KIRO_HOOKS_OFF_AGENT =
   "Kiro is not running AI-DLC's hooks in this folder. You cannot change that from inside the chat: " +
   "do not approve, retry, or ask the person to answer again.";
+
+const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKeys }) => {
+  if (agent.model.kind !== "tier") return refused({
+    kind: "render-failed", concept: "agent", name: agent.slug,
+    reason: "This core-agent bridge requires an authored model tier.",
+  });
+  const source = ctx.sources.find((file) => file.path === agent.source &&
+    file.owner.kind === agent.owner.kind && (file.owner.kind === "core" ||
+      (agent.owner.kind === "plugin" && file.owner.plugin === agent.owner.plugin)));
+  if (source === undefined) return refused({
+    kind: "render-failed", concept: "agent", name: agent.slug,
+    reason: "This core-agent bridge requires captured agent text.",
+  });
+  const authored = source.content.kind === "text" ? source.content.text :
+    Buffer.from(source.content.bytes).toString("utf-8");
+  const raw = injectDelegatedKnowledgePreflight(
+    absorbReviewerKnowledge(authored, agent.slug, ctx.coreRoot),
+    agent.slug, ctx.harnessDir,
+  );
+  const substituted = ctx.substituteToken(raw);
+  const text = substituted.replace(/\.kiro\/rules\/(?!default\.rules)/g, ".kiro/steering/");
+  const effective = resolveModelPolicy(
+    null, modelAgentName(agent.slug), agent.model.tier, "kiro", ctx.tierCap,
+  );
+  return accepted(writeMarkdownAgentSurface(text, effective, {
+    effortKey: "effort", removeKeys: [...removeKeys],
+  }));
+};
+
+const emitAgents = (ctx: EmitContext): void => {
+  const renderAgent = kiroAgentRenderer({
+    modelSurface: modelSurface(ctx),
+    promptLines: (agent) => kiroIdePermissionLines(permissionPolicy)(agent.slug),
+    inlineReading: (agent) => inlineAgentSet(ctx.coreRoot).has(agent.slug)
+      ? "reads-inline" : "dispatched-only",
+  });
+  for (const agent of ctx.method.agents) {
+    const rendering = renderAgent({ agent, knowledge: ctx.method.knowledge });
+    if (!rendering.ok) throw new Error(JSON.stringify(rendering.refusal));
+    for (const file of rendering.value) {
+      if (file.content.kind !== "text") {
+        throw new Error(`Kiro IDE emitted non-text content for ${agent.slug}`);
+      }
+      const destination = join(ctx.distRoot, file.path);
+      mkdirSync(dirname(destination), { recursive: true });
+      writeFileSync(destination, file.content.text);
+    }
+  }
+};
 
 const manifest: HarnessManifest = {
   name: "kiro-ide",
@@ -399,7 +380,6 @@ const manifest: HarnessManifest = {
     { src: "knowledge", dst: "knowledge" },
     { src: "sensors", dst: "sensors" },
     { src: "scopes", dst: "scopes" },
-    { src: "agents", dst: "agents" },
     { src: "hooks", dst: "hooks" },
     { src: "skills/aidlc-session-cost", dst: "skills/aidlc-session-cost" },
     { src: "skills/aidlc-replay", dst: "skills/aidlc-replay" },
@@ -453,18 +433,7 @@ const manifest: HarnessManifest = {
     { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
   ],
 
-  // Delegated capabilities come from persona Markdown frontmatter. tools binds
-  // on every dispatch path; permissions bind only on the invoke_sub_agent /
-  // orchestrate_subagent path the conductor selects (the shell allow aside,
-  // see delegate-shell-deny.ts). The allows are autoapprovals: unmatched operations
-  // still ask rather than being denied.
-  // Delegates intentionally receive no subagent tool, so nested delegation
-  // remains unavailable.
-  frontmatterAdditions: DELEGATION_AGENTS.map((agent) => ({
-    file: `agents/${agent}.md`,
-    lines: personaFrontmatter(agent),
-  })),
-  pluginAgentFrontmatter: personaFrontmatter(PLUGIN_AGENT),
+  pluginAgentFrontmatter: kiroIdePermissionLines(permissionPolicy)(PLUGIN_AGENT),
   // The native release keys the persona shell deny on the `aidlc engine`
   // routes its conductor allow covers (delegate-shell-deny.ts), one rule per
   // distinct persona deny.
@@ -483,7 +452,10 @@ const manifest: HarnessManifest = {
 
   skipRunnerGen: true,
 
-  emit: (ctx) => ctx.emitCommands(kiroIdeCommandPath),
+  emit(ctx): void {
+    emitAgents(ctx);
+    ctx.emitCommands(kiroIdeCommandPath);
+  },
 
   // Folder-drop with a v2 SessionStart registration under .kiro/hooks/. Kiro
   // has no host plugin store, but Kiro IDE 1.x and Kiro CLI v3 both execute

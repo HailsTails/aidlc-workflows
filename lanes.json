@@ -111,6 +111,7 @@
         "harness/claude/manifest.ts",
         "harness/kiro/manifest.ts",
         "harness/cursor/manifest.ts",
+        "harness/kiro-ide/manifest.ts",
         "scripts/agent-knowledge.ts",
         "tests/unit/t248-steering-content-delivery.test.ts",
         "tests/unit/t64.test.ts",
@@ -124,7 +125,6 @@
         "discipline-exceptions.json"
       ],
       "notOwned": [
-        "harness/kiro-ide/manifest.ts",
         "harness/{codex,opencode}/manifest.ts",
         "src/workflow-definition/domain/method-references{,.test}.ts",
         "src/projection/adapters/compiled-method-file{,.test}.ts"
@@ -234,8 +234,7 @@
       "name": "Projection for kiro, kiro-ide, cursor and copilot (supervised, one ticket at a time)",
       "agent": "codex/dot",
       "owns": [
-        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**",
-        "harness/kiro-ide/manifest.ts"
+        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**"
       ],
       "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
