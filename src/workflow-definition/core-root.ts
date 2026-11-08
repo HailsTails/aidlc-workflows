@@ -47,5 +47,3 @@ export const loadAuthoredPluginBuild = async (request: {
     plugins: compiled.value.installedPlugins.flatMap((plugin) =>
       authored.value.pluginDirectories.filter((directory) => directory.plugin === plugin)) }) : compiled;
 };
-
-export { pluginNamespaceIssues } from "./domain/plugin-selection.ts";

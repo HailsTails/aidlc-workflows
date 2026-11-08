@@ -152,6 +152,13 @@ describe("pluginId", () => {
 
   test.each([
     { shape: "the core namespace", raw: "aidlc-test-pro" },
+    { shape: "the bare core name", raw: "aidlc" },
+    { shape: "the core dependency keyword", raw: "core" },
+  ])("refuses $shape as reserved for AI-DLC", ({ raw }) => {
+    expect(pluginId(raw)).toEqual({ ok: false, refusal: { kind: "reserved-plugin-name", raw } });
+  });
+
+  test.each([
     { shape: "an upper-case letter", raw: "Test-pro" },
     { shape: "an underscore", raw: "test_pro" },
     { shape: "an empty id", raw: "" },

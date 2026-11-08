@@ -61,7 +61,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { loadCoreBuild, loadPluginBuildCatalog, pluginNamespaceIssues, projectCoreCommands,
+import { loadCoreBuild, loadPluginBuildCatalog, projectCoreCommands,
   type PluginBuildCatalog, type PluginBuildTarget } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import {
@@ -2074,10 +2074,6 @@ if (argv[0] === "plugin" && argv[1] === "build") {
     [pluginName, harnessName, outDir].some((arg) => arg.startsWith("-"))
   ) {
     console.error("usage: package.ts plugin build <plugin> <harness> <outDir>");
-    process.exit(1);
-  }
-  if (pluginNamespaceIssues(pluginName).length > 0) {
-    console.error(`plugin name "${pluginName}" is reserved: names must not be "aidlc" or start with "aidlc-" (an aidlc-<x> plugin collides with core runner paths). Rename the plugin.`);
     process.exit(1);
   }
   const core = await loadCoreBuild({ coreRoot: CORE_ROOT, markdownBlocks });

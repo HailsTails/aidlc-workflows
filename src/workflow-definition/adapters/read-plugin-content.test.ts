@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { sourcePath } from "../../kernel/values.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { captureRepositoryPlugins } from "./source-files.ts";
 import { readPluginContent } from "./read-plugin-content.ts";
@@ -24,4 +25,47 @@ test.each([...captures])("the real plugin uses shared decoders with owner-qualif
     owner: { kind: "plugin", plugin: "test-pro" },
     path: "aidlc-common/stages/construction/test-pro-integration.md",
   })]));
+});
+
+const reservedSources = [
+  { directory: "metrics", name: "core", refused: "core" },
+  { directory: "metrics", name: "aidlc", refused: "aidlc" },
+  { directory: "metrics", name: "aidlc-extra", refused: "aidlc-extra" },
+  { directory: "core", name: "metrics", refused: "core" },
+  { directory: "aidlc", name: "metrics", refused: "aidlc" },
+  { directory: "aidlc-extra", name: "metrics", refused: "aidlc-extra" },
+];
+
+test.each(reservedSources)("reserved folder or manifest names share one typed refusal: %j",
+  async ({ directory, name, refused }) => {
+    expect(await readPluginContent({ outliner, capture: { directory, files: [], manifest: {
+      within: accept(sourcePath(".aidlc-plugin/plugin.json")),
+      content: { kind: "text", text: JSON.stringify({
+        name, version: "1", description: "", aidlc: { contributes: {} },
+      }) },
+    } } })).toEqual({ ok: false, refusal: [{ kind: "core-namespace-claimed", plugin: refused }] });
+  });
+
+test("an ordinary folder may retain a separate admitted manifest identity", async () => {
+  const reading = accept(await readPluginContent({ outliner, capture: {
+    directory: "folder-name", files: [], manifest: {
+      within: accept(sourcePath(".aidlc-plugin/plugin.json")),
+      content: { kind: "text", text:
+        '{"name":"metrics","version":"1","description":"","aidlc":{"contributes":{}}}' },
+    },
+  } }));
+  expect(reading.plugin).toBe<string>("metrics");
+  expect(reading.content.stages).toEqual([]);
+});
+
+test("a malformed folder refuses through identity admission", async () => {
+  expect(await readPluginContent({ outliner, capture: {
+    directory: "Bad Name", files: [], manifest: {
+      within: accept(sourcePath(".aidlc-plugin/plugin.json")),
+      content: { kind: "text", text:
+        '{"name":"metrics","version":"1","description":"","aidlc":{"contributes":{}}}' },
+    },
+  } })).toEqual({ ok: false, refusal: [{ kind: "invalid-file",
+    location: { kind: "plugin-manifest", plugin: "Bad Name" },
+    issues: ["Invalid plugin identity."] }] });
 });

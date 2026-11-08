@@ -4,10 +4,6 @@ import type { PluginId, Owner } from "./identities.ts";
 import type { PluginSelection } from "./method.ts";
 import type { MethodRefusal } from "./refusals.ts";
 
-export const pluginNamespaceIssues = (name: string): readonly MethodRefusal[] =>
-  name === "aidlc" || name.startsWith("aidlc-")
-    ? [{ kind: "core-namespace-claimed", plugin: name }] : [];
-
 type PreparedContributions = { readonly ordered: readonly Contribution[];
   readonly selected: readonly PluginId[] };
 
@@ -18,7 +14,6 @@ const contributionIssues = (contributions: readonly Contribution[]): readonly Me
   contributions.flatMap((contribution, index) => {
     const identities = contributions.map((entry) => entry.plugin);
     return [
-      ...pluginNamespaceIssues(contribution.plugin),
       ...(identities.slice(0, index).includes(contribution.plugin)
         ? [manifestIssue(contribution.plugin, "Several contributions claim this plugin identity.")]
         : []),

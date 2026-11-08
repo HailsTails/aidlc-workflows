@@ -43,9 +43,3 @@ test("an absent selected plugin is refused without inventing a source file", () 
     refusal: [{ kind: "invalid-file", location: { kind: "plugin-manifest", plugin: "missing" },
       issues: ["Selected plugin is not installed."] }] });
 });
-
-test("the core namespace cannot be an installed plugin identity", () => {
-  expect(prepareContributions({ contributions: [{ ...base, plugin: id("aidlc") }],
-    selection: { kind: "every-installed" } })).toEqual({ ok: false,
-    refusal: [{ kind: "core-namespace-claimed", plugin: "aidlc" }] });
-});
