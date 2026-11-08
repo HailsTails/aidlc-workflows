@@ -12,7 +12,7 @@
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
 import onboardingFills from "./onboarding.fills.ts";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { modelAgentName, resolveModelPolicy,
   writeMarkdownAgentSurface } from "../../core/tools/aidlc-model-policy.ts";
@@ -231,17 +231,26 @@ const manifest: HarnessManifest = {
 
   emit(ctx): void {
     for (const agent of ctx.method.agents) {
-      const source = join(ctx.coreRoot, "agents", `${agent.slug}.md`);
-      const prepared = ctx.substituteToken(injectDelegatedKnowledgePreflight(
-        absorbReviewerKnowledge(readFileSync(source, "utf-8"), agent.slug, ctx.coreRoot),
-        agent.slug, ctx.harnessDir,
-      ));
       const legacyModelSurface: ClaudeAgentLegacy = (request) => {
         if (request.agent.model.kind !== "tier") return refused<ProjectionRefusal>({
           kind: "render-failed", concept: "agent", name: request.agent.slug,
           reason: "This core-agent bridge requires an authored model tier.",
         });
-        const effective = resolveModelPolicy(null, modelAgentName(source),
+        const captured = ctx.sources.find((source) => source.path === request.agent.source
+          && source.owner.kind === request.agent.owner.kind
+          && (source.owner.kind === "core" || (request.agent.owner.kind === "plugin"
+            && source.owner.plugin === request.agent.owner.plugin)));
+        if (!captured) return refused<ProjectionRefusal>({
+          kind: "render-failed", concept: "agent", name: request.agent.slug,
+          reason: "The accepted agent's authored source was not captured.",
+        });
+        const original = captured.content.kind === "text" ? captured.content.text
+          : Buffer.from(captured.content.bytes).toString("utf-8");
+        const prepared = ctx.substituteToken(injectDelegatedKnowledgePreflight(
+          absorbReviewerKnowledge(original, request.agent.slug, ctx.coreRoot),
+          request.agent.slug, ctx.harnessDir,
+        ));
+        const effective = resolveModelPolicy(null, modelAgentName(request.agent.slug),
           request.agent.model.tier, "claude", ctx.tierCap);
         return accepted(writeMarkdownAgentSurface(prepared, effective, {
           effortKey: request.effortKey,
