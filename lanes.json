@@ -194,19 +194,12 @@
         "src/cli/**",
         "src/hosts/*/{cli,execution}/**",
         "src/hosts/*/runtime.ts",
-        "core/hooks/**",
-        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**",
-        "harness/copilot/emit.ts",
-        "harness/kiro/manifest.ts",
-        "harness/kiro-ide/manifest.ts",
-        "harness/cursor/manifest.ts"
+        "core/hooks/**"
       ],
       "notOwned": ["src/cli/core-build-root{,.test}.ts"],
       "territory": ["execution", "cli"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
       "monolithDeletions": {
-        "harness/copilot/emit.ts": ["*"],
-        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"],
         "core/tools/aidlc-lib.ts": ["CHECKBOX_REVERSE", "resolveReviewClass", "UnitCheckpoint", "GateReply", "UnitGateRhythm"],
         "core/tools/aidlc-orchestrate.ts": ["isPerUnit", "unitCovered", "unitWalkStanding"],
         "core/tools/aidlc-unit-dag.ts": ["*"],
@@ -214,6 +207,23 @@
         "core/tools/aidlc-guard-fences.ts": ["*"],
         "core/tools/aidlc-construction-checkpoints.ts": ["*"],
         "core/tools/aidlc-record-core.ts": ["CheckboxState", "IntentRegistryEntry", "IntentInfo", "SessionBindingSource", "SessionBinding", "AuditShardEvent"]
+      }
+    },
+    "dot": {
+      "name": "Projection for kiro, kiro-ide, cursor and copilot (supervised, one ticket at a time)",
+      "agent": "codex/dot",
+      "owns": [
+        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**",
+        "harness/copilot/emit.ts",
+        "harness/kiro/manifest.ts",
+        "harness/kiro-ide/manifest.ts",
+        "harness/cursor/manifest.ts"
+      ],
+      "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
+      "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
+      "monolithDeletions": {
+        "harness/copilot/emit.ts": ["*"],
+        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"]
       }
     }
   }
