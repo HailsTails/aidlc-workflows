@@ -20,6 +20,7 @@
 //     executes them.
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { kiroIdeCommandPath } from "../../src/hosts/kiro-ide/projection/command-renderer.ts";
 import {
   copyChannelDelegateShellDeny,
   nativeDelegateShellDeny,
@@ -480,7 +481,9 @@ const manifest: HarnessManifest = {
 
   rulesRename: "steering",
 
-  emit: null,
+  skipRunnerGen: true,
+
+  emit: (ctx) => ctx.emitCommands(kiroIdeCommandPath),
 
   // Folder-drop with a v2 SessionStart registration under .kiro/hooks/. Kiro
   // has no host plugin store, but Kiro IDE 1.x and Kiro CLI v3 both execute
