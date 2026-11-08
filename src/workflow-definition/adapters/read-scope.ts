@@ -57,4 +57,3 @@ export const readScope = (source: MethodSourceLocation, raw: string):
     };
   });
 };
-

@@ -38,8 +38,15 @@ const routeIssues = (routed: readonly Stage[]): readonly MethodRefusal[] =>
     }] : [];
   });
 
+const coreOwnershipIssues = (core: CoreContent): readonly MethodRefusal[] => [
+  ...core.stages, ...core.scopes, ...core.agents, ...core.rules, ...core.sensors, ...core.knowledge,
+].filter((definition) => definition.owner.kind !== "core").map((definition) => ({
+  kind: "invalid-file", location: { kind: "method-source", owner: { kind: "core" },
+    path: definition.source },
+  issues: ["An authored core definition may not claim non-core ownership"],
+}));
 export const compileCoreMethod = (core: CoreContent): Result<Method, readonly MethodRefusal[]> => {
-  const issues = [...validateCoreDuplicates(core), ...validateCoreReferences(core),
+  const issues = [...coreOwnershipIssues(core), ...validateCoreDuplicates(core), ...validateCoreReferences(core),
     ...validateArtifactProducers(core), ...core.stages.flatMap(validateStage)];
   if (issues.length > 0) return refused(issues);
   const ordered = orderStages(core.stages);

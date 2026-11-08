@@ -38,4 +38,3 @@ export const createMarkdownOutliner = (readBlocks: BlockReader): MarkdownOutline
     return { text, headings };
   },
 });
-

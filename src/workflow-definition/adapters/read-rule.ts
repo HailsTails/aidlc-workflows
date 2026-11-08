@@ -23,5 +23,3 @@ export const readRule = (request: {
     owner: request.source.owner, pairing: pairingOf(file.pairing), status: file.status ?? null,
     staleAfter: file.stale_after ?? null, text: authoredText }));
 };
-
-

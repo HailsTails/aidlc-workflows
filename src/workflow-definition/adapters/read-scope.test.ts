@@ -27,5 +27,3 @@ test("scope defaults and memberships are separate from scope metadata", () => {
   expect(admission.freeformDefaults).toEqual<readonly { scope: string; declaredBy: {kind: string} }[]>([{ scope: "feature",
     declaredBy: { kind: "core" } }]);
 });
-
-

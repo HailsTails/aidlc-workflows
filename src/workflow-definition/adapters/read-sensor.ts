@@ -31,4 +31,3 @@ export const readSensor = (source: MethodSourceLocation, raw: string):
     input: fieldShapes(file.input_schema ?? {}), output: fieldShapes(file.output_schema ?? {}),
   }));
 };
-

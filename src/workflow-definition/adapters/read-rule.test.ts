@@ -13,5 +13,3 @@ test("rules use a method identity independent of their installed host path", () 
   expect(admission.source).toBe(source.path);
   expect(admission.text).toBe("# Inception\n");
 });
-
-

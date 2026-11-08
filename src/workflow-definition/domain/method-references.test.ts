@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Stage } from "./stage.ts";
 import { methodSource } from "../fixtures/method-source.fixture.ts";
-import { artifact, stage } from "../fixtures/identities.fixture.ts";
+import { artifact, scope, stage } from "../fixtures/identities.fixture.ts";
 
 const requirements: Stage = {
   slug: stage("requirements-analysis"),
@@ -57,5 +57,14 @@ test("two stages producing one consumed artifact are refused", () => {
   ], consumes: [{ artifact: artifact("requirements"), obligation: "required",
     when: "always", citation: "uncited" }] }] })).toMatchObject([
     { kind: "duplicate", concept: "artifact", name: "requirements" },
+  ]);
+});
+
+test("an unknown stage-declared scope is refused at the stage source", () => {
+  expect(validateCoreReferences({ ...core, memberships: [{ scope: scope("missing"),
+    stage: requirements.slug, declaredBy: { kind: "core" } }] })).toMatchObject([
+    { kind: "unknown-reference", concept: "scope", name: "missing", source: {
+      owner: { kind: "core" }, path: "aidlc-common/stages/inception/requirements-analysis.md",
+    } },
   ]);
 });

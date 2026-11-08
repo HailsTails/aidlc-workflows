@@ -60,6 +60,13 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { readAuthoredCore } from "../src/workflow-definition/adapters/authored-core-reader.ts";
+import { createSourceFiles } from "../src/workflow-definition/adapters/source-files.ts";
+import { createMarkdownOutliner } from "../src/workflow-definition/adapters/markdown-outliner.ts";
+import { compileCoreMethod } from "../src/workflow-definition/domain/compile-core-method.ts";
+import { serializeCompiledMethod } from "../src/projection/adapters/compiled-method-file.ts";
+import { distributionId, projectPath } from "../src/kernel/values.ts";
+import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import type { HarnessManifest } from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
@@ -536,10 +543,6 @@ function diffTrees(
   }
   return problems;
 }
-
-// The two compiled-data files regenerated into every tree. The rename backstop
-// below scans both after compile.
-const COMPILED_DATA = ["tools/data/stage-graph.json", "tools/data/scope-grid.json"];
 
 // The packager-emitted harness descriptor (vision T1 open-set seam): the
 // runtime reads tools/data/harness.json to learn this harness's rules-subdir
@@ -1053,21 +1056,18 @@ function buildTree(
   //     hook source bytes plus the manifest-derived target table.
   emitPluginAuthoringData(treeRoot);
 
-  // 3. Compile the stage graph into the assembled tree (writes harness-correct
-  //    stage-graph.json + scope-grid.json). compileStageGraph() bootstraps each
-  //    stage's number from the authored dependency graph and any display-name
-  //    override from stage frontmatter. No generated tree is a build input.
-  // Point loadRules at the emitted method tree via AIDLC_RULES_DIR so
-  // rules_in_context is populated at compile time. The method now lives at the
-  // workspace-root aidlc/spaces/default/memory/ (NOT inside <harnessDir>), so
-  // every harness — claude included — needs the seam set; the resolver's own
-  // default would resolve relative to the in-tree tools/ dir, which points at
-  // the same place, but the assembled tmp tree under --check makes the explicit
-  // override the robust choice. The renameRulesInCompiledData backstop still
-  // runs for renamed-rules harnesses to normalize any residual <dir>/rules/
-  // prose-path that a future code path might emit (guarded no-op today).
-  runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-graph.ts", "compile"], memoryDir);
-  if (m.rulesRename) renameRulesInCompiledData(treeRoot, harnessDir, m.rulesRename);
+  const hostDirectory = projectPath(harnessDir);
+  const hostDistribution = distributionId(m.name);
+  const memoryRoot = projectPath(relative(outRoot, memoryDir).replaceAll("\\", "/"));
+  if (!hostDirectory.ok || !hostDistribution.ok || !memoryRoot.ok) {
+    throw new Error("The build host and memory root must have portable identities");
+  }
+  const compiled = serializeCompiledMethod({ method: freshMethod,
+    host: { distribution: hostDistribution.value, directory: hostDirectory.value },
+    memoryRoot: memoryRoot.value });
+  mkdirSync(join(treeRoot, "tools", "data"), { recursive: true });
+  writeFileSync(join(treeRoot, "tools", "data", "stage-graph.json"), compiled.graph);
+  writeFileSync(join(treeRoot, "tools", "data", "scope-grid.json"), compiled.grid);
 
   // 3b. Emit tools/data/harness.json — the runtime's open-set source of truth
   //     for the rules-subdir rename. rulesSubdir() (aidlc-lib.ts) reads it so a
@@ -1817,23 +1817,6 @@ function keepEarlierReleaseRegions(outRoot: string, manifest: HarnessManifest): 
   writeFileSync(skillPath, `${body}\n\n${EARLIER_RELEASE_REGIONS}\n`, "utf-8");
 }
 
-// Defense-in-depth backstop: rewrite any residual "<harnessDir>/rules/" →
-// "<harnessDir>/<rulesRename>/" in the compiled JSON path strings. Compile (run
-// under AIDLC_HARNESS_DIR) emits the renamed segment directly through
-// rulesSubdir(), so this normally matches nothing (guarded by the
-// `out !== s` check). It stays as a safety net in case a future code path emits
-// a literal "rules" segment that bypasses the seam. Slash-anchored, so it can
-// only touch the rules path family.
-function renameRulesInCompiledData(treeRoot: string, harnessDir: string, rulesRename: string): void {
-  for (const rel of COMPILED_DATA) {
-    const p = join(treeRoot, rel);
-    if (!existsSync(p)) continue;
-    const s = readFileSync(p, "utf-8");
-    const out = s.replaceAll(`${harnessDir}/rules/`, `${harnessDir}/${rulesRename}/`);
-    if (out !== s) writeFileSync(p, out);
-  }
-}
-
 function loadManifest(name: string): HarnessManifest {
   const mod = require(join(HARNESS_ROOT, name, "manifest.ts")) as { default: HarnessManifest };
   return mod.default;
@@ -2228,6 +2211,15 @@ if (named && !existsSync(join(HARNESS_ROOT, named, "manifest.ts"))) {
   process.exit(1);
 }
 
+const builtFrom = packageInputsFingerprint(REPO_ROOT);
+const authoredCore = await readAuthoredCore({ sourceFiles: createSourceFiles(CORE_ROOT),
+  outliner: createMarkdownOutliner(markdownBlocks), hooks: [] });
+if (!authoredCore.ok) throw new Error(`Invalid authored Method: ${JSON.stringify(authoredCore.refusal)}`);
+const freshCompilation = compileCoreMethod(authoredCore.value.core);
+if (!freshCompilation.ok) {
+  throw new Error(`Cannot compile the fresh Method: ${JSON.stringify(freshCompilation.refusal)}`);
+}
+const freshMethod = freshCompilation.value;
 if (check) {
   const problems = checkPackageDeterminism(targets);
   if (problems.length > 0) {
@@ -2235,12 +2227,14 @@ if (check) {
     for (const p of problems.slice(0, 40)) console.error("  " + p);
     process.exit(1);
   }
+  if (packageInputsFingerprint(REPO_ROOT) !== builtFrom) {
+    throw new Error("A packaging input changed during the determinism check; run it again.");
+  }
   console.log(
     `package --check: deterministic across two independent build(s) ` +
       `for ${targets.join(", ")}.`,
   );
 } else {
-  const builtFrom = packageInputsFingerprint(REPO_ROOT);
   forgetPackagedSources(REPO_ROOT, targets);
   cleanWriteOutputs(targets, named === undefined);
   for (const n of targets) {
