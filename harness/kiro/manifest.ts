@@ -50,7 +50,8 @@ const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKey
   const authored = source.content.kind === "text" ? source.content.text :
     Buffer.from(source.content.bytes).toString("utf-8");
   const raw = injectDelegatedKnowledgePreflight(
-    absorbReviewerKnowledge(authored, agent.slug, ctx.coreRoot),
+    absorbReviewerKnowledge({ content: authored, agentName: agent.slug,
+      sourceRoot: ctx.coreRoot, reviewerAgents: ctx.reviewerAgents }),
     agent.slug, ctx.harnessDir,
   );
   const text = ctx.substituteToken(raw).replace(/\.kiro\/rules\/(?!default\.rules)/g, ".kiro/steering/");

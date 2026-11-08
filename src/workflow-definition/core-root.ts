@@ -47,3 +47,5 @@ export const loadAuthoredPluginBuild = async (request: {
     plugins: compiled.value.installedPlugins.flatMap((plugin) =>
       authored.value.pluginDirectories.filter((directory) => directory.plugin === plugin)) }) : compiled;
 };
+
+export { reviewerAgentSet, inlineAgentSet } from "./domain/method-participation.ts";

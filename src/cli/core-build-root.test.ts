@@ -1,7 +1,8 @@
+import { agent } from "../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../workflow-definition/fixtures/method-source.fixture.ts";
 import { expect, test } from "bun:test";
 import { accept } from "../kernel/fixtures/accept.ts";
-import { loadCoreBuild, pluginBuildName } from "./core-build-root.ts";
+import { loadCoreBuild, pluginBuildName, reviewerAgentSet, inlineAgentSet } from "./core-build-root.ts";
 
 const request = { coreRoot: new URL("../../core/", import.meta.url),
   markdownBlocks: () => ({ lines: [] }) };
@@ -50,4 +51,12 @@ test("CLI plugin admission retains the identity refusal before catalog lookup", 
     ok: false, refusal: { kind: "invalid-identity", identity: "plugin", raw: "bad/name" },
   });
   expect(accept(pluginBuildName("test-pro"))).toBe<string>("test-pro");
+});
+
+test("the build boundary publishes Method participation facts", async () => {
+  const build = accept(await loadCoreBuild(request));
+  expect([...reviewerAgentSet(build.method)]).toEqual<readonly string[]>([
+    "aidlc-architecture-reviewer-agent", "aidlc-product-lead-agent",
+  ]);
+  expect(inlineAgentSet(build.method).has(agent("aidlc-developer-agent"))).toBe(true);
 });

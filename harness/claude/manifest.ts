@@ -252,7 +252,8 @@ const manifest: HarnessManifest = {
         const original = captured.content.kind === "text" ? captured.content.text
           : Buffer.from(captured.content.bytes).toString("utf-8");
         const prepared = ctx.substituteToken(injectDelegatedKnowledgePreflight(
-          absorbReviewerKnowledge(original, request.agent.slug, ctx.coreRoot),
+          absorbReviewerKnowledge({ content: original, agentName: request.agent.slug,
+            sourceRoot: ctx.coreRoot, reviewerAgents: ctx.reviewerAgents }),
           request.agent.slug, ctx.harnessDir,
         ));
         const effective = resolveModelPolicy(null, modelAgentName(request.agent.slug),

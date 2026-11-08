@@ -34,6 +34,7 @@ export type FileMap = { src: string; dst: string; projectRoot?: boolean; copyOnl
 export type EmitContext = {
   emitCommands: (place: CommandPlacement) => void;
   method: Method;
+  readonly reviewerAgents: ReadonlySet<string>;
   sources: readonly MethodSource[];
   /** Absolute path to the repo root. */
   repoRoot: string;

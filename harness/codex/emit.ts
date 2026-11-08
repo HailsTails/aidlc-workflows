@@ -374,7 +374,8 @@ export default function emit(ctx: EmitContext): void {
       null, modelAgentName(`${agent.slug}.md`), agent.model.tier, "codex", tierCap,
     );
     const prepareProse = (prose: string): string => rewriteProse(injectDelegatedKnowledgePreflight(
-      absorbReviewerKnowledge(prose, agent.slug, coreRoot), agent.slug, harnessDir,
+      absorbReviewerKnowledge({ content: prose, agentName: agent.slug,
+        sourceRoot: coreRoot, reviewerAgents: ctx.reviewerAgents }), agent.slug, harnessDir,
     ));
     const legacy: Parameters<typeof createCodexAgentRenderer>[0] = {
       markdownSurface: () => accepted(writeMarkdownAgentSurface(

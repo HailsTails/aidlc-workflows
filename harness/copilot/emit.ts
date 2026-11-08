@@ -139,7 +139,8 @@ export default function emit(ctx: EmitContext): void {
         reason: "This core-agent bridge requires an authored model tier.",
       });
       const prepared = substituteToken(injectDelegatedKnowledgePreflight(
-        absorbReviewerKnowledge(authored.value, request.agent.slug, coreRoot),
+        absorbReviewerKnowledge({ content: authored.value, agentName: request.agent.slug,
+          sourceRoot: coreRoot, reviewerAgents: ctx.reviewerAgents }),
         request.agent.slug, harnessDir,
       ));
       const effective = resolveModelPolicy(null, modelAgentName(request.agent.slug),
