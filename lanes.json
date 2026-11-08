@@ -105,6 +105,7 @@
         "src/cli/core-build-root{,.test}.ts",
         "docs/reference/15-stage-definition.md",
         "scripts/package.ts",
+        "harness/claude/manifest.ts",
         "tests/unit/t64.test.ts",
         "tests/unit/t-package-sources.test.ts",
         "discipline-exceptions.json"
@@ -167,7 +168,7 @@
         "scripts/manifest-types.ts": ["*"],
         "scripts/onboarding.ts": ["*"],
         "scripts/harness-bindings.ts": ["*"],
-        "harness/{claude,copilot}/manifest.ts": ["*"],
+        "harness/copilot/manifest.ts": ["*"],
         "core/tools/aidlc-tiers.ts": ["TierProjection", "TIER_PROJECTIONS", "Harness"],
         "core/tools/aidlc-runner-gen.ts": ["*"],
         "core/tools/aidlc-init.ts": ["RootContribution", "Baseline", "PreparedRefreshSource", "PlannedAction"],
