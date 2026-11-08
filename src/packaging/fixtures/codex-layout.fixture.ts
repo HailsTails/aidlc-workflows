@@ -9,14 +9,14 @@ export const codexLayoutFixture: DistributionLayout = {
       policy: "managed-block",
       marker: "gitignore",
       sharing: "union",
-      optional: false,
+      presence: "required",
     },
     {
       path: path("AGENTS.md"),
       policy: "managed-block",
       marker: "agents",
       sharing: "identical",
-      optional: false,
+      presence: "required",
     },
   ],
   managedDirectories: [

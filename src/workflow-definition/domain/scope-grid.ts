@@ -26,7 +26,11 @@ export const scopeColumn = (request: {
   return {
     scope: request.scope,
     stages: request.method.graph.nodes
-      .filter((node) => always.has(node.stage) || (node.enabled && members.has(node.stage)))
+      .filter(
+        (node) =>
+          always.has(node.stage) ||
+          (node.availability === "enabled" && members.has(node.stage)),
+      )
       .map((node) => node.stage),
   };
 };

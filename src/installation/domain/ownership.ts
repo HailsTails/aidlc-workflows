@@ -20,7 +20,7 @@ export type WrittenShare =
       readonly key: string | null;
       readonly entries: EntryHashes;
       readonly addedKeys: readonly string[];
-      readonly createdFile: boolean;
+      readonly fileOrigin: "created-by-aidlc" | "already-present";
     };
 
 export type RootContribution = {
@@ -45,5 +45,5 @@ export type OwnershipRecord = {
   readonly files: readonly InstalledFile[];
   readonly fileEntries: readonly FileEntries[];
   readonly rootContributions: readonly RootContribution[];
-  readonly statusLineKept: boolean;
+  readonly statusLine: "kept-own" | "installed";
 };

@@ -29,7 +29,7 @@ export type PluginSelection =
   | { readonly kind: "every-installed" }
   | {
       readonly kind: "only";
-      readonly core: boolean;
+      readonly core: "included" | "excluded";
       readonly plugins: readonly PluginId[];
     };
 

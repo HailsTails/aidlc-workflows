@@ -101,7 +101,7 @@ const refreshRootIntegrations: readonly RootIntegrationDecision[] = [
 export const claudeRefreshPlanFixture: ReadyInstallPlan = {
   kind: "ready",
   payload,
-  mode: { kind: "refresh", force: false },
+  mode: { kind: "refresh", edits: "refuse" },
   installedVersion: version("2.11.1"),
   mcp: "defaults",
   files: [{ kind: "unchanged", path: stageCommand.path }, ...filesBesideStageCommand],
@@ -113,7 +113,7 @@ export const claudeRefreshPlanFixture: ReadyInstallPlan = {
 export const claudeBlockedRefreshPlanFixture: BlockedInstallPlan = {
   kind: "blocked",
   payload,
-  mode: { kind: "refresh", force: false },
+  mode: { kind: "refresh", edits: "refuse" },
   installedVersion: version("2.11.1"),
   mcp: "defaults",
   files: filesBesideStageCommand,
@@ -125,7 +125,7 @@ export const claudeBlockedRefreshPlanFixture: BlockedInstallPlan = {
         kind: "edited",
         recorded: previousCommandHash,
         current: editedCommandHash,
-        retiring: false,
+        lifecycle: "live",
       },
     },
   ],

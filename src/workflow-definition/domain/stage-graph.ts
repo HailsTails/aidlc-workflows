@@ -14,7 +14,7 @@ export const stageNumber = (raw: string): Result<StageNumber, IdentityRefusal> =
 export type StageNode = {
   readonly stage: StageSlug;
   readonly number: StageNumber;
-  readonly enabled: boolean;
+  readonly availability: "enabled" | "disabled";
   readonly rulesInContext: readonly RuleId[];
   readonly activeSensors: readonly SensorId[];
 };

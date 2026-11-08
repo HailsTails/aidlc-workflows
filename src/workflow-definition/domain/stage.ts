@@ -48,9 +48,9 @@ export type ArtifactProduction = {
 
 export type ArtifactConsumption = {
   readonly artifact: ArtifactName;
-  readonly required: boolean;
+  readonly obligation: "required" | "optional";
   readonly when: "always" | ProjectType;
-  readonly cited: boolean;
+  readonly citation: "cited" | "uncited";
 };
 
 export type ReviewPolicy = {
@@ -93,7 +93,7 @@ export type Stage = {
   readonly execution: StageExecution;
   readonly participation: Participation;
   readonly cardinality: StageCardinality;
-  readonly writesWorkspace: boolean;
+  readonly workspace: "writes" | "read-only";
   readonly produces: readonly ArtifactProduction[];
   readonly consumes: readonly ArtifactConsumption[];
   readonly requires: readonly StageSlug[];

@@ -1,4 +1,4 @@
-import type { FileContent } from "../../kernel/file-content.ts";
+import type { FileContent, FileMode } from "../../kernel/file-content.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
 import type {
   ContentHash,
@@ -30,7 +30,7 @@ export type PayloadFile = {
   readonly path: ProjectPath;
   readonly hash: ContentHash;
   readonly content: FileContent;
-  readonly executable: boolean;
+  readonly mode: FileMode;
   readonly origin: PayloadFileOrigin;
 };
 

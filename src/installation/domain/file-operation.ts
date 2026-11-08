@@ -1,4 +1,4 @@
-import type { FileContent } from "../../kernel/file-content.ts";
+import type { FileContent, FileMode } from "../../kernel/file-content.ts";
 import type { ContentHash, ProjectPath } from "../../kernel/values.ts";
 
 export type ExpectedState =
@@ -15,7 +15,7 @@ export type FileOperation =
       readonly kind: "write";
       readonly path: ProjectPath;
       readonly next: PlannedContent;
-      readonly executable: boolean;
+      readonly mode: FileMode;
       readonly expected: ExpectedState;
     }
   | { readonly kind: "remove"; readonly path: ProjectPath; readonly expected: ExpectedState }

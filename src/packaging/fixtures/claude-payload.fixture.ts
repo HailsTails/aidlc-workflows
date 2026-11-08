@@ -10,7 +10,7 @@ const fromProjection = (file: ProjectedFile): PayloadFile => ({
   path: file.path,
   hash: hashOf(file.content),
   content: file.content,
-  executable: file.executable,
+  mode: file.mode,
   origin: { kind: "projected", origin: file.origin },
 });
 
@@ -57,21 +57,21 @@ export const claudeCopyPayloadFixture: Payload = {
       path: path(".claude/tools/aidlc.ts"),
       hash: hashOf(runtimeContent),
       content: runtimeContent,
-      executable: true,
+      mode: "executable",
       origin: { kind: "bundled-runtime", entry: cliEntry },
     },
     {
       path: path(".claude/tools/data/aidlc-version.json"),
       hash: hashOf(stampContent),
       content: stampContent,
-      executable: false,
+      mode: "regular",
       origin: { kind: "version-stamp" },
     },
     {
       path: path(".claude/tools/data/aidlc-projection.json"),
       hash: hashOf(descriptorContent),
       content: descriptorContent,
-      executable: false,
+      mode: "regular",
       origin: { kind: "distribution-descriptor" },
     },
   ],

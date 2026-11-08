@@ -72,7 +72,7 @@
 {"name":"PluginSelection","context":"workflow-definition","kind":"concept","definition":"Which owners compile into the method: every installed, or core on or off plus listed plugins; initialization always runs."},
 {"name":"Method","context":"workflow-definition","kind":"concept","definition":"The compiled method; only CompileMethod produces one.","legacy":["StageGraphData"]},
 {"name":"StageNumber","context":"workflow-definition","kind":"concept","definition":"A stage's compiled display number, <phase>.<index>."},
-{"name":"StageNode","context":"workflow-definition","kind":"concept","definition":"One compiled stage: number, whether enabled, rules in context and active sensors."},
+{"name":"StageNode","context":"workflow-definition","kind":"concept","definition":"One compiled stage: number, availability, rules in context and active sensors."},
 {"name":"ScopeColumn","context":"workflow-definition","kind":"concept","definition":"A scope's stages: initialization stages always, then its enabled members.","legacy":["ScopeGridForMapping"]},
 {"name":"StageGraph","context":"workflow-definition","kind":"concept","definition":"The compiled stage nodes; scope columns are derived from memberships.","legacy":["ScopeGrid"]},
 {"name":"DefinitionConcept","context":"workflow-definition","kind":"concept","definition":"Which method concept a MethodRefusal is about."},
@@ -128,7 +128,7 @@
 {"name":"RootContribution","context":"installation","kind":"concept","definition":"AI-DLC's share of one root integration, as written.","legacy":["RootContribution","JsonEntriesOwnership"]},
 {"name":"McpChoice","context":"installation","kind":"concept","definition":"Whether the install ships the default MCP servers."},
 {"name":"OwnershipRecord","context":"installation","kind":"concept","definition":"What one install wrote: version, distribution, MCP choice, coverage, files, file entries, root shares, and whether the status line was kept.","legacy":["Baseline"]},
-{"name":"InstallMode","context":"installation","kind":"concept","definition":"Fresh install, refresh (optionally forced) or removal."},
+{"name":"InstallMode","context":"installation","kind":"concept","definition":"Fresh install, refresh (refusing or overwriting edited files) or removal."},
 {"name":"FileChange","context":"installation","kind":"concept","definition":"What an update changes: content, the executable bit, or both."},
 {"name":"ManagedFileDecision","context":"installation","kind":"concept","definition":"What happens to one file: create, update, unchanged, preserve or retire.","legacy":["PlannedAction"]},
 {"name":"RootIntegrationDecision","context":"installation","kind":"concept","definition":"What happens to one root file, with its prior state and next content."},
@@ -293,5 +293,7 @@
 {"name":"ToolHook","context":"workflow-definition","kind":"concept","definition":"A hook declaration at a tool point, with the tools it listens to."},
 {"name":"MethodSourceKind","context":"workflow-definition","kind":"concept","definition":"Which kind of method source a file is; each kind has one fixed folder."},
 {"name":"MethodSourceLocation","context":"workflow-definition","kind":"concept","definition":"Which method source file a fact is about: its owner and MethodSourcePath, the one key entities, bytes and refusals share."},
-{"name":"MethodFileLocation","context":"workflow-definition","kind":"concept","definition":"Which file a method refusal is about: a method source, a plugin manifest, or the stage pins."}
+{"name":"MethodFileLocation","context":"workflow-definition","kind":"concept","definition":"Which file a method refusal is about: a method source, a plugin manifest, or the stage pins."},
+{"name":"FileMode","context":"kernel","kind":"concept","definition":"Whether a file is written as a regular file or an executable."},
+{"name":"IntegrationLifecycle","context":"installation","kind":"concept","definition":"Whether a root integration is live in this release or being retired."}
 ]

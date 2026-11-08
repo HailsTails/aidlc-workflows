@@ -1,3 +1,4 @@
+import type { FileMode } from "../../kernel/file-content.ts";
 import type { Result } from "../../kernel/result.ts";
 import type { ContentHash, DistributionId, ProjectPath } from "../../kernel/values.ts";
 import type { Payload } from "../../packaging/domain/payload.ts";
@@ -14,7 +15,7 @@ export type ProjectFileState =
       readonly kind: "file";
       readonly hash: ContentHash;
       readonly text: string | null;
-      readonly executable: boolean | null;
+      readonly mode: FileMode | "unknown";
     }
   | { readonly kind: "link" }
   | { readonly kind: "directory" };

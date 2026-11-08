@@ -9,13 +9,13 @@ export const claudeLayoutFixture: DistributionLayout = {
       policy: "managed-block",
       marker: "gitignore",
       sharing: "union",
-      optional: false,
+      presence: "required",
     },
     {
       path: path(".mcp.json"),
       policy: "json-map",
       key: "mcpServers",
-      optional: true,
+      presence: "optional",
     },
   ],
   managedDirectories: [

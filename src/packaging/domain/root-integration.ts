@@ -4,7 +4,7 @@ export type Sharing = "exclusive" | "union" | "identical";
 
 type IntegrationBase = {
   readonly path: ProjectPath;
-  readonly optional: boolean;
+  readonly presence: "required" | "optional";
 };
 
 export type RootIntegration =
