@@ -44,57 +44,37 @@ const otherPolicies: DistributionDescriptorFile["rootIntegrations"] = [
   { path: "opencode.json", policy: "json-entries", optional: true },
 ];
 
-describe("DistributionDescriptorFileSchema", () => {
-  test("reads a Claude copy-channel descriptor", () => {
-    expect(DistributionDescriptorFileSchema.parse(claudeDescriptor)).toEqual(claudeDescriptor);
-  });
+const nativeDescriptor: DistributionDescriptorFile = {
+  ...claudeDescriptor,
+  layout: "native",
+  rootIntegrations: otherPolicies,
+};
 
-  test("reads every other root integration policy", () => {
-    const descriptor: DistributionDescriptorFile = {
-      ...claudeDescriptor,
-      layout: "native",
-      rootIntegrations: otherPolicies,
-    };
-    expect(DistributionDescriptorFileSchema.parse(descriptor)).toEqual(descriptor);
-  });
-
-  test("refuses a key the descriptor does not define", () => {
-    expect(
-      DistributionDescriptorFileSchema.safeParse({ ...claudeDescriptor, productName: "Claude" }),
-    ).toMatchObject({
-      success: false,
-      error: { issues: [{ code: "unrecognized_keys", keys: ["productName"], path: [] }] },
-    });
-  });
-
-  test("refuses a misspelt key on a root integration", () => {
-    const descriptor = {
+const REFUSED_DESCRIPTORS = [
+  {
+    shape: "a key the descriptor does not define",
+    descriptor: { ...claudeDescriptor, productName: "Claude" },
+    issues: [{ code: "unrecognized_keys", keys: ["productName"], path: [] }],
+  },
+  {
+    shape: "a misspelt key on a root integration",
+    descriptor: {
       ...claudeDescriptor,
       rootIntegrations: [{ path: "AGENTS.md", policy: "whole-file", shard: "identical" }],
-    };
-    expect(DistributionDescriptorFileSchema.safeParse(descriptor)).toMatchObject({
-      success: false,
-      error: {
-        issues: [{ code: "unrecognized_keys", keys: ["shard"], path: ["rootIntegrations", 0] }],
-      },
-    });
-  });
-
-  test("refuses a sharing mode on a policy that cannot share", () => {
-    const descriptor = {
+    },
+    issues: [{ code: "unrecognized_keys", keys: ["shard"], path: ["rootIntegrations", 0] }],
+  },
+  {
+    shape: "a sharing mode on a policy that cannot share",
+    descriptor: {
       ...claudeDescriptor,
       rootIntegrations: [{ path: "opencode.json", policy: "json-entries", shared: "union" }],
-    };
-    expect(DistributionDescriptorFileSchema.safeParse(descriptor)).toMatchObject({
-      success: false,
-      error: {
-        issues: [{ code: "unrecognized_keys", keys: ["shared"], path: ["rootIntegrations", 0] }],
-      },
-    });
-  });
-
-  test("refuses a misspelt key in the legacy signatures", () => {
-    const descriptor = {
+    },
+    issues: [{ code: "unrecognized_keys", keys: ["shared"], path: ["rootIntegrations", 0] }],
+  },
+  {
+    shape: "a misspelt key in the legacy signatures",
+    descriptor: {
       ...claudeDescriptor,
       rootIntegrations: [
         {
@@ -103,53 +83,50 @@ describe("DistributionDescriptorFileSchema", () => {
           legacySignatures: { wholeFileHash: [GITIGNORE_HASH] },
         },
       ],
-    };
-    expect(DistributionDescriptorFileSchema.safeParse(descriptor)).toMatchObject({
-      success: false,
-      error: {
-        issues: [
-          {
-            code: "unrecognized_keys",
-            keys: ["wholeFileHash"],
-            path: ["rootIntegrations", 0, "legacySignatures"],
-          },
-        ],
+    },
+    issues: [
+      {
+        code: "unrecognized_keys",
+        keys: ["wholeFileHash"],
+        path: ["rootIntegrations", 0, "legacySignatures"],
       },
-    });
+    ],
+  },
+  {
+    shape: "the schema version a 2.11 release wrote",
+    descriptor: { ...claudeDescriptor, schemaVersion: 1 },
+    issues: [{ code: "invalid_value", path: ["schemaVersion"] }],
+  },
+  {
+    shape: "a channel it does not know",
+    descriptor: { ...claudeDescriptor, layout: "plugin" },
+    issues: [{ code: "invalid_value", path: ["layout"] }],
+  },
+  {
+    shape: "a retired file hash without its algorithm",
+    descriptor: { ...claudeDescriptor, retiredFiles: { "AGENTS.md": ["1d51ae4c"] } },
+    issues: [{ code: "invalid_format", path: ["retiredFiles", "AGENTS.md", 0] }],
+  },
+  {
+    shape: "a distribution name that is not kebab case",
+    descriptor: { ...claudeDescriptor, distribution: "Claude" },
+    issues: [{ code: "invalid_format", path: ["distribution"] }],
+  },
+];
+
+describe("DistributionDescriptorFileSchema", () => {
+  test("reads a Claude copy-channel descriptor", () => {
+    expect(DistributionDescriptorFileSchema.parse(claudeDescriptor)).toEqual(claudeDescriptor);
   });
 
-  test("refuses the schema version a 2.11 release wrote", () => {
-    expect(
-      DistributionDescriptorFileSchema.safeParse({ ...claudeDescriptor, schemaVersion: 1 }),
-    ).toMatchObject({
-      success: false,
-      error: { issues: [{ code: "invalid_value", path: ["schemaVersion"] }] },
-    });
+  test("reads a native descriptor with every other root integration policy", () => {
+    expect(DistributionDescriptorFileSchema.parse(nativeDescriptor)).toEqual(nativeDescriptor);
   });
 
-  test("refuses a channel it does not know", () => {
-    expect(
-      DistributionDescriptorFileSchema.safeParse({ ...claudeDescriptor, layout: "plugin" }),
-    ).toMatchObject({
-      success: false,
-      error: { issues: [{ code: "invalid_value", path: ["layout"] }] },
-    });
-  });
-
-  test("refuses a retired file hash without its algorithm", () => {
-    const descriptor = { ...claudeDescriptor, retiredFiles: { "AGENTS.md": ["1d51ae4c"] } };
+  test.each(REFUSED_DESCRIPTORS)("refuses $shape", ({ descriptor, issues }) => {
     expect(DistributionDescriptorFileSchema.safeParse(descriptor)).toMatchObject({
       success: false,
-      error: { issues: [{ code: "invalid_format", path: ["retiredFiles", "AGENTS.md", 0] }] },
-    });
-  });
-
-  test("refuses a distribution name that is not kebab case", () => {
-    expect(
-      DistributionDescriptorFileSchema.safeParse({ ...claudeDescriptor, distribution: "Claude" }),
-    ).toMatchObject({
-      success: false,
-      error: { issues: [{ code: "invalid_format", path: ["distribution"] }] },
+      error: { issues },
     });
   });
 });
