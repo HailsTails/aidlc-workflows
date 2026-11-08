@@ -7,6 +7,7 @@ import type {
   CommandRunner,
   DisciplineAudit,
   Loaded,
+  Toolchain,
 } from "../application/ports.ts";
 
 export const INSTALL_LINK = ".cache/discipline-core";
@@ -129,7 +130,8 @@ const nodeCommand = (command: string): Command => ({
   ],
 });
 
-export const disciplineCore = (location: DisciplineCoreLocation): DisciplineAudit => ({
+export const disciplineCore = (location: DisciplineCoreLocation): DisciplineAudit & Toolchain => ({
+  ready: () => linked(location),
   project: () => {
     const link = linked(location);
     if (!link.ok) {

@@ -193,7 +193,16 @@ const main = async (): Promise<number> => {
     return EXIT_CODES.green;
   }
   const plans = lanesFile({ workspace, path: "lanes.json" });
-  const services = { plans, repository, workspace, lock, runner, goldens, checksFor };
+  const services = {
+    plans,
+    repository,
+    workspace,
+    lock,
+    runner,
+    goldens,
+    checksFor,
+    toolchain: audit,
+  };
   const report = await runGateRequest({ ...services, progress: consoleProgress }, request.value);
   const debt = debtFigureOf(records.boundary({ kind: "head" }) ?? {});
   printDebt(debt);

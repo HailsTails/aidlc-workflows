@@ -1,5 +1,10 @@
 import type { LanePlan } from "../domain/lane-plan.ts";
-import { verdictOf, type CheckOutcome, type GateVerdict } from "../domain/outcome.ts";
+import {
+  verdictOf,
+  type CheckId,
+  type CheckOutcome,
+  type GateVerdict,
+} from "../domain/outcome.ts";
 import { runChecks, type GateCheck } from "./gate-check.ts";
 import type {
   FullRequest,
@@ -17,6 +22,7 @@ import type {
   MachineLock,
   Progress,
   Repository,
+  Toolchain,
   Workspace,
 } from "./ports.ts";
 
@@ -43,7 +49,15 @@ export type GateServices = {
   readonly runner: CommandRunner;
   readonly goldens: GoldensDependencies;
   readonly checksFor: (plan: LanePlan) => readonly GateCheck[];
+  readonly toolchain: Toolchain;
 };
+
+const LOADS_ESLINT_CONFIG: readonly CheckId[] = ["lint", "disciplines", "tests"];
+
+const toolchainFor = (services: GateServices, checks: readonly GateCheck[]): Loaded<string> =>
+  checks.some((check) => LOADS_ESLINT_CONFIG.includes(check.id))
+    ? services.toolchain.ready()
+    : { ok: true, value: "no check loads the ESLint config" };
 
 const report = (request: RunnableRequest, partial: Partial<GateReport>): GateReport => ({
   mode: request.kind,
@@ -97,6 +111,10 @@ const checked = async (services: GateServices, run: CheckedRun): Promise<GateRep
   const checks = services
     .checksFor(plan)
     .filter((check) => only === "all" || only.includes(check.id));
+  const toolchain = toolchainFor(services, checks);
+  if (!toolchain.ok) {
+    return failed(request, toolchain);
+  }
   const outcomes = await runChecks({ scope: scope.value, checks, progress: services.progress });
   const lane = scope.value.lane?.id;
   const base = scope.value.base?.ref;

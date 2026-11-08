@@ -134,6 +134,10 @@ export type AuditReport =
     }
   | { readonly kind: "failed"; readonly problem: string; readonly fix: string };
 
+export type Toolchain = {
+  readonly ready: () => Loaded<string>;
+};
+
 export type DisciplineAudit = {
   readonly project: () => Loaded<string>;
   readonly run: () => AuditReport;
