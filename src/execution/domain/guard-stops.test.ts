@@ -3,7 +3,14 @@ import { at } from "../../kernel/fixtures/values.fixture.ts";
 import { stageOf, unitOf } from "../fixtures/workflow-record.fixture.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { CORE_GUARDS } from "./guard.ts";
-import { planApprovalStop, presenceStop, transitionStop } from "./guard-stops.ts";
+import { agentSlug, artifactName } from "../../workflow-definition/domain/identities.ts";
+import {
+  planApprovalStop,
+  presenceStop,
+  receiptStop,
+  reviewFreezeStop,
+  transitionStop,
+} from "./guard-stops.ts";
 import { planFingerprint } from "./identities.ts";
 
 const NEXT = "Ask the engine for the next step and carry that out.";
@@ -69,6 +76,53 @@ describe("planApprovalStop", () => {
       guard: CORE_GUARDS.planApproval,
       reason: "code-generation for Unit ledger has no plan the person approved.",
       nextStep: "Ask the engine for the next step; it puts the plan to the person for approval.",
+    });
+  });
+});
+
+describe("review stops", () => {
+  const reviewer = accept(agentSlug("aidlc-product-lead-agent"));
+
+  test("reviewFreezeStop keeps a reviewed artifact as it was reviewed", () => {
+    expect(
+      reviewFreezeStop({
+        at: { stage: stageOf("requirements-analysis"), unit: null },
+        receipt: {
+          attempt: {
+            stage: stageOf("requirements-analysis"),
+            unit: null,
+            artifact: accept(artifactName("requirements")),
+            reviewer,
+            reviewClass: "adversarial",
+            iteration: 2,
+            requestedAt: at("2026-11-08T10:30:00Z"),
+          },
+          verdict: "ready",
+          findings: [],
+          receivedAt: at("2026-11-08T10:40:00Z"),
+        },
+      }),
+    ).toEqual({
+      guard: CORE_GUARDS.reviewFreeze,
+      reason:
+        "requirements for requirements-analysis was reviewed (ready) and stays as reviewed " +
+        "until the person asks for changes.",
+      nextStep: "Put the review to the person at the gate; record their Request Changes first.",
+    });
+  });
+
+  test("receiptStop names the reviewer the engine asked", () => {
+    expect(
+      receiptStop({
+        kind: "unexpected-reviewer",
+        expected: reviewer,
+        found: accept(agentSlug("aidlc-developer-agent")),
+      }),
+    ).toEqual({
+      guard: CORE_GUARDS.stateTransition,
+      reason:
+        "The engine asked aidlc-product-lead-agent for this review, not aidlc-developer-agent.",
+      nextStep: NEXT,
     });
   });
 });

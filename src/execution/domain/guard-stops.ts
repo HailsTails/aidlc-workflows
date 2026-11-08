@@ -1,6 +1,8 @@
 import type { Gate } from "./gate.ts";
 import { CORE_GUARDS, type GuardRefusal } from "./guard.ts";
 import type { PlanApprovalStanding } from "./plan-approval.ts";
+import type { ReviewReceipt } from "./review.ts";
+import type { ReceiptRefusal } from "./review-attempt.ts";
 import type { RecordMoveRefusal, StageAt, StageState } from "./workflow-record.ts";
 
 const ENGINE_NEXT_STEP = "Ask the engine for the next step and carry that out.";
@@ -52,6 +54,32 @@ export const planApprovalStop = (
       ? `The plan for ${placeOf(standing.target)} changed since the person approved it.`
       : `${placeOf(standing.target)} has no plan the person approved.`,
   nextStep: "Ask the engine for the next step; it puts the plan to the person for approval.",
+});
+
+export const reviewFreezeStop = (frozen: {
+  readonly at: StageAt;
+  readonly receipt: ReviewReceipt;
+}): GuardRefusal => ({
+  guard: CORE_GUARDS.reviewFreeze,
+  reason:
+    `${frozen.receipt.attempt.artifact} for ${placeOf(frozen.at)} was reviewed ` +
+    `(${frozen.receipt.verdict}) and stays as reviewed until the person asks for changes.`,
+  nextStep: "Put the review to the person at the gate; record their Request Changes first.",
+});
+
+const receiptReason = (refusal: ReceiptRefusal): string => {
+  switch (refusal.kind) {
+    case "unexpected-reviewer":
+      return `The engine asked ${refusal.expected} for this review, not ${refusal.found}.`;
+    case "unrequested-iteration":
+      return `The engine asked for review ${refusal.expected}, not review ${refusal.found}.`;
+  }
+};
+
+export const receiptStop = (refusal: ReceiptRefusal): GuardRefusal => ({
+  guard: CORE_GUARDS.stateTransition,
+  reason: receiptReason(refusal),
+  nextStep: ENGINE_NEXT_STEP,
 });
 
 export const presenceStop = (gate: Gate): GuardRefusal => ({
