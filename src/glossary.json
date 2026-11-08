@@ -175,7 +175,7 @@
 {"name":"GateDecision","context":"execution","kind":"concept","definition":"Approve, request changes, skip, jump or stop."},
 {"name":"HumanEvidenceSource","context":"execution","kind":"concept","definition":"How a human turn was observed: host hook or host transcript."},
 {"name":"HumanEvidence","context":"execution","kind":"concept","definition":"An observed turn the person typed; a fact, separate from what Guard Policy makes it mean."},
-{"name":"Approval","context":"execution","kind":"concept","definition":"A recorded decision at a gate, with its evidence and fingerprint.","legacy":["PersonApproval","GateReply"]},
+{"name":"Approval","context":"execution","kind":"concept","definition":"A recorded gate decision with its plan fingerprint and the basis it holds on: the person's evidence, or the human-presence guard standing aside under its recorded lift.","legacy":["PersonApproval","GateReply"]},
 {"name":"ReviewAttempt","context":"execution","kind":"concept","definition":"One requested review of a stage's artifact."},
 {"name":"ReviewFindingStatus","context":"execution","kind":"concept","definition":"Open, resolved, rejected or reopened.","legacy":["ReviewFindingStatus"]},
 {"name":"ReviewFinding","context":"execution","kind":"concept","definition":"One reviewer finding.","legacy":["ReviewFinding","ReviewRecordFinding","ReviewRecordDerivedFinding"]},
@@ -299,5 +299,6 @@
 {"name":"HookAttachment","context":"workflow-definition","kind":"concept","definition":"One place a hook runs: a lifecycle attachment or a tool attachment."},
 {"name":"HookPlacement","context":"workflow-definition","kind":"concept","definition":"Whether a hook gets its own host entry or runs inside a named group of hooks, in declaration order."},
 {"name":"HookAudience","context":"workflow-definition","kind":"concept","definition":"Which agents an attachment applies to: every agent, or the stage reviewers the Method's ReviewPolicy names. Definition selects; a host adapter places the registration."},
-{"name":"HostExitStatus","context":"execution","kind":"concept","definition":"The exit status a host reads from a hook call: allow, error or block."}
+{"name":"HostExitStatus","context":"execution","kind":"concept","definition":"The exit status a host reads from a hook call: allow, error or block."},
+{"name":"ApprovalBasis","context":"execution","kind":"concept","definition":"Why an approval holds: the person's HumanEvidence, or the GuardSwitch that lowered the human-presence guard. It never holds on a guess."}
 ]
