@@ -41,7 +41,7 @@ const builtPluginTree = (name: string): GoldenLayout => {
 describe("plugin output goldens", () => {
   test("a generated plugin file is recorded under its harness, not the marketplace group", () => {
     const measured = goldenSource(builtPluginTree("grouping")).measure();
-    expect(Object.keys(measured.claude ?? {})).toEqual([PLUGIN_AGENT]);
+    expect(Object.keys(measured["claude"] ?? {})).toEqual([PLUGIN_AGENT]);
     expect(Object.keys(measured["plugin-marketplaces"] ?? {})).toEqual([MARKETPLACE]);
   });
 
