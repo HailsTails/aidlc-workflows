@@ -622,7 +622,7 @@
         "rootCause": "The rebuild keeps domain and application pure and registers each real IO reach as one named adapter, so Projection's reads of the captured host sources live in host-source-files.ts alone.",
         "rootCheck": "Read lint/restrictions.ts and the existing exception entries on 2026-11-09: purityRestriction still refuses node: imports in domain and application, and Projection has no other registered disk-read location.",
         "readback": "Each context registers every real IO reach as one named adapter, therefore Projection's disk reads sit in one file, therefore the renderers receive the captured source's values from a port, therefore host-source-files.ts alone imports node:fs/promises and node:path as a read-only reach to disk.",
-        "owner": "Lane G (Guardrails) in lanes.json; the file is codex/integration's; Lane 0 approved the location on the coordinator's relay of the integration request"
+        "owner": "Lane G (Guardrails) in lanes.json; the file is codex/integration's; the coordinator approved the location in the AIDLC pace and parallel lanes note at 21:18 UTC"
       }
     }
   ]
