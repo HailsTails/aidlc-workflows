@@ -2,6 +2,7 @@ import type { BaseRevision, ChangedFile } from "../domain/change.ts";
 import type { ModuleShape } from "../domain/deletion.ts";
 import type { DisciplineException } from "../domain/zone-rules.ts";
 import type { GoldenSet } from "../domain/golden.ts";
+import type { FileTree, LifecycleRecord } from "../domain/install-lifecycle.ts";
 import type { JsonValue } from "../domain/json-grant.ts";
 import type { LanePlan } from "../domain/lane-plan.ts";
 import type { WaitReason } from "../domain/machine-lock.ts";
@@ -156,4 +157,35 @@ export type Progress = {
   readonly started: (id: CheckId) => void;
   readonly finished: (outcome: CheckOutcome) => void;
   readonly note: (line: string) => void;
+};
+
+export type RuntimeChoice = "current" | "previous";
+
+export type ConfigRun = {
+  readonly exitCode: number;
+  readonly output: string;
+};
+
+export type ConfigRequest = {
+  readonly runtime: RuntimeChoice;
+  readonly force: boolean;
+};
+
+export type InstallProject = {
+  readonly copyIn: (runtime: RuntimeChoice) => void;
+  readonly config: (request: ConfigRequest) => ConfigRun;
+  readonly ownedSample: () => string;
+  readonly append: (path: string) => void;
+  readonly tree: () => FileTree;
+};
+
+export type InstallLab = {
+  readonly releaseOf: (runtime: RuntimeChoice) => string;
+  readonly project: (harness: string) => InstallProject;
+};
+
+export type LifecycleFixtures = {
+  readonly harnesses: () => readonly string[];
+  readonly read: (harness: string) => LifecycleRecord | undefined;
+  readonly write: (record: LifecycleRecord) => void;
 };
