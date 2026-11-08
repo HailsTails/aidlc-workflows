@@ -5,6 +5,8 @@ import { scopeColumn } from "../../workflow-definition/domain/scope-grid.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { StageNode } from "../../workflow-definition/domain/stage-graph.ts";
 
+export type CompiledMethodFiles = { readonly graph: string; readonly grid: string };
+
 type Field = readonly [string, unknown];
 type RenderingRequest = { readonly method: Method; readonly host: HostIdentity;
   readonly memoryRoot: ProjectPath };
@@ -92,9 +94,7 @@ const stageFields = (request: RenderingRequest, node: StageNode): readonly Field
   ];
 };
 
-export const serializeCompiledMethod = (request: RenderingRequest): {
-  readonly graph: string; readonly grid: string;
-} => {
+export const serializeCompiledMethod = (request: RenderingRequest): CompiledMethodFiles => {
   const graph = request.method.graph.nodes.map((node) => Object.fromEntries(stageFields(request, node)));
   const scopes = request.method.scopes.toSorted((left, right) =>
     left.name < right.name ? -1 : Number(left.name > right.name));

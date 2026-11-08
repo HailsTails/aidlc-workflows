@@ -1,1 +1,1 @@
-export { serializeCompiledMethod } from "./adapters/compiled-method-file.ts";
+export { serializeCompiledMethod, type CompiledMethodFiles } from "./adapters/compiled-method-file.ts";
