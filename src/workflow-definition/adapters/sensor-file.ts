@@ -1,0 +1,19 @@
+import { z } from "zod";
+
+const fieldShapes = z.record(z.string(), z.string());
+
+export const SensorFileSchema = z.object({
+  id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+  kind: z.literal("deterministic"),
+  command: z.string().min(1),
+  default_severity: z.enum(["advisory", "blocking"]),
+  description: z.string().min(1),
+  category: z.string().optional(),
+  fire_on: z.enum(["write", "gate"]).default("gate"),
+  input_schema: fieldShapes.optional(),
+  output_schema: fieldShapes.optional(),
+  timeout_seconds: z.number().int().positive().optional(),
+  matches: z.string().optional(),
+});
+
+export type SensorFile = z.infer<typeof SensorFileSchema>;

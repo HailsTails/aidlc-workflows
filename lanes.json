@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "contextMap": "lint/context-map.ts",
+  "glossary": "src/glossary.json",
+  "hotFiles": [
+    "core/tools/aidlc-lib.ts",
+    "core/tools/aidlc-orchestrate.ts",
+    "core/tools/aidlc-init.ts",
+    "scripts/package.ts",
+    "package.json",
+    "bun.lock",
+    "tsconfig.json",
+    "eslint.config.ts",
+    "harness/*/manifest.ts"
+  ],
+  "hotFileRule": "A lane edits a hot file only to delete the declarations listed under its monolithDeletions; any other hot-file edit goes through the integration lane.",
+  "lanes": {
+    "0": {
+      "name": "Contracts",
+      "agent": "claude",
+      "owns": [
+        "src/glossary.json",
+        "src/tsconfig.json",
+        "src/kernel/**",
+        "src/*/fixtures/**",
+        "lint/context-map.ts",
+        "lanes.json"
+      ],
+      "contractFiles": [
+        "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,method,stage-graph,refusals}.ts",
+        "src/workflow-definition/application/{ports,use-cases}.ts",
+        "src/workflow-definition/adapters/{stage-file,scope-file,agent-file,sensor-file,rule-file,plugin-files}.ts",
+        "src/projection/domain/{harness-profile,root-integration,projected-file,neutral-surface,projection}.ts",
+        "src/projection/application/{ports,use-cases}.ts",
+        "src/projection/adapters/harness-profile-file.ts",
+        "src/packaging/domain/{payload,artifact}.ts",
+        "src/packaging/application/{ports,use-cases}.ts",
+        "src/packaging/adapters/distribution-descriptor-file.ts",
+        "src/installation/domain/{ownership,install-plan,installed-distribution,refusals}.ts",
+        "src/installation/application/{ports,use-cases}.ts",
+        "src/installation/adapters/ownership-record-file.ts",
+        "src/execution/domain/{identities,unit,gate,review,guard,workflow-record,transition,session,audit,host-event,directive,refusals}.ts",
+        "src/execution/application/{ports,use-cases}.ts",
+        "src/execution/adapters/{intent-registry-file,session-binding-file}.ts",
+        "src/cli/application/ports.ts"
+      ],
+      "contractRule": "Contract files are written only by lane 0. A lane that needs a change asks lane 0, which updates contract, fixture and glossary together and posts a one-line decision.",
+      "monolithDeletions": {}
+    },
+    "G": {
+      "name": "Guardrails",
+      "agent": "claude",
+      "owns": [
+        "eslint.config.ts",
+        "lint/**",
+        "tests/golden/**",
+        "tests/ratchets/**",
+        "tests/fixtures/aidlc-lib-declarations.txt",
+        "tests/unit/t-aidlc-lib-only-shrinks.test.ts",
+        "scripts/gate.ts",
+        "biome.json"
+      ],
+      "notOwned": ["lint/context-map.ts"],
+      "monolithDeletions": {}
+    },
+    "A": {
+      "name": "Workflow Definition",
+      "agent": "codex",
+      "owns": ["src/workflow-definition/**"],
+      "consumes": ["src/kernel/**"],
+      "monolithDeletions": {
+        "core/tools/aidlc-lib.ts": [
+          "StageEntry",
+          "ScopeDefinition",
+          "ScopeMetadata",
+          "AgentMetadata",
+          "PHASES",
+          "Phase",
+          "PHASE_NUMBERS",
+          "loadStageGraph",
+          "loadStageGraphAll",
+          "loadScopeMetadataAll",
+          "loadScopeMetadata",
+          "loadScopeMapping",
+          "loadAgents",
+          "parseStageFrontmatter",
+          "parseAgentFrontmatter",
+          "agentsDir",
+          "scopesDir",
+          "isScopeName",
+          "SCOPE_NAME_RULE",
+          "validScopes",
+          "REVIEW_CLASSES",
+          "ReviewClass",
+          "asReviewClass",
+          "CEREMONY_KEYS",
+          "CEREMONY_SETTINGS",
+          "CeremonyKey",
+          "CeremonySetting",
+          "CeremonyPolicy",
+          "GuardPolicy",
+          "PER_UNIT_FOR_EACH",
+          "KNOWN_PER_UNIT_STAGES",
+          "isPerUnitStage"
+        ],
+        "core/tools/aidlc-stage-schema.ts": ["*"],
+        "core/tools/aidlc-rule-schema.ts": ["*"],
+        "core/tools/aidlc-sensor-schema.ts": ["*"],
+        "core/tools/aidlc-graph.ts": ["Consume", "RuleResolution", "SensorResolution", "GraphStage", "ScopeGrid", "RuleFile", "SensorFile"]
+      }
+    },
+    "B": {
+      "name": "Projection + Harness port",
+      "agent": "codex",
+      "owns": ["src/projection/**", "harness/*/**"],
+      "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
+      "monolithDeletions": {
+        "scripts/package.ts": ["writeHarnessData", "buildTree", "loadManifest", "writeHarness"],
+        "scripts/manifest-types.ts": ["*"],
+        "scripts/onboarding.ts": ["*"],
+        "scripts/harness-bindings.ts": ["*"],
+        "harness/*/manifest.ts": ["*"],
+        "harness/*/emit.ts": ["*"],
+        "core/tools/aidlc-tiers.ts": ["TierProjection", "TIER_PROJECTIONS", "Harness"],
+        "core/tools/aidlc-runner-gen.ts": ["*"]
+      }
+    },
+    "C": {
+      "name": "Packaging + Installation",
+      "agent": "codex",
+      "owns": ["src/packaging/**", "src/installation/**"],
+      "consumes": [
+        "src/kernel/**",
+        "src/projection/domain/**",
+        "src/projection/adapters/harness-profile-file.ts"
+      ],
+      "monolithDeletions": {
+        "core/tools/aidlc-init.ts": ["RootContribution", "Baseline", "PreparedRefreshSource", "PlannedAction"],
+        "core/tools/aidlc-distribution.ts": ["ProjectionStamp", "RootIntegration", "ProjectionDescriptor", "JsonEntriesOwnership", "JsonEntriesResult"],
+        "core/tools/aidlc-transaction.ts": ["TransactionOperation", "TransactionPlan", "TransactionOptions"],
+        "core/tools/aidlc-uninstall-plan.ts": ["*"],
+        "core/tools/aidlc-runtime-paths.ts": ["HarnessLocation", "ProjectHarness", "callingHarness", "inHostShell", "pinRuntimeHarness", "harnessIsAGuess"],
+        "scripts/package-release.ts": ["*"]
+      }
+    },
+    "D": {
+      "name": "Workflow Execution",
+      "agent": "codex",
+      "startsAfter": ["A", "B", "C"],
+      "owns": ["src/execution/**", "src/cli/**", "core/hooks/**"],
+      "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
+      "monolithDeletions": {
+        "core/tools/aidlc-lib.ts": ["CHECKBOX_REVERSE", "resolveReviewClass", "UnitCheckpoint", "GateReply", "UnitGateRhythm"],
+        "core/tools/aidlc-orchestrate.ts": ["isPerUnit", "unitCovered", "unitWalkStanding"],
+        "core/tools/aidlc-unit-dag.ts": ["*"],
+        "core/tools/aidlc-unit-holders.ts": ["*"],
+        "core/tools/aidlc-guard-fences.ts": ["*"],
+        "core/tools/aidlc-construction-checkpoints.ts": ["*"],
+        "core/tools/aidlc-record-core.ts": ["CheckboxState", "IntentRegistryEntry", "IntentInfo", "SessionBindingSource", "SessionBinding", "AuditShardEvent"]
+      }
+    }
+  }
+}
