@@ -1,16 +1,20 @@
 import type {
   HostConversationSource,
+  HostEventDecoder,
+  HostResponseEncoder,
   HumanTurnHistory,
 } from "../execution/application/boundary-ports.ts";
 import type { HostShell } from "../installation/application/boundary-ports.ts";
 import type { HostIdentity } from "../kernel/host.ts";
 import type { DistributionLayout } from "../packaging/domain/payload.ts";
 import type { Harness } from "../projection/application/ports.ts";
-import type {
-  CommandRoute,
-  HostEventDecoder,
-  HostResponseEncoder,
-} from "./application/ports.ts";
+
+export type ExitStatus = 0 | 1 | 2;
+
+export interface CommandRoute {
+  readonly verb: readonly string[];
+  run(argv: readonly string[]): Promise<ExitStatus>;
+}
 
 export type BuildHost = {
   readonly host: HostIdentity;

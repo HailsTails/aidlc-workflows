@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, type AsymmetricMatcher } from "bun:test";
 import { boundaryConfig } from "./boundaries.ts";
 import { Linter } from "./eslint-port.ts";
 import { standardsConfig } from "./standards.ts";
@@ -43,6 +43,172 @@ describe("boundaryConfig in production code", () => {
     );
   });
 });
+
+const findingsFor = (code: string, filename: string): Linter.LintMessage[] =>
+  new Linter({ configType: "flat" }).verify(code, BOUNDARIES, { filename });
+
+const UNDECLARED = "not a layer of a context in lint/context-map.ts";
+
+describe("boundaryConfig outside the declared layers", () => {
+  test.each([
+    "src/execution/services/runner.ts",
+    "src/shared/ids.ts",
+    "src/kernel/ids/stage-id.ts",
+    "src/cli/domain/route.ts",
+    "src/cli/application/route.ts",
+  ])("refuses %s", (filename) => {
+    expect(findingsFor("export const value = 1;\n", filename)).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining(UNDECLARED) }),
+    );
+  });
+
+  test("leaves a declared layer to its own rules", () => {
+    expect(findingsFor("export const value = 1;\n", "src/execution/domain/unit.ts")).toEqual([]);
+  });
+});
+
+describe("boundaryConfig own-context layer arrows", () => {
+  test.each([
+    ["src/execution/domain/unit.ts", "../../execution/adapters/store.ts"],
+    ["src/execution/domain/unit.ts", "../../execution/application/ports.ts"],
+    ["src/execution/domain/unit.ts", "../main.ts"],
+    ["src/execution/application/run.ts", "../../execution/main.ts"],
+    ["src/execution/application/run.ts", "../../execution/adapters/store.ts"],
+  ])("%s may not import %s", (filename, specifier) => {
+    const code = `import { store } from "${specifier}";\nexport const used = store;\n`;
+
+    expect(findingsFor(code, filename)).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports" }),
+    );
+  });
+
+  test("a pure layer may not import dynamically", () => {
+    const code = 'export const load = () => import("node:fs");\n';
+
+    expect(findingsFor(code, "src/execution/domain/unit.ts")).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-syntax" }),
+    );
+  });
+
+  test("a pure layer may not reach effects through globalThis", () => {
+    const code = 'export const file = globalThis.Bun.file("x");\n';
+
+    expect(findingsFor(code, "src/execution/domain/unit.ts")).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-globals" }),
+    );
+  });
+});
+
+const refusal = (text: string): AsymmetricMatcher =>
+  expect.objectContaining({
+    ruleId: "no-restricted-syntax",
+    message: expect.stringContaining(text),
+  });
+
+const ANY_REFUSAL = expect.objectContaining({ ruleId: "no-restricted-syntax" });
+
+const UNGLOSSED = "the glossary does not name";
+
+describe("boundaryConfig published types", () => {
+  test("refuses a domain type the context's glossary does not name", () => {
+    const code = "export type ProjectedStage = { readonly slug: string };\n";
+
+    expect(findingsFor(code, "src/projection/domain/stage.ts")).toContainEqual(
+      refusal(UNGLOSSED),
+    );
+  });
+
+  test("refuses a port the context's glossary does not name", () => {
+    const code = "export interface StageCache {\n  read(): string;\n}\n";
+
+    expect(findingsFor(code, "src/execution/application/ports.ts")).toContainEqual(
+      refusal(UNGLOSSED),
+    );
+  });
+
+  test("accepts a type the context's glossary names", () => {
+    const code = "export type ProjectedFile = { readonly path: string };\n";
+
+    expect(findingsFor(code, "src/projection/domain/projected-file.ts")).not.toContainEqual(
+      ANY_REFUSAL,
+    );
+  });
+});
+
+const HARNESS_NAME = "Harness name:";
+
+describe("boundaryConfig harness names outside src/hosts", () => {
+  test.each([
+    ['export const folders = { claude: "skills" };\n', "a property key"],
+    ['export const isKiro = (names: string[]) => names.includes("kiro");\n', "a string"],
+    ['export type Host = "codex" | "cursor";\n', "a literal type"],
+    ['export const skills = ".claude/skills";\n', "a harness path"],
+    ["export const skills = `kiro-ide/skills`;\n", "a template"],
+  ])("refuses %s (%s)", (code) => {
+    expect(findingsFor(code, "src/projection/domain/layout.ts")).toContainEqual(
+      refusal(HARNESS_NAME),
+    );
+  });
+
+  test("leaves a word that only starts like a harness name", () => {
+    const code = 'export const label = "claudette";\n';
+
+    expect(findingsFor(code, "src/projection/domain/layout.ts")).not.toContainEqual(ANY_REFUSAL);
+  });
+
+  test("leaves a domain word that is also a harness name in a list of values", () => {
+    const code = 'export const SOURCES = ["switch", "cursor", "stamp"] as const;\n';
+
+    expect(findingsFor(code, "src/execution/domain/session.ts")).not.toContainEqual(ANY_REFUSAL);
+  });
+
+  test("leaves sample harness values in fixtures", () => {
+    const code = 'export const layout = { claude: ".claude/skills" };\n';
+
+    expect(findingsFor(code, "src/packaging/fixtures/claude-layout.fixture.ts")).not.toContainEqual(
+      ANY_REFUSAL,
+    );
+  });
+
+  test("still refuses branching on a harness name in a test", () => {
+    const code = 'export const isClaude = (name: string) => name === "claude";\n';
+
+    expect(findingsFor(code, "src/projection/domain/layout.test.ts")).toContainEqual(
+      refusal("Harness branching"),
+    );
+  });
+});
+
+const UNDECODED = "JSON.parse";
+
+describe("boundaryConfig JSON decoding in adapters", () => {
+  test("refuses JSON.parse whose result skips a schema", () => {
+    const code = "export const read = (text: string): unknown => JSON.parse(text);\n";
+
+    expect(findingsFor(code, "src/execution/adapters/state-file.ts")).toContainEqual(
+      refusal(UNDECODED),
+    );
+  });
+
+  test("accepts JSON.parse fed straight into a schema", () => {
+    const code =
+      'import { StateSchema } from "./state-schema.ts";\n' +
+      "export const read = (text: string) => StateSchema.safeParse(JSON.parse(text));\n";
+
+    expect(findingsFor(code, "src/execution/adapters/state-file.ts")).not.toContainEqual(
+      ANY_REFUSAL,
+    );
+  });
+
+  test("leaves JSON.parse in an adapter test", () => {
+    const code = 'export const expected: unknown = JSON.parse("[]");\n';
+
+    expect(findingsFor(code, "src/execution/adapters/state-file.test.ts")).not.toContainEqual(
+      ANY_REFUSAL,
+    );
+  });
+});
+
 
 describe("boundaryConfig in colocated tests", () => {
   test("lets a domain test import bun:test and its own context's fixtures", () => {
