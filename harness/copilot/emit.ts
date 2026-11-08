@@ -30,10 +30,15 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, st
 import { dirname, join, relative } from "node:path";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
 import {
-  writeMarkdownAgentSurface,
+  modelAgentName, resolveModelPolicy, writeMarkdownAgentSurface,
 } from "../../core/tools/aidlc-model-policy.ts";
-import { injectDelegatedKnowledgePreflight } from "../../scripts/agent-knowledge.ts";
+import { absorbReviewerKnowledge,
+  injectDelegatedKnowledgePreflight } from "../../scripts/agent-knowledge.ts";
 import { EXTENDED_SUBPROCESS_TIMEOUT_MS } from "../../core/tools/aidlc-runtime-budget.ts";
+import { accepted, refused } from "../../src/kernel/result.ts";
+import type { ProjectionRefusal } from "../../src/projection/domain/projection.ts";
+import { copilotAgentRenderer, type CopilotModelSurface,
+  type CopilotRuntimeSurface } from "../../src/hosts/copilot/projection/agent-renderer.ts";
 import { LAUNCHER_PATH, launcherBody } from "../../core/tools/aidlc-launcher-voucher.ts";
 
 // ---------------------------------------------------------------------------
@@ -68,39 +73,6 @@ function emitHooksJson(harnessDir: string): string {
     hooks[event].push({ type: "command", bash: cmd, powershell: cmd, timeoutSec });
   }
   return `${JSON.stringify({ version: 1, hooks }, null, 2)}\n`;
-}
-
-// Rewrite a core persona .md into its Copilot-native custom-agent twin.
-// The frontmatter `tier:` line is DROPPED (copilot projection is model-
-// omitted by type — agents inherit the session model on both surfaces), and
-// the core `disallowedTools: Task` denial becomes a supported `tools:`
-// allowlist without Copilot's `agent` delegation tool. An unknown
-// disallowedTools value fails the build instead of silently shipping an
-// unenforced denial.
-const COPILOT_WORKER_TOOLS = ["read", "edit", "search", "execute", "web", "todo"] as const;
-
-function emitAgentMd(raw: string, srcPath: string): string {
-  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
-  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  if (!m) throw new Error(`${srcPath}: agent .md has no closed frontmatter block.`);
-  const fm = m[1];
-  if (!/^tier:\s*\S+\s*$/m.test(fm)) {
-    throw new Error(`${srcPath}: agent frontmatter has no tier: line.`);
-  }
-  const disallowedMatch = fm.match(/^disallowedTools:\s*(.*?)\s*$/m);
-  // Exactly `Task` — a multi-valued list (e.g. "Task, WebSearch") must fail
-  // the build, not silently ship the extra denial unenforced.
-  if (disallowedMatch && !/^task$/i.test(disallowedMatch[1].trim())) {
-    throw new Error(
-      `${srcPath}: copilot emission cannot project disallowedTools: ${disallowedMatch[1]}.`,
-    );
-  }
-  return writeMarkdownAgentSurface(raw, {}, {
-    removeKeys: ["disallowedTools"],
-    afterProjectionLines: disallowedMatch
-      ? [`tools: [${COPILOT_WORKER_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`]
-      : [],
-  });
 }
 
 export default function emit(ctx: EmitContext): void {
@@ -162,28 +134,52 @@ export default function emit(ctx: EmitContext): void {
     content: () => emitHooksJson(harnessDir),
   });
 
-  // Persona custom agents from core/agents/*.md (body token → .aidlc).
-  const agentsDir = join(coreRoot, "agents");
-  for (const f of readdirSync(agentsDir).filter((x) => x.endsWith(".md")).sort()) {
-    emissions.push({
-      path: join(SHELL, "agents", f),
-      content: () => {
-        const agentName = f.replace(/\.md$/, "");
-        return substituteToken(
-          emitAgentMd(
-            injectDelegatedKnowledgePreflight(
-              readFileSync(join(agentsDir, f), "utf-8"),
-              agentName,
-              harnessDir,
-            ),
-            join(agentsDir, f),
-          ),
-        ).replaceAll(
-          "aidlc/spaces/<active-space>/memory/",
-          "aidlc/active-memory/",
-        );
-      },
+  for (const agent of ctx.method.agents) {
+    const captured = ctx.sources.find((source) => source.path === agent.source
+      && source.owner.kind === agent.owner.kind
+      && (source.owner.kind === "core" || (agent.owner.kind === "plugin"
+        && source.owner.plugin === agent.owner.plugin)));
+    const authored = captured
+      ? accepted(captured.content.kind === "text" ? captured.content.text
+        : Buffer.from(captured.content.bytes).toString("utf-8"))
+      : refused<ProjectionRefusal>({
+        kind: "render-failed", concept: "agent", name: agent.slug,
+        reason: "The accepted agent's authored source was not captured.",
+      });
+    const modelSurface: CopilotModelSurface = (request) => {
+      if (!authored.ok) return authored;
+      const prepared = injectDelegatedKnowledgePreflight(authored.value,
+        request.agent.slug, harnessDir);
+      return accepted(substituteToken(writeMarkdownAgentSurface(prepared, {}, {
+        removeKeys: [...request.removeKeys],
+        afterProjectionLines: [...request.afterProjectionLines],
+      })));
+    };
+    const runtimeSurface: CopilotRuntimeSurface = (request) => {
+      if (!authored.ok) return authored;
+      if (request.agent.model.kind !== "tier") return refused<ProjectionRefusal>({
+        kind: "render-failed", concept: "agent", name: request.agent.slug,
+        reason: "This core-agent bridge requires an authored model tier.",
+      });
+      const prepared = substituteToken(injectDelegatedKnowledgePreflight(
+        absorbReviewerKnowledge(authored.value, request.agent.slug, coreRoot),
+        request.agent.slug, harnessDir,
+      ));
+      const effective = resolveModelPolicy(null, modelAgentName(request.agent.slug),
+        request.agent.model.tier, "copilot", ctx.tierCap);
+      return accepted(writeMarkdownAgentSurface(prepared, effective, { effortKey: "effort" }));
+    };
+    const rendering = copilotAgentRenderer(modelSurface, runtimeSurface)({
+      agent, knowledge: ctx.method.knowledge,
     });
+    if (!rendering.ok) throw new Error(JSON.stringify(rendering.refusal));
+    for (const file of rendering.value) {
+      emissions.push({
+        path: join(distRoot, file.path),
+        content: () => file.content.kind === "text" ? file.content.text
+          : Buffer.from(file.content.bytes).toString("utf-8"),
+      });
+    }
   }
 
   // (a) authored orchestrator shell — token-substituted from harness/copilot/.
