@@ -53,7 +53,7 @@ import { debtFigureOf } from "../lint/gate/domain/zone-rules.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/[\\/]$/, "");
 const BUN = process.execPath;
-const DEFAULT_BASE = "origin/claude/aidlc-contracts-2db5c9";
+const DEFAULT_BASE = "origin/rebuild/foundation";
 
 const RULE_INPUTS = [
   "eslint.config.ts",
