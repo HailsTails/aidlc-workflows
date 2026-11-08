@@ -61,7 +61,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { loadCoreBuild, loadPluginBuildCatalog, projectCoreCommands,
+import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName, projectCoreCommands,
   type PluginBuildCatalog, type PluginBuildTarget } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import {
@@ -2151,6 +2151,13 @@ if (argv[0] === "plugin" && argv[1] === "build") {
     [pluginName, harnessName, outDir].some((arg) => arg.startsWith("-"))
   ) {
     console.error("usage: package.ts plugin build <plugin> <harness> <outDir>");
+    process.exit(1);
+  }
+  const identity = pluginBuildName(pluginName);
+  if (!identity.ok) {
+    console.error(identity.refusal.kind === "reserved-plugin-name"
+      ? `plugin name "${identity.refusal.raw}" is reserved; choose a non-reserved plugin name.`
+      : `invalid plugin name "${identity.refusal.raw}"; use a lowercase kebab-case name.`);
     process.exit(1);
   }
   const core = await loadCoreBuild({ coreRoot: CORE_ROOT, markdownBlocks });

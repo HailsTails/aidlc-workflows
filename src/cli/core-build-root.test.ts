@@ -1,7 +1,7 @@
 import { methodSource } from "../workflow-definition/fixtures/method-source.fixture.ts";
 import { expect, test } from "bun:test";
 import { accept } from "../kernel/fixtures/accept.ts";
-import { loadCoreBuild } from "./core-build-root.ts";
+import { loadCoreBuild, pluginBuildName } from "./core-build-root.ts";
 
 const request = { coreRoot: new URL("../../core/", import.meta.url),
   markdownBlocks: () => ({ lines: [] }) };
@@ -37,4 +37,17 @@ test("a malformed authored file refuses without a partial build", async () => {
     .toEqual({ ok: false, refusal: [{ kind: "invalid-file", location: {
       kind: "method-source", owner: { kind: "core" }, path: methodSource({ kind: "scope", within: "aidlc-invalid.md" }) },
       issues: ["Missing YAML frontmatter"] }] });
+});
+
+test("CLI plugin admission retains the identity refusal before catalog lookup", () => {
+  expect(pluginBuildName("aidlc-pro")).toEqual({
+    ok: false, refusal: { kind: "reserved-plugin-name", raw: "aidlc-pro" },
+  });
+  expect(pluginBuildName("core")).toEqual({
+    ok: false, refusal: { kind: "reserved-plugin-name", raw: "core" },
+  });
+  expect(pluginBuildName("bad/name")).toEqual({
+    ok: false, refusal: { kind: "invalid-identity", identity: "plugin", raw: "bad/name" },
+  });
+  expect(accept(pluginBuildName("test-pro"))).toBe<string>("test-pro");
 });
