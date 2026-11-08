@@ -133,7 +133,7 @@ const runUpdateGoldens = (
   request: UpdateGoldensRequest,
 ): Promise<GateReport> =>
   locked(services, request, async () => {
-    const failure = updateGoldens(services.goldens);
+    const failure = updateGoldens(services.goldens, request.build);
     return failure === undefined
       ? report(request, { verdict: "green" })
       : failed(request, { problem: `${failure.subject} ${failure.violation}`, fix: failure.fix });

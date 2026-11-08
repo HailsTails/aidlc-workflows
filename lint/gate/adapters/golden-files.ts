@@ -13,7 +13,7 @@ export type GoldenLayout = {
 
 const GoldenFileSchema = z.object({
   schemaVersion: z.literal(1),
-  harness: z.string().min(1),
+  group: z.string().min(1),
   files: z.record(z.string(), z.string().regex(/^[0-9a-f]{64}$/)),
 });
 
@@ -52,8 +52,13 @@ export const goldenSource = (layout: GoldenLayout): GoldenSource => ({
   },
 });
 
-const storePath = (layout: GoldenLayout, harness: string): string =>
-  `${layout.storeDirectory}/${harness}.json`;
+const storePath = (layout: GoldenLayout, group: string): string =>
+  `${layout.storeDirectory}/${group}.json`;
+
+const storedManifest = (workspace: Workspace, path: string): readonly [string, GoldenManifest] => {
+  const stored = GoldenFileSchema.parse(JSON.parse(workspace.read(path) ?? "{}"));
+  return [stored.group, stored.files];
+};
 
 export const goldenStore = (request: {
   readonly layout: GoldenLayout;
@@ -62,17 +67,13 @@ export const goldenStore = (request: {
   const { layout, workspace } = request;
   return {
     read: (): GoldenSet => {
-      const entries = layout.harnesses().flatMap((harness) => {
-        const text = workspace.read(storePath(layout, harness));
-        const manifest = text === undefined ? undefined : GoldenFileSchema.parse(JSON.parse(text));
-        return manifest === undefined ? [] : [[harness, manifest.files] as const];
-      });
-      return Object.fromEntries(entries);
+      const paths = workspace.filesMatching([`${layout.storeDirectory}/*.json`]);
+      return Object.fromEntries(paths.map((path) => storedManifest(workspace, path)));
     },
     write: (set) => {
-      for (const [harness, files] of Object.entries(set)) {
-        const content = `${JSON.stringify({ schemaVersion: 1, harness, files }, null, 2)}\n`;
-        workspace.write({ path: storePath(layout, harness), content });
+      for (const [group, files] of Object.entries(set)) {
+        const content = `${JSON.stringify({ schemaVersion: 1, group, files }, null, 2)}\n`;
+        workspace.write({ path: storePath(layout, group), content });
       }
     },
   };

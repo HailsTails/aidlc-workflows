@@ -13,7 +13,7 @@ export const USAGE = [
   "bun scripts/gate.ts --scope <lane-id>|<path>[,<path>...] [--base <ref>] [--record]",
   "bun scripts/gate.ts --full [--lane <lane-id>] [--base <ref>] [--no-build] [--record]",
   "                    [--wait <seconds> | --no-wait]",
-  "bun scripts/gate.ts --update-goldens [--wait <seconds> | --no-wait]",
+  "bun scripts/gate.ts --update-goldens [--no-build] [--wait <seconds> | --no-wait]",
   "bun scripts/gate.ts --locked [--wait <seconds> | --no-wait] -- <command> [args...]",
   "",
   `--only <id>[,<id>...] limits --scope or --full to checks: ${CHECK_IDS.join(", ")}.`,
@@ -79,16 +79,16 @@ const requestFor = (parsed: Parsed, defaults: ArgumentDefaults): GateRequest => 
   const record = raw.record === true;
   const only = raw.only ?? "all";
   const wait = waitMs(raw, defaults);
+  const build = raw["no-build"] !== true;
   if (raw.scope !== undefined) {
     return { kind: "scope", target: raw.scope, baseRef, record, only };
   }
   if (raw.full === true) {
-    const build = raw["no-build"] !== true;
     return { kind: "full", laneId: raw.lane, baseRef, build, record, waitMs: wait, only };
   }
   return raw.locked === true
     ? { kind: "locked", command: positionals, waitMs: wait }
-    : { kind: "update-goldens", waitMs: wait };
+    : { kind: "update-goldens", build, waitMs: wait };
 };
 
 const parsedArguments = (argv: readonly string[]): Loaded<Parsed> => {

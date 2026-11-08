@@ -57,15 +57,18 @@ export const driftFinding = (drift: GoldenDrift): Finding => ({
     "commit tests/golden with a decision line; otherwise restore the behaviour.",
 });
 
+export const PLUGIN_MARKETPLACE_GROUP = "plugin-marketplaces";
+
 export const goldenGroupOf = (request: {
   readonly path: string;
   readonly harnesses: readonly string[];
 }): string | undefined => {
-  const segments = request.path.split("/");
-  const [root, first, , third] = segments;
-  const candidate = root === "dist" && first === "plugins" ? third : first;
+  const [root, first, , third] = request.path.split("/");
+  const isPluginTree = root === "dist" && first === "plugins";
+  const candidate = isPluginTree ? third : first;
   const isOutputRoot = root === "dist" || root === "dist-release";
-  return isOutputRoot && candidate !== undefined && request.harnesses.includes(candidate)
-    ? candidate
-    : undefined;
+  if (isOutputRoot && candidate !== undefined && request.harnesses.includes(candidate)) {
+    return candidate;
+  }
+  return isPluginTree ? PLUGIN_MARKETPLACE_GROUP : undefined;
 };

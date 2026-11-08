@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "group": "plugin-marketplaces",
+  "files": {
+    "dist/plugins/.agents/plugins/marketplace.json": "1fb8902d4ee55f08c989f5e7a6851822c188a851d3943dc3a7fa40ec4325e703",
+    "dist/plugins/.claude-plugin/marketplace.json": "1db23a82dcebc6582e133fc52dffeea111147e52f3d00447337bba1c2d07e7d1",
+    "dist/plugins/.cursor-plugin/marketplace.json": "591d7e16339f64409ddc162761936871cd19bf2d0a80e27305112e89a87ab47c",
+    "dist/plugins/.plugin/marketplace.json": "702faf0fa01f1636b177e4a1af33ed3fc74e2c6bc113e1b3448c0f4ac4aed058"
+  }
+}

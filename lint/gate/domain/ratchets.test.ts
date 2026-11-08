@@ -64,6 +64,8 @@ describe("goldens", () => {
     expect(goldenGroupOf({ path: "dist-release/codex/a", harnesses })).toBe("codex");
     expect(goldenGroupOf({ path: "dist/plugins/test-pro/codex/a", harnesses })).toBe("codex");
     expect(goldenGroupOf({ path: "dist/claude.staging/a", harnesses })).toBeUndefined();
+    const marketplace = "dist/plugins/.claude-plugin/marketplace.json";
+    expect(goldenGroupOf({ path: marketplace, harnesses })).toBe("plugin-marketplaces");
   });
 
   test("drift names each added, removed and changed path", () => {

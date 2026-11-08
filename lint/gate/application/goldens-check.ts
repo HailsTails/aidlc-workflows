@@ -43,8 +43,11 @@ export const goldensCheck = (dependencies: GoldensDependencies): GateCheck => ({
   },
 });
 
-export const updateGoldens = (dependencies: GoldensDependencies): Finding | undefined => {
-  const failure = buildOutputs(dependencies);
+export const updateGoldens = (
+  dependencies: GoldensDependencies,
+  build: boolean,
+): Finding | undefined => {
+  const failure = build ? buildOutputs(dependencies) : undefined;
   if (failure === undefined) {
     dependencies.store.write(dependencies.source.measure());
   }

@@ -22,6 +22,7 @@ export type FullRequest = {
 
 export type UpdateGoldensRequest = {
   readonly kind: "update-goldens";
+  readonly build: boolean;
   readonly waitMs: number;
 };
 
