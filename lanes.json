@@ -36,6 +36,7 @@
         "src/projection/domain/{projected-file,neutral-surface,projection,template-token}.ts",
         "src/projection/application/ports.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}.ts",
+        "src/packaging/application/boundary-ports.ts",
         "src/installation/domain/{ownership,file-operation,installed-distribution,sibling-block,refusals}.ts",
         "src/installation/application/boundary-ports.ts",
         "src/execution/domain/{identities,unit,gate,review,guard,workflow-record,transition,session,audit,host-event,refusals}.ts",
