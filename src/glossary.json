@@ -102,7 +102,7 @@
 {"name":"OnboardingTemplates","context":"projection","kind":"concept","definition":"The neutral onboarding text and the per-harness skeleton.","legacy":["OnboardingSpec"]},
 {"name":"NeutralSurface","context":"projection","kind":"concept","definition":"Non-method material a harness places: protocols, templates, session skills, onboarding."},
 {"name":"ProjectionFinding","context":"projection","kind":"concept","definition":"An advisory fact found while projecting."},
-{"name":"ProjectionRefusal","context":"projection","kind":"concept","definition":"Why a harness cannot project: unknown, colliding paths, or a render failure."},
+{"name":"ProjectionRefusal","context":"projection","kind":"concept","definition":"Why a harness cannot project: unknown, colliding paths, a render failure for one subject, or a command source that failed as a whole, before any subject."},
 {"name":"Projection","context":"projection","kind":"concept","definition":"One host's projected files and findings.","legacy":["EmitContext"]},
 {"name":"Rendering","context":"projection","kind":"concept","definition":"Files a Harness rendered, or why it could not."},
 {"name":"Harness","context":"projection","kind":"port","definition":"Port: one harness's host-bound token bindings and renderings; Projection binds HARNESS_DIR from the host's directory.","legacy":["Harness","QualifiedHarnessProfile"]},
