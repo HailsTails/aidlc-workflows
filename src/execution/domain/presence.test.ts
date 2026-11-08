@@ -7,8 +7,12 @@ import {
   typedTurn,
   unitOf,
 } from "../fixtures/workflow-record.fixture.ts";
-import type { Gate } from "./gate.ts";
+import { accept } from "../../kernel/fixtures/accept.ts";
+import type { AuditEvent } from "./audit.ts";
+import type { Approval, Gate } from "./gate.ts";
+import { auditSequence } from "./identities.ts";
 import {
+  gateOpening,
   personSinceFinished,
   presenceIn,
   presenceRequirement,
@@ -78,6 +82,53 @@ describe("presenceRequirement", () => {
       expect(presenceRequirement({ gate, phase, autonomy })).toBe(needs);
     },
   );
+});
+
+const openedEvent: AuditEvent = {
+  intent: null,
+  session: CHAT,
+  at: OPENED,
+  causedBy: null,
+  sequence: accept(auditSequence(4)),
+  fact: {
+    kind: "transition",
+    transition: {
+      kind: "stage",
+      stage: stageOf("code-generation"),
+      unit: null,
+      from: "in-progress",
+      to: "awaiting-approval",
+      cause: { kind: "engine-step" },
+      at: OPENED,
+    },
+  },
+};
+
+const earlierDecision: Approval = {
+  gate: { kind: "stage", stage: stageOf("requirements-analysis"), unit: null },
+  decision: { kind: "approve" },
+  decidedAt: DECIDED,
+  evidence: typedTurn(OPENED),
+  fingerprint: null,
+};
+
+describe("gateOpening", () => {
+  test("opens a stage gate when its stage went to awaiting approval, after the last decision", () => {
+    expect(
+      gateOpening({
+        gate: stageGate,
+        session: CHAT,
+        events: [openedEvent],
+        approvals: [earlierDecision],
+      }),
+    ).toEqual({ kind: "opened", window: afterDecision });
+  });
+
+  test("a gate whose opening was never recorded stays unopened", () => {
+    expect(gateOpening({ gate: planGate, session: CHAT, events: [openedEvent], approvals: [] })).toEqual(
+      { kind: "unopened", gate: planGate },
+    );
+  });
 });
 
 describe("personSinceFinished", () => {

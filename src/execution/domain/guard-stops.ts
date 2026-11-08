@@ -1,5 +1,6 @@
 import type { Gate } from "./gate.ts";
 import { CORE_GUARDS, type GuardRefusal } from "./guard.ts";
+import type { PlanApprovalStanding } from "./plan-approval.ts";
 import type { RecordMoveRefusal, StageAt, StageState } from "./workflow-record.ts";
 
 const ENGINE_NEXT_STEP = "Ask the engine for the next step and carry that out.";
@@ -41,6 +42,17 @@ const gatePlace = (gate: Gate): string => {
       return `the ${gate.checkpoint.kind} checkpoint for Unit ${gate.checkpoint.unit}`;
   }
 };
+
+export const planApprovalStop = (
+  standing: Exclude<PlanApprovalStanding, { readonly kind: "approved" }>,
+): GuardRefusal => ({
+  guard: CORE_GUARDS.planApproval,
+  reason:
+    standing.kind === "stale"
+      ? `The plan for ${placeOf(standing.target)} changed since the person approved it.`
+      : `${placeOf(standing.target)} has no plan the person approved.`,
+  nextStep: "Ask the engine for the next step; it puts the plan to the person for approval.",
+});
 
 export const presenceStop = (gate: Gate): GuardRefusal => ({
   guard: CORE_GUARDS.humanPresence,

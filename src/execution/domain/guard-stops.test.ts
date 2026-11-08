@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { at } from "../../kernel/fixtures/values.fixture.ts";
 import { stageOf, unitOf } from "../fixtures/workflow-record.fixture.ts";
+import { accept } from "../../kernel/fixtures/accept.ts";
 import { CORE_GUARDS } from "./guard.ts";
-import { presenceStop, transitionStop } from "./guard-stops.ts";
+import { planApprovalStop, presenceStop, transitionStop } from "./guard-stops.ts";
+import { planFingerprint } from "./identities.ts";
 
 const NEXT = "Ask the engine for the next step and carry that out.";
 
@@ -50,6 +52,24 @@ describe("transitionStop", () => {
     ).toBe(
       "These stages are not finished yet: application-design, code-generation for Unit ledger.",
     );
+  });
+});
+
+describe("planApprovalStop", () => {
+  const target = {
+    stage: stageOf("code-generation"),
+    unit: unitOf("ledger"),
+    current: accept(
+      planFingerprint("sha256:5e312852de6e183521a2719293865370e1e2b196c9dd5286b9389a3896fa22d5"),
+    ),
+  };
+
+  test("stops code generation that has no plan the person approved", () => {
+    expect(planApprovalStop({ kind: "unapproved", target })).toEqual({
+      guard: CORE_GUARDS.planApproval,
+      reason: "code-generation for Unit ledger has no plan the person approved.",
+      nextStep: "Ask the engine for the next step; it puts the plan to the person for approval.",
+    });
   });
 });
 

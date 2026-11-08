@@ -1,9 +1,11 @@
 import type { Timestamp } from "../../kernel/values.ts";
+import type { StageSlug } from "../../workflow-definition/domain/identities.ts";
 import type { Phase } from "../../workflow-definition/domain/vocabulary.ts";
-import type { Gate, HumanEvidence } from "./gate.ts";
-import type { SessionId } from "./identities.ts";
+import type { AuditEvent } from "./audit.ts";
+import type { Approval, Gate, HumanEvidence } from "./gate.ts";
+import type { SessionId, UnitName } from "./identities.ts";
 import { orderOf } from "./moment.ts";
-import type { AutonomyMode } from "./workflow-record.ts";
+import type { AutonomyMode, StageProgress } from "./workflow-record.ts";
 
 export type PresenceWindow = {
   readonly session: SessionId;
@@ -56,6 +58,67 @@ export const presenceRequirement = (setting: GateSetting): PresenceRequirement =
   setting.autonomy === "autonomous"
     ? "engine-may-decide"
     : "person-decides";
+
+export type GateOpening =
+  | { readonly kind: "opened"; readonly window: PresenceWindow }
+  | { readonly kind: "unopened"; readonly gate: Gate };
+
+type GatePlace = {
+  readonly stages: readonly StageSlug[];
+  readonly unit: UnitName | null;
+  readonly opensOn: StageProgress | "any";
+};
+
+const placeOfGate = (gate: Gate): GatePlace => {
+  switch (gate.kind) {
+    case "stage":
+      return { stages: [gate.stage], unit: gate.unit, opensOn: "awaiting-approval" };
+    case "plan-approval":
+      return { stages: [gate.stage], unit: gate.unit, opensOn: "in-progress" };
+    case "checkpoint":
+      return { stages: gate.checkpoint.stages, unit: gate.checkpoint.unit, opensOn: "any" };
+  }
+};
+
+const opensAt = (event: AuditEvent, place: GatePlace): Timestamp | null => {
+  const { fact } = event;
+  if (fact.kind !== "transition" || fact.transition.kind !== "stage") {
+    return null;
+  }
+  const { transition } = fact;
+  return place.stages.includes(transition.stage) &&
+    transition.unit === place.unit &&
+    (place.opensOn === "any" || place.opensOn === transition.to)
+    ? transition.at
+    : null;
+};
+
+const latestDecision = (approvals: readonly Approval[]): Timestamp | null =>
+  approvals.at(-1)?.decidedAt ?? null;
+
+export type GateWindowRequest = {
+  readonly gate: Gate;
+  readonly session: SessionId;
+  readonly events: readonly AuditEvent[];
+  readonly approvals: readonly Approval[];
+};
+
+export const gateOpening = (request: GateWindowRequest): GateOpening => {
+  const place = placeOfGate(request.gate);
+  const openedAt = request.events
+    .flatMap((event) => opensAt(event, place) ?? [])
+    .at(-1);
+  return openedAt === undefined
+    ? { kind: "unopened", gate: request.gate }
+    : {
+        kind: "opened",
+        window: {
+          session: request.session,
+          openedAt,
+          lastDecisionAt: latestDecision(request.approvals),
+        },
+      };
+};
 
 export type FinishedWindow = {
   readonly session: SessionId;

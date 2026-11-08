@@ -1,9 +1,11 @@
 import type { Result } from "../../kernel/result.ts";
 import type { Timestamp } from "../../kernel/values.ts";
 import type { AuditEntry, AuditEvent } from "../domain/audit.ts";
+import type { StageSlug } from "../../workflow-definition/domain/identities.ts";
 import type {
   AuditSequence,
   IntentId,
+  PlanFingerprint,
   RecordVersion,
   UnitName,
 } from "../domain/identities.ts";
@@ -34,6 +36,14 @@ export interface Clock {
 
 export interface Sessions {
   current(): Promise<Session | null>;
+}
+
+export interface PlanFingerprints {
+  current(request: {
+    readonly intent: IntentId;
+    readonly stage: StageSlug;
+    readonly unit: UnitName;
+  }): Promise<PlanFingerprint | null>;
 }
 
 export interface UnitClaims {

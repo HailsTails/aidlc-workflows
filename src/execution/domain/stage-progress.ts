@@ -1,6 +1,7 @@
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { NonEmptyArray, Timestamp } from "../../kernel/values.ts";
 import type { StageSlug } from "../../workflow-definition/domain/identities.ts";
+import type { UnitName } from "./identities.ts";
 import type { Transition, TransitionCause } from "./transition.ts";
 import {
   progressFinished,
@@ -110,6 +111,67 @@ const moveRunning = (
     ? refused({ kind: "stage-not-in-plan", ...request.at })
     : moveFound(record, { ...request, position, state });
 };
+
+export type ProgressSetting = {
+  readonly at: StageAt;
+  readonly to: StageProgress;
+  readonly cause: TransitionCause;
+  readonly time: Timestamp;
+};
+
+const settingFound = (
+  record: WorkflowRecord,
+  setting: ProgressSetting & { readonly position: number; readonly state: StageState },
+): RecordChange =>
+  setting.state.progress === setting.to
+    ? { record, transitions: [] }
+    : applyChanges(record, { ...setting, changes: [{ position: setting.position, to: setting.to }] });
+
+const setRunning = (
+  record: WorkflowRecord,
+  setting: ProgressSetting,
+): Result<RecordChange, RecordMoveRefusal> => {
+  const position = record.stages.findIndex(
+    (state) => state.stage === setting.at.stage && state.unit === setting.at.unit,
+  );
+  const state = record.stages[position];
+  return state === undefined
+    ? refused({ kind: "stage-not-in-plan", ...setting.at })
+    : accepted(settingFound(record, { ...setting, position, state }));
+};
+
+export const setStageProgress = (
+  record: WorkflowRecord,
+  setting: ProgressSetting,
+): Result<RecordChange, RecordMoveRefusal> =>
+  record.status.kind === "running" ? setRunning(record, setting) : notRunning(record);
+
+export type UnitRevision = {
+  readonly unit: UnitName;
+  readonly stages: readonly StageSlug[];
+  readonly cause: TransitionCause;
+  readonly time: Timestamp;
+};
+
+const revisedPositions = (
+  record: WorkflowRecord,
+  revision: UnitRevision,
+): readonly ProgressChange[] =>
+  record.stages.flatMap((state, position): readonly ProgressChange[] =>
+    state.unit === revision.unit &&
+    revision.stages.includes(state.stage) &&
+    state.progress !== "revising"
+      ? [{ position, to: "revising" }]
+      : [],
+  );
+
+export const reviseUnit = (
+  record: WorkflowRecord,
+  revision: UnitRevision,
+): Result<RecordChange, RecordMoveRefusal> =>
+  record.status.kind === "running"
+    ? accepted(applyChanges(record, { ...revision, changes: revisedPositions(record, revision) }))
+    : notRunning(record);
 
 export const moveStage = (
   record: WorkflowRecord,
