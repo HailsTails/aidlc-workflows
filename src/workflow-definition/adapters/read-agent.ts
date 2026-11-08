@@ -17,7 +17,7 @@ export const readAgent = (request: {
     strings: ["name", "display_name", "description", "disallowedTools", "tier", "plugin"] });
   if (!decoded.ok) return decoded;
   const { file, body: authoredText } = decoded.value;
-  if (!file.plugin && !file.tier) {
+  if (!file.plugin && source.owner.kind !== "plugin" && !file.tier) {
     return refused([{ kind: "core-agent-without-tier", source }]);
   }
   return translated(source, (): Agent => {
@@ -29,8 +29,10 @@ export const readAgent = (request: {
       maxTurns: file.maxTurns ?? null, persona: outliner.outline(authoredText),
       additions: { afterPreflight: [], endOfBody: [] },
     };
-    if (file.plugin) return { ...common,
-      owner: { kind: "plugin", plugin: authoredValue(pluginId(file.plugin)) },
+    const plugin = file.plugin ? authoredValue(pluginId(file.plugin))
+      : source.owner.kind === "plugin" ? source.owner.plugin : null;
+    if (plugin) return { ...common,
+      owner: { kind: "plugin", plugin },
       model: file.tier ? { kind: "tier", tier: file.tier } : { kind: "host-default" },
     };
     if (!file.tier) throw new Error("A core agent needs an explicit tier");

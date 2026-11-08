@@ -1,6 +1,6 @@
 import { brand } from "../../kernel/brand.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import type { CoreContent, Method } from "./method.ts";
+import type { CompiledMethod, CoreContent, Method } from "./method.ts";
 import { validateArtifactProducers, validateCoreDuplicates,
   validateCoreReferences } from "./method-references.ts";
 import type { MethodRefusal } from "./refusals.ts";
@@ -58,8 +58,10 @@ const coreOwnershipIssues = (core: CoreContent): readonly MethodRefusal[] => [
     path: definition.source },
   issues: ["An authored core definition may not claim non-core ownership"],
 }));
-export const compileCoreMethod = (core: CoreContent): Result<Method, readonly MethodRefusal[]> => {
-  const issues = [...coreOwnershipIssues(core), ...validateCoreDuplicates(core), ...validateCoreReferences(core),
+type FreshContent = CoreContent & Pick<CompiledMethod, "graph" | "freeformDefault">;
+
+export const compileFreshContent = (core: CoreContent): Result<FreshContent, readonly MethodRefusal[]> => {
+  const issues = [...validateCoreDuplicates(core), ...validateCoreReferences(core),
     ...validateArtifactProducers(core), ...core.stages.flatMap(validateStage)];
   if (issues.length > 0) return refused(issues);
   const ordered = orderStages(core.stages);
@@ -71,11 +73,18 @@ export const compileCoreMethod = (core: CoreContent): Result<Method, readonly Me
   if (defaults.length > 1) return refused([{ kind: "several-freeform-defaults", scopes: defaults }]);
   const nodes = numbered({ ordered: ordered.value, core });
   if (!nodes.ok) return nodes;
-  return accepted(brand<Method>({ ...core, freeformDefault: defaults[0] ?? null,
-    installedPlugins: [], selection: { kind: "every-installed" }, findings: [],
+  return accepted({ ...core, freeformDefault: defaults[0] ?? null,
     graph: { nodes: routed.flatMap((stage) => {
       const node = nodes.value.find((candidate) => candidate.stage === stage.slug);
       return node ? [node] : [];
     }) },
-  }));
+  });
+};
+
+export const compileCoreMethod = (core: CoreContent): Result<Method, readonly MethodRefusal[]> => {
+  const ownership = coreOwnershipIssues(core);
+  if (ownership.length > 0) return refused(ownership);
+  const compiled = compileFreshContent(core);
+  return compiled.ok ? accepted(brand<Method>({ ...compiled.value, installedPlugins: [],
+    selection: { kind: "every-installed" }, findings: [] })) : compiled;
 };
