@@ -17,7 +17,7 @@
 //     aidlc-kiro-adapter.ts stdin shim is a harnessFile.
 //   - AGENTS.md lands at the PROJECT ROOT (dist/kiro/AGENTS.md), outside .kiro/.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { EmitContext, HarnessManifest } from "../../scripts/manifest-types.ts";
 import {
@@ -39,14 +39,22 @@ const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKey
     kind: "render-failed", concept: "agent", name: agent.slug,
     reason: "This core-agent bridge requires an authored model tier.",
   });
-  const source = join(ctx.coreRoot, "agents", `${agent.slug}.md`);
+  const source = ctx.sources.find((file) => file.path === agent.source &&
+    file.owner.kind === agent.owner.kind && (file.owner.kind === "core" ||
+      (agent.owner.kind === "plugin" && file.owner.plugin === agent.owner.plugin)));
+  if (source === undefined) return refused({
+    kind: "render-failed", concept: "agent", name: agent.slug,
+    reason: "This core-agent bridge requires captured agent text.",
+  });
+  const authored = source.content.kind === "text" ? source.content.text :
+    Buffer.from(source.content.bytes).toString("utf-8");
   const raw = injectDelegatedKnowledgePreflight(
-    absorbReviewerKnowledge(readFileSync(source, "utf-8"), agent.slug, ctx.coreRoot),
+    absorbReviewerKnowledge(authored, agent.slug, ctx.coreRoot),
     agent.slug, ctx.harnessDir,
   );
   const text = ctx.substituteToken(raw).replace(/\.kiro\/rules\/(?!default\.rules)/g, ".kiro/steering/");
   const effective = resolveModelPolicy(
-    null, modelAgentName(source), agent.model.tier, "kiro", ctx.tierCap,
+    null, modelAgentName(agent.slug), agent.model.tier, "kiro", ctx.tierCap,
   );
   return accepted(writeMarkdownAgentSurface(text, effective, {
     effortKey: "effort", removeKeys: [...removeKeys],
