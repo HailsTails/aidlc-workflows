@@ -1,3 +1,5 @@
+import type { NonEmptyArray } from "../../kernel/values.ts";
+import type { MethodRefusal } from "../../workflow-definition/domain/refusals.ts";
 import type { GuardRefusal } from "./guard.ts";
 import type { IntentId, RecordVersion } from "./identities.ts";
 
@@ -15,4 +17,7 @@ export type ExecutionRefusal =
       readonly expected: RecordVersion;
       readonly found: RecordVersion;
     }
-  | { readonly kind: "method-unavailable"; readonly reason: string };
+  | {
+      readonly kind: "method-unavailable";
+      readonly refusals: NonEmptyArray<MethodRefusal>;
+    };
