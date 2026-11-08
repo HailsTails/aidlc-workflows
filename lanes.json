@@ -13,7 +13,7 @@
     "eslint.config.ts",
     "harness/*/manifest.ts"
   ],
-  "hotFileRule": "A lane edits a hot file only to delete the declarations listed under its monolithDeletions; any other hot-file edit goes through the integration lane.",
+  "hotFileRule": "A lane edits a hot file only to delete the declarations listed under its monolithDeletions, or within the JSON key paths its hotFileGrants lists for that file (\"*\" grants the whole file). A lane whose owns lists a hot file's exact path writes that file freely. Any other hot-file edit goes through the integration lane.",
   "lanes": {
     "0": {
       "name": "Contracts",
@@ -61,6 +61,10 @@
         "biome.json"
       ],
       "notOwned": ["lint/context-map.ts"],
+      "hotFileGrants": {
+        "package.json": ["devDependencies", "scripts.lint", "scripts.gate"],
+        "bun.lock": ["*"]
+      },
       "monolithDeletions": {}
     },
     "A": {
