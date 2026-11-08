@@ -300,7 +300,7 @@
 {"name":"HostTokenBindings","context":"projection","kind":"concept","definition":"A host's value, or null, for every HostBoundToken."},
 {"name":"ToolHookPoint","context":"workflow-definition","kind":"concept","definition":"A HookPoint around a tool call: before-tool or after-tool."},
 {"name":"LifecycleHookPoint","context":"workflow-definition","kind":"concept","definition":"A HookPoint that is not around a tool call."},
-{"name":"MethodSourceKind","context":"workflow-definition","kind":"concept","definition":"Which kind of method source a file is; each kind has one fixed folder."},
+{"name":"MethodSourceKind","context":"workflow-definition","kind":"concept","definition":"Which kind of method source a file is; each kind has one fixed folder. An overlay is a plugin contribution under contributions/, located by its owning plugin."},
 {"name":"MethodSourceLocation","context":"workflow-definition","kind":"concept","definition":"Which method source file a fact is about: its owner and MethodSourcePath, the one key entities, bytes and refusals share."},
 {"name":"MethodFileLocation","context":"workflow-definition","kind":"concept","definition":"Which file a method refusal is about: a method source, a plugin manifest, or the stage pins."},
 {"name":"FileMode","context":"kernel","kind":"concept","definition":"Whether a file is written as a regular file or an executable."},

@@ -12,6 +12,7 @@ export const METHOD_SOURCE_FOLDERS = {
   knowledge: "knowledge",
   rule: "memory",
   hook: "hooks",
+  overlay: "contributions",
 } as const;
 
 export type MethodSourceKind = keyof typeof METHOD_SOURCE_FOLDERS;
