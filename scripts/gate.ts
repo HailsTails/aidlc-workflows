@@ -140,7 +140,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     sharedRecords: [...records.globs, "tests/golden/**"],
   }),
   zonesCheck({ repository, selection, records }),
-  recordsCheck({ records, ruleInputs: RULE_INPUTS }),
+  recordsCheck({ repository, records, ruleInputs: RULE_INPUTS }),
   lintCheck({
     linter: eslintLinter({ root: ROOT, roots: LINT_ROOTS, extensions: [".ts"] }),
     records,

@@ -26,6 +26,7 @@ const services = (ready: Loaded<string>): GateServices => ({
   repository: {
     resolve: () => undefined,
     changesSince: () => [],
+    arrivals: () => [],
     readAt: () => undefined,
     listFiles: () => [],
   },
