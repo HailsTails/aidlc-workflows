@@ -1,5 +1,6 @@
 import type { ContentHash, Timestamp } from "../../kernel/values.ts";
 import type { StageSlug } from "../../workflow-definition/domain/identities.ts";
+import type { GuardSwitch } from "./guard.ts";
 import type { PlanFingerprint, SessionId, UnitName } from "./identities.ts";
 import type { Checkpoint } from "./unit.ts";
 
@@ -24,10 +25,14 @@ export type HumanEvidence = {
   readonly turnDigest: ContentHash;
 };
 
+export type ApprovalBasis =
+  | { readonly kind: "human"; readonly evidence: HumanEvidence }
+  | { readonly kind: "presence-stood-aside"; readonly lift: GuardSwitch };
+
 export type Approval = {
   readonly gate: Gate;
   readonly decision: GateDecision;
   readonly decidedAt: Timestamp;
-  readonly evidence: HumanEvidence;
+  readonly basis: ApprovalBasis;
   readonly fingerprint: PlanFingerprint | null;
 };
