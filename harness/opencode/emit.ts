@@ -21,61 +21,18 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
+import { createOpenCodeAgentRenderer } from "../../src/hosts/opencode/projection/agent-renderer.ts";
+import { accepted, refused } from "../../src/kernel/result.ts";
+import type { ProjectionRefusal } from "../../src/projection/domain/projection.ts";
 import {
   absorbReviewerKnowledge,
   injectDelegatedKnowledgePreflight,
 } from "../../scripts/agent-knowledge.ts";
-import type { Tier } from "../../core/tools/aidlc-tiers.ts";
 import {
   modelAgentName,
   resolveModelPolicy,
   writeMarkdownAgentSurface,
 } from "../../core/tools/aidlc-model-policy.ts";
-
-// Rewrite a core persona .md into its opencode-native subagent twin. The
-// frontmatter tier becomes model/variant plus mode, the core Task denial
-// becomes opencode's native permission map, and a core `maxTurns:` cap is
-// renamed to opencode's native `steps:` key (per-agent step cap, opencode
-// >= 1.0.134; at the cap opencode forces a final TEXT-ONLY turn - the agent
-// can return a summary but cannot make tool calls, so the persona's Turn
-// Budget prose still carries the write-early instruction). A disallowedTools
-// value without Task fails the build.
-function emitSubagentMd(raw: string, srcPath: string, tierCap: EmitContext["tierCap"]): string {
-  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
-  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  if (!m) throw new Error(`${srcPath}: agent .md has no closed frontmatter block.`);
-  const fm = m[1];
-  const tierMatch = fm.match(/^tier:\s*(\S+)\s*$/m);
-  if (!tierMatch) throw new Error(`${srcPath}: agent frontmatter has no tier: line.`);
-  const disallowedMatch = fm.match(/^disallowedTools:\s*(.*?)\s*$/m);
-  if (disallowedMatch && !/\bTask\b/i.test(disallowedMatch[1])) {
-    throw new Error(
-      `${srcPath}: opencode emission cannot project disallowedTools: ${disallowedMatch[1]}.`,
-    );
-  }
-  const effective = resolveModelPolicy(
-    null,
-    modelAgentName(srcPath),
-    tierMatch[1] as Tier,
-    "opencode",
-    tierCap,
-  );
-  // Core's harness-neutral turn cap -> opencode's native per-agent key.
-  const maxTurns = raw.match(/^maxTurns:\s*(\d+)\s*$/m);
-  return writeMarkdownAgentSurface(raw, effective, {
-    effortKey: "variant",
-    removeKeys: ["disallowedTools", "maxTurns"],
-    afterProjectionLines: [
-      "mode: subagent",
-      ...(maxTurns ? [`steps: ${maxTurns[1]}`] : []),
-      ...(disallowedMatch ? ["permission:", "  task: deny"] : []),
-    ],
-  })
-    // Keep persona prose consistent with the renamed frontmatter key: the
-    // harness-neutral body cites its own cap as `maxTurns: <n>`; on this
-    // roster that key is `steps: <n>`.
-    .replace(/`maxTurns: (\d+)`/g, "`steps: $1`");
-}
 
 // A persona reads the method from the engine's copy of the active space's
 // memory (aidlc-includes.ts ACTIVE_MEMORY_DIR), the same fixed path on every
@@ -135,30 +92,38 @@ export default function emit(ctx: EmitContext): void {
 
   // Persona subagents from core/agents/*.md (tier-projected, body → .aidlc).
   const agentsDir = join(coreRoot, "agents");
-  for (const f of readdirSync(agentsDir).filter((x) => x.endsWith(".md")).sort()) {
-    emissions.push({
-      path: join(SHELL, "agents", f),
-      content: () => {
-        // Reviewer knowledge absorption (scripts/agent-knowledge.ts) on the
-        // raw core text - this emission reads core/agents/*.md directly, so
-        // the packager's transform (which absorbs for the .aidlc twins)
-        // never runs on it.
-        const agentName = f.replace(/\.md$/, "");
-        const raw = injectDelegatedKnowledgePreflight(
-          absorbReviewerKnowledge(
-            readFileSync(join(agentsDir, f), "utf-8"),
-            agentName,
-            coreRoot,
-          ),
-          agentName,
-          harnessDir,
-        );
-        const projected = substituteToken(
-          emitSubagentMd(raw, join(agentsDir, f), tierCap),
-        );
-        return projectActiveMemoryReferences(projected);
-      },
+  const agents = ctx.method.agents.toSorted((left, right) => left.slug.localeCompare(right.slug));
+  for (const agent of agents) {
+    const f = `${agent.slug}.md`;
+    const raw = injectDelegatedKnowledgePreflight(
+      absorbReviewerKnowledge(readFileSync(join(agentsDir, f), "utf-8"), agent.slug, coreRoot),
+      agent.slug, harnessDir,
+    );
+    const legacyModelSurface: Parameters<typeof createOpenCodeAgentRenderer>[0] = (request) => {
+      if (request.agent.model.kind !== "tier") return refused<ProjectionRefusal>({
+        kind: "render-failed", concept: "agent", name: request.agent.slug,
+        reason: "This core-agent bridge requires an authored model tier.",
+      });
+      const effective = resolveModelPolicy(null, modelAgentName(join(agentsDir, f)),
+        request.agent.model.tier, "opencode", tierCap);
+      return accepted(writeMarkdownAgentSurface(raw.replace(/^\uFEFF/, ""), effective, {
+        effortKey: request.effortKey, removeKeys: [...request.removeKeys],
+        afterProjectionLines: [...request.afterProjectionLines],
+      }));
+    };
+    const rendering = createOpenCodeAgentRenderer(legacyModelSurface)({
+      agent, knowledge: ctx.method.knowledge,
     });
+    if (!rendering.ok) throw new Error(JSON.stringify(rendering.refusal));
+    for (const nativeAgent of rendering.value) {
+      if (nativeAgent.content.kind !== "text") {
+        throw new Error(`OpenCode emitted non-text content for ${agent.slug}`);
+      }
+      const nativeText = nativeAgent.content.text;
+      emissions.push({ path: join(distRoot, nativeAgent.path),
+        content: () => projectActiveMemoryReferences(substituteToken(nativeText)),
+      });
+    }
     // The conductor reads this core-projected copy for inline persona framing.
     // It needs the same valid method path as the native subagent twin.
     const inlinePath = join(distRoot, ".aidlc", "agents", f);

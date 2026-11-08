@@ -1096,6 +1096,7 @@ function buildTree(
   //    root inventory includes them automatically.
   if (m.emit) {
     m.emit({
+      method: freshMethod,
       repoRoot: REPO_ROOT,
       coreRoot: CORE_ROOT,
       harnessRoot: harnessSrcRoot,
