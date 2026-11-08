@@ -151,7 +151,8 @@ const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKey
   const authored = source.content.kind === "text" ? source.content.text :
     Buffer.from(source.content.bytes).toString("utf-8");
   const raw = injectDelegatedKnowledgePreflight(
-    absorbReviewerKnowledge(authored, agent.slug, ctx.coreRoot),
+    absorbReviewerKnowledge({ content: authored, agentName: agent.slug,
+      sourceRoot: ctx.coreRoot, reviewerAgents: ctx.reviewerAgents }),
     agent.slug, ctx.harnessDir,
   );
   const substituted = ctx.substituteToken(raw);
@@ -165,10 +166,11 @@ const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKey
 };
 
 const emitAgents = (ctx: EmitContext): void => {
+  const inlineAgents = inlineAgentSet(ctx.method);
   const renderAgent = kiroAgentRenderer({
     modelSurface: modelSurface(ctx),
     promptLines: (agent) => kiroIdePermissionLines(permissionPolicy)(agent.slug),
-    inlineReading: (agent) => inlineAgentSet(ctx.coreRoot).has(agent.slug)
+    inlineReading: (agent) => inlineAgents.has(agent.slug)
       ? "reads-inline" : "dispatched-only",
   });
   for (const agent of ctx.method.agents) {
