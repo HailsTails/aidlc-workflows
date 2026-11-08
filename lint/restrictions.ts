@@ -1,11 +1,6 @@
-import {
-  CONTEXT_MAP,
-  CONTEXTS,
-  HARNESS_NAMES,
-  LEGACY_TERRITORY,
-  type ContextName,
-} from "./context-map.ts";
+import { CONTEXT_MAP, CONTEXTS, LEGACY_TERRITORY, type ContextName } from "./context-map.ts";
 import type { GlossaryEntry } from "./glossary.ts";
+import { HARNESS_FOLDER_NAMES } from "./harness-folders.ts";
 
 export type ImportRestriction = { readonly regex: string; readonly message: string };
 
@@ -214,21 +209,21 @@ export const legacyImportRestrictions = (
   ];
 };
 
-const harnessLiteral = `/^(${alternatives(HARNESS_NAMES)})$/`;
+const HARNESSES = alternatives(HARNESS_FOLDER_NAMES);
+
+const harnessName = `/^\\.?(${HARNESSES})$/`;
+
+const harnessPath = `/^\\.?(${HARNESSES})\\//`;
 
 export const harnessBranching: readonly SyntaxRestriction[] = [
   "BinaryExpression[operator=/^[!=]==?$/] > Literal",
   "SwitchCase > Literal.test",
 ].map((selector) => ({
-  selector: `${selector}[value=${harnessLiteral}]`,
+  selector: `${selector}[value=${harnessName}]`,
   message:
     "Harness branching: only a host bundle may compare harness names. Express the " +
     "difference as a port method that src/hosts/<harness>/ implements.",
 }));
-
-const harnessName = `/^(${alternatives(HARNESS_NAMES)})$/`;
-
-const harnessPath = `/^(${alternatives(HARNESS_NAMES)})\\//`;
 
 const KEYED = ":matches(Property, TSPropertySignature)";
 

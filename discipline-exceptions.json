@@ -81,6 +81,45 @@
     },
     {
       "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "lint/harness-folders.ts",
+      "reason": "The single place the lint layer reads which harnesses exist, from the harness folders on disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/harness-folders.ts import node:fs and node:url?",
+            "because": "It lists the folders under harness/ and src/hosts/ when the lint config loads, and those folder names are the harness names the boundary rules refuse outside a host bundle.",
+            "evidence": "lint/restrictions.ts builds harnessName and harnessPath from HARNESS_FOLDER_NAMES"
+          },
+          {
+            "why": "Why are the harness names read from folder names rather than written in a list?",
+            "because": "A written list is a second copy of the harness set that drifts when a harness is added, so an eighth harness would need a lint edit to be guarded.",
+            "evidence": "lint/context-map.ts HARNESS_NAMES held 12 hand-written entries beside the 7 folders under harness/"
+          },
+          {
+            "why": "Why does a drifting copy of the harness set matter to the boundary rules?",
+            "because": "The rules refuse harness names in production code outside src/hosts, so a harness missing from the copy could be named anywhere without a finding.",
+            "evidence": "lint/boundaries.ts productionSyntax adds harnessNames to every non-fixture src layer"
+          },
+          {
+            "why": "Why must production code outside src/hosts never name a harness?",
+            "because": "Each harness difference belongs in a host bundle behind a port, so the contexts stay one implementation for every harness the method ships to.",
+            "evidence": "lint/context-map.ts HOST_BUNDLE_ROOT is src/hosts, and hostBundleImportRestrictions limits what a host imports"
+          },
+          {
+            "why": "Why do the contexts stay one implementation for every harness?",
+            "because": "The rebuild ships one hand-authored core to 7 harnesses, and per-harness branches in the core were the coupling the rebuild removes.",
+            "evidence": "AGENTS.md section AI-DLC: one core, many harnesses"
+          }
+        ],
+        "rootCause": "The rebuild keeps every harness difference in src/hosts, so the lint layer must know the real harness set, and the folders on disk are its only source.",
+        "rootCheck": "Listed harness/ on 2026-11-08: 7 folders (claude, codex, copilot, cursor, kiro, kiro-ide, opencode); src/hosts does not exist yet, and the reader returns no names for a missing folder.",
+        "readback": "The rebuild keeps harness differences in host bundles, therefore production code outside src/hosts names no harness, therefore the rules need the full harness set, therefore a written copy would drift, therefore lint/harness-folders.ts reads the harness folders through node:fs and node:url.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
       "clause": "CD-6#naming-convention",
       "file": "lint/no-comments.ts",
       "reason": "An ESLint rule's listener keys are ESTree node names that ESLint's API fixes.",
