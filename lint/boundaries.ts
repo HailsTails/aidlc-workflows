@@ -15,6 +15,7 @@ import {
   domainClock,
   dynamicImport,
   harnessBranching,
+  harnessNames,
   bridgeImportRestrictions,
   hostBundleImportRestrictions,
   legacyImportRestrictions,
@@ -25,6 +26,8 @@ import {
   purityOf,
   testImportRestrictions,
   srcImportRestrictions,
+  undecodedJson,
+  unglossedTypes,
   type ImportRestriction,
   type Layer,
   type SyntaxRestriction,
@@ -102,14 +105,27 @@ const PURE_RULES: Linter.RulesRecord = {
   ],
 };
 
-const srcSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] => {
-  const branded = [
-    ...harnessBranching,
-    ...ownershipInSrc(context, GLOSSARY),
-    ...methodSyntaxFor(context, layer),
-  ];
+const layerSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] => {
+  const branded = [...ownershipInSrc(context, GLOSSARY), ...methodSyntaxFor(context, layer)];
   return purityOf(layer) === "pure" ? [...branded, domainClock, dynamicImport] : branded;
 };
+
+const sampleSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] => [
+  ...harnessBranching,
+  ...layerSyntax(context, layer),
+];
+
+const edgeSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] => {
+  if (layer === "domain") {
+    return [unglossedTypes(context, GLOSSARY)];
+  }
+  return layer === "adapters" ? [undecodedJson] : [];
+};
+
+const productionSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] =>
+  layer === "fixtures"
+    ? sampleSyntax(context, layer)
+    : [...harnessNames, ...layerSyntax(context, layer), ...edgeSyntax(context, layer)];
 
 const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   name: `aidlc/src/${context}/${layer}`,
@@ -117,21 +133,33 @@ const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   rules: {
     ...restrict({
       imports: srcImportRestrictions({ context, layer }),
-      syntax: srcSyntax(context, layer),
+      syntax: productionSyntax(context, layer),
     }),
     ...(purityOf(layer) === "pure" ? PURE_RULES : {}),
+  },
+});
+
+const PORT_FILES = ["ports", "boundary-ports"];
+
+const srcPortsConfig = (context: ContextName): Linter.Config => ({
+  name: `aidlc/src/${context}/application/ports`,
+  files: PORT_FILES.map((file) => `src/${context}/application/${file}.ts`),
+  rules: {
+    ...restrict({
+      imports: srcImportRestrictions({ context, layer: "application" }),
+      syntax: [...productionSyntax(context, "application"), unglossedTypes(context, GLOSSARY)],
+    }),
+    ...PURE_RULES,
   },
 });
 
 const srcTestConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   name: `aidlc/src/${context}/${layer}/tests`,
   files: srcFiles(context, layer).map((glob) => glob.replace(/\.ts$/, ".test.ts")),
-  rules: {
-    "no-restricted-imports": [
-      "error",
-      { patterns: [...testImportRestrictions({ context, layer })] },
-    ],
-  },
+  rules: restrict({
+    imports: testImportRestrictions({ context, layer }),
+    syntax: sampleSyntax(context, layer),
+  }),
 });
 
 const DECLARED_SRC_FILES = [
@@ -173,7 +201,7 @@ const bridgeConfig = (bridge: LegacyBridge, context: ContextName): Linter.Config
       placement: { context, layer: "adapters" },
       bridgedModule: bridge.module,
     }),
-    syntax: srcSyntax(context, "adapters"),
+    syntax: productionSyntax(context, "adapters"),
   }),
 });
 
@@ -222,6 +250,7 @@ export const boundaryConfig: Linter.Config[] = [
   monolithConfig,
   harnessTreeConfig,
   ...CONTEXTS.flatMap((context) => layersOf(context).map((layer) => srcLayerConfig(context, layer))),
+  ...CONTEXTS.filter((context) => layersOf(context).includes("application")).map(srcPortsConfig),
   ...CONTEXTS.flatMap((context) =>
     testedLayersOf(context).map((layer) => srcTestConfig(context, layer)),
   ),

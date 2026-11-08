@@ -226,7 +226,57 @@ export const harnessBranching: readonly SyntaxRestriction[] = [
     "difference as a port method that src/hosts/<harness>/ implements.",
 }));
 
+const harnessName = `/^(${alternatives(HARNESS_NAMES)})$/`;
+
+const harnessPath = `/^(${alternatives(HARNESS_NAMES)})\\//`;
+
+const KEYED = ":matches(Property, TSPropertySignature)";
+
+export const harnessNames: readonly SyntaxRestriction[] = [
+  ...harnessBranching.map((restriction) => restriction.selector),
+  `Literal[value=${harnessPath}]`,
+  `TemplateElement[value.raw=${harnessPath}]`,
+  `TSLiteralType > Literal[value=${harnessName}]`,
+  `CallExpression > Literal.arguments[value=${harnessName}]`,
+  `${KEYED} > Identifier.key[name=${harnessName}]`,
+  `${KEYED} > Literal.key[value=${harnessName}]`,
+  `MemberExpression > Identifier.property[name=${harnessName}]`,
+  `MemberExpression > Literal.property[value=${harnessName}]`,
+].map((selector) => ({
+  selector,
+  message:
+    "Harness name: only a host bundle in src/hosts/<harness>/ names a harness or its " +
+    "folders. Express the difference as a port method the host implements.",
+}));
+
 const DECLARATIONS = ":matches(TSTypeAliasDeclaration, TSInterfaceDeclaration, ClassDeclaration)";
+
+const PUBLISHED_TYPES =
+  "ExportNamedDeclaration > " +
+  ":matches(TSTypeAliasDeclaration, TSInterfaceDeclaration, ClassDeclaration, TSEnumDeclaration)";
+
+export const unglossedTypes = (
+  context: ContextName,
+  glossary: readonly GlossaryEntry[],
+): SyntaxRestriction => {
+  const names = glossary.filter((entry) => entry.context === context).map((entry) => entry.name);
+  return {
+    selector: `${PUBLISHED_TYPES}[id.name!=/^(${alternatives(names)})$/]`,
+    message:
+      `One owner: ${context} publishes a type the glossary does not name. Add it to ` +
+      `src/glossary.json for ${context} as a concept, or as a variant of its owner when ` +
+      "it translates at a boundary.",
+  };
+};
+
+export const undecodedJson: SyntaxRestriction = {
+  selector:
+    "CallExpression[callee.object.name='JSON'][callee.property.name='parse']" +
+    ":not(CallExpression[callee.property.name=/^(parse|safeParse)$/] > CallExpression.arguments)",
+  message:
+    "Edge decoding: an adapter hands JSON.parse's result straight to Schema.parse or " +
+    "safeParse, so unchecked JSON never travels past the edge.",
+};
 
 const ownerRestriction = (entry: GlossaryEntry): SyntaxRestriction => ({
   selector: `${DECLARATIONS}[id.name="${entry.name}"]`,
