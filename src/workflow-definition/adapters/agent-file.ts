@@ -7,7 +7,7 @@ export const AgentFileSchema = z.object({
   description: z.string().min(1),
   examples: z.array(z.string()).optional(),
   disallowedTools: z.string().optional(),
-  tier: z.enum(TIERS),
+  tier: z.enum(TIERS).optional(),
   maxTurns: z.number().int().positive().optional(),
   plugin: z.string().optional(),
 });

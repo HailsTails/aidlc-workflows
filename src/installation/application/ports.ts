@@ -1,6 +1,7 @@
 import type { Result } from "../../kernel/result.ts";
 import type { ContentHash, DistributionId, RelativePath } from "../../kernel/values.ts";
 import type { Payload } from "../../packaging/domain/payload.ts";
+import type { RootIntegration } from "../../projection/domain/root-integration.ts";
 import type { FileOperation } from "../domain/file-operation.ts";
 import type {
   EnvironmentSnapshot,
@@ -8,6 +9,7 @@ import type {
 } from "../domain/installed-distribution.ts";
 import type { OwnershipRecord } from "../domain/ownership.ts";
 import type { InstallRefusal } from "../domain/refusals.ts";
+import type { SiblingBlock } from "../domain/sibling-block.ts";
 
 export type ProjectFileState =
   | { readonly kind: "absent" }
@@ -36,6 +38,13 @@ export interface Transaction {
 
 export interface InstalledDistributions {
   list(): Promise<readonly InstalledDistribution[]>;
+}
+
+export interface SiblingRootBlocks {
+  read(request: {
+    readonly integration: RootIntegration;
+    readonly excluding: DistributionId;
+  }): Promise<Result<readonly SiblingBlock[], InstallRefusal>>;
 }
 
 export interface PayloadSource {

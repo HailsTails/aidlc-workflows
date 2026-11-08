@@ -37,6 +37,7 @@ export type MethodRefusal =
       readonly source: RelativePath;
       readonly plugin: string;
     }
+  | { readonly kind: "core-agent-without-tier"; readonly source: RelativePath }
   | {
       readonly kind: "requires-cycle";
       readonly stages: readonly StageSlug[];

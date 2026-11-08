@@ -10,7 +10,7 @@ export type Agent = {
   readonly displayName: string;
   readonly description: string;
   readonly owner: Owner;
-  readonly tier: Tier;
+  readonly tier: Tier | null;
   readonly examples: readonly string[];
   readonly tools: ToolPolicy;
   readonly maxTurns: number | null;

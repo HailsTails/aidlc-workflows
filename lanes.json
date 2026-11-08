@@ -36,7 +36,7 @@
         "src/packaging/domain/{payload,artifact}.ts",
         "src/packaging/application/{ports,use-cases}.ts",
         "src/packaging/adapters/distribution-descriptor-file.ts",
-        "src/installation/domain/{ownership,file-operation,install-plan,installed-distribution,refusals}.ts",
+        "src/installation/domain/{ownership,file-operation,install-plan,installed-distribution,sibling-block,refusals}.ts",
         "src/installation/application/{ports,use-cases}.ts",
         "src/installation/adapters/ownership-record-file.ts",
         "src/execution/domain/{identities,unit,gate,review,guard,workflow-record,transition,session,audit,host-event,directive,refusals}.ts",

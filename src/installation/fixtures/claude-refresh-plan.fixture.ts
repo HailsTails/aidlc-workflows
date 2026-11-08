@@ -8,7 +8,12 @@ import type { PayloadFile } from "../../packaging/domain/payload.ts";
 import type { FileContent } from "../../projection/domain/projected-file.ts";
 import type { RootIntegration } from "../../projection/domain/root-integration.ts";
 import type { ExpectedState, FileOperation } from "../domain/file-operation.ts";
-import type { InstallPlan } from "../domain/install-plan.ts";
+import type {
+  BlockedInstallPlan,
+  ManagedFileDecision,
+  ReadyInstallPlan,
+  RootIntegrationDecision,
+} from "../domain/install-plan.ts";
 import type { InstalledFile, OwnershipRecord, RootContribution } from "../domain/ownership.ts";
 
 const payload = claudeCopyPayloadFixture;
@@ -97,10 +102,7 @@ const recordAfter = textFile('{ "schemaVersion": 1, "frameworkVersion": "2.12.0"
 const ownershipAfter: OwnershipRecord = {
   stamp: payload.stamp,
   mcp: "defaults",
-  files: [agentFile, knowledgeFile, settingsFile].map(recordOf).concat([
-    { path: stageCommand.path, writtenHash: previousCommandHash },
-    { path: onboardingFile.path, writtenHash: onboardingFile.hash },
-  ]),
+  files: [agentFile, stageCommand, knowledgeFile, settingsFile, onboardingFile].map(recordOf),
   rootContributions: [gitignoreBlock],
 };
 
@@ -128,35 +130,48 @@ const operations: readonly FileOperation[] = [
   }),
 ];
 
-export const claudeRefreshPlanFixture: InstallPlan = {
+const filesBesideStageCommand: readonly ManagedFileDecision[] = [
+  { kind: "update", file: agentFile, replaces: previousAgentHash, change: "content" },
+  { kind: "create", file: knowledgeFile },
+  { kind: "unchanged", path: settingsFile.path },
+  { kind: "preserve", path: onboardingFile.path, projectHash: editedOnboardingHash },
+  { kind: "retire", path: retiredRunner, expected: retiredRunnerHash },
+];
+
+const refreshRootIntegrations: readonly RootIntegrationDecision[] = [
+  { kind: "merge", integration: integration(".gitignore"), contribution: gitignoreBlock },
+  { kind: "unchanged", integration: integration(".mcp.json") },
+];
+
+export const claudeRefreshPlanFixture: ReadyInstallPlan = {
+  kind: "ready",
   payload,
   mode: { kind: "refresh", force: false },
   installedVersion: version("2.11.1"),
-  files: [
-    { kind: "update", file: agentFile, replaces: previousAgentHash, change: "content" },
-    {
-      kind: "conflict",
-      file: stageCommand,
-      recorded: previousCommandHash,
-      current: editedCommandHash,
-    },
-    { kind: "create", file: knowledgeFile },
-    { kind: "unchanged", path: settingsFile.path },
-    { kind: "preserve", path: onboardingFile.path, projectHash: editedOnboardingHash },
-    { kind: "retire", path: retiredRunner, expected: retiredRunnerHash },
-  ],
-  rootIntegrations: [
-    { kind: "merge", integration: integration(".gitignore"), contribution: gitignoreBlock },
-    { kind: "unchanged", integration: integration(".mcp.json") },
-  ],
+  files: [{ kind: "unchanged", path: stageCommand.path }, ...filesBesideStageCommand],
+  rootIntegrations: refreshRootIntegrations,
   ownershipAfter,
   operations,
-  notes: [
+  notes: [],
+};
+
+export const claudeBlockedRefreshPlanFixture: BlockedInstallPlan = {
+  kind: "blocked",
+  payload,
+  mode: { kind: "refresh", force: false },
+  installedVersion: version("2.11.1"),
+  files: filesBesideStageCommand,
+  rootIntegrations: refreshRootIntegrations,
+  conflicts: [
     {
       path: stageCommand.path,
-      line:
-        "Kept your edit to .claude/skills/aidlc-code-generation/SKILL.md; run " +
-        "`aidlc config --force` to take this release's copy instead.",
+      cause: {
+        kind: "edited",
+        recorded: previousCommandHash,
+        current: editedCommandHash,
+        retiring: false,
+      },
     },
   ],
+  notes: [],
 };
