@@ -42,6 +42,7 @@ const projectBeforeMerge = (name: string): Project => {
   git(root, "checkout", "-q", "-b", "upstream");
   commit({ root, path: "tests/unit/arrived.test.ts", content: "// arrived\n" });
   commit({ root, path: "core/tools/tool.ts", content: "export const v = 2;\n" });
+  git(root, "update-ref", "refs/remotes/upstream/main", "upstream");
   git(root, "checkout", "-q", "foundation");
   commit({ root, path: "src/own/own.ts", content: "export const own = 1;\n" });
   return { root, base };
@@ -86,6 +87,37 @@ describe("arrivals", () => {
 
   test("red: a branch with no merge commit has no arrivals", () => {
     const { root, base } = projectBeforeMerge("no-merge");
+    expect(gitRepository(root).arrivals(base)).toEqual([]);
+  });
+});
+
+describe("arrivals are anchored to the upstream project's history", () => {
+  const laneHeadMerged = (name: string): Project => {
+    const project = mergedProject(name);
+    const { root } = project;
+    git(root, "checkout", "-q", "-b", "lane", project.base.commit);
+    commit({ root, path: "tests/unit/lane-module.test.ts", content: "// lane module\n" });
+    commit({ root, path: "core/tools/lane-owned.ts", content: "export const own = 1;\n" });
+    git(root, "checkout", "-q", "foundation");
+    git(root, "merge", "-q", "--no-ff", "-m", "merge lane head", "lane");
+    return project;
+  };
+
+  test("red: a lane head merged into a candidate that adds a debt module is not an arrival", () => {
+    const { root, base } = laneHeadMerged("lane-head");
+    const arrivals = gitRepository(root).arrivals(base);
+    expect(arrivals).not.toContain("tests/unit/lane-module.test.ts");
+    expect(arrivals).not.toContain("core/tools/lane-owned.ts");
+  });
+
+  test("green: the upstream arrival stays an arrival beside a merged lane head", () => {
+    const { root, base } = laneHeadMerged("lane-head-and-upstream");
+    expect(gitRepository(root).arrivals(base)).toContain("tests/unit/arrived.test.ts");
+  });
+
+  test("red: with no upstream ref fetched nothing is an arrival", () => {
+    const { root, base } = mergedProject("no-upstream-ref");
+    git(root, "update-ref", "-d", "refs/remotes/upstream/main");
     expect(gitRepository(root).arrivals(base)).toEqual([]);
   });
 });

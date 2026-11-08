@@ -47,12 +47,21 @@ const changesSince = (root: string, base: BaseRevision): readonly ChangedFile[] 
   return [...tracked, ...fresh].sort((left, right) => left.path.localeCompare(right.path));
 };
 
-const incomingParents = (root: string, base: BaseRevision): readonly string[] => {
+export const UPSTREAM_REF = "upstream/main";
+
+const incomingParents = (request: {
+  readonly root: string;
+  readonly base: BaseRevision;
+  readonly upstreamRef: string;
+}): readonly string[] => {
+  const { root, base, upstreamRef } = request;
   const merges = git(root, ["rev-list", "--merges", "--parents", `${base.commit}..HEAD`]);
-  const parents = merges.text.split("\n").flatMap((line) => line.trim().split(" ").slice(2));
-  const fromBase = (parent: string): boolean =>
-    git(root, ["merge-base", "--is-ancestor", parent, base.commit]).ok;
-  return [...new Set(parents.filter((parent) => parent !== "" && !fromBase(parent)))];
+  const parents = merges.text.split("\n").flatMap((line) => line.trim().split(" ").slice(1));
+  const isAncestor = (ancestor: string, of: string): boolean =>
+    git(root, ["merge-base", "--is-ancestor", ancestor, of]).ok;
+  const isUpstreamHistory = (parent: string): boolean =>
+    parent !== "" && isAncestor(parent, upstreamRef) && !isAncestor(parent, base.commit);
+  return [...new Set(parents.filter(isUpstreamHistory))];
 };
 
 const sameBytesAsParent = (root: string, request: { parent: string; path: string }): boolean => {
@@ -61,14 +70,14 @@ const sameBytesAsParent = (root: string, request: { parent: string; path: string
   return inParent.ok && inTree.ok && inParent.text.trim() === inTree.text.trim();
 };
 
-export const gitRepository = (root: string): Repository => ({
+export const gitRepository = (root: string, upstreamRef: string = UPSTREAM_REF): Repository => ({
   resolve: (ref) => {
     const mergeBase = git(root, ["merge-base", "HEAD", ref]);
     return mergeBase.ok ? { ref, commit: mergeBase.text.trim() } : undefined;
   },
   changesSince: (base: BaseRevision) => changesSince(root, base),
   arrivals: (base: BaseRevision) => {
-    const parents = incomingParents(root, base);
+    const parents = incomingParents({ root, base, upstreamRef });
     const candidates = parents.length === 0 ? [] : presentPaths(changesSince(root, base));
     return candidates.filter((path) =>
       parents.some((parent) => sameBytesAsParent(root, { parent, path })),
