@@ -14,13 +14,20 @@ export type Lane = {
   readonly id: string;
   readonly name: string;
   readonly owns: readonly string[];
+  readonly territory: readonly string[];
   readonly notOwned: readonly string[];
   readonly deletions: readonly DeletionGrant[];
   readonly hotFileGrants: readonly HotFileGrant[];
 };
 
+export type ContractFiles = {
+  readonly writer: string;
+  readonly files: readonly string[];
+};
+
 export type LanePlan = {
   readonly hotFiles: readonly string[];
+  readonly contracts: readonly ContractFiles[];
   readonly lanes: readonly Lane[];
 };
 

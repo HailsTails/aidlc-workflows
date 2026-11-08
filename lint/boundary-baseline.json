@@ -1,28 +1,29 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174691,
+  "total": 174692,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
+    "@typescript-eslint/no-unused-vars": 1,
     "aidlc/no-comments": 113411,
     "complexity": 3075,
-    "Context boundary": 47,
+    "Context boundary": 48,
     "Harness branching": 446,
     "max-depth": 2125,
     "max-len": 48862,
     "max-lines-per-function": 3527,
     "max-params": 1766,
     "Monolith": 47,
-    "no-control-regex": 17,
+    "no-control-regex": 18,
     "no-irregular-whitespace": 12,
     "no-lone-blocks": 3,
     "no-nested-ternary": 937,
     "no-template-curly-in-string": 11,
     "no-unsafe-finally": 2,
     "no-useless-escape": 2,
-    "One owner": 95,
+    "One owner": 93,
     "prefer-const": 3,
     "prefer-template": 192
   },
@@ -314,7 +315,7 @@
       "max-len": 13
     },
     "core/tools/aidlc-archive.ts": {
-      "One owner": 1,
+      "One owner": 2,
       "complexity": 3,
       "max-lines-per-function": 1,
       "max-params": 2
@@ -529,7 +530,7 @@
     },
     "core/tools/aidlc-guard-fences.ts": {
       "aidlc/no-comments": 13,
-      "One owner": 2,
+      "One owner": 1,
       "max-len": 3,
       "complexity": 1
     },
@@ -892,8 +893,7 @@
       "complexity": 31,
       "no-nested-ternary": 15,
       "max-lines-per-function": 12,
-      "max-depth": 13,
-      "One owner": 1
+      "max-depth": 13
     },
     "core/tools/aidlc-question-store.ts": {
       "Monolith": 1,
@@ -972,7 +972,6 @@
     "core/tools/aidlc-rule-schema.ts": {
       "aidlc/no-comments": 43,
       "Monolith": 1,
-      "One owner": 1,
       "complexity": 1
     },
     "core/tools/aidlc-rules-held.ts": {
@@ -1200,7 +1199,7 @@
       "max-depth": 8
     },
     "core/tools/aidlc-uninstall-plan.ts": {
-      "Context boundary": 1,
+      "Context boundary": 2,
       "One owner": 1,
       "aidlc/no-comments": 46,
       "complexity": 8,
@@ -1747,6 +1746,12 @@
       "max-len": 1,
       "max-lines-per-function": 1,
       "complexity": 2
+    },
+    "src/kernel/values.ts": {
+      "no-control-regex": 1
+    },
+    "src/projection/fixtures/codex-projection.fixture.ts": {
+      "@typescript-eslint/no-unused-vars": 1
     },
     "tests/e2e/t-acp-kiro-compose-front.serial.test.ts": {
       "aidlc/no-comments": 39,

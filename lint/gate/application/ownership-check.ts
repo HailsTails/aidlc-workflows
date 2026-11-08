@@ -1,9 +1,16 @@
+import { judgeCallerMove, lineChanges } from "../domain/caller-move.ts";
 import type { BaseRevision, ChangedFile } from "../domain/change.ts";
-import { judgeDeletion } from "../domain/deletion.ts";
+import { judgeDeletion, removedDeclarations } from "../domain/deletion.ts";
 import { grantsWholeFile, judgeJsonGrant } from "../domain/json-grant.ts";
 import type { DeletionGrant, HotFileGrant, Lane, LanePlan } from "../domain/lane-plan.ts";
 import { judged, skipped, type Finding } from "../domain/outcome.ts";
-import { claimFor, refusalFor, type Claim } from "../domain/ownership.ts";
+import {
+  claimFor,
+  foreignRefusal,
+  isTerritory,
+  refusalFor,
+  type Claim,
+} from "../domain/ownership.ts";
 import type { GateCheck } from "./gate-check.ts";
 import type { JsonReader, ModuleReader, Repository, Workspace } from "./ports.ts";
 
@@ -22,10 +29,17 @@ type Evidence = {
   readonly change: ChangedFile;
 };
 
+type ClaimedChange = {
+  readonly evidence: Evidence;
+  readonly claim: Claim;
+};
+
 type Versions = {
   readonly before: string | undefined;
   readonly after: string | undefined;
 };
+
+const TYPESCRIPT = /\.[cm]?tsx?$/;
 
 const versions = (evidence: Evidence): Versions => {
   const { repository, workspace } = evidence.dependencies;
@@ -72,19 +86,57 @@ const grantFindings = (evidence: Evidence, grant: HotFileGrant): readonly Findin
     : judgeJsonGrant({ grant, base, head });
 };
 
-const findingsFor = (request: {
-  readonly evidence: Evidence;
+const deletesLegacy = (lane: Lane, claimed: ClaimedChange): boolean =>
+  TYPESCRIPT.test(claimed.evidence.change.path) &&
+  (claimed.claim.kind === "deletion" ||
+    (claimed.claim.kind === "owned" && isTerritory(lane, claimed.evidence.change.path)));
+
+const deletedNames = (claimed: ClaimedChange): readonly string[] => {
+  const { before, after } = versions(claimed.evidence);
+  if (before === undefined) {
+    return [];
+  }
+  const { modules } = claimed.evidence.dependencies;
+  const { path } = claimed.evidence.change;
+  const head = modules.shapeOf({ path, text: after ?? "" });
+  return removedDeclarations(modules.shapeOf({ path, text: before }), head);
+};
+
+const movedNamesOf = (lane: Lane, claims: readonly ClaimedChange[]): ReadonlySet<string> =>
+  new Set(claims.filter((claimed) => deletesLegacy(lane, claimed)).flatMap(deletedNames));
+
+type Judgement = {
+  readonly claimed: ClaimedChange;
   readonly lane: Lane;
-  readonly claim: Claim;
-}): readonly Finding[] => {
-  const { evidence, lane, claim } = request;
+  readonly movedNames: ReadonlySet<string>;
+};
+
+const callerMoveFindings = (judgement: Judgement): readonly Finding[] => {
+  const { evidence } = judgement.claimed;
+  const { path } = evidence.change;
+  if (judgement.movedNames.size === 0) {
+    return [foreignRefusal({ plan: evidence.dependencies.plan, lane: judgement.lane, path })];
+  }
+  const lines = lineChanges(versions(evidence));
+  return judgeCallerMove({ path, lines, movedNames: judgement.movedNames });
+};
+
+const findingsFor = (judgement: Judgement): readonly Finding[] => {
+  const { evidence, claim } = judgement.claimed;
   if (claim.kind === "deletion") {
     return deletionFindings(evidence, claim.grant);
   }
   if (claim.kind === "hot-grant") {
     return grantFindings(evidence, claim.grant);
   }
-  const claimRequest = { plan: evidence.dependencies.plan, lane, path: evidence.change.path };
+  if (claim.kind === "caller-move") {
+    return callerMoveFindings(judgement);
+  }
+  const claimRequest = {
+    plan: evidence.dependencies.plan,
+    lane: judgement.lane,
+    path: evidence.change.path,
+  };
   const refusal = refusalFor(claimRequest, claim);
   return refusal === undefined ? [] : [refusal];
 };
@@ -97,10 +149,12 @@ export const ownershipCheck = (dependencies: OwnershipDependencies): GateCheck =
       return skipped("ownership", "no lane named; pass --scope <lane-id> or --full --lane <id>");
     }
     const shared = { records: dependencies.sharedRecords };
-    const findings = scope.changes.flatMap((change) => {
-      const claim = claimFor({ plan: dependencies.plan, lane, path: change.path }, shared);
-      return findingsFor({ evidence: { dependencies, base, change }, lane, claim });
-    });
+    const claims = scope.changes.map((change) => ({
+      evidence: { dependencies, base, change },
+      claim: claimFor({ plan: dependencies.plan, lane, path: change.path }, shared),
+    }));
+    const movedNames = movedNamesOf(lane, claims);
+    const findings = claims.flatMap((claimed) => findingsFor({ claimed, lane, movedNames }));
     const note = `${scope.changes.length} changed files against ${base.ref}, lane ${lane.id}`;
     return judged({ id: "ownership", findings, note });
   },

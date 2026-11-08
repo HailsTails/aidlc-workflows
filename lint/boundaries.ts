@@ -3,16 +3,23 @@ import { KNOWLEDGE_FS_READS } from "./biome-successor.ts";
 import {
   CONTEXTS,
   HARNESS_ADAPTER_FILES,
+  HOST_BUNDLE_ROOT,
+  LEGACY_BRIDGES,
   LEGACY_TERRITORY,
   MONOLITH_FILES,
   type ContextName,
+  type LegacyBridge,
 } from "./context-map.ts";
 import { readGlossary, type GlossaryEntry } from "./glossary.ts";
 import {
   domainClock,
   harnessBranching,
+  bridgeImportRestrictions,
+  hostBundleImportRestrictions,
   legacyImportRestrictions,
   legacyOwnership,
+  mayAssertMethod,
+  methodAssertion,
   ownershipInSrc,
   pureTestImportRestrictions,
   srcImportRestrictions,
@@ -37,12 +44,10 @@ const asFileGlob = (entry: string): string => (entry.endsWith("/**") ? `${entry}
 
 const HARNESS_ADAPTER_GLOBS = HARNESS_ADAPTER_FILES.map(asFileGlob);
 
-type SrcHarnessAdapter = { readonly context: ContextName; readonly files: string };
+const HOST_BUNDLE_FILES = `${HOST_BUNDLE_ROOT}/**/*.ts`;
 
-const SRC_HARNESS_ADAPTERS: readonly SrcHarnessAdapter[] = [
-  { context: "projection", files: "src/projection/adapters/harnesses/**/*.ts" },
-  { context: "cli", files: "src/cli/adapters/hosts/**/*.ts" },
-];
+const contextOf = (path: string): ContextName | undefined =>
+  CONTEXTS.find((context) => path.startsWith(`src/${context}/`));
 
 const restrict = (request: {
   readonly imports: readonly ImportRestriction[];
@@ -89,13 +94,13 @@ const isPure = (layer: Layer): boolean => layer === "domain" || layer === "appli
 
 const srcSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] => {
   const shared = [...harnessBranching, ...ownershipInSrc(context, glossary)];
-  return isPure(layer) ? [...shared, domainClock] : shared;
+  const branded = mayAssertMethod(context, layer) ? shared : [...shared, ...methodAssertion];
+  return isPure(layer) ? [...branded, domainClock] : branded;
 };
 
 const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   name: `aidlc/src/${context}/${layer}`,
   files: srcFiles(context, layer),
-  ignores: SRC_HARNESS_ADAPTERS.map((adapter) => adapter.files),
   rules: {
     ...restrict({
       imports: srcImportRestrictions({ context, layer }),
@@ -118,16 +123,31 @@ const srcPureTestConfig = (context: ContextName, layer: Layer): Linter.Config =>
 
 const PURE_LAYERS: readonly Layer[] = ["domain", "application"];
 
-const srcHarnessAdapterConfig =(adapter: SrcHarnessAdapter): Linter.Config => ({
-  name: `aidlc/src/${adapter.context}/harness-adapters`,
-  files: [adapter.files],
-  rules: {
-    ...restrict({
-      imports: srcImportRestrictions({ context: adapter.context, layer: "adapters" }),
-      syntax: ownershipInSrc(adapter.context, glossary),
+const hostBundleConfig: Linter.Config = {
+  name: "aidlc/src/hosts",
+  files: [HOST_BUNDLE_FILES],
+  rules: restrict({
+    imports: hostBundleImportRestrictions(),
+    syntax: [...ownershipInSrc(undefined, glossary), ...methodAssertion],
+  }),
+};
+
+const bridgeConfig = (bridge: LegacyBridge, context: ContextName): Linter.Config => ({
+  name: `aidlc/src/legacy-bridge/${bridge.readBy}`,
+  files: [bridge.readBy],
+  rules: restrict({
+    imports: bridgeImportRestrictions({
+      placement: { context, layer: "adapters" },
+      bridgedModule: bridge.module,
     }),
-  },
+    syntax: srcSyntax(context, "adapters"),
+  }),
 });
+
+const legacyBridgeConfigs = (bridge: LegacyBridge): Linter.Config[] => {
+  const context = contextOf(bridge.readBy);
+  return context === undefined ? [] : [bridgeConfig(bridge, context)];
+};
 
 const legacySyntax = (): SyntaxRestriction[] => [...harnessBranching, ...legacyOwnership(glossary)];
 
@@ -170,7 +190,8 @@ export const boundaryConfig: Linter.Config[] = [
   harnessTreeConfig,
   ...CONTEXTS.flatMap((context) => LAYERS.map((layer) => srcLayerConfig(context, layer))),
   ...CONTEXTS.flatMap((context) => PURE_LAYERS.map((layer) => srcPureTestConfig(context, layer))),
-  ...SRC_HARNESS_ADAPTERS.map(srcHarnessAdapterConfig),
+  hostBundleConfig,
+  ...LEGACY_BRIDGES.flatMap(legacyBridgeConfigs),
   {
     name: "aidlc/lint-tooling/pure",
     files: ["lint/gate/domain/**/*.ts", "lint/gate/application/**/*.ts"],

@@ -95,12 +95,29 @@ const testSupportRestriction = (layer: Layer): ImportRestriction[] =>
         },
       ];
 
+const MONOLITH_MOVE =
+  "Monolith: src/ never imports legacy code. Move the concept into its context and " +
+  "delete the old owner in the same slice.";
+
 const monolithReachBack: ImportRestriction = {
   regex: `(^|/)(${alternatives(LEGACY_ROOTS)})/`,
-  message:
-    "Monolith: src/ never imports legacy code. Move the concept into its context and " +
-    "delete the old owner in the same slice.",
+  message: MONOLITH_MOVE,
 };
+
+const bridgedReachBack = (bridgedModule: string): ImportRestriction => ({
+  regex: `(^|/)(?!${escapeRegex(bridgedModule)}$)(${alternatives(LEGACY_ROOTS)})/`,
+  message: `${MONOLITH_MOVE} This adapter's one legacy bridge is ${bridgedModule}.`,
+});
+
+const hostBundleReach: ImportRestriction = {
+  regex: "(^|/)hosts/",
+  message:
+    "Host bundle: only the composition roots in src/cli/*.ts import src/hosts. Depend on " +
+    "the port the host implements and let the root wire it.",
+};
+
+const isCompositionRoot = (placement: Placement): boolean =>
+  placement.context === "cli" && placement.layer === "root";
 
 const testDiscipline: readonly ImportRestriction[] = [
   {
@@ -129,6 +146,28 @@ export const srcImportRestrictions = (placement: Placement): ImportRestriction[]
   ...OWN_LAYER_RESTRICTIONS[placement.layer],
   ...purityRestriction(placement.layer),
   ...testSupportRestriction(placement.layer),
+  ...(isCompositionRoot(placement) ? [] : [hostBundleReach]),
+  monolithReachBack,
+];
+
+export const bridgeImportRestrictions = (request: {
+  readonly placement: Placement;
+  readonly bridgedModule: string;
+}): ImportRestriction[] => [
+  ...srcImportRestrictions(request.placement).filter((entry) => entry !== monolithReachBack),
+  bridgedReachBack(request.bridgedModule),
+];
+
+const PUBLISHED_TO_HOSTS = "(?!domain/|application/(boundary-)?ports\\.ts$)";
+
+export const hostBundleImportRestrictions = (): ImportRestriction[] => [
+  ...CONTEXTS.filter((context) => context !== "kernel").map((context) => ({
+    regex: `(^|/)${context}/${PUBLISHED_TO_HOSTS}`,
+    message:
+      `Host bundle: a host implements ports. Import only ${context}'s domain, ` +
+      "application/ports.ts or application/boundary-ports.ts; the root wires the rest.",
+  })),
+  ...testSupportRestriction("adapters"),
   monolithReachBack,
 ];
 
@@ -167,25 +206,41 @@ export const harnessBranching: readonly SyntaxRestriction[] = [
 ].map((selector) => ({
   selector: `${selector}[value=${harnessLiteral}]`,
   message:
-    "Harness branching: only a Harness adapter may compare harness names. Express the " +
-    "difference as a typed HarnessProfile capability or a Harness port method.",
+    "Harness branching: only a host bundle may compare harness names. Express the " +
+    "difference as a port method that src/hosts/<harness>/ implements.",
 }));
 
 const DECLARATIONS = ":matches(TSTypeAliasDeclaration, TSInterfaceDeclaration, ClassDeclaration)";
 
+const ownerRestriction = (entry: GlossaryEntry): SyntaxRestriction => ({
+  selector: `${DECLARATIONS}[id.name="${entry.name}"]`,
+  message:
+    `One owner: ${entry.name} belongs to ${entry.context}. Import it from ` +
+    `src/${entry.context}, or move the concept there and delete this declaration.`,
+});
+
 export const ownershipInSrc = (
-  context: ContextName,
+  context: ContextName | undefined,
   glossary: readonly GlossaryEntry[],
 ): SyntaxRestriction[] =>
   glossary
     .filter((entry) => entry.context !== context && entry.kind !== "variant")
-    .map((entry) => ({
-      selector: `${DECLARATIONS}[id.name="${entry.name}"]`,
-      message:
-        `One owner: ${entry.name} belongs to ${entry.context}. Import it from ` +
-        `src/${entry.context}/domain; if this context needs another shape, translate ` +
-        "at the boundary into a type with its own name.",
-    }));
+    .map(ownerRestriction);
+
+const BRANDED_BY_COMPILATION = "Method";
+
+export const methodAssertion: readonly SyntaxRestriction[] = [
+  "TSAsExpression",
+  "TSTypeAssertion",
+].map((node) => ({
+  selector: `${node}[typeAnnotation.typeName.name="${BRANDED_BY_COMPILATION}"]`,
+  message:
+    "Branded method: only CompileMethod produces a Method. Take one from the CompileMethod " +
+    "use case or through a port that returns it; never assert the type.",
+}));
+
+export const mayAssertMethod = (context: ContextName, layer: Layer): boolean =>
+  layer === "fixtures" || (context === "workflow-definition" && layer === "application");
 
 const namedAny = (node: string, names: readonly string[]): readonly string[] =>
   names.length > 0 ? [`${node}[id.name=/^(${alternatives(names)})$/]`] : [];

@@ -16,7 +16,7 @@ export type DeletionEvidence = {
 
 const EMPTY_MODULE: ModuleShape = { declarations: [], exports: [], statements: [] };
 
-const removedDeclarations = (base: ModuleShape, head: ModuleShape): readonly string[] => {
+export const removedDeclarations = (base: ModuleShape, head: ModuleShape): readonly string[] => {
   const kept = new Set(head.declarations);
   return [...new Set(base.declarations)].filter((name) => !kept.has(name));
 };

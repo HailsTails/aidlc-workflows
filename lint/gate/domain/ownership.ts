@@ -7,7 +7,9 @@ export type Claim =
   | { readonly kind: "shared-record" }
   | { readonly kind: "deletion"; readonly grant: DeletionGrant }
   | { readonly kind: "hot-grant"; readonly grant: HotFileGrant }
+  | { readonly kind: "caller-move" }
   | { readonly kind: "hot-refused" }
+  | { readonly kind: "contract-refused" }
   | { readonly kind: "foreign" };
 
 export type ClaimRequest = {
@@ -20,8 +22,19 @@ export type SharedPaths = {
   readonly records: readonly string[];
 };
 
+const SRC_ROOT = "src/";
+
 const ownsByGlob = (lane: Lane, path: string): boolean =>
-  globMatcher(lane.owns)(path) && !globMatcher(lane.notOwned)(path);
+  globMatcher([...lane.owns, ...lane.territory])(path) && !globMatcher(lane.notOwned)(path);
+
+const isForeignContract = (request: ClaimRequest): boolean =>
+  request.plan.contracts.some(
+    (contract) =>
+      contract.writer !== request.lane.id && globMatcher(contract.files)(request.path),
+  );
+
+export const isTerritory = (lane: Lane, path: string): boolean =>
+  globMatcher(lane.territory)(path);
 
 const hotGrantClaim = (request: ClaimRequest): Claim | undefined => {
   const { lane, path } = request;
@@ -42,12 +55,21 @@ const deletionClaim = (request: ClaimRequest): Claim | undefined => {
 const hotFileClaim = (request: ClaimRequest): Claim =>
   hotGrantClaim(request) ?? deletionClaim(request) ?? { kind: "hot-refused" };
 
+const unownedClaim = (request: ClaimRequest, shared: SharedPaths): Claim => {
+  if (globMatcher(shared.records)(request.path)) {
+    return { kind: "shared-record" };
+  }
+  return request.path.startsWith(SRC_ROOT) ? { kind: "foreign" } : { kind: "caller-move" };
+};
+
 const ordinaryClaim = (request: ClaimRequest, shared: SharedPaths): Claim => {
+  if (isForeignContract(request)) {
+    return { kind: "contract-refused" };
+  }
   if (ownsByGlob(request.lane, request.path)) {
     return { kind: "owned" };
   }
-  const isRecord = globMatcher(shared.records)(request.path);
-  return deletionClaim(request) ?? (isRecord ? { kind: "shared-record" } : { kind: "foreign" });
+  return deletionClaim(request) ?? unownedClaim(request, shared);
 };
 
 export const claimFor = (request: ClaimRequest, shared: SharedPaths): Claim =>
@@ -55,25 +77,35 @@ export const claimFor = (request: ClaimRequest, shared: SharedPaths): Claim =>
     ? hotFileClaim(request)
     : ordinaryClaim(request, shared);
 
+const hotRefusal = (request: ClaimRequest): Finding => ({
+  subject: request.path,
+  violation: `is a hot file, and lane ${request.lane.id} has no deletion or grant for it`,
+  fix:
+    "Revert this edit. Put the new code in your context under src/ and point callers " +
+    "at it; a hot file only loses the declarations lanes.json lists for your lane.",
+});
+
+const contractRefusal = (request: ClaimRequest): Finding => ({
+  subject: request.path,
+  violation: "is a published contract, which only the contract lane writes",
+  fix:
+    "Revert it and adapt inside your own context: translate at your boundary, or request " +
+    "the cross-arrow change by naming the design move it needs.",
+});
+
+export const foreignRefusal = (request: ClaimRequest): Finding => ({
+  subject: request.path,
+  violation: `is outside lane ${request.lane.id} (${request.lane.name}) and its territory`,
+  fix:
+    "Revert it and make the change inside your own context: depend on the other " +
+    "context's published domain types or a port, never edit its files.",
+});
+
 export const refusalFor = (request: ClaimRequest, claim: Claim): Finding | undefined => {
-  const { lane, path } = request;
-  if (claim.kind === "hot-refused") {
-    return {
-      subject: path,
-      violation: `is a hot file, and lane ${lane.id} has no deletion or grant for it in lanes.json`,
-      fix:
-        "Revert this edit. Put the new code in your context under src/ and point callers " +
-        "at it; a hot file only loses the declarations lanes.json lists for your lane.",
-    };
-  }
-  if (claim.kind === "foreign") {
-    return {
-      subject: path,
-      violation: `is outside lane ${lane.id} (${lane.name}), which owns ${lane.owns.join(", ")}`,
-      fix:
-        "Revert it and make the change inside your own context: depend on the other " +
-        "context's published domain types or a port, never edit its files.",
-    };
-  }
-  return undefined;
+  const refusals: Partial<Record<Claim["kind"], (r: ClaimRequest) => Finding>> = {
+    "hot-refused": hotRefusal,
+    "contract-refused": contractRefusal,
+    foreign: foreignRefusal,
+  };
+  return refusals[claim.kind]?.(request);
 };

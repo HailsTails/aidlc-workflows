@@ -56,8 +56,8 @@ const report = (request: RunnableRequest, partial: Partial<GateReport>): GateRep
   ...partial,
 });
 
-const failed = (request: RunnableRequest, problem: GateProblem): GateReport =>
-  report(request, { verdict: "error", problem });
+const failed = (request: RunnableRequest, { problem, fix }: GateProblem): GateReport =>
+  report(request, { verdict: "error", problem: { problem, fix } });
 
 const BUSY: GateProblem = {
   problem: "another heavy job holds the machine lock",
