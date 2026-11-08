@@ -161,6 +161,7 @@ const manifest: HarnessManifest = {
 
   // .aidlc/ is AIDLC's own dir; core's rules/ name has nothing to collide with.
   rulesRename: null,
+  skipRunnerGen: true,
 
   emit,
 
