@@ -1,8 +1,5 @@
 // harness/opencode/emit.ts — the opencode per-shell emission plugin.
 //
-// The unified packager copies core/ → dist/opencode/.aidlc/ and runs graph
-// compile + runner-gen there, then calls this emit() for the .opencode/ shell —
-// the ONLY dir opencode itself reads (live-verified on 1.17.18):
 //   - .opencode/agents/aidlc-*-agent.md — the 14 personas as native opencode
 //     subagents: core frontmatter with the `tier:` line projected to the
 //     opencode-native `model:`/`variant:` keys plus an added `mode: subagent`
@@ -22,6 +19,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { dirname, join } from "node:path";
 import type { EmitContext } from "../../scripts/manifest-types.ts";
 import { createOpenCodeAgentRenderer } from "../../src/hosts/opencode/projection/agent-renderer.ts";
+import { openCodeCommandPath } from "../../src/hosts/opencode/projection/command-renderer.ts";
 import { accepted, refused } from "../../src/kernel/result.ts";
 import type { ProjectionRefusal } from "../../src/projection/domain/projection.ts";
 import {
@@ -160,4 +158,5 @@ export default function emit(ctx: EmitContext): void {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content(), "utf-8");
   }
+  ctx.emitCommands(openCodeCommandPath);
 }

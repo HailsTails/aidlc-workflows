@@ -1,10 +1,3 @@
-// harness/cursor/manifest.ts — the Cursor distribution row.
-//
-// Projects the harness-neutral core/ tree into dist/cursor/.cursor/. Cursor is
-// the most "native" port so far: unlike opencode (engine hidden in .aidlc/) or
-// codex (skills composed by emit.ts), Cursor consumes the standard projection
-// directly — no emit.ts at all.
-//
 // Cursor specifics vs Claude (all live-verified against cursor-agent
 // 2026.07.23 on Linux; the IDE shares the same .cursor/ discovery):
 //   - token → .cursor. Cursor scans ONLY .cursor/rules/, .cursor/agents/,
@@ -19,7 +12,6 @@
 //     The task tool targets them by name — no emitted twins.
 //   - skills: .cursor/skills/<name>/SKILL.md is Cursor's native skill layout,
 //     invoked as /<name> with inline argument forwarding (live-verified). The
-//     generated stage runners land there via the standard runner-gen step;
 //     three authored utility skills add /aidlc-status, /aidlc-jump, and
 //     /aidlc-scope without relying on Cursor's legacy commands directory.
 //   - rules: Cursor loads ONLY .mdc files with frontmatter from
@@ -44,6 +36,7 @@ import { accepted, refused } from "../../src/kernel/result.ts";
 import type { ProjectionRefusal } from "../../src/projection/domain/projection.ts";
 import { cursorAgentRenderer,
   type CursorModelSurface } from "../../src/hosts/cursor/projection/agent-renderer.ts";
+import { cursorCommandPath } from "../../src/hosts/cursor/projection/command-renderer.ts";
 
 const manifest: HarnessManifest = {
   name: "cursor",
@@ -181,6 +174,7 @@ const manifest: HarnessManifest = {
   // otherwise lets the model auto-activate a relevant skill even when
   // user-invocable is true, which is unsafe for state-mutating stage runners.
   runnerFrontmatterAdditions: ["disable-model-invocation: true"],
+  skipRunnerGen: true,
 
   emit(ctx): void {
     for (const agent of ctx.method.agents) {
@@ -220,6 +214,7 @@ const manifest: HarnessManifest = {
           file.content.kind === "text" ? file.content.text : file.content.bytes);
       }
     }
+    ctx.emitCommands(cursorCommandPath);
   },
 
   // The standing rule names the doctor the way each install runs it: a copied

@@ -113,6 +113,10 @@
         "tests/unit/t-package-sources.test.ts",
         "tests/unit/t177-workspace-journey-fixture.test.ts",
         "tests/harness/harness-matrix.ts",
+        "tests/smoke/t123-skills-spec-conformance.test.ts",
+        "tests/unit/t303-packager-orchestrator-skill-path.test.ts",
+        "tests/unit/t230-dispatcher-routes.test.ts",
+        "tests/integration/t188-plugin-compose.serial.test.ts",
         "discipline-exceptions.json"
       ],
       "notOwned": [
