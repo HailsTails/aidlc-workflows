@@ -35,7 +35,9 @@ const placed = (file: AuthoredHostFile, text: string): Rendering => {
 export const kiroJsonAgentRenderer = (profile: KiroJsonAgentProfile): Harness["renderAgent"] =>
   ({ agent, knowledge }) => {
     const file = profile.files.find((candidate) => candidate.source === `agents/${agent.slug}.json`);
-    if (file === undefined) return accepted([]);
+    if (file === undefined) return refused(renderFailed(
+      agent.slug, `Missing captured Kiro persona JSON: agents/${agent.slug}.json.`,
+    ));
     const modeled = profile.modelSurface({ agent, file });
     if (!modeled.ok) return modeled;
     const expanded = withSharedKnowledge(modeled.value, {

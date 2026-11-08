@@ -54,17 +54,37 @@ test("shared glob expands sorted direct core methodology documents in place", ()
   const text = JSON.stringify({ name: "original", resources: ["before", glob, "after"],
     hooks: { preToolUse: [{ command: "unchanged" }] }, custom: { preserved: true } });
   expect(rendered(text)).toMatchObject({ ok: true, value: [{ content: { text:
-    `${JSON.stringify({ name: "original", resources: ["before",
-      "file://.kiro/knowledge/aidlc-shared/a.md", "file://.kiro/knowledge/aidlc-shared/z.md", "after"],
-      hooks: { preToolUse: [{ command: "unchanged" }] }, custom: { preserved: true } }, null, 2)}\n`,
+    `{
+  "name": "original",
+  "resources": [
+    "before",
+    "file://.kiro/knowledge/aidlc-shared/a.md",
+    "file://.kiro/knowledge/aidlc-shared/z.md",
+    "after"
+  ],
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "unchanged"
+      }
+    ]
+  },
+  "custom": {
+    "preserved": true
+  }
+}
+`,
   } }] });
 });
 
-test("unmatched host config emits no JSON and does not fabricate a plugin config", () => {
+test("missing captured persona JSON refuses before calling the model surface", () => {
   const surface = mock(() => accepted("{}"));
   expect(kiroJsonAgentRenderer({ files: [], formatDocuments, modelSurface: surface })({
     agent, knowledge: [],
-  })).toEqual(accepted([]));
+  })).toEqual(refused({
+    kind: "render-failed", concept: "agent", name: "aidlc-architect-agent",
+    reason: "Missing captured Kiro persona JSON: agents/aidlc-architect-agent.json.",
+  }));
   expect(surface).not.toHaveBeenCalled();
 });
 
