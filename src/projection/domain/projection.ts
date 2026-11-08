@@ -1,5 +1,5 @@
 import type { HostIdentity } from "../../kernel/host.ts";
-import type { ProjectPath } from "../../kernel/values.ts";
+import type { ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { ProjectedFile, ProjectionOrigin, RenderedConcept } from "./projected-file.ts";
 import type { TemplateToken } from "./template-token.ts";
 
@@ -29,7 +29,13 @@ export type ProjectionRefusal =
       readonly name: string;
       readonly reason: string;
     }
-  | { readonly kind: "command-source-failed"; readonly reason: string };
+  | { readonly kind: "command-source-failed"; readonly reason: string }
+  | {
+      readonly kind: "host-source-unreadable";
+      readonly host: HostIdentity;
+      readonly source: SourcePath;
+      readonly reason: string;
+    };
 
 export type Projection = {
   readonly host: HostIdentity;
