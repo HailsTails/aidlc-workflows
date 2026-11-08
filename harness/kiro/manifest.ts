@@ -18,6 +18,7 @@
 //   - AGENTS.md lands at the PROJECT ROOT (dist/kiro/AGENTS.md), outside .kiro/.
 
 import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { KIRO_PROMPT_LINES } from "../../src/hosts/kiro/projection/agent-renderer.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 // The personas with an agent JSON below. Kiro CLI's 3.0 engine also loads each
@@ -40,10 +41,10 @@ const PERSONA_AGENTS = [
   "aidlc-operations-agent",
 ] as const;
 
-// The Kiro IDE row's tools and MCP lines, without its permissions: on v2 the
-// JSON still decides, and the .md is only its prompt. A plugin's agent has no
-// JSON here, so on v2 it is not dispatched; on v3 these lines are its tools.
-const PERSONA_PROMPT_LINES = [`tools: ["read", "write", "shell"]`, "includeMcpJson: true"];
+// KIRO_PROMPT_LINES: the Kiro IDE row's tools and MCP lines, without its permissions: on v2
+// the JSON still decides, and the .md is only its prompt. A plugin's agent has no JSON here,
+// so on v2 it is not dispatched; on v3 these lines are its tools.
+const PERSONA_PROMPT_LINES = [...KIRO_PROMPT_LINES];
 
 // The person's ways back when Kiro CLI runs on v3 with this tree's agent files
 // not upgraded (hookActivation's comment says what was measured).
