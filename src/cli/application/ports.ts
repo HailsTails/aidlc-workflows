@@ -1,4 +1,4 @@
-import type { HostEvent } from "../../execution/domain/host-event.ts";
+import type { HostEvent, HostEventVerdict } from "../../execution/domain/host-event.ts";
 import type { Result } from "../../kernel/result.ts";
 
 export type DecodeRefusal = {
@@ -11,6 +11,18 @@ export interface HostEventDecoder {
 }
 
 export type ExitStatus = 0 | 1 | 2;
+
+export type HostResponse = {
+  readonly output: string | null;
+  readonly exitStatus: ExitStatus;
+};
+
+export interface HostResponseEncoder {
+  encode(request: {
+    readonly event: HostEvent;
+    readonly verdict: HostEventVerdict;
+  }): HostResponse;
+}
 
 export interface CommandRoute {
   readonly verb: readonly string[];

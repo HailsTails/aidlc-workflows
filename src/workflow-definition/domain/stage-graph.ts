@@ -1,7 +1,6 @@
 import type { Brand } from "../../kernel/brand.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import type { RelativePath } from "../../kernel/values.ts";
-import type { IdentityRefusal, ScopeName, SensorId, StageSlug } from "./identities.ts";
+import type { IdentityRefusal, RuleId, ScopeName, SensorId, StageSlug } from "./identities.ts";
 
 export type StageNumber = Brand<string, "StageNumber">;
 
@@ -16,8 +15,12 @@ export type StageNode = {
   readonly stage: StageSlug;
   readonly number: StageNumber;
   readonly enabled: boolean;
-  readonly rulesInContext: readonly RelativePath[];
+  readonly rulesInContext: readonly RuleId[];
   readonly activeSensors: readonly SensorId[];
+};
+
+export type StageGraph = {
+  readonly nodes: readonly StageNode[];
 };
 
 export type ScopeColumn = {
@@ -25,7 +28,7 @@ export type ScopeColumn = {
   readonly stages: readonly StageSlug[];
 };
 
-export type StageGraph = {
-  readonly nodes: readonly StageNode[];
-  readonly grid: readonly ScopeColumn[];
+export type StagePin = {
+  readonly stage: StageSlug;
+  readonly number: StageNumber;
 };

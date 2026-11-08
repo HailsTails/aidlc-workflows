@@ -27,8 +27,8 @@ export type GuardPolicy = (typeof GUARD_POLICIES)[number];
 export const CEREMONY_KEYS = [
   "sensors",
   "learnings",
-  "summary_confirmation",
-  "plan_approval",
+  "summary-confirmation",
+  "plan-approval",
   "collaborators",
 ] as const;
 

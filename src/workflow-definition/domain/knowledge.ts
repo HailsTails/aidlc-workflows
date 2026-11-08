@@ -1,4 +1,5 @@
-import type { RelativePath } from "../../kernel/values.ts";
+import type { FileContent } from "../../kernel/file-content.ts";
+import type { SourcePath } from "../../kernel/values.ts";
 import type { AgentSlug, Owner } from "./identities.ts";
 
 export type KnowledgeAudience =
@@ -6,7 +7,8 @@ export type KnowledgeAudience =
   | { readonly kind: "agent"; readonly agent: AgentSlug };
 
 export type KnowledgeDocument = {
-  readonly source: RelativePath;
+  readonly source: SourcePath;
   readonly owner: Owner;
   readonly audience: KnowledgeAudience;
+  readonly content: FileContent;
 };

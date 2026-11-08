@@ -1,15 +1,34 @@
 import { z } from "zod";
+import { RULE_LEVELS } from "../domain/contribution.ts";
 
 const kebab = z.string().regex(/^[a-z][a-z0-9-]*$/);
 
-export const PluginManifestFileSchema = z.object({
+const canonical = <Path extends string>(path: Path) => z.literal(path).optional();
+
+const PluginCommandSchema = z.strictObject({
+  script: z.string().regex(/^tools\/[^/]+\.ts$/),
+  description: z.string().min(1),
+});
+
+export const PluginManifestFileSchema = z.looseObject({
   name: kebab,
   version: z.string().min(1),
   description: z.string(),
   dependencies: z.array(z.string()).default(["core"]),
-  aidlc: z.object({
-    rulesLevel: z.enum(["team", "project"]).default("team"),
-    contributes: z.record(z.string(), z.string()),
+  aidlc: z.strictObject({
+    marketplace: kebab.optional(),
+    rulesLevel: z.enum(RULE_LEVELS).optional(),
+    contributes: z.strictObject({
+      stages: canonical("stages/"),
+      overlays: canonical("contributions/"),
+      agents: canonical("agents/"),
+      scopes: canonical("scopes/"),
+      memory: canonical("memory/"),
+      sensors: canonical("sensors/"),
+      knowledge: canonical("knowledge/"),
+      tools: canonical("tools/"),
+    }),
+    commands: z.record(kebab, PluginCommandSchema).optional(),
   }),
 });
 

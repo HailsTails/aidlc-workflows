@@ -1,18 +1,17 @@
-import type { DistributionId, RelativePath } from "../../kernel/values.ts";
-import type { HarnessProfile } from "./harness-profile.ts";
-import type { ManagedDirectory } from "./managed-directory.ts";
-import type { ProjectedFile, ProjectionOrigin } from "./projected-file.ts";
-import type { RootIntegration } from "./root-integration.ts";
+import type { DistributionId, ProjectPath } from "../../kernel/values.ts";
+import type { MethodSourceRoot } from "../../workflow-definition/domain/method-source.ts";
+import type { ProjectedFile, ProjectionOrigin, RenderedConcept } from "./projected-file.ts";
+import type { TemplateToken } from "./template-token.ts";
 
 export type ProjectionFinding =
   | {
       readonly kind: "unresolved-token";
-      readonly path: RelativePath;
-      readonly token: string;
+      readonly path: ProjectPath;
+      readonly token: TemplateToken;
     }
   | {
       readonly kind: "concept-not-rendered";
-      readonly concept: string;
+      readonly concept: RenderedConcept;
       readonly name: string;
       readonly reason: string;
     };
@@ -21,26 +20,19 @@ export type ProjectionRefusal =
   | { readonly kind: "unknown-harness"; readonly harness: string }
   | {
       readonly kind: "path-collision";
-      readonly path: RelativePath;
+      readonly path: ProjectPath;
       readonly origins: readonly [ProjectionOrigin, ProjectionOrigin];
     }
   | {
-      readonly kind: "path-undeclared";
-      readonly path: RelativePath;
-      readonly origin: ProjectionOrigin;
-    }
-  | {
       readonly kind: "render-failed";
-      readonly concept: string;
+      readonly concept: RenderedConcept;
       readonly name: string;
       readonly reason: string;
     };
 
 export type Projection = {
   readonly harness: DistributionId;
-  readonly profile: HarnessProfile;
+  readonly methodSourceRoot: MethodSourceRoot;
   readonly files: readonly ProjectedFile[];
-  readonly rootIntegrations: readonly RootIntegration[];
-  readonly managedDirectories: readonly ManagedDirectory[];
   readonly findings: readonly ProjectionFinding[];
 };

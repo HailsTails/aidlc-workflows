@@ -1,21 +1,36 @@
 import { accept } from "../../kernel/fixtures/accept.ts";
-import { path } from "../../kernel/fixtures/values.fixture.ts";
-import type { Agent } from "../domain/agent.ts";
-import type { Owner } from "../domain/identities.ts";
+import { source } from "../../kernel/fixtures/values.fixture.ts";
+import type { Agent, PersonaAdditions } from "../domain/agent.ts";
 import type { KnowledgeDocument } from "../domain/knowledge.ts";
-import type { Method } from "../domain/method.ts";
+import type { CompiledMethod, Method } from "../domain/method.ts";
+import type { AuthoredBody } from "../domain/outline.ts";
 import type { Rule } from "../domain/rule.ts";
-import type { Scope } from "../domain/scope.ts";
+import type { Scope, ScopeMembership } from "../domain/scope.ts";
 import type { SensorDeclaration, SensorFieldShape } from "../domain/sensor.ts";
 import type { Stage } from "../domain/stage.ts";
 import { stageNumber } from "../domain/stage-graph.ts";
-import { agent, artifact, scope, scopes, sensor, stage } from "./identities.fixture.ts";
+import { authoredBody } from "./authored-body.fixture.ts";
+import { agent, artifact, rule, scope, scopes, sensor, stage } from "./identities.fixture.ts";
 
-const core: Owner = { kind: "core" };
+const core = { kind: "core" } as const;
+
+const noAdditions: PersonaAdditions = { afterPreflight: [], endOfBody: [] };
 
 const value = (type: string): SensorFieldShape => ({ kind: "value", type });
 
-const persona = (role: string): string => `# ${role}\n\nYou are the ${role} for this AI-DLC run.`;
+const persona = (role: string): AuthoredBody =>
+  authoredBody([{ level: 1, title: role, prose: `\nYou are the ${role} for this AI-DLC run.\n` }]);
+
+const instructions = (title: string, steps: readonly string[]): AuthoredBody =>
+  authoredBody([
+    { level: 1, title, prose: "\n" },
+    { level: 2, title: "Steps", prose: "\n" },
+    ...steps.map((step, index) => ({
+      level: 3 as const,
+      title: `Step ${index + 1}: ${step}`,
+      prose: "\n",
+    })),
+  ]);
 
 const productAgent: Agent = {
   slug: agent("aidlc-product-agent"),
@@ -24,11 +39,12 @@ const productAgent: Agent = {
     "Product manager and business analyst responsible for requirements, user stories, " +
     "market research, and scope.",
   owner: core,
-  tier: "judgment",
+  model: { kind: "tier", tier: "judgment" },
   examples: ["roadmap.md", "personas.md"],
   tools: { disallowed: ["Task"] },
   maxTurns: null,
   persona: persona("Product Agent"),
+  additions: noAdditions,
 };
 
 const architectAgent: Agent = {
@@ -38,11 +54,12 @@ const architectAgent: Agent = {
     "Solutions architect responsible for domain design, contract design, NFR patterns, " +
     "and component decomposition.",
   owner: core,
-  tier: "judgment",
+  model: { kind: "tier", tier: "judgment" },
   examples: ["tech-stack.md", "infrastructure-preferences.md"],
   tools: { disallowed: ["Task"] },
   maxTurns: null,
   persona: persona("Architect Agent"),
+  additions: noAdditions,
 };
 
 const deliveryAgent: Agent = {
@@ -51,11 +68,12 @@ const deliveryAgent: Agent = {
   description:
     "Engineering manager responsible for team formation, Bolt sequencing, and phase handoffs.",
   owner: core,
-  tier: "templated",
+  model: { kind: "tier", tier: "templated" },
   examples: ["sprint-cadence.md", "definition-of-done.md"],
   tools: { disallowed: ["Task"] },
   maxTurns: null,
   persona: persona("Delivery Agent"),
+  additions: noAdditions,
 };
 
 const developerAgent: Agent = {
@@ -64,11 +82,12 @@ const developerAgent: Agent = {
   description:
     "Senior developer responsible for code generation, reverse engineering, and data modelling.",
   owner: core,
-  tier: "judgment",
+  model: { kind: "tier", tier: "judgment" },
   examples: ["db-conventions.md", "error-handling.md"],
   tools: { disallowed: ["Task"] },
   maxTurns: null,
   persona: persona("Developer Agent"),
+  additions: noAdditions,
 };
 
 const productLeadAgent: Agent = {
@@ -78,11 +97,12 @@ const productLeadAgent: Agent = {
     "Senior product leader who reviews requirements, user stories, and UX artifacts for " +
     "completeness, business alignment, and testability.",
   owner: core,
-  tier: "balanced",
+  model: { kind: "tier", tier: "balanced" },
   examples: [],
   tools: { disallowed: ["Task"] },
   maxTurns: 60,
   persona: persona("Product Lead"),
+  additions: noAdditions,
 };
 
 const architectureReviewerAgent: Agent = {
@@ -92,11 +112,12 @@ const architectureReviewerAgent: Agent = {
     "Senior solutions architect who reviews technical design artifacts for soundness, " +
     "implementability, and coherence.",
   owner: core,
-  tier: "balanced",
+  model: { kind: "tier", tier: "balanced" },
   examples: [],
   tools: { disallowed: ["Task"] },
   maxTurns: 60,
   persona: persona("Architecture Reviewer"),
+  additions: noAdditions,
 };
 
 const everyScope = scopes(
@@ -149,7 +170,6 @@ const requirementsAnalysis: Stage = {
   ],
   requires: [stage("approval-handoff"), stage("reverse-engineering")],
   sensors: [sensor("required-sections"), sensor("upstream-coverage")],
-  scopes: everyScope,
   review: {
     reviewer: productLeadAgent.slug,
     artifact: artifact("requirements"),
@@ -167,7 +187,11 @@ const requirementsAnalysis: Stage = {
     outputs:
       "requirements.md, requirements-analysis-questions.md, traceability.json " +
       "(under this stage's record dir, engine-resolved)",
-    instructions: "# Requirements Analysis",
+    instructions: instructions("Requirements Analysis", [
+      "Analyze the request",
+      "Ask the open questions",
+      "Write the requirements",
+    ]),
   },
 };
 
@@ -204,7 +228,6 @@ const unitsGeneration: Stage = {
   ],
   requires: [stage("domain-design")],
   sensors: [sensor("required-sections"), sensor("upstream-coverage"), sensor("traceability")],
-  scopes: scopes("enterprise", "feature", "mvp", "classic", "workshop"),
   review: {
     reviewer: architectureReviewerAgent.slug,
     artifact: artifact("unit-of-work"),
@@ -222,7 +245,7 @@ const unitsGeneration: Stage = {
     outputs:
       "unit-of-work.md, unit-of-work-dependency.md, unit-of-work-story-map.md, " +
       "traceability.json (under this stage's record dir, engine-resolved)",
-    instructions: "# Units Generation",
+    instructions: instructions("Units Generation", ["Decompose into units", "Map stories"]),
   },
 };
 
@@ -262,7 +285,6 @@ const codeGeneration: Stage = {
     stage("infrastructure-design"),
   ],
   sensors: [sensor("required-sections"), sensor("traceability")],
-  scopes: everyScope,
   review: {
     reviewer: architectureReviewerAgent.slug,
     artifact: artifact("code-generation-plan"),
@@ -278,7 +300,7 @@ const codeGeneration: Stage = {
     outputs:
       "application code + code-generation-plan.md, unit-test-instructions.md, " +
       "code-summary.md, traceability.json (under this stage's per-unit record dir)",
-    instructions: "# Code Generation",
+    instructions: instructions("Code Generation", ["Plan the code", "Generate the code"]),
   },
 };
 
@@ -292,17 +314,15 @@ const classicScope: Scope = {
   runner: false,
   skeleton: false,
   existingCode: false,
-  freeformDefault: false,
   guardPolicy: "off",
   ceremony: {
     sensors: "on",
     learnings: "on",
-    summary_confirmation: "off",
-    plan_approval: "on",
+    "summary-confirmation": "off",
+    "plan-approval": "on",
     collaborators: "off",
   },
   reviewCap: "advisory",
-  includedStages: [],
   guidance: "# classic scope",
 };
 
@@ -316,17 +336,15 @@ const featureScope: Scope = {
   runner: true,
   skeleton: true,
   existingCode: false,
-  freeformDefault: false,
   guardPolicy: "off",
   ceremony: {
     sensors: "on",
     learnings: "on",
-    summary_confirmation: "on",
-    plan_approval: "on",
+    "summary-confirmation": "on",
+    "plan-approval": "on",
     collaborators: "off",
   },
   reviewCap: null,
-  includedStages: [],
   guidance: "# feature scope",
 };
 
@@ -392,7 +410,8 @@ const linterSensor: SensorDeclaration = {
 };
 
 const orgRules: Rule = {
-  source: path("memory/org.md"),
+  id: rule("org"),
+  source: source("memory/org.md"),
   layer: { kind: "org" },
   owner: core,
   pairing: { kind: "unpaired" },
@@ -402,7 +421,8 @@ const orgRules: Rule = {
 };
 
 const teamRules: Rule = {
-  source: path("memory/team.md"),
+  id: rule("team"),
+  source: source("memory/team.md"),
   layer: { kind: "team" },
   owner: core,
   pairing: { kind: "unpaired" },
@@ -412,7 +432,8 @@ const teamRules: Rule = {
 };
 
 const inceptionRules: Rule = {
-  source: path("memory/phases/inception.md"),
+  id: rule("phase-inception"),
+  source: source("memory/phases/inception.md"),
   layer: { kind: "phase", phase: "inception" },
   owner: core,
   pairing: { kind: "unpaired" },
@@ -422,33 +443,48 @@ const inceptionRules: Rule = {
 };
 
 const developerKnowledge: KnowledgeDocument = {
-  source: path("knowledge/aidlc-developer-agent/code-generation-guide.md"),
+  source: source("knowledge/aidlc-developer-agent/code-generation-guide.md"),
   owner: core,
   audience: { kind: "agent", agent: developerAgent.slug },
+  content: { kind: "text", text: "# Code Generation Guide\n" },
 };
 
 const sharedKnowledge: KnowledgeDocument = {
-  source: path("knowledge/aidlc-shared/ai-dlc-principles.md"),
+  source: source("knowledge/aidlc-shared/ai-dlc-principles.md"),
   owner: core,
   audience: { kind: "shared" },
+  content: { kind: "text", text: "# AI-DLC Principles\n" },
 };
 
-export const methodSliceFixture: Method = {
-  content: {
-    stages: [requirementsAnalysis, unitsGeneration, codeGeneration],
-    scopes: [classicScope, featureScope],
-    agents: [
-      productAgent,
-      architectAgent,
-      deliveryAgent,
-      developerAgent,
-      productLeadAgent,
-      architectureReviewerAgent,
-    ],
-    rules: [orgRules, teamRules, inceptionRules],
-    sensors: [requiredSectionsSensor, upstreamCoverageSensor, linterSensor],
-    knowledge: [developerKnowledge, sharedKnowledge],
-  },
+const membersOf = (
+  stageSlug: Stage["slug"],
+  names: readonly Scope["name"][],
+): readonly ScopeMembership[] =>
+  names.map((name) => ({ scope: name, stage: stageSlug, declaredBy: core }));
+
+const memberships: readonly ScopeMembership[] = [
+  ...membersOf(requirementsAnalysis.slug, everyScope),
+  ...membersOf(unitsGeneration.slug, scopes("enterprise", "feature", "mvp", "classic", "workshop")),
+  ...membersOf(codeGeneration.slug, everyScope),
+];
+
+const compiled: CompiledMethod = {
+  stages: [requirementsAnalysis, unitsGeneration, codeGeneration],
+  scopes: [classicScope, featureScope],
+  memberships,
+  freeformDefault: null,
+  agents: [
+    productAgent,
+    architectAgent,
+    deliveryAgent,
+    developerAgent,
+    productLeadAgent,
+    architectureReviewerAgent,
+  ],
+  rules: [orgRules, teamRules, inceptionRules],
+  sensors: [requiredSectionsSensor, upstreamCoverageSensor, linterSensor],
+  knowledge: [developerKnowledge, sharedKnowledge],
+  hooks: [],
   installedPlugins: [],
   selection: { kind: "every-installed" },
   findings: [],
@@ -458,33 +494,25 @@ export const methodSliceFixture: Method = {
         stage: requirementsAnalysis.slug,
         number: accept(stageNumber("2.3")),
         enabled: true,
-        rulesInContext: [orgRules.source, teamRules.source, inceptionRules.source],
+        rulesInContext: [orgRules.id, teamRules.id, inceptionRules.id],
         activeSensors: [requiredSectionsSensor.id, upstreamCoverageSensor.id],
       },
       {
         stage: unitsGeneration.slug,
         number: accept(stageNumber("2.7")),
         enabled: true,
-        rulesInContext: [orgRules.source, teamRules.source, inceptionRules.source],
+        rulesInContext: [orgRules.id, teamRules.id, inceptionRules.id],
         activeSensors: [requiredSectionsSensor.id, upstreamCoverageSensor.id],
       },
       {
         stage: codeGeneration.slug,
         number: accept(stageNumber("3.5")),
         enabled: true,
-        rulesInContext: [orgRules.source, teamRules.source],
+        rulesInContext: [orgRules.id, teamRules.id],
         activeSensors: [requiredSectionsSensor.id],
-      },
-    ],
-    grid: [
-      {
-        scope: classicScope.name,
-        stages: [requirementsAnalysis.slug, unitsGeneration.slug, codeGeneration.slug],
-      },
-      {
-        scope: featureScope.name,
-        stages: [requirementsAnalysis.slug, unitsGeneration.slug, codeGeneration.slug],
       },
     ],
   },
 };
+
+export const methodSliceFixture = compiled as Method;

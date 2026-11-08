@@ -42,19 +42,19 @@ export const CONTEXT_MAP: Readonly<Record<ContextName, ContextRule>> = {
   },
   packaging: {
     dependsOn: ["kernel", "projection"],
-    readsFileFormatsOf: ["projection"],
+    readsFileFormatsOf: [],
     composesRootsOf: [],
     instead:
-      "Packaging takes a Projection value and never reaches stages or agents; pass what " +
-      "it needs through the Projection.",
+      "Packaging takes a Projection value and never reaches stages or agents; take host " +
+      "layout through the DistributionLayouts port.",
   },
   installation: {
-    dependsOn: ["kernel", "projection", "packaging"],
-    readsFileFormatsOf: ["projection", "packaging"],
+    dependsOn: ["kernel", "packaging"],
+    readsFileFormatsOf: ["packaging"],
     composesRootsOf: [],
     instead:
-      "Installation reconciles a Payload into a project; it never knows workflow state or " +
-      "how the payload was projected.",
+      "Installation reconciles a Payload into a project; everything it knows about a host " +
+      "arrives in the Payload's descriptor or through a port method such as HostShell.",
   },
   execution: {
     dependsOn: ["kernel", "workflow-definition"],
@@ -93,9 +93,24 @@ export const MONOLITH_FILES = [
 
 export const HARNESS_ADAPTER_FILES = [
   "harness/**",
-  "src/projection/adapters/harnesses/**",
-  "src/cli/adapters/hosts/**",
+  "src/hosts/**",
 ] as const;
+
+export const HOST_BUNDLE_ROOT = "src/hosts" as const;
+
+export type LegacyBridge = {
+  readonly module: string;
+  readonly readBy: string;
+  readonly retiresWhen: string;
+};
+
+export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
+  {
+    module: "core/tools/aidlc-markdown.ts",
+    readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
+    retiresWhen: "Packaging's ToolBundler ships src; the interpreter then moves into src.",
+  },
+];
 
 export const HARNESS_NAMES = [
   "claude",

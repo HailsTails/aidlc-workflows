@@ -1,18 +1,15 @@
-import type { DistributionId, RelativePath } from "../../kernel/values.ts";
-import type { VersionStamp } from "../../packaging/domain/payload.ts";
-import type { FileContent } from "../../projection/domain/projected-file.ts";
-import type { RootIntegration } from "../../projection/domain/root-integration.ts";
+import type { DistributionId, FrameworkVersion, ProjectPath } from "../../kernel/values.ts";
+import type { PlannedContent } from "./file-operation.ts";
 
 export type SiblingBlock =
   | {
       readonly kind: "shipped";
       readonly distribution: DistributionId;
-      readonly stamp: VersionStamp;
-      readonly integration: RootIntegration;
-      readonly content: FileContent;
+      readonly version: FrameworkVersion;
+      readonly block: PlannedContent;
     }
   | {
       readonly kind: "missing";
       readonly distribution: DistributionId;
-      readonly expectedAt: RelativePath;
+      readonly expectedAt: ProjectPath;
     };

@@ -3,10 +3,10 @@ import type {
   AgentSlug,
   ArtifactName,
   Owner,
-  ScopeName,
   SensorId,
   StageSlug,
 } from "./identities.ts";
+import type { AuthoredBody } from "./outline.ts";
 import type {
   EnsembleMode,
   Phase,
@@ -79,7 +79,7 @@ export type ComposerPrior = {
 export type StageBriefing = {
   readonly inputs: string;
   readonly outputs: string;
-  readonly instructions: string;
+  readonly instructions: AuthoredBody;
 };
 
 export type Stage = {
@@ -96,7 +96,6 @@ export type Stage = {
   readonly consumes: readonly ArtifactConsumption[];
   readonly requires: readonly StageSlug[];
   readonly sensors: readonly SensorId[];
-  readonly scopes: readonly ScopeName[];
   readonly review: ReviewPolicy | null;
   readonly summaryConfirmation: SummaryConfirmation;
   readonly activation: StageActivation;

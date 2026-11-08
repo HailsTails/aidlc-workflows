@@ -2,17 +2,21 @@ import {
   contentHash,
   distributionId,
   frameworkVersion,
-  relativePath,
+  projectPath,
+  sourcePath,
   timestamp,
   type ContentHash,
   type DistributionId,
   type FrameworkVersion,
-  type RelativePath,
+  type ProjectPath,
+  type SourcePath,
   type Timestamp,
 } from "../values.ts";
 import { accept } from "./accept.ts";
 
-export const path = (raw: string): RelativePath => accept(relativePath(raw));
+export const path = (raw: string): ProjectPath => accept(projectPath(raw));
+
+export const source = (raw: string): SourcePath => accept(sourcePath(raw));
 
 export const distribution = (raw: string): DistributionId => accept(distributionId(raw));
 

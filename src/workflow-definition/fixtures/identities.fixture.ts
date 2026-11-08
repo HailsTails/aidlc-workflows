@@ -1,12 +1,14 @@
 import { accept } from "../../kernel/fixtures/accept.ts";
 import {
   agentSlug,
+  ruleId,
   artifactName,
   scopeName,
   sensorId,
   stageSlug,
   type AgentSlug,
   type ArtifactName,
+  type RuleId,
   type ScopeName,
   type SensorId,
   type StageSlug,
@@ -23,3 +25,5 @@ export const artifact = (raw: string): ArtifactName => accept(artifactName(raw))
 export const sensor = (raw: string): SensorId => accept(sensorId(raw));
 
 export const scopes = (...raws: readonly string[]): readonly ScopeName[] => raws.map(scope);
+
+export const rule = (raw: string): RuleId => accept(ruleId(raw));
