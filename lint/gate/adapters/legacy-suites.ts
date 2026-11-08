@@ -9,9 +9,6 @@ const INHERITED_NAMES = [
   "USERPROFILE",
   "APPDATA",
   "LOCALAPPDATA",
-  "TEMP",
-  "TMP",
-  "TMPDIR",
 ] as const;
 
 export const legacyEnvironment = (

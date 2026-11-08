@@ -1,13 +1,12 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CapabilityId, ProbeResult } from "../domain/capability-exclusion.ts";
 import type { Capabilities } from "../application/ports.ts";
 
 const LONG_NAME = "aidlc-gate-probe-long-name.txt";
 
-const inScratch = <T>(use: (directory: string) => T): T => {
-  const directory = mkdtempSync(join(tmpdir(), "aidlc-gate-probe-"));
+const inScratch = <T>(temp: string, use: (directory: string) => T): T => {
+  const directory = mkdtempSync(join(temp, "aidlc-gate-probe-"));
   try {
     return use(directory);
   } finally {
@@ -15,8 +14,8 @@ const inScratch = <T>(use: (directory: string) => T): T => {
   }
 };
 
-const symlinks = (): ProbeResult =>
-  inScratch((directory) => {
+const symlinks = (temp: string): ProbeResult =>
+  inScratch(temp, (directory) => {
     try {
       writeFileSync(join(directory, "target"), "x");
       symlinkSync(join(directory, "target"), join(directory, "link"));
@@ -27,11 +26,11 @@ const symlinks = (): ProbeResult =>
     }
   });
 
-const shortNames = (): ProbeResult => {
+const shortNames = (temp: string): ProbeResult => {
   if (process.platform !== "win32") {
     return { available: true, evidence: "not a Windows volume" };
   }
-  return inScratch((directory) => {
+  return inScratch(temp, (directory) => {
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, LONG_NAME), "x");
     const listing = Bun.spawnSync(["cmd.exe", "/d", "/c", "dir", "/x"], { cwd: directory });
@@ -55,17 +54,17 @@ const listableSystemTemp = (): ProbeResult => {
   }
 };
 
-const PROBES: Readonly<Record<CapabilityId, () => ProbeResult>> = {
+const PROBES: Readonly<Record<CapabilityId, (temp: string) => ProbeResult>> = {
   symlinks,
   "short-names": shortNames,
   "listable-system-temp": listableSystemTemp,
 };
 
-export const capabilityProbes = (): Capabilities => {
+export const capabilityProbes = (temp: string): Capabilities => {
   const cache = new Map<CapabilityId, ProbeResult>();
   return {
     probe: (id) => {
-      const known = cache.get(id) ?? PROBES[id]();
+      const known = cache.get(id) ?? PROBES[id](temp);
       cache.set(id, known);
       return known;
     },

@@ -28,6 +28,7 @@ import { jsonReader } from "../lint/gate/adapters/json-reader.ts";
 import { lanesFile } from "../lint/gate/adapters/lanes-file.ts";
 import { nameListFile } from "../lint/gate/adapters/name-list-file.ts";
 import { processRunner } from "../lint/gate/adapters/process-runner.ts";
+import { runTemp } from "../lint/gate/adapters/run-temp.ts";
 import { ratchetRecords } from "../lint/gate/adapters/ratchet-records.ts";
 import {
   LIB_DECLARATIONS,
@@ -74,7 +75,10 @@ const LOOSE_TESTS = ["tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts"];
 
 const workspace = fileWorkspace(ROOT);
 const repository = gitRepository(ROOT);
-const runner = processRunner(ROOT);
+const temp = runTemp(ROOT);
+process.on("exit", temp.dispose);
+
+const runner = processRunner(ROOT, temp.path);
 const records = ratchetRecords({ repository, workspace, locations: RECORD_LOCATIONS });
 const selection = disciplinesFiles(workspace);
 const audit = disciplineCore({
@@ -164,7 +168,7 @@ const checksFor = (plan: LanePlan): readonly GateCheck[] => [
     workspace,
     suites: TEST_SUITES,
     looseTests: LOOSE_TESTS,
-    capabilities: capabilityProbes(),
+    capabilities: capabilityProbes(temp.path),
     exclusions: environmentExclusions(workspace),
     testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
   }),
