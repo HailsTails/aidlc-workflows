@@ -112,21 +112,6 @@ export const LEGACY_BRIDGES: readonly LegacyBridge[] = [
   },
 ];
 
-export const HARNESS_NAMES = [
-  "claude",
-  "kiro",
-  "kiro-ide",
-  "codex",
-  "cursor",
-  "opencode",
-  "copilot",
-  ".claude",
-  ".kiro",
-  ".codex",
-  ".cursor",
-  ".aidlc",
-] as const;
-
 const tools = (...names: readonly string[]): readonly string[] =>
   names.map((name) => `core/tools/aidlc-${name}.ts`);
 

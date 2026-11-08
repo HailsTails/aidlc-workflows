@@ -87,11 +87,23 @@
       },
       "monolithDeletions": {}
     },
-    "A": {
-      "name": "Workflow Definition",
+    "integration": {
+      "name": "Integration: Workflow Definition, Projection, Packaging + Installation",
       "agent": "codex",
-      "owns": ["src/workflow-definition/**", "src/cli/adapters/routes/workflow-definition/**"],
-      "territory": ["workflow-definition"],
+      "owns": [
+        "src/workflow-definition/**",
+        "src/cli/adapters/routes/workflow-definition/**",
+        "src/projection/**",
+        "src/hosts/*/projection/**",
+        "src/hosts/*/build.ts",
+        "src/cli/adapters/routes/projection/**",
+        "harness/*/**",
+        "src/packaging/**",
+        "src/installation/**",
+        "src/hosts/*/{packaging,installation}/**",
+        "src/cli/adapters/routes/{packaging,installation}/**"
+      ],
+      "territory": ["workflow-definition", "projection", "packaging", "installation"],
       "consumes": ["src/kernel/**"],
       "monolithDeletions": {
         "core/tools/aidlc-lib.ts": [
@@ -131,22 +143,15 @@
         "core/tools/aidlc-stage-schema.ts": ["*"],
         "core/tools/aidlc-rule-schema.ts": ["*"],
         "core/tools/aidlc-sensor-schema.ts": ["*"],
-        "core/tools/aidlc-graph.ts": ["Consume", "RuleResolution", "SensorResolution", "GraphStage", "ScopeGrid", "RuleFile", "SensorFile"]
-      }
-    },
-    "B": {
-      "name": "Projection + Harness port",
-      "agent": "codex",
-      "owns": [
-        "src/projection/**",
-        "src/hosts/*/projection/**",
-        "src/hosts/*/build.ts",
-        "src/cli/adapters/routes/projection/**",
-        "harness/*/**"
-      ],
-      "territory": ["projection"],
-      "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
-      "monolithDeletions": {
+        "core/tools/aidlc-graph.ts": [
+          "Consume",
+          "RuleResolution",
+          "SensorResolution",
+          "GraphStage",
+          "ScopeGrid",
+          "RuleFile",
+          "SensorFile"
+        ],
         "scripts/package.ts": ["writeHarnessData", "buildTree", "loadManifest", "writeHarness"],
         "scripts/manifest-types.ts": ["*"],
         "scripts/onboarding.ts": ["*"],
@@ -154,33 +159,32 @@
         "harness/*/manifest.ts": ["*"],
         "harness/*/emit.ts": ["*"],
         "core/tools/aidlc-tiers.ts": ["TierProjection", "TIER_PROJECTIONS", "Harness"],
-        "core/tools/aidlc-runner-gen.ts": ["*"]
-      }
-    },
-    "C": {
-      "name": "Packaging + Installation",
-      "agent": "codex",
-      "owns": [
-        "src/packaging/**",
-        "src/installation/**",
-        "src/hosts/*/{packaging,installation}/**",
-        "src/cli/adapters/routes/{packaging,installation}/**"
-      ],
-      "territory": ["packaging", "installation"],
-      "consumes": ["src/kernel/**", "src/projection/domain/**", "src/packaging/domain/**"],
-      "monolithDeletions": {
+        "core/tools/aidlc-runner-gen.ts": ["*"],
         "core/tools/aidlc-init.ts": ["RootContribution", "Baseline", "PreparedRefreshSource", "PlannedAction"],
-        "core/tools/aidlc-distribution.ts": ["ProjectionStamp", "RootIntegration", "ProjectionDescriptor", "JsonEntriesOwnership", "JsonEntriesResult"],
+        "core/tools/aidlc-distribution.ts": [
+          "ProjectionStamp",
+          "RootIntegration",
+          "ProjectionDescriptor",
+          "JsonEntriesOwnership",
+          "JsonEntriesResult"
+        ],
         "core/tools/aidlc-transaction.ts": ["TransactionOperation", "TransactionPlan", "TransactionOptions"],
         "core/tools/aidlc-uninstall-plan.ts": ["*"],
-        "core/tools/aidlc-runtime-paths.ts": ["HarnessLocation", "ProjectHarness", "callingHarness", "inHostShell", "pinRuntimeHarness", "harnessIsAGuess"],
+        "core/tools/aidlc-runtime-paths.ts": [
+          "HarnessLocation",
+          "ProjectHarness",
+          "callingHarness",
+          "inHostShell",
+          "pinRuntimeHarness",
+          "harnessIsAGuess"
+        ],
         "scripts/package-release.ts": ["*"]
       }
     },
     "D": {
       "name": "Workflow Execution",
       "agent": "codex",
-      "startsAfter": ["A", "B", "C"],
+      "startsAfter": ["integration"],
       "owns": [
         "src/execution/**",
         "src/cli/**",
