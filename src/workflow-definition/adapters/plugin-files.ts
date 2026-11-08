@@ -15,8 +15,11 @@ export const PluginManifestFileSchema = z.object({
 
 export type PluginManifestFile = z.infer<typeof PluginManifestFileSchema>;
 
+const OVERLAY_ANCHOR =
+  /^(?:after-step:\d+|before-step:\d+|end-of-steps|in:.+|after-preflight|end-of-body)$/;
+
 const fragment = z.strictObject({
-  anchor: z.string().min(1),
+  anchor: z.string().regex(OVERLAY_ANCHOR),
   order: z.number().int(),
 });
 
@@ -29,6 +32,9 @@ export const OverlayFileSchema = z.strictObject({
       consumes: z
         .array(z.strictObject({ artifact: kebab, required: z.boolean() }))
         .optional(),
+      sensors: z.array(kebab).optional(),
+      scopes: z.array(z.string().min(1)).optional(),
+      requires_stage: z.array(kebab).optional(),
       required_sections: z.array(z.string().min(1)).optional(),
     })
     .optional(),

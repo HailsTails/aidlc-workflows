@@ -38,7 +38,12 @@ export const DistributionDescriptorFileSchema = z.strictObject({
   layout: z.enum(["copy", "native"]),
   profile: HarnessProfileFileSchema,
   rootIntegrations: z.array(rootIntegration),
-  managedDirectories: z.array(z.string()),
+  managedDirectories: z.array(
+    z.strictObject({
+      path: z.string().min(1),
+      ownership: z.enum(["whole-directory", "shipped-files-only"]),
+    }),
+  ),
   retiredFiles: z.record(z.string(), z.array(hash)),
 });
 

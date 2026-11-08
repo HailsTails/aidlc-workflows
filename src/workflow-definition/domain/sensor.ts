@@ -4,7 +4,11 @@ export type SensorSeverity = "advisory" | "blocking";
 
 export type SensorTrigger = "write" | "gate";
 
-export type SensorFieldShapes = Readonly<Record<string, string>>;
+export type SensorFieldShape =
+  | { readonly kind: "value"; readonly type: string }
+  | { readonly kind: "list-of"; readonly fields: SensorFieldShapes };
+
+export type SensorFieldShapes = Readonly<Record<string, SensorFieldShape>>;
 
 export type SensorDeclaration = {
   readonly id: SensorId;

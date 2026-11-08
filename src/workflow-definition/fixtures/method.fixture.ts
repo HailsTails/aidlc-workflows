@@ -6,12 +6,14 @@ import type { KnowledgeDocument } from "../domain/knowledge.ts";
 import type { Method } from "../domain/method.ts";
 import type { Rule } from "../domain/rule.ts";
 import type { Scope } from "../domain/scope.ts";
-import type { SensorDeclaration } from "../domain/sensor.ts";
+import type { SensorDeclaration, SensorFieldShape } from "../domain/sensor.ts";
 import type { Stage } from "../domain/stage.ts";
 import { stageNumber } from "../domain/stage-graph.ts";
 import { agent, artifact, scope, scopes, sensor, stage } from "./identities.fixture.ts";
 
 const core: Owner = { kind: "core" };
+
+const value = (type: string): SensorFieldShape => ({ kind: "value", type });
 
 const persona = (role: string): string => `# ${role}\n\nYou are the ${role} for this AI-DLC run.`;
 
@@ -338,8 +340,8 @@ const requiredSectionsSensor: SensorDeclaration = {
   firesOn: "gate",
   matches: "**/{aidlc-docs,intents,codekb}/**",
   timeoutSeconds: 300,
-  input: { output_path: "string", stage_slug: "string" },
-  output: { pass: "boolean", h2_count: "integer", message: "string" },
+  input: { output_path: value("string"), stage_slug: value("string") },
+  output: { pass: value("boolean"), h2_count: value("integer"), message: value("string") },
 };
 
 const upstreamCoverageSensor: SensorDeclaration = {
@@ -354,8 +356,39 @@ const upstreamCoverageSensor: SensorDeclaration = {
   firesOn: "gate",
   matches: "**/{aidlc-docs,intents,codekb}/**",
   timeoutSeconds: 300,
-  input: { output_path: "string", stage_slug: "string", consumes: "string[]" },
-  output: { pass: "boolean", unreferenced_artifacts: "string[]" },
+  input: {
+    output_path: value("string"),
+    stage_slug: value("string"),
+    consumes: value("string[]"),
+  },
+  output: { pass: value("boolean"), unreferenced_artifacts: value("string[]") },
+};
+
+const linterSensor: SensorDeclaration = {
+  id: sensor("linter"),
+  owner: core,
+  description:
+    "Wraps the project's configured linter (eslint by default for v0.5.0); fires on TS/JS " +
+    "code outputs",
+  category: "code-quality",
+  command: "{{INVOKE}} engine sensor-linter",
+  severity: "advisory",
+  firesOn: "write",
+  matches: "**/*.{ts,js}",
+  timeoutSeconds: 1200,
+  input: { file_path: value("string") },
+  output: {
+    pass: value("boolean"),
+    violations: {
+      kind: "list-of",
+      fields: {
+        file: value("string"),
+        line: value("number"),
+        rule: value("string"),
+        message: value("string"),
+      },
+    },
+  },
 };
 
 const orgRules: Rule = {
@@ -413,11 +446,12 @@ export const methodSliceFixture: Method = {
       architectureReviewerAgent,
     ],
     rules: [orgRules, teamRules, inceptionRules],
-    sensors: [requiredSectionsSensor, upstreamCoverageSensor],
+    sensors: [requiredSectionsSensor, upstreamCoverageSensor, linterSensor],
     knowledge: [developerKnowledge, sharedKnowledge],
   },
-  plugins: [],
+  installedPlugins: [],
   selection: { kind: "every-installed" },
+  findings: [],
   graph: {
     nodes: [
       {

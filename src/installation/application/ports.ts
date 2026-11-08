@@ -1,6 +1,7 @@
 import type { Result } from "../../kernel/result.ts";
 import type { ContentHash, DistributionId, RelativePath } from "../../kernel/values.ts";
 import type { Payload } from "../../packaging/domain/payload.ts";
+import type { FileOperation } from "../domain/file-operation.ts";
 import type {
   EnvironmentSnapshot,
   InstalledDistribution,
@@ -10,29 +11,14 @@ import type { InstallRefusal } from "../domain/refusals.ts";
 
 export type ProjectFileState =
   | { readonly kind: "absent" }
-  | { readonly kind: "file"; readonly hash: ContentHash; readonly text: string | null }
+  | {
+      readonly kind: "file";
+      readonly hash: ContentHash;
+      readonly text: string | null;
+      readonly executable: boolean | null;
+    }
   | { readonly kind: "link" }
   | { readonly kind: "directory" };
-
-export type ExpectedState =
-  | { readonly kind: "absent" }
-  | { readonly kind: "hash"; readonly hash: ContentHash };
-
-export type FileOperation =
-  | {
-      readonly kind: "write";
-      readonly path: RelativePath;
-      readonly bytes: Uint8Array;
-      readonly executable: boolean;
-      readonly expected: ExpectedState | null;
-    }
-  | { readonly kind: "remove"; readonly path: RelativePath; readonly expected: ExpectedState }
-  | {
-      readonly kind: "link";
-      readonly path: RelativePath;
-      readonly target: string;
-      readonly expected: ExpectedState | null;
-    };
 
 export interface ProjectFiles {
   read(path: RelativePath): Promise<ProjectFileState>;

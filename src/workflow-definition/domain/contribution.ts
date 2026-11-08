@@ -1,9 +1,17 @@
-import type { AgentSlug, PluginId, StageSlug } from "./identities.ts";
+import type { AgentSlug, PluginId, ScopeName, SensorId, StageSlug } from "./identities.ts";
 import type { MethodContent } from "./method.ts";
 import type { ArtifactConsumption, ArtifactProduction } from "./stage.ts";
 
+export type OverlayAnchor =
+  | { readonly kind: "after-step"; readonly step: number }
+  | { readonly kind: "before-step"; readonly step: number }
+  | { readonly kind: "end-of-steps" }
+  | { readonly kind: "in-section"; readonly section: string }
+  | { readonly kind: "after-preflight" }
+  | { readonly kind: "end-of-body" };
+
 export type OverlayFragment = {
-  readonly anchor: string;
+  readonly anchor: OverlayAnchor;
   readonly order: number;
   readonly text: string;
 };
@@ -11,6 +19,9 @@ export type OverlayFragment = {
 export type StageAdditions = {
   readonly produces: readonly ArtifactProduction[];
   readonly consumes: readonly ArtifactConsumption[];
+  readonly sensors: readonly SensorId[];
+  readonly scopes: readonly ScopeName[];
+  readonly requires: readonly StageSlug[];
   readonly requiredSections: readonly string[];
 };
 

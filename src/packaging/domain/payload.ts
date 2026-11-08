@@ -5,6 +5,7 @@ import type {
   RelativePath,
 } from "../../kernel/values.ts";
 import type { HarnessProfile } from "../../projection/domain/harness-profile.ts";
+import type { ManagedDirectory } from "../../projection/domain/managed-directory.ts";
 import type { FileContent, ProjectionOrigin } from "../../projection/domain/projected-file.ts";
 import type { RootIntegration } from "../../projection/domain/root-integration.ts";
 
@@ -45,7 +46,7 @@ export type RetiredFile = {
 export type DistributionDescriptor = {
   readonly profile: HarnessProfile;
   readonly rootIntegrations: readonly RootIntegration[];
-  readonly managedDirectories: readonly RelativePath[];
+  readonly managedDirectories: readonly ManagedDirectory[];
   readonly retiredFiles: readonly RetiredFile[];
 };
 

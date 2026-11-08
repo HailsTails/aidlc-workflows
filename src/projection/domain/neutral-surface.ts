@@ -1,4 +1,5 @@
 import type { RelativePath } from "../../kernel/values.ts";
+import type { FileContent } from "./projected-file.ts";
 
 export const HOOK_POINTS = [
   "session-start",
@@ -19,9 +20,24 @@ export type HookEntry = {
   readonly toolMatcher: string | null;
 };
 
+export const NEUTRAL_DOCUMENT_ROLES = [
+  "protocol",
+  "stage",
+  "scope",
+  "agent",
+  "rule",
+  "sensor",
+  "knowledge",
+  "template",
+  "session-skill",
+] as const;
+
+export type NeutralDocumentRole = (typeof NEUTRAL_DOCUMENT_ROLES)[number];
+
 export type NeutralDocument = {
   readonly source: RelativePath;
-  readonly text: string;
+  readonly role: NeutralDocumentRole;
+  readonly content: FileContent;
 };
 
 export type SessionSkill = {
@@ -35,7 +51,7 @@ export type OnboardingTemplates = {
 };
 
 export type NeutralSurface = {
-  readonly protocols: readonly NeutralDocument[];
+  readonly documents: readonly NeutralDocument[];
   readonly skills: readonly SessionSkill[];
   readonly hooks: readonly HookEntry[];
   readonly onboarding: OnboardingTemplates;

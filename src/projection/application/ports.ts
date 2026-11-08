@@ -7,6 +7,7 @@ import type { Scope } from "../../workflow-definition/domain/scope.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ScopeColumn, StageNode } from "../../workflow-definition/domain/stage-graph.ts";
 import type { HarnessProfile } from "../domain/harness-profile.ts";
+import type { ManagedDirectory } from "../domain/managed-directory.ts";
 import type {
   HookEntry,
   NeutralDocument,
@@ -20,11 +21,10 @@ import type { RootIntegration } from "../domain/root-integration.ts";
 
 export type Rendering = Result<readonly ProjectedFile[], ProjectionRefusal>;
 
-export type NeutralDocumentRole = "protocol" | "stage" | "scope" | "rule" | "sensor" | "knowledge";
-
 export interface Harness {
   readonly profile: HarnessProfile;
   readonly rootIntegrations: readonly RootIntegration[];
+  readonly managedDirectories: readonly ManagedDirectory[];
   renderAgent(request: {
     readonly agent: Agent;
     readonly knowledge: readonly KnowledgeDocument[];
@@ -38,10 +38,7 @@ export interface Harness {
     readonly templates: OnboardingTemplates;
     readonly method: Method;
   }): Rendering;
-  placeNeutralDocument(request: {
-    readonly document: NeutralDocument;
-    readonly role: NeutralDocumentRole;
-  }): Rendering;
+  placeNeutralDocument(request: { readonly document: NeutralDocument }): Rendering;
 }
 
 export interface HarnessRegistry {

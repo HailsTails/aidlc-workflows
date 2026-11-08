@@ -1,4 +1,5 @@
 import type { Agent } from "./agent.ts";
+import type { MethodFinding } from "./findings.ts";
 import type { PluginId } from "./identities.ts";
 import type { KnowledgeDocument } from "./knowledge.ts";
 import type { Rule } from "./rule.ts";
@@ -22,7 +23,8 @@ export type PluginSelection =
 
 export type Method = {
   readonly content: MethodContent;
-  readonly plugins: readonly PluginId[];
+  readonly installedPlugins: readonly PluginId[];
   readonly selection: PluginSelection;
   readonly graph: StageGraph;
+  readonly findings: readonly MethodFinding[];
 };

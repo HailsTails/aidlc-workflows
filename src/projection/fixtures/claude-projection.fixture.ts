@@ -200,11 +200,10 @@ export const claudeProjectionFixture: Projection = {
     },
   ],
   managedDirectories: [
-    path(".claude/agents"),
-    path(".claude/aidlc-common"),
-    path(".claude/knowledge"),
-    path(".claude/skills"),
-    path(".claude/tools"),
+    { path: path(".claude"), ownership: "shipped-files-only" },
+    { path: path(".claude/aidlc-common"), ownership: "whole-directory" },
+    { path: path(".claude/knowledge"), ownership: "whole-directory" },
+    { path: path(".claude/tools"), ownership: "whole-directory" },
   ],
   findings: [],
 };

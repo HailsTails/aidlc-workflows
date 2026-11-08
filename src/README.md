@@ -6,5 +6,6 @@
 - A context imports another context's `domain/` only; an adapter may also import an upstream `adapters/*-file.ts` file format where the map allows.
 - Every exported domain or application type is one line in `glossary.json`, under its one owning context; ESLint refuses a second declaration anywhere.
 - Contract files are lane 0's (`lanes.json`); ask lane 0 to change one.
+- Fixtures are shape fixtures: real identities and frontmatter values, abridged prose and file bodies, references that may point outside the slice. Never shape production output to match fixture bytes; exact outputs come from Lane G's goldens, and compile inputs come from real `core/`.
 - `src/` sits beside `core/` and `scripts/`: `core/` is projected content, `scripts/` is build-only, and runtime contexts ship through Packaging's `ToolBundler`.
 - Typecheck: `bunx tsc --noEmit -p src/tsconfig.json`. Lint: `bun --bun ./node_modules/.bin/eslint src lint`.

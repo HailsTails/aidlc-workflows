@@ -132,10 +132,10 @@ export const codexProjectionFixture: Projection = {
     },
   ],
   managedDirectories: [
-    path(".codex/agents"),
-    path(".codex/aidlc-rules"),
-    path(".codex/tools"),
-    path(".agents/skills"),
+    { path: path(".codex"), ownership: "shipped-files-only" },
+    { path: path(".codex/aidlc-rules"), ownership: "whole-directory" },
+    { path: path(".codex/tools"), ownership: "whole-directory" },
+    { path: path(".agents/skills"), ownership: "shipped-files-only" },
   ],
   findings: [],
 };

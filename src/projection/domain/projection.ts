@@ -1,5 +1,6 @@
 import type { DistributionId, RelativePath } from "../../kernel/values.ts";
 import type { HarnessProfile } from "./harness-profile.ts";
+import type { ManagedDirectory } from "./managed-directory.ts";
 import type { ProjectedFile, ProjectionOrigin } from "./projected-file.ts";
 import type { RootIntegration } from "./root-integration.ts";
 
@@ -24,7 +25,7 @@ export type ProjectionRefusal =
       readonly origins: readonly [ProjectionOrigin, ProjectionOrigin];
     }
   | {
-      readonly kind: "path-outside-harness";
+      readonly kind: "path-undeclared";
       readonly path: RelativePath;
       readonly origin: ProjectionOrigin;
     }
@@ -40,6 +41,6 @@ export type Projection = {
   readonly profile: HarnessProfile;
   readonly files: readonly ProjectedFile[];
   readonly rootIntegrations: readonly RootIntegration[];
-  readonly managedDirectories: readonly RelativePath[];
+  readonly managedDirectories: readonly ManagedDirectory[];
   readonly findings: readonly ProjectionFinding[];
 };
