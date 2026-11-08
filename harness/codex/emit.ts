@@ -293,13 +293,17 @@ export function emitTrustSeed(
 // emit() — the manifest entry point. Assembles every codex-only emission as a
 // {path, content} list, then writes it into the packager-provided dist root.
 // ---------------------------------------------------------------------------
-export default function emit(ctx: EmitContext): void {
+export const authoredInputs: readonly string[] = [
+  "skills/aidlc/SKILL.md", "skills/aidlc/question-rendering.md",
+  "skills/aidlc/composer.md", "skills/aidlc/tables.md",
+];
+
+function emit(ctx: EmitContext): void {
   // tierCap is the packager's resolved pack-time cap, passed through so the
   // emit-owned TOML projections use the SAME cap as every declarative
   // projection - never re-resolved here.
   const {
     coreRoot,
-    harnessRoot,
     harnessName,
     distRoot,
     harnessDir,
@@ -396,13 +400,11 @@ export default function emit(ctx: EmitContext): void {
   }
 
   // (a) authored orchestrator shell with the standard token projection.
-  for (const f of ["SKILL.md", "question-rendering.md", "composer.md", "tables.md"]) {
+  for (const authored of ctx.hostSources.filter((file) => authoredInputs.includes(file.source))) {
+    const f = authored.source.slice("skills/aidlc/".length);
     emissions.push({
       path: join(SKILLS_DST, "aidlc", f),
-      content: () =>
-        substituteToken(
-          readFileSync(join(harnessRoot, "skills", "aidlc", f), "utf-8"),
-        ),
+      content: () => substituteToken(ctx.hostSourceText(authored)),
     });
   }
   // (d) standalone core skills — byte-copy + prose rewrite from core/skills/.
@@ -440,3 +442,5 @@ export default function emit(ctx: EmitContext): void {
   }
   ctx.emitCommands(codexCommandPath);
 }
+
+export default Object.assign(emit, { authoredInputs });

@@ -78,8 +78,36 @@ function projectedToolImports(raw: string, harnessDir: string): string {
   return out;
 }
 
-export default function emit(ctx: EmitContext): void {
-  const { coreRoot, harnessRoot, distRoot, harnessDir, substituteToken, tierCap } = ctx;
+export const authoredInputs: readonly string[] = [
+  "command/aidlc.md", "plugin/aidlc-opencode-adapter.ts",
+];
+
+function authoredShellEmissions(ctx: EmitContext, shell: string):
+  Array<{ path: string; content: () => string }> {
+  const { distRoot, harnessDir, substituteToken } = ctx;
+  const emissions: Array<{ path: string; content: () => string }> = [];
+  // Authored shell surfaces, copied with token substitution on the .md.
+  for (const authored of ctx.hostSources.filter((file) => file.source === "command/aidlc.md")) {
+    emissions.push({
+      path: join(shell, "command", "aidlc.md"),
+      content: () => substituteToken(ctx.hostSourceText(authored)),
+    });
+  }
+  for (const authored of ctx.hostSources.filter((file) =>
+    file.source === "plugin/aidlc-opencode-adapter.ts")) {
+    emissions.push({
+      path: join(shell, "plugin", "aidlc-opencode-adapter.ts"),
+      content: () => substituteToken(projectedToolImports(
+        embedShippedEntrypoints(ctx.hostSourceText(authored), distRoot), harnessDir,
+      )),
+    });
+  }
+
+  return emissions;
+}
+
+function emit(ctx: EmitContext): void {
+  const { coreRoot, distRoot, harnessDir, substituteToken, tierCap } = ctx;
   const SHELL = join(distRoot, ".opencode");
   const ACTIVE_MEMORY = join(distRoot, "aidlc", "spaces", "default", "memory");
   if (!existsSync(ACTIVE_MEMORY)) {
@@ -132,24 +160,7 @@ export default function emit(ctx: EmitContext): void {
     });
   }
 
-  // Authored shell surfaces, copied with token substitution on the .md.
-  emissions.push({
-    path: join(SHELL, "command", "aidlc.md"),
-    content: () => substituteToken(readFileSync(join(harnessRoot, "command", "aidlc.md"), "utf-8")),
-  });
-  emissions.push({
-    path: join(SHELL, "plugin", "aidlc-opencode-adapter.ts"),
-    content: () =>
-      substituteToken(
-        projectedToolImports(
-          embedShippedEntrypoints(
-            readFileSync(join(harnessRoot, "plugin", "aidlc-opencode-adapter.ts"), "utf-8"),
-            distRoot,
-          ),
-          harnessDir,
-        ),
-      ),
-  });
+  emissions.push(...authoredShellEmissions(ctx, SHELL));
 
   // Clean-sweep the shell so a removed persona/command cannot linger. In
   // --check mode the packager supplies an isolated distRoot, then compares the
@@ -161,3 +172,5 @@ export default function emit(ctx: EmitContext): void {
   }
   ctx.emitCommands(openCodeCommandPath);
 }
+
+export default Object.assign(emit, { authoredInputs });

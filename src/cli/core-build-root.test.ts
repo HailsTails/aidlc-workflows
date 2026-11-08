@@ -1,8 +1,9 @@
+import { host } from "../kernel/fixtures/values.fixture.ts";
 import { agent } from "../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../workflow-definition/fixtures/method-source.fixture.ts";
 import { expect, test } from "bun:test";
 import { accept } from "../kernel/fixtures/accept.ts";
-import { loadCoreBuild, pluginBuildName, reviewerAgentSet, inlineAgentSet } from "./core-build-root.ts";
+import { loadCoreBuild, pluginBuildName, reviewerAgentSet, inlineAgentSet, loadHostBuildSources } from "./core-build-root.ts";
 
 const request = { coreRoot: new URL("../../core/", import.meta.url),
   markdownBlocks: () => ({ lines: [] }) };
@@ -59,4 +60,18 @@ test("the build boundary publishes Method participation facts", async () => {
     "aidlc-architecture-reviewer-agent", "aidlc-product-lead-agent",
   ]);
   expect(inlineAgentSet(build.method).has(agent("aidlc-developer-agent"))).toBe(true);
+});
+
+test("host source paths refuse before any filesystem read", async () => {
+  expect(await loadHostBuildSources({ name: "claude", directory: ".claude", root: "unread",
+    copied: ["../outside"], required: [] })).toEqual({ ok: false, refusal: [
+    { kind: "invalid-path", base: "source", raw: "../outside" },
+  ] });
+});
+
+test("an empty authored inventory retains its admitted host identity", async () => {
+  expect(await loadHostBuildSources({ name: "claude", directory: ".claude", root: "unread",
+    copied: [], required: [] })).toEqual({ ok: true, value: {
+      host: host({ name: "claude", directory: ".claude" }), files: [],
+    } });
 });

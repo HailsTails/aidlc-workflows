@@ -1,7 +1,10 @@
-import { accepted, type Result } from "../kernel/result.ts";
-import { distributionId, projectPath, type KernelRefusal } from "../kernel/values.ts";
+import type { HostIdentity } from "../kernel/host.ts";
+import type { AuthoredHostFile } from "../projection/domain/host-surface.ts";
+import type { ProjectionRefusal } from "../projection/domain/projection.ts";
+import { accepted, refused, type Result } from "../kernel/result.ts";
+import { distributionId, projectPath, sourcePath, type KernelRefusal } from "../kernel/values.ts";
 import { serializeCompiledMethod, createCommandRenderers, prepareLegacyRunners, projectMethodCommands,
-  type CompiledMethodFiles } from "../projection/core-root.ts";
+  createHostSurfaceReader, type CompiledMethodFiles } from "../projection/core-root.ts";
 import type { CommandPlacement, Rendering } from "../projection/application/ports.ts";
 import { loadAuthoredCoreMethod, type AuthoredCoreMethod } from "../workflow-definition/core-root.ts";
 import type { MethodRefusal } from "../workflow-definition/domain/refusals.ts";
@@ -44,3 +47,27 @@ export { loadAuthoredPluginBuild as loadPluginBuildCatalog, reviewerAgentSet, in
   from "../workflow-definition/core-root.ts";
 
 export { pluginId as pluginBuildName } from "../workflow-definition/domain/identities.ts";
+
+export const loadHostBuildSources = async (request: {
+  readonly name: string;
+  readonly directory: string;
+  readonly root: string;
+  readonly copied: readonly string[];
+  readonly required: readonly string[];
+}): Promise<Result<{ readonly host: HostIdentity; readonly files: readonly AuthoredHostFile[] },
+  readonly (KernelRefusal | ProjectionRefusal)[]>> => {
+  const distribution = distributionId(request.name);
+  if (!distribution.ok) return refused([distribution.refusal]);
+  const directory = projectPath(request.directory);
+  if (!directory.ok) return refused([directory.refusal]);
+  const paths = [...new Set([...request.copied, ...request.required])].map(sourcePath);
+  const failures = paths.flatMap((path) => path.ok ? [] : [path.refusal]);
+  if (failures.length > 0) return refused(failures);
+  const sources = paths.flatMap((path) => path.ok ? [path.value] : []);
+  const host = { distribution: distribution.value, directory: directory.value };
+  const files = await createHostSurfaceReader({ root: request.root, host, sources,
+    required: sources.filter((path) => request.required.includes(path)) }).read({ host });
+  return files.ok ? accepted({ host, files: files.value }) : files;
+};
+
+export { prepareHostSource } from "../projection/core-root.ts";

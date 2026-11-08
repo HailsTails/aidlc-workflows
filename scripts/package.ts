@@ -1,4 +1,9 @@
 #!/usr/bin/env bun
+import type { FileContent } from "../src/kernel/file-content.ts";
+import type { HostIdentity } from "../src/kernel/host.ts";
+import { type Result } from "../src/kernel/result.ts";
+import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts";
+import type { ProjectionRefusal } from "../src/projection/domain/projection.ts";
 // scripts/package.ts — THE build entry for the one-core-N-harnesses layout.
 //
 //   bun scripts/package.ts            regenerate dist/ and dist-release/ for every harness, plus plugins
@@ -62,7 +67,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName, projectCoreCommands,
-  reviewerAgentSet, inlineAgentSet,
+  reviewerAgentSet, inlineAgentSet, loadHostBuildSources, prepareHostSource,
   type PluginBuildCatalog, type PluginBuildTarget } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import {
@@ -810,6 +815,35 @@ function emitActiveSpace(outRoot: string): void {
 // generated-file inventory rooted there, including project-root files beside
 // <harnessDir> (onboarding/config, workspace memory, emitted skills, and so on).
 // ---------------------------------------------------------------------------
+
+const hostContentBytes = (content: FileContent): Buffer => content.kind === "text"
+  ? Buffer.from(content.text, "utf-8") : Buffer.from(content.bytes);
+
+function prepareAuthoredHostFile(request: {
+  file: AuthoredHostFile; host: HostIdentity; manifest: HarnessManifest; root: string;
+  invoke: string; letters: string;
+}): Result<AuthoredHostFile, ProjectionRefusal> {
+  const { file, host, manifest: m, root, invoke, letters } = request;
+  const srcPath = join(root, file.source);
+  const steps: Array<(content: FileContent) => FileContent> = [(content) => ({
+    kind: "bytes", bytes: transform(srcPath, hostContentBytes(content),
+      m.harnessDir, m.rulesRename, m.tierFlavor, invoke, letters),
+  })];
+  if (m.tierFlavor === "kiro") {
+    if (file.source.startsWith("agents/") && file.source.endsWith(".json")) {
+      steps.push((content) => ({ kind: "bytes",
+        bytes: projectKiroAgentJson(srcPath, hostContentBytes(content)) }));
+      steps.push((content) => ({ kind: "bytes",
+        bytes: projectKiroSharedKnowledge(hostContentBytes(content)) }));
+      steps.push((content) => ({ kind: "bytes",
+        bytes: projectKiroHookCommands(hostContentBytes(content), m.hookCommandSuffix) }));
+    } else if (file.source === "settings/cli.json") {
+      steps.push((content) => ({ kind: "bytes", bytes: projectKiroCliJson(hostContentBytes(content)) }));
+    }
+  }
+  return prepareHostSource({ host, file, steps });
+}
+
 function buildTree(
   m: HarnessManifest,
   outRoot: string,
@@ -894,30 +928,27 @@ function buildTree(
   //    are additionally tier-projected: the agent .json "model" fields and the
   //    settings/cli.json chat.modelDefaults entries (effort rides on the model
   //    on Kiro - see aidlc-tiers.ts).
+
   const harnessSrcRoot = join(HARNESS_ROOT, m.name);
+  const hostInput = hostBuildInputs.get(m.name);
+  if (!hostInput) {
+    console.error(`Authored host sources were not captured for ${m.name}`);
+    process.exit(1);
+  }
+  const prepareHostInput = (file: AuthoredHostFile) => prepareAuthoredHostFile({
+    file, host: hostInput.host, manifest: m, root: harnessSrcRoot, invoke, letters,
+  });
   for (const { src, dst, projectRoot } of m.harnessFiles) {
-    const srcPath = join(harnessSrcRoot, src);
-    if (!existsSync(srcPath)) continue;
+    const file = hostInput.files.find((entry) => entry.source === src);
+    if (!file) continue;
+    const prepared = prepareHostInput(file);
+    if (!prepared.ok) {
+      console.error(JSON.stringify(prepared.refusal));
+      process.exit(1);
+    }
     const outPath = projectRoot ? join(outRoot, dst) : join(treeRoot, dst);
     mkdirSync(dirname(outPath), { recursive: true });
-    let out = transform(
-      srcPath,
-      readFileSync(srcPath),
-      harnessDir,
-      m.rulesRename,
-      harnessKind,
-      invoke,
-      letters,
-    );
-    if (harnessKind === "kiro") {
-      if (src.startsWith("agents/") && src.endsWith(".json")) {
-        out = projectKiroSharedKnowledge(projectKiroAgentJson(srcPath, out));
-        out = projectKiroHookCommands(out, m.hookCommandSuffix);
-      } else if (src === "settings/cli.json") {
-        out = projectKiroCliJson(out);
-      }
-    }
-    writeFileSync(outPath, out);
+    writeFileSync(outPath, hostContentBytes(prepared.value.content));
   }
 
   // 2b. Split neutral project instructions from each harness's native setup.
@@ -1014,6 +1045,9 @@ function buildTree(
       method: coreBuild.method,
       reviewerAgents,
       sources: coreBuild.sources,
+      hostSources: hostInput.files,
+      hostSourceText: (file) => hostContentBytes(file.content).toString("utf-8"),
+      prepareHostSource: prepareHostInput,
       repoRoot: REPO_ROOT,
       coreRoot: CORE_ROOT,
       harnessRoot: harnessSrcRoot,
@@ -2143,6 +2177,21 @@ if (!loadedPlugins.ok) {
 }
 const pluginBuilds = loadedPlugins.value;
 const reviewerAgents = reviewerAgentSet(pluginBuilds.method);
+
+const hostBuildInputs = new Map<string, {
+  readonly host: HostIdentity; readonly files: readonly AuthoredHostFile[];
+}>();
+for (const name of targets) {
+  const manifest = loadManifest(name);
+  const captured = await loadHostBuildSources({ name, directory: manifest.harnessDir,
+    root: join(HARNESS_ROOT, name), copied: manifest.harnessFiles.map((file) => file.src),
+    required: manifest.emit?.authoredInputs ?? [] });
+  if (!captured.ok) {
+    console.error(JSON.stringify(captured.refusal));
+    process.exit(1);
+  }
+  hostBuildInputs.set(name, captured.value);
+}
 if (check) {
   const problems = checkPackageDeterminism(targets, pluginBuilds);
   if (problems.length > 0) {

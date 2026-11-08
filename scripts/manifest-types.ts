@@ -1,3 +1,5 @@
+import type { AuthoredHostFile } from "../src/projection/domain/host-surface.ts";
+import type { ProjectionRefusal } from "../src/projection/domain/projection.ts";
 // scripts/manifest-types.ts — the shared contract every harness/<name>/manifest.ts
 // implements, consumed by scripts/package.ts.
 //
@@ -36,6 +38,9 @@ export type EmitContext = {
   method: Method;
   readonly reviewerAgents: ReadonlySet<string>;
   sources: readonly MethodSource[];
+  readonly hostSources: readonly AuthoredHostFile[];
+  hostSourceText: (file: AuthoredHostFile) => string;
+  prepareHostSource: (file: AuthoredHostFile) => Result<AuthoredHostFile, ProjectionRefusal>;
   /** Absolute path to the repo root. */
   repoRoot: string;
   /** Absolute path to core/ (the harness-neutral source). */
@@ -440,7 +445,9 @@ export type HarnessManifest = {
    * into ctx.distRoot; under --check the packager invokes it in two independent
    * temporary roots and compares the complete generated trees.
    */
-  emit: ((ctx: EmitContext) => void) | null;
+  emit: (((ctx: EmitContext) => void) & {
+    readonly authoredInputs?: readonly string[];
+  }) | null;
   /**
    * How AIDLC plugins project into THIS harness (the hybrid delivery seam).
    * Optional: when omitted, the packager derives a sensible default from

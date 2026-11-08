@@ -70,8 +70,13 @@ function emitHooksJson(harnessDir: string): string {
   return `${JSON.stringify({ version: 1, hooks }, null, 2)}\n`;
 }
 
-export default function emit(ctx: EmitContext): void {
-  const { coreRoot, harnessRoot, distRoot, harnessDir, substituteToken } = ctx;
+export const authoredInputs: readonly string[] = [
+  "skills/aidlc/SKILL.md", "skills/aidlc/question-rendering.md",
+  "skills/aidlc/composer.md", "skills/aidlc/tables.md",
+];
+
+function emit(ctx: EmitContext): void {
+  const { coreRoot, distRoot, harnessDir, substituteToken } = ctx;
   const SHELL = join(distRoot, ".github");
   const SKILLS_DST = join(SHELL, "skills");
 
@@ -161,10 +166,11 @@ export default function emit(ctx: EmitContext): void {
   }
 
   // (a) authored orchestrator shell — token-substituted from harness/copilot/.
-  for (const f of ["SKILL.md", "question-rendering.md", "composer.md", "tables.md"]) {
+  for (const authored of ctx.hostSources.filter((file) => authoredInputs.includes(file.source))) {
+    const f = authored.source.slice("skills/aidlc/".length);
     emissions.push({
       path: join(SKILLS_DST, "aidlc", f),
-      content: () => substituteToken(readFileSync(join(harnessRoot, "skills", "aidlc", f), "utf-8")),
+      content: () => substituteToken(ctx.hostSourceText(authored)),
     });
   }
   // (d) session skills — copied from core/ with token substitution (the
@@ -197,3 +203,5 @@ export default function emit(ctx: EmitContext): void {
   chmodSync(launcher, 0o755);
   ctx.emitCommands(copilotCommandPath);
 }
+
+export default Object.assign(emit, { authoredInputs });
