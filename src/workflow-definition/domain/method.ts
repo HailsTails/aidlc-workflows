@@ -8,7 +8,7 @@ import type { Rule } from "./rule.ts";
 import type { FreeformDefaultClaim, Scope, ScopeMembership } from "./scope.ts";
 import type { SensorDeclaration } from "./sensor.ts";
 import type { Stage } from "./stage.ts";
-import type { StageGraph } from "./stage-graph.ts";
+import type { StageGraph, StageNode } from "./stage-graph.ts";
 
 export type ContributedContent = {
   readonly stages: readonly Stage[];
@@ -50,3 +50,14 @@ export type CompiledMethod = {
 };
 
 export type Method = Brand<CompiledMethod, "Method">;
+
+export type GraphEntry = {
+  readonly node: StageNode;
+  readonly stage: Stage;
+};
+
+export const graphEntries = (method: Method): readonly GraphEntry[] =>
+  method.graph.nodes.flatMap((node) => {
+    const stage = method.stages.find((candidate) => candidate.slug === node.stage);
+    return stage === undefined ? [] : [{ node, stage }];
+  });
