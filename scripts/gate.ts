@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { MONOLITH_FILES } from "../lint/context-map.ts";
 import { CLEAN_ZONE } from "../lint/zones.ts";
-import { gateRequestFrom, USAGE } from "../lint/gate/adapters/cli-arguments.ts";
+import { gateRequestFrom, slotPolicyFrom, USAGE } from "../lint/gate/adapters/cli-arguments.ts";
 import {
   consoleProgress,
   printDebt,
@@ -35,6 +35,7 @@ import {
   RECORD_LOCATIONS,
 } from "../lint/gate/adapters/record-locations.ts";
 import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
+import { systemMemory } from "../lint/gate/adapters/system-memory.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
 import { disciplinesCheck } from "../lint/gate/application/disciplines-check.ts";
 import type { GateCheck } from "../lint/gate/application/gate-check.ts";
@@ -171,24 +172,35 @@ const EXIT_CODES: Readonly<Record<GateReport["verdict"], number>> = {
   busy: 3,
 };
 
-const lock = directoryLock({
-  directory: process.env["AIDLC_GATE_LOCK_DIR"] ?? lockDirectoryBesideMainCheckout(ROOT),
-  cwd: ROOT,
-  onWait: consoleProgress.note,
-});
+type UsageProblem = { readonly problem: string; readonly fix: string };
+
+const usageError = ({ problem, fix }: UsageProblem): number => {
+  process.stderr.write(`gate · error: ${problem}\n${fix}\n`);
+  process.stdout.write(`${usageSummaryLine({ problem, fix })}\n`);
+  return EXIT_CODES.error;
+};
 
 const main = async (): Promise<number> => {
   const defaults = { baseRef: process.env["AIDLC_GATE_BASE"] ?? DEFAULT_BASE, waitSeconds: 1800 };
   const request = gateRequestFrom(Bun.argv.slice(2), defaults);
   if (!request.ok) {
-    process.stderr.write(`gate · error: ${request.problem}\n${request.fix}\n`);
-    process.stdout.write(`${usageSummaryLine({ problem: request.problem, fix: request.fix })}\n`);
-    return EXIT_CODES.error;
+    return usageError(request);
   }
   if (request.value.kind === "help") {
     process.stdout.write(`${USAGE}\n`);
     return EXIT_CODES.green;
   }
+  const policy = slotPolicyFrom(process.env);
+  if (!policy.ok) {
+    return usageError(policy);
+  }
+  const lock = directoryLock({
+    directory: process.env["AIDLC_GATE_LOCK_DIR"] ?? lockDirectoryBesideMainCheckout(ROOT),
+    cwd: ROOT,
+    onWait: consoleProgress.note,
+    policy: policy.value,
+    memory: systemMemory,
+  });
   const plans = lanesFile({ workspace, path: "lanes.json" });
   const services = {
     plans,

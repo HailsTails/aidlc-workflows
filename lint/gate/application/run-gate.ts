@@ -1,4 +1,5 @@
 import type { LanePlan } from "../domain/lane-plan.ts";
+import type { WaitReason } from "../domain/machine-lock.ts";
 import {
   verdictOf,
   type CheckId,
@@ -73,12 +74,12 @@ const report = (request: RunnableRequest, partial: Partial<GateReport>): GateRep
 const failed = (request: RunnableRequest, { problem, fix }: GateProblem): GateReport =>
   report(request, { verdict: "error", problem: { problem, fix } });
 
-const BUSY: GateProblem = {
-  problem: "another heavy job holds the machine lock",
+const busy = (reason: WaitReason): GateProblem => ({
+  problem: `no machine lock slot: ${reason}`,
   fix:
-    "Wait for it (raise --wait), and meanwhile run light work, which never takes the lock: " +
+    "Wait for one (raise --wait), and meanwhile run light work, which never takes a slot: " +
     "bun scripts/gate.ts --scope <lane-id>, typecheck, bun test.",
-};
+});
 
 const locked = async (
   services: GateServices,
@@ -87,9 +88,9 @@ const locked = async (
 ): Promise<GateReport> => {
   const lane = request.kind === "full" ? (request.laneId ?? "none") : "none";
   const command = `gate ${request.kind}`;
-  const acquired = await services.lock.acquire({ lane, command, waitMs: request.waitMs });
-  if (!acquired) {
-    return report(request, { verdict: "busy", problem: BUSY });
+  const outcome = await services.lock.acquire({ lane, command, waitMs: request.waitMs });
+  if (!outcome.acquired) {
+    return report(request, { verdict: "busy", problem: busy(outcome.reason) });
   }
   try {
     return await action();

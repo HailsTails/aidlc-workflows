@@ -14,6 +14,25 @@ export type LockObservation = {
   readonly host: string;
 };
 
+export type SlotPolicy = {
+  readonly slots: number;
+  readonly minFreeMb: number;
+};
+
+export type WaitReason = "no free slot" | "free memory below floor";
+
+export const DEFAULT_SLOT_POLICY: SlotPolicy = { slots: 3, minFreeMb: 4096 };
+
+const BYTES_PER_MB = 1024 * 1024;
+
+export const megabytesOf = (bytes: number): number => Math.floor(bytes / BYTES_PER_MB);
+
+export const memoryAdmits = (policy: SlotPolicy, freeBytes: number): boolean =>
+  megabytesOf(freeBytes) >= policy.minFreeMb;
+
+export const slotNames = (policy: SlotPolicy): readonly string[] =>
+  Array.from({ length: policy.slots }, (_, index) => `heavy-${index + 1}.lock`);
+
 export const LOCK_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 
 export const UNREADABLE_OWNER_GRACE_MS = 60 * 1000;

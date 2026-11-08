@@ -6,15 +6,22 @@ import {
   describeOwner,
   isStale,
   LOCK_POLL_MS,
+  megabytesOf,
+  memoryAdmits,
+  slotNames,
   type LockObservation,
   type LockOwner,
+  type SlotPolicy,
+  type WaitReason,
 } from "../domain/machine-lock.ts";
-import type { LockRequest, MachineLock } from "../application/ports.ts";
+import type { FreeMemory, LockRequest, MachineLock } from "../application/ports.ts";
 
 export type LockPlacement = {
   readonly directory: string;
   readonly cwd: string;
   readonly onWait: (line: string) => void;
+  readonly policy: SlotPolicy;
+  readonly memory: FreeMemory;
 };
 
 const LockOwnerSchema = z.object({
@@ -109,31 +116,69 @@ const ownerFor = (placement: LockPlacement, request: LockRequest): LockOwner => 
   startedAt: Date.now(),
 });
 
+type Attempt =
+  | { readonly kind: "held"; readonly slot: string }
+  | { readonly kind: "waiting"; readonly reason: WaitReason; readonly detail: string };
+
+const claim = (slot: string, owner: LockOwner): boolean => {
+  if (tryCreate(slot, owner)) {
+    return true;
+  }
+  if (!isStale(observe(slot))) {
+    return false;
+  }
+  rmSync(slot, { recursive: true, force: true });
+  return tryCreate(slot, owner);
+};
+
+const slotsOf = (placement: LockPlacement): readonly string[] =>
+  slotNames(placement.policy).map((name) => join(placement.directory, name));
+
+const holders = (slots: readonly string[]): string =>
+  slots.map((slot) => describeOwner(readOwner(slot))).join("; ");
+
+const attempt = (placement: LockPlacement, owner: LockOwner): Attempt => {
+  const { policy, memory } = placement;
+  const freeBytes = memory.bytes();
+  if (!memoryAdmits(policy, freeBytes)) {
+    const detail = `${megabytesOf(freeBytes)} MB free, floor ${policy.minFreeMb} MB`;
+    return { kind: "waiting", reason: "free memory below floor", detail };
+  }
+  const slots = slotsOf(placement);
+  const slot = slots.find((candidate) => claim(candidate, owner));
+  return slot === undefined
+    ? { kind: "waiting", reason: "no free slot", detail: holders(slots) }
+    : { kind: "held", slot };
+};
+
 export const directoryLock = (placement: LockPlacement): MachineLock => {
-  const lockPath = join(placement.directory, "heavy.lock");
+  let held: string | undefined;
   return {
     acquire: async (request) => {
       mkdirSync(placement.directory, { recursive: true });
       const deadline = Date.now() + request.waitMs;
-      let announced = false;
-      while (!tryCreate(lockPath, ownerFor(placement, request))) {
-        const observation = observe(lockPath);
-        if (isStale(observation)) {
-          rmSync(lockPath, { recursive: true, force: true });
-          continue;
+      let announced: WaitReason | undefined;
+      for (;;) {
+        const result = attempt(placement, ownerFor(placement, request));
+        if (result.kind === "held") {
+          held = result.slot;
+          holdUntilExit(result.slot);
+          return { acquired: true };
         }
         if (Date.now() >= deadline) {
-          return false;
+          return { acquired: false, reason: result.reason };
         }
-        if (!announced) {
-          placement.onWait(`waiting for the machine lock: ${describeOwner(observation.owner)}`);
-          announced = true;
+        if (announced !== result.reason) {
+          placement.onWait(`waiting for a machine lock slot: ${result.reason} (${result.detail})`);
+          announced = result.reason;
         }
         await Bun.sleep(LOCK_POLL_MS);
       }
-      holdUntilExit(lockPath);
-      return true;
     },
-    release: () => releaseIfOurs(lockPath),
+    release: () => {
+      if (held !== undefined) {
+        releaseIfOurs(held);
+      }
+    },
   };
 };

@@ -4,6 +4,7 @@ import type { DisciplineException } from "../domain/zone-rules.ts";
 import type { GoldenSet } from "../domain/golden.ts";
 import type { JsonValue } from "../domain/json-grant.ts";
 import type { LanePlan } from "../domain/lane-plan.ts";
+import type { WaitReason } from "../domain/machine-lock.ts";
 import type { MonolithShape } from "../domain/monolith.ts";
 import type { CheckId, CheckOutcome } from "../domain/outcome.ts";
 import type { CountsByFile } from "../domain/violation-ratchet.ts";
@@ -108,9 +109,17 @@ export type LockRequest = {
   readonly waitMs: number;
 };
 
+export type LockOutcome =
+  | { readonly acquired: true }
+  | { readonly acquired: false; readonly reason: WaitReason };
+
 export type MachineLock = {
-  readonly acquire: (request: LockRequest) => Promise<boolean>;
+  readonly acquire: (request: LockRequest) => Promise<LockOutcome>;
   readonly release: () => void;
+};
+
+export type FreeMemory = {
+  readonly bytes: () => number;
 };
 
 export type DisciplineSelection = {

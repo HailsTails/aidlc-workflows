@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { z } from "zod";
+import { DEFAULT_SLOT_POLICY, type SlotPolicy } from "../domain/machine-lock.ts";
 import { CHECK_IDS } from "../domain/outcome.ts";
 import type { GateRequest } from "../application/gate-request.ts";
 import type { Loaded } from "../application/ports.ts";
@@ -20,14 +21,19 @@ export const USAGE = [
   "Run from the lane worktree root. Every run, usage errors included, ends with one",
   "stdout line: AIDLC_GATE {json}. --help prints this text only.",
   "Exit: 0 green, 1 red, 2 usage or environment error, 3 machine lock busy.",
-  "Only heavy work takes the machine lock: --full, --update-goldens, and --locked",
-  "around a package build (scripts/package.ts, with or without --check) or a golden",
-  "run. Never wrap --scope, typecheck or bun test in --locked; they run freely.",
+  "Only heavy work takes one of the machine lock's slots: --full, --update-goldens, and",
+  "--locked around a package build (scripts/package.ts, with or without --check) or a",
+  "golden run. Never wrap --scope, typecheck or bun test in --locked; they run freely.",
+  "A heavy job takes a slot only while free memory is at or above the floor; otherwise",
+  "it waits, and the wait and busy lines say why: no free slot, or free memory below",
+  "floor.",
   "--locked streams the command's own output and exits with its exit code; its",
   "summary line carries that code as exitCode (green on 0, red otherwise).",
-  "The lock is never broken while its owner process is alive on the same host.",
+  "A slot is never broken while its owner process is alive on the same host.",
   "Env: AIDLC_GATE_BASE (default base ref), AIDLC_GATE_LOCK_DIR (lock folder; default",
   "     .aidlc-gate in the folder that holds the main checkout),",
+  `     AIDLC_GATE_SLOTS (heavy jobs at once; default ${DEFAULT_SLOT_POLICY.slots}),`,
+  `     AIDLC_GATE_MIN_FREE_MB (free-memory floor; default ${DEFAULT_SLOT_POLICY.minFreeMb}),`,
   "     AIDLC_DISCIPLINE_CORE (discipline-core install; default",
   "     aidlc-discipline-core-main/plugins/discipline-core beside the main checkout,",
   "     linked into the worktree at .cache/discipline-core; it must be a git checkout",
@@ -119,6 +125,36 @@ const parsedArguments = (argv: readonly string[]): Loaded<Parsed> => {
   } catch (error) {
     return usageError(error instanceof Error ? error.message : String(error));
   }
+};
+
+const SlotPolicySchema = z.object({
+  AIDLC_GATE_SLOTS: z.coerce.number().int().positive().default(DEFAULT_SLOT_POLICY.slots),
+  AIDLC_GATE_MIN_FREE_MB: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(DEFAULT_SLOT_POLICY.minFreeMb),
+});
+
+export const slotPolicyFrom = (
+  environment: Readonly<Record<string, string | undefined>>,
+): Loaded<SlotPolicy> => {
+  const parsed = SlotPolicySchema.safeParse(environment);
+  return parsed.success
+    ? {
+        ok: true,
+        value: {
+          slots: parsed.data.AIDLC_GATE_SLOTS,
+          minFreeMb: parsed.data.AIDLC_GATE_MIN_FREE_MB,
+        },
+      }
+    : {
+        ok: false,
+        problem: `the lock settings are not whole numbers: ${z.prettifyError(parsed.error)}`,
+        fix:
+          "Set AIDLC_GATE_SLOTS to 1 or more and AIDLC_GATE_MIN_FREE_MB to 0 or more, " +
+          "or unset them.",
+      };
 };
 
 export const gateRequestFrom = (
