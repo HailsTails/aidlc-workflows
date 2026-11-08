@@ -1,3 +1,4 @@
+import { brand } from "../../kernel/brand.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import type { Agent, PersonaAdditions } from "../domain/agent.ts";
 import type { KnowledgeDocument } from "../domain/knowledge.ts";
@@ -546,4 +547,4 @@ const compiled: CompiledMethod = {
   },
 };
 
-export const methodSliceFixture = compiled as Method;
+export const methodSliceFixture = brand<Method>(compiled);

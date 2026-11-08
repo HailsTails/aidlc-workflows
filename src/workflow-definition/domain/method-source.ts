@@ -1,4 +1,4 @@
-import type { Brand } from "../../kernel/brand.ts";
+import { brand, type Brand } from "../../kernel/brand.ts";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { projectPath, sourcePath } from "../../kernel/values.ts";
@@ -20,9 +20,12 @@ export type MethodSourcePath = Brand<string, "MethodSourcePath">;
 
 export type MethodSourceRoot = Brand<string, "MethodSourceRoot">;
 
-export type MethodSource = {
-  readonly path: MethodSourcePath;
+export type MethodSourceLocation = {
   readonly owner: Owner;
+  readonly path: MethodSourcePath;
+};
+
+export type MethodSource = MethodSourceLocation & {
   readonly content: FileContent;
 };
 
@@ -37,11 +40,11 @@ export const methodSourcePath = (request: {
 }): Result<MethodSourcePath, MethodSourceRefusal> => {
   const raw = `${METHOD_SOURCE_FOLDERS[request.kind]}/${request.within}`;
   return sourcePath(raw).ok
-    ? accepted(raw as MethodSourcePath)
+    ? accepted(brand<MethodSourcePath>(raw))
     : refused({ kind: "invalid-method-source-location", raw });
 };
 
 export const methodSourceRoot = (raw: string): Result<MethodSourceRoot, MethodSourceRefusal> =>
   projectPath(raw).ok
-    ? accepted(raw as MethodSourceRoot)
+    ? accepted(brand<MethodSourceRoot>(raw))
     : refused({ kind: "invalid-method-source-location", raw });

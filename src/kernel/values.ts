@@ -1,4 +1,4 @@
-import type { Brand } from "./brand.ts";
+import { brand, type Brand } from "./brand.ts";
 import { accepted, refused, type Result } from "./result.ts";
 
 export type ProjectPath = Brand<string, "ProjectPath">;
@@ -50,30 +50,30 @@ const isRelativePath = (raw: string): boolean => raw.split("/").every(isPortable
 
 export const projectPath = (raw: string): Result<ProjectPath, KernelRefusal> =>
   isRelativePath(raw)
-    ? accepted(raw as ProjectPath)
+    ? accepted(brand<ProjectPath>(raw))
     : refused({ kind: "invalid-path", base: "project", raw });
 
 export const sourcePath = (raw: string): Result<SourcePath, KernelRefusal> =>
   isRelativePath(raw)
-    ? accepted(raw as SourcePath)
+    ? accepted(brand<SourcePath>(raw))
     : refused({ kind: "invalid-path", base: "source", raw });
 
 export const contentHash = (raw: string): Result<ContentHash, KernelRefusal> =>
   CONTENT_HASH.test(raw)
-    ? accepted(raw as ContentHash)
+    ? accepted(brand<ContentHash>(raw))
     : refused({ kind: "invalid-content-hash", raw });
 
 export const frameworkVersion = (raw: string): Result<FrameworkVersion, KernelRefusal> =>
   FRAMEWORK_VERSION.test(raw)
-    ? accepted(raw as FrameworkVersion)
+    ? accepted(brand<FrameworkVersion>(raw))
     : refused({ kind: "invalid-framework-version", raw });
 
 export const distributionId = (raw: string): Result<DistributionId, KernelRefusal> =>
   DISTRIBUTION_ID.test(raw)
-    ? accepted(raw as DistributionId)
+    ? accepted(brand<DistributionId>(raw))
     : refused({ kind: "invalid-distribution-id", raw });
 
 export const timestamp = (raw: string): Result<Timestamp, KernelRefusal> =>
   UTC_TIMESTAMP.test(raw)
-    ? accepted(raw as Timestamp)
+    ? accepted(brand<Timestamp>(raw))
     : refused({ kind: "invalid-timestamp", raw });

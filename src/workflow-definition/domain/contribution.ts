@@ -1,6 +1,6 @@
 import type { SourcePath } from "../../kernel/values.ts";
 import type { AgentSlug, PluginId, ScopeName, SensorId, StageSlug } from "./identities.ts";
-import type { MethodContent } from "./method.ts";
+import type { ContributedContent } from "./method.ts";
 import type { ArtifactConsumption, ArtifactProduction } from "./stage.ts";
 
 export type StageAnchor =
@@ -69,7 +69,7 @@ export type Contribution = {
   readonly description: string;
   readonly dependsOn: readonly ContributionDependency[];
   readonly rulesLevel: RuleLevel;
-  readonly content: MethodContent;
+  readonly content: ContributedContent;
   readonly overlays: readonly Overlay[];
   readonly tools: PluginTools;
 };

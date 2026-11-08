@@ -1,17 +1,10 @@
-import { createHash } from "node:crypto";
 import type { FileContent } from "../../kernel/file-content.ts";
 import { hash, path, source, version } from "../../kernel/fixtures/values.fixture.ts";
-import type { ContentHash } from "../../kernel/values.ts";
 import type { ProjectedFile } from "../../projection/domain/projected-file.ts";
 import { claudeProjectionFixture } from "../../projection/fixtures/claude-projection.fixture.ts";
 import type { Payload, PayloadFile, RuntimeEntryPoint } from "../domain/payload.ts";
 import { claudeLayoutFixture, claudePriorIntegrationsFixture } from "./claude-layout.fixture.ts";
-
-export const hashOf = (content: FileContent): ContentHash => {
-  const digest = createHash("sha256");
-  digest.update(content.kind === "text" ? content.text : content.bytes);
-  return hash(`sha256:${digest.digest("hex")}`);
-};
+import { hashOf } from "./content-hashes.fixture.ts";
 
 const fromProjection = (file: ProjectedFile): PayloadFile => ({
   path: file.path,

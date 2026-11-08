@@ -3,10 +3,8 @@ import { hash, path, version } from "../../kernel/fixtures/values.fixture.ts";
 import type { ProjectPath } from "../../kernel/values.ts";
 import type { PayloadFile } from "../../packaging/domain/payload.ts";
 import type { RootIntegration } from "../../packaging/domain/root-integration.ts";
-import {
-  claudeCopyPayloadFixture,
-  hashOf,
-} from "../../packaging/fixtures/claude-payload.fixture.ts";
+import { claudeCopyPayloadFixture } from "../../packaging/fixtures/claude-payload.fixture.ts";
+import { hashOf } from "../../packaging/fixtures/content-hashes.fixture.ts";
 import type { PlannedContent } from "../domain/file-operation.ts";
 import type {
   BlockedInstallPlan,
