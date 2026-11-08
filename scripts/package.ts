@@ -88,10 +88,8 @@ import {
   type Harness,
   readEnvCap,
   readMemoryCap,
-  type Tier,
 } from "../core/tools/aidlc-tiers.ts";
 import {
-  agentTiersFromAuthoredDirectory,
   modelAgentName,
   resolveModelPolicy,
   serializeAgentTiers,
@@ -259,112 +257,40 @@ function applyRulesRename(s: string, harnessDir: string, rulesRename: string | n
   );
 }
 
-// Read the authored `tier:` from an agent .md's YAML FRONTMATTER (scoped to
-// the block between the `---` fences - a `tier:` token in body prose never
-// matches). Fails loudly when the frontmatter or the key is missing: every
-// shipped agent must carry a tier, and a silent pass-through would ship an
-// unprojected agent (no model/effort keys at all) without failing the build.
-function agentTierFromMd(s: string, srcPath: string): string {
-  // Strip a UTF-8 BOM before anchoring - macOS/Windows editors occasionally
-  // save .md with one, and the ^--- anchor would otherwise miss (same
-  // tolerance as the rule-frontmatter parser).
-  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
-  const m = s.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) throw new Error(`${srcPath}: agent .md has no YAML frontmatter block.`);
-  const tierMatch = m[1].match(/^tier:\s*(\S+)\s*$/m);
-  if (!tierMatch) {
-    throw new Error(`${srcPath}: agent frontmatter has no tier: line (the authored contract).`);
-  }
-  return tierMatch[1];
-}
+const coreAgentForFile = (source: string) => {
+  const file = basename(source).replace(/\.json$/, ".md");
+  return coreBuild.method.agents.find((agent) => agent.owner.kind === "core"
+    && basename(agent.source) === file);
+};
 
-// Rewrite an agent .md's frontmatter `tier: <t>` line into the harness-native
-// keys (Claude: `model:` + optional `effort:`; Kiro: optional `model:`; Codex
-// .md copies mirror Claude's shape - the TOMLs emit.ts writes are the binding
-// surface there). Called AFTER the token substitution + rules-rename pass.
-// A missing tier: on an agent file fails the build (agentTierFromMd). A null
-// projected model/effort means the harness-native key is OMITTED: the
-// harness's own session/config default applies for that harness/tier
-// combination. When every key is omitted the `tier:` line is dropped without
-// a replacement.
-function projectTierFrontmatter(
-  s: string,
-  srcPath: string,
-  harness: Harness,
-): string {
-  // Only apply to files under agents/. Guard on the POSIX-normalized path
-  // (srcPath carries the platform separator on Windows) because a stage .md
-  // legitimately talks about "tier:" in prose.
-  const posixPath = srcPath.split(sep).join("/");
-  if (!posixPath.includes("/agents/") || !posixPath.endsWith("-agent.md")) return s;
-  const tier = agentTierFromMd(s, srcPath);
-  const m = s.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  if (!m) throw new Error(`${srcPath}: agent .md has no closed frontmatter block.`);
-  const fm = m[1];
-  const disallowedMatches = [
-    ...fm.matchAll(/^disallowedTools:\s*(.*?)\s*$/gm),
-  ];
-  if (
-    harness === "kiro" &&
-    (disallowedMatches.length !== 1 ||
-      !/^task$/i.test(disallowedMatches[0][1].trim()))
-  ) {
-    throw new Error(
-      `${srcPath}: kiro projection requires exactly one disallowedTools: Task line.`,
-    );
+function projectTierFrontmatter(s: string, srcPath: string, harness: Harness): string {
+  if (agentNameFromPath(srcPath) === null) return s;
+  const agent = coreAgentForFile(srcPath);
+  if (!agent || agent.model.kind !== "tier") {
+    throw new Error(`${srcPath}: the accepted core Method supplies no tiered agent.`);
   }
-  if (harness === "kiro") {
-    // Kiro's native agent surface rejects unknown frontmatter keys: project the
-    // authored disallowedTools line out before the model-policy rewrite.
-    const newFm = fm
-      .split(/\r?\n/)
-      .filter((line) => !/^disallowedTools:/.test(line))
-      .join("\n");
-    // Function replacement: a literal `$&`/`$'` in frontmatter must not be
-    // interpreted as a replacement pattern.
-    s = s.replace(m[0], () => `---\n${newFm}\n---\n`);
+  if (harness === "kiro" && (agent.tools.disallowed.length !== 1
+    || agent.tools.disallowed[0]?.toLowerCase() !== "task")) {
+    throw new Error(`${srcPath}: kiro projection requires disallowedTools: Task.`);
   }
   const effective = resolveModelPolicy(
-    null,
-    modelAgentName(srcPath),
-    tier as Tier,
-    harness,
-    TIER_CAP,
-  );
+    null, modelAgentName(srcPath), agent.model.tier, harness, TIER_CAP);
   return writeMarkdownAgentSurface(s, effective, {
     effortKey: harness === "opencode" ? "variant" : "effort",
+    removeKeys: harness === "kiro" ? ["disallowedTools"] : [],
   });
 }
 
-// Project the `"model"` field of an authored Kiro agent .json from the tier
-// table. The JSONs stay hand-written (tools, resources, sandbox settings) but
-// the model dial is projection-owned: the authored files carry NO "model"
-// field at all (so nobody edits a value the build would overwrite), and the
-// tier comes from the same-name core/agents/<slug>.md (single source of
-// truth). A pinned tier ADDS the field; a null projected model leaves it
-// absent - the agent-v1 schema documents the fallback ("If not specified,
-// uses the default model"), which is exactly the judgment-tier inherit
-// contract. Files with no core .md counterpart (the aidlc.json orchestrator
-// config) pass through untouched: the orchestrator is not a tier-carrying
-// persona. Never writes any effort-like key - kiro-cli fail-closes on
-// unknown agent-JSON fields.
 function projectKiroAgentJson(srcPath: string, content: Buffer): Buffer {
-  const name = srcPath.split(sep).join("/").split("/").pop() ?? "";
-  if (!name.endsWith("-agent.json")) return content;
-  const coreMd = join(CORE_ROOT, "agents", name.replace(/\.json$/, ".md"));
-  if (!existsSync(coreMd)) return content;
-  const tier = agentTierFromMd(readFileSync(coreMd, "utf-8"), coreMd);
+  if (!srcPath.endsWith("-agent.json")) return content;
+  const agent = coreAgentForFile(srcPath);
+  if (!agent) return content;
+  if (agent.model.kind !== "tier") {
+    throw new Error(`${srcPath}: the accepted core Method supplies no model tier.`);
+  }
   const effective = resolveModelPolicy(
-    null,
-    modelAgentName(name),
-    tier as Tier,
-    "kiro",
-    TIER_CAP,
-  );
-  return Buffer.from(
-    writeKiroAgentSurface(content.toString("utf-8"), effective),
-    "utf-8",
-  );
+    null, modelAgentName(srcPath), agent.model.tier, "kiro", TIER_CAP);
+  return Buffer.from(writeKiroAgentSurface(content.toString("utf-8"), effective), "utf-8");
 }
 
 // The authored Kiro agent JSONs preload the shared knowledge with a glob; a
@@ -425,7 +351,7 @@ function transform(
     let s = content.toString("utf-8");
     const agentName = agentNameFromPath(srcPath);
     if (agentName) {
-      s = absorbReviewerKnowledge(s, agentName, CORE_ROOT);
+      s = absorbReviewerKnowledge({ content: s, agentName, sourceRoot: CORE_ROOT, reviewerAgents });
       s = injectDelegatedKnowledgePreflight(s, agentName, harnessDir);
     }
     s = substituteToken(s, harnessDir, invoke, letters);
@@ -673,7 +599,9 @@ function writeAgentTiersData(treeRoot: string): void {
   mkdirSync(dirname(dst), { recursive: true });
   writeFileSync(
     dst,
-    serializeAgentTiers(agentTiersFromAuthoredDirectory(join(CORE_ROOT, "agents"))),
+    serializeAgentTiers(Object.fromEntries(coreBuild.method.agents.flatMap((agent) =>
+      agent.owner.kind === "core" && agent.model.kind === "tier"
+        ? [[modelAgentName(agent.slug), agent.model.tier]] : []))),
   );
 }
 
@@ -856,14 +784,10 @@ function emitPluginAuthoringData(treeRoot: string): void {
     `${JSON.stringify(pluginTargets(), null, 2)}\n`,
   );
   const contextPath = join(treeRoot, PLUGIN_AUTHORING_CONTEXT_DST);
-  const agents = [...walk(join(CORE_ROOT, "agents"))]
-    .filter((file) => file.endsWith("-agent.md"))
-    .map((file) => basename(file, ".md"))
-    .sort();
-  const stages = [...walk(join(CORE_ROOT, "aidlc-common", "stages"))]
-    .filter((file) => file.endsWith(".md"))
-    .map((file) => basename(file, ".md"))
-    .sort();
+  const agents = coreBuild.method.agents.filter((agent) => agent.owner.kind === "core")
+    .map((agent) => agent.slug).toSorted();
+  const stages = coreBuild.method.stages.filter((stage) => stage.owner.kind === "core")
+    .map((stage) => stage.slug).toSorted();
   writeFileSync(
     contextPath,
     `${JSON.stringify({ agents, stages }, null, 2)}\n`,
@@ -942,7 +866,7 @@ function buildTree(
         if (
           harnessRel.startsWith("agents/") &&
           fmLines.some((line) => line.split(":", 1)[0] === "permissions") &&
-          inlineAgentSet(CORE_ROOT).has(basename(outPath, ".md"))
+          inlineAgentSet(coreBuild.method).has(basename(outPath, ".md"))
         ) {
           const copy = join(treeRoot, "aidlc-common", "personas", basename(outPath));
           mkdirSync(dirname(copy), { recursive: true });
@@ -1088,6 +1012,7 @@ function buildTree(
         harnessDir, harnessName: m.name, place,
         substituteToken: (text) => substituteToken(text, harnessDir, invoke, letters) }),
       method: coreBuild.method,
+      reviewerAgents,
       sources: coreBuild.sources,
       repoRoot: REPO_ROOT,
       coreRoot: CORE_ROOT,
@@ -1993,12 +1918,11 @@ function pluginTargetFor(harnessName: string): PluginTarget | null {
   return pluginTargets()[harnessName] ?? null;
 }
 
-function buildRepositoryPluginProjection(
-  plugin: PluginBuildTarget,
-  harnessName: string,
-  outDir: string,
-  outputBoundary = REPO_ROOT,
-): void {
+function buildRepositoryPluginProjection(request: {
+  plugin: PluginBuildTarget; harnessName: string; outDir: string;
+  reviewerAgents: ReadonlySet<string>; outputBoundary?: string;
+}): void {
+  const { plugin, harnessName, outDir, reviewerAgents, outputBoundary = REPO_ROOT } = request;
   const target = pluginTargetFor(harnessName);
   if (!target) {
     throw new Error(
@@ -2011,7 +1935,7 @@ function buildRepositoryPluginProjection(
     outDir,
     outputBoundary,
     templateHooksDir: PLUGIN_HOOKS_TEMPLATE_SRC,
-    reviewerAgents: reviewerAgentSet(CORE_ROOT),
+    reviewerAgents,
     // This repository's own plugins/ are AI-DLC's: aidlc-<name> in aidlc-plugins.
     firstParty: true,
   });
@@ -2026,14 +1950,11 @@ function pluginHarnessesFor(harnesses: string[]): string[] {
 function emitPlugins(request: { harnesses: string[]; plugins: PluginBuildCatalog;
   distRoot?: string; output?: "verbose" | "silent" }): void {
   const { harnesses, plugins, distRoot = join(REPO_ROOT, "dist"), output = "verbose" } = request;
+  const reviewerAgents = reviewerAgentSet(plugins.method);
   for (const plugin of plugins.plugins) {
     for (const harnessName of pluginHarnessesFor(harnesses)) {
-      buildRepositoryPluginProjection(
-        plugin,
-        harnessName,
-        join(distRoot, "plugins", plugin.directory, harnessName),
-        distRoot,
-      );
+      buildRepositoryPluginProjection({ plugin, harnessName, reviewerAgents,
+        outDir: join(distRoot, "plugins", plugin.directory, harnessName), outputBoundary: distRoot });
       if (output === "verbose") {
         console.log(`[plugin:${plugin.directory}] emitted dist/plugins/${plugin.directory}/${harnessName}/`);
       }
@@ -2099,7 +2020,9 @@ function assertIdenticalRootIntegrations(root: string, harnesses: string[]): voi
   }
 }
 
-function buildCheckPass(request: { root: string; harnesses: string[]; plugins: PluginBuildCatalog }): void {
+function buildCheckPass(request: {
+  root: string; harnesses: string[]; plugins: PluginBuildCatalog;
+}): void {
   const { root, harnesses, plugins } = request;
   const distRoot = join(root, "dist");
   const releaseRoot = join(root, "dist-release");
@@ -2182,12 +2105,8 @@ if (argv[0] === "plugin" && argv[1] === "build") {
   const outArg = outDir.replace(/[/\\]+$/, "") || outDir;
   const resolvedOut = isAbsolute(outArg) ? outArg : join(process.cwd(), outArg);
   try {
-    buildRepositoryPluginProjection(
-      plugin,
-      harnessName,
-      resolvedOut,
-      resolvedOut,
-    );
+    buildRepositoryPluginProjection({ plugin, harnessName, outDir: resolvedOut,
+      outputBoundary: resolvedOut, reviewerAgents: reviewerAgentSet(catalog.value.method) });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
@@ -2220,6 +2139,7 @@ if (!loadedPlugins.ok) {
   throw new Error(`Cannot load the plugin Method: ${JSON.stringify(loadedPlugins.refusal)}`);
 }
 const pluginBuilds = loadedPlugins.value;
+const reviewerAgents = reviewerAgentSet(pluginBuilds.method);
 if (check) {
   const problems = checkPackageDeterminism(targets, pluginBuilds);
   if (problems.length > 0) {

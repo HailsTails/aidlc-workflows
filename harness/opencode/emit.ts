@@ -94,7 +94,8 @@ export default function emit(ctx: EmitContext): void {
   for (const agent of agents) {
     const f = `${agent.slug}.md`;
     const raw = injectDelegatedKnowledgePreflight(
-      absorbReviewerKnowledge(readFileSync(join(agentsDir, f), "utf-8"), agent.slug, coreRoot),
+      absorbReviewerKnowledge({ content: readFileSync(join(agentsDir, f), "utf-8"),
+        agentName: agent.slug, sourceRoot: coreRoot, reviewerAgents: ctx.reviewerAgents }),
       agent.slug, harnessDir,
     );
     const legacyModelSurface: Parameters<typeof createOpenCodeAgentRenderer>[0] = (request) => {
