@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { basename, dirname, join, relative } from "node:path";
 import { z } from "zod";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
-import type { CommandSource, CommandSubject } from "../application/ports.ts";
+import type { CommandSource } from "../application/ports.ts";
+import { ENTRY_SHORTCUTS, nativeCommandName, commandFilePath, type NativeCommandFile,
+  type CommandReading, type CommandSubject, type EntryShortcut } from "../domain/native-command.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import { scopeName, stageSlug } from "../../workflow-definition/domain/identities.ts";
 import { METHOD_SOURCE_FOLDERS, type MethodSource } from "../../workflow-definition/domain/method-source.ts";
@@ -47,8 +49,29 @@ const subjectFrom = (raw: WireSubject): CommandSubject | null => {
     const name = scopeName(raw.name);
     return name.ok ? { concept: raw.concept, name: name.value } : null;
   }
-  return raw.name === "aidlc-init" || raw.name === "aidlc-compose"
-    ? { concept: raw.concept, name: raw.name } : null;
+  const shortcut = ENTRY_SHORTCUTS.find((name) => name === raw.name);
+  return shortcut ? { concept: raw.concept, name: shortcut } : null;
+};
+
+const admitFile = (subject: CommandSubject, file: z.infer<typeof fileSchema>):
+  Result<NativeCommandFile, ProjectionRefusal> => {
+  const name = nativeCommandName(file.nativeName);
+  if (!name.ok) return refused(failure(subject, "The frozen native name must be one portable path segment."));
+  const within = commandFilePath(file.within);
+  return within.ok ? accepted({ name: name.value, within: within.value, mode: file.mode,
+    content: { kind: "text", text: file.text } })
+    : refused(failure(subject, "The frozen companion path must be a portable relative path."));
+};
+const admitReading = (subject: CommandSubject, documents: z.infer<typeof entrySchema>["files"]):
+  Result<CommandReading, ProjectionRefusal> => {
+  if (documents === null) return accepted({ kind: "declined" });
+  const admitted = documents.map((file) => admitFile(subject, file));
+  const broken = admitted.find((entry) => !entry.ok);
+  if (broken && !broken.ok) return broken;
+  const files = admitted.flatMap((entry) => entry.ok ? [entry.value] : []);
+  const [first, ...remaining] = files;
+  return first ? accepted({ kind: "rendered", files: [first, ...remaining] })
+    : refused(failure(subject, "A rendered command must contain at least one file."));
 };
 
 export const decodeLegacyRunners = (reply: LegacyRunnerReply): CommandSource => {
@@ -70,10 +93,7 @@ export const decodeLegacyRunners = (reply: LegacyRunnerReply): CommandSource => 
       if (matches.length !== 1 || !entry) return refused(failure(requested,
         "The frozen runner response must contain exactly one entry for this subject."));
       if (entry.reason !== null) return refused(failure(requested, entry.reason));
-      return accepted(entry.files === null ? null : entry.files.map((file) => ({
-        nativeName: file.nativeName, within: file.within, mode: file.mode,
-        content: { kind: "text", text: file.text },
-      })));
+      return admitReading(requested, entry.files);
     } };
   } catch {
     return failedSource("The frozen runner formatter returned invalid JSON.");
@@ -94,6 +114,10 @@ const renderFrozenCommands = (generator: Generator, input: z.infer<typeof childS
   const runnable = generator.runnableStages();
   const discovered = generator.discoverScopes();
   const selected = new Set(generator.defaultScopeBatch(discovered));
+  const shortcuts: Record<EntryShortcut, () => string> = {
+    "aidlc-init": () => generator.renderInitRunner(),
+    "aidlc-compose": () => generator.renderComposeRunner(),
+  };
   return [
     ...input.stages.map((name) => renderedCommand({ concept: "stage-command", name }, () => {
       const node = runnable.find((stage) => stage.slug === name);
@@ -105,8 +129,7 @@ const renderFrozenCommands = (generator: Generator, input: z.infer<typeof childS
       if (!scope) throw new Error(`The selected frozen scope is absent: ${name}`);
       return generator.renderRunner(name, scope.description);
     })),
-    renderedCommand({ concept: "orchestrator-skill", name: "aidlc-init" }, () => generator.renderInitRunner()),
-    renderedCommand({ concept: "orchestrator-skill", name: "aidlc-compose" }, () => generator.renderComposeRunner()),
+    ...ENTRY_SHORTCUTS.map((name) => renderedCommand({ concept: "orchestrator-skill", name }, shortcuts[name])),
   ];
 };
 const walk = (directory: string): readonly string[] => readdirSync(directory, { withFileTypes: true })

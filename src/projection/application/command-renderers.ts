@@ -1,6 +1,6 @@
 import { accepted, refused } from "../../kernel/result.ts";
-import { projectPath } from "../../kernel/values.ts";
-import type { CommandPlacement, CommandSource, CommandSubject, Harness, Rendering } from "./ports.ts";
+import { ENTRY_SHORTCUTS, type CommandSubject } from "../domain/native-command.ts";
+import type { CommandPlacement, CommandSource, Harness, Rendering } from "./ports.ts";
 
 export const collectCommandRenderings = (renderings: readonly Rendering[]): Rendering => {
   const failed = renderings.find((rendering) => !rendering.ok);
@@ -19,9 +19,9 @@ const renderCommand = (request: {
 }): Rendering => {
   const rendered = request.source.read(request.subject);
   if (!rendered.ok) return rendered;
-  if (rendered.value === null) return accepted([]);
-  return collectCommandRenderings(rendered.value.map((file): Rendering => {
-    const path = projectPath(request.place(file));
+  if (rendered.value.kind === "declined") return accepted([]);
+  return collectCommandRenderings(rendered.value.files.map((file): Rendering => {
+    const path = request.place(file);
     return path.ok ? accepted([{ path: path.value, mode: file.mode, content: file.content,
       availability: "always", origin: { kind: "rendered", ...request.subject } }])
       : refused({ kind: "render-failed", ...request.subject,
@@ -37,8 +37,6 @@ export const createCommandRenderers = (request: {
     subject: { concept: "stage-command", name: stage.slug } }),
   renderScopeCommand: ({ scope }) => renderCommand({ ...request,
     subject: { concept: "scope-command", name: scope.name } }),
-  renderOrchestratorSkill: () => collectCommandRenderings([
-    renderCommand({ ...request, subject: { concept: "orchestrator-skill", name: "aidlc-init" } }),
-    renderCommand({ ...request, subject: { concept: "orchestrator-skill", name: "aidlc-compose" } }),
-  ]),
+  renderOrchestratorSkill: () => collectCommandRenderings(ENTRY_SHORTCUTS.map((name) =>
+    renderCommand({ ...request, subject: { concept: "orchestrator-skill", name } }))),
 });
