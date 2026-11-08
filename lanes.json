@@ -29,6 +29,7 @@
         "src/kernel/**",
         "src/*/fixtures/**",
         "lint/context-map.ts",
+        "lint/context-map.test.ts",
         "lanes.json"
       ],
       "contractFiles": [
@@ -63,9 +64,10 @@
         "disciplines.json",
         "discipline-exceptions.json",
         "disciplines.eslint.mjs",
-        "disciplines.eslint.d.mts"
+        "disciplines.eslint.d.mts",
+        "eslint.config.test.ts"
       ],
-      "notOwned": ["lint/context-map.ts"],
+      "notOwned": ["lint/context-map.ts", "lint/context-map.test.ts"],
       "territory": [],
       "hotFileGrants": {
         "package.json": ["devDependencies", "scripts.lint", "scripts.gate"],
