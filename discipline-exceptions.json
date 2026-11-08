@@ -4,6 +4,45 @@
     {
       "kind": "authorised-location",
       "clause": "CD-19#import-boundaries",
+      "file": "src/workflow-definition/adapters/source-files.ts",
+      "reason": "The single adapter through which Workflow Definition reads authored method sources from disk.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does src/workflow-definition/adapters/source-files.ts import node:fs/promises and node:path?",
+            "because": "Fresh compilation reads the authored method tree recursively from disk, and this adapter is the one place Workflow Definition touches the filesystem, read-only.",
+            "evidence": "codex/integration request at 04:48:15 UTC in the AIDLC pace and parallel lanes note: recursive core reads, no writes, symlinks skipped, relative paths validated"
+          },
+          {
+            "why": "Why does fresh compilation read the authored method tree from disk?",
+            "because": "The method is authored as files under core/ (stages, agents, rules, scopes, sensors), and compiling a Method starts from those files' bytes.",
+            "evidence": "src/workflow-definition/adapters/stage-file.ts, agent-file.ts, rule-file.ts, scope-file.ts and sensor-file.ts decode the formats of files under core/"
+          },
+          {
+            "why": "Why does compiling start from bytes that adapters decode, rather than from files the domain reads itself?",
+            "because": "Domain and application code must stay pure, so the read is an effect placed behind a port and implemented in adapters/.",
+            "evidence": "lint/restrictions.ts purityRestriction refuses package, node: and Bun imports in domain and application layers"
+          },
+          {
+            "why": "Why must domain and application code stay pure?",
+            "because": "The rebuild separates boundaries with abstractions so the method can be compiled and tested without a real filesystem, using fixtures and in-memory fakes.",
+            "evidence": "lint/restrictions.ts testDiscipline refuses adapters and real IO in domain and application tests"
+          },
+          {
+            "why": "Why does one adapter, not several, hold the real filesystem reach for Workflow Definition?",
+            "because": "Each context that does real IO keeps exactly one such adapter, so the context's whole IO surface is reviewed in one file and its other adapters stay decoders of bytes.",
+            "evidence": "lint/context-map.ts gives workflow-definition dependsOn [kernel] only, and discipline-exceptions.json records 1 CD-19 location for it"
+          }
+        ],
+        "rootCause": "The rebuild keeps domain and application pure and gives each context that does real IO exactly one adapter for it, so Workflow Definition's disk reads live in source-files.ts alone.",
+        "rootCheck": "Read lint/restrictions.ts and lint/context-map.ts on 2026-11-08: purityRestriction still refuses node: imports in domain and application, and workflow-definition still depends on kernel only.",
+        "readback": "Each context that does real IO keeps exactly one adapter for it, therefore Workflow Definition's reads sit in one file, therefore the domain and application stay pure behind a port, therefore the format adapters decode bytes they are handed, therefore source-files.ts imports node:fs/promises and node:path as the one read-only reach to disk.",
+        "owner": "Lane G (Guardrails) in lanes.json; the file is codex/integration's"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
       "file": "lint/eslint-port.ts",
       "reason": "The single port through which the lint layer reaches the eslint package.",
       "whyChain": {
