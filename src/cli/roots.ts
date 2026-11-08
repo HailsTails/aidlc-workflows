@@ -12,10 +12,14 @@ import type {
   HostResponseEncoder,
 } from "./application/ports.ts";
 
-export type HostBundle = {
+export type BuildHost = {
   readonly host: HostIdentity;
   readonly harness: Harness;
   readonly layout: DistributionLayout;
+};
+
+export type RuntimeHost = {
+  readonly host: HostIdentity;
   readonly shell: HostShell;
   readonly conversation: HostConversationSource;
   readonly humanTurns: HumanTurnHistory;
@@ -24,12 +28,12 @@ export type HostBundle = {
 };
 
 export interface BuildRoot {
-  routes(request: { readonly hosts: readonly HostBundle[] }): readonly CommandRoute[];
+  routes(request: { readonly hosts: readonly BuildHost[] }): readonly CommandRoute[];
 }
 
 export interface RuntimeRoot {
   routes(request: {
-    readonly hosts: readonly HostBundle[];
-    readonly calling: HostBundle | null;
+    readonly hosts: readonly RuntimeHost[];
+    readonly calling: RuntimeHost | null;
   }): readonly CommandRoute[];
 }

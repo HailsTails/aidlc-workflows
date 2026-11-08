@@ -32,7 +32,7 @@ describe("guardId", () => {
 });
 
 describe("CORE_GUARDS", () => {
-  test("declares the six core guards with what each protects and how it lifts", () => {
+  test("declares the seven core guards with what each protects and how it lifts", () => {
     expect(CORE_GUARDS).toEqual<Readonly<Record<string, PlainGuard>>>({
       planApproval: {
         id: "plan-approval",
@@ -62,6 +62,11 @@ describe("CORE_GUARDS", () => {
       blockingCheck: {
         id: "blocking-check",
         protects: "A blocking check passes before its gate.",
+        lift: { kind: "override-once" },
+      },
+      forwardingLoop: {
+        id: "forwarding-loop",
+        protects: "The conductor carries a pending step on instead of ending its turn.",
         lift: { kind: "override-once" },
       },
     });
