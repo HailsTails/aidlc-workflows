@@ -1,12 +1,12 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174675,
+  "total": 174653,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
-    "aidlc/no-comments": 113411,
+    "aidlc/no-comments": 113389,
     "complexity": 3075,
     "Context boundary": 48,
     "Harness branching": 431,
@@ -1666,7 +1666,7 @@
       "no-nested-ternary": 1
     },
     "scripts/package.ts": {
-      "aidlc/no-comments": 456,
+      "aidlc/no-comments": 434,
       "max-len": 43,
       "Context boundary": 6,
       "Harness branching": 21,

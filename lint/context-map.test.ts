@@ -59,6 +59,83 @@ describe("context arrows", () => {
   });
 });
 
+const OWNER_MOVES = "Phase 2: its owner moves into src and ships in the runtime bundle (R1).";
+
+const EXPECTED_BRIDGES = [
+  {
+    module: "core/tools/aidlc-markdown.ts",
+    readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
+    retiresWhen: "Packaging's ToolBundler ships src; the interpreter then moves into src.",
+  },
+  {
+    module: "core/tools/aidlc-model-policy.ts",
+    readBy: "src/projection/adapters/legacy-agent-surfaces.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  { module: "core/tools/aidlc-tiers.ts", readBy: "src/projection/adapters/legacy-tiers.ts", retiresWhen: OWNER_MOVES },
+  {
+    module: "core/tools/aidlc-runner-gen.ts",
+    readBy: "src/projection/adapters/legacy-runners.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-utility.ts",
+    readBy: "src/projection/adapters/legacy-skill-tables.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-settings.ts",
+    readBy: "src/projection/adapters/legacy-settings-schema.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-command.ts",
+    readBy: "src/projection/adapters/legacy-trusted-commands.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-runtime-budget.ts",
+    readBy: "src/projection/adapters/legacy-runtime-budget.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-launcher-voucher.ts",
+    readBy: "src/projection/adapters/legacy-launcher.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-includes.ts",
+    readBy: "src/projection/adapters/legacy-includes.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-inline-context.ts",
+    readBy: "src/projection/adapters/legacy-format-docs.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-plugin-emit.ts",
+    readBy: "src/projection/adapters/legacy-plugin-emit.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  { module: "core/tools/aidlc.ts", readBy: "src/projection/adapters/legacy-dispatcher.ts", retiresWhen: OWNER_MOVES },
+  {
+    module: "core/tools/aidlc-distribution.ts",
+    readBy: "src/packaging/adapters/legacy-distribution.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-version.ts",
+    readBy: "src/packaging/adapters/legacy-version.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+  {
+    module: "core/tools/aidlc-channel.ts",
+    readBy: "src/packaging/adapters/legacy-channel.ts",
+    retiresWhen: OWNER_MOVES,
+  },
+];
+
 describe("host and legacy boundaries", () => {
   test("host knowledge lives under src/hosts and the legacy harness tree", () => {
     expect({ adapters: HARNESS_ADAPTER_FILES, bundles: HOST_BUNDLE_ROOT }).toEqual({
@@ -67,15 +144,6 @@ describe("host and legacy boundaries", () => {
     });
   });
 
-  test("the Markdown interpreter is the one legacy bridge, read by the outliner adapter", () => {
-    expect(LEGACY_BRIDGES).toEqual([
-      {
-        module: "core/tools/aidlc-markdown.ts",
-        readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
-        retiresWhen: "Packaging's ToolBundler ships src; the interpreter then moves into src.",
-      },
-    ]);
-  });
 
   test("the monoliths are the lib, orchestrate and init tools", () => {
     expect(MONOLITH_FILES).toEqual([
@@ -87,5 +155,11 @@ describe("host and legacy boundaries", () => {
 
   test("the stage graph tool is Workflow Definition's legacy territory", () => {
     expect(LEGACY_TERRITORY["workflow-definition"]).toContain("core/tools/aidlc-graph.ts");
+  });
+});
+
+describe("legacy bridges", () => {
+  test("each shipped tool the build reads has one named src reader until its owner moves", () => {
+    expect(LEGACY_BRIDGES).toEqual(EXPECTED_BRIDGES);
   });
 });

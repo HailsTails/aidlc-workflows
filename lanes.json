@@ -33,7 +33,7 @@
         "lanes.json",
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}{,.test}.ts",
         "src/workflow-definition/application/use-cases{,.test}.ts",
-        "src/projection/domain/{projected-file,neutral-surface,projection,template-token}{,.test}.ts",
+        "src/projection/domain/{projected-file,neutral-surface,host-surface,projection,template-token}{,.test}.ts",
         "src/projection/application/ports{,.test}.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}{,.test}.ts",
         "src/packaging/application/boundary-ports{,.test}.ts",
@@ -46,7 +46,7 @@
       "contractFiles": [
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}.ts",
         "src/workflow-definition/application/use-cases.ts",
-        "src/projection/domain/{projected-file,neutral-surface,projection,template-token}.ts",
+        "src/projection/domain/{projected-file,neutral-surface,host-surface,projection,template-token}.ts",
         "src/projection/application/ports.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}.ts",
         "src/packaging/application/boundary-ports.ts",
@@ -94,16 +94,28 @@
         "src/workflow-definition/**",
         "src/cli/adapters/routes/workflow-definition/**",
         "src/projection/**",
-        "src/hosts/{claude,codex,opencode}/projection/**",
-        "src/hosts/{claude,codex,opencode}/build.ts",
+        "src/hosts/claude/projection/**",
+        "src/hosts/claude/build.ts",
         "src/cli/adapters/routes/projection/**",
         "harness/*/**",
         "src/packaging/**",
         "src/installation/**",
         "src/hosts/{claude,codex,opencode}/{packaging,installation}/**",
-        "src/cli/adapters/routes/{packaging,installation}/**"
+        "src/cli/adapters/routes/{packaging,installation}/**",
+        "src/cli/core-build-root{,.test}.ts",
+        "docs/reference/15-stage-definition.md",
+        "scripts/package.ts",
+        "scripts/manifest-types.ts",
+        "harness/claude/manifest.ts",
+        "tests/unit/t64.test.ts",
+        "tests/unit/t-package-sources.test.ts",
+        "discipline-exceptions.json"
       ],
-      "notOwned": ["harness/copilot/emit.ts", "harness/{kiro,kiro-ide,cursor}/manifest.ts"],
+      "notOwned": [
+        "harness/copilot/emit.ts",
+        "harness/{kiro,kiro-ide,cursor}/manifest.ts",
+        "harness/{codex,opencode}/{manifest,emit}.ts"
+      ],
       "territory": ["workflow-definition", "projection", "packaging", "installation"],
       "consumes": ["src/kernel/**"],
       "monolithDeletions": {
@@ -157,8 +169,7 @@
         "scripts/manifest-types.ts": ["*"],
         "scripts/onboarding.ts": ["*"],
         "scripts/harness-bindings.ts": ["*"],
-        "harness/{claude,codex,opencode,copilot}/manifest.ts": ["*"],
-        "harness/{codex,opencode}/emit.ts": ["*"],
+        "harness/copilot/manifest.ts": ["*"],
         "core/tools/aidlc-tiers.ts": ["TierProjection", "TIER_PROJECTIONS", "Harness"],
         "core/tools/aidlc-runner-gen.ts": ["*"],
         "core/tools/aidlc-init.ts": ["RootContribution", "Baseline", "PreparedRefreshSource", "PlannedAction"],
@@ -191,18 +202,12 @@
         "src/cli/**",
         "src/hosts/*/{cli,execution}/**",
         "src/hosts/*/runtime.ts",
-        "core/hooks/**",
-        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**",
-        "harness/copilot/emit.ts",
-        "harness/kiro/manifest.ts",
-        "harness/kiro-ide/manifest.ts",
-        "harness/cursor/manifest.ts"
+        "core/hooks/**"
       ],
+      "notOwned": ["src/cli/core-build-root{,.test}.ts"],
       "territory": ["execution", "cli"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
       "monolithDeletions": {
-        "harness/copilot/emit.ts": ["*"],
-        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"],
         "core/tools/aidlc-lib.ts": ["CHECKBOX_REVERSE", "resolveReviewClass", "UnitCheckpoint", "GateReply", "UnitGateRhythm"],
         "core/tools/aidlc-orchestrate.ts": ["isPerUnit", "unitCovered", "unitWalkStanding"],
         "core/tools/aidlc-unit-dag.ts": ["*"],
@@ -210,6 +215,39 @@
         "core/tools/aidlc-guard-fences.ts": ["*"],
         "core/tools/aidlc-construction-checkpoints.ts": ["*"],
         "core/tools/aidlc-record-core.ts": ["CheckboxState", "IntentRegistryEntry", "IntentInfo", "SessionBindingSource", "SessionBinding", "AuditShardEvent"]
+      }
+    },
+    "dot": {
+      "name": "Projection for kiro, kiro-ide, cursor and copilot (supervised, one ticket at a time)",
+      "agent": "codex/dot",
+      "owns": [
+        "src/hosts/{kiro,kiro-ide,cursor,copilot}/**",
+        "harness/copilot/emit.ts",
+        "harness/kiro/manifest.ts",
+        "harness/kiro-ide/manifest.ts",
+        "harness/cursor/manifest.ts"
+      ],
+      "notOwned": ["src/hosts/*/runtime.ts", "src/hosts/*/{cli,execution}/**"],
+      "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
+      "monolithDeletions": {
+        "harness/copilot/emit.ts": ["*"],
+        "harness/{kiro,kiro-ide,cursor}/manifest.ts": ["*"]
+      }
+    },
+    "hosts-b": {
+      "name": "Projection for codex and opencode (supervised, one ticket at a time)",
+      "agent": "codex/dot",
+      "owns": [
+        "src/hosts/{codex,opencode}/projection/**",
+        "src/hosts/{codex,opencode}/build.ts",
+        "harness/codex/manifest.ts",
+        "harness/codex/emit.ts",
+        "harness/opencode/manifest.ts",
+        "harness/opencode/emit.ts"
+      ],
+      "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
+      "monolithDeletions": {
+        "harness/{codex,opencode}/{manifest,emit}.ts": ["*"]
       }
     }
   }

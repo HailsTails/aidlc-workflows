@@ -734,12 +734,18 @@ stage but has no test of its own.
 
 ## Parser and emitter
 
-`parseStageFrontmatter` and `emitStageFrontmatter` live in
-`core/tools/aidlc-lib.ts`, YAML-only. `aidlc-graph.ts compile`, which
-`bun scripts/package.ts` runs for every generated tree, compiles the YAML into
-`stage-graph.json`. The repository generates that file only inside ignored
-projections; package determinism, not a committed compiled-file drift check, is
-the source-tree gate.
+`bun scripts/package.ts` calls `src/cli/core-build-root.ts`. That root loads
+and compiles one accepted Method through Workflow Definition's `core-root.ts`,
+then projects its graph for each host through Projection's `core-root.ts`.
+The contexts retain their authored reader and `compileCoreMethod` implementation.
+Projection serializes that Method into
+each harness tree through `src/projection/adapters/compiled-method-file.ts`.
+Fresh builds do not invoke the installed graph compiler or rewrite compiled paths.
+
+Installed `aidlc-graph.ts compile` retains its existing record and stage-pin
+handling; its parser and emitter remain in `core/tools/aidlc-lib.ts` until that
+separate runtime migration. Generated graph and grid files live only in ignored
+projections. Package determinism remains the source-tree gate.
 
 ---
 
