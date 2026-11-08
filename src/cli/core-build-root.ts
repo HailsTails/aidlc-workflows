@@ -34,7 +34,6 @@ export const loadCoreBuild = async (request: {
   return accepted({ method, sources, project });
 };
 
-
 export const projectCoreCommands = (request: Parameters<typeof prepareLegacyRunners>[0] & {
   readonly place: CommandPlacement;
 }): Rendering => projectMethodCommands({ method: request.method,

@@ -1709,12 +1709,6 @@ function rewriteNativeInvocations(
   }
 }
 
-// Run an in-tree tool (bun <treeRoot>/<rel> ...) with the harness env seams set
-// so the tool resolves the assembled tree and interpolates the right harness dir.
-// `rulesDirAbs` (absolute) points loadRules at the emitted method tree
-// (dist/<name>/aidlc/spaces/default/memory/) so rules_in_context is populated at
-// compile time — every harness needs it now that the method lives at the
-// workspace root, not inside <harnessDir>.
 function emitCommandProjection(request: Parameters<typeof projectCoreCommands>[0] & {
   readonly substituteToken: (text: string) => string;
 }): void {
@@ -1729,6 +1723,12 @@ function emitCommandProjection(request: Parameters<typeof projectCoreCommands>[0
   }
 }
 
+// Run an in-tree tool (bun <treeRoot>/<rel> ...) with the harness env seams set
+// so the tool resolves the assembled tree and interpolates the right harness dir.
+// `rulesDirAbs` (absolute) points loadRules at the emitted method tree
+// (dist/<name>/aidlc/spaces/default/memory/) so rules_in_context is populated at
+// compile time — every harness needs it now that the method lives at the
+// workspace root, not inside <harnessDir>.
 function runTool(
   treeRoot: string,
   harnessDir: string,
