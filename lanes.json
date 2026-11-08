@@ -115,7 +115,9 @@
       "notOwned": [
         "harness/copilot/emit.ts",
         "harness/{kiro,kiro-ide,cursor}/manifest.ts",
-        "harness/{codex,opencode}/{manifest,emit}.ts"
+        "harness/{codex,opencode}/{manifest,emit}.ts",
+        "src/workflow-definition/domain/{compile-core-method,method-references}{,.test}.ts",
+        "src/projection/adapters/compiled-method-file{,.test}.ts"
       ],
       "territory": ["workflow-definition", "projection", "packaging", "installation"],
       "consumes": ["src/kernel/**"],
@@ -244,7 +246,9 @@
         "harness/codex/manifest.ts",
         "harness/codex/emit.ts",
         "harness/opencode/manifest.ts",
-        "harness/opencode/emit.ts"
+        "harness/opencode/emit.ts",
+        "src/workflow-definition/domain/{compile-core-method,method-references}{,.test}.ts",
+        "src/projection/adapters/compiled-method-file{,.test}.ts"
       ],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {

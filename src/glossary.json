@@ -75,6 +75,7 @@
 {"name":"StageNode","context":"workflow-definition","kind":"concept","definition":"One compiled stage: number, availability, rules in context and active sensors."},
 {"name":"ScopeColumn","context":"workflow-definition","kind":"concept","definition":"A scope's stages: initialization stages always, then its enabled members.","legacy":["ScopeGridForMapping"]},
 {"name":"StageGraph","context":"workflow-definition","kind":"concept","definition":"The compiled stage nodes; scope columns are derived from memberships.","legacy":["ScopeGrid"]},
+{"name":"GraphEntry","context":"workflow-definition","kind":"concept","definition":"A stage node of the compiled graph paired with its Stage; the Method guarantees every node names one of its stages."},
 {"name":"DefinitionConcept","context":"workflow-definition","kind":"concept","definition":"Which method concept a MethodRefusal is about."},
 {"name":"MethodRefusal","context":"workflow-definition","kind":"concept","definition":"Why authored content or a contribution cannot join the method."},
 {"name":"MethodReading","context":"workflow-definition","kind":"concept","definition":"The async result of reading authored method content."},
