@@ -169,16 +169,24 @@ export const bridgeImportRestrictions = (request: {
   bridgedReachBack(request.bridgedModule),
 ];
 
-const PUBLISHED_TO_HOSTS = "(?!domain/|application/(boundary-)?ports\\.ts$)";
+const PUBLISHED_TO_HOSTS = "domain/|application/(boundary-)?ports\\.ts$";
 
-export const hostBundleImportRestrictions = (): ImportRestriction[] => [
-  ...CONTEXTS.filter((context) => context !== "kernel").map((context) => ({
-    regex: `(^|/)${context}/${PUBLISHED_TO_HOSTS}`,
+const contextReachFromHosts = (published: string): ImportRestriction[] =>
+  CONTEXTS.filter((context) => context !== "kernel").map((context) => ({
+    regex: `(^|/)${context}/(?!${published})`,
     message:
       `Host bundle: a host implements ports. Import only ${context}'s domain, ` +
       "application/ports.ts or application/boundary-ports.ts; the root wires the rest.",
-  })),
+  }));
+
+export const hostBundleImportRestrictions = (): ImportRestriction[] => [
+  ...contextReachFromHosts(PUBLISHED_TO_HOSTS),
   ...testSupportRestriction("adapters"),
+  monolithReachBack,
+];
+
+export const hostTestImportRestrictions = (): ImportRestriction[] => [
+  ...contextReachFromHosts(`${PUBLISHED_TO_HOSTS}|fixtures/`),
   monolithReachBack,
 ];
 

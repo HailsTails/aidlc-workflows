@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { CONTEXTS, MONOLITH_FILES } from "../lint/context-map.ts";
+import { MONOLITH_FILES } from "../lint/context-map.ts";
 import { CLEAN_ZONE } from "../lint/zones.ts";
 import { gateRequestFrom, USAGE } from "../lint/gate/adapters/cli-arguments.ts";
 import {
@@ -34,6 +34,7 @@ import {
   MONOLITH_TEST,
   RECORD_LOCATIONS,
 } from "../lint/gate/adapters/record-locations.ts";
+import { SOURCE_SUITES } from "../lint/gate/adapters/source-suites.ts";
 import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
 import { disciplinesCheck } from "../lint/gate/application/disciplines-check.ts";
 import type { GateCheck } from "../lint/gate/application/gate-check.ts";
@@ -115,11 +116,7 @@ const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
 ];
 
 const TEST_SUITES: readonly TestSuite[] = [
-  ...CONTEXTS.map((context) => ({
-    name: `src/${context}`,
-    triggers: [`src/${context}/**`],
-    tests: [`src/${context}/**/*.test.ts`],
-  })),
+  ...SOURCE_SUITES,
   {
     name: "lint",
     triggers: ["lint/**", "scripts/gate.ts", "eslint.config.ts", "eslint.config.test.ts"],

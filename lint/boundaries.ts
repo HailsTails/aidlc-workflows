@@ -18,6 +18,7 @@ import {
   harnessNames,
   bridgeImportRestrictions,
   hostBundleImportRestrictions,
+  hostTestImportRestrictions,
   legacyImportRestrictions,
   legacyOwnership,
   methodAssertion,
@@ -184,13 +185,18 @@ const undeclaredSrcConfig: Linter.Config = {
   }),
 };
 
+const HOST_BUNDLE_SYNTAX = [...ownershipInSrc(undefined, GLOSSARY), ...methodAssertion];
+
 const hostBundleConfig: Linter.Config = {
   name: "aidlc/src/hosts",
   files: [HOST_BUNDLE_FILES],
-  rules: restrict({
-    imports: hostBundleImportRestrictions(),
-    syntax: [...ownershipInSrc(undefined, GLOSSARY), ...methodAssertion],
-  }),
+  rules: restrict({ imports: hostBundleImportRestrictions(), syntax: HOST_BUNDLE_SYNTAX }),
+};
+
+const hostTestConfig: Linter.Config = {
+  name: "aidlc/src/hosts/tests",
+  files: [HOST_BUNDLE_FILES.replace(/\.ts$/, ".test.ts")],
+  rules: restrict({ imports: hostTestImportRestrictions(), syntax: HOST_BUNDLE_SYNTAX }),
 };
 
 const bridgeConfig = (bridge: LegacyBridge, context: ContextName): Linter.Config => ({
@@ -256,6 +262,7 @@ export const boundaryConfig: Linter.Config[] = [
   ),
   undeclaredSrcConfig,
   hostBundleConfig,
+  hostTestConfig,
   ...LEGACY_BRIDGES.flatMap(legacyBridgeConfigs),
   {
     name: "aidlc/lint-tooling/pure",

@@ -210,6 +210,33 @@ describe("boundaryConfig JSON decoding in adapters", () => {
 });
 
 
+const FIXTURE_IMPORT =
+  'import { accept } from "../../../kernel/fixtures/accept.ts";\nexport const sample = accept;\n';
+
+const IMPORT_REFUSAL = expect.objectContaining({ ruleId: "no-restricted-imports" });
+
+describe("boundaryConfig in host bundles", () => {
+  test("lets a host test import kernel fixtures", () => {
+    expect(findingsFor(FIXTURE_IMPORT, "src/hosts/claude/projection/agent.test.ts")).not.toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+
+  test("still refuses kernel fixtures in host production code", () => {
+    expect(findingsFor(FIXTURE_IMPORT, "src/hosts/claude/projection/agent.ts")).toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+
+  test("still refuses a host test reaching into a context's adapters", () => {
+    const code = 'import { read } from "../../../projection/adapters/x.ts";\nexport const r = read;\n';
+
+    expect(findingsFor(code, "src/hosts/claude/projection/agent.test.ts")).toContainEqual(
+      IMPORT_REFUSAL,
+    );
+  });
+});
+
 describe("boundaryConfig in colocated tests", () => {
   test("lets a domain test import bun:test and its own context's fixtures", () => {
     const messages = new Linter({ configType: "flat" }).verify(
