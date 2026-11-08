@@ -1,4 +1,5 @@
 import type { AgentSlug, PluginId } from "./identities.ts";
+import type { MethodSourcePath } from "./method-source.ts";
 import type { AuthoredBody } from "./outline.ts";
 import type { Tier } from "./vocabulary.ts";
 
@@ -17,6 +18,7 @@ export type PersonaAdditions = {
 
 type AgentBase = {
   readonly slug: AgentSlug;
+  readonly source: MethodSourcePath;
   readonly displayName: string;
   readonly description: string;
   readonly examples: readonly string[];

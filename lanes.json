@@ -33,7 +33,7 @@
       "contractFiles": [
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}.ts",
         "src/workflow-definition/application/use-cases.ts",
-        "src/projection/domain/{projected-file,neutral-surface,projection}.ts",
+        "src/projection/domain/{projected-file,neutral-surface,projection,template-token}.ts",
         "src/projection/application/ports.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}.ts",
         "src/installation/domain/{ownership,file-operation,installed-distribution,sibling-block,refusals}.ts",

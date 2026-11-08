@@ -44,6 +44,7 @@ export const claudeCopyPayloadFixture: Payload = {
   version: version("2.12.0"),
   channel: "copy",
   descriptor: {
+    host: claudeProjectionFixture.host,
     layout: claudeLayoutFixture,
     history: {
       retiredFiles: [

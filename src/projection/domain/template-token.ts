@@ -10,3 +10,7 @@ export const TEMPLATE_TOKENS = [
 export type TemplateToken = (typeof TEMPLATE_TOKENS)[number];
 
 export type TokenBindings = Readonly<Record<TemplateToken, string | null>>;
+
+export type HostBoundToken = Exclude<TemplateToken, "HARNESS_DIR">;
+
+export type HostTokenBindings = Readonly<Record<HostBoundToken, string | null>>;

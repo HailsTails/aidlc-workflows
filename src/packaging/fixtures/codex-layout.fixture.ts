@@ -1,10 +1,8 @@
-import { distribution, hash, path } from "../../kernel/fixtures/values.fixture.ts";
+import { hash, path } from "../../kernel/fixtures/values.fixture.ts";
 import type { DistributionLayout } from "../domain/payload.ts";
 import type { PriorIntegrationShapes } from "../domain/release-history.ts";
 
 export const codexLayoutFixture: DistributionLayout = {
-  distribution: distribution("codex"),
-  harnessDirectory: path(".codex"),
   rootIntegrations: [
     {
       path: path(".gitignore"),

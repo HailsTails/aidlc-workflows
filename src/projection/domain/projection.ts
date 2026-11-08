@@ -1,5 +1,5 @@
-import type { DistributionId, ProjectPath } from "../../kernel/values.ts";
-import type { MethodSourceRoot } from "../../workflow-definition/domain/method-source.ts";
+import type { HostIdentity } from "../../kernel/host.ts";
+import type { ProjectPath } from "../../kernel/values.ts";
 import type { ProjectedFile, ProjectionOrigin, RenderedConcept } from "./projected-file.ts";
 import type { TemplateToken } from "./template-token.ts";
 
@@ -31,8 +31,7 @@ export type ProjectionRefusal =
     };
 
 export type Projection = {
-  readonly harness: DistributionId;
-  readonly methodSourceRoot: MethodSourceRoot;
+  readonly host: HostIdentity;
   readonly files: readonly ProjectedFile[];
   readonly findings: readonly ProjectionFinding[];
 };

@@ -6,6 +6,7 @@ import type {
   SensorId,
   StageSlug,
 } from "./identities.ts";
+import type { MethodSourcePath } from "./method-source.ts";
 import type { AuthoredBody } from "./outline.ts";
 import type {
   EnsembleMode,
@@ -84,6 +85,7 @@ export type StageBriefing = {
 
 export type Stage = {
   readonly slug: StageSlug;
+  readonly source: MethodSourcePath;
   readonly displayName: string;
   readonly phase: Phase;
   readonly orderingHint: number | null;
