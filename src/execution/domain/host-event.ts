@@ -1,14 +1,14 @@
 import type { Timestamp } from "../../kernel/values.ts";
-import type { HookPoint, ToolKind } from "../../workflow-definition/domain/hooks.ts";
+import type { HookPoint, ToolTarget } from "../../workflow-definition/domain/hooks.ts";
 import type { AgentSlug } from "../../workflow-definition/domain/identities.ts";
 import type { HumanEvidence } from "./gate.ts";
 import type { GuardRefusal } from "./guard.ts";
 import type { SessionId } from "./identities.ts";
 
 export type ToolRequest = {
-  readonly kind: ToolKind;
   readonly name: string;
-  readonly target: string | null;
+  readonly classified: ToolTarget | "unclassified";
+  readonly subject: string | null;
 };
 
 type Envelope<Point extends HookPoint> = {
@@ -28,6 +28,7 @@ type HostEventShapes = {
   };
   readonly "subagent-start": Envelope<"subagent-start"> & { readonly agent: AgentSlug | null };
   readonly "subagent-stop": Envelope<"subagent-stop"> & { readonly agent: AgentSlug | null };
+  readonly "before-compaction": Envelope<"before-compaction">;
   readonly stop: Envelope<"stop">;
   readonly "status-line": Envelope<"status-line">;
 };
@@ -52,6 +53,7 @@ type VerdictShapes = {
   readonly "after-tool": Allow | AddContext;
   readonly "subagent-start": Allow | AddContext;
   readonly "subagent-stop": Allow | Block;
+  readonly "before-compaction": Allow | AddContext;
   readonly stop: Allow | Block;
   readonly "status-line": ShowStatus;
 };

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { HOOK_POINTS, LIFECYCLE_HOOK_POINTS, TOOL_HOOK_POINTS, TOOL_KINDS } from "./hooks.ts";
+import { HOOK_POINTS, LIFECYCLE_HOOK_POINTS, TOOL_HOOK_POINTS, TOOL_TARGETS } from "./hooks.ts";
 
 describe("hook vocabulary", () => {
   test("TOOL_HOOK_POINTS lists the points around a tool call", () => {
@@ -13,6 +13,7 @@ describe("hook vocabulary", () => {
       "user-prompt",
       "subagent-start",
       "subagent-stop",
+      "before-compaction",
       "stop",
       "status-line",
     ]);
@@ -25,6 +26,7 @@ describe("hook vocabulary", () => {
       "user-prompt",
       "subagent-start",
       "subagent-stop",
+      "before-compaction",
       "stop",
       "status-line",
       "before-tool",
@@ -32,7 +34,15 @@ describe("hook vocabulary", () => {
     ]);
   });
 
-  test("TOOL_KINDS lists the kinds of tool a hook can match", () => {
-    expect(TOOL_KINDS).toEqual(["shell", "file-write", "file-read", "other"]);
+  test("TOOL_TARGETS lists the host-neutral tool targets, in matcher order", () => {
+    expect(TOOL_TARGETS).toEqual([
+      "file-read",
+      "file-write",
+      "file-search",
+      "shell",
+      "subagent-dispatch",
+      "task-list-update",
+      "human-question",
+    ]);
   });
 });

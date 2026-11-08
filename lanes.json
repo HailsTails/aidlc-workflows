@@ -30,7 +30,19 @@
         "src/*/fixtures/**",
         "lint/context-map.ts",
         "lint/context-map.test.ts",
-        "lanes.json"
+        "lanes.json",
+        "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}{,.test}.ts",
+        "src/workflow-definition/application/use-cases{,.test}.ts",
+        "src/projection/domain/{projected-file,neutral-surface,projection,template-token}{,.test}.ts",
+        "src/projection/application/ports{,.test}.ts",
+        "src/packaging/domain/{payload,root-integration,managed-directory,release-history}{,.test}.ts",
+        "src/packaging/application/boundary-ports{,.test}.ts",
+        "src/installation/domain/refusals{,.test}.ts",
+        "src/installation/application/boundary-ports{,.test}.ts",
+        "src/execution/domain/{identities,unit,gate,guard,host-event,refusals}{,.test}.ts",
+        "src/execution/application/boundary-ports{,.test}.ts",
+        "src/cli/application/ports{,.test}.ts",
+        "src/cli/roots{,.test}.ts"
       ],
       "contractFiles": [
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}.ts",
