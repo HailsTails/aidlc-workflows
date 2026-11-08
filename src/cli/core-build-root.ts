@@ -39,7 +39,7 @@ export const projectCoreCommands = (request: Parameters<typeof prepareLegacyRunn
 }): Rendering => projectMethodCommands({ method: request.method,
   harness: createCommandRenderers({ source: prepareLegacyRunners(request), place: request.place }) });
 
-export { loadAuthoredPluginBuild as loadPluginBuildCatalog,
+export { loadAuthoredPluginBuild as loadPluginBuildCatalog, reviewerAgentSet, inlineAgentSet,
   type AuthoredPluginBuild as PluginBuildCatalog, type PluginBuildTarget }
   from "../workflow-definition/core-root.ts";
 

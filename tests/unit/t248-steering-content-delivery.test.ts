@@ -37,9 +37,8 @@ import { join } from "node:path";
 import { parse } from "smol-toml";
 import {
   absorbReviewerKnowledge,
-  inlineAgentSet,
-  reviewerAgentSet,
 } from "../../scripts/agent-knowledge.ts";
+import { inlineAgentSet, reviewerAgentSet } from "../../src/workflow-definition/core-root.ts";
 import { accept } from "../../src/kernel/fixtures/accept.ts";
 import {
   createMethodCompiler,
@@ -2560,7 +2559,7 @@ describe("t248 reviewer knowledge absorption", () => {
         "# Plugin Review Checklist\n\nVerify release evidence.\n", "utf-8");
       const method = pluginReviewerMethod();
       const reviewerAgents = reviewerAgentSet(method);
-      expect([...reviewerAgents]).toEqual(["example-reviewer-agent"]);
+      expect([...reviewerAgents]).toEqual<readonly string[]>(["example-reviewer-agent"]);
       expect([...inlineAgentSet(method)]).toEqual([]);
       const content = "---\nname: example-reviewer-agent\n---\n\n# Reviewer\n";
       const absorbed = absorbReviewerKnowledge({ content, agentName: "example-reviewer-agent",

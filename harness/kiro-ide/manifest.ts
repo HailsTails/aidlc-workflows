@@ -22,7 +22,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  absorbReviewerKnowledge, injectDelegatedKnowledgePreflight, inlineAgentSet,
+  absorbReviewerKnowledge, injectDelegatedKnowledgePreflight,
 } from "../../scripts/agent-knowledge.ts";
 import {
   modelAgentName, resolveModelPolicy, writeMarkdownAgentSurface,
@@ -34,6 +34,7 @@ import {
 import {
   kiroIdePermissionLines,
 } from "../../src/hosts/kiro-ide/projection/agent-renderer.ts";
+import { inlineAgentSet } from "../../src/workflow-definition/core-root.ts";
 import type { EmitContext, HarnessManifest } from "../../scripts/manifest-types.ts";
 import { kiroIdeCommandPath } from "../../src/hosts/kiro-ide/projection/command-renderer.ts";
 import {

@@ -20,20 +20,7 @@
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
-import type { Method } from "../src/workflow-definition/domain/method.ts";
 import { sharedKnowledgeWithoutFormatDocs } from "../core/tools/aidlc-inline-context.ts";
-
-export function reviewerAgentSet(method: Method): ReadonlySet<string> {
-  return new Set(method.stages.flatMap((stage) => stage.review ? [stage.review.reviewer] : []));
-}
-
-export function inlineAgentSet(method: Method): ReadonlySet<string> {
-  return new Set(method.stages.filter((stage) => stage.owner.kind === "core").flatMap((stage) => {
-    const lead = stage.participation.lead.kind === "agent" ? [stage.participation.lead.agent] : [];
-    return stage.participation.mode === "inline" ? [...lead, ...stage.participation.supports]
-      : stage.participation.mode === "mob" ? lead : [];
-  }));
-}
 
 // Append the agent's knowledge/<agent>/*.md files (sorted) to an agent .md
 // body. Returns the input unchanged for non-reviewer agents and when the

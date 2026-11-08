@@ -62,6 +62,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { loadCoreBuild, loadPluginBuildCatalog, pluginBuildName, projectCoreCommands,
+  reviewerAgentSet, inlineAgentSet,
   type PluginBuildCatalog, type PluginBuildTarget } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import {
@@ -70,9 +71,7 @@ import {
 import {
   absorbReviewerKnowledge,
   agentNameFromPath,
-  inlineAgentSet,
   injectDelegatedKnowledgePreflight,
-  reviewerAgentSet,
 } from "./agent-knowledge.ts";
 import { renderNeutralOnboarding, renderOnboarding } from "./onboarding.ts";
 import { keepOwnHarnessBindings } from "./harness-bindings.ts";
@@ -858,6 +857,7 @@ function buildTree(
         out = Buffer.from(keepOwnHarnessBindings(out.toString("utf-8"), m.name, harnessRel), "utf-8");
       }
       const fmLines = fmAdditions.get(harnessRel);
+      const inlineAgent = coreAgentForFile(file);
       if (fmLines) {
         // The additions are for the harness's dispatch (Kiro IDE: about 32 KB
         // of tool permissions); the lead reading the persona in its own chat
@@ -866,7 +866,7 @@ function buildTree(
         if (
           harnessRel.startsWith("agents/") &&
           fmLines.some((line) => line.split(":", 1)[0] === "permissions") &&
-          inlineAgentSet(coreBuild.method).has(basename(outPath, ".md"))
+          inlineAgent !== undefined && inlineAgentSet(coreBuild.method).has(inlineAgent.slug)
         ) {
           const copy = join(treeRoot, "aidlc-common", "personas", basename(outPath));
           mkdirSync(dirname(copy), { recursive: true });
