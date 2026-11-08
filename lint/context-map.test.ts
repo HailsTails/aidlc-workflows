@@ -68,11 +68,12 @@ describe("host and legacy boundaries", () => {
   });
 
   test("the Markdown interpreter is the one legacy bridge, read by the outliner adapter", () => {
-    expect(LEGACY_BRIDGES.map((bridge) => [bridge.module, bridge.readBy])).toEqual([
-      [
-        "core/tools/aidlc-markdown.ts",
-        "src/workflow-definition/adapters/markdown-outliner.ts",
-      ],
+    expect(LEGACY_BRIDGES).toEqual([
+      {
+        module: "core/tools/aidlc-markdown.ts",
+        readBy: "src/workflow-definition/adapters/markdown-outliner.ts",
+        retiresWhen: "Packaging's ToolBundler ships src; the interpreter then moves into src.",
+      },
     ]);
   });
 
