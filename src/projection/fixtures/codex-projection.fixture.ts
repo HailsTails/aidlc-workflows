@@ -3,7 +3,7 @@ import type { Projection } from "../domain/projection.ts";
 import { text } from "./values.fixture.ts";
 
 export const codexProjectionFixture: Projection = {
-  host: host("codex", ".codex"),
+  host: host({ name: "codex", directory: ".codex" }),
   files: [
     {
       path: path(".codex/agents/aidlc-developer-agent.toml"),

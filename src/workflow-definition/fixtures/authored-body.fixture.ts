@@ -10,7 +10,13 @@ type Building = { readonly text: string; readonly headings: readonly OutlineHead
 
 const offset = (raw: number): TextOffset => raw as TextOffset;
 
-const appendSection = (built: Building, section: FixtureSection): Building => {
+const appendSection = ({
+  built,
+  section,
+}: {
+  readonly built: Building;
+  readonly section: FixtureSection;
+}): Building => {
   const line = `${"#".repeat(section.level)} ${section.title}\n`;
   const start = built.text.length;
   const heading: OutlineHeading = {
@@ -23,4 +29,7 @@ const appendSection = (built: Building, section: FixtureSection): Building => {
 };
 
 export const authoredBody = (sections: readonly FixtureSection[]): AuthoredBody =>
-  sections.reduce(appendSection, { text: "", headings: [] });
+  sections.reduce<Building>((built, section) => appendSection({ built, section }), {
+    text: "",
+    headings: [],
+  });

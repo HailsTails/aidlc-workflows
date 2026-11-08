@@ -27,7 +27,7 @@ export const version = (raw: string): FrameworkVersion => accept(frameworkVersio
 
 export const at = (raw: string): Timestamp => accept(timestamp(raw));
 
-export const host = (name: string, directory: string): HostIdentity => ({
-  distribution: distribution(name),
-  directory: path(directory),
+export const host = (raw: { readonly name: string; readonly directory: string }): HostIdentity => ({
+  distribution: distribution(raw.name),
+  directory: path(raw.directory),
 });

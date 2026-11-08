@@ -5,5 +5,7 @@ import {
   type MethodSourcePath,
 } from "../domain/method-source.ts";
 
-export const methodSource = (kind: MethodSourceKind, within: string): MethodSourcePath =>
-  accept(methodSourcePath({ kind, within }));
+export const methodSource = (location: {
+  readonly kind: MethodSourceKind;
+  readonly within: string;
+}): MethodSourcePath => accept(methodSourcePath(location));

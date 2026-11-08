@@ -21,7 +21,13 @@ const value = (type: string): SensorFieldShape => ({ kind: "value", type });
 const persona = (role: string): AuthoredBody =>
   authoredBody([{ level: 1, title: role, prose: `\nYou are the ${role} for this AI-DLC run.\n` }]);
 
-const instructions = (title: string, steps: readonly string[]): AuthoredBody =>
+const instructions = ({
+  title,
+  steps,
+}: {
+  readonly title: string;
+  readonly steps: readonly string[];
+}): AuthoredBody =>
   authoredBody([
     { level: 1, title, prose: "\n" },
     { level: 2, title: "Steps", prose: "\n" },
@@ -34,7 +40,7 @@ const instructions = (title: string, steps: readonly string[]): AuthoredBody =>
 
 const productAgent: Agent = {
   slug: agent("aidlc-product-agent"),
-  source: methodSource("agent", "aidlc-product-agent.md"),
+  source: methodSource({ kind: "agent", within: "aidlc-product-agent.md" }),
   displayName: "Product Agent",
   description:
     "Product manager and business analyst responsible for requirements, user stories, " +
@@ -50,7 +56,7 @@ const productAgent: Agent = {
 
 const architectAgent: Agent = {
   slug: agent("aidlc-architect-agent"),
-  source: methodSource("agent", "aidlc-architect-agent.md"),
+  source: methodSource({ kind: "agent", within: "aidlc-architect-agent.md" }),
   displayName: "Architect Agent",
   description:
     "Solutions architect responsible for domain design, contract design, NFR patterns, " +
@@ -66,7 +72,7 @@ const architectAgent: Agent = {
 
 const deliveryAgent: Agent = {
   slug: agent("aidlc-delivery-agent"),
-  source: methodSource("agent", "aidlc-delivery-agent.md"),
+  source: methodSource({ kind: "agent", within: "aidlc-delivery-agent.md" }),
   displayName: "Delivery Agent",
   description:
     "Engineering manager responsible for team formation, Bolt sequencing, and phase handoffs.",
@@ -81,7 +87,7 @@ const deliveryAgent: Agent = {
 
 const developerAgent: Agent = {
   slug: agent("aidlc-developer-agent"),
-  source: methodSource("agent", "aidlc-developer-agent.md"),
+  source: methodSource({ kind: "agent", within: "aidlc-developer-agent.md" }),
   displayName: "Developer Agent",
   description:
     "Senior developer responsible for code generation, reverse engineering, and data modelling.",
@@ -96,7 +102,7 @@ const developerAgent: Agent = {
 
 const productLeadAgent: Agent = {
   slug: agent("aidlc-product-lead-agent"),
-  source: methodSource("agent", "aidlc-product-lead-agent.md"),
+  source: methodSource({ kind: "agent", within: "aidlc-product-lead-agent.md" }),
   displayName: "Product Lead",
   description:
     "Senior product leader who reviews requirements, user stories, and UX artifacts for " +
@@ -112,7 +118,7 @@ const productLeadAgent: Agent = {
 
 const architectureReviewerAgent: Agent = {
   slug: agent("aidlc-architecture-reviewer-agent"),
-  source: methodSource("agent", "aidlc-architecture-reviewer-agent.md"),
+  source: methodSource({ kind: "agent", within: "aidlc-architecture-reviewer-agent.md" }),
   displayName: "Architecture Reviewer",
   description:
     "Senior solutions architect who reviews technical design artifacts for soundness, " +
@@ -142,7 +148,7 @@ const everyScope = scopes(
 
 const requirementsAnalysis: Stage = {
   slug: stage("requirements-analysis"),
-  source: methodSource("stage", "inception/requirements-analysis.md"),
+  source: methodSource({ kind: "stage", within: "inception/requirements-analysis.md" }),
   displayName: "Requirements Analysis",
   phase: "inception",
   orderingHint: null,
@@ -194,17 +200,16 @@ const requirementsAnalysis: Stage = {
     outputs:
       "requirements.md, requirements-analysis-questions.md, traceability.json " +
       "(under this stage's record dir, engine-resolved)",
-    instructions: instructions("Requirements Analysis", [
-      "Analyze the request",
-      "Ask the open questions",
-      "Write the requirements",
-    ]),
+    instructions: instructions({
+      title: "Requirements Analysis",
+      steps: ["Analyze the request", "Ask the open questions", "Write the requirements"],
+    }),
   },
 };
 
 const unitsGeneration: Stage = {
   slug: stage("units-generation"),
-  source: methodSource("stage", "inception/units-generation.md"),
+  source: methodSource({ kind: "stage", within: "inception/units-generation.md" }),
   displayName: "Units Generation",
   phase: "inception",
   orderingHint: null,
@@ -253,13 +258,16 @@ const unitsGeneration: Stage = {
     outputs:
       "unit-of-work.md, unit-of-work-dependency.md, unit-of-work-story-map.md, " +
       "traceability.json (under this stage's record dir, engine-resolved)",
-    instructions: instructions("Units Generation", ["Decompose into units", "Map stories"]),
+    instructions: instructions({
+      title: "Units Generation",
+      steps: ["Decompose into units", "Map stories"],
+    }),
   },
 };
 
 const codeGeneration: Stage = {
   slug: stage("code-generation"),
-  source: methodSource("stage", "construction/code-generation.md"),
+  source: methodSource({ kind: "stage", within: "construction/code-generation.md" }),
   displayName: "Code Generation",
   phase: "construction",
   orderingHint: null,
@@ -309,13 +317,16 @@ const codeGeneration: Stage = {
     outputs:
       "application code + code-generation-plan.md, unit-test-instructions.md, " +
       "code-summary.md, traceability.json (under this stage's per-unit record dir)",
-    instructions: instructions("Code Generation", ["Plan the code", "Generate the code"]),
+    instructions: instructions({
+      title: "Code Generation",
+      steps: ["Plan the code", "Generate the code"],
+    }),
   },
 };
 
 const classicScope: Scope = {
   name: scope("classic"),
-  source: methodSource("scope", "aidlc-classic.md"),
+  source: methodSource({ kind: "scope", within: "aidlc-classic.md" }),
   owner: core,
   description: "V1-style ceremony through Inception and Construction - the implicit default",
   keywords: [],
@@ -338,7 +349,7 @@ const classicScope: Scope = {
 
 const featureScope: Scope = {
   name: scope("feature"),
-  source: methodSource("scope", "aidlc-feature.md"),
+  source: methodSource({ kind: "scope", within: "aidlc-feature.md" }),
   owner: core,
   description: "Full lifecycle for new features, practical depth",
   keywords: [],
@@ -361,7 +372,7 @@ const featureScope: Scope = {
 
 const requiredSectionsSensor: SensorDeclaration = {
   id: sensor("required-sections"),
-  source: methodSource("sensor", "aidlc-required-sections.md"),
+  source: methodSource({ kind: "sensor", within: "aidlc-required-sections.md" }),
   owner: core,
   description: "Checks at the gate that stage output contains the required H2 headings",
   category: "document-shape",
@@ -376,7 +387,7 @@ const requiredSectionsSensor: SensorDeclaration = {
 
 const upstreamCoverageSensor: SensorDeclaration = {
   id: sensor("upstream-coverage"),
-  source: methodSource("sensor", "aidlc-upstream-coverage.md"),
+  source: methodSource({ kind: "sensor", within: "aidlc-upstream-coverage.md" }),
   owner: core,
   description:
     "Checks the stage's deliverables reference the upstream artifacts the stage " +
@@ -397,7 +408,7 @@ const upstreamCoverageSensor: SensorDeclaration = {
 
 const linterSensor: SensorDeclaration = {
   id: sensor("linter"),
-  source: methodSource("sensor", "aidlc-linter.md"),
+  source: methodSource({ kind: "sensor", within: "aidlc-linter.md" }),
   owner: core,
   description:
     "Wraps the project's configured linter (eslint by default for v0.5.0); fires on TS/JS " +
@@ -425,7 +436,7 @@ const linterSensor: SensorDeclaration = {
 
 const orgRules: Rule = {
   id: rule("org"),
-  source: methodSource("rule", "org.md"),
+  source: methodSource({ kind: "rule", within: "org.md" }),
   layer: { kind: "org" },
   owner: core,
   pairing: { kind: "unpaired" },
@@ -436,7 +447,7 @@ const orgRules: Rule = {
 
 const teamRules: Rule = {
   id: rule("team"),
-  source: methodSource("rule", "team.md"),
+  source: methodSource({ kind: "rule", within: "team.md" }),
   layer: { kind: "team" },
   owner: core,
   pairing: { kind: "unpaired" },
@@ -447,7 +458,7 @@ const teamRules: Rule = {
 
 const inceptionRules: Rule = {
   id: rule("phase-inception"),
-  source: methodSource("rule", "phases/inception.md"),
+  source: methodSource({ kind: "rule", within: "phases/inception.md" }),
   layer: { kind: "phase", phase: "inception" },
   owner: core,
   pairing: { kind: "unpaired" },
@@ -457,27 +468,35 @@ const inceptionRules: Rule = {
 };
 
 const developerKnowledge: KnowledgeDocument = {
-  source: methodSource("knowledge", "aidlc-developer-agent/code-generation-guide.md"),
+  source: methodSource({
+    kind: "knowledge",
+    within: "aidlc-developer-agent/code-generation-guide.md",
+  }),
   owner: core,
   audience: { kind: "agent", agent: developerAgent.slug },
 };
 
 const sharedKnowledge: KnowledgeDocument = {
-  source: methodSource("knowledge", "aidlc-shared/ai-dlc-principles.md"),
+  source: methodSource({ kind: "knowledge", within: "aidlc-shared/ai-dlc-principles.md" }),
   owner: core,
   audience: { kind: "shared" },
 };
 
-const membersOf = (
-  stageSlug: Stage["slug"],
-  names: readonly Scope["name"][],
-): readonly ScopeMembership[] =>
-  names.map((name) => ({ scope: name, stage: stageSlug, declaredBy: core }));
+const membersOf = ({
+  stage,
+  names,
+}: {
+  readonly stage: Stage["slug"];
+  readonly names: readonly Scope["name"][];
+}): readonly ScopeMembership[] => names.map((name) => ({ scope: name, stage, declaredBy: core }));
 
 const memberships: readonly ScopeMembership[] = [
-  ...membersOf(requirementsAnalysis.slug, everyScope),
-  ...membersOf(unitsGeneration.slug, scopes("enterprise", "feature", "mvp", "classic", "workshop")),
-  ...membersOf(codeGeneration.slug, everyScope),
+  ...membersOf({ stage: requirementsAnalysis.slug, names: everyScope }),
+  ...membersOf({
+    stage: unitsGeneration.slug,
+    names: scopes("enterprise", "feature", "mvp", "classic", "workshop"),
+  }),
+  ...membersOf({ stage: codeGeneration.slug, names: everyScope }),
 ];
 
 const compiled: CompiledMethod = {

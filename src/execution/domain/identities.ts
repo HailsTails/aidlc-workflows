@@ -41,7 +41,13 @@ const OPAQUE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
 
 const textual =
-  <Identity extends string>(identity: ExecutionIdentity, pattern: RegExp) =>
+  <Identity extends string>({
+    identity,
+    pattern,
+  }: {
+    readonly identity: ExecutionIdentity;
+    readonly pattern: RegExp;
+  }) =>
   (raw: string): Result<Identity, ExecutionIdentityRefusal> =>
     pattern.test(raw)
       ? accepted(raw as Identity)
@@ -54,19 +60,22 @@ const counted =
       ? accepted(raw as Identity)
       : refused({ kind: "invalid-execution-identity", identity, raw: String(raw) });
 
-export const intentId = textual<IntentId>("intent", OPAQUE);
+export const intentId = textual<IntentId>({ identity: "intent", pattern: OPAQUE });
 
-export const intentSlug = textual<IntentSlug>("intent-slug", KEBAB);
+export const intentSlug = textual<IntentSlug>({ identity: "intent-slug", pattern: KEBAB });
 
-export const spaceName = textual<SpaceName>("space", KEBAB);
+export const spaceName = textual<SpaceName>({ identity: "space", pattern: KEBAB });
 
-export const sessionId = textual<SessionId>("session", OPAQUE);
+export const sessionId = textual<SessionId>({ identity: "session", pattern: OPAQUE });
 
-export const unitName = textual<UnitName>("unit", OPAQUE);
+export const unitName = textual<UnitName>({ identity: "unit", pattern: OPAQUE });
 
-export const checkoutId = textual<CheckoutId>("checkout", OPAQUE);
+export const checkoutId = textual<CheckoutId>({ identity: "checkout", pattern: OPAQUE });
 
-export const planFingerprint = textual<PlanFingerprint>("plan-fingerprint", FINGERPRINT);
+export const planFingerprint = textual<PlanFingerprint>({
+  identity: "plan-fingerprint",
+  pattern: FINGERPRINT,
+});
 
 export const recordVersion = counted<RecordVersion>("record-version");
 

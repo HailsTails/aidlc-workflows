@@ -11,5 +11,7 @@ export const text = (lines: readonly string[]): FileContent => ({
   text: `${lines.join("\n")}\n`,
 });
 
-export const methodPath = (kind: MethodSourceKind, within: string): MethodSourcePath =>
-  accept(methodSourcePath({ kind, within }));
+export const methodPath = (location: {
+  readonly kind: MethodSourceKind;
+  readonly within: string;
+}): MethodSourcePath => accept(methodSourcePath(location));
