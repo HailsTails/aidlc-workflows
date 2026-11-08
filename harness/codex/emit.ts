@@ -386,22 +386,27 @@ export default function emit(ctx: EmitContext): void {
     content: () => onboarding,
   });
 
-  const agentsDir = join(coreRoot, "agents");
   const agents = ctx.method.agents.toSorted((left, right) => left.slug.localeCompare(right.slug));
   for (const agent of agents) {
-    const mdPath = join(agentsDir, `${agent.slug}.md`);
+    const captured = ctx.sources.find((source) =>
+      source.owner.kind === "core" && source.path === agent.source);
+    if (!captured) {
+      throw new Error(`Core agent ${agent.slug} requires its captured authored text.`);
+    }
+    const authored = captured.content.kind === "text"
+      ? captured.content.text : Buffer.from(captured.content.bytes).toString("utf-8");
     if (agent.model.kind !== "tier") {
       throw new Error(`Core agent ${agent.slug} requires an authored tier.`);
     }
     const effective = resolveModelPolicy(
-      null, modelAgentName(mdPath), agent.model.tier, "codex", tierCap,
+      null, modelAgentName(`${agent.slug}.md`), agent.model.tier, "codex", tierCap,
     );
     const prepareProse = (prose: string): string => rewriteProse(injectDelegatedKnowledgePreflight(
       absorbReviewerKnowledge(prose, agent.slug, coreRoot), agent.slug, harnessDir,
     ));
     const legacy: Parameters<typeof createCodexAgentRenderer>[0] = {
       markdownSurface: () => accepted(writeMarkdownAgentSurface(
-        prepareProse(readFileSync(mdPath, "utf-8")), effective, { effortKey: "effort" },
+        prepareProse(authored), effective, { effortKey: "effort" },
       )),
       codexSurface: (request) => accepted(writeCodexAgentSurface(request.content, effective)),
       preparePersona: (source) => prepareProse(source.persona.text),
