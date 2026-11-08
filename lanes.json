@@ -105,6 +105,7 @@
         "src/cli/adapters/routes/{packaging,installation}/**",
         "src/cli/core-build-root{,.test}.ts",
         "docs/reference/15-stage-definition.md",
+        "docs/harness-engineering/09-porting-to-a-new-harness.md",
         "scripts/package.ts",
         "scripts/manifest-types.ts",
         "harness/claude/manifest.ts",
