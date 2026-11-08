@@ -105,6 +105,7 @@
         "src/cli/core-build-root{,.test}.ts",
         "docs/reference/15-stage-definition.md",
         "scripts/package.ts",
+        "scripts/manifest-types.ts",
         "harness/claude/manifest.ts",
         "tests/unit/t64.test.ts",
         "tests/unit/t-package-sources.test.ts",
