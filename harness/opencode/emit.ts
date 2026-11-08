@@ -1,8 +1,5 @@
 // harness/opencode/emit.ts — the opencode per-shell emission plugin.
 //
-// The packager assembles .aidlc/ and compiles its graph before emit. Shared
-// command projection writes generated skills under .aidlc/skills; the native
-// .opencode/ shell carries:
 //   - .opencode/agents/aidlc-*-agent.md — the 14 personas as native opencode
 //     subagents: core frontmatter with the `tier:` line projected to the
 //     opencode-native `model:`/`variant:` keys plus an added `mode: subagent`
