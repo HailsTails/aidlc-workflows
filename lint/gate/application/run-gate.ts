@@ -75,7 +75,9 @@ const failed = (request: RunnableRequest, { problem, fix }: GateProblem): GateRe
 
 const BUSY: GateProblem = {
   problem: "another heavy job holds the machine lock",
-  fix: "Wait for it (raise --wait) or run the light gate: bun scripts/gate.ts --scope <lane-id>.",
+  fix:
+    "Wait for it (raise --wait), and meanwhile run light work, which never takes the lock: " +
+    "bun scripts/gate.ts --scope <lane-id>, typecheck, bun test.",
 };
 
 const locked = async (
