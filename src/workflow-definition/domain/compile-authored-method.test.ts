@@ -89,3 +89,13 @@ test("plugin admission rejects a contribution that claims a core definition", ()
       path: pluginStage.source }, issues: ["A contribution may not claim another owner's definition."] },
   ] });
 });
+
+test("a contribution cannot repair an invalid standalone core reference", () => {
+  const invalidCore = { ...core, stages: [{ ...coreStage, requires: [pluginStage.slug] }] };
+  expect(compileAuthoredMethod({ core: invalidCore, contributions: [contribution],
+    selection: { kind: "every-installed" } }, outline)).toEqual({
+    ok: false, refusal: [{ kind: "unknown-reference", source: {
+      owner: { kind: "core" }, path: coreStage.source },
+    concept: "stage", name: pluginStage.slug }],
+  });
+});

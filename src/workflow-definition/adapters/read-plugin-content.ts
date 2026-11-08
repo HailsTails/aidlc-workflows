@@ -7,7 +7,6 @@ import type { RuleLevel } from "../domain/contribution.ts";
 import { pluginId, ruleId, type PluginId } from "../domain/identities.ts";
 import type { ContributedContent } from "../domain/method.ts";
 import type { MethodSource } from "../domain/method-source.ts";
-import { pluginNamespaceIssues } from "../domain/plugin-selection.ts";
 import type { MethodRefusal } from "../domain/refusals.ts";
 import type { RuleLayer } from "../domain/rule.ts";
 import { PHASES } from "../domain/vocabulary.ts";
@@ -39,6 +38,15 @@ const layerFor = (path: string, level: RuleLevel): RuleLayer => {
   return phase ? { kind: "phase", phase } : { kind: level };
 };
 
+const readPluginIdentity = (raw: string): Result<PluginId, readonly MethodRefusal[]> => {
+  const identity = pluginId(raw);
+  if (identity.ok) return identity;
+  return identity.refusal.kind === "reserved-plugin-name"
+    ? refused([{ kind: "core-namespace-claimed", plugin: identity.refusal.raw }])
+    : refused([{ kind: "invalid-file", location: { kind: "plugin-manifest", plugin: raw },
+      issues: ["Invalid plugin identity."] }]);
+};
+
 const pluginContentFiles = (capture: CapturedPluginFiles): SourceFiles => {
   const files = capturedSourceFiles(capture.files);
   return { read: (directory) => files.read(directory === "aidlc-common/stages"
@@ -53,13 +61,10 @@ export const readPluginContent = async (request: { readonly capture: CapturedPlu
   if (!raw.ok) return raw;
   const manifest = readPluginManifest({ plugin: request.capture.directory, raw: raw.value });
   if (!manifest.ok) return manifest;
-  const namespace = [...new Set([manifest.value.name, request.capture.directory])]
-    .flatMap(pluginNamespaceIssues);
-  if (namespace.length > 0) return refused(namespace);
-  const identity = pluginId(manifest.value.name);
-  if (!identity.ok) return refused([{ kind: "invalid-file", location: {
-    kind: "plugin-manifest", plugin: request.capture.directory },
-  issues: ["Invalid plugin identity."] }]);
+  const identity = readPluginIdentity(manifest.value.name);
+  if (!identity.ok) return identity;
+  const directory = readPluginIdentity(request.capture.directory);
+  if (!directory.ok) return directory;
   const decoded = await readAuthoredContent({ sourceFiles: pluginContentFiles(request.capture),
     outliner: request.outliner, hooks: [], owner: { kind: "plugin", plugin: identity.value },
     ruleLayer: (path) => layerFor(path, manifest.value.aidlc.rulesLevel ?? "team") });

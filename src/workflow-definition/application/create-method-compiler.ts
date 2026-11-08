@@ -14,7 +14,6 @@ const freshRequestIssues = (request: CompileMethodRequest): readonly MethodRefus
   })),
 ];
 
-
 export const createMethodCompiler = (outliner: MarkdownOutliner): CompileMethod => ({
   compile: (request) => {
     const unsupported = freshRequestIssues(request);

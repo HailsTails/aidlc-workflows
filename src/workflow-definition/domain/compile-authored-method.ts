@@ -43,7 +43,6 @@ const selectionIssues = (request: { readonly content: CoreContent;
     }] : [];
   }));
 
-
 export const compileAuthoredMethod = (request: { readonly core: CoreContent;
   readonly contributions: readonly Contribution[]; readonly selection: PluginSelection },
   outline: (text: string) => AuthoredBody): Result<Method, readonly MethodRefusal[]> => {
