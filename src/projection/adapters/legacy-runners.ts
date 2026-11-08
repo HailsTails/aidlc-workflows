@@ -45,7 +45,7 @@ type ChildCommand = { readonly subject: WireSubject; readonly markdown: string |
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
 const failure = (subject: CommandSubject, reason: string): ProjectionRefusal => ({ kind: "render-failed", ...subject, reason });
 const failedSource = (reason: string): CommandSource => ({
-  read: () => refused({ kind: "command-source-unavailable", reason }),
+  read: () => refused({ kind: "command-source-failed", reason }),
 });
 const subjectFrom = (raw: WireSubject): CommandSubject | null => {
   if (raw.concept === "stage-command") {

@@ -52,13 +52,13 @@ test("a formatting failure retains the actual scope even when another command is
 test("a process failure has no invented command subject", () => {
   const source = decodeLegacyRunners({ status: 1, stdout: "", stderr: "Formatter unavailable" });
   expect(source.read({ concept: "orchestrator-skill", name: "aidlc-compose" })).toEqual({ ok: false,
-    refusal: { kind: "command-source-unavailable", reason: "Formatter unavailable" } });
+    refusal: { kind: "command-source-failed", reason: "Formatter unavailable" } });
 });
 
 test("malformed output is a subjectless source refusal", () => {
   const source = decodeLegacyRunners({ status: 0, stdout: "not JSON", stderr: "" });
   expect(source.read({ concept: "scope-command", name: scope("feature") })).toEqual({ ok: false,
-    refusal: { kind: "command-source-unavailable", reason: "The frozen runner formatter returned invalid JSON." } });
+    refusal: { kind: "command-source-failed", reason: "The frozen runner formatter returned invalid JSON." } });
 });
 
 test("duplicate subject responses refuse instead of taking the first entry", () => {
@@ -105,9 +105,9 @@ test("a whole-run failure remains identical across scope and shortcut readers", 
   const source = decodeLegacyRunners({ status: 0, stderr: "", stdout:
     '{"entries":[],"failure":"The runner frame is unavailable"}' });
   expect(source.read({ concept: "scope-command", name: scope("feature") })).toEqual({ ok: false,
-    refusal: { kind: "command-source-unavailable", reason: "The runner frame is unavailable" } });
+    refusal: { kind: "command-source-failed", reason: "The runner frame is unavailable" } });
   expect(source.read({ concept: "orchestrator-skill", name: "aidlc-init" })).toEqual({ ok: false,
-    refusal: { kind: "command-source-unavailable", reason: "The runner frame is unavailable" } });
+    refusal: { kind: "command-source-failed", reason: "The runner frame is unavailable" } });
 });
 
 test("invalid child input returns failure data before any module or filesystem access", async () => {
