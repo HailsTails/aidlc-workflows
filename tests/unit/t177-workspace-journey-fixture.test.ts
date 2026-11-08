@@ -39,7 +39,10 @@ import {
   cleanupWorkspaceJourney,
   setupWorkspaceJourney,
 } from "../harness/fixtures.ts";
-import { HARNESS_MATRIX } from "../harness/harness-matrix.ts";
+import {
+  HARNESS_MATRIX, harnessByName, validateManifest, agentFrontmatterGrantsIdeTools,
+} from "../harness/harness-matrix.ts";
+import { runnerProducer, orchestratorSkillLocation } from "../../scripts/manifest-types.ts";
 import { discoverSiblingRepos, listIntents } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
 
 setDefaultTimeout(NATIVE_MULTI_WORKTREE_CASE_TIMEOUT_MS);
@@ -88,3 +91,79 @@ describe("t177 workspace-journey fixture (deterministic, no LLM)", () => {
     }, CASE_TIMEOUT_MS);
   }
 });
+
+test("an omitted flag leaves standard production with the packager", () => {
+  expect(runnerProducer({ emit: null })).toEqual({ ok: true, value: "standard" });
+});
+
+test("an emitter for other surfaces does not take standard runner ownership", () => {
+  expect(runnerProducer({ skipRunnerGen: false, emit: () => undefined }))
+    .toEqual({ ok: true, value: "standard" });
+});
+
+test("the flag delegates runner production to a real emitter", () => {
+  expect(runnerProducer({ skipRunnerGen: true, emit: () => undefined }))
+    .toEqual({ ok: true, value: "emit" });
+});
+
+test("delegation without an emitter is a refusal", () => {
+  expect(runnerProducer({ skipRunnerGen: true, emit: null })).toEqual({ ok: false,
+    refusal: "Delegated runner production requires a manifest emit function." });
+});
+
+test("native entry location has its own declared value and standard default", () => {
+  expect(orchestratorSkillLocation({ harnessDir: ".host" })).toBe(".host/skills/aidlc/SKILL.md");
+  expect(orchestratorSkillLocation({
+    harnessDir: ".host", orchestratorSkillPath: "native/skills/aidlc/SKILL.md",
+  }))
+    .toBe("native/skills/aidlc/SKILL.md");
+});
+
+test.each([
+  "claude", "codex", "copilot", "cursor", "kiro", "kiro-ide", "opencode",
+] as const)(
+  "%s: either producer retains the host's declared layout and include surfaces", (name) => {
+    const harness = harnessByName(name);
+    expect(validateManifest(
+      name, { ...harness.manifest, skipRunnerGen: true, emit: () => undefined },
+      harness.capabilities,
+    )).toBeUndefined();
+    expect(validateManifest(
+      name, { ...harness.manifest, skipRunnerGen: false, emit: () => undefined },
+      harness.capabilities,
+    )).toBeUndefined();
+  },
+);
+
+test("the validator still rejects an incorrect declared native layout", () => {
+  const harness = harnessByName("claude");
+  expect(() => validateManifest("claude", { ...harness.manifest,
+    orchestratorSkillPath: "wrong/skills/aidlc/SKILL.md" }, harness.capabilities))
+    .toThrow(new Error(
+      "harness matrix [claude]: skillsRoot does not agree with manifest.orchestratorSkillPath",
+    ));
+});
+
+test("the matrix uses the same producer refusal as the package caller", () => {
+  const harness = harnessByName("claude");
+  expect(() => validateManifest(
+    "claude", { ...harness.manifest, skipRunnerGen: true, emit: null },
+    harness.capabilities,
+  )).toThrow(new Error(
+    "harness matrix [claude]: Delegated runner production requires a manifest emit function.",
+  ));
+});
+test(
+  "the shared tools declaration check admits agent headers and rejects unrelated additions",
+  () => {
+    expect(agentFrontmatterGrantsIdeTools(
+      "agents/aidlc-example-agent.md", ['tools: ["read"]'],
+    )).toBe(true);
+    expect(agentFrontmatterGrantsIdeTools(
+      "agents/aidlc-example-agent.md", ["badge: example"],
+    )).toBe(false);
+    expect(agentFrontmatterGrantsIdeTools(
+      "skills/aidlc/SKILL.md", ['tools: ["read"]'],
+    )).toBe(false);
+  },
+);

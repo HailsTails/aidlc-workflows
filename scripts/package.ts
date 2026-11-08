@@ -63,7 +63,9 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { loadCoreBuild, projectCoreCommands } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
-import type { HarnessManifest } from "./manifest-types.ts";
+import {
+  runnerProducer, orchestratorSkillLocation, type HarnessManifest,
+} from "./manifest-types.ts";
 import {
   absorbReviewerKnowledge,
   agentNameFromPath,
@@ -889,6 +891,8 @@ function buildTree(
   outRoot: string,
   invoke = `bun ${m.harnessDir}/tools/aidlc.ts`,
 ): string[] {
+  const producer = runnerProducer(m);
+  if (!producer.ok) throw new Error(`packager: ${m.name}: ${producer.refusal}`);
   const harnessDir = m.harnessDir;
   const treeRoot = join(outRoot, harnessDir);
   // Every harness projects onto ONE of the six flavors the tier module
@@ -1095,12 +1099,7 @@ function buildTree(
       tierCap: TIER_CAP,
     });
   }
-  // 5. Generate runners by composing aidlc-runner-gen's CLIs against the
-  //    assembled tree (write + scopes). AIDLC_HARNESS_DIR steers harnessDir()
-  //    so generated prose names the correct dir; AIDLC_SRC roots the tree.
-  //    Codex skips this — it ships no <harnessDir>/skills/; emit() composes the
-  //    whole skill set into .agents/skills/ instead.
-  if (!m.skipRunnerGen) {
+  if (producer.value === "standard") {
     runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "write"]);
     runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "scopes"]);
   }
@@ -1758,8 +1757,7 @@ function assembledOrchestratorSkill(
   outRoot: string,
   manifest: HarnessManifest,
 ): string {
-  const rel = manifest.orchestratorSkillPath ??
-    join(manifest.harnessDir, "skills", "aidlc", "SKILL.md");
+  const rel = orchestratorSkillLocation(manifest);
   if (isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) {
     throw new Error(
       `packager: ${manifest.name} orchestratorSkillPath must stay within its dist root: ${rel}`,

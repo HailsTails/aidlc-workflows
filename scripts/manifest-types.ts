@@ -6,6 +6,7 @@
 // optional emit() plugin (codex's config.toml / hooks.json / agent TOMLs /
 // skills tree) — structural divergence that no declarative row can express.
 
+import { accepted, refused, type Result } from "../src/kernel/result.ts";
 import type { OnboardingFills } from "./onboarding.ts";
 import type { Method } from "../src/workflow-definition/domain/method.ts";
 import type { CommandPlacement } from "../src/projection/application/ports.ts";
@@ -432,14 +433,6 @@ export type HarnessManifest = {
    * read as this host. Emitted into <harnessDir>/tools/data/harness.json.
    */
   hostShell?: { env: string[] };
-  /**
-   * Skip the packager's standard runner-gen step (write + scopes into
-   * <harnessDir>/skills/). Codex sets this: it ships NO skills inside
-   * <harnessDir>/skills/ — the whole skill set (orchestrator, stage/scope
-   * runners, session skills) is emitted into .agents/skills/ by emit.ts, which
-   * composes runner-gen's render fns itself. Graph compile still runs (codex
-   * needs the compiled .codex/tools/data/*.json). Claude/Kiro leave this false.
-   */
   skipRunnerGen?: boolean;
   /**
    * Optional per-shell emission plugin (codex, copilot and opencode today). It always writes
@@ -481,3 +474,14 @@ export type HarnessManifest = {
     installRoots?: string[];
   };
 };
+
+export const runnerProducer = (manifest: Pick<HarnessManifest, "skipRunnerGen" | "emit">):
+  Result<"standard" | "emit", string> => {
+  if (manifest.skipRunnerGen !== true) return accepted("standard");
+  return typeof manifest.emit === "function" ? accepted("emit")
+    : refused("Delegated runner production requires a manifest emit function.");
+};
+
+export const orchestratorSkillLocation = (manifest: Pick<HarnessManifest,
+  "harnessDir" | "orchestratorSkillPath">): string =>
+  manifest.orchestratorSkillPath ?? `${manifest.harnessDir}/skills/aidlc/SKILL.md`;
