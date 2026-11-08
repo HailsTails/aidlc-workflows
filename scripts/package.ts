@@ -15,12 +15,12 @@
 //      on .md; render neutral onboarding and native setup from their skeletons.
 //   3. COMPILE the stage graph into the assembled tree (emits harness-correct
 //      stage-graph.json + scope-grid.json — compiled data lives only in dist).
-//   4. GENERATE runners into the assembled tree by running aidlc-runner-gen's
-//      write and scopes CLIs under AIDLC_HARNESS_DIR (skipped when the manifest
-//      sets skipRunnerGen).
-//   5. EMIT via harness/<name>/emit.ts if the manifest declares one (codex,
+//   4. EMIT via harness/<name>/emit.ts if the manifest declares one (codex,
 //      copilot and opencode today; for codex: config.toml, hooks.json,
 //      trust-seed, agent TOMLs, .agents/skills).
+//   5. GENERATE runners into the assembled tree by running aidlc-runner-gen's
+//      write and scopes CLIs under AIDLC_HARNESS_DIR (skipped when the manifest
+//      sets skipRunnerGen).
 //   6. REFRESH generated stage/scope table regions in the assembled orchestrator
 //      skill from the just-compiled graph and scope grid.
 //
@@ -1081,17 +1081,7 @@ function buildTree(
   writeAgentTiersData(treeRoot);
   writeSettingsSchemaData(treeRoot);
 
-  // 4. Generate runners by composing aidlc-runner-gen's CLIs against the
-  //    assembled tree (write + scopes). AIDLC_HARNESS_DIR steers harnessDir()
-  //    so generated prose names the correct dir; AIDLC_SRC roots the tree.
-  //    Codex skips this — it ships no <harnessDir>/skills/; emit() composes the
-  //    whole skill set into .agents/skills/ instead.
-  if (!m.skipRunnerGen) {
-    runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "write"]);
-    runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "scopes"]);
-  }
-
-  // 5. Per-shell emissions. These may live outside
+  // 4. Per-shell emissions. These may live outside
   //    <harnessDir> (e.g. .agents/skills/ and .github/); the generated
   //    root inventory includes them automatically.
   if (m.emit) {
@@ -1108,6 +1098,16 @@ function buildTree(
       tierCap: TIER_CAP,
     });
   }
+  // 5. Generate runners by composing aidlc-runner-gen's CLIs against the
+  //    assembled tree (write + scopes). AIDLC_HARNESS_DIR steers harnessDir()
+  //    so generated prose names the correct dir; AIDLC_SRC roots the tree.
+  //    Codex skips this — it ships no <harnessDir>/skills/; emit() composes the
+  //    whole skill set into .agents/skills/ instead.
+  if (!m.skipRunnerGen) {
+    runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "write"]);
+    runTool(treeRoot, harnessDir, m.name, ["tools/aidlc-runner-gen.ts", "scopes"]);
+  }
+
   expandCursorToolAllows(treeRoot, m);
   expandClaudeToolAllows(treeRoot, m);
   expandKiroToolAllows(treeRoot, m);
