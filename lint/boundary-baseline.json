@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174693,
+  "total": 174691,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
@@ -11,8 +11,8 @@
     "Context boundary": 47,
     "Harness branching": 446,
     "max-depth": 2125,
-    "max-len": 48863,
-    "max-lines-per-function": 3528,
+    "max-len": 48862,
+    "max-lines-per-function": 3527,
     "max-params": 1766,
     "Monolith": 47,
     "no-control-regex": 17,
@@ -4521,9 +4521,7 @@
       "complexity": 1
     },
     "tests/unit/t-aidlc-lib-only-shrinks.test.ts": {
-      "aidlc/no-comments": 1,
-      "max-len": 1,
-      "max-lines-per-function": 1
+      "aidlc/no-comments": 1
     },
     "tests/unit/t-another-window-switched.test.ts": {
       "aidlc/no-comments": 28,
