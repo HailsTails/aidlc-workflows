@@ -39,9 +39,9 @@
         "src/projection/application/ports.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}.ts",
         "src/packaging/application/boundary-ports.ts",
-        "src/installation/domain/{ownership,file-operation,installed-distribution,sibling-block,refusals}.ts",
+        "src/installation/domain/refusals.ts",
         "src/installation/application/boundary-ports.ts",
-        "src/execution/domain/{identities,unit,gate,review,guard,workflow-record,transition,session,audit,host-event,refusals}.ts",
+        "src/execution/domain/{identities,unit,gate,guard,host-event,refusals}.ts",
         "src/execution/application/boundary-ports.ts",
         "src/cli/application/ports.ts",
         "src/cli/roots.ts"
@@ -128,6 +128,7 @@
       "owns": [
         "src/projection/**",
         "src/hosts/*/projection/**",
+        "src/hosts/*/build.ts",
         "src/cli/adapters/routes/projection/**",
         "harness/*/**"
       ],
@@ -172,7 +173,7 @@
         "src/execution/**",
         "src/cli/**",
         "src/hosts/*/{cli,execution}/**",
-        "src/hosts/*/bundle.ts",
+        "src/hosts/*/runtime.ts",
         "core/hooks/**"
       ],
       "territory": ["execution", "cli"],

@@ -61,6 +61,11 @@ export const CORE_GUARDS = {
     protects: "A blocking check passes before its gate.",
     lift: { kind: "override-once" },
   }),
+  forwardingLoop: core({
+    id: "forwarding-loop",
+    protects: "The conductor carries a pending step on instead of ending its turn.",
+    lift: { kind: "override-once" },
+  }),
 } as const satisfies Readonly<Record<string, GuardDeclaration>>;
 
 export type GuardRefusal = {
