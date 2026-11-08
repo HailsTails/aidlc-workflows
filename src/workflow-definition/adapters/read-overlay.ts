@@ -59,17 +59,17 @@ export const readOverlay = (request: { readonly source: MethodSourceLocation;
   const decoded = decodeMarkdown({ ...request, schema: OverlayFileSchema,
     strings: ["target", "plugin"] });
   if (!decoded.ok) return decoded;
-  const { file, body } = decoded.value;
+  const { file, body: fragmentText } = decoded.value;
   if (request.source.owner.kind !== "plugin"
     || file.plugin !== request.source.owner.plugin) return refused([{ kind: "invalid-file",
       location: { kind: "method-source", ...request.source },
       issues: ["An overlay must declare its containing plugin as owner."] }]);
   if (request.source.path.startsWith("contributions/agents/")) {
-    const fragments = readFragments({ ...request, file, body, readAnchor: readPersonaAnchor });
+    const fragments = readFragments({ ...request, file, body: fragmentText, readAnchor: readPersonaAnchor });
     return fragments.ok ? translated(request.source, () => ({ kind: "agent",
       agent: authoredValue(agentSlug(file.target)), fragments: fragments.value })) : fragments;
   }
-  const fragments = readFragments({ ...request, file, body, readAnchor: readStageAnchor });
+  const fragments = readFragments({ ...request, file, body: fragmentText, readAnchor: readStageAnchor });
   return fragments.ok ? translated(request.source, () => ({ kind: "stage",
     stage: authoredValue(stageSlug(file.target)), adds: additionsOf(file), fragments: fragments.value }))
     : fragments;

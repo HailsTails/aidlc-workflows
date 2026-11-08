@@ -5,7 +5,7 @@ import { authoredBody } from "../fixtures/authored-body.fixture.ts";
 import { applyFragmentText } from "./apply-fragment-text.ts";
 
 const plugin = accept(pluginId("test-pro"));
-const body = authoredBody([
+const instructions = authoredBody([
   { level: 2, title: "Steps", prose: "\n" },
   { level: 3, title: "Step 4-8: Build", prose: "\nOriginal step.\n\n" },
   { level: 3, title: "Step 9: Verify", prose: "\nVerify.\n\n" },
@@ -14,7 +14,7 @@ const body = authoredBody([
 const outline = (text: string) => ({ text, headings: [] });
 
 test("repeated range-step anchors keep their order against one original heading snapshot", () => {
-  const applied = applyFragmentText({ body, outline, fragments: [
+  const applied = applyFragmentText({ body: instructions, outline, fragments: [
     { plugin, target: "stage", name: "build-and-test", fragment: {
       anchor: { kind: "after-step", step: 8 }, order: 110, text: "Later." } },
     { plugin, target: "stage", name: "build-and-test", fragment: {
@@ -26,9 +26,9 @@ test("repeated range-step anchors keep their order against one original heading 
 });
 
 test("missing anchors produce an attributed finding and preserve the body", () => {
-  expect(applyFragmentText({ body, outline, fragments: [
+  expect(applyFragmentText({ body: instructions, outline, fragments: [
     { plugin, target: "stage", name: "build-and-test", fragment: {
       anchor: { kind: "before-step", step: 99 }, order: 100, text: "Never silently appended." } },
-  ] })).toEqual({ body, findings: [{ kind: "overlay-dropped", plugin, target: "stage",
+  ] })).toEqual({ body: instructions, findings: [{ kind: "overlay-dropped", plugin, target: "stage",
     name: "build-and-test", anchor: { kind: "before-step", step: 99 }, reason: "anchor-not-found" }] });
 });
