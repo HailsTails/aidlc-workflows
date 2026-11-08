@@ -27,7 +27,8 @@ export const USAGE = [
   "     .aidlc-gate in the folder that holds the main checkout),",
   "     AIDLC_DISCIPLINE_CORE (discipline-core install; default",
   "     aidlc-discipline-core-main/plugins/discipline-core beside the main checkout,",
-  "     linked into the worktree at .cache/discipline-core).",
+  "     linked into the worktree at .cache/discipline-core; it must be a git checkout",
+  "     at the commit in lint/discipline-core-pin.txt).",
   "--record also regenerates the disciplines.json exclude list from lint/zones.ts and",
   "the ESLint projection; the summary line carries the debt figure apart from checks.",
 ].join("\n");

@@ -63,6 +63,7 @@ const RULE_INPUTS = [
   "disciplines.eslint.mjs",
 ];
 const DEFAULT_DISCIPLINE_CORE = "aidlc-discipline-core-main/plugins/discipline-core";
+const DISCIPLINE_CORE_PIN = "lint/discipline-core-pin.txt";
 const LINT_ROOTS = ["core", "harness", "scripts", "plugins", "src", "lint", "tests"];
 const LOOSE_TESTS = ["tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts"];
 
@@ -75,6 +76,7 @@ const audit = disciplineCore({
   root: ROOT,
   install:
     process.env["AIDLC_DISCIPLINE_CORE"] ?? besideMainCheckout(ROOT, DEFAULT_DISCIPLINE_CORE),
+  pin: workspace.read(DISCIPLINE_CORE_PIN)?.trim(),
   runner,
 });
 const CLEAN_TRIGGERS = [...CLEAN_ZONE.folders.map((folder) => `${folder}/**`), ...CLEAN_ZONE.files];

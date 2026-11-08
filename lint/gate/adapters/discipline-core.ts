@@ -14,6 +14,7 @@ export const INSTALL_LINK = ".cache/discipline-core";
 export type DisciplineCoreLocation = {
   readonly root: string;
   readonly install: string;
+  readonly pin: string | undefined;
   readonly runner: CommandRunner;
 };
 
@@ -76,14 +77,38 @@ const MISSING_INSTALL_FIX =
   "<parent>/aidlc-discipline-core-main origin/main), run bun install --production " +
   "--no-save in its plugins/discipline-core, or point AIDLC_DISCIPLINE_CORE at an install.";
 
-const linked = (location: DisciplineCoreLocation): Loaded<string> => {
-  const link = join(location.root, INSTALL_LINK);
+const installedCommit = (install: string): string =>
+  Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: install, stdout: "pipe", stderr: "pipe" })
+    .stdout.toString()
+    .trim();
+
+const pinnedInstall = (location: DisciplineCoreLocation): Loaded<string> => {
   if (!existsSync(join(location.install, "core/check/check-command.ts"))) {
     return {
       ok: false,
       problem: `no discipline-core install at ${location.install}`,
       fix: MISSING_INSTALL_FIX,
     };
+  }
+  const installed = installedCommit(location.install);
+  return location.pin !== undefined && installed === location.pin
+    ? { ok: true, value: location.install }
+    : {
+        ok: false,
+        problem:
+          `discipline-core at ${location.install} is at ${installed || "no git commit"}, ` +
+          `the gate pins ${location.pin ?? "nothing"} (lint/discipline-core-pin.txt)`,
+        fix:
+          "Check the fork out at the pinned commit (git checkout --detach <pin> in that " +
+          "checkout) and run bun install --production --no-save in plugins/discipline-core.",
+      };
+};
+
+const linked = (location: DisciplineCoreLocation): Loaded<string> => {
+  const link = join(location.root, INSTALL_LINK);
+  const install = pinnedInstall(location);
+  if (!install.ok) {
+    return install;
   }
   if (!existsSync(link)) {
     mkdirSync(dirname(link), { recursive: true });
