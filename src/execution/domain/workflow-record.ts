@@ -9,7 +9,7 @@ import type {
   ReviewClass,
 } from "../../workflow-definition/domain/vocabulary.ts";
 import type { Approval } from "./gate.ts";
-import type { GuardSwitch } from "./guard.ts";
+import type { GuardRefusal, GuardSwitch } from "./guard.ts";
 import type { IntentId, IntentSlug, RecordVersion, SpaceName, UnitName } from "./identities.ts";
 import type { ReviewReceipt } from "./review.ts";
 import type { Transition } from "./transition.ts";
@@ -45,6 +45,12 @@ export type WorkflowSettings = {
   readonly reviewOverride: ReviewClass | null;
 };
 
+export type DecisionOutcome =
+  | { readonly kind: "applied" }
+  | { readonly kind: "recorded-not-applied"; readonly refusal: GuardRefusal };
+
+export type RecordedApproval = Approval & { readonly outcome: DecisionOutcome };
+
 export type WorkflowRecord = {
   readonly id: IntentId;
   readonly slug: IntentSlug;
@@ -57,7 +63,7 @@ export type WorkflowRecord = {
   readonly units: UnitDag | null;
   readonly checkpoints: readonly Checkpoint[];
   readonly blockingChecks: readonly BlockingCheck[];
-  readonly approvals: readonly Approval[];
+  readonly approvals: readonly RecordedApproval[];
   readonly reviews: readonly ReviewReceipt[];
   readonly guardSwitches: readonly GuardSwitch[];
 };
@@ -92,6 +98,9 @@ const FINISHED_PROGRESS: readonly StageProgress[] = ["completed", "skipped"];
 
 export const progressFinished = (progress: StageProgress): "finished" | "unfinished" =>
   FINISHED_PROGRESS.includes(progress) ? "finished" : "unfinished";
+
+export const appliedApprovals = (record: WorkflowRecord): readonly RecordedApproval[] =>
+  record.approvals.filter((approval) => approval.outcome.kind === "applied");
 
 const statusRefusal = (
   status: WorkflowStatus,

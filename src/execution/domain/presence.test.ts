@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { at } from "../../kernel/fixtures/values.fixture.ts";
 import {
   CHAT,
+  heardAt,
   OTHER_CHAT,
   stageOf,
   typedTurn,
@@ -9,15 +10,16 @@ import {
 } from "../fixtures/workflow-record.fixture.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import type { AuditEvent } from "./audit.ts";
-import type { Approval, Gate } from "./gate.ts";
+import type { Gate } from "./gate.ts";
+import { CORE_GUARDS } from "./guard.ts";
 import { auditSequence } from "./identities.ts";
 import {
   gateOpening,
   personSinceFinished,
   presenceIn,
-  presenceRequirement,
   type PresenceWindow,
 } from "./presence.ts";
+import type { RecordedApproval } from "./workflow-record.ts";
 
 const OPENED = at("2026-11-08T10:00:00Z");
 const DECIDED = at("2026-11-08T10:05:00Z");
@@ -70,20 +72,6 @@ describe("presenceIn", () => {
   });
 });
 
-describe("presenceRequirement", () => {
-  test.each([
-    { gate: stageGate, phase: "construction", autonomy: "autonomous", needs: "engine-may-decide" },
-    { gate: stageGate, phase: "construction", autonomy: "gated", needs: "person-decides" },
-    { gate: stageGate, phase: "inception", autonomy: "autonomous", needs: "person-decides" },
-    { gate: planGate, phase: "construction", autonomy: "autonomous", needs: "person-decides" },
-  ] as const)(
-    "a $gate.kind gate in $phase under $autonomy autonomy: $needs",
-    ({ gate, phase, autonomy, needs }) => {
-      expect(presenceRequirement({ gate, phase, autonomy })).toBe(needs);
-    },
-  );
-});
-
 const openedEvent: AuditEvent = {
   intent: null,
   session: CHAT,
@@ -104,12 +92,26 @@ const openedEvent: AuditEvent = {
   },
 };
 
-const earlierDecision: Approval = {
+const earlierDecision: RecordedApproval = {
   gate: { kind: "stage", stage: stageOf("requirements-analysis"), unit: null },
   decision: { kind: "approve" },
   decidedAt: DECIDED,
-  evidence: typedTurn(OPENED),
+  basis: heardAt(OPENED),
   fingerprint: null,
+  outcome: { kind: "applied" },
+};
+
+const unappliedDecision: RecordedApproval = {
+  ...earlierDecision,
+  decidedAt: at("2026-11-08T10:06:00Z"),
+  outcome: {
+    kind: "recorded-not-applied",
+    refusal: {
+      guard: CORE_GUARDS.stateTransition,
+      reason: "This work is parked; that step needs it running.",
+      nextStep: "Ask the engine for the next step and carry that out.",
+    },
+  },
 };
 
 describe("gateOpening", () => {
@@ -120,6 +122,17 @@ describe("gateOpening", () => {
         session: CHAT,
         events: [openedEvent],
         approvals: [earlierDecision],
+      }),
+    ).toEqual({ kind: "opened", window: afterDecision });
+  });
+
+  test("a decision that was not applied leaves the person's turn unspent", () => {
+    expect(
+      gateOpening({
+        gate: stageGate,
+        session: CHAT,
+        events: [openedEvent],
+        approvals: [earlierDecision, unappliedDecision],
       }),
     ).toEqual({ kind: "opened", window: afterDecision });
   });

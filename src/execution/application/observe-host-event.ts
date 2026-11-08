@@ -1,11 +1,10 @@
 import type { Method } from "../../workflow-definition/domain/method.ts";
-import type { AuditEvent, AuditFact } from "../domain/audit.ts";
+import type { AuditEvent } from "../domain/audit.ts";
 import type { GuardRefusal } from "../domain/guard.ts";
-import { enforce, type GuardContext, type GuardVerdict } from "../domain/guard-standing.ts";
 import type { HostEvent, HostEventAt, ObservedHostEvent } from "../domain/host-event.ts";
-import { forwardingStop, writeStop } from "../domain/host-guards.ts";
+import type { GuardedPoint, HostGuardRules, HostSituation } from "../domain/host-guard-rules.ts";
 import type { IntentId } from "../domain/identities.ts";
-import { nextRoute } from "../domain/routing.ts";
+import type { BudgetSpentPolicy } from "../domain/routing.ts";
 import { progressFinished, type WorkflowRecord } from "../domain/workflow-record.ts";
 import { auditTrail, type AuditTrail } from "./audit-trail.ts";
 import type { MethodProvider } from "./boundary-ports.ts";
@@ -17,6 +16,7 @@ import type {
   RecordStore,
   Sessions,
 } from "./ports.ts";
+import { stopRaiser, type RaiseStop } from "./raise-stop.ts";
 import type { ObserveHostEvent } from "./use-cases.ts";
 
 export type ObserveHostEventDependencies = {
@@ -26,10 +26,15 @@ export type ObserveHostEventDependencies = {
   readonly clock: Clock;
   readonly methods: MethodProvider;
   readonly artifacts: ArtifactLocations;
-  readonly guards: GuardEnvironment;
+  readonly environment: GuardEnvironment;
+  readonly rules: HostGuardRules;
+  readonly budgetSpent: BudgetSpentPolicy;
 };
 
-type Observing = ObserveHostEventDependencies & { readonly trail: AuditTrail };
+type Observing = ObserveHostEventDependencies & {
+  readonly trail: AuditTrail;
+  readonly raise: RaiseStop;
+};
 
 type Bound = {
   readonly record: WorkflowRecord;
@@ -43,63 +48,54 @@ type Guarded = Allow | { readonly kind: "block"; readonly refusal: GuardRefusal 
 
 const ALLOW: Allow = { kind: "allow" };
 
-const guardContext = async (observing: Observing, record: WorkflowRecord): Promise<GuardContext> => ({
-  policy: record.settings.guardPolicy,
-  lock: await observing.guards.lock(),
-  switches: record.guardSwitches,
-  machineLowered: await observing.guards.machineLowered(),
+const situationAt = async <Point extends GuardedPoint>(
+  observing: Observing,
+  watched: { readonly bound: Bound; readonly point: Point; readonly event: HostEventAt<Point> },
+): Promise<HostSituation<Point>> => ({
+  point: watched.point,
+  event: watched.event,
+  record: watched.bound.record,
+  method: watched.bound.method,
+  events: await observing.audit.since({ intent: watched.bound.record.id, after: null }),
+  placement: (request) => observing.artifacts.destinationOf(request),
+  routing: {
+    method: watched.bound.method,
+    personAsked: "not-asked",
+    time: observing.clock.now(),
+    budgetSpent: observing.budgetSpent,
+  },
 });
 
-const verdictFact = (verdict: GuardVerdict): AuditFact =>
-  verdict.kind === "holds"
-    ? { kind: "guard-refused", refusal: verdict.refusal }
-    : { kind: "guard-stood-aside", guard: verdict.guard, because: verdict.because };
-
-const guarded = async (
+const firstHeld = (
   observing: Observing,
-  stopping: { readonly bound: Bound; readonly refusal: GuardRefusal | null },
+  stopping: { readonly bound: Bound; readonly refusals: readonly GuardRefusal[] },
+): Promise<Guarded> =>
+  stopping.refusals.reduce<Promise<Guarded>>(async (earlier, refusal) => {
+    const guarded = await earlier;
+    if (guarded.kind === "block") {
+      return guarded;
+    }
+    const verdict = await observing.raise({
+      refusal,
+      record: stopping.bound.record,
+      scene: { intent: stopping.bound.record.id, session: null, at: stopping.bound.observed.at },
+      after: stopping.bound.observed,
+    });
+    return verdict.kind === "holds" ? { kind: "block", refusal: verdict.refusal } : ALLOW;
+  }, Promise.resolve(ALLOW));
+
+const guardedAt = async <Point extends GuardedPoint>(
+  observing: Observing,
+  watched: { readonly bound: Bound; readonly point: Point; readonly event: HostEventAt<Point> },
 ): Promise<Guarded> => {
-  const { bound, refusal } = stopping;
-  if (refusal === null) {
+  const rules = observing.rules[watched.point];
+  if (rules.length === 0) {
     return ALLOW;
   }
-  const verdict = enforce(refusal, await guardContext(observing, bound.record));
-  await observing.trail.recordAfter(bound.observed, [verdictFact(verdict)]);
-  return verdict.kind === "holds" ? { kind: "block", refusal: verdict.refusal } : ALLOW;
+  const situation = await situationAt(observing, watched);
+  const refusals = rules.flatMap((rule) => rule.check(situation) ?? []);
+  return firstHeld(observing, { bound: watched.bound, refusals });
 };
-
-const toolVerdict = (
-  observing: Observing,
-  watched: { readonly bound: Bound; readonly event: HostEventAt<"before-tool"> },
-): Promise<Guarded> => {
-  const { bound, event } = watched;
-  const refusal =
-    event.tool.classified === "file-write"
-      ? writeStop(
-          {
-            record: bound.record,
-            method: bound.method,
-            placement: (request) => observing.artifacts.destinationOf(request),
-          },
-          event.tool.subject,
-        )
-      : null;
-  return guarded(observing, { bound, refusal });
-};
-
-const stopVerdict = async (observing: Observing, bound: Bound): Promise<Guarded> =>
-  guarded(observing, {
-    bound,
-    refusal: forwardingStop({
-      record: bound.record,
-      route: nextRoute(bound.record, {
-        method: bound.method,
-        personAsked: "not-asked",
-        time: observing.clock.now(),
-      }),
-      events: await observing.audit.since({ intent: bound.record.id, after: null }),
-    }),
-  });
 
 const statusText = (record: WorkflowRecord): string => {
   const current = record.stages.find((state) => progressFinished(state.progress) === "unfinished");
@@ -115,22 +111,22 @@ const observeBound = async (
   const { bound, event } = watched;
   switch (event.point) {
     case "before-tool":
-      return { event, verdict: await toolVerdict(observing, { bound, event }) };
+      return { event, verdict: await guardedAt(observing, { bound, point: event.point, event }) };
     case "stop":
-      return { event, verdict: await stopVerdict(observing, bound) };
+      return { event, verdict: await guardedAt(observing, { bound, point: event.point, event }) };
+    case "user-prompt":
+      return { event, verdict: await guardedAt(observing, { bound, point: event.point, event }) };
+    case "subagent-stop":
+      return { event, verdict: await guardedAt(observing, { bound, point: event.point, event }) };
     case "status-line":
       return { event, verdict: { kind: "show-status", text: statusText(bound.record) } };
     case "session-start":
       return { event, verdict: ALLOW };
     case "session-end":
       return { event, verdict: ALLOW };
-    case "user-prompt":
-      return { event, verdict: ALLOW };
     case "after-tool":
       return { event, verdict: ALLOW };
     case "subagent-start":
-      return { event, verdict: ALLOW };
-    case "subagent-stop":
       return { event, verdict: ALLOW };
     case "before-compaction":
       return { event, verdict: ALLOW };
@@ -189,6 +185,10 @@ const observe = async (observing: Observing, event: HostEvent): Promise<Observed
 export const observeHostEventUseCase = (
   dependencies: ObserveHostEventDependencies,
 ): ObserveHostEvent => {
-  const observing: Observing = { ...dependencies, trail: auditTrail(dependencies.audit) };
+  const observing: Observing = {
+    ...dependencies,
+    trail: auditTrail(dependencies.audit),
+    raise: stopRaiser(dependencies),
+  };
   return { observe: (event) => observe(observing, event) };
 };

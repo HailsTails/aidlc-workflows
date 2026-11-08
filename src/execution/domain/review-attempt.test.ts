@@ -3,17 +3,17 @@ import { accept } from "../../kernel/fixtures/accept.ts";
 import { at } from "../../kernel/fixtures/values.fixture.ts";
 import { agentSlug, artifactName } from "../../workflow-definition/domain/identities.ts";
 import type { ReviewPolicy } from "../../workflow-definition/domain/stage.ts";
-import { RUNNING_RECORD, stageOf, typedTurn } from "../fixtures/workflow-record.fixture.ts";
-import type { Approval } from "./gate.ts";
+import { heardAt, RUNNING_RECORD, stageOf } from "../fixtures/workflow-record.fixture.ts";
 import type { ReviewAttempt, ReviewReceipt } from "./review.ts";
 import {
   artifactFreeze,
+  attemptStanding,
   nextReviewStep,
-  recordReceipt,
   reviewClassFor,
+  withReceipt,
   type ReviewNeed,
 } from "./review-attempt.ts";
-import type { WorkflowRecord } from "./workflow-record.ts";
+import type { RecordedApproval, WorkflowRecord } from "./workflow-record.ts";
 
 const requirements = stageOf("requirements-analysis");
 const document = accept(artifactName("requirements"));
@@ -126,23 +126,20 @@ describe("a spent review budget", () => {
 
   test("still freezes the artifact as reviewed", () => {
     expect(
-      artifactFreeze(reviewed([notReady, stillNotReady]), {
-        at: need.at,
-        artifact: document,
-        budget: 2,
-      }),
+      artifactFreeze(reviewed([notReady, stillNotReady]), { at: need.at, budget: 2 }),
     ).toEqual({ kind: "frozen", receipt: stillNotReady });
   });
 });
 
 describe("attempts", () => {
   test("Request Changes at the gate starts a new attempt with its own iterations", () => {
-    const changes: Approval = {
+    const changes: RecordedApproval = {
       gate: { kind: "stage", stage: requirements, unit: null },
       decision: { kind: "request-changes", feedback: "Add the refund rules." },
       decidedAt: at("2026-11-08T10:50:00Z"),
-      evidence: typedTurn(at("2026-11-08T10:49:00Z")),
+      basis: heardAt(at("2026-11-08T10:49:00Z")),
       fingerprint: null,
+      outcome: { kind: "applied" },
     };
 
     expect(
@@ -151,18 +148,36 @@ describe("attempts", () => {
   });
 });
 
-describe("recordReceipt", () => {
-  test("keeps the receipt the engine asked for", () => {
-    expect(recordReceipt(RUNNING_RECORD, { receipt: notReady, requested: firstAttempt })).toEqual({
-      ok: true,
-      value: reviewed([notReady]),
+describe("withReceipt", () => {
+  test("keeps the receipt on the record", () => {
+    expect(withReceipt(RUNNING_RECORD, notReady)).toEqual(reviewed([notReady]));
+  });
+});
+
+describe("attemptStanding", () => {
+  test("is open with no receipt yet", () => {
+    expect(attemptStanding(RUNNING_RECORD, { at: need.at, budget: 2 })).toEqual({ kind: "open", receipts: [] });
+  });
+
+  test("is open while a not-ready verdict is within the budget", () => {
+    expect(attemptStanding(reviewed([notReady]), { at: need.at, budget: 2 })).toEqual({
+      kind: "open",
+      receipts: [notReady],
     });
   });
 
-  test("refuses a receipt for an iteration the engine did not ask for", () => {
-    expect(recordReceipt(RUNNING_RECORD, { receipt: ready, requested: firstAttempt })).toEqual({
-      ok: false,
-      refusal: { kind: "unrequested-iteration", expected: 1, found: 2 },
+  test("is finished once the review is ready", () => {
+    expect(attemptStanding(reviewed([notReady, ready]), { at: need.at, budget: 2 })).toEqual({
+      kind: "finished",
+      receipt: ready,
+    });
+  });
+
+  test("is spent once the budget's last review came back not ready", () => {
+    expect(attemptStanding(reviewed([notReady]), { at: need.at, budget: 1 })).toEqual({
+      kind: "spent",
+      receipt: notReady,
+      budget: 1,
     });
   });
 });
@@ -170,12 +185,12 @@ describe("recordReceipt", () => {
 describe("artifactFreeze", () => {
   test("a final review freezes the artifact until the stage completes or the person asks for changes", () => {
     expect(
-      artifactFreeze(reviewed([notReady, ready]), { at: need.at, artifact: document, budget: 2 }),
+      artifactFreeze(reviewed([notReady, ready]), { at: need.at, budget: 2 }),
     ).toEqual({ kind: "frozen", receipt: ready });
   });
 
   test("an open review leaves the artifact open", () => {
-    expect(artifactFreeze(reviewed([notReady]), { at: need.at, artifact: document, budget: 2 })).toEqual({
+    expect(artifactFreeze(reviewed([notReady]), { at: need.at, budget: 2 })).toEqual({
       kind: "open",
     });
   });

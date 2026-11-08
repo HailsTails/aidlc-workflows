@@ -5,7 +5,7 @@ import { agentSlug, artifactName } from "../../workflow-definition/domain/identi
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import { RUNNING_RECORD, stageOf, unitOf } from "../fixtures/workflow-record.fixture.ts";
 import type { ReviewReceipt } from "./review.ts";
-import { nextRoute, type RouteContext } from "./routing.ts";
+import { nextRoute, UPSTREAM_BUDGET_SPENT, type RouteContext } from "./routing.ts";
 import type { StageState, WorkflowRecord } from "./workflow-record.ts";
 
 const NOW = at("2026-11-08T10:00:00Z");
@@ -14,7 +14,12 @@ const units = stageOf("units-generation");
 const generation = stageOf("code-generation");
 const ledger = unitOf("ledger");
 
-const context: RouteContext = { method: methodSliceFixture, personAsked: "not-asked", time: NOW };
+const context: RouteContext = {
+  method: methodSliceFixture,
+  personAsked: "not-asked",
+  time: NOW,
+  budgetSpent: UPSTREAM_BUDGET_SPENT,
+};
 
 const withStages = (stages: readonly StageState[]): WorkflowRecord => ({ ...RUNNING_RECORD, stages });
 
@@ -86,12 +91,21 @@ describe("nextRoute with the review budget spent", () => {
     receivedAt: at("2026-11-08T09:30:00Z"),
   });
 
-  test("puts the gate to the person", () => {
-    const spent: WorkflowRecord = {
-      ...withStages([{ stage: generation, unit: ledger, progress: "awaiting-approval" }]),
-      reviews: [notReadyAt(1), notReadyAt(2)],
-    };
+  const spent: WorkflowRecord = {
+    ...withStages([{ stage: generation, unit: ledger, progress: "awaiting-approval" }]),
+    reviews: [notReadyAt(1), notReadyAt(2)],
+  };
 
+  test("a plugin's policy decides what happens instead of core", () => {
+    expect(
+      nextRoute(spent, { ...context, budgetSpent: (budget) => ({ kind: "stopped", refusal: { kind: "stages-unfinished", remaining: [budget.state] } }) }),
+    ).toEqual({
+      kind: "stopped",
+      refusal: { kind: "stages-unfinished", remaining: [{ stage: generation, unit: ledger, progress: "awaiting-approval" }] },
+    });
+  });
+
+  test("core's upstream policy puts the gate to the person", () => {
     expect(nextRoute(spent, context)).toMatchObject({
       kind: "ask-person",
       gate: { kind: "stage", stage: generation, unit: ledger },

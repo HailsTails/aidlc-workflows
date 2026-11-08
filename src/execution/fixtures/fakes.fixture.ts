@@ -14,6 +14,7 @@ import type {
 } from "../application/ports.ts";
 import type { AuditEntry, AuditEvent } from "../domain/audit.ts";
 import type { HumanEvidence } from "../domain/gate.ts";
+import type { GuardSwitch } from "../domain/guard.ts";
 import {
   auditSequence,
   recordVersion,
@@ -112,10 +113,12 @@ export const chatOn = (intent: IntentId | null): Sessions => ({
     }),
 });
 
-export const guardsAsRecorded: GuardEnvironment = {
+export const machineSwitched = (machineSwitches: readonly GuardSwitch[]): GuardEnvironment => ({
   lock: () => Promise.resolve({ kind: "unlocked" }),
-  machineLowered: () => Promise.resolve([]),
-};
+  machineSwitches: () => Promise.resolve(machineSwitches),
+});
+
+export const guardsAsRecorded: GuardEnvironment = machineSwitched([]);
 
 export const knownPlan = (fingerprint: PlanFingerprint | null): PlanFingerprints => ({
   current: () => Promise.resolve(fingerprint),

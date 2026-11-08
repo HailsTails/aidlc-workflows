@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { at } from "../../kernel/fixtures/values.fixture.ts";
 import { CORE_GUARDS, type GuardRefusal, type GuardSwitch } from "./guard.ts";
-import { enforce, standingOf, type GuardContext } from "./guard-standing.ts";
+import { enforce, lockedIn, standingOf, switchOf, type GuardContext } from "./guard-standing.ts";
 
 const switchedOff: GuardSwitch = {
   guard: CORE_GUARDS.stateTransition.id,
@@ -21,7 +21,22 @@ const strict: GuardContext = {
   policy: "strict",
   lock: { kind: "unlocked" },
   switches: [],
-  machineLowered: [],
+  machineSwitches: [],
+  spent: [],
+};
+
+const presenceOverride: GuardSwitch = {
+  guard: CORE_GUARDS.humanPresence.id,
+  state: "off",
+  personWords: "go ahead without asking me this once",
+  at: at("2026-11-08T10:10:00Z"),
+};
+
+const unattended: GuardSwitch = {
+  guard: CORE_GUARDS.humanPresence.id,
+  state: "off",
+  personWords: "AIDLC_HUMAN_PRESENCE=off",
+  at: at("2026-11-08T09:00:00Z"),
 };
 
 const outOfOrder: GuardRefusal = {
@@ -72,13 +87,59 @@ describe("standingOf with the person's switches", () => {
     ).toEqual({ kind: "standing" });
   });
 
-  test("the machine switch lowers even human presence", () => {
+  test("the machine switch lowers even human presence, and keeps the setting that did it", () => {
+    expect(standingOf(CORE_GUARDS.humanPresence, { ...strict, machineSwitches: [unattended] })).toEqual({
+      kind: "stood-aside",
+      because: { kind: "machine-switch", change: unattended },
+    });
+  });
+});
+
+describe("standingOf for a guard lifted once", () => {
+  test("the person's override stands it aside once", () => {
+    expect(standingOf(CORE_GUARDS.humanPresence, { ...strict, switches: [presenceOverride] })).toEqual({
+      kind: "stood-aside",
+      because: { kind: "switched-off", change: presenceOverride },
+    });
+  });
+
+  test("an override already used leaves the guard standing", () => {
     expect(
       standingOf(CORE_GUARDS.humanPresence, {
         ...strict,
-        machineLowered: [CORE_GUARDS.humanPresence.id],
+        switches: [presenceOverride],
+        spent: [presenceOverride],
       }),
-    ).toEqual({ kind: "stood-aside", because: { kind: "machine-switch" } });
+    ).toEqual({ kind: "standing" });
+  });
+});
+
+describe("a refusal locked where it is set", () => {
+  const locked = lockedIn(outOfOrder, "this work's record");
+
+  test("names where it is locked", () => {
+    expect(locked.guard.lift).toEqual({ kind: "locked", lockedIn: "this work's record" });
+  });
+
+  test("holds whatever was switched, by the person, the policy or the machine", () => {
+    expect(
+      enforce(locked, {
+        ...strict,
+        policy: "off",
+        switches: [switchedOff],
+        machineSwitches: [{ ...switchedOff, personWords: "AIDLC_STATE_TRANSITION=off" }],
+      }),
+    ).toEqual({ kind: "holds", refusal: locked });
+  });
+});
+
+describe("switchOf", () => {
+  test("a switch stand-aside keeps the switch", () => {
+    expect(switchOf({ kind: "switched-off", change: presenceOverride })).toEqual(presenceOverride);
+  });
+
+  test("a policy stand-aside has no switch", () => {
+    expect(switchOf({ kind: "policy", policy: "off" })).toBeNull();
   });
 });
 

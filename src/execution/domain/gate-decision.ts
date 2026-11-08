@@ -1,13 +1,16 @@
 import { accepted, type Result } from "../../kernel/result.ts";
 import type { Timestamp } from "../../kernel/values.ts";
-import type { Approval, Gate, GateDecision, HumanEvidence } from "./gate.ts";
+import type { ApprovalBasis, Gate, GateDecision } from "./gate.ts";
+import type { GuardRefusal } from "./guard.ts";
 import type { PlanFingerprint } from "./identities.ts";
 import { jumpToStage, reviseUnit, setStageProgress } from "./stage-progress.ts";
 import type { Transition, TransitionCause } from "./transition.ts";
 import type { Checkpoint } from "./unit.ts";
 import {
   parkWorkflow,
+  type DecisionOutcome,
   type RecordChange,
+  type RecordedApproval,
   type RecordMoveRefusal,
   type StageProgress,
   type WorkflowRecord,
@@ -16,7 +19,7 @@ import {
 export type GateDecisionRequest = {
   readonly gate: Gate;
   readonly decision: GateDecision;
-  readonly evidence: HumanEvidence;
+  readonly basis: ApprovalBasis;
   readonly fingerprint: PlanFingerprint | null;
   readonly time: Timestamp;
 };
@@ -24,7 +27,7 @@ export type GateDecisionRequest = {
 export type GateOutcome = {
   readonly record: WorkflowRecord;
   readonly transitions: readonly Transition[];
-  readonly approval: Approval;
+  readonly approval: RecordedApproval;
 };
 
 type SettlingDecision = Extract<GateDecision["kind"], "approve" | "request-changes" | "skip">;
@@ -132,15 +135,16 @@ const decisionMoves = (record: WorkflowRecord, request: GateDecisionRequest): Mo
   }
 };
 
-const approvalOf = (request: GateDecisionRequest): Approval => ({
+const approvalOf = (request: GateDecisionRequest, outcome: DecisionOutcome): RecordedApproval => ({
   gate: request.gate,
   decision: request.decision,
   decidedAt: request.time,
-  evidence: request.evidence,
+  basis: request.basis,
   fingerprint: request.fingerprint,
+  outcome,
 });
 
-const recorded = (change: RecordChange, approval: Approval): GateOutcome => ({
+const recorded = (change: RecordChange, approval: RecordedApproval): GateOutcome => ({
   record: { ...change.record, approvals: [...change.record.approvals, approval] },
   transitions: change.transitions,
   approval,
@@ -151,5 +155,14 @@ export const decideAtGate = (
   request: GateDecisionRequest,
 ): Result<GateOutcome, RecordMoveRefusal> => {
   const moved = decisionMoves(record, request);
-  return moved.ok ? accepted(recorded(moved.value, approvalOf(request))) : moved;
+  return moved.ok ? accepted(recorded(moved.value, approvalOf(request, { kind: "applied" }))) : moved;
 };
+
+export const keepUnapplied = (
+  record: WorkflowRecord,
+  kept: { readonly request: GateDecisionRequest; readonly refusal: GuardRefusal },
+): GateOutcome =>
+  recorded(
+    { record, transitions: [] },
+    approvalOf(kept.request, { kind: "recorded-not-applied", refusal: kept.refusal }),
+  );

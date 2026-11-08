@@ -12,8 +12,11 @@ import {
   memoryAuditLog,
   memoryRecordStore,
 } from "../fixtures/fakes.fixture.ts";
-import { CHAT, RUNNING_RECORD, stageOf } from "../fixtures/workflow-record.fixture.ts";
-import { CORE_GUARDS } from "../domain/guard.ts";
+import { CHAT, RUNNING_RECORD, stageOf, typedTurn } from "../fixtures/workflow-record.fixture.ts";
+import { CORE_GUARDS, guardId, type GuardDeclaration } from "../domain/guard.ts";
+import { composeGuards } from "../domain/guard-inventory.ts";
+import { NO_HOST_RULES, type HostGuardRule } from "../domain/host-guard-rules.ts";
+import { UPSTREAM_BUDGET_SPENT } from "../domain/routing.ts";
 import type { HostEvent } from "../domain/host-event.ts";
 import type { WorkflowRecord } from "../domain/workflow-record.ts";
 import { observeHostEventUseCase, type ObserveHostEventDependencies } from "./observe-host-event.ts";
@@ -50,7 +53,9 @@ const hostOver = (record: WorkflowRecord): ObserveHostEventDependencies => ({
   clock: fixedClock(NOW),
   methods: installedMethod(methodSliceFixture),
   artifacts: artifactsUnder("aidlc/intents"),
-  guards: guardsAsRecorded,
+  environment: guardsAsRecorded,
+  rules: accept(composeGuards(NO_HOST_RULES)).host,
+  budgetSpent: UPSTREAM_BUDGET_SPENT,
 });
 
 const writeToReviewed: HostEvent = {
@@ -124,5 +129,53 @@ describe("ObserveHostEvent at stop and status", () => {
     expect(await observeHostEventUseCase(host).observe(writeToReviewed)).toMatchObject({
       verdict: { kind: "allow" },
     });
+  });
+});
+
+const quietHours: GuardDeclaration = {
+  id: accept(guardId("test-pro/quiet-hours")),
+  protects: "No prompts reach the agent during the team's quiet hours.",
+  lift: { kind: "switch" },
+};
+
+const quietAtPrompt: HostGuardRule<"user-prompt"> = {
+  declaration: quietHours,
+  check: () => ({ guard: quietHours, reason: "It is quiet hours.", nextStep: "Try again in the morning." }),
+};
+
+describe("ObserveHostEvent with a contributed guard", () => {
+  test("runs the contributed check at its host point, through the same guard standing", async () => {
+    const host = {
+      ...hostOver(reviewed),
+      rules: accept(composeGuards({ ...NO_HOST_RULES, "user-prompt": [quietAtPrompt] })).host,
+    };
+
+    expect(
+      await observeHostEventUseCase(host).observe({
+        point: "user-prompt",
+        session: CHAT,
+        at: NOW,
+        evidence: typedTurn(NOW),
+      }),
+    ).toMatchObject({ verdict: { kind: "block", refusal: { guard: quietHours } } });
+  });
+
+  test("the person's switch lifts a contributed guard like a core one", async () => {
+    const host = {
+      ...hostOver({
+        ...reviewed,
+        guardSwitches: [{ guard: quietHours.id, state: "off", personWords: "ignore quiet hours", at: NOW }],
+      }),
+      rules: accept(composeGuards({ ...NO_HOST_RULES, "user-prompt": [quietAtPrompt] })).host,
+    };
+
+    expect(
+      await observeHostEventUseCase(host).observe({
+        point: "user-prompt",
+        session: CHAT,
+        at: NOW,
+        evidence: typedTurn(NOW),
+      }),
+    ).toMatchObject({ verdict: { kind: "allow" } });
   });
 });

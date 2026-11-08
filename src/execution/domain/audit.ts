@@ -1,16 +1,16 @@
 import type { Timestamp } from "../../kernel/values.ts";
 import type { HookPoint } from "../../workflow-definition/domain/hooks.ts";
-import type { Approval } from "./gate.ts";
 import type { GuardDeclaration, GuardRefusal, GuardSwitch } from "./guard.ts";
 import type { StandAsideReason } from "./guard-standing.ts";
 import type { AuditSequence, IntentId, SessionId } from "./identities.ts";
 import type { ReviewAttempt, ReviewReceipt } from "./review.ts";
 import type { SessionBinding } from "./session.ts";
 import type { Transition } from "./transition.ts";
+import type { RecordedApproval } from "./workflow-record.ts";
 
 export type AuditFact =
   | { readonly kind: "transition"; readonly transition: Transition }
-  | { readonly kind: "gate-decided"; readonly approval: Approval }
+  | { readonly kind: "gate-decided"; readonly approval: RecordedApproval }
   | { readonly kind: "guard-refused"; readonly refusal: GuardRefusal }
   | {
       readonly kind: "guard-stood-aside";

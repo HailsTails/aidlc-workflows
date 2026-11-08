@@ -109,7 +109,7 @@ describe("other fakes", () => {
   });
 
   test("guardsAsRecorded adds no lock and lowers nothing", async () => {
-    expect([await guardsAsRecorded.lock(), await guardsAsRecorded.machineLowered()]).toEqual([
+    expect([await guardsAsRecorded.lock(), await guardsAsRecorded.machineSwitches()]).toEqual([
       { kind: "unlocked" },
       [],
     ]);

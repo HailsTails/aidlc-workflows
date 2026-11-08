@@ -7,9 +7,9 @@ import type {
 } from "../../workflow-definition/domain/identities.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
+import { gateDecider } from "./autonomy.ts";
 import type { Gate } from "./gate.ts";
 import type { UnitName } from "./identities.ts";
-import { presenceRequirement } from "./presence.ts";
 import type { ReviewAttempt } from "./review.ts";
 import { nextReviewStep, stageReviewClass, type ReviewStep } from "./review-attempt.ts";
 import { moveStage } from "./stage-progress.ts";
@@ -40,10 +40,24 @@ export type RouteStep =
   | { readonly kind: "finished" }
   | { readonly kind: "stopped"; readonly refusal: RecordMoveRefusal };
 
+export type SpentBudget = {
+  readonly record: WorkflowRecord;
+  readonly state: StageState;
+  readonly stage: Stage;
+  readonly budget: number;
+  readonly time: Timestamp;
+  readonly atGate: RouteStep;
+};
+
+export type BudgetSpentPolicy = (spent: SpentBudget) => RouteStep;
+
+export const UPSTREAM_BUDGET_SPENT: BudgetSpentPolicy = (spent) => spent.atGate;
+
 export type RouteContext = {
   readonly method: Method;
   readonly personAsked: "asked" | "not-asked";
   readonly time: Timestamp;
+  readonly budgetSpent: BudgetSpentPolicy;
 };
 
 type Placed = {
@@ -85,24 +99,28 @@ const engineMove = (placed: Placed, move: "start" | "approve"): RouteStep =>
 
 const atGate = (placed: Placed): RouteStep => {
   const gate: Gate = { kind: "stage", stage: placed.state.stage, unit: placed.state.unit };
-  const requirement = presenceRequirement({
-    gate,
-    phase: placed.stage.phase,
-    autonomy: placed.record.settings.constructionAutonomy,
-  });
-  return requirement === "engine-may-decide"
+  const decider = gateDecider({ gate, phase: placed.stage.phase, settings: placed.record.settings });
+  return decider === "engine-may-decide"
     ? engineMove(placed, "approve")
     : { kind: "ask-person", gate, stage: placed.stage };
 };
 
-const budgetSpent = (placed: Placed): RouteStep => atGate(placed);
+const budgetSpent = (placed: Placed, budget: number): RouteStep =>
+  placed.context.budgetSpent({
+    record: placed.record,
+    state: placed.state,
+    stage: placed.stage,
+    budget,
+    time: placed.context.time,
+    atGate: atGate(placed),
+  });
 
 const afterReview = (placed: Placed, step: ReviewStep): RouteStep => {
   switch (step.kind) {
     case "request":
       return { kind: "request-review", attempt: step.attempt };
     case "budget-spent":
-      return budgetSpent(placed);
+      return budgetSpent(placed, step.budget);
     case "finished":
     case "no-review":
       return atGate(placed);

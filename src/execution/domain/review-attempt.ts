@@ -1,13 +1,11 @@
-import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { Timestamp } from "../../kernel/values.ts";
-import type { AgentSlug, ArtifactName } from "../../workflow-definition/domain/identities.ts";
 import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { ReviewPolicy, Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ReviewClass } from "../../workflow-definition/domain/vocabulary.ts";
 import type { Approval } from "./gate.ts";
 import { orderOf } from "./moment.ts";
 import type { ReviewAttempt, ReviewReceipt } from "./review.ts";
-import type { StageAt, WorkflowRecord } from "./workflow-record.ts";
+import { appliedApprovals, type StageAt, type WorkflowRecord } from "./workflow-record.ts";
 
 const CLASS_RANK: Readonly<Record<ReviewClass, number>> = {
   none: 0,
@@ -62,12 +60,13 @@ const startsNewAttempt = (approval: Approval, at: StageAt): "new-attempt" | "sam
     ? "new-attempt"
     : "same-attempt";
 
-const attemptStart = (record: WorkflowRecord, at: StageAt): Timestamp | null =>
-  record.approvals.filter((approval) => startsNewAttempt(approval, at) === "new-attempt").at(-1)
-    ?.decidedAt ?? null;
+export const attemptStart = (record: WorkflowRecord, at: StageAt): Timestamp | null =>
+  appliedApprovals(record)
+    .filter((approval) => startsNewAttempt(approval, at) === "new-attempt")
+    .at(-1)?.decidedAt ?? null;
 
-const inAttempt = (receipt: ReviewReceipt, start: Timestamp | null): "current" | "earlier" =>
-  start === null || orderOf(receipt.attempt.requestedAt, start) === "later" ? "current" : "earlier";
+export const sinceAttemptStart = (moment: Timestamp, start: Timestamp | null): "current" | "earlier" =>
+  start === null || orderOf(moment, start) === "later" ? "current" : "earlier";
 
 export const attemptReceipts = (record: WorkflowRecord, at: StageAt): readonly ReviewReceipt[] => {
   const start = attemptStart(record, at);
@@ -75,16 +74,33 @@ export const attemptReceipts = (record: WorkflowRecord, at: StageAt): readonly R
     (receipt) =>
       receipt.attempt.stage === at.stage &&
       receipt.attempt.unit === at.unit &&
-      inAttempt(receipt, start) === "current",
+      sinceAttemptStart(receipt.attempt.requestedAt, start) === "current",
   );
 };
 
-export const receiptFinality = (receipt: ReviewReceipt, budget: number): "final" | "open" =>
-  receipt.verdict === "ready" ||
-  receipt.attempt.reviewClass === "advisory" ||
-  receipt.attempt.iteration >= budget
-    ? "final"
-    : "open";
+export type AttemptQuestion = {
+  readonly at: StageAt;
+  readonly budget: number;
+};
+
+export type AttemptStanding =
+  | { readonly kind: "open"; readonly receipts: readonly ReviewReceipt[] }
+  | { readonly kind: "finished"; readonly receipt: ReviewReceipt }
+  | { readonly kind: "spent"; readonly receipt: ReviewReceipt; readonly budget: number };
+
+export const attemptStanding = (record: WorkflowRecord, question: AttemptQuestion): AttemptStanding => {
+  const receipts = attemptReceipts(record, question.at);
+  const latest = receipts.at(-1);
+  if (latest === undefined) {
+    return { kind: "open", receipts };
+  }
+  if (latest.verdict === "ready" || latest.attempt.reviewClass === "advisory") {
+    return { kind: "finished", receipt: latest };
+  }
+  return receipts.length >= question.budget
+    ? { kind: "spent", receipt: latest, budget: question.budget }
+    : { kind: "open", receipts };
+};
 
 export type ReviewNeed = {
   readonly at: StageAt;
@@ -116,61 +132,42 @@ const requestStep = (
   },
 });
 
-const afterReceipts = (
+const stepFrom = (
   need: ReviewNeed & { readonly policy: ReviewPolicy },
-  receipts: readonly ReviewReceipt[],
+  standing: AttemptStanding,
 ): ReviewStep => {
-  const budget = reviewBudget(need.reviewClass, need.policy);
-  const latest = receipts.at(-1);
-  const nextRequest = requestStep(need, receipts.length + 1);
-  if (latest === undefined || need.personAsked === "asked") {
-    return nextRequest;
+  switch (standing.kind) {
+    case "open":
+      return requestStep(need, standing.receipts.length + 1);
+    case "finished":
+      return { kind: "finished", receipt: standing.receipt };
+    case "spent":
+      return { kind: "budget-spent", at: need.at, budget: standing.budget };
   }
-  if (latest.verdict === "ready" || latest.attempt.reviewClass === "advisory") {
-    return { kind: "finished", receipt: latest };
-  }
-  return receipts.length >= budget ? { kind: "budget-spent", at: need.at, budget } : nextRequest;
 };
+
+const reviewedStep = (
+  record: WorkflowRecord,
+  need: ReviewNeed & { readonly policy: ReviewPolicy },
+): ReviewStep =>
+  need.personAsked === "asked"
+    ? requestStep(need, attemptReceipts(record, need.at).length + 1)
+    : stepFrom(
+        need,
+        attemptStanding(record, { at: need.at, budget: reviewBudget(need.reviewClass, need.policy) }),
+      );
 
 export const nextReviewStep = (record: WorkflowRecord, need: ReviewNeed): ReviewStep => {
   const { policy } = need;
   return policy === null || need.reviewClass === "none"
     ? { kind: "no-review", at: need.at }
-    : afterReceipts({ ...need, policy }, attemptReceipts(record, need.at));
+    : reviewedStep(record, { ...need, policy });
 };
 
-export type ReceiptRefusal =
-  | {
-      readonly kind: "unexpected-reviewer";
-      readonly expected: AgentSlug;
-      readonly found: AgentSlug;
-    }
-  | { readonly kind: "unrequested-iteration"; readonly expected: number; readonly found: number };
-
-export type ReceiptDelivery = {
-  readonly receipt: ReviewReceipt;
-  readonly requested: ReviewAttempt;
-};
-
-export const recordReceipt = (
-  record: WorkflowRecord,
-  delivery: ReceiptDelivery,
-): Result<WorkflowRecord, ReceiptRefusal> => {
-  const { receipt, requested } = delivery;
-  const { reviewer, iteration } = receipt.attempt;
-  if (reviewer !== requested.reviewer) {
-    return refused({ kind: "unexpected-reviewer", expected: requested.reviewer, found: reviewer });
-  }
-  return iteration === requested.iteration
-    ? accepted({ ...record, reviews: [...record.reviews, receipt] })
-    : refused({ kind: "unrequested-iteration", expected: requested.iteration, found: iteration });
-};
-
-export type FreezeQuestion = {
-  readonly at: StageAt;
-  readonly artifact: ArtifactName;
-  readonly budget: number;
-};
+export const withReceipt = (record: WorkflowRecord, receipt: ReviewReceipt): WorkflowRecord => ({
+  ...record,
+  reviews: [...record.reviews, receipt],
+});
 
 export type ArtifactFreeze =
   | { readonly kind: "frozen"; readonly receipt: ReviewReceipt }
@@ -184,13 +181,9 @@ const stageCompleted = (record: WorkflowRecord, at: StageAt): "completed" | "unf
     ? "completed"
     : "unfinished";
 
-export const artifactFreeze = (record: WorkflowRecord, question: FreezeQuestion): ArtifactFreeze => {
-  const latest = attemptReceipts(record, question.at)
-    .filter((receipt) => receipt.attempt.artifact === question.artifact)
-    .at(-1);
-  return latest !== undefined &&
-    receiptFinality(latest, question.budget) === "final" &&
-    stageCompleted(record, question.at) === "unfinished"
-    ? { kind: "frozen", receipt: latest }
+export const artifactFreeze = (record: WorkflowRecord, question: AttemptQuestion): ArtifactFreeze => {
+  const standing = attemptStanding(record, question);
+  return standing.kind !== "open" && stageCompleted(record, question.at) === "unfinished"
+    ? { kind: "frozen", receipt: standing.receipt }
     : { kind: "open" };
 };

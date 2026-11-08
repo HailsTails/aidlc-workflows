@@ -3,14 +3,26 @@ import type { Method } from "../../workflow-definition/domain/method.ts";
 import { transitionFacts } from "../domain/audit.ts";
 import type { Directive } from "../domain/directive.ts";
 import { STAGE_GATE_OPTIONS, stageGateQuestion } from "../domain/gate-question.ts";
-import { transitionStop } from "../domain/guard-stops.ts";
+import { stateTransitionRule } from "../domain/guard-rules.ts";
 import type { IntentId } from "../domain/identities.ts";
 import type { ExecutionRefusal } from "../domain/refusals.ts";
-import { nextRoute, type RouteStep, type StageWork } from "../domain/routing.ts";
-import type { RecordChange, WorkflowRecord } from "../domain/workflow-record.ts";
+import {
+  nextRoute,
+  type BudgetSpentPolicy,
+  type RouteStep,
+  type StageWork,
+} from "../domain/routing.ts";
+import type { RecordChange, RecordMoveRefusal, WorkflowRecord } from "../domain/workflow-record.ts";
 import { auditTrail, type AuditTrail } from "./audit-trail.ts";
 import type { MethodProvider } from "./boundary-ports.ts";
-import type { ArtifactLocations, AuditLog, Clock, RecordStore } from "./ports.ts";
+import type {
+  ArtifactLocations,
+  AuditLog,
+  Clock,
+  GuardEnvironment,
+  RecordStore,
+} from "./ports.ts";
+import { heldRefusal, stopRaiser, type RaiseStop } from "./raise-stop.ts";
 import type { NextStep } from "./use-cases.ts";
 
 export type NextStepDependencies = {
@@ -19,9 +31,14 @@ export type NextStepDependencies = {
   readonly clock: Clock;
   readonly methods: MethodProvider;
   readonly artifacts: ArtifactLocations;
+  readonly environment: GuardEnvironment;
+  readonly budgetSpent: BudgetSpentPolicy;
 };
 
-type Stepping = NextStepDependencies & { readonly trail: AuditTrail };
+type Stepping = NextStepDependencies & {
+  readonly trail: AuditTrail;
+  readonly raise: RaiseStop;
+};
 
 type Routing = {
   readonly record: WorkflowRecord;
@@ -44,6 +61,20 @@ const runStage = (stepping: Stepping, routing: Routing & { readonly work: StageW
     })),
     rules: work.rules,
   };
+};
+
+const stopped = async (
+  stepping: Stepping,
+  routing: Routing & { readonly refusal: RecordMoveRefusal },
+): Promise<Directive> => {
+  const stop = stateTransitionRule.check(routing.refusal);
+  const verdict = await stepping.raise({
+    refusal: stop,
+    record: routing.record,
+    scene: { intent: routing.record.id, session: null, at: stepping.clock.now() },
+    after: null,
+  });
+  return { kind: "refused", refusal: heldRefusal(verdict, stop) };
 };
 
 const directiveFor = async (
@@ -70,7 +101,7 @@ const directiveFor = async (
     case "finished":
       return { kind: "finished" };
     case "stopped":
-      return { kind: "refused", refusal: transitionStop(step.refusal) };
+      return stopped(stepping, { ...routing, refusal: step.refusal });
   }
 };
 
@@ -96,6 +127,7 @@ const route = async (stepping: Stepping, routing: Routing): Promise<Stepped> => 
     method: routing.method,
     personAsked: "not-asked",
     time: stepping.clock.now(),
+    budgetSpent: stepping.budgetSpent,
   });
   if (step.kind !== "moved") {
     return accepted(await directiveFor(stepping, { ...routing, step }));
@@ -118,6 +150,10 @@ const next = async (stepping: Stepping, request: { readonly intent: IntentId }):
 };
 
 export const nextStepUseCase = (dependencies: NextStepDependencies): NextStep => {
-  const stepping: Stepping = { ...dependencies, trail: auditTrail(dependencies.audit) };
+  const stepping: Stepping = {
+    ...dependencies,
+    trail: auditTrail(dependencies.audit),
+    raise: stopRaiser(dependencies),
+  };
   return { next: (request) => next(stepping, request) };
 };

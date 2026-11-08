@@ -1,15 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { at } from "../../kernel/fixtures/values.fixture.ts";
-import { RUNNING_RECORD, stageOf, typedTurn, unitOf } from "../fixtures/workflow-record.fixture.ts";
-import type { Approval, Gate } from "./gate.ts";
-import { decideAtGate } from "./gate-decision.ts";
+import { heardAt, RUNNING_RECORD, stageOf, unitOf } from "../fixtures/workflow-record.fixture.ts";
+import type { Gate } from "./gate.ts";
+import { CORE_GUARDS, type GuardRefusal } from "./guard.ts";
+import { decideAtGate, keepUnapplied } from "./gate-decision.ts";
 import { planFingerprint } from "./identities.ts";
 import type { Checkpoint } from "./unit.ts";
-import type { WorkflowRecord } from "./workflow-record.ts";
+import type { RecordedApproval, WorkflowRecord } from "./workflow-record.ts";
 
 const NOW = at("2026-11-08T10:10:00Z");
-const HEARD = typedTurn(at("2026-11-08T10:05:00Z"));
+const HEARD = heardAt(at("2026-11-08T10:05:00Z"));
 const requirements = stageOf("requirements-analysis");
 const generation = stageOf("code-generation");
 const ledger = unitOf("ledger");
@@ -37,12 +38,13 @@ const atCheckpoint: WorkflowRecord = {
   checkpoints: [ledgerCheckpoint],
 };
 
-const approvalAt = (gate: Gate): Approval => ({
+const approvalAt = (gate: Gate): RecordedApproval => ({
   gate,
   decision: { kind: "approve" },
   decidedAt: NOW,
-  evidence: HEARD,
+  basis: HEARD,
   fingerprint: null,
+  outcome: { kind: "applied" },
 });
 
 describe("decideAtGate at a stage gate", () => {
@@ -50,7 +52,7 @@ describe("decideAtGate at a stage gate", () => {
     const decided = decideAtGate(RUNNING_RECORD, {
       gate: requirementsGate,
       decision: { kind: "request-changes", feedback: "Add the refund rules." },
-      evidence: HEARD,
+      basis: HEARD,
       fingerprint: null,
       time: NOW,
     });
@@ -77,7 +79,7 @@ describe("decideAtGate takes the person's word", () => {
       decideAtGate(early, {
         gate: requirementsGate,
         decision: { kind: "approve" },
-        evidence: HEARD,
+        basis: HEARD,
         fingerprint: null,
         time: NOW,
       }),
@@ -113,7 +115,7 @@ describe("decideAtGate stopping and refusing", () => {
       decideAtGate(RUNNING_RECORD, {
         gate: requirementsGate,
         decision: { kind: "stop" },
-        evidence: HEARD,
+        basis: HEARD,
         fingerprint: null,
         time: NOW,
       }),
@@ -128,7 +130,7 @@ describe("decideAtGate stopping and refusing", () => {
       decideAtGate(RUNNING_RECORD, {
         gate: { kind: "stage", stage: stageOf("build-and-test"), unit: null },
         decision: { kind: "approve" },
-        evidence: HEARD,
+        basis: HEARD,
         fingerprint: null,
         time: NOW,
       }),
@@ -147,7 +149,7 @@ describe("decideAtGate at a plan approval or checkpoint", () => {
       decideAtGate(atCheckpoint, {
         gate: planGate,
         decision: { kind: "approve" },
-        evidence: HEARD,
+        basis: HEARD,
         fingerprint: PLAN,
         time: NOW,
       }),
@@ -159,7 +161,7 @@ describe("decideAtGate at a plan approval or checkpoint", () => {
       decideAtGate(atCheckpoint, {
         gate: { kind: "checkpoint", checkpoint: ledgerCheckpoint },
         decision: { kind: "approve" },
-        evidence: HEARD,
+        basis: HEARD,
         fingerprint: null,
         time: NOW,
       }),
@@ -174,13 +176,42 @@ describe("decideAtGate at a plan approval or checkpoint", () => {
       decideAtGate(atCheckpoint, {
         gate: { kind: "checkpoint", checkpoint: ledgerCheckpoint },
         decision: { kind: "request-changes", feedback: "Retry the ledger sync." },
-        evidence: HEARD,
+        basis: HEARD,
         fingerprint: null,
         time: NOW,
       }),
     ).toMatchObject({
       ok: true,
       value: { transitions: [{ stage: generation, unit: ledger, from: "completed", to: "revising" }] },
+    });
+  });
+});
+
+describe("keepUnapplied", () => {
+  test("keeps the person's decision with the refusal that stopped it, and moves nothing", () => {
+    const parked: GuardRefusal = {
+      guard: CORE_GUARDS.stateTransition,
+      reason: "This work is parked; that step needs it running.",
+      nextStep: "Ask the engine for the next step and carry that out.",
+    };
+
+    expect(
+      keepUnapplied(RUNNING_RECORD, {
+        request: {
+          gate: requirementsGate,
+          decision: { kind: "approve" },
+          basis: HEARD,
+          fingerprint: null,
+          time: NOW,
+        },
+        refusal: parked,
+      }),
+    ).toMatchObject({
+      record: {
+        stages: RUNNING_RECORD.stages,
+        approvals: [{ decision: { kind: "approve" }, outcome: { kind: "recorded-not-applied", refusal: parked } }],
+      },
+      transitions: [],
     });
   });
 });

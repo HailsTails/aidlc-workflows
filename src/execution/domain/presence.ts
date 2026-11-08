@@ -1,11 +1,10 @@
 import type { Timestamp } from "../../kernel/values.ts";
 import type { StageSlug } from "../../workflow-definition/domain/identities.ts";
-import type { Phase } from "../../workflow-definition/domain/vocabulary.ts";
 import type { AuditEvent } from "./audit.ts";
-import type { Approval, Gate, HumanEvidence } from "./gate.ts";
+import type { Gate, HumanEvidence } from "./gate.ts";
 import type { SessionId, UnitName } from "./identities.ts";
 import { orderOf } from "./moment.ts";
-import type { AutonomyMode, StageProgress } from "./workflow-record.ts";
+import type { RecordedApproval, StageProgress } from "./workflow-record.ts";
 
 export type PresenceWindow = {
   readonly session: SessionId;
@@ -16,14 +15,6 @@ export type PresenceWindow = {
 export type Presence =
   | { readonly kind: "present"; readonly evidence: HumanEvidence }
   | { readonly kind: "absent"; readonly window: PresenceWindow };
-
-export type PresenceRequirement = "person-decides" | "engine-may-decide";
-
-export type GateSetting = {
-  readonly gate: Gate;
-  readonly phase: Phase;
-  readonly autonomy: AutonomyMode;
-};
 
 type TurnReading = "stands" | "outside";
 
@@ -51,13 +42,6 @@ export const presenceIn = (window: PresenceWindow, turns: readonly HumanEvidence
     .reduce<HumanEvidence | null>(latestOf, null);
   return latest === null ? { kind: "absent", window } : { kind: "present", evidence: latest };
 };
-
-export const presenceRequirement = (setting: GateSetting): PresenceRequirement =>
-  setting.gate.kind === "stage" &&
-  setting.phase === "construction" &&
-  setting.autonomy === "autonomous"
-    ? "engine-may-decide"
-    : "person-decides";
 
 export type GateOpening =
   | { readonly kind: "opened"; readonly window: PresenceWindow }
@@ -93,14 +77,14 @@ const opensAt = (event: AuditEvent, place: GatePlace): Timestamp | null => {
     : null;
 };
 
-const latestDecision = (approvals: readonly Approval[]): Timestamp | null =>
-  approvals.at(-1)?.decidedAt ?? null;
+const latestDecision = (approvals: readonly RecordedApproval[]): Timestamp | null =>
+  approvals.filter((approval) => approval.outcome.kind === "applied").at(-1)?.decidedAt ?? null;
 
 export type GateWindowRequest = {
   readonly gate: Gate;
   readonly session: SessionId;
   readonly events: readonly AuditEvent[];
-  readonly approvals: readonly Approval[];
+  readonly approvals: readonly RecordedApproval[];
 };
 
 export const gateOpening = (request: GateWindowRequest): GateOpening => {

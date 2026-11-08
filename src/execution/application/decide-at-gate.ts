@@ -1,16 +1,22 @@
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import { transitionFacts } from "../domain/audit.ts";
-import type { Gate, GateDecision, HumanEvidence } from "../domain/gate.ts";
-import { decideAtGate, type GateOutcome } from "../domain/gate-decision.ts";
-import type { GuardRefusal } from "../domain/guard.ts";
-import { presenceStop, transitionStop } from "../domain/guard-stops.ts";
+import type { ApprovalBasis, Gate, GateDecision } from "../domain/gate.ts";
+import {
+  decideAtGate,
+  keepUnapplied,
+  type GateDecisionRequest,
+  type GateOutcome,
+} from "../domain/gate-decision.ts";
+import { humanPresenceRule, stateTransitionRule } from "../domain/guard-rules.ts";
+import { switchOf } from "../domain/guard-standing.ts";
 import type { IntentId, PlanFingerprint, SessionId } from "../domain/identities.ts";
 import { gateOpening, presenceIn, type Presence } from "../domain/presence.ts";
 import type { ExecutionRefusal } from "../domain/refusals.ts";
-import type { WorkflowRecord } from "../domain/workflow-record.ts";
-import { auditTrail, type AuditTrail } from "./audit-trail.ts";
+import type { RecordMoveRefusal, WorkflowRecord } from "../domain/workflow-record.ts";
+import { auditTrail, type AuditScene, type AuditTrail } from "./audit-trail.ts";
 import type { HumanTurnHistory } from "./boundary-ports.ts";
-import type { AuditLog, Clock, PlanFingerprints, RecordStore } from "./ports.ts";
+import type { AuditLog, Clock, GuardEnvironment, PlanFingerprints, RecordStore } from "./ports.ts";
+import { heldRefusal, stopRaiser, type RaiseStop } from "./raise-stop.ts";
 import type { DecideAtGate } from "./use-cases.ts";
 
 export type DecideAtGateDependencies = {
@@ -19,9 +25,13 @@ export type DecideAtGateDependencies = {
   readonly clock: Clock;
   readonly turns: HumanTurnHistory;
   readonly plans: PlanFingerprints;
+  readonly environment: GuardEnvironment;
 };
 
-type Deciding = DecideAtGateDependencies & { readonly trail: AuditTrail };
+type Deciding = DecideAtGateDependencies & {
+  readonly trail: AuditTrail;
+  readonly raise: RaiseStop;
+};
 
 type GateRequest = {
   readonly intent: IntentId;
@@ -30,28 +40,19 @@ type GateRequest = {
   readonly session: SessionId;
 };
 
-type HeardRequest = GateRequest & {
-  readonly record: WorkflowRecord;
-  readonly evidence: HumanEvidence;
-};
+type LoadedRequest = GateRequest & { readonly record: WorkflowRecord };
 
 type Decided = Result<WorkflowRecord, ExecutionRefusal>;
 
-const stop = async (
-  deciding: Deciding,
-  stopped: { readonly request: GateRequest; readonly refusal: GuardRefusal },
-): Promise<Decided> => {
-  await deciding.trail.record(
-    { intent: stopped.request.intent, session: stopped.request.session, at: deciding.clock.now() },
-    { kind: "guard-refused", refusal: stopped.refusal },
-  );
-  return refused({ kind: "guard", refusal: stopped.refusal });
-};
+type GateHearing = Presence | { readonly kind: "unopened" };
 
-const presenceOf = async (
-  deciding: Deciding,
-  request: GateRequest & { readonly record: WorkflowRecord },
-): Promise<Presence | null> => {
+const sceneOf = (deciding: Deciding, request: GateRequest): AuditScene => ({
+  intent: request.intent,
+  session: request.session,
+  at: deciding.clock.now(),
+});
+
+const hearingOf = async (deciding: Deciding, request: LoadedRequest): Promise<GateHearing> => {
   const opening = gateOpening({
     gate: request.gate,
     session: request.session,
@@ -61,59 +62,104 @@ const presenceOf = async (
   return opening.kind === "opened"
     ? presenceIn(
         opening.window,
-        await deciding.turns.humanTurnsSince({
-          session: request.session,
-          from: opening.window.openedAt,
-        }),
+        await deciding.turns.humanTurnsSince({ session: request.session, from: opening.window.openedAt }),
       )
-    : null;
+    : { kind: "unopened" };
+};
+
+const liftedBasis = async (
+  deciding: Deciding,
+  unheard: { readonly request: LoadedRequest; readonly heard: "unopened" | "absent" },
+): Promise<Result<ApprovalBasis, ExecutionRefusal>> => {
+  const { request } = unheard;
+  const stop = humanPresenceRule.check({ asked: "gate", gate: request.gate, heard: unheard.heard });
+  const verdict = await deciding.raise({
+    refusal: stop,
+    record: request.record,
+    scene: sceneOf(deciding, request),
+    after: null,
+  });
+  const lift = verdict.kind === "stands-aside" ? switchOf(verdict.because) : null;
+  return lift === null
+    ? refused({ kind: "guard", refusal: heldRefusal(verdict, stop) })
+    : accepted({ kind: "presence-stood-aside", lift });
+};
+
+const basisOf = async (
+  deciding: Deciding,
+  request: LoadedRequest,
+): Promise<Result<ApprovalBasis, ExecutionRefusal>> => {
+  const hearing = await hearingOf(deciding, request);
+  return hearing.kind === "present"
+    ? accepted({ kind: "human", evidence: hearing.evidence })
+    : liftedBasis(deciding, { request, heard: hearing.kind });
 };
 
 const fingerprintOf = (deciding: Deciding, request: GateRequest): Promise<PlanFingerprint | null> =>
   request.gate.kind === "plan-approval"
-    ? deciding.plans.current({
-        intent: request.intent,
-        stage: request.gate.stage,
-        unit: request.gate.unit,
-      })
+    ? deciding.plans.current({ intent: request.intent, stage: request.gate.stage, unit: request.gate.unit })
     : Promise.resolve(null);
-
-const recordOutcome = async (
-  deciding: Deciding,
-  saved: { readonly request: GateRequest; readonly outcome: GateOutcome },
-): Promise<void> => {
-  const { request, outcome } = saved;
-  await deciding.trail.recordCaused({
-    scene: { intent: request.intent, session: request.session, at: outcome.approval.decidedAt },
-    cause: { kind: "gate-decided", approval: outcome.approval },
-    effects: transitionFacts(outcome.transitions),
-  });
-};
 
 const saveOutcome = async (
   deciding: Deciding,
-  decided: { readonly request: HeardRequest; readonly outcome: GateOutcome },
+  decided: { readonly request: LoadedRequest; readonly outcome: GateOutcome },
 ): Promise<Decided> => {
-  const saved = await deciding.records.save({
-    record: decided.outcome.record,
-    expected: decided.request.record.version,
-  });
+  const { request, outcome } = decided;
+  const saved = await deciding.records.save({ record: outcome.record, expected: request.record.version });
+  if (saved.ok) {
+    await deciding.trail.recordCaused({
+      scene: { ...sceneOf(deciding, request), at: outcome.approval.decidedAt },
+      cause: { kind: "gate-decided", approval: outcome.approval },
+      effects: transitionFacts(outcome.transitions),
+    });
+  }
+  return saved;
+};
+
+const keepRefused = async (
+  deciding: Deciding,
+  kept: {
+    readonly request: LoadedRequest;
+    readonly decision: GateDecisionRequest;
+    readonly refusal: RecordMoveRefusal;
+  },
+): Promise<Decided> => {
+  const { request } = kept;
+  const stop = stateTransitionRule.check(kept.refusal);
+  const outcome = keepUnapplied(request.record, { request: kept.decision, refusal: stop });
+  const saved = await deciding.records.save({ record: outcome.record, expected: request.record.version });
   if (!saved.ok) {
     return saved;
   }
-  await recordOutcome(deciding, decided);
-  return accepted(saved.value);
+  const decided = await deciding.trail.record(
+    { ...sceneOf(deciding, request), at: outcome.approval.decidedAt },
+    { kind: "gate-decided", approval: outcome.approval },
+  );
+  const verdict = await deciding.raise({
+    refusal: stop,
+    record: saved.value,
+    scene: sceneOf(deciding, request),
+    after: decided,
+  });
+  return refused({ kind: "guard", refusal: heldRefusal(verdict, stop) });
 };
 
-const decideHeard = async (deciding: Deciding, request: HeardRequest): Promise<Decided> => {
-  const outcome = decideAtGate(request.record, {
-    ...request,
+const decideWith = async (
+  deciding: Deciding,
+  based: { readonly request: LoadedRequest; readonly basis: ApprovalBasis },
+): Promise<Decided> => {
+  const { request } = based;
+  const decision: GateDecisionRequest = {
+    gate: request.gate,
+    decision: request.decision,
+    basis: based.basis,
     fingerprint: await fingerprintOf(deciding, request),
     time: deciding.clock.now(),
-  });
+  };
+  const outcome = decideAtGate(request.record, decision);
   return outcome.ok
     ? saveOutcome(deciding, { request, outcome: outcome.value })
-    : stop(deciding, { request, refusal: transitionStop(outcome.refusal) });
+    : keepRefused(deciding, { request, decision, refusal: outcome.refusal });
 };
 
 const decide = async (deciding: Deciding, request: GateRequest): Promise<Decided> => {
@@ -121,14 +167,16 @@ const decide = async (deciding: Deciding, request: GateRequest): Promise<Decided
   if (!loaded.ok) {
     return loaded;
   }
-  const record = loaded.value;
-  const presence = await presenceOf(deciding, { ...request, record });
-  return presence?.kind === "present"
-    ? decideHeard(deciding, { ...request, record, evidence: presence.evidence })
-    : stop(deciding, { request, refusal: presenceStop(request.gate) });
+  const loadedRequest = { ...request, record: loaded.value };
+  const basis = await basisOf(deciding, loadedRequest);
+  return basis.ok ? decideWith(deciding, { request: loadedRequest, basis: basis.value }) : basis;
 };
 
 export const decideAtGateUseCase = (dependencies: DecideAtGateDependencies): DecideAtGate => {
-  const deciding: Deciding = { ...dependencies, trail: auditTrail(dependencies.audit) };
+  const deciding: Deciding = {
+    ...dependencies,
+    trail: auditTrail(dependencies.audit),
+    raise: stopRaiser(dependencies),
+  };
   return { decide: (request) => decide(deciding, request) };
 };

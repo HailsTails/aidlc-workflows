@@ -5,7 +5,7 @@ import {
   stageSlug,
   type StageSlug,
 } from "../../workflow-definition/domain/identities.ts";
-import type { HumanEvidence } from "../domain/gate.ts";
+import type { ApprovalBasis, HumanEvidence } from "../domain/gate.ts";
 import {
   intentId,
   intentSlug,
@@ -39,6 +39,11 @@ export const typedTurn = (observedAt: Timestamp): HumanEvidence => ({
   observedAt,
   source: "host-hook",
   turnDigest: TURN_DIGEST,
+});
+
+export const heardAt = (observedAt: Timestamp): ApprovalBasis => ({
+  kind: "human",
+  evidence: typedTurn(observedAt),
 });
 
 export const STAGES_AT_REQUIREMENTS_GATE: readonly StageState[] = [

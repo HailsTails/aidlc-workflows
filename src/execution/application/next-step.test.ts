@@ -4,12 +4,14 @@ import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fi
 import {
   artifactsUnder,
   fixedClock,
+  guardsAsRecorded,
   installedMethod,
   memoryAuditLog,
   memoryRecordStore,
 } from "../fixtures/fakes.fixture.ts";
 import { RUNNING_RECORD, stageOf } from "../fixtures/workflow-record.fixture.ts";
 import { CORE_GUARDS } from "../domain/guard.ts";
+import { UPSTREAM_BUDGET_SPENT } from "../domain/routing.ts";
 import type { StageState, WorkflowRecord } from "../domain/workflow-record.ts";
 import { nextStepUseCase, type NextStepDependencies } from "./next-step.ts";
 
@@ -24,6 +26,8 @@ const engineOver = (record: WorkflowRecord): NextStepDependencies => ({
   clock: fixedClock(NOW),
   methods: installedMethod(methodSliceFixture),
   artifacts: artifactsUnder("aidlc/spaces/default/intents"),
+  environment: guardsAsRecorded,
+  budgetSpent: UPSTREAM_BUDGET_SPENT,
 });
 
 const request = { intent: RUNNING_RECORD.id };
@@ -103,7 +107,7 @@ describe("NextStep at a stage awaiting approval", () => {
 });
 
 describe("NextStep on parked work", () => {
-  test("tells the conductor the work is parked, as a state-transition stop", async () => {
+  test("tells the conductor the work is parked, as a stop locked in the record, and audits it", async () => {
     const engine = engineOver({ ...RUNNING_RECORD, status: { kind: "parked", since: NOW } });
 
     expect(await nextStepUseCase(engine).next(request)).toMatchObject({
@@ -111,10 +115,26 @@ describe("NextStep on parked work", () => {
       value: {
         kind: "refused",
         refusal: {
-          guard: CORE_GUARDS.stateTransition,
+          guard: { id: CORE_GUARDS.stateTransition.id, lift: { kind: "locked", lockedIn: "this work's record" } },
           reason: "This work is parked; that step needs it running.",
         },
       },
+    });
+    await expect(engine.audit.since({ intent: RUNNING_RECORD.id, after: null })).resolves.toMatchObject([
+      { fact: { kind: "guard-refused" } },
+    ]);
+  });
+
+  test("a switch on state-transition does not move work the record cannot take", async () => {
+    const engine = engineOver({
+      ...RUNNING_RECORD,
+      status: { kind: "parked", since: NOW },
+      settings: { ...RUNNING_RECORD.settings, guardPolicy: "off" },
+    });
+
+    expect(await nextStepUseCase(engine).next(request)).toMatchObject({
+      ok: true,
+      value: { kind: "refused" },
     });
   });
 });
