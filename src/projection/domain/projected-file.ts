@@ -11,6 +11,7 @@ export const RENDERED_CONCEPTS = [
   "settings",
   "hook-registration",
   "onboarding",
+  "host-data",
 ] as const;
 
 export type RenderedConcept = (typeof RENDERED_CONCEPTS)[number];
