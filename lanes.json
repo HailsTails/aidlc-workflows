@@ -101,7 +101,10 @@
         "src/packaging/**",
         "src/installation/**",
         "src/hosts/{claude,codex,opencode}/{packaging,installation}/**",
-        "src/cli/adapters/routes/{packaging,installation}/**"
+        "src/cli/adapters/routes/{packaging,installation}/**",
+        "src/cli/core-build-root{,.test}.ts",
+        "docs/reference/15-stage-definition.md",
+        "scripts/package.ts"
       ],
       "notOwned": ["harness/copilot/emit.ts", "harness/{kiro,kiro-ide,cursor}/manifest.ts"],
       "territory": ["workflow-definition", "projection", "packaging", "installation"],
@@ -198,6 +201,7 @@
         "harness/kiro-ide/manifest.ts",
         "harness/cursor/manifest.ts"
       ],
+      "notOwned": ["src/cli/core-build-root{,.test}.ts"],
       "territory": ["execution", "cli"],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**"],
       "monolithDeletions": {
