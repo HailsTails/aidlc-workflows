@@ -68,6 +68,7 @@
         "eslint.config.ts",
         "lint/**",
         "tests/golden/**",
+        "tests/verification/**",
         "tests/ratchets/**",
         "tests/fixtures/aidlc-lib-declarations.txt",
         "tests/unit/t-aidlc-lib-only-shrinks.test.ts",
