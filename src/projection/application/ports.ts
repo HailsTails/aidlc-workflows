@@ -8,6 +8,7 @@ import type { Method } from "../../workflow-definition/domain/method.ts";
 import type { Scope } from "../../workflow-definition/domain/scope.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ScopeColumn, StageNode } from "../../workflow-definition/domain/stage-graph.ts";
+import type { AuthoredHostFile } from "../domain/host-surface.ts";
 import type {
   NeutralDocument,
   NeutralSurface,
@@ -30,12 +31,15 @@ export interface Harness {
   renderScopeCommand(request: { readonly scope: Scope; readonly column: ScopeColumn }): Rendering;
   renderOrchestratorSkill(request: { readonly method: Method }): Rendering;
   renderSessionSkill(request: { readonly skill: SessionSkill }): Rendering;
+  renderSettings(request: { readonly method: Method }): Rendering;
   renderHookRegistrations(request: { readonly hooks: readonly HookDeclaration[] }): Rendering;
   renderOnboarding(request: {
     readonly templates: OnboardingTemplates;
     readonly method: Method;
   }): Rendering;
+  renderHostData(): Rendering;
   placeNeutralDocument(request: { readonly document: NeutralDocument }): Rendering;
+  placeAuthoredFile(request: { readonly file: AuthoredHostFile }): Rendering;
 }
 
 export type HostedHarness = {
@@ -50,4 +54,10 @@ export interface HarnessRegistry {
 
 export interface NeutralSurfaceReader {
   read(): Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
+}
+
+export interface HostSurfaceReader {
+  read(request: {
+    readonly host: HostIdentity;
+  }): Promise<Result<readonly AuthoredHostFile[], readonly ProjectionRefusal[]>>;
 }
