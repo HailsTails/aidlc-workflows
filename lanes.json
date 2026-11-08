@@ -110,6 +110,8 @@
         "harness/claude/manifest.ts",
         "tests/unit/t64.test.ts",
         "tests/unit/t-package-sources.test.ts",
+        "tests/unit/t177-workspace-journey-fixture.test.ts",
+        "tests/harness/harness-matrix.ts",
         "discipline-exceptions.json"
       ],
       "notOwned": [
