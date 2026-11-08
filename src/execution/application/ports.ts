@@ -1,7 +1,7 @@
 import type { Result } from "../../kernel/result.ts";
-import type { Timestamp } from "../../kernel/values.ts";
+import type { ProjectPath, Timestamp } from "../../kernel/values.ts";
+import type { ArtifactName, StageSlug } from "../../workflow-definition/domain/identities.ts";
 import type { AuditEntry, AuditEvent } from "../domain/audit.ts";
-import type { StageSlug } from "../../workflow-definition/domain/identities.ts";
 import type {
   AuditSequence,
   IntentId,
@@ -36,6 +36,14 @@ export interface Clock {
 
 export interface Sessions {
   current(): Promise<Session | null>;
+}
+
+export interface ArtifactLocations {
+  destinationOf(request: {
+    readonly record: WorkflowRecord;
+    readonly unit: UnitName | null;
+    readonly artifact: ArtifactName;
+  }): ProjectPath;
 }
 
 export interface PlanFingerprints {

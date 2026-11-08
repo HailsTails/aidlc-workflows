@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { accept } from "../../kernel/fixtures/accept.ts";
-import { at } from "../../kernel/fixtures/values.fixture.ts";
+import { at, path } from "../../kernel/fixtures/values.fixture.ts";
 import { recordVersion } from "../domain/identities.ts";
+import { artifactName } from "../../workflow-definition/domain/identities.ts";
+import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import {
+  artifactsUnder,
   fixedClock,
+  installedMethod,
   knownPlan,
   memoryAuditLog,
   memoryRecordStore,
@@ -76,6 +80,23 @@ describe("other fakes", () => {
 
   test("the clock answers the time it was given", () => {
     expect(fixedClock(at("2026-11-08T10:00:00Z")).now()).toBe(at("2026-11-08T10:00:00Z"));
+  });
+
+  test("artifactsUnder places an artifact under the intent and Unit", () => {
+    expect(
+      artifactsUnder("aidlc/intents").destinationOf({
+        record: RUNNING_RECORD,
+        unit: unitOf("ledger"),
+        artifact: accept(artifactName("code-plan")),
+      }),
+    ).toBe(path("aidlc/intents/checkout-flow/ledger/code-plan.md"));
+  });
+
+  test("installedMethod answers the method it was given", async () => {
+    expect(await installedMethod(methodSliceFixture).current()).toEqual({
+      ok: true,
+      value: methodSliceFixture,
+    });
   });
 
   test("the plan answers the fingerprint it was given", async () => {

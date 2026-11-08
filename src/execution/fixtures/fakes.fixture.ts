@@ -1,8 +1,15 @@
 import { accept } from "../../kernel/fixtures/accept.ts";
 import { accepted, refused } from "../../kernel/result.ts";
-import type { Timestamp } from "../../kernel/values.ts";
-import type { HumanTurnHistory } from "../application/boundary-ports.ts";
-import type { AuditLog, Clock, PlanFingerprints, RecordStore } from "../application/ports.ts";
+import { projectPath, type Timestamp } from "../../kernel/values.ts";
+import type { Method } from "../../workflow-definition/domain/method.ts";
+import type { HumanTurnHistory, MethodProvider } from "../application/boundary-ports.ts";
+import type {
+  ArtifactLocations,
+  AuditLog,
+  Clock,
+  PlanFingerprints,
+  RecordStore,
+} from "../application/ports.ts";
 import type { AuditEntry, AuditEvent } from "../domain/audit.ts";
 import type { HumanEvidence } from "../domain/gate.ts";
 import { auditSequence, recordVersion, type PlanFingerprint } from "../domain/identities.ts";
@@ -69,6 +76,15 @@ export const recordedTurns = (turns: readonly HumanEvidence[]): HumanTurnHistory
         (turn) => turn.session === session && orderOf(turn.observedAt, from) !== "earlier",
       ),
     ),
+});
+
+export const installedMethod = (method: Method): MethodProvider => ({
+  current: () => Promise.resolve(accepted(method)),
+});
+
+export const artifactsUnder = (folder: string): ArtifactLocations => ({
+  destinationOf: ({ record, unit, artifact }) =>
+    accept(projectPath(`${folder}/${record.slug}/${unit ?? "intent"}/${artifact}.md`)),
 });
 
 export const knownPlan = (fingerprint: PlanFingerprint | null): PlanFingerprints => ({
