@@ -17,33 +17,65 @@
 //     aidlc-kiro-adapter.ts stdin shim is a harnessFile.
 //   - AGENTS.md lands at the PROJECT ROOT (dist/kiro/AGENTS.md), outside .kiro/.
 
-import type { HarnessManifest } from "../../scripts/manifest-types.ts";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import type { EmitContext, HarnessManifest } from "../../scripts/manifest-types.ts";
+import {
+  absorbReviewerKnowledge, injectDelegatedKnowledgePreflight,
+} from "../../scripts/agent-knowledge.ts";
+import {
+  modelAgentName, resolveModelPolicy, writeMarkdownAgentSurface,
+} from "../../core/tools/aidlc-model-policy.ts";
+import { accepted, refused } from "../../src/kernel/result.ts";
+import {
+  KIRO_PROMPT_LINES, kiroCliAgentRenderer, type KiroModelSurface,
+} from "../../src/hosts/kiro/projection/agent-renderer.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
-// The personas with an agent JSON below. Kiro CLI's 3.0 engine also loads each
-// one's prompt .md as an agent of the same name, and a dispatch runs that one
-// (#1394): its frontmatter carries the tools the JSON grants on v2.
-const PERSONA_AGENTS = [
-  "aidlc-architect-agent",
-  "aidlc-developer-agent",
-  "aidlc-product-lead-agent",
-  "aidlc-architecture-reviewer-agent",
-  "aidlc-composer-agent",
-  "aidlc-product-agent",
-  "aidlc-design-agent",
-  "aidlc-delivery-agent",
-  "aidlc-aws-platform-agent",
-  "aidlc-compliance-agent",
-  "aidlc-devsecops-agent",
-  "aidlc-quality-agent",
-  "aidlc-pipeline-deploy-agent",
-  "aidlc-operations-agent",
-] as const;
+const PERSONA_PROMPT_LINES = [...KIRO_PROMPT_LINES];
 
-// The Kiro IDE row's tools and MCP lines, without its permissions: on v2 the
-// JSON still decides, and the .md is only its prompt. A plugin's agent has no
-// JSON here, so on v2 it is not dispatched; on v3 these lines are its tools.
-const PERSONA_PROMPT_LINES = [`tools: ["read", "write", "shell"]`, "includeMcpJson: true"];
+const modelSurface = (ctx: EmitContext): KiroModelSurface => ({ agent, removeKeys }) => {
+  if (agent.model.kind !== "tier") return refused({
+    kind: "render-failed", concept: "agent", name: agent.slug,
+    reason: "This core-agent bridge requires an authored model tier.",
+  });
+  const source = ctx.sources.find((file) => file.path === agent.source &&
+    file.owner.kind === agent.owner.kind && (file.owner.kind === "core" ||
+      (agent.owner.kind === "plugin" && file.owner.plugin === agent.owner.plugin)));
+  if (source === undefined) return refused({
+    kind: "render-failed", concept: "agent", name: agent.slug,
+    reason: "This core-agent bridge requires captured agent text.",
+  });
+  const authored = source.content.kind === "text" ? source.content.text :
+    Buffer.from(source.content.bytes).toString("utf-8");
+  const raw = injectDelegatedKnowledgePreflight(
+    absorbReviewerKnowledge(authored, agent.slug, ctx.coreRoot),
+    agent.slug, ctx.harnessDir,
+  );
+  const text = ctx.substituteToken(raw).replace(/\.kiro\/rules\/(?!default\.rules)/g, ".kiro/steering/");
+  const effective = resolveModelPolicy(
+    null, modelAgentName(agent.slug), agent.model.tier, "kiro", ctx.tierCap,
+  );
+  return accepted(writeMarkdownAgentSurface(text, effective, {
+    effortKey: "effort", removeKeys: [...removeKeys],
+  }));
+};
+
+const emitAgents = (ctx: EmitContext): void => {
+  const renderAgent = kiroCliAgentRenderer(modelSurface(ctx));
+  for (const agent of ctx.method.agents) {
+    const rendering = renderAgent({ agent, knowledge: ctx.method.knowledge });
+    if (!rendering.ok) throw new Error(JSON.stringify(rendering.refusal));
+    for (const file of rendering.value) {
+      if (file.content.kind !== "text") {
+        throw new Error(`Kiro emitted non-text content for ${agent.slug}`);
+      }
+      const destination = join(ctx.distRoot, file.path);
+      mkdirSync(dirname(destination), { recursive: true });
+      writeFileSync(destination, file.content.text);
+    }
+  }
+};
 
 // The person's ways back when Kiro CLI runs on v3 with this tree's agent files
 // not upgraded (hookActivation's comment says what was measured).
@@ -255,10 +287,6 @@ const manifest: HarnessManifest = {
     { src: "dot-gitignore", dst: ".gitignore", projectRoot: true },
   ],
 
-  frontmatterAdditions: PERSONA_AGENTS.map((agent) => ({
-    file: `agents/${agent}.md`,
-    lines: PERSONA_PROMPT_LINES,
-  })),
   pluginAgentFrontmatter: PERSONA_PROMPT_LINES,
 
   // Neutral root guidance is shared; native setup is loaded through agent resources.
@@ -267,8 +295,7 @@ const manifest: HarnessManifest = {
   // rules/ → steering/ (applied after the token substitution, anchored).
   rulesRename: "steering",
 
-  // Kiro ships no per-shell emissions — all its surfaces are authored files.
-  emit: null,
+  emit: emitAgents,
 
   // Kiro has no host plugin store — AIDLC plugins arrive by folder-drop and use
   // the explicit composer. Kiro CLI's v2 engine reads hooks only from the
