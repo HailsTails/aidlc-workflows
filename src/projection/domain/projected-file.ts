@@ -1,4 +1,4 @@
-import type { FileContent } from "../../kernel/file-content.ts";
+import type { FileContent, FileMode } from "../../kernel/file-content.ts";
 import type { ProjectPath, SourcePath } from "../../kernel/values.ts";
 import type { MethodSourcePath } from "../../workflow-definition/domain/method-source.ts";
 
@@ -26,7 +26,7 @@ export type Availability = "always" | "copy-only" | "native-only";
 export type ProjectedFile = {
   readonly path: ProjectPath;
   readonly content: FileContent;
-  readonly executable: boolean;
+  readonly mode: FileMode;
   readonly origin: ProjectionOrigin;
   readonly availability: Availability;
 };

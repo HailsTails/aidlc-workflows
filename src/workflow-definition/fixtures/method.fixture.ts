@@ -1,3 +1,4 @@
+import { brand } from "../../kernel/brand.ts";
 import { accept } from "../../kernel/fixtures/accept.ts";
 import type { Agent, PersonaAdditions } from "../domain/agent.ts";
 import type { KnowledgeDocument } from "../domain/knowledge.ts";
@@ -5,7 +6,11 @@ import type { CompiledMethod, Method } from "../domain/method.ts";
 import type { AuthoredBody } from "../domain/outline.ts";
 import type { Rule } from "../domain/rule.ts";
 import type { Scope, ScopeMembership } from "../domain/scope.ts";
-import type { SensorDeclaration, SensorFieldShape } from "../domain/sensor.ts";
+import type {
+  SensorDeclaration,
+  SensorFieldShape,
+  SensorFieldShapes,
+} from "../domain/sensor.ts";
 import type { Stage } from "../domain/stage.ts";
 import { stageNumber } from "../domain/stage-graph.ts";
 import { authoredBody } from "./authored-body.fixture.ts";
@@ -16,7 +21,10 @@ const core = { kind: "core" } as const;
 
 const noAdditions: PersonaAdditions = { afterPreflight: [], endOfBody: [] };
 
-const value = (type: string): SensorFieldShape => ({ kind: "value", type });
+const scalar = (type: string): SensorFieldShape => ({ kind: "value", type });
+
+const fields = (entries: readonly (readonly [string, SensorFieldShape])[]): SensorFieldShapes =>
+  Object.fromEntries(entries);
 
 const persona = (role: string): AuthoredBody =>
   authoredBody([{ level: 1, title: role, prose: `\nYou are the ${role} for this AI-DLC run.\n` }]);
@@ -163,7 +171,7 @@ const requirementsAnalysis: Stage = {
     supports: [],
   },
   cardinality: { kind: "once" },
-  writesWorkspace: false,
+  workspace: "read-only",
   produces: [
     { artifact: artifact("requirements"), obligation: "required", unitKinds: "all" },
     {
@@ -174,12 +182,42 @@ const requirementsAnalysis: Stage = {
     { artifact: artifact("traceability"), obligation: "optional", unitKinds: "all" },
   ],
   consumes: [
-    { artifact: artifact("intent-statement"), required: false, when: "always", cited: true },
-    { artifact: artifact("scope-document"), required: false, when: "always", cited: true },
-    { artifact: artifact("business-overview"), required: false, when: "brownfield", cited: false },
-    { artifact: artifact("architecture"), required: false, when: "brownfield", cited: false },
-    { artifact: artifact("code-structure"), required: false, when: "brownfield", cited: false },
-    { artifact: artifact("team-practices"), required: false, when: "always", cited: false },
+    {
+      artifact: artifact("intent-statement"),
+      obligation: "optional",
+      when: "always",
+      citation: "cited",
+    },
+    {
+      artifact: artifact("scope-document"),
+      obligation: "optional",
+      when: "always",
+      citation: "cited",
+    },
+    {
+      artifact: artifact("business-overview"),
+      obligation: "optional",
+      when: "brownfield",
+      citation: "uncited",
+    },
+    {
+      artifact: artifact("architecture"),
+      obligation: "optional",
+      when: "brownfield",
+      citation: "uncited",
+    },
+    {
+      artifact: artifact("code-structure"),
+      obligation: "optional",
+      when: "brownfield",
+      citation: "uncited",
+    },
+    {
+      artifact: artifact("team-practices"),
+      obligation: "optional",
+      when: "always",
+      citation: "uncited",
+    },
   ],
   requires: [stage("approval-handoff"), stage("reverse-engineering")],
   sensors: [sensor("required-sections"), sensor("upstream-coverage")],
@@ -226,7 +264,7 @@ const unitsGeneration: Stage = {
     supports: [deliveryAgent.slug],
   },
   cardinality: { kind: "once" },
-  writesWorkspace: false,
+  workspace: "read-only",
   produces: [
     { artifact: artifact("unit-of-work"), obligation: "required", unitKinds: "all" },
     { artifact: artifact("unit-of-work-dependency"), obligation: "required", unitKinds: "all" },
@@ -234,10 +272,25 @@ const unitsGeneration: Stage = {
     { artifact: artifact("traceability"), obligation: "required", unitKinds: "all" },
   ],
   consumes: [
-    { artifact: artifact("components"), required: true, when: "always", cited: false },
-    { artifact: artifact("decisions"), required: false, when: "always", cited: false },
-    { artifact: artifact("requirements"), required: true, when: "always", cited: false },
-    { artifact: artifact("stories"), required: false, when: "always", cited: false },
+    {
+      artifact: artifact("components"),
+      obligation: "required",
+      when: "always",
+      citation: "uncited",
+    },
+    {
+      artifact: artifact("decisions"),
+      obligation: "optional",
+      when: "always",
+      citation: "uncited",
+    },
+    {
+      artifact: artifact("requirements"),
+      obligation: "required",
+      when: "always",
+      citation: "uncited",
+    },
+    { artifact: artifact("stories"), obligation: "optional", when: "always", citation: "uncited" },
   ],
   requires: [stage("domain-design")],
   sensors: [sensor("required-sections"), sensor("upstream-coverage"), sensor("traceability")],
@@ -282,7 +335,7 @@ const codeGeneration: Stage = {
     supports: [],
   },
   cardinality: { kind: "per-unit" },
-  writesWorkspace: true,
+  workspace: "writes",
   produces: [
     { artifact: artifact("code-generation-plan"), obligation: "required", unitKinds: "all" },
     { artifact: artifact("unit-test-instructions"), obligation: "required", unitKinds: "all" },
@@ -290,9 +343,24 @@ const codeGeneration: Stage = {
     { artifact: artifact("traceability"), obligation: "required", unitKinds: "all" },
   ],
   consumes: [
-    { artifact: artifact("functional-spec"), required: false, when: "always", cited: false },
-    { artifact: artifact("unit-of-work"), required: true, when: "always", cited: false },
-    { artifact: artifact("requirements"), required: true, when: "always", cited: false },
+    {
+      artifact: artifact("functional-spec"),
+      obligation: "optional",
+      when: "always",
+      citation: "uncited",
+    },
+    {
+      artifact: artifact("unit-of-work"),
+      obligation: "required",
+      when: "always",
+      citation: "uncited",
+    },
+    {
+      artifact: artifact("requirements"),
+      obligation: "required",
+      when: "always",
+      citation: "uncited",
+    },
   ],
   requires: [
     stage("units-generation"),
@@ -332,9 +400,9 @@ const classicScope: Scope = {
   keywords: [],
   depth: "standard",
   testStrategy: null,
-  runner: false,
-  skeleton: false,
-  existingCode: false,
+  runner: "none",
+  skeleton: "none",
+  codebase: "new",
   guardPolicy: "off",
   ceremony: {
     sensors: "on",
@@ -355,9 +423,9 @@ const featureScope: Scope = {
   keywords: [],
   depth: "standard",
   testStrategy: null,
-  runner: true,
-  skeleton: true,
-  existingCode: false,
+  runner: "generated",
+  skeleton: "walking-skeleton",
+  codebase: "new",
   guardPolicy: "off",
   ceremony: {
     sensors: "on",
@@ -381,8 +449,15 @@ const requiredSectionsSensor: SensorDeclaration = {
   firesOn: "gate",
   matches: "**/{aidlc-docs,intents,codekb}/**",
   timeoutSeconds: 300,
-  input: { output_path: value("string"), stage_slug: value("string") },
-  output: { pass: value("boolean"), h2_count: value("integer"), message: value("string") },
+  input: fields([
+    ["output_path", scalar("string")],
+    ["stage_slug", scalar("string")],
+  ]),
+  output: fields([
+    ["pass", scalar("boolean")],
+    ["h2_count", scalar("integer")],
+    ["message", scalar("string")],
+  ]),
 };
 
 const upstreamCoverageSensor: SensorDeclaration = {
@@ -398,12 +473,15 @@ const upstreamCoverageSensor: SensorDeclaration = {
   firesOn: "gate",
   matches: "**/{aidlc-docs,intents,codekb}/**",
   timeoutSeconds: 300,
-  input: {
-    output_path: value("string"),
-    stage_slug: value("string"),
-    consumes: value("string[]"),
-  },
-  output: { pass: value("boolean"), unreferenced_artifacts: value("string[]") },
+  input: fields([
+    ["output_path", scalar("string")],
+    ["stage_slug", scalar("string")],
+    ["consumes", scalar("string[]")],
+  ]),
+  output: fields([
+    ["pass", scalar("boolean")],
+    ["unreferenced_artifacts", scalar("string[]")],
+  ]),
 };
 
 const linterSensor: SensorDeclaration = {
@@ -419,16 +497,16 @@ const linterSensor: SensorDeclaration = {
   firesOn: "write",
   matches: "**/*.{ts,js}",
   timeoutSeconds: 1200,
-  input: { file_path: value("string") },
+  input: fields([["file_path", scalar("string")]]),
   output: {
-    pass: value("boolean"),
+    pass: scalar("boolean"),
     violations: {
       kind: "list-of",
       fields: {
-        file: value("string"),
-        line: value("number"),
-        rule: value("string"),
-        message: value("string"),
+        file: scalar("string"),
+        line: scalar("number"),
+        rule: scalar("string"),
+        message: scalar("string"),
       },
     },
   },
@@ -524,21 +602,21 @@ const compiled: CompiledMethod = {
       {
         stage: requirementsAnalysis.slug,
         number: accept(stageNumber("2.3")),
-        enabled: true,
+        availability: "enabled",
         rulesInContext: [orgRules.id, teamRules.id, inceptionRules.id],
         activeSensors: [requiredSectionsSensor.id, upstreamCoverageSensor.id],
       },
       {
         stage: unitsGeneration.slug,
         number: accept(stageNumber("2.7")),
-        enabled: true,
+        availability: "enabled",
         rulesInContext: [orgRules.id, teamRules.id, inceptionRules.id],
         activeSensors: [requiredSectionsSensor.id, upstreamCoverageSensor.id],
       },
       {
         stage: codeGeneration.slug,
         number: accept(stageNumber("3.5")),
-        enabled: true,
+        availability: "enabled",
         rulesInContext: [orgRules.id, teamRules.id],
         activeSensors: [requiredSectionsSensor.id],
       },
@@ -546,4 +624,4 @@ const compiled: CompiledMethod = {
   },
 };
 
-export const methodSliceFixture = compiled as Method;
+export const methodSliceFixture = brand<Method>(compiled);

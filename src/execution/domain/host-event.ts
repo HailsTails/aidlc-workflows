@@ -24,7 +24,7 @@ type HostEventShapes = {
   readonly "before-tool": Envelope<"before-tool"> & { readonly tool: ToolRequest };
   readonly "after-tool": Envelope<"after-tool"> & {
     readonly tool: ToolRequest;
-    readonly succeeded: boolean;
+    readonly outcome: "succeeded" | "failed";
   };
   readonly "subagent-start": Envelope<"subagent-start"> & { readonly agent: AgentSlug | null };
   readonly "subagent-stop": Envelope<"subagent-stop"> & { readonly agent: AgentSlug | null };

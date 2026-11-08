@@ -12,8 +12,10 @@ import type { McpChoice, RootContribution } from "./ownership.ts";
 
 export type InstallMode =
   | { readonly kind: "fresh" }
-  | { readonly kind: "refresh"; readonly force: boolean }
+  | { readonly kind: "refresh"; readonly edits: "refuse" | "overwrite" }
   | { readonly kind: "remove" };
+
+export type IntegrationLifecycle = "live" | "retiring";
 
 export type FileChange = "content" | "executable" | "content-and-executable";
 
@@ -59,10 +61,10 @@ export type ConflictCause =
       readonly kind: "edited";
       readonly recorded: ContentHash;
       readonly current: ContentHash;
-      readonly retiring: boolean;
+      readonly lifecycle: IntegrationLifecycle;
     }
   | { readonly kind: "unowned-edit"; readonly current: ContentHash }
-  | { readonly kind: "not-a-regular-file"; readonly retiring: boolean }
+  | { readonly kind: "not-a-regular-file"; readonly lifecycle: IntegrationLifecycle }
   | {
       readonly kind: "missing-sibling-block";
       readonly sibling: DistributionId;

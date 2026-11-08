@@ -10,9 +10,9 @@ export type Scope = {
   readonly keywords: readonly string[];
   readonly depth: Depth;
   readonly testStrategy: string | null;
-  readonly runner: boolean;
-  readonly skeleton: boolean;
-  readonly existingCode: boolean;
+  readonly runner: "generated" | "none";
+  readonly skeleton: "walking-skeleton" | "none";
+  readonly codebase: "existing" | "new";
   readonly guardPolicy: GuardPolicy;
   readonly ceremony: CeremonyDefaults;
   readonly reviewCap: ReviewClass | null;

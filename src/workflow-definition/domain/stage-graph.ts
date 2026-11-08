@@ -1,4 +1,4 @@
-import type { Brand } from "../../kernel/brand.ts";
+import { brand, type Brand } from "../../kernel/brand.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { IdentityRefusal, RuleId, ScopeName, SensorId, StageSlug } from "./identities.ts";
 
@@ -8,13 +8,13 @@ const STAGE_NUMBER = /^[0-4]\.\d+$/;
 
 export const stageNumber = (raw: string): Result<StageNumber, IdentityRefusal> =>
   STAGE_NUMBER.test(raw)
-    ? accepted(raw as StageNumber)
+    ? accepted(brand<StageNumber>(raw))
     : refused({ kind: "invalid-identity", identity: "stage", raw });
 
 export type StageNode = {
   readonly stage: StageSlug;
   readonly number: StageNumber;
-  readonly enabled: boolean;
+  readonly availability: "enabled" | "disabled";
   readonly rulesInContext: readonly RuleId[];
   readonly activeSensors: readonly SensorId[];
 };

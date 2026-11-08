@@ -1,3 +1,4 @@
+import { brand } from "../../kernel/brand.ts";
 import type { AuthoredBody, OutlineHeading, TextOffset } from "../domain/outline.ts";
 
 export type FixtureSection = {
@@ -8,7 +9,7 @@ export type FixtureSection = {
 
 type Building = { readonly text: string; readonly headings: readonly OutlineHeading[] };
 
-const offset = (raw: number): TextOffset => raw as TextOffset;
+const offset = (raw: number): TextOffset => brand<TextOffset>(raw);
 
 const appendSection = ({
   built,

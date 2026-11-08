@@ -24,10 +24,12 @@
       "owns": [
         "src/glossary.json",
         "src/tsconfig.json",
+        "tsconfig.strict.json",
         "src/README.md",
         "src/kernel/**",
         "src/*/fixtures/**",
         "lint/context-map.ts",
+        "lint/context-map.test.ts",
         "lanes.json"
       ],
       "contractFiles": [
@@ -58,9 +60,14 @@
         "tests/fixtures/aidlc-lib-declarations.txt",
         "tests/unit/t-aidlc-lib-only-shrinks.test.ts",
         "scripts/gate.ts",
-        "biome.json"
+        "biome.json",
+        "disciplines.json",
+        "discipline-exceptions.json",
+        "disciplines.eslint.mjs",
+        "disciplines.eslint.d.mts",
+        "eslint.config.test.ts"
       ],
-      "notOwned": ["lint/context-map.ts"],
+      "notOwned": ["lint/context-map.ts", "lint/context-map.test.ts"],
       "territory": [],
       "hotFileGrants": {
         "package.json": ["devDependencies", "scripts.lint", "scripts.gate"],

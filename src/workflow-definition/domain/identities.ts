@@ -1,4 +1,4 @@
-import type { Brand } from "../../kernel/brand.ts";
+import { brand, type Brand } from "../../kernel/brand.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 
 export type StageSlug = Brand<string, "StageSlug">;
@@ -44,7 +44,7 @@ const RULE = /^[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*$/;
 const CORE_NAMESPACE = "aidlc-";
 
 const identity =
-  <Identity extends string>({
+  <Identity extends Brand<string, string>>({
     identity,
     pattern,
   }: {
@@ -53,7 +53,7 @@ const identity =
   }) =>
   (raw: string): Result<Identity, IdentityRefusal> =>
     pattern.test(raw)
-      ? accepted(raw as Identity)
+      ? accepted(brand<Identity>(raw))
       : refused({ kind: "invalid-identity", identity, raw });
 
 export const stageSlug = identity<StageSlug>({ identity: "stage", pattern: KEBAB });
@@ -72,5 +72,5 @@ export const hookName = identity<HookName>({ identity: "hook", pattern: KEBAB })
 
 export const pluginId = (raw: string): Result<PluginId, IdentityRefusal> =>
   KEBAB.test(raw) && !raw.startsWith(CORE_NAMESPACE)
-    ? accepted(raw as PluginId)
+    ? accepted(brand<PluginId>(raw))
     : refused({ kind: "invalid-identity", identity: "plugin", raw });

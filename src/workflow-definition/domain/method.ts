@@ -10,7 +10,7 @@ import type { SensorDeclaration } from "./sensor.ts";
 import type { Stage } from "./stage.ts";
 import type { StageGraph } from "./stage-graph.ts";
 
-export type MethodContent = {
+export type ContributedContent = {
   readonly stages: readonly Stage[];
   readonly scopes: readonly Scope[];
   readonly memberships: readonly ScopeMembership[];
@@ -19,6 +19,9 @@ export type MethodContent = {
   readonly rules: readonly Rule[];
   readonly sensors: readonly SensorDeclaration[];
   readonly knowledge: readonly KnowledgeDocument[];
+};
+
+export type CoreContent = ContributedContent & {
   readonly hooks: readonly HookDeclaration[];
 };
 
@@ -26,7 +29,7 @@ export type PluginSelection =
   | { readonly kind: "every-installed" }
   | {
       readonly kind: "only";
-      readonly core: boolean;
+      readonly core: "included" | "excluded";
       readonly plugins: readonly PluginId[];
     };
 

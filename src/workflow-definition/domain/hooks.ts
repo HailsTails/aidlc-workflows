@@ -1,5 +1,5 @@
 import type { NonEmptyArray } from "../../kernel/values.ts";
-import type { HookName, Owner } from "./identities.ts";
+import type { HookName } from "./identities.ts";
 import type { MethodSourcePath } from "./method-source.ts";
 
 export const TOOL_HOOK_POINTS = ["before-tool", "after-tool"] as const;
@@ -32,7 +32,6 @@ export type ToolMatch =
 
 type HookBase = {
   readonly name: HookName;
-  readonly owner: Owner;
   readonly source: MethodSourcePath;
 };
 

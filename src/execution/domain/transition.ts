@@ -22,7 +22,7 @@ export type Transition =
   | { readonly kind: "resume"; readonly at: Timestamp }
   | {
       readonly kind: "reopen";
-      readonly personSpokeSinceFinished: boolean;
+      readonly personSinceFinished: "spoke" | "silent";
       readonly at: Timestamp;
     }
   | { readonly kind: "complete"; readonly at: Timestamp };

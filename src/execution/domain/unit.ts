@@ -29,8 +29,8 @@ export type Checkpoint = {
   readonly unit: UnitName;
   readonly stages: readonly StageSlug[];
   readonly fingerprint: PlanFingerprint;
-  readonly verified: boolean;
-  readonly approved: boolean;
+  readonly verification: "verified" | "unverified";
+  readonly approval: "approved" | "awaiting-approval";
 };
 
 export type BlockingCheckSite =

@@ -1,8 +1,8 @@
 import type { Result } from "../result.ts";
 
-export const accept = <Value, Refusal>(result: Result<Value, Refusal>): Value => {
-  if (result.ok) {
-    return result.value;
+export const accept = <Value, Refusal>(construction: Result<Value, Refusal>): Value => {
+  if (!construction.ok) {
+    throw new Error(`Fixture value refused: ${JSON.stringify(construction.refusal)}`);
   }
-  throw new Error(`Fixture value refused: ${JSON.stringify(result.refusal)}`);
+  return construction.value;
 };

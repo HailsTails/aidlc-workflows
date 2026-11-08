@@ -1,4 +1,4 @@
-import type { Brand } from "../../kernel/brand.ts";
+import { brand, type Brand } from "../../kernel/brand.ts";
 import { accepted, refused, type Result } from "../../kernel/result.ts";
 import type { Timestamp } from "../../kernel/values.ts";
 
@@ -9,7 +9,7 @@ export type GuardIdRefusal = { readonly kind: "invalid-guard-id"; readonly raw: 
 const GUARD_ID = /^[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)?$/;
 
 export const guardId = (raw: string): Result<GuardId, GuardIdRefusal> =>
-  GUARD_ID.test(raw) ? accepted(raw as GuardId) : refused({ kind: "invalid-guard-id", raw });
+  GUARD_ID.test(raw) ? accepted(brand<GuardId>(raw)) : refused({ kind: "invalid-guard-id", raw });
 
 export type GuardLift =
   | { readonly kind: "switch" }
@@ -28,7 +28,7 @@ const core = (declared: {
   readonly id: string;
   readonly protects: string;
   readonly lift: GuardLift;
-}): GuardDeclaration => ({ ...declared, id: declared.id as GuardId });
+}): GuardDeclaration => ({ ...declared, id: brand<GuardId>(declared.id) });
 
 export const CORE_GUARDS = {
   planApproval: core({
