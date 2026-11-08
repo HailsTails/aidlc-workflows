@@ -30,6 +30,7 @@ import { accepted, refused } from "../../src/kernel/result.ts";
 import {
   KIRO_PROMPT_LINES, kiroCliAgentRenderer, type KiroModelSurface,
 } from "../../src/hosts/kiro/projection/agent-renderer.ts";
+import { kiroCommandPath } from "../../src/hosts/kiro/projection/command-renderer.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const PERSONA_PROMPT_LINES = [...KIRO_PROMPT_LINES];
@@ -295,7 +296,12 @@ const manifest: HarnessManifest = {
   // rules/ → steering/ (applied after the token substitution, anchored).
   rulesRename: "steering",
 
-  emit: emitAgents,
+  skipRunnerGen: true,
+
+  emit(ctx): void {
+    emitAgents(ctx);
+    ctx.emitCommands(kiroCommandPath);
+  },
 
   // Kiro has no host plugin store — AIDLC plugins arrive by folder-drop and use
   // the explicit composer. Kiro CLI's v2 engine reads hooks only from the
