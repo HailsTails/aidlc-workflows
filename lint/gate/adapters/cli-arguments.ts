@@ -1,0 +1,125 @@
+import { parseArgs } from "node:util";
+import { z } from "zod";
+import { CHECK_IDS } from "../domain/outcome.ts";
+import type { GateRequest } from "../application/gate-request.ts";
+import type { Loaded } from "../application/ports.ts";
+
+export type ArgumentDefaults = {
+  readonly baseRef: string;
+  readonly waitSeconds: number;
+};
+
+export const USAGE = [
+  "bun scripts/gate.ts --scope <lane-id>|<path>[,<path>...] [--base <ref>] [--record]",
+  "bun scripts/gate.ts --full [--lane <lane-id>] [--base <ref>] [--no-build] [--record]",
+  "                    [--wait <seconds> | --no-wait]",
+  "bun scripts/gate.ts --update-goldens [--wait <seconds> | --no-wait]",
+  "bun scripts/gate.ts --locked [--wait <seconds> | --no-wait] -- <command> [args...]",
+  "",
+  `--only <id>[,<id>...] limits --scope or --full to checks: ${CHECK_IDS.join(", ")}.`,
+  "Run from the lane worktree root. One stdout line: AIDLC_GATE {json}.",
+  "Exit: 0 green, 1 red, 2 usage or environment error, 3 machine lock busy.",
+  "Env: AIDLC_GATE_BASE (default base ref), AIDLC_GATE_LOCK_DIR (lock folder).",
+].join("\n");
+
+const OPTIONS = {
+  only: { type: "string" },
+  scope: { type: "string" },
+  full: { type: "boolean" },
+  lane: { type: "string" },
+  base: { type: "string" },
+  wait: { type: "string" },
+  "no-wait": { type: "boolean" },
+  "no-build": { type: "boolean" },
+  record: { type: "boolean" },
+  "update-goldens": { type: "boolean" },
+  locked: { type: "boolean" },
+  help: { type: "boolean" },
+} as const;
+
+const OnlySchema = z
+  .string()
+  .transform((value) => value.split(",").filter((id) => id !== ""))
+  .pipe(z.array(z.enum(CHECK_IDS)).min(1));
+
+const RawSchema = z.object({
+  only: OnlySchema.optional(),
+  scope: z.string().min(1).optional(),
+  full: z.boolean().optional(),
+  lane: z.string().min(1).optional(),
+  base: z.string().min(1).optional(),
+  wait: z.coerce.number().int().nonnegative().optional(),
+  "no-wait": z.boolean().optional(),
+  "no-build": z.boolean().optional(),
+  record: z.boolean().optional(),
+  "update-goldens": z.boolean().optional(),
+  locked: z.boolean().optional(),
+  help: z.boolean().optional(),
+});
+
+type Raw = z.infer<typeof RawSchema>;
+
+const usageError = (problem: string): Loaded<never> => ({
+  ok: false,
+  problem,
+  fix: `Use one mode:\n${USAGE}`,
+});
+
+const waitMs = (raw: Raw, defaults: ArgumentDefaults): number =>
+  raw["no-wait"] === true ? 0 : (raw.wait ?? defaults.waitSeconds) * 1000;
+
+const modeCount = (raw: Raw): number =>
+  [raw.scope !== undefined, raw.full, raw["update-goldens"], raw.locked].filter(Boolean).length;
+
+type Parsed = { readonly raw: Raw; readonly positionals: readonly string[] };
+
+const requestFor = (parsed: Parsed, defaults: ArgumentDefaults): GateRequest => {
+  const { raw, positionals } = parsed;
+  const baseRef = raw.base ?? defaults.baseRef;
+  const record = raw.record === true;
+  const only = raw.only ?? "all";
+  const wait = waitMs(raw, defaults);
+  if (raw.scope !== undefined) {
+    return { kind: "scope", target: raw.scope, baseRef, record, only };
+  }
+  if (raw.full === true) {
+    const build = raw["no-build"] !== true;
+    return { kind: "full", laneId: raw.lane, baseRef, build, record, waitMs: wait, only };
+  }
+  return raw.locked === true
+    ? { kind: "locked", command: positionals, waitMs: wait }
+    : { kind: "update-goldens", waitMs: wait };
+};
+
+const parsedArguments = (argv: readonly string[]): Loaded<Parsed> => {
+  try {
+    const { values, positionals } = parseArgs({
+      args: [...argv],
+      options: OPTIONS,
+      allowPositionals: true,
+    });
+    const raw = RawSchema.safeParse(values);
+    return raw.success
+      ? { ok: true, value: { raw: raw.data, positionals } }
+      : usageError(z.prettifyError(raw.error));
+  } catch (error) {
+    return usageError(error instanceof Error ? error.message : String(error));
+  }
+};
+
+export const gateRequestFrom = (
+  argv: readonly string[],
+  defaults: ArgumentDefaults,
+): Loaded<GateRequest> => {
+  const parsed = parsedArguments(argv);
+  if (!parsed.ok || parsed.value.raw.help === true) {
+    return parsed.ok ? { ok: true, value: { kind: "help" } } : parsed;
+  }
+  if (modeCount(parsed.value.raw) !== 1) {
+    return usageError("pass exactly one of --scope, --full, --update-goldens or --locked");
+  }
+  const request = requestFor(parsed.value, defaults);
+  return request.kind === "locked" && request.command.length === 0
+    ? usageError("--locked needs a command after --")
+    : { ok: true, value: request };
+};

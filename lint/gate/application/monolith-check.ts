@@ -1,0 +1,60 @@
+import { countLines, judgeMonolith, shrunkRecord, type MonolithShape } from "../domain/monolith.ts";
+import { judged, type Finding } from "../domain/outcome.ts";
+import type { GateCheck } from "./gate-check.ts";
+import type { ModuleReader, RatchetRecords, Workspace } from "./ports.ts";
+
+export type MonolithDependencies = {
+  readonly records: RatchetRecords;
+  readonly workspace: Workspace;
+  readonly modules: ModuleReader;
+};
+
+type Pair = {
+  readonly file: string;
+  readonly recorded: MonolithShape | undefined;
+  readonly measured: MonolithShape;
+};
+
+const measure = (dependencies: MonolithDependencies, file: string): MonolithShape => {
+  const text = dependencies.workspace.read(file) ?? "";
+  const { declarations } = dependencies.modules.shapeOf({ path: file, text });
+  return { file, declarations, lines: countLines(text) };
+};
+
+const unrecorded = (file: string): Finding => ({
+  subject: file,
+  violation: "has no monolith record, so its growth cannot be checked",
+  fix: "Lane G records it with bun scripts/gate.ts --full --record; ask on the board.",
+});
+
+const judge = (pair: Pair): readonly Finding[] =>
+  pair.recorded === undefined
+    ? [unrecorded(pair.file)]
+    : judgeMonolith({ recorded: pair.recorded, measured: pair.measured });
+
+const nextRecord = (pair: Pair): MonolithShape =>
+  pair.recorded === undefined
+    ? pair.measured
+    : shrunkRecord({ recorded: pair.recorded, measured: pair.measured });
+
+const noteFor = (pairs: readonly Pair[]): string =>
+  pairs
+    .map(({ file, recorded, measured }) => `${file} ${measured.lines}/${recorded?.lines ?? "?"}`)
+    .join(", ");
+
+export const monolithCheck = (dependencies: MonolithDependencies): GateCheck => ({
+  id: "monolith",
+  run: async (scope) => {
+    const { records } = dependencies;
+    const pairs = records.monolithFiles.map((file) => ({
+      file,
+      recorded: records.monolith({ source: { kind: "head" }, file }),
+      measured: measure(dependencies, file),
+    }));
+    if (scope.record) {
+      records.saveMonoliths(pairs.map(nextRecord));
+    }
+    const findings = pairs.flatMap(judge);
+    return judged({ id: "monolith", findings, note: `lines now/recorded: ${noteFor(pairs)}` });
+  },
+});

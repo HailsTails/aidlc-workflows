@@ -1,0 +1,176 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { CONTEXTS, MONOLITH_FILES } from "../lint/context-map.ts";
+import { gateRequestFrom, USAGE } from "../lint/gate/adapters/cli-arguments.ts";
+import {
+  consoleProgress,
+  printProblem,
+  summaryLine,
+} from "../lint/gate/adapters/console-report.ts";
+import { directoryLock } from "../lint/gate/adapters/directory-lock.ts";
+import { eslintLinter } from "../lint/gate/adapters/eslint-linter.ts";
+import { fileWorkspace } from "../lint/gate/adapters/file-workspace.ts";
+import { gitRepository } from "../lint/gate/adapters/git-repository.ts";
+import {
+  goldenSource,
+  goldenStore,
+  type GoldenLayout,
+} from "../lint/gate/adapters/golden-files.ts";
+import { jsonReader } from "../lint/gate/adapters/json-reader.ts";
+import { lanesFile } from "../lint/gate/adapters/lanes-file.ts";
+import { processRunner } from "../lint/gate/adapters/process-runner.ts";
+import { ratchetRecords, type MonolithRecordFiles } from "../lint/gate/adapters/ratchet-records.ts";
+import { typescriptModuleReader } from "../lint/gate/adapters/typescript-module-reader.ts";
+import type { GateCheck } from "../lint/gate/application/gate-check.ts";
+import { goldensCheck, type GoldensDependencies } from "../lint/gate/application/goldens-check.ts";
+import { lintCheck } from "../lint/gate/application/lint-check.ts";
+import { monolithCheck } from "../lint/gate/application/monolith-check.ts";
+import { ownershipCheck } from "../lint/gate/application/ownership-check.ts";
+import { recordsCheck } from "../lint/gate/application/records-check.ts";
+import { runGateRequest, type GateReport } from "../lint/gate/application/run-gate.ts";
+import { testsCheck, type TestSuite } from "../lint/gate/application/tests-check.ts";
+import { typecheckCheck, type TypecheckProject } from "../lint/gate/application/typecheck-check.ts";
+import type { Command } from "../lint/gate/application/ports.ts";
+import type { LanePlan } from "../lint/gate/domain/lane-plan.ts";
+
+const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/[\\/]$/, "");
+const BUN = process.execPath;
+const UPSTREAM_PIN = "66d08a909";
+const DEFAULT_BASE = "origin/claude/aidlc-contracts-2db5c9";
+
+const RULE_INPUTS = ["eslint.config.ts", "lint/*.ts", "src/glossary.json", "bun.lock"];
+const LINT_ROOTS = ["core", "harness", "scripts", "plugins", "src", "lint", "tests"];
+const LOOSE_TESTS = ["tests/unit/**/*.test.ts", "tests/smoke/**/*.test.ts"];
+const MONOLITH_TEST = "tests/unit/t-aidlc-lib-only-shrinks.test.ts";
+const LIB_DECLARATIONS = "tests/fixtures/aidlc-lib-declarations.txt";
+
+const workspace = fileWorkspace(ROOT);
+const repository = gitRepository(ROOT);
+const runner = processRunner(ROOT);
+
+const declarationsRecordOf = (file: string): MonolithRecordFiles => ({
+  file,
+  declarations: file.endsWith("aidlc-lib.ts")
+    ? LIB_DECLARATIONS
+    : `tests/ratchets/${file.split("/").at(-1)?.replace(/\.ts$/, "")}-declarations.txt`,
+});
+
+const records = ratchetRecords({
+  repository,
+  workspace,
+  locations: {
+    boundary: "lint/boundary-baseline.json",
+    monolithLines: "tests/ratchets/monolith-lines.json",
+    monoliths: MONOLITH_FILES.map(declarationsRecordOf),
+    upstream: UPSTREAM_PIN,
+  },
+});
+
+const harnesses = (): readonly string[] =>
+  workspace
+    .filesMatching(["harness/*/manifest.ts"])
+    .map((path) => path.split("/")[1] ?? "")
+    .filter((name) => name !== "");
+
+const goldenLayout: GoldenLayout = {
+  root: ROOT,
+  outputRoots: ["dist", "dist-release"],
+  harnesses,
+  storeDirectory: "tests/golden",
+};
+
+const bun = (label: string, args: readonly string[]): Command => ({ label, argv: [BUN, ...args] });
+
+const goldens: GoldensDependencies = {
+  runner,
+  source: goldenSource(goldenLayout),
+  store: goldenStore({ layout: goldenLayout, workspace }),
+  build: bun("bun scripts/package.ts", ["scripts/package.ts"]),
+};
+
+const tsc = (project: string): Command =>
+  bun(`tsc -p ${project}`, ["node_modules/typescript/bin/tsc", "--noEmit", "-p", project]);
+
+const TYPECHECK_PROJECTS: readonly TypecheckProject[] = [
+  { command: tsc("src/tsconfig.json"), triggers: ["src/**"] },
+  {
+    command: tsc("lint/tsconfig.json"),
+    triggers: ["lint/**", "eslint.config.ts", "scripts/gate.ts", "src/glossary.json"],
+  },
+];
+
+const TEST_SUITES: readonly TestSuite[] = [
+  ...CONTEXTS.map((context) => ({
+    name: `src/${context}`,
+    triggers: [`src/${context}/**`],
+    tests: [`src/${context}/**/*.test.ts`],
+  })),
+  { name: "lint", triggers: ["lint/**", "scripts/gate.ts"], tests: ["lint/**/*.test.ts"] },
+  {
+    name: "monolith ratchet",
+    triggers: [...MONOLITH_FILES, LIB_DECLARATIONS, "tests/ratchets/**", MONOLITH_TEST],
+    tests: [MONOLITH_TEST],
+  },
+];
+
+const checksFor = (plan: LanePlan): readonly GateCheck[] => [
+  ownershipCheck({
+    plan,
+    repository,
+    workspace,
+    modules: typescriptModuleReader,
+    json: jsonReader,
+    sharedRecords: [...records.globs, "tests/golden/**"],
+  }),
+  recordsCheck({ records, ruleInputs: RULE_INPUTS }),
+  lintCheck({
+    linter: eslintLinter({ root: ROOT, roots: LINT_ROOTS, extensions: [".ts"] }),
+    records,
+    ruleInputs: RULE_INPUTS,
+  }),
+  typecheckCheck({ runner, projects: TYPECHECK_PROJECTS }),
+  monolithCheck({ records, workspace, modules: typescriptModuleReader }),
+  testsCheck({
+    runner,
+    workspace,
+    suites: TEST_SUITES,
+    looseTests: LOOSE_TESTS,
+    testCommand: (files) => bun("bun test", ["test", ...files.map((file) => `./${file}`)]),
+  }),
+  goldensCheck(goldens),
+];
+
+const EXIT_CODES: Readonly<Record<GateReport["verdict"], number>> = {
+  green: 0,
+  red: 1,
+  error: 2,
+  busy: 3,
+};
+
+const lock = directoryLock({
+  directory: process.env["AIDLC_GATE_LOCK_DIR"] ?? join(homedir(), ".aidlc", "gate"),
+  cwd: ROOT,
+  onWait: consoleProgress.note,
+});
+
+const main = async (): Promise<number> => {
+  const defaults = { baseRef: process.env["AIDLC_GATE_BASE"] ?? DEFAULT_BASE, waitSeconds: 1800 };
+  const request = gateRequestFrom(Bun.argv.slice(2), defaults);
+  if (!request.ok) {
+    process.stderr.write(`gate · error: ${request.problem}\n${request.fix}\n`);
+    return EXIT_CODES.error;
+  }
+  if (request.value.kind === "help") {
+    process.stdout.write(`${USAGE}\n`);
+    return EXIT_CODES.green;
+  }
+  const plans = lanesFile({ workspace, path: "lanes.json" });
+  const services = { plans, repository, workspace, lock, runner, goldens, checksFor };
+  const report = await runGateRequest({ ...services, progress: consoleProgress }, request.value);
+  printProblem(report);
+  process.stdout.write(`${summaryLine(report)}\n`);
+  return report.exitCode ?? EXIT_CODES[report.verdict];
+};
+
+process.exitCode = await main();

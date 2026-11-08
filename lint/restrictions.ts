@@ -40,18 +40,19 @@ const upstreamRestrictions = (other: ContextName, placement: Placement): ImportR
       `src/${other}/domain (and its adapters/*-file.ts formats where the map allows).`,
   }));
 
+const forbiddenContext = (other: ContextName, placement: Placement): ImportRestriction => {
+  const { instead } = CONTEXT_MAP[placement.context];
+  return {
+    regex: `(^|/)${other}/`,
+    message: `Context boundary: ${placement.context} may not depend on ${other}. ${instead}`,
+  };
+};
+
 const otherContextRestrictions = (placement: Placement): ImportRestriction[] =>
   CONTEXTS.filter((other) => other !== placement.context).flatMap((other) =>
     CONTEXT_MAP[placement.context].dependsOn.includes(other)
       ? upstreamRestrictions(other, placement)
-      : [
-          {
-            regex: `(^|/)${other}/`,
-            message:
-              `Context boundary: ${placement.context} may not depend on ${other}. ` +
-              CONTEXT_MAP[placement.context].instead,
-          },
-        ],
+      : [forbiddenContext(other, placement)],
   );
 
 const OWN_LAYER_RESTRICTIONS: Readonly<Record<Layer, readonly ImportRestriction[]>> = {
@@ -100,6 +101,28 @@ const monolithReachBack: ImportRestriction = {
     "Monolith: src/ never imports legacy code. Move the concept into its context and " +
     "delete the old owner in the same slice.",
 };
+
+const testDiscipline: readonly ImportRestriction[] = [
+  {
+    regex: "(^|/)adapters/",
+    message:
+      "Test discipline: a domain or application test imports no adapter. Build values " +
+      "from the context's fixtures and fake the port inside the test.",
+  },
+  {
+    regex: "^(?![./])(?!bun:test$)",
+    message:
+      "Test discipline: a domain or application test touches no real filesystem, process " +
+      "or package. Use fixtures and an in-memory fake of the port.",
+  },
+];
+
+export const pureTestImportRestrictions = (placement: Placement): ImportRestriction[] => [
+  ...otherContextRestrictions(placement),
+  ...OWN_LAYER_RESTRICTIONS[placement.layer],
+  ...testDiscipline,
+  monolithReachBack,
+];
 
 export const srcImportRestrictions = (placement: Placement): ImportRestriction[] => [
   ...otherContextRestrictions(placement),

@@ -1,5 +1,13 @@
+import tseslint from "typescript-eslint";
 import tsParser from "@typescript-eslint/parser";
 import type { Linter } from "eslint";
+import {
+  BIOME_RELAXED_NON_NULL,
+  BIOME_RELAXED_TEMPLATE,
+  BIOME_SUCCESSOR_RULES,
+  KNOWLEDGE_FS_READS,
+} from "./biome-successor.ts";
+import { nodeImportProtocol } from "./node-import-protocol.ts";
 import {
   CONTEXTS,
   HARNESS_ADAPTER_FILES,
@@ -15,6 +23,7 @@ import {
   legacyImportRestrictions,
   legacyOwnership,
   ownershipInSrc,
+  pureTestImportRestrictions,
   srcImportRestrictions,
   type ImportRestriction,
   type Layer,
@@ -92,6 +101,7 @@ const READABILITY_RULES: Linter.RulesRecord = {
   "max-params": ["error", 3],
   "max-depth": ["error", 3],
   complexity: ["error", 8],
+  "max-lines-per-function": ["error", { max: 50, skipBlankLines: true, skipComments: true }],
 };
 
 const isPure = (layer: Layer): boolean => layer === "domain" || layer === "application";
@@ -115,7 +125,20 @@ const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
   },
 });
 
-const srcHarnessAdapterConfig = (adapter: SrcHarnessAdapter): Linter.Config => ({
+const srcPureTestConfig = (context: ContextName, layer: Layer): Linter.Config => ({
+  name: `aidlc/src/${context}/${layer}/tests`,
+  files: srcFiles(context, layer).map((glob) => glob.replace(/\.ts$/, ".test.ts")),
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      { patterns: [...pureTestImportRestrictions({ context, layer })] },
+    ],
+  },
+});
+
+const PURE_LAYERS: readonly Layer[] = ["domain", "application"];
+
+const srcHarnessAdapterConfig =(adapter: SrcHarnessAdapter): Linter.Config => ({
   name: `aidlc/src/${adapter.context}/harness-adapters`,
   files: [adapter.files],
   rules: {
@@ -154,24 +177,70 @@ const harnessTreeConfig: Linter.Config = {
   rules: restrict({ imports: [], syntax: legacyOwnership(glossary) }),
 };
 
+const IGNORED = [
+  "node_modules/**",
+  "dist/**",
+  "dist-release/**",
+  "tests/logs/**",
+  "tests/fixtures/v05-mr9-sensor-fire/failing-linter/**",
+  "tests/fixtures/markdown-goldens/**",
+];
+
+const LINT_TOOLING = ["lint/**/*.ts", "eslint.config.ts", "scripts/gate.ts"];
+
+const standardsConfigs: Linter.Config[] = [
+  {
+    name: "aidlc/standards",
+    files: ["**/*.ts"],
+    rules: { ...BIOME_SUCCESSOR_RULES, ...READABILITY_RULES },
+  },
+  {
+    name: "aidlc/standards/legacy-non-null",
+    files: BIOME_RELAXED_NON_NULL,
+    rules: { "@typescript-eslint/no-non-null-assertion": "off" },
+  },
+  {
+    name: "aidlc/standards/legacy-template",
+    files: BIOME_RELAXED_TEMPLATE,
+    rules: { "prefer-template": "off" },
+  },
+];
+
+const knowledgeConfig: Linter.Config = {
+  name: "aidlc/legacy/knowledge-read-only-fs",
+  files: ["core/tools/aidlc-knowledge.ts"],
+  rules: KNOWLEDGE_FS_READS,
+};
+
 export const boundaryConfig: Linter.Config[] = [
-  { name: "aidlc/ignores", ignores: ["node_modules/**", "dist/**", "dist-release/**", "tests/**"] },
+  { name: "aidlc/ignores", ignores: IGNORED },
   {
     name: "aidlc/parser",
     files: ["**/*.ts"],
     languageOptions: { parser: tsParser, sourceType: "module" },
-    plugins: { aidlc: { rules: { "no-comments": noComments } } },
+    plugins: {
+      aidlc: { rules: { "no-comments": noComments, "node-import-protocol": nodeImportProtocol } },
+      "@typescript-eslint": tseslint.plugin,
+    },
     linterOptions: { reportUnusedDisableDirectives: "off" },
   },
+  ...standardsConfigs,
   unassignedLegacyConfig,
+  knowledgeConfig,
   ...TERRITORIES.map(legacyTerritoryConfig),
   monolithConfig,
   harnessTreeConfig,
   ...CONTEXTS.flatMap((context) => LAYERS.map((layer) => srcLayerConfig(context, layer))),
+  ...CONTEXTS.flatMap((context) => PURE_LAYERS.map((layer) => srcPureTestConfig(context, layer))),
   ...SRC_HARNESS_ADAPTERS.map(srcHarnessAdapterConfig),
   {
     name: "aidlc/lint-tooling",
-    files: ["lint/**/*.ts", "eslint.config.ts"],
+    files: LINT_TOOLING,
     rules: READABILITY_RULES,
+  },
+  {
+    name: "aidlc/lint-tooling/pure",
+    files: ["lint/gate/domain/**/*.ts", "lint/gate/application/**/*.ts"],
+    rules: PURE_RULES,
   },
 ];

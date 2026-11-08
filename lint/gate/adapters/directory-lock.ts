@@ -1,0 +1,124 @@
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
+import { join } from "node:path";
+import { z } from "zod";
+import {
+  describeOwner,
+  isStale,
+  LOCK_POLL_MS,
+  type LockObservation,
+  type LockOwner,
+} from "../domain/machine-lock.ts";
+import type { LockRequest, MachineLock } from "../application/ports.ts";
+
+export type LockPlacement = {
+  readonly directory: string;
+  readonly cwd: string;
+  readonly onWait: (line: string) => void;
+};
+
+const LockOwnerSchema = z.object({
+  pid: z.number().int().positive(),
+  host: z.string(),
+  lane: z.string(),
+  command: z.string(),
+  cwd: z.string(),
+  startedAt: z.number(),
+});
+
+const OWNER_FILE = "owner.json";
+
+const isAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
+};
+
+const readOwner = (lockPath: string): LockOwner | undefined => {
+  try {
+    return LockOwnerSchema.parse(JSON.parse(readFileSync(join(lockPath, OWNER_FILE), "utf8")));
+  } catch {
+    return undefined;
+  }
+};
+
+const observe = (lockPath: string): LockObservation => {
+  const owner = readOwner(lockPath);
+  const since = owner?.startedAt ?? statSync(lockPath, { throwIfNoEntry: false })?.mtimeMs;
+  return {
+    owner,
+    ageMs: Date.now() - (since ?? Date.now()),
+    ownerAlive: owner === undefined ? false : isAlive(owner.pid),
+    host: hostname(),
+  };
+};
+
+const tryCreate = (lockPath: string, owner: LockOwner): boolean => {
+  try {
+    mkdirSync(lockPath);
+  } catch {
+    return false;
+  }
+  writeFileSync(join(lockPath, OWNER_FILE), JSON.stringify(owner, null, 2));
+  return true;
+};
+
+const releaseIfOurs = (lockPath: string): void => {
+  if (readOwner(lockPath)?.pid === process.pid) {
+    rmSync(lockPath, { recursive: true, force: true });
+  }
+};
+
+const holdUntilExit = (lockPath: string): void => {
+  const release = (): void => releaseIfOurs(lockPath);
+  process.once("exit", release);
+  process.once("SIGINT", () => {
+    release();
+    process.exit(130);
+  });
+  process.once("SIGTERM", () => {
+    release();
+    process.exit(143);
+  });
+};
+
+const ownerFor = (placement: LockPlacement, request: LockRequest): LockOwner => ({
+  pid: process.pid,
+  host: hostname(),
+  lane: request.lane,
+  command: request.command,
+  cwd: placement.cwd,
+  startedAt: Date.now(),
+});
+
+export const directoryLock = (placement: LockPlacement): MachineLock => {
+  const lockPath = join(placement.directory, "heavy.lock");
+  return {
+    acquire: async (request) => {
+      mkdirSync(placement.directory, { recursive: true });
+      const deadline = Date.now() + request.waitMs;
+      let announced = false;
+      while (!tryCreate(lockPath, ownerFor(placement, request))) {
+        const observation = observe(lockPath);
+        if (isStale(observation)) {
+          rmSync(lockPath, { recursive: true, force: true });
+          continue;
+        }
+        if (Date.now() >= deadline) {
+          return false;
+        }
+        if (!announced) {
+          placement.onWait(`waiting for the machine lock: ${describeOwner(observation.owner)}`);
+          announced = true;
+        }
+        await Bun.sleep(LOCK_POLL_MS);
+      }
+      holdUntilExit(lockPath);
+      return true;
+    },
+    release: () => releaseIfOurs(lockPath),
+  };
+};
