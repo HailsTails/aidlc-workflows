@@ -1,4 +1,4 @@
-import type { PluginId, ScopeName, StageSlug } from "./identities.ts";
+import type { Owner, PluginId, ScopeName, StageSlug } from "./identities.ts";
 import type { MethodSourceLocation } from "./method-source.ts";
 
 export type DefinitionConcept =
@@ -44,6 +44,12 @@ export type MethodRefusal =
       readonly source: MethodSourceLocation;
       readonly concept: DefinitionConcept;
       readonly name: string;
+    }
+  | {
+      readonly kind: "unattributed-membership";
+      readonly scope: ScopeName;
+      readonly stage: StageSlug;
+      readonly declaredBy: Owner;
     }
   | {
       readonly kind: "core-namespace-claimed";

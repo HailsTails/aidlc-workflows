@@ -10,6 +10,10 @@ export type CopilotModelSurface = (request: {
   readonly afterProjectionLines: readonly string[];
 }) => Result<string, ProjectionRefusal>;
 
+export type CopilotRuntimeSurface = (request: {
+  readonly agent: Agent;
+}) => Result<string, ProjectionRefusal>;
+
 export const COPILOT_WORKER_TOOLS: readonly string[] = [
   "read",
   "edit",
@@ -47,23 +51,32 @@ const workerTools = (denial: TaskDenial): readonly string[] =>
     ? [`tools: [${COPILOT_WORKER_TOOLS.map((tool) => `"${tool}"`).join(", ")}]`]
     : [];
 
-const placed = (agent: Agent, text: string): Rendering => {
-  const path = projectPath(`.github/agents/${agent.slug}.md`);
-  return path.ok
-    ? accepted([
-        {
-          path: path.value,
-          content: { kind: "text", text: text.replaceAll(SPACE_MEMORY, ACTIVE_MEMORY) },
-          mode: "regular",
-          origin: { kind: "method-source", path: agent.source },
-          availability: "always",
-        },
-      ])
-    : refused(renderFailed(agent, "The Copilot agent destination must be a project-relative path."));
+const placed = (agent: Agent, surfaces: { readonly runtime: string; readonly native: string }): Rendering => {
+  const runtimePath = projectPath(`.aidlc/agents/${agent.slug}.md`);
+  const nativePath = projectPath(`.github/agents/${agent.slug}.md`);
+  if (!runtimePath.ok || !nativePath.ok) {
+    return refused(renderFailed(agent, "The Copilot agent destinations must be project-relative paths."));
+  }
+  return accepted([
+    {
+      path: runtimePath.value,
+      content: { kind: "text", text: surfaces.runtime.replaceAll(SPACE_MEMORY, ACTIVE_MEMORY) },
+      mode: "regular",
+      origin: { kind: "method-source", path: agent.source },
+      availability: "always",
+    },
+    {
+      path: nativePath.value,
+      content: { kind: "text", text: surfaces.native.replaceAll(SPACE_MEMORY, ACTIVE_MEMORY) },
+      mode: "regular",
+      origin: { kind: "method-source", path: agent.source },
+      availability: "always",
+    },
+  ]);
 };
 
 export const copilotAgentRenderer =
-  (modelSurface: CopilotModelSurface): Harness["renderAgent"] =>
+  (modelSurface: CopilotModelSurface, runtimeSurface: CopilotRuntimeSurface): Harness["renderAgent"] =>
   ({ agent }) => {
     const denial = taskDenial(agent);
     if (denial === "other") {
@@ -79,5 +92,7 @@ export const copilotAgentRenderer =
       removeKeys: ["disallowedTools"],
       afterProjectionLines: workerTools(denial),
     });
-    return surfaced.ok ? placed(agent, surfaced.value) : surfaced;
+    if (!surfaced.ok) return surfaced;
+    const runtime = runtimeSurface({ agent });
+    return runtime.ok ? placed(agent, { runtime: runtime.value, native: surfaced.value }) : runtime;
   };

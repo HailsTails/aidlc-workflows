@@ -33,7 +33,7 @@
         "lanes.json",
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}{,.test}.ts",
         "src/workflow-definition/application/use-cases{,.test}.ts",
-        "src/projection/domain/{projected-file,neutral-surface,host-surface,projection,template-token}{,.test}.ts",
+        "src/projection/domain/{projected-file,neutral-surface,host-surface,native-command,projection,template-token}{,.test}.ts",
         "src/projection/application/ports{,.test}.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}{,.test}.ts",
         "src/packaging/application/boundary-ports{,.test}.ts",
@@ -46,7 +46,7 @@
       "contractFiles": [
         "src/workflow-definition/domain/{identities,vocabulary,stage,agent,scope,rule,sensor,knowledge,contribution,findings,hooks,method-source,outline,method,stage-graph,refusals}.ts",
         "src/workflow-definition/application/use-cases.ts",
-        "src/projection/domain/{projected-file,neutral-surface,host-surface,projection,template-token}.ts",
+        "src/projection/domain/{projected-file,neutral-surface,host-surface,native-command,projection,template-token}.ts",
         "src/projection/application/ports.ts",
         "src/packaging/domain/{payload,root-integration,managed-directory,release-history}.ts",
         "src/packaging/application/boundary-ports.ts",
@@ -68,6 +68,7 @@
         "eslint.config.ts",
         "lint/**",
         "tests/golden/**",
+        "tests/verification/**",
         "tests/ratchets/**",
         "tests/fixtures/aidlc-lib-declarations.txt",
         "tests/unit/t-aidlc-lib-only-shrinks.test.ts",
@@ -114,7 +115,9 @@
       "notOwned": [
         "harness/copilot/emit.ts",
         "harness/{kiro,kiro-ide,cursor}/manifest.ts",
-        "harness/{codex,opencode}/{manifest,emit}.ts"
+        "harness/{codex,opencode}/{manifest,emit}.ts",
+        "src/workflow-definition/domain/{compile-core-method,method-references}{,.test}.ts",
+        "src/projection/adapters/compiled-method-file{,.test}.ts"
       ],
       "territory": ["workflow-definition", "projection", "packaging", "installation"],
       "consumes": ["src/kernel/**"],
@@ -243,7 +246,9 @@
         "harness/codex/manifest.ts",
         "harness/codex/emit.ts",
         "harness/opencode/manifest.ts",
-        "harness/opencode/emit.ts"
+        "harness/opencode/emit.ts",
+        "src/workflow-definition/domain/{compile-core-method,method-references}{,.test}.ts",
+        "src/projection/adapters/compiled-method-file{,.test}.ts"
       ],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {

@@ -37,6 +37,7 @@
 // and fails CI only when the generator is nondeterministic.
 
 import {
+  chmodSync,
   cpSync,
   existsSync,
   lstatSync,
@@ -60,7 +61,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { loadCoreBuild } from "../src/cli/core-build-root.ts";
+import { loadCoreBuild, projectCoreCommands } from "../src/cli/core-build-root.ts";
 import { markdownBlocks } from "../core/tools/aidlc-markdown.ts";
 import type { HarnessManifest } from "./manifest-types.ts";
 import {
@@ -1077,6 +1078,10 @@ function buildTree(
   //    root inventory includes them automatically.
   if (m.emit) {
     m.emit({
+      emitCommands: (place) => emitCommandProjection({ method: coreBuild.method, sources: coreBuild.sources,
+        projectRoot: outRoot, temporaryRoot: join(REPO_ROOT, ".cache", "runner-frames"),
+        harnessDir, harnessName: m.name, place,
+        substituteToken: (text) => substituteToken(text, harnessDir, invoke, letters) }),
       method: coreBuild.method,
       sources: coreBuild.sources,
       repoRoot: REPO_ROOT,
@@ -1710,6 +1715,20 @@ function rewriteNativeInvocations(
 // (dist/<name>/aidlc/spaces/default/memory/) so rules_in_context is populated at
 // compile time — every harness needs it now that the method lives at the
 // workspace root, not inside <harnessDir>.
+function emitCommandProjection(request: Parameters<typeof projectCoreCommands>[0] & {
+  readonly substituteToken: (text: string) => string;
+}): void {
+  const rendered = projectCoreCommands(request);
+  if (!rendered.ok) throw new Error(JSON.stringify(rendered.refusal));
+  for (const file of rendered.value) {
+    const destination = join(request.projectRoot, file.path);
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, file.content.kind === "text"
+      ? request.substituteToken(file.content.text) : file.content.bytes);
+    if (file.mode === "executable") chmodSync(destination, 0o755);
+  }
+}
+
 function runTool(
   treeRoot: string,
   harnessDir: string,

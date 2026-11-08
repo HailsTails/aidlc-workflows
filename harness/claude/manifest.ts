@@ -23,6 +23,8 @@ import type { ProjectionRefusal } from "../../src/projection/domain/projection.t
 import { createClaudeAgentRenderer,
   type ClaudeAgentLegacy } from "../../src/hosts/claude/projection/agent-renderer.ts";
 
+import { claudeCommandPath } from "../../src/hosts/claude/projection/command-renderer.ts";
+
 const manifest: HarnessManifest = {
   name: "claude",
   productName: "Claude Code",
@@ -229,7 +231,10 @@ const manifest: HarnessManifest = {
 
   runnerFrontmatterAdditions: ["disable-model-invocation: true"],
 
+  skipRunnerGen: true,
+
   emit(ctx): void {
+    ctx.emitCommands(claudeCommandPath);
     for (const agent of ctx.method.agents) {
       const legacyModelSurface: ClaudeAgentLegacy = (request) => {
         if (request.agent.model.kind !== "tier") return refused<ProjectionRefusal>({

@@ -8,6 +8,7 @@
 
 import type { OnboardingFills } from "./onboarding.ts";
 import type { Method } from "../src/workflow-definition/domain/method.ts";
+import type { CommandPlacement } from "../src/projection/application/ports.ts";
 import type { MethodSource } from "../src/workflow-definition/domain/method-source.ts";
 
 /** A single core dir projected from core/<src> into <harnessDir>/<dst>. */
@@ -30,6 +31,7 @@ export type FileMap = { src: string; dst: string; projectRoot?: boolean; copyOnl
  * .agents/skills tree) without reaching back into the packager internals.
  */
 export type EmitContext = {
+  emitCommands: (place: CommandPlacement) => void;
   method: Method;
   sources: readonly MethodSource[];
   /** Absolute path to the repo root. */

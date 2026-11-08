@@ -1,6 +1,6 @@
 import type { Result } from "../../kernel/result.ts";
 import type { HostIdentity } from "../../kernel/host.ts";
-import type { DistributionId } from "../../kernel/values.ts";
+import type { DistributionId, KernelRefusal, ProjectPath } from "../../kernel/values.ts";
 import type { Agent } from "../../workflow-definition/domain/agent.ts";
 import type { HookDeclaration } from "../../workflow-definition/domain/hooks.ts";
 import type { KnowledgeDocument } from "../../workflow-definition/domain/knowledge.ts";
@@ -9,6 +9,7 @@ import type { Scope } from "../../workflow-definition/domain/scope.ts";
 import type { Stage } from "../../workflow-definition/domain/stage.ts";
 import type { ScopeColumn, StageNode } from "../../workflow-definition/domain/stage-graph.ts";
 import type { AuthoredHostFile } from "../domain/host-surface.ts";
+import type { CommandReading, CommandSubject, NativeCommandFile } from "../domain/native-command.ts";
 import type {
   NeutralDocument,
   NeutralSurface,
@@ -55,6 +56,12 @@ export interface HarnessRegistry {
 export interface NeutralSurfaceReader {
   read(): Promise<Result<NeutralSurface, readonly ProjectionRefusal[]>>;
 }
+
+export interface CommandSource {
+  read(subject: CommandSubject): Result<CommandReading, ProjectionRefusal>;
+}
+
+export type CommandPlacement = (file: NativeCommandFile) => Result<ProjectPath, KernelRefusal>;
 
 export interface HostSurfaceReader {
   read(request: {

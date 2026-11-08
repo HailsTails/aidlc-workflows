@@ -68,3 +68,11 @@ test("an unknown stage-declared scope is refused at the stage source", () => {
     } },
   ]);
 });
+
+test("a membership with neither endpoint names its owner without a fictional file", () => {
+  expect(validateCoreReferences({ ...core, memberships: [{ scope: scope("missing-scope"),
+    stage: stage("missing-stage"), declaredBy: { kind: "core" } }] })).toEqual([
+    { kind: "unattributed-membership", scope: scope("missing-scope"), stage: stage("missing-stage"),
+      declaredBy: { kind: "core" } },
+  ]);
+});
