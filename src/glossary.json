@@ -87,7 +87,7 @@
 {"name":"RootIntegration","context":"packaging","kind":"concept","definition":"A project-root file a harness shares with the person and the policy for merging it.","legacy":["RootIntegration","NativeRootIntegration"]},
 {"name":"RootIntegrationPolicy","context":"packaging","kind":"concept","definition":"managed-block, whole-file, json-map, json-array, jsonc-settings or json-entries."},
 {"name":"FileContent","context":"kernel","kind":"concept","definition":"A file's exact content, as text or as bytes."},
-{"name":"RenderedConcept","context":"projection","kind":"concept","definition":"Which method or harness concept a rendered file came from."},
+{"name":"RenderedConcept","context":"projection","kind":"concept","definition":"Which method or harness concept a rendered file came from. host-data is a runtime data file whose content the host decides, such as tools/data/harness.json and tools/data/plugin-agent.md; data that is the same for every host is not host-data."},
 {"name":"ProjectionOrigin","context":"projection","kind":"concept","definition":"Where a projected file came from: a method source, a neutral document, the harness, or a render."},
 {"name":"Availability","context":"projection","kind":"concept","definition":"Whether a projected file ships always, only by copy, or only natively."},
 {"name":"ProjectedFile","context":"projection","kind":"concept","definition":"One harness-correct file with its origin.","legacy":["DirMap","FileMap"]},
