@@ -1,4 +1,5 @@
 import { accepted, refused, type Result } from "../../kernel/result.ts";
+import { transitionFacts } from "../domain/audit.ts";
 import type { Gate, GateDecision, HumanEvidence } from "../domain/gate.ts";
 import { decideAtGate, type GateOutcome } from "../domain/gate-decision.ts";
 import type { GuardRefusal } from "../domain/guard.ts";
@@ -85,7 +86,7 @@ const recordOutcome = async (
   await deciding.trail.recordCaused({
     scene: { intent: request.intent, session: request.session, at: outcome.approval.decidedAt },
     cause: { kind: "gate-decided", approval: outcome.approval },
-    effects: outcome.transitions.map((transition) => ({ kind: "transition", transition })),
+    effects: transitionFacts(outcome.transitions),
   });
 };
 
