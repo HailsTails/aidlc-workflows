@@ -94,8 +94,8 @@
         "src/workflow-definition/**",
         "src/cli/adapters/routes/workflow-definition/**",
         "src/projection/**",
-        "src/hosts/claude/projection/**",
-        "src/hosts/claude/build.ts",
+        "src/hosts/{claude,opencode}/projection/**",
+        "src/hosts/{claude,opencode}/build.ts",
         "src/cli/adapters/routes/projection/**",
         "harness/*/**",
         "src/packaging/**",
@@ -112,7 +112,7 @@
       "notOwned": [
         "harness/copilot/emit.ts",
         "harness/{kiro,kiro-ide,cursor}/manifest.ts",
-        "harness/{codex,opencode}/{manifest,emit}.ts"
+        "harness/codex/{manifest,emit}.ts"
       ],
       "territory": ["workflow-definition", "projection", "packaging", "installation"],
       "consumes": ["src/kernel/**"],
@@ -167,7 +167,8 @@
         "scripts/manifest-types.ts": ["*"],
         "scripts/onboarding.ts": ["*"],
         "scripts/harness-bindings.ts": ["*"],
-        "harness/{claude,copilot}/manifest.ts": ["*"],
+        "harness/{claude,opencode,copilot}/manifest.ts": ["*"],
+        "harness/opencode/emit.ts": ["*"],
         "core/tools/aidlc-tiers.ts": ["TierProjection", "TIER_PROJECTIONS", "Harness"],
         "core/tools/aidlc-runner-gen.ts": ["*"],
         "core/tools/aidlc-init.ts": ["RootContribution", "Baseline", "PreparedRefreshSource", "PlannedAction"],
@@ -233,19 +234,17 @@
       }
     },
     "hosts-b": {
-      "name": "Projection for codex and opencode (supervised, one ticket at a time)",
+      "name": "Projection for codex (supervised, one ticket at a time)",
       "agent": "codex/dot",
       "owns": [
-        "src/hosts/{codex,opencode}/projection/**",
-        "src/hosts/{codex,opencode}/build.ts",
+        "src/hosts/codex/projection/**",
+        "src/hosts/codex/build.ts",
         "harness/codex/manifest.ts",
-        "harness/codex/emit.ts",
-        "harness/opencode/manifest.ts",
-        "harness/opencode/emit.ts"
+        "harness/codex/emit.ts"
       ],
       "consumes": ["src/kernel/**", "src/workflow-definition/domain/**", "src/projection/domain/**"],
       "monolithDeletions": {
-        "harness/{codex,opencode}/{manifest,emit}.ts": ["*"]
+        "harness/codex/{manifest,emit}.ts": ["*"]
       }
     }
   }
