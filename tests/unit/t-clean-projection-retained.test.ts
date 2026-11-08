@@ -35,6 +35,7 @@ import "../../scripts/projection/src/domain/native-file-set.test.ts";
 import "../../scripts/projection/src/domain/native-rendering.test.ts";
 import "../../scripts/projection/src/domain/native-stage-commands.test.ts";
 import "../../scripts/projection/src/domain/prepared-file-additions.test.ts";
+import "../../scripts/projection/src/domain/prepared-host-root.test.ts";
 import "../../scripts/projection/src/domain/prepared-runtime-files.test.ts";
 import "../../scripts/projection/src/domain/projection-content.test.ts";
 import "../../scripts/projection/src/domain/projection-ownership.test.ts";
