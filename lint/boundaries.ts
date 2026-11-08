@@ -13,6 +13,7 @@ import {
 import { GLOSSARY } from "./glossary.ts";
 import {
   domainClock,
+  dynamicImport,
   harnessBranching,
   bridgeImportRestrictions,
   hostBundleImportRestrictions,
@@ -33,10 +34,12 @@ type Territory = keyof typeof LEGACY_TERRITORY;
 
 const LAYERS: readonly Layer[] = ["domain", "application", "adapters", "fixtures", "root"];
 
-const KERNEL_LAYERS: readonly Layer[] = ["domain", "fixtures"];
+const CONTEXT_LAYERS: Readonly<Partial<Record<ContextName, readonly Layer[]>>> = {
+  kernel: ["domain", "fixtures"],
+  cli: ["adapters", "root"],
+};
 
-const layersOf = (context: ContextName): readonly Layer[] =>
-  context === "kernel" ? KERNEL_LAYERS : LAYERS;
+const layersOf = (context: ContextName): readonly Layer[] => CONTEXT_LAYERS[context] ?? LAYERS;
 
 const testedLayersOf = (context: ContextName): readonly Layer[] =>
   layersOf(context).filter((layer) => layer !== "fixtures");
@@ -81,6 +84,7 @@ const EFFECT_GLOBALS = [
   "setTimeout",
   "setInterval",
   "console",
+  "globalThis",
 ];
 
 const PURE_RULES: Linter.RulesRecord = {
@@ -104,7 +108,7 @@ const srcSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] => {
     ...ownershipInSrc(context, GLOSSARY),
     ...methodSyntaxFor(context, layer),
   ];
-  return purityOf(layer) === "pure" ? [...branded, domainClock] : branded;
+  return purityOf(layer) === "pure" ? [...branded, domainClock, dynamicImport] : branded;
 };
 
 const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
@@ -129,6 +133,28 @@ const srcTestConfig = (context: ContextName, layer: Layer): Linter.Config => ({
     ],
   },
 });
+
+const DECLARED_SRC_FILES = [
+  ...CONTEXTS.flatMap((context) => layersOf(context).flatMap((layer) => srcFiles(context, layer))),
+  HOST_BUNDLE_FILES,
+];
+
+const undeclaredSrcConfig: Linter.Config = {
+  name: "aidlc/src/undeclared",
+  files: ["src/**/*.ts"],
+  ignores: DECLARED_SRC_FILES,
+  rules: restrict({
+    imports: [],
+    syntax: [
+      {
+        selector: "Program",
+        message:
+          "Layer: this file is not a layer of a context in lint/context-map.ts; move it to " +
+          "src/<context>/<layer> or src/hosts/<harness>.",
+      },
+    ],
+  }),
+};
 
 const hostBundleConfig: Linter.Config = {
   name: "aidlc/src/hosts",
@@ -199,6 +225,7 @@ export const boundaryConfig: Linter.Config[] = [
   ...CONTEXTS.flatMap((context) =>
     testedLayersOf(context).map((layer) => srcTestConfig(context, layer)),
   ),
+  undeclaredSrcConfig,
   hostBundleConfig,
   ...LEGACY_BRIDGES.flatMap(legacyBridgeConfigs),
   {

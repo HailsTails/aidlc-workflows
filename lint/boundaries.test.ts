@@ -44,6 +44,61 @@ describe("boundaryConfig in production code", () => {
   });
 });
 
+const findingsFor = (code: string, filename: string): Linter.LintMessage[] =>
+  new Linter({ configType: "flat" }).verify(code, BOUNDARIES, { filename });
+
+const UNDECLARED = "not a layer of a context in lint/context-map.ts";
+
+describe("boundaryConfig outside the declared layers", () => {
+  test.each([
+    "src/execution/services/runner.ts",
+    "src/shared/ids.ts",
+    "src/kernel/ids/stage-id.ts",
+    "src/cli/domain/route.ts",
+    "src/cli/application/route.ts",
+  ])("refuses %s", (filename) => {
+    expect(findingsFor("export const value = 1;\n", filename)).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining(UNDECLARED) }),
+    );
+  });
+
+  test("leaves a declared layer to its own rules", () => {
+    expect(findingsFor("export const value = 1;\n", "src/execution/domain/unit.ts")).toEqual([]);
+  });
+});
+
+describe("boundaryConfig own-context layer arrows", () => {
+  test.each([
+    ["src/execution/domain/unit.ts", "../../execution/adapters/store.ts"],
+    ["src/execution/domain/unit.ts", "../../execution/application/ports.ts"],
+    ["src/execution/domain/unit.ts", "../main.ts"],
+    ["src/execution/application/run.ts", "../../execution/main.ts"],
+    ["src/execution/application/run.ts", "../../execution/adapters/store.ts"],
+  ])("%s may not import %s", (filename, specifier) => {
+    const code = `import { store } from "${specifier}";\nexport const used = store;\n`;
+
+    expect(findingsFor(code, filename)).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-imports" }),
+    );
+  });
+
+  test("a pure layer may not import dynamically", () => {
+    const code = 'export const load = () => import("node:fs");\n';
+
+    expect(findingsFor(code, "src/execution/domain/unit.ts")).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-syntax" }),
+    );
+  });
+
+  test("a pure layer may not reach effects through globalThis", () => {
+    const code = 'export const file = globalThis.Bun.file("x");\n';
+
+    expect(findingsFor(code, "src/execution/domain/unit.ts")).toContainEqual(
+      expect.objectContaining({ ruleId: "no-restricted-globals" }),
+    );
+  });
+});
+
 describe("boundaryConfig in colocated tests", () => {
   test("lets a domain test import bun:test and its own context's fixtures", () => {
     const messages = new Linter({ configType: "flat" }).verify(

@@ -56,18 +56,29 @@ const otherContextRestrictions = (placement: Placement): ImportRestriction[] =>
       : [forbiddenContext(other, placement)],
   );
 
+const ROOTED_CONTEXTS = alternatives(CONTEXTS.filter((context) => context !== "kernel"));
+
+const contextRootReach = (layer: Layer): ImportRestriction => ({
+  regex: `^(\\.\\./)+[\\w-]+\\.ts$|(^|/)(${ROOTED_CONTEXTS})/[\\w-]+\\.ts$`,
+  message:
+    `Layer: ${layer} never imports a context root such as main.ts; the root wires ` +
+    `${layer}, not the reverse.`,
+});
+
 const OWN_LAYER_RESTRICTIONS: Readonly<Record<Layer, readonly ImportRestriction[]>> = {
   domain: [
     {
-      regex: "^\\.\\./(application|adapters)/",
+      regex: "(^|/)(application|adapters)/",
       message: "Layer: domain depends on nothing outward; move the type into domain.",
     },
+    contextRootReach("domain"),
   ],
   application: [
     {
-      regex: "^\\.\\./adapters/",
+      regex: "(^|/)adapters/",
       message: "Layer: application talks to adapters only through a port in ports.ts.",
     },
+    contextRootReach("application"),
   ],
   adapters: [],
   fixtures: [],
@@ -282,4 +293,11 @@ export const legacyOwnership = (glossary: readonly GlossaryEntry[]): SyntaxRestr
 export const domainClock: SyntaxRestriction = {
   selector: "NewExpression[callee.name='Date']",
   message: "Domain purity: take the time from the Clock port; the domain never reads the clock.",
+};
+
+export const dynamicImport: SyntaxRestriction = {
+  selector: "ImportExpression",
+  message:
+    "Purity: a dynamic import loads code at run time, which is an effect. Import statically, " +
+    "or put the loading behind a port in application/ports.ts.",
 };
