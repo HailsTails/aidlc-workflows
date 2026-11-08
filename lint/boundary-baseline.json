@@ -1,24 +1,24 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174653,
+  "total": 174554,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
-    "aidlc/no-comments": 113389,
+    "aidlc/no-comments": 113282,
     "complexity": 3075,
     "Context boundary": 48,
     "Harness branching": 431,
     "max-depth": 2125,
-    "max-len": 48862,
-    "max-lines-per-function": 3527,
+    "max-len": 48872,
+    "max-lines-per-function": 3526,
     "max-params": 1766,
     "Monolith": 47,
     "no-control-regex": 17,
     "no-irregular-whitespace": 12,
     "no-lone-blocks": 3,
-    "no-nested-ternary": 937,
+    "no-nested-ternary": 936,
     "no-template-curly-in-string": 11,
     "no-unsafe-finally": 2,
     "no-useless-escape": 2,
@@ -440,7 +440,7 @@
       "no-nested-ternary": 6
     },
     "core/tools/aidlc-directive.ts": {
-      "aidlc/no-comments": 675,
+      "aidlc/no-comments": 680,
       "Monolith": 1,
       "Context boundary": 1,
       "max-len": 206,
@@ -1351,7 +1351,7 @@
       "no-nested-ternary": 6
     },
     "harness/claude/manifest.ts": {
-      "aidlc/no-comments": 76,
+      "aidlc/no-comments": 73,
       "max-len": 15
     },
     "harness/claude/onboarding.fills.ts": {
@@ -1359,8 +1359,8 @@
       "max-len": 11
     },
     "harness/codex/emit.ts": {
-      "aidlc/no-comments": 109,
-      "max-len": 13,
+      "aidlc/no-comments": 58,
+      "max-len": 5,
       "max-lines-per-function": 2,
       "max-params": 2,
       "complexity": 2
@@ -1382,7 +1382,7 @@
       "max-len": 12
     },
     "harness/copilot/emit.ts": {
-      "aidlc/no-comments": 69,
+      "aidlc/no-comments": 47,
       "max-len": 4,
       "max-lines-per-function": 1,
       "complexity": 1
@@ -1424,7 +1424,7 @@
       "no-nested-ternary": 1
     },
     "harness/cursor/manifest.ts": {
-      "aidlc/no-comments": 81,
+      "aidlc/no-comments": 73,
       "max-len": 1
     },
     "harness/cursor/onboarding.fills.ts": {
@@ -1466,7 +1466,7 @@
       "no-nested-ternary": 2
     },
     "harness/kiro/manifest.ts": {
-      "aidlc/no-comments": 117,
+      "aidlc/no-comments": 110,
       "max-len": 19
     },
     "harness/kiro/onboarding.fills.ts": {
@@ -1474,7 +1474,7 @@
       "max-len": 14
     },
     "harness/opencode/emit.ts": {
-      "aidlc/no-comments": 48,
+      "aidlc/no-comments": 29,
       "max-len": 1,
       "max-lines-per-function": 1
     },
@@ -1642,7 +1642,7 @@
       "max-len": 2
     },
     "scripts/manifest-types.ts": {
-      "aidlc/no-comments": 86,
+      "aidlc/no-comments": 85,
       "One owner": 8,
       "max-len": 2
     },
@@ -1666,7 +1666,7 @@
       "no-nested-ternary": 1
     },
     "scripts/package.ts": {
-      "aidlc/no-comments": 434,
+      "aidlc/no-comments": 423,
       "max-len": 43,
       "Context boundary": 6,
       "Harness branching": 21,
@@ -3781,8 +3781,8 @@
       "max-params": 4,
       "complexity": 12,
       "max-lines-per-function": 30,
-      "no-nested-ternary": 3,
       "max-depth": 1,
+      "no-nested-ternary": 2,
       "no-irregular-whitespace": 1
     },
     "tests/integration/t189-compose-dispatch.sdk.test.ts": {
@@ -4441,8 +4441,8 @@
       "max-lines-per-function": 1
     },
     "tests/smoke/t148-kiro-file-structure.test.ts": {
-      "aidlc/no-comments": 189,
-      "max-len": 82,
+      "aidlc/no-comments": 192,
+      "max-len": 88,
       "max-lines-per-function": 4,
       "complexity": 7,
       "no-nested-ternary": 2,
@@ -6933,6 +6933,10 @@
       "max-params": 1,
       "max-lines-per-function": 1
     },
+    "tests/unit/t-swarm-verification-command-before-workers.test.ts": {
+      "aidlc/no-comments": 7,
+      "max-len": 12
+    },
     "tests/unit/t-swarm-worker-turn-is-not-a-human-turn.test.ts": {
       "aidlc/no-comments": 17,
       "max-len": 6
@@ -7415,7 +7419,7 @@
     },
     "tests/unit/t113.test.ts": {
       "aidlc/no-comments": 102,
-      "max-len": 21,
+      "max-len": 22,
       "max-lines-per-function": 1
     },
     "tests/unit/t114-orchestrate-next.test.ts": {
@@ -7909,7 +7913,7 @@
     },
     "tests/unit/t230-dispatcher-routes.test.ts": {
       "aidlc/no-comments": 171,
-      "max-len": 128,
+      "max-len": 127,
       "no-nested-ternary": 2,
       "complexity": 4,
       "max-params": 4,
@@ -8458,7 +8462,6 @@
     },
     "tests/unit/t303-packager-orchestrator-skill-path.test.ts": {
       "aidlc/no-comments": 7,
-      "max-lines-per-function": 1,
       "max-len": 3,
       "max-depth": 1
     },
