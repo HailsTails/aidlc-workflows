@@ -15,13 +15,14 @@ export type Layer = "domain" | "application" | "adapters" | "fixtures" | "root";
 
 type Placement = { readonly context: ContextName; readonly layer: Layer };
 
-const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const alternatives = (values: readonly string[]): string => values.map(escapeRegex).join("|");
 
 const LEGACY_ROOTS = ["core", "scripts", "harness", "plugins", "tests", "examples", "dist"];
 
-const isPure = (layer: Layer): boolean => layer === "domain" || layer === "application";
+export const purityOf = (layer: Layer): "pure" | "effectful" =>
+  layer === "domain" || layer === "application" ? "pure" : "effectful";
 
 const privateLayersOf = (other: ContextName, placement: Placement): readonly string[] => {
   const rule = CONTEXT_MAP[placement.context];
@@ -74,7 +75,7 @@ const OWN_LAYER_RESTRICTIONS: Readonly<Record<Layer, readonly ImportRestriction[
 };
 
 const purityRestriction = (layer: Layer): ImportRestriction[] =>
-  isPure(layer)
+  purityOf(layer) === "pure"
     ? [
         {
           regex: "^(?![./])",
@@ -116,8 +117,8 @@ const hostBundleReach: ImportRestriction = {
     "the port the host implements and let the root wire it.",
 };
 
-const isCompositionRoot = (placement: Placement): boolean =>
-  placement.context === "cli" && placement.layer === "root";
+const hostReachFor = (placement: Placement): readonly ImportRestriction[] =>
+  placement.context === "cli" && placement.layer === "root" ? [] : [hostBundleReach];
 
 const testDiscipline: readonly ImportRestriction[] = [
   {
@@ -146,7 +147,7 @@ export const srcImportRestrictions = (placement: Placement): ImportRestriction[]
   ...OWN_LAYER_RESTRICTIONS[placement.layer],
   ...purityRestriction(placement.layer),
   ...testSupportRestriction(placement.layer),
-  ...(isCompositionRoot(placement) ? [] : [hostBundleReach]),
+  ...hostReachFor(placement),
   monolithReachBack,
 ];
 
@@ -239,8 +240,13 @@ export const methodAssertion: readonly SyntaxRestriction[] = [
     "use case or through a port that returns it; never assert the type.",
 }));
 
-export const mayAssertMethod = (context: ContextName, layer: Layer): boolean =>
-  layer === "fixtures" || (context === "workflow-definition" && layer === "application");
+export const methodSyntaxFor = (
+  context: ContextName,
+  layer: Layer,
+): readonly SyntaxRestriction[] =>
+  layer === "fixtures" || (context === "workflow-definition" && layer === "application")
+    ? []
+    : methodAssertion;
 
 const namedAny = (node: string, names: readonly string[]): readonly string[] =>
   names.length > 0 ? [`${node}[id.name=/^(${alternatives(names)})$/]`] : [];
@@ -271,5 +277,5 @@ export const legacyOwnership = (glossary: readonly GlossaryEntry[]): SyntaxRestr
 
 export const domainClock: SyntaxRestriction = {
   selector: "NewExpression[callee.name='Date']",
-  message: "Domain purity: take the time from the Clock port, never new Date().",
+  message: "Domain purity: take the time from the Clock port; the domain never reads the clock.",
 };

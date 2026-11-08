@@ -8,6 +8,7 @@ import {
   withMeasured,
   type CountsByFile,
 } from "../domain/violation-ratchet.ts";
+import { debtOnly } from "../domain/zone-rules.ts";
 import type { GateCheck } from "./gate-check.ts";
 import { touches, type GateScope } from "./gate-scope.ts";
 import type { Linter, LintMeasurement, LintTargets, RatchetRecords } from "./ports.ts";
@@ -43,7 +44,9 @@ const record = (request: {
 }): void => {
   const measured = request.measurement.counts;
   const removed = removedFiles({ ...request, measured });
-  request.records.saveBoundary(withMeasured({ recorded: request.recorded, measured, removed }));
+  request.records.saveBoundary(
+    debtOnly(withMeasured({ recorded: request.recorded, measured, removed })),
+  );
 };
 
 const noteFor = (recorded: CountsByFile, measurement: LintMeasurement): string => {

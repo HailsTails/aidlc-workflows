@@ -1,4 +1,4 @@
-import type { Rule } from "eslint";
+import type { Rule } from "./eslint-port.ts";
 
 const ALLOWED = /^\s*(?:eslint-|@ts-expect-error|biome-ignore|TODO\(#\d+\))/;
 
@@ -14,11 +14,14 @@ export const noComments: Rule.RuleModule = {
   },
   create: (context) => ({
     Program: () => {
-      for (const comment of context.sourceCode.getAllComments()) {
-        if (!ALLOWED.test(comment.value) && comment.loc) {
-          context.report({ loc: comment.loc, messageId: "comment" });
-        }
-      }
+      context.sourceCode
+        .getAllComments()
+        .filter((comment) => !ALLOWED.test(comment.value))
+        .forEach((comment) => {
+          if (comment.loc) {
+            context.report({ loc: comment.loc, messageId: "comment" });
+          }
+        });
     },
   }),
 };

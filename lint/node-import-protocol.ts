@@ -1,13 +1,12 @@
-import { builtinModules } from "node:module";
-import type { Rule } from "eslint";
+import type { Rule } from "./eslint-port.ts";
+import { NODE_BUILTINS } from "./node-builtins.ts";
 
-const isNodeBuiltin = (name: string): boolean =>
-  !name.startsWith("_") && !name.includes(":") && name !== "bun";
-
-const BUILTINS = new Set(builtinModules.filter(isNodeBuiltin));
+const BARE_BUILTINS = new Set(
+  NODE_BUILTINS.filter((name) => !name.startsWith("_") && !name.includes(":") && name !== "bun"),
+);
 
 const isBareBuiltin = (source: unknown): source is string =>
-  typeof source === "string" && BUILTINS.has(source.split("/")[0] ?? source);
+  typeof source === "string" && BARE_BUILTINS.has(source.split("/")[0] ?? source);
 
 export const nodeImportProtocol: Rule.RuleModule = {
   meta: {
@@ -22,9 +21,9 @@ export const nodeImportProtocol: Rule.RuleModule = {
       readonly source?: { readonly value?: unknown } | null | undefined;
     };
     const check = (node: ModuleReference): void => {
-      const value = node.source?.value;
-      if (isBareBuiltin(value)) {
-        context.report({ node, messageId: "protocol", data: { name: value } });
+      const specifier = node.source?.value;
+      if (isBareBuiltin(specifier)) {
+        context.report({ node, messageId: "protocol", data: { name: specifier } });
       }
     };
     return {

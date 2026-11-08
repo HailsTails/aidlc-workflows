@@ -1,4 +1,4 @@
-import type { Linter } from "eslint";
+import type { Linter } from "./eslint-port.ts";
 import { KNOWLEDGE_FS_READS } from "./biome-successor.ts";
 import {
   CONTEXTS,
@@ -10,7 +10,7 @@ import {
   type ContextName,
   type LegacyBridge,
 } from "./context-map.ts";
-import { readGlossary, type GlossaryEntry } from "./glossary.ts";
+import { GLOSSARY } from "./glossary.ts";
 import {
   domainClock,
   harnessBranching,
@@ -18,9 +18,10 @@ import {
   hostBundleImportRestrictions,
   legacyImportRestrictions,
   legacyOwnership,
-  mayAssertMethod,
   methodAssertion,
+  methodSyntaxFor,
   ownershipInSrc,
+  purityOf,
   pureTestImportRestrictions,
   srcImportRestrictions,
   type ImportRestriction,
@@ -34,11 +35,10 @@ const LAYERS: readonly Layer[] = ["domain", "application", "adapters", "fixtures
 
 const LEGACY_FILES = ["core/**/*.ts", "scripts/**/*.ts", "plugins/*/tools/**/*.ts"];
 
-const TERRITORIES = Object.keys(LEGACY_TERRITORY) as readonly Territory[];
-
-const glossary: readonly GlossaryEntry[] = readGlossary(
-  new URL("../src/glossary.json", import.meta.url),
+const TERRITORIES: readonly Territory[] = CONTEXTS.filter(
+  (context): context is Territory => context !== "kernel",
 );
+
 
 const asFileGlob = (entry: string): string => (entry.endsWith("/**") ? `${entry}/*.ts` : entry);
 
@@ -90,12 +90,13 @@ const PURE_RULES: Linter.RulesRecord = {
   ],
 };
 
-const isPure = (layer: Layer): boolean => layer === "domain" || layer === "application";
-
 const srcSyntax = (context: ContextName, layer: Layer): SyntaxRestriction[] => {
-  const shared = [...harnessBranching, ...ownershipInSrc(context, glossary)];
-  const branded = mayAssertMethod(context, layer) ? shared : [...shared, ...methodAssertion];
-  return isPure(layer) ? [...branded, domainClock] : branded;
+  const branded = [
+    ...harnessBranching,
+    ...ownershipInSrc(context, GLOSSARY),
+    ...methodSyntaxFor(context, layer),
+  ];
+  return purityOf(layer) === "pure" ? [...branded, domainClock] : branded;
 };
 
 const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
@@ -106,7 +107,7 @@ const srcLayerConfig = (context: ContextName, layer: Layer): Linter.Config => ({
       imports: srcImportRestrictions({ context, layer }),
       syntax: srcSyntax(context, layer),
     }),
-    ...(isPure(layer) ? PURE_RULES : {}),
+    ...(purityOf(layer) === "pure" ? PURE_RULES : {}),
   },
 });
 
@@ -128,7 +129,7 @@ const hostBundleConfig: Linter.Config = {
   files: [HOST_BUNDLE_FILES],
   rules: restrict({
     imports: hostBundleImportRestrictions(),
-    syntax: [...ownershipInSrc(undefined, glossary), ...methodAssertion],
+    syntax: [...ownershipInSrc(undefined, GLOSSARY), ...methodAssertion],
   }),
 };
 
@@ -149,7 +150,7 @@ const legacyBridgeConfigs = (bridge: LegacyBridge): Linter.Config[] => {
   return context === undefined ? [] : [bridgeConfig(bridge, context)];
 };
 
-const legacySyntax = (): SyntaxRestriction[] => [...harnessBranching, ...legacyOwnership(glossary)];
+const legacySyntax = (): SyntaxRestriction[] => [...harnessBranching, ...legacyOwnership(GLOSSARY)];
 
 const legacyTerritoryConfig = (territory: Territory): Linter.Config => ({
   name: `aidlc/legacy/${territory}`,
@@ -173,7 +174,7 @@ const monolithConfig: Linter.Config = {
 const harnessTreeConfig: Linter.Config = {
   name: "aidlc/legacy/harness-tree",
   files: HARNESS_ADAPTER_GLOBS.filter((glob) => glob.startsWith("harness/")),
-  rules: restrict({ imports: [], syntax: legacyOwnership(glossary) }),
+  rules: restrict({ imports: [], syntax: legacyOwnership(GLOSSARY) }),
 };
 
 const knowledgeConfig: Linter.Config = {

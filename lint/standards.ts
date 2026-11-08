@@ -1,5 +1,5 @@
 import tsParser from "@typescript-eslint/parser";
-import type { Linter } from "eslint";
+import type { Linter } from "./eslint-port.ts";
 import tseslint from "typescript-eslint";
 import {
   BIOME_RELAXED_NON_NULL,

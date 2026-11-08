@@ -1,6 +1,7 @@
 import { distinctFixes, type CheckOutcome } from "../domain/outcome.ts";
 import type { Progress } from "../application/ports.ts";
 import type { GateProblem, GateReport } from "../application/run-gate.ts";
+import type { DebtFigure } from "../domain/zone-rules.ts";
 
 export const SUMMARY_PREFIX = "AIDLC_GATE";
 
@@ -33,7 +34,21 @@ export const consoleProgress: Progress = {
   note: toStderr,
 };
 
-export const summaryLine = (report: GateReport): string => {
+export type ReportedRun = {
+  readonly report: GateReport;
+  readonly debt: DebtFigure | undefined;
+};
+
+export const printDebt = (debt: DebtFigure | undefined): void => {
+  if (debt !== undefined) {
+    toStderr(
+      `gate · debt · ${debt.findings} recorded findings remain in ${debt.files} debt-zone ` +
+        "files; the clean zone is judged apart from them",
+    );
+  }
+};
+
+export const summaryLine = ({ report, debt }: ReportedRun): string => {
   const checks = report.outcomes.map((outcome) => ({
     id: outcome.id,
     result: outcome.status,
@@ -47,6 +62,7 @@ export const summaryLine = (report: GateReport): string => {
     base: report.base ?? null,
     result: report.verdict,
     checks,
+    ...(debt === undefined ? {} : { debt }),
     ...(report.problem === undefined ? {} : { problem: report.problem }),
     ...(report.exitCode === undefined ? {} : { exitCode: report.exitCode }),
   };

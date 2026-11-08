@@ -1,4 +1,4 @@
-import type { Linter } from "eslint";
+import type { Linter } from "./eslint-port.ts";
 
 const UNUSED = {
   args: "all",

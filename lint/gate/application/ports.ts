@@ -1,5 +1,6 @@
 import type { BaseRevision, ChangedFile } from "../domain/change.ts";
 import type { ModuleShape } from "../domain/deletion.ts";
+import type { DisciplineException } from "../domain/zone-rules.ts";
 import type { GoldenSet } from "../domain/golden.ts";
 import type { JsonValue } from "../domain/json-grant.ts";
 import type { LanePlan } from "../domain/lane-plan.ts";
@@ -24,6 +25,7 @@ export type Repository = {
   readonly resolve: (ref: string) => BaseRevision | undefined;
   readonly changesSince: (base: BaseRevision) => readonly ChangedFile[];
   readonly readAt: (file: RevisionFile) => string | undefined;
+  readonly listFiles: () => readonly string[];
 };
 
 export type Workspace = {
@@ -109,6 +111,32 @@ export type LockRequest = {
 export type MachineLock = {
   readonly acquire: (request: LockRequest) => Promise<boolean>;
   readonly release: () => void;
+};
+
+export type DisciplineSelection = {
+  readonly excludes: () => readonly string[] | undefined;
+  readonly saveExcludes: (entries: readonly string[]) => void;
+  readonly exceptions: () => Loaded<readonly DisciplineException[]>;
+};
+
+export type AuditFinding = {
+  readonly clause: string;
+  readonly location: string;
+  readonly snippet: string;
+};
+
+export type AuditReport =
+  | {
+      readonly kind: "ran";
+      readonly verdict: "pass" | "fail";
+      readonly findings: readonly AuditFinding[];
+      readonly problems: readonly string[];
+    }
+  | { readonly kind: "failed"; readonly problem: string; readonly fix: string };
+
+export type DisciplineAudit = {
+  readonly project: () => Loaded<string>;
+  readonly run: () => AuditReport;
 };
 
 export type Progress = {

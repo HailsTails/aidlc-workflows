@@ -1,12 +1,11 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174692,
+  "total": 174690,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
     "@typescript-eslint/no-invalid-void-type": 2,
-    "@typescript-eslint/no-unused-vars": 1,
     "aidlc/no-comments": 113411,
     "complexity": 3075,
     "Context boundary": 48,
@@ -16,7 +15,7 @@
     "max-lines-per-function": 3527,
     "max-params": 1766,
     "Monolith": 47,
-    "no-control-regex": 18,
+    "no-control-regex": 17,
     "no-irregular-whitespace": 12,
     "no-lone-blocks": 3,
     "no-nested-ternary": 937,
@@ -1746,12 +1745,6 @@
       "max-len": 1,
       "max-lines-per-function": 1,
       "complexity": 2
-    },
-    "src/kernel/values.ts": {
-      "no-control-regex": 1
-    },
-    "src/projection/fixtures/codex-projection.fixture.ts": {
-      "@typescript-eslint/no-unused-vars": 1
     },
     "tests/e2e/t-acp-kiro-compose-front.serial.test.ts": {
       "aidlc/no-comments": 39,

@@ -1,7 +1,9 @@
 export const CHECK_IDS = [
   "ownership",
+  "zones",
   "records",
   "lint",
+  "disciplines",
   "typecheck",
   "monolith",
   "kernel",

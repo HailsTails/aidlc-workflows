@@ -46,6 +46,8 @@ export const gitRepository = (root: string): Repository => ({
     const fresh = untracked(root).filter((change) => !seen.has(change.path));
     return [...tracked, ...fresh].sort((left, right) => left.path.localeCompare(right.path));
   },
+  listFiles: () =>
+    nulFields(git(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).text),
   readAt: ({ commit, path }) => {
     const shown = git(root, ["show", `${commit}:${path}`]);
     return shown.ok ? shown.text : undefined;

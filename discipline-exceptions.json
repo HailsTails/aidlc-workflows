@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "lint/eslint-port.ts",
+      "reason": "The single port through which the lint layer reaches the eslint package.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/eslint-port.ts import the eslint package?",
+            "because": "The flat config modules and custom rules need ESLint's Linter and Rule types, and this file is the one place they take them from.",
+            "evidence": "lint/standards.ts, lint/no-comments.ts and eslint.config.ts import from lint/eslint-port.ts"
+          },
+          {
+            "why": "Why do the flat config modules and custom rules need ESLint's types?",
+            "because": "ESLint itself loads eslint.config.ts and calls each custom rule's create function, so their shapes are fixed by ESLint's plugin interface.",
+            "evidence": "Rule.RuleModule and Linter.Config in node_modules/eslint/lib/types/index.d.ts"
+          },
+          {
+            "why": "Why does ESLint's plugin interface fix those shapes rather than a type the repository owns?",
+            "because": "The repository chose ESLint as its lint gate when Biome was retired, and a gate's configuration is written in the host tool's own format.",
+            "evidence": "package.json devDependencies pin eslint 10.11.0 and no longer list @biomejs/biome"
+          },
+          {
+            "why": "Why was ESLint chosen as the lint gate when Biome was retired?",
+            "because": "The boundary rules need no-restricted-imports patterns and AST selectors per context, which ESLint's flat config expresses and Biome's configuration cannot.",
+            "evidence": "lint/restrictions.ts builds no-restricted-imports patterns and no-restricted-syntax selectors"
+          },
+          {
+            "why": "Why do the boundary rules need import patterns and AST selectors per context?",
+            "because": "The clean-architecture rebuild enforces the context map's dependency arrows mechanically, so every arrow becomes an import restriction checked on every file.",
+            "evidence": "lint/context-map.ts CONTEXT_MAP declares dependsOn for each context"
+          }
+        ],
+        "rootCause": "The rebuild enforces the context map's dependency arrows mechanically through ESLint, so ESLint is a dependency the lint layer wraps at one port.",
+        "rootCheck": "Read lint/context-map.ts and lint/restrictions.ts on 2026-11-08: CONTEXT_MAP still declares dependsOn arrows and srcImportRestrictions still turns them into no-restricted-imports patterns.",
+        "readback": "The rebuild enforces the context map's arrows mechanically through ESLint, therefore the boundary rules are ESLint patterns and selectors, therefore ESLint is the lint gate, therefore the config modules and rules need ESLint's types, therefore lint/eslint-port.ts imports the eslint package as their one port.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-19#import-boundaries",
+      "file": "lint/node-builtins.ts",
+      "reason": "The single port through which the lint layer reads the runtime's built-in module list.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/node-builtins.ts import node:module?",
+            "because": "The node-import-protocol rule needs the runtime's list of built-in names to tell a bare built-in such as fs from a package.",
+            "evidence": "lint/node-import-protocol.ts builds BARE_BUILTINS from NODE_BUILTINS"
+          },
+          {
+            "why": "Why does the protocol rule need to tell a bare built-in from a package?",
+            "because": "A bare specifier like fs can be shadowed by an installed package of that name, while node:fs always resolves to the runtime, so the rule reports the unprefixed form.",
+            "evidence": "https://nodejs.org/api/esm.html#node-imports"
+          },
+          {
+            "why": "Why does the repository report the unprefixed form instead of allowing it?",
+            "because": "Biome's useNodejsImportProtocol enforced the prefix before ESLint replaced Biome, and the gate keeps a successor for every rule Biome enforced.",
+            "evidence": "lint/standards.ts registers aidlc/node-import-protocol beside lint/biome-successor.ts"
+          },
+          {
+            "why": "Why does the gate keep a successor for every rule Biome enforced?",
+            "because": "Retiring a rule without a successor would let debt-zone code regress silently while the ratchet still reads green.",
+            "evidence": "lint/boundary-baseline.json records counts per rule category for 1609 debt files"
+          },
+          {
+            "why": "Why would the ratchet read green while debt-zone code regresses?",
+            "because": "The baseline counts only findings of rules that run, so a rule that stops running drops its category to zero instead of failing.",
+            "evidence": "lint/gate/domain/violation-ratchet.ts increasesOver compares measured counts with recorded counts"
+          }
+        ],
+        "rootCause": "The baseline counts only rules that run, so the protocol rule must keep running, and it needs the built-in list that node:module holds.",
+        "rootCheck": "Read lint/gate/domain/violation-ratchet.ts on 2026-11-08: increasesOver reports only measured counts above recorded ones, so a category that stops running never fails.",
+        "readback": "The baseline counts only rules that run, therefore every Biome rule keeps a successor, therefore the protocol rule tells bare built-ins from packages, therefore it needs the runtime's built-in list, therefore lint/node-builtins.ts imports node:module.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "lint/no-comments.ts",
+      "reason": "An ESLint rule's listener keys are ESTree node names that ESLint's API fixes.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/no-comments.ts name a visitor key Program in PascalCase?",
+            "because": "ESLint calls a rule's listeners by AST node type, and the node type for a whole file is spelled Program.",
+            "evidence": "https://eslint.org/docs/latest/extend/custom-rules#rule-structure"
+          },
+          {
+            "why": "Why does ESLint call listeners by AST node type?",
+            "because": "ESLint walks the ESTree syntax tree and dispatches each node to the listener whose key matches its type field, so the key equals the ESTree name exactly.",
+            "evidence": "https://github.com/estree/estree/blob/master/es5.md#programs"
+          },
+          {
+            "why": "Why must the listener key equal the ESTree name exactly?",
+            "because": "Dispatch is a string lookup with no mapping layer, so a camelCase key would never match and the rule would quietly report nothing.",
+            "evidence": "lint/no-comments.test.ts shows the Program listener reporting a comment on line 1"
+          },
+          {
+            "why": "Why would an unmatched camelCase key quietly report nothing?",
+            "because": "ESLint accepts any extra key on the listener object without validation, so an unmatched name is ignored rather than refused.",
+            "evidence": "https://eslint.org/docs/latest/extend/selectors"
+          },
+          {
+            "why": "Why does ESLint accept an unmatched listener key without validation?",
+            "because": "Listener keys are CSS-like selectors as well as node names, so ESLint cannot know which strings are mistakes and leaves them to the rule author.",
+            "evidence": "lint/restrictions.ts writes selectors such as TSAsExpression for no-restricted-syntax"
+          }
+        ],
+        "rootCause": "ESLint's listener keys are selectors and node names its API fixes, so the vendor-facing rule file spells them as ESTree does.",
+        "rootCheck": "Ran bun test lint/no-comments.test.ts on 2026-11-08: the Program listener reported the comment on line 1, and the test passed.",
+        "readback": "ESLint's listener keys are vendor selectors and node names, therefore a rule cannot rename them, therefore the listener for a whole file is spelled Program, therefore lint/no-comments.ts names a visitor key Program in PascalCase.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    },
+    {
+      "kind": "authorised-location",
+      "clause": "CD-6#naming-convention",
+      "file": "lint/node-import-protocol.ts",
+      "reason": "An ESLint rule's listener keys are ESTree node names that ESLint's API fixes.",
+      "whyChain": {
+        "whys": [
+          {
+            "why": "Why does lint/node-import-protocol.ts name its visitor keys ImportDeclaration, ExportNamedDeclaration and ExportAllDeclaration?",
+            "because": "ESLint calls a rule's listeners by AST node type, and those are the node types of the three statements that carry a module specifier.",
+            "evidence": "https://github.com/estree/estree/blob/master/es2015.md#imports"
+          },
+          {
+            "why": "Why does ESLint call listeners by AST node type?",
+            "because": "ESLint walks the ESTree syntax tree and dispatches each node to the listener whose key matches its type field, so the key equals the ESTree name exactly.",
+            "evidence": "https://eslint.org/docs/latest/extend/custom-rules#rule-structure"
+          },
+          {
+            "why": "Why must the listener key equal the ESTree name exactly?",
+            "because": "Dispatch is a string lookup with no mapping layer, so a camelCase key would never match and the rule would quietly report nothing.",
+            "evidence": "lint/node-import-protocol.test.ts shows the ImportDeclaration listener reporting a bare fs import"
+          },
+          {
+            "why": "Why would an unmatched camelCase key quietly report nothing?",
+            "because": "ESLint accepts any extra key on the listener object without validation, so an unmatched name is ignored rather than refused.",
+            "evidence": "https://eslint.org/docs/latest/extend/selectors"
+          },
+          {
+            "why": "Why does ESLint accept an unmatched listener key without validation?",
+            "because": "Listener keys are CSS-like selectors as well as node names, so ESLint cannot know which strings are mistakes and leaves them to the rule author.",
+            "evidence": "lint/restrictions.ts writes selectors such as TSAsExpression for no-restricted-syntax"
+          }
+        ],
+        "rootCause": "ESLint's listener keys are selectors and node names its API fixes, so the vendor-facing rule file spells them as ESTree does.",
+        "rootCheck": "Ran bun test lint/node-import-protocol.test.ts on 2026-11-08: the ImportDeclaration listener reported the bare fs import, and the test passed.",
+        "readback": "ESLint's listener keys are vendor selectors and node names, therefore a rule cannot rename them, therefore the listeners for specifier statements are spelled ImportDeclaration, ExportNamedDeclaration and ExportAllDeclaration, therefore lint/node-import-protocol.ts names its visitor keys that way.",
+        "owner": "Lane G (Guardrails) in lanes.json"
+      }
+    }
+  ]
+}

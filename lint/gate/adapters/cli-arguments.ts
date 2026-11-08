@@ -24,7 +24,12 @@ export const USAGE = [
   "summary line carries that code as exitCode (green on 0, red otherwise).",
   "The lock is never broken while its owner process is alive on the same host.",
   "Env: AIDLC_GATE_BASE (default base ref), AIDLC_GATE_LOCK_DIR (lock folder; default",
-  "     .aidlc-gate in the folder that holds the main checkout).",
+  "     .aidlc-gate in the folder that holds the main checkout),",
+  "     AIDLC_DISCIPLINE_CORE (discipline-core install; default",
+  "     aidlc-discipline-core-main/plugins/discipline-core beside the main checkout,",
+  "     linked into the worktree at .cache/discipline-core).",
+  "--record also regenerates the disciplines.json exclude list from lint/zones.ts and",
+  "the ESLint projection; the summary line carries the debt figure apart from checks.",
 ].join("\n");
 
 const OPTIONS = {

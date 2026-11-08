@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { z } from "zod";
+import glossaryDocument from "../src/glossary.json" with { type: "json" };
 import { CONTEXTS } from "./context-map.ts";
 
 const GlossaryEntrySchema = z.strictObject({
@@ -15,5 +15,4 @@ const GlossarySchema = z.array(GlossaryEntrySchema);
 
 export type GlossaryEntry = z.infer<typeof GlossaryEntrySchema>;
 
-export const readGlossary = (glossaryPath: URL): readonly GlossaryEntry[] =>
-  GlossarySchema.parse(JSON.parse(readFileSync(glossaryPath, "utf8")));
+export const GLOSSARY: readonly GlossaryEntry[] = GlossarySchema.parse(glossaryDocument);
