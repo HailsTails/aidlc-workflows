@@ -27,6 +27,10 @@ import {
   riskyFormDenyLines,
   shellDenyLines,
 } from "./delegate-shell-deny.ts";
+import {
+  personaPermissionLines,
+  PLUGIN_AGENT,
+} from "../../src/hosts/kiro-ide/projection/persona-permissions.ts";
 import onboardingFills from "./onboarding.fills.ts";
 
 const DELEGATION_AGENTS = [
@@ -46,20 +50,14 @@ const DELEGATION_AGENTS = [
   "aidlc-operations-agent",
 ] as const;
 
-// The composer's one file: the grid it writes before each validate-grid run
-// (the proposalPath detect --json prints). It writes no scope and not the
-// scope grid; saving a scope is the engine's `scope save`.
-const composerProposalPath = "aidlc/spaces/*/intents/.aidlc-engine/composer-proposal.json";
-// A side-by-side worker's own unit records sit in its worktree, a top-level dot
-// entry (`.aidlc/worktrees/bolt-<id8>_<slug>`); its code there still asks.
-const spacePaths = ["aidlc/spaces/**", ".aidlc/worktrees/*/aidlc/spaces/**"];
-
-const quoted = (paths: readonly string[]) =>
-  paths.map((path) => `        - "${path}"`);
-
-// The name a plugin's agent stands under here: the guard admits it no role of
-// its own, so its deny is the one most personas carry.
-const PLUGIN_AGENT = "plugin-agent";
+// The composer's one file is the grid it writes before each validate-grid run
+// (the proposalPath detect --json prints). It writes no scope and not the scope
+// grid; saving a scope is the engine's `scope save`. A side-by-side worker's own
+// unit records sit in its worktree, a top-level dot entry
+// (`.aidlc/worktrees/bolt-<id8>_<slug>`); its code there still asks. A plugin's
+// agent stands under PLUGIN_AGENT: the guard admits it no role of its own, so
+// its deny is the one most personas carry. personaPermissionLines in
+// src/hosts/kiro-ide/projection/persona-permissions.ts writes these rules.
 
 // Each persona's shell deny admits what the guard admits that persona, and
 // refuses a risky shell form on any AI-DLC command.
@@ -77,7 +75,7 @@ const copyShellDeny = new Map<string, string[]>(
 // does not rest on how a Kiro build splits a command. A bare PowerShell
 // grouping is the terminal guard's (aidlcCodeArgumentHazard in the Kiro IDE
 // adapter).
-// An AI-DLC command holding one asks the person: the allow above names one
+// An AI-DLC command holding one asks the person: the persona's allow names one
 // command, and such a form would stretch it to another. The asks start with
 // the same AI-DLC prefix as the persona deny (riskyFormDenyLines), so the
 // person's own commands (a build, a test, a probe, with their redirects and
@@ -85,7 +83,6 @@ const copyShellDeny = new Map<string, string[]>(
 // them (#2199). The conductor (agents/aidlc-aidlc.md) carries the same list; t148
 // checks every agent; the native release spells the prefix `aidlc`
 // (rewriteKiroNativeAllowlists in scripts/package.ts).
-const SHELL_FORM_ASKS = RISKY_SHELL_FORMS.map((form) => `bun .kiro/tools/aidlc*${form}*`);
 
 // A persona's own tools and permissions are enforced only when the conductor
 // dispatches through invoke_sub_agent (IDE) or orchestrate_subagent (CLI); the
@@ -95,51 +92,10 @@ const SHELL_FORM_ASKS = RISKY_SHELL_FORMS.map((form) => `bun .kiro/tools/aidlc*$
 // every dispatch path. includeMcpJson gives a persona every server in the
 // person's workspace and user mcp.json; no rule allows an MCP call, so each
 // one asks.
-function personaFrontmatter(agent: string): string[] {
-  const writePaths = agent === "aidlc-composer-agent" ? [composerProposalPath] : spacePaths;
-  // Engine-owned trees are never a persona's to write; a deny beats every allow.
-  return [
-    `tools: ["read", "write", "shell"]`,
-    "includeMcpJson: true",
-    "permissions:",
-    "  rules:",
-    "    - capability: shell",
-    "      effect: allow",
-    "      match:",
-    `        - "bun .kiro/tools/aidlc-*"`,
-    // Every engine command goes through the dispatcher, which the hyphen
-    // pattern above does not reach. Its engine namespace only: the public
-    // verbs that change the machine's install keep asking, as on native.
-    `        - "bun .kiro/tools/aidlc.ts engine *"`,
-    // A read-only version check the personas run before a project's tests;
-    // the tests themselves keep asking.
-    `        - "bun --version"`,
-    // The conductor's asks: changing a setting and running a hook adapter
-    // stay the person's to approve, whichever agent runs them.
-    "    - capability: shell",
-    "      effect: ask",
-    "      match:",
-    `        - "bun .kiro/tools/aidlc.ts engine config set *"`,
-    `        - "bun .kiro/tools/aidlc.ts engine adapter *"`,
-    ...quoted(SHELL_FORM_ASKS),
-    ...(copyShellDeny.get(agent) ?? []),
-    "    - capability: fs_read",
-    "      effect: allow",
-    "      match:",
-    `        - "**"`,
-    "    - capability: filesystem",
-    "      effect: allow",
-    "      match:",
-    ...quoted(writePaths),
-    "    - capability: fs_write",
-    "      effect: deny",
-    "      match:",
-    `        - ".kiro/**"`,
-    `        - "aidlc/.aidlc-sessions/**"`,
-    // The person's words kept for a stage gate's Request Changes.
-    `        - "aidlc/spaces/*/intents/*/.aidlc-engine/gate-words/**"`,
-  ];
-}
+const personaFrontmatter = personaPermissionLines({
+  shellDeny: (agent) => copyShellDeny.get(agent) ?? [],
+  riskyShellForms: RISKY_SHELL_FORMS,
+});
 
 // The one Kiro IDE step for AI-DLC that is not running in this window, word
 // for word wherever it appears (doctor, the refusals, the missed-reply line).
@@ -461,9 +417,9 @@ const manifest: HarnessManifest = {
   // remains unavailable.
   frontmatterAdditions: DELEGATION_AGENTS.map((agent) => ({
     file: `agents/${agent}.md`,
-    lines: personaFrontmatter(agent),
+    lines: [...personaFrontmatter(agent)],
   })),
-  pluginAgentFrontmatter: personaFrontmatter(PLUGIN_AGENT),
+  pluginAgentFrontmatter: [...personaFrontmatter(PLUGIN_AGENT)],
   // The native release keys the persona shell deny on the `aidlc engine`
   // routes its conductor allow covers (delegate-shell-deny.ts), one rule per
   // distinct persona deny.
