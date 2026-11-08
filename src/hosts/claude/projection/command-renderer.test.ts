@@ -10,6 +10,7 @@ import { accept } from "../../../kernel/fixtures/accept.ts";
 import { stage as stageSlug, scope as scopeName } from
   "../../../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSource } from "../../../workflow-definition/fixtures/method-source.fixture.ts";
+import { methodSliceFixture } from "../../../workflow-definition/fixtures/method.fixture.ts";
 import { createClaudeCommandRenderers } from "./command-renderer.ts";
 
 const stage: Stage = {
@@ -33,7 +34,7 @@ const scope: Scope = { name: scopeName("feature"),
 const column: ScopeColumn = { scope: scope.name, stages: [stage.slug] };
 
 test("Claude places the frozen stage command without copying its naming or text policy", () => {
-  const renderer = createClaudeCommandRenderers({ stage: (request) => {
+  const renderer = createClaudeCommandRenderers({ orchestrator: () => accepted(null), stage: (request) => {
     expect(request).toEqual({ stage, node });
     return accepted([{ nativeName: "aidlc-requirements-analysis", within: "SKILL.md",
       content: { kind: "text", text: "Frozen stage command\n" }, mode: "regular" }]);
@@ -46,7 +47,7 @@ test("Claude places the frozen stage command without copying its naming or text 
 });
 
 test("Claude places the frozen scope command", () => {
-  const renderer = createClaudeCommandRenderers({ stage: () => accepted(null), scope: (request) => {
+  const renderer = createClaudeCommandRenderers({ orchestrator: () => accepted(null), stage: () => accepted(null), scope: (request) => {
     expect(request).toEqual({ scope, column });
     return accepted([{ nativeName: "aidlc-feature", within: "SKILL.md",
       content: { kind: "text", text: "Frozen scope command\n" }, mode: "regular" }]);
@@ -59,7 +60,7 @@ test("Claude places the frozen scope command", () => {
 });
 
 test("the legacy selector can decline a command without inventing a new runner", () => {
-  const renderer = createClaudeCommandRenderers({ stage: () => accepted(null),
+  const renderer = createClaudeCommandRenderers({ orchestrator: () => accepted(null), stage: () => accepted(null),
     scope: () => accepted(null) });
   expect(renderer.renderStageCommand({ stage, node })).toEqual(accepted([]));
 });
@@ -67,13 +68,13 @@ test("the legacy selector can decline a command without inventing a new runner",
 test("a legacy formatting refusal reaches the caller unchanged", () => {
   const refusal: ProjectionRefusal = { kind: "render-failed", concept: "stage-command",
     name: "requirements-analysis", reason: "The captured command context is missing" };
-  const renderer = createClaudeCommandRenderers({ stage: () => refused(refusal),
+  const renderer = createClaudeCommandRenderers({ orchestrator: () => accepted(null), stage: () => refused(refusal),
     scope: () => accepted(null) });
   expect(renderer.renderStageCommand({ stage, node })).toEqual(refused(refusal));
 });
 
 test("a native command name cannot escape its skills directory", () => {
-  const renderer = createClaudeCommandRenderers({ stage: () => accepted([{
+  const renderer = createClaudeCommandRenderers({ orchestrator: () => accepted(null), stage: () => accepted([{
     nativeName: "../outside", within: "SKILL.md", content: { kind: "text", text: "Unused" },
     mode: "regular" }]), scope: () => accepted(null) });
   expect(renderer.renderStageCommand({ stage, node })).toMatchObject({ ok: false,
@@ -82,7 +83,7 @@ test("a native command name cannot escape its skills directory", () => {
 
 
 test("the host preserves companion files from the frozen command boundary", () => {
-  const renderer = createClaudeCommandRenderers({ stage: () => accepted([
+  const renderer = createClaudeCommandRenderers({ orchestrator: () => accepted(null), stage: () => accepted([
     { nativeName: "aidlc-example", within: "SKILL.md", mode: "regular",
       content: { kind: "text", text: "Command\n" } },
     { nativeName: "aidlc-example", within: "metadata.json", mode: "regular",
@@ -96,4 +97,37 @@ test("the host preserves companion files from the frozen command boundary", () =
       content: { kind: "text", text: "Companion\n" },
       origin: { kind: "rendered", concept: "stage-command", name: "requirements-analysis" } },
   ]));
+});
+
+
+test("the one orchestrator member places both fixed entry shortcuts with their own origins", () => {
+  const renderer = createClaudeCommandRenderers({ stage: () => accepted(null),
+    scope: () => accepted(null), orchestrator: (request) => {
+      expect(request).toEqual({ method: methodSliceFixture });
+      return accepted([
+        { nativeName: "aidlc-init", within: "SKILL.md", mode: "regular",
+          content: { kind: "text", text: "Frozen initialization shortcut\n" } },
+        { nativeName: "aidlc-compose", within: "SKILL.md", mode: "regular",
+          content: { kind: "text", text: "Frozen composition shortcut\n" } },
+      ]);
+    } });
+  expect(renderer.renderOrchestratorSkill({ method: methodSliceFixture })).toEqual(accepted([
+    { path: path(".claude/skills/aidlc-init/SKILL.md"), mode: "regular", availability: "always",
+      content: { kind: "text", text: "Frozen initialization shortcut\n" },
+      origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc-init" } },
+    { path: path(".claude/skills/aidlc-compose/SKILL.md"), mode: "regular", availability: "always",
+      content: { kind: "text", text: "Frozen composition shortcut\n" },
+      origin: { kind: "rendered", concept: "orchestrator-skill", name: "aidlc-compose" } },
+  ]));
+});
+
+test("an invalid shortcut path refuses as an orchestrator skill rather than an arbitrary stage", () => {
+  const renderer = createClaudeCommandRenderers({ stage: () => accepted(null),
+    scope: () => accepted(null), orchestrator: () => accepted([
+      { nativeName: "aidlc-init", within: "../outside", mode: "regular",
+        content: { kind: "text", text: "Unused" } },
+    ]) });
+  expect(renderer.renderOrchestratorSkill({ method: methodSliceFixture })).toEqual({ ok: false,
+    refusal: { kind: "render-failed", concept: "orchestrator-skill", name: "aidlc-init",
+      reason: "The native command destination must be a project-relative path." } });
 });

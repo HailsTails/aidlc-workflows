@@ -20,3 +20,4 @@ export const loadAuthoredCoreMethod = async (request: {
   const compiled = compileCoreMethod(authored.value.core);
   return compiled.ok ? accepted({ method: compiled.value, sources: authored.value.files }) : compiled;
 };
+export { scopeColumn } from "./domain/scope-grid.ts";

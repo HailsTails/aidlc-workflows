@@ -124,11 +124,11 @@ export const prepareLegacyRunners = (request: LegacyRunnerRequest):
     });
     const tree = join(request.projectRoot, request.harnessDir);
     const environment = Object.fromEntries(Object.entries(process.env)
-      .filter(([key]) => !key.startsWith("AIDLC_")));
+      .filter(([key]) => ["SYSTEMROOT", "WINDIR", "PATH", "PATHEXT"].includes(key.toUpperCase())));
     const reply = spawnSync(process.execPath, ["--no-install", "--eval", program], {
       cwd: output, encoding: "utf8", maxBuffer: 32 * 1024 * 1024,
       env: { ...environment, ...Object.fromEntries([
-        ["AIDLC_SRC", tree], ["AIDLC_HARNESS_DIR", request.harnessDir],
+        ["TEMP", scratch], ["TMP", scratch], ["AIDLC_SRC", tree], ["AIDLC_HARNESS_DIR", request.harnessDir],
         ["AIDLC_HARNESS_NAME", request.harnessName], ["AIDLC_RUNTIME_PROJECT_DIR", output],
         ["AIDLC_PROJECT_DIR", output], ["AIDLC_SCOPES_DIR", scopeRoot],
         ["AIDLC_STAGE_GRAPH", join(tree, "tools/data/stage-graph.json")],
