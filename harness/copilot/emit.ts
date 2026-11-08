@@ -134,8 +134,6 @@ export default function emit(ctx: EmitContext): void {
     content: () => emitHooksJson(harnessDir),
   });
 
-  // Both persona surfaces share the build's captured source. The runtime copy
-  // keeps reviewer knowledge; Copilot's native persona deliberately does not.
   for (const agent of ctx.method.agents) {
     const captured = ctx.sources.find((source) => source.path === agent.source
       && source.owner.kind === agent.owner.kind
