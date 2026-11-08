@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "upstream": "66d08a909",
-  "total": 174690,
+  "total": 174675,
   "totals": {
     "@typescript-eslint/consistent-type-imports": 77,
     "@typescript-eslint/no-explicit-any": 32,
@@ -9,7 +9,7 @@
     "aidlc/no-comments": 113411,
     "complexity": 3075,
     "Context boundary": 48,
-    "Harness branching": 446,
+    "Harness branching": 431,
     "max-depth": 2125,
     "max-len": 48862,
     "max-lines-per-function": 3527,
@@ -683,7 +683,7 @@
       "max-params": 191,
       "@typescript-eslint/consistent-type-imports": 19,
       "no-control-regex": 2,
-      "Harness branching": 17,
+      "Harness branching": 13,
       "no-irregular-whitespace": 3
     },
     "core/tools/aidlc-lifecycle.ts": {
@@ -1003,7 +1003,7 @@
       "One owner": 2,
       "max-params": 1,
       "no-control-regex": 3,
-      "Harness branching": 9,
+      "Harness branching": 8,
       "no-nested-ternary": 2,
       "max-depth": 4
     },
@@ -1121,7 +1121,7 @@
       "aidlc/no-comments": 1778,
       "max-lines-per-function": 58,
       "complexity": 74,
-      "Harness branching": 2,
+      "Harness branching": 1,
       "max-params": 38,
       "max-depth": 14,
       "no-nested-ternary": 6,
@@ -1274,7 +1274,7 @@
       "max-depth": 145,
       "no-nested-ternary": 45,
       "no-control-regex": 1,
-      "Harness branching": 21,
+      "Harness branching": 18,
       "@typescript-eslint/consistent-type-imports": 7
     },
     "core/tools/aidlc-validate.ts": {
@@ -1691,8 +1691,8 @@
     },
     "scripts/plugin-hooks-template/compose.ts": {
       "aidlc/no-comments": 614,
-      "Harness branching": 31,
       "complexity": 23,
+      "Harness branching": 25,
       "max-len": 156,
       "no-nested-ternary": 10,
       "max-depth": 80,
