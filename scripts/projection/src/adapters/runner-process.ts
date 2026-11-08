@@ -1,7 +1,7 @@
 import type { HarnessBinding } from "../domain/harness-binding.ts";
 import type { RunnerRequest } from "../domain/generated-runner.ts";
 import { finding, type Outcome } from "../domain/model.ts";
-import { createNativeCompilerProcessOperations, compilerSystemEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnInput, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, compilerSystemEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnInput, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 
 export type RunnerRuntime = { readonly root: string; readonly binding: HarnessBinding };
 export type KeyedRunnerRequest = { readonly key: string; readonly request: RunnerRequest };
@@ -10,8 +10,8 @@ export type RunnerSpawnReply = NativeCompilerSpawnReply;
 export type RunnerProcessOperations = NativeCompilerProcessOperations & {
   readonly paths: (input: { readonly runtime: RunnerRuntime }) => { readonly root: string; readonly moduleUrl: string; readonly pathsUrl: string; readonly home: string; readonly graph: string };
 };
-export const createRunnerProcessOperations = (): RunnerProcessOperations => ({
-  ...createNativeCompilerProcessOperations(),
+export const createRunnerProcessOperations = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): RunnerProcessOperations => ({
+  ...processes(),
   paths: ({ runtime }) => {
     const root = Bun.fileURLToPath(Bun.pathToFileURL(runtime.root));
     const tools = `${root}/${runtime.binding.directory}/tools`;
@@ -89,7 +89,7 @@ const compile = async () => {
 process.stdout.write(JSON.stringify(await compile()));
 `;
 export type RunnerProcess = { readonly execute: (input: { readonly runtime: RunnerRuntime; readonly requests: readonly KeyedRunnerRequest[]; readonly intent?: "discover" }) => Outcome<unknown> };
-export const createRunnerProcess = ({ binary = "bun", operations = createRunnerProcessOperations() }: { readonly binary?: string; readonly operations?: RunnerProcessOperations } = {}): RunnerProcess => ({
+export const createRunnerProcess = ({ binary = "bun", processes = createNativeCompilerProcessOperations, operations = createRunnerProcessOperations({ processes }) }: { readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: RunnerProcessOperations } = {}): RunnerProcess => ({
   execute: ({ runtime, requests, intent }) => {
     const paths = operations.paths({ runtime });
     const inherited = compilerSystemEnvironment({ inherited: operations.environment() });

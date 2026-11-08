@@ -50,3 +50,13 @@ import "../../scripts/projection/src/domain/worker-policy.test.ts";
 import "../../scripts/projection/src/domain/workflow-prose.test.ts";
 import "../../scripts/projection/src/domain/workflow-runtime.test.ts";
 import "../../scripts/projection/src/domain/workflow-source-inputs.test.ts";
+import "../../scripts/projection/src/adapters/child-runtime-directory.test.ts";
+import "../../scripts/projection/src/adapters/child-runtime-process.test.ts";
+import "../../scripts/projection/src/adapters/child-runtime-consumers.test.ts";
+
+import "../../scripts/projection/src/adapters/owned-directory.test.ts";
+import "../../scripts/projection/src/adapters/session-directory-storage.test.ts";
+import "../../scripts/projection/src/adapters/distribution-directory.test.ts";
+import "../../scripts/projection/src/adapters/temporary-directory.test.ts";
+import "../../scripts/projection/src/adapters/fresh-core-directories.test.ts";
+import "../../scripts/projection/src/adapters/fresh-core-assembly.test.ts";

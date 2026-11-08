@@ -2,13 +2,13 @@ import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { z } from "zod";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import type { PreparedRuntimeInput, RuntimeInputPreparer, RuntimeInputRequest } from "../domain/runtime-inputs.ts";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 
 const modulePath = "scripts/projection/native/plugin-authoring-data.ts";
 const templateRoot = "scripts/plugin-hooks-template/";
 const canonicalFiles = ["tools/data/plugin-targets.json", "tools/data/plugin-authoring-context.json"];
 export type SourcePluginAuthoringOperations = NativeCompilerProcessOperations & { readonly paths: (request: RuntimeInputRequest) => { readonly sourceRoot: string; readonly root: string } };
-export const createSourcePluginAuthoringOperations = (): SourcePluginAuthoringOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
+export const createSourcePluginAuthoringOperations = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): SourcePluginAuthoringOperations => ({ ...processes(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
 const worker = `
 const input = await Bun.stdin.json();
 const unavailable = ({ detail }) => ({ status: "unavailable", detail });
@@ -154,7 +154,7 @@ const prepareAuthoring = ({ request, binary, operations }: { readonly request: R
     return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harness: request.binding.harness, agentFrontmatter: qualifiedHarnessProfile(request.binding)?.pluginAgentFrontmatter }), env: authoringEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
   } catch { return failure({ detail: "plugin authoring process capability unavailable" }); }
 };
-export const createSourcePluginAuthoringPreparer = ({ binary = "bun", operations = createSourcePluginAuthoringOperations() }: { readonly binary?: string; readonly operations?: SourcePluginAuthoringOperations } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {
+export const createSourcePluginAuthoringPreparer = ({ binary = "bun", processes = createNativeCompilerProcessOperations, operations = createSourcePluginAuthoringOperations({ processes }) }: { readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: SourcePluginAuthoringOperations } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
   return admitted.status === "invalid" ? admitted : prepareAuthoring({ request: admitted.value, binary, operations });
 } });

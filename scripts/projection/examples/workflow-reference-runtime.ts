@@ -1,3 +1,5 @@
+import type { DistributionDirectoryFactory } from "../src/adapters/distribution-directory.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "../src/adapters/native-compiler-process.ts";
 import type { NativeResource } from "../src/domain/native-rendering.ts";
 import { createWorkflowReferencePreparer } from "../src/adapters/workflow-reference.ts";
 import type { WorkflowReferencePreparer } from "../src/domain/workflow-reference.ts";
@@ -13,7 +15,7 @@ import { finding, type Outcome } from "../src/domain/model.ts";
 export type WorkflowReferencePreparation = { readonly kind: "native-supplied" } | { readonly kind: "prepared"; readonly paths: readonly string[]; readonly inputs: readonly SourceContentDigest[] };
 export type PreparedWorkflowReferenceRuntime = { readonly seed: DistributionSeed; readonly preparation: Extract<WorkflowReferencePreparation, { readonly kind: "prepared" }> };
 export type WorkflowReferenceRuntimeServices = { readonly preparer: WorkflowReferencePreparer; readonly workspace: DistributionWorkspace; readonly admit: typeof planPreparedFileAdditions; readonly rules: DistributionAssemblyRules };
-export const createWorkflowReferenceRuntimeServices = (): WorkflowReferenceRuntimeServices => ({ preparer: createWorkflowReferencePreparer(), workspace: createDistributionWorkspace(), admit: planPreparedFileAdditions, rules: createDistributionAssemblyRules() });
+export const createWorkflowReferenceRuntimeServices = ({ processes = createNativeCompilerProcessOperations, directories }: { readonly processes?: NativeCompilerProcessFactory; readonly directories?: DistributionDirectoryFactory | undefined } = {}): WorkflowReferenceRuntimeServices => ({ preparer: createWorkflowReferencePreparer({ processes }), workspace: createDistributionWorkspace({ directories }), admit: planPreparedFileAdditions, rules: createDistributionAssemblyRules() });
 const requireReferenceAuthoring = ({ authoring }: { readonly authoring: WorkflowAuthoringPolicy | null }): Outcome<WorkflowAuthoringPolicy> => authoring === null ? { status: "invalid", findings: [finding({ code: "capability-gap", subject: "workflow-reference", detail: "compiled workflow reference preparation requires fresh authored stage context; select project-authored stages" })] } : { status: "ok", value: authoring };
 export const prepareCompiledWorkflowReferenceRuntime = async ({ sourceRoot, seed, workflow, scopeFiles, authoring, mode, services = createWorkflowReferenceRuntimeServices() }: { readonly sourceRoot: string; readonly seed: DistributionSeed; readonly workflow: CompiledWorkflowSource; readonly scopeFiles: readonly NativeResource[]; readonly authoring: WorkflowAuthoringPolicy | null; readonly mode: number; readonly services?: WorkflowReferenceRuntimeServices }): Promise<Outcome<PreparedWorkflowReferenceRuntime>> => {
   const admittedAuthoring = requireReferenceAuthoring({ authoring });

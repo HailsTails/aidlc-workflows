@@ -3,13 +3,13 @@ import { z } from "zod";
 import { finding, type Outcome } from "../domain/model.ts";
 import type { HarnessBinding } from "../domain/harness-binding.ts";
 import type { DistributionContextLocation, DistributionContextReader, PreparedDistributionContext } from "../domain/distribution-context.ts";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 
 export type SourceRuntimeContextOperations = NativeCompilerProcessOperations & {
   readonly paths: (input: DistributionContextLocation) => { readonly sourceRoot: string; readonly root: string };
 };
-export const createSourceRuntimeContextOperations = (): SourceRuntimeContextOperations => ({
-  ...createNativeCompilerProcessOperations(),
+export const createSourceRuntimeContextOperations = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): SourceRuntimeContextOperations => ({
+  ...processes(),
   paths: ({ location }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(location.sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(location.root)) }),
 });
 const directSourcePaths = ({ binding }: { readonly binding: HarnessBinding }): readonly string[] => [`harness/${binding.harness}/manifest.ts`, `harness/${binding.harness}/onboarding.fills.ts`, "scripts/harness-runtime-data.ts", "core/tools/aidlc-runtime-paths.ts", "scripts/projection/src/adapters/qualified-delivery-policy.ts"];
@@ -108,7 +108,7 @@ const loadContext = ({ input, mode, binary, operations, delivery, beforeHost }: 
     return prepared.status === "ok" && prepared.value.context.invocation !== (delivery === "native" ? "aidlc" : `bun ${input.binding.directory}/tools/aidlc.ts`) ? failure({ detail: "runtime context invocation does not match the explicitly selected delivery" }) : prepared;
   } catch { return failure({ detail: "source runtime context process capability unavailable" }); }
 };
-export const createSourceRuntimeContextReader = ({ mode, binary = "bun", operations = createSourceRuntimeContextOperations(), delivery = "copy", beforeHost = false }: { readonly beforeHost?: boolean; readonly delivery?: "copy" | "native"; readonly mode: number; readonly binary?: string; readonly operations?: SourceRuntimeContextOperations }): DistributionContextReader => ({ load: async (input) => {
+export const createSourceRuntimeContextReader = ({ mode, binary = "bun", processes = createNativeCompilerProcessOperations, operations = createSourceRuntimeContextOperations({ processes }), delivery = "copy", beforeHost = false }: { readonly beforeHost?: boolean; readonly delivery?: "copy" | "native"; readonly mode: number; readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: SourceRuntimeContextOperations }): DistributionContextReader => ({ load: async (input) => {
   const admitted = admitContextRequest({ input, mode });
   return admitted.status === "invalid" ? admitted : loadContext({ input: admitted.value, mode, binary, operations, delivery, beforeHost });
 } });

@@ -1,3 +1,4 @@
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "../src/adapters/native-compiler-process.ts";
 import { createStageSourceReader, type StageSourceReader } from "../src/adapters/stage-sources.ts";
 import { createDistributionAssemblyRules } from "../src/adapters/distribution-source.ts";
 import type { DistributionAssemblyRules } from "../src/application/distribution-assembly.ts";
@@ -14,7 +15,7 @@ import type { NativeStageCommands, NativeStageCommandPreparer } from "../src/dom
 import { prepareStageCommands, stageProjectionUnits } from "../src/application/stage-command-preparation.ts";
 export type PreparedStageRuntime = PreparedWorkflowDefinitions & { readonly authoring: WorkflowAuthoringPolicy; readonly commands: NativeStageCommands | null };
 export type StageRuntimeServices = { readonly reader: StageSourceReader; readonly authoring: WorkflowAuthoringReader; readonly commands: NativeStageCommandPreparer; readonly bind: typeof bindStageInputs; readonly project: typeof projectProjectionSet; readonly prepare: typeof prepareWorkflowDefinitions; readonly commandPreparation: typeof prepareStageCommands; readonly units: typeof stageProjectionUnits; readonly rules: DistributionAssemblyRules };
-export const createStageRuntimeServices = (): StageRuntimeServices => ({ reader: createStageSourceReader(), authoring: createWorkflowAuthoringReader(), commands: createNativeStageCommandPreparer(), bind: bindStageInputs, project: projectProjectionSet, prepare: prepareWorkflowDefinitions, commandPreparation: prepareStageCommands, units: stageProjectionUnits, rules: createDistributionAssemblyRules() });
+export const createStageRuntimeServices = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): StageRuntimeServices => ({ reader: createStageSourceReader(), authoring: createWorkflowAuthoringReader(), commands: createNativeStageCommandPreparer({ processes }), bind: bindStageInputs, project: projectProjectionSet, prepare: prepareWorkflowDefinitions, commandPreparation: prepareStageCommands, units: stageProjectionUnits, rules: createDistributionAssemblyRules() });
 export const prepareAuthoredStages = async ({ sourceRoot, seed, workflow, mode, services = createStageRuntimeServices() }: { readonly sourceRoot: string; readonly seed: DistributionSeed; readonly workflow: CompiledWorkflowSource; readonly mode: number; readonly services?: StageRuntimeServices }): Promise<Outcome<PreparedStageRuntime>> => {
   const loaded = await services.reader.load({ sourceRoot, basis: seed.basis });
   if (loaded.status === "invalid") return loaded;

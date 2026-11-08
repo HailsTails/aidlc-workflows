@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply, type NativeCompilerSpawnInput } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply, type NativeCompilerSpawnInput } from "./native-compiler-process.ts";
 import { renderAuthoredProse, type AuthoredProseContext } from "../domain/authored-prose.ts";
 import type { PreparedHarnessDocuments } from "../domain/harness-document.ts";
 import type { SourceBasis } from "../domain/source-origin.ts";
@@ -12,7 +12,7 @@ const nativeSourcePaths = ["scripts/native-runtime-text.ts", "scripts/native-com
 export const onboardingSourcePaths = ({ invocation, harness = "claude" }: { readonly invocation: string; readonly harness?: string }): readonly string[] => [...sourcePaths.map(path => path.replace("harness/claude/", `harness/${harness}/`)), ...(invocation === "aidlc" ? nativeSourcePaths : [])];
 export type OnboardingRequest = { readonly sourceRoot: string; readonly workRoot: string; readonly basis: SourceBasis; readonly context: AuthoredProseContext };
 export type OnboardingOperations = NativeCompilerProcessOperations & { readonly paths: (input: OnboardingRequest) => { readonly root: string; readonly workRoot: string }; readonly prose: typeof renderAuthoredProse };
-export const createOnboardingOperations = (): OnboardingOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, workRoot }) => ({ root: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), workRoot: Bun.fileURLToPath(Bun.pathToFileURL(workRoot)) }), prose: renderAuthoredProse });
+export const createOnboardingOperations = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): OnboardingOperations => ({ ...processes(), paths: ({ sourceRoot, workRoot }) => ({ root: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), workRoot: Bun.fileURLToPath(Bun.pathToFileURL(workRoot)) }), prose: renderAuthoredProse });
 export type OnboardingPreparer = { readonly prepare: (input: OnboardingRequest) => Promise<Outcome<PreparedHarnessDocuments>> };
 const replySchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), text: z.string().min(1), neutral: z.string().min(1).optional(), inputs: z.array(z.strictObject({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) })) }),
@@ -138,7 +138,7 @@ const executeOnboarding = async ({ request, binary, operations }: { readonly req
   try { return await continuePreparation({ previous: admitWorkingPaths(operations.paths(request)), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, binary, operations, invocation: request.context.invocation, harness: request.context.harness, harnessDir: request.context.directory, beforeHost: request.context.preparationStage === "before-host" })), request, operations }) }); }
   catch { return failure({ detail: "onboarding process capability unavailable" }); }
 };
-export const createOnboardingPreparer = ({ binary = "bun", operations = createOnboardingOperations() }: { readonly binary?: string; readonly operations?: OnboardingOperations } = {}): OnboardingPreparer => ({ prepare: async (request) => {
+export const createOnboardingPreparer = ({ binary = "bun", processes = createNativeCompilerProcessOperations, operations = createOnboardingOperations({ processes }) }: { readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: OnboardingOperations } = {}): OnboardingPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
   return admitted.status === "invalid" ? admitted : executeOnboarding({ request: admitted.value, binary, operations });
 } });

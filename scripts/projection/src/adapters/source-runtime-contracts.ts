@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import type { PreparedRuntimeInput, RuntimeInputPreparer, RuntimeInputRequest } from "../domain/runtime-inputs.ts";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 
 const directPaths = ["core/tools/aidlc-settings.ts", "core/tools/aidlc-model-policy.ts"];
 export type SourceRuntimeContractOperations = NativeCompilerProcessOperations & { readonly paths: (request: RuntimeInputRequest) => { readonly sourceRoot: string; readonly root: string } };
-export const createSourceRuntimeContractOperations = (): SourceRuntimeContractOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
+export const createSourceRuntimeContractOperations = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): SourceRuntimeContractOperations => ({ ...processes(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
 const worker = `
 const input = await Bun.stdin.json();
 const unavailable = ({ detail }) => ({ status: "unavailable", detail });
@@ -100,7 +100,7 @@ const prepareContracts = ({ request, binary, operations }: { readonly request: R
   }
   catch { return failure({ detail: "source runtime contract process capability unavailable" }); }
 };
-export const createSourceRuntimeContractPreparer = ({ binary = "bun", operations = createSourceRuntimeContractOperations() }: { readonly binary?: string; readonly operations?: SourceRuntimeContractOperations } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {
+export const createSourceRuntimeContractPreparer = ({ binary = "bun", processes = createNativeCompilerProcessOperations, operations = createSourceRuntimeContractOperations({ processes }) }: { readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: SourceRuntimeContractOperations } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
   return admitted.status === "invalid" ? admitted : prepareContracts({ request: admitted.value, binary, operations });
 } });

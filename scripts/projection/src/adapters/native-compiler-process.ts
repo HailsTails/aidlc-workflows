@@ -21,3 +21,5 @@ export const createNativeCompilerTransport = (): NativeCompilerTransport => ({
   },
 });
 export const createNativeCompilerProcessOperations = ({ timeout = 10000, maxBuffer = 8 * 1024 * 1024, transport = createNativeCompilerTransport() }: NativeCompilerProcessLimits & { readonly transport?: NativeCompilerTransport } = {}): NativeCompilerProcessOperations => ({ environment: transport.environment, spawn: (input) => transport.spawn({ ...input, timeout, maxBuffer }) });
+
+export type NativeCompilerProcessFactory = (limits?: NativeCompilerProcessLimits) => NativeCompilerProcessOperations;

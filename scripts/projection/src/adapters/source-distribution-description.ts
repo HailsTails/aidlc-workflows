@@ -4,7 +4,7 @@ import { qualifiedHarnessProfile, qualifiedRootMappings, qualifiedDescriptionPat
 import { createHash } from "node:crypto";
 import { mergeSourceDigests } from "../domain/source-origin.ts";
 import { z } from "zod";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 import type { DistributionDescriptionRequest, DistributionDescriptionPreparer, PreparedDistributionDescription, PairedCopyDescription, DistributionBuildProfile } from "../domain/distribution-description.ts";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import { continuePreparation } from "../application/preparation-result.ts";
@@ -18,7 +18,7 @@ const descriptionSourcePaths = (request: DistributionDescriptionRequest): readon
 };
 export type NativeDescriptionPair = { readonly profile: DistributionBuildProfile; readonly copy: PairedCopyDescription };
 export type SourceDescriptionOperations = NativeCompilerProcessOperations & { readonly paths: (input: DistributionDescriptionRequest) => { readonly sourceRoot: string; readonly root: string } };
-export const createSourceDescriptionOperations = (): SourceDescriptionOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
+export const createSourceDescriptionOperations = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): SourceDescriptionOperations => ({ ...processes(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
 const replySchema = z.discriminatedUnion("status", [z.strictObject({ status: z.literal("ok"), files: z.array(z.strictObject({ file: z.string(), bytes: z.array(z.number().int().min(0).max(255)) })), inputs: z.array(z.strictObject({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) })) }), z.strictObject({ status: z.enum(["unavailable", "refused"]), detail: z.string() })]);
 const worker = `
 const input = await Bun.stdin.json();
@@ -145,7 +145,7 @@ const execute = async ({ request, binary, operations, buildVersion, nativePair }
   try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations, buildVersion, nativePair })), request }) }); }
   catch { return failure({ detail: "distribution description process capability unavailable" }); }
 };
-export const createSourceDescriptionPreparer = ({ binary = "bun", operations = createSourceDescriptionOperations(), buildVersion, nativePair }: { readonly binary?: string; readonly operations?: SourceDescriptionOperations; readonly buildVersion?: string; readonly nativePair?: NativeDescriptionPair } = {}): DistributionDescriptionPreparer => ({ prepare: async (request) => {
+export const createSourceDescriptionPreparer = ({ binary = "bun", processes = createNativeCompilerProcessOperations, operations = createSourceDescriptionOperations({ processes }), buildVersion, nativePair }: { readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: SourceDescriptionOperations; readonly buildVersion?: string; readonly nativePair?: NativeDescriptionPair } = {}): DistributionDescriptionPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
   if (admitted.status === "invalid") return admitted;
   if (request.invocation === "aidlc") {

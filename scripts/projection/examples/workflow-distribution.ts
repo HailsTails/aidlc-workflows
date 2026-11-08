@@ -1,4 +1,6 @@
+import type { DistributionDirectoryFactory } from "../src/adapters/distribution-directory.ts";
 import { createWorkflowSourceCompiler } from "../src/adapters/workflow-source-compiler.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "../src/adapters/native-compiler-process.ts";
 import { createDistributionSource, createDistributionAssemblyRules, type DistributionSource, type DistributionSourceLocation } from "../src/adapters/distribution-source.ts";
 import { createDistributionWorkspace, type DistributionWorkspace } from "../src/adapters/distribution-workspace.ts";
 import { prepareWorkflowRuntime, type WorkflowRuntime } from "../src/domain/workflow-runtime.ts";
@@ -13,12 +15,12 @@ import { createRunnerDistributionServices } from "./runner-distribution.ts";
 import { completeProjectionDistribution } from "./projection-distribution.ts";
 import type { DistributionSeed, AssembledDistribution } from "../src/domain/distribution-artifact.ts";
 import { prepareAuthoredScopes } from "./scope-runtime.ts";
-import { prepareAuthoredStages } from "./stage-runtime.ts";
+import { createStageRuntimeServices, prepareAuthoredStages } from "./stage-runtime.ts";
 import { mergeWorkflowDefinitions } from "../src/application/workflow-definitions.ts";
-import { prepareAuthoredMethodRuntime, type MethodRuntimePreparation } from "./method-runtime.ts";
+import { createMethodRuntimeServices, prepareAuthoredMethodRuntime, type MethodRuntimePreparation } from "./method-runtime.ts";
 import type { ProjectionSet } from "../src/application/projection-set.ts";
 import type { WorkflowAuthoringPolicy } from "../src/domain/workflow-prose.ts";
-import { prepareCompiledWorkflowReferenceRuntime, type WorkflowReferencePreparation } from "./workflow-reference-runtime.ts";
+import { createWorkflowReferenceRuntimeServices, prepareCompiledWorkflowReferenceRuntime, type WorkflowReferencePreparation } from "./workflow-reference-runtime.ts";
 export type PreparedRuntimeAssembly = { readonly seed: DistributionSeed; readonly definitions: ProjectionSet; readonly location: DistributionSourceLocation; readonly mode: number; readonly modelInvocation: GeneratedRunnerContext["modelInvocation"]; readonly workflow: CompiledWorkflowSource; readonly authoring: WorkflowAuthoringPolicy | null; readonly methodRuntime: MethodRuntimePreparation; readonly workflowReferences: WorkflowReferencePreparation };
 export type WorkflowDistributionServices = { readonly source: PreparedDistributionSource; readonly methods: typeof prepareAuthoredMethodRuntime; readonly references: typeof prepareCompiledWorkflowReferenceRuntime; readonly compiler: WorkflowSourceCompiler; readonly scopes: typeof prepareAuthoredScopes; readonly stages: typeof prepareAuthoredStages; readonly merge: typeof mergeWorkflowDefinitions; readonly prepare: typeof prepareWorkflowRuntime; readonly workspace: DistributionWorkspace; readonly assemble: (input: PreparedRuntimeAssembly) => Promise<Outcome<IssuedRunnerDistribution>>; readonly rules: DistributionAssemblyRules };
 export type StageDocumentPreparation = { readonly kind: "projected"; readonly projection: ProjectionSet; readonly authoring: WorkflowAuthoringPolicy; readonly commands: import("../src/domain/native-stage-commands.ts").NativeStageCommands | null } | { readonly kind: "native-supplied" };
@@ -38,11 +40,18 @@ const validateAndArchive = ({ source, workspace, location, seed, distribution }:
   const validated = await source.load({ ...location, root });
   return validated.status === "invalid" ? validated : source.archive({ sourceRoot: location.sourceRoot, distribution });
 } });
-export const createPreparedRuntimeAssembler = ({ finish = completeProjectionDistribution }: { readonly finish?: typeof completeProjectionDistribution } = {}): WorkflowDistributionServices["assemble"] => {
-  const services = createRunnerDistributionServices(), source = createDistributionSource(), workspace = createDistributionWorkspace();
+export const createPreparedRuntimeAssembler = ({ finish = completeProjectionDistribution, processes = createNativeCompilerProcessOperations, directories }: { readonly finish?: typeof completeProjectionDistribution; readonly processes?: NativeCompilerProcessFactory; readonly directories?: DistributionDirectoryFactory | undefined } = {}): WorkflowDistributionServices["assemble"] => {
+  const services = createRunnerDistributionServices({ processes }), source = createDistributionSource(), workspace = createDistributionWorkspace({ directories });
   return ({ seed, definitions, location, mode, modelInvocation }) => assembleRunnerDistribution({ location, definitions, mode, modelInvocation, services: { ...services, finish, source: { load: async () => ({ status: "ok", value: seed }), archive: ({ distribution }) => validateAndArchive({ source, workspace, location, seed, distribution }) } } });
 };
-export const createWorkflowDistributionServices = (): WorkflowDistributionServices => ({ source: createPreparedDistributionSource(), methods: prepareAuthoredMethodRuntime, references: prepareCompiledWorkflowReferenceRuntime, compiler: createWorkflowSourceCompiler(), scopes: prepareAuthoredScopes, stages: prepareAuthoredStages, merge: mergeWorkflowDefinitions, prepare: prepareWorkflowRuntime, workspace: createDistributionWorkspace(), assemble: createPreparedRuntimeAssembler(), rules: createDistributionAssemblyRules() });
+export const createWorkflowDistributionServices = ({ processes = createNativeCompilerProcessOperations, directories }: { readonly processes?: NativeCompilerProcessFactory; readonly directories?: DistributionDirectoryFactory | undefined } = {}): WorkflowDistributionServices => ({
+  source: createPreparedDistributionSource(),
+  methods: input => prepareAuthoredMethodRuntime({ ...input, services: input.services ?? createMethodRuntimeServices({ processes }) }),
+  references: input => prepareCompiledWorkflowReferenceRuntime({ ...input, services: input.services ?? createWorkflowReferenceRuntimeServices({ processes, directories }) }),
+  compiler: createWorkflowSourceCompiler({ processes }), scopes: prepareAuthoredScopes,
+  stages: input => prepareAuthoredStages({ ...input, services: input.services ?? createStageRuntimeServices({ processes }) }),
+  merge: mergeWorkflowDefinitions, prepare: prepareWorkflowRuntime, workspace: createDistributionWorkspace({ directories }), assemble: createPreparedRuntimeAssembler({ processes, directories }), rules: createDistributionAssemblyRules(),
+});
 export const assembleWorkflowDistribution = async ({ location, binding, contextRoot, mode, modelInvocation, stageDocuments = "native-supplied", methodRuntime = "native-supplied", workflowReferences = "native-supplied", services = createWorkflowDistributionServices() }: { readonly location: DistributionSourceLocation; readonly binding: HarnessBinding; readonly contextRoot: string; readonly mode: number; readonly modelInvocation: GeneratedRunnerContext["modelInvocation"]; readonly stageDocuments?: "project-authored" | "native-supplied"; readonly methodRuntime?: "prepare-authored" | "native-supplied"; readonly workflowReferences?: "native-supplied" | "prepare-compiled"; readonly services?: WorkflowDistributionServices }): Promise<Outcome<WorkflowDistribution>> => {
   const source = await services.source.load({ location, binding });
   if (source.status === "invalid") return source;

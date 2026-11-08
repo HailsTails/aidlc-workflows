@@ -1,10 +1,11 @@
+import { removeDistributionDirectory, type DistributionDirectories, type DistributionDirectoryFactory } from "./distribution-directory.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { ordinarySourcePath, verifyProductionInputs } from "./source-input-contract.ts";
 import { observeOpenCodeInputs } from "./opencode-source-contract.ts";
 import { assertPlainSourceData } from "./plain-source-data.ts";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment } from "./native-compiler-process.ts";
 import type { HarnessSettingsRequest, PreparedHarnessSettings } from "../domain/harness-settings.ts";
 import type { SourceContentDigest } from "../domain/source-origin.ts";
 import { finding, type Outcome } from "../domain/model.ts";
@@ -44,20 +45,33 @@ export function admitOpenCodeSettings(candidate: unknown, expected: readonly Sou
   try { JSON.parse(files.find(file => file.path === "opencode.json")!.text); } catch { return refuse("OpenCode configuration requires JSON text"); }
   return { status: "ok", value: { files: files.map(file => ({ path: file.path, bytes: new TextEncoder().encode(file.text), mode })), preparation: { kind: "harness-settings", paths: outputs, inputs } } };
 }
-export function prepareSourceOpenCodeSettings(request: HarnessSettingsRequest, binary = process.execPath): Outcome<PreparedHarnessSettings> {
+const removeOpenCodeWorkingRoot = ({ root, owner }: { readonly root: string | undefined; readonly owner: DistributionDirectories | undefined }): void => {
+  if (root === undefined) return;
+  if (owner === undefined) { rmSync(root, { recursive: true, force: true }); return; }
+  removeDistributionDirectory({ directories: owner, root });
+};
+const requireOpenCodeWorkingRoot = ({ sourceRoot, root, detail }: { readonly sourceRoot: string; readonly root: string; readonly detail: string }): void => {
+  ordinarySourcePath(root, true);
+  const source = resolve(sourceRoot).toLowerCase(), working = resolve(root).toLowerCase();
+  if (source === working || source.startsWith(working + sep) || working.startsWith(source + sep)) throw new Error(detail);
+};
+export function prepareSourceOpenCodeSettings(request: HarnessSettingsRequest, options: string | { readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly directories?: DistributionDirectoryFactory | undefined } = {}): Outcome<PreparedHarnessSettings> {
+  const { binary = process.execPath, processes = createNativeCompilerProcessOperations, directories } = typeof options === "string" ? { binary: options } : options;
   let owned: string | undefined;
+  let owner: DistributionDirectories | undefined;
   try {
     if (request.binding.harness !== "opencode" || request.binding.directory !== ".aidlc" || request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || !["aidlc", "bun .aidlc/tools/aidlc.ts"].includes(request.invocation) || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777 || request.files.filter(path => path === ".aidlc/tools/aidlc.ts").length !== 1) return refuse("OpenCode requires a pinned framework, explicit delivery, file mode and prepared dispatcher");
-    ordinarySourcePath(request.sourceRoot, true); ordinarySourcePath(request.root, true);
-    const source = resolve(request.sourceRoot).toLowerCase(), work = resolve(request.root).toLowerCase();
-    if (source === work || source.startsWith(work + sep) || work.startsWith(source + sep)) return refuse("OpenCode requires an explicit separate working root");
+    ordinarySourcePath(request.sourceRoot, true);
+    requireOpenCodeWorkingRoot({ sourceRoot: request.sourceRoot, root: request.root, detail: "OpenCode requires an explicit separate working root" });
     const before = observeOpenCodeInputs(request.sourceRoot);
-    owned = mkdtempSync(join(request.root, "opencode-settings-"));
-    const operations = createNativeCompilerProcessOperations();
+    owner = directories?.();
+    owned = directories === undefined ? mkdtempSync(join(request.root, "opencode-settings-")) : owner!.allocate();
+    if (directories !== undefined) requireOpenCodeWorkingRoot({ sourceRoot: request.sourceRoot, root: owned, detail: "OpenCode requires a separate private working root" });
+    const operations = processes();
     const reply = operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", program], cwd: owned, input: JSON.stringify({ sourceRoot: request.sourceRoot, invocation: request.invocation, beforeHost: request.preparationStage === "before-host", files: request.files, expected: before }), env: { ...privateCompilerEnvironment({ inherited: operations.environment(), root: owned }), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BUN_INSTALL_AUTO: "disable" } });
     if (reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0) return refuse(reply.stderr || reply.error || "OpenCode settings process failed");
     verifyProductionInputs(before, observeOpenCodeInputs(request.sourceRoot));
     return admitOpenCodeSettings(JSON.parse(reply.stdout), before, request.mode);
   } catch (error) { return refuse(error instanceof Error ? error.message : "OpenCode settings preparation unavailable"); }
-  finally { if (owned !== undefined) rmSync(owned, { recursive: true, force: true }); }
+  finally { removeOpenCodeWorkingRoot({ root: owned, owner }); }
 }

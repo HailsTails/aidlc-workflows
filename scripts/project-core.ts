@@ -1,7 +1,16 @@
+import { removeDistributionDirectory, type DistributionDirectoryFactory } from "./projection/src/adapters/distribution-directory.ts";
+import { createChildRuntimeProcessFactory } from "./projection/src/adapters/child-runtime-process.ts";
+import type { NativeCompilerProcessFactory } from "./projection/src/adapters/native-compiler-process.ts";
+import { createWorkflowDistributionServices, createPreparedRuntimeAssembler } from "./projection/examples/workflow-distribution.ts";
+import { createSourceContractDistributionSource } from "./projection/examples/source-contract-distribution.ts";
+import { createSourceRuntimeContractPreparer } from "./projection/src/adapters/source-runtime-contracts.ts";
+import { createPluginAuthoringDistributionSource } from "./projection/examples/plugin-authoring-distribution.ts";
+import { createSourcePluginAuthoringPreparer } from "./projection/src/adapters/source-plugin-authoring.ts";
+import type { ChildRuntimeDirectories } from "./projection/src/adapters/child-runtime-directory.ts";
 import { mergeSourceDigests } from "./projection/src/domain/source-origin.ts";
 import { createSourceHostEmissionPreparer, sourceHostEmissionSelected } from "./projection/src/adapters/source-host-emission.ts";
 import { assembleFreshCore, assembleFreshCorePair, assembleFreshCoreSession } from "./projection/src/adapters/fresh-core-assembly.ts";
-import { observeProductionInputs, verifyProductionInputs } from "./projection/src/adapters/source-input-contract.ts";
+import { ordinarySourcePath, observeProductionInputs, verifyProductionInputs } from "./projection/src/adapters/source-input-contract.ts";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, chmodSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
@@ -30,26 +39,31 @@ import type { IssuedProjectionDistribution } from "./projection/examples/project
 import { createSourceContextDistributionSource } from "./projection/examples/source-context-distribution.ts";
 import { createSourceRuntimeContextReader } from "./projection/src/adapters/source-runtime-context.ts";
 
-function createCoreServices({ buildVersion, environmentCap, workRoot }: ClaudeCopyProfile & { readonly workRoot: string }, onboarding: OnboardingPreparer, copy?: PairedCopyDescription) {
+function createCoreServices({ buildVersion, environmentCap, workRoot, processes, directories }: ClaudeCopyProfile & { readonly workRoot: string; readonly processes: NativeCompilerProcessFactory; readonly directories: DistributionDirectoryFactory }, onboarding: OnboardingPreparer, copy?: PairedCopyDescription) {
   return createDescribedCoreDistributionServices({
+    workflow: () => createWorkflowDistributionServices({ processes, directories }),
     core: () => {
-      const documents = createCoreDocumentServices(workRoot);
-      const policy = createCoreAgentPolicyReader({ workRoot });
-      return { ...createCoreDocumentDistributionServices(), host: createSourceHostEmissionPreparer({ environmentCap, buildVersion }), documents: request => prepareCoreAuthoredDocuments({ ...request, services: { ...documents, policy: { load: location => policy.load({ ...location, environmentCap }) }, onboarding: request => prepareOnboardingProducts({ ...request, services: { ...createOnboardingProductServices(), preparation: onboarding } }) } }) };
+      const documents = createCoreDocumentServices(workRoot, { processes, directories });
+      const policy = createCoreAgentPolicyReader({ workRoot, processes, directories });
+      return { ...createCoreDocumentDistributionServices({ directories }), assembler: options => createPreparedRuntimeAssembler({ ...options, processes, directories }), host: createSourceHostEmissionPreparer({ environmentCap, buildVersion, processes, directories }), documents: request => prepareCoreAuthoredDocuments({ ...request, services: { ...documents, policy: { load: location => policy.load({ ...location, environmentCap }) }, onboarding: request => prepareOnboardingProducts({ ...request, services: { ...createOnboardingProductServices(), preparation: onboarding } }) } }) };
     },
-    description: ({ rules }) => createCoreDescriptionServices({ rules, preparation: () => createSourceDescriptionPreparer({ buildVersion, ...(copy === undefined ? {} : { nativePair: { profile: { buildVersion, environmentCap }, copy } }) }) }),
+    description: ({ rules }) => createCoreDescriptionServices({ rules, preparation: () => createSourceDescriptionPreparer({ buildVersion, processes, ...(copy === undefined ? {} : { nativePair: { profile: { buildVersion, environmentCap }, copy } }) }) }),
   });
 }
 
 export const copyRequestSchema = z.strictObject({ sourceRoot: z.string().min(1), outRoot: z.string().min(1), buildVersion: z.string().min(1), environmentCap: z.enum(["judgment", "balanced", "templated"]).nullable() });
 
-async function assembleCore(request: ClaudeCopyRequest, binding: HarnessBinding, copy?: PairedCopyDescription): Promise<IssuedProjectionDistribution> {
+async function assembleCore(request: ClaudeCopyRequest, binding: HarnessBinding, { runtimeDirectories, directories }: { readonly runtimeDirectories: ChildRuntimeDirectories; readonly directories: DistributionDirectoryFactory }, copy?: PairedCopyDescription): Promise<IssuedProjectionDistribution> {
   const { sourceRoot, buildVersion, environmentCap } = copyRequestSchema.parse(request);
   const productionInputs = observeProductionInputs(sourceRoot);
   const beforeHost = await sourceHostEmissionSelected(sourceRoot, binding);
-  const workspace = mkdtempSync(join(tmpdir(), "aidlc-retained-projection-"));
-  const owned = resolve(workspace);
-  if (!owned.startsWith(resolve(tmpdir()) + sep)) throw new Error("Projection workspace escaped temporary root");
+  const workspaceDirectories = directories();
+  const workspace = workspaceDirectories.allocate();
+  try {
+  ordinarySourcePath(workspace, true);
+  const owned = process.platform === "win32" ? resolve(workspace).toLowerCase() : resolve(workspace);
+  const authored = process.platform === "win32" ? resolve(sourceRoot).toLowerCase() : resolve(sourceRoot);
+  if (owned === authored || owned.startsWith(authored + sep) || authored.startsWith(owned + sep)) throw new Error("Projection workspace requires a separate owned root outside authored source");
   const runtimeRoot = join(workspace, "input");
   mkdirSync(runtimeRoot);
   const { fileMode: mode, directoryMode } = projectionModes({ platform: process.platform, umask: process.umask() });
@@ -61,7 +75,8 @@ async function assembleCore(request: ClaudeCopyRequest, binding: HarnessBinding,
   } as const;
   const profile = qualifiedHarnessProfile(binding);
   if (profile === null) throw new Error("Host projection profile is not qualified");
-  const prepareOnboarding = createOnboardingPreparer();
+  const processes = createChildRuntimeProcessFactory({ runtimeDirectories });
+  const prepareOnboarding = createOnboardingPreparer({ processes });
   const onboardingCache = new Map<string, ReturnType<OnboardingPreparer["prepare"]>>();
   const onboarding: OnboardingPreparer = { prepare: request => {
     const { sourceRoot, basis, context } = request;
@@ -72,8 +87,7 @@ async function assembleCore(request: ClaudeCopyRequest, binding: HarnessBinding,
     onboardingCache.set(key, prepared);
     return prepared;
   } };
-  const assemble = createPublicationAssembler({ request: preparation, assemble: assembleAuthoredCoreDistribution, createServices: () => createCoreServices({ buildVersion, environmentCap, workRoot: workspace }, onboarding, copy), createSource: request => createSourceContextDistributionSource({ ...request, context: config => { const reader = createSourceRuntimeContextReader({ ...config, beforeHost, delivery: copy === undefined ? "copy" : "native" }); return { load: async location => { const prepared = await reader.load(location); if (prepared.status === "invalid") return prepared; const inputs = mergeSourceDigests({ groups: [prepared.value.inputs, productionInputs.filter(input => input.path === "package.json" || input.path === "bun.lock")] }); return inputs.status === "invalid" ? inputs : { status: "ok", value: { ...prepared.value, context: { ...prepared.value.context, ...(beforeHost ? { preparationStage: "before-host" as const } : {}) }, inputs: inputs.value } }; } }; } }), createSettings: request => createHarnessSettingsDistributionSource({ ...request, onboarding, environmentCap }), createModules: request => createSourceModuleDistributionSource({ ...request, prepare: () => createSourceRuntimeModulePreparer({ buildVersion }) }) });
-  try {
+  const assemble = createPublicationAssembler({ request: preparation, assemble: assembleAuthoredCoreDistribution, createServices: () => createCoreServices({ buildVersion, environmentCap, workRoot: workspace, processes, directories }, onboarding, copy), createSource: request => createSourceContextDistributionSource({ ...request, context: config => { const reader = createSourceRuntimeContextReader({ ...config, processes, beforeHost, delivery: copy === undefined ? "copy" : "native" }); return { load: async location => { const prepared = await reader.load(location); if (prepared.status === "invalid") return prepared; const inputs = mergeSourceDigests({ groups: [prepared.value.inputs, productionInputs.filter(input => input.path === "package.json" || input.path === "bun.lock")] }); return inputs.status === "invalid" ? inputs : { status: "ok", value: { ...prepared.value, context: { ...prepared.value.context, ...(beforeHost ? { preparationStage: "before-host" as const } : {}) }, inputs: inputs.value } }; } }; } }), createSettings: request => createHarnessSettingsDistributionSource({ ...request, onboarding, environmentCap, processes, directories }), createContracts: request => createSourceContractDistributionSource({ ...request, prepare: () => createSourceRuntimeContractPreparer({ processes }) }), createAuthoring: request => createPluginAuthoringDistributionSource({ ...request, prepare: () => createSourcePluginAuthoringPreparer({ processes }) }), createModules: request => createSourceModuleDistributionSource({ ...request, prepare: () => createSourceRuntimeModulePreparer({ buildVersion, processes }) }) });
     const prepared = await assemble({ location: { sourceRoot, root: runtimeRoot, basis: { source: { kind: "core", id: "framework" }, pin } }, binding, contextRoot: workspace, mode, modelInvocation: profile.modelInvocation, stageDocuments: "project-authored", methodRuntime: "prepare-authored", workflowReferences: "prepare-compiled" });
     if (prepared.status === "invalid") throw new Error(prepared.findings.map(finding => `${finding.subject}: ${finding.detail}`).join("\n"));
     if (createHash("sha1").update(packageInputsFingerprint(sourceRoot)).digest("hex") !== pin) throw new Error("Source changed during assembly");
@@ -83,7 +97,7 @@ async function assembleCore(request: ClaudeCopyRequest, binding: HarnessBinding,
     }
     return { ...prepared.value.artifact, evaluation: { buildVersion, environmentCap, delivery: copy === undefined ? "copy" : "native" } };
   } finally {
-    rmSync(owned, { recursive: true, force: true });
+    removeDistributionDirectory({ directories: workspaceDirectories, root: workspace });
   }
 }
 function publishCore(artifact: IssuedProjectionDistribution, outRoot: string): { readonly files: number; readonly sourceInputs: number } {
@@ -120,14 +134,14 @@ export async function assembleCoreNative(request: ClaudeCopyRequest, binding: Ha
   return assemblePublicCore(request, binding, "native");
 }
 // Process entry for source-local assembly; public assembly APIs own freshness.
-export async function assembleSourceCore(request: ClaudeCopyRequest, binding: HarnessBinding, delivery: "copy" | "native"): Promise<IssuedProjectionDistribution> {
-  if (delivery === "copy") return assembleCore(request, binding);
-  return (await assembleSourceCorePair(request, binding))[1];
+export async function assembleSourceCore(request: ClaudeCopyRequest, { binding, delivery, runtimeDirectories, directories }: { readonly binding: HarnessBinding; readonly delivery: "copy" | "native"; readonly runtimeDirectories: ChildRuntimeDirectories; readonly directories: DistributionDirectoryFactory }): Promise<IssuedProjectionDistribution> {
+  if (delivery === "copy") return assembleCore(request, binding, { runtimeDirectories, directories });
+  return (await assembleSourceCorePair(request, { binding, runtimeDirectories, directories }))[1];
 }
-export async function assembleSourceCorePair(request: ClaudeCopyRequest, binding: HarnessBinding): Promise<readonly [IssuedProjectionDistribution, IssuedProjectionDistribution]> {
+export async function assembleSourceCorePair(request: ClaudeCopyRequest, { binding, runtimeDirectories, directories }: { readonly binding: HarnessBinding; readonly runtimeDirectories: ChildRuntimeDirectories; readonly directories: DistributionDirectoryFactory }): Promise<readonly [IssuedProjectionDistribution, IssuedProjectionDistribution]> {
   const { buildVersion, environmentCap } = copyRequestSchema.parse(request);
-  const copy = await assembleCore(request, binding);
-  const native = await assembleCore(request, binding, { profile: { buildVersion, environmentCap }, basis: copy.distribution.seed, files: copy.distribution.files, inputs: copy.sourceInputs ?? [] });
+  const copy = await assembleCore(request, binding, { runtimeDirectories, directories });
+  const native = await assembleCore(request, binding, { runtimeDirectories, directories }, { profile: { buildVersion, environmentCap }, basis: copy.distribution.seed, files: copy.distribution.files, inputs: copy.sourceInputs ?? [] });
   return [copy, native];
 }
 export async function projectCorePair(request: ClaudeCopyRequest, binding: HarnessBinding, nativeOutRoot: string): Promise<{ readonly copy: { readonly files: number; readonly sourceInputs: number }; readonly native: { readonly files: number; readonly sourceInputs: number } }> {

@@ -1,5 +1,6 @@
 import type { TemporaryDirectoryOperations } from "../application/temporary-directory.ts";
 import { finding } from "../domain/model.ts";
+import type { OwnedDirectories } from "./owned-directory.ts";
 export const createTemporaryDirectoryOperations = (): TemporaryDirectoryOperations => {
   const allocated = new Set<string>();
   return {
@@ -14,3 +15,17 @@ export const createTemporaryDirectoryOperations = (): TemporaryDirectoryOperatio
     },
   };
 };
+
+export const createOwnedTemporaryDirectoryOperations = ({ directories }: { readonly directories: OwnedDirectories }): TemporaryDirectoryOperations => ({
+  allocate: async () => {
+    try { return { status: "ok", value: directories.allocate() }; }
+    catch (error) { return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "producer-workspace", detail: `private directory allocation unavailable: ${error instanceof Error ? error.message : String(error)}` })] }; }
+  },
+  remove: async ({ root }) => {
+    try {
+      const removal = directories.remove({ root });
+      if (removal.status === "foreign-root") return { status: "invalid", findings: [finding({ code: "foreign-content", subject: root, detail: "cleanup requires a root allocated by this directory instance" })] };
+      return { status: "ok", value: "removed" };
+    } catch (error) { return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "producer-workspace", detail: `private directory cleanup unavailable: ${error instanceof Error ? error.message : String(error)}` })] }; }
+  },
+});

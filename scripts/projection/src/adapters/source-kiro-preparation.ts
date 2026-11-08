@@ -1,10 +1,11 @@
+import { removeDistributionDirectory, type DistributionDirectories, type DistributionDirectoryFactory } from "./distribution-directory.ts";
 import { mkdtempSync, readdirSync, lstatSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { kiroPolicySourcePaths } from "./kiro-source-contract.ts";
 import { qualifiedHarnessByName } from "./qualified-harness-profile.ts";
 import type { SourceContentDigest } from "../domain/source-origin.ts";
 import { z } from "zod";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment } from "./native-compiler-process.ts";
 import { finding, type Outcome, type Tier } from "../domain/model.ts";
 const modulePath = "harness/kiro/settings.ts";
 const response = z.strictObject({
@@ -50,16 +51,33 @@ function observeInputs(sourceRoot: string): readonly SourceContentDigest[] {
     return { path, sha256: new Bun.CryptoHasher("sha256").update(readFileSync(join(sourceRoot, path))).digest("hex") };
   });
 }
-export const readSourceKiroPreparation = ({ sourceRoot, workRoot, invocation, environmentCap = null, binary = "bun", inherited }: { readonly workRoot: string; readonly inherited?: Readonly<Record<string, string | undefined>>; readonly binary?: string; readonly sourceRoot: string; readonly invocation: string; readonly environmentCap?: Tier | null }): Outcome<KiroSourcePreparation> => {
+const removeKiroWorkingRoot = ({ root, owner }: { readonly root: string | undefined; readonly owner: DistributionDirectories | undefined }): void => {
+  if (root === undefined) return;
+  if (owner === undefined) { rmSync(root, { recursive: true, force: true }); return; }
+  removeDistributionDirectory({ directories: owner, root });
+};
+const requireKiroWorkingRoot = ({ sourceRoot, root, workRoot, owner }: { readonly sourceRoot: string; readonly root: string; readonly workRoot: string; readonly owner: DistributionDirectories | undefined }): void => {
+  if (owner === undefined) {
+    if (!resolve(root).startsWith(workRoot + sep)) throw new Error("Kiro preparation escaped its working root");
+    return;
+  }
+  const stat = lstatSync(root);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error("Kiro preparation requires an ordinary working root");
+  const working = resolve(root).toLowerCase(), source = sourceRoot.toLowerCase();
+  if (source === working || source.startsWith(working + sep) || working.startsWith(source + sep)) throw new Error("Kiro preparation requires an explicit working root outside authored source");
+};
+export const readSourceKiroPreparation = ({ sourceRoot, workRoot, invocation, environmentCap = null, binary = "bun", inherited, processes = createNativeCompilerProcessOperations, directories }: { readonly workRoot: string; readonly directories?: DistributionDirectoryFactory | undefined; readonly processes?: NativeCompilerProcessFactory; readonly inherited?: Readonly<Record<string, string | undefined>>; readonly binary?: string; readonly sourceRoot: string; readonly invocation: string; readonly environmentCap?: Tier | null }): Outcome<KiroSourcePreparation> => {
   let owned: string | undefined;
+  let owner: DistributionDirectories | undefined;
   try {
-    const process = createNativeCompilerProcessOperations({ timeout: 30000 });
+    const process = processes({ timeout: 30000 });
     const root = resolve(sourceRoot);
     const scratch = resolve(workRoot);
     if (scratch.toLowerCase() === root.toLowerCase() || scratch.toLowerCase().startsWith(root.toLowerCase() + sep)) return refuse("Kiro preparation requires an explicit working root outside authored source");
     const before = observeInputs(root);
-    owned = mkdtempSync(join(scratch, "kiro-policy-"));
-    if (!resolve(owned).startsWith(scratch + sep)) throw new Error("Kiro preparation escaped its working root");
+    owner = directories?.();
+    owned = directories === undefined ? mkdtempSync(join(scratch, "kiro-policy-")) : owner!.allocate();
+    requireKiroWorkingRoot({ sourceRoot: root, root: owned, workRoot: scratch, owner });
     const reply = process.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", program], cwd: owned, input: JSON.stringify({ sourceRoot: root, invocation, environmentCap }), env: { ...privateCompilerEnvironment({ inherited: inherited ?? process.environment(), root: owned }), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BUN_INSTALL_AUTO: "disable" } });
     if (reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0) throw new Error(reply.stderr || reply.error || "Kiro policy process failed");
     const prepared = admitKiroSourcePreparation(JSON.parse(reply.stdout), before);
@@ -68,6 +86,6 @@ export const readSourceKiroPreparation = ({ sourceRoot, workRoot, invocation, en
   } catch (error) {
     return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "kiro-source-preparation", detail: error instanceof Error ? error.message : String(error) })] };
   } finally {
-    if (owned !== undefined) rmSync(owned, { recursive: true, force: true });
+    removeKiroWorkingRoot({ root: owned, owner });
   }
 };

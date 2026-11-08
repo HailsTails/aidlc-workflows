@@ -2,7 +2,8 @@ import { z } from "zod";
 import { createDistributionSource } from "./distribution-source.ts";
 import type { DistributionSeed } from "../domain/distribution-artifact.ts";
 import { withTemporaryDirectory, type TemporaryDirectoryOperations } from "../application/temporary-directory.ts";
-import { createTemporaryDirectoryOperations } from "./temporary-directory.ts";
+import type { DistributionDirectoryFactory } from "./distribution-directory.ts";
+import { createOwnedTemporaryDirectoryOperations, createTemporaryDirectoryOperations } from "./temporary-directory.ts";
 import { finding, type Outcome } from "../domain/model.ts";
 const archiveApi = z.object({ extractTarGz: z.function({ input: [z.string(), z.string()] }) });
 export type DistributionWorkspace = { readonly run: <T>(input: { readonly seed: DistributionSeed; readonly sourceRoot: string; readonly consume: (input: { readonly root: string }) => Promise<Outcome<T>> }) => Promise<Outcome<T>> };
@@ -20,12 +21,13 @@ const continueWorkspace = async <Previous, Next>({ previous, consume }: { readon
   const resolved = await previous;
   return resolved.status === "invalid" ? resolved : consume(resolved.value);
 };
-export const createDistributionWorkspaceOperations = (): DistributionWorkspaceOperations => {
+// Omitted and explicitly undefined factories both preserve standalone scratch allocation.
+export const createDistributionWorkspaceOperations = ({ directories }: { readonly directories?: DistributionDirectoryFactory | undefined } = {}): DistributionWorkspaceOperations => {
   return {
-    ...createTemporaryDirectoryOperations(),
+    ...(directories === undefined ? createTemporaryDirectoryOperations() : createOwnedTemporaryDirectoryOperations({ directories: directories() })),
     materialize: ({ root, seed, sourceRoot }) => continueWorkspace({ previous: createDistributionSource().archive({ sourceRoot, distribution: seed }), consume: (bytes) => extractWorkspaceArchive({ root, sourceRoot, bytes }) }),
   };
 };
-export const createDistributionWorkspace = ({ operations = createDistributionWorkspaceOperations() }: { readonly operations?: DistributionWorkspaceOperations } = {}): DistributionWorkspace => ({
+export const createDistributionWorkspace = ({ directories, operations = createDistributionWorkspaceOperations({ directories }) }: { readonly directories?: DistributionDirectoryFactory | undefined; readonly operations?: DistributionWorkspaceOperations } = {}): DistributionWorkspace => ({
   run: ({ seed, sourceRoot, consume }) => withTemporaryDirectory({ directories: operations, consume: ({ root }) => continueWorkspace({ previous: operations.materialize({ root, seed, sourceRoot }), consume: async () => consume({ root: `${root}/runtime` }) }) }),
 });

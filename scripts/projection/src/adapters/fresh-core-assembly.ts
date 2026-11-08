@@ -1,4 +1,7 @@
 import { types } from "node:util";
+import { createDistributionSessionDirectories } from "./distribution-directory.ts";
+import { withFreshCoreDirectories } from "./fresh-core-directories.ts";
+import { createChildRuntimeSessionDirectories } from "./child-runtime-directory.ts";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { deserialize } from "node:v8";
@@ -28,6 +31,10 @@ const { serialize } = await import("node:v8");
 const { writeFileSync } = await import("node:fs");
 const transport = await import(Bun.pathToFileURL(request.sourceRoot + "/scripts/projection/src/adapters/fresh-core-assembly.ts").href);
 const api = await import(Bun.pathToFileURL(request.sourceRoot + "/scripts/project-core.ts").href);
+const { createChildRuntimeDirectories } = await import(Bun.pathToFileURL(request.sourceRoot + "/scripts/projection/src/adapters/child-runtime-directory.ts").href);
+const runtimeDirectories = createChildRuntimeDirectories({ parent: request.runtimeRoot });
+const { createDistributionDirectoryFactory } = await import(Bun.pathToFileURL(request.sourceRoot + "/scripts/projection/src/adapters/distribution-directory.ts").href);
+const directories = createDistributionDirectoryFactory({ parent: request.distributionRoot });
 const artifacts = [];
 for (const step of request.steps) {
   if (step.binding.harness === "opencode") {
@@ -36,7 +43,7 @@ for (const step of request.steps) {
     const { manifestEmitter } = await import(Bun.pathToFileURL(request.sourceRoot + "/scripts/projection/src/adapters/manifest-capabilities.ts").href);
     manifestEmitter((await import(Bun.pathToFileURL(request.sourceRoot + "/harness/opencode/manifest.ts").href)).default);
   }
-  artifacts.push(step.delivery === "copy" ? [await api.assembleSourceCore(request.profile, step.binding, "copy")] : await api.assembleSourceCorePair(request.profile, step.binding));
+  artifacts.push(step.delivery === "copy" ? [await api.assembleSourceCore(request.profile, { binding: step.binding, delivery: "copy", runtimeDirectories, directories })] : await api.assembleSourceCorePair(request.profile, { binding: step.binding, runtimeDirectories, directories }));
 }
 writeFileSync(request.output, serialize(transport.materializeArtifactData(artifacts)));
 `;
@@ -132,6 +139,12 @@ export function admitIssuedCoreArtifact(candidate: unknown, binding: HarnessBind
   })) throw new Error("Artifact archive must contain exactly its declared final files, directories and modes");
   return artifact;
 }
+export function admitFreshCoreDirectories({ sourceRoot, runtimeRoot, distributionRoot }: { readonly sourceRoot: string; readonly runtimeRoot: string; readonly distributionRoot: string }): void {
+  [sourceRoot, runtimeRoot, distributionRoot].forEach(root => { ordinarySourcePath(root, true); });
+  const [source, runtime, distribution] = [sourceRoot, runtimeRoot, distributionRoot].map(root => process.platform === "win32" ? resolve(root).toLowerCase() : resolve(root));
+  const overlap = (left: string, right: string) => left === right || left.startsWith(right + sep) || right.startsWith(left + sep);
+  if (overlap(source!, runtime!) || overlap(source!, distribution!) || overlap(runtime!, distribution!)) throw new Error("Fresh core session roots must be separate from authored source and each other");
+}
 export type FreshCoreEvaluationStep = { readonly binding: HarnessBinding; readonly delivery: "copy" | "native" | "paired" };
 // One finite source realm per public request. Ordered steps retain authored
 // callback/module state within that request; no session survives this call.
@@ -145,10 +158,14 @@ export async function assembleFreshCoreSession({ request, steps, workRoot }: { r
   const expected = observeProductionInputs(request.sourceRoot);
   if (plan.some(step => step.binding.harness === "opencode")) observeOpenCodeInputs(request.sourceRoot);
   const pin = createHash("sha1").update(packageInputsFingerprint(request.sourceRoot)).digest("hex");
+  const runtimeDirectories = createChildRuntimeSessionDirectories();
+  const distributionDirectories = createDistributionSessionDirectories();
   const owned = mkdtempSync(join(workRoot, "fresh-core-")), output = join(owned, "artifacts.bin");
   try {
+    return await withFreshCoreDirectories({ runtimeDirectories, distributionDirectories, consume: async ({ runtimeRoot, distributionRoot }) => {
+    admitFreshCoreDirectories({ sourceRoot: request.sourceRoot, runtimeRoot, distributionRoot });
     const operations = createNativeCompilerProcessOperations({ timeout: 180000 * plan.length, maxBuffer: 8 * 1024 * 1024 });
-    const reply = operations.spawn({ binary: process.execPath, args: ["--no-env-file", "--no-install", "--eval", program], cwd: owned, input: JSON.stringify({ sourceRoot: request.sourceRoot, profile: request, steps: plan, output }), env: { ...privateCompilerEnvironment({ inherited: operations.environment(), root: owned }), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BUN_INSTALL_AUTO: "disable" } });
+    const reply = operations.spawn({ binary: process.execPath, args: ["--no-env-file", "--no-install", "--eval", program], cwd: owned, input: JSON.stringify({ sourceRoot: request.sourceRoot, profile: request, steps: plan, output, runtimeRoot, distributionRoot }), env: { ...privateCompilerEnvironment({ inherited: operations.environment(), root: owned }), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BUN_INSTALL_AUTO: "disable" } });
     if (reply.exitCode !== 0 || reply.error !== null) throw new Error(reply.stderr || reply.error || "Fresh assembly process failed");
     ordinarySourcePath(output, false);
     const groups = z.array(z.array(z.unknown())).length(plan.length).parse(materializeArtifactData(deserialize(readFileSync(output))));
@@ -162,6 +179,7 @@ export async function assembleFreshCoreSession({ request, steps, workRoot }: { r
     });
     verifyProductionInputs(expected, observeProductionInputs(request.sourceRoot));
     return admitted;
+    } });
   } finally { rmSync(owned, { recursive: true, force: true }); }
 }
 export async function assembleFreshCore(input: { readonly request: ClaudeCopyRequest; readonly binding: HarnessBinding; readonly delivery: "copy" | "native"; readonly workRoot: string }): Promise<IssuedProjectionDistribution> {

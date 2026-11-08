@@ -1,8 +1,9 @@
+import { removeDistributionDirectory, type DistributionDirectories, type DistributionDirectoryFactory } from "./distribution-directory.ts";
 import { qualifiedHarnessProfile, type QualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { z } from "zod";
 import { lstatSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment, type NativeCompilerProcessOperations } from "./native-compiler-process.ts";
 import { createOwnershipDigest } from "./projection-ownership.ts";
 import { continuePreparation } from "../application/preparation-result.ts";
 import { finding, type NativeTier, type Outcome, type Tier } from "../domain/model.ts";
@@ -85,19 +86,31 @@ const tiers = Object.fromEntries(["judgment", "balanced", "templated"].map(tier 
 await observe();
 process.stdout.write(JSON.stringify({ memoryCap, tiers }));
 `;
-export type CoreAgentPolicyProcessOptions = { readonly workRoot: string; readonly binary?: string; readonly operations?: NativeCompilerProcessOperations };
-const evaluatePolicySource = async (request: CoreAgentPolicyEvaluation, { workRoot, binary = process.execPath, operations = createNativeCompilerProcessOperations() }: CoreAgentPolicyProcessOptions): Promise<Outcome<unknown>> => {
+export type CoreAgentPolicyProcessOptions = { readonly workRoot: string; readonly directories?: DistributionDirectoryFactory | undefined; readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: NativeCompilerProcessOperations };
+const removePolicyWorkingRoot = ({ root, owner }: { readonly root: string | undefined; readonly owner: DistributionDirectories | undefined }): void => {
+  if (root === undefined) return;
+  if (owner === undefined) { rmSync(root, { recursive: true, force: true }); return; }
+  removeDistributionDirectory({ directories: owner, root });
+};
+const requirePolicyWorkingRoot = ({ sourceRoot, root }: { readonly sourceRoot: string; readonly root: string }): void => {
+  ordinaryPolicyPath(root, true);
+  const source = resolve(sourceRoot).toLowerCase(), working = resolve(root).toLowerCase();
+  if (source === working || source.startsWith(working + sep) || working.startsWith(source + sep)) throw new Error("Tier policy requires a separate working root outside authored source");
+};
+const evaluatePolicySource = async (request: CoreAgentPolicyEvaluation, { workRoot, binary = process.execPath, processes = createNativeCompilerProcessOperations, operations = processes(), directories }: CoreAgentPolicyProcessOptions): Promise<Outcome<unknown>> => {
   let owned: string | undefined;
+  let owner: DistributionDirectories | undefined;
   try {
-    ordinaryPolicyPath(request.sourceRoot, true); ordinaryPolicyPath(workRoot, true);
-    const source = resolve(request.sourceRoot).toLowerCase(), scratch = resolve(workRoot).toLowerCase();
-    if (source === scratch || source.startsWith(scratch + sep) || scratch.startsWith(source + sep)) throw new Error("Tier policy requires a separate working root outside authored source");
-    owned = mkdtempSync(join(resolve(workRoot), "tier-policy-"));
+    ordinaryPolicyPath(request.sourceRoot, true);
+    requirePolicyWorkingRoot({ sourceRoot: request.sourceRoot, root: workRoot });
+    owner = directories?.();
+    owned = directories === undefined ? mkdtempSync(join(resolve(workRoot), "tier-policy-")) : owner!.allocate();
+    if (directories !== undefined) requirePolicyWorkingRoot({ sourceRoot: request.sourceRoot, root: owned });
     const reply = operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", policyProgram], cwd: owned, input: JSON.stringify(request), env: { ...privateCompilerEnvironment({ inherited: operations.environment(), root: owned }), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BUN_INSTALL_AUTO: "disable" } });
     if (reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0) throw new Error(reply.error || reply.stderr || "Tier policy process failed");
     return { status: "ok", value: JSON.parse(reply.stdout) };
   } catch (error) { return unavailablePolicy({ detail: error instanceof Error ? error.message : "native tier policy could not be evaluated" }); }
-  finally { if (owned !== undefined) rmSync(owned, { recursive: true, force: true }); }
+  finally { removePolicyWorkingRoot({ root: owned, owner }); }
 };
 export const createCoreAgentPolicySourceOperations = (options: CoreAgentPolicyProcessOptions): CoreAgentPolicySourceOperations => ({
   read: readPolicySource,

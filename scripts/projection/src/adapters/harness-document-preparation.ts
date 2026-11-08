@@ -1,3 +1,6 @@
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "./native-compiler-process.ts";
+import { createNativeDocumentCommandPreparer } from "./native-document-commands.ts";
+import type { NativeDocumentCommandPreparer } from "../domain/native-document-commands.ts";
 import { qualifiedDeliveryContext, qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { prepareDocumentCommands } from "./native-document-preparation.ts";
 import { z } from "zod";
@@ -83,7 +86,7 @@ const prepareDeliveryDocuments = async ({ prepared, request, operations }: { rea
     return {status:"ok",value:{documents,inputs:[...prepared.inputs,...observed.filter(input=>!prepared.inputs.some(previous=>previous.path===input.path)).map(({path,sha256})=>({path,sha256}))]}};
   } catch { return failure({detail:"qualified native document delivery refused the authored declaration or text"}); }
 };
-const prepareDocuments = async ({ request, operations, prose }: { readonly request: HarnessDocumentPreparationRequest; readonly operations: HarnessDocumentPreparationOperations; readonly prose: typeof renderAuthoredProse }): Promise<Outcome<PreparedHarnessDocuments>> => {
+const prepareDocuments = async ({ request, operations, prose, preparer }: { readonly request: HarnessDocumentPreparationRequest; readonly operations: HarnessDocumentPreparationOperations; readonly prose: typeof renderAuthoredProse; readonly preparer: NativeDocumentCommandPreparer }): Promise<Outcome<PreparedHarnessDocuments>> => {
   const before = await operations.read({ sourceRoot: request.sourceRoot, path: helperPath });
   if (before.status === "invalid") return before;
   const sha256 = operations.digest({ bytes: before.value });
@@ -98,7 +101,7 @@ const prepareDocuments = async ({ request, operations, prose }: { readonly reque
   const stable = await prepareDeliveryDocuments({prepared:retained.value,request,operations});
   if (stable.status === "invalid") return stable;
   const documents = stable.value.documents.map(document => ({ path: document.authored.origin.path, source: document.text }));
-  const commands = prepareDocumentCommands({ sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents });
+  const commands = prepareDocumentCommands({ preparer, sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents });
   if (commands.status === "invalid") return commands;
   const texts = new Map(commands.value.documents.map(document => [document.path, document]));
   return { status: "ok", value: { documents: stable.value.documents.map(document => {
@@ -106,7 +109,7 @@ const prepareDocuments = async ({ request, operations, prose }: { readonly reque
     return { ...document, text: text?.text ?? document.text, authoring: [...document.authoring, ...(text?.origins ?? [])] };
   }), inputs: [...stable.value.inputs, ...commands.value.inputs] } };
 };
-export const createHarnessDocumentPreparer = ({ operations = createHarnessDocumentPreparationOperations(), prose = renderAuthoredProse }: { readonly operations?: HarnessDocumentPreparationOperations; readonly prose?: typeof renderAuthoredProse } = {}): HarnessDocumentPreparer => ({ prepare: async (request) => {
+export const createHarnessDocumentPreparer = ({ processes = createNativeCompilerProcessOperations, operations = createHarnessDocumentPreparationOperations(), prose = renderAuthoredProse, commands = createNativeDocumentCommandPreparer({ processes }) }: { readonly processes?: NativeCompilerProcessFactory; readonly operations?: HarnessDocumentPreparationOperations; readonly prose?: typeof renderAuthoredProse; readonly commands?: NativeDocumentCommandPreparer } = {}): HarnessDocumentPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
-  return admitted.status === "invalid" ? admitted : prepareDocuments({ request: admitted.value, operations, prose });
+  return admitted.status === "invalid" ? admitted : prepareDocuments({ request: admitted.value, operations, prose, preparer: commands });
 } });

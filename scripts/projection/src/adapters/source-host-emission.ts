@@ -1,11 +1,12 @@
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
+import { removeDistributionDirectory, type DistributionDirectories, type DistributionDirectoryFactory } from "./distribution-directory.ts";
 import { manifestEmitter } from "./manifest-capabilities.ts";
 import { materializeArtifactData } from "./fresh-core-assembly.ts";
 import { ordinarySourcePath, observeProductionInputs, verifyProductionInputs } from "./source-input-contract.ts";
 import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment } from "./native-compiler-process.ts";
+import { privateCompilerEnvironment, type NativeCompilerProcessFactory } from "./native-compiler-process.ts";
 import { assembledProjectionRoot, applyPreparedHostRoot, type HostDistributionPreparer } from "../application/host-distribution-preparation.ts";
 import { hostRootChanges, type DistributionRoot, type PreparedHostRoot } from "../domain/prepared-host-root.ts";
 import { prepareDistributionStructure } from "../domain/distribution-structure.ts";
@@ -44,7 +45,7 @@ function writeRoot(root: string, inventory: DistributionRoot): void {
 
 // Compatibility host code runs inside the fresh source session over a private root.
 // This is source freshness and output ownership, not a hostile-code sandbox.
-export async function evaluateManifestHostRoot({ request, before, workRoot, environmentCap, buildVersion }: EmissionRequest): Promise<PreparedHostRoot | null> {
+export async function evaluateManifestHostRoot({ request, before, workRoot, environmentCap, buildVersion }: EmissionRequest, processes: NativeCompilerProcessFactory): Promise<PreparedHostRoot | null> {
   const { sourceRoot, seed } = request;
   const inputs = observeProductionInputs(sourceRoot);
   const manifestPath = `harness/${seed.binding.harness}/manifest.ts`;
@@ -87,7 +88,7 @@ export async function evaluateManifestHostRoot({ request, before, workRoot, envi
   const regions = await import(Bun.pathToFileURL(join(sourceRoot, "scripts/generated-skill-regions.ts")).href);
   if (existsSync(tablesPath)) {
     let body = readFileSync(tablesPath, "utf8").replace(/\r\n/g, "\n");
-    const operations = createNativeCompilerProcessOperations({ timeout: 30000 });
+    const operations = processes({ timeout: 30000 });
     const engineRoot = join(root, manifest.harnessDir);
     for (const region of regions.GENERATED_SKILL_REGIONS) {
       const reply = operations.spawn({ binary: process.execPath, args: ["--no-env-file", "--no-install", join(engineRoot, "tools/aidlc-utility.ts"), region.verb], cwd: engineRoot, input: "", env: { ...privateCompilerEnvironment({ inherited: operations.environment(), root: workRoot }), AIDLC_SRC: engineRoot, AIDLC_HARNESS_DIR: manifest.harnessDir, AIDLC_HARNESS_NAME: manifest.name, AIDLC_PROJECT_DIR: root, AIDLC_RUNTIME_PROJECT_DIR: root, AIDLC_RUNTIME_HARNESS_ROOT: engineRoot } });
@@ -134,12 +135,13 @@ export async function evaluateManifestHostRoot({ request, before, workRoot, envi
   return prepared;
 }
 
-export function createSourceHostEmissionPreparer({ environmentCap, buildVersion }: { readonly environmentCap: Tier | null; readonly buildVersion: string }): HostDistributionPreparer {
+export function createSourceHostEmissionPreparer({ environmentCap, buildVersion, processes, directories }: { readonly environmentCap: Tier | null; readonly buildVersion: string; readonly processes: NativeCompilerProcessFactory; readonly directories: DistributionDirectoryFactory }): HostDistributionPreparer {
   return { prepare: async request => {
     // These are extension-only manifests. Codex's historical emitter is an
     // original producer already replaced by retained products, not an extension.
     if (!await sourceHostEmissionSelected(request.sourceRoot, request.seed.binding)) return { status: "ok", value: request };
     let owned: string | undefined;
+    let owner: DistributionDirectories | undefined;
     try {
       ordinarySourcePath(request.sourceRoot, true); ordinarySourcePath(request.root, true);
       const source = resolve(request.sourceRoot).toLowerCase(), work = resolve(request.root).toLowerCase();
@@ -152,17 +154,18 @@ export function createSourceHostEmissionPreparer({ environmentCap, buildVersion 
       const structure = prepareDistributionStructure({ files, retained: assembled.directories, mode: request.seed.structure?.mode ?? 0o755, rules: { path: pathStatus } });
       if (structure.status === "invalid") return structure;
       const before = { files, directories: structure.value };
-      owned = mkdtempSync(join(request.root, "manifest-emission-"));
+      owner = directories();
+      owned = owner.allocate();
       const input = materializeArtifactData({ request: { sourceRoot: request.sourceRoot, seed: request.seed, projection: request.projection, mode: request.mode }, before, workRoot: owned, environmentCap, buildVersion }) as EmissionRequest;
       // The enclosing fresh source session owns this callable's module lifetime.
       // Nothing callable enters the root amendment or artifact transport.
-      const candidate = materializeArtifactData(await evaluateManifestHostRoot(input));
+      const candidate = materializeArtifactData(await evaluateManifestHostRoot(input, processes));
       verifyProductionInputs(expected, observeProductionInputs(request.sourceRoot));
       if (candidate === null) return { status: "ok", value: request };
       const prepared = rootSchema.parse(candidate);
       verifyProductionInputs(expected, prepared.inputs);
       return applyPreparedHostRoot({ request, before, prepared, origin: { ...request.seed.basis, path: `harness/${request.seed.binding.harness}/manifest.ts` } });
     } catch (error) { return refuse(error instanceof Error ? error.message : "Manifest emission unavailable"); }
-    finally { if (owned !== undefined) rmSync(owned, { recursive: true, force: true }); }
+    finally { if (owned !== undefined && owner !== undefined) removeDistributionDirectory({ directories: owner, root: owned }); }
   } };
 }

@@ -1,3 +1,4 @@
+import { removeDistributionDirectory, type DistributionDirectories, type DistributionDirectoryFactory } from "./distribution-directory.ts";
 import { prepareSourceOpenCodeSettings } from "./source-opencode-settings.ts";
 import { prepareSourceCopilotSettings } from "./source-copilot-settings.ts";
 import { readSourceKasPreparation } from "./source-kas-preparation.ts";
@@ -5,7 +6,7 @@ import { readSourceKiroPreparation } from "./source-kiro-preparation.ts";
 import type { Tier } from "../domain/model.ts";
 import { z } from "zod";
 import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 import { claudeSettingsPaths, codexSettingsPaths, cursorSettingsPaths, type HarnessSettingsRequest, type HarnessSettingsPreparer, type PreparedHarnessSettings } from "../domain/harness-settings.ts";
 import { continuePreparation } from "../application/preparation-result.ts";
 import { finding, type Outcome } from "../domain/model.ts";
@@ -15,7 +16,7 @@ const codexSourcePaths = ["harness/codex/settings.ts", "harness/codex/manifest.t
 const cursorSourcePaths = ["harness/cursor/manifest.ts", "harness/cursor/onboarding.fills.ts", "harness/cursor/hooks.json", "harness/cursor/cli.json", "scripts/cursor-settings.ts", "scripts/projection-text.ts", "scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "scripts/projection/src/adapters/qualified-delivery-policy.ts", "core/tools/aidlc.ts", "core/tools/aidlc-copy-preapproval.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-routes.ts"];
 const settingsSourcePaths = (request: HarnessSettingsRequest): readonly string[] => request.binding.harness === "cursor" ? cursorSourcePaths : request.binding.harness === "codex" ? codexSourcePaths : sourcePaths;
 export type SourceHarnessSettingsOperations = NativeCompilerProcessOperations & { readonly paths: (input: HarnessSettingsRequest) => { readonly sourceRoot: string; readonly root: string } };
-export const createSourceHarnessSettingsOperations = (): SourceHarnessSettingsOperations => ({ ...createNativeCompilerProcessOperations(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
+export const createSourceHarnessSettingsOperations = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): SourceHarnessSettingsOperations => ({ ...processes(), paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }) });
 const replySchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), files: z.array(z.strictObject({ file: z.string(), bytes: z.array(z.number().int().min(0).max(255)) })), inputs: z.array(z.strictObject({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) })) }),
   z.strictObject({ status: z.enum(["unavailable", "refused"]), detail: z.string().min(1) }),
@@ -177,28 +178,46 @@ const admitWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: s
   const root = paths.root.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "");
   return root === "" || source === "" || root === source || root.startsWith(`${source}/`) ? failure({ detail: "harness settings require a working root outside authored source" }) : { status: "ok", value: paths };
 };
+const admitDistributionWorkingPaths = ({ paths }: { readonly paths: { readonly sourceRoot: string; readonly root: string } }): Outcome<{ readonly sourceRoot: string; readonly root: string }> => {
+  const admitted = admitWorkingPaths({ paths });
+  if (admitted.status === "invalid") return admitted;
+  const source = paths.sourceRoot.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "");
+  const root = paths.root.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "");
+  return source.startsWith(`${root}/`) ? failure({ detail: "harness settings require a working root outside authored source" }) : admitted;
+};
 const processInput = ({ paths, request, binary, operations }: { readonly paths: { readonly sourceRoot: string; readonly root: string }; readonly request: HarnessSettingsRequest; readonly binary: string; readonly operations: SourceHarnessSettingsOperations }) => ({
   binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root,
   env: { ...privateCompilerEnvironment({ inherited: operations.environment(), root: `${paths.root}/.settings-home` }), ...Object.fromEntries([["BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0"], ["BUN_INSTALL_AUTO", "disable"]]) },
   input: JSON.stringify({ sourceRoot: paths.sourceRoot, files: request.files, invocation: request.invocation, beforeHost: request.preparationStage === "before-host", onboarding: request.onboarding, harness: request.binding.harness, profile: qualifiedHarnessProfile(request.binding), paths: settingsSourcePaths(request), outputPaths: codexSettingsPaths() }),
 });
-const execute = async ({ request, binary, operations }: { readonly request: HarnessSettingsRequest; readonly binary: string; readonly operations: SourceHarnessSettingsOperations }): Promise<Outcome<PreparedHarnessSettings>> => {
-  try { return await continuePreparation({ previous: admitWorkingPaths({ paths: operations.paths(request) }), consume: ({ prepared: paths }) => processOutcome({ reply: operations.spawn(processInput({ paths, request, binary, operations })), request }) }); }
-  catch { return failure({ detail: "harness settings process capability unavailable" }); }
+const execute = async ({ request, binary, operations, directories }: { readonly request: HarnessSettingsRequest; readonly binary: string; readonly operations: SourceHarnessSettingsOperations; readonly directories?: DistributionDirectoryFactory | undefined }): Promise<Outcome<PreparedHarnessSettings>> => {
+  let owned: string | undefined;
+  let owner: DistributionDirectories | undefined;
+  try {
+    const admitted = admitWorkingPaths({ paths: operations.paths(request) });
+    if (admitted.status === "invalid") return admitted;
+    if (directories !== undefined) {
+      owner = directories();
+      owned = owner.allocate();
+    }
+    const paths = owned === undefined ? admitted : admitDistributionWorkingPaths({ paths: { ...admitted.value, root: owned } });
+    return await continuePreparation({ previous: paths, consume: ({ prepared }) => processOutcome({ reply: operations.spawn(processInput({ paths: prepared, request, binary, operations })), request }) });
+  } catch { return failure({ detail: "harness settings process capability unavailable" }); }
+  finally { if (owned !== undefined) removeDistributionDirectory({ directories: owner!, root: owned }); }
 };
-export const createSourceHarnessSettingsPreparer = ({ binary = "bun", operations = createSourceHarnessSettingsOperations(), environmentCap = null }: { readonly environmentCap?: Tier | null; readonly binary?: string; readonly operations?: SourceHarnessSettingsOperations } = {}): HarnessSettingsPreparer => ({ prepare: async (request) => {
-  if (request.binding.harness === "opencode") return prepareSourceOpenCodeSettings(request, binary);
-  if (request.binding.harness === "copilot") return prepareSourceCopilotSettings(request, binary);
+export const createSourceHarnessSettingsPreparer = ({ binary = "bun", processes = createNativeCompilerProcessOperations, operations = createSourceHarnessSettingsOperations({ processes }), environmentCap = null, directories }: { readonly directories?: DistributionDirectoryFactory | undefined; readonly environmentCap?: Tier | null; readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: SourceHarnessSettingsOperations } = {}): HarnessSettingsPreparer => ({ prepare: async (request) => {
+  if (request.binding.harness === "opencode") return prepareSourceOpenCodeSettings(request, { binary, processes, directories });
+  if (request.binding.harness === "copilot") return prepareSourceCopilotSettings(request, { binary, processes, directories });
   if (request.binding.harness === "kiro" || request.binding.harness === "kiro-ide") {
     if (request.binding.directory !== ".kiro" || request.basis.source.kind !== "core" || request.basis.source.id !== "framework" || !/^[a-f0-9]{40}$/.test(request.basis.pin) || !["aidlc", "bun .kiro/tools/aidlc.ts"].includes(request.invocation) || !Number.isInteger(request.mode) || request.mode < 0 || request.mode > 0o777 || request.files.filter(file => file === ".kiro/tools/aidlc.ts").length !== 1) return failure({ detail: "Kiro settings require the pinned framework, exact invocation, modes and prepared dispatcher" });
     const paths = admitWorkingPaths({ paths: operations.paths(request) });
     if (paths.status === "invalid") return paths;
-    const prepared = (request.binding.harness === "kiro-ide" ? readSourceKasPreparation : readSourceKiroPreparation)({ sourceRoot: paths.value.sourceRoot, workRoot: paths.value.root, invocation: request.invocation, environmentCap, binary });
+    const prepared = (request.binding.harness === "kiro-ide" ? readSourceKasPreparation : readSourceKiroPreparation)({ sourceRoot: paths.value.sourceRoot, workRoot: paths.value.root, invocation: request.invocation, environmentCap, binary, processes, directories });
     if (prepared.status === "invalid") return prepared;
     const expected = [...qualifiedHarnessProfile(request.binding)!.settingsMappings.map(mapping => `.kiro/${mapping.dst}`), ...(request.binding.harness === "kiro-ide" ? [".kiro/tools/data/plugin-agent.md"] : [])];
     if (prepared.value.settings.length !== expected.length || expected.some(path => prepared.value.settings.filter(file => file.path === path).length !== 1) || prepared.value.toolScripts.some(script => request.files.filter(file => file === `.kiro/tools/${script}`).length !== 1)) return failure({ detail: "Kiro settings require every declared artifact and preapproved tool" });
     return { status: "ok", value: { files: prepared.value.settings.map(file => ({ path: file.path, bytes: new TextEncoder().encode(file.text), mode: request.mode })), preparation: { kind: "harness-settings", paths: expected, inputs: prepared.value.inputs } } };
   }
   const admitted = admitRequest({ request });
-  return admitted.status === "invalid" ? admitted : execute({ request: admitted.value, binary, operations });
+  return admitted.status === "invalid" ? admitted : execute({ request: admitted.value, binary, operations, directories });
 } });

@@ -1,4 +1,6 @@
+import type { DistributionDirectoryFactory } from "../src/adapters/distribution-directory.ts";
 import type { Tier } from "../src/domain/model.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "../src/adapters/native-compiler-process.ts";
 import { qualifiedHarnessProfile } from "../src/adapters/qualified-harness-profile.ts";
 import { mergeSourceDigests } from "../src/domain/source-origin.ts";
 import { prepareHarnessSettings, type HarnessSettingsServices } from "../src/application/prepare-harness-settings.ts";
@@ -8,11 +10,11 @@ import { planPreparedRuntimeFiles } from "../src/domain/prepared-runtime-files.t
 import type { PreparedDistributionSource } from "../src/adapters/prepared-distribution-source.ts";
 import { continuePreparation } from "../src/application/preparation-result.ts";
 
-export const createHarnessSettingsServices = (environmentCap: Tier | null = null): HarnessSettingsServices => ({ preparer: createSourceHarnessSettingsPreparer({ environmentCap }), admit: planPreparedRuntimeFiles, rules: createDistributionAssemblyRules() });
+export const createHarnessSettingsServices = (environmentCap: Tier | null = null, { processes = createNativeCompilerProcessOperations, directories }: { readonly processes?: NativeCompilerProcessFactory; readonly directories?: DistributionDirectoryFactory | undefined } = {}): HarnessSettingsServices => ({ preparer: createSourceHarnessSettingsPreparer({ environmentCap, processes, directories }), admit: planPreparedRuntimeFiles, rules: createDistributionAssemblyRules() });
 import type { OnboardingPreparer } from "../src/adapters/onboarding-source.ts";
 import { finding } from "../src/domain/model.ts";
 
-export const createHarnessSettingsDistributionSource = ({ source, mode, onboarding, environmentCap = null, services = createHarnessSettingsServices(environmentCap), prepare = prepareHarnessSettings }: { readonly source: PreparedDistributionSource; readonly mode: number; readonly onboarding?: OnboardingPreparer; readonly environmentCap?: Tier | null; readonly services?: HarnessSettingsServices; readonly prepare?: typeof prepareHarnessSettings }): PreparedDistributionSource => ({ load: (request) => continuePreparation({ previous: source.load(request), consume: async ({ prepared: seed }) => {
+export const createHarnessSettingsDistributionSource = ({ source, mode, onboarding, environmentCap = null, processes = createNativeCompilerProcessOperations, directories, services = createHarnessSettingsServices(environmentCap, { processes, directories }), prepare = prepareHarnessSettings }: { readonly source: PreparedDistributionSource; readonly mode: number; readonly onboarding?: OnboardingPreparer; readonly environmentCap?: Tier | null; readonly processes?: NativeCompilerProcessFactory; readonly directories?: DistributionDirectoryFactory | undefined; readonly services?: HarnessSettingsServices; readonly prepare?: typeof prepareHarnessSettings }): PreparedDistributionSource => ({ load: (request) => continuePreparation({ previous: source.load(request), consume: async ({ prepared: seed }) => {
   const base = { sourceRoot: request.location.sourceRoot, root: request.location.root, seed, mode };
   const onboardingPath = qualifiedHarnessProfile(seed.binding)?.settingsOnboardingPath;
   if (onboardingPath === null || onboardingPath === undefined) return prepare({ request: base, services });

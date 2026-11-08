@@ -1,5 +1,7 @@
 import { createPreparedRunnerInputs, type PreparedRunnerInputs, type PreparedRunnerLocation } from "../src/adapters/prepared-runner-inputs.ts";
 import { createLegacyRunnerDiscovery } from "../src/adapters/legacy-runner-discovery.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "../src/adapters/native-compiler-process.ts";
+import { createRunnerProcess } from "../src/adapters/runner-process.ts";
 import { createNativeRunnerRequirementRules } from "../src/adapters/native-runner-requirement-rules.ts";
 import { discoverNativeRunnerRequirements, type NativeRunnerRequirements, type NativeRunnerRequirementRules } from "../src/application/native-runner-requirements.ts";
 import { projectGeneratedRunnerDefinitions } from "./generated-runners.ts";
@@ -8,7 +10,7 @@ import type { RunnerDiscovery, GeneratedRunnerContext, RunnerInputSnapshot } fro
 import { finding, type Outcome } from "../src/domain/model.ts";
 export type PreparedRunnerCandidates = { readonly inputSnapshot: RunnerInputSnapshot; readonly requirements: NativeRunnerRequirements; readonly projection: GeneratedRunnerSet };
 export type PreparedRunnerServices = { readonly source: PreparedRunnerInputs; readonly factory: (input: { readonly location: PreparedRunnerLocation }) => RunnerDiscovery; readonly discover: typeof discoverNativeRunnerRequirements; readonly rules: NativeRunnerRequirementRules; readonly project: typeof projectGeneratedRunnerDefinitions };
-export const createPreparedRunnerServices = (): PreparedRunnerServices => ({ source: createPreparedRunnerInputs(), factory: ({ location }) => createLegacyRunnerDiscovery({ runtime: location, compiler: { ...location.basis, path: "core/tools/aidlc-runner-gen.ts" } }), discover: discoverNativeRunnerRequirements, rules: createNativeRunnerRequirementRules(), project: projectGeneratedRunnerDefinitions });
+export const createPreparedRunnerServices = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): PreparedRunnerServices => ({ source: createPreparedRunnerInputs(), factory: ({ location }) => createLegacyRunnerDiscovery({ runtime: location, compiler: { ...location.basis, path: "core/tools/aidlc-runner-gen.ts" }, process: createRunnerProcess({ processes }) }), discover: discoverNativeRunnerRequirements, rules: createNativeRunnerRequirementRules(), project: projectGeneratedRunnerDefinitions });
 const completeRequirements = ({ requirements }: { readonly requirements: NativeRunnerRequirements }): Outcome<NativeRunnerRequirements> => requirements.scope === "native-generated-runners" ? { status: "ok", value: requirements } : { status: "invalid", findings: [finding({ code: "capability-gap", subject: "prepared-runner-inputs", detail: "producer candidates require complete native generated-runner coverage" })] };
 const collectPreparedCandidates = ({ inputSnapshot, requirements, projection }: PreparedRunnerCandidates): Outcome<PreparedRunnerCandidates> => {
   const entrypoints = projection.runners.map((runner) => runner.entrypoint);

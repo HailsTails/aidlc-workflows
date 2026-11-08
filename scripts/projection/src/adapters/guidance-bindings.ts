@@ -1,3 +1,6 @@
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "./native-compiler-process.ts";
+import { createNativeDocumentCommandPreparer } from "./native-document-commands.ts";
+import type { NativeDocumentCommandPreparer } from "../domain/native-document-commands.ts";
 import { isNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
 import { guidanceDocumentName } from "../domain/core-guidance.ts";
 import { z } from "zod";
@@ -43,13 +46,13 @@ const collectGuidanceBindings = ({ selected, request, sha256 }: { readonly selec
 const applyGuidanceSelector = ({ admitted, request, sha256 }: { readonly admitted: Outcome<GuidanceSelector>; readonly request: GuidanceBindingRequest; readonly sha256: string }): Outcome<PreparedCoreGuidance> => admitted.status === "invalid" ? admitted : collectGuidanceBindings({ selected: request.sources.documents.map((document) => admitted.value.select({ document })), request, sha256 });
 const selectorFingerprint = async ({ request, operations }: { readonly request: GuidanceBindingRequest; readonly operations: GuidanceBindingOperations }): Promise<string> => operations.digest({ bytes: await operations.bytes({ sourceRoot: request.sourceRoot }) });
 const retainStableBindings = ({ prepared, before, after }: { readonly prepared: Outcome<PreparedCoreGuidance>; readonly before: string; readonly after: string }): Outcome<PreparedCoreGuidance> => before !== after ? { status: "invalid", findings: [finding({ code: "foreign-content", subject: selectorPath, detail: "guidance binding selector changed during preparation; retry from stable source" })] } : prepared;
-const prepareGuidanceBindings = async ({ request, operations, prose }: { readonly request: GuidanceBindingRequest; readonly operations: GuidanceBindingOperations; readonly prose: typeof renderAuthoredProse }): Promise<Outcome<PreparedCoreGuidance>> => {
+const prepareGuidanceBindings = async ({ request, operations, prose, preparer }: { readonly request: GuidanceBindingRequest; readonly operations: GuidanceBindingOperations; readonly prose: typeof renderAuthoredProse; readonly preparer: NativeDocumentCommandPreparer }): Promise<Outcome<PreparedCoreGuidance>> => {
   try {
     const sha256 = await selectorFingerprint({ request, operations });
     const prepared = applyGuidanceSelector({ admitted: admitGuidanceSelector({ imported: await operations.load({ sourceRoot: request.sourceRoot, sha256 }), request, prose }), request, sha256 });
     const stable = retainStableBindings({ prepared, before: sha256, after: await selectorFingerprint({ request, operations }) });
     if (stable.status === "invalid") return stable;
-    const commands = prepareDocumentCommands({ sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents: stable.value.documents.map(document => ({ path: `${request.context.directory}/aidlc-common/${guidanceDocumentName({ placement: document.authored.placement })}`, source: document.text })) });
+    const commands = prepareDocumentCommands({ preparer, sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents: stable.value.documents.map(document => ({ path: `${request.context.directory}/aidlc-common/${guidanceDocumentName({ placement: document.authored.placement })}`, source: document.text })) });
     if (commands.status === "invalid") return commands;
     const preparedTexts = new Map(commands.value.documents.map(document => [document.path, document]));
     return { status: "ok", value: { documents: stable.value.documents.map(document => {
@@ -64,4 +67,4 @@ const admitBindingRequest = ({ request }: { readonly request: GuidanceBindingReq
   return { status: "ok", value: request };
 };
 const continueBindingRequest = ({ admitted, consume }: { readonly admitted: Outcome<GuidanceBindingRequest>; readonly consume: (request: GuidanceBindingRequest) => Promise<Outcome<PreparedCoreGuidance>> }): Promise<Outcome<PreparedCoreGuidance>> => admitted.status === "invalid" ? Promise.resolve(admitted) : consume(admitted.value);
-export const createGuidanceBindingPreparer = ({ operations = createGuidanceBindingOperations(), prose = renderAuthoredProse }: { readonly operations?: GuidanceBindingOperations; readonly prose?: typeof renderAuthoredProse } = {}): GuidanceBindingPreparer => ({ prepare: (request) => continueBindingRequest({ admitted: admitBindingRequest({ request }), consume: (admitted) => prepareGuidanceBindings({ request: admitted, operations, prose }) }) });
+export const createGuidanceBindingPreparer = ({ processes = createNativeCompilerProcessOperations, operations = createGuidanceBindingOperations(), prose = renderAuthoredProse, commands = createNativeDocumentCommandPreparer({ processes }) }: { readonly processes?: NativeCompilerProcessFactory; readonly operations?: GuidanceBindingOperations; readonly prose?: typeof renderAuthoredProse; readonly commands?: NativeDocumentCommandPreparer } = {}): GuidanceBindingPreparer => ({ prepare: (request) => continueBindingRequest({ admitted: admitBindingRequest({ request }), consume: (admitted) => prepareGuidanceBindings({ request: admitted, operations, prose, preparer: commands }) }) });

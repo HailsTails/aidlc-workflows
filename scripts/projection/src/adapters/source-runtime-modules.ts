@@ -3,12 +3,12 @@ import { qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { z } from "zod";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
 import type { PreparedRuntimeInput, RuntimeInputPreparer, RuntimeInputRequest } from "../domain/runtime-inputs.ts";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment, type NativeCompilerProcessOperations, type NativeCompilerSpawnReply } from "./native-compiler-process.ts";
 
 const requiredSources = ["scripts/projection-text.ts", "scripts/version-module.ts", "core/tools/aidlc-command.ts", "core/tools/aidlc-version.ts", "core/tools/aidlc-channel.ts", "scripts/native-runtime-text.ts", "scripts/native-command-context.ts", "scripts/native-command-text.ts", "core/tools/aidlc-routes.ts", "scripts/runtime-source-selection.ts"];
 export type SourceRuntimeModuleOperations = NativeCompilerProcessOperations & { readonly paths: (request: RuntimeInputRequest) => { readonly sourceRoot: string; readonly root: string } };
-export const createSourceRuntimeModuleOperations = ({ create = createNativeCompilerProcessOperations }: { readonly create?: typeof createNativeCompilerProcessOperations } = {}): SourceRuntimeModuleOperations => ({
-  ...create({ timeout: 30000, maxBuffer: 32 * 1024 * 1024 }),
+export const createSourceRuntimeModuleOperations = ({ create, processes = create ?? createNativeCompilerProcessOperations }: { readonly create?: typeof createNativeCompilerProcessOperations; readonly processes?: NativeCompilerProcessFactory } = {}): SourceRuntimeModuleOperations => ({
+  ...processes({ timeout: 30000, maxBuffer: 32 * 1024 * 1024 }),
   paths: ({ sourceRoot, root }) => ({ sourceRoot: Bun.fileURLToPath(Bun.pathToFileURL(sourceRoot)), root: Bun.fileURLToPath(Bun.pathToFileURL(root)) }),
 });
 
@@ -121,7 +121,7 @@ const prepareModules = ({ request, binary, operations, buildVersion }: { readonl
     return admitProcess({ reply: operations.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", worker], cwd: paths.root, input: JSON.stringify({ sourceRoot: paths.sourceRoot, harnessDir: request.binding.directory, invoke: request.invocation, beforeHost: request.preparationStage === "before-host", buildVersion, profile: qualifiedHarnessProfile(request.binding) }), env: moduleEnvironment({ inherited: operations.environment(), root: paths.root }) }), request });
   } catch { return failure({ detail: "source runtime module process capability unavailable" }); }
 };
-export const createSourceRuntimeModulePreparer = ({ binary = "bun", operations = createSourceRuntimeModuleOperations(), buildVersion }: { readonly binary?: string; readonly operations?: SourceRuntimeModuleOperations; readonly buildVersion?: string } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {
+export const createSourceRuntimeModulePreparer = ({ binary = "bun", processes = createNativeCompilerProcessOperations, operations = createSourceRuntimeModuleOperations({ processes }), buildVersion }: { readonly binary?: string; readonly processes?: NativeCompilerProcessFactory; readonly operations?: SourceRuntimeModuleOperations; readonly buildVersion?: string } = {}): RuntimeInputPreparer => ({ prepare: async (request) => {
   const admitted = admitRequest({ request });
   return admitted.status === "invalid" ? admitted : prepareModules({ request: admitted.value, binary, operations, buildVersion });
 } });

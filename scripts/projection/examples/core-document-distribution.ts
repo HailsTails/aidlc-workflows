@@ -1,9 +1,10 @@
+import type { DistributionDirectoryFactory } from "../src/adapters/distribution-directory.ts";
 import { collectRuntimeInputEvidence } from "../src/domain/runtime-inputs.ts";
 import type { HostDistributionPreparer } from "../src/application/host-distribution-preparation.ts";
 import { createPreparedRuntimeAssembler, type PreparedRuntimeAssembly, type WorkflowDistributionServices } from "./workflow-distribution.ts";
 import { completeProjectionDistribution, type ProjectionDistributionRequest } from "./projection-distribution.ts";
 import { describeDistribution, type DescriptionServices } from "../src/application/describe-distribution.ts";
-import { prepareCoreAuthoredDocuments } from "./core-authored-documents.ts";
+import { createCoreDocumentServices, prepareCoreAuthoredDocuments } from "./core-authored-documents.ts";
 import { combineProjectionSets } from "../src/application/combine-projections.ts";
 import { mergeSourceDigests } from "../src/domain/source-origin.ts";
 import { planPreparedFileAdditions } from "../src/domain/prepared-file-additions.ts";
@@ -16,7 +17,7 @@ import type { CoreAuthoredDocuments } from "./core-authored-documents.ts";
 import type { IssuedProjectionDistribution } from "./projection-distribution.ts";
 import { finding, type Outcome } from "../src/domain/model.ts";
 export type CoreDocumentDistributionServices = { readonly host?: HostDistributionPreparer; readonly describe: typeof describeDistribution; readonly description?: DescriptionServices; readonly documents: typeof prepareCoreAuthoredDocuments; readonly combine: typeof combineProjectionSets; readonly digests: typeof mergeSourceDigests; readonly admit: typeof planPreparedFileAdditions; readonly finish: typeof completeProjectionDistribution; readonly assembler: typeof createPreparedRuntimeAssembler; readonly workspace: DistributionWorkspace; readonly rules: DistributionAssemblyRules };
-export const createCoreDocumentDistributionServices = (): CoreDocumentDistributionServices => ({ describe: describeDistribution, documents: prepareCoreAuthoredDocuments, combine: combineProjectionSets, digests: mergeSourceDigests, admit: planPreparedFileAdditions, finish: completeProjectionDistribution, assembler: createPreparedRuntimeAssembler, workspace: createDistributionWorkspace(), rules: createDistributionAssemblyRules() });
+export const createCoreDocumentDistributionServices = ({ directories }: { readonly directories?: DistributionDirectoryFactory | undefined } = {}): CoreDocumentDistributionServices => ({ describe: describeDistribution, documents: input => prepareCoreAuthoredDocuments({ ...input, services: input.services ?? createCoreDocumentServices(input.workRoot, { directories }) }), combine: combineProjectionSets, digests: mergeSourceDigests, admit: planPreparedFileAdditions, finish: completeProjectionDistribution, assembler: options => createPreparedRuntimeAssembler({ ...options, directories: options?.directories ?? directories }), workspace: createDistributionWorkspace({ directories }), rules: createDistributionAssemblyRules() });
 type DescriptionSelection = { readonly kind: "supplied" } | { readonly kind: "prepare"; readonly root: string; readonly description: DescriptionServices };
 const selectCoreDescription = ({ description, workRoot }: { readonly description: DescriptionServices | undefined; readonly workRoot: string | undefined }): Outcome<DescriptionSelection> => {
   if (description === undefined) return { status: "ok", value: { kind: "supplied" } };
@@ -55,4 +56,4 @@ export const assembleCoreDocumentDistribution = async ({ services = createCoreDo
   const documents = await services.documents(coreDocumentPreparationRequest({ request: admitted.value }));
   return documents.status === "invalid" ? documents : assembleCoreDocumentRuntime({ request, documents: documents.value, services });
 };
-export const createAuthoredCoreAssembler = (): WorkflowDistributionServices["assemble"] => assembleCoreDocumentDistribution;
+export const createAuthoredCoreAssembler = ({ directories }: { readonly directories?: DistributionDirectoryFactory | undefined } = {}): WorkflowDistributionServices["assemble"] => ({ services = createCoreDocumentDistributionServices({ directories }), ...request }: PreparedRuntimeAssembly & { readonly services?: CoreDocumentDistributionServices }) => assembleCoreDocumentDistribution({ ...request, services });

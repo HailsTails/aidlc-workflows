@@ -1,3 +1,4 @@
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "../src/adapters/native-compiler-process.ts";
 import { qualifiedHarnessProfile } from "../src/adapters/qualified-harness-profile.ts";
 import { nativeDocumentCommandSourcePaths } from "../src/adapters/native-document-commands.ts";
 import { continuePreparation } from "../src/application/preparation-result.ts";
@@ -27,7 +28,7 @@ export const selectHarnessDocumentProducts = ({ sources, basis, context }: { rea
   })) return { status: "invalid", findings: [finding({ code: "foreign-content", subject: "harness-document-products", detail: "entry roles must retain their declared authored source and exact qualified destination" })] };
   return { status: "ok", value: { target: copyHarnessBinding({ binding: context }), units: sources.documents.map((document) => ({ kind: "harness-document", key: `harness-${document.authored.role}`, input: { document, context: copyHarnessBinding({ binding: context }) } })) } };
 };
-export const createHarnessDocumentProductServices = (): HarnessDocumentProductServices => ({ reader: createHarnessDocumentSourceReader(), preparation: createHarnessDocumentPreparer(), select: selectHarnessDocumentProducts, project: projectProjectionSet, products: prepareProjectedProducts, rules: createDistributionAssemblyRules() });
+export const createHarnessDocumentProductServices = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): HarnessDocumentProductServices => ({ reader: createHarnessDocumentSourceReader(), preparation: createHarnessDocumentPreparer({ processes }), select: selectHarnessDocumentProducts, project: projectProjectionSet, products: prepareProjectedProducts, rules: createDistributionAssemblyRules() });
 export const prepareHarnessDocumentProducts = ({ sourceRoot, basis, context, mode, services = createHarnessDocumentProductServices() }: { readonly sourceRoot: string; readonly basis: SourceBasis; readonly context: AuthoredProseContext; readonly mode: number; readonly services?: HarnessDocumentProductServices }): Promise<Outcome<HarnessDocumentProducts>> => continuePreparation({
   previous: services.reader.load({ sourceRoot, basis, binding: copyHarnessBinding({ binding: context }) }), consume: async ({ prepared: sources }) => continuePreparation({
     previous: services.preparation.prepare({ sourceRoot, basis, context, sources }), consume: async ({ prepared: documents }) => continuePreparation({

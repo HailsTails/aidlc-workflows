@@ -1,3 +1,4 @@
+import { removeDistributionDirectory, type DistributionDirectories, type DistributionDirectoryFactory } from "./distribution-directory.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join, isAbsolute, resolve, sep } from "node:path";
 import { isKasDenyBlock } from "./qualified-kas-policy.ts";
@@ -6,7 +7,7 @@ import { observeKasInputs, ordinaryKasPath } from "./kas-source-contract.ts";
 import { qualifiedHarnessByName } from "./qualified-harness-profile.ts";
 import type { SourceContentDigest } from "../domain/source-origin.ts";
 import { z } from "zod";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory, privateCompilerEnvironment } from "./native-compiler-process.ts";
 import { finding, type Outcome, type Tier } from "../domain/model.ts";
 const modulePath = "harness/kiro-ide/settings.ts";
 const response = z.strictObject({
@@ -49,18 +50,34 @@ export function admitKasSourcePreparation(candidate: unknown, expected: readonly
   if (prepared.agents.some(agent => invocation === "aidlc" ? agent.namespaceLiteral === null || !isKasDenyBlock(agent.namespaceLiteral) || agent.lines.join("\n").split(agent.namespaceLiteral).length !== 2 : agent.namespaceLiteral !== null)) return refuse("KAS namespace literals must bind exactly once within each native persona's prepared policy, never its prose or copy output");
   return { status: "ok", value: prepared };
 }
-export const readSourceKasPreparation = ({ sourceRoot, workRoot, invocation, environmentCap = null, binary = "bun", inherited }: { readonly workRoot: string; readonly inherited?: Readonly<Record<string, string | undefined>>; readonly binary?: string; readonly sourceRoot: string; readonly invocation: string; readonly environmentCap?: Tier | null }): Outcome<KasSourcePreparation> => {
+const removeKasWorkingRoot = ({ root, owner }: { readonly root: string | undefined; readonly owner: DistributionDirectories | undefined }): void => {
+  if (root === undefined) return;
+  if (owner === undefined) { rmSync(root, { recursive: true, force: true }); return; }
+  removeDistributionDirectory({ directories: owner, root });
+};
+const requireKasWorkingRoot = ({ sourceRoot, root, workRoot, owner }: { readonly sourceRoot: string; readonly root: string; readonly workRoot: string; readonly owner: DistributionDirectories | undefined }): void => {
+  if (owner === undefined) {
+    if (!resolve(root).startsWith(workRoot + sep)) throw new Error("Kas preparation escaped its working root");
+    return;
+  }
+  ordinaryKasPath(root);
+  const working = resolve(root).toLowerCase(), source = sourceRoot.toLowerCase();
+  if (source === working || source.startsWith(working + sep) || working.startsWith(source + sep)) throw new Error("Kas preparation requires an explicit working root outside authored source");
+};
+export const readSourceKasPreparation = ({ sourceRoot, workRoot, invocation, environmentCap = null, binary = "bun", inherited, processes = createNativeCompilerProcessOperations, directories }: { readonly workRoot: string; readonly directories?: DistributionDirectoryFactory | undefined; readonly processes?: NativeCompilerProcessFactory; readonly inherited?: Readonly<Record<string, string | undefined>>; readonly binary?: string; readonly sourceRoot: string; readonly invocation: string; readonly environmentCap?: Tier | null }): Outcome<KasSourcePreparation> => {
   let owned: string | undefined;
+  let owner: DistributionDirectories | undefined;
   try {
-    const process = createNativeCompilerProcessOperations({ timeout: 30000 });
+    const process = processes({ timeout: 30000 });
     if (!isAbsolute(sourceRoot) || !isAbsolute(workRoot)) return refuse("KAS preparation requires absolute source and work roots");
     const root = resolve(sourceRoot);
     const scratch = resolve(workRoot);
     if (scratch.toLowerCase() === root.toLowerCase() || scratch.toLowerCase().startsWith(root.toLowerCase() + sep) || root.toLowerCase().startsWith(scratch.toLowerCase() + sep)) return refuse("Kas preparation requires an explicit working root outside authored source");
     ordinaryKasPath(root); ordinaryKasPath(scratch);
     const before = observeKasInputs(root);
-    owned = mkdtempSync(join(scratch, "kas-policy-"));
-    if (!resolve(owned).startsWith(scratch + sep)) throw new Error("Kas preparation escaped its working root");
+    owner = directories?.();
+    owned = directories === undefined ? mkdtempSync(join(scratch, "kas-policy-")) : owner!.allocate();
+    requireKasWorkingRoot({ sourceRoot: root, root: owned, workRoot: scratch, owner });
     const reply = process.spawn({ binary, args: ["--no-env-file", "--no-install", "--eval", program], cwd: owned, input: JSON.stringify({ sourceRoot: root, workRoot: owned, invocation, environmentCap }), env: { ...privateCompilerEnvironment({ inherited: inherited ?? process.environment(), root: owned }), BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BUN_INSTALL_AUTO: "disable" } });
     if (reply.exitCode !== 0 || reply.error !== null || reply.stderr.trim().length > 0) throw new Error(reply.stderr || reply.error || "Kas policy process failed");
     const prepared = admitKasSourcePreparation(JSON.parse(reply.stdout), before, invocation);
@@ -69,6 +86,6 @@ export const readSourceKasPreparation = ({ sourceRoot, workRoot, invocation, env
   } catch (error) {
     return { status: "invalid", findings: [finding({ code: "capability-gap", subject: "kas-source-preparation", detail: error instanceof Error ? error.message : String(error) })] };
   } finally {
-    if (owned !== undefined) rmSync(owned, { recursive: true, force: true });
+    removeKasWorkingRoot({ root: owned, owner });
   }
 };

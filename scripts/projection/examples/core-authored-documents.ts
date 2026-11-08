@@ -1,11 +1,13 @@
+import type { DistributionDirectoryFactory } from "../src/adapters/distribution-directory.ts";
 import { qualifiedDeliveryContext, qualifiedHarnessProfile } from "../src/adapters/qualified-harness-profile.ts";
-import { prepareCoreSensorProducts } from "./core-sensor-products.ts";
-import { prepareCoreSkillProducts } from "./core-skill-products.ts";
-import { prepareCoreKnowledgeProducts } from "./core-knowledge-products.ts";
-import { prepareCoreAgentProducts } from "./core-agent-products.ts";
-import { prepareCoreGuidanceProducts } from "./core-guidance-products.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "../src/adapters/native-compiler-process.ts";
+import { createCoreSensorProductServices, prepareCoreSensorProducts } from "./core-sensor-products.ts";
+import { createCoreSkillProductServices, prepareCoreSkillProducts } from "./core-skill-products.ts";
+import { createCoreKnowledgeProductServices, prepareCoreKnowledgeProducts } from "./core-knowledge-products.ts";
+import { createCoreAgentProductServices, prepareCoreAgentProducts } from "./core-agent-products.ts";
+import { createCoreGuidanceProductServices, prepareCoreGuidanceProducts } from "./core-guidance-products.ts";
 import { prepareOnboardingProducts } from "./onboarding-products.ts";
-import { prepareHarnessDocumentProducts } from "./harness-document-products.ts";
+import { createHarnessDocumentProductServices, prepareHarnessDocumentProducts } from "./harness-document-products.ts";
 import { createCoreAgentPolicyReader, type CoreAgentPolicyReader } from "../src/adapters/core-agent-policy.ts";
 import { parseCompiledAgentStages } from "../src/adapters/compiled-agent-stages.ts";
 import { combineProjectionSets } from "../src/application/combine-projections.ts";
@@ -19,7 +21,16 @@ import { copyHarnessBinding } from "../src/domain/harness-binding.ts";
 import { finding, type Outcome } from "../src/domain/model.ts";
 export type CoreAuthoredDocuments = { readonly projection: ProjectionSet; readonly inputs: readonly SourceContentDigest[] };
 export type CoreDocumentServices = { readonly policy: CoreAgentPolicyReader; readonly catalogue: typeof parseCompiledAgentStages; readonly sensors: typeof prepareCoreSensorProducts; readonly skills: typeof prepareCoreSkillProducts; readonly knowledge: typeof prepareCoreKnowledgeProducts; readonly agents: typeof prepareCoreAgentProducts; readonly guidance: typeof prepareCoreGuidanceProducts; readonly entries: typeof prepareHarnessDocumentProducts; readonly onboarding: typeof prepareOnboardingProducts; readonly combine: typeof combineProjectionSets; readonly digests: typeof mergeSourceDigests };
-export const createCoreDocumentServices = (workRoot: string): CoreDocumentServices => ({ policy: createCoreAgentPolicyReader({ workRoot }), catalogue: parseCompiledAgentStages, sensors: prepareCoreSensorProducts, skills: prepareCoreSkillProducts, knowledge: prepareCoreKnowledgeProducts, agents: prepareCoreAgentProducts, guidance: prepareCoreGuidanceProducts, entries: prepareHarnessDocumentProducts, onboarding: prepareOnboardingProducts, combine: combineProjectionSets, digests: mergeSourceDigests });
+export const createCoreDocumentServices = (workRoot: string, { processes = createNativeCompilerProcessOperations, directories }: { readonly processes?: NativeCompilerProcessFactory; readonly directories?: DistributionDirectoryFactory | undefined } = {}): CoreDocumentServices => ({
+  policy: createCoreAgentPolicyReader({ workRoot, processes, directories }), catalogue: parseCompiledAgentStages,
+  sensors: input => prepareCoreSensorProducts({ ...input, services: input.services ?? createCoreSensorProductServices({ processes }) }),
+  skills: input => prepareCoreSkillProducts({ ...input, services: input.services ?? createCoreSkillProductServices({ processes }) }),
+  knowledge: input => prepareCoreKnowledgeProducts({ ...input, services: input.services ?? createCoreKnowledgeProductServices({ processes }) }),
+  agents: input => prepareCoreAgentProducts({ ...input, services: input.services ?? createCoreAgentProductServices({ processes, directories }) }),
+  guidance: input => prepareCoreGuidanceProducts({ ...input, services: input.services ?? createCoreGuidanceProductServices({ processes }) }),
+  entries: input => prepareHarnessDocumentProducts({ ...input, services: input.services ?? createHarnessDocumentProductServices({ processes }) }),
+  onboarding: prepareOnboardingProducts, combine: combineProjectionSets, digests: mergeSourceDigests,
+});
 const retainAgentPolicyOrigins = ({ projection, policy }: { readonly projection: ProjectionSet; readonly policy: PreparedCoreAgentPolicy }): ProjectionSet => ({ ...projection, units: projection.units.map((unit) => unit.kind === "compiled-agent" || unit.kind === "agent" ? { ...unit, projection: { ...unit.projection, dependencies: [...(unit.projection.dependencies ?? []), ...policy.origins] } } : unit) });
 export type CoreDocumentRequest = { readonly sourceRoot: string; readonly workRoot: string; readonly basis: SourceBasis; readonly context: AuthoredProseContext; readonly workflow: CompiledWorkflowSource; readonly mode: number };
 const admitCoreDocumentProfile = ({ request }: { readonly request: CoreDocumentRequest }): Outcome<CoreDocumentRequest> => !qualifiedDeliveryContext(request.context)

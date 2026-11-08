@@ -1,9 +1,11 @@
+import { createNativeDocumentCommandPreparer } from "./native-document-commands.ts";
+import type { NativeDocumentCommandPreparer } from "../domain/native-document-commands.ts";
 import { qualifiedDeliveryContext, qualifiedHarnessProfile } from "./qualified-harness-profile.ts";
 import { isNativeDocumentContext, prepareDocumentCommands } from "./native-document-preparation.ts";
 import { z } from "zod";
 import { createWorkflowAuthoringOperations, type WorkflowAuthoringOperations } from "./workflow-authoring-policy.ts";
 import { createOwnershipDigest } from "./projection-ownership.ts";
-import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessOperations } from "./native-compiler-process.ts";
+import { createNativeCompilerProcessOperations, privateCompilerEnvironment, type NativeCompilerProcessFactory, type NativeCompilerProcessOperations } from "./native-compiler-process.ts";
 import { renderAuthoredProse } from "../domain/authored-prose.ts";
 import { mergeSourceDigests, type SourceContentDigest } from "../domain/source-origin.ts";
 import { finding, pathStatus, type Outcome } from "../domain/model.ts";
@@ -51,7 +53,7 @@ const loadReferenceHelper: WorkflowReferenceOperations["module"] = async ({ sour
   try { return { status: "ok", value: await import(`${Bun.pathToFileURL(`${sourceRoot}/${path}`).href}?source=${sha256}`) }; }
   catch { return refused({ detail: "source-owned generated skill region API unavailable" }); }
 };
-export const createWorkflowReferenceOperations = (): WorkflowReferenceOperations => ({ authoring: createWorkflowAuthoringOperations().snapshot, read: readReferenceFile, scopes: readReferenceScopes, module: loadReferenceHelper, digest: createOwnershipDigest(), prose: renderAuthoredProse, process: createNativeCompilerProcessOperations() });
+export const createWorkflowReferenceOperations = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): WorkflowReferenceOperations => ({ authoring: createWorkflowAuthoringOperations().snapshot, read: readReferenceFile, scopes: readReferenceScopes, module: loadReferenceHelper, digest: createOwnershipDigest(), prose: renderAuthoredProse, process: processes() });
 
 const hasBasis = ({ origin, request }: { readonly origin: WorkflowReferenceRequest["workflow"]["compiler"]; readonly request: WorkflowReferenceRequest }) => origin.source.kind === request.basis.source.kind && origin.source.id === request.basis.source.id && origin.pin === request.basis.pin;
 const admitReferenceRequest = ({ request }: { readonly request: WorkflowReferenceRequest }): Outcome<WorkflowReferenceRequest> => {
@@ -154,7 +156,7 @@ const admitReferenceHelper = ({ imported }: { readonly imported: unknown }): Out
   const helper = helperSchema.safeParse(imported);
   return helper.success ? { status: "ok", value: helper.data } : refused({ code: "invalid-input", detail: "source helper must expose stage-then-scope regions and the region replacement capability" });
 };
-const prepareReferenceInputs = async ({ request, manifest, operations, binary }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest; readonly operations: WorkflowReferenceOperations; readonly binary: string }): Promise<Outcome<PreparedWorkflowReference>> => {
+const prepareReferenceInputs = async ({ request, manifest, operations, binary, preparer }: { readonly request: WorkflowReferenceRequest; readonly manifest: ReferenceManifest; readonly operations: WorkflowReferenceOperations; readonly binary: string; readonly preparer: NativeDocumentCommandPreparer }): Promise<Outcome<PreparedWorkflowReference>> => {
   const before = await observeReference({ request, manifest, operations });
   if (before.status === "invalid") return before;
   let nativeText: ((source: string) => string) | undefined;
@@ -178,20 +180,20 @@ const prepareReferenceInputs = async ({ request, manifest, operations, binary }:
   if (text.status === "invalid") return text;
   const after = await observeReference({ request, manifest, operations });
   if (after.status === "invalid") return after;
-  const commands = prepareDocumentCommands({ sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents: [{ path: manifest.destination, source: text.value }] });
+  const commands = prepareDocumentCommands({ preparer, sourceRoot: request.sourceRoot, basis: request.basis, context: request.context, documents: [{ path: manifest.destination, source: text.value }] });
   if (commands.status === "invalid") return commands;
   const document = commands.value.documents[0];
   if (document === undefined) return refused({ detail: "workflow reference native command preparation returned no document" });
   return finishReference({ before: facts.value, after: after.value, text: document.text, request, manifest, witnessed: [...witnessed.value.inputs, ...commands.value.inputs] });
 };
-const prepareReference = async ({ request, operations, binary }: { readonly request: WorkflowReferenceRequest; readonly operations: WorkflowReferenceOperations; readonly binary: string }): Promise<Outcome<PreparedWorkflowReference>> => {
+const prepareReference = async ({ request, operations, binary, preparer }: { readonly request: WorkflowReferenceRequest; readonly operations: WorkflowReferenceOperations; readonly binary: string; readonly preparer: NativeDocumentCommandPreparer }): Promise<Outcome<PreparedWorkflowReference>> => {
   try {
     const admitted = admitReferenceRequest({ request });
     if (admitted.status === "invalid") return admitted;
     const snapshot = await operations.authoring({ sourceRoot: request.sourceRoot, basis: request.basis, binding: request.context });
     if (snapshot.status === "invalid") return snapshot;
     const manifest = admitManifest({ snapshot: snapshot.value, request });
-    return manifest.status === "invalid" ? manifest : await prepareReferenceInputs({ request, manifest: manifest.value, operations, binary });
+    return manifest.status === "invalid" ? manifest : await prepareReferenceInputs({ request, manifest: manifest.value, operations, binary, preparer });
   } catch { return refused({ detail: "workflow reference preparation capability unavailable" }); }
 };
-export const createWorkflowReferencePreparer = ({ binary = "bun", operations = createWorkflowReferenceOperations() }: { readonly binary?: string; readonly operations?: WorkflowReferenceOperations } = {}): WorkflowReferencePreparer => ({ prepare: (request) => prepareReference({ request, operations, binary }) });
+export const createWorkflowReferencePreparer = ({ processes = createNativeCompilerProcessOperations, binary = "bun", operations = createWorkflowReferenceOperations({ processes }), commands = createNativeDocumentCommandPreparer({ processes }) }: { readonly processes?: NativeCompilerProcessFactory; readonly binary?: string; readonly operations?: WorkflowReferenceOperations; readonly commands?: NativeDocumentCommandPreparer } = {}): WorkflowReferencePreparer => ({ prepare: (request) => prepareReference({ request, operations, binary, preparer: commands }) });

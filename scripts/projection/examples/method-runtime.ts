@@ -1,4 +1,5 @@
-import { prepareCoreMethodRuntime } from "./core-method-runtime.ts";
+import { createNativeCompilerProcessOperations, type NativeCompilerProcessFactory } from "../src/adapters/native-compiler-process.ts";
+import { createCoreMethodRuntimeServices, prepareCoreMethodRuntime } from "./core-method-runtime.ts";
 import { planPreparedRuntimeFiles } from "../src/domain/prepared-runtime-files.ts";
 import { createDistributionAssemblyRules } from "../src/adapters/distribution-source.ts";
 import type { DistributionSeed } from "../src/domain/distribution-artifact.ts";
@@ -8,7 +9,7 @@ export type AuthoredMethodRuntimePreparation = { readonly kind: "prepared"; read
 export type MethodRuntimePreparation = { readonly kind: "native-supplied" } | AuthoredMethodRuntimePreparation;
 export type PreparedMethodRuntimeSeed = { readonly seed: DistributionSeed; readonly preparation: AuthoredMethodRuntimePreparation };
 export type MethodRuntimeServices = { readonly prepare: typeof prepareCoreMethodRuntime; readonly admit: typeof planPreparedRuntimeFiles; readonly rules: { readonly path: typeof pathStatus } };
-export const createMethodRuntimeServices = (): MethodRuntimeServices => ({ prepare: prepareCoreMethodRuntime, admit: planPreparedRuntimeFiles, rules: { path: createDistributionAssemblyRules().path } });
+export const createMethodRuntimeServices = ({ processes = createNativeCompilerProcessOperations }: { readonly processes?: NativeCompilerProcessFactory } = {}): MethodRuntimeServices => ({ prepare: input => prepareCoreMethodRuntime({ ...input, services: input.services ?? createCoreMethodRuntimeServices({ processes }) }), admit: planPreparedRuntimeFiles, rules: { path: createDistributionAssemblyRules().path } });
 export const prepareAuthoredMethodRuntime = async ({ sourceRoot, seed, mode, services = createMethodRuntimeServices() }: { readonly sourceRoot: string; readonly seed: DistributionSeed; readonly mode: number; readonly services?: MethodRuntimeServices }): Promise<Outcome<PreparedMethodRuntimeSeed>> => {
   const prepared = await services.prepare({ sourceRoot, basis: seed.basis, context: { ...seed.binding, invocation: seed.invocation, rulesSubdir: seed.rulesSubdir, ...(seed.preparationStage === undefined ? {} : { preparationStage: seed.preparationStage }) }, mode });
   if (prepared.status === "invalid") return prepared;
