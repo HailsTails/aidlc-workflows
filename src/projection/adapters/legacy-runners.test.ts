@@ -4,7 +4,7 @@ import { nativeCommandName, commandFilePath, type CommandReading } from "../doma
 import { accepted } from "../../kernel/result.ts";
 import { scope, stage } from "../../workflow-definition/fixtures/identities.fixture.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
-import { decodeLegacyRunners, duplicateNativeCommand, prepareLegacyRunners, runChild } from "./legacy-runners.ts";
+import { decodeLegacyRunners, duplicateNativeCommand, prepareLegacyRunners, runChild, runChildWithCapability } from "./legacy-runners.ts";
 
 test("the boundary retains every companion and uses the requested typed stage subject", () => {
   const source = decodeLegacyRunners({ status: 0, stderr: "", stdout: `{"failure":null,"entries":[
@@ -125,4 +125,24 @@ test("companion bytes survive the legacy protocol without UTF-8 replacement", ()
       within: accept(commandFilePath("companion.bin")), mode: "regular",
       content: { kind: "bytes", bytes: new Uint8Array([0, 255, 195, 40]) } }],
   }));
+});
+
+
+test("an absent selected scope is refused before child output is written", () => {
+  expect(runChildWithCapability({ module: "unused", output: "unused", stages: [], scopes: ["feature"] }, {
+    runnableStages: () => [],
+    discoverScopes: () => ({}),
+    defaultScopeBatch: () => ["feature"],
+    renderStageRunner: () => "Unused stage",
+    renderRunner: () => "Unused scope",
+    renderInitRunner: () => "---\nname: aidlc-init\n---\n",
+    renderComposeRunner: () => "---\nname: aidlc-compose\n---\n",
+    regenerateRunnerSurfaces: () => undefined,
+  })).toEqual({ failure: null, entries: [{ subject: { concept: "scope-command", name: "feature" },
+    files: null, reason: "The selected frozen scope is absent: feature" }] });
+});
+
+test("an invalid child capability API returns a whole-source failure", () => {
+  expect(runChildWithCapability({ module: "unused", output: "unused", stages: [], scopes: [] }, {}))
+    .toEqual({ entries: [], failure: "The frozen runner capability API is invalid." });
 });

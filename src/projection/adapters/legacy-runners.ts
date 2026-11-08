@@ -164,11 +164,9 @@ export const duplicateNativeCommand = (commands: readonly ChildCommand[]): WireE
   return collision ? { subject: collision.subject, files: null,
     reason: `Two frozen commands share the native destination: ${collision.nativeName}` } : null;
 };
-export const runChild = async (raw: unknown): Promise<z.infer<typeof replySchema>> => {
-  const decoded = childSchema.safeParse(raw);
-  if (!decoded.success) return { entries: [], failure: "The frozen runner request is invalid." };
-  const input = decoded.data;
-  const admitted = generatorSchema.safeParse(await import(Bun.pathToFileURL(input.module).href));
+export const runChildWithCapability = (input: z.infer<typeof childSchema>, capability: unknown):
+  z.infer<typeof replySchema> => {
+  const admitted = generatorSchema.safeParse(capability);
   if (!admitted.success) return { entries: [], failure: "The frozen runner capability API is invalid." };
   const generator = admitted.data;
   const commands = renderFrozenCommands(generator, input);
@@ -179,6 +177,12 @@ export const runChild = async (raw: unknown): Promise<z.infer<typeof replySchema
   generator.regenerateRunnerSurfaces();
   const paths = walk(input.output);
   return { failure: null, entries: commands.map((command) => commandDocuments(command, paths)) };
+};
+
+export const runChild = async (raw: unknown): Promise<z.infer<typeof replySchema>> => {
+  const decoded = childSchema.safeParse(raw);
+  if (!decoded.success) return { entries: [], failure: "The frozen runner request is invalid." };
+  return runChildWithCapability(decoded.data, await import(Bun.pathToFileURL(decoded.data.module).href));
 };
 
 const captureScopes = (request: LegacyRunnerRequest): Result<readonly MethodSource[], ProjectionRefusal> => {
