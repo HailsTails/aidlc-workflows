@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { accept } from "../../kernel/fixtures/accept.ts";
 import { at } from "../../kernel/fixtures/values.fixture.ts";
+import { agentSlug, artifactName } from "../../workflow-definition/domain/identities.ts";
 import { methodSliceFixture } from "../../workflow-definition/fixtures/method.fixture.ts";
 import { RUNNING_RECORD, stageOf, unitOf } from "../fixtures/workflow-record.fixture.ts";
+import type { ReviewReceipt } from "./review.ts";
 import { nextRoute, type RouteContext } from "./routing.ts";
 import type { StageState, WorkflowRecord } from "./workflow-record.ts";
 
@@ -63,6 +66,35 @@ describe("nextRoute through a stage", () => {
     expect(nextRoute(unreviewed, context)).toMatchObject({
       kind: "ask-person",
       gate: { kind: "stage", stage: requirements, unit: null },
+    });
+  });
+});
+
+describe("nextRoute with the review budget spent", () => {
+  const notReadyAt = (iteration: number): ReviewReceipt => ({
+    attempt: {
+      stage: generation,
+      unit: ledger,
+      artifact: accept(artifactName("code-generation-plan")),
+      reviewer: accept(agentSlug("aidlc-architecture-reviewer-agent")),
+      reviewClass: "adversarial",
+      iteration,
+      requestedAt: at("2026-11-08T09:00:00Z"),
+    },
+    verdict: "not-ready",
+    findings: [],
+    receivedAt: at("2026-11-08T09:30:00Z"),
+  });
+
+  test("puts the gate to the person", () => {
+    const spent: WorkflowRecord = {
+      ...withStages([{ stage: generation, unit: ledger, progress: "awaiting-approval" }]),
+      reviews: [notReadyAt(1), notReadyAt(2)],
+    };
+
+    expect(nextRoute(spent, context)).toMatchObject({
+      kind: "ask-person",
+      gate: { kind: "stage", stage: generation, unit: ledger },
     });
   });
 });

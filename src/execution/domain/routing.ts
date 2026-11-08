@@ -11,7 +11,7 @@ import type { Gate } from "./gate.ts";
 import type { UnitName } from "./identities.ts";
 import { presenceRequirement } from "./presence.ts";
 import type { ReviewAttempt } from "./review.ts";
-import { nextReviewStep, stageReviewClass } from "./review-attempt.ts";
+import { nextReviewStep, stageReviewClass, type ReviewStep } from "./review-attempt.ts";
 import { moveStage } from "./stage-progress.ts";
 import type { TransitionCause } from "./transition.ts";
 import {
@@ -95,6 +95,20 @@ const atGate = (placed: Placed): RouteStep => {
     : { kind: "ask-person", gate, stage: placed.stage };
 };
 
+const budgetSpent = (placed: Placed): RouteStep => atGate(placed);
+
+const afterReview = (placed: Placed, step: ReviewStep): RouteStep => {
+  switch (step.kind) {
+    case "request":
+      return { kind: "request-review", attempt: step.attempt };
+    case "budget-spent":
+      return budgetSpent(placed);
+    case "finished":
+    case "no-review":
+      return atGate(placed);
+  }
+};
+
 const awaitingApproval = (placed: Placed): RouteStep => {
   const step = nextReviewStep(placed.record, {
     at: { stage: placed.state.stage, unit: placed.state.unit },
@@ -106,7 +120,7 @@ const awaitingApproval = (placed: Placed): RouteStep => {
     personAsked: placed.context.personAsked,
     time: placed.context.time,
   });
-  return step.kind === "request" ? { kind: "request-review", attempt: step.attempt } : atGate(placed);
+  return afterReview(placed, step);
 };
 
 const routePlaced = (placed: Placed): RouteStep => {

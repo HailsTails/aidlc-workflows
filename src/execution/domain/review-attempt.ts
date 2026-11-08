@@ -122,14 +122,14 @@ const afterReceipts = (
 ): ReviewStep => {
   const budget = reviewBudget(need.reviewClass, need.policy);
   const latest = receipts.at(-1);
-  if (latest !== undefined && receiptFinality(latest, budget) === "final") {
-    return need.personAsked === "asked"
-      ? requestStep(need, receipts.length + 1)
-      : { kind: "finished", receipt: latest };
+  const nextRequest = requestStep(need, receipts.length + 1);
+  if (latest === undefined || need.personAsked === "asked") {
+    return nextRequest;
   }
-  return receipts.length >= budget && need.personAsked === "not-asked"
-    ? { kind: "budget-spent", at: need.at, budget }
-    : requestStep(need, receipts.length + 1);
+  if (latest.verdict === "ready" || latest.attempt.reviewClass === "advisory") {
+    return { kind: "finished", receipt: latest };
+  }
+  return receipts.length >= budget ? { kind: "budget-spent", at: need.at, budget } : nextRequest;
 };
 
 export const nextReviewStep = (record: WorkflowRecord, need: ReviewNeed): ReviewStep => {

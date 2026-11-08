@@ -109,6 +109,32 @@ describe("nextReviewStep", () => {
   });
 });
 
+describe("a spent review budget", () => {
+  const stillNotReady: ReviewReceipt = {
+    ...notReady,
+    attempt: { ...firstAttempt, iteration: 2, requestedAt: at("2026-11-08T10:30:00Z") },
+    receivedAt: at("2026-11-08T10:40:00Z"),
+  };
+
+  test("is its own step once every iteration came back not ready", () => {
+    expect(nextReviewStep(reviewed([notReady, stillNotReady]), need)).toEqual({
+      kind: "budget-spent",
+      at: need.at,
+      budget: 2,
+    });
+  });
+
+  test("still freezes the artifact as reviewed", () => {
+    expect(
+      artifactFreeze(reviewed([notReady, stillNotReady]), {
+        at: need.at,
+        artifact: document,
+        budget: 2,
+      }),
+    ).toEqual({ kind: "frozen", receipt: stillNotReady });
+  });
+});
+
 describe("attempts", () => {
   test("Request Changes at the gate starts a new attempt with its own iterations", () => {
     const changes: Approval = {
